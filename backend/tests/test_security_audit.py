@@ -688,7 +688,7 @@ async def test_source_reads_outside_the_rest_api_are_audited(client: AsyncClient
     source_ok, doc = await source_service.source_document(
         scope, user_id, str(source_id), "docs/launch.md"
     )
-    assert results
+    assert results["results"]
     assert source_ok and doc is not None
 
     events_resp = await client.get(

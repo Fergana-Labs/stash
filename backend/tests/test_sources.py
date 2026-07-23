@@ -12,11 +12,12 @@ import io
 import json
 import time
 import zipfile
+from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID, uuid4
 
 import pytest
-from httpx import AsyncClient
+from httpx import AsyncClient, HTTPStatusError
 
 from backend.routers import sources as sources_router
 from backend.services import agent_runtime, source_service
@@ -629,6 +630,100 @@ async def test_search_documents_owner_scoped(client: AsyncClient):
     assert other_hits == []
 
 
+@pytest.mark.asyncio
+async def test_search_documents_snippet_centers_on_the_match(client: AsyncClient):
+    """Search hits carry a SEARCH_SNIPPET_CHARS window of document text
+    CENTERED on the first query occurrence — rankers downstream score hits on
+    this blob, so a match deep in a long transcript must arrive in the
+    snippet, not be cut by a head-of-document cap."""
+    owner_key, owner_id = await _register(client, "owner")
+    ws = await _user_scope(client, owner_key)
+
+    src = await source_service.create_source(
+        owner_user_id=owner_id,
+        source_type="granola",
+        external_ref="granola-account",
+        display_name="Granola",
+    )
+    # The match sits ~24K chars in — past the cap, so a head-of-document
+    # window could never contain it.
+    intro = "meeting small talk. " * 1200
+    match = "the quarterly forecast needs revision. "
+    tail = "closing remarks. " * 1500
+    modified = datetime(2026, 7, 7, 15, 33, tzinfo=UTC)
+    await source_service.upsert_content_document(
+        table="granola_notes",
+        source_id=UUID(src["id"]),
+        owner_user_id=ws,
+        path="2026/07/planning.md",
+        name="Planning sync",
+        kind="note",
+        content=intro + match + tail,
+        external_updated_at=modified,
+    )
+
+    hits = await source_service.search_documents(user_id=owner_id, query="quarterly forecast")
+    assert len(hits) == 1
+    snippet = hits[0]["snippet"]
+    assert match in snippet
+    # The document is longer than the cap; the snippet is exactly the cap.
+    assert len(snippet) == source_service.SEARCH_SNIPPET_CHARS
+    assert hits[0]["date_modified"] == modified
+
+    # End to end, the API returns a small display window of that blob, still
+    # centered on the match, with the clipped edges marked — so every consumer
+    # (web, CLI, MCP) shows the same text without windowing it themselves.
+    resp = await client.get(
+        "/api/v1/me/sources/search",
+        params={"q": "quarterly forecast"},
+        headers={"Authorization": f"Bearer {owner_key}"},
+    )
+    assert resp.status_code == 200
+    hit = next(r for r in resp.json()["results"] if r.get("ref") == "2026/07/planning.md")
+    assert match in hit["snippet"]
+    assert len(hit["snippet"]) <= source_service.SEARCH_RESULT_SNIPPET_CHARS + 2
+    assert hit["snippet"].startswith("…") and hit["snippet"].endswith("…")
+    # The provider-side modification time rides along, ISO-serialized.
+    assert hit["date_modified"] == "2026-07-07T15:33:00+00:00"
+
+
+def test_centered_window_semantics():
+    """The snippet window must contain the first query match wherever it sits:
+    centered when there's room, clamped (never shrunk) at the edges, head of
+    text when the query has no verbatim occurrence."""
+    text = ("a" * 500) + "NEEDLE" + ("b" * 500)
+
+    # Middle match: full-width window containing the match, case-insensitively.
+    window = source_service._centered_window(text, "needle", 100)
+    assert len(window) == 100
+    assert "NEEDLE" in window
+
+    # ellipsis=True marks both clipped edges.
+    window = source_service._centered_window(text, "needle", 100, ellipsis=True)
+    assert window.startswith("…") and window.endswith("…")
+    assert len(window) == 102
+
+    # Match at the head: window starts at the text start, no leading ellipsis.
+    window = source_service._centered_window("NEEDLE" + "b" * 500, "needle", 100, ellipsis=True)
+    assert window.startswith("NEEDLE") and window.endswith("…")
+
+    # Match at the tail: clamped to a full-width window, no trailing ellipsis.
+    window = source_service._centered_window("a" * 500 + "NEEDLE", "needle", 100, ellipsis=True)
+    assert window.startswith("…") and window.endswith("NEEDLE")
+    assert len(window) == 101
+
+    # Text within the width passes through verbatim, no ellipsis.
+    assert source_service._centered_window("short text", "needle", 100, ellipsis=True) == (
+        "short text"
+    )
+
+    # No verbatim match (stemmed/multi-word FTS hit): head of text.
+    assert source_service._centered_window(text, "absent phrase", 100) == text[:100]
+
+    # Empty text (exact provider-id hits) passes through.
+    assert source_service._centered_window("", "needle", 100, ellipsis=True) == ""
+
+
 # --- copied-content idempotent re-sync --------------------------------------
 
 
@@ -757,7 +852,9 @@ async def test_list_documents_pages_with_after_cursor(client: AsyncClient):
 async def test_search_all_resolves_a_provider_id_to_its_document(client: AsyncClient):
     """An agent holding only a provider URL (a Drive link, a GitHub blob) must
     be able to resolve the id inside it to the document's Stash path — the
-    external_ref is the only join key between the provider's world and ours."""
+    external_ref is the only join key between the provider's world and ours.
+    A substring of the id is enough: pasted ids arrive truncated or embedded
+    in URLs."""
     api_key, owner_id = await _register(client)
     ws = await _user_scope(client, api_key)
     src = await source_service.create_source(
@@ -776,10 +873,54 @@ async def test_search_all_resolves_a_provider_id_to_its_document(client: AsyncCl
         external_ref="gh-blob-1a2b3c",
     )
 
-    results = await source_service.search_all(ws, owner_id, "gh-blob-1a2b3c", source=src["id"])
+    for query in ("gh-blob-1a2b3c", "blob-1a2b"):
+        results = await source_service.search_all(ws, owner_id, query, source=src["id"])
+        assert [(r["ref"], r["name"]) for r in results["results"]] == [
+            ("docs/status.md", "status.md")
+        ]
+        assert results["results"][0]["exact_ref"] is True
 
-    assert [(r["ref"], r["name"]) for r in results] == [("docs/status.md", "status.md")]
-    assert await source_service.search_all(ws, owner_id, "no-such-id", source=src["id"]) == []
+    empty = await source_service.search_all(ws, owner_id, "no-such-id", source=src["id"])
+    assert empty == {"results": [], "has_more": False}
+
+
+@pytest.mark.asyncio
+async def test_provider_id_matches_pin_above_text_ranked_hits(client: AsyncClient):
+    """A hit whose provider id contains the query is a lookup, not a relevance
+    guess — it must land on top even when its body never mentions the query
+    and another document matches the text densely."""
+    api_key, owner_id = await _register(client)
+    ws = await _user_scope(client, api_key)
+    src = await source_service.create_source(
+        owner_user_id=owner_id,
+        source_type="github_repo",
+        external_ref="acme/widgets",
+        display_name="acme/widgets",
+    )
+    await source_service.upsert_content_document(
+        table="github_documents",
+        source_id=UUID(src["id"]),
+        owner_user_id=ws,
+        path="docs/by-id.md",
+        name="by-id.md",
+        content="nothing here mentions the query at all",
+        external_ref="gh-blob-1a2b3c",
+    )
+    await source_service.upsert_content_document(
+        table="github_documents",
+        source_id=UUID(src["id"]),
+        owner_user_id=ws,
+        path="docs/by-text.md",
+        name="by-text.md",
+        content="1a2b3c appears here. " * 20,
+        external_ref="gh-blob-other",
+    )
+
+    results = await source_service.search_all(ws, owner_id, "1a2b3c", source=src["id"])
+
+    refs = [r["ref"] for r in results["results"]]
+    assert refs == ["docs/by-id.md", "docs/by-text.md"]
+    assert results["results"][0]["exact_ref"] is True
 
 
 @pytest.mark.asyncio
@@ -869,11 +1010,11 @@ async def test_source_tools_span_native_and_connected(client: AsyncClient):
 
         # Unscoped search spans native pages + the connected source.
         hits = _tool_json(await agent_runtime._search.handler({"query": "migration"}))
-        assert any(h["source"] == source_service.NATIVE_FILES for h in hits)
+        assert any(h["source"] == source_service.NATIVE_FILES for h in hits["results"])
         scoped = _tool_json(
             await agent_runtime._search.handler({"query": "rotate tokens", "source": src["id"]})
         )
-        assert any(h["ref"] == "specs/auth.md" for h in scoped)
+        assert any(h["ref"] == "specs/auth.md" for h in scoped["results"])
     finally:
         agent_runtime._user_ctx.reset(utoken)
         agent_runtime._scope_ctx.reset(scope_token)
@@ -2007,7 +2148,7 @@ async def test_notion_is_full_text_searchable(client: AsyncClient):
 
     # And it's full-text searchable, scoped to the Notion source.
     hits = await source_service.search_all(ws, owner_id, "rotate tokens", source=src["id"])
-    assert any(h["ref"] == "Auth" for h in hits)
+    assert any(h["ref"] == "Auth" for h in hits["results"])
 
 
 @pytest.mark.asyncio
@@ -2048,7 +2189,7 @@ async def test_jira_is_index_only_with_federated_search(client: AsyncClient, mon
 
     # Search is federated (not our FTS — jira_documents holds no content).
     hits = await source_service.search_all(ws, owner_id, "login", source=src["id"])
-    assert any(h["ref"] == "PROJ-9" for h in hits)
+    assert any(h["ref"] == "PROJ-9" for h in hits["results"])
 
     # Read lazily fetches the body from the provider.
     doc = await source_service.read_document(src, "PROJ-9")
@@ -2082,14 +2223,17 @@ async def test_federated_search_logs_only_failure_metadata(client: AsyncClient, 
     # only failure metadata; a scoped search raises instead.
     hits = await source_service.search_all(ws, owner_id, "customer transcript")
 
-    assert hits == [
-        {
-            "source": src["id"],
-            "source_name": "PROJ",
-            "error": "PROJ search failed",
-            "needs_reconnect": False,
-        }
-    ]
+    assert hits == {
+        "results": [
+            {
+                "source": src["id"],
+                "source_name": "PROJ",
+                "error": "PROJ search failed",
+                "needs_reconnect": False,
+            }
+        ],
+        "has_more": False,
+    }
     assert captured_logs == [
         (
             "federated search failed source=%s source_type=%s exception_type=%s",
@@ -2129,7 +2273,7 @@ async def test_unscoped_search_surfaces_dead_federated_source(client: AsyncClien
 
     results = await source_service.search_all(ws, owner_id, "anything")
 
-    markers = [r for r in results if r.get("source") == src["id"]]
+    markers = [r for r in results["results"] if r.get("source") == src["id"]]
     assert markers == [
         {
             "source": src["id"],
@@ -2167,13 +2311,15 @@ async def test_search_appends_truncation_marker_when_provider_caps(
     monkeypatch.setattr(indexer, "search_gmail", capped_search)
     results = await source_service.search_all(ws, owner_id, "anything", source=src["id"])
 
-    assert [r for r in results if r.get("ref")] == [
+    assert [r for r in results["results"] if r.get("ref")] == [
         {
             "source": src["id"],
             "source_name": "Gmail (henry@ferganalabs.com)",
             "ref": "m0",
             "name": "msg 0",
             "snippet": "",
+            "date_modified": None,
+            "rank": 0.0,
         },
         {
             "source": src["id"],
@@ -2181,9 +2327,11 @@ async def test_search_appends_truncation_marker_when_provider_caps(
             "ref": "m1",
             "name": "msg 1",
             "snippet": "",
+            "date_modified": None,
+            "rank": 0.0,
         },
     ]
-    assert [r for r in results if r.get("truncated")] == [
+    assert [r for r in results["results"] if r.get("truncated")] == [
         {
             "source": src["id"],
             "source_name": "Gmail (henry@ferganalabs.com)",
@@ -2217,7 +2365,319 @@ async def test_search_omits_truncation_marker_when_not_capped(client: AsyncClien
     monkeypatch.setattr(indexer, "search_gmail", complete_search)
     results = await source_service.search_all(ws, owner_id, "anything", source=src["id"])
 
-    assert not any(r.get("truncated") for r in results)
+    assert not any(r.get("truncated") for r in results["results"])
+
+
+async def _github_source_with_docs(ws: UUID, owner_id: UUID, docs: dict[str, str]) -> dict:
+    src = await source_service.create_source(
+        owner_user_id=owner_id,
+        source_type="github_repo",
+        external_ref="acme/widgets",
+        display_name="acme/widgets",
+    )
+    for path, content in docs.items():
+        await source_service.upsert_content_document(
+            table="github_documents",
+            source_id=UUID(src["id"]),
+            owner_user_id=ws,
+            path=path,
+            name=path,
+            content=content,
+        )
+    return src
+
+
+@pytest.mark.asyncio
+async def test_search_merges_sources_on_one_uniform_relevance_scale(client: AsyncClient):
+    """The merged list is ordered by re-scoring every hit's text on one ts_rank
+    scale — a dense match from a source gathered LATE (github docs) must outrank
+    a thin match from a source gathered EARLY (native pages)."""
+    api_key, owner_id = await _register(client)
+    ws = await _user_scope(client, api_key)
+
+    thin = "token rotation " + "unrelated words about deployment pipelines " * 40
+    page = await client.post(
+        "/api/v1/me/pages/new",
+        json={"name": "Runbook", "content": thin},
+        headers=_auth(api_key),
+    )
+    assert page.status_code == 201
+    await _github_source_with_docs(
+        ws, owner_id, {"auth.md": "token rotation policy: token rotation happens hourly"}
+    )
+
+    results = await source_service.search_all(ws, owner_id, "token rotation")
+
+    refs = [r["ref"] for r in results["results"]]
+    assert refs.index("auth.md") < refs.index(page.json()["id"])
+
+
+@pytest.mark.asyncio
+async def test_search_limit_grows_the_list_with_a_stable_prefix(client: AsyncClient):
+    """There are no pages: callers ask for `limit` results and get the top
+    `limit`; asking again with a larger limit returns a longer list whose
+    prefix matches what they already saw (infinite scroll grows-and-replaces)."""
+    api_key, owner_id = await _register(client)
+    ws = await _user_scope(client, api_key)
+    await _github_source_with_docs(
+        ws,
+        owner_id,
+        {
+            "a.md": "kumquat harvest notes",
+            "b.md": "kumquat pruning notes",
+            "c.md": "kumquat watering notes",
+        },
+    )
+
+    small = await source_service.search_all(ws, owner_id, "kumquat", limit=2)
+    grown = await source_service.search_all(ws, owner_id, "kumquat", limit=10)
+
+    assert len(small["results"]) == 2 and small["has_more"] is True
+    assert len(grown["results"]) == 3 and grown["has_more"] is False
+    small_refs = [r["ref"] for r in small["results"]]
+    grown_refs = [r["ref"] for r in grown["results"]]
+    assert grown_refs[: len(small_refs)] == small_refs
+    assert sorted(grown_refs) == ["a.md", "b.md", "c.md"]
+
+
+@pytest.mark.asyncio
+async def test_markers_trail_every_response(client: AsyncClient, monkeypatch):
+    """Error markers describe the whole search, not the returned slice — a
+    caller at any limit must still learn a source is dead, so markers trail
+    every response and are never counted by has_more."""
+    from fastapi import HTTPException
+
+    from backend.integrations.gmail import indexer
+
+    api_key, owner_id = await _register(client)
+    ws = await _user_scope(client, api_key)
+    await _github_source_with_docs(
+        ws, owner_id, {"a.md": "kumquat harvest notes", "b.md": "kumquat pruning notes"}
+    )
+    await source_service.create_source(
+        owner_user_id=owner_id,
+        source_type="gmail",
+        external_ref="henry@ferganalabs.com",
+        display_name="Gmail (henry@ferganalabs.com)",
+    )
+
+    async def dead_search(source, query, limit):
+        raise HTTPException(status_code=401, detail="gmail token expired")
+
+    monkeypatch.setattr(indexer, "search_gmail", dead_search)
+
+    for limit, expect_more in ((1, True), (5, False)):
+        response = await source_service.search_all(ws, owner_id, "kumquat", limit=limit)
+        assert response["has_more"] is expect_more
+        assert response["results"][0]["ref"].endswith(".md")
+        assert response["results"][-1]["needs_reconnect"] is True
+
+
+@pytest.mark.asyncio
+async def test_rank_zero_hits_are_kept_at_the_bottom(client: AsyncClient, monkeypatch):
+    """A federated hit whose text doesn't token-match the query (Drive hits have
+    empty snippets; a stemming miss is enough) still came back provider-relevant,
+    so it sinks to the bottom instead of being dropped."""
+    from backend.integrations.google import indexer
+
+    api_key, owner_id = await _register(client)
+    ws = await _user_scope(client, api_key)
+    src = await source_service.create_source(
+        owner_user_id=owner_id,
+        source_type="google_drive",
+        external_ref="drive-root",
+        display_name="Drive",
+    )
+
+    async def fake_search(source, query, limit):
+        return [
+            {"ref": "f1", "name": "Q3 OKRs.pdf", "snippet": ""},
+            {"ref": "f2", "name": "kumquat budget.xlsx", "snippet": ""},
+        ]
+
+    monkeypatch.setattr(indexer, "search_drive", fake_search)
+
+    results = await source_service.search_all(ws, owner_id, "kumquat", source=src["id"])
+
+    assert [r["ref"] for r in results["results"]] == ["f2", "f1"]
+
+
+@pytest.mark.asyncio
+async def test_scoped_search_is_ranked_and_limited(client: AsyncClient):
+    api_key, owner_id = await _register(client)
+    ws = await _user_scope(client, api_key)
+    src = await _github_source_with_docs(
+        ws,
+        owner_id,
+        {
+            "dense.md": "kumquat kumquat kumquat kumquat",
+            "thin.md": "kumquat " + "filler words about something else " * 40,
+        },
+    )
+
+    small = await source_service.search_all(ws, owner_id, "kumquat", source=src["id"], limit=1)
+    grown = await source_service.search_all(ws, owner_id, "kumquat", source=src["id"], limit=2)
+
+    assert [r["ref"] for r in small["results"]] == ["dense.md"]
+    assert small["has_more"] is True
+    assert [r["ref"] for r in grown["results"]] == ["dense.md", "thin.md"]
+    assert grown["has_more"] is False
+
+
+@pytest.mark.asyncio
+async def test_search_rejects_out_of_range_limit(client: AsyncClient):
+    api_key, _ = await _register(client)
+
+    for limit in (0, 501):
+        resp = await client.get(
+            "/api/v1/me/sources/search",
+            params={"q": "anything", "limit": limit},
+            headers=_auth(api_key),
+        )
+        assert resp.status_code == 422
+
+
+async def _page_and_github_docs(client: AsyncClient, api_key, ws, owner_id) -> str:
+    """A native page and a github doc that both match "kumquat"; returns the
+    page id. The standard fixture for asserting which sources a filter reaches."""
+    page = await client.post(
+        "/api/v1/me/pages/new",
+        json={"name": "Kumquat runbook", "content": "kumquat harvest notes"},
+        headers=_auth(api_key),
+    )
+    assert page.status_code == 201
+    await _github_source_with_docs(ws, owner_id, {"a.md": "kumquat pruning notes"})
+    return page.json()["id"]
+
+
+@pytest.mark.asyncio
+async def test_search_include_sources_restricts_to_named_tokens(client: AsyncClient):
+    """include_sources=["files"] must silence github's copied-content FTS too —
+    FTS reads every readable source, so the filter has to hold at the table
+    level, not just the connected-source listing."""
+    api_key, owner_id = await _register(client)
+    ws = await _user_scope(client, api_key)
+    page_id = await _page_and_github_docs(client, api_key, ws, owner_id)
+
+    results = await source_service.search_all(ws, owner_id, "kumquat", include_sources=["files"])
+
+    assert [r["ref"] for r in results["results"]] == [page_id]
+
+
+@pytest.mark.asyncio
+async def test_search_exclude_sources_removes_tokens(client: AsyncClient):
+    api_key, owner_id = await _register(client)
+    ws = await _user_scope(client, api_key)
+    page_id = await _page_and_github_docs(client, api_key, ws, owner_id)
+
+    results = await source_service.search_all(ws, owner_id, "kumquat", exclude_sources=["files"])
+
+    refs = [r["ref"] for r in results["results"]]
+    assert refs == ["a.md"]
+
+    results = await source_service.search_all(ws, owner_id, "kumquat", exclude_sources=["github"])
+
+    assert [r["ref"] for r in results["results"]] == [page_id]
+
+
+@pytest.mark.asyncio
+async def test_search_token_in_both_lists_is_excluded(client: AsyncClient):
+    api_key, owner_id = await _register(client)
+    ws = await _user_scope(client, api_key)
+    page_id = await _page_and_github_docs(client, api_key, ws, owner_id)
+
+    results = await source_service.search_all(
+        ws, owner_id, "kumquat", include_sources=["files", "github"], exclude_sources=["github"]
+    )
+
+    assert [r["ref"] for r in results["results"]] == [page_id]
+
+
+@pytest.mark.asyncio
+async def test_search_disjoint_include_exclude_returns_nothing(client: AsyncClient):
+    api_key, owner_id = await _register(client)
+    ws = await _user_scope(client, api_key)
+    await _page_and_github_docs(client, api_key, ws, owner_id)
+
+    results = await source_service.search_all(
+        ws, owner_id, "kumquat", include_sources=["files"], exclude_sources=["files"]
+    )
+
+    assert results == {"results": [], "has_more": False}
+
+
+@pytest.mark.asyncio
+async def test_search_unknown_source_token_is_400(client: AsyncClient):
+    api_key, _ = await _register(client)
+
+    for param in ("include_sources", "exclude_sources"):
+        resp = await client.get(
+            "/api/v1/me/sources/search",
+            params={"q": "anything", param: "dropbox"},
+            headers=_auth(api_key),
+        )
+        assert resp.status_code == 400
+        assert "dropbox" in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_search_source_combined_with_filters_is_400(client: AsyncClient):
+    api_key, _ = await _register(client)
+
+    resp = await client.get(
+        "/api/v1/me/sources/search",
+        params={"q": "anything", "source": "files", "include_sources": "gmail"},
+        headers=_auth(api_key),
+    )
+
+    assert resp.status_code == 400
+    assert "not both" in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_search_repeated_include_sources_params_parse_as_list(client: AsyncClient):
+    """The wire format is repeated query params (?include_sources=a&include_sources=b),
+    which is what httpx sends for a list-valued param."""
+    api_key, owner_id = await _register(client)
+    ws = await _user_scope(client, api_key)
+    page_id = await _page_and_github_docs(client, api_key, ws, owner_id)
+
+    resp = await client.get(
+        "/api/v1/me/sources/search",
+        params={"q": "kumquat", "include_sources": ["files", "github"]},
+        headers=_auth(api_key),
+    )
+
+    assert resp.status_code == 200
+    assert sorted(r["ref"] for r in resp.json()["results"]) == sorted([page_id, "a.md"])
+
+
+@pytest.mark.asyncio
+async def test_search_excluded_provider_is_never_called(client: AsyncClient, monkeypatch):
+    """Excluding a federated provider must skip its live API entirely — not
+    call it and drop the hits — so excluded searches spend no provider quota."""
+    from backend.integrations.gmail import indexer
+
+    api_key, owner_id = await _register(client)
+    ws = await _user_scope(client, api_key)
+    page_id = await _page_and_github_docs(client, api_key, ws, owner_id)
+    await source_service.create_source(
+        owner_user_id=owner_id,
+        source_type="gmail",
+        external_ref="henry@ferganalabs.com",
+        display_name="Gmail (henry@ferganalabs.com)",
+    )
+
+    async def must_not_run(source, query, limit):
+        raise AssertionError("excluded provider's search API was called")
+
+    monkeypatch.setattr(indexer, "search_gmail", must_not_run)
+
+    results = await source_service.search_all(ws, owner_id, "kumquat", exclude_sources=["gmail"])
+
+    refs = sorted(r["ref"] for r in results["results"])
+    assert refs == sorted([page_id, "a.md"])
+    assert not any(r.get("error") for r in results["results"])
 
 
 @pytest.mark.asyncio
@@ -2237,7 +2697,7 @@ async def test_search_gmail_reports_truncation_from_next_page_token(monkeypatch)
     async def token(*args, **kwargs):
         return "tok"
 
-    async def get_metadata(client, message_id):
+    async def get_message(client, message_id, message_format):
         return {"id": message_id, "payload": {"headers": [{"name": "Subject", "value": "hi"}]}}
 
     async def upsert(source, message):
@@ -2245,7 +2705,7 @@ async def test_search_gmail_reports_truncation_from_next_page_token(monkeypatch)
 
     monkeypatch.setattr(indexer, "get_valid_token", token)
     monkeypatch.setattr(indexer.httpx, "AsyncClient", lambda *a, **k: GmailClient())
-    monkeypatch.setattr(indexer, "_get_message_metadata", get_metadata)
+    monkeypatch.setattr(indexer, "_get_message", get_message)
     monkeypatch.setattr(indexer, "_upsert_message_metadata", upsert)
     source = {"id": str(uuid4()), "owner_user_id": str(uuid4()), "external_ref": "e@x.com"}
 
@@ -2264,6 +2724,140 @@ async def test_search_gmail_reports_truncation_from_next_page_token(monkeypatch)
     monkeypatch.setattr(indexer, "_list_message_refs", last_page)
     result = await indexer.search_gmail(source, "q", 25)
     assert result["truncated"] is False
+
+
+@pytest.mark.asyncio
+async def test_search_gmail_hits_carry_full_message_text(monkeypatch):
+    """Search fetches each hit with format=full and renders the whole message
+    into the snippet — rankers get the full email text, not Gmail's ~150-char
+    preview — while still upserting only the hit's metadata into the index."""
+    import base64
+
+    from backend.integrations.gmail import indexer
+
+    class GmailClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return None
+
+    async def token(*args, **kwargs):
+        return "tok"
+
+    body = base64.urlsafe_b64encode(b"Please review the Q3 budget before Friday.").decode()
+    fetched_formats = []
+
+    async def get_message(client, message_id, message_format):
+        fetched_formats.append(message_format)
+        return {
+            "id": message_id,
+            "snippet": "Please review the Q3 budget…",
+            "internalDate": "1751900000000",
+            "payload": {
+                "headers": [
+                    {"name": "Subject", "value": "Q3 budget"},
+                    {"name": "From", "value": "cfo@example.com"},
+                ],
+                "mimeType": "text/plain",
+                "body": {"data": body},
+            },
+        }
+
+    async def refs(client, query, limit):
+        return [{"id": "m1"}], None, 1
+
+    upserted = []
+
+    async def upsert(source, message):
+        upserted.append(message["id"])
+        return "2026/07/07 1533 Q3 budget (m1)"
+
+    monkeypatch.setattr(indexer, "get_valid_token", token)
+    monkeypatch.setattr(indexer.httpx, "AsyncClient", lambda *a, **k: GmailClient())
+    monkeypatch.setattr(indexer, "_get_message", get_message)
+    monkeypatch.setattr(indexer, "_list_message_refs", refs)
+    monkeypatch.setattr(indexer, "_upsert_message_metadata", upsert)
+
+    source = {"id": str(uuid4()), "owner_user_id": str(uuid4()), "external_ref": "e@x.com"}
+    result = await indexer.search_gmail(source, "budget", 25)
+
+    assert fetched_formats == ["full"]
+    hit = result["hits"][0]
+    assert hit["name"] == "Q3 budget (cfo@example.com)"
+    assert "Please review the Q3 budget before Friday." in hit["snippet"]
+    assert upserted == ["m1"]
+
+
+@pytest.mark.asyncio
+async def test_gmail_message_fetches_are_concurrency_capped(monkeypatch):
+    """An unbounded gather of ~25+ messages.get calls overshoots Gmail's
+    per-user quota (250 units/sec, 5 per get) instantly and 429s the whole
+    sync — fetches must never exceed FETCH_CONCURRENCY in flight."""
+    import asyncio
+
+    from backend.integrations.gmail import indexer
+
+    in_flight = 0
+    max_in_flight = 0
+
+    async def get_message(client, message_id, message_format):
+        nonlocal in_flight, max_in_flight
+        in_flight += 1
+        max_in_flight = max(max_in_flight, in_flight)
+        await asyncio.sleep(0)
+        in_flight -= 1
+        return {"id": message_id}
+
+    monkeypatch.setattr(indexer, "_get_message", get_message)
+
+    refs = [{"id": f"m{i}"} for i in range(20)]
+    messages = await indexer._get_messages(None, refs, "metadata")
+
+    assert len(messages) == 20
+    assert max_in_flight <= indexer.FETCH_CONCURRENCY
+
+
+@pytest.mark.asyncio
+async def test_gmail_get_message_retries_429_then_fails_loud(monkeypatch):
+    """Gmail 429s are pacing signals, not errors: honor Retry-After a bounded
+    number of times, then let the final 429 fail the sync loudly."""
+    from types import SimpleNamespace
+
+    from backend.integrations.gmail import indexer
+
+    sleeps = []
+
+    async def sleep(seconds):
+        sleeps.append(seconds)
+
+    monkeypatch.setattr(indexer.asyncio, "sleep", sleep)
+
+    def response(status_code):
+        def raise_for_status():
+            if status_code >= 400:
+                raise HTTPStatusError("429", request=None, response=None)
+
+        return SimpleNamespace(
+            status_code=status_code,
+            headers={"Retry-After": "2"},
+            raise_for_status=raise_for_status,
+            json=lambda: {"id": "m1"},
+        )
+
+    class Client:
+        def __init__(self, statuses):
+            self.statuses = list(statuses)
+
+        async def get(self, url, params=None):
+            return response(self.statuses.pop(0))
+
+    message = await indexer._get_message(Client([429, 200]), "m1", "metadata")
+    assert message == {"id": "m1"}
+    assert sleeps == [2.0]
+
+    with pytest.raises(HTTPStatusError):
+        await indexer._get_message(Client([429, 429, 429]), "m1", "metadata")
 
 
 @pytest.mark.asyncio
@@ -2964,17 +3558,92 @@ async def test_linear_federated_search_returns_issue_hits(client: AsyncClient, m
 
     async def fake_search_issues(token, term, first=25):
         assert term == "real source"
-        return [{"identifier": "FER-199", "title": "Make Linear a real source"}]
+        return [
+            linear_api_service.LinearIssue(
+                issue_id="issue-1",
+                identifier="FER-199",
+                title="Make Linear a real source",
+                url="https://linear.app/fergana/issue/FER-199",
+                status="In Progress",
+                assignee_name=None,
+                team_key="FER",
+                team_name="Fergana",
+                project_name=None,
+                updated_at=None,
+                description="Federate search to Linear's own API.",
+            )
+        ]
 
     monkeypatch.setattr(linear_indexer, "get_valid_token", fake_token)
     monkeypatch.setattr(linear_api_service, "search_issues", fake_search_issues)
 
     results = await source_service.search_all(ws, owner_id, "real source", source=src["id"])
 
-    assert any(r["ref"] == "FER/FER-00199" for r in results)
-    hit = next(r for r in results if r["ref"] == "FER/FER-00199")
+    assert any(r["ref"] == "FER/FER-00199" for r in results["results"])
+    hit = next(r for r in results["results"] if r["ref"] == "FER/FER-00199")
     assert hit["source"] == src["id"]
     assert hit["name"] == "FER-199 Make Linear a real source"
+    # The snippet is the rendered issue body, not just the title — rankers
+    # downstream need the description text without another API call.
+    assert "Federate search to Linear's own API." in hit["snippet"]
+    # This provider response carried no timestamp — the optional field is None.
+    assert hit["date_modified"] is None
+
+
+@pytest.mark.asyncio
+async def test_federated_snippet_is_capped_and_centered_on_the_match(
+    client: AsyncClient, monkeypatch
+):
+    """Federated providers return whole rendered bodies (a full email, a full
+    issue). Those get the same treatment as indexed content: capped internally
+    at SEARCH_SNIPPET_CHARS around the match, then returned as a small display
+    window centered on it — a match deep in a huge body must survive both."""
+    from backend.integrations.linear import indexer as linear_indexer
+    from backend.services import linear_api_service
+
+    api_key, owner_id = await _register(client)
+    ws = await _user_scope(client, api_key)
+    src = await _create_linear_source(ws, owner_id)
+
+    async def fake_token(user_id, provider):
+        return "tok"
+
+    # The match sits ~23K chars into the description — past the internal cap,
+    # so a head-of-body window could never contain it.
+    description = (
+        ("planning filler text. " * 1050)
+        + "the pelican budget doubles next year. "
+        + ("more filler. " * 100)
+    )
+
+    async def fake_search_issues(token, term, first=25):
+        return [
+            linear_api_service.LinearIssue(
+                issue_id="issue-2",
+                identifier="FER-200",
+                title="Quarterly planning",
+                url="https://linear.app/fergana/issue/FER-200",
+                status="In Progress",
+                assignee_name=None,
+                team_key="FER",
+                team_name="Fergana",
+                project_name=None,
+                updated_at=datetime(2026, 7, 14, 9, 0, tzinfo=UTC),
+                description=description,
+            )
+        ]
+
+    monkeypatch.setattr(linear_indexer, "get_valid_token", fake_token)
+    monkeypatch.setattr(linear_api_service, "search_issues", fake_search_issues)
+
+    results = await source_service.search_all(ws, owner_id, "pelican budget", source=src["id"])
+
+    hit = next(r for r in results["results"] if r.get("ref") == "FER/FER-00200")
+    assert "the pelican budget doubles next year." in hit["snippet"]
+    assert len(hit["snippet"]) <= source_service.SEARCH_RESULT_SNIPPET_CHARS + 2
+    assert hit["snippet"].startswith("…") and hit["snippet"].endswith("…")
+    # Federated providers that report a modification time pass it through.
+    assert hit["date_modified"] == datetime(2026, 7, 14, 9, 0, tzinfo=UTC)
 
 
 @pytest.mark.asyncio

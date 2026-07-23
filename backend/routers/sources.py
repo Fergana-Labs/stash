@@ -17,7 +17,7 @@ from datetime import UTC, datetime
 from typing import Literal
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from ..auth import get_current_user, get_scope
@@ -152,20 +152,36 @@ async def list_sources(
 async def search_sources(
     q: str,
     source: str | None = None,
-    limit: int = 20,
+    include_sources: list[str] | None = Query(None),
+    exclude_sources: list[str] | None = Query(None),
+    limit: int = Query(20, ge=1, le=500),
     current_user: dict = Depends(get_current_user),
     scope_user_id: UUID = Depends(get_scope),
 ):
-    """Unified search. Omit `source` to search everything in the active scope
-    (files + sessions + its connected sources), or pass a handle to scope."""
+    """Unified search, merged onto one relevance scale. `limit` controls how
+    many hits return; `has_more` says more matched — ask again with a larger
+    limit to see them. Omit `source` to search everything in the active scope
+    (files + sessions + its connected sources), or pass a handle to scope.
+    Repeatable include_sources/exclude_sources params (native handles +
+    provider names) filter which sources are searched:
+    (include or everything) - exclude."""
     owner_user_id = scope_user_id
     await _require_member(owner_user_id, current_user["id"])
-    results = await source_service.search_all(
-        owner_user_id, current_user["id"], q, source=source, limit=limit
-    )
-    if results is None:
+    try:
+        result = await source_service.search_all(
+            owner_user_id,
+            current_user["id"],
+            q,
+            source=source,
+            include_sources=include_sources,
+            exclude_sources=exclude_sources,
+            limit=limit,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if result is None:
         raise HTTPException(status_code=404, detail="Source not found")
-    return {"results": results}
+    return result
 
 
 @router.get("/tree")
