@@ -31,7 +31,10 @@ def render_ask_system(stash_name: str, sources: list[dict] | None = None) -> str
         "name, session id, skill title, or table). Be concise. "
         "When the user asks for slides, a slide deck, a presentation, a pitch, "
         "or a deck, call read_skill('slides') before generating any HTML so you "
-        "follow the scope's canvas, format, and library conventions."
+        "follow the scope's canvas, format, and library conventions. "
+        "When they ask for a briefing, a study guide, or a timeline over their "
+        "saved material, read the matching skill (briefing / study-guide / "
+        "timeline) first — each defines the structure and grounding rules."
     )
 
 
