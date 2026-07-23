@@ -25,13 +25,6 @@
       "description": "Agent identity name in Stash",
       "type": "string",
       "sensitive": false
-    },
-    "auto_curate": {
-      "title": "Auto-curate Wiki",
-      "description": "Spawn a headless `claude -p` at session end to curate your session history into wiki pages (true/false, default true). Toggle stored in ~/.stash/config.json.",
-      "type": "string",
-      "default": "true",
-      "sensitive": false
     }
   }
 }

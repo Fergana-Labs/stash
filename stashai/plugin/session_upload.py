@@ -16,12 +16,15 @@ from stashai.plugin.upload_status import record_upload_failure
 # ~/.claude/skills (it does not scan .agents); OpenClaw uses ~/.openclaw/skills.
 # Cursor is omitted: it only loads project-level .cursor/skills with no global
 # location, so there's nothing to sync at session start.
+# Hermes loads ~/.hermes/skills natively; ~/.agents/skills only counts if the
+# user opts into skills.external_dirs, so we sync to the always-loaded dir.
 _SKILLS_DIR_BY_CLIENT = {
     "claude_code": "~/.claude/skills",
     "codex_cli": "~/.agents/skills",
     "gemini_cli": "~/.agents/skills",
     "opencode": "~/.agents/skills",
     "openclaw": "~/.openclaw/skills",
+    "hermes": "~/.hermes/skills",
 }
 
 

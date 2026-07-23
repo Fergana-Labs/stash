@@ -350,3 +350,82 @@ async def test_folder_share_grants_skill_read_and_lists_in_shared_skills(client:
     page_read = await client.get(f"/api/v1/pages/{nested_page}", headers=_auth(recipient_key))
     assert page_read.status_code == 200
     assert page_read.json()["content_markdown"] == "private context"
+
+
+@pytest.mark.asyncio
+async def test_shared_skill_contents_readable_by_recipient_only(client: AsyncClient):
+    """`stash skills sync` pulls followed shared skills through
+    /me/shared-skills/{folder_id}/contents. The skill here is deliberately
+    UNPUBLISHED: a private share must be materializable without a public slug,
+    while a stranger gets 403 — the share, not publication, is the grant."""
+    owner_key, _ = await _register(client)
+    scope = await _scope(client, owner_key)
+    skill_folder = await _folder(client, owner_key, scope, "team-runbook")
+    await _page(
+        client,
+        owner_key,
+        scope,
+        "SKILL.md",
+        folder_id=skill_folder,
+        content="---\nname: Team Runbook\n---\n\n# Steps\n",
+    )
+
+    recipient_key, _ = await _register_with_email(client, "runbook-grantee@example.com")
+    shared = await client.post(
+        "/api/v1/share",
+        json={
+            "object_type": "folder",
+            "object_id": skill_folder,
+            "email": "runbook-grantee@example.com",
+            "permission": "read",
+        },
+        headers=_auth(owner_key),
+    )
+    assert shared.status_code == 200
+
+    resp = await client.get(
+        f"/api/v1/me/shared-skills/{skill_folder}/contents", headers=_auth(recipient_key)
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["folder_name"] == "team-runbook"
+    page_names = [p["name"] for p in body["contents"]["pages"]]
+    assert "SKILL.md" in page_names
+
+    stranger_key, _ = await _register(client)
+    denied = await client.get(
+        f"/api/v1/me/shared-skills/{skill_folder}/contents", headers=_auth(stranger_key)
+    )
+    assert denied.status_code == 403
+
+    missing = await client.get(
+        "/api/v1/me/shared-skills/00000000-0000-0000-0000-000000000000/contents",
+        headers=_auth(recipient_key),
+    )
+    assert missing.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_install_ping_counts_adoption_separately_from_views(client: AsyncClient):
+    """view_count measures curiosity; install_count measures adoption. The
+    CLI's post-install ping must move only the latter, and a typo'd slug must
+    404 rather than silently count nothing."""
+    owner_key, _ = await _register(client)
+    scope = await _scope(client, owner_key)
+    folder = await _folder(client, owner_key, scope, "pingable")
+    await _page(client, owner_key, scope, "SKILL.md", folder_id=folder, content="# s")
+    published = await client.post(
+        "/api/v1/me/skills",
+        json={"folder_id": folder, "title": "Pingable"},
+        headers=_auth(owner_key),
+    )
+    slug = published.json()["slug"]
+    assert published.json()["install_count"] == 0
+
+    assert (await client.post(f"/api/v1/skills/{slug}/installs")).status_code == 204
+    assert (await client.post(f"/api/v1/skills/{slug}/installs")).status_code == 204
+
+    detail = await client.get(f"/api/v1/skills/{slug}")
+    assert detail.json()["skill"]["install_count"] == 2
+
+    assert (await client.post("/api/v1/skills/not-a-real-slug/installs")).status_code == 404

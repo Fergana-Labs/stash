@@ -27,7 +27,7 @@ from uuid import UUID
 import redis.asyncio as aioredis
 
 from ..config import settings
-from . import agent_auth, agent_service, memory_service, prompts, sprite_service
+from . import agent_auth, agent_service, mcp_server_service, memory_service, prompts, sprite_service
 from . import harness as harness_mod
 
 logger = logging.getLogger(__name__)
@@ -425,6 +425,9 @@ async def stream_chat(
                 await asyncio.wait({acquire}, timeout=10)
             sprite = acquire.result()
             await sprite_service.touch(user_id)
+            # Registered MCP servers reach the harness via the workdir's
+            # .mcp.json, rewritten every turn so removals propagate too.
+            await mcp_server_service.sync_sprite_config(user_id, sprite)
 
             final = ""
             error: str | None = None
@@ -526,6 +529,9 @@ async def run_chat(
         )
         sprite = await sprite_service.acquire(user_id)
         await sprite_service.touch(user_id)
+        # Registered MCP servers reach the harness via the workdir's
+        # .mcp.json, rewritten every turn so removals propagate too.
+        await mcp_server_service.sync_sprite_config(user_id, sprite)
 
         final = ""
         error: str | None = None

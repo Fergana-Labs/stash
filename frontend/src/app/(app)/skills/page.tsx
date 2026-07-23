@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useConfirm } from "@/components/ConfirmDialog";
+import CopyableCommandBlock from "@/components/CopyableCommandBlock";
 import {
   CardGridSkeleton,
   SkillsGridSkeleton,
@@ -234,7 +235,7 @@ export default function SkillsPage() {
                 onToggleSelect={toggleSelect}
               />
             ) : (
-              <EmptyHint>No skills yet.</EmptyHint>
+              <NoSkillsYet onBrowseDiscover={() => setTab("discover")} />
             )}
           </div>
         )}
@@ -403,6 +404,31 @@ function EmptyHint({ children }: { children: React.ReactNode }) {
     <p className="rounded-lg border border-dashed border-border bg-surface/30 px-4 py-10 text-center text-[12.5px] text-muted-foreground">
       {children}
     </p>
+  );
+}
+
+// Empty state for the Yours tab: point at the CLI create command and the
+// public library instead of dead-ending.
+function NoSkillsYet({ onBrowseDiscover }: { onBrowseDiscover: () => void }) {
+  return (
+    <div className="rounded-lg border border-dashed border-border bg-surface/30 px-4 py-10 text-center text-[12.5px] text-muted-foreground">
+      <p className="m-0">No skills yet.</p>
+      <p className="m-0 mt-1.5">Create one from your terminal:</p>
+      <div className="mt-3">
+        <CopyableCommandBlock commands={'stash skills create "<name>"'} />
+      </div>
+      <p className="m-0 mt-3">
+        Or{" "}
+        <button
+          type="button"
+          onClick={onBrowseDiscover}
+          className="cursor-pointer text-[var(--color-brand-600)] underline underline-offset-2 hover:text-[var(--color-brand-700)]"
+        >
+          browse Discover
+        </button>{" "}
+        and fork a public skill into your Skills.
+      </p>
+    </div>
   );
 }
 

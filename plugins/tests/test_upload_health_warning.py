@@ -90,7 +90,7 @@ def test_uploads_disabled_warning_is_once_per_session(monkeypatch, tmp_path):
 
     assert warning == (
         "Stash isn't set up on this machine yet. "
-        "Run `stash connect` to finish setup."
+        "Run `stash signin` to finish setup."
     )
     assert load_state(tmp_path)["uploads_disabled_warning_session_id"] == "s1"
     assert uploads_disabled_warning(cfg, state, _event("s1"), tmp_path) is None

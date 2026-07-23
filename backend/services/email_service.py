@@ -55,6 +55,26 @@ def send_enterprise_lead_email(user_name: str, user_email: str | None) -> None:
     )
 
 
+def send_share_invite_email(to_email: str, owner_name: str, object_type: str) -> None:
+    """Tell a not-yet-user someone shared something with them. Without this,
+    a pending share_invite sits silent until the recipient independently
+    discovers Stash — which they never do."""
+    app_url = settings.PUBLIC_URL.rstrip("/")
+    _send(
+        {
+            "From": DEFAULT_FROM,
+            "To": to_email,
+            "Subject": f"{owner_name} shared a {object_type} with you on Stash",
+            "HtmlBody": (
+                f"<p><strong>{owner_name}</strong> shared a {object_type} with you on "
+                f'<a href="{app_url}">Stash</a>.</p>'
+                f'<p><a href="{app_url}/login">Sign up with this email address</a> and '
+                "it will be waiting in your account.</p>"
+            ),
+        }
+    )
+
+
 def send_welcome_email(user_email: str, first_name: str | None = None) -> None:
     if not user_email:
         return

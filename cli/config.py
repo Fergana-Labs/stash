@@ -112,6 +112,20 @@ def save_config(
         _write_to(USER_CONFIG_FILE, updates)
 
 
+def save_scope(scope: str | None) -> None:
+    """Set the active workspace scope, or clear it (None) for personal.
+
+    Read by both the CLI client and the plugin's StashClient, so every write —
+    live events, transcripts, artifacts — lands in the same scope."""
+    existing = _read_json(USER_CONFIG_FILE) if USER_CONFIG_FILE.exists() else {}
+    if scope:
+        existing["scope"] = scope
+    else:
+        existing.pop("scope", None)
+    USER_CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
+    USER_CONFIG_FILE.write_text(json.dumps(existing, indent=2) + "\n")
+
+
 def stored_base_url() -> str | None:
     """Return the base_url written to ~/.stash/config.json, or None."""
     if USER_CONFIG_FILE.exists():

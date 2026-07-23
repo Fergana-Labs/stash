@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { useBreadcrumbs } from "@/components/BreadcrumbContext";
 import { useConfirm } from "@/components/ConfirmDialog";
+import CopyableCommandBlock from "@/components/CopyableCommandBlock";
 import SessionUpload from "@/components/SessionUpload";
 import { SessionsListSkeleton } from "@/components/SkeletonStates";
 import { PinIcon } from "@/components/SkillIcons";
@@ -404,6 +405,30 @@ export default function SkillSessionsPage() {
   );
 }
 
+const PLUGIN_INSTALL_COMMANDS = "uv tool install stashai\nstash signin";
+
+// Empty state that sells the plugin: sessions arrive via the agent hooks the
+// CLI installs, so an empty list usually means that setup hasn't happened yet.
+// Shared folders skip the CTA — their sessions come from the folder's owner.
+function SessionsEmptyState({ withInstallCta }: { withInstallCta: boolean }) {
+  return (
+    <div className="rounded-lg border border-dashed border-border bg-surface/30 px-4 py-6 text-center text-[12.5px] text-muted-foreground">
+      <p className="m-0">No sessions yet.</p>
+      {withInstallCta && (
+        <>
+          <p className="m-0 mt-1.5">
+            Sessions from Claude Code, Cursor, Codex and other agents appear here
+            automatically once the Stash plugin is installed.
+          </p>
+          <div className="mt-3">
+            <CopyableCommandBlock commands={PLUGIN_INSTALL_COMMANDS} />
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function SessionsView({
   view,
   sessions,
@@ -413,6 +438,7 @@ function SessionsView({
   selectedIds,
   onToggleSelect,
   drag,
+  withInstallCta,
 }: {
   view: ViewKey;
   sessions: SessionSummary[];
@@ -422,13 +448,10 @@ function SessionsView({
   selectedIds: Set<string>;
   onToggleSelect: (sessionId: string) => void;
   drag: SessionDrag;
+  withInstallCta: boolean;
 }) {
   if (sessions.length === 0) {
-    return (
-      <div className="rounded-lg border border-dashed border-border bg-surface/30 px-4 py-6 text-center text-[12.5px] text-muted-foreground">
-        No sessions yet.
-      </div>
-    );
+    return <SessionsEmptyState withInstallCta={withInstallCta} />;
   }
 
   if (view === "list") {
@@ -661,11 +684,7 @@ function SessionsTable({
   drag?: SessionDrag;
 }) {
   if (sessions.length === 0) {
-    return (
-      <div className="rounded-lg border border-dashed border-border bg-surface/30 px-4 py-6 text-center text-[12.5px] text-muted-foreground">
-        No sessions yet.
-      </div>
-    );
+    return <SessionsEmptyState withInstallCta />;
   }
 
   return (
@@ -1271,6 +1290,7 @@ function FolderDrill({
             selectedIds={folder.shared ? EMPTY_SELECTION : selectedIds}
             onToggleSelect={folder.shared ? noop : onToggleSelect}
             drag={folder.shared ? NO_DRAG : drag}
+            withInstallCta={!folder.shared}
           />
           {hasMore && (
             <div ref={sentinelRef} className="flex justify-center py-4">

@@ -2178,3 +2178,39 @@ export async function listImportBatches(): Promise<ImportBatchProgress[]> {
 export async function getImportBatch(batchId: string): Promise<ImportBatchDetail> {
   return apiFetch(`/api/v1/me/imports/${batchId}`);
 }
+
+// --- MCP servers (the Tools page) ---
+
+export type McpServer = {
+  id: string;
+  name: string;
+  transport: "stdio" | "http";
+  command: string | null;
+  url: string | null;
+  headers: Record<string, string>;
+  env: Record<string, string>;
+  created_at: string;
+};
+
+export type McpServerCreate = {
+  name: string;
+  transport: "stdio" | "http";
+  command?: string;
+  url?: string;
+  headers?: Record<string, string>;
+};
+
+export async function listMcpServers(): Promise<McpServer[]> {
+  return apiFetch(`${ME}/mcp-servers`);
+}
+
+export async function createMcpServer(input: McpServerCreate): Promise<McpServer> {
+  return apiFetch(`${ME}/mcp-servers`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function deleteMcpServer(serverId: string): Promise<void> {
+  await apiFetch(`${ME}/mcp-servers/${serverId}`, { method: "DELETE" });
+}

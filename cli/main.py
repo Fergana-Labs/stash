@@ -33,6 +33,7 @@ from .config import (
     load_manifest,
     save_config,
     save_enabled_agents,
+    save_scope,
     session_link_enabled,
     set_session_link,
     start_streaming,
@@ -95,7 +96,11 @@ def upgrade() -> None:
 
 def _client() -> StashClient:
     cfg = load_config()
-    return StashClient(base_url=cfg["base_url"], api_key=cfg.get("api_key", ""))
+    return StashClient(
+        base_url=cfg["base_url"],
+        api_key=cfg.get("api_key", ""),
+        scope=cfg.get("scope", ""),
+    )
 
 
 def _use_json(flag: bool) -> bool:
@@ -197,13 +202,16 @@ def _browser_auth_flow(
 # Install — wire up hook plugins for every coding agent on PATH
 # ===========================================================================
 
-_SUPPORTED_AGENTS = ("claude", "cursor", "codex", "opencode")
+_SUPPORTED_AGENTS = ("claude", "cursor", "codex", "opencode", "gemini", "openclaw", "hermes")
 
 _AGENT_BINARY = {
     "claude": "claude",
     "cursor": "cursor-agent",
     "codex": "codex",
     "opencode": "opencode",
+    "gemini": "gemini",
+    "openclaw": "openclaw",
+    "hermes": "hermes",
 }
 
 _CODEX_HOME_MARKERS = (
@@ -262,6 +270,12 @@ def _agent_present(agent: str) -> bool:
         return _codex_present()
     if agent == "cursor":
         return (Path.home() / ".cursor").is_dir()
+    if agent == "gemini":
+        return (Path.home() / ".gemini").is_dir()
+    if agent == "hermes":
+        return (Path.home() / ".hermes").is_dir()
+    # Openclaw needs its binary for `openclaw plugins install`, so a config
+    # dir alone doesn't count as present.
     return False
 
 
@@ -587,11 +601,125 @@ def _install_opencode(force: bool) -> tuple[str, str]:
     return ("installed", f"{cfg_path} (plugin entry added) + {agents_dest}")
 
 
+def _install_gemini(force: bool) -> tuple[str, str]:
+    root = _assets_dir("gemini")
+    dest = Path.home() / ".gemini" / "settings.json"
+    template = (root / "settings.snippet.json").read_text()
+    status_ = _merge_json_hooks(dest, template, root)
+
+    agents_dest = Path.home() / ".gemini" / "GEMINI.md"
+    _upsert_agents_md(agents_dest, (root / "GEMINI.md").read_text())
+    return (status_, f"{dest} + {agents_dest}")
+
+
+_HERMES_MARKER_BEGIN = "# stash-plugin:begin"
+_HERMES_MARKER_END = "# stash-plugin:end"
+_HERMES_APPROVAL_NOTE = (
+    " — Hermes asks you to approve each hook on first use "
+    "(review with `hermes hooks list`; pre-approve with HERMES_ACCEPT_HOOKS=1)"
+)
+
+
+def _install_hermes(force: bool) -> tuple[str, str]:
+    """Wire the stash shell hooks into ~/.hermes/config.yaml.
+
+    The hooks block lives inside a stash-owned marker-comment block so re-runs
+    replace it wholesale without touching user config. We deliberately don't
+    text-merge into a user-owned top-level `hooks:` key — duplicate top-level
+    YAML keys are last-one-wins in PyYAML, which would silently drop hooks —
+    so that case fails loud with a merge-by-hand message.
+    """
+    import re
+    from string import Template
+
+    root = _assets_dir("hermes")
+    cfg_path = Path.home() / ".hermes" / "config.yaml"
+    snippet = Template((root / "config.snippet.yaml").read_text()).safe_substitute(
+        PLUGIN_ROOT=str(root)
+    )
+    block = f"{_HERMES_MARKER_BEGIN}\n{snippet.rstrip()}\n{_HERMES_MARKER_END}"
+
+    existing = cfg_path.read_text() if cfg_path.exists() else ""
+
+    if _HERMES_MARKER_BEGIN in existing and _HERMES_MARKER_END in existing:
+        pre, rest = existing.split(_HERMES_MARKER_BEGIN, 1)
+        _, post = rest.split(_HERMES_MARKER_END, 1)
+        new = f"{pre}{block}{post}"
+        if new == existing and not force:
+            return ("skipped", f"{cfg_path} already wired")
+        cfg_path.write_text(new)
+        return ("installed", f"{cfg_path} (stash hooks block refreshed){_HERMES_APPROVAL_NOTE}")
+
+    if re.search(r"^hooks\s*:", existing, flags=re.MULTILINE):
+        return (
+            "failed",
+            f"{cfg_path} already has a top-level hooks: block; add the entries from "
+            f"{root / 'config.snippet.yaml'} to it by hand",
+        )
+
+    sep = "" if not existing or existing.endswith("\n") else "\n"
+    cfg_path.parent.mkdir(parents=True, exist_ok=True)
+    cfg_path.write_text(f"{existing}{sep}{block}\n")
+    return ("installed", f"{cfg_path}{_HERMES_APPROVAL_NOTE}")
+
+
+def _openclaw_extension_dir() -> Path:
+    return Path.home() / ".openclaw" / "extensions" / "stash"
+
+
+def _dir_content_matches(src: Path, dest: Path) -> bool:
+    """True if every file under src exists with identical bytes under dest.
+    Extra files in dest (node_modules, state) don't count as drift."""
+    for path in src.rglob("*"):
+        if not path.is_file() or "__pycache__" in path.parts:
+            continue
+        other = dest / path.relative_to(src)
+        if not other.is_file() or other.read_bytes() != path.read_bytes():
+            return False
+    return True
+
+
+def _install_openclaw(force: bool) -> tuple[str, str]:
+    import subprocess
+
+    root = _assets_dir("openclaw")
+    ext_dir = _openclaw_extension_dir()
+    if ext_dir.is_dir() and _dir_content_matches(root, ext_dir):
+        return ("skipped", f"{ext_dir}")
+
+    # --dangerously-force-unsafe-install: openclaw's code scanner blocks any
+    # plugin that spawns processes, and piping hook events into the stashai
+    # Python scripts via child_process is this extension's whole mechanism.
+    result = subprocess.run(
+        [
+            "openclaw",
+            "plugins",
+            "install",
+            "--force",
+            "--dangerously-force-unsafe-install",
+            str(root),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    if result.returncode != 0:
+        tail = (result.stderr or result.stdout or "").strip().splitlines()
+        return ("failed", tail[-1] if tail else "openclaw plugins install failed")
+    return (
+        "installed",
+        f"{ext_dir} (restart the gateway to load it: `openclaw gateway restart`)",
+    )
+
+
 _INSTALLERS = {
     "claude": _install_claude,
     "cursor": _install_cursor,
     "codex": _install_codex,
     "opencode": _install_opencode,
+    "gemini": _install_gemini,
+    "openclaw": _install_openclaw,
+    "hermes": _install_hermes,
 }
 
 
@@ -626,6 +754,24 @@ def _plugin_installed(agent: str) -> bool:
             return False
         expected = str(_assets_dir("opencode") / "plugin.ts")
         return expected in (cfg.get("plugin") or [])
+    if agent == "gemini":
+        settings_path = Path.home() / ".gemini" / "settings.json"
+        if not settings_path.exists():
+            return False
+        try:
+            return "stashai/plugin/assets/gemini" in settings_path.read_text()
+        except OSError:
+            return False
+    if agent == "openclaw":
+        return _openclaw_extension_dir().is_dir()
+    if agent == "hermes":
+        cfg_path = Path.home() / ".hermes" / "config.yaml"
+        if not cfg_path.exists():
+            return False
+        try:
+            return "stashai/plugin/assets/hermes" in cfg_path.read_text()
+        except OSError:
+            return False
     return False
 
 
@@ -1394,7 +1540,7 @@ def skills_update(
     ),
     as_json: bool = typer.Option(False, "--json"),
 ):
-    """Update a published skill's metadata, access, or Discover flag."""
+    """Update a published skill's metadata or Discover flag."""
     fields = {}
     if title is not None:
         fields["title"] = title
@@ -1414,9 +1560,7 @@ def skills_update(
     if _use_json(as_json):
         output_json(skill)
         return
-    flag = f"[cyan]{skill['access']}[/cyan]"
-    if skill.get("discoverable"):
-        flag = f"{flag} [cyan]discover[/cyan]"
+    flag = "[cyan]discover[/cyan]" if skill.get("discoverable") else "[cyan]public[/cyan]"
     console.print(f"[green]Updated Skill[/green] '{skill['title']}'  {flag}")
 
 
@@ -1481,6 +1625,51 @@ def _materialize_skill(detail: dict, skills_root: Path, fetch_bytes) -> tuple[Pa
     return target, written
 
 
+# --- installed-skill manifest: Discover/shared installs that auto-update ---
+#
+# Owned skills sync through the three-way state below; skills the user
+# INSTALLED (someone else's, by slug or share) are tracked here instead.
+# `stash skills sync` — which the plugin spawns at session start — refreshes
+# every manifest entry whose cloud copy changed, so installs stay current
+# without the user re-running install.
+
+
+def _installed_manifest_path() -> Path:
+    return Path.home() / ".stash" / "installed_skills.json"
+
+
+def _load_installed_manifest() -> dict:
+    path = _installed_manifest_path()
+    return json.loads(path.read_text()) if path.exists() else {}
+
+
+def _save_installed_manifest(manifest: dict) -> None:
+    path = _installed_manifest_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(manifest, indent=1))
+
+
+def _installed_entry(manifest: dict, root: Path) -> dict:
+    return manifest.setdefault(str(root.resolve()), {"skills": {}, "follow_shared": False})
+
+
+def _skills_root(directory: str, project: bool) -> Path:
+    if directory and project:
+        console.print("[red]Error:[/red] pass either --dir or --project, not both.")
+        raise typer.Exit(1)
+    if directory:
+        return Path(directory).expanduser()
+    if project:
+        return Path(".claude") / "skills"
+    return Path.home() / ".claude" / "skills"
+
+
+def _fetch_bytes(url: str) -> bytes:
+    resp = httpx.get(url, follow_redirects=True, timeout=60)
+    resp.raise_for_status()
+    return resp.content
+
+
 @skills_app.command("install")
 def skills_install(
     slug: str = typer.Argument(..., help="Public slug, e.g. from app.joinstash.ai/skills/<slug>."),
@@ -1494,18 +1683,11 @@ def skills_install(
 
     Claude Code loads every SKILL.md folder under ~/.claude/skills (or the
     repo's .claude/skills with --project) at session start, so the Skill is
-    available to the agent from its next session. Re-running updates the
-    installed copy in place.
+    available to the agent from its next session. Installed skills are
+    tracked and auto-update whenever `stash skills sync` runs (the plugin
+    runs one at every session start); `stash skills uninstall` removes one.
     """
-    if directory and project:
-        console.print("[red]Error:[/red] pass either --dir or --project, not both.")
-        raise typer.Exit(1)
-    if directory:
-        root = Path(directory).expanduser()
-    elif project:
-        root = Path(".claude") / "skills"
-    else:
-        root = Path.home() / ".claude" / "skills"
+    root = _skills_root(directory, project)
 
     with _client() as c:
         try:
@@ -1513,19 +1695,145 @@ def skills_install(
         except StashError as e:
             _err(e)
 
-    def fetch_bytes(url: str) -> bytes:
-        resp = httpx.get(url, follow_redirects=True, timeout=60)
-        resp.raise_for_status()
-        return resp.content
+        target, written = _materialize_skill(detail, root, _fetch_bytes)
+        # Adoption ping — best-effort: a metrics hiccup must not fail an
+        # install that already succeeded on disk.
+        try:
+            c.record_skill_install(slug)
+        except (StashError, httpx.HTTPError):
+            pass
 
-    target, written = _materialize_skill(detail, root, fetch_bytes)
+    manifest = _load_installed_manifest()
+    _installed_entry(manifest, root)["skills"][target.name] = {
+        "slug": slug,
+        "remote_hash": _hash_remote_contents(detail["contents"]),
+    }
+    _save_installed_manifest(manifest)
+
     if _use_json(as_json):
         output_json({"path": str(target), "items": written})
         return
     console.print(
         f"[green]Installed[/green] '{detail['skill']['title']}' → {target}  ({written} items)"
     )
-    console.print("[dim]The agent loads it at its next session start.[/dim]")
+    console.print(
+        "[dim]The agent loads it at its next session start; "
+        "it auto-updates on `stash skills sync`.[/dim]"
+    )
+
+
+@skills_app.command("uninstall")
+def skills_uninstall(
+    name: str = typer.Argument(..., help="Installed skill's slug or folder name."),
+    directory: str = typer.Option("", "--dir", help="Skills directory the skill lives in."),
+    project: bool = typer.Option(
+        False, "--project", help="Uninstall from ./.claude/skills (this repo only)."
+    ),
+):
+    """Remove an installed Skill and stop auto-updating it."""
+    root = _skills_root(directory, project)
+    manifest = _load_installed_manifest()
+    entry = _installed_entry(manifest, root)
+    match = next(
+        (n for n, rec in entry["skills"].items() if name in (n, rec.get("slug"))),
+        None,
+    )
+    if match is None:
+        console.print(f"[red]Error:[/red] '{name}' is not an installed skill in {root}.")
+        raise typer.Exit(1)
+
+    target = root / match
+    if target.exists():
+        if not (target / "SKILL.md").exists():
+            console.print(
+                f"[red]Error:[/red] {target} doesn't look like a skill folder; not deleting."
+            )
+            raise typer.Exit(1)
+        shutil.rmtree(target)
+    del entry["skills"][match]
+    _save_installed_manifest(manifest)
+    console.print(f"[green]Uninstalled[/green] {match}")
+
+
+@skills_app.command("list")
+def skills_list(
+    installed: bool = typer.Option(
+        False, "--installed", help="Show locally installed skills instead of your own."
+    ),
+    as_json: bool = typer.Option(False, "--json"),
+):
+    """List your skills, or locally installed ones with --installed."""
+    if installed:
+        manifest = _load_installed_manifest()
+        rows = [
+            {
+                "name": skill_name,
+                "root": root,
+                "slug": rec.get("slug"),
+                "shared_folder_id": rec.get("shared_folder_id"),
+            }
+            for root, entry in manifest.items()
+            for skill_name, rec in entry["skills"].items()
+        ]
+        if _use_json(as_json):
+            output_json({"installed": rows})
+            return
+        if not rows:
+            console.print("[dim]No installed skills. `stash skills install <slug>` adds one.[/dim]")
+            return
+        for r in rows:
+            source = r["slug"] or "(shared with you)"
+            console.print(f"  [bold]{r['name']}[/bold]  [dim]{source} → {r['root']}[/dim]")
+        return
+
+    with _client() as c:
+        try:
+            skills = c.list_skills()
+        except StashError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json({"skills": skills})
+        return
+    if not skills:
+        console.print('[dim]No skills yet. `stash skills create "<name>"` starts one.[/dim]')
+        return
+    for s in skills:
+        flags = []
+        if s.get("slug"):
+            flags.append(f"[cyan]{_web_app_url()}/skills/{s['slug']}[/cyan]")
+        console.print(f"  [bold]{s.get('name') or s.get('title')}[/bold]  {' '.join(flags)}")
+
+
+@skills_app.command("follow")
+def skills_follow(
+    directory: str = typer.Option("", "--dir", help="Skills directory new shares install into."),
+    project: bool = typer.Option(
+        False, "--project", help="Install new shares into ./.claude/skills (this repo only)."
+    ),
+):
+    """Auto-install skills people share with you.
+
+    New shared skills land at the next `stash skills sync` (the plugin runs
+    one at every session start) and update like any installed skill.
+    """
+    root = _skills_root(directory, project)
+    manifest = _load_installed_manifest()
+    _installed_entry(manifest, root)["follow_shared"] = True
+    _save_installed_manifest(manifest)
+    console.print(f"[green]Following[/green] skills shared with you → {root}")
+
+
+@skills_app.command("unfollow")
+def skills_unfollow(
+    directory: str = typer.Option("", "--dir", help="Skills directory to stop following into."),
+    project: bool = typer.Option(False, "--project", help="Stop following for ./.claude/skills."),
+):
+    """Stop auto-installing newly shared skills (already-installed ones stay)."""
+    root = _skills_root(directory, project)
+    manifest = _load_installed_manifest()
+    _installed_entry(manifest, root)["follow_shared"] = False
+    _save_installed_manifest(manifest)
+    console.print(f"[green]Unfollowed[/green] shared skills for {root}")
 
 
 # --- skills sync: two-way local <-> Stash skill sync ---
@@ -1588,13 +1896,17 @@ def _hash_remote_contents(contents: dict) -> str:
     return h.hexdigest()
 
 
-def _sync_skills(c, root: Path, state: dict, push_new: bool, fetch_bytes) -> tuple[dict, dict]:
+def _sync_skills(
+    c, root: Path, state: dict, push_new: bool, fetch_bytes, skip: set[str] = frozenset()
+) -> tuple[dict, dict]:
     """Three-way sync between root and your skills.
 
     state maps skill folder name -> {folder_id, local_hash, remote_hash}
     captured at the last sync; comparing each side against it tells us which
-    side moved. Both moved -> conflict, skipped loudly. Returns
-    (summary, new_state)."""
+    side moved. Both moved -> conflict, skipped loudly. `skip` names local
+    dirs owned by the installed-skill manifest — they must never be treated
+    as local-only skills (project mode would push someone else's skill into
+    your Stash). Returns (summary, new_state)."""
     remote: dict[str, dict] = {}
     for s in c.list_skills():
         detail = c.get_skill_contents(s["folder_id"])
@@ -1603,6 +1915,12 @@ def _sync_skills(c, root: Path, state: dict, push_new: bool, fetch_bytes) -> tup
     local = _local_skill_dirs(root)
     summary: dict = {"pulled": [], "pushed": [], "conflicts": [], "ignored": [], "unchanged": []}
     new_state: dict = {}
+
+    for name in sorted(set(remote) & set(skip)):
+        summary["conflicts"].append(
+            f"{name} (an installed skill shadows your own skill of the same name; "
+            "uninstall or rename one)"
+        )
 
     def record(name: str, detail: dict) -> None:
         new_state[name] = {
@@ -1629,7 +1947,7 @@ def _sync_skills(c, root: Path, state: dict, push_new: bool, fetch_bytes) -> tup
         record(name, c.get_skill_contents(folder_id))
         summary["pushed"].append(name)
 
-    for name in sorted(set(remote) | set(local)):
+    for name in sorted((set(remote) | set(local)) - set(skip)):
         rec = state.get(name)
         detail = remote.get(name)
         try:
@@ -1670,6 +1988,55 @@ def _sync_skills(c, root: Path, state: dict, push_new: bool, fetch_bytes) -> tup
     return summary, new_state
 
 
+def _sync_installed(c, root: Path, entry: dict, fetch_bytes) -> tuple[list[str], list[str]]:
+    """Refresh manifest-tracked installed skills whose cloud copy changed,
+    and install newly shared skills when this root follows shares. Mutates
+    `entry` in place; returns (updated names, notes)."""
+    updated: list[str] = []
+    notes: list[str] = []
+    skills = entry["skills"]
+
+    if entry.get("follow_shared"):
+        known = {rec.get("shared_folder_id") for rec in skills.values()}
+        for shared in c.list_shared_skills():
+            if shared["folder_id"] in known:
+                continue
+            detail = c.get_shared_skill_contents(shared["folder_id"])
+            name = _safe_skill_dirname(detail["folder_name"])
+            if name in skills or (root / name).exists():
+                notes.append(f"{name} (new shared skill collides with an existing dir; skipped)")
+                continue
+            target, _written = _materialize_skill(detail, root, fetch_bytes)
+            skills[target.name] = {
+                "shared_folder_id": shared["folder_id"],
+                "remote_hash": _hash_remote_contents(detail["contents"]),
+            }
+            updated.append(f"{target.name} (newly shared)")
+
+    for name, rec in sorted(skills.items()):
+        try:
+            if rec.get("slug"):
+                detail = c.get_public_skill(rec["slug"])
+            else:
+                detail = c.get_shared_skill_contents(rec["shared_folder_id"])
+        except StashError as e:
+            notes.append(f"{name} (fetch failed: {e.detail})")
+            continue
+        remote_hash = _hash_remote_contents(detail["contents"])
+        if remote_hash == rec.get("remote_hash") and (root / name).is_dir():
+            continue
+        target, _written = _materialize_skill(detail, root, fetch_bytes)
+        if target.name != name:
+            # Renamed in the cloud: the old dir is superseded by the new one.
+            old = root / name
+            if (old / "SKILL.md").exists():
+                shutil.rmtree(old)
+            del skills[name]
+        skills[target.name] = {**rec, "remote_hash": remote_hash}
+        updated.append(target.name)
+    return updated, notes
+
+
 @skills_app.command("sync")
 def skills_sync(
     directory: str = typer.Option("", "--dir", help="Skills directory to sync."),
@@ -1685,35 +2052,44 @@ def skills_sync(
     local skills are pushed only in --project mode — the global skills dir
     holds personal skills; share one deliberately with `stash skills add`.
     Skills changed on both sides are skipped loudly: resolve, then re-run.
+    Installed skills (from `stash skills install` or a followed share) are
+    refreshed from their cloud copy instead of three-way synced.
     """
-    if directory and project:
-        console.print("[red]Error:[/red] pass either --dir or --project, not both.")
-        raise typer.Exit(1)
-    if directory:
-        root = Path(directory).expanduser()
-    elif project:
-        root = Path(".claude") / "skills"
-    else:
-        root = Path.home() / ".claude" / "skills"
+    root = _skills_root(directory, project)
 
     state_path = _sync_state_path(root)
     state = json.loads(state_path.read_text()) if state_path.exists() else {}
 
-    def fetch_bytes(url: str) -> bytes:
-        resp = httpx.get(url, follow_redirects=True, timeout=60)
-        resp.raise_for_status()
-        return resp.content
+    manifest = _load_installed_manifest()
+    installed = _installed_entry(manifest, root)
 
     with _client() as c:
         try:
             summary, new_state = _sync_skills(
-                c, root, state, push_new=project, fetch_bytes=fetch_bytes
+                c,
+                root,
+                state,
+                push_new=project,
+                fetch_bytes=_fetch_bytes,
+                skip=set(installed["skills"]),
             )
+            updated, notes = _sync_installed(c, root, installed, _fetch_bytes)
         except StashError as e:
             _err(e)
 
     state_path.parent.mkdir(parents=True, exist_ok=True)
     state_path.write_text(json.dumps(new_state, indent=1))
+    _save_installed_manifest(manifest)
+    summary["updated"] = updated
+    summary["ignored"] += notes
+
+    if updated:
+        # The plugin's SessionStart hook shows this list once next session, so
+        # background syncs never change the skills dir invisibly.
+        notice_path = _SYNC_STATE_DIR / "pending_updates.json"
+        pending = json.loads(notice_path.read_text()) if notice_path.exists() else []
+        notice_path.parent.mkdir(parents=True, exist_ok=True)
+        notice_path.write_text(json.dumps(sorted(set(pending) | set(updated))))
 
     if _use_json(as_json):
         output_json(summary)
@@ -1722,6 +2098,8 @@ def skills_sync(
         console.print(f"[green]pulled[/green]  {name}")
     for name in summary["pushed"]:
         console.print(f"[green]pushed[/green]  {name}")
+    for name in summary["updated"]:
+        console.print(f"[green]updated[/green] {name}")
     for note in summary["ignored"]:
         console.print(f"[dim]ignored[/dim]  {note}")
     for note in summary["conflicts"]:
@@ -3740,6 +4118,9 @@ _AGENT_LABEL = {
     "cursor": "Cursor",
     "codex": "Codex",
     "opencode": "opencode",
+    "gemini": "Gemini CLI",
+    "openclaw": "Openclaw",
+    "hermes": "Hermes",
 }
 
 
@@ -4280,6 +4661,8 @@ PLUGIN_DATA_DIRS = {
     "cursor": Path.home() / ".stash/plugins/cursor",
     "gemini": Path.home() / ".stash/plugins/gemini",
     "opencode": Path.home() / ".stash/plugins/opencode",
+    "openclaw": Path.home() / ".stash/plugins/openclaw",
+    "hermes": Path.home() / ".stash/plugins/hermes",
 }
 
 
@@ -4482,6 +4865,68 @@ def settings_cmd(as_json: bool = typer.Option(False, "--json")):
             new_url = questionary.text("Endpoint base URL", default=base_url).ask()
             if new_url:
                 save_config(base_url=new_url.strip().rstrip("/"))
+
+
+workspace_app = typer.Typer(help="Choose which scope your sessions and searches use.")
+app.add_typer(workspace_app, name="workspace")
+
+
+@workspace_app.command("list")
+def workspace_list(as_json: bool = typer.Option(False, "--json")):
+    """List workspaces you're a member of, marking the active scope."""
+    active = load_config().get("scope", "")
+    with _client() as c:
+        try:
+            workspaces = c.list_workspaces()
+        except StashError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json({"workspaces": workspaces, "active_scope": active or None})
+        return
+    marker = " [green]*[/green]" if not active else ""
+    console.print(f"  [bold]personal[/bold]{marker}")
+    for ws in workspaces:
+        marker = " [green]*[/green]" if ws["scope_user_id"] == active else ""
+        console.print(f"  [bold]{ws['name']}[/bold]  [dim]{ws['domain']}[/dim]{marker}")
+    if not workspaces:
+        console.print(
+            "[dim]Team workspaces are set up for you — email sam@joinstash.ai "
+            "and we'll get your team going.[/dim]"
+        )
+
+
+@workspace_app.command("switch")
+def workspace_switch(
+    name: str = typer.Argument(..., help="Workspace name or domain, or 'personal'."),
+):
+    """Route sessions, events, transcripts, and searches to this scope.
+
+    Applies everywhere the CLI and agent plugins write — the next agent
+    session lands in the chosen scope, and `stash search` reads from it.
+    """
+    if name == "personal":
+        save_scope(None)
+        console.print("[green]Switched[/green] to your personal scope.")
+        return
+
+    with _client() as c:
+        try:
+            workspaces = c.list_workspaces()
+        except StashError as e:
+            _err(e)
+    match = next(
+        (ws for ws in workspaces if name in (ws["name"], ws["domain"])),
+        None,
+    )
+    if match is None:
+        known = ", ".join(ws["name"] for ws in workspaces) or "(none)"
+        console.print(f"[red]Error:[/red] no workspace named '{name}'. You belong to: {known}")
+        raise typer.Exit(1)
+    save_scope(str(match["scope_user_id"]))
+    console.print(
+        f"[green]Switched[/green] to [bold]{match['name']}[/bold] — new agent sessions "
+        "and searches use this workspace. `stash workspace switch personal` to go back."
+    )
 
 
 keys_app = typer.Typer(help="Manage your API keys across devices.")
@@ -4687,6 +5132,176 @@ def prompts_agent_guidance():
     Intended for coding agents (Claude Code, Codex, Cursor, etc.) to
     re-inject when they want to remember the model mid-session."""
     console.print(AGENT_GUIDANCE_PROMPT)
+
+
+# ===========================================================================
+# Tools — per-user MCP server registry (`stash tools ...`)
+# ===========================================================================
+
+tools_app = typer.Typer(
+    help="Register MCP servers in Stash and install them into Claude Code projects."
+)
+app.add_typer(tools_app, name="tools")
+
+# Top-level key in .mcp.json listing the server names stash owns. Claude Code
+# only reads mcpServers, so the marker rides along untouched; install sweeps
+# and rewrites marked entries but never touches user-added ones.
+STASH_MANAGED_MCP_KEY = "stashManagedServers"
+
+
+def _parse_kv_pairs(pairs: list[str], flag: str) -> dict[str, str]:
+    out: dict[str, str] = {}
+    for pair in pairs:
+        key, sep, value = pair.partition("=")
+        if not key or not sep:
+            console.print(f"[red]{flag} expects KEY=VAL, got {pair!r}[/red]")
+            raise typer.Exit(1)
+        out[key] = value
+    return out
+
+
+def _mcp_json_entry(server: dict) -> dict:
+    """One registered server as a Claude Code mcpServers entry."""
+    import shlex
+
+    if server["transport"] == "stdio":
+        parts = shlex.split(server["command"])
+        entry: dict = {"type": "stdio", "command": parts[0], "args": parts[1:]}
+        if server.get("env"):
+            entry["env"] = server["env"]
+        return entry
+    entry = {"type": "http", "url": server["url"]}
+    if server.get("headers"):
+        entry["headers"] = server["headers"]
+    return entry
+
+
+def _merge_mcp_server(dest: Path, name: str, entry: dict) -> str:
+    """Merge one stash-managed server entry into a project .mcp.json.
+
+    Same discipline as _merge_json_hooks: user entries are never touched, and
+    re-runs are idempotent. Ownership is tracked in STASH_MANAGED_MCP_KEY, so
+    a user entry that happens to share the name is a conflict, not a clobber.
+    Returns 'installed', 'skipped', 'conflict', or 'failed'.
+    """
+    if dest.exists():
+        try:
+            config = json.loads(dest.read_text())
+        except json.JSONDecodeError:
+            return "failed"
+    else:
+        config = {}
+
+    servers = config.setdefault("mcpServers", {})
+    managed = config.setdefault(STASH_MANAGED_MCP_KEY, [])
+    if name in servers and name not in managed:
+        return "conflict"
+    if servers.get(name) == entry and name in managed:
+        return "skipped"
+
+    servers[name] = entry
+    if name not in managed:
+        managed.append(name)
+        managed.sort()
+    dest.write_text(json.dumps(config, indent=2) + "\n")
+    return "installed"
+
+
+def _find_mcp_server(servers: list, name: str) -> dict:
+    for server in servers:
+        if server["name"] == name:
+            return server
+    console.print(f"[red]No MCP server named {name!r}. `stash tools list` shows yours.[/red]")
+    raise typer.Exit(1)
+
+
+@tools_app.command("add")
+def tools_add(
+    name: str = typer.Argument(..., help="Server name (becomes the mcpServers key)."),
+    command: str = typer.Option("", "--command", help="stdio server launch command."),
+    url: str = typer.Option("", "--url", help="http server URL."),
+    header: list[str] = typer.Option(
+        [], "--header", help="http request header, KEY=VAL (repeatable)."
+    ),
+    env: list[str] = typer.Option([], "--env", help="stdio env var, KEY=VAL (repeatable)."),
+    as_json: bool = typer.Option(False, "--json"),
+):
+    """Register an MCP server (--command for stdio, --url for http)."""
+    if bool(command) == bool(url):
+        console.print("[red]Pass exactly one of --command (stdio) or --url (http).[/red]")
+        raise typer.Exit(1)
+    with _client() as c:
+        try:
+            server = c.create_mcp_server(
+                name,
+                "stdio" if command else "http",
+                command=command or None,
+                url=url or None,
+                headers=_parse_kv_pairs(header, "--header"),
+                env=_parse_kv_pairs(env, "--env"),
+            )
+        except StashError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(server)
+        return
+    target = server["command"] or server["url"]
+    console.print(f"Added [bold]{server['name']}[/bold] ({server['transport']}: {target})")
+    console.print(f"[dim]`stash tools install {server['name']}` wires it into this project.[/dim]")
+
+
+@tools_app.command("list")
+def tools_list(as_json: bool = typer.Option(False, "--json")):
+    """List your registered MCP servers."""
+    with _client() as c:
+        try:
+            servers = c.list_mcp_servers()
+        except StashError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json({"servers": servers})
+        return
+    if not servers:
+        console.print("[dim]No MCP servers yet. `stash tools add <name> --url ...` adds one.[/dim]")
+        return
+    for s in servers:
+        target = s["command"] or s["url"]
+        console.print(f"  [bold]{s['name']}[/bold]  [dim]{s['transport']}: {target}[/dim]")
+
+
+@tools_app.command("remove")
+def tools_remove(name: str = typer.Argument(...)):
+    """Remove a registered MCP server."""
+    with _client() as c:
+        try:
+            server = _find_mcp_server(c.list_mcp_servers(), name)
+            c.delete_mcp_server(server["id"])
+        except StashError as e:
+            _err(e)
+    console.print(f"Removed [bold]{name}[/bold]")
+
+
+@tools_app.command("install")
+def tools_install(name: str = typer.Argument(...)):
+    """Write a registered server into this project's .mcp.json for Claude Code."""
+    with _client() as c:
+        try:
+            server = _find_mcp_server(c.list_mcp_servers(), name)
+        except StashError as e:
+            _err(e)
+    dest = Path.cwd() / ".mcp.json"
+    status = _merge_mcp_server(dest, name, _mcp_json_entry(server))
+    if status == "conflict":
+        console.print(
+            f"[red]{dest} already has a user-defined server named {name!r}; "
+            "remove it there first.[/red]"
+        )
+        raise typer.Exit(1)
+    if status == "failed":
+        console.print(f"[red]{dest} is not valid JSON; fix or delete it first.[/red]")
+        raise typer.Exit(1)
+    verb = "Installed" if status == "installed" else "Already up to date:"
+    console.print(f"{verb} [bold]{name}[/bold] → {dest}")
 
 
 if __name__ == "__main__":

@@ -73,7 +73,7 @@ _SKILL_COLS = (
     "v.id, v.owner_user_id, v.folder_id, v.slug, v.title, v.description, v.owner_id, "
     "owner_user.name AS owner_name, owner_user.display_name AS owner_display_name, "
     "v.discoverable, v.cover_image_url, v.icon_url, v.source_github_url, v.view_count, "
-    "v.created_at, v.updated_at"
+    "v.install_count, v.created_at, v.updated_at"
 )
 _SKILL_FROM = "FROM skills v JOIN users owner_user ON owner_user.id = v.owner_id"
 _SKILL_SELECT = f"SELECT {_SKILL_COLS} {_SKILL_FROM}"
@@ -250,6 +250,16 @@ async def get_skill_for_folder(folder_id: UUID) -> dict | None:
     pool = get_pool()
     row = await pool.fetchrow(f"{_SKILL_SELECT} WHERE v.folder_id = $1", folder_id)
     return dict(row) if row else None
+
+
+async def record_install(slug: str) -> bool:
+    """Count one `stash skills install` of this skill. Returns False for an
+    unknown slug so the route can 404 instead of silently absorbing typos."""
+    pool = get_pool()
+    updated = await pool.fetchval(
+        "UPDATE skills SET install_count = install_count + 1 WHERE slug = $1 RETURNING id", slug
+    )
+    return updated is not None
 
 
 async def get_public_skill(slug: str, viewer_id: UUID | None = None) -> dict | None:

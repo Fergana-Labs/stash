@@ -178,8 +178,17 @@ def sprite_exec(monkeypatch):
             yield {"stream": "stdout", "data": (line + "\n").encode()}
         yield {"exit_code": exit_code}
 
+    # Turn-setup file writes (credential files, the MCP .mcp.json sync) go
+    # through write_file, which execs on the box — capture them instead so
+    # they can't consume the canned exec replies.
+    writes: list[tuple[str, str]] = []
+
+    async def fake_write_file(sprite, abs_path, contents):
+        writes.append((abs_path, contents))
+
     monkeypatch.setattr(sprite_service, "acquire", fake_acquire)
     monkeypatch.setattr(sprite_service, "exec_stream", fake_exec_stream)
+    monkeypatch.setattr(sprite_service, "write_file", fake_write_file)
     fake_redis = FakeRedis()
     monkeypatch.setattr(sprite_agent_service, "_get_redis", lambda: fake_redis)
     monkeypatch.setattr(settings, "ANTHROPIC_API_KEY", "sk-ant-test-key")
@@ -188,5 +197,5 @@ def sprite_exec(monkeypatch):
         pass
 
     seam = Seam()
-    seam.calls, seam.replies, seam.redis = calls, replies, fake_redis
+    seam.calls, seam.replies, seam.redis, seam.writes = calls, replies, fake_redis, writes
     return seam

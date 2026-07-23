@@ -163,12 +163,43 @@ async def replace_skill_contents(
     return {"folder_id": str(folder_id), "items": written}
 
 
+@public_router.post("/{slug}/installs", status_code=204)
+async def record_skill_install(slug: str):
+    """Best-effort ping from `stash skills install` after a successful
+    materialize. Unauthenticated by design, like reading the public skill —
+    the count measures adoption, not identity."""
+    if not await shared_skill_service.record_install(slug):
+        raise HTTPException(status_code=404, detail="Skill not found")
+
+
 @me_router.get("/shared-skills")
 async def list_shared_skills_with_me(current_user: dict = Depends(get_current_user)):
     """Skill folders shared with me person-to-person (folder shares whose
     folder contains a SKILL.md), with publish info when published."""
     skills = await shared_skill_service.list_skills_shared_with_user(current_user["id"])
     return {"skills": skills}
+
+
+@me_router.get("/shared-skills/{folder_id}/contents")
+async def get_shared_skill_contents(
+    folder_id: UUID,
+    current_user: dict = Depends(get_current_user),
+):
+    """A shared skill folder's full subtree — same payload as
+    /me/skills/{folder_id}/contents, but permissioned for share recipients:
+    the folder lives in the sharer's scope, not the caller's. This is what
+    `stash skills sync` pulls for followed shared skills."""
+    folder = await files_tree_service.get_folder(folder_id)
+    if not folder:
+        raise HTTPException(status_code=404, detail="Folder not found")
+    if not await permission_service.check_access(
+        "folder", folder_id, current_user["id"], owner_user_id=folder["owner_user_id"]
+    ):
+        raise HTTPException(status_code=403, detail="Not allowed to read this folder")
+    contents = await shared_skill_service.folder_contents(
+        {"folder_id": folder_id}, viewer_id=current_user["id"]
+    )
+    return {"folder_id": str(folder_id), "folder_name": folder["name"], "contents": contents}
 
 
 class SnapshotSourceRequest(BaseModel):
