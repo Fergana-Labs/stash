@@ -308,6 +308,7 @@ async def list_public_skills(
     query: str | None = None,
     sort: str = "trending",
     limit: int = 48,
+    offset: int = 0,
 ) -> list[dict]:
     """Discover catalog: public + discoverable skills."""
     pool = get_pool()
@@ -330,7 +331,8 @@ async def list_public_skills(
         f"SELECT {_SKILL_COLS}, COALESCE(scope_user.display_name, scope_user.name) AS scope_name "
         f"{_SKILL_FROM} "
         f"JOIN users scope_user ON scope_user.id = v.owner_user_id "
-        f"WHERE {' AND '.join(where)} ORDER BY {order} LIMIT {int(limit)}",
+        f"WHERE {' AND '.join(where)} ORDER BY {order} "
+        f"LIMIT {int(limit)} OFFSET {int(offset)}",
         *args,
     )
 
@@ -347,6 +349,7 @@ async def list_public_skills(
                 "cover_image_url": skill["cover_image_url"],
                 "source_github_url": skill["source_github_url"],
                 "view_count": skill["view_count"],
+                "install_count": skill["install_count"],
                 "owner_name": skill.get("scope_name"),
                 "owner_display_name": skill.get("owner_display_name"),
                 "owner_user_id": str(skill["owner_user_id"]),
