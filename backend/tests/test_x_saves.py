@@ -3,7 +3,8 @@
 X connects over OAuth. Each sync the indexer pulls bookmark ids from the X API
 (with the OAuth token) and the user's own posts/replies/articles from
 twitterapi.io by account id, then hydrates every tweet the same way — full
-text (long-form body for articles), reply thread root, archived media.
+text (long-form body for articles), the author's thread + the reply's
+direct parent for context, archived media.
 Bookmarks sit behind a paid X API tier, so a 402/403 is best-effort (an
 owner-facing warning, never fatal) and must not stop posts/replies/articles.
 """
@@ -30,6 +31,7 @@ _REPLY = {
     "author": {"userName": "alice", "name": "Alice"},
     "createdAt": "Wed Jul 01 12:00:00 +0000 2025",
     "conversationId": "1000",
+    "inReplyToId": "1000",
     "extendedEntities": {"media": [{"type": "photo", "media_url_https": "https://cdn.x/img.jpg"}]},
 }
 _ROOT = {
@@ -86,7 +88,8 @@ class _FakeResponse:
         self.text = "{}"
 
     def raise_for_status(self):
-        pass
+        if self.status_code >= 400:
+            raise RuntimeError(f"HTTP {self.status_code}")
 
     def json(self):
         return self._payload
@@ -135,9 +138,13 @@ class _FakeApi:
     media_streams: list = []
 
     bookmarks_status = 200
+    thread_status = 200
     # cursor/token (None = first page) -> payload; overridable per test.
     timeline_pages: dict = {}
     bookmarks_pages: dict = {}
+    thread_pages: dict = {}
+    # Per-test tweet-by-id overrides, consulted before the shared fixtures.
+    tweets: dict = {}
     # (pagination_token, max_results) per bookmarks request, for read-cost asserts.
     bookmarks_calls: list = []
 
@@ -153,8 +160,16 @@ class _FakeApi:
     async def get(self, url, params=None):
         if url == x_indexer.TAPI_TWEETS_URL:
             tid = params["tweet_ids"]
-            tweet = {"1001": _REPLY, "1000": _ROOT}.get(tid) or _generic_tweet(tid)
+            tweet = (
+                type(self).tweets.get(tid)
+                or {"1001": _REPLY, "1000": _ROOT}.get(tid)
+                or _generic_tweet(tid)
+            )
             return _FakeResponse(payload={"tweets": [tweet]})
+        if url == x_indexer.TAPI_THREAD_URL:
+            if type(self).thread_status != 200:
+                return _FakeResponse(payload={}, status_code=type(self).thread_status)
+            return _FakeResponse(payload=type(self).thread_pages[params.get("cursor")])
         if url == x_indexer.TAPI_USER_TWEETS_URL:
             # Replies must be requested explicitly; twitterapi.io omits them
             # from last_tweets by default.
@@ -194,9 +209,12 @@ def fake_sync(monkeypatch):
         return "oauth-token"
 
     _FakeApi.bookmarks_status = 200
+    _FakeApi.thread_status = 200
     _FakeApi.bookmarks_pages = {None: _BOOKMARKS}
     _FakeApi.bookmarks_calls = []
     _FakeApi.timeline_pages = {None: _TIMELINE}
+    _FakeApi.thread_pages = {None: {"replies": [_ROOT], "has_next_page": False}}
+    _FakeApi.tweets = {}
     _FakeApi.media_bytes = b"fake image bytes"
     _FakeApi.media_headers = {"content-type": "image/jpeg"}
     _FakeApi.media_streams = []
@@ -277,6 +295,132 @@ async def test_hydrates_content_thread_root_and_media(client, pool, fake_sync) -
     entries = await source_service.source_entries(UUID(owner_id), UUID(owner_id), str(source["id"]))
     entry = next(e for e in entries if e["path"] == "1001")
     assert entry["snippet"] == "totally agree with this"
+
+
+_THREAD_ROOT = {
+    "id": "500",
+    "text": "thread: why agents need memory 1/",
+    "author": {"userName": "me"},
+    "createdAt": "Wed Jul 01 12:00:00 +0000 2025",
+    "conversationId": "500",
+    "replyCount": 12,
+}
+
+
+@pytest.mark.asyncio
+async def test_self_thread_renders_the_whole_author_chain(client, pool, fake_sync) -> None:
+    headers, owner_id = await _register(client)
+    source = await _x_source(pool, owner_id)
+    _FakeApi.tweets = {"500": _THREAD_ROOT}
+    # Thread context mixes the author's continuation with a stranger's reply;
+    # only the author's connected chain belongs in the save.
+    _FakeApi.thread_pages = {
+        None: {
+            "replies": [
+                {
+                    "id": "501",
+                    "text": "it compounds 2/",
+                    "author": {"userName": "me"},
+                    "createdAt": "Wed Jul 01 12:01:00 +0000 2025",
+                    "inReplyToId": "500",
+                },
+                {
+                    "id": "601",
+                    "text": "wrong take",
+                    "author": {"userName": "stranger"},
+                    "createdAt": "Wed Jul 01 12:02:00 +0000 2025",
+                    "inReplyToId": "500",
+                },
+                {
+                    "id": "502",
+                    "text": "ship it 3/",
+                    "author": {"userName": "me"},
+                    "createdAt": "Wed Jul 01 12:03:00 +0000 2025",
+                    "inReplyToId": "501",
+                },
+            ],
+            "has_next_page": False,
+        }
+    }
+    await _insert_pending(pool, owner_id, source["id"], "500", "Post")
+
+    await x_indexer.index_x_saves(source)
+
+    row = await pool.fetchrow("SELECT * FROM x_save_docs WHERE source_id = $1", UUID(source["id"]))
+    assert row["hydration_status"] == "done"
+    content = row["content"]
+    assert content.startswith("thread: why agents need memory 1/")  # preview stays the tweet
+    assert "## Thread by @me (3 posts)" in content
+    assert content.index("it compounds 2/") < content.index("ship it 3/")
+    assert "wrong take" not in content
+
+
+@pytest.mark.asyncio
+async def test_thread_context_failure_never_fails_the_save(client, pool, fake_sync) -> None:
+    headers, owner_id = await _register(client)
+    source = await _x_source(pool, owner_id)
+    _FakeApi.thread_status = 500
+    await _insert_pending(pool, owner_id, source["id"], "1001", "Bookmark")
+
+    await x_indexer.index_x_saves(source)
+
+    row = await pool.fetchrow("SELECT * FROM x_save_docs WHERE source_id = $1", UUID(source["id"]))
+    assert row["hydration_status"] == "done"
+    assert "totally agree with this" in row["content"]
+    assert "In reply to" not in row["content"]  # context lost, save kept
+
+
+@pytest.mark.asyncio
+async def test_thread_media_is_capped_with_saved_tweet_first(
+    client, pool, fake_sync, monkeypatch
+) -> None:
+    headers, owner_id = await _register(client)
+    source = await _x_source(pool, owner_id)
+    monkeypatch.setattr(x_indexer, "MAX_MEDIA_PER_SAVE", 2)
+    photo = {"media": [{"type": "photo", "media_url_https": "https://cdn.x/img.jpg"}]}
+    _FakeApi.tweets = {
+        "700": {
+            "id": "700",
+            "text": "look 1/",
+            "author": {"userName": "me"},
+            "createdAt": "Wed Jul 01 12:00:00 +0000 2025",
+            "conversationId": "700",
+            "replyCount": 2,
+            "extendedEntities": photo,
+        }
+    }
+    _FakeApi.thread_pages = {
+        None: {
+            "replies": [
+                {
+                    "id": "701",
+                    "text": "more 2/",
+                    "author": {"userName": "me"},
+                    "inReplyToId": "700",
+                    "extendedEntities": photo,
+                },
+                {
+                    "id": "702",
+                    "text": "even more 3/",
+                    "author": {"userName": "me"},
+                    "inReplyToId": "701",
+                    "extendedEntities": photo,
+                },
+            ],
+            "has_next_page": False,
+        }
+    }
+    await _insert_pending(pool, owner_id, source["id"], "700", "Post")
+
+    await x_indexer.index_x_saves(source)
+
+    row = await pool.fetchrow("SELECT * FROM x_save_docs WHERE source_id = $1", UUID(source["id"]))
+    assert row["hydration_status"] == "done"
+    assert fake_sync == [("x-700-0.jpg", "image/jpeg"), ("x-701-0.jpg", "image/jpeg")]
+    assert row["media"] == [
+        {"storage_key": "store/x-700-0.jpg", "content_type": "image/jpeg"},
+        {"storage_key": "store/x-701-0.jpg", "content_type": "image/jpeg"},
+    ]
 
 
 @pytest.mark.asyncio

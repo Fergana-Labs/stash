@@ -4,10 +4,11 @@ Each sync enqueues skeleton rows (tweet ids + a kind): Bookmarks from the X
 API with the OAuth token, the user's own Posts/Replies/Articles from
 twitterapi.io by account id. A bounded hydration batch then fills them in:
 the full tweet text + author (or, for an Article, the full long-form body)
-from twitterapi.io, the conversation root for reply context, and the tweet's
-images/video archived into object storage — so the save survives the tweet
-being deleted or the account going private. Per-item failures land on the
-row, loudly; rows are never deleted by sync (archive semantics).
+from twitterapi.io, the author's whole thread + the reply's direct parent
+for context, and the tweet's images/video archived into object storage — so
+the save survives the tweet being deleted or the account going private.
+Per-item failures land on the row, loudly; rows are never deleted by sync
+(archive semantics).
 """
 
 from __future__ import annotations
@@ -28,10 +29,19 @@ logger = logging.getLogger(__name__)
 TAPI_TWEETS_URL = "https://api.twitterapi.io/twitter/tweets"
 TAPI_USER_TWEETS_URL = "https://api.twitterapi.io/twitter/user/last_tweets"
 TAPI_ARTICLE_URL = "https://api.twitterapi.io/twitter/article"
+TAPI_THREAD_URL = "https://api.twitterapi.io/twitter/tweet/thread_context"
 X_BOOKMARKS_URL = "https://api.x.com/2/users/{user_id}/bookmarks"
 TAPI_TIMEOUT = 60
 MAX_MEDIA_BYTES = 100 * 1024 * 1024
 MAX_MEDIA_PER_TWEET = 4
+# Thread context pages fetched per save. A page carries the ancestors plus a
+# slice of the replies; on a viral tweet the author's own continuation sits
+# early, so a small cap finds real self-threads without walking whole reply
+# storms.
+MAX_THREAD_PAGES = 3
+# Media archived per save across the whole thread (the saved tweet's own
+# media is archived first and can never be squeezed out by thread posts).
+MAX_MEDIA_PER_SAVE = 12
 # Hydration is per-tweet (each commits on its own), and a sync can be killed
 # mid-run by a worker redeploy — so keep the batch small enough that a sync
 # usually finishes before that happens; the reconciler re-runs for the rest.
@@ -368,19 +378,26 @@ async def _hydrate_one(
         return
     tweet = await _fetch_tweet(client, tweet_id)
 
-    # A reply shows only its own text out of context, so pull the root of the
-    # conversation and keep it as "In reply to:" above the reply.
-    root = None
-    root_id = tweet.get("conversation_id")
-    if root_id and root_id != tweet_id:
+    # A saved tweet is often one post of a thread: pull the conversation and
+    # keep the author's whole chain, plus the direct parent when the save is
+    # a reply to someone else. Best-effort — the save itself matters.
+    thread = [tweet]
+    parent = None
+    if _in_conversation(tweet):
         try:
-            root = await _fetch_tweet(client, root_id)
-        except Exception:
-            root = None  # thread context is best-effort; the reply itself matters
+            context = await _fetch_thread_context(client, tweet_id)
+            thread = _author_chain(tweet, context)
+            parent = _direct_parent(tweet, context)
+        except Exception as exc:
+            logger.warning(
+                "x thread context fetch failed tweet=%s exception_type=%s",
+                tweet_id,
+                type(exc).__name__,
+            )
 
-    media = await _archive_media(owner_user_id, tweet_id, tweet["media"])
+    media = await _archive_thread_media(owner_user_id, tweet, thread)
 
-    content = _render(tweet, root)
+    content = _render(tweet, thread, parent)
     posted = tweet["created_at"]
     await source_service.upsert_content_document(
         table="x_save_docs",
@@ -488,17 +505,97 @@ def _article_media(article: dict) -> list[dict]:
     return [{"url": u, "is_video": False} for u in urls]
 
 
-def _render(tweet: dict, root: dict | None) -> str:
+def _in_conversation(tweet: dict) -> bool:
+    is_reply = bool(tweet["conversation_id"]) and tweet["conversation_id"] != tweet["id"]
+    return is_reply or tweet["reply_count"] > 0
+
+
+async def _fetch_thread_context(client: httpx.AsyncClient, tweet_id: str) -> list[dict]:
+    """The saved tweet's conversation from twitterapi.io: ancestors plus a
+    bounded number of reply pages, normalized."""
+    tweets: list[dict] = []
+    cursor: str | None = None
+    for _ in range(MAX_THREAD_PAGES):
+        params: dict = {"tweetId": tweet_id}
+        if cursor:
+            params["cursor"] = cursor
+        response = await client.get(TAPI_THREAD_URL, params=params)
+        response.raise_for_status()
+        payload = response.json()
+        tweets.extend(_normalize(t) for t in payload.get("replies") or [] if t.get("id"))
+        cursor = payload.get("next_cursor")
+        if not payload.get("has_next_page") or not cursor:
+            break
+    return tweets
+
+
+def _author_chain(tweet: dict, context: list[dict]) -> list[dict]:
+    """The author's own connected run of posts (the self-thread) containing
+    the saved tweet, chronological. Other users' replies never enter the
+    chain. Tweet ids are snowflakes, so numeric id order is time order."""
+    own = {t["id"]: t for t in context if t["author"] == tweet["author"]}
+    own[tweet["id"]] = tweet
+
+    # Walk up to the top of the author's chain (visited-guard against
+    # malformed reply cycles), then collect every own post chained under it.
+    top = tweet
+    visited = {tweet["id"]}
+    while (parent_id := top.get("in_reply_to_id")) in own and parent_id not in visited:
+        top = own[parent_id]
+        visited.add(parent_id)
+
+    chain = [top]
+    included = {top["id"]}
+    for t in sorted(own.values(), key=lambda t: int(t["id"])):
+        if t["id"] not in included and t.get("in_reply_to_id") in included:
+            chain.append(t)
+            included.add(t["id"])
+    return chain
+
+
+def _direct_parent(tweet: dict, context: list[dict]) -> dict | None:
+    """The other-author tweet the save replies to; the author's own parents
+    are already covered by the thread chain."""
+    parent_id = tweet.get("in_reply_to_id")
+    if not parent_id:
+        return None
+    parent = next((t for t in context if t["id"] == parent_id), None)
+    if parent is None or parent["author"] == tweet["author"]:
+        return None
+    return parent
+
+
+async def _archive_thread_media(owner_user_id: UUID, tweet: dict, thread: list[dict]) -> list[dict]:
+    """Archive the saved tweet's media first, then the rest of the thread's,
+    up to MAX_MEDIA_PER_SAVE total."""
+    stored: list[dict] = []
+    ordered = [tweet] + [t for t in thread if t["id"] != tweet["id"]]
+    for t in ordered:
+        room = MAX_MEDIA_PER_SAVE - len(stored)
+        if room <= 0:
+            break
+        if t["media"]:
+            stored.extend(await _archive_media(owner_user_id, t["id"], t["media"][:room]))
+    return stored
+
+
+def _render(tweet: dict, thread: list[dict], parent: dict | None) -> str:
     # Tweet text first so the listing's preview (first paragraph of content) is
     # the tweet itself, not metadata. Everything after the blank line is the
-    # byline, reply context, and link.
+    # byline, reply context, thread, and link.
     parts: list[str] = [tweet["text"] or "", ""]
     byline = f"— @{tweet['author']}"
     if tweet["created_at"]:
         byline += f" · {tweet['created_at'].date().isoformat()}"
     parts.append(byline)
-    if root is not None:
-        parts.append(f"In reply to @{root['author']}: {root['text']}")
+    if parent is not None:
+        parts.append(f"In reply to @{parent['author']}: {parent['text']}")
+    if len(thread) > 1:
+        parts.append("")
+        parts.append(f"## Thread by @{tweet['author']} ({len(thread)} posts)")
+        for t in thread:
+            parts.append("")
+            parts.append(t["text"] or "")
     parts.append(tweet_url(tweet["id"]))
     return "\n".join(parts)
 
@@ -523,6 +620,8 @@ def _normalize(t: dict) -> dict:
         "author": (t.get("author") or {}).get("userName") or "unknown",
         "created_at": _parse_time(t.get("createdAt")),
         "conversation_id": t.get("conversationId"),
+        "in_reply_to_id": t.get("inReplyToId"),
+        "reply_count": t.get("replyCount") or 0,
         "media": _media_urls(t),
     }
 
