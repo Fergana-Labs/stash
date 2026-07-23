@@ -216,10 +216,12 @@ async def list_my_sessions(
 async def upsert_session(
     req: SessionUpsertRequest,
     current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
 ):
-    owner_user_id = current_user["id"]
-    if not await user_scope_service.can_write(owner_user_id, current_user["id"]):
-        raise HTTPException(status_code=403, detail="Only the owner can create sessions")
+    # Sessions land in the active scope: personal by default, or a workspace
+    # when the plugin/CLI sends X-Stash-Scope (get_scope already 403s
+    # non-members, so no separate write check is needed).
+    owner_user_id = scope_user_id
 
     # A session always lands in a folder: the one it was pushed to, or the
     # scope's Default folder (resolved by upsert_session when unset).
@@ -432,8 +434,9 @@ async def upload_session_artifact(
     file: UploadFile = File(...),
     file_path: str = Form(...),
     current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
 ):
-    owner_user_id = current_user["id"]
+    owner_user_id = scope_user_id
     session = await session_service.get_session_by_id(session_row_id)
     if not session or session["owner_user_id"] != owner_user_id:
         raise HTTPException(status_code=404, detail="Session not found")

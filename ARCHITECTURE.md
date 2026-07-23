@@ -36,8 +36,19 @@ S3-backed binary, vs. an in-app-editable page, vs. a folder).
   unique): slug, cover art, Discover flag. Its existence makes the folder
   publicly readable at /skills/<slug>.
 - Person-to-person skill access rides the generic `shares` table on the
-  skill's folder, exactly like any other folder.
+  skill's folder, exactly like any other folder. Share recipients can
+  materialize an unpublished shared skill via
+  `/me/shared-skills/{folder_id}/contents` — the share, not publication, is
+  the grant.
 - Forking deep-copies the skill folder into the forker's account.
+- `mcp_servers` is the per-user MCP registry (Tools page / `stash tools`):
+  transport + target, with header/env secrets Fernet-encrypted using the
+  integrations keyring. The cloud agent's sprite gets the registry written
+  into its `.mcp.json` every turn.
+- A workspace is an org-owned, login-less scope (`workspaces.domain`,
+  membership derived from verified email domain). Content routes select the
+  scope via the `X-Stash-Scope` header — including the plugin's session,
+  event, transcript, and artifact writes — and non-members are hard-403'd.
 
 Object-level privacy tables and page-link graph tables are intentionally not part
 of the current architecture. Privacy is mediated by Skills.

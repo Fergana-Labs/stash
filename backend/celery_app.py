@@ -73,7 +73,9 @@ celery.conf.update(
         },
         "clips-enqueue-pending-url-imports": {
             "task": "backend.tasks.clips.enqueue_pending_url_imports",
-            "schedule": 300.0,
+            # The import dispatcher is windowed (see tasks/clips.py); a fast
+            # sweep is what keeps the window topped up during bulk imports.
+            "schedule": 60.0,
         },
         "drive-extraction-enqueue-pending": {
             "task": "backend.tasks.drive_extraction.enqueue_pending",

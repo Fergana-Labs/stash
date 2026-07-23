@@ -60,9 +60,11 @@ done through the VFS — `stash vfs "<bash>"` (ls/cat/find/grep/tree) — not de
 
 ### LLM configuration (server-side)
 
-All LLM calls go through the backend via the Claude Agent SDK
-(`claude-agent-sdk`). The plugin no longer makes Anthropic calls; it
-only uploads transcripts.
+All LLM calls happen server-side; the plugin never calls Anthropic — it only
+uploads transcripts. Ask-the-stash runs a direct Anthropic tool-use loop
+(`backend/services/tool_loop.py` — the SDK subprocess runner was deliberately
+abandoned; rationale in that file's docstring), and the cloud agent runs
+harness CLIs on Fly Sprites.
 
 Two model tiers, configured in `backend/.env`:
 - `ANTHROPIC_API_KEY` — required for ask-the-stash.
@@ -98,7 +100,7 @@ By default `stash` is the released PyPI build (`uv tool` install, self-updating)
 - Build: `cd frontend && npm run build`
 - Tests: `cd frontend && npm test` (vitest)
 - Lint: `cd frontend && npm run lint`
-- E2E: `cd frontend && npx playwright test` (requires `npx playwright install chromium` once)
+- There is no E2E suite (no playwright config or specs exist); frontend tests are vitest only.
 
 ### Landing page (`www/`)
 - Install: `cd www && npm ci`

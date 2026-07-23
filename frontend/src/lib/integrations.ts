@@ -19,6 +19,7 @@ export type IntegrationProvider =
   | "linear"
   | "asana"
   | "gong"
+  | "heavi"
   | "posthog"
   // Extension-fed connectors — no OAuth integration, "connected" once the
   // browser extension has pushed a source.
@@ -44,6 +45,9 @@ export type IntegrationAccount = {
   // True when the stored token no longer works (revoked access or an expired
   // refresh token) — the account is listed as connected but must be reconnected.
   needs_reconnect: boolean;
+  // True when the user disconnected but kept the data: no token, sources and
+  // documents intact.
+  disconnected: boolean;
 };
 
 export type IntegrationStatus = {
@@ -51,6 +55,8 @@ export type IntegrationStatus = {
   display_name: string;
   scopes: string[];
   connected: boolean;
+  // Disconnected-with-data-kept: not connected, but sources/documents remain.
+  disconnected?: boolean;
   enabled: boolean;
   disabled_reason: string | null;
   account_email: string | null;
@@ -93,8 +99,20 @@ export async function startConnect(
   window.location.href = authorize_url;
 }
 
-export async function disconnectIntegration(provider: IntegrationProvider): Promise<void> {
-  await apiFetch(`/api/v1/integrations/${provider}/disconnect`, { method: "POST" });
+export async function disconnectIntegration(
+  provider: IntegrationProvider,
+  deleteData = false,
+): Promise<void> {
+  await apiFetch(`/api/v1/integrations/${provider}/disconnect`, {
+    method: "POST",
+    body: JSON.stringify({ delete_data: deleteData }),
+  });
+}
+
+/** Delete the kept data of a (disconnected) provider — documents, archived
+ * media, and shares. The destructive counterpart to disconnect-keeps-data. */
+export async function purgeIntegrationData(provider: IntegrationProvider): Promise<void> {
+  await apiFetch(`/api/v1/integrations/${provider}/purge`, { method: "POST" });
 }
 
 /**

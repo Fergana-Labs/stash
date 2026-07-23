@@ -72,6 +72,24 @@ function sectionForPath(pathname: string): ExplorerSection | null {
   return null;
 }
 
+/** Routes whose page.tsx is a management page rendered beside the explorer.
+ *  Everything else in a section shows the tab workbench — so a new management
+ *  route MUST be added here or its page component never renders at all. */
+export function rendersRouteContent(
+  pathname: string,
+  selectedSection: string | null,
+  workspaceParam: string | null,
+): boolean {
+  if (selectedSection) return false;
+  if (pathname === "/sessions") return workspaceParam !== "1";
+  // Memory routes (brain dashboard, wiki file system) render as pages
+  // beside the explorer; opening an item switches to the workbench.
+  if (pathname.startsWith("/memory")) return true;
+  // The MCP-server registry is a management page like /sessions.
+  return pathname === "/tools";
+}
+
+
 /**
  * The app shell — icon rail + top bar + main area. Each primary rail section
  * (Files/Sessions/Skills/Agents/Tools) shows its own explorer panel. The Files
@@ -93,11 +111,11 @@ export default function WorkspaceShell({
   const requestedSection = searchParams.get("section");
   const selectedSection = EXPLORER_SECTIONS.find((s) => s === requestedSection) ?? null;
   const section = selectedSection ?? routeSection;
-  const renderRouteContent =
-    (pathname === "/sessions" && !selectedSection && searchParams.get("workspace") !== "1") ||
-    // Memory routes (brain dashboard, wiki file system) render as pages
-    // beside the explorer; opening an item switches to the workbench.
-    (pathname.startsWith("/memory") && !selectedSection);
+  const renderRouteContent = rendersRouteContent(
+    pathname,
+    selectedSection,
+    searchParams.get("workspace"),
+  );
 
   return (
     // Chrome surface — the content panel floats on top of it.

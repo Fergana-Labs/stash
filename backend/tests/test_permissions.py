@@ -1516,3 +1516,48 @@ async def test_general_access_owner_only(client: AsyncClient, pool):
     assert (
         await client.get(f"/api/v1/pages/{page_id}", headers=_auth(stranger_key))
     ).status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_pending_invite_emails_recipient_exactly_once(client: AsyncClient, monkeypatch):
+    """A silent invite is a dead invite: the first share to an unknown email
+    sends a notification, but permission tweaks (repeat shares of the same
+    object to the same address) must not re-spam the recipient."""
+    from backend.services import share_service
+
+    sent: list[tuple[str, str, str]] = []
+    monkeypatch.setattr(
+        share_service.email_service,
+        "send_share_invite_email",
+        lambda to, owner, kind: sent.append((to, owner, kind)),
+    )
+
+    owner_key, _ = await _register(client)
+    page_id = (
+        await client.post(
+            "/api/v1/me/pages/new",
+            json={"name": "Spec", "content": "secret spec"},
+            headers=_auth(owner_key),
+        )
+    ).json()["id"]
+
+    body = {
+        "object_type": "page",
+        "object_id": page_id,
+        "email": "invitee-once@example.com",
+        "permission": "read",
+    }
+    assert (
+        await client.post("/api/v1/share", json=body, headers=_auth(owner_key))
+    ).status_code == 200
+    assert len(sent) == 1
+    assert sent[0][0] == "invitee-once@example.com"
+    assert sent[0][2] == "page"
+
+    # Re-share with a different permission: invite row updates, no second email.
+    assert (
+        await client.post(
+            "/api/v1/share", json={**body, "permission": "write"}, headers=_auth(owner_key)
+        )
+    ).status_code == 200
+    assert len(sent) == 1

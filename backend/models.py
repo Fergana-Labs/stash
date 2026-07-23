@@ -134,6 +134,7 @@ class SkillResponse(BaseModel):
     icon_url: str | None = None
     source_github_url: str | None = None
     view_count: int
+    install_count: int
     created_at: datetime
     updated_at: datetime
 

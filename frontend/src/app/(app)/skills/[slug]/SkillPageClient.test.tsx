@@ -287,6 +287,27 @@ describe("SkillPageClient", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("shows the CLI install command with a copy affordance", async () => {
+    renderSkill(<SkillPageClient slug="shared-skill" />);
+
+    expect(
+      await screen.findByText("stash skills install shared-skill"),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Copy install command" }));
+
+    await waitFor(() =>
+      expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
+        "stash skills install shared-skill",
+      ),
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Copy install command" }),
+      ).toHaveTextContent("Copied"),
+    );
+  });
+
   it("shows the skill author in the detail header", async () => {
     vi.mocked(getPublicSkill).mockResolvedValueOnce(
       skillDetail({ owner_name: "sam", owner_display_name: "Sam" })

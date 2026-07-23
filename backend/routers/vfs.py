@@ -47,3 +47,26 @@ async def run_vfs(
         raise HTTPException(status_code=400, detail=str(e)) from e
     except VfsBudgetExceeded as e:
         raise HTTPException(status_code=413, detail=str(e)) from e
+
+
+@router.get("/resolve")
+async def resolve_path(
+    path: str,
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+):
+    """The app route of the Stash object behind a VFS path (`app_url` is null
+    for synthetic nodes like `_index.jsonl`). Chat citations deep-link
+    through this."""
+    authorization = request.headers.get("authorization")
+    if not authorization:
+        raise HTTPException(
+            status_code=401,
+            detail="The VFS runs every read as the calling credential; use an API key, not a cookie.",
+        )
+    try:
+        return await vfs_service.resolve_vfs_path(request.app, authorization, path)
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=f"No such path: {path}") from e
+    except MountError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e

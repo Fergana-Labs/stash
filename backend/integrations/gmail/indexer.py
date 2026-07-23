@@ -36,6 +36,11 @@ MAX_INDEX_MESSAGES = 100
 SEARCH_LIMIT = 25
 FETCH_CONCURRENCY = 5
 GET_MESSAGE_ATTEMPTS = 3
+# Gmail enforces a per-user quota (~250 units/sec; a metadata get costs 5), so
+# an unbounded burst of 100 fetches gets 429s partway through and fails the
+# whole sync. Bound the fan-out and back off on 429 before giving up.
+METADATA_CONCURRENCY = 10
+RETRY_DELAYS = (1.0, 2.0, 4.0)
 _TAG_RE = re.compile(r"<[^>]+>")
 
 
@@ -148,7 +153,6 @@ async def _get_messages(
             return await _get_message(client, message_id, message_format)
 
     return await asyncio.gather(*(fetch(ref["id"]) for ref in refs if ref.get("id")))
-
 
 async def _upsert_message_metadata(source: dict, message: dict) -> str | None:
     """Upsert one message's metadata; returns its index path (the VFS ref)."""

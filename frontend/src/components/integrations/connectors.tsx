@@ -9,6 +9,7 @@ import {
   GongIcon,
   GoogleDriveIcon,
   GranolaIcon,
+  HeaviIcon,
   JiraIcon,
   LinearIcon,
   InstagramIcon,
@@ -113,6 +114,13 @@ export const CONNECTORS: Connector[] = [
   //   blurb: "Call transcripts, kept in sync.",
   // },
   {
+    provider: "heavi",
+    label: "Heavi",
+    sourceType: "heavi_learnings",
+    kind: "auto",
+    blurb: "Rules of the road, read live from your Heavi org.",
+  },
+  {
     provider: "posthog",
     label: "PostHog",
     sourceType: "posthog_project",
@@ -150,6 +158,7 @@ export const providerForSourceType: Record<string, string> = {
   slack: "slack",
   granola: "granola",
   gong_calls: "gong",
+  heavi_learnings: "heavi",
   posthog_project: "posthog",
   x_saves: "x",
   instagram_saves: "instagram",
@@ -185,6 +194,8 @@ export function connectorIcon(provider: string): ReactNode {
       return <GranolaIcon />;
     case "gong":
       return <GongIcon />;
+    case "heavi":
+      return <HeaviIcon />;
     case "posthog":
       return <PostHogIcon />;
     case "x":
@@ -208,6 +219,7 @@ export function labelForSourceType(type: string): string {
   if (type === "asana_project") return "Asana";
   if (type === "linear") return "Linear";
   if (type === "gong_calls") return "Gong";
+  if (type === "heavi_learnings") return "Heavi rules of the road";
   if (type === "posthog_project") return "PostHog";
   if (type === "x_saves") return "X saves";
   if (type === "instagram_saves") return "Instagram saves";

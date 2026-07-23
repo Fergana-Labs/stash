@@ -4,7 +4,55 @@
 // byte-fetch path instead. Bulk imports (clip-all-tabs, bookmarks.html)
 // also run here so credentials stay in the worker.
 
+import { clearSurfaceError, setSurfaceError } from '../lib/errors';
 import { flashOkBadge, setBadge, stashConfig } from '../lib/stash';
+import { drainQueue } from './import_fetch';
+
+// While a bulk import is running, a periodic alarm keeps the action badge
+// showing the remaining count and fires one OS notification the moment the
+// import finishes — a days-long 41k grind gets a visible "done".
+const IMPORT_WATCH_ALARM = 'stash-import-watch';
+
+export function initImportWatch(): void {
+  chrome.alarms.onAlarm.addListener((alarm) => {
+    if (alarm.name === IMPORT_WATCH_ALARM) void watchImport();
+  });
+  void watchImport(); // resume after a worker restart mid-import
+}
+
+async function watchImport(): Promise<void> {
+  const { lastImport } = await chrome.storage.local.get('lastImport');
+  if (!lastImport?.id || lastImport.doneNotified) {
+    await chrome.alarms.clear(IMPORT_WATCH_ALARM);
+    return;
+  }
+  const result = await importProgress(lastImport.id);
+  if (!result?.ok) return; // transient (offline, auth blip) — next alarm retries
+  const p = result.progress;
+  const remaining = p.pending + p.needs_client;
+  if (remaining > 0) {
+    await chrome.action.setBadgeText({ text: compactCount(remaining) });
+    await chrome.action.setBadgeBackgroundColor({ color: '#6366f1' });
+    await chrome.action.setTitle({ title: `Stash import: ${remaining} of ${p.total} remaining` });
+    chrome.alarms.create(IMPORT_WATCH_ALARM, { periodInMinutes: 5 });
+    return;
+  }
+  await chrome.alarms.clear(IMPORT_WATCH_ALARM);
+  await setBadge('', 'Stash');
+  chrome.notifications.create({
+    type: 'basic',
+    iconUrl: 'icons/icon128.png',
+    title: 'Stash import finished',
+    message:
+      `${p.done} of ${p.total} saved` +
+      (p.link_only > 0 ? `; ${p.link_only} kept as link-only (content unavailable).` : '.'),
+  });
+  await chrome.storage.local.set({ lastImport: { ...lastImport, doneNotified: true } });
+}
+
+function compactCount(n: number): string {
+  return n >= 1000 ? `${Math.floor(n / 1000)}k` : String(n);
+}
 
 export interface PageClip {
   url: string;
@@ -119,16 +167,14 @@ async function clipSucceeded(clip: {
   appUrl?: string;
   importId?: string;
 }): Promise<any> {
-  await chrome.storage.local.set({
-    lastClip: { ...clip, at: Date.now() },
-    lastError: null,
-  });
+  await chrome.storage.local.set({ lastClip: { ...clip, at: Date.now() } });
+  await clearSurfaceError('clip');
   await flashOkBadge(`Saved "${clip.title}" to Stash`);
   return { ok: true, clip };
 }
 
 async function clipFailed(url: string, error: string): Promise<any> {
-  await chrome.storage.local.set({ lastError: `Clip failed: ${error}` });
+  await setSurfaceError('clip', `Clip failed: ${error}`);
   await setBadge('!', 'Stash clip failed — click for details');
   chrome.notifications.create({
     type: 'basic',
@@ -166,7 +212,18 @@ export async function clipAllTabs(): Promise<any> {
   }
   const data = await response.json();
   await chrome.storage.local.set({ lastImport: { id: data.import_id, kind: 'tabs' } });
+  void watchImport();
+  chrome.notifications.create({
+    type: 'basic',
+    iconUrl: 'icons/icon128.png',
+    title: 'Saved to Stash',
+    message: `Saving ${data.total} tab${data.total === 1 ? '' : 's'}${skippedNote(data.skipped)} — check the popup for progress.`,
+  });
   return { ok: true, importId: data.import_id, total: data.total };
+}
+
+function skippedNote(skipped: number): string {
+  return skipped > 0 ? ` (${skipped} already in your Stash)` : '';
 }
 
 export async function importBookmarks(name: string, content: string): Promise<any> {
@@ -191,6 +248,13 @@ export async function importBookmarks(name: string, content: string): Promise<an
   }
   const data = await response.json();
   await chrome.storage.local.set({ lastImport: { id: data.import_id, kind: 'bookmarks' } });
+  void watchImport();
+  chrome.notifications.create({
+    type: 'basic',
+    iconUrl: 'icons/icon128.png',
+    title: 'Bookmark import started',
+    message: `Importing ${data.total} bookmarks${skippedNote(data.skipped)} — Stash fetches them in the background.`,
+  });
   return { ok: true, importId: data.import_id, total: data.total };
 }
 
@@ -201,5 +265,11 @@ export async function importProgress(importId: string): Promise<any> {
     headers: { Authorization: `Bearer ${cfg.apiKey}` },
   });
   if (!response.ok) return { ok: false, error: `Progress check failed (${response.status})` };
-  return { ok: true, progress: await response.json() };
+  const progress = await response.json();
+  if (progress.needs_client > 0) {
+    // Rows are waiting on this browser's session — no need to wait for the
+    // next 5-minute alarm.
+    void drainQueue();
+  }
+  return { ok: true, progress };
 }

@@ -45,8 +45,11 @@ async def _check_write(owner_user_id: UUID, user_id: UUID) -> None:
 async def push_event(
     req: HistoryEventCreateRequest,
     current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
 ):
-    owner_user_id = current_user["id"]
+    # Events land in the active scope, same as session rows: personal by
+    # default, a workspace when the plugin/CLI sends X-Stash-Scope.
+    owner_user_id = scope_user_id
     await _check_write(owner_user_id, current_user["id"])
     attachments = [a.model_dump(mode="json") for a in req.attachments] if req.attachments else None
     event = await memory_service.push_event(
@@ -71,8 +74,9 @@ async def push_event(
 async def push_events_batch(
     req: HistoryEventBatchRequest,
     current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
 ):
-    owner_user_id = current_user["id"]
+    owner_user_id = scope_user_id
     await _check_write(owner_user_id, current_user["id"])
     events_data = [e.model_dump() for e in req.events]
     events = await memory_service.push_events_batch(owner_user_id, current_user["id"], events_data)

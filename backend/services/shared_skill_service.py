@@ -73,7 +73,7 @@ _SKILL_COLS = (
     "v.id, v.owner_user_id, v.folder_id, v.slug, v.title, v.description, v.owner_id, "
     "owner_user.name AS owner_name, owner_user.display_name AS owner_display_name, "
     "v.discoverable, v.cover_image_url, v.icon_url, v.source_github_url, v.view_count, "
-    "v.created_at, v.updated_at"
+    "v.install_count, v.created_at, v.updated_at"
 )
 _SKILL_FROM = "FROM skills v JOIN users owner_user ON owner_user.id = v.owner_id"
 _SKILL_SELECT = f"SELECT {_SKILL_COLS} {_SKILL_FROM}"
@@ -252,6 +252,16 @@ async def get_skill_for_folder(folder_id: UUID) -> dict | None:
     return dict(row) if row else None
 
 
+async def record_install(slug: str) -> bool:
+    """Count one `stash skills install` of this skill. Returns False for an
+    unknown slug so the route can 404 instead of silently absorbing typos."""
+    pool = get_pool()
+    updated = await pool.fetchval(
+        "UPDATE skills SET install_count = install_count + 1 WHERE slug = $1 RETURNING id", slug
+    )
+    return updated is not None
+
+
 async def get_public_skill(slug: str, viewer_id: UUID | None = None) -> dict | None:
     """Resolve a skill by slug for the given viewer (None = anonymous)."""
     pool = get_pool()
@@ -298,6 +308,7 @@ async def list_public_skills(
     query: str | None = None,
     sort: str = "trending",
     limit: int = 48,
+    offset: int = 0,
 ) -> list[dict]:
     """Discover catalog: public + discoverable skills."""
     pool = get_pool()
@@ -320,7 +331,8 @@ async def list_public_skills(
         f"SELECT {_SKILL_COLS}, COALESCE(scope_user.display_name, scope_user.name) AS scope_name "
         f"{_SKILL_FROM} "
         f"JOIN users scope_user ON scope_user.id = v.owner_user_id "
-        f"WHERE {' AND '.join(where)} ORDER BY {order} LIMIT {int(limit)}",
+        f"WHERE {' AND '.join(where)} ORDER BY {order} "
+        f"LIMIT {int(limit)} OFFSET {int(offset)}",
         *args,
     )
 
@@ -337,6 +349,7 @@ async def list_public_skills(
                 "cover_image_url": skill["cover_image_url"],
                 "source_github_url": skill["source_github_url"],
                 "view_count": skill["view_count"],
+                "install_count": skill["install_count"],
                 "owner_name": skill.get("scope_name"),
                 "owner_display_name": skill.get("owner_display_name"),
                 "owner_user_id": str(skill["owner_user_id"]),

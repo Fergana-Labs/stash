@@ -26,10 +26,9 @@ _TEST_DB_URL = os.getenv(
 )
 os.environ["TEST_DATABASE_URL"] = _TEST_DB_URL
 os.environ["DATABASE_URL"] = _TEST_DB_URL
-# Tests assume blank scopes. The default slides skill seed is
-# valuable in production but breaks empty-state assertions everywhere.
-# Tests that explicitly need the skill seeded call `seed_slides_skill`
-# themselves.
+# Tests assume blank scopes. The default skill seeds are valuable in
+# production but break empty-state assertions everywhere. Tests that
+# explicitly need the skills seeded call `seed_default_skills` themselves.
 os.environ.setdefault("STASH_DISABLE_DEFAULT_SKILL_SEEDS", "1")
 
 from backend import database as db_module  # noqa: E402
@@ -178,8 +177,17 @@ def sprite_exec(monkeypatch):
             yield {"stream": "stdout", "data": (line + "\n").encode()}
         yield {"exit_code": exit_code}
 
+    # Turn-setup file writes (credential files, the MCP .mcp.json sync) go
+    # through write_file, which execs on the box — capture them instead so
+    # they can't consume the canned exec replies.
+    writes: list[tuple[str, str]] = []
+
+    async def fake_write_file(sprite, abs_path, contents):
+        writes.append((abs_path, contents))
+
     monkeypatch.setattr(sprite_service, "acquire", fake_acquire)
     monkeypatch.setattr(sprite_service, "exec_stream", fake_exec_stream)
+    monkeypatch.setattr(sprite_service, "write_file", fake_write_file)
     fake_redis = FakeRedis()
     monkeypatch.setattr(sprite_agent_service, "_get_redis", lambda: fake_redis)
     monkeypatch.setattr(settings, "ANTHROPIC_API_KEY", "sk-ant-test-key")
@@ -188,5 +196,5 @@ def sprite_exec(monkeypatch):
         pass
 
     seam = Seam()
-    seam.calls, seam.replies, seam.redis = calls, replies, fake_redis
+    seam.calls, seam.replies, seam.redis, seam.writes = calls, replies, fake_redis, writes
     return seam

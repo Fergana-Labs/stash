@@ -1,18 +1,20 @@
 """Hydrate X (Twitter) saves via twitterapi.io.
 
-Skeleton rows arrive from the extension push (routers/sources.py
-x_items_router) as tweet ids + a kind (Bookmark/Post/Reply/Article). Each
-sync pass fills a bounded batch: the full tweet text + author from
-twitterapi.io, the conversation root for reply context, and the tweet's
-images/video archived into object storage — so the save survives the tweet
-being deleted or the account going private. Per-item failures land on the
-row, loudly; rows are never deleted by sync (archive semantics).
+Each sync enqueues skeleton rows (tweet ids + a kind): Bookmarks from the X
+API with the OAuth token, the user's own Posts/Replies/Articles from
+twitterapi.io by account id. A bounded hydration batch then fills them in:
+the full tweet text + author (or, for an Article, the full long-form body)
+from twitterapi.io, the author's whole thread + the reply's direct parent
+for context, and the tweet's images/video archived into object storage — so
+the save survives the tweet being deleted or the account going private.
+Per-item failures land on the row, loudly; rows are never deleted by sync
+(archive semantics).
 """
 
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 import httpx
@@ -26,19 +28,41 @@ logger = logging.getLogger(__name__)
 
 TAPI_TWEETS_URL = "https://api.twitterapi.io/twitter/tweets"
 TAPI_USER_TWEETS_URL = "https://api.twitterapi.io/twitter/user/last_tweets"
+TAPI_ARTICLE_URL = "https://api.twitterapi.io/twitter/article"
+TAPI_THREAD_URL = "https://api.twitterapi.io/twitter/tweet/thread_context"
 X_BOOKMARKS_URL = "https://api.x.com/2/users/{user_id}/bookmarks"
 TAPI_TIMEOUT = 60
 MAX_MEDIA_BYTES = 100 * 1024 * 1024
 MAX_MEDIA_PER_TWEET = 4
+# Thread context pages fetched per save. A page carries the ancestors plus a
+# slice of the replies; on a viral tweet the author's own continuation sits
+# early, so a small cap finds real self-threads without walking whole reply
+# storms.
+MAX_THREAD_PAGES = 3
+# Media archived per save across the whole thread (the saved tweet's own
+# media is archived first and can never be squeezed out by thread posts).
+MAX_MEDIA_PER_SAVE = 12
 # Hydration is per-tweet (each commits on its own), and a sync can be killed
 # mid-run by a worker redeploy — so keep the batch small enough that a sync
 # usually finishes before that happens; the reconciler re-runs for the rest.
 HYDRATION_BATCH = 50
 MAX_HYDRATION_ATTEMPTS = 3
-# Pages of the user's own timeline pulled per sync (20 tweets/page). Bounded so
-# one sync doesn't run away; older tweets keep arriving over subsequent syncs.
+# Pages of the user's own timeline pulled from the top each sync (20/page),
+# catching activity since the last sync. Stops early once a page brings
+# nothing new; the page cap bounds a burst.
 MAX_USER_TWEET_PAGES = 5
-# Pages of bookmarks pulled per sync (100/page via the X API).
+# Pages per sync spent walking the rest of the timeline history. The walk
+# resumes from a cursor stored in source settings and runs until the entire
+# reachable timeline has been ingested once (x_timeline_complete).
+MAX_TIMELINE_BACKFILL_PAGES = 25
+# The X API bills per post returned (unlike twitterapi.io, which is cheap),
+# and most checks find no new bookmark — so bookmarks are checked at most
+# once a day, starting with one small probe page. Backlog and history pages
+# use the full size, capped per check. Posts/replies/articles are unaffected:
+# they ride twitterapi.io on the source's normal sync cadence.
+BOOKMARK_CHECK_INTERVAL = timedelta(days=1)
+BOOKMARK_PROBE_SIZE = 10
+BOOKMARK_PAGE_SIZE = 100
 MAX_BOOKMARK_PAGES = 5
 
 
@@ -76,8 +100,12 @@ async def index_x_saves(source: dict) -> str | None:
         # the user's own posts/replies from twitterapi.io. Both just insert
         # pending skeleton rows — the hydration pass below fills them in.
         if x_user_id:
-            await _backfill_bookmarks(source_id, owner_user_id, str(x_user_id))
-            await _backfill_user_tweets(client, source_id, owner_user_id, str(x_user_id))
+            await _backfill_bookmarks(
+                source_id, owner_user_id, str(x_user_id), source.get("settings") or {}
+            )
+            await _backfill_user_tweets(
+                client, source_id, owner_user_id, str(x_user_id), source.get("settings") or {}
+            )
 
         # Hydrate a bounded batch of pending rows. Bounding the batch is what
         # lets a stuck account keep making progress across syncs even when the
@@ -115,87 +143,226 @@ async def index_x_saves(source: dict) -> str | None:
     return None
 
 
-async def _backfill_bookmarks(source_id: UUID, owner_user_id: UUID, x_user_id: str) -> None:
-    """Insert pending Bookmark rows from the X API (OAuth token). Best-effort:
-    the bookmarks endpoint sits behind a paid X API tier, so a 402/403/429 is
-    expected and logged rather than fatal — it must not stop the user's
-    posts/replies from syncing. Idempotent per tweet."""
+async def _backfill_bookmarks(
+    source_id: UUID, owner_user_id: UUID, x_user_id: str, source_settings: dict
+) -> None:
+    """Insert pending Bookmark rows from the X API (OAuth token). Runs at most
+    once a day (x_bookmarks_checked_at) — every returned post costs paid X API
+    credits. Best-effort: the endpoint sits behind those paid credits, so a
+    402/403/429 is expected and surfaced as a warning rather than fatal — it
+    must not stop the user's posts/replies/articles from syncing.
+
+    Same two passes as the timeline, both idempotent per tweet:
+    - a probe pass from the top (small first page — most syncs find nothing
+      new) that stops once a page brings nothing new;
+    - a history walk that resumes from a pagination token stored in source
+      settings until the whole reachable list has been ingested once
+      (x_bookmarks_complete)."""
+    checked_at = source_settings.get("x_bookmarks_checked_at")
+    if checked_at and datetime.fromisoformat(checked_at) > datetime.now(UTC) - (
+        BOOKMARK_CHECK_INTERVAL
+    ):
+        return
+    await _merge_source_settings(
+        source_id, {"x_bookmarks_checked_at": datetime.now(UTC).isoformat()}
+    )
+
     token = await integration_storage.get_valid_token(owner_user_id, "x")
-    pool = get_pool()
-    next_token: str | None = None
     async with httpx.AsyncClient(
         timeout=30.0, headers={"Authorization": f"Bearer {token}"}
     ) as client:
-        for _ in range(MAX_BOOKMARK_PAGES):
-            params = {"max_results": 100}
-            if next_token:
-                params["pagination_token"] = next_token
-            response = await client.get(X_BOOKMARKS_URL.format(user_id=x_user_id), params=params)
-            if response.status_code in (401, 402, 403, 429):
-                logger.warning(
-                    "x bookmarks unavailable status=%s (X API tier/quota) source=%s",
-                    response.status_code,
-                    source_id,
-                )
+        page_token: str | None = None
+        for page in range(MAX_BOOKMARK_PAGES):
+            size = BOOKMARK_PROBE_SIZE if page == 0 else BOOKMARK_PAGE_SIZE
+            payload = await _fetch_bookmarks_page(client, source_id, x_user_id, size, page_token)
+            if payload is None:
                 return
-            response.raise_for_status()
-            payload = response.json()
-            for tweet in payload.get("data") or []:
-                tweet_id = tweet.get("id")
-                if not tweet_id:
-                    continue
-                await pool.execute(
-                    "INSERT INTO x_save_docs "
-                    "(owner_user_id, source_id, path, name, kind, external_ref) "
-                    "VALUES ($1, $2, $3, $4, 'Bookmark', $4) "
-                    "ON CONFLICT (source_id, path) DO NOTHING",
-                    owner_user_id,
-                    source_id,
-                    save_path("Bookmark", tweet_id),
-                    tweet_id,
-                )
-            next_token = (payload.get("meta") or {}).get("next_token")
-            if not next_token:
+            inserted, considered = await _insert_bookmarks_page(payload, source_id, owner_user_id)
+            page_token = (payload.get("meta") or {}).get("next_token")
+            # Bookmarks come newest-first, so a page of already-known ids
+            # means everything below is known too (history is the walk's job).
+            if (considered and not inserted) or not page_token:
                 break
+
+        if source_settings.get("x_bookmarks_complete"):
+            return
+        page_token = source_settings.get("x_bookmarks_cursor")
+        for _ in range(MAX_BOOKMARK_PAGES):
+            payload = await _fetch_bookmarks_page(
+                client, source_id, x_user_id, BOOKMARK_PAGE_SIZE, page_token
+            )
+            if payload is None:
+                return
+            await _insert_bookmarks_page(payload, source_id, owner_user_id)
+            page_token = (payload.get("meta") or {}).get("next_token")
+            if not page_token:
+                await _merge_source_settings(source_id, {"x_bookmarks_complete": True})
+                return
+        await _merge_source_settings(source_id, {"x_bookmarks_cursor": page_token})
+
+
+async def _fetch_bookmarks_page(
+    client: httpx.AsyncClient,
+    source_id: UUID,
+    x_user_id: str,
+    max_results: int,
+    page_token: str | None,
+) -> dict | None:
+    """One page of the user's bookmarks, or None when the paid-credits gate
+    (401/402/403/429) is closed — logged and surfaced on the source."""
+    params: dict = {"max_results": max_results}
+    if page_token:
+        params["pagination_token"] = page_token
+    response = await client.get(X_BOOKMARKS_URL.format(user_id=x_user_id), params=params)
+    if response.status_code in (401, 402, 403, 429):
+        # The body carries X's actual reason (e.g. UsageCapExceeded vs no
+        # enrolled credits) — the status alone can't distinguish.
+        logger.warning(
+            "x bookmarks unavailable status=%s (X API tier/quota) source=%s body=%s",
+            response.status_code,
+            source_id,
+            response.text[:300],
+        )
+        await source_service.set_sync_warning(
+            source_id,
+            f"X bookmarks are unavailable (HTTP {response.status_code}): the X API "
+            "bookmarks endpoint needs a paid tier with remaining monthly quota. "
+            "Posts, replies, and articles still sync.",
+        )
+        return None
+    response.raise_for_status()
+    return response.json()
+
+
+async def _insert_bookmarks_page(
+    payload: dict, source_id: UUID, owner_user_id: UUID
+) -> tuple[int, int]:
+    """Insert a skeleton Bookmark row per tweet on the page; returns (newly
+    inserted, total considered)."""
+    pool = get_pool()
+    inserted = 0
+    considered = 0
+    for tweet in payload.get("data") or []:
+        tweet_id = tweet.get("id")
+        if not tweet_id:
+            continue
+        considered += 1
+        status = await pool.execute(
+            "INSERT INTO x_save_docs "
+            "(owner_user_id, source_id, path, name, kind, external_ref) "
+            "VALUES ($1, $2, $3, $4, 'Bookmark', $4) "
+            "ON CONFLICT (source_id, path) DO NOTHING",
+            owner_user_id,
+            source_id,
+            save_path("Bookmark", tweet_id),
+            tweet_id,
+        )
+        if status == "INSERT 0 1":
+            inserted += 1
+    return inserted, considered
 
 
 async def _backfill_user_tweets(
-    client: httpx.AsyncClient, source_id: UUID, owner_user_id: UUID, x_user_id: str
+    client: httpx.AsyncClient,
+    source_id: UUID,
+    owner_user_id: UUID,
+    x_user_id: str,
+    source_settings: dict,
 ) -> None:
-    """Insert pending rows for the user's own posts + replies (from their
-    timeline), which then hydrate through the same path as bookmarks. Retweets
-    are skipped — they aren't the user's own writing. Idempotent per tweet."""
-    pool = get_pool()
+    """Insert pending rows for the user's own posts + replies + articles (from
+    their timeline), which then hydrate through the same path as bookmarks.
+    Two passes, both idempotent per tweet:
+    - a fresh pass from the top of the timeline that stops once a page brings
+      nothing new, catching activity since the last sync;
+    - a history walk that resumes from a cursor stored in source settings, a
+      bounded number of pages per sync, until the whole reachable timeline has
+      been ingested once — then never runs again (x_timeline_complete)."""
     cursor: str | None = None
     for _ in range(MAX_USER_TWEET_PAGES):
-        params = {"userId": x_user_id}
-        if cursor:
-            params["cursor"] = cursor
-        response = await client.get(TAPI_USER_TWEETS_URL, params=params)
-        response.raise_for_status()
-        payload = response.json()
-        tweets = (payload.get("data") or {}).get("tweets") or []
-        for tweet in tweets:
-            tweet_id = tweet.get("id")
-            if not tweet_id or tweet.get("isRetweet"):
-                continue
-            kind = "Reply" if tweet.get("isReply") else "Post"
-            await pool.execute(
-                "INSERT INTO x_save_docs "
-                "(owner_user_id, source_id, path, name, kind, external_ref) "
-                "VALUES ($1, $2, $3, $4, $5, $4) "
-                "ON CONFLICT (source_id, path) DO NOTHING",
-                owner_user_id,
-                source_id,
-                save_path(kind, tweet_id),
-                tweet_id,
-                kind,
-            )
-        if not payload.get("has_next_page"):
-            break
+        payload = await _fetch_timeline_page(client, x_user_id, cursor)
+        inserted, considered = await _insert_timeline_page(payload, source_id, owner_user_id)
         cursor = payload.get("next_cursor")
-        if not cursor:
+        # A page of already-known tweets means we've reached familiar
+        # territory. An all-retweet page proves nothing — keep going.
+        if (considered and not inserted) or not payload.get("has_next_page") or not cursor:
             break
+
+    if source_settings.get("x_timeline_complete"):
+        return
+    cursor = source_settings.get("x_timeline_cursor")
+    for _ in range(MAX_TIMELINE_BACKFILL_PAGES):
+        payload = await _fetch_timeline_page(client, x_user_id, cursor)
+        await _insert_timeline_page(payload, source_id, owner_user_id)
+        cursor = payload.get("next_cursor")
+        if not payload.get("has_next_page") or not cursor:
+            await _merge_source_settings(source_id, {"x_timeline_complete": True})
+            return
+    await _merge_source_settings(source_id, {"x_timeline_cursor": cursor})
+
+
+async def _fetch_timeline_page(
+    client: httpx.AsyncClient, x_user_id: str, cursor: str | None
+) -> dict:
+    # `includeReplies` is required: twitterapi.io omits replies from
+    # last_tweets by default.
+    params = {"userId": x_user_id, "includeReplies": "true"}
+    if cursor:
+        params["cursor"] = cursor
+    response = await client.get(TAPI_USER_TWEETS_URL, params=params)
+    response.raise_for_status()
+    return response.json()
+
+
+async def _insert_timeline_page(
+    payload: dict, source_id: UUID, owner_user_id: UUID
+) -> tuple[int, int]:
+    """Insert a skeleton row per tweet on the page; returns (newly inserted,
+    total considered). Retweets are skipped — they aren't the user's own
+    writing — and don't count as considered."""
+    pool = get_pool()
+    inserted = 0
+    considered = 0
+    for tweet in (payload.get("data") or {}).get("tweets") or []:
+        tweet_id = tweet.get("id")
+        if not tweet_id or tweet.get("isRetweet"):
+            continue
+        considered += 1
+        if tweet.get("article"):
+            kind = "Article"
+            # Articles synced before article detection existed landed as
+            # Posts; drop the stale row so the save doesn't appear twice.
+            await pool.execute(
+                "DELETE FROM x_save_docs WHERE source_id = $1 AND path = $2",
+                source_id,
+                save_path("Post", tweet_id),
+            )
+        elif tweet.get("isReply"):
+            kind = "Reply"
+        else:
+            kind = "Post"
+        status = await pool.execute(
+            "INSERT INTO x_save_docs "
+            "(owner_user_id, source_id, path, name, kind, external_ref) "
+            "VALUES ($1, $2, $3, $4, $5, $4) "
+            "ON CONFLICT (source_id, path) DO NOTHING",
+            owner_user_id,
+            source_id,
+            save_path(kind, tweet_id),
+            tweet_id,
+            kind,
+        )
+        if status == "INSERT 0 1":
+            inserted += 1
+    return inserted, considered
+
+
+async def _merge_source_settings(source_id: UUID, patch: dict) -> None:
+    await get_pool().execute(
+        "UPDATE user_sources SET settings = coalesce(settings, '{}'::jsonb) || $2::jsonb, "
+        "updated_at = now() WHERE id = $1",
+        source_id,
+        patch,
+    )
 
 
 async def _hydrate_one(
@@ -206,21 +373,31 @@ async def _hydrate_one(
     kind: str,
 ) -> None:
     tweet_id = _tweet_id_from_path(path)
+    if kind == "Article":
+        await _hydrate_article(client, source_id, owner_user_id, path)
+        return
     tweet = await _fetch_tweet(client, tweet_id)
 
-    # A reply shows only its own text out of context, so pull the root of the
-    # conversation and keep it as "In reply to:" above the reply.
-    root = None
-    root_id = tweet.get("conversation_id")
-    if root_id and root_id != tweet_id:
+    # A saved tweet is often one post of a thread: pull the conversation and
+    # keep the author's whole chain, plus the direct parent when the save is
+    # a reply to someone else. Best-effort — the save itself matters.
+    thread = [tweet]
+    parent = None
+    if _in_conversation(tweet):
         try:
-            root = await _fetch_tweet(client, root_id)
-        except Exception:
-            root = None  # thread context is best-effort; the reply itself matters
+            context = await _fetch_thread_context(client, tweet_id)
+            thread = _author_chain(tweet, context)
+            parent = _direct_parent(tweet, context)
+        except Exception as exc:
+            logger.warning(
+                "x thread context fetch failed tweet=%s exception_type=%s",
+                tweet_id,
+                type(exc).__name__,
+            )
 
-    media = await _archive_media(owner_user_id, tweet_id, tweet["media"])
+    media = await _archive_thread_media(owner_user_id, tweet, thread)
 
-    content = _render(tweet, root)
+    content = _render(tweet, thread, parent)
     posted = tweet["created_at"]
     await source_service.upsert_content_document(
         table="x_save_docs",
@@ -244,17 +421,181 @@ async def _hydrate_one(
     )
 
 
-def _render(tweet: dict, root: dict | None) -> str:
+async def _hydrate_article(
+    client: httpx.AsyncClient, source_id: UUID, owner_user_id: UUID, path: str
+) -> None:
+    """Articles are long-form X posts. The regular tweet lookup only carries a
+    title + preview, so the full body comes from twitterapi.io's article
+    endpoint; the cover image and any body images are archived like tweet
+    media."""
+    tweet_id = _tweet_id_from_path(path)
+    response = await client.get(TAPI_ARTICLE_URL, params={"tweet_id": tweet_id})
+    response.raise_for_status()
+    payload = response.json()
+    article = payload.get("article") or {}
+    if payload.get("status") != "success" or not article.get("title"):
+        raise RuntimeError(f"article {tweet_id} is unavailable (deleted, private, or suspended)")
+
+    author = (article.get("author") or {}).get("userName") or "unknown"
+    posted = _parse_time(article.get("createdAt"))
+    media = await _archive_media(owner_user_id, tweet_id, _article_media(article))
+
+    byline = f"— @{author}"
+    if posted:
+        byline += f" · {posted.date().isoformat()}"
+    content = "\n".join(
+        [
+            article["title"],
+            "",
+            _render_article_blocks(article.get("contents") or []),
+            "",
+            byline,
+            tweet_url(tweet_id),
+        ]
+    )
+    await source_service.upsert_content_document(
+        table="x_save_docs",
+        source_id=source_id,
+        owner_user_id=owner_user_id,
+        path=path,
+        name=article["title"],
+        kind="Article",
+        content=content,
+        external_ref=tweet_id,
+        external_updated_at=posted,
+    )
+    await get_pool().execute(
+        "UPDATE x_save_docs SET media = $3, hydration_status = 'done', "
+        "hydration_error = NULL, updated_at = now() WHERE source_id = $1 AND path = $2",
+        source_id,
+        path,
+        media,
+    )
+
+
+# Draft.js-style block types twitterapi.io uses for article bodies.
+_ARTICLE_HEADINGS = {"header-one": "# ", "header-two": "## ", "header-three": "### "}
+_ARTICLE_LIST_ITEMS = ("unordered-list-item", "ordered-list-item")
+
+
+def _render_article_blocks(blocks: list[dict]) -> str:
+    lines: list[str] = []
+    for block in blocks:
+        block_type = block.get("type") or ""
+        text = (block.get("text") or "").strip()
+        if block_type in _ARTICLE_HEADINGS and text:
+            lines.append(_ARTICLE_HEADINGS[block_type] + text)
+        elif block_type in _ARTICLE_LIST_ITEMS and text:
+            lines.append("- " + text)
+        elif block_type == "divider":
+            lines.append("---")
+        elif text:
+            lines.append(text)
+    return "\n\n".join(lines)
+
+
+def _article_media(article: dict) -> list[dict]:
+    """Cover image + any image/gif blocks in the body, in _archive_media shape."""
+    urls: list[str] = []
+    if article.get("cover_media_img_url"):
+        urls.append(article["cover_media_img_url"])
+    for block in article.get("contents") or []:
+        if block.get("type") in ("image", "gif") and block.get("url"):
+            urls.append(block["url"])
+    return [{"url": u, "is_video": False} for u in urls]
+
+
+def _in_conversation(tweet: dict) -> bool:
+    is_reply = bool(tweet["conversation_id"]) and tweet["conversation_id"] != tweet["id"]
+    return is_reply or tweet["reply_count"] > 0
+
+
+async def _fetch_thread_context(client: httpx.AsyncClient, tweet_id: str) -> list[dict]:
+    """The saved tweet's conversation from twitterapi.io: ancestors plus a
+    bounded number of reply pages, normalized."""
+    tweets: list[dict] = []
+    cursor: str | None = None
+    for _ in range(MAX_THREAD_PAGES):
+        params: dict = {"tweetId": tweet_id}
+        if cursor:
+            params["cursor"] = cursor
+        response = await client.get(TAPI_THREAD_URL, params=params)
+        response.raise_for_status()
+        payload = response.json()
+        tweets.extend(_normalize(t) for t in payload.get("tweets") or [] if t.get("id"))
+        cursor = payload.get("next_cursor")
+        if not payload.get("has_next_page") or not cursor:
+            break
+    return tweets
+
+
+def _author_chain(tweet: dict, context: list[dict]) -> list[dict]:
+    """The author's own connected run of posts (the self-thread) containing
+    the saved tweet, chronological. Other users' replies never enter the
+    chain. Tweet ids are snowflakes, so numeric id order is time order."""
+    own = {t["id"]: t for t in context if t["author"] == tweet["author"]}
+    own[tweet["id"]] = tweet
+
+    # Walk up to the top of the author's chain (visited-guard against
+    # malformed reply cycles), then collect every own post chained under it.
+    top = tweet
+    visited = {tweet["id"]}
+    while (parent_id := top.get("in_reply_to_id")) in own and parent_id not in visited:
+        top = own[parent_id]
+        visited.add(parent_id)
+
+    chain = [top]
+    included = {top["id"]}
+    for t in sorted(own.values(), key=lambda t: int(t["id"])):
+        if t["id"] not in included and t.get("in_reply_to_id") in included:
+            chain.append(t)
+            included.add(t["id"])
+    return chain
+
+
+def _direct_parent(tweet: dict, context: list[dict]) -> dict | None:
+    """The other-author tweet the save replies to; the author's own parents
+    are already covered by the thread chain."""
+    parent_id = tweet.get("in_reply_to_id")
+    if not parent_id:
+        return None
+    parent = next((t for t in context if t["id"] == parent_id), None)
+    if parent is None or parent["author"] == tweet["author"]:
+        return None
+    return parent
+
+
+async def _archive_thread_media(owner_user_id: UUID, tweet: dict, thread: list[dict]) -> list[dict]:
+    """Archive the saved tweet's media first, then the rest of the thread's,
+    up to MAX_MEDIA_PER_SAVE total."""
+    stored: list[dict] = []
+    ordered = [tweet] + [t for t in thread if t["id"] != tweet["id"]]
+    for t in ordered:
+        room = MAX_MEDIA_PER_SAVE - len(stored)
+        if room <= 0:
+            break
+        if t["media"]:
+            stored.extend(await _archive_media(owner_user_id, t["id"], t["media"][:room]))
+    return stored
+
+
+def _render(tweet: dict, thread: list[dict], parent: dict | None) -> str:
     # Tweet text first so the listing's preview (first paragraph of content) is
     # the tweet itself, not metadata. Everything after the blank line is the
-    # byline, reply context, and link.
+    # byline, reply context, thread, and link.
     parts: list[str] = [tweet["text"] or "", ""]
     byline = f"— @{tweet['author']}"
     if tweet["created_at"]:
         byline += f" · {tweet['created_at'].date().isoformat()}"
     parts.append(byline)
-    if root is not None:
-        parts.append(f"In reply to @{root['author']}: {root['text']}")
+    if parent is not None:
+        parts.append(f"In reply to @{parent['author']}: {parent['text']}")
+    if len(thread) > 1:
+        parts.append("")
+        parts.append(f"## Thread by @{tweet['author']} ({len(thread)} posts)")
+        for t in thread:
+            parts.append("")
+            parts.append(t["text"] or "")
     parts.append(tweet_url(tweet["id"]))
     return "\n".join(parts)
 
@@ -279,6 +620,8 @@ def _normalize(t: dict) -> dict:
         "author": (t.get("author") or {}).get("userName") or "unknown",
         "created_at": _parse_time(t.get("createdAt")),
         "conversation_id": t.get("conversationId"),
+        "in_reply_to_id": t.get("inReplyToId"),
+        "reply_count": t.get("replyCount") or 0,
         "media": _media_urls(t),
     }
 

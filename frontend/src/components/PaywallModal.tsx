@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useEscapeKey } from "../hooks/useEscapeKey";
 import { startCheckout } from "../lib/api";
+import { TEAMS_CONTACT_EMAIL } from "../lib/contact";
 
 // Shown when the backend returns 402 on a connect attempt: the free plan's
 // one-account limit is hit and connecting more requires Pro.
@@ -43,6 +44,13 @@ export default function PaywallModal({ onClose }: { onClose: () => void }) {
           The free plan includes a few connected accounts. Pro unlocks unlimited
           integrations — GitHub, Slack, Gmail, Drive, Notion, and more —
           for $20/month.
+        </div>
+        <div className="mt-1.5 text-[12px] text-muted-foreground">
+          Setting up a team workspace? Email{" "}
+          <a className="underline" href={`mailto:${TEAMS_CONTACT_EMAIL}`}>
+            {TEAMS_CONTACT_EMAIL}
+          </a>
+          .
         </div>
         {error && <div className="mt-2 text-[12px] text-error">{error}</div>}
         <div className="mt-4 flex items-center justify-end gap-1.5">

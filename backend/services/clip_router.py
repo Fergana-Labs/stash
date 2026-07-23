@@ -8,13 +8,13 @@ else is fetched and routed by content: PDF → file clip, HTML → article
 page, anything else fails loud.
 """
 
-import asyncio
 import re
 from urllib.parse import urlparse
 
 import httpx
 
-from . import clip_service, youtube_transcript
+from . import clip_service, page_render_service, youtube_transcript
+from .article_extraction import ArticleExtractionError
 
 MAX_FETCH_BYTES = 20 * 1024 * 1024
 FETCH_TIMEOUT = 30
@@ -62,7 +62,7 @@ async def process_url_import(row: dict) -> dict:
     url = row["url"]
 
     if is_youtube(url):
-        video = await asyncio.to_thread(youtube_transcript.fetch_transcript, url)
+        video = await youtube_transcript.fetch_transcript(url)
         markdown = f"**{video['channel']}**\n\n{video['transcript']}"
         page = await clip_service.create_clip_page(
             owner_user_id=owner_user_id,
@@ -94,14 +94,30 @@ async def process_url_import(row: dict) -> dict:
         return {"file_id": response.id}
 
     if "text/html" in content_type or content.lstrip()[:1] == b"<":
-        page = await clip_service.save_page_clip(
-            owner_user_id=owner_user_id,
-            user_id=user_id,
-            url=url,
-            html=content.decode("utf-8", errors="replace"),
-            title=row.get("title"),
-            folder_id=row["folder_id"],
-        )
+        try:
+            html = content.decode("utf-8", errors="replace")
+            page = await clip_service.save_page_clip(
+                owner_user_id=owner_user_id,
+                user_id=user_id,
+                url=url,
+                html=html,
+                title=row.get("title"),
+                folder_id=row["folder_id"],
+            )
+        except ArticleExtractionError:
+            # Escalation tier: the fetched HTML had no article — SPAs and
+            # consent walls serve empty shells over HTTP. Render the page in
+            # Chromium and extract from the settled DOM; a second extraction
+            # failure is terminal (the caller saves the link-only bookmark).
+            html = await page_render_service.render_page(url)
+            page = await clip_service.save_page_clip(
+                owner_user_id=owner_user_id,
+                user_id=user_id,
+                url=url,
+                html=html,
+                title=row.get("title"),
+                folder_id=row["folder_id"],
+            )
         return {"page_id": page["id"]}
 
     raise UnsupportedUrlContent(f"Unsupported content type: {content_type or 'unknown'}")

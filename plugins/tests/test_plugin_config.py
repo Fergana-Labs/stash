@@ -13,6 +13,7 @@ CONFIG_PATHS = [
     ROOT / "plugins/codex-plugin/scripts/config.py",
     ROOT / "plugins/cursor-plugin/scripts/config.py",
     ROOT / "plugins/gemini-plugin/scripts/config.py",
+    ROOT / "plugins/hermes-plugin/scripts/config.py",
     ROOT / "plugins/openclaw-plugin/scripts/config.py",
     ROOT / "plugins/opencode-plugin/scripts/config.py",
     ROOT / "stashai/plugin/assets/codex/scripts/config.py",

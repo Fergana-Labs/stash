@@ -27,7 +27,7 @@ Use `stash vfs` when you want to browse Stash like a filesystem without mounting
 - `stash vfs ls /me`
 - `stash vfs "find /me -maxdepth 3 -type f"`
 - `stash vfs "rg \"query\" /me"`
-- `stash vfs "cat '/me/README.md' | sed -n '1,80p'"`
+- `stash vfs "cat '/me/README.md'"`
 
 ## Common reads (all support `--json`)
 

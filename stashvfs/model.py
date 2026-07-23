@@ -50,6 +50,10 @@ class VfsNode:
     # Stash id of the connected source this node is the root of. It's the object
     # id `shares add source <id>` takes, so `stat` surfaces it for sharing.
     source_id: str | None = None
+    # App route of the Stash object behind this node (`/p/<id>`, `/f/<id>`,
+    # `/sessions/<id>`, …), so a VFS path can deep-link into the product —
+    # chat citations resolve through this.
+    app_url: str | None = None
     # Set when `prefetch` already tried this loader and it failed. `read_file`
     # re-raises it rather than fetching again — a second fetch would hit the
     # provider twice and, server-side, spend the document budget twice.
@@ -305,6 +309,7 @@ class StashVfsModel:
                 loader=lambda pid=page_id: self._load_page(pid),
                 created_at=page.get("created_at"),
                 updated_at=page.get("updated_at"),
+                app_url=f"/p/{page_id}",
             )
 
         for file in files:
@@ -321,6 +326,7 @@ class StashVfsModel:
                 size_hint=file.get("size_bytes"),
                 created_at=created_at,
                 updated_at=created_at,
+                app_url=f"/f/{file_id}",
             )
 
     def _add_skills(self, skills: list[dict]) -> None:
@@ -340,6 +346,7 @@ class StashVfsModel:
                 self._add_file(
                     f"{skills_path}/{basename}.md",
                     loader=lambda s=slug: _text_bytes(self.client.get_skill_text(s)),
+                    app_url=f"/skills/{slug}",
                 )
 
     def _add_sessions(self, sessions: list[dict]) -> None:
@@ -362,11 +369,13 @@ class StashVfsModel:
                     {"events": self.client.get_transcript_events(sid)}
                 ),
                 updated_at=updated_at,
+                app_url=f"/sessions/{session_id}",
             )
             self._add_file(
                 f"{session_path}/transcript.jsonl",
                 loader=lambda sid=session_id: _text_bytes(self.client.export_transcript_jsonl(sid)),
                 updated_at=updated_at,
+                app_url=f"/sessions/{session_id}",
             )
             self._add_file(
                 f"{session_path}/transcript.md",
@@ -374,6 +383,7 @@ class StashVfsModel:
                     _session_markdown(self.client.get_transcript_events(sid))
                 ),
                 updated_at=updated_at,
+                app_url=f"/sessions/{session_id}",
             )
 
     def _add_tables(self) -> None:
@@ -400,12 +410,14 @@ class StashVfsModel:
                 loader=lambda tid=table_id: _json_bytes(self.client.get_table(tid)),
                 created_at=created_at,
                 updated_at=updated_at,
+                app_url=f"/tables/{table_id}",
             )
             self._add_file(
                 f"{table_path}/rows.json",
                 loader=lambda tid=table_id: _json_bytes(self._load_all_table_rows(tid)),
                 created_at=created_at,
                 updated_at=updated_at,
+                app_url=f"/tables/{table_id}",
             )
             self._add_file(
                 f"{table_path}/rows.jsonl",
@@ -414,6 +426,7 @@ class StashVfsModel:
                 ),
                 created_at=created_at,
                 updated_at=updated_at,
+                app_url=f"/tables/{table_id}",
             )
 
     def _add_sources(self) -> None:
@@ -597,6 +610,7 @@ class StashVfsModel:
         created_at: str | None = None,
         updated_at: str | None = None,
         external_ref: str | None = None,
+        app_url: str | None = None,
     ) -> str:
         path = self._clean_path(path)
         parent, requested_name = self._split_parent(path)
@@ -615,6 +629,7 @@ class StashVfsModel:
             created_at=_parse_iso(created_at),
             updated_at=_parse_iso(updated_at),
             external_ref=external_ref,
+            app_url=app_url,
         )
         self.nodes[parent].children[name] = path
         return path

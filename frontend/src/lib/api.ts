@@ -323,6 +323,9 @@ export interface SourceEntry {
   external_ref?: string | null;
   // One-line preview of the copied content (e.g. the tweet text).
   snippet?: string | null;
+  // Archive state for save-type sources: 'done' | 'pending' | 'failed'.
+  // Null/absent for sources without an archive pipeline.
+  status?: string | null;
 }
 
 const NATIVE_SOURCE_TYPES = new Set(["native_files", "native_sessions"]);
@@ -475,6 +478,7 @@ export interface PublicSkillCard {
   cover_image_url: string | null;
   source_github_url: string | null;
   view_count: number;
+  install_count: number;
   owner_name: string;
   owner_display_name: string;
   owner_user_id: string;
@@ -487,6 +491,42 @@ export interface PublicSkillCard {
 // belongs to the repo owner — derive it from the attribution URL.
 export function githubOwner(sourceGithubUrl: string): string {
   return sourceGithubUrl.replace("https://github.com/", "").split("/")[0];
+}
+
+// --- Home feed ---
+
+// An item from the caller's own stash the feed resurfaces: an old clip
+// (opens in-app via app_url) or an X/Instagram save (opens the original
+// via external_url; the archived text is the preview).
+export interface ResurfaceCardData {
+  source: "x" | "instagram" | "clip";
+  title: string;
+  preview: string;
+  saved_at: string;
+  app_url: string | null;
+  external_url: string | null;
+  image_url: string | null;
+}
+
+export type FeedItem =
+  | { kind: "skill"; data: PublicSkillCard }
+  | { kind: "public_page"; data: PublicPageCard }
+  | { kind: "resurface"; data: ResurfaceCardData };
+
+export interface HomeFeedPage {
+  items: FeedItem[];
+  next_cursor: number | null;
+}
+
+// Public for signed-out visitors (community stream only); a bearer token adds
+// resurfaced items from the caller's own stash.
+export async function getHomeFeed(cursor: number): Promise<HomeFeedPage> {
+  const token = await getAuthToken();
+  const res = await fetch(`${API_BASE}/api/v1/feed?cursor=${cursor}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  });
+  if (!res.ok) throw new Error(`Feed failed: ${res.status}`);
+  return res.json();
 }
 
 // --- Files: folders (nested) and pages ---
@@ -2124,4 +2164,68 @@ export type AgentPrompt = { system_prompt: string; run_prompt: string };
 
 export async function getAgentPrompt(id: string): Promise<AgentPrompt> {
   return apiFetch(`/api/v1/me/agents/${id}/prompt`);
+}
+
+// --- Bulk URL imports (extension bookmark/tab imports) ---
+
+export type ImportBatchProgress = {
+  id: string;
+  kind: string;
+  filename: string | null;
+  total: number;
+  created_at: string;
+  done: number;
+  link_only: number;
+  needs_client: number;
+  pending: number;
+};
+
+export type ImportBatchDetail = ImportBatchProgress & {
+  // URLs whose content could not be fetched — saved as link-only rows, with why.
+  failures: { url: string; error: string }[];
+};
+
+export async function listImportBatches(): Promise<ImportBatchProgress[]> {
+  const res = await apiFetch<{ batches: ImportBatchProgress[] }>("/api/v1/me/imports");
+  return res.batches;
+}
+
+export async function getImportBatch(batchId: string): Promise<ImportBatchDetail> {
+  return apiFetch(`/api/v1/me/imports/${batchId}`);
+}
+
+// --- MCP servers (the Tools page) ---
+
+export type McpServer = {
+  id: string;
+  name: string;
+  transport: "stdio" | "http";
+  command: string | null;
+  url: string | null;
+  headers: Record<string, string>;
+  env: Record<string, string>;
+  created_at: string;
+};
+
+export type McpServerCreate = {
+  name: string;
+  transport: "stdio" | "http";
+  command?: string;
+  url?: string;
+  headers?: Record<string, string>;
+};
+
+export async function listMcpServers(): Promise<McpServer[]> {
+  return apiFetch(`${ME}/mcp-servers`);
+}
+
+export async function createMcpServer(input: McpServerCreate): Promise<McpServer> {
+  return apiFetch(`${ME}/mcp-servers`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function deleteMcpServer(serverId: string): Promise<void> {
+  await apiFetch(`${ME}/mcp-servers/${serverId}`, { method: "DELETE" });
 }

@@ -15,7 +15,17 @@ function scopeHeader(): Record<string, string> {
   return scopeUserId ? { [SCOPE_HEADER]: scopeUserId } : {};
 }
 
-export type Citation = { id: string; tool: string; label: string };
+export type Citation = {
+  id: string;
+  tool: string;
+  label: string;
+  // Direct link target: an external URL (WebFetch) or an app route (search,
+  // page reads). VFS reads carry vfsPath instead and resolve to their app
+  // route at click time via /vfs/resolve.
+  href?: string;
+  vfsPath?: string;
+};
+export type CitationTarget = Pick<Citation, "label" | "href" | "vfsPath">;
 export type ChatRole = "user" | "assistant";
 export type ChatMessage = { role: ChatRole; content: string; citations?: Citation[] };
 
@@ -34,27 +44,47 @@ function host(url: string): string {
 
 // The "Grounded on" strip shows the reads that grounded the answer: file and
 // Stash reads, searches, and web lookups. Plain shell commands and file
-// edits are work, not grounding — they stay out of the strip.
+// edits are work, not grounding — they stay out of the strip. Reads of Stash
+// content and web pages also carry a link target, so a citation is one click
+// from the material it names; sprite-local reads (Read/Grep of ~/work
+// scratch) have no app-side object and stay plain labels.
 export function citationFor(
   name: string,
   args: Record<string, unknown> | undefined,
-): string | null {
+): CitationTarget | null {
   const a = args ?? {};
-  if (name === "Read" && typeof a.file_path === "string") return basename(a.file_path);
+  if (name === "Read" && typeof a.file_path === "string") {
+    return { label: basename(a.file_path) };
+  }
   if ((name === "Grep" || name === "Glob") && typeof a.pattern === "string") {
-    return `search "${a.pattern.slice(0, 40)}"`;
+    return { label: `search "${a.pattern.slice(0, 40)}"` };
   }
   if (name === "WebSearch" && typeof a.query === "string") {
-    return `web "${a.query.slice(0, 40)}"`;
+    return { label: `web "${a.query.slice(0, 40)}"` };
   }
-  if (name === "WebFetch" && typeof a.url === "string") return host(a.url);
+  if (name === "WebFetch" && typeof a.url === "string") {
+    return { label: host(a.url), href: a.url };
+  }
   if (name === "Task" && typeof a.description === "string") {
-    return `agent: ${a.description.slice(0, 40)}`;
+    return { label: `agent: ${a.description.slice(0, 40)}` };
   }
   if (name === "Bash" && typeof a.command === "string" && a.command.startsWith("stash ")) {
-    return a.command.slice(0, 48);
+    return { label: a.command.slice(0, 48), ...stashCommandTarget(a.command) };
   }
   return null;
+}
+
+// Where a `stash` CLI read points in the app: a search opens /search with the
+// same query, `stash read <page id>` opens the page, and a VFS cat carries
+// its path for click-time resolution.
+function stashCommandTarget(command: string): Omit<CitationTarget, "label"> {
+  const search = command.match(/^stash search\s+"([^"]+)"/);
+  if (search) return { href: `/search?q=${encodeURIComponent(search[1])}` };
+  const read = command.match(/^stash read\s+([0-9a-f][0-9a-f-]{34}[0-9a-f])/);
+  if (read) return { href: `/p/${read[1]}` };
+  const cat = command.match(/\bcat\s+'([^']+)'/);
+  if (cat) return { vfsPath: cat[1] };
+  return {};
 }
 
 type StoredMessage = {
@@ -88,8 +118,8 @@ export async function getAgentChat(sessionId: string): Promise<ChatMessage[]> {
   let pending: Citation[] = [];
   for (const [i, m] of data.messages.entries()) {
     if (m.role === "tool") {
-      const label = citationFor(m.tool_name ?? "tool", argsFromMetadata(m.metadata ?? {}));
-      if (label) pending.push({ id: `stored-${i}`, tool: m.tool_name ?? "tool", label });
+      const target = citationFor(m.tool_name ?? "tool", argsFromMetadata(m.metadata ?? {}));
+      if (target) pending.push({ id: `stored-${i}`, tool: m.tool_name ?? "tool", ...target });
       continue;
     }
     if (m.role === "assistant") {
@@ -151,12 +181,16 @@ async function consumeAgentStream(res: Response, handlers: StreamHandlers): Prom
       } else if (evt.type === "text" && typeof evt.delta === "string") {
         handlers.onText?.(evt.delta);
       } else if (evt.type === "tool") {
-        const label = citationFor(
+        const target = citationFor(
           evt.name as string,
           evt.args as Record<string, unknown> | undefined,
         );
-        if (label) {
-          handlers.onTool?.({ id: String(evt.id ?? label), tool: evt.name as string, label });
+        if (target) {
+          handlers.onTool?.({
+            id: String(evt.id ?? target.label),
+            tool: evt.name as string,
+            ...target,
+          });
         }
       } else if (evt.type === "tool_result" && evt.ok === false) {
         handlers.onToolError?.(String(evt.id));

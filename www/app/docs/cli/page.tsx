@@ -578,6 +578,103 @@ stash vfs --cwd "/me/sources" "rg 'incident' ."`}</CodeBlock>
         ]}
       />
 
+      <CommandRef
+        command="stash skills install"
+        args="<slug> [--project] [--dir PATH]"
+        description="Install a public Skill into your agent's skills directory. Installed skills are tracked and auto-update whenever skills sync runs (the plugin runs one at every session start); a one-shot notice at the next session start lists what changed."
+        params={[
+          { name: "<slug>", type: "string", desc: "Public Skill slug.", required: true },
+          { name: "--project", type: "flag", desc: "Install into ./.claude/skills (this repo only) instead of ~/.claude/skills." },
+          { name: "--dir", type: "string", desc: "Custom skills directory." },
+        ]}
+      />
+
+      <CommandRef
+        command="stash skills uninstall"
+        args="<slug-or-name> [--project] [--dir PATH]"
+        description="Remove an installed Skill and stop auto-updating it."
+        params={[
+          { name: "<slug-or-name>", type: "string", desc: "The installed skill's slug or folder name.", required: true },
+        ]}
+      />
+
+      <CommandRef
+        command="stash skills follow"
+        args="[--project] [--dir PATH]"
+        description="Auto-install skills people share with you. New shared skills land at the next skills sync and update like any installed skill; stash skills unfollow turns it off (already-installed skills stay)."
+        params={[]}
+      />
+
+      <CommandRef
+        command="stash skills sync"
+        args="[--project] [--dir PATH]"
+        description="Two-way sync between the local skills directory and your Stash: your own skills three-way sync (conflicts are skipped loudly), installed skills refresh from their cloud copy. The plugin runs this automatically at session start."
+        params={[]}
+      />
+
+      <H2>MCP servers</H2>
+      <P>
+        Register MCP servers once and every agent gets them: your cloud agent&apos;s{" "}
+        <Code>.mcp.json</Code> is refreshed on each turn, and <Code>stash tools install</Code>{" "}
+        writes an entry into a local repo&apos;s <Code>.mcp.json</Code>. Header and env secrets
+        are stored encrypted.
+      </P>
+
+      <CommandRef
+        command="stash tools add"
+        args="<name> (--url URL | --command CMD) [--header K=V] [--env K=V]"
+        description="Register an MCP server: --url for a remote (HTTP) server, --command for a local (stdio) one."
+        params={[
+          { name: "<name>", type: "string", desc: "Server name, unique in your account.", required: true },
+          { name: "--url", type: "string", desc: "HTTP MCP endpoint (remote transport)." },
+          { name: "--command", type: "string", desc: "Command line to launch a stdio server." },
+          { name: "--header", type: "string", desc: "HTTP header as KEY=VALUE (repeatable; stored encrypted)." },
+          { name: "--env", type: "string", desc: "Env var for stdio servers as KEY=VALUE (repeatable; stored encrypted)." },
+        ]}
+      />
+
+      <CommandRef
+        command="stash tools install"
+        args="<name>"
+        description="Write a registered server into this repo's .mcp.json (merged — your own entries are never touched; re-runs are idempotent)."
+        params={[
+          { name: "<name>", type: "string", desc: "A server from stash tools list.", required: true },
+        ]}
+      />
+
+      <CommandRef
+        command="stash tools remove"
+        args="<name>"
+        description="Delete a registered MCP server."
+        params={[
+          { name: "<name>", type: "string", desc: "Server name.", required: true },
+        ]}
+      />
+
+      <H2>Workspaces</H2>
+      <P>
+        A workspace is a shared team scope: members&apos; sessions, events, and searches can run
+        against it instead of their personal Stash. Switching applies everywhere on your machine —
+        the CLI, every agent plugin, and the MCP server. Team workspaces are set up for you — email{" "}
+        <Code>sam@joinstash.ai</Code>.
+      </P>
+
+      <CommandRef
+        command="stash workspace list"
+        args=""
+        description="List workspaces you belong to, marking the active scope."
+        params={[]}
+      />
+
+      <CommandRef
+        command="stash workspace switch"
+        args="<name>"
+        description="Route sessions, events, transcripts, and searches to this workspace — or back with stash workspace switch personal."
+        params={[
+          { name: "<name>", type: "string", desc: "Workspace name or domain, or 'personal'.", required: true },
+        ]}
+      />
+
       <H2>Shares</H2>
       <P>
         Share a single object — a folder, page, file, session, or table — with a specific person by

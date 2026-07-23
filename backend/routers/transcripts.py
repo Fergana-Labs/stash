@@ -18,7 +18,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile
 from fastapi.responses import PlainTextResponse
 
-from ..auth import get_current_user
+from ..auth import get_current_user, get_scope
 from ..database import get_pool
 from ..services import (
     memory_service,
@@ -54,13 +54,16 @@ async def upload_transcript(
     session_folder_id: UUID | None = Form(None),
     replace: bool = Form(False),
     current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
 ):
     """Parse the uploaded JSONL into history_events rows.
 
     Existing sessions are left alone unless the caller explicitly asks to
     replace them.
     """
-    owner_user_id = current_user["id"]
+    # Transcripts land in the active scope, matching where the session's
+    # events were pushed (X-Stash-Scope header, personal when absent).
+    owner_user_id = scope_user_id
     await _check_write(owner_user_id, current_user["id"])
     if not _is_jsonl(file.filename):
         raise HTTPException(status_code=400, detail="Session uploads must be .JSONL files")
