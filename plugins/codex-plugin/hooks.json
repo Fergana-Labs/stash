@@ -1,17 +1,16 @@
 {
-  "_comment": "Copy to ~/.codex/hooks.json. Requires `features.hooks = true` in ~/.codex/config.toml. Timeouts are in SECONDS. `matcher` is a regex string. Tool hooks are Bash-only today.",
   "hooks": {
     "SessionStart": [
       {
         "hooks": [
-          { "type": "command", "command": "bash ${PLUGIN_ROOT}/scripts/_run.sh on_session_start", "timeout": 5 }
+          { "type": "command", "command": "stash hook run codex on_session_start", "timeout": 10 }
         ]
       }
     ],
     "UserPromptSubmit": [
       {
         "hooks": [
-          { "type": "command", "command": "bash ${PLUGIN_ROOT}/scripts/_run.sh on_prompt", "timeout": 3 }
+          { "type": "command", "command": "stash hook run codex on_prompt", "timeout": 5 }
         ]
       }
     ],
@@ -19,14 +18,14 @@
       {
         "matcher": "^Bash$",
         "hooks": [
-          { "type": "command", "command": "bash ${PLUGIN_ROOT}/scripts/_run.sh on_tool_use", "timeout": 5 }
+          { "type": "command", "command": "stash hook run codex on_tool_use", "timeout": 5 }
         ]
       }
     ],
     "Stop": [
       {
         "hooks": [
-          { "type": "command", "command": "bash ${PLUGIN_ROOT}/scripts/_run.sh on_stop", "timeout": 10 }
+          { "type": "command", "command": "stash hook run codex on_stop", "timeout": 10 }
         ]
       }
     ]
