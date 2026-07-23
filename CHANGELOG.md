@@ -5,6 +5,8 @@ everything before it is captured in git history (`git log`), not here.
 
 ## Unreleased
 
+- `stash vfs stat` once again shows the source-sharing command for connected
+  source roots, including roots that do not have an app URL.
 - OAuth reconnects now require a stable provider account identity. Slack,
   Asana, Jira, Linear, Notion, and Gong connections refuse to store new
   credentials when identity lookup fails, preventing retained source data
