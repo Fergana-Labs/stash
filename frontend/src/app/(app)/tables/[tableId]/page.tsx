@@ -1,12 +1,10 @@
 import type { Metadata } from "next";
-import { Suspense } from "react";
 
-import { TableEditorSkeleton } from "@/components/SkeletonStates";
 import {
   firstSearchParam,
   metadataForPublicSkillItem,
-} from "../../../lib/skillMetadata";
-import TableRouteClient from "./TableRouteClient";
+} from "@/lib/skillMetadata";
+import TableClient from "./TableClient";
 
 type PageProps = {
   params: Promise<{ tableId: string }>;
@@ -29,11 +27,10 @@ export async function generateMetadata({
   });
 }
 
+// Signed-in visits never render this body: the (app) layout shows the tab
+// workbench for /tables/ routes, which mounts TableClient inside a tab. This
+// body only reaches the screen bare, for `?skill=` public views.
 export default async function TableRoute({ params }: PageProps) {
   const { tableId } = await params;
-  return (
-    <Suspense fallback={<TableEditorSkeleton />}>
-      <TableRouteClient tableId={tableId} />
-    </Suspense>
-  );
+  return <TableClient tableId={tableId} />;
 }

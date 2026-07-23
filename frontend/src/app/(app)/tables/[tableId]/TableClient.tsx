@@ -17,14 +17,14 @@ import {
   type RefObject,
 } from "react";
 import Markdown from "react-markdown";
-import CustomSelect from "../../../components/CustomSelect";
-import { downloadBlob } from "../../../components/DownloadMenu";
-import { useShareAction } from "../../../components/ShellChromeContext";
-import ResourceShareButton from "../../../components/share/ResourceShareButton";
-import { useAuth } from "../../../hooks/useAuth";
-import { useConfirm } from "../../../components/ConfirmDialog";
-import { useEscapeKey } from "../../../hooks/useEscapeKey";
-import { SkeletonBlock, TableEditorSkeleton } from "../../../components/SkeletonStates";
+import CustomSelect from "../../../../components/CustomSelect";
+import { downloadBlob } from "../../../../components/DownloadMenu";
+import { useShareAction } from "../../../../components/ShellChromeContext";
+import ResourceShareButton from "../../../../components/share/ResourceShareButton";
+import { useAuth } from "../../../../hooks/useAuth";
+import { useConfirm } from "../../../../components/ConfirmDialog";
+import { useEscapeKey } from "../../../../hooks/useEscapeKey";
+import { SkeletonBlock, TableEditorSkeleton } from "../../../../components/SkeletonStates";
 import {
   fetchAuthed,
   getPublicSkill,
@@ -35,11 +35,11 @@ import {
   deleteTableRowsBatch, duplicateTableRow, summarizeTableRows,
   saveTableView, deleteTableView,
   setTableEmbeddingConfig, backfillTableEmbeddings,
-} from "../../../lib/api";
-import { findInSkillContents } from "../../../lib/localSkill";
-import type { Table, TableColumn, TableRow, TableView } from "../../../lib/types";
-import FileViewerHeader from "../../../components/content/FileViewerHeader";
-import { parseCsv, inferColumnType, detectDelimiter } from "../../../lib/csv";
+} from "../../../../lib/api";
+import { findInSkillContents } from "../../../../lib/localSkill";
+import type { Table, TableColumn, TableRow, TableView } from "../../../../lib/types";
+import FileViewerHeader from "../../../../components/content/FileViewerHeader";
+import { parseCsv, inferColumnType, detectDelimiter } from "../../../../lib/csv";
 
 const TYPE_ICONS: Record<string, string> = {
   text: "Aa", number: "#", boolean: "\u2713", date: "\uD83D\uDCC5", datetime: "\uD83D\uDD53",
