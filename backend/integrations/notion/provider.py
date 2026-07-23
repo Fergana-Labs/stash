@@ -111,4 +111,5 @@ class NotionIntegration(Integration):
         return AccountInfo(
             email=person.get("email"),
             display_name=user.get("name") or bot.get("workspace_name") or "Notion workspace",
+            account_ref=bot.get("workspace_id"),
         )

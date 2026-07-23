@@ -7,6 +7,10 @@ everything before it is captured in git history (`git log`), not here.
 
 - `stash vfs stat` once again shows the source-sharing command for connected
   source roots, including roots that do not have an app URL.
+- OAuth reconnects now require a stable provider account identity. Slack,
+  Asana, Jira, Linear, Notion, and Gong connections refuse to store new
+  credentials when identity lookup fails, preventing retained source data
+  from silently continuing under a different provider account.
 - Frontend server-side backend requests now require `BACKEND_INTERNAL_URL`
   or `NEXT_PUBLIC_API_URL` instead of guessing an environment, so missing
   managed deploy config fails during build rather than crashing public

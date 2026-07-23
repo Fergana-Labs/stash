@@ -61,10 +61,9 @@ async def account_mismatch(user_id: UUID, provider: str, account: AccountInfo) -
     """The reconnect identity check. Returns the stored account's label when
     this connect is under a DIFFERENT provider account than the one already
     linked (whose data may be kept) — the caller must refuse the connect. The
-    check needs both sides' account_ref; a provider that doesn't supply one
-    cannot be checked."""
+    check needs both sides' account_ref."""
     if not account.account_ref:
-        return None
+        raise ValueError(f"{provider} account identity is required")
     row = await get_pool().fetchrow(
         "SELECT account_ref, account_display_name, account_email FROM user_integrations "
         "WHERE user_id = $1 AND provider = $2 AND account_key = $3",

@@ -71,7 +71,31 @@ class SlackProvider:
         )
 
     async def fetch_account(self, access_token: str):
-        return AccountInfo(email=None, display_name=None)
+        return AccountInfo(email=None, display_name=None, account_ref="T123")
+
+
+class IdentityProvider:
+    name = "identity"
+    auth_kind = "oauth"
+
+    def __init__(self, access_token: str, account_ref: str):
+        self.access_token = access_token
+        self.account_ref = account_ref
+
+    async def exchange_code(self, code: str):
+        return TokenSet(
+            access_token=self.access_token,
+            refresh_token=None,
+            expires_at=None,
+            scopes=["read"],
+        )
+
+    async def fetch_account(self, access_token: str):
+        return AccountInfo(
+            email=None,
+            display_name=f"Account {self.account_ref}",
+            account_ref=self.account_ref,
+        )
 
 
 class FailingCredentialProvider:
@@ -123,10 +147,11 @@ async def test_oauth_callback_failure_does_not_redirect_or_log_secrets(
 
 
 @pytest.mark.asyncio
-async def test_oauth_profile_failure_does_not_log_tokens(
+async def test_oauth_profile_failure_refuses_connection_without_logging_tokens(
     client: AsyncClient,
     monkeypatch,
     caplog,
+    pool,
 ):
     provider = FailingProfileProvider()
     _configure_callback(monkeypatch, provider)
@@ -140,9 +165,110 @@ async def test_oauth_profile_failure_does_not_log_tokens(
     )
 
     assert response.status_code == 302
-    assert response.headers["location"] == f"{PUBLIC_URL}/settings?connected=profile"
+    assert (
+        response.headers["location"]
+        == f"{PUBLIC_URL}/settings?integration_error=profile&reason=connection_failed"
+    )
     assert "at_should_not_be_logged" not in caplog.text
     assert "rt_should_not_be_logged" not in caplog.text
+    assert (
+        await pool.fetchval(
+            "SELECT count(*) FROM user_integrations WHERE user_id = $1 AND provider = $2",
+            user_id,
+            provider.name,
+        )
+        == 0
+    )
+
+
+@pytest.mark.asyncio
+async def test_oauth_callback_refuses_account_without_stable_identity(
+    client: AsyncClient,
+    monkeypatch,
+    pool,
+):
+    provider = SlackProvider()
+    _configure_callback(monkeypatch, provider)
+    user_id = await _register(client)
+    state = integration_router._encode_state(user_id, provider.name, "/settings")
+
+    async def missing_identity(access_token: str):
+        return AccountInfo(email=None, display_name="Acme")
+
+    monkeypatch.setattr(provider, "fetch_account", missing_identity)
+
+    response = await client.get(
+        f"/api/v1/integrations/{provider.name}/callback",
+        params={"code": "ok", "state": state},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 302
+    assert (
+        response.headers["location"]
+        == f"{PUBLIC_URL}/settings?integration_error=slack&reason=connection_failed"
+    )
+    assert (
+        await pool.fetchval(
+            "SELECT count(*) FROM user_integrations WHERE user_id = $1 AND provider = $2",
+            user_id,
+            provider.name,
+        )
+        == 0
+    )
+
+
+@pytest.mark.asyncio
+async def test_oauth_callback_updates_same_account_and_refuses_different_account(
+    client: AsyncClient,
+    monkeypatch,
+    pool,
+):
+    user_id = await _register(client)
+
+    async def connect(provider: IdentityProvider):
+        _configure_callback(monkeypatch, provider)
+        state = integration_router._encode_state(user_id, provider.name, "/settings")
+        return await client.get(
+            f"/api/v1/integrations/{provider.name}/callback",
+            params={"code": "ok", "state": state},
+            follow_redirects=False,
+        )
+
+    first = await connect(IdentityProvider("token-1", "account-1"))
+    assert first.headers["location"] == f"{PUBLIC_URL}/settings?connected=identity"
+
+    await pool.execute(
+        "UPDATE user_integrations SET account_ref = NULL WHERE user_id = $1 AND provider = $2",
+        user_id,
+        "identity",
+    )
+    same = await connect(IdentityProvider("token-2", "account-1"))
+    assert same.headers["location"] == f"{PUBLIC_URL}/settings?connected=identity"
+    assert (
+        await pool.fetchval(
+            "SELECT account_ref FROM user_integrations WHERE user_id = $1 AND provider = $2",
+            user_id,
+            "identity",
+        )
+        == "account-1"
+    )
+
+    different = await connect(IdentityProvider("token-3", "account-2"))
+    assert (
+        different.headers["location"] == f"{PUBLIC_URL}/integrations/identity"
+        "?integration_error=account_mismatch&expected=Account+account-1"
+    )
+
+    encrypted_token = await pool.fetchval(
+        "SELECT access_token_encrypted FROM user_integrations WHERE user_id = $1 AND provider = $2",
+        user_id,
+        "identity",
+    )
+    assert (
+        integration_router.integration_fernet().decrypt(bytes(encrypted_token)).decode()
+        == "token-2"
+    )
 
 
 @pytest.mark.asyncio
