@@ -462,6 +462,7 @@ export interface PublicSkillCard {
   cover_image_url: string | null;
   source_github_url: string | null;
   view_count: number;
+  install_count: number;
   owner_name: string;
   owner_display_name: string;
   owner_user_id: string;
@@ -474,6 +475,42 @@ export interface PublicSkillCard {
 // belongs to the repo owner — derive it from the attribution URL.
 export function githubOwner(sourceGithubUrl: string): string {
   return sourceGithubUrl.replace("https://github.com/", "").split("/")[0];
+}
+
+// --- Home feed ---
+
+// An item from the caller's own stash the feed resurfaces: an old clip
+// (opens in-app via app_url) or an X/Instagram save (opens the original
+// via external_url; the archived text is the preview).
+export interface ResurfaceCardData {
+  source: "x" | "instagram" | "clip";
+  title: string;
+  preview: string;
+  saved_at: string;
+  app_url: string | null;
+  external_url: string | null;
+  image_url: string | null;
+}
+
+export type FeedItem =
+  | { kind: "skill"; data: PublicSkillCard }
+  | { kind: "public_page"; data: PublicPageCard }
+  | { kind: "resurface"; data: ResurfaceCardData };
+
+export interface HomeFeedPage {
+  items: FeedItem[];
+  next_cursor: number | null;
+}
+
+// Public for signed-out visitors (community stream only); a bearer token adds
+// resurfaced items from the caller's own stash.
+export async function getHomeFeed(cursor: number): Promise<HomeFeedPage> {
+  const token = await getAuthToken();
+  const res = await fetch(`${API_BASE}/api/v1/feed?cursor=${cursor}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  });
+  if (!res.ok) throw new Error(`Feed failed: ${res.status}`);
+  return res.json();
 }
 
 // --- Files: folders (nested) and pages ---

@@ -26,10 +26,9 @@ _TEST_DB_URL = os.getenv(
 )
 os.environ["TEST_DATABASE_URL"] = _TEST_DB_URL
 os.environ["DATABASE_URL"] = _TEST_DB_URL
-# Tests assume blank scopes. The default slides skill seed is
-# valuable in production but breaks empty-state assertions everywhere.
-# Tests that explicitly need the skill seeded call `seed_slides_skill`
-# themselves.
+# Tests assume blank scopes. The default skill seeds are valuable in
+# production but break empty-state assertions everywhere. Tests that
+# explicitly need the skills seeded call `seed_default_skills` themselves.
 os.environ.setdefault("STASH_DISABLE_DEFAULT_SKILL_SEEDS", "1")
 
 from backend import database as db_module  # noqa: E402

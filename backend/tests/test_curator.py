@@ -82,6 +82,39 @@ async def test_has_changes_and_feed_exclude_memory(client: AsyncClient, _db_pool
     assert all(p["name"] != "Wiki Page" for p in feed2["pages"])
 
 
+@pytest.mark.asyncio
+async def test_hydrated_saves_flow_through_the_feed(client: AsyncClient, _db_pool):
+    """An X/Instagram save is deliberate curation input like an upload, so a
+    newly hydrated save must both trip the cheap gate and appear as an item
+    in the delta — a still-pending skeleton row must do neither."""
+    from backend.services import source_service
+
+    key, uid = await _register(client)
+    old = datetime(2020, 1, 1, tzinfo=UTC)
+    source = await source_service.create_source(
+        owner_user_id=str(uid),
+        source_type="x_saves",
+        external_ref=unique_name("acct"),
+        display_name="X",
+    )
+    await _db_pool.execute(
+        "INSERT INTO x_save_docs (owner_user_id, source_id, path, name, kind, external_ref, "
+        "content, hydration_status) "
+        "VALUES ($1, $2, '77', '@bob - 77', 'Bookmark', '77', 'a saved thread', 'done'), "
+        "       ($1, $2, '78', '78', 'Bookmark', '78', NULL, 'pending')",
+        uid,
+        UUID(source["id"]),
+    )
+
+    assert await curation_service.has_changes_since(uid, uid, old) is True
+    feed = await curation_service.changes_since(uid, uid, old)
+    assert feed["counts"]["saves"] == 1
+    save = feed["saves"][0]
+    assert save["name"] == "@bob - 77"
+    assert save["url"] == "https://x.com/i/status/77"
+    assert save["snippet"] == "a saved thread"
+
+
 async def _push_events(client: AsyncClient, key: str, events: list[dict]) -> None:
     r = await client.post(
         "/api/v1/me/sessions/events/batch", json={"events": events}, headers=_auth(key)

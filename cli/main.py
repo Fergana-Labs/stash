@@ -2999,8 +2999,8 @@ def changes(
     since: str = typer.Option(None, "--since", help="ISO timestamp; omit for everything."),
     as_json: bool = typer.Option(False, "--json"),
 ):
-    """What changed since a timestamp — history, pages, files, sources. Feeds
-    the Memory curator's incremental pass."""
+    """What changed since a timestamp — history, pages, files, saves, sources.
+    Feeds the Memory curator's incremental pass."""
     with _client() as c:
         data = c.get_changes(since or None)
     if _use_json(as_json):
@@ -3010,7 +3010,8 @@ def changes(
     console.print(
         f"Changes since {data.get('since') or 'the beginning'}: "
         f"{counts.get('history', 0)} events, {counts.get('pages', 0)} pages, "
-        f"{counts.get('files', 0)} files, {counts.get('sources', 0)} sources"
+        f"{counts.get('files', 0)} files, {counts.get('saves', 0)} saves, "
+        f"{counts.get('sources', 0)} sources"
     )
 
 

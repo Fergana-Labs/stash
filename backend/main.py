@@ -30,6 +30,7 @@ from .routers import (
     demo,
     discover,
     exports,
+    feed,
     files,
     files_tree,
     machine,
@@ -117,6 +118,7 @@ app.include_router(users.router)
 app.include_router(collab.router)
 app.include_router(user_knowledge.router)
 app.include_router(discover.router)
+app.include_router(feed.router)
 app.include_router(skills.me_router)
 app.include_router(skills.public_router)
 app.include_router(files_tree.router)
