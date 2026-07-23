@@ -522,7 +522,7 @@ async def _fetch_thread_context(client: httpx.AsyncClient, tweet_id: str) -> lis
         response = await client.get(TAPI_THREAD_URL, params=params)
         response.raise_for_status()
         payload = response.json()
-        tweets.extend(_normalize(t) for t in payload.get("replies") or [] if t.get("id"))
+        tweets.extend(_normalize(t) for t in payload.get("tweets") or [] if t.get("id"))
         cursor = payload.get("next_cursor")
         if not payload.get("has_next_page") or not cursor:
             break

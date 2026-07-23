@@ -213,7 +213,7 @@ def fake_sync(monkeypatch):
     _FakeApi.bookmarks_pages = {None: _BOOKMARKS}
     _FakeApi.bookmarks_calls = []
     _FakeApi.timeline_pages = {None: _TIMELINE}
-    _FakeApi.thread_pages = {None: {"replies": [_ROOT], "has_next_page": False}}
+    _FakeApi.thread_pages = {None: {"tweets": [_ROOT], "has_next_page": False}}
     _FakeApi.tweets = {}
     _FakeApi.media_bytes = b"fake image bytes"
     _FakeApi.media_headers = {"content-type": "image/jpeg"}
@@ -316,7 +316,7 @@ async def test_self_thread_renders_the_whole_author_chain(client, pool, fake_syn
     # only the author's connected chain belongs in the save.
     _FakeApi.thread_pages = {
         None: {
-            "replies": [
+            "tweets": [
                 {
                     "id": "501",
                     "text": "it compounds 2/",
@@ -391,7 +391,7 @@ async def test_thread_media_is_capped_with_saved_tweet_first(
     }
     _FakeApi.thread_pages = {
         None: {
-            "replies": [
+            "tweets": [
                 {
                     "id": "701",
                     "text": "more 2/",
