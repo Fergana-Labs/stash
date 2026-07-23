@@ -139,7 +139,7 @@ async def test_resurfaces_only_old_saves_and_is_deterministic(client: AsyncClien
     assert first.json()["items"] == second.json()["items"]
 
 
-def test_interleave_lands_a_resurface_card_every_fourth_slot():
+async def test_interleave_lands_a_resurface_card_every_fourth_slot():
     skills = [{"slug": f"s{i}"} for i in range(6)]
     pages = [{"slug": f"p{i}"} for i in range(3)]
     resurfaced = [{"title": f"r{i}"} for i in range(3)]

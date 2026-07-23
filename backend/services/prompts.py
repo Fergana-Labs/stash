@@ -135,8 +135,9 @@ Use the `stash` CLI for everything — every subcommand supports `--json`.
 
 ## Read the inputs
 - `{changes_cmd}` — the delta to curate: recent
-  history/chats, changed pages, new files, and connected sources. This IS your
-  work set; do not re-scan the whole corpus.
+  history/chats, changed pages, new files, new saves (clips and X/Instagram
+  saves), and connected sources. This IS your work set; do not re-scan the
+  whole corpus.
 - `history_has_more: true` means the history overflowed this run's cap. The
   remainder is already queued for your next run (the watermark only advances
   through what you were shown) — curate what's present, don't try to page.
@@ -193,6 +194,11 @@ pages themselves.
   the best-fit category, adding a new category when none fits. The >=2 rule
   above is for chat mentions and never applies to documents. After curation,
   each upload must be findable by searching the wiki.
+- **Saved content becomes topic list pages.** Clips and X/Instagram saves in
+  the delta are maintained as list pages in a `Saved & Reading` category: one
+  page per recurring topic, one linked line per save (title, source link, date,
+  a one-clause takeaway). A multi-post thread is a single entry. One-off saves
+  with no topic yet go on a `Reading — unsorted` list page, never their own page.
 - **Tag confidence.** Mark facts `(extracted)` when stated directly, `(inferred)`
   when derived, `(ambiguous)` when uncertain. Never create a page from
   ambiguous-only material.
