@@ -5,6 +5,8 @@ everything before it is captured in git history (`git log`), not here.
 
 ## Unreleased
 
+- `stash vfs stat` once again shows the source-sharing command for connected
+  source roots, including roots that do not have an app URL.
 - Frontend server-side backend requests now require `BACKEND_INTERNAL_URL`
   or `NEXT_PUBLIC_API_URL` instead of guessing an environment, so missing
   managed deploy config fails during build rather than crashing public
