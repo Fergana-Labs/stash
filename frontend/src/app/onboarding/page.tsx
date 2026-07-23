@@ -436,7 +436,7 @@ function TryItOutStep({
           Try it out
         </h1>
         <p className="text-sm text-dim max-w-md">
-          Four ways to start — pick whichever fits.
+          Five ways to start — pick whichever fits.
         </p>
       </div>
       <TryOption
@@ -490,6 +490,27 @@ function TryItOutStep({
           <CommandBlock command={CLI_INSTALL_COMMAND} />
           <CommandBlock command="stash signin" />
         </div>
+      </TryOption>
+      <TryOption
+        badge="Save"
+        lead="Save anything you read, straight from your browser."
+      >
+        <a
+          href={routes.extension}
+          target="_blank"
+          rel="noopener"
+          className="group flex w-full cursor-pointer items-center justify-between gap-3 rounded-lg border border-dashed border-border bg-surface px-4 py-3 text-left transition-colors hover:border-brand"
+        >
+          <div>
+            <div className="text-[13.5px] font-medium text-foreground">
+              Get the browser extension
+            </div>
+            <div className="text-[12px] text-muted-foreground">
+              Clip pages, import bookmarks, sync Instagram saves and ChatGPT/Claude chats.
+            </div>
+          </div>
+          <span className="text-muted-foreground transition-colors group-hover:text-brand">&rarr;</span>
+        </a>
       </TryOption>
     </div>
   );

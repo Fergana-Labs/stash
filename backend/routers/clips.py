@@ -282,6 +282,17 @@ async def client_result(
     return {"status": "done"}
 
 
+@imports_router.get("")
+async def list_import_progress(
+    current_user: dict = Depends(get_current_user),
+):
+    """Recent import batches with their progress, newest first — the app-side
+    progress surface for bulk imports that grind for days. Additive: the
+    extension keeps using the per-batch endpoint below."""
+    batches = await url_import_service.list_batches_progress(current_user["id"])
+    return {"batches": batches}
+
+
 @imports_router.get("/{batch_id}")
 async def get_import_progress(
     batch_id: UUID,

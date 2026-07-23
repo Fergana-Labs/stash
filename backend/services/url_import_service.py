@@ -177,6 +177,34 @@ async def claim_client_batch(owner_user_id: UUID, *, limit: int) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+async def list_batches_progress(owner_user_id: UUID) -> list[dict]:
+    """Recent batches (last 14 days) with aggregate progress, newest first.
+    Per-URL failure details stay on the per-batch endpoint."""
+    rows = await get_pool().fetch(
+        """
+        SELECT b.id, b.kind, b.filename, b.total, b.created_at,
+               count(u.id) FILTER (WHERE u.status = 'done' AND u.error IS NULL) AS done,
+               count(u.id) FILTER (WHERE u.status = 'done' AND u.error IS NOT NULL) AS link_only,
+               count(u.id) FILTER (WHERE u.status = 'needs_client') AS needs_client,
+               count(u.id) FILTER (
+                   WHERE u.status IN ('pending', 'processing')
+                      OR (u.status = 'failed' AND u.attempts < 3)
+               ) AS pending
+        FROM import_batches b
+        LEFT JOIN url_imports u ON u.batch_id = b.id
+        WHERE b.owner_user_id = $1 AND b.created_at > now() - interval '14 days'
+        GROUP BY b.id, b.kind, b.filename, b.total, b.created_at
+        ORDER BY b.created_at DESC
+        LIMIT 20
+        """,
+        owner_user_id,
+    )
+    return [
+        {**dict(row), "id": str(row["id"]), "created_at": row["created_at"].isoformat()}
+        for row in rows
+    ]
+
+
 async def batch_progress(batch_id: UUID, owner_user_id: UUID) -> dict | None:
     pool = get_pool()
     batch = await pool.fetchrow(

@@ -152,6 +152,72 @@ async def test_push_creates_source_and_skeleton_rows(
 
 
 @pytest.mark.asyncio
+async def test_push_stamps_liveness_and_clears_warning(
+    client: AsyncClient, pool, monkeypatch
+) -> None:
+    # The push is the only liveness signal an extension-fed source has: it
+    # must stamp extension_last_push_at (the UI's staleness anchor) and clear
+    # any standing sync warning — a push proves the pipeline is alive.
+    from backend.routers import sources as sources_router
+
+    monkeypatch.setattr(settings, "SCRAPECREATORS_API_KEY", "sc-key")
+    monkeypatch.setattr(sources_router.celery, "send_task", lambda name, args: None)
+    headers, owner_id = await _register(client)
+
+    await client.post(
+        "/api/v1/me/saved-items",
+        json=_push_body(["https://www.instagram.com/p/AAA111bbb/"]),
+        headers=headers,
+    )
+    row = await pool.fetchrow(
+        "SELECT id, settings FROM user_sources WHERE owner_user_id = $1 "
+        "AND source_type = 'instagram_saves'",
+        UUID(owner_id),
+    )
+    assert row["settings"]["extension_last_push_at"]
+
+    await pool.execute(
+        "UPDATE user_sources SET sync_error = 'stale warning' WHERE id = $1", row["id"]
+    )
+    await client.post(
+        "/api/v1/me/saved-items",
+        json=_push_body(["https://www.instagram.com/p/AAA111bbb/"]),
+        headers=headers,
+    )
+    assert (
+        await pool.fetchval("SELECT sync_error FROM user_sources WHERE id = $1", row["id"]) is None
+    )
+
+
+@pytest.mark.asyncio
+async def test_purge_endpoint_covers_extension_fed_providers(
+    client: AsyncClient, pool, monkeypatch
+) -> None:
+    # Instagram has no OAuth provider, so purge must gate on the source-type
+    # map — the Delete data button is the only delete path extension users have.
+    from backend.routers import sources as sources_router
+
+    monkeypatch.setattr(settings, "SCRAPECREATORS_API_KEY", "sc-key")
+    monkeypatch.setattr(sources_router.celery, "send_task", lambda name, args: None)
+    headers, owner_id = await _register(client)
+    await client.post(
+        "/api/v1/me/saved-items",
+        json=_push_body(["https://www.instagram.com/p/AAA111bbb/"]),
+        headers=headers,
+    )
+
+    resp = await client.post("/api/v1/integrations/instagram/purge", headers=headers)
+    assert resp.status_code == 200, resp.text
+    assert resp.json() == {"ok": True, "sources": 1}
+    assert (
+        await pool.fetchval(
+            "SELECT count(*) FROM instagram_save_docs WHERE owner_user_id = $1", UUID(owner_id)
+        )
+        == 0
+    )
+
+
+@pytest.mark.asyncio
 async def test_push_rejects_non_instagram_urls(client: AsyncClient, monkeypatch) -> None:
     monkeypatch.setattr(settings, "SCRAPECREATORS_API_KEY", "sc-key")
     headers, _ = await _register(client)

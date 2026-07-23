@@ -395,13 +395,46 @@ async def get_readable_source(source_id: UUID, user_id: UUID) -> dict | None:
 
 
 async def delete_source(source_id: UUID, user_id: UUID) -> bool:
-    """Remove a connected source the user owns. Its documents cascade."""
-    result = await get_pool().execute(
-        "DELETE FROM user_sources WHERE id = $1 AND owner_user_id = $2",
+    """Remove a connected source the user owns: archived media blobs, share
+    grants, then the row (documents cascade). Same cleanup as the provider
+    purge — one deletion codepath, nothing orphaned."""
+    owned = await get_pool().fetchval(
+        "SELECT 1 FROM user_sources WHERE id = $1 AND owner_user_id = $2",
         source_id,
         user_id,
     )
+    if not owned:
+        return False
+    await _cleanup_source_data([source_id])
+    result = await get_pool().execute("DELETE FROM user_sources WHERE id = $1", source_id)
     return result.endswith("1")
+
+
+async def _cleanup_source_data(source_ids: list[UUID]) -> None:
+    """What the FK cascade can't reach when source rows are deleted: media
+    archives in object storage (X/Instagram saves) and share grants."""
+    from . import storage_service
+
+    pool = get_pool()
+    x_rows = await pool.fetch(
+        "SELECT media FROM x_save_docs WHERE source_id = ANY($1::uuid[]) "
+        "AND jsonb_array_length(media) > 0",
+        source_ids,
+    )
+    for row in x_rows:
+        for item in row["media"]:
+            await storage_service.delete_file(item["storage_key"])
+    ig_rows = await pool.fetch(
+        "SELECT media_storage_key FROM instagram_save_docs "
+        "WHERE source_id = ANY($1::uuid[]) AND media_storage_key IS NOT NULL",
+        source_ids,
+    )
+    for row in ig_rows:
+        await storage_service.delete_file(row["media_storage_key"])
+    await pool.execute(
+        "DELETE FROM shares WHERE object_type = 'source' AND object_id = ANY($1::uuid[])",
+        source_ids,
+    )
 
 
 def _provider_source_types(provider: str) -> list[str]:
@@ -429,8 +462,6 @@ async def purge_sources_for_provider(user_id: UUID, provider: str) -> list[dict]
     """The explicit delete-my-data path: archived media blobs, share grants,
     then the source rows (documents cascade). Returns the deleted sources so
     callers audit exactly what was removed."""
-    from . import storage_service
-
     pool = get_pool()
     source_types = _provider_source_types(provider)
     source_ids = [
@@ -444,28 +475,7 @@ async def purge_sources_for_provider(user_id: UUID, provider: str) -> list[dict]
     if not source_ids:
         return []
 
-    # Media archives (X/Instagram saves) live in object storage; the row
-    # cascade below cannot reach them, so they're deleted first.
-    x_rows = await pool.fetch(
-        "SELECT media FROM x_save_docs WHERE source_id = ANY($1::uuid[]) "
-        "AND jsonb_array_length(media) > 0",
-        source_ids,
-    )
-    for row in x_rows:
-        for item in row["media"]:
-            await storage_service.delete_file(item["storage_key"])
-    ig_rows = await pool.fetch(
-        "SELECT media_storage_key FROM instagram_save_docs "
-        "WHERE source_id = ANY($1::uuid[]) AND media_storage_key IS NOT NULL",
-        source_ids,
-    )
-    for row in ig_rows:
-        await storage_service.delete_file(row["media_storage_key"])
-
-    await pool.execute(
-        "DELETE FROM shares WHERE object_type = 'source' AND object_id = ANY($1::uuid[])",
-        source_ids,
-    )
+    await _cleanup_source_data(source_ids)
     rows = await pool.fetch(
         "DELETE FROM user_sources WHERE id = ANY($1::uuid[]) RETURNING *",
         source_ids,

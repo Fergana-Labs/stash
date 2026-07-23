@@ -47,11 +47,14 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import type { User } from "@/lib/types";
+import { routes } from "@/lib/workspace-routes";
 
 // How often a row re-checks a source that is mid-sync, and how many times before
 // it gives up. A sync that hasn't settled in ~5 minutes is wedged; polling it for
 // as long as the tab happens to be open buys nothing.
 const SYNC_POLL_INTERVAL_MS = 3000;
+// The extension auto-syncs daily; silence for two cycles means it's dead.
+const EXTENSION_STALE_AFTER_MS = 48 * 3600 * 1000;
 const SYNC_POLL_MAX_ATTEMPTS = 100;
 
 export default function IntegrationRoute() {
@@ -152,6 +155,15 @@ export function IntegrationDetail({ provider }: { provider: string }) {
   // Extension-fed connectors (X, Instagram) have no OAuth integration — they're
   // "connected" once the browser extension has pushed at least one source.
   const isExtension = connector.kind === "extension";
+  // Extension-fed sources have no token to health-check — the server stamps
+  // extension_last_push_at on every push, and silence beyond two daily push
+  // cycles means the pipeline is dead (extension uninstalled, IG logged out).
+  const extensionLastPush = isExtension
+    ? ((sources[0]?.settings?.extension_last_push_at as string | undefined) ?? null)
+    : null;
+  const extensionStale =
+    !!extensionLastPush &&
+    Date.now() - new Date(extensionLastPush).getTime() > EXTENSION_STALE_AFTER_MS;
   const singleSource = !!connector.singleSource;
   const connected = isExtension ? sources.length > 0 : !!status?.connected;
   const account = connectedAccountLabel(status);
@@ -287,9 +299,30 @@ export function IntegrationDetail({ provider }: { provider: string }) {
               </span>
             )}
             {isExtension ? (
-              <span className="text-[12.5px] text-muted-foreground">
-                {connected ? "Synced from the browser extension" : "Save items with the browser extension"}
-              </span>
+              <>
+                <span className="text-[12.5px] text-muted-foreground">
+                  {extensionLastPush
+                    ? `Extension ${relativeTime(extensionLastPush)}`
+                    : connected
+                    ? "Synced from the browser extension"
+                    : null}
+                </span>
+                {!connected && (
+                  <Link href={routes.extension} className="text-[12.5px] font-semibold text-brand hover:underline">
+                    Get the extension
+                  </Link>
+                )}
+                {sources.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => void deleteKeptData()}
+                    disabled={busy === "purge"}
+                    className="cursor-pointer rounded-lg px-3 py-1.5 text-[12px] font-semibold text-muted-foreground hover:bg-raised hover:text-foreground disabled:opacity-60"
+                  >
+                    {busy === "purge" ? "Deleting..." : "Delete data…"}
+                  </button>
+                )}
+              </>
             ) : connected ? (
               <>
                 {canConnectAnother && (
@@ -353,6 +386,18 @@ export function IntegrationDetail({ provider }: { provider: string }) {
           </Link>
         </div>
 
+        {extensionStale && (
+          <div className="mt-4 flex items-center justify-between gap-3 rounded-md border border-warning/40 bg-warning-muted px-3 py-2 text-[12px] text-foreground">
+            <span>
+              {`The browser extension hasn't synced since ${new Date(
+                extensionLastPush!,
+              ).toLocaleDateString()} — check that it's installed and that you're signed in to ${connector.label}.`}
+            </span>
+            <Link href={routes.extension} className={secondaryButton()}>
+              Extension setup
+            </Link>
+          </div>
+        )}
         {staleAccounts.length > 0 && (
           <div className="mt-4 flex items-center justify-between gap-3 rounded-md border border-error/30 bg-error/10 px-3 py-2 text-[12px] text-error">
             <span>
@@ -492,11 +537,18 @@ export function IntegrationDetail({ provider }: { provider: string }) {
           )}
           {sources.length === 0 ? (
             <div className="py-3 text-[12.5px] text-muted-foreground">
-              {isExtension
-                ? `Install the Stash browser extension and save on ${connector.label} — your items will appear here.`
-                : connected
-                  ? "Nothing added yet."
-                  : "Connect to add sources."}
+              {isExtension ? (
+                <>
+                  <Link href={routes.extension} className="font-semibold text-brand hover:underline">
+                    Install the Stash browser extension
+                  </Link>{" "}
+                  and save on {connector.label} — your items will appear here.
+                </>
+              ) : connected ? (
+                "Nothing added yet."
+              ) : (
+                "Connect to add sources."
+              )}
             </div>
           ) : (
             <div>
