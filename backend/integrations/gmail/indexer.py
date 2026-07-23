@@ -154,6 +154,7 @@ async def _get_messages(
 
     return await asyncio.gather(*(fetch(ref["id"]) for ref in refs if ref.get("id")))
 
+
 async def _upsert_message_metadata(source: dict, message: dict) -> str | None:
     """Upsert one message's metadata; returns its index path (the VFS ref)."""
     path = _message_path(message)
