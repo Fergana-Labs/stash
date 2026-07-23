@@ -52,6 +52,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  window.history.replaceState(null, "", "/");
 });
 
 // Disconnect lives in the connect modal itself so a connected source can be
@@ -92,6 +93,107 @@ describe("SourceConnectorList disconnect", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Cancel" }));
 
     expect(disconnectIntegration).not.toHaveBeenCalled();
+  });
+});
+
+// A failed OAuth callback is a top-window navigation, so the backend can't
+// return a JSON error — it redirects to /settings?integration_error=<provider>.
+// That failure must be shown loudly (a silent bounce reads as a dead button)
+// and the param stripped so a refresh doesn't resurrect a stale error.
+describe("SourceConnectorList OAuth callback errors", () => {
+  // jsdom has no scrollIntoView; the banner scrolls itself into view because
+  // it renders in the fourth settings section, below the fold.
+  const scrollIntoView = vi.fn();
+  beforeEach(() => {
+    Element.prototype.scrollIntoView = scrollIntoView;
+  });
+
+  it("shows a banner for ?integration_error and strips it from the URL", async () => {
+    window.history.replaceState(
+      null,
+      "",
+      "/settings?integration_error=github&reason=connection_failed"
+    );
+    listIntegrations.mockResolvedValue({ providers: [connectedGithub(false)] });
+
+    render(
+      <ConfirmDialogProvider>
+        <SourceConnectorList returnTo="/" includeObsidian={false} />
+      </ConfirmDialogProvider>
+    );
+
+    expect(await screen.findByText(/GitHub connection failed/)).toBeInTheDocument();
+    expect(window.location.pathname).toBe("/settings");
+    expect(window.location.search).toBe("");
+    expect(scrollIntoView).toHaveBeenCalled();
+  });
+
+  it("says the authorization was cancelled for reason=access_denied", async () => {
+    window.history.replaceState(
+      null,
+      "",
+      "/settings?integration_error=github&reason=access_denied"
+    );
+    listIntegrations.mockResolvedValue({ providers: [connectedGithub(false)] });
+
+    render(
+      <ConfirmDialogProvider>
+        <SourceConnectorList returnTo="/" includeObsidian={false} />
+      </ConfirmDialogProvider>
+    );
+
+    expect(
+      await screen.findByText(/GitHub connection failed — the authorization was cancelled/)
+    ).toBeInTheDocument();
+  });
+
+  it("never echoes an unrecognized provider slug into the banner", async () => {
+    window.history.replaceState(
+      null,
+      "",
+      "/settings?integration_error=Billing%20overdue%20renew%20now&reason=connection_failed"
+    );
+    listIntegrations.mockResolvedValue({ providers: [connectedGithub(false)] });
+
+    render(
+      <ConfirmDialogProvider>
+        <SourceConnectorList returnTo="/" includeObsidian={false} />
+      </ConfirmDialogProvider>
+    );
+
+    expect(await screen.findByText(/^Connection failed/)).toBeInTheDocument();
+    expect(screen.queryByText(/Billing overdue/)).not.toBeInTheDocument();
+  });
+
+  it("keeps unrelated query params when stripping the error", async () => {
+    window.history.replaceState(
+      null,
+      "",
+      "/settings?tab=sources&integration_error=github&reason=connection_failed"
+    );
+    listIntegrations.mockResolvedValue({ providers: [connectedGithub(false)] });
+
+    render(
+      <ConfirmDialogProvider>
+        <SourceConnectorList returnTo="/" includeObsidian={false} />
+      </ConfirmDialogProvider>
+    );
+
+    expect(await screen.findByText(/GitHub connection failed/)).toBeInTheDocument();
+    expect(window.location.search).toBe("?tab=sources");
+  });
+
+  it("shows no banner without the param", async () => {
+    listIntegrations.mockResolvedValue({ providers: [connectedGithub(false)] });
+
+    render(
+      <ConfirmDialogProvider>
+        <SourceConnectorList returnTo="/" includeObsidian={false} />
+      </ConfirmDialogProvider>
+    );
+
+    expect(await screen.findByText("GitHub")).toBeInTheDocument();
+    expect(screen.queryByText(/connection failed/)).not.toBeInTheDocument();
   });
 });
 

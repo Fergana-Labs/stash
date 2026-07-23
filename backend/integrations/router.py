@@ -336,13 +336,32 @@ async def integration_connect(
     return ConnectStartResponse(authorize_url=p.authorize_url(state))
 
 
+def _error_redirect(provider: str, reason: str) -> RedirectResponse:
+    """Land the browser back on settings with the failure flagged. The callback
+    is always a top-window navigation, so a JSON error body would strand the
+    user on the API host — every failure must end in a redirect the UI can
+    render as a banner."""
+    base = settings.PUBLIC_URL.rstrip("/")
+    query = {"integration_error": provider, "reason": reason}
+    return RedirectResponse(url=f"{base}/settings?{urlencode(query)}", status_code=302)
+
+
 @router.get("/{provider}/callback")
 async def integration_callback(
     provider: str,
-    code: str = Query(...),
-    state: str = Query(...),
+    code: str | None = Query(None),
+    state: str | None = Query(None),
+    error: str | None = Query(None),
 ):
     p = get_provider(provider)
+    # A denied consent screen redirects back with ?error=access_denied and no
+    # code (RFC 6749 §4.1.2.1) — there is nothing to exchange.
+    if error or not code or not state:
+        logger.warning(
+            "OAuth callback aborted for provider %s (%s)", provider, error or "missing code/state"
+        )
+        reason = "access_denied" if error == "access_denied" else "connection_failed"
+        return _error_redirect(provider, reason)
     # The token exchange / account fetch talks to the provider — it can fail for
     # reasons outside our control (bad client secret, provider error, expired
     # code). Surface those as a clean redirect back to the UI with an error flag
@@ -436,13 +455,15 @@ async def integration_callback(
                     logger.warning(
                         "x: failed to auto-create source exception_type=%s", type(exc).__name__
                     )
-    except HTTPException:
-        raise  # already a clean client error (e.g. invalid/expired state → 400)
+    except HTTPException as e:
+        # Invalid/expired state (a consent tab left open past STATE_TTL) is a
+        # browser-facing failure like any other — a bare 400 JSON page on the
+        # API host is a dead end for the user.
+        logger.warning("OAuth callback rejected for provider %s (%s)", provider, e.detail)
+        return _error_redirect(provider, "connection_failed")
     except Exception as e:
         logger.warning("OAuth callback failed for provider %s (%s)", provider, type(e).__name__)
-        base = settings.PUBLIC_URL.rstrip("/")
-        query = {"integration_error": provider, "reason": "connection_failed"}
-        return RedirectResponse(url=f"{base}/settings?{urlencode(query)}", status_code=302)
+        return _error_redirect(provider, "connection_failed")
 
     base = settings.PUBLIC_URL.rstrip("/")
     target = _safe_return_to(return_to) or "/settings"

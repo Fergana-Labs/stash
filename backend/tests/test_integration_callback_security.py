@@ -146,6 +146,71 @@ async def test_oauth_callback_failure_does_not_redirect_or_log_secrets(
     assert "access_token" not in caplog.text
 
 
+# The callback is always a top-window navigation: every failure must end in a
+# redirect the UI renders as a banner — a JSON error body (422 for a missing
+# code, 400 for a stale state) strands the user on the API host with no UI.
+@pytest.mark.asyncio
+async def test_consent_denial_redirects_with_access_denied(
+    client: AsyncClient,
+    monkeypatch,
+):
+    provider = FailingExchangeProvider()
+    _configure_callback(monkeypatch, provider)
+
+    response = await client.get(
+        f"/api/v1/integrations/{provider.name}/callback",
+        params={"error": "access_denied", "state": "opaque"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 302
+    assert (
+        response.headers["location"]
+        == f"{PUBLIC_URL}/settings?integration_error=leaky&reason=access_denied"
+    )
+
+
+@pytest.mark.asyncio
+async def test_missing_code_redirects_instead_of_422(
+    client: AsyncClient,
+    monkeypatch,
+):
+    provider = FailingExchangeProvider()
+    _configure_callback(monkeypatch, provider)
+
+    response = await client.get(
+        f"/api/v1/integrations/{provider.name}/callback",
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 302
+    assert (
+        response.headers["location"]
+        == f"{PUBLIC_URL}/settings?integration_error=leaky&reason=connection_failed"
+    )
+
+
+@pytest.mark.asyncio
+async def test_invalid_state_redirects_instead_of_400(
+    client: AsyncClient,
+    monkeypatch,
+):
+    provider = FailingExchangeProvider()
+    _configure_callback(monkeypatch, provider)
+
+    response = await client.get(
+        f"/api/v1/integrations/{provider.name}/callback",
+        params={"code": "ok", "state": "not-a-valid-fernet-token"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 302
+    assert (
+        response.headers["location"]
+        == f"{PUBLIC_URL}/settings?integration_error=leaky&reason=connection_failed"
+    )
+
+
 @pytest.mark.asyncio
 async def test_oauth_profile_failure_refuses_connection_without_logging_tokens(
     client: AsyncClient,
