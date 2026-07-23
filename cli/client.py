@@ -29,10 +29,13 @@ SOURCE_ENTRIES_PAGE = 1000
 
 
 class StashClient:
-    def __init__(self, base_url: str, api_key: str = "", scope: str = ""):
+    def __init__(self, base_url: str, api_key: str = "", scope: str = "", auto: bool = False):
         self._base_url = base_url.rstrip("/")
         self._api_key = api_key
         self._scope = scope
+        # Automated housekeeping (skills sync) — its reads are tagged so
+        # content-activity analytics can exclude them (see auth._set_request_via).
+        self._auto = auto
         self._http = httpx.Client(base_url=self._base_url, timeout=30)
 
     def close(self) -> None:
@@ -50,6 +53,8 @@ class StashClient:
         headers = {"Authorization": f"Bearer {self._api_key}"}
         if self._scope:
             headers["X-Stash-Scope"] = self._scope
+        if self._auto:
+            headers["X-Stash-Via"] = "auto"
         return headers
 
     def _request(self, method: str, path: str, **kwargs) -> httpx.Response:

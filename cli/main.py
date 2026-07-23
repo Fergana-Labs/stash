@@ -95,12 +95,15 @@ def upgrade() -> None:
     raise typer.Exit(result.returncode)
 
 
-def _client() -> StashClient:
+def _client(auto: bool = False) -> StashClient:
+    """auto=True tags every request as automated housekeeping so content-
+    activity analytics can exclude its reads (see auth._set_request_via)."""
     cfg = load_config()
     return StashClient(
         base_url=cfg["base_url"],
         api_key=cfg.get("api_key", ""),
         scope=cfg.get("scope", ""),
+        auto=auto,
     )
 
 
@@ -2123,7 +2126,9 @@ def skills_sync(
     manifest = _load_installed_manifest()
     installed = _installed_entry(manifest, root)
 
-    with _client() as c:
+    # Sync reads every skill's contents to compare hashes — housekeeping, not
+    # someone reading a document, so its requests are tagged auto.
+    with _client(auto=True) as c:
         try:
             summary, new_state = _sync_skills(
                 c,
