@@ -99,6 +99,10 @@ export async function startConnect(
   window.location.href = authorize_url;
 }
 
+// Open surfaces that show connection status (e.g. the sidebar Tools list)
+// listen for this to refresh immediately after a connect or disconnect.
+export const INTEGRATIONS_CHANGED_EVENT = "integrations-changed";
+
 export async function disconnectIntegration(
   provider: IntegrationProvider,
   deleteData = false,
@@ -107,6 +111,7 @@ export async function disconnectIntegration(
     method: "POST",
     body: JSON.stringify({ delete_data: deleteData }),
   });
+  window.dispatchEvent(new Event(INTEGRATIONS_CHANGED_EVENT));
 }
 
 /** Delete the kept data of a (disconnected) provider — documents, archived
@@ -127,6 +132,7 @@ export async function submitCredentials(
     method: "POST",
     body: JSON.stringify(values),
   });
+  window.dispatchEvent(new Event(INTEGRATIONS_CHANGED_EVENT));
 }
 
 export type GitHubRepoSummary = {
