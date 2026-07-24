@@ -1578,15 +1578,15 @@ export async function getPublicSkill(slug: string): Promise<PublicSkillDetail> {
   return apiFetch(`/api/v1/skills/${slug}`);
 }
 
-// Fork: deep folder copy into the caller's own space, landing as a private
-// skill folder. The fork target is always the current user.
+// Fork: deep folder copy into the active scope, landing as a private skill
+// folder — the caller's own space, or the workspace they're working in.
 export async function forkSkill(
   slug: string
 ): Promise<{ folder_id: string; name: string }> {
-  const me = await getMe();
+  const targetScope = getScopeUserId() ?? (await getMe()).id;
   return apiFetch(`/api/v1/skills/${slug}/add-to-stash`, {
     method: "POST",
-    body: JSON.stringify({ owner_user_id: me.id }),
+    body: JSON.stringify({ owner_user_id: targetScope }),
   });
 }
 

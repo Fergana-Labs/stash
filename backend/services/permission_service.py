@@ -422,17 +422,18 @@ async def check_access(
     if user_id is not None and owner_user_id is not None and owner_user_id == user_id:
         return True
 
-    # The publish record itself: existence == publicly readable; owner manages.
+    # The publish record itself: existence == publicly readable; managing it
+    # takes write access on its scope (owner, or workspace member).
     if object_type == "skill":
         pool = get_pool()
         row = await pool.fetchrow(
-            "SELECT id, owner_id FROM skills WHERE id = $1",
+            "SELECT id, owner_user_id FROM skills WHERE id = $1",
             object_id,
         )
         if not row:
             return False
         if require != "read":
-            return row["owner_id"] == user_id
+            return await is_workspace_member(row["owner_user_id"], user_id)
         return True
 
     # A session folder is a shareable bundle: public link, owner, or user share.

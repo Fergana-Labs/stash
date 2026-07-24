@@ -280,17 +280,18 @@ async def user_github_token(user_id: UUID) -> str | None:
         return None
 
 
-async def import_repo_for_user(owner_user_id: UUID, repo_url: str) -> dict:
-    """Copy a whole repo into the user's own scope as one new root folder — a
-    straight copy preserving structure. Any folder containing a SKILL.md
-    derives as a skill automatically (skill-ness is never stored). Private
-    repos work when the user's GitHub connection can read them."""
-    token = await user_github_token(owner_user_id)
+async def import_repo_for_user(owner_user_id: UUID, user_id: UUID, repo_url: str) -> dict:
+    """Copy a whole repo into the active scope (the user's own, or a workspace
+    they belong to) as one new root folder — a straight copy preserving
+    structure. Any folder containing a SKILL.md derives as a skill
+    automatically (skill-ness is never stored). Private repos work when the
+    user's GitHub connection can read them."""
+    token = await user_github_token(user_id)
     repo_name, files = await fetch_repo_files(repo_url, token)
     if not files:
         raise ValueError("That repo has no importable files")
-    folder = await _create_root_folder(owner_user_id, owner_user_id, repo_name)
-    await files_tree_service.write_folder_files(owner_user_id, owner_user_id, folder["id"], files)
+    folder = await _create_root_folder(owner_user_id, user_id, repo_name)
+    await files_tree_service.write_folder_files(owner_user_id, user_id, folder["id"], files)
     return {"folder_id": str(folder["id"]), "name": folder["name"], "files": len(files)}
 
 

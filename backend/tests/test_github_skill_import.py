@@ -184,7 +184,9 @@ async def test_import_repo_for_user_copies_whole_repo(client: AsyncClient, pool,
     assert reg.status_code == 201
     user_id, api_key = reg.json()["id"], reg.json()["api_key"]
 
-    result = await gsi.import_repo_for_user(UUID(user_id), "https://github.com/acme/skills")
+    result = await gsi.import_repo_for_user(
+        UUID(user_id), UUID(user_id), "https://github.com/acme/skills"
+    )
 
     assert result["name"] == "skills"
     assert result["files"] == len(FAKE_REPO)

@@ -3,8 +3,9 @@
 Each user IS their own scope. Everything a user owns is keyed by
 `owner_user_id` = their user id. A workspace is a scope owned by a dedicated
 login-less user; its members can read and write that scope's content like
-their own. Owner-only powers (sharing, sources, publishing, public links)
-stay with the scope user itself — `is_owner` never matches a member.
+their own — including publishing the scope's skills. Owner-only powers
+(sharing, sources, per-object public links) stay with the scope user itself —
+`is_owner` never matches a member.
 """
 
 import logging
