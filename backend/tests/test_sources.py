@@ -1572,24 +1572,28 @@ async def test_slack_indexer_backfills_only_allowed_channels(
 
 
 @pytest.mark.asyncio
-async def test_slack_sync_without_channels_records_sync_error(client: AsyncClient):
+async def test_slack_sync_without_channels_needs_setup(client: AsyncClient):
     from backend.tasks import sources as sources_task
 
-    # A malformed Slack source with no channel allowlist must not report a
-    # successful sync that silently ingested nothing.
+    # Slack indexes only the channels the owner picks. Picking none must not
+    # report a successful sync that silently ingested nothing — but it is not a
+    # failure either: nothing is broken and no retry can fix it, so a red error
+    # promising an automatic retry is wrong twice over. The owner gets the
+    # instruction instead, and the source parks until they act.
     api_key, owner_id = await _register(client)
     ws = await _user_scope(client, api_key)
     src = await _insert_slack_source_without_channels(owner_id)
 
     result = await sources_task._sync_source(UUID(src["id"]))
 
-    assert result["status"] == "failed"
+    assert result["status"] == "needs_setup"
     sources = await source_service.list_sources(ws, owner_id)
     slack = next(s for s in sources if s["type"] == "slack")
-    assert slack["sync_status"] == "failed"
-    # The stored error is a redacted constant — raw exception text could carry
-    # secrets, so the detail lives only in server logs.
-    assert slack["sync_error"] == sources_task.SYNC_FAILED_MESSAGE
+    assert slack["sync_status"] == "needs_setup"
+    assert "Choose the Slack channels" in slack["sync_error"]
+    # A stale last_synced_at renders as "synced <old date>", which reads as a
+    # sync that ran and merely found nothing.
+    assert slack["last_synced_at"] is None
 
 
 def _fake_webhook_channel_resolution(monkeypatch, channel_name="general"):

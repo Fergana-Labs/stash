@@ -633,7 +633,8 @@ function relativeTime(iso: string | null | undefined): string {
 }
 
 // The lead-in to the status line. A healthy source shows a quiet green dot; a
-// syncing/failed source shows a labeled pill (failed is also surfaced in red below).
+// syncing/failed source shows a labeled pill (failed is also surfaced in red
+// below). A source waiting on the owner is amber, not red — nothing is broken.
 function SyncStatusMark({ syncStatus }: { syncStatus: string | null | undefined }) {
   const s = syncStatus ?? "idle";
   if (s === "idle") {
@@ -642,10 +643,12 @@ function SyncStatusMark({ syncStatus }: { syncStatus: string | null | undefined 
   const cls =
     s === "syncing"
       ? "border-blue-300/60 bg-blue-500/10 text-blue-600"
-      : "border-error/40 bg-error/10 text-error";
+      : s === "needs_setup"
+        ? "border-warning/40 bg-warning/10 text-warning"
+        : "border-error/40 bg-error/10 text-error";
   return (
     <span className={"inline-flex items-center rounded-full border px-2 py-0.5 text-[10.5px] font-semibold " + cls}>
-      {s}
+      {s === "needs_setup" ? "needs setup" : s}
     </span>
   );
 }
@@ -759,7 +762,12 @@ function SourceRow({
           <span>
             {syncs ? (
               <>
-                {relativeTime(status.last_synced_at)}
+                {/* A source awaiting setup has never synced under its current
+                    config; its last_synced_at is a stale date that reads as a
+                    sync that merely found nothing. */}
+                {status.sync_status === "needs_setup"
+                  ? "not syncing yet"
+                  : relativeTime(status.last_synced_at)}
                 {status.item_count !== null && ` · ${status.item_count} items`}
               </>
             ) : searchedLive ? (
@@ -1215,12 +1223,10 @@ function NavigablePanel({
 }) {
   const [path, setPath] = useState("");
   const [entries, setEntries] = useState<SourceEntry[] | null>(null);
-  const [hasMore, setHasMore] = useState(false);
-  const [loadingMore, setLoadingMore] = useState(false);
   const [crumbs, setCrumbs] = useState<{ label: string; path: string }[]>([{ label: source.display_name, path: "" }]);
   const [openDoc, setOpenDoc] = useState<{ ref: string; name?: string } | null>(null);
   const [error, setError] = useState("");
-  // Bumped whenever the listing target changes, so an in-flight Load more for
+  // Bumped whenever the listing target changes, so an in-flight fetch for
   // the previous directory can't clobber the new one.
   const listingSeq = useRef(0);
 
@@ -1234,51 +1240,34 @@ function NavigablePanel({
     return { page: more ? rows.slice(0, PAGE_SIZE) : rows, more };
   }
 
+  // Every page is loaded up front — folder rows are synthesized from the flat
+  // path-ordered listing, so a partial page would hide whole folders that sort
+  // after the cutoff (e.g. an X source with 200+ bookmarks showed no Posts or
+  // Replies). Pages render as they arrive so big listings appear progressively.
   useEffect(() => {
     const seq = ++listingSeq.current;
     setEntries(null);
-    setHasMore(false);
     setError("");
-    fetchPage(path, "")
-      .then(({ page, more }) => {
+    (async () => {
+      let acc: SourceEntry[] = [];
+      let more = true;
+      let cursor = "";
+      while (more) {
+        const result = await fetchPage(path, cursor);
         if (listingSeq.current !== seq) return;
-        setEntries(page);
-        setHasMore(more);
-      })
-      .catch((e) => {
-        if (listingSeq.current !== seq) return;
-        setEntries([]);
-        setError(e instanceof Error ? e.message : "Could not list entries");
-      });
+        acc = [...acc, ...result.page];
+        setEntries(acc);
+        more = result.more;
+        cursor = acc[acc.length - 1]?.path ?? "";
+        if (!cursor) break; // the cursor is a path; a path-less listing can't page
+      }
+    })().catch((e) => {
+      if (listingSeq.current !== seq) return;
+      setEntries((prev) => prev ?? []);
+      setError(e instanceof Error ? e.message : "Could not list entries");
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [source.source, path]);
-
-  async function loadMore(all: boolean) {
-    if (!entries || loadingMore) return;
-    const seq = listingSeq.current;
-    setLoadingMore(true);
-    try {
-      let acc = entries;
-      let more = hasMore;
-      while (more) {
-        const cursor = acc[acc.length - 1]?.path;
-        if (!cursor) break; // the cursor is a path; a path-less listing can't page
-        const { page, more: nextMore } = await fetchPage(path, cursor);
-        if (listingSeq.current !== seq) return;
-        acc = [...acc, ...page];
-        more = nextMore;
-        if (!all) break;
-      }
-      setEntries(acc);
-      setHasMore(more);
-    } catch (e) {
-      if (listingSeq.current === seq) {
-        setError(e instanceof Error ? e.message : "Could not list entries");
-      }
-    } finally {
-      if (listingSeq.current === seq) setLoadingMore(false);
-    }
-  }
 
   // The entries endpoint returns every descendant file as a flat, path-ordered
   // list (the VFS builds its tree from the same shape). Fold that into one
@@ -1408,30 +1397,6 @@ function NavigablePanel({
               </div>
             );
           })}
-          {hasMore && (
-            <div className="flex items-center gap-3 px-2 py-1.5 text-[12px] text-muted-foreground">
-              {loadingMore ? (
-                <span>Loading…</span>
-              ) : (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => loadMore(false)}
-                    className="cursor-pointer hover:text-foreground hover:underline"
-                  >
-                    Load more
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => loadMore(true)}
-                    className="cursor-pointer hover:text-foreground hover:underline"
-                  >
-                    Load all
-                  </button>
-                </>
-              )}
-            </div>
-          )}
         </div>
       )}
 

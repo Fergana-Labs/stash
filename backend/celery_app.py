@@ -36,6 +36,7 @@ celery = Celery(
         "backend.tasks.sources",
         "backend.tasks.agent_schedules",
         "backend.integrations.google.exporters.slides",
+        "backend.integrations.x_saves.tasks",
         "backend.exports.pdf",
         "backend.exports.pptx",
     ],
@@ -117,6 +118,13 @@ celery.conf.update(
         "sources-reconcile-github-sync-all": {
             "task": "backend.tasks.sources.reconcile_github_sync_all",
             "schedule": 3600.0,
+        },
+        "x-keep-tokens-fresh": {
+            "task": "backend.integrations.x_saves.keep_tokens_fresh",
+            # X kills grants whose rotating refresh token idles for ~a day; a
+            # 30-min tick refreshes each access token as it expires (~2h),
+            # keeping the refresh token exercised (see x_saves/tasks.py).
+            "schedule": 1800.0,
         },
         "cli-auth-cleanup-expired": {
             "task": "backend.tasks.cli_auth.cleanup_expired_sessions",

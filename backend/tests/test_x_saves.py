@@ -14,6 +14,7 @@ from types import SimpleNamespace
 from uuid import UUID
 
 import pytest
+from fastapi import HTTPException
 from httpx import AsyncClient
 
 from backend.config import settings
@@ -706,6 +707,32 @@ async def test_bookmarks_paid_tier_gate_is_best_effort(client, pool, fake_sync) 
     )
     assert status["sync_status"] != "failed"
     assert "paid tier" in status["sync_error"]
+
+
+@pytest.mark.asyncio
+async def test_dead_oauth_grant_is_best_effort(client, pool, fake_sync, monkeypatch) -> None:
+    # X kills grants whose refresh token sits idle (401 from the token
+    # endpoint). Bookmarks pause with an owner-facing reconnect warning —
+    # the user's own posts/replies/articles must keep syncing.
+    async def _dead_token(user_id, provider, account_key=None):
+        raise HTTPException(status_code=401, detail="x token expired; reconnect required")
+
+    monkeypatch.setattr(integration_storage, "get_valid_token", _dead_token)
+    headers, owner_id = await _register(client)
+    source = await _x_source(pool, owner_id, x_user_id="999")
+
+    await x_indexer.index_x_saves(source)
+
+    kinds = await pool.fetch(
+        "SELECT DISTINCT kind FROM x_save_docs WHERE source_id = $1 ORDER BY kind",
+        UUID(source["id"]),
+    )
+    assert [k["kind"] for k in kinds] == ["Article", "Post", "Reply"]
+    status = await pool.fetchrow(
+        "SELECT sync_status, sync_error FROM user_sources WHERE id = $1", UUID(source["id"])
+    )
+    assert status["sync_status"] != "failed"
+    assert "reconnect X" in status["sync_error"]
 
 
 async def _insert_done(pool, owner_id, source_id, path, content):

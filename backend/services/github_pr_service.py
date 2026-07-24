@@ -181,6 +181,12 @@ async def fetch_pull_request(
         response = await client.get(base_url)
         if response.status_code == 404:
             return None
+        if response.status_code in (401, 403) and not _rate_limited(response):
+            # A PR this token can't read: someone else's private repo, or a
+            # dead GitHub grant. Permanent for this token — returning None
+            # records the check, otherwise the reconciler re-enqueues the
+            # session every 5 minutes forever.
+            return None
         response.raise_for_status()
         payload = response.json()
 
@@ -201,6 +207,13 @@ async def fetch_pull_request(
         head_ref=(payload.get("head") or {}).get("ref") or "",
         commit_messages=commit_messages,
     )
+
+
+def _rate_limited(response: httpx.Response) -> bool:
+    """GitHub reports rate limiting as 403 too — a transient condition where
+    raising (so the reconciler retries later) is right, unlike a plain
+    no-access 403, which is permanent for this token."""
+    return response.headers.get("x-ratelimit-remaining") == "0" or "retry-after" in response.headers
 
 
 async def _github_token_for_user(user_id: UUID | None) -> str | None:

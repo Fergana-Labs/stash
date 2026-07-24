@@ -71,6 +71,10 @@ async def _sync_source(source_id: UUID) -> dict:
     await source_service.mark_sync_started(source_id)
     try:
         cursor = await indexer(source)
+    except source_service.SourceSetupRequired as exc:
+        # Waiting on the owner, not broken: no error log, no failed status.
+        await source_service.mark_needs_setup(source_id, str(exc)[:500])
+        return {"status": "needs_setup"}
     except source_service.SourceSyncUserError as exc:
         # Deliberately owner-facing: the indexer vouches the message is safe
         # and actionable ("upgrade the X API tier"), unlike raw provider
