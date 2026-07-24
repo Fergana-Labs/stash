@@ -132,6 +132,30 @@ async def test_vfs_cat_logs_page_read(client: AsyncClient, pool):
     assert rows[0]["via"] == "ask"
 
 
+async def test_vfs_mount_listings_are_tagged_auto_not_ask(client: AsyncClient, pool):
+    """Every VFS command rebuilds the tree, firing the overview/memory-folder/
+    tables listing routes. Those rows must carry via='auto' (excluded from
+    content-activity analytics, like the skills sync) — otherwise one `cat`
+    shows up as several listings the user never asked for. The read itself
+    keeps its real surface tag."""
+    api_key, _ = await _register(client)
+    await _make_page(client, api_key, "Runbook.md", "step one")
+
+    resp = await client.post(
+        "/api/v1/me/vfs",
+        json={"script": "cat '/files/Runbook.md'", "cwd": "/"},
+        headers=_auth(api_key),
+    )
+    assert resp.status_code == 200
+    assert resp.json()["exit_code"] == 0
+
+    listings = await _read_events(pool, "content.entries_listed")
+    assert {r["target_type"] for r in listings} == {"overview", "memory_folder", "tables"}
+    assert all(r["via"] == "auto" for r in listings)
+    reads = await _read_events(pool, "content.page_read")
+    assert [r["via"] for r in reads] == ["ask"]
+
+
 async def test_tree_listing_is_logged(client: AsyncClient, pool):
     api_key, user_id = await _register(client)
     await _make_page(client, api_key, "One.md", "x")

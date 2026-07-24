@@ -89,7 +89,10 @@ class StashVfsModel:
         self._expanders = {}
         self._truncated = {}
         self._add_dir("/")
-        self._add_root()
+        # Lazy loaders and source expanders fire later, outside this block, so
+        # reads and descents the user actually drives still count.
+        with self.client.internal_calls():
+            self._add_root()
         computer_lines = (
             [
                 "- `computer` is a live, read-only view of the agent's "
