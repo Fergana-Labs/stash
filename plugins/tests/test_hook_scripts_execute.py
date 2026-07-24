@@ -25,7 +25,16 @@ FIXTURES = Path(__file__).resolve().parent / "fixtures"
 _AGENT_EVENTS = {
     "claude": ("on_session_start", "on_prompt", "on_tool_use", "on_stop", "on_session_end"),
     "codex": ("on_session_start", "on_prompt", "on_tool_use", "on_stop"),
+    "cursor": (
+        "on_session_start",
+        "on_prompt",
+        "on_tool_use",
+        "on_agent_response",
+        "on_session_end",
+    ),
     "gemini": ("on_session_start", "on_prompt", "on_tool_use", "on_stop", "on_session_end"),
+    "hermes": ("on_session_start", "on_prompt", "on_tool_use", "on_stop", "on_session_end"),
+    "openclaw": ("on_session_start", "on_prompt", "on_stop", "on_session_end"),
     "opencode": ("on_session_start", "on_prompt", "on_tool_use", "on_session_end"),
 }
 
@@ -33,7 +42,10 @@ _AGENT_EVENTS = {
 _DATA_DIR_ENV = {
     "claude": "CLAUDE_PLUGIN_DATA",
     "codex": "STASH_CODEX_DATA",
+    "cursor": "STASH_CURSOR_DATA",
     "gemini": "STASH_GEMINI_DATA",
+    "hermes": "STASH_HERMES_DATA",
+    "openclaw": "STASH_OPENCLAW_DATA",
     "opencode": "STASH_OPENCODE_DATA",
 }
 
@@ -86,3 +98,16 @@ def test_gemini_settings_snippet_commands_are_machine_independent() -> None:
         for entry in entries:
             for hook in entry["hooks"]:
                 assert hook["command"].startswith("stash hook run gemini ")
+
+
+def test_cursor_hooks_json_commands_are_machine_independent() -> None:
+    data = json.loads((PLUGINS_DIR / "cursor-plugin" / "hooks.json").read_text())
+    for entries in data["hooks"].values():
+        for entry in entries:
+            assert entry["command"].startswith("stash hook run cursor ")
+
+
+def test_hermes_config_snippet_commands_are_machine_independent() -> None:
+    text = (PLUGINS_DIR / "hermes-plugin" / "config.snippet.yaml").read_text()
+    assert "stash hook run hermes " in text
+    assert "${PLUGIN_ROOT}" not in text

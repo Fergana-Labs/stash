@@ -375,7 +375,14 @@ def _install_cursor(force: bool) -> tuple[str, str]:
     root = _assets_dir("cursor")
     dest = Path.home() / ".cursor" / "hooks.json"
     template = (root / "hooks.json").read_text()
-    status_ = _merge_json_hooks(dest, template, root, ("stashai/plugin/assets/cursor",))
+    # The second marker sweeps stale absolute-path entries written by
+    # pre-`stash hook run` installs.
+    status_ = _merge_json_hooks(
+        dest,
+        template,
+        root,
+        ("stash hook run cursor", "stashai/plugin/assets/cursor"),
+    )
     return (status_, f"{dest}")
 
 
@@ -658,13 +665,10 @@ def _install_hermes(force: bool) -> tuple[str, str]:
     so that case fails loud with a merge-by-hand message.
     """
     import re
-    from string import Template
 
     root = _assets_dir("hermes")
     cfg_path = Path.home() / ".hermes" / "config.yaml"
-    snippet = Template((root / "config.snippet.yaml").read_text()).safe_substitute(
-        PLUGIN_ROOT=str(root)
-    )
+    snippet = (root / "config.snippet.yaml").read_text()
     block = f"{_HERMES_MARKER_BEGIN}\n{snippet.rstrip()}\n{_HERMES_MARKER_END}"
 
     existing = cfg_path.read_text() if cfg_path.exists() else ""
@@ -761,7 +765,16 @@ app.add_typer(hook_app, name="hook", hidden=True)
 _HOOK_EVENTS = {
     "claude": ("on_session_start", "on_prompt", "on_tool_use", "on_stop", "on_session_end"),
     "codex": ("on_session_start", "on_prompt", "on_tool_use", "on_stop"),
+    "cursor": (
+        "on_session_start",
+        "on_prompt",
+        "on_tool_use",
+        "on_agent_response",
+        "on_session_end",
+    ),
     "gemini": ("on_session_start", "on_prompt", "on_tool_use", "on_stop", "on_session_end"),
+    "hermes": ("on_session_start", "on_prompt", "on_tool_use", "on_stop", "on_session_end"),
+    "openclaw": ("on_session_start", "on_prompt", "on_stop", "on_session_end"),
     "opencode": ("on_session_start", "on_prompt", "on_tool_use", "on_session_end"),
 }
 
