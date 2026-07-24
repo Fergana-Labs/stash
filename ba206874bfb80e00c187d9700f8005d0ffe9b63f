@@ -1,0 +1,650 @@
+import { defineSoftwareMap } from "@dev.fast/progressive-review/software-map-model";
+
+export default defineSoftwareMap({
+  people: {
+    developer: {
+      label: "Developer",
+      description:
+        "Runs coding agents (Claude Code, Cursor, Codex, …) and the stash CLI; owns a single-player Stash account.",
+    },
+    teamMember: {
+      label: "Team member",
+      description: "Views skills and sources shared into their workspace via the product UI.",
+    },
+  },
+
+  systems: {
+    stash: {
+      label: "Stash",
+      description:
+        "Single-player home for AI-agent work: sessions, Files (VFS), Skills, and connected sources. This repo's ownership boundary.",
+      containers: {
+        backend: {
+          label: "Backend API",
+          description: "FastAPI app (port 3456). REST surface, auth, integrations, and the VFS.",
+          components: {
+            appEntry: {
+              label: "App entrypoint & config",
+              description: "FastAPI app assembly, settings, and Alembic-on-boot wiring.",
+              coverage: {
+                files: [
+                  "backend/main.py",
+                  "backend/config.py",
+                  "backend/database.py",
+                  "backend/entrypoint.sh",
+                ],
+              },
+            },
+            routers: {
+              label: "API routers",
+              description: "Per-surface REST endpoints (sessions, files, skills, sources, tables, shares, …).",
+              coverage: { globs: ["backend/routers/**"] },
+            },
+            services: {
+              label: "Domain services",
+              description: "Business logic behind the routers: ask-the-stash, files/VFS, skills, embeddings, billing.",
+              coverage: { globs: ["backend/services/**"] },
+            },
+            integrations: {
+              label: "Source integrations",
+              description: "OAuth + import adapters for GitHub, Gmail, Notion, Linear, Slack, and other providers.",
+              coverage: { globs: ["backend/integrations/**"] },
+            },
+            auth: {
+              label: "Auth & middleware",
+              description: "API-key/session auth, request middleware, and the managed Auth0 overlay.",
+              coverage: {
+                files: ["backend/auth.py", "backend/middleware.py"],
+                globs: ["backend/managed/auth0/**"],
+              },
+            },
+            dataModel: {
+              label: "Data model & migrations",
+              description: "SQLAlchemy models and Alembic migrations for users, sessions, Files, skills, tables.",
+              coverage: {
+                files: ["backend/models.py"],
+                globs: ["backend/migrations/**", "backend/managed/migrations/**"],
+              },
+            },
+          },
+        },
+
+        workers: {
+          label: "Celery workers",
+          description: "Async task workers + beat (celery). Extraction, embeddings, session titles, source syncs.",
+          components: {
+            tasks: {
+              label: "Background tasks",
+              description: "Celery task definitions and one-shot worker entrypoints.",
+              coverage: {
+                files: ["backend/celery_app.py"],
+                globs: ["backend/tasks/**", "backend/workers/**"],
+              },
+            },
+          },
+        },
+
+        frontend: {
+          label: "Product UI",
+          description: "Next.js app (port 3457). Home, Sessions, Files, Skills, and public skill sites.",
+          components: {
+            appRoutes: {
+              label: "App routes",
+              description: "Next.js route tree and page shells.",
+              coverage: { globs: ["frontend/src/app/**", "frontend/middleware.ts"] },
+            },
+            components: {
+              label: "UI components",
+              description: "Reusable React components for the product surfaces.",
+              coverage: { globs: ["frontend/src/components/**"] },
+            },
+            hooks: {
+              label: "React hooks",
+              description: "Client-side data and interaction hooks.",
+              coverage: { globs: ["frontend/src/hooks/**"] },
+            },
+            lib: {
+              label: "Client lib",
+              description: "API client, formatting, and shared frontend utilities.",
+              coverage: { globs: ["frontend/src/lib/**"] },
+            },
+          },
+        },
+
+        www: {
+          label: "Landing site",
+          description: "Next.js marketing/docs site (port 3100).",
+          components: {
+            site: {
+              label: "Marketing pages",
+              description: "Landing, docs, and public marketing routes.",
+              coverage: { globs: ["www/app/**", "www/lib/**"] },
+            },
+          },
+        },
+
+        collab: {
+          label: "Collab server",
+          description: "Yjs WebSocket sidecar (port 3458) for live page editing.",
+          components: {
+            yjsServer: {
+              label: "Yjs server",
+              description: "WebSocket collaboration server backing live page editing.",
+              coverage: { globs: ["collab/src/**"] },
+            },
+          },
+        },
+
+        cli: {
+          label: "Stash CLI",
+          description:
+            "`stash` command (published in the stashai PyPI package). Files/tables/sessions/search, agent-plugin install, MCP server, and hook plumbing.",
+          components: {
+            commands: {
+              label: "Command surface",
+              changeStatus: "modified",
+              description:
+                "Typer command tree: file/session/skill/search commands, per-agent plugin installers, and the hidden `hook run` plumbing — now the single entrypoint for every agent's lifecycle hooks (`stash hook run <agent> <event>`).",
+              coverage: { files: ["cli/main.py"] },
+            },
+            apiClient: {
+              label: "API client",
+              description: "HTTP client for the Stash backend, plus source-token parsing.",
+              coverage: { files: ["cli/client.py"] },
+            },
+            mcpServer: {
+              label: "MCP server",
+              description: "Model Context Protocol server exposing Stash resources to agents.",
+              coverage: { files: ["cli/mcp_server.py"] },
+            },
+            config: {
+              label: "CLI config",
+              description: "Manifest, credentials, enabled-agents, and scope persistence.",
+              coverage: { files: ["cli/config.py"] },
+            },
+            support: {
+              label: "CLI support",
+              description: "History import, output formatting, and telemetry.",
+              coverage: {
+                files: ["cli/import_history.py", "cli/formatting.py", "cli/telemetry.py"],
+              },
+            },
+          },
+        },
+
+        pluginRuntime: {
+          label: "Plugin runtime",
+          description:
+            "stashai package plugin layer: transcript/session upload, the session watcher, and the per-agent hook-script assets bundled into the package.",
+          components: {
+            sessionUpload: {
+              label: "Session & transcript upload",
+              description: "Uploads coding-session transcripts and artifacts to the backend.",
+              coverage: {
+                files: [
+                  "stashai/plugin/session_upload.py",
+                  "stashai/plugin/transcript_upload.py",
+                  "stashai/plugin/_do_session_upload.py",
+                  "stashai/plugin/_do_upload.py",
+                ],
+              },
+            },
+            sessionWatcher: {
+              label: "Session watcher",
+              description: "Background watcher that streams live session activity to Stash.",
+              coverage: { files: ["stashai/plugin/_session_watcher.py"] },
+            },
+            hooksLib: {
+              label: "Hook library",
+              description:
+                "Shared plugin plumbing: hook/event models, scope, state, summarize, doctor, upload status, and the plugin's own stash client.",
+              coverage: {
+                files: [
+                  "stashai/plugin/hooks.py",
+                  "stashai/plugin/event.py",
+                  "stashai/plugin/scope.py",
+                  "stashai/plugin/state.py",
+                  "stashai/plugin/summarize.py",
+                  "stashai/plugin/doctor.py",
+                  "stashai/plugin/upload_status.py",
+                  "stashai/plugin/stash_client.py",
+                  "stashai/plugin/agent_config.py",
+                ],
+              },
+            },
+            pluginAssets: {
+              label: "Bundled hook assets",
+              changeStatus: "modified",
+              description:
+                "Per-agent hook scripts and config snippets mirrored into the package so `stash hook run` executes them under the package interpreter. Now includes claude/scripts (newly mirrored in); the per-agent `_run.sh` launchers were dropped from the assets.",
+              coverage: { globs: ["stashai/plugin/assets/**"] },
+            },
+          },
+        },
+
+        agentPlugins: {
+          label: "Agent plugins",
+          description:
+            "Source-of-truth per-agent plugin bundles (claude, cursor, codex, gemini, hermes, openclaw, opencode) installed into each coding agent.",
+          components: {
+            hookScripts: {
+              label: "Hook scripts",
+              changeStatus: "modified",
+              description: "Per-agent lifecycle hook scripts (on_session_start, on_prompt, on_tool_use, …) and plugin entrypoints. The claude plugin's cache_drift / session-watcher shim / stashai-version helpers were dropped as hooks moved to the CLI-owned runner.",
+              coverage: {
+                globs: [
+                  "plugins/*/scripts/*.py",
+                  "plugins/*/hooks/**",
+                  "plugins/*/index.ts",
+                  "plugins/*/plugin.ts",
+                ],
+              },
+            },
+            runLaunchers: {
+              label: "Run launchers",
+              changeStatus: "removed",
+              description:
+                "Per-plugin `_run.sh` shell launchers that located an interpreter and invoked the hook scripts. Removed in this PR: every plugin's hooks now invoke `stash hook run <agent> <event>` directly (base coverage was plugins/*/scripts/_run.sh).",
+            },
+            manifests: {
+              label: "Plugin manifests & docs",
+              changeStatus: "modified",
+              description: "hooks.json, config snippets, agent instruction files, and per-plugin READMEs. Hook entries now call `stash hook run` instead of `_run.sh`.",
+              coverage: {
+                globs: [
+                  "plugins/*/hooks.json",
+                  "plugins/*/hooks/*.json",
+                  "plugins/*/*.json",
+                  "plugins/*/*.snippet.*",
+                  "plugins/*/*.md",
+                ],
+              },
+            },
+            tests: {
+              label: "Plugin tests",
+              changeStatus: "modified",
+              description: "Cross-plugin tests: asset sync, hook execution, and fixtures. Launcher/cache-drift/codex-hooks tests removed; a unified hook-script execution test and session_end fixtures added.",
+              coverage: { globs: ["plugins/tests/**"] },
+            },
+          },
+        },
+
+        chromeExtension: {
+          label: "Chrome extension",
+          description: "Browser extension for saving content into Stash.",
+          components: {
+            extension: {
+              label: "Extension",
+              description: "Extension popup and content/background scripts.",
+              coverage: { globs: ["chrome_extension/src/**"] },
+            },
+          },
+        },
+
+        pythonSdk: {
+          label: "Python SDK",
+          description: "Standalone Python SDK for the Stash API.",
+          components: {
+            sdk: {
+              label: "SDK",
+              description: "Python client library published from sdk/.",
+              coverage: { globs: ["sdk/src/**"] },
+            },
+          },
+        },
+      },
+
+      dataStores: {
+        postgres: {
+          label: "Postgres",
+          kind: "database",
+          description: "Primary relational store (Neon in prod): users, sessions, Files, skills, tables.",
+        },
+        redis: {
+          label: "Redis",
+          kind: "database",
+          description: "Celery broker/result backend and cache.",
+        },
+        objectStore: {
+          label: "Object store",
+          kind: "objectStore",
+          description: "S3-compatible storage for uploaded file binaries.",
+        },
+      },
+    },
+
+    anthropic: {
+      label: "Anthropic API",
+      external: true,
+      description: "Claude models called server-side for ask-the-stash and agent features.",
+    },
+    codingAgents: {
+      label: "Coding agents",
+      external: true,
+      description: "Host apps (Claude Code, Cursor, Codex, Gemini, Hermes, Openclaw, Opencode) that load the agent plugins and fire lifecycle hooks.",
+    },
+    integrationProviders: {
+      label: "Integration providers",
+      external: true,
+      description: "OAuth/API sources: GitHub, Google, Gmail, Notion, Linear, Slack, Asana, Jira, and others.",
+    },
+    auth0: {
+      label: "Auth0",
+      external: true,
+      description: "Managed identity provider for the hosted (managed) deployment.",
+    },
+  },
+
+  relationships: [
+    {
+      kind: "semantic",
+      from: "developer",
+      to: "stash.cli",
+      label: "runs",
+      description: "Uses the stash CLI for files, sessions, search, and plugin install.",
+    },
+    {
+      kind: "semantic",
+      from: "developer",
+      to: "stash.frontend",
+      label: "uses",
+      description: "Browses sessions, Files, and Skills in the product UI.",
+    },
+    {
+      kind: "semantic",
+      from: "teamMember",
+      to: "stash.frontend",
+      label: "views shared content",
+    },
+    {
+      kind: "semantic",
+      from: "codingAgents",
+      to: "stash.agentPlugins.hookScripts",
+      label: "fires lifecycle hooks",
+      description: "Coding agents load the installed plugin and invoke its lifecycle hook scripts.",
+    },
+    {
+      kind: "semantic",
+      from: "stash.agentPlugins.manifests",
+      to: "stash.cli.commands",
+      label: "wires hook → `stash hook run`",
+      description: "Head: hooks.json / config snippets point each lifecycle event at `stash hook run <agent> <event>`, replacing the removed _run.sh launchers.",
+    },
+    {
+      kind: "semantic",
+      from: "stash.agentPlugins.runLaunchers",
+      to: "stash.agentPlugins.hookScripts",
+      label: "execs",
+      description: "Launchers locate an interpreter and run the plugin's hook scripts.",
+    },
+    {
+      kind: "semantic",
+      from: "stash.agentPlugins.hookScripts",
+      to: "stash.pluginRuntime.hooksLib",
+      label: "imports runtime",
+      description: "Hook scripts import the stashai plugin library for upload/state/scope.",
+    },
+    {
+      kind: "semantic",
+      from: "stash.agentPlugins.tests",
+      to: "stash.agentPlugins.hookScripts",
+      label: "exercises",
+    },
+    {
+      kind: "semantic",
+      from: "stash.cli",
+      to: "stash.backend",
+      label: "HTTP API",
+    },
+    {
+      kind: "semantic",
+      from: "stash.pluginRuntime",
+      to: "stash.backend",
+      label: "uploads transcripts",
+    },
+    {
+      kind: "semantic",
+      from: "stash.frontend",
+      to: "stash.backend",
+      label: "HTTP API",
+    },
+    {
+      kind: "semantic",
+      from: "stash.www",
+      to: "stash.backend",
+      label: "HTTP API",
+    },
+    {
+      kind: "semantic",
+      from: "stash.frontend",
+      to: "stash.collab",
+      label: "WebSocket",
+      description: "Live page editing over the Yjs sidecar.",
+    },
+    {
+      kind: "semantic",
+      from: "stash.backend",
+      to: "stash.postgres",
+      label: "reads/writes",
+    },
+    {
+      kind: "semantic",
+      from: "stash.backend",
+      to: "stash.redis",
+      label: "enqueues & caches",
+    },
+    {
+      kind: "semantic",
+      from: "stash.backend",
+      to: "stash.objectStore",
+      label: "stores file binaries",
+    },
+    {
+      kind: "semantic",
+      from: "stash.workers",
+      to: "stash.postgres",
+      label: "reads/writes",
+    },
+    {
+      kind: "semantic",
+      from: "stash.workers",
+      to: "stash.redis",
+      label: "consumes queue",
+    },
+    {
+      kind: "semantic",
+      from: "stash.backend",
+      to: "anthropic",
+      label: "LLM calls",
+    },
+    {
+      kind: "semantic",
+      from: "stash.backend",
+      to: "integrationProviders",
+      label: "OAuth & import",
+    },
+    {
+      kind: "semantic",
+      from: "stash.backend",
+      to: "auth0",
+      label: "managed auth",
+    },
+
+    {
+      kind: "semantic",
+      from: "stash.backend.appEntry",
+      to: "stash.backend.routers",
+      label: "mounts",
+    },
+    {
+      kind: "semantic",
+      from: "stash.backend.routers",
+      to: "stash.backend.services",
+      label: "delegates to",
+    },
+    {
+      kind: "semantic",
+      from: "stash.backend.services",
+      to: "stash.backend.dataModel",
+      label: "persists via",
+    },
+    {
+      kind: "semantic",
+      from: "stash.backend.services",
+      to: "stash.backend.integrations",
+      label: "uses",
+    },
+    {
+      kind: "semantic",
+      from: "stash.backend.dataModel",
+      to: "stash.postgres",
+      label: "ORM maps",
+    },
+    {
+      kind: "semantic",
+      from: "stash.backend.integrations",
+      to: "integrationProviders",
+      label: "OAuth & import",
+    },
+    {
+      kind: "semantic",
+      from: "stash.backend.services",
+      to: "anthropic",
+      label: "LLM calls",
+    },
+    {
+      kind: "semantic",
+      from: "stash.backend.services",
+      to: "stash.objectStore",
+      label: "stores binaries",
+    },
+    {
+      kind: "semantic",
+      from: "stash.backend.auth",
+      to: "auth0",
+      label: "verifies identity",
+    },
+    {
+      kind: "semantic",
+      from: "stash.workers.tasks",
+      to: "stash.backend.services",
+      label: "invokes",
+    },
+    {
+      kind: "semantic",
+      from: "stash.frontend.appRoutes",
+      to: "stash.frontend.components",
+      label: "renders",
+    },
+    {
+      kind: "semantic",
+      from: "stash.frontend.components",
+      to: "stash.frontend.hooks",
+      label: "use",
+    },
+    {
+      kind: "semantic",
+      from: "stash.frontend.hooks",
+      to: "stash.frontend.lib",
+      label: "call",
+    },
+    {
+      kind: "semantic",
+      from: "stash.frontend.lib",
+      to: "stash.backend.routers",
+      label: "HTTP API",
+    },
+    {
+      kind: "semantic",
+      from: "stash.frontend.appRoutes",
+      to: "stash.collab.yjsServer",
+      label: "WebSocket",
+    },
+    {
+      kind: "semantic",
+      from: "stash.www.site",
+      to: "stash.backend.routers",
+      label: "HTTP API",
+    },
+    {
+      kind: "semantic",
+      from: "stash.cli.commands",
+      to: "stash.cli.apiClient",
+      label: "uses",
+    },
+    {
+      kind: "semantic",
+      from: "stash.cli.apiClient",
+      to: "stash.backend.routers",
+      label: "HTTP API",
+    },
+    {
+      kind: "semantic",
+      from: "stash.cli.mcpServer",
+      to: "stash.backend.routers",
+      label: "HTTP API",
+    },
+    {
+      kind: "semantic",
+      from: "stash.cli.commands",
+      to: "stash.cli.config",
+      label: "reads config",
+    },
+    {
+      kind: "semantic",
+      from: "stash.cli.commands",
+      to: "stash.cli.support",
+      label: "uses",
+    },
+    {
+      kind: "semantic",
+      from: "stash.cli.commands",
+      to: "stash.agentPlugins.manifests",
+      label: "installs",
+      description: "Plugin installers merge each agent's hook config and copy assets into place.",
+    },
+    {
+      kind: "semantic",
+      from: "stash.cli.commands",
+      to: "stash.pluginRuntime.pluginAssets",
+      label: "hook run execs scripts",
+      description: "`stash hook run <agent> <event>` runs the bundled asset script under the package interpreter.",
+    },
+    {
+      kind: "semantic",
+      from: "stash.pluginRuntime.sessionWatcher",
+      to: "stash.pluginRuntime.sessionUpload",
+      label: "triggers",
+    },
+    {
+      kind: "semantic",
+      from: "stash.pluginRuntime.sessionUpload",
+      to: "stash.backend.routers",
+      label: "uploads transcripts",
+    },
+    {
+      kind: "semantic",
+      from: "stash.pluginRuntime.pluginAssets",
+      to: "stash.pluginRuntime.hooksLib",
+      label: "imports",
+    },
+    {
+      kind: "semantic",
+      from: "stash.pluginRuntime.hooksLib",
+      to: "stash.backend.routers",
+      label: "posts events",
+    },
+    {
+      kind: "semantic",
+      from: "stash.chromeExtension.extension",
+      to: "stash.backend.routers",
+      label: "HTTP API",
+    },
+    {
+      kind: "semantic",
+      from: "stash.pythonSdk.sdk",
+      to: "stash.backend.routers",
+      label: "HTTP API",
+    },
+  ],
+});
