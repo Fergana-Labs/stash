@@ -134,10 +134,13 @@ async def list_my_sessions(
     # The Agents view lists only chats that ran through our platform agents —
     # web/scheduled (`agent-*`), Slack (`slack-agent-*`), Telegram
     # (`telegram-agent-*`) — not CLI transcripts, which live in Sessions.
+    # Claude Code sub-agent transcripts uploaded from client machines also have
+    # `agent-*` session ids (their local filenames), so exclude them by the
+    # agent_name the uploader stamps.
     if agent_chats_only:
-        prefix = "session_id ~ '^(agent|slack-agent|telegram-agent)-'"
-        where.append(f"he.{prefix}")
-        title_where.append(f"he_title.{prefix}")
+        for alias, conds in (("he", where), ("he_title", title_where)):
+            conds.append(f"{alias}.session_id ~ '^(agent|slack-agent|telegram-agent)-'")
+            conds.append(f"{alias}.agent_name <> 'claude-subagent'")
 
     rows = await pool.fetch(
         f"""
