@@ -80,55 +80,77 @@ async def engagement_cohorts(
     mode: str = Query("standard", pattern="^(standard|future)$"),
     max_period: int | None = Query(None, ge=1, le=104),
     events_filter: str = Query("all", pattern="^(all|active)$"),
+    exclude_internal: bool = Query(True),
 ):
     return await cohort_service.get_engagement_cohorts(
         bucket=bucket,
         mode=mode,
         max_period=max_period,
         events_filter=events_filter,
+        exclude_internal=exclude_internal,
     )
 
 
 @router.get("/analytics/summary", dependencies=[Depends(require_admin_token)])
-async def analytics_summary(days: int = Query(7, ge=1, le=90)):
-    return await admin_analytics_service.get_summary(days=days)
+async def analytics_summary(
+    days: int = Query(7, ge=1, le=90),
+    exclude_internal: bool = Query(True),
+):
+    return await admin_analytics_service.get_summary(days=days, exclude_internal=exclude_internal)
 
 
 @router.get("/analytics/onboarding-funnel", dependencies=[Depends(require_admin_token)])
 async def analytics_onboarding_funnel(
     days: int = Query(30, ge=1, le=180),
     path: str | None = Query(None, pattern="^(migrant|memory|sharing)$"),
+    exclude_internal: bool = Query(True),
 ):
-    return await admin_analytics_service.get_onboarding_funnel(days=days, path=path)
+    return await admin_analytics_service.get_onboarding_funnel(
+        days=days, path=path, exclude_internal=exclude_internal
+    )
 
 
 @router.get("/analytics/path-mix", dependencies=[Depends(require_admin_token)])
 async def analytics_path_mix(
     days: int = Query(30, ge=1, le=180),
     bucket: str = Query("day", pattern="^(day|week)$"),
+    exclude_internal: bool = Query(True),
 ):
-    return await admin_analytics_service.get_path_mix(days=days, bucket=bucket)
+    return await admin_analytics_service.get_path_mix(
+        days=days, bucket=bucket, exclude_internal=exclude_internal
+    )
 
 
 @router.get("/analytics/surface-mix", dependencies=[Depends(require_admin_token)])
 async def analytics_surface_mix(
     days: int = Query(30, ge=1, le=180),
     bucket: str = Query("day", pattern="^(day|week)$"),
+    exclude_internal: bool = Query(True),
 ):
-    return await admin_analytics_service.get_surface_mix(days=days, bucket=bucket)
+    return await admin_analytics_service.get_surface_mix(
+        days=days, bucket=bucket, exclude_internal=exclude_internal
+    )
 
 
 @router.get("/analytics/content-activity", dependencies=[Depends(require_admin_token)])
-async def analytics_content_activity(days: int = Query(30, ge=1, le=180)):
-    return await admin_analytics_service.get_content_activity(days=days)
+async def analytics_content_activity(
+    days: int = Query(30, ge=1, le=180),
+    exclude_internal: bool = Query(True),
+):
+    return await admin_analytics_service.get_content_activity(
+        days=days, exclude_internal=exclude_internal
+    )
 
 
 @router.get("/analytics/top-events", dependencies=[Depends(require_admin_token)])
 async def analytics_top_events(
     days: int = Query(30, ge=1, le=180),
     limit: int = Query(20, ge=1, le=100),
+    exclude_internal: bool = Query(True),
 ):
-    return await admin_analytics_service.get_top_events(days=days, limit=limit)
+    return await admin_analytics_service.get_top_events(
+        days=days, limit=limit, exclude_internal=exclude_internal
+    )
 
 
 # --- Discover catalog: import / remove GitHub skill repos ---

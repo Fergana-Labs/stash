@@ -10,6 +10,7 @@ from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 
 from ..database import get_pool
+from .admin_analytics_service import internal_filter_sql
 
 Bucket = str  # "month" | "week" | "rolling_7d"
 Mode = str  # "standard" | "future"
@@ -166,6 +167,7 @@ async def get_engagement_cohorts(
     mode: Mode = "standard",
     max_period: int | None = None,
     events_filter: EventsFilter = "all",
+    exclude_internal: bool = True,
 ) -> dict:
     if events_filter not in ("all", "active"):
         raise ValueError(f"unknown events_filter: {events_filter}")
@@ -188,6 +190,7 @@ async def get_engagement_cohorts(
         SELECT u.id, u.created_at AS signup_at, ue.event_at
         FROM users u
         LEFT JOIN user_events ue ON ue.user_id = u.id
+        WHERE {internal_filter_sql("u.id", exclude_internal)}
         ORDER BY u.id, ue.event_at NULLS FIRST
     """
     rows = await pool.fetch(sql)

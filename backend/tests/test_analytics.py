@@ -394,6 +394,74 @@ async def test_summary_counts_signups_and_cli_active(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_internal_email_domains_are_excluded_by_default(client: AsyncClient, pool):
+    """Our own team's usage (ferganalabs/joinstash accounts) must not inflate
+    dashboard numbers unless the "Internal accounts" toggle asks for them —
+    by default only the external user should count anywhere."""
+    users = {}
+    for label in ("internal", "external"):
+        resp = await client.post(
+            "/api/v1/users/register",
+            json={"name": unique_name(label), "password": "securepassword1"},
+        )
+        assert resp.status_code == 201
+        users[label] = resp.json()
+
+    await pool.execute(
+        "UPDATE users SET email = 'team@ferganalabs.com' WHERE id = $1",
+        UUID(users["internal"]["id"]),
+    )
+    await pool.execute(
+        "UPDATE users SET email = 'someone@example.com' WHERE id = $1",
+        UUID(users["external"]["id"]),
+    )
+
+    for label in ("internal", "external"):
+        resp = await client.post(
+            "/api/v1/analytics/events",
+            json={
+                "events": [
+                    {
+                        "surface": "web",
+                        "event_name": "onboarding.viewed",
+                        "properties": {"has_path": False},
+                    },
+                    {
+                        "surface": "cli",
+                        "event_name": "cli.command_invoked",
+                        "properties": {"command": "connect"},
+                    },
+                ]
+            },
+            headers=_auth(users[label]["api_key"]),
+        )
+        assert resp.status_code == 200, resp.text
+
+    resp = await client.get("/api/v1/admin/analytics/summary?days=30", headers=_admin())
+    assert resp.status_code == 200, resp.text
+    summary = resp.json()
+    assert summary["signups"] == 1
+    assert summary["cli_active_users"] == 1
+    assert summary["active_users"] == 1
+
+    resp = await client.get("/api/v1/admin/analytics/onboarding-funnel", headers=_admin())
+    assert resp.status_code == 200, resp.text
+    by_stage = {s["stage"]: s["users"] for s in resp.json()["stages"]}
+    assert by_stage["viewed"] == 1
+
+    # The dashboard's "Internal accounts: Show" toggle turns the filter off —
+    # both users must count again.
+    resp = await client.get(
+        "/api/v1/admin/analytics/summary?days=30&exclude_internal=false", headers=_admin()
+    )
+    assert resp.status_code == 200, resp.text
+    summary = resp.json()
+    assert summary["signups"] == 2
+    assert summary["cli_active_users"] == 2
+    assert summary["active_users"] == 2
+
+
+@pytest.mark.asyncio
 async def test_content_activity_zero_state(client: AsyncClient):
     resp = await client.get("/api/v1/admin/analytics/content-activity", headers=_admin())
     assert resp.status_code == 200, resp.text
