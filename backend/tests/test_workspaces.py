@@ -477,3 +477,124 @@ async def test_member_sessions_and_events_land_in_workspace_scope(client: AsyncC
         headers={**_auth(stranger_key), **scope_header},
     )
     assert denied.status_code == 403
+
+
+# --- Skills in the workspace scope ---
+
+
+async def _workspace_skill_folder(pool, scope_user_id, name="team-skill") -> uuid.UUID:
+    scope_id = uuid.UUID(scope_user_id)
+    folder = await pool.fetchrow(
+        "INSERT INTO folders (owner_user_id, name, created_by) VALUES ($1, $2, $1) RETURNING id",
+        scope_id,
+        name,
+    )
+    await pool.execute(
+        "INSERT INTO pages (owner_user_id, folder_id, name, content_markdown, created_by) "
+        "VALUES ($1, $2, 'SKILL.md', '---\nname: team-skill\n---\nhow we deploy', $1)",
+        scope_id,
+        folder["id"],
+    )
+    return folder["id"]
+
+
+@pytest.mark.asyncio
+async def test_member_sees_workspace_skills_via_scope_header(client: AsyncClient, pool):
+    """The Skills surface follows the scope switcher: workspace skills show up
+    when scoped, and never bleed into the member's personal list."""
+    domain = _domain()
+    key, body = await _register_with_email(client, f"m@{domain}")
+    await _verify_email(pool, uuid.UUID(body["id"]))
+    ws = await _create_workspace(client, domain)
+    await _workspace_skill_folder(pool, ws["scope_user_id"])
+
+    scoped = {**_auth(key), "X-Stash-Scope": ws["scope_user_id"]}
+    resp = await client.get("/api/v1/me/skills", headers=scoped)
+    assert resp.status_code == 200
+    assert "team-skill" in [s["name"] for s in resp.json()["skills"]]
+
+    resp = await client.get("/api/v1/me/skills", headers=_auth(key))
+    assert "team-skill" not in [s["name"] for s in resp.json()["skills"]]
+
+
+@pytest.mark.asyncio
+async def test_member_publishes_workspace_skill_and_teammate_manages_it(client: AsyncClient, pool):
+    """Publishing is a team power inside the workspace: any member can mint
+    the publish record, and any other member can update or unpublish it —
+    while outsiders cannot touch it."""
+    domain = _domain()
+    a_key, a_body = await _register_with_email(client, f"alice@{domain}")
+    b_key, b_body = await _register_with_email(client, f"bob@{domain}")
+    for body in (a_body, b_body):
+        await _verify_email(pool, uuid.UUID(body["id"]))
+    ws = await _create_workspace(client, domain)
+    folder_id = await _workspace_skill_folder(pool, ws["scope_user_id"])
+
+    scoped_a = {**_auth(a_key), "X-Stash-Scope": ws["scope_user_id"]}
+    published = await client.post(
+        "/api/v1/me/skills", json={"folder_id": str(folder_id)}, headers=scoped_a
+    )
+    assert published.status_code == 201, published.text
+    skill = published.json()
+    assert skill["owner_user_id"] == ws["scope_user_id"]
+
+    updated = await client.patch(
+        f"/api/v1/skills/{skill['id']}", json={"title": "Team Deploys"}, headers=_auth(b_key)
+    )
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["title"] == "Team Deploys"
+
+    outsider_key, _ = await _register_with_email(client, f"{unique_name('o')}@other.io")
+    denied = await client.patch(
+        f"/api/v1/skills/{skill['id']}", json={"title": "hijack"}, headers=_auth(outsider_key)
+    )
+    assert denied.status_code == 404
+
+    gone = await client.delete(f"/api/v1/skills/{skill['id']}", headers=_auth(b_key))
+    assert gone.status_code == 204
+
+
+@pytest.mark.asyncio
+async def test_member_forks_public_skill_into_workspace(client: AsyncClient, pool):
+    """Fork honors the workspace as a target scope: the copy lands in the org
+    KB, and non-members cannot fork into it."""
+    domain = _domain()
+    key, body = await _register_with_email(client, f"m@{domain}")
+    member_id = uuid.UUID(body["id"])
+    await _verify_email(pool, member_id)
+    ws = await _create_workspace(client, domain)
+
+    author_key, author = await _register_with_email(client, f"{unique_name('a')}@elsewhere.io")
+    author_folder = await pool.fetchrow(
+        "INSERT INTO folders (owner_user_id, name, created_by) "
+        "VALUES ($1, 'public-howto', $1) RETURNING id",
+        uuid.UUID(author["id"]),
+    )
+    published = await client.post(
+        "/api/v1/me/skills",
+        json={"folder_id": str(author_folder["id"]), "title": "public-howto"},
+        headers=_auth(author_key),
+    )
+    assert published.status_code == 201, published.text
+    slug = published.json()["slug"]
+
+    forked = await client.post(
+        f"/api/v1/skills/{slug}/add-to-stash",
+        json={"owner_user_id": ws["scope_user_id"]},
+        headers=_auth(key),
+    )
+    assert forked.status_code == 201, forked.text
+    row = await pool.fetchrow(
+        "SELECT owner_user_id, created_by FROM folders WHERE id = $1",
+        uuid.UUID(forked.json()["folder_id"]),
+    )
+    assert row["owner_user_id"] == uuid.UUID(ws["scope_user_id"])
+    assert row["created_by"] == member_id
+
+    outsider_key, _ = await _register_with_email(client, f"{unique_name('s')}@elsewhere.io")
+    denied = await client.post(
+        f"/api/v1/skills/{slug}/add-to-stash",
+        json={"owner_user_id": ws["scope_user_id"]},
+        headers=_auth(outsider_key),
+    )
+    assert denied.status_code == 403
