@@ -491,7 +491,7 @@ function TryItOutStep({
               Get the browser extension
             </div>
             <div className="text-[12px] text-muted-foreground">
-              Clip pages, import bookmarks, sync Instagram saves and ChatGPT/Claude chats.
+              Import bookmarks, save tabs, and sync Claude or ChatGPT chats into Stash.
             </div>
           </div>
           <span className="text-muted-foreground transition-colors group-hover:text-brand">&rarr;</span>
