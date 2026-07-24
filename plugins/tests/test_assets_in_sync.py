@@ -37,24 +37,33 @@ def test_every_agent_has_shipped_assets():
         )
 
 
-def test_assets_match_plugin_sources_byte_for_byte():
-    for agent in AGENTS:
-        src_root = SRC_DIR / f"{agent}-plugin"
-        dst_root = DST_DIR / agent
+def _assert_in_sync(agent: str, src_root: Path, dst_root: Path) -> None:
+    src_map = dict(_iter_tracked_files(src_root))
+    dst_map = dict(_iter_tracked_files(dst_root))
 
-        src_map = dict(_iter_tracked_files(src_root))
-        dst_map = dict(_iter_tracked_files(dst_root))
+    assert set(src_map) == set(dst_map), (
+        f"{agent}: file set drift between {src_root} and {dst_root}. "
+        f"Only in source: {sorted(set(src_map) - set(dst_map))}; "
+        f"only in assets: {sorted(set(dst_map) - set(src_map))}"
+    )
 
-        assert set(src_map) == set(dst_map), (
-            f"{agent}: file set drift between {src_root} and {dst_root}. "
-            f"Only in source: {sorted(set(src_map) - set(dst_map))}; "
-            f"only in assets: {sorted(set(dst_map) - set(src_map))}"
+    for rel in src_map:
+        src_bytes = src_map[rel].read_bytes()
+        dst_bytes = dst_map[rel].read_bytes()
+        assert src_bytes == dst_bytes, (
+            f"{agent}: {rel} differs between {src_root} and {dst_root}. "
+            f"Re-run the vendor copy when editing plugin sources."
         )
 
-        for rel in src_map:
-            src_bytes = src_map[rel].read_bytes()
-            dst_bytes = dst_map[rel].read_bytes()
-            assert src_bytes == dst_bytes, (
-                f"{agent}: {rel} differs between {src_root} and {dst_root}. "
-                f"Re-run the vendor copy when editing plugin sources."
-            )
+
+def test_assets_match_plugin_sources_byte_for_byte():
+    for agent in AGENTS:
+        _assert_in_sync(agent, SRC_DIR / f"{agent}-plugin", DST_DIR / agent)
+
+
+def test_claude_scripts_match_shipped_assets():
+    """Claude ships hooks.json and docs through the Claude Code marketplace,
+    but `stash hook run claude` executes the scripts from the shipped assets —
+    only scripts/ is mirrored (the marketplace manifest's version field is
+    CI-bumped, so a whole-dir mirror would drift on every release)."""
+    _assert_in_sync("claude", SRC_DIR / "claude-plugin" / "scripts", DST_DIR / "claude" / "scripts")

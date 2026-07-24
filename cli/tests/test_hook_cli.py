@@ -1,4 +1,4 @@
-"""Tests for `stash hook` — the stable dispatcher Codex hook commands call."""
+"""Tests for `stash hook` — the stable dispatcher agent hook commands call."""
 
 from __future__ import annotations
 
@@ -6,11 +6,13 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
 from typer.testing import CliRunner
 
-from cli.main import app
+from cli.main import _HOOK_EVENTS, app
 
-FIXTURES = Path(__file__).resolve().parent.parent.parent / "plugins" / "tests" / "fixtures"
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+FIXTURES = REPO_ROOT / "plugins" / "tests" / "fixtures"
 
 runner = CliRunner()
 
@@ -20,9 +22,20 @@ def test_hook_run_rejects_unknown_agent() -> None:
     assert result.exit_code == 1
 
 
-def test_hook_run_rejects_unknown_event() -> None:
-    result = runner.invoke(app, ["hook", "run", "codex", "bogus"])
+@pytest.mark.parametrize("agent", sorted(_HOOK_EVENTS))
+def test_hook_run_rejects_unknown_event(agent: str) -> None:
+    result = runner.invoke(app, ["hook", "run", agent, "bogus"])
     assert result.exit_code == 1
+
+
+def test_hook_events_table_matches_script_files() -> None:
+    """Every dispatchable (agent, event) must have a script in the shipped
+    assets, and every script must be dispatchable — a drifting table means
+    hooks that silently do nothing or scripts nobody can run."""
+    for agent, events in _HOOK_EVENTS.items():
+        scripts_dir = REPO_ROOT / "stashai" / "plugin" / "assets" / agent / "scripts"
+        on_disk = {p.stem for p in scripts_dir.glob("on_*.py")}
+        assert set(events) == on_disk, f"{agent}: table {sorted(events)} vs files {sorted(on_disk)}"
 
 
 def test_hook_auto_update_writes_preference(monkeypatch, tmp_path: Path) -> None:

@@ -1,22 +1,24 @@
 # Merged into ~/.hermes/config.yaml by `stash signin`, inside a
-# "# stash-plugin:begin/end" marker block. ${PLUGIN_ROOT} is the absolute
-# path to this plugin dir. Timeouts are in SECONDS (Hermes caps at 300).
+# "# stash-plugin:begin/end" marker block. Commands are machine-independent —
+# `stash hook run hermes <event>` executes the scripts shipped inside the
+# stashai package. Timeouts are in SECONDS (Hermes caps at 300).
 # Hermes runs each command via shlex.split (no shell) and asks for one-time
-# approval per (event, command) pair on first use.
+# approval per (event, command) pair on first use; the stable command means
+# that approval survives stash/python upgrades.
 hooks:
   on_session_start:
-    - command: "bash ${PLUGIN_ROOT}/scripts/_run.sh on_session_start"
+    - command: "stash hook run hermes on_session_start"
       timeout: 10
   pre_llm_call:
-    - command: "bash ${PLUGIN_ROOT}/scripts/_run.sh on_prompt"
+    - command: "stash hook run hermes on_prompt"
       timeout: 10
   post_tool_call:
     - matcher: ".*"
-      command: "bash ${PLUGIN_ROOT}/scripts/_run.sh on_tool_use"
+      command: "stash hook run hermes on_tool_use"
       timeout: 10
   post_llm_call:
-    - command: "bash ${PLUGIN_ROOT}/scripts/_run.sh on_stop"
+    - command: "stash hook run hermes on_stop"
       timeout: 15
   on_session_end:
-    - command: "bash ${PLUGIN_ROOT}/scripts/_run.sh on_session_end"
+    - command: "stash hook run hermes on_session_end"
       timeout: 10

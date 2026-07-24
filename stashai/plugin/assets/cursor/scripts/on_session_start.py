@@ -11,6 +11,7 @@ from stashai.plugin.hooks import (
     uploads_disabled_warning,
     uploads_enabled,
 )
+from stashai.plugin.session_upload import spawn_self_upgrade
 from stashai.plugin.state import load_state, reset_stats, save_state
 
 
@@ -35,6 +36,8 @@ def main():
             create_session_record(client, cfg, state, event, DATA_DIR)
     except Exception:
         pass
+
+    spawn_self_upgrade()
 
 
 if __name__ == "__main__":

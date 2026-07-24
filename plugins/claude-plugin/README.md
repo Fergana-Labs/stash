@@ -84,5 +84,7 @@ stash vfs "find /me -name '*.md'"                      # List all pages
 
 ## Prerequisites
 
-- The `stash` CLI (`uv tool install stashai`) — the plugin's hook scripts run
-  under the same Python environment the CLI installs.
+- The `stash` CLI (`uv tool install stashai`). Every hook is the stable
+  command `stash hook run claude <event>`: the hook scripts ship inside the
+  stashai package and run under its Python, so scripts and library never
+  drift apart.
