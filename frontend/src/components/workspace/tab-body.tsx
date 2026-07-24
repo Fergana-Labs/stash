@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import PageClient from "@/app/(app)/p/[pageId]/PageClient";
 import FileClient from "@/app/(app)/f/[fileId]/FileClient";
 import TableClient from "@/app/(app)/tables/[tableId]/TableClient";
@@ -9,6 +9,7 @@ import SessionClient from "@/app/(app)/sessions/[sessionId]/SessionClient";
 import SkillFolderClient from "@/app/(app)/skills/folder/[folderId]/SkillFolderClient";
 import FolderClient from "@/app/(app)/folders/[folderId]/FolderClient";
 import ChatPanel from "@/components/agents/ChatPanel";
+import AgentRunsView from "@/components/agents/AgentRunsView";
 import IntegrationsSettings from "@/components/integrations/IntegrationsSettings";
 import { IntegrationDetail } from "@/app/(app)/integrations/[provider]/page";
 import { connectorForProvider } from "@/components/integrations/connectors";
@@ -16,22 +17,27 @@ import MachineFileView from "@/components/workspace/machine-file-view";
 import TerminalPanel from "@/components/agents/TerminalPanel";
 import AgentConfigPanel from "@/components/agents/AgentConfigPanel";
 import { takeAgentConfigView } from "@/lib/agent-tab-view";
+import { getAgent, type Agent } from "@/lib/api";
 import type { WorkbenchTab } from "@/lib/workspace-store";
 
-/** The agentId an agent tab's refId points at, when it encodes one: a per-agent
- *  chat (`agent-<id>`) or a fresh chat (`new:<id>:<nonce>`). A raw session id
- *  from a recent chat doesn't, so those tabs are chat-only. */
+/** The agentId an agent tab's refId points at. Only a per-agent tab
+ *  (`agent-<uuid>`) encodes one — stored session ids also start with `agent-`
+ *  (chats mint `agent-<hex>`, runs `agent-curate|sched-…`), so match the full
+ *  uuid shape instead of the prefix. Everything else is a chat-only tab. */
 function agentIdFromRef(refId: string): string | null {
-  if (refId.startsWith("new:")) return refId.split(":")[1] || null;
-  if (refId.startsWith("agent-")) return refId.slice("agent-".length) || null;
-  return null;
+  const m = refId.match(
+    /^agent-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/,
+  );
+  return m ? m[1] : null;
 }
 
 function AgentViewSelector({
   view,
+  chatLabel,
   onChange,
 }: {
   view: "chat" | "config";
+  chatLabel: string;
   onChange: (v: "chat" | "config") => void;
 }) {
   return (
@@ -51,7 +57,7 @@ function AgentViewSelector({
                   : "text-muted-foreground hover:bg-raised/70 hover:text-foreground")
               }
             >
-              {key === "config" ? "Config" : "Chat"}
+              {key === "config" ? "Config" : chatLabel}
             </button>
           );
         })}
@@ -60,22 +66,39 @@ function AgentViewSelector({
   );
 }
 
-/** A live agent tab: chat and config in one tab, switched by a selector. The
- *  refId is a stored sessionId, `agent-<id>` (the per-agent chat), or
- *  `new:<id>:<nonce>` for a fresh chat. The server mints the session on turn 1.
- *  Both panels stay mounted so switching never drops an in-flight stream. */
+/** A live agent tab: the agent's single conversation plus config, switched by
+ *  a selector. The refId is `agent-<uuid>` (a named agent), a stored sessionId
+ *  from a deep link, or `new-<nonce>` from the tab strip (the server mints the
+ *  session on turn 1). A chat agent's conversation is its persistent session;
+ *  a scheduled agent's is the runs feed. Panels stay mounted so switching
+ *  never drops an in-flight stream. */
 function AgentChatTab({ refId }: { refId: string }) {
   const isNew = refId.startsWith("new");
   const agentId = agentIdFromRef(refId);
   const [sessionId, setSessionId] = useState<string | null>(isNew ? null : refId);
+  const [agent, setAgent] = useState<Agent | null>(null);
   const [view, setView] = useState<"chat" | "config">(() =>
     agentId && takeAgentConfigView(agentId) ? "config" : "chat",
   );
+  useEffect(() => {
+    if (agentId) getAgent(agentId).then(setAgent).catch(() => {});
+  }, [agentId]);
+
+  // A named agent's body waits for the agent row — rendering the chat first
+  // would flash an empty conversation before a scheduled agent's runs load.
+  if (agentId && agent === null) return null;
+  const scheduled = agent !== null && (agent.run_mode === "scheduled" || agent.is_curator);
   return (
     <div className="mx-auto flex h-full w-full max-w-3xl flex-col">
-      {agentId && <AgentViewSelector view={view} onChange={setView} />}
+      {agentId && (
+        <AgentViewSelector view={view} chatLabel={scheduled ? "Runs" : "Chat"} onChange={setView} />
+      )}
       <div className={view === "chat" ? "flex min-h-0 flex-1 flex-col" : "hidden"}>
-        <ChatPanel sessionId={sessionId} onSessionId={setSessionId} agentId={agentId} />
+        {scheduled && agentId ? (
+          <AgentRunsView agentId={agentId} />
+        ) : (
+          <ChatPanel sessionId={sessionId} onSessionId={setSessionId} agentId={agentId} />
+        )}
       </div>
       {agentId && (
         <div className={view === "config" ? "min-h-0 flex-1 overflow-y-auto" : "hidden"}>

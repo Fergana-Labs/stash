@@ -33,11 +33,11 @@ async def clip_page(
     body: ClipPageRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    """Save a clipped page. Returns 201 + the created page, except for URLs
-    whose content isn't in the posted DOM (YouTube, arXiv abstracts) — those
-    become async import jobs and return 202 + the import id."""
+    """Save a clipped page. Returns 201 + the created page, except for special
+    pages whose content isn't in the posted DOM (YouTube, X threads, arXiv
+    abstracts) — those become async import jobs and return 202 + the import id."""
     url = str(body.url)
-    if clip_router.is_async_url(url):
+    if clip_router.is_special_page(url):
         from ..tasks.clips import dispatch_url_imports
 
         ids = await url_import_service.create_url_imports(

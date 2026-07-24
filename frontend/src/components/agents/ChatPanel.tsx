@@ -3,10 +3,13 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
+import Markdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 import {
   type ChatMessage,
   type Citation,
+  agentTurnRunning,
   getAgentChat,
   streamAgentChat,
 } from "@/lib/agentChat";
@@ -45,6 +48,28 @@ export default function ChatPanel({
       })
       .catch(() => {});
   }, [sessionId, loadedSession]);
+
+  // Turns run detached on the sandbox, so one can outlive the panel that
+  // started it (closed tab, navigation). If this session's turn is still
+  // running, watch for it to finish and pull the recorded reply.
+  useEffect(() => {
+    if (!sessionId || streaming) return;
+    let stopped = false;
+    void (async () => {
+      if (!(await agentTurnRunning(sessionId).catch(() => false))) return;
+      setStatus("Agent is still working…");
+      while (!stopped && (await agentTurnRunning(sessionId).catch(() => false))) {
+        await new Promise((resolve) => setTimeout(resolve, 3000));
+      }
+      if (stopped) return;
+      setStatus(null);
+      const msgs = await getAgentChat(sessionId).catch(() => null);
+      if (msgs && !stopped) setMessages(msgs);
+    })();
+    return () => {
+      stopped = true;
+    };
+  }, [sessionId, streaming]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
@@ -309,33 +334,38 @@ function CitationChip({ citation }: { citation: Citation }) {
   return <span className="font-mono">{citation.label}</span>;
 }
 
+// User turns get a right-aligned bubble; assistant turns render inline across
+// the full width (Claude Code / Codex style) as markdown.
 function MessageBubble({ message }: { message: ChatMessage }) {
-  const isUser = message.role === "user";
-  return (
-    <div className={isUser ? "flex justify-end" : "flex justify-start"}>
-      <div
-        className={
-          "max-w-[85%] rounded-2xl px-3.5 py-2 text-[13px] leading-relaxed whitespace-pre-wrap " +
-          (isUser
-            ? "bg-[var(--color-brand-600)] text-white"
-            : "border border-border bg-surface text-foreground")
-        }
-      >
-        {message.content || (
-          <span className="inline-block h-3 w-1.5 animate-pulse bg-brand align-baseline" />
-        )}
-        {!isUser && message.citations && message.citations.length > 0 && (
-          <div className="mt-2 border-t border-border-subtle pt-2 text-[11px] text-muted-foreground">
-            <span className="font-medium text-foreground">Grounded on:</span>{" "}
-            {message.citations.map((c, i) => (
-              <span key={c.id}>
-                {i > 0 && ", "}
-                <CitationChip citation={c} />
-              </span>
-            ))}
-          </div>
-        )}
+  if (message.role === "user") {
+    return (
+      <div className="flex justify-end">
+        <div className="max-w-[85%] rounded-2xl bg-[var(--color-brand-600)] px-3.5 py-2 text-[13px] leading-relaxed whitespace-pre-wrap text-white">
+          {message.content}
+        </div>
       </div>
+    );
+  }
+  return (
+    <div className="text-[13px] leading-relaxed text-foreground">
+      {message.content ? (
+        <div className="markdown-content">
+          <Markdown remarkPlugins={[remarkGfm]}>{message.content}</Markdown>
+        </div>
+      ) : (
+        <span className="inline-block h-3 w-1.5 animate-pulse bg-brand align-baseline" />
+      )}
+      {message.citations && message.citations.length > 0 && (
+        <div className="mt-2 border-t border-border-subtle pt-2 text-[11px] text-muted-foreground">
+          <span className="font-medium text-foreground">Grounded on:</span>{" "}
+          {message.citations.map((c, i) => (
+            <span key={c.id}>
+              {i > 0 && ", "}
+              <CitationChip citation={c} />
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

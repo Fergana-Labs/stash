@@ -13,6 +13,9 @@ set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "$0")" && pwd)"
 PIDS=()
+# The frontend type-check watcher is advisory: tracked outside PIDS so its
+# exit never takes down the stack, but cleaned up with everything else.
+TSC_WATCH_PID=""
 DEV_DB_IMAGE="pgvector/pgvector:pg16"
 # Containers carry this label (set to the absolute worktree path) so databases
 # of deleted worktrees can be garbage-collected on every start.
@@ -45,6 +48,9 @@ cleanup() {
     for pid in "${PIDS[@]}"; do
         kill "$pid" 2>/dev/null || true
     done
+    if [ -n "$TSC_WATCH_PID" ]; then
+        kill "$TSC_WATCH_PID" 2>/dev/null || true
+    fi
     # Bounded wait, then force-kill: celery's warm shutdown can wedge on a
     # stuck pool process, and a hung child must not block Ctrl+C forever.
     for _ in {1..15}; do
@@ -56,6 +62,9 @@ cleanup() {
     for pid in "${PIDS[@]}"; do
         kill_tree "$pid"
     done
+    if [ -n "$TSC_WATCH_PID" ]; then
+        kill_tree "$TSC_WATCH_PID"
+    fi
     wait 2>/dev/null
     if [ "$STARTED_DEV_DB" = "true" ]; then
         echo "[db]      Stopping dev database container..."
@@ -582,6 +591,14 @@ NEXT_PUBLIC_COLLAB_URL="ws://localhost:${COLLAB_PORT}" \
 PORT="$FRONTEND_PORT" \
 npm run dev &
 PIDS+=($!)
+
+# --- Frontend type-check watcher ---
+# `next dev` compiles with SWC and never type-checks, so a type error that
+# fails `next build` (and therefore CI and the prod deploy) stays invisible
+# during dev. The watcher streams those errors into this terminal as you edit.
+echo "[types]    Starting frontend type-check watcher..."
+npx tsc --noEmit --watch --preserveWatchOutput &
+TSC_WATCH_PID=$!
 
 echo "================================"
 echo "All services started. Press Ctrl+C to stop."

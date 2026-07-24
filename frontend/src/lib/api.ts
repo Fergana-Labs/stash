@@ -495,11 +495,11 @@ export function githubOwner(sourceGithubUrl: string): string {
 
 // --- Home feed ---
 
-// An item from the caller's own stash the feed resurfaces: an old clip
-// (opens in-app via app_url) or an X/Instagram save (opens the original
-// via external_url; the archived text is the preview).
+// An item from the caller's own stash the feed resurfaces: an old doc, file,
+// memory page, or clip (opens in-app via app_url) or an X/Instagram save
+// (opens the original via external_url; the archived text is the preview).
 export interface ResurfaceCardData {
-  source: "x" | "instagram" | "clip";
+  source: "x" | "instagram" | "clip" | "doc" | "file" | "memory";
   title: string;
   preview: string;
   saved_at: string;
@@ -1270,14 +1270,12 @@ export interface LinearTicketLabel {
 export async function listMySessions(
   limit = 50,
   sessionFolderId?: string,
-  offset = 0,
-  agentChatsOnly = false
+  offset = 0
 ): Promise<SessionSummary[]> {
   const qs = new URLSearchParams();
   qs.set("limit", String(limit));
   if (offset) qs.set("offset", String(offset));
   if (sessionFolderId) qs.set("session_folder_id", sessionFolderId);
-  if (agentChatsOnly) qs.set("agent_chats_only", "true");
   const data = await apiFetch<{ sessions: SessionSummary[] }>(
     `${ME}/sessions?${qs.toString()}`
   );
@@ -1416,13 +1414,34 @@ export async function listSkills(): Promise<Skill[]> {
 }
 
 // Import a public GitHub repo's SKILL.md folders as private skills in your scope.
-export async function importGithubSkill(
+// Straight copy of a whole repo into a new root folder; folders containing a
+// SKILL.md derive as skills automatically.
+export async function importGithubRepo(
   repoUrl: string,
-): Promise<{ skills: number; imported: number }> {
-  return apiFetch(`${ME}/skills/import-github`, {
+): Promise<{ folder_id: string; name: string; files: number }> {
+  return apiFetch(`${ME}/import/github`, {
     method: "POST",
     body: JSON.stringify({ repo_url: repoUrl }),
   });
+}
+
+// Tree-only pre-import look: which repo folders are skills ('' = repo root).
+export async function inspectGithubImport(repoUrl: string): Promise<{ skill_dirs: string[] }> {
+  return apiFetch(`${ME}/import/github/inspect?repo_url=${encodeURIComponent(repoUrl)}`);
+}
+
+export interface GithubImportRepo {
+  full_name: string;
+  html_url: string;
+  private: boolean;
+  description: string;
+}
+
+export async function listGithubImportRepos(): Promise<{
+  connected: boolean;
+  repos: GithubImportRepo[];
+}> {
+  return apiFetch(`${ME}/import/github/repos`);
 }
 
 // The full publish record, as returned by publish/update.
@@ -1559,15 +1578,15 @@ export async function getPublicSkill(slug: string): Promise<PublicSkillDetail> {
   return apiFetch(`/api/v1/skills/${slug}`);
 }
 
-// Fork: deep folder copy into the caller's own space, landing as a private
-// skill folder. The fork target is always the current user.
+// Fork: deep folder copy into the active scope, landing as a private skill
+// folder — the caller's own space, or the workspace they're working in.
 export async function forkSkill(
   slug: string
 ): Promise<{ folder_id: string; name: string }> {
-  const me = await getMe();
+  const targetScope = getScopeUserId() ?? (await getMe()).id;
   return apiFetch(`/api/v1/skills/${slug}/add-to-stash`, {
     method: "POST",
-    body: JSON.stringify({ owner_user_id: me.id }),
+    body: JSON.stringify({ owner_user_id: targetScope }),
   });
 }
 
@@ -2131,6 +2150,25 @@ export type Agent = {
 export async function listAgents(): Promise<Agent[]> {
   const data = await apiFetch<{ agents: Agent[] }>("/api/v1/me/agents");
   return data.agents;
+}
+
+export async function getAgent(id: string): Promise<Agent> {
+  return apiFetch(`/api/v1/me/agents/${id}`);
+}
+
+export type AgentRun = {
+  session_id: string;
+  started_at: string;
+  finished_at: string;
+  failed: boolean;
+  messages: { role: "user" | "assistant"; content: string }[];
+};
+
+/** A scheduled agent's runs, oldest first — each run is its own session
+ *  (fresh context), rendered as one feed with reset separators between runs. */
+export async function listAgentRuns(agentId: string): Promise<AgentRun[]> {
+  const data = await apiFetch<{ runs: AgentRun[] }>(`/api/v1/me/agents/${agentId}/runs`);
+  return data.runs;
 }
 
 /** Enqueue a curation pass on the worker — the same path the daily schedule

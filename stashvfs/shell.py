@@ -458,30 +458,40 @@ class SkillAppVfsShell:
         if not paths:
             paths = ["."]
         matches = []
-        for raw_path in paths:
-            path = self._resolve_path(raw_path)
-            node = self.model._get_node(path)
-            file_paths = [path] if node.is_file else self._file_paths(path) if recursive else []
-            if node.is_dir and not recursive:
-                raise VfsShellError(f"{raw_path}: is a directory")
-            self.model.prefetch(file_paths)
-            for file_path in file_paths:
-                try:
-                    text = self._read_text(file_path)
-                except VfsClientError as e:
-                    self._warn(f"{name}: {file_path}: {e.detail}")
-                    continue
-                matches.append(
-                    _grep_text(
-                        regex,
-                        text,
-                        file_path,
-                        show_line_numbers=show_line_numbers,
-                        prefix_path=len(file_paths) > 1 or recursive,
-                        before=before,
-                        after=after,
+        roots = []
+        docs_scanned = 0
+        # The per-document reads below are the mechanics of one search, not
+        # documents the user asked to see — scan_calls tags them so analytics
+        # skip them, and record_search writes the single search event that
+        # stands in for the whole sweep.
+        with self.model.client.scan_calls():
+            for raw_path in paths:
+                path = self._resolve_path(raw_path)
+                roots.append(path)
+                node = self.model._get_node(path)
+                file_paths = [path] if node.is_file else self._file_paths(path) if recursive else []
+                if node.is_dir and not recursive:
+                    raise VfsShellError(f"{raw_path}: is a directory")
+                self.model.prefetch(file_paths)
+                for file_path in file_paths:
+                    docs_scanned += 1
+                    try:
+                        text = self._read_text(file_path)
+                    except VfsClientError as e:
+                        self._warn(f"{name}: {file_path}: {e.detail}")
+                        continue
+                    matches.append(
+                        _grep_text(
+                            regex,
+                            text,
+                            file_path,
+                            show_line_numbers=show_line_numbers,
+                            prefix_path=len(file_paths) > 1 or recursive,
+                            before=before,
+                            after=after,
+                        )
                     )
-                )
+        self.model.client.record_search(pattern, roots, docs_scanned)
         output = "".join(matches)
         if not output:
             raise VfsShellExit(1)

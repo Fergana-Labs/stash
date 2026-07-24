@@ -45,6 +45,7 @@ class StashClient:
         # content-activity analytics can exclude them (see auth._set_request_via).
         self._auto = auto
         self._internal = False
+        self._scan = False
         self._http = httpx.Client(base_url=self._base_url, timeout=30)
 
     def close(self) -> None:
@@ -67,6 +68,23 @@ class StashClient:
         finally:
             self._internal = False
 
+    @contextmanager
+    def scan_calls(self):
+        """A grep's per-document reads (see stashvfs.VfsClient.scan_calls):
+        requests in this block are tagged `scan` so analytics count the grep
+        as the one search `record_search` writes, not as hundreds of reads."""
+        self._scan = True
+        try:
+            yield
+        finally:
+            self._scan = False
+
+    def record_search(self, pattern: str, roots: list[str], docs_scanned: int) -> None:
+        self._post(
+            "/api/v1/me/vfs/searches",
+            json={"pattern": pattern, "roots": roots, "docs_scanned": docs_scanned},
+        )
+
     def _headers(self) -> dict[str, str]:
         if not self._api_key:
             return {}
@@ -75,6 +93,8 @@ class StashClient:
             headers["X-Stash-Scope"] = self._scope
         if self._auto or self._internal:
             headers["X-Stash-Via"] = "auto"
+        elif self._scan:
+            headers["X-Stash-Via"] = "scan"
         return headers
 
     def _request(self, method: str, path: str, **kwargs) -> httpx.Response:

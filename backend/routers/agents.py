@@ -4,10 +4,11 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 
 from ..auth import get_current_user
+from ..database import get_pool
 from ..services import agent_service, sprite_agent_service
 
 router = APIRouter(prefix="/api/v1/me/agents", tags=["agents"])
@@ -45,6 +46,57 @@ async def update_agent(
     return await agent_service.update_agent(
         current_user["id"], agent_id, fields.model_dump(exclude_unset=True)
     )
+
+
+@router.get("/{agent_id}")
+async def get_agent(agent_id: UUID, current_user: dict = Depends(get_current_user)):
+    return await agent_service.get_agent(current_user["id"], agent_id)
+
+
+@router.get("/{agent_id}/runs")
+async def list_agent_runs(
+    agent_id: UUID,
+    limit: int = Query(30, ge=1, le=100),
+    current_user: dict = Depends(get_current_user),
+):
+    """A scheduled agent's runs as one chronological feed, oldest first.
+
+    Every run is its own session (a fresh context), so the client draws a
+    context-reset separator between runs. Volume is one session per schedule
+    tick, so grouping the prefix's events in memory stays small."""
+    agent = await agent_service.get_agent(current_user["id"], agent_id)
+    prefix = sprite_agent_service.scheduled_session_prefix(agent)
+    rows = await get_pool().fetch(
+        """
+        SELECT session_id, event_type, content, created_at
+        FROM history_events
+        WHERE owner_user_id = $1
+          AND session_id LIKE $2
+          AND event_type IN ('user_message', 'assistant_message')
+          AND NULLIF(BTRIM(content), '') IS NOT NULL
+        ORDER BY created_at, id
+        """,
+        current_user["id"],
+        f"{prefix}%",
+    )
+    runs: dict[str, dict] = {}
+    for r in rows:
+        run = runs.setdefault(
+            r["session_id"],
+            {
+                "session_id": r["session_id"],
+                "started_at": r["created_at"],
+                "finished_at": r["created_at"],
+                "failed": False,
+                "messages": [],
+            },
+        )
+        run["finished_at"] = r["created_at"]
+        role = r["event_type"].removesuffix("_message")
+        if role == "assistant" and r["content"].startswith(sprite_agent_service.RUN_FAILED_PREFIX):
+            run["failed"] = True
+        run["messages"].append({"role": role, "content": r["content"]})
+    return {"runs": list(runs.values())[-limit:]}
 
 
 @router.get("/{agent_id}/prompt")

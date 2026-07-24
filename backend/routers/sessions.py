@@ -93,7 +93,6 @@ async def list_my_sessions(
     session_folder_id: UUID | None = Query(None),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
-    agent_chats_only: bool = Query(False),
     current_user: dict = Depends(get_current_user),
     scope_user_id: UUID = Depends(get_scope),
 ):
@@ -131,13 +130,6 @@ async def list_my_sessions(
     if session_folder_id is not None:
         args.append(session_folder_id)
         where.append(f"s.session_folder_id = ${len(args)}")
-    # The Agents view lists only chats that ran through our platform agents —
-    # web/scheduled (`agent-*`), Slack (`slack-agent-*`), Telegram
-    # (`telegram-agent-*`) — not CLI transcripts, which live in Sessions.
-    if agent_chats_only:
-        prefix = "session_id ~ '^(agent|slack-agent|telegram-agent)-'"
-        where.append(f"he.{prefix}")
-        title_where.append(f"he_title.{prefix}")
 
     rows = await pool.fetch(
         f"""

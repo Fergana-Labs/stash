@@ -270,7 +270,9 @@ LISTING_ACTIONS = [
 # only web *searches* count; cli and ask count for everything. Untagged rows
 # (pre-`via` history, anonymous pastes) are excluded, as are 'auto' rows —
 # automated machinery like the session-start skills sync and the VFS's
-# mount-time tree refresh, which reads content nobody asked to see.
+# mount-time tree refresh, which reads content nobody asked to see — and
+# 'scan' rows: a VFS grep's per-document sweep, counted instead as the one
+# source.searched event the grep records.
 ACTIVITY_SURFACES = {
     "reads": ["cli", "ask"],
     "searches": ["web", "cli", "ask"],

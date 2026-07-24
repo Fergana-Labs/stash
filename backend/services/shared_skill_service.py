@@ -160,8 +160,8 @@ async def publish_folder(
     )
     if not folder or folder["owner_user_id"] != owner_user_id:
         raise ValueError("Folder not found in this scope")
-    if not await user_scope_service.is_owner(owner_user_id, owner_id):
-        raise ValueError("Only scope owners can publish Skills")
+    if not await user_scope_service.can_write(owner_user_id, owner_id):
+        raise ValueError("Not allowed to publish Skills in this scope")
     if not await permission_service.check_access(
         "folder", folder_id, owner_id, owner_user_id=owner_user_id, require="write"
     ):
@@ -1012,8 +1012,9 @@ def contents_to_text(title: str, contents: dict) -> str:
 
 # --- Access checks (on the publish record) ---
 #
-# A publish record's existence means "publicly readable"; managing it is
-# owner-only. Person-to-person access rides folder shares, not this module.
+# A publish record's existence means "publicly readable"; managing it takes
+# write access on its scope — the scope owner, or any member when the scope
+# is a workspace. Person-to-person access rides folder shares, not this module.
 
 
 async def user_can_read(skill_id: UUID, user_id: UUID | None) -> bool:
@@ -1024,8 +1025,8 @@ async def user_can_read(skill_id: UUID, user_id: UUID | None) -> bool:
 
 async def user_can_manage(skill_id: UUID, user_id: UUID) -> bool:
     pool = get_pool()
-    owner_id = await pool.fetchval("SELECT owner_id FROM skills WHERE id = $1", skill_id)
-    return owner_id == user_id
+    owner_user_id = await pool.fetchval("SELECT owner_user_id FROM skills WHERE id = $1", skill_id)
+    return await user_scope_service.can_write(owner_user_id, user_id)
 
 
 async def user_can_write(skill_id: UUID, user_id: UUID) -> bool:

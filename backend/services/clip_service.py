@@ -28,6 +28,7 @@ BOOKMARKS_TABLE = "Bookmarks"
 KIND_PAGE = "Page"
 KIND_PDF = "PDF"
 KIND_VIDEO = "Video"
+KIND_TWEET = "Tweet"
 # A bookmark whose content could not be captured (login wall, no captions,
 # unsupported content) — the link itself is still worth keeping.
 KIND_LINK = "Link"

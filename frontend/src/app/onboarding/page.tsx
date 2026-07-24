@@ -6,7 +6,6 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Header from "../../components/Header";
 import { useAuth } from "../../hooks/useAuth";
 import { track } from "../../lib/analytics";
-import { TEAMS_CONTACT_EMAIL } from "../../lib/contact";
 import {
   createMyKey,
   createPage,
@@ -21,8 +20,9 @@ import SourceConnectorList from "../../components/integrations/SourceConnectorLi
 
 import MemoryAskStep from "./paths/memory/MemoryAskStep";
 
-// The linear flow: a few questions about the user, explain Stash, try one of
-// the three entry points, then ask the agent a real question, then launch.
+// The linear flow: a few questions about the user, explain Stash, then try
+// one of five entry points. The ask step only exists off the Connect path —
+// asking the agent needs a connected source to ask about.
 const STEP_NAMES = ["about", "intro", "try", "ask"] as const;
 
 const CLI_INSTALL_COMMAND = `bash -c "$(curl -fsSL https://joinstash.ai/install)"`;
@@ -44,12 +44,6 @@ const REFERRAL_OPTIONS = [
   "GitHub",
   "LinkedIn",
   "Other",
-];
-
-const PLAN_OPTIONS = [
-  "Personal — Free",
-  "Team — Pro",
-  "Production agent — Enterprise",
 ];
 
 export default function OnboardingPage() {
@@ -74,7 +68,6 @@ function OnboardingInner() {
   const [referralSource, setReferralSource] = useState("");
   const [referralOther, setReferralOther] = useState("");
   const [useCase, setUseCase] = useState("");
-  const [planIntent, setPlanIntent] = useState("");
 
   const stepIdx = useMemo(() => {
     const raw = searchParams.get("step");
@@ -150,19 +143,23 @@ function OnboardingInner() {
   const isTryItOut = stepIdx === 2;
   const isAsk = stepIdx >= 3;
 
-  const continueLabel = isIntro ? "Get started" : isAsk ? "Launch" : "Continue";
+  const continueLabel = isIntro
+    ? "Get started"
+    : isTryItOut
+      ? "Finish"
+      : isAsk
+        ? "Launch"
+        : "Continue";
   const roleAnswer = role === "Other" ? roleOther.trim() && `Other: ${roleOther.trim()}` : role;
   const referralAnswer =
     referralSource === "Other"
       ? referralOther.trim() && `Other: ${referralOther.trim()}`
       : referralSource;
   // About: role + referral are required, and "Other" needs to be spelled out
-  // (use-case is optional). Try it out: Continue lives inside the Connect
-  // option and is gated on a connected source. Ask: only let them launch once
-  // the agent has actually replied.
-  const canContinue = isAbout
-    ? Boolean(roleAnswer && referralAnswer && planIntent)
-    : !isAsk || answered;
+  // (use-case is optional). Try it out: Finish ends onboarding from any option;
+  // the Connect option additionally offers the ask step once a source is
+  // connected. Ask: only let them launch once the agent has actually replied.
+  const canContinue = isAbout ? Boolean(roleAnswer && referralAnswer) : !isAsk || answered;
   const onContinue = async () => {
     if (isAbout) {
       try {
@@ -170,7 +167,6 @@ function OnboardingInner() {
           role: roleAnswer,
           referral_source: referralAnswer,
           use_case: useCase || undefined,
-          plan_intent: planIntent || undefined,
         });
       } catch {
         // Best-effort — don't block onboarding on a profile write.
@@ -178,11 +174,10 @@ function OnboardingInner() {
       track("onboarding.about_submitted", {
         role: roleAnswer,
         referral_source: referralAnswer,
-        plan_intent: planIntent,
       });
       return goToStep(stepIdx + 1);
     }
-    if (isAsk) return void finishAndExit();
+    if (isTryItOut || isAsk) return void finishAndExit();
     goToStep(stepIdx + 1);
   };
 
@@ -199,20 +194,18 @@ function OnboardingInner() {
               referralSource={referralSource}
               referralOther={referralOther}
               useCase={useCase}
-              planIntent={planIntent}
               onRole={setRole}
               onRoleOther={setRoleOther}
               onReferral={setReferralSource}
               onReferralOther={setReferralOther}
               onUseCase={setUseCase}
-              onPlanIntent={setPlanIntent}
             />
           )}
           {isIntro && <IntroStep />}
           {isTryItOut && (
             <TryItOutStep
               onCollabDoc={finishToCollabDoc}
-              onContinue={() => goToStep(stepIdx + 1)}
+              onAsk={() => goToStep(stepIdx + 1)}
             />
           )}
           {isAsk && <AskStep onAnswered={() => setAnswered(true)} />}
@@ -221,7 +214,6 @@ function OnboardingInner() {
             onSkip={skip}
             continueLabel={continueLabel}
             canContinue={canContinue}
-            hideContinue={isTryItOut}
           />
         </div>
       </main>
@@ -235,26 +227,22 @@ function AboutStep({
   referralSource,
   referralOther,
   useCase,
-  planIntent,
   onRole,
   onRoleOther,
   onReferral,
   onReferralOther,
   onUseCase,
-  onPlanIntent,
 }: {
   role: string;
   roleOther: string;
   referralSource: string;
   referralOther: string;
   useCase: string;
-  planIntent: string;
   onRole: (v: string) => void;
   onRoleOther: (v: string) => void;
   onReferral: (v: string) => void;
   onReferralOther: (v: string) => void;
   onUseCase: (v: string) => void;
-  onPlanIntent: (v: string) => void;
 }) {
   return (
     <div className="space-y-6">
@@ -280,24 +268,6 @@ function AboutStep({
             onChange={onReferralOther}
             placeholder="Where did you hear about us?"
           />
-        )}
-      </Field>
-      <Field label="Which plan fits you?">
-        <PillGroup options={PLAN_OPTIONS} value={planIntent} onChange={onPlanIntent} />
-        {planIntent === "Team — Pro" && (
-          <p className="text-[12px] text-dim">
-            Team workspaces are set up for you — email{" "}
-            <a className="underline" href={`mailto:${TEAMS_CONTACT_EMAIL}`}>
-              {TEAMS_CONTACT_EMAIL}
-            </a>{" "}
-            and we&rsquo;ll get your team going.
-          </p>
-        )}
-        {planIntent === "Production agent — Enterprise" && (
-          <p className="text-[12px] text-dim">
-            Your API key is free and instant. Unlimited sleep-time memory curation is part
-            of Enterprise — we&rsquo;ll reach out to get you set up.
-          </p>
         )}
       </Field>
       <Field label="What do you want to use Stash for?" optional>
@@ -415,6 +385,10 @@ function IntroStep() {
           HTML docs, Markdown, dashboards, decks — your agents&rsquo; work lands as
           real files. Edit visually, and share any folder or file as a link.
         </IntroPoint>
+        <IntroPoint title="A curated context graph">
+          While you sleep, curator agents dream over everything you saved and
+          distill it into a living memory wiki every agent you run can read.
+        </IntroPoint>
       </ul>
     </div>
   );
@@ -434,31 +408,29 @@ function IntroPoint({ title, children }: { title: string; children: React.ReactN
 
 function TryItOutStep({
   onCollabDoc,
-  onContinue,
+  onAsk,
 }: {
   onCollabDoc: () => void;
-  onContinue: () => void;
+  onAsk: () => void;
 }) {
+  const [sourceConnected, setSourceConnected] = useState(false);
   return (
-    <div className="space-y-7">
+    <div className="space-y-4">
       <div className="space-y-2">
         <h1 className="font-display text-[28px] leading-[1.1] font-bold tracking-tight text-foreground">
           Try it out
         </h1>
         <p className="text-sm text-dim max-w-md">
-          Five ways to start — pick whichever fits.
+          Five ways to start — open whichever fits.
         </p>
       </div>
       <TryOption
         badge="Build"
-        lead="Using Stash as the memory store for your agent? Mint an API key."
+        lead="Use Stash as the memory store for your agent, over a plain API."
       >
         <BuildOption />
       </TryOption>
-      <TryOption
-        badge="Create"
-        lead="Just want a place to write with your agent?"
-      >
+      <TryOption badge="Create" lead="A place to write with your agent — two cursors, one doc.">
         <button
           type="button"
           onClick={onCollabDoc}
@@ -477,34 +449,37 @@ function TryItOutStep({
       </TryOption>
       <TryOption
         badge="Connect"
-        lead="Connect a data source and your agent can navigate it like a file system."
+        lead="Connect a data source your agent can navigate like a file system."
       >
         <div className="space-y-3">
-          <SourceConnectorList returnTo="/onboarding?step=3" />
-          <div className="flex items-center justify-end gap-3">
-            <button
-              type="button"
-              onClick={onContinue}
-              className="cursor-pointer rounded-md bg-brand px-4 py-2 text-[12px] font-medium text-white hover:bg-brand-hover transition-colors"
-            >
-              Continue
-            </button>
-          </div>
+          <SourceConnectorList
+            returnTo="/onboarding?step=3"
+            onConnectedChange={setSourceConnected}
+          />
+          {sourceConnected && (
+            <div className="flex items-center justify-end">
+              <button
+                type="button"
+                onClick={onAsk}
+                className="cursor-pointer rounded-md bg-brand px-4 py-2 text-[12px] font-medium text-white hover:bg-brand-hover transition-colors"
+              >
+                Ask your agent about it &rarr;
+              </button>
+            </div>
+          )}
         </div>
       </TryOption>
       <TryOption
         badge="Capture"
-        lead="Run this in your terminal — every Claude Code / Codex session streams into Stash automatically."
+        lead="Stream every Claude Code / Codex session into Stash automatically."
       >
         <div className="space-y-2">
+          <p className="text-[12px] text-dim">Run this in your terminal:</p>
           <CommandBlock command={CLI_INSTALL_COMMAND} />
           <CommandBlock command="stash signin" />
         </div>
       </TryOption>
-      <TryOption
-        badge="Save"
-        lead="Save anything you read, straight from your browser."
-      >
+      <TryOption badge="Clip" lead="Save anything you read, straight from your browser.">
         <a
           href={routes.extension}
           target="_blank"
@@ -516,7 +491,7 @@ function TryItOutStep({
               Get the browser extension
             </div>
             <div className="text-[12px] text-muted-foreground">
-              Clip pages, import bookmarks, sync Instagram saves and ChatGPT/Claude chats.
+              Import bookmarks, save tabs, and sync Claude or ChatGPT chats into Stash.
             </div>
           </div>
           <span className="text-muted-foreground transition-colors group-hover:text-brand">&rarr;</span>
@@ -526,6 +501,8 @@ function TryItOutStep({
   );
 }
 
+// Each way to start is a collapsed accordion: badge + one-line description
+// up front, the actual steps revealed on open.
 function TryOption({
   badge,
   lead,
@@ -536,15 +513,18 @@ function TryOption({
   children: React.ReactNode;
 }) {
   return (
-    <div className="space-y-2.5">
-      <div className="flex items-center gap-2.5">
+    <details className="group rounded-lg border border-border bg-surface">
+      <summary className="flex cursor-pointer list-none items-center gap-2.5 px-4 py-3 [&::-webkit-details-marker]:hidden">
         <span className="rounded bg-brand/10 px-2 py-0.5 font-mono text-[10px] font-medium uppercase tracking-[0.1em] text-brand">
           {badge}
         </span>
-        <span className="text-[13px] text-dim">{lead}</span>
-      </div>
-      {children}
-    </div>
+        <span className="flex-1 text-[13px] text-dim">{lead}</span>
+        <span className="text-muted-foreground transition-transform group-open:rotate-90">
+          &rsaquo;
+        </span>
+      </summary>
+      <div className="border-t border-border px-4 py-3">{children}</div>
+    </details>
   );
 }
 
@@ -599,10 +579,24 @@ function BuildOption() {
 }
 
 function CommandBlock({ command }: { command: string }) {
+  const [copied, setCopied] = useState(false);
   return (
-    <pre className="overflow-x-auto rounded-md border border-border bg-surface px-2.5 py-1.5 font-mono text-[11.5px] text-foreground">
-      {command}
-    </pre>
+    <div className="flex items-stretch gap-1.5">
+      <pre className="min-w-0 flex-1 overflow-x-auto rounded-md border border-border bg-surface px-2.5 py-1.5 font-mono text-[11.5px] text-foreground">
+        {command}
+      </pre>
+      <button
+        type="button"
+        onClick={async () => {
+          await navigator.clipboard.writeText(command);
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1500);
+        }}
+        className="shrink-0 cursor-pointer rounded-md border border-border bg-surface px-2.5 text-[11px] text-muted-foreground transition-colors hover:border-brand hover:text-foreground"
+      >
+        {copied ? "Copied" : "Copy"}
+      </button>
+    </div>
   );
 }
 
@@ -622,8 +616,10 @@ function AskStep({ onAnswered }: { onAnswered: () => void }) {
   );
 }
 
+// "Ask" is deliberately absent — that step only exists off the Connect path,
+// so it doesn't belong in the always-visible progress trail.
 function ProgressBar({ stepIdx }: { stepIdx: number }) {
-  const labels = ["About you", "Welcome", "Try it out", "Ask"];
+  const labels = ["About you", "Welcome", "Try it out"];
   return (
     <div className="flex items-center gap-2">
       {labels.map((label, i) => {
@@ -654,13 +650,11 @@ function StepControls({
   onSkip,
   continueLabel,
   canContinue,
-  hideContinue,
 }: {
   onContinue: () => void;
   onSkip: () => void;
   continueLabel: string;
   canContinue: boolean;
-  hideContinue?: boolean;
 }) {
   return (
     <div className="flex items-center justify-between pt-2">
@@ -671,16 +665,14 @@ function StepControls({
       >
         Skip onboarding
       </button>
-      {!hideContinue && (
-        <button
-          type="button"
-          onClick={onContinue}
-          disabled={!canContinue}
-          className="cursor-pointer rounded-md bg-brand px-4 py-2 text-[12px] font-medium text-white hover:bg-brand-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {continueLabel}
-        </button>
-      )}
+      <button
+        type="button"
+        onClick={onContinue}
+        disabled={!canContinue}
+        className="cursor-pointer rounded-md bg-brand px-4 py-2 text-[12px] font-medium text-white hover:bg-brand-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        {continueLabel}
+      </button>
     </div>
   );
 }

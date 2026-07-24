@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 
-from ..auth import get_current_user, get_current_user_optional
+from ..auth import get_current_user, get_current_user_optional, get_scope
 from ..config import settings
 from ..models import (
     ForkSkillRequest,
@@ -33,18 +33,13 @@ public_router = APIRouter(prefix="/api/v1/skills", tags=["skills"])
 _PUBLIC_ITEM_TYPES = {"page", "file", "table", "folder"}
 
 
-async def _require_member(owner_user_id: UUID, user_id: UUID) -> None:
-    if not await user_scope_service.is_owner(owner_user_id, user_id):
-        raise HTTPException(status_code=403, detail="Not the scope owner")
-
-
 @me_router.post("/skills", response_model=SkillResponse, status_code=201)
 async def publish_skill(
     req: SkillPublishRequest,
     current_user: dict = Depends(get_current_user),
+    owner_user_id: UUID = Depends(get_scope),
 ):
     """Mint the publish record for a skill folder (share/publish it)."""
-    owner_user_id = current_user["id"]
     try:
         skill = await shared_skill_service.publish_folder(
             owner_user_id,
@@ -66,9 +61,9 @@ async def publish_skill(
 @me_router.get("/skills")
 async def list_skills(
     current_user: dict = Depends(get_current_user),
+    owner_user_id: UUID = Depends(get_scope),
 ):
-    """Every skill folder in the scope, with publish info when shared."""
-    owner_user_id = current_user["id"]
+    """Every skill folder in the active scope, with publish info when shared."""
     skills = await skill_service.list_skills(owner_user_id, current_user["id"])
     return {"skills": skills}
 
@@ -77,29 +72,62 @@ class GithubImportRequest(BaseModel):
     repo_url: str
 
 
-@me_router.post("/skills/import-github")
-async def import_github_skill(
+@me_router.post("/import/github")
+async def import_github_repo(
     req: GithubImportRequest,
     current_user: dict = Depends(get_current_user),
+    owner_user_id: UUID = Depends(get_scope),
 ):
-    """Import every SKILL.md folder in a public GitHub repo as private skills in
-    the caller's own scope (folders with SKILL.md)."""
+    """Copy a whole GitHub repo into the active scope as one new root folder.
+    Folders containing SKILL.md derive as skills automatically. Private repos
+    work when the caller's GitHub connection can read them."""
     try:
-        result = await github_skill_import.import_repo_for_user(current_user["id"], req.repo_url)
+        return await github_skill_import.import_repo_for_user(
+            owner_user_id, current_user["id"], req.repo_url
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-    if result["skills"] == 0:
-        raise HTTPException(status_code=404, detail="No SKILL.md folders found in that repo")
-    return result
+
+
+@me_router.get("/import/github/inspect")
+async def inspect_github_import(
+    repo_url: str,
+    current_user: dict = Depends(get_current_user),
+):
+    """Tree-only look at a repo before importing: which of its folders are
+    skills ('' = the repo root itself). The dialog uses this to warn when the
+    repo's content won't surface in the section the user imported from."""
+    token = await github_skill_import.user_github_token(current_user["id"])
+    try:
+        skill_dirs = await github_skill_import.inspect_repo(repo_url, token)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return {"skill_dirs": skill_dirs}
+
+
+@me_router.get("/import/github/repos")
+async def list_github_import_repos(
+    current_user: dict = Depends(get_current_user),
+):
+    """Repos the caller's GitHub connection can access, for the import picker.
+    connected=false when GitHub isn't connected — the picker then offers URL
+    paste only."""
+    token = await github_skill_import.user_github_token(current_user["id"])
+    if token is None:
+        return {"connected": False, "repos": []}
+    return {
+        "connected": True,
+        "repos": await github_skill_import.list_user_repos(current_user["id"]),
+    }
 
 
 @me_router.get("/skills/{name}")
 async def get_local_skill(
     name: str,
     current_user: dict = Depends(get_current_user),
+    owner_user_id: UUID = Depends(get_scope),
 ):
     """Read a skill by name: SKILL.md + sibling files concatenated."""
-    owner_user_id = current_user["id"]
     skill = await skill_service.read_skill(owner_user_id, name, current_user["id"])
     if not skill:
         raise HTTPException(status_code=404, detail="Skill not found")
@@ -121,11 +149,11 @@ async def _require_skill_folder(owner_user_id: UUID, folder_id: UUID, user_id: U
 async def get_skill_contents(
     folder_id: UUID,
     current_user: dict = Depends(get_current_user),
+    owner_user_id: UUID = Depends(get_scope),
 ):
     """The skill folder's full subtree, inlined — same shape as the public
     skill payload, but for the scope owner on unpublished skills. This is
     what `stash skills sync` pulls."""
-    owner_user_id = current_user["id"]
     folder = await _require_skill_folder(owner_user_id, folder_id, current_user["id"])
     contents = await shared_skill_service.folder_contents({"folder_id": folder_id})
     await security_audit_service.record_content_read(
@@ -142,11 +170,11 @@ async def replace_skill_contents(
     folder_id: UUID,
     files: list[UploadFile],
     current_user: dict = Depends(get_current_user),
+    owner_user_id: UUID = Depends(get_scope),
 ):
     """Replace the skill folder's contents with the uploaded file set — each
     upload's filename is its path relative to the skill folder. This is what
     `stash skills sync` pushes."""
-    owner_user_id = current_user["id"]
     await _require_skill_folder(owner_user_id, folder_id, current_user["id"])
     if not await permission_service.check_access(
         "folder", folder_id, current_user["id"], owner_user_id=owner_user_id, require="write"
@@ -222,10 +250,10 @@ async def snapshot_source(
     skill_id: UUID,
     req: SnapshotSourceRequest,
     current_user: dict = Depends(get_current_user),
+    owner_user_id: UUID = Depends(get_scope),
 ):
     """Copy a point-in-time snapshot of one connected-source document into the
     skill's folder as a page, so the skill stays self-contained and curl-able."""
-    owner_user_id = current_user["id"]
     skill = await shared_skill_service.get_skill(skill_id)
     if not skill or skill["owner_user_id"] != owner_user_id:
         raise HTTPException(status_code=404, detail="Skill not found")
@@ -272,12 +300,12 @@ async def materialize_session(
     session_id: str,
     req: MaterializeSessionRequest,
     current_user: dict = Depends(get_current_user),
+    owner_user_id: UUID = Depends(get_scope),
 ):
     """Freeze a session transcript into a markdown page inside a folder —
     how sessions travel into skills (sessions can't live in folders)."""
-    owner_user_id = current_user["id"]
     if not await user_scope_service.can_write(owner_user_id, current_user["id"]):
-        raise HTTPException(status_code=403, detail="Only the owner can materialize sessions")
+        raise HTTPException(status_code=403, detail="Not allowed to write in this scope")
     page = await shared_skill_service.materialize_session_page(
         owner_user_id, session_id, req.folder_id, current_user["id"]
     )
@@ -416,8 +444,8 @@ async def fork_skill(
     req: ForkSkillRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    """Fork: deep-copy the skill's folder into the caller's scope."""
-    await _require_member(req.owner_user_id, current_user["id"])
+    """Fork: deep-copy the skill's folder into the target scope — the caller's
+    own, or a workspace they belong to."""
     # Forking writes new pages/files/sessions into the scope — same bar as
     # creating a Skill.
     if not await user_scope_service.can_write(req.owner_user_id, current_user["id"]):
