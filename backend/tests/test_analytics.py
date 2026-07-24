@@ -394,9 +394,10 @@ async def test_summary_counts_signups_and_cli_active(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_internal_email_domains_are_excluded(client: AsyncClient, pool):
+async def test_internal_email_domains_are_excluded_by_default(client: AsyncClient, pool):
     """Our own team's usage (ferganalabs/joinstash accounts) must not inflate
-    dashboard numbers — only the external user should count anywhere."""
+    dashboard numbers unless the "Internal accounts" toggle asks for them —
+    by default only the external user should count anywhere."""
     users = {}
     for label in ("internal", "external"):
         resp = await client.post(
@@ -447,6 +448,17 @@ async def test_internal_email_domains_are_excluded(client: AsyncClient, pool):
     assert resp.status_code == 200, resp.text
     by_stage = {s["stage"]: s["users"] for s in resp.json()["stages"]}
     assert by_stage["viewed"] == 1
+
+    # The dashboard's "Internal accounts: Show" toggle turns the filter off —
+    # both users must count again.
+    resp = await client.get(
+        "/api/v1/admin/analytics/summary?days=30&exclude_internal=false", headers=_admin()
+    )
+    assert resp.status_code == 200, resp.text
+    summary = resp.json()
+    assert summary["signups"] == 2
+    assert summary["cli_active_users"] == 2
+    assert summary["active_users"] == 2
 
 
 @pytest.mark.asyncio

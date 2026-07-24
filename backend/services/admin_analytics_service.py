@@ -13,16 +13,20 @@ from ..database import get_pool
 
 # Our own team's usage would pollute every dashboard number, so every
 # aggregation here (and the engagement-cohort query) excludes accounts whose
-# email is on one of these domains.
+# email is on one of these domains by default. The dashboard's "Internal
+# accounts" toggle passes exclude_internal=False to count them anyway.
 INTERNAL_EMAIL_DOMAINS = ("ferganalabs.com", "joinstash.ai")
 
 
-def not_internal_user_sql(user_id_col: str) -> str:
-    """SQL predicate dropping rows whose user has an internal email domain.
+def internal_filter_sql(user_id_col: str, exclude_internal: bool) -> str:
+    """SQL predicate dropping rows whose user has an internal email domain,
+    or TRUE when internal usage should be counted.
 
-    Rows with a NULL user id (anonymous events) are kept. The domain list is
-    a code constant, so inlining it as SQL literals is safe.
+    Rows with a NULL user id (anonymous events) are always kept. The domain
+    list is a code constant, so inlining it as SQL literals is safe.
     """
+    if not exclude_internal:
+        return "TRUE"
     domains = ", ".join(f"'{d}'" for d in INTERNAL_EMAIL_DOMAINS)
     return (
         f"NOT EXISTS (SELECT 1 FROM users iu WHERE iu.id = {user_id_col} "
@@ -40,7 +44,9 @@ ONBOARDING_FUNNEL_STAGES: list[tuple[str, str]] = [
 ]
 
 
-async def get_onboarding_funnel(*, days: int = 30, path: str | None = None) -> dict:
+async def get_onboarding_funnel(
+    *, days: int = 30, path: str | None = None, exclude_internal: bool = True
+) -> dict:
     """Distinct-user counts per stage in the canonical onboarding order.
 
     A user 'enters' a stage if they emitted *any* event of that name in the
@@ -55,7 +61,7 @@ async def get_onboarding_funnel(*, days: int = 30, path: str | None = None) -> d
         FROM analytics_events
         WHERE created_at >= $1 AND event_name = ANY($2::text[])
           AND ($3::text IS NULL OR properties->>'path' = $3)
-          AND {not_internal_user_sql("analytics_events.user_id")}
+          AND {internal_filter_sql("analytics_events.user_id", exclude_internal)}
         GROUP BY event_name
         """,
         since,
@@ -87,7 +93,9 @@ async def get_onboarding_funnel(*, days: int = 30, path: str | None = None) -> d
     }
 
 
-async def get_path_mix(*, days: int = 30, bucket: str = "day") -> dict:
+async def get_path_mix(
+    *, days: int = 30, bucket: str = "day", exclude_internal: bool = True
+) -> dict:
     """Onboarding starts by path, counting one viewed event per start."""
     if bucket not in ("day", "week"):
         raise ValueError(f"unknown bucket: {bucket}")
@@ -106,7 +114,7 @@ async def get_path_mix(*, days: int = 30, bucket: str = "day") -> dict:
                COUNT(*) AS n
         FROM analytics_events
         WHERE created_at >= $1 AND event_name = 'onboarding.viewed'
-          AND {not_internal_user_sql("analytics_events.user_id")}
+          AND {internal_filter_sql("analytics_events.user_id", exclude_internal)}
         GROUP BY 1, 2
         ORDER BY ts ASC
         """,
@@ -123,7 +131,9 @@ async def get_path_mix(*, days: int = 30, bucket: str = "day") -> dict:
     }
 
 
-async def get_surface_mix(*, days: int = 30, bucket: str = "day") -> dict:
+async def get_surface_mix(
+    *, days: int = 30, bucket: str = "day", exclude_internal: bool = True
+) -> dict:
     """Daily activity by surface across both tables.
 
     Surfaces we expose:
@@ -149,7 +159,7 @@ async def get_surface_mix(*, days: int = 30, bucket: str = "day") -> dict:
                    COUNT(*) AS n
             FROM analytics_events
             WHERE created_at >= $1
-              AND {not_internal_user_sql("analytics_events.user_id")}
+              AND {internal_filter_sql("analytics_events.user_id", exclude_internal)}
             GROUP BY 1, 2
         ),
         he AS (
@@ -160,7 +170,7 @@ async def get_surface_mix(*, days: int = 30, bucket: str = "day") -> dict:
             WHERE created_at >= $1
               AND metadata->>'client' IS NOT NULL
               AND COALESCE(metadata->>'source', '') <> 'history_import'
-              AND {not_internal_user_sql("history_events.created_by")}
+              AND {internal_filter_sql("history_events.created_by", exclude_internal)}
             GROUP BY 1, 2
         )
         SELECT * FROM ae
@@ -182,7 +192,7 @@ async def get_surface_mix(*, days: int = 30, bucket: str = "day") -> dict:
     }
 
 
-async def get_top_events(*, days: int = 30, limit: int = 20) -> dict:
+async def get_top_events(*, days: int = 30, limit: int = 20, exclude_internal: bool = True) -> dict:
     """Most-frequent event names in analytics_events over the window."""
     pool = get_pool()
     since = datetime.now(UTC) - timedelta(days=days)
@@ -193,7 +203,7 @@ async def get_top_events(*, days: int = 30, limit: int = 20) -> dict:
                COUNT(DISTINCT user_id) AS users
         FROM analytics_events
         WHERE created_at >= $1
-          AND {not_internal_user_sql("analytics_events.user_id")}
+          AND {internal_filter_sql("analytics_events.user_id", exclude_internal)}
         GROUP BY event_name
         ORDER BY total DESC
         LIMIT $2
@@ -215,7 +225,7 @@ async def get_top_events(*, days: int = 30, limit: int = 20) -> dict:
     }
 
 
-async def get_summary(*, days: int = 7) -> dict:
+async def get_summary(*, days: int = 7, exclude_internal: bool = True) -> dict:
     """Top-of-dashboard stat boxes: signups, completions, active users, CLI installs."""
     pool = get_pool()
     since = datetime.now(UTC) - timedelta(days=days)
@@ -223,7 +233,7 @@ async def get_summary(*, days: int = 7) -> dict:
     signups = await pool.fetchval(
         f"""
         SELECT COUNT(*) FROM users
-        WHERE created_at >= $1 AND {not_internal_user_sql("users.id")}
+        WHERE created_at >= $1 AND {internal_filter_sql("users.id", exclude_internal)}
         """,
         since,
     )
@@ -231,7 +241,7 @@ async def get_summary(*, days: int = 7) -> dict:
         f"""
         SELECT COUNT(DISTINCT user_id) FROM analytics_events
         WHERE event_name = 'onboarding.completed' AND created_at >= $1
-          AND {not_internal_user_sql("analytics_events.user_id")}
+          AND {internal_filter_sql("analytics_events.user_id", exclude_internal)}
         """,
         since,
     )
@@ -243,7 +253,7 @@ async def get_summary(*, days: int = 7) -> dict:
         f"""
         SELECT COUNT(DISTINCT user_id) FROM analytics_events
         WHERE event_name = 'cli.command_invoked' AND created_at >= $1
-          AND {not_internal_user_sql("analytics_events.user_id")}
+          AND {internal_filter_sql("analytics_events.user_id", exclude_internal)}
         """,
         since,
     )
@@ -254,14 +264,14 @@ async def get_summary(*, days: int = 7) -> dict:
         SELECT COUNT(*) FROM (
             SELECT user_id FROM analytics_events
             WHERE user_id IS NOT NULL AND created_at >= $1
-              AND {not_internal_user_sql("analytics_events.user_id")}
+              AND {internal_filter_sql("analytics_events.user_id", exclude_internal)}
             UNION
             SELECT created_by AS user_id FROM history_events
             WHERE created_by IS NOT NULL
               AND created_at >= $1
               AND (metadata->>'client') IS NULL
               AND COALESCE(metadata->>'source', '') <> 'history_import'
-              AND {not_internal_user_sql("history_events.created_by")}
+              AND {internal_filter_sql("history_events.created_by", exclude_internal)}
         ) u
         """,
         since,
@@ -314,7 +324,7 @@ ACTIVITY_SURFACES = {
 }
 
 
-async def get_content_activity(*, days: int = 30) -> dict:
+async def get_content_activity(*, days: int = 30, exclude_internal: bool = True) -> dict:
     """Document reads, searches, and listings split by caller surface (web /
     cli / ask-the-stash), from the security_audit_events read trail: totals
     over the window plus a daily series for the dashboard's top segment."""
@@ -333,7 +343,7 @@ async def get_content_activity(*, days: int = 30) -> dict:
         action = ANY($1::text[])
         AND created_at >= $4
         AND (via IN ('cli', 'ask') OR (via = 'web' AND action = $2))
-        AND {not_internal_user_sql("security_audit_events.actor_user_id")}
+        AND {internal_filter_sql("security_audit_events.actor_user_id", exclude_internal)}
     """
 
     total_rows = await pool.fetch(
