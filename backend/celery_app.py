@@ -15,6 +15,7 @@ the same scheduled task multiple times.
 """
 
 from celery import Celery
+from celery.schedules import crontab
 
 from .config import settings
 
@@ -100,6 +101,14 @@ celery.conf.update(
         "agent-schedules-run-due": {
             "task": "backend.tasks.agent_schedules.run_due",
             "schedule": 60.0,
+        },
+        "agent-schedules-alert-stale-curators": {
+            "task": "backend.tasks.agent_schedules.alert_stale_curators",
+            # A crontab, not an interval: interval timers restart from zero on
+            # every deploy, and we deploy often enough that a daily interval
+            # might never fire. 15:30 UTC is right after the nightly curator
+            # window (08:00–11:59 UTC), so a bad night alerts the same morning.
+            "schedule": crontab(hour=15, minute=30),
         },
         "sources-reconcile-due": {
             "task": "backend.tasks.sources.reconcile_due",
