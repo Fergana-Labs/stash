@@ -2198,11 +2198,8 @@ async def _external_ref_matches(sources: list[dict], query: str, limit: int) -> 
     query = query.strip()
     if not query:
         return []
-    hits: list[dict] = []
-    for s in sources:
-        table = SOURCE_TABLE.get(s["source_type"])
-        if table is None:
-            continue
+
+    async def one_source(s: dict, table: str) -> list[dict]:
         rows = await get_pool().fetch(
             f"SELECT path, name, external_updated_at FROM {table} "
             f"WHERE source_id = $1 AND strpos(external_ref, $2) > 0 AND deleted_at IS NULL "
@@ -2211,7 +2208,7 @@ async def _external_ref_matches(sources: list[dict], query: str, limit: int) -> 
             query,
             limit,
         )
-        hits += [
+        return [
             {
                 "source": s["id"],
                 "source_name": s["display_name"],
@@ -2223,7 +2220,14 @@ async def _external_ref_matches(sources: list[dict], query: str, limit: int) -> 
             }
             for r in rows
         ]
-    return hits
+
+    with_tables = [
+        (s, SOURCE_TABLE[s["source_type"]])
+        for s in sources
+        if SOURCE_TABLE.get(s["source_type"]) is not None
+    ]
+    per_source = await asyncio.gather(*(one_source(s, table) for s, table in with_tables))
+    return [h for source_hits in per_source for h in source_hits]
 
 
 async def _uniform_ranks(query: str, texts: list[str]) -> list[float]:
@@ -2301,15 +2305,22 @@ async def _gather_search_candidates(
     search. Returns (hits, markers, connected), or None when a named source is
     unknown / not owned. Sub-searches keep their own caps (sessions and FTS
     docs 500, providers SEARCH_LIMIT) — asking for more than those yields
-    has_more = False, not deeper results."""
-    hits: list[dict] = []
-    markers: list[dict] = []
+    has_more = False, not deeper results. The sub-searches are independent, so
+    they run concurrently; a search's latency is its slowest sub-search, not
+    the sum of all of them."""
+    # Resolve a named connected source first: an unknown handle must return
+    # None before any sub-search runs.
+    connected: dict | None = None
+    if source not in (None, NATIVE_FILES, NATIVE_SESSIONS):
+        connected = await _resolve_connected(source, owner_user_id, user_id)
+        if connected is None:
+            return None
 
-    if NATIVE_SESSIONS in allowed and source in (None, NATIVE_SESSIONS):
+    async def session_hits() -> tuple[list[dict], list[dict]]:
         from .memory_service import search_scope_events
 
         events = await search_scope_events(owner_user_id, user_id, query, limit=fetch_limit)
-        hits += [
+        return [
             {
                 "source": NATIVE_SESSIONS,
                 "ref": e.get("session_id"),
@@ -2317,13 +2328,13 @@ async def _gather_search_candidates(
                 "date_modified": e.get("created_at"),
             }
             for e in events
-        ]
+        ], []
 
-    if NATIVE_FILES in allowed and source in (None, NATIVE_FILES):
+    async def page_hits() -> tuple[list[dict], list[dict]]:
         from .files_tree_service import search_pages_fts
 
         pages = await search_pages_fts(owner_user_id, query, limit=fetch_limit, user_id=user_id)
-        hits += [
+        return [
             {
                 "source": NATIVE_FILES,
                 "ref": str(p["id"]),
@@ -2336,15 +2347,11 @@ async def _gather_search_candidates(
                 "date_modified": p.get("updated_at"),
             }
             for p in pages
-        ]
+        ], []
 
-    # Connected sources: all of the scope's own when unscoped, else the one named.
-    connected: dict | None = None
-    if source not in (None, NATIVE_FILES, NATIVE_SESSIONS):
-        connected = await _resolve_connected(source, owner_user_id, user_id)
-        if connected is None:
-            return None
-    if source is None or connected is not None:
+    async def connected_hits() -> tuple[list[dict], list[dict]]:
+        # Connected sources: all of the scope's own when unscoped, else the one
+        # named.
         searched_sources = (
             [connected]
             if connected is not None
@@ -2355,23 +2362,42 @@ async def _gather_search_candidates(
             ]
         )
 
+        # Federated sources search the provider's native API live. Scoped → the
+        # one source, raising on provider errors so a dead connection is never
+        # mistaken for "no matches"; unscoped → fan out across the user's
+        # federated sources (each call keeps search alive by returning its own
+        # error as a marker instead of raising).
+        federated = [s for s in searched_sources if s["source_type"] in FEDERATED_SEARCH_TYPES]
+
         # A query that is (part of) a provider id (a Drive file id, a Gmail
         # message id, …) resolves to the indexed document directly. This is how
         # an agent holding only a provider URL finds the document's Stash path.
-        hits += await _external_ref_matches(searched_sources, query, fetch_limit)
-
+        #
         # Copied-content sources go through our FTS (returns [] for index-only /
         # federated sources, which have no stored content to match). Unscoped
         # search filters at the table level, not via searched_sources — FTS also
         # reads sources shared directly with the user, which searched_sources
         # never enumerates.
-        docs = await search_documents(
-            user_id=user_id,
-            query=query,
-            source=connected,
-            providers=None if connected is not None else allowed - {NATIVE_FILES, NATIVE_SESSIONS},
-            limit=fetch_limit,
+        ref_hits, docs, federated_results = await asyncio.gather(
+            _external_ref_matches(searched_sources, query, fetch_limit),
+            search_documents(
+                user_id=user_id,
+                query=query,
+                source=connected,
+                providers=None
+                if connected is not None
+                else allowed - {NATIVE_FILES, NATIVE_SESSIONS},
+                limit=fetch_limit,
+            ),
+            asyncio.gather(
+                *(
+                    _federated_search(s, query, fetch_limit, swallow_errors=connected is None)
+                    for s in federated
+                )
+            ),
         )
+
+        hits = ref_hits
         hits += [
             {
                 "source": d["source_id"],
@@ -2383,27 +2409,25 @@ async def _gather_search_candidates(
             }
             for d in docs
         ]
+        markers: list[dict] = []
+        for fed_hits, fed_markers in federated_results:
+            hits += fed_hits
+            markers += fed_markers
+        return hits, markers
 
-        # Federated sources search the provider's native API live. Scoped → the
-        # one source, raising on provider errors so a dead connection is never
-        # mistaken for "no matches"; unscoped → fan out across the user's
-        # federated sources (each call keeps search alive by returning its own
-        # error as a marker instead of raising).
-        if connected is not None:
-            if connected["source_type"] in FEDERATED_SEARCH_TYPES:
-                fed_hits, fed_markers = await _federated_search(
-                    connected, query, fetch_limit, swallow_errors=False
-                )
-                hits += fed_hits
-                markers += fed_markers
-        else:
-            federated = [s for s in searched_sources if s["source_type"] in FEDERATED_SEARCH_TYPES]
-            for fed_hits, fed_markers in await asyncio.gather(
-                *(_federated_search(s, query, fetch_limit) for s in federated)
-            ):
-                hits += fed_hits
-                markers += fed_markers
+    subsearches = []
+    if NATIVE_SESSIONS in allowed and source in (None, NATIVE_SESSIONS):
+        subsearches.append(session_hits())
+    if NATIVE_FILES in allowed and source in (None, NATIVE_FILES):
+        subsearches.append(page_hits())
+    if source is None or connected is not None:
+        subsearches.append(connected_hits())
 
+    hits: list[dict] = []
+    markers: list[dict] = []
+    for sub_hits, sub_markers in await asyncio.gather(*subsearches):
+        hits += sub_hits
+        markers += sub_markers
     return hits, markers, connected
 
 

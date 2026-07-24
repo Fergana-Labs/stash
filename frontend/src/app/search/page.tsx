@@ -78,6 +78,7 @@ function SearchPageInner() {
   const { user, loading, logout } = useAuth();
   const initialSessionId = searchParams.get("session") ?? "";
   const [skills, setSkills] = useState<Skill[]>([]);
+  const [tables, setTables] = useState<TableWithOwner[]>([]);
   const [sidebar, setSidebar] = useState<Sidebar | null>(null);
   const [selectedProductSkillId, setSelectedProductSkillId] = useState("");
   const [selectedProductSkillSlug, setSelectedProductSkillSlug] = useState(
@@ -131,12 +132,14 @@ function SearchPageInner() {
     setFetching(true);
     setError("");
     try {
-      const [skillList, sidebarData, sources] = await Promise.all([
+      const [skillList, sidebarData, sources, tableData] = await Promise.all([
         listSkills(),
         getSidebar(),
         listSources(),
+        listAllTables(),
       ]);
       setSkills(skillList);
+      setTables(tableData.tables);
       setSidebar(sidebarData);
       setConnectedProviders([...new Set(sources.map((s) => providerForSourceType[s.type]))]);
     } catch (err) {
@@ -292,8 +295,6 @@ function SearchPageInner() {
       }
 
       if (includeTables && !selectedFolderId && !selectedPageId) {
-        const { tables } = await listAllTables();
-        if (searchSeq.current !== seq) return;
         nextResults.push(...searchTables(tables, q));
       }
 
@@ -323,6 +324,7 @@ function SearchPageInner() {
     selectedSessionId,
     sidebar,
     sourceName,
+    tables,
   ]);
 
   useEffect(() => {
