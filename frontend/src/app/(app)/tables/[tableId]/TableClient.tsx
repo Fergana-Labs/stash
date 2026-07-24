@@ -1329,7 +1329,7 @@ function TableEditorPageInner({
           }
         />
         {/* Toolbar */}
-        <div className="mt-2 flex items-center gap-2 px-4 py-2.5 border-y border-border bg-surface flex-shrink-0 flex-wrap">
+        <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border bg-surface flex-shrink-0 flex-wrap">
           {/* Search */}
           <div className="flex-1 max-w-xs">
             <input value={searchQuery} onChange={(e) => { setSearchQuery(e.target.value); setIsSearching(true); }} placeholder="Search all columns..." className="w-full px-3 py-1.5 text-xs bg-raised border border-border rounded text-foreground outline-none focus:ring-1 focus:ring-brand" />

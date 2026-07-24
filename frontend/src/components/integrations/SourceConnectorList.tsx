@@ -23,7 +23,7 @@ import PaywallModal from "../PaywallModal";
 type Props = {
   returnTo: string;
   includeObsidian?: boolean;
-  onSourceCountChange?: (count: number) => void;
+  onConnectedChange?: (connected: boolean) => void;
   onObsidianUploaded?: () => void;
 };
 
@@ -32,6 +32,7 @@ type Props = {
 export default function SourceConnectorList({
   returnTo,
   includeObsidian = true,
+  onConnectedChange,
   onObsidianUploaded,
 }: Props) {
   const [statuses, setStatuses] = useState<Record<string, IntegrationStatus>>({});
@@ -60,7 +61,10 @@ export default function SourceConnectorList({
     }
     setExtensionSources(extension);
     setLoaded(true);
-  }, []);
+    onConnectedChange?.(
+      integrations.providers.some((p) => p.connected) || Object.keys(extension).length > 0,
+    );
+  }, [onConnectedChange]);
 
   useEffect(() => {
     refresh().catch((e) => {
@@ -68,10 +72,12 @@ export default function SourceConnectorList({
     });
   }, [refresh]);
 
+  // Only reasons for providers we actually render a card for — the server may
+  // list providers this surface doesn't offer (no card, so no banner either).
   const disabledReasons = useMemo(() => {
-    const reasons = Object.values(statuses)
-      .map((status) => status.disabled_reason)
-      .filter((reason): reason is string => Boolean(reason));
+    const reasons = CONNECTORS.map((c) => statuses[c.provider]?.disabled_reason).filter(
+      (reason): reason is string => Boolean(reason),
+    );
     return Array.from(new Set(reasons));
   }, [statuses]);
 

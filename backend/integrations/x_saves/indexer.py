@@ -473,6 +473,35 @@ async def _hydrate_article(
     )
 
 
+async def fetch_tweet_markdown(tweet_id: str) -> dict:
+    """One tweet rendered as markdown, with its author thread and reply
+    parent — the standalone fetch behind web clips of x.com status URLs.
+    No user_source or media archiving involved. Returns {title, markdown}."""
+    if not settings.TWITTERAPI_IO_KEY:
+        raise RuntimeError("TWITTERAPI_IO_KEY is not set")
+    async with httpx.AsyncClient(
+        timeout=TAPI_TIMEOUT, headers={"X-API-Key": settings.TWITTERAPI_IO_KEY}
+    ) as client:
+        tweet = await _fetch_tweet(client, tweet_id)
+        thread = [tweet]
+        parent = None
+        if _in_conversation(tweet):
+            # Best-effort, like the saves indexer — the tweet itself matters.
+            try:
+                context = await _fetch_thread_context(client, tweet_id)
+                thread = _author_chain(tweet, context)
+                parent = _direct_parent(tweet, context)
+            except Exception as exc:
+                logger.warning(
+                    "x thread context fetch failed tweet=%s exception_type=%s",
+                    tweet_id,
+                    type(exc).__name__,
+                )
+    posted = tweet["created_at"]
+    title = f"@{tweet['author']} - {posted.date().isoformat()}" if posted else f"@{tweet['author']}"
+    return {"title": title, "markdown": _render(tweet, thread, parent)}
+
+
 # Draft.js-style block types twitterapi.io uses for article bodies.
 _ARTICLE_HEADINGS = {"header-one": "# ", "header-two": "## ", "header-three": "### "}
 _ARTICLE_LIST_ITEMS = ("unordered-list-item", "ordered-list-item")

@@ -139,14 +139,68 @@ async def test_resurfaces_only_old_saves_and_is_deterministic(client: AsyncClien
     assert first.json()["items"] == second.json()["items"]
 
 
-async def test_interleave_lands_a_resurface_card_every_fourth_slot():
+async def test_interleave_lands_a_resurface_card_every_third_slot():
     skills = [{"slug": f"s{i}"} for i in range(6)]
     pages = [{"slug": f"p{i}"} for i in range(3)]
-    resurfaced = [{"title": f"r{i}"} for i in range(3)]
+    resurfaced = [{"title": f"r{i}"} for i in range(4)]
 
     items = feed_service._interleave(skills, pages, resurfaced)
 
-    assert len(items) == 12
-    assert [items[i]["kind"] for i in (3, 7, 11)] == ["resurface"] * 3
-    # Community keeps its own rhythm: two skills, then a public page.
-    assert [i["kind"] for i in items[:3]] == ["skill", "skill", "public_page"]
+    assert len(items) == 13
+    assert [items[i]["kind"] for i in (2, 5, 8, 11)] == ["resurface"] * 4
+    # Community keeps its own rhythm: two skills before the first resurface.
+    assert [i["kind"] for i in items[:2]] == ["skill", "skill"]
+
+
+async def test_resurfaces_docs_files_and_memory_pages(client: AsyncClient, pool):
+    api_key, owner_id = await _register(client)
+
+    doc = await client.post(
+        "/api/v1/me/pages/new",
+        json={"name": "Quarterly notes", "content": "# planning"},
+        headers=_auth(api_key),
+    )
+    assert doc.status_code == 201
+    await pool.execute(
+        "UPDATE pages SET created_at = now() - interval '30 days' WHERE id = $1",
+        UUID(doc.json()["id"]),
+    )
+
+    memory_folder = await pool.fetchval(
+        "INSERT INTO folders (owner_user_id, name, created_by, is_memory) "
+        "VALUES ($1, 'Memory', $1, true) RETURNING id",
+        UUID(owner_id),
+    )
+    await pool.execute(
+        "INSERT INTO pages (owner_user_id, folder_id, name, content_markdown, created_by, "
+        "created_at) "
+        "VALUES ($1, $2, 'People', '# People I met', $1, now() - interval '30 days')",
+        UUID(owner_id),
+        memory_folder,
+    )
+
+    file_id = await pool.fetchval(
+        "INSERT INTO files (owner_user_id, name, content_type, size_bytes, storage_key, "
+        "extracted_text, uploaded_by, created_at) "
+        "VALUES ($1, 'deck.pdf', 'application/pdf', 10, $2, 'the pitch deck text', $1, "
+        "now() - interval '30 days') RETURNING id",
+        UUID(owner_id),
+        unique_name("key"),
+    )
+
+    resurfaced = []
+    cursor = 0
+    while cursor is not None:
+        resp = await client.get(f"/api/v1/feed?cursor={cursor}", headers=_auth(api_key))
+        assert resp.status_code == 200
+        body = resp.json()
+        resurfaced += [i["data"] for i in body["items"] if i["kind"] == "resurface"]
+        cursor = body["next_cursor"]
+
+    by_source = {r["source"]: r for r in resurfaced}
+    assert by_source["doc"]["title"] == "Quarterly notes"
+    assert by_source["doc"]["app_url"] == f"/p/{doc.json()['id']}"
+    assert by_source["memory"]["title"] == "People"
+    assert by_source["file"]["title"] == "deck.pdf"
+    assert by_source["file"]["app_url"] == f"/f/{file_id}"
+    assert by_source["file"]["preview"] == "the pitch deck text"

@@ -28,13 +28,13 @@ FAKE_REPO = {
 
 
 def _fake_github(monkeypatch, files: dict[str, bytes], branch: str = "main") -> None:
-    async def fake_branch(client, owner, repo):
+    async def fake_branch(client, owner, repo, token=None):
         return branch
 
-    async def fake_tree(client, owner, repo, ref):
+    async def fake_tree(client, owner, repo, ref, token=None):
         return [{"path": p, "type": "blob", "size": len(b)} for p, b in files.items()]
 
-    async def fake_blob(client, owner, repo, ref, path):
+    async def fake_blob(client, owner, repo, ref, path, token=None):
         return files[path]
 
     monkeypatch.setattr(gsi, "_fetch_default_branch", fake_branch)
@@ -166,3 +166,38 @@ async def test_import_requires_skill_md(pool):
             fallback_title="empty",
             files=[("README.md", b"hi")],
         )
+
+
+@pytest.mark.asyncio
+async def test_import_repo_for_user_copies_whole_repo(client: AsyncClient, pool, monkeypatch):
+    """The user-facing import is a straight copy: one root folder named after
+    the repo, full structure preserved, and SKILL.md folders derive as skills."""
+    from uuid import UUID
+
+    from .conftest import unique_name
+
+    _fake_github(monkeypatch, FAKE_REPO)
+    reg = await client.post(
+        "/api/v1/users/register",
+        json={"name": unique_name("importer"), "password": "securepassword1"},
+    )
+    assert reg.status_code == 201
+    user_id, api_key = reg.json()["id"], reg.json()["api_key"]
+
+    result = await gsi.import_repo_for_user(UUID(user_id), "https://github.com/acme/skills")
+
+    assert result["name"] == "skills"
+    assert result["files"] == len(FAKE_REPO)
+    root_id = UUID(result["folder_id"])
+    readme = await pool.fetchval(
+        "SELECT id FROM pages WHERE folder_id = $1 AND name = 'README.md'", root_id
+    )
+    assert readme is not None
+    cooking = await pool.fetchval(
+        "SELECT id FROM folders WHERE parent_folder_id = $1 AND name = 'cooking'", root_id
+    )
+    assert cooking is not None
+
+    skills = await client.get("/api/v1/me/skills", headers={"Authorization": f"Bearer {api_key}"})
+    names = {s["name"] for s in skills.json()["skills"]}
+    assert "Cooking Wizard" in names  # derived from the copied SKILL.md, no publish record

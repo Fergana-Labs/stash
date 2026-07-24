@@ -43,7 +43,10 @@ function LoginPageInner() {
   const cliSession = searchParams.get("cli");
   const nextPath = localNextPath(searchParams.get("next"));
   const { user, loading, logout, refresh } = useAuth();
-  const [mode, setMode] = useState<"login" | "register">("login");
+  // The landing page's "Sign up free" links here with ?mode=register.
+  const [mode, setMode] = useState<"login" | "register">(
+    searchParams.get("mode") === "register" ? "register" : "login",
+  );
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");

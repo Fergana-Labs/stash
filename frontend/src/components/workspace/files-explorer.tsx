@@ -6,16 +6,20 @@ import { toast } from "sonner";
 import {
   Loader2, FilePlus, FolderPlus, Upload, Trash2, Pencil, FolderInput,
   Plus, ArrowDownAZ, Clock, FileText, Code2, Table2, GitBranch, GraduationCap, MessagesSquare,
+  ExternalLink, Share2,
 } from "lucide-react";
 import {
   getTree, getFolderContents, createPage, createFolder, createTable, updateFolder, updatePage,
   updateFile, updateTable, trashItem, deleteFolder, deleteTable, deleteSessionFolder, updateSessionFolder,
-  uploadFileOrPage, importGithubSkill, type FolderBreadcrumb,
+  uploadFileOrPage, importGithubRepo, listGithubImportRepos,
+  type FolderBreadcrumb, type GithubImportRepo,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/hooks/useAuth";
 import { useWorkspace } from "@/lib/workspace-store";
 import { urlForTab } from "@/lib/workspace-routes";
 import { opensNewTab } from "@/lib/tab-nav";
+import { ResourceShareDialog } from "@/components/share/ResourceShareButton";
 import { FolderIcon, PageIcon, FileIcon, TableIcon } from "@/components/SkillIcons";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -26,6 +30,20 @@ type Kind = "folder" | "page" | "file" | "table" | "skill" | "session-folder" | 
 export type Item = { kind: Kind; id: string; name: string; ts?: string };
 // Kinds that live in the VFS (draggable, rename/move/delete via folder/page APIs).
 const VFS_KINDS = new Set<Kind>(["folder", "page", "file", "table", "skill"]);
+
+// VFS kinds map onto the generic object-share model; a skill is just a folder.
+function shareObjectType(kind: Kind): "folder" | "page" | "file" | "table" {
+  if (kind === "page") return "page";
+  if (kind === "file") return "file";
+  if (kind === "table") return "table";
+  return "folder";
+}
+function shareUrlPath(item: Item): string {
+  if (item.kind === "page") return `/p/${item.id}`;
+  if (item.kind === "file") return `/f/${item.id}`;
+  if (item.kind === "table") return `/tables/${item.id}`;
+  return `/folders/${item.id}`;
+}
 type Menu = { x: number; y: number; item: Item } | null;
 type Sort = "name" | "date";
 const DND = "application/x-fx-item";
@@ -83,8 +101,12 @@ export default function FilesExplorer({
   confirmMemoryWrites?: boolean;
 }) {
   const router = useRouter();
+  const { user } = useAuth();
   const openTab = useWorkspace((s) => s.openTab);
   const [folderId, setFolderId] = useState<string | null>(rootFolderId);
+  // Item being shared from the context menu, anchored at the menu's position.
+  const [sharing, setSharing] = useState<{ x: number; y: number; item: Item } | null>(null);
+  const shareRef = useRef<HTMLDivElement>(null);
 
   const [items, setItems] = useState<Item[] | null>(null);
   const [crumbs, setCrumbs] = useState<FolderBreadcrumb[]>([]);
@@ -96,6 +118,10 @@ export default function FilesExplorer({
   const [importOpen, setImportOpen] = useState(false);
   const [repoUrl, setRepoUrl] = useState("");
   const [importing, setImporting] = useState(false);
+  // Repos from the user's GitHub connection (null until loaded; [] = connected
+  // but empty; stays null when GitHub isn't connected → URL paste only).
+  const [githubRepos, setGithubRepos] = useState<GithubImportRepo[] | null>(null);
+  const [repoFilter, setRepoFilter] = useState("");
   // A write action waiting on the "Add to Memory?" confirmation. `run` receives
   // the destination folder: the browsed Memory folder, or null for Files root.
   const [pendingWrite, setPendingWrite] = useState<{ run: (folder: string | null) => Promise<void> } | null>(null);
@@ -144,11 +170,12 @@ export default function FilesExplorer({
 
   // Open an item as a workbench tab (folder → folder tab; skill → skill tab; …).
   // Session folders have no tab view, so they only ever navigate in the explorer.
-  function openAsTab(item: Item) {
+  function openAsTab(item: Item, opts?: { forceNewTab?: boolean }) {
     if (item.kind === "session-folder") { setFolderId(item.id); return; }
     const kind = item.kind === "folder" ? "folder" : item.kind === "skill" ? "skill" : item.kind === "session" ? "session" : item.kind === "table" ? "table" : item.kind === "page" ? "page" : "file";
-    // Plain click navigates the current tab; cmd/ctrl-click opens a new one.
-    openTab(kind, item.id, item.name, { newTab: opensNewTab() });
+    // Plain click navigates the current tab; cmd/ctrl-click (or the explicit
+    // "Open in new tab" menu item) opens a new one.
+    openTab(kind, item.id, item.name, { newTab: opts?.forceNewTab || opensNewTab() });
     const suffix = tabSection ? `?section=${tabSection}` : "";
     router.replace(urlForTab({ kind, refId: item.id }) + suffix);
   }
@@ -234,19 +261,29 @@ export default function FilesExplorer({
     if (files.length === 0) return;
     guardWrite((folder) => uploadFiles(files, folder));
   }
-  async function doImport() {
-    if (!repoUrl.trim()) return;
+  async function doImport(url?: string) {
+    const target = (url ?? repoUrl).trim();
+    if (!target) return;
     setImporting(true);
     try {
-      const r = await importGithubSkill(repoUrl.trim());
-      toast.success(`Imported ${r.imported} skill${r.imported !== 1 ? "s" : ""} from GitHub`);
+      const r = await importGithubRepo(target);
+      toast.success(`Imported ${r.name} (${r.files} file${r.files !== 1 ? "s" : ""})`);
       setImportOpen(false);
       setRepoUrl("");
+      await load();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Import failed");
     } finally {
       setImporting(false);
     }
+  }
+  function openImport() {
+    setImportOpen(true);
+    setRepoFilter("");
+    // Repo picker only lights up for users with a GitHub connection.
+    listGithubImportRepos()
+      .then((r) => setGithubRepos(r.connected ? r.repos : null))
+      .catch(() => setGithubRepos(null));
   }
 
   // A virtual root (Skills list) has no folder to create loose files into.
@@ -307,7 +344,7 @@ export default function FilesExplorer({
               <ToolBtn icon={<Upload className="h-4 w-4" />} label="Upload" onClick={() => fileRef.current?.click()} />
             </>
           ) : null}
-          {showImport && <ToolBtn icon={<GitBranch className="h-4 w-4" />} label="Import from GitHub" onClick={() => setImportOpen(true)} />}
+          {showImport && <ToolBtn icon={<GitBranch className="h-4 w-4" />} label="Import from GitHub" onClick={openImport} />}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button title="Sort" aria-label="Sort" className="flex h-7 w-7 items-center justify-center rounded text-sidebar-foreground hover:bg-sidebar-accent">
@@ -381,11 +418,32 @@ export default function FilesExplorer({
       </div>
 
       {menu && (
-        <div className="fixed z-50 w-40 overflow-hidden rounded-md border border-border bg-surface py-1 text-[13px] shadow-lg" style={{ left: menu.x, top: menu.y }} onClick={(e) => e.stopPropagation()}>
-          <button onClick={() => { const it = menu.item; setMenu(null); if (isFolderLike(it)) setFolderId(it.id); else openAsTab(it); }} className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-foreground hover:bg-raised"><FolderInput className="h-3.5 w-3.5" /> Open</button>
+        <div className="fixed z-50 w-44 overflow-hidden rounded-md border border-border bg-surface py-1 text-[13px] shadow-lg" style={{ left: menu.x, top: menu.y }} onClick={(e) => e.stopPropagation()}>
           {(menu.item.kind === "folder" || menu.item.kind === "skill") && <button onClick={() => { const it = menu.item; setMenu(null); openAsTab(it); }} className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-foreground hover:bg-raised"><FolderInput className="h-3.5 w-3.5" /> Open in tab</button>}
+          {menu.item.kind !== "session-folder" && <button onClick={() => { const it = menu.item; setMenu(null); openAsTab(it, { forceNewTab: true }); }} className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-foreground hover:bg-raised"><ExternalLink className="h-3.5 w-3.5" /> Open in new tab</button>}
+          {VFS_KINDS.has(menu.item.kind) && user && <button onClick={() => { setSharing({ x: menu.x, y: menu.y, item: menu.item }); setMenu(null); }} className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-foreground hover:bg-raised"><Share2 className="h-3.5 w-3.5" /> Share</button>}
           {menu.item.kind !== "session" && <button onClick={() => { setRenaming(menu.item.id); setMenu(null); }} className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-foreground hover:bg-raised"><Pencil className="h-3.5 w-3.5" /> Rename</button>}
           <button onClick={async () => { const it = menu.item; setMenu(null); await del(it); }} className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-destructive hover:bg-raised"><Trash2 className="h-3.5 w-3.5" /> Delete</button>
+        </div>
+      )}
+
+      {sharing && user && (
+        <div
+          ref={shareRef}
+          className="fixed z-50"
+          style={{ left: Math.min(sharing.x, typeof window === "undefined" ? sharing.x : window.innerWidth - 440), top: sharing.y }}
+        >
+          <div className="relative w-[420px]">
+            <ResourceShareDialog
+              objectType={shareObjectType(sharing.item.kind)}
+              objectId={sharing.item.id}
+              resourceName={sharing.item.name}
+              resourceUrlPath={shareUrlPath(sharing.item)}
+              currentUser={user}
+              boundaryRef={shareRef}
+              onClose={() => setSharing(null)}
+            />
+          </div>
         </div>
       )}
 
@@ -415,11 +473,38 @@ export default function FilesExplorer({
       <Dialog open={importOpen} onOpenChange={setImportOpen}>
         <DialogContent>
           <DialogHeader><DialogTitle>Import from GitHub</DialogTitle></DialogHeader>
-          <p className="text-[13px] text-muted-foreground">Paste a public repo URL to import its <code>SKILL.md</code> folders as Skills.</p>
+          <p className="text-[13px] text-muted-foreground">
+            Copies the repo into a new folder. Folders with a <code>SKILL.md</code> show up as Skills.
+          </p>
           <Input placeholder="https://github.com/owner/repo" value={repoUrl} onChange={(e) => setRepoUrl(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void doImport(); }} />
+          {githubRepos && (
+            <div className="space-y-1.5">
+              <Input placeholder="Or pick one of your repos…" value={repoFilter} onChange={(e) => setRepoFilter(e.target.value)} />
+              <div className="max-h-52 overflow-y-auto rounded-md border border-border">
+                {githubRepos
+                  .filter((r) => r.full_name.toLowerCase().includes(repoFilter.toLowerCase()))
+                  .map((r) => (
+                    <button
+                      key={r.full_name}
+                      type="button"
+                      disabled={importing}
+                      onClick={() => void doImport(r.html_url)}
+                      className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[13px] hover:bg-raised disabled:opacity-50"
+                    >
+                      <GitBranch className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                      <span className="min-w-0 flex-1 truncate">{r.full_name}</span>
+                      {r.private && <span className="shrink-0 rounded bg-surface px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">private</span>}
+                    </button>
+                  ))}
+                {githubRepos.length === 0 && (
+                  <div className="px-3 py-2 text-[12.5px] text-muted-foreground">No repos on your GitHub connection.</div>
+                )}
+              </div>
+            </div>
+          )}
           <DialogFooter>
             <Button variant="ghost" onClick={() => setImportOpen(false)}>Cancel</Button>
-            <Button onClick={doImport} disabled={importing}>{importing ? "Importing…" : "Import"}</Button>
+            <Button onClick={() => void doImport()} disabled={importing}>{importing ? "Importing…" : "Import"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

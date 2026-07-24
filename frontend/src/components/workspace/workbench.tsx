@@ -67,6 +67,7 @@ function NewTabMenu() {
  *  (left) or 1 (right, only present when split). */
 function TabPane({ pane }: { pane: 0 | 1 }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const tabs = useWorkspace((s) => s.tabs);
   const paneOf = useWorkspace((s) => s.paneOf);
   const activeTabId = useWorkspace((s) => s.activeTabId);
@@ -82,9 +83,12 @@ function TabPane({ pane }: { pane: 0 | 1 }) {
   const activeId = pane === 0 ? activeTabId : activeTab1;
   const { shareAction } = useShellChromeValue(activeId ?? undefined);
 
+  // Keep ?section= when refocusing a tab — the explorer sidebar's section is
+  // derived from the URL, and switching tabs must never move the sidebar.
   function focus(tab: WorkbenchTab) {
     setActiveTab(tab.id);
-    router.replace(urlForTab(tab));
+    const section = searchParams.get("section");
+    router.replace(urlForTab(tab) + (section ? `?section=${section}` : ""));
   }
 
   function onDrop(e: React.DragEvent) {
@@ -210,7 +214,9 @@ export default function Workbench() {
     if (!match) return;
     const existing = useWorkspace.getState().tabs.find((t) => t.kind === match.kind && t.refId === match.refId);
     if (existing) setActiveTab(existing.id);
-    else openTab(match.kind, match.refId, match.kind === "sessions-home" ? "Sessions" : match.refId);
+    // Deep links navigate the current tab — only cmd/ctrl-click and the
+    // explicit new-tab affordances ever add tabs.
+    else openTab(match.kind, match.refId, match.kind === "sessions-home" ? "Sessions" : match.refId, { newTab: false });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname, searchParams]);
 

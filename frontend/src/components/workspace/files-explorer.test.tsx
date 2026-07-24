@@ -16,6 +16,14 @@ vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn(), loading: vi.fn() },
 }));
 
+vi.mock("@/hooks/useAuth", () => ({
+  useAuth: () => ({ user: null, loading: false }),
+}));
+
+vi.mock("@/components/share/ResourceShareButton", () => ({
+  ResourceShareDialog: () => null,
+}));
+
 vi.mock("@/lib/api", () => ({
   getTree: vi.fn(),
   getFolderContents: vi.fn(),
@@ -32,7 +40,8 @@ vi.mock("@/lib/api", () => ({
   deleteSessionFolder: vi.fn(),
   updateSessionFolder: vi.fn(),
   uploadFileOrPage: vi.fn(),
-  importGithubSkill: vi.fn(),
+  importGithubRepo: vi.fn(),
+  listGithubImportRepos: vi.fn().mockResolvedValue({ connected: false, repos: [] }),
 }));
 
 const MEMORY_FOLDER = "memory-folder-1";
