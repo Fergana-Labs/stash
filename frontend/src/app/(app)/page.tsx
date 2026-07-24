@@ -63,17 +63,24 @@ export default function HomePage() {
     <div className="min-h-full">
       {/* Header */}
       <div className="border-b border-border">
-        <div className="mx-auto max-w-[720px] px-6 py-8">
+        <div className="mx-auto flex max-w-[720px] items-baseline justify-between gap-4 px-6 py-8">
           <h1 className="font-display text-[28px] font-bold leading-[1.05] tracking-[-0.02em] text-foreground">
             Your feed
           </h1>
+          <Link
+            href="/discover"
+            className="shrink-0 text-[13px] font-medium text-brand-600 hover:underline"
+          >
+            View all collections →
+          </Link>
         </div>
       </div>
 
       {/* Feed */}
       <div className="mx-auto max-w-[720px] px-6 pb-20 pt-6">
+        <ExtensionCta />
         {initialLoad ? (
-          <CardGridSkeleton className="mt-2" />
+          <CardGridSkeleton className="mt-5" />
         ) : items.length === 0 ? (
           <section className="mt-12 rounded-lg border border-dashed border-border bg-base px-6 py-12 text-center">
             <h2 className="font-display text-[20px] font-bold text-foreground">Nothing here yet.</h2>
@@ -82,12 +89,9 @@ export default function HomePage() {
             </p>
           </section>
         ) : (
-          <div className="flex flex-col gap-5">
+          <div className="mt-5 flex flex-col gap-5">
             {items.map((item, i) => (
-              <span key={feedKey(item, i)} className="contents">
-                <FeedCard item={item} index={i} />
-                {i === 3 && <ExtensionCta />}
-              </span>
+              <FeedCard key={feedKey(item, i)} item={item} index={i} />
             ))}
           </div>
         )}
