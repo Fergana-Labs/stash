@@ -9,9 +9,11 @@ const searchPlaceholder = "Search Skill or jump to a page, session, file, or tab
 const router = vi.hoisted(() => ({
   push: vi.fn(),
 }));
+const navigation = vi.hoisted(() => ({ pathname: "/" }));
 
 vi.mock("next/navigation", () => ({
   useRouter: () => router,
+  usePathname: () => navigation.pathname,
 }));
 
 vi.mock("next/link", () => ({
@@ -81,6 +83,7 @@ describe("CommandPalette search", () => {
   beforeEach(() => {
     router.push.mockClear();
     vi.clearAllMocks();
+    navigation.pathname = "/";
     vi.mocked(getSidebar).mockResolvedValue(sidebar);
     vi.mocked(listAllTables).mockResolvedValue({ tables: [] });
     vi.mocked(semanticSearchPages).mockResolvedValue([]);
@@ -99,6 +102,44 @@ describe("CommandPalette search", () => {
     fireEvent.keyDown(window, { key: "Enter" });
 
     expect(router.push).toHaveBeenCalledWith("/search?q=roadmap");
+  });
+
+  it("re-searches from the search page with a shallow history push, not a navigation", () => {
+    // router.push from /search to /search?q=… costs an RSC round-trip to the
+    // Next server before the actual search API call can even fire; a shallow
+    // pushState updates useSearchParams without one.
+    navigation.pathname = "/search";
+    const pushState = vi.spyOn(window.history, "pushState");
+    renderPalette();
+
+    fireEvent.change(screen.getByPlaceholderText(searchPlaceholder), {
+      target: { value: "roadmap" },
+    });
+    fireEvent.keyDown(window, { key: "Enter" });
+
+    expect(pushState).toHaveBeenCalledWith(null, "", "/search?q=roadmap");
+    expect(router.push).not.toHaveBeenCalled();
+    pushState.mockRestore();
+  });
+
+  it("still fully navigates from the search page to a non-search result", async () => {
+    navigation.pathname = "/search";
+    const pushState = vi.spyOn(window.history, "pushState");
+    renderPalette();
+
+    fireEvent.change(screen.getByPlaceholderText(searchPlaceholder), {
+      target: { value: "roadmap" },
+    });
+
+    expect(await screen.findByText("Launch Roadmap")).toBeInTheDocument();
+    await act(async () => {});
+
+    fireEvent.keyDown(window, { key: "ArrowDown" });
+    fireEvent.keyDown(window, { key: "Enter" });
+
+    expect(router.push).toHaveBeenCalledWith("/p/page-1");
+    expect(pushState).not.toHaveBeenCalled();
+    pushState.mockRestore();
   });
 
   it("keeps jump results available after the full-page search action", async () => {
