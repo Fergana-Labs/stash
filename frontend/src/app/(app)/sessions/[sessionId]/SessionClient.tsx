@@ -258,9 +258,10 @@ export default function SessionViewerPage({ sessionId }: { sessionId: string }) 
                   onSaved={(pageId) => router.push(`/p/${pageId}`)}
                 />
               )}
-              {sessionId.startsWith("agent-") && (
+              {sessionId.startsWith("agent-") && !/^agent-(curate|sched)-/.test(sessionId) && (
                 // Web chats (started in the Agents tab) can be resumed and
-                // continued server-side from where they left off.
+                // continued server-side from where they left off. Scheduled
+                // runs (curate/sched) aren't conversations — no resume.
                 <Link
                   href={`/agents?resume=${encodeURIComponent(sessionId)}`}
                   className="inline-flex items-center gap-1 rounded-md bg-[var(--color-brand-600)] px-2.5 py-1.5 text-[12.5px] font-medium text-white hover:bg-[var(--color-brand-700)]"

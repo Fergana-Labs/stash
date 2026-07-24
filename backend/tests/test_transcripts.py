@@ -213,42 +213,6 @@ async def test_empty_session_shell_is_hidden_from_default_views(client: AsyncCli
 
 
 @pytest.mark.asyncio
-async def test_agent_chats_view_excludes_claude_subagent_transcripts(client: AsyncClient):
-    """Claude Code sub-agent transcripts upload with `agent-*` session ids
-    (their local filenames), same prefix as platform agent chats. The Agents
-    view must show only platform chats; sub-agents belong in Sessions."""
-    key = await _register(client)
-    headers = {"Authorization": f"Bearer {key}"}
-
-    for session_id, agent_name in [
-        ("agent-" + "a" * 32, "Stash Agent"),
-        ("agent-a0097f26bede1b16d", "claude-subagent"),
-        ("sess-cli", "claude"),
-    ]:
-        up = await client.post(
-            "/api/v1/me/transcripts",
-            files={"file": ("s.jsonl", io.BytesIO(BODY), "application/jsonl")},
-            data={"session_id": session_id, "agent_name": agent_name},
-            headers=headers,
-        )
-        assert up.status_code == 201, up.text
-
-    agent_chats = await client.get(
-        "/api/v1/me/sessions", params={"agent_chats_only": "true"}, headers=headers
-    )
-    assert agent_chats.status_code == 200
-    assert [s["session_id"] for s in agent_chats.json()["sessions"]] == ["agent-" + "a" * 32]
-
-    all_sessions = await client.get("/api/v1/me/sessions", headers=headers)
-    assert all_sessions.status_code == 200
-    assert {s["session_id"] for s in all_sessions.json()["sessions"]} == {
-        "agent-" + "a" * 32,
-        "agent-a0097f26bede1b16d",
-        "sess-cli",
-    }
-
-
-@pytest.mark.asyncio
 async def test_event_created_session_lands_in_default_folder(client: AsyncClient):
     """An un-targeted push hook (e.g. Codex, which has no session-start hook so
     the first event creates the row) must land in the Default folder, never at
