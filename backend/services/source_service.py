@@ -1615,22 +1615,29 @@ async def search_documents(
             )
         return ""
 
+    # Each arm ranks on the stored vector and keeps only its own top `limit`
+    # BEFORE the snippet expression runs: the 20KB substr detoasts the full
+    # document, so it must touch the few returned rows, never every match.
     parts = [
         f"""
-        SELECT d.source_id, d.path, d.name, d.external_updated_at,
-               substr(d.content,
-                      GREATEST(1, LEAST(strpos(lower(d.content), lower(btrim($2)))
+        SELECT sub.source_id, sub.path, sub.name, sub.external_updated_at,
+               substr(sub.content,
+                      GREATEST(1, LEAST(strpos(lower(sub.content), lower(btrim($2)))
                                           - {SEARCH_SNIPPET_CHARS // 2},
-                                        length(d.content) - {SEARCH_SNIPPET_CHARS} + 1)),
+                                        length(sub.content) - {SEARCH_SNIPPET_CHARS} + 1)),
                       {SEARCH_SNIPPET_CHARS}) AS snippet,
-               ts_rank(to_tsvector('english', coalesce(d.content, '')),
-                       websearch_to_tsquery('english', $2)) AS rank
-        FROM {t} d
-        JOIN user_sources s ON s.id = d.source_id
-        WHERE d.source_id = ANY($1) AND d.deleted_at IS NULL
-          AND to_tsvector('english', coalesce(d.content, ''))
-              @@ websearch_to_tsquery('english', $2)
-          {visibility_clause(t)}
+               sub.rank
+        FROM (
+            SELECT d.source_id, d.path, d.name, d.external_updated_at, d.content,
+                   ts_rank(d.content_tsv, websearch_to_tsquery('english', $2)) AS rank
+            FROM {t} d
+            JOIN user_sources s ON s.id = d.source_id
+            WHERE d.source_id = ANY($1) AND d.deleted_at IS NULL
+              AND d.content_tsv @@ websearch_to_tsquery('english', $2)
+              {visibility_clause(t)}
+            ORDER BY rank DESC
+            LIMIT $3
+        ) sub
         """
         for t in tables
     ]
