@@ -83,12 +83,12 @@ async def run_now(
 ):
     """Run a prompt-scheduled agent on demand, streamed live like a chat turn.
     The server builds the prompt from schedule_prompt, so the run is identical
-    to what the beat task fires.
+    to what the beat task fires. The turn runs detached (see stream_chat), so
+    closing the tab doesn't kill it.
 
-    Curator runs are refused here: a curation pass takes minutes and an SSE
-    run dies with the browser tab (the disconnect cancels the stream with no
-    trace). They enqueue on the worker via POST /me/memory/recompute — the
-    same path the daily schedule and the CLI use."""
+    Curator runs are refused here: they enqueue on the worker via POST
+    /me/memory/recompute — the same path the daily schedule and the CLI use —
+    so credit metering and the curated_through watermark stay in one place."""
     agent = await agent_service.get_agent(current_user["id"], UUID(req.agent_id))
     if agent["run_mode"] != "scheduled":
         raise HTTPException(status_code=400, detail="Only scheduled agents can be run on demand.")

@@ -9,6 +9,7 @@ import remarkGfm from "remark-gfm";
 import {
   type ChatMessage,
   type Citation,
+  agentTurnRunning,
   getAgentChat,
   streamAgentChat,
 } from "@/lib/agentChat";
@@ -47,6 +48,28 @@ export default function ChatPanel({
       })
       .catch(() => {});
   }, [sessionId, loadedSession]);
+
+  // Turns run detached on the sandbox, so one can outlive the panel that
+  // started it (closed tab, navigation). If this session's turn is still
+  // running, watch for it to finish and pull the recorded reply.
+  useEffect(() => {
+    if (!sessionId || streaming) return;
+    let stopped = false;
+    void (async () => {
+      if (!(await agentTurnRunning(sessionId).catch(() => false))) return;
+      setStatus("Agent is still working…");
+      while (!stopped && (await agentTurnRunning(sessionId).catch(() => false))) {
+        await new Promise((resolve) => setTimeout(resolve, 3000));
+      }
+      if (stopped) return;
+      setStatus(null);
+      const msgs = await getAgentChat(sessionId).catch(() => null);
+      if (msgs && !stopped) setMessages(msgs);
+    })();
+    return () => {
+      stopped = true;
+    };
+  }, [sessionId, streaming]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
