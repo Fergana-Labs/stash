@@ -564,7 +564,7 @@ async def search_scope_events(
 ) -> list[dict]:
     """Full-text search on scope events."""
     pool = get_pool()
-    limit = min(limit, 200)
+    limit = min(limit, 500)
     rows = await pool.fetch(
         "SELECT id, owner_user_id, created_by, agent_name, event_type, session_id, "
         "tool_name, content, metadata, attachments, created_at, "

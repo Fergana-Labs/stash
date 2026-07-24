@@ -4,7 +4,7 @@ from uuid import UUID
 import pytest
 
 from backend.services import linear_api_service, linear_ticket_service
-from backend.services.linear_api_service import LinearIssue
+from backend.services.linear_api_service import LinearComment, LinearIssue
 
 
 @pytest.mark.asyncio
@@ -24,6 +24,11 @@ async def test_fetch_issue_parses_linear_graphql_response(monkeypatch):
                     "assignee": {"name": "Henry Dowling"},
                     "team": {"key": "FER", "name": "Ferganalabs"},
                     "project": {"name": "symphony"},
+                    "comments": {
+                        "nodes": [
+                            {"body": "shipped in v2", "user": {"name": "Grace Hopper"}},
+                        ]
+                    },
                 }
             }
         }
@@ -43,6 +48,7 @@ async def test_fetch_issue_parses_linear_graphql_response(monkeypatch):
         team_name="Ferganalabs",
         project_name="symphony",
         updated_at=datetime(2026, 5, 19, 21, 45, 50, 344000, tzinfo=UTC),
+        comments=(LinearComment(author_name="Grace Hopper", body="shipped in v2"),),
     )
 
 

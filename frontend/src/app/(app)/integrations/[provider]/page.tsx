@@ -8,6 +8,7 @@ import { MoreHorizontal } from "lucide-react";
 import { useBreadcrumbs } from "@/components/BreadcrumbContext";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { useAuth } from "@/hooks/useAuth";
+import SourceDocViewer from "@/components/SourceDocViewer";
 import {
   ApiError,
   deleteSource,
@@ -1045,7 +1046,7 @@ function SearchablePanel({
     setSearching(true);
     setSearchError(null);
     try {
-      setHits(await searchSource(query, source.source));
+      setHits((await searchSource(query, { source: source.source })).results);
     } catch (e) {
       // A scoped provider failure (rate limit, disconnected connection) must
       // never read as "No matches."
@@ -1432,6 +1433,16 @@ function NavigablePanel({
             </div>
           )}
         </div>
+      )}
+
+      {openDoc && (
+        <SourceDocViewer
+          source={source.source}
+          providerLabel={providerLabel}
+          refValue={openDoc.ref}
+          name={openDoc.name}
+          onClose={() => setOpenDoc(null)}
+        />
       )}
 
       {source.type === "slack" || source.type === "gong_calls" ? (

@@ -28,6 +28,13 @@ class StashError(VfsClientError):
 SOURCE_ENTRIES_PAGE = 1000
 
 
+def split_source_tokens(value: str) -> list[str] | None:
+    """Comma-separated CLI value -> token list for search's source filters
+    ("files, gmail" -> ["files", "gmail"]); blank input -> None (no filter)."""
+    tokens = [t.strip() for t in value.split(",") if t.strip()]
+    return tokens or None
+
+
 class StashClient:
     def __init__(self, base_url: str, api_key: str = "", scope: str = "", auto: bool = False):
         self._base_url = base_url.rstrip("/")
@@ -680,11 +687,25 @@ class StashClient:
     def read_source_doc(self, source: str, ref: str) -> dict:
         return self._get(f"/api/v1/me/sources/{source}/doc", ref=ref)
 
-    def search_sources(self, query: str, source: str | None = None, limit: int = 20) -> list:
+    def search_sources(
+        self,
+        query: str,
+        source: str | None = None,
+        include_sources: list[str] | None = None,
+        exclude_sources: list[str] | None = None,
+        limit: int = 20,
+    ) -> dict:
+        """Returns the search envelope: {"results": [...], "has_more": bool}.
+        List params reach the server as repeated query params (httpx does this
+        natively), matching the endpoint's list[str] Query params."""
         params: dict = {"q": query, "limit": limit}
         if source:
             params["source"] = source
-        return self._list("/api/v1/me/sources/search", "results", **params)
+        if include_sources:
+            params["include_sources"] = include_sources
+        if exclude_sources:
+            params["exclude_sources"] = exclude_sources
+        return self._get("/api/v1/me/sources/search", **params)
 
     # --- Tables ---
 

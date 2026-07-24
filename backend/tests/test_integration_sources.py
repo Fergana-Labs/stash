@@ -64,6 +64,17 @@ def test_render_issue_includes_meaningful_fields():
                     {"type": "paragraph", "content": [{"type": "text", "text": "repro steps"}]}
                 ],
             },
+            # JQL `text ~` matches on environment; the rendered text must carry
+            # it or environment-only hits rank as irrelevant in unified search.
+            "environment": {
+                "type": "doc",
+                "content": [
+                    {
+                        "type": "paragraph",
+                        "content": [{"type": "text", "text": "Chrome 126 on macOS 14"}],
+                    }
+                ],
+            },
             "comment": {
                 "comments": [
                     {
@@ -87,12 +98,41 @@ def test_render_issue_includes_meaningful_fields():
     assert "Status: In Progress" in text
     assert "Assignee: Ada Lovelace" in text
     assert "repro steps" in text
+    assert "Chrome 126 on macOS 14" in text
     assert "Alan Turing: cannot reproduce" in text
 
 
 def test_render_issue_handles_unassigned_and_empty():
     text = _render_issue({"key": "PROJ-1", "fields": {"summary": "stub"}})
     assert "Assignee: Unassigned" in text
+
+
+def test_render_linear_issue_carries_comments_linear_search_matches():
+    # Linear's native search matches comment bodies; unified search re-ranks
+    # each hit on its rendered text, so comments missing from the render make
+    # comment-only matches rank as irrelevant.
+    from backend.integrations.linear.indexer import _render_issue as render_linear_issue
+    from backend.services.linear_api_service import LinearComment, LinearIssue
+
+    issue = LinearIssue(
+        issue_id="issue-1",
+        identifier="FER-42",
+        title="Search misses comments",
+        url="https://linear.app/ferganalabs/issue/FER-42",
+        status="In Progress",
+        assignee_name=None,
+        team_key="FER",
+        team_name="Ferganalabs",
+        project_name=None,
+        updated_at=None,
+        description="repro steps",
+        comments=(LinearComment(author_name="Grace Hopper", body="root cause is the tokenizer"),),
+    )
+
+    text = render_linear_issue(issue)
+
+    assert "## Comments" in text
+    assert "Grace Hopper: root cause is the tokenizer" in text
 
 
 def test_render_task_includes_status_and_notes():
@@ -228,6 +268,38 @@ def test_gmail_message_rendering_prefers_plain_text_body():
     assert "From: billing@example.com" in rendered
     assert "Snippet: invoice snippet" in rendered
     assert "Your invoice is past due." in rendered
+
+
+def test_gmail_message_rendering_carries_every_field_gmail_search_matches():
+    # Gmail's native search matches cc:, bcc:, and filename:; unified search
+    # then re-ranks each hit on its rendered text. A field missing from the
+    # render makes its matches score zero and sink as irrelevant.
+    message = {
+        "id": "msg-2",
+        "payload": {
+            "headers": [
+                {"name": "Subject", "value": "Q3 contract"},
+                {"name": "From", "value": "legal@example.com"},
+                {"name": "To", "value": "henry@example.com"},
+                {"name": "Cc", "value": "maria@example.com"},
+                {"name": "Bcc", "value": "archive@example.com"},
+            ],
+            "parts": [
+                {"mimeType": "text/plain", "body": {"data": ""}},
+                {
+                    "mimeType": "application/pdf",
+                    "filename": "q3-contract-final.pdf",
+                    "body": {"attachmentId": "att-1"},
+                },
+            ],
+        },
+    }
+
+    rendered = gmail_indexer._render_message(message)
+
+    assert "Cc: maria@example.com" in rendered
+    assert "Bcc: archive@example.com" in rendered
+    assert "Attachments: q3-contract-final.pdf" in rendered
 
 
 def test_render_call_labels_speakers_and_keeps_transcript():
