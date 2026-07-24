@@ -14,6 +14,7 @@ const VALID_BUCKETS = ["month", "week", "rolling_7d"] as const;
 const VALID_MODES = ["standard", "future"] as const;
 const VALID_FILTERS = ["all", "active"] as const;
 const VALID_PATHS = ["migrant", "memory", "sharing"] as const;
+const VALID_INTERNAL = ["hide", "show"] as const;
 
 type SearchParams = { [key: string]: string | string[] | undefined };
 
@@ -53,6 +54,10 @@ export default async function AnalyticsAdminPage({
   const mode = readParam(sp.mode, VALID_MODES, "standard");
   const eventsFilter = readParam(sp.events_filter, VALID_FILTERS, "all");
   const funnelPath = readOptionalParam(sp.path, VALID_PATHS);
+  const internal = readParam(sp.internal, VALID_INTERNAL, "hide");
+  // Backends exclude internal (ferganalabs/joinstash) accounts by default;
+  // only the "show" toggle position needs to be sent explicitly.
+  const excludeInternal = internal === "show" ? "false" : undefined;
   const windowDays = Math.min(
     180,
     Math.max(1, Number((Array.isArray(sp.days) ? sp.days[0] : sp.days) ?? 30)),
@@ -82,14 +87,24 @@ export default async function AnalyticsAdminPage({
   const [contentActivity, summary, funnel, pathMix, surfaceMix, topEvents, cohorts] =
     await Promise.all([
       fetchJSON(
-        fmt("/api/v1/admin/analytics/content-activity", { days: windowDays }),
+        fmt("/api/v1/admin/analytics/content-activity", {
+          days: windowDays,
+          exclude_internal: excludeInternal,
+        }),
         token,
       ),
-      fetchJSON(fmt("/api/v1/admin/analytics/summary", { days: 7 }), token),
+      fetchJSON(
+        fmt("/api/v1/admin/analytics/summary", {
+          days: 7,
+          exclude_internal: excludeInternal,
+        }),
+        token,
+      ),
       fetchJSON(
         fmt("/api/v1/admin/analytics/onboarding-funnel", {
           days: windowDays,
           path: funnelPath,
+          exclude_internal: excludeInternal,
         }),
         token,
       ),
@@ -97,6 +112,7 @@ export default async function AnalyticsAdminPage({
         fmt("/api/v1/admin/analytics/path-mix", {
           days: windowDays,
           bucket: "day",
+          exclude_internal: excludeInternal,
         }),
         token,
       ),
@@ -104,6 +120,7 @@ export default async function AnalyticsAdminPage({
         fmt("/api/v1/admin/analytics/surface-mix", {
           days: windowDays,
           bucket: "day",
+          exclude_internal: excludeInternal,
         }),
         token,
       ),
@@ -111,6 +128,7 @@ export default async function AnalyticsAdminPage({
         fmt("/api/v1/admin/analytics/top-events", {
           days: windowDays,
           limit: 20,
+          exclude_internal: excludeInternal,
         }),
         token,
       ),
@@ -119,6 +137,7 @@ export default async function AnalyticsAdminPage({
           bucket,
           mode,
           events_filter: eventsFilter,
+          exclude_internal: excludeInternal,
         }),
         token,
       ),
@@ -156,6 +175,7 @@ export default async function AnalyticsAdminPage({
       eventsFilter={eventsFilter}
       funnelPath={funnelPath ?? "all"}
       windowDays={windowDays}
+      internal={internal}
     />
   );
 }

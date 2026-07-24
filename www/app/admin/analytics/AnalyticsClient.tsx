@@ -142,6 +142,13 @@ const WINDOW_OPTS = [
   { value: "90", label: "90d" },
 ] as const;
 
+// Internal = ferganalabs/joinstash team accounts, excluded server-side by
+// default so team usage doesn't inflate the numbers.
+const INTERNAL_OPTS = [
+  { value: "hide", label: "Hide" },
+  { value: "show", label: "Show" },
+] as const;
+
 // ---- Helpers ----
 
 function pivot<R extends { ts: string }>(
@@ -208,6 +215,7 @@ export default function AnalyticsClient({
   eventsFilter,
   funnelPath,
   windowDays,
+  internal,
 }: {
   data: AnalyticsPayload;
   bucket: CohortResponse["bucket"];
@@ -215,6 +223,7 @@ export default function AnalyticsClient({
   eventsFilter: CohortResponse["events_filter"];
   funnelPath: "all" | "migrant" | "memory" | "sharing";
   windowDays: number;
+  internal: "hide" | "show";
 }) {
   const router = useRouter();
   const params = useSearchParams();
@@ -262,12 +271,20 @@ export default function AnalyticsClient({
               and engagement cohorts — all from one screen.
             </p>
           </div>
-          <Toggle
-            label="Window"
-            value={String(windowDays)}
-            options={WINDOW_OPTS}
-            onChange={(v) => setParam("days", v)}
-          />
+          <div className="flex flex-wrap items-end gap-4">
+            <Toggle
+              label="Internal accounts"
+              value={internal}
+              options={INTERNAL_OPTS}
+              onChange={(v) => setParam("internal", v)}
+            />
+            <Toggle
+              label="Window"
+              value={String(windowDays)}
+              options={WINDOW_OPTS}
+              onChange={(v) => setParam("days", v)}
+            />
+          </div>
         </div>
 
         <ContentActivitySection activity={data.contentActivity} />
