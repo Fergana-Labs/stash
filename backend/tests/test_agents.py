@@ -208,3 +208,91 @@ async def test_partial_patch_preserves_other_fields(client: AsyncClient):
     assert updated["name"] == "Renamed"
     assert updated["model_provider"] == "openrouter"  # not clobbered to null
     assert updated["system_prompt"] == "Terse."
+
+
+async def _push_event(
+    client: AsyncClient, key: str, session_id: str, event_type: str, content: str
+):
+    r = await client.post(
+        "/api/v1/me/sessions/events",
+        json={
+            "agent_name": "Nightly",
+            "event_type": event_type,
+            "content": content,
+            "session_id": session_id,
+        },
+        headers=_auth(key),
+    )
+    assert r.status_code == 201, r.text
+
+
+@pytest.mark.asyncio
+async def test_agent_runs_groups_sessions_oldest_first_with_failure_flag(client: AsyncClient):
+    """The runs feed is the scheduled agent's whole history: one entry per
+    per-run session in chronological order, flagged when the closing message
+    is the stored run-failure marker."""
+    key = await _register(client)
+    a = (
+        await client.post(
+            "/api/v1/me/agents",
+            json={
+                "name": "Nightly",
+                "run_mode": "scheduled",
+                "schedule_cron": "0 8 * * *",
+                "schedule_prompt": "Do the nightly thing.",
+            },
+            headers=_auth(key),
+        )
+    ).json()
+
+    prefix = f"agent-sched-{a['id']}-"
+    await _push_event(
+        client, key, f"{prefix}20260722080000", "user_message", "Do the nightly thing."
+    )
+    await _push_event(client, key, f"{prefix}20260722080000", "assistant_message", "Done: 3 items.")
+    await _push_event(
+        client, key, f"{prefix}20260723080000", "user_message", "Do the nightly thing."
+    )
+    await _push_event(
+        client, key, f"{prefix}20260723080000", "assistant_message", "⚠️ Agent run failed: boom"
+    )
+
+    r = await client.get(f"/api/v1/me/agents/{a['id']}/runs", headers=_auth(key))
+    assert r.status_code == 200
+    runs = r.json()["runs"]
+    assert [run["session_id"] for run in runs] == [
+        f"{prefix}20260722080000",
+        f"{prefix}20260723080000",
+    ]
+    assert [run["failed"] for run in runs] == [False, True]
+    assert runs[0]["messages"] == [
+        {"role": "user", "content": "Do the nightly thing."},
+        {"role": "assistant", "content": "Done: 3 items."},
+    ]
+
+    # limit keeps the newest runs while preserving chronological order.
+    limited = (
+        await client.get(f"/api/v1/me/agents/{a['id']}/runs?limit=1", headers=_auth(key))
+    ).json()["runs"]
+    assert [run["session_id"] for run in limited] == [f"{prefix}20260723080000"]
+
+
+@pytest.mark.asyncio
+async def test_agent_runs_is_owner_scoped(client: AsyncClient):
+    """Another user's agent id must 404, not leak run history."""
+    key_a = await _register(client)
+    key_b = await _register(client)
+    a = (
+        await client.post(
+            "/api/v1/me/agents",
+            json={
+                "name": "Nightly",
+                "run_mode": "scheduled",
+                "schedule_cron": "0 8 * * *",
+                "schedule_prompt": "Nightly.",
+            },
+            headers=_auth(key_a),
+        )
+    ).json()
+    r = await client.get(f"/api/v1/me/agents/{a['id']}/runs", headers=_auth(key_b))
+    assert r.status_code == 404

@@ -1270,14 +1270,12 @@ export interface LinearTicketLabel {
 export async function listMySessions(
   limit = 50,
   sessionFolderId?: string,
-  offset = 0,
-  agentChatsOnly = false
+  offset = 0
 ): Promise<SessionSummary[]> {
   const qs = new URLSearchParams();
   qs.set("limit", String(limit));
   if (offset) qs.set("offset", String(offset));
   if (sessionFolderId) qs.set("session_folder_id", sessionFolderId);
-  if (agentChatsOnly) qs.set("agent_chats_only", "true");
   const data = await apiFetch<{ sessions: SessionSummary[] }>(
     `${ME}/sessions?${qs.toString()}`
   );
@@ -2152,6 +2150,25 @@ export type Agent = {
 export async function listAgents(): Promise<Agent[]> {
   const data = await apiFetch<{ agents: Agent[] }>("/api/v1/me/agents");
   return data.agents;
+}
+
+export async function getAgent(id: string): Promise<Agent> {
+  return apiFetch(`/api/v1/me/agents/${id}`);
+}
+
+export type AgentRun = {
+  session_id: string;
+  started_at: string;
+  finished_at: string;
+  failed: boolean;
+  messages: { role: "user" | "assistant"; content: string }[];
+};
+
+/** A scheduled agent's runs, oldest first — each run is its own session
+ *  (fresh context), rendered as one feed with reset separators between runs. */
+export async function listAgentRuns(agentId: string): Promise<AgentRun[]> {
+  const data = await apiFetch<{ runs: AgentRun[] }>(`/api/v1/me/agents/${agentId}/runs`);
+  return data.runs;
 }
 
 /** Enqueue a curation pass on the worker — the same path the daily schedule

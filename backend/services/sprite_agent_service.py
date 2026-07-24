@@ -185,6 +185,11 @@ async def _record_tool_event(
     )
 
 
+# Stored marker for a failed run's closing message — the runs API reads it back
+# to flag the run, so the client never string-matches message text itself.
+RUN_FAILED_PREFIX = "⚠️ Agent run failed:"
+
+
 async def _record_run_failure(
     owner_user_id: UUID, user_id: UUID, session_id: str, agent_name: str, error: str
 ) -> None:
@@ -195,7 +200,7 @@ async def _record_run_failure(
         owner_user_id,
         agent_name,
         "assistant_message",
-        f"⚠️ Agent run failed: {error}",
+        f"{RUN_FAILED_PREFIX} {error}",
         user_id,
         session_id=session_id,
     )
@@ -351,6 +356,13 @@ def _system_prompt(owner_name: str, persona: str | None) -> str:
     return f"{base}\n\n{persona}" if persona else base
 
 
+def scheduled_session_prefix(agent: dict) -> str:
+    """Prefix of every per-run session id build_scheduled_turn mints for this
+    agent — the runs API groups stored history by it."""
+    kind = "curate" if agent.get("is_curator") else "sched"
+    return f"agent-{kind}-{agent['id']}-"
+
+
 async def build_scheduled_turn(agent: dict, run_stamp: str) -> tuple[str, str]:
     """(session_id, message) for one run of a scheduled agent.
 
@@ -361,12 +373,12 @@ async def build_scheduled_turn(agent: dict, run_stamp: str) -> tuple[str, str]:
     from . import files_tree_service, prompts
 
     user_id = UUID(str(agent["user_id"]))
+    session_id = f"{scheduled_session_prefix(agent)}{run_stamp}"
     if agent.get("is_curator"):
         memory = await files_tree_service.get_or_create_memory_folder(user_id, user_id)
         since = agent["curated_through"].isoformat() if agent.get("curated_through") else None
-        message = prompts.render_curator_prompt(memory["id"], since)
-        return f"agent-curate-{agent['id']}-{run_stamp}", message
-    return f"agent-sched-{agent['id']}-{run_stamp}", agent["schedule_prompt"]
+        return session_id, prompts.render_curator_prompt(memory["id"], since)
+    return session_id, agent["schedule_prompt"]
 
 
 async def run_scheduled(agent: dict, run_stamp: str) -> str:

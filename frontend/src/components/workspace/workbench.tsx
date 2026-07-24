@@ -181,7 +181,10 @@ function TabPane({ pane }: { pane: 0 | 1 }) {
             // `flex-1 overflow-y-auto` actually gets a height to scroll
             // within — as a plain block, those bodies grew past the host
             // and were clipped by its overflow-hidden with no scrollbar.
-            <div key={active.id} className="flex h-full min-h-0 flex-col">
+            // Keyed by refId too: in-place navigation swaps a tab's target
+            // while keeping its id, and a reused body instance would keep
+            // showing the old target's state.
+            <div key={`${active.id}:${active.kind}:${active.refId}`} className="flex h-full min-h-0 flex-col">
               <ShellChromeScope scopeId={active.id}>
                 <TabBody tab={active} />
               </ShellChromeScope>
@@ -208,15 +211,21 @@ export default function Workbench() {
   // URL → tab: opening/focusing happens off the pathname only (never off `tabs`),
   // so this can't loop with the imperative router.replace on tab clicks.
   useEffect(() => {
-    const match = pathname === "/sessions" && searchParams.get("workspace") === "1"
-      ? { kind: "sessions-home" as const, refId: "sessions" }
-      : tabFromPath(pathname);
+    // `/agents?resume=<sessionId>` is the "Resume in chat" deep link from a
+    // stored web-chat session.
+    const resume = pathname === "/agents" ? searchParams.get("resume") : null;
+    const match = resume
+      ? { kind: "agent" as const, refId: resume }
+      : pathname === "/sessions" && searchParams.get("workspace") === "1"
+        ? { kind: "sessions-home" as const, refId: "sessions" }
+        : tabFromPath(pathname);
     if (!match) return;
+    const title = match.kind === "agent" ? "Chat" : match.kind === "sessions-home" ? "Sessions" : match.refId;
     const existing = useWorkspace.getState().tabs.find((t) => t.kind === match.kind && t.refId === match.refId);
     if (existing) setActiveTab(existing.id);
     // Deep links navigate the current tab — only cmd/ctrl-click and the
     // explicit new-tab affordances ever add tabs.
-    else openTab(match.kind, match.refId, match.kind === "sessions-home" ? "Sessions" : match.refId, { newTab: false });
+    else openTab(match.kind, match.refId, title, { newTab: false });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname, searchParams]);
 
