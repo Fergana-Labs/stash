@@ -270,7 +270,7 @@ def _map_codex(obj: dict, state: TurnState) -> list[dict]:
             ]
         return []
     if kind == "error":
-        state.error = str(obj.get("message") or "codex error")
+        state.error = str(obj.get("message") or f"codex error: {json.dumps(obj)[:400]}")
         return []
     return []
 
@@ -303,6 +303,9 @@ def _map_opencode(obj: dict, state: TurnState) -> list[dict]:
             )
         return events
     if ptype == "error":
-        state.error = str(part.get("message") or "opencode error")
+        # When the CLI omits `message`, the raw event is the only diagnostic —
+        # dropping it once left four days of failures logged as the literal
+        # string "opencode error".
+        state.error = str(part.get("message") or f"opencode error: {json.dumps(obj)[:400]}")
         return []
     return []

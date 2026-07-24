@@ -133,6 +133,11 @@ async def _run_harness(
         tail = _redact(" ".join(state.unparsed), provider_env)[-400:]
         if tail:
             state.error += f": {tail}"
+    if state.error:
+        # Harness-emitted errors can carry raw request/response fragments
+        # (the mappers now preserve them) — scrub the injected key like the
+        # plain-text tail above.
+        state.error = _redact(state.error, provider_env)
     if state.error and harness_mod.RESUME_MISSING_RE.search(state.error):
         state.resume_missing = True
 

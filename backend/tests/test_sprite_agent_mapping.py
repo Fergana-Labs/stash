@@ -160,6 +160,28 @@ def test_opencode_captures_session_and_maps_text():
     assert events == [{"type": "text", "delta": "hi there"}]
 
 
+def test_opencode_error_uses_message_when_present():
+    state = h.TurnState()
+    h.map_line(h.OPENCODE, '{"part":{"type":"error","message":"insufficient credits"}}', state)
+    assert state.error == "insufficient credits"
+
+
+def test_opencode_error_without_message_keeps_raw_event():
+    # An error part with no `message` must surface the raw event — reducing it
+    # to the bare string "opencode error" leaves failures undiagnosable.
+    state = h.TurnState()
+    h.map_line(h.OPENCODE, '{"part":{"type":"error","name":"ProviderError","status":402}}', state)
+    assert state.error.startswith("opencode error: ")
+    assert "ProviderError" in state.error and "402" in state.error
+
+
+def test_codex_error_without_message_keeps_raw_event():
+    state = h.TurnState()
+    h.map_line(h.CODEX, '{"type":"error","code":"rate_limited"}', state)
+    assert state.error.startswith("codex error: ")
+    assert "rate_limited" in state.error
+
+
 def test_get_unknown_harness_raises():
     with pytest.raises(ValueError):
         h.get("nonesuch")
@@ -194,6 +216,34 @@ async def test_nonzero_exit_surfaces_cli_output(monkeypatch):
     assert events == []
     assert state.error.startswith("agent exited with code 127: ")
     assert "command not found" in state.error
+    assert "sk-live-secret" not in state.error
+
+
+@pytest.mark.asyncio
+async def test_harness_emitted_error_is_redacted(monkeypatch):
+    # Raw error events preserved by the mappers can echo request fragments —
+    # the injected key must be scrubbed from state.error too.
+    from backend.services import sprite_service
+
+    async def fake_exec_stream(sprite, argv, *, env, cwd=None):
+        yield {
+            "stream": "stdout",
+            "data": b'{"part":{"type":"error","detail":"auth sk-live-secret rejected"}}\n',
+        }
+        yield {"exit_code": 0}
+
+    monkeypatch.setattr(sprite_service, "exec_stream", fake_exec_stream)
+    state = h.TurnState()
+    async for _ in svc._run_harness(
+        h.OPENCODE,
+        sprite_service.Sprite(name="s"),
+        ["opencode", "run", "hi"],
+        state,
+        {"OPENROUTER_API_KEY": "sk-live-secret"},
+    ):
+        pass
+    assert state.error.startswith("opencode error: ")
+    assert "rejected" in state.error
     assert "sk-live-secret" not in state.error
 
 
