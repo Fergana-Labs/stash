@@ -10,6 +10,7 @@ from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 
 from ..database import get_pool
+from .admin_analytics_service import not_internal_user_sql
 
 Bucket = str  # "month" | "week" | "rolling_7d"
 Mode = str  # "standard" | "future"
@@ -188,6 +189,7 @@ async def get_engagement_cohorts(
         SELECT u.id, u.created_at AS signup_at, ue.event_at
         FROM users u
         LEFT JOIN user_events ue ON ue.user_id = u.id
+        WHERE {not_internal_user_sql("u.id")}
         ORDER BY u.id, ue.event_at NULLS FIRST
     """
     rows = await pool.fetch(sql)

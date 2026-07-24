@@ -11,6 +11,25 @@ from datetime import UTC, datetime, timedelta
 
 from ..database import get_pool
 
+# Our own team's usage would pollute every dashboard number, so every
+# aggregation here (and the engagement-cohort query) excludes accounts whose
+# email is on one of these domains.
+INTERNAL_EMAIL_DOMAINS = ("ferganalabs.com", "joinstash.ai")
+
+
+def not_internal_user_sql(user_id_col: str) -> str:
+    """SQL predicate dropping rows whose user has an internal email domain.
+
+    Rows with a NULL user id (anonymous events) are kept. The domain list is
+    a code constant, so inlining it as SQL literals is safe.
+    """
+    domains = ", ".join(f"'{d}'" for d in INTERNAL_EMAIL_DOMAINS)
+    return (
+        f"NOT EXISTS (SELECT 1 FROM users iu WHERE iu.id = {user_id_col} "
+        f"AND lower(split_part(iu.email, '@', 2)) IN ({domains}))"
+    )
+
+
 # Canonical funnel order. Reads top-of-funnel → bottom; missing steps render
 # as gaps so dashboards can show drop-off honestly.
 # Canonical funnel for the linear Connect → Ask onboarding (no path picker).
@@ -31,11 +50,12 @@ async def get_onboarding_funnel(*, days: int = 30, path: str | None = None) -> d
     pool = get_pool()
     since = datetime.now(UTC) - timedelta(days=days)
     rows = await pool.fetch(
-        """
+        f"""
         SELECT event_name, COUNT(DISTINCT user_id) AS users
         FROM analytics_events
         WHERE created_at >= $1 AND event_name = ANY($2::text[])
           AND ($3::text IS NULL OR properties->>'path' = $3)
+          AND {not_internal_user_sql("analytics_events.user_id")}
         GROUP BY event_name
         """,
         since,
@@ -86,6 +106,7 @@ async def get_path_mix(*, days: int = 30, bucket: str = "day") -> dict:
                COUNT(*) AS n
         FROM analytics_events
         WHERE created_at >= $1 AND event_name = 'onboarding.viewed'
+          AND {not_internal_user_sql("analytics_events.user_id")}
         GROUP BY 1, 2
         ORDER BY ts ASC
         """,
@@ -128,6 +149,7 @@ async def get_surface_mix(*, days: int = 30, bucket: str = "day") -> dict:
                    COUNT(*) AS n
             FROM analytics_events
             WHERE created_at >= $1
+              AND {not_internal_user_sql("analytics_events.user_id")}
             GROUP BY 1, 2
         ),
         he AS (
@@ -138,6 +160,7 @@ async def get_surface_mix(*, days: int = 30, bucket: str = "day") -> dict:
             WHERE created_at >= $1
               AND metadata->>'client' IS NOT NULL
               AND COALESCE(metadata->>'source', '') <> 'history_import'
+              AND {not_internal_user_sql("history_events.created_by")}
             GROUP BY 1, 2
         )
         SELECT * FROM ae
@@ -164,12 +187,13 @@ async def get_top_events(*, days: int = 30, limit: int = 20) -> dict:
     pool = get_pool()
     since = datetime.now(UTC) - timedelta(days=days)
     rows = await pool.fetch(
-        """
+        f"""
         SELECT event_name,
                COUNT(*) AS total,
                COUNT(DISTINCT user_id) AS users
         FROM analytics_events
         WHERE created_at >= $1
+          AND {not_internal_user_sql("analytics_events.user_id")}
         GROUP BY event_name
         ORDER BY total DESC
         LIMIT $2
@@ -196,11 +220,18 @@ async def get_summary(*, days: int = 7) -> dict:
     pool = get_pool()
     since = datetime.now(UTC) - timedelta(days=days)
 
-    signups = await pool.fetchval("SELECT COUNT(*) FROM users WHERE created_at >= $1", since)
+    signups = await pool.fetchval(
+        f"""
+        SELECT COUNT(*) FROM users
+        WHERE created_at >= $1 AND {not_internal_user_sql("users.id")}
+        """,
+        since,
+    )
     completed = await pool.fetchval(
-        """
+        f"""
         SELECT COUNT(DISTINCT user_id) FROM analytics_events
         WHERE event_name = 'onboarding.completed' AND created_at >= $1
+          AND {not_internal_user_sql("analytics_events.user_id")}
         """,
         since,
     )
@@ -209,25 +240,28 @@ async def get_summary(*, days: int = 7) -> dict:
     # is the canonical first-run, but a user invoking `share` or `upload`
     # is just as much an active CLI user.
     cli_active = await pool.fetchval(
-        """
+        f"""
         SELECT COUNT(DISTINCT user_id) FROM analytics_events
         WHERE event_name = 'cli.command_invoked' AND created_at >= $1
+          AND {not_internal_user_sql("analytics_events.user_id")}
         """,
         since,
     )
     # Active users = distinct user_id across analytics_events + non-plugin
     # history_events. Plugin events are firehose and would dominate.
     active_users = await pool.fetchval(
-        """
+        f"""
         SELECT COUNT(*) FROM (
             SELECT user_id FROM analytics_events
             WHERE user_id IS NOT NULL AND created_at >= $1
+              AND {not_internal_user_sql("analytics_events.user_id")}
             UNION
             SELECT created_by AS user_id FROM history_events
             WHERE created_by IS NOT NULL
               AND created_at >= $1
               AND (metadata->>'client') IS NULL
               AND COALESCE(metadata->>'source', '') <> 'history_import'
+              AND {not_internal_user_sql("history_events.created_by")}
         ) u
         """,
         since,
@@ -295,10 +329,11 @@ async def get_content_activity(*, days: int = 30) -> dict:
             ELSE 'reads'
         END
     """
-    counted = """
+    counted = f"""
         action = ANY($1::text[])
         AND created_at >= $4
         AND (via IN ('cli', 'ask') OR (via = 'web' AND action = $2))
+        AND {not_internal_user_sql("security_audit_events.actor_user_id")}
     """
 
     total_rows = await pool.fetch(
