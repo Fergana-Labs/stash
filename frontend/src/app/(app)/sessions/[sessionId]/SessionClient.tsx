@@ -140,19 +140,78 @@ export default function SessionViewerPage({ sessionId }: { sessionId: string }) 
     `session/${sessionId}`
   );
 
-  const shareAction = useMemo(() => {
+  // All session actions live in the workbench header row, next to Share —
+  // the transcript itself stays chrome-free.
+  const headerActions = useMemo(() => {
     if (!sessionDetail || !user) return null;
     return (
-      <ResourceShareButton
-        objectType="session"
-        objectId={sessionDetail.id}
-        resourceName={sessionHeading(sessionDetail, sessionId)}
-        resourceUrlPath={`/sessions/${encodeURIComponent(sessionId)}`}
-        currentUser={user}
-      />
+      <>
+        <SaveToSkillButton
+          sessionId={sessionId}
+          onSaved={(pageId) => router.push(`/p/${pageId}`)}
+        />
+        {sessionId.startsWith("agent-") && !/^agent-(curate|sched)-/.test(sessionId) && (
+          // Web chats (started in the Agents tab) can be resumed and
+          // continued server-side from where they left off. Scheduled
+          // runs (curate/sched) aren't conversations — no resume.
+          <Link
+            href={`/agents?resume=${encodeURIComponent(sessionId)}`}
+            className="inline-flex items-center gap-1 rounded-md bg-[var(--color-brand-600)] px-2.5 py-1.5 text-[12.5px] font-medium text-white hover:bg-[var(--color-brand-700)]"
+          >
+            Resume in chat →
+          </Link>
+        )}
+        <ResourceShareButton
+          objectType="session"
+          objectId={sessionDetail.id}
+          resourceName={sessionHeading(sessionDetail, sessionId)}
+          resourceUrlPath={`/sessions/${encodeURIComponent(sessionId)}`}
+          currentUser={user}
+        />
+        <DownloadMenu
+          options={[
+            {
+              label: "Download transcript (.jsonl)",
+              onSelect: async () => {
+                const path = `/api/v1/me/transcripts/${encodeURIComponent(
+                  sessionId
+                )}/export.jsonl`;
+                const res = await fetchAuthed(path);
+                if (!res.ok) return;
+                const blob = await res.blob();
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = `session-${sessionId}.jsonl`;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                URL.revokeObjectURL(url);
+              },
+            },
+            {
+              label: "Delete",
+              destructive: true,
+              onSelect: async () => {
+                const ok = await confirm({
+                  title: `Move session "${sessionId}" to trash?`,
+                  confirmLabel: "Delete",
+                });
+                if (!ok) return;
+                try {
+                  await trashItem("session", sessionDetail.id);
+                  router.push("/sessions");
+                } catch (e) {
+                  setError(e instanceof Error ? e.message : "Delete failed");
+                }
+              },
+            },
+          ]}
+        />
+      </>
     );
-  }, [sessionDetail, sessionId, user]);
-  useShareAction(shareAction);
+  }, [sessionDetail, sessionId, user, router, confirm]);
+  useShareAction(headerActions);
 
   const load = useCallback(async () => {
     try {
@@ -218,104 +277,37 @@ export default function SessionViewerPage({ sessionId }: { sessionId: string }) 
     <div className="scroll-thin flex-1 overflow-y-auto">
       <div className="mx-auto grid max-w-[1100px] gap-7 px-12 pb-20 pt-7 lg:grid-cols-[minmax(0,1fr)_260px]">
         <main className="min-w-0">
-          <div className="mb-2 flex items-start justify-between gap-4 border-b border-border pb-3.5">
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                {agentName ? (
-                  <span className="tag tag-agent">agent · {agentName}</span>
-                ) : (
-                  <span className="tag tag-agent">agent</span>
-                )}
-                <span className="sys-label">session</span>
+          <div className="mb-2 border-b border-border pb-3.5">
+            {(sessionDetail?.linear_tickets.length ?? 0) > 0 && (
+              <div className="mb-1.5 flex items-center gap-2">
                 {sessionDetail?.linear_tickets.map((ticket) => (
                   <LinearTicketPill key={ticket.ticket_identifier} ticket={ticket} />
                 ))}
               </div>
-              <h1 className="mt-1.5 font-display text-[28px] font-bold leading-tight tracking-[-0.02em]">
-                <EditableTitle
-                  value={sessionHeading(sessionDetail, sessionId)}
-                  onSave={async (next) => {
-                    const { title } = await renameSession(sessionId, next);
-                    setSessionDetail((prev) => (prev ? { ...prev, title } : prev));
-                    return title;
-                  }}
-                />
-              </h1>
-              {totalTurns > 0 && (
-                <div className="mt-1.5 flex flex-wrap items-center gap-2.5 text-[12px] text-muted-foreground">
-                  {sessionDate && <span>{sessionDate}</span>}
-                  {sessionDate && <span>·</span>}
+            )}
+            <h1 className="font-display text-[28px] font-bold leading-tight tracking-[-0.02em]">
+              <EditableTitle
+                value={sessionHeading(sessionDetail, sessionId)}
+                onSave={async (next) => {
+                  const { title } = await renameSession(sessionId, next);
+                  setSessionDetail((prev) => (prev ? { ...prev, title } : prev));
+                  return title;
+                }}
+              />
+            </h1>
+            {(sessionDate || totalTurns > 0 || agentName) && (
+              <div className="mt-1.5 flex flex-wrap items-center gap-2.5 text-[12px] text-muted-foreground">
+                {sessionDate && <span>{sessionDate}</span>}
+                {sessionDate && totalTurns > 0 && <span>·</span>}
+                {totalTurns > 0 && (
                   <span>
                     {totalTurns} message{totalTurns === 1 ? "" : "s"}
                   </span>
-                </div>
-              )}
-            </div>
-            <div className="flex flex-shrink-0 items-center gap-1.5">
-              {sessionDetail && (
-                <SaveToSkillButton
-                  sessionId={sessionId}
-                  onSaved={(pageId) => router.push(`/p/${pageId}`)}
-                />
-              )}
-              {sessionId.startsWith("agent-") && !/^agent-(curate|sched)-/.test(sessionId) && (
-                // Web chats (started in the Agents tab) can be resumed and
-                // continued server-side from where they left off. Scheduled
-                // runs (curate/sched) aren't conversations — no resume.
-                <Link
-                  href={`/agents?resume=${encodeURIComponent(sessionId)}`}
-                  className="inline-flex items-center gap-1 rounded-md bg-[var(--color-brand-600)] px-2.5 py-1.5 text-[12.5px] font-medium text-white hover:bg-[var(--color-brand-700)]"
-                >
-                  Resume in chat →
-                </Link>
-              )}
-              <DownloadMenu
-                options={[
-                  {
-                    label: "Download transcript (.jsonl)",
-                    onSelect: async () => {
-                      const path = `/api/v1/me/transcripts/${encodeURIComponent(
-                        sessionId
-                      )}/export.jsonl`;
-                      const res = await fetchAuthed(path);
-                      if (!res.ok) return;
-                      const blob = await res.blob();
-                      const url = URL.createObjectURL(blob);
-                      const a = document.createElement("a");
-                      a.href = url;
-                      a.download = `session-${sessionId}.jsonl`;
-                      document.body.appendChild(a);
-                      a.click();
-                      a.remove();
-                      URL.revokeObjectURL(url);
-                    },
-                  },
-                  ...(sessionDetail
-                    ? [
-                        {
-                          label: "Delete",
-                          destructive: true,
-                          onSelect: async () => {
-                            const ok = await confirm({
-                              title: `Move session "${sessionId}" to trash?`,
-                              confirmLabel: "Delete",
-                            });
-                            if (!ok) return;
-                            try {
-                              await trashItem("session", sessionDetail.id);
-                              router.push("/sessions");
-                            } catch (e) {
-                              setError(
-                                e instanceof Error ? e.message : "Delete failed"
-                              );
-                            }
-                          },
-                        },
-                      ]
-                    : []),
-                ]}
-              />
-            </div>
+                )}
+                {agentName && (sessionDate || totalTurns > 0) && <span>·</span>}
+                {agentName && <span>{agentName}</span>}
+              </div>
+            )}
           </div>
 
           {error && (
