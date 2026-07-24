@@ -289,6 +289,58 @@ async def test_stop_kills_a_running_turn(client: AsyncClient, sprite_exec, monke
 
 
 @pytest.mark.asyncio
+async def test_disconnect_does_not_kill_the_turn(client: AsyncClient, sprite_exec, monkeypatch):
+    """The sandbox isolates the turn from the chat UI: a dropped SSE stream
+    (closed tab, in-app navigation) must not cancel the run. The reply still
+    records into the session and the turn lock still releases — without this,
+    every disconnect bricked the chat with 'a turn is already running' for
+    the full lock TTL and lost the reply."""
+    import asyncio
+
+    from backend.services import sprite_service
+    from backend.tests.conftest import stream_json_reply
+
+    key, _ = await _register(client)
+
+    started = asyncio.Event()
+
+    async def slow_exec(sprite, argv, *, env, cwd=None):
+        started.set()
+        await asyncio.sleep(0.3)
+        for line in stream_json_reply("finished after you left"):
+            yield {"stream": "stdout", "data": (line + "\n").encode()}
+        yield {"exit_code": 0}
+
+    monkeypatch.setattr(sprite_service, "exec_stream", slow_exec)
+
+    session_id = "agent-disconnecttest"
+    # Open the stream and abandon it as soon as the turn is underway.
+    async with client.stream(
+        "POST",
+        "/api/v1/me/agent-chat",
+        json={"message": "keep going without me", "session_id": session_id},
+        headers=_auth(key),
+    ) as response:
+        assert response.status_code == 200
+        await asyncio.wait_for(started.wait(), timeout=5)
+
+    # The detached turn finishes: reply recorded, lock released.
+    async def _settled() -> bool:
+        st = await client.get(f"/api/v1/me/agent-chat/{session_id}/status", headers=_auth(key))
+        return st.json()["running"] is False
+
+    async with asyncio.timeout(10):
+        while not await _settled():
+            await asyncio.sleep(0.05)
+
+    got = await client.get(f"/api/v1/me/agent-chat/{session_id}", headers=_auth(key))
+    assert got.json()["messages"] == [
+        {"role": "user", "content": "keep going without me"},
+        {"role": "assistant", "content": "finished after you left"},
+    ]
+
+
+@pytest.mark.asyncio
 async def test_stop_and_status_require_an_owned_session(client: AsyncClient, sprite_exec):
     """Stop is a real action on another process's run — a caller must not be
     able to stop (or probe) a session that isn't theirs or doesn't exist."""

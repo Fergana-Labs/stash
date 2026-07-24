@@ -132,6 +132,15 @@ export async function getAgentChat(sessionId: string): Promise<ChatMessage[]> {
   return messages;
 }
 
+/** Whether a turn is still running server-side for this session. Turns are
+ *  detached from the stream, so one can outlive the panel that started it. */
+export async function agentTurnRunning(sessionId: string): Promise<boolean> {
+  const data = await apiFetch<{ running: boolean }>(
+    `/api/v1/me/agent-chat/${encodeURIComponent(sessionId)}/status`,
+  );
+  return data.running;
+}
+
 type StreamHandlers = {
   onSession?: (sessionId: string) => void;
   onStatus?: (stage: string) => void;
