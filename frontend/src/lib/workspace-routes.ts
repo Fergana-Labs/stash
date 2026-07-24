@@ -1,5 +1,10 @@
 import type { TabKind, WorkbenchTab } from "@/lib/workspace-store";
 
+// Single source of truth for app-internal route paths.
+export const routes = {
+  extension: "/extension",
+};
+
 /** Canonical permanent URL for a tab — the same route that deep-links/sharing use. */
 export function urlForTab(tab: Pick<WorkbenchTab, "kind" | "refId">): string {
   switch (tab.kind) {

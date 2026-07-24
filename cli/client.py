@@ -28,10 +28,21 @@ class StashError(VfsClientError):
 SOURCE_ENTRIES_PAGE = 1000
 
 
+def split_source_tokens(value: str) -> list[str] | None:
+    """Comma-separated CLI value -> token list for search's source filters
+    ("files, gmail" -> ["files", "gmail"]); blank input -> None (no filter)."""
+    tokens = [t.strip() for t in value.split(",") if t.strip()]
+    return tokens or None
+
+
 class StashClient:
-    def __init__(self, base_url: str, api_key: str = ""):
+    def __init__(self, base_url: str, api_key: str = "", scope: str = "", auto: bool = False):
         self._base_url = base_url.rstrip("/")
         self._api_key = api_key
+        self._scope = scope
+        # Automated housekeeping (skills sync) — its reads are tagged so
+        # content-activity analytics can exclude them (see auth._set_request_via).
+        self._auto = auto
         self._http = httpx.Client(base_url=self._base_url, timeout=30)
 
     def close(self) -> None:
@@ -46,7 +57,12 @@ class StashClient:
     def _headers(self) -> dict[str, str]:
         if not self._api_key:
             return {}
-        return {"Authorization": f"Bearer {self._api_key}"}
+        headers = {"Authorization": f"Bearer {self._api_key}"}
+        if self._scope:
+            headers["X-Stash-Scope"] = self._scope
+        if self._auto:
+            headers["X-Stash-Via"] = "auto"
+        return headers
 
     def _request(self, method: str, path: str, **kwargs) -> httpx.Response:
         headers = kwargs.pop("headers", {})
@@ -111,6 +127,9 @@ class StashClient:
     def whoami(self) -> dict:
         return self._get("/api/v1/users/me")
 
+    def list_workspaces(self) -> list:
+        return self._list("/api/v1/me/workspaces", "workspaces")
+
     def list_api_keys(self) -> list:
         return self._get("/api/v1/users/me/keys")
 
@@ -165,8 +184,17 @@ class StashClient:
     def get_public_skill(self, slug: str) -> dict:
         return self._get(f"/api/v1/skills/{slug}")
 
+    def record_skill_install(self, slug: str) -> None:
+        self._post(f"/api/v1/skills/{slug}/installs")
+
     def get_skill_contents(self, folder_id: str) -> dict:
         return self._get(f"/api/v1/me/skills/{folder_id}/contents")
+
+    def list_shared_skills(self) -> list:
+        return self._list("/api/v1/me/shared-skills", "skills")
+
+    def get_shared_skill_contents(self, folder_id: str) -> dict:
+        return self._get(f"/api/v1/me/shared-skills/{folder_id}/contents")
 
     def replace_skill_contents(self, folder_id: str, files: list[tuple[str, bytes]]) -> dict:
         """files is (path relative to the skill folder, bytes) pairs; the
@@ -292,6 +320,14 @@ class StashClient:
 
     def get_memory_folder(self) -> dict:
         return self._get("/api/v1/me/memory-folder")
+
+    def get_memory_tree(self) -> dict:
+        return self._get("/api/v1/me/memory-tree")
+
+    def run_vfs(self, script: str, cwd: str = "/") -> dict:
+        """Run one read-only VFS script server-side (ls/cat/find/grep, pipes).
+        Returns {stdout, stderr, exit_code} like a shell would."""
+        return self._post("/api/v1/me/vfs", json={"script": script, "cwd": cwd})
 
     def get_changes(self, since: str | None = None) -> dict:
         params = {"since": since} if since else {}
@@ -651,11 +687,25 @@ class StashClient:
     def read_source_doc(self, source: str, ref: str) -> dict:
         return self._get(f"/api/v1/me/sources/{source}/doc", ref=ref)
 
-    def search_sources(self, query: str, source: str | None = None, limit: int = 20) -> list:
+    def search_sources(
+        self,
+        query: str,
+        source: str | None = None,
+        include_sources: list[str] | None = None,
+        exclude_sources: list[str] | None = None,
+        limit: int = 20,
+    ) -> dict:
+        """Returns the search envelope: {"results": [...], "has_more": bool}.
+        List params reach the server as repeated query params (httpx does this
+        natively), matching the endpoint's list[str] Query params."""
         params: dict = {"q": query, "limit": limit}
         if source:
             params["source"] = source
-        return self._list("/api/v1/me/sources/search", "results", **params)
+        if include_sources:
+            params["include_sources"] = include_sources
+        if exclude_sources:
+            params["exclude_sources"] = exclude_sources
+        return self._get("/api/v1/me/sources/search", **params)
 
     # --- Tables ---
 
@@ -750,6 +800,34 @@ class StashClient:
 
     def purge_session(self, session_row_id: str) -> None:
         self._delete(f"/api/v1/me/sessions/{session_row_id}/purge")
+
+    # --- MCP servers (`stash tools`) ---
+
+    def list_mcp_servers(self) -> list:
+        return self._get("/api/v1/me/mcp-servers")
+
+    def create_mcp_server(
+        self,
+        name: str,
+        transport: str,
+        command: str | None = None,
+        url: str | None = None,
+        headers: dict | None = None,
+        env: dict | None = None,
+    ) -> dict:
+        body: dict = {"name": name, "transport": transport}
+        if command:
+            body["command"] = command
+        if url:
+            body["url"] = url
+        if headers:
+            body["headers"] = headers
+        if env:
+            body["env"] = env
+        return self._post("/api/v1/me/mcp-servers", json=body)
+
+    def delete_mcp_server(self, server_id: str) -> None:
+        self._delete(f"/api/v1/me/mcp-servers/{server_id}")
 
     # --- Trash ---
 

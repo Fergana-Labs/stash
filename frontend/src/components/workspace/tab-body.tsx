@@ -3,7 +3,7 @@
 import { useState } from "react";
 import PageClient from "@/app/(app)/p/[pageId]/PageClient";
 import FileClient from "@/app/(app)/f/[fileId]/FileClient";
-import TableClient from "@/app/tables/[tableId]/TableClient";
+import TableClient from "@/app/(app)/tables/[tableId]/TableClient";
 import SessionsPage from "@/app/(app)/sessions/page";
 import SessionClient from "@/app/(app)/sessions/[sessionId]/SessionClient";
 import SkillFolderClient from "@/app/(app)/skills/folder/[folderId]/SkillFolderClient";

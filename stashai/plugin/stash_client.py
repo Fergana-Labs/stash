@@ -1,7 +1,9 @@
 """Lightweight Stash HTTP client for plugin hooks. Extracted from cli/client.py.
 
-Sessions and events stream to the calling user's scope (`/api/v1/me/...`). No
-scope abstraction.
+Sessions and events stream to the active scope (`/api/v1/me/...`): the user's
+personal scope by default, or the workspace selected by `stash workspace
+switch` (read once from `~/.stash/config.json` and sent as `X-Stash-Scope` —
+the backend hard-403s non-members, never silently falls back).
 
 Failed event pushes (network blip, backend cold start, slow GC) get appended to
 `<data_dir>/event_queue.jsonl`. The next successful push drains a batch of the
@@ -60,10 +62,29 @@ def _is_permanent_rejection(e: Exception) -> bool:
     return 400 <= e.status_code < 500
 
 
+def _configured_scope() -> str:
+    """Workspace scope selected by `stash workspace switch`; empty = personal.
+    Read here — the single client shared by hooks and detached upload scripts —
+    so every write lands in the same scope without threading it through argv.
+    Parse boundary: only a UUID is a scope. Pre-2026-07 CLIs stored a mode
+    string ("repo") under this key, and sending that would 400 every request;
+    the CLI's load_config migrates the file, hooks just never send non-UUIDs."""
+    from uuid import UUID
+
+    try:
+        config = json.loads((Path.home() / ".stash" / "config.json").read_text())
+        scope = config.get("scope", "")
+        UUID(str(scope))
+        return scope
+    except Exception:
+        return ""
+
+
 class StashClient:
     def __init__(self, base_url: str, api_key: str = "", data_dir: str | Path | None = None):
         self._base_url = base_url.rstrip("/")
         self._api_key = api_key
+        self._scope = _configured_scope()
         self._data_dir = Path(data_dir) if data_dir else None
         self._http = httpx.Client(
             base_url=self._base_url,
@@ -82,7 +103,15 @@ class StashClient:
     def _headers(self) -> dict[str, str]:
         if not self._api_key:
             return {}
-        return {"Authorization": f"Bearer {self._api_key}"}
+        headers = {"Authorization": f"Bearer {self._api_key}"}
+        if self._scope:
+            headers["X-Stash-Scope"] = self._scope
+        # Everything through this client is plugin machinery (hook streaming,
+        # session watcher, detached uploads) — never a user or agent reading
+        # content on purpose, so content-activity analytics exclude it (see
+        # backend auth._set_request_via).
+        headers["X-Stash-Via"] = "auto"
+        return headers
 
     def _request(self, method: str, path: str, **kwargs) -> httpx.Response:
         headers = kwargs.pop("headers", {})

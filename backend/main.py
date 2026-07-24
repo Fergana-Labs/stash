@@ -30,10 +30,12 @@ from .routers import (
     demo,
     discover,
     exports,
+    feed,
     files,
     files_tree,
     machine,
     marketing,
+    mcp_servers,
     memory,
     pastes,
     pins,
@@ -116,6 +118,7 @@ app.include_router(users.router)
 app.include_router(collab.router)
 app.include_router(user_knowledge.router)
 app.include_router(discover.router)
+app.include_router(feed.router)
 app.include_router(skills.me_router)
 app.include_router(skills.public_router)
 app.include_router(files_tree.router)
@@ -138,6 +141,7 @@ app.include_router(pastes.router)
 app.include_router(sessions.router)
 app.include_router(trash.router)
 app.include_router(pins.router)
+app.include_router(mcp_servers.router)
 app.include_router(publish.router)
 app.include_router(security_audit.router)
 app.include_router(tasks.router)

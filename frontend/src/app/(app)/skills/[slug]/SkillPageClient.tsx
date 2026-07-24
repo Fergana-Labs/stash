@@ -303,6 +303,8 @@ function SkillPageBody({
           </div>
         </div>
 
+        <InstallCommand slug={skill.slug} />
+
         <SkillDescriptionEditor
           skillId={skill.id}
           description={skill.description}
@@ -347,6 +349,48 @@ function SkillPageBody({
         </div>
       </div>
     </div>
+  );
+}
+
+// The terminal path for loading a skill into a coding agent. Web users get
+// the fork button; CLI users copy this instead.
+function InstallCommand({ slug }: { slug: string }) {
+  const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
+  const command = `stash skills install ${slug}`;
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(command);
+      setCopyState("copied");
+    } catch {
+      setCopyState("failed");
+    }
+    window.setTimeout(() => setCopyState("idle"), 1600);
+  }
+
+  return (
+    <section className="mt-5">
+      <div className="flex items-center gap-2 rounded-md border border-border bg-surface px-2.5 py-1.5">
+        <pre className="m-0 min-w-0 flex-1 overflow-x-auto font-mono text-[11.5px] text-foreground">
+          {command}
+        </pre>
+        <button
+          type="button"
+          onClick={() => void copy()}
+          aria-label="Copy install command"
+          className="flex-shrink-0 cursor-pointer rounded px-2 py-0.5 text-[11px] font-medium text-muted-foreground hover:bg-raised hover:text-foreground"
+        >
+          {copyState === "copied"
+            ? "Copied"
+            : copyState === "failed"
+              ? "Copy failed"
+              : "Copy"}
+        </button>
+      </div>
+      <p className="mt-1.5 text-[11.5px] text-muted-foreground">
+        Installs to ~/.claude/skills — your coding agent loads it next session.
+      </p>
+    </section>
   );
 }
 

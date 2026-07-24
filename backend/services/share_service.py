@@ -17,7 +17,7 @@ from uuid import UUID
 from fastapi import HTTPException
 
 from ..database import get_pool
-from . import permission_service, security_audit_service, user_scope_service
+from . import email_service, permission_service, security_audit_service, user_scope_service
 
 _SHAREABLE = {"file", "page", "folder", "session", "session_folder", "table", "source"}
 _PERMISSIONS = {"read", "comment", "write"}
@@ -88,13 +88,14 @@ async def share_with_user_by_email(
         # No user with that email yet — stash a pending invite that converts on
         # their signup. We can't validate the address, so this never fails the
         # share; the owner sees it as "invited" until it converts.
-        await pool.execute(
+        newly_invited = await pool.fetchval(
             """
             INSERT INTO share_invites (owner_user_id, object_type, object_id, email,
                                        permission, created_by, expires_at)
             VALUES ($1, $2, $3, lower($4), $5, $6, $7)
             ON CONFLICT (object_type, object_id, email)
             DO UPDATE SET permission = EXCLUDED.permission, expires_at = EXCLUDED.expires_at
+            RETURNING (xmax = 0)
             """,
             owner_user_id,
             object_type,
@@ -104,6 +105,15 @@ async def share_with_user_by_email(
             owner_id,
             expires_at,
         )
+        # Email only on the FIRST invite for this object+address — re-sharing to
+        # tweak permission must not re-spam the recipient.
+        if newly_invited:
+            sharer_name = await pool.fetchval(
+                "SELECT COALESCE(display_name, name) FROM users WHERE id = $1", owner_id
+            )
+            email_service.send_share_invite_email(
+                normalized_email, sharer_name, object_type.replace("_", " ")
+            )
         await _record_share_event(
             action="share.invited",
             actor_user_id=owner_id,

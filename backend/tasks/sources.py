@@ -35,7 +35,10 @@ from ._celery_helpers import run_async
 
 logger = logging.getLogger(__name__)
 
-SYNC_FAILED_MESSAGE = "Source sync failed; check server logs"
+# Owner-facing (rendered on the integration page). Raw exceptions stay in the
+# server logs; next_sync_at was already advanced at sync start, so a failed
+# source genuinely retries on its own.
+SYNC_FAILED_MESSAGE = "Sync hit an unexpected error — it will retry automatically."
 
 # source_type -> indexer. Each returns the new sync cursor (or None).
 INDEXERS: dict[str, Callable[[dict], Awaitable[str | None]]] = {

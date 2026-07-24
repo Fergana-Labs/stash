@@ -102,6 +102,34 @@ async def test_cat_reads_a_page_body(client: AsyncClient):
     assert "run the migration first" in resp.json()["stdout"]
 
 
+async def test_resolve_maps_a_vfs_path_to_its_app_route(client: AsyncClient):
+    """Chat citations deep-link through /resolve: a VFS path comes back with
+    the app route of the object behind it."""
+    api_key, _ = await _register(client)
+    page_id = await _make_page(client, api_key, "Runbook", "# Deploy")
+
+    resp = await client.get(
+        "/api/v1/me/vfs/resolve",
+        params={"path": "/files/Runbook.md"},
+        headers=_auth(api_key),
+    )
+
+    assert resp.status_code == 200
+    assert resp.json() == {"path": "/files/Runbook.md", "app_url": f"/p/{page_id}"}
+
+
+async def test_resolve_unknown_path_is_404(client: AsyncClient):
+    api_key, _ = await _register(client)
+
+    resp = await client.get(
+        "/api/v1/me/vfs/resolve",
+        params={"path": "/files/nope.md"},
+        headers=_auth(api_key),
+    )
+
+    assert resp.status_code == 404
+
+
 async def test_grep_searches_connected_source_documents(client: AsyncClient):
     api_key, owner_id = await _register(client)
     await _make_source_doc(owner_id, "specs/auth.md", "auth.md", "tokens rotate hourly")

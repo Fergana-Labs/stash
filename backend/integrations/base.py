@@ -24,10 +24,16 @@ class TokenSet:
 
 @dataclass
 class AccountInfo:
-    """Identity surface shown back to the user in the integration card."""
+    """Identity surface shown back to the user in the integration card.
+
+    account_ref is the provider's STABLE account id (X user id, Google email,
+    GitHub login) — the anchor for the reconnect identity check. Providers
+    that can supply it must; without it a reconnect under a different account
+    cannot be detected."""
 
     email: str | None
     display_name: str | None
+    account_ref: str | None = None
 
 
 @dataclass

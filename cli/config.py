@@ -79,6 +79,7 @@ def load_config() -> dict:
 
     if USER_CONFIG_FILE.exists():
         cfg.update(_read_json(USER_CONFIG_FILE))
+        _migrate_legacy_scope(cfg)
 
     if url := os.environ.get("STASH_URL"):
         cfg["base_url"] = url
@@ -112,6 +113,40 @@ def save_config(
         _write_to(USER_CONFIG_FILE, updates)
 
 
+def _migrate_legacy_scope(cfg: dict) -> None:
+    """One-shot migration: pre-2026-07 CLIs stored a mode string ("repo") under
+    `scope`; today the key is a workspace scope_user_id UUID sent as
+    X-Stash-Scope, and the backend hard-400s non-UUIDs — which would break
+    every request on machines carrying the old value. Non-UUID values are
+    deleted from the file once; after that there is only the UUID format."""
+    from uuid import UUID
+
+    raw = cfg.get("scope")
+    if not raw:
+        return
+    try:
+        UUID(str(raw))
+    except ValueError:
+        cfg.pop("scope", None)
+        data = _read_json(USER_CONFIG_FILE)
+        if data.pop("scope", None) is not None:
+            USER_CONFIG_FILE.write_text(json.dumps(data, indent=2) + "\n")
+
+
+def save_scope(scope: str | None) -> None:
+    """Set the active workspace scope, or clear it (None) for personal.
+
+    Read by both the CLI client and the plugin's StashClient, so every write —
+    live events, transcripts, artifacts — lands in the same scope."""
+    existing = _read_json(USER_CONFIG_FILE) if USER_CONFIG_FILE.exists() else {}
+    if scope:
+        existing["scope"] = scope
+    else:
+        existing.pop("scope", None)
+    USER_CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
+    USER_CONFIG_FILE.write_text(json.dumps(existing, indent=2) + "\n")
+
+
 def stored_base_url() -> str | None:
     """Return the base_url written to ~/.stash/config.json, or None."""
     if USER_CONFIG_FILE.exists():
@@ -134,6 +169,11 @@ def load_enabled_agents() -> list[str] | None:
 def save_enabled_agents(agents: list[str]) -> None:
     """Persist the enabled agents list to ~/.stash/config.json."""
     _write_to(USER_CONFIG_FILE, {"enabled_agents": agents})
+
+
+def set_codex_auto_update(enabled: bool) -> None:
+    """Persist whether Stash may auto-update itself at Codex session start."""
+    _write_to(USER_CONFIG_FILE, {"codex_auto_update": enabled})
 
 
 def clear_config() -> None:

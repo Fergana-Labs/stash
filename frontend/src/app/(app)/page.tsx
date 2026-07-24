@@ -1,148 +1,238 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
-import { FileText, Code2 } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { FileText, Code2, ExternalLink } from "lucide-react";
 import Link from "next/link";
 import { CardGridSkeleton } from "@/components/SkeletonStates";
 import { GitHubIcon } from "@/components/integrations/BrandIcons";
 import ForkSkillCardButton from "@/components/skill/ForkSkillCardButton";
 import SkillCard from "@/components/skill/SkillCard";
 import { StashIcon } from "@/components/SkillIcons";
-import { API_BASE, githubOwner, listPublicPages, type PublicSkillCard, type PublicPageCard } from "@/lib/api";
+import {
+  getHomeFeed,
+  githubOwner,
+  type FeedItem,
+  type PublicPageCard,
+  type ResurfaceCardData,
+} from "@/lib/api";
+import { routes } from "@/lib/workspace-routes";
 
-const SORTS = ["trending", "newest", "popular"] as const;
-type Sort = (typeof SORTS)[number];
 const COVERS = ["cover-1", "cover-2", "cover-3", "cover-4", "cover-5", "cover-6"];
 
-async function fetchPublicSkills(params: { q?: string; sort: Sort }): Promise<PublicSkillCard[]> {
-  const qs = new URLSearchParams();
-  for (const [k, v] of Object.entries(params)) if (v) qs.set(k, v);
-  const res = await fetch(`${API_BASE}/api/v1/discover/skills${qs.size ? `?${qs}` : ""}`);
-  if (!res.ok) return [];
-  return (await res.json()).skills ?? [];
-}
-
-/** The home / Discover feature — a dressed hero over the public-Skills catalog. */
+/** The home feature — one continuous feed: community skills to copy, public
+ *  pages, and (signed in) resurfaced items from your own stash. */
 export default function HomePage() {
-  const [sort, setSort] = useState<Sort>("trending");
-  const [query, setQuery] = useState("");
-  const [skills, setSkills] = useState<PublicSkillCard[]>([]);
-  const [pages, setPages] = useState<PublicPageCard[]>([]);
-  const [fetching, setFetching] = useState(true);
+  const [items, setItems] = useState<FeedItem[]>([]);
+  const [nextCursor, setNextCursor] = useState<number | null>(0);
+  const [fetching, setFetching] = useState(false);
+  const [initialLoad, setInitialLoad] = useState(true);
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+
+  const loadMore = useCallback(async () => {
+    if (fetching || nextCursor === null) return;
+    setFetching(true);
+    try {
+      const page = await getHomeFeed(nextCursor);
+      setItems((prev) => [...prev, ...page.items]);
+      setNextCursor(page.next_cursor);
+    } finally {
+      setFetching(false);
+      setInitialLoad(false);
+    }
+  }, [fetching, nextCursor]);
 
   useEffect(() => {
-    setFetching(true);
-    fetchPublicSkills({ q: query || undefined, sort }).then(setSkills).finally(() => setFetching(false));
-  }, [query, sort]);
+    loadMore();
+    // Load the first page once on mount; scrolling drives the rest.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  // Public pages (pastebin) are the same across sorts — fetched once, filtered client-side.
-  useEffect(() => { listPublicPages().then(setPages); }, []);
-  const q = query.trim().toLowerCase();
-  const visiblePages = q ? pages.filter((p) => p.title.toLowerCase().includes(q)) : pages;
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) loadMore();
+      },
+      { rootMargin: "600px" },
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [loadMore]);
 
   return (
     <div className="min-h-full">
       {/* Hero */}
       <div className="relative overflow-hidden border-b border-border bg-gradient-to-br from-brand-100 via-brand-50 to-[color:var(--bg-surface)]">
-        <div className="mx-auto max-w-[1180px] px-12 py-14">
+        <div className="mx-auto max-w-[720px] px-6 py-10">
           <div className="flex items-center gap-2 text-brand-600">
             <StashIcon className="text-[26px]" />
-            <span className="text-[13px] font-semibold uppercase tracking-[0.14em]">Discover</span>
+            <span className="text-[13px] font-semibold uppercase tracking-[0.14em]">Home</span>
           </div>
-          <h1 className="mt-4 max-w-[680px] font-display text-[40px] font-bold leading-[1.05] tracking-[-0.02em] text-foreground">
-            Get a head start with the community.
+          <h1 className="mt-3 font-display text-[32px] font-bold leading-[1.05] tracking-[-0.02em] text-foreground">
+            Your feed.
           </h1>
-          <p className="mt-3 max-w-[580px] text-[15px] leading-[1.6] text-dim">
-            Explore public workflows, pages, and docs shared by the community — fork anything into your workspace and make it your own.
+          <p className="mt-2 max-w-[560px] text-[14.5px] leading-[1.6] text-dim">
+            Skills to copy, pages from the community, and things you saved that are worth another
+            look.{" "}
+            <Link href="/discover" className="font-medium text-brand-600 hover:underline">
+              Browse the full catalog →
+            </Link>
           </p>
-          <div className="mt-6 flex max-w-[520px] items-center gap-2 rounded-full border border-border bg-base px-4 py-2.5 shadow-sm">
-            <SearchGlyph />
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search the community…"
-              className="min-w-0 flex-1 border-0 bg-transparent text-[14px] text-foreground placeholder:text-muted-foreground focus:outline-none"
-            />
-          </div>
         </div>
       </div>
 
-      {/* Catalog */}
-      <div className="mx-auto max-w-[1180px] px-12 pb-20 pt-8">
-        <div className="flex items-center gap-3">
-          <div className="inline-flex gap-0.5 rounded-lg border border-border bg-base p-[3px]">
-            {SORTS.map((o) => (
-              <button
-                key={o}
-                onClick={() => setSort(o)}
-                className={"cursor-pointer rounded-md px-3 py-1 text-[12.5px] " + (sort === o ? "bg-raised font-semibold text-foreground" : "text-muted-foreground hover:text-foreground")}
-              >
-                {sortLabel(o)}
-              </button>
-            ))}
-          </div>
-          <span className="flex-1" />
-          <span className="sys-label" style={{ fontSize: 10.5 }}>{skills.length + visiblePages.length} result{skills.length + visiblePages.length === 1 ? "" : "s"}</span>
-        </div>
-
-        {fetching ? (
-          <CardGridSkeleton className="mt-6" />
-        ) : skills.length === 0 && visiblePages.length === 0 ? (
+      {/* Feed */}
+      <div className="mx-auto max-w-[720px] px-6 pb-20 pt-6">
+        {initialLoad ? (
+          <CardGridSkeleton className="mt-2" />
+        ) : items.length === 0 ? (
           <section className="mt-12 rounded-lg border border-dashed border-border bg-base px-6 py-12 text-center">
             <h2 className="font-display text-[20px] font-bold text-foreground">Nothing here yet.</h2>
-            <p className="mx-auto mt-2 max-w-[440px] text-[13.5px] leading-[1.6] text-muted-foreground">Community workflows, pages, and docs will show up here as people share them publicly.</p>
+            <p className="mx-auto mt-2 max-w-[440px] text-[13.5px] leading-[1.6] text-muted-foreground">
+              Community workflows, pages, and your own resurfaced saves will show up here.
+            </p>
           </section>
         ) : (
-          <>
-            {skills.length > 0 && (
-              <>
-                <SectionHeading>Workflows &amp; skills</SectionHeading>
-                <div className="mt-4 grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
-                  {skills.map((skill, i) => (
-                    <SkillCard
-                      key={skill.id}
-                      href={`/skills/${skill.slug}`}
-                      skill={{
-                        title: skill.title,
-                        description: skill.description,
-                        cover_image_url: skill.cover_image_url,
-                        owner_name: skill.owner_name,
-                        owner_display_name: skill.source_github_url ? githubOwner(skill.source_github_url) : skill.owner_display_name,
-                        updated_at: skill.updated_at,
-                      }}
-                      cover={COVERS[i % COVERS.length]}
-                      badge={sort === "trending" && i < 2 ? (
-                        <span className="absolute left-3 top-2.5 inline-flex items-center gap-1 rounded-full bg-black/80 px-2 py-0.5 font-mono text-[10.5px] uppercase tracking-[0.04em] text-white">↗ trending</span>
-                      ) : undefined}
-                      cornerAction={
-                        <span className="flex items-center gap-1.5">
-                          {skill.source_github_url && <GitHubSourceGlyph href={skill.source_github_url} />}
-                          <ForkSkillCardButton slug={skill.slug} />
-                        </span>
-                      }
-                    />
-                  ))}
-                </div>
-              </>
-            )}
-
-            {visiblePages.length > 0 && (
-              <>
-                <SectionHeading className="mt-12">Community pages</SectionHeading>
-                <div className="mt-4 grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
-                  {visiblePages.map((p) => <PageCard key={p.slug} page={p} />)}
-                </div>
-              </>
-            )}
-          </>
+          <div className="flex flex-col gap-3.5">
+            {items.map((item, i) => (
+              <span key={feedKey(item, i)} className="contents">
+                <FeedCard item={item} index={i} />
+                {i === 3 && <ExtensionCta />}
+              </span>
+            ))}
+          </div>
+        )}
+        <div ref={sentinelRef} />
+        {fetching && !initialLoad && (
+          <div className="py-6 text-center text-[12.5px] text-muted-foreground">Loading…</div>
         )}
       </div>
     </div>
   );
 }
 
-function SectionHeading({ children, className = "" }: { children: ReactNode; className?: string }) {
-  return <h2 className={`text-[12px] font-semibold uppercase tracking-[0.1em] text-muted-foreground ${className}`}>{children}</h2>;
+function feedKey(item: FeedItem, index: number): string {
+  if (item.kind === "skill") return `skill-${item.data.id}`;
+  if (item.kind === "public_page") return `page-${item.data.slug}`;
+  return `resurface-${index}-${item.data.title}`;
+}
+
+function FeedCard({ item, index }: { item: FeedItem; index: number }) {
+  if (item.kind === "skill") {
+    const skill = item.data;
+    return (
+      <SkillCard
+        href={`/skills/${skill.slug}`}
+        skill={{
+          title: skill.title,
+          description: skill.description,
+          cover_image_url: skill.cover_image_url,
+          owner_name: skill.owner_name,
+          owner_display_name: skill.source_github_url
+            ? githubOwner(skill.source_github_url)
+            : skill.owner_display_name,
+          updated_at: skill.updated_at,
+        }}
+        cover={COVERS[index % COVERS.length]}
+        cornerAction={
+          <span className="flex items-center gap-1.5">
+            {skill.source_github_url && <GitHubSourceGlyph href={skill.source_github_url} />}
+            <ForkSkillCardButton slug={skill.slug} />
+          </span>
+        }
+      />
+    );
+  }
+  if (item.kind === "public_page") return <PageCard page={item.data} />;
+  return <ResurfaceCard data={item.data} />;
+}
+
+// A card from the user's own stash: the archived content is the preview; a
+// clip opens in-app, an X/Instagram save opens the original post.
+function ResurfaceCard({ data }: { data: ResurfaceCardData }) {
+  const body = (
+    <>
+      <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.1em] text-brand-600">
+        From your stash
+        <span className="rounded bg-brand-50 px-1.5 py-0.5 font-mono text-[10px] normal-case tracking-normal text-brand-600">
+          {sourceLabel(data.source)}
+        </span>
+        <span className="font-normal normal-case tracking-normal text-muted-foreground">
+          saved {savedAgo(data.saved_at)}
+        </span>
+      </div>
+      <div className="mt-2 flex items-start gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="line-clamp-2 text-[14.5px] font-semibold leading-snug text-foreground group-hover:text-brand-600">
+            {data.title || "Untitled"}
+          </div>
+          {data.preview && (
+            <p className="mt-1 line-clamp-3 text-[13px] leading-[1.55] text-dim">{data.preview}</p>
+          )}
+        </div>
+        {data.image_url && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={data.image_url}
+            alt=""
+            className="h-16 w-16 shrink-0 rounded-lg border border-border object-cover"
+          />
+        )}
+      </div>
+    </>
+  );
+  const className =
+    "group block rounded-xl border border-brand-200/70 bg-gradient-to-br from-brand-50/60 to-base p-4 transition hover:border-brand-300 hover:shadow-sm";
+  if (data.app_url) {
+    return (
+      <Link href={data.app_url} className={className}>
+        {body}
+      </Link>
+    );
+  }
+  return (
+    <a href={data.external_url ?? "#"} target="_blank" rel="noreferrer" className={className}>
+      {body}
+      <span className="mt-2 inline-flex items-center gap-1 text-[11.5px] text-muted-foreground">
+        <ExternalLink className="h-3 w-3" /> View original
+      </span>
+    </a>
+  );
+}
+
+function sourceLabel(source: ResurfaceCardData["source"]): string {
+  if (source === "x") return "X";
+  if (source === "instagram") return "Instagram";
+  return "Clip";
+}
+
+function savedAgo(iso: string): string {
+  const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
+  if (days < 30) return `${days}d ago`;
+  if (days < 365) return `${Math.floor(days / 30)}mo ago`;
+  return `${Math.floor(days / 365)}y ago`;
+}
+
+function ExtensionCta() {
+  return (
+    <Link
+      href={routes.extension}
+      className="group flex items-center justify-between gap-4 rounded-xl border border-brand-300/60 bg-gradient-to-r from-brand-50 to-base px-5 py-4 transition hover:border-brand-400 hover:shadow-sm"
+    >
+      <div>
+        <div className="text-[14.5px] font-semibold text-foreground group-hover:text-brand-600">
+          Download the extension
+        </div>
+        <div className="mt-0.5 text-[12.5px] text-muted-foreground">
+          Clip pages, import bookmarks, and sync your Instagram saves and AI chats into Stash.
+        </div>
+      </div>
+      <span className="shrink-0 rounded-full bg-brand px-4 py-1.5 text-[12px] font-semibold text-white">
+        Get it →
+      </span>
+    </Link>
+  );
 }
 
 // A community page (pastebin) card — opens the in-app viewer at /pages/[slug].
@@ -151,15 +241,23 @@ function PageCard({ page }: { page: PublicPageCard }) {
   return (
     <Link
       href={`/pages/${page.slug}`}
-      className="group flex flex-col gap-3 rounded-xl border border-border bg-base p-4 transition hover:border-brand-300 hover:shadow-sm"
+      className="group flex items-center gap-3.5 rounded-xl border border-border bg-base p-4 transition hover:border-brand-300 hover:shadow-sm"
     >
-      <span className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-surface text-muted-foreground">
+      <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border bg-surface text-muted-foreground">
         <Icon className="h-4 w-4" />
       </span>
-      <span className="line-clamp-2 text-[14.5px] font-semibold leading-snug text-foreground group-hover:text-brand-600">{page.title || "Untitled"}</span>
-      <span className="mt-auto flex items-center gap-2 text-[11.5px] text-muted-foreground">
-        <span className="rounded bg-surface px-1.5 py-0.5 font-medium uppercase tracking-wide">{page.content_type}</span>
-        <span>{page.view_count} view{page.view_count === 1 ? "" : "s"}</span>
+      <span className="min-w-0 flex-1">
+        <span className="line-clamp-2 text-[14.5px] font-semibold leading-snug text-foreground group-hover:text-brand-600">
+          {page.title || "Untitled"}
+        </span>
+        <span className="mt-1 flex items-center gap-2 text-[11.5px] text-muted-foreground">
+          <span className="rounded bg-surface px-1.5 py-0.5 font-medium uppercase tracking-wide">
+            {page.content_type}
+          </span>
+          <span>
+            {page.view_count} view{page.view_count === 1 ? "" : "s"}
+          </span>
+        </span>
       </span>
     </Link>
   );
@@ -171,22 +269,21 @@ function GitHubSourceGlyph({ href }: { href: string }) {
       role="link"
       tabIndex={0}
       title="View source on GitHub"
-      onClick={(e) => { e.preventDefault(); e.stopPropagation(); window.open(href, "_blank", "noopener"); }}
-      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); e.stopPropagation(); window.open(href, "_blank", "noopener"); } }}
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        window.open(href, "_blank", "noopener");
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          e.stopPropagation();
+          window.open(href, "_blank", "noopener");
+        }
+      }}
       className="inline-flex cursor-pointer items-center rounded-full bg-white/85 p-1 text-foreground shadow-sm ring-1 ring-border backdrop-blur transition hover:bg-white"
     >
       <GitHubIcon size={13} />
     </span>
-  );
-}
-
-function sortLabel(sort: Sort): string {
-  return sort === "popular" ? "Most viewed" : sort === "trending" ? "Trending" : "Newest";
-}
-function SearchGlyph() {
-  return (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-muted-foreground">
-      <circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" />
-    </svg>
   );
 }

@@ -141,6 +141,45 @@ def test_app_vfs_pipes_cat_to_sed_and_grep():
     assert "transcript.md:" in shell.run("rg -n hello /").stdout
 
 
+def test_app_vfs_head_and_tail_warn_when_lines_are_dropped():
+    shell, _client = _shell()
+
+    result = shell.run(r"printf 'a\nb\nc\nd\ne\n' | head -2")
+
+    assert result.exit_code == 0
+    assert result.stdout == "a\nb\n"
+    assert "head: showing the first 2 of 5 lines; 3 lines were NOT shown." in result.stderr
+
+    result = shell.run(r"printf 'a\nb\nc\nd\ne\n' | tail -1")
+
+    assert result.stdout == "e\n"
+    assert "tail: showing the last 1 of 5 lines; 4 lines were NOT shown." in result.stderr
+
+
+def test_app_vfs_head_is_silent_when_nothing_is_dropped():
+    shell, _client = _shell()
+
+    result = shell.run(r"printf 'a\nb\n' | head -5")
+
+    assert result.stdout == "a\nb\n"
+    assert result.stderr == ""
+
+
+def test_app_vfs_sed_range_warns_when_lines_are_dropped():
+    shell, _client = _shell()
+
+    result = shell.run(r"printf 'a\nb\nc\nd\ne\n' | sed -n '2,3p'")
+
+    assert result.exit_code == 0
+    assert result.stdout == "b\nc\n"
+    assert "sed: showing lines 2-3 of 5; 3 lines were NOT shown." in result.stderr
+
+    full = shell.run(r"printf 'a\nb\n' | sed -n '1,2p'")
+
+    assert full.stdout == "a\nb\n"
+    assert full.stderr == ""
+
+
 def test_app_vfs_grep_no_match_stops_and_chain():
     shell, _client = _shell()
 
@@ -149,6 +188,33 @@ def test_app_vfs_grep_no_match_stops_and_chain():
     assert result.exit_code == 1
     assert result.stdout == ""
     assert result.stderr == ""
+
+
+def test_app_vfs_grep_rejects_bre_escapes_loudly():
+    """Patterns compile as extended regex, where BRE's `\\|` means a literal pipe —
+    a default-grep caller writing `foo\\|bar` would silently match nothing (this
+    burned Heavi's agent in prod). The shell must refuse with a correction, never
+    return a clean no-match exit 1."""
+    shell, _client = _shell()
+
+    result = shell.run("grep -ri 'hello\\|missing' /")
+
+    assert result.exit_code == 2
+    assert "extended" in result.stderr
+
+    # The same intent written as extended regex works.
+    assert shell.run("grep -ri 'hello|missing' /").exit_code == 0
+
+
+def test_app_vfs_grep_accepts_extended_and_fixed_string_flags():
+    shell, _client = _shell()
+
+    # -E is a no-op: patterns are already extended regex.
+    assert shell.run("grep -rE 'hello|missing' /").exit_code == 0
+
+    # -F matches the pattern as literal text, regex metacharacters included.
+    assert shell.run("printf 'a|b\\n' | grep -F 'a|b'").stdout == "a|b\n"
+    assert shell.run("printf 'ab\\n' | grep -F 'a|b'").exit_code == 1
 
 
 def test_app_vfs_printf_supports_string_formats():

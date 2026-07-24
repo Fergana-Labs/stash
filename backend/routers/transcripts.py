@@ -18,10 +18,11 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile
 from fastapi.responses import PlainTextResponse
 
-from ..auth import get_current_user
+from ..auth import get_current_user, get_scope
 from ..database import get_pool
 from ..services import (
     memory_service,
+    security_audit_service,
     session_folder_service,
     session_service,
     transcript_import,
@@ -54,13 +55,16 @@ async def upload_transcript(
     session_folder_id: UUID | None = Form(None),
     replace: bool = Form(False),
     current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
 ):
     """Parse the uploaded JSONL into history_events rows.
 
     Existing sessions are left alone unless the caller explicitly asks to
     replace them.
     """
-    owner_user_id = current_user["id"]
+    # Transcripts land in the active scope, matching where the session's
+    # events were pushed (X-Stash-Scope header, personal when absent).
+    owner_user_id = scope_user_id
     await _check_write(owner_user_id, current_user["id"])
     if not _is_jsonl(file.filename):
         raise HTTPException(status_code=400, detail="Session uploads must be .JSONL files")
@@ -235,6 +239,12 @@ async def get_transcript_events(
             owner_user_id, session_id, limit, offset
         )
         if total:
+            await security_audit_service.record_content_read(
+                target_type="transcript",
+                target_id=session_id,
+                actor_user_id=current_user["id"],
+                owner_user_id=owner_user_id,
+            )
             return {
                 "events": _events_to_viewer_shape(events),
                 "total": total,
@@ -256,7 +266,14 @@ async def export_transcript_jsonl(
     resolved = await _resolve_readable_events(session_id, current_user["id"])
     if not resolved:
         raise HTTPException(status_code=404, detail="Transcript not found")
-    _, events = resolved
+    owner_user_id, events = resolved
+    await security_audit_service.record_content_read(
+        target_type="transcript",
+        target_id=session_id,
+        actor_user_id=current_user["id"],
+        owner_user_id=owner_user_id,
+        metadata={"kind": "export"},
+    )
 
     lines: list[str] = []
     for ev in events:

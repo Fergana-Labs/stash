@@ -419,3 +419,61 @@ async def test_member_cannot_manage_workspace_sources(client: AsyncClient, pool)
 
     personal = await client.get("/api/v1/me/sources", headers=_auth(key))
     assert "x" not in [s["display_name"] for s in personal.json()["sources"]]
+
+
+@pytest.mark.asyncio
+async def test_member_sessions_and_events_land_in_workspace_scope(client: AsyncClient, pool):
+    """The plugin's team story: a member's Claude Code session pushed with
+    X-Stash-Scope lands in the workspace scope, so ANOTHER member finds it via
+    scoped search — while a non-member with the same header is hard-403'd.
+    Without the header the same key still writes to the personal scope."""
+    domain = _domain()
+    ws = await _create_workspace(client, domain)
+    scope_header = {"X-Stash-Scope": ws["scope_user_id"]}
+
+    a_key, a_body = await _register_with_email(client, f"alice@{domain}")
+    b_key, b_body = await _register_with_email(client, f"bob@{domain}")
+    for body in (a_body, b_body):
+        await _verify_email(pool, uuid.UUID(body["id"]))
+
+    created = await client.post(
+        "/api/v1/me/sessions",
+        json={"session_id": "cc-team-1", "agent_name": "claude-alice", "cwd": "/repo"},
+        headers={**_auth(a_key), **scope_header},
+    )
+    assert created.status_code == 201
+
+    pushed = await client.post(
+        "/api/v1/me/sessions/events",
+        json={
+            "agent_name": "claude-alice",
+            "event_type": "user_message",
+            "content": "fixing the payments webhook retry runbook",
+            "session_id": "cc-team-1",
+        },
+        headers={**_auth(a_key), **scope_header},
+    )
+    assert pushed.status_code == 201
+
+    found = await client.get(
+        "/api/v1/me/sources/search",
+        params={"q": "runbook"},
+        headers={**_auth(b_key), **scope_header},
+    )
+    assert found.status_code == 200, found.json()
+    assert any(r.get("ref") == "cc-team-1" for r in found.json()["results"])
+
+    # Bob's PERSONAL search must not see the workspace session.
+    personal = await client.get(
+        "/api/v1/me/sources/search", params={"q": "runbook"}, headers=_auth(b_key)
+    )
+    assert personal.status_code == 200
+    assert not any(r.get("ref") == "cc-team-1" for r in personal.json()["results"])
+
+    stranger_key, _ = await _register_with_email(client, f"{unique_name('s')}@elsewhere.io")
+    denied = await client.post(
+        "/api/v1/me/sessions",
+        json={"session_id": "cc-intruder", "agent_name": "x", "cwd": "/"},
+        headers={**_auth(stranger_key), **scope_header},
+    )
+    assert denied.status_code == 403

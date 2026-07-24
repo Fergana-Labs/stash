@@ -4,27 +4,37 @@ Streams Codex CLI sessions to Stash using Codex's native `hooks` system.
 
 ## Prerequisites
 
-- `stash` CLI installed and logged in
-- `.stash` manifest present in repo (or ancestor)
-- Python 3.10+ and `httpx`
+- `stash` CLI installed (on PATH) and signed in
 - Codex CLI with `features.hooks = true` enabled for hook-based streaming
+
+Streaming is gated globally: it is on whenever you are signed in
+(`stash signin`) and haven't stopped streaming (`stash disconnect`). There is
+no per-repo manifest.
 
 ## Install
 
-```bash
-cd path/to/stash/plugins/codex-plugin
-export PLUGIN_ROOT=$(pwd)
-mkdir -p ~/.codex
+Run `stash signin` (or `stash settings`) — it writes `~/.codex/hooks.json`,
+merges `config.toml.snippet` into `~/.codex/config.toml`, and upserts
+`~/.codex/AGENTS.md`.
 
-# Hooks manifest
-envsubst < hooks.json > ~/.codex/hooks.json
+For a manual install, copy `hooks.json` to `~/.codex/hooks.json` as-is. Every
+hook is the stable command `stash hook run codex <event>`, so the file is
+machine-independent and never changes across upgrades.
 
-# Merge the config.toml snippet (enables hooks)
-envsubst < config.toml.snippet >> ~/.codex/config.toml
+## Trust
 
-# Agent context — tells Codex it has the stash CLI available
-cat AGENTS.md >> ~/.codex/AGENTS.md
-```
+Codex refuses to run new or changed command hooks until you approve them.
+After installing (or whenever the hook commands change), restart Codex and
+approve the Stash hooks in its hook review (`/hooks`). Nothing streams until
+then.
+
+## Auto-update
+
+On session start, if no preference is recorded, the plugin asks (via a
+`systemMessage` to the agent) whether Stash may update itself automatically.
+Record the choice with `stash hook auto-update on|off`; it is stored as
+`codex_auto_update` in `~/.stash/config.json`. Manual upgrades stay available
+via `stash upgrade`.
 
 ## Commands
 
@@ -78,7 +88,7 @@ the `stash` CLI. Use `stash vfs` for filesystem-style browsing without an OS mou
 ```
 stash vfs "find /me -maxdepth 3 -type f"
 stash vfs "rg \"database migration\" /me"
-stash vfs "cat '/me/README.md' | sed -n '1,80p'"
+stash vfs "cat '/me/README.md'"
 stash vfs "cat '/me/sessions/_index.jsonl'"
 stash search "<query>"
 stash whoami --json

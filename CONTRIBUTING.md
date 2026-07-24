@@ -90,7 +90,7 @@ Then iterate:
 
 ## Running tests
 
-Both suites must pass before a PR can be merged.
+The backend, CLI, and frontend suites must pass before a PR can be merged.
 
 ### Backend
 
@@ -115,6 +115,15 @@ TEST_DATABASE_URL=postgresql://stash:stash@localhost:5432/stash_test \
   python -m pytest backend/tests/ -v
 ```
 
+### CLI
+
+Install the package from the working tree before running the CLI tests:
+
+```bash
+pip install -e .
+python -m pytest cli/tests --no-cov
+```
+
 ### Frontend
 
 ```bash
@@ -128,7 +137,7 @@ npm test
 
 - Keep PRs focused. One logical change per pull request is strongly preferred.
 - Add or update tests for any behaviour you change.
-- Run both test suites locally before pushing.
+- Run all test suites locally before pushing.
 - Follow the naming conventions in `ARCHITECTURE.md`: use **Stash** everywhere.
 
 ### Adding a schema change
@@ -148,8 +157,8 @@ npm test
 ## Submitting a pull request
 
 1. Fork the repository and create a feature branch off `main`.
-2. Ensure both test suites pass locally.
-3. Open a PR against `main`. The CI pipeline runs both suites automatically.
+2. Ensure all test suites pass locally.
+3. Open a PR against `main`. The CI pipeline runs all suites automatically.
 4. Describe the motivation for the change in the PR body. Link any related issues.
 5. A maintainer will review and merge once CI is green.
 

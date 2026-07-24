@@ -364,6 +364,7 @@ class SkillAppVfsShell:
         ignore_case = False
         recursive = name == "rg"
         show_line_numbers = name == "rg"
+        fixed_strings = False
         before = 0
         after = 0
         options_done = False
@@ -383,6 +384,10 @@ class SkillAppVfsShell:
                         show_line_numbers = True
                     elif arg == "--recursive":
                         recursive = True
+                    elif arg == "--extended-regexp":
+                        pass  # patterns are always extended regex here
+                    elif arg == "--fixed-strings":
+                        fixed_strings = True
                     else:
                         raise VfsShellError(f"unsupported {name} option: {arg}", exit_code=2)
                     index += 1
@@ -407,7 +412,7 @@ class SkillAppVfsShell:
                     index += 1
                     continue
                 flags = arg[1:]
-                unsupported = sorted(set(flags) - set("inrR"))
+                unsupported = sorted(set(flags) - set("inrREF"))
                 if unsupported:
                     raise VfsShellError(
                         f"unsupported {name} option: -{unsupported[0]}",
@@ -416,6 +421,7 @@ class SkillAppVfsShell:
                 ignore_case = ignore_case or "i" in flags
                 recursive = recursive or "r" in flags or "R" in flags
                 show_line_numbers = show_line_numbers or "n" in flags
+                fixed_strings = fixed_strings or "F" in flags
                 index += 1
                 continue
             values.append(arg)
@@ -426,10 +432,14 @@ class SkillAppVfsShell:
         pattern = values[0]
         paths = values[1:]
         flags = re.IGNORECASE if ignore_case else 0
-        try:
-            regex = re.compile(pattern, flags)
-        except re.error as e:
-            raise VfsShellError(str(e)) from e
+        if fixed_strings:
+            regex = re.compile(re.escape(pattern), flags)
+        else:
+            _reject_bre_escapes(pattern)
+            try:
+                regex = re.compile(pattern, flags)
+            except re.error as e:
+                raise VfsShellError(str(e)) from e
 
         if stdin is not None and not paths:
             output = _grep_text(
@@ -493,7 +503,14 @@ class SkillAppVfsShell:
             start = int(match.group(1))
             end = int(match.group(2))
         lines = text.splitlines(keepends=True)
-        return "".join(lines[start - 1 : end])
+        selected = lines[start - 1 : end]
+        dropped = len(lines) - len(selected)
+        if dropped > 0:
+            self._warn(
+                f"sed: showing lines {start}-{min(end, len(lines))} of {len(lines)}; "
+                f"{dropped} lines were NOT shown."
+            )
+        return "".join(selected)
 
     def _head_or_tail(self, args: list[str], stdin: str | None, *, from_tail: bool) -> str:
         count = 10
@@ -517,6 +534,14 @@ class SkillAppVfsShell:
         text = stdin if not paths and stdin is not None else self._cat(paths)
         lines = text.splitlines(keepends=True)
         selected = lines[-count:] if from_tail else lines[:count]
+        dropped = len(lines) - len(selected)
+        if dropped > 0:
+            name = "tail" if from_tail else "head"
+            which = "last" if from_tail else "first"
+            self._warn(
+                f"{name}: showing the {which} {len(selected)} of {len(lines)} lines; "
+                f"{dropped} lines were NOT shown."
+            )
         return "".join(selected)
 
     def _wc(self, args: list[str], stdin: str | None) -> str:
@@ -743,6 +768,8 @@ class SkillAppVfsShell:
         if node.source_id:
             out += f"  source_id: {node.source_id}\n"
             out += f"  share: stash shares add source {node.source_id} <email>\n"
+        if node.app_url:
+            out += f"  app_url: {node.app_url}\n"
         return out
 
     def _read_text(self, path: str) -> str:
@@ -821,6 +848,25 @@ def _render_printf_template(template: str, values: list[str]) -> tuple[str, int]
         index += 2
 
     return "".join(output), used
+
+
+def _reject_bre_escapes(pattern: str) -> None:
+    """Patterns compile as Python (extended) regex, where BRE's operator escapes
+    `\\|` `\\(` `\\)` mean the *literal* character — so a caller writing default-grep
+    syntax like `foo\\|bar` would silently match nothing. Refuse loudly instead."""
+    index = 0
+    while index < len(pattern) - 1:
+        if pattern[index] != "\\":
+            index += 1
+            continue
+        escaped = pattern[index + 1]
+        if escaped in "|()":
+            raise VfsShellError(
+                f"pattern escape \\{escaped} is BRE syntax; patterns here are extended "
+                f"regex — use {escaped} as the operator, or -F to match text literally",
+                exit_code=2,
+            )
+        index += 2
 
 
 def _grep_text(

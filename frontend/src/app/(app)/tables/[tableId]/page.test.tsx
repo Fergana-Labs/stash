@@ -9,7 +9,7 @@ import {
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import TableEditorPage from "./TableClient";
-import { ConfirmDialogProvider } from "../../../components/ConfirmDialog";
+import { ConfirmDialogProvider } from "../../../../components/ConfirmDialog";
 
 function render(ui: ReactNode) {
   return renderBase(ui, { wrapper: ConfirmDialogProvider });
@@ -64,7 +64,7 @@ const authUser = vi.hoisted(() => ({
   last_seen: "2026-05-31T00:00:00Z",
 }));
 
-vi.mock("../../../hooks/useAuth", () => ({
+vi.mock("../../../../hooks/useAuth", () => ({
   useAuth: () => ({
     user: authUser,
     loading: false,
@@ -78,11 +78,11 @@ vi.mock("@/components/workspace/workspace-shell", () => ({
   ),
 }));
 
-vi.mock("../../../components/content/FileViewerHeader", () => ({
+vi.mock("../../../../components/content/FileViewerHeader", () => ({
   default: ({ title }: { title: string }) => <h1>{title}</h1>,
 }));
 
-vi.mock("../../../lib/api", () => api);
+vi.mock("../../../../lib/api", () => api);
 
 const table = {
   id: "table-1",

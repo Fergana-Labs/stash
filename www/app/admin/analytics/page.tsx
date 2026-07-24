@@ -79,8 +79,12 @@ export default async function AnalyticsAdminPage({
 
   // All four payloads + cohorts fetched in parallel — same admin secret on
   // every request, single network round-trip from the user's perspective.
-  const [summary, funnel, pathMix, surfaceMix, topEvents, cohorts] =
+  const [contentActivity, summary, funnel, pathMix, surfaceMix, topEvents, cohorts] =
     await Promise.all([
+      fetchJSON(
+        fmt("/api/v1/admin/analytics/content-activity", { days: windowDays }),
+        token,
+      ),
       fetchJSON(fmt("/api/v1/admin/analytics/summary", { days: 7 }), token),
       fetchJSON(
         fmt("/api/v1/admin/analytics/onboarding-funnel", {
@@ -121,6 +125,7 @@ export default async function AnalyticsAdminPage({
     ]);
 
   for (const [name, v] of [
+    ["content-activity", contentActivity],
     ["summary", summary],
     ["onboarding-funnel", funnel],
     ["path-mix", pathMix],
@@ -134,6 +139,7 @@ export default async function AnalyticsAdminPage({
   }
 
   const payload: AnalyticsPayload = {
+    contentActivity: contentActivity as AnalyticsPayload["contentActivity"],
     summary: summary as AnalyticsPayload["summary"],
     funnel: funnel as AnalyticsPayload["funnel"],
     pathMix: pathMix as AnalyticsPayload["pathMix"],

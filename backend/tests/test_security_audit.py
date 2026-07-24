@@ -688,7 +688,7 @@ async def test_source_reads_outside_the_rest_api_are_audited(client: AsyncClient
     source_ok, doc = await source_service.source_document(
         scope, user_id, str(source_id), "docs/launch.md"
     )
-    assert results
+    assert results["results"]
     assert source_ok and doc is not None
 
     events_resp = await client.get(
@@ -725,30 +725,33 @@ async def test_integration_disconnect_audits_source_purge(
 
     monkeypatch.setattr(integrations_router.storage, "revoke_stored", fake_revoke_stored)
 
+    # Data deletion happens only on the explicit delete_data path, and the
+    # audit trail must record each purged source.
     disconnected = await client.post(
         "/api/v1/integrations/slack/disconnect",
         headers=_auth(api_key),
+        json={"delete_data": True},
     )
     assert disconnected.status_code == 200
-    assert disconnected.json()["removed_sources"] == 1
+    assert disconnected.json()["sources"] == 1
 
     events_resp = await client.get(
         "/api/v1/me/security-events",
         headers=_auth(api_key),
     )
     events = events_resp.json()["events"]
-    deleted = next(event for event in events if event["action"] == "source.deleted")
-    assert deleted["target_id"] == source["id"]
-    assert deleted["provider"] == "slack"
-    assert deleted["source_type"] == "slack"
-    assert deleted["metadata"] == {"reason": "integration_disconnect"}
+    purged = next(event for event in events if event["action"] == "source.purged")
+    assert purged["target_id"] == source["id"]
+    assert purged["provider"] == "slack"
+    assert purged["source_type"] == "slack"
+    assert purged["metadata"] == {"reason": "integration_disconnect"}
     # The credential revocation itself must be visible through the only read
     # surface (per-scope), not written as an unreadable NULL-scope row.
     disconnected_event = next(
         event for event in events if event["action"] == "integration.disconnected"
     )
     assert disconnected_event["provider"] == "slack"
-    assert disconnected_event["metadata"] == {"removed_sources": 1}
+    assert disconnected_event["metadata"] == {"sources": 1, "data_deleted": True}
 
 
 @pytest.mark.asyncio

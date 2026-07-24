@@ -86,8 +86,16 @@ async function render(): Promise<void> {
     ])
   );
 
-  if (status.lastError) {
-    app.append(el('div', { className: 'error', textContent: status.lastError }));
+  for (const err of status.errors ?? []) {
+    app.append(el('div', { className: 'error', textContent: err.message }));
+  }
+
+  // A running bulk import is the thing the user most wants to see — top
+  // level, not tucked in Advanced (its file input stays there).
+  if (status.lastImport?.id) {
+    const progressRow = el('div', { className: 'row muted' });
+    app.append(progressRow);
+    void showImportProgress(status.lastImport.id, progressRow);
   }
 
   app.append(await renderSources());
@@ -149,20 +157,27 @@ async function renderSources(): Promise<HTMLElement> {
   return section;
 }
 
+async function showImportProgress(importId: string, row: HTMLElement): Promise<void> {
+  const result = await send({ type: 'IMPORT_PROGRESS', id: importId });
+  if (!result?.ok) {
+    row.textContent = result?.error || 'Progress check failed';
+    return;
+  }
+  const p = result.progress;
+  const running = p.pending > 0 || p.needs_client > 0;
+  const parts = [`${p.done} saved`];
+  if (p.link_only > 0) parts.push(`${p.link_only} link-only`);
+  if (p.needs_client > 0) parts.push(`${p.needs_client} fetching via this browser`);
+  if (p.pending > 0) parts.push(`${p.pending} pending`);
+  row.textContent = running
+    ? `Importing (${p.total} total): ${parts.join(', ')}`
+    : `Import finished: ${parts.join(', ')}`;
+  if (running) setTimeout(() => void showImportProgress(importId, row), 2000);
+}
+
 // Advanced: import a bookmarks.html export + the Stash API URL. Tucked away.
 function renderAdvanced(status: any): HTMLElement {
   const progressRow = el('div', { className: 'row muted' });
-
-  async function showProgress(importId: string): Promise<void> {
-    const result = await send({ type: 'IMPORT_PROGRESS', id: importId });
-    if (!result?.ok) {
-      progressRow.textContent = result?.error || 'Progress check failed';
-      return;
-    }
-    const p = result.progress;
-    progressRow.textContent = `Import: ${p.done}/${p.total} done, ${p.failed} failed, ${p.pending} pending`;
-    if (p.pending > 0) setTimeout(() => void showProgress(importId), 2000);
-  }
 
   const fileInput = el('input', { type: 'file', accept: '.html' });
   fileInput.addEventListener('change', async () => {
@@ -178,7 +193,7 @@ function renderAdvanced(status: any): HTMLElement {
       progressRow.textContent = result?.error || 'Import failed';
       return;
     }
-    void showProgress(result.importId);
+    void showImportProgress(result.importId, progressRow);
   });
 
   const apiBaseInput = el('input', { value: status.apiBase, spellcheck: false });
@@ -203,7 +218,6 @@ function renderAdvanced(status: any): HTMLElement {
     ]),
   ]);
 
-  if (status.lastImport?.id) void showProgress(status.lastImport.id);
   return details;
 }
 

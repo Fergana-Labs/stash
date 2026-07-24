@@ -67,6 +67,12 @@ class _FakeSyncClient:
         folder_id, _, rel = url.removeprefix("fake://").partition("/")
         return self.skills[folder_id]["files"][rel]
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        pass
+
 
 def _sync(c, root, state, push_new=False):
     return main._sync_skills(c, root, state, push_new, c.fetch_bytes)
@@ -146,3 +152,34 @@ def test_untracked_name_collision_is_a_conflict(tmp_path):
 
     assert len(summary["conflicts"]) == 1
     assert (tmp_path / "deploy" / "SKILL.md").read_text() == "# mine, never synced"
+
+
+def test_sync_command_tags_its_requests_as_auto(tmp_path, monkeypatch):
+    """The plugin runs sync at every session start and sync reads every
+    skill's contents to compare hashes — housekeeping the backend must be
+    able to tell apart from someone actually reading a document, or it
+    inflates the content-activity dashboard's read counts."""
+    c = _FakeSyncClient()
+    seen = {}
+
+    def fake_client(auto=False):
+        seen["auto"] = auto
+        return c
+
+    monkeypatch.setattr(main, "_client", fake_client)
+    monkeypatch.setattr(main, "_sync_state_path", lambda root: tmp_path / "state.json")
+    monkeypatch.setattr(main, "_installed_manifest_path", lambda: tmp_path / "installed.json")
+
+    main.skills_sync(directory=str(tmp_path / "skills"), project=False, as_json=True)
+
+    assert seen["auto"] is True
+
+
+def test_client_sends_auto_marker_only_when_asked():
+    from cli.client import StashClient
+
+    auto = StashClient("https://example.test", api_key="k", auto=True)
+    assert auto._headers()["X-Stash-Via"] == "auto"
+
+    normal = StashClient("https://example.test", api_key="k")
+    assert "X-Stash-Via" not in normal._headers()

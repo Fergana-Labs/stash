@@ -1,9 +1,10 @@
 """Gmail → gmail_index indexer (index only; search/read federated).
 
 Sync stores recent message metadata only. Search runs Gmail's native query live,
-upserts returned metadata so the result can be opened, and lazy reads fetch the
-full message body with the owner's token. Stash never copies message bodies
-during scheduled sync.
+fetches each hit in full so the snippet carries the rendered message body
+(format=full costs the same quota as metadata), and upserts the hit's metadata
+so the result can be opened. Lazy reads fetch the full message body with the
+owner's token. Stash never copies message bodies during scheduled sync.
 
 Messages are keyed by a date-foldered path — "YYYY/MM/DD HHMM subject (id)" —
 so the mailbox lists chronologically instead of as a flat pile of opaque ids
@@ -33,6 +34,13 @@ HEADER_NAMES = ("Subject", "From", "To", "Date")
 DEFAULT_INDEX_QUERY = "newer_than:30d -in:spam -in:trash"
 MAX_INDEX_MESSAGES = 100
 SEARCH_LIMIT = 25
+FETCH_CONCURRENCY = 5
+GET_MESSAGE_ATTEMPTS = 3
+# Gmail enforces a per-user quota (~250 units/sec; a metadata get costs 5), so
+# an unbounded burst of 100 fetches gets 429s partway through and fails the
+# whole sync. Bound the fan-out and back off on 429 before giving up.
+METADATA_CONCURRENCY = 10
+RETRY_DELAYS = (1.0, 2.0, 4.0)
 _TAG_RE = re.compile(r"<[^>]+>")
 
 
@@ -116,13 +124,35 @@ async def _list_message_refs(
     )
 
 
-async def _get_message_metadata(client: httpx.AsyncClient, message_id: str) -> dict:
-    resp = await client.get(
-        MESSAGE_URL.format(message_id=message_id),
-        params=_metadata_params("metadata"),
-    )
-    resp.raise_for_status()
-    return resp.json()
+async def _get_message(client: httpx.AsyncClient, message_id: str, message_format: str) -> dict:
+    # Gmail's per-user quota (250 units/sec, 5 per messages.get) throttles
+    # bursts with 429s; that's a pacing signal per its protocol, so honor
+    # Retry-After a bounded number of times before failing the sync.
+    for attempt in range(GET_MESSAGE_ATTEMPTS):
+        resp = await client.get(
+            MESSAGE_URL.format(message_id=message_id),
+            params=_metadata_params(message_format),
+        )
+        if resp.status_code == 429 and attempt < GET_MESSAGE_ATTEMPTS - 1:
+            await asyncio.sleep(float(resp.headers.get("Retry-After", "1")) + attempt)
+            continue
+        resp.raise_for_status()
+        return resp.json()
+    raise AssertionError("unreachable")
+
+
+async def _get_messages(
+    client: httpx.AsyncClient, refs: list[dict], message_format: str
+) -> list[dict]:
+    """Fetch every ref's message with bounded concurrency — an unbounded
+    gather of even ~25 fetches overshoots the per-user quota instantly."""
+    semaphore = asyncio.Semaphore(FETCH_CONCURRENCY)
+
+    async def fetch(message_id: str) -> dict:
+        async with semaphore:
+            return await _get_message(client, message_id, message_format)
+
+    return await asyncio.gather(*(fetch(ref["id"]) for ref in refs if ref.get("id")))
 
 
 async def _upsert_message_metadata(source: dict, message: dict) -> str | None:
@@ -151,9 +181,7 @@ async def index_gmail(source: dict) -> str | None:
     present: list[str] = []
     async with httpx.AsyncClient(timeout=60.0, headers=_headers(token)) as client:
         refs, _, _ = await _list_message_refs(client, DEFAULT_INDEX_QUERY, MAX_INDEX_MESSAGES)
-        messages = await asyncio.gather(
-            *(_get_message_metadata(client, ref["id"]) for ref in refs if ref.get("id"))
-        )
+        messages = await _get_messages(client, refs, "metadata")
         for message in messages:
             path = await _upsert_message_metadata(source, message)
             if path:
@@ -165,7 +193,9 @@ async def index_gmail(source: dict) -> str | None:
 
 
 async def search_gmail(source: dict, query: str, limit: int = SEARCH_LIMIT) -> dict:
-    """Live-search the mailbox, capped at SEARCH_LIMIT. Returns
+    """Live-search the mailbox, capped at SEARCH_LIMIT. Each hit is fetched in
+    full and its snippet is the rendered message body — same request count and
+    quota as a metadata fetch, and callers get full text to rank on. Returns
     {hits, truncated, estimated_total}: `truncated` is true when Gmail matched
     more than the cap, so callers can disclose the cut instead of passing the
     top slice off as the whole result."""
@@ -176,9 +206,7 @@ async def search_gmail(source: dict, query: str, limit: int = SEARCH_LIMIT) -> d
         refs, next_page_token, estimated_total = await _list_message_refs(
             client, query, min(limit, SEARCH_LIMIT)
         )
-        messages = await asyncio.gather(
-            *(_get_message_metadata(client, ref["id"]) for ref in refs if ref.get("id"))
-        )
+        messages = await _get_messages(client, refs, "full")
 
     hits: list[dict] = []
     for message in messages:
@@ -189,7 +217,8 @@ async def search_gmail(source: dict, query: str, limit: int = SEARCH_LIMIT) -> d
             {
                 "ref": path,
                 "name": _message_name(message),
-                "snippet": message.get("snippet") or "",
+                "snippet": _render_message(message),
+                "date_modified": _message_time(message),
             }
         )
     return {
@@ -234,17 +263,35 @@ def _extract_body(payload: dict) -> str:
     return "\n\n".join(parts).strip()
 
 
+def _attachment_filenames(payload: dict) -> list[str]:
+    return [part["filename"] for part in _walk_parts(payload) if part.get("filename")]
+
+
 def _render_message(message: dict) -> str:
+    """The rendered text must carry every field Gmail's native search matches
+    on (cc:, bcc:, filename:, …) — unified search re-ranks and snippets hits on
+    this text, so a field missing here makes its matches rank as irrelevant."""
     headers = _message_headers(message)
     subject = headers.get("subject") or "(no subject)"
     parts = [f"# {subject}"]
-    for label, key in (("From", "from"), ("To", "to"), ("Date", "date")):
+    for label, key in (
+        ("From", "from"),
+        ("To", "to"),
+        ("Cc", "cc"),
+        ("Bcc", "bcc"),
+        ("Date", "date"),
+    ):
         if headers.get(key):
             parts.append(f"{label}: {headers[key]}")
+
+    payload = message.get("payload") or {}
+    attachments = _attachment_filenames(payload)
+    if attachments:
+        parts.append(f"Attachments: {', '.join(attachments)}")
     if message.get("snippet"):
         parts.append(f"Snippet: {message['snippet']}")
 
-    body = _extract_body(message.get("payload") or {})
+    body = _extract_body(payload)
     if body:
         parts.append(f"\n{body}")
     return "\n".join(parts)
@@ -253,9 +300,4 @@ def _render_message(message: dict) -> str:
 async def fetch_gmail_content(owner_user_id: UUID, account_key: str, message_id: str) -> str:
     token = await get_valid_token(owner_user_id, "gmail", account_key)
     async with httpx.AsyncClient(timeout=30.0, headers=_headers(token)) as client:
-        resp = await client.get(
-            MESSAGE_URL.format(message_id=message_id),
-            params=_metadata_params("full"),
-        )
-        resp.raise_for_status()
-        return _render_message(resp.json())
+        return _render_message(await _get_message(client, message_id, "full"))

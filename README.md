@@ -40,7 +40,8 @@
 - **Sessions stream in automatically.** A hook for your coding agent pushes every transcript — prompts, tool calls, artifacts — into your Stash.
 - **Files and sessions live side by side.** Markdown, HTML, tables, PDFs. You and your agents both write here; both sides see edits in real time.
 - **Agents query it like a filesystem.** A CLI, MCP server, and virtual-filesystem shell expose your Stash to any agent. Semantic and keyword search across pages, sessions, and tables.
-- **Skills are the shareable slice.** Bundle pages and sessions into one link. Publish to the world, or fork a public Skill into your own Stash.
+- **Skills are the shareable slice.** Bundle pages and sessions into one link. Publish to the world, fork a public Skill into your own Stash, or `stash skills install` one into your agent — installed skills auto-update at session start, and `stash skills follow` auto-installs skills people share with you.
+- **Bring your own MCP servers.** Register MCP servers once (Tools page or `stash tools add`); your cloud agent gets them automatically and `stash tools install` writes them into any local agent's `.mcp.json`.
 
 ## Why persistent beats per-session
 
@@ -122,8 +123,9 @@ Stash supports the following coding agents:
 - **OpenCode**
 - **Gemini CLI**
 - **Openclaw** 
+- **Hermes**
 
-Stash supports opt in per-coding agent. `stash signin` can auto-install hooks for Claude Code, Cursor, Codex, and OpenCode; Gemini CLI and Openclaw are available in `plugins/` and are installed manually. Mix and match — different teammates can use different agents against the same shared brain.
+Stash supports opt in per-coding agent. `stash signin` detects every agent on your machine and auto-installs its hooks — pick which ones during signin. Mix and match — different teammates can use different agents against the same shared brain. (Openclaw's code scanner requires its unsafe-install flag, which the installer passes; Hermes asks you to approve the hooks once via `hermes hooks list`.)
 
 ## CLI Reference
 
@@ -197,7 +199,7 @@ Stash is built for engineering teams working in private repos.
 ## FAQ
 
 **What LLMs does Stash use?**
-When an Anthropic API key is provided, the server calls Claude for ask-the-stash (quality tier) and session title generation. Both are optional — without the key, Stash works but those features are disabled. There is no background page-writing agent.
+When an Anthropic API key is provided, the server calls Claude for ask-the-stash (quality tier) and session title generation. Both are optional — without the key, Stash works but those features are disabled. There is one background writer: the Memory curator, a scheduled agent that maintains your Memory wiki from new sessions and files; it only writes inside the reserved Memory folder.
 
 **Can I use this without Claude Code?**
 Yes. You can use the CLI with anything, and Stash has native plugins for Cursor, Codex, Opencode, Gemini CLI, and more.

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Stash Sync",
-  "version": "0.3.0",
+  "version": "0.5.0",
   "description": "Saves webpages, PDFs, and your ChatGPT/Claude conversations to Stash.",
   "permissions": [
     "storage",
@@ -14,30 +14,38 @@
     "cookies"
   ],
   "host_permissions": [
-    "https://api.joinstash.ai/*",
-    "http://localhost:3456/*",
-    "https://chatgpt.com/*",
-    "https://chat.openai.com/*",
-    "https://claude.ai/*",
-    "https://www.instagram.com/*"
+    "<all_urls>"
   ],
   "background": {
     "service_worker": "dist/background.js"
   },
   "content_scripts": [
     {
-      "matches": ["https://chatgpt.com/*", "https://chat.openai.com/*"],
-      "js": ["dist/chatgpt.js"],
+      "matches": [
+        "https://chatgpt.com/*",
+        "https://chat.openai.com/*"
+      ],
+      "js": [
+        "dist/chatgpt.js"
+      ],
       "run_at": "document_idle"
     },
     {
-      "matches": ["https://claude.ai/*"],
-      "js": ["dist/claude.js"],
+      "matches": [
+        "https://claude.ai/*"
+      ],
+      "js": [
+        "dist/claude.js"
+      ],
       "run_at": "document_idle"
     },
     {
-      "matches": ["https://www.instagram.com/*"],
-      "js": ["dist/instagram.js"],
+      "matches": [
+        "https://www.instagram.com/*"
+      ],
+      "js": [
+        "dist/instagram.js"
+      ],
       "run_at": "document_idle"
     }
   ],

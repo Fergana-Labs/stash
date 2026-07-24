@@ -2,30 +2,40 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import WorkspaceShell from "@/components/workspace/workspace-shell";
 import CustomSelect from "../../components/CustomSelect";
+import SearchSourceFilter from "../../components/SearchSourceFilter";
+import { providerForSourceType } from "../../components/integrations/connectors";
+import { CLIENT_SIDE_TOKENS, unifiedSearchTokens } from "./unified-tokens";
 import { BasicPageSkeleton, SearchResultsSkeleton, SearchSkeleton } from "../../components/SkeletonStates";
 import { useAuth } from "../../hooks/useAuth";
 import { track } from "../../lib/analytics";
+import SourceDocViewer from "../../components/SourceDocViewer";
 import {
   getSidebar,
   getPublicSkill,
   getSessionEvents,
   listAllTables,
   listSkills,
-  searchEvents,
-  searchPages as searchPagesApi,
-  type HistoryEvent,
+  listSources,
+  searchSource,
   type PublicSkillDetail,
   type SessionEvent,
   type Sidebar,
+  type SidebarSession,
   type Skill,
+  type SourceSearchHit,
   type TreeFolder,
+  type TreePage,
 } from "../../lib/api";
-import type { Page, TableWithOwner } from "../../lib/types";
+import type { TableWithOwner } from "../../lib/types";
 
-type ContentScope = "all" | "sessions" | "pages" | "tables" | "skills";
+// Infinite scroll grows the requested result count one step at a time and
+// the server returns that many top hits (the list is replaced, not appended).
+// MAX_SEARCH_LIMIT must match the endpoint's `le=500` cap.
+const SEARCH_PAGE_SIZE = 20;
+const MAX_SEARCH_LIMIT = 500;
 
 // Coarse buckets for analytics — actual counts have high cardinality
 // and add no signal beyond "no results / few / many."
@@ -39,29 +49,17 @@ function bucketCount(n: number): string {
 
 interface SearchResult {
   id: string;
-  kind: "Session" | "Page" | "Table" | "Skill";
+  kind: "Session" | "Page" | "Table" | "Skill" | "Source";
   title: string;
-  href: string;
+  // Connected-source hits have no internal route: they render as a row that
+  // expands an inline document viewer instead of a link.
+  href: string | null;
+  external?: { source: string; ref: string; name?: string };
   sourceName: string;
   detail: ReactNode;
-  updatedAt: string;
+  // Rows without a timestamp hide the time.
+  updatedAt: string | null;
   relevance: number;
-}
-
-const CONTENT_SCOPES: { id: ContentScope; label: string }[] = [
-  { id: "all", label: "All" },
-  { id: "sessions", label: "Sessions" },
-  { id: "pages", label: "Pages" },
-  { id: "skills", label: "Skills" },
-  { id: "tables", label: "Tables" },
-];
-
-function initialContentScope(value: string | null, sessionId: string): ContentScope {
-  if (sessionId) return "sessions";
-  if (value === "sessions" || value === "pages" || value === "tables" || value === "skills") {
-    return value;
-  }
-  return "all";
 }
 
 export default function SearchPage() {
@@ -88,22 +86,59 @@ function SearchPageInner() {
   const [selectedFolderId, setSelectedFolderId] = useState(searchParams.get("folder") ?? "");
   const [selectedPageId, setSelectedPageId] = useState(searchParams.get("page") ?? "");
   const [selectedSessionId] = useState(initialSessionId);
-  const [contentScope, setContentScope] = useState<ContentScope>(
-    () => initialContentScope(searchParams.get("content"), initialSessionId)
-  );
+  const [connectedProviders, setConnectedProviders] = useState<string[]>([]);
+  // The chip stores what's UNCHECKED, so "all selected" is the default even
+  // before the connected providers load, and the default sends no filter.
+  const [deselectedSources, setDeselectedSources] = useState<Set<string>>(new Set());
   const [results, setResults] = useState<SearchResult[]>([]);
+  const [sourceNotices, setSourceNotices] = useState<string[]>([]);
+  const [hasMore, setHasMore] = useState(false);
+  const [openExternalId, setOpenExternalId] = useState<string | null>(null);
   const [searchedQuery, setSearchedQuery] = useState("");
   const [fetching, setFetching] = useState(true);
   const [searching, setSearching] = useState(false);
   const [error, setError] = useState("");
+  // How many results the searcher has asked for so far; scrolling grows it.
+  const [requestedLimit, setRequestedLimit] = useState(SEARCH_PAGE_SIZE);
+  const [loadingMore, setLoadingMore] = useState(false);
+  // Monotonic id of the latest search run — a slow older response must never
+  // clobber the state a newer run has written.
+  const searchSeq = useRef(0);
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+
+  // The header search input writes the query into the URL; the page re-runs
+  // the search in real time as it (or any filter) changes.
+  const urlQuery = searchParams.get("q") ?? "";
+
+  // A new query or filter invalidates the grown result count. Resetting
+  // during render (not in an effect) guarantees the fetch effect below never
+  // fires with the new query and a stale grown limit.
+  const searchKey = JSON.stringify([
+    urlQuery,
+    [...deselectedSources].sort(),
+    selectedFolderId,
+    selectedPageId,
+    selectedProductSkillId,
+    selectedProductSkillSlug,
+  ]);
+  const [prevSearchKey, setPrevSearchKey] = useState(searchKey);
+  if (prevSearchKey !== searchKey) {
+    setPrevSearchKey(searchKey);
+    setRequestedLimit(SEARCH_PAGE_SIZE);
+  }
 
   const loadData = useCallback(async () => {
     setFetching(true);
     setError("");
     try {
-      const [skillList, sidebarData] = await Promise.all([listSkills(), getSidebar()]);
+      const [skillList, sidebarData, sources] = await Promise.all([
+        listSkills(),
+        getSidebar(),
+        listSources(),
+      ]);
       setSkills(skillList);
       setSidebar(sidebarData);
+      setConnectedProviders([...new Set(sources.map((s) => providerForSourceType[s.type]))]);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load search data");
     } finally {
@@ -158,27 +193,48 @@ function SearchPageInner() {
 
   const sourceName = user?.display_name ?? "You";
 
-  const handleSearch = useCallback(async (rawQuery: string) => {
+  const allSourceTokens = useMemo(
+    () => ["files", "sessions", "skills", "tables", ...connectedProviders],
+    [connectedProviders]
+  );
+
+  const handleSearch = useCallback(async (rawQuery: string, limit: number) => {
+    const seq = ++searchSeq.current;
     const q = rawQuery.trim();
     if (!q) {
       setResults([]);
+      setSourceNotices([]);
+      setHasMore(false);
       setSearchedQuery("");
       setSearching(false);
+      setLoadingMore(false);
       return;
     }
 
-    setSearching(true);
+    // A grown limit means the searcher scrolled for more of the SAME search:
+    // keep the current list on screen and swap it for the longer one when it
+    // lands. A fresh search (limit at its starting size) clears as before.
+    const grow = limit > SEARCH_PAGE_SIZE;
+    if (grow) {
+      setLoadingMore(true);
+    } else {
+      setSearching(true);
+      setSourceNotices([]);
+      setHasMore(false);
+      setOpenExternalId(null);
+    }
     setError("");
     setSearchedQuery(q);
     try {
       const nextResults: SearchResult[] = [];
-      const includeSessions = contentScope === "all" || contentScope === "sessions";
-      const includePages = contentScope === "all" || contentScope === "pages";
-      const includeTables = contentScope === "all" || contentScope === "tables";
-      const includeSkills = contentScope === "all" || contentScope === "skills";
+      const selected = allSourceTokens.filter((t) => !deselectedSources.has(t));
+      const includePages = selected.includes("files");
+      const includeTables = selected.includes("tables");
+      const includeSkills = selected.includes("skills");
 
       if (selectedSessionId) {
         const events = await getSessionEvents(selectedSessionId);
+        if (searchSeq.current !== seq) return;
         nextResults.push(...searchSingleSession(sourceName, selectedSessionId, events, q));
         setResults(sortResults(nextResults));
         return;
@@ -188,6 +244,7 @@ function SearchPageInner() {
         selectedProductSkill?.published?.slug ?? selectedProductSkillSlug;
       if (selectedSkillSlug) {
         const detail = await getPublicSkill(selectedSkillSlug);
+        if (searchSeq.current !== seq) return;
         if (includeSkills) {
           nextResults.push(...searchPublicSkillRecord(detail, q));
         }
@@ -202,44 +259,62 @@ function SearchPageInner() {
         nextResults.push(...searchSkills(skills, q, sourceName));
       }
 
-      if (includeSessions && !selectedFolderId && !selectedPageId) {
-        const events = await searchEvents(q, 100);
-        nextResults.push(...searchSessionsFromEvents(events, q, sourceName));
-      }
-
-      if (includePages) {
-        const pages = await searchPagesApi(q, 50);
+      // One unified call covers sessions + pages + connected sources, merged
+      // and ranked server-side, narrowed to the sources chip's selection.
+      // All-selected sends no filter — the server's default already searches
+      // everything.
+      const tokens = unifiedSearchTokens(
+        { filtered: Boolean(selectedFolderId || selectedPageId) },
+        selected
+      );
+      if (tokens !== null) {
+        const allApiTokenCount = allSourceTokens.length - CLIENT_SIDE_TOKENS.length;
+        const { results: hits, has_more } = await searchSource(q, {
+          includeSources: tokens.length === allApiTokenCount ? undefined : tokens,
+          limit,
+        });
+        if (searchSeq.current !== seq) return;
         const folderIds = sidebar
           ? descendantFolderIds(sidebar.files.folders, selectedFolderId)
           : new Set<string>();
         nextResults.push(
-          ...searchPages(pages, q, sourceName, {
+          ...unifiedResults(hits, q, {
+            sourceName,
+            sessionsById: new Map((sidebar?.sessions ?? []).map((s) => [s.session_id, s])),
+            pagesById: new Map((sidebar?.files.pages ?? []).map((p) => [p.id, p])),
             selectedFolderId,
             selectedPageId,
             folderIds,
           })
         );
+        setSourceNotices(markerNotices(hits));
+        setHasMore(has_more);
       }
 
       if (includeTables && !selectedFolderId && !selectedPageId) {
         const { tables } = await listAllTables();
+        if (searchSeq.current !== seq) return;
         nextResults.push(...searchTables(tables, q));
       }
 
       setResults(sortResults(nextResults));
       track("web.search_query", {
-        scope: contentScope,
         has_results: nextResults.length > 0,
         result_count_bucket: bucketCount(nextResults.length),
       });
     } catch (err) {
+      if (searchSeq.current !== seq) return;
       setError(err instanceof Error ? err.message : "Search failed");
       setResults([]);
     } finally {
-      setSearching(false);
+      if (searchSeq.current === seq) {
+        setSearching(false);
+        setLoadingMore(false);
+      }
     }
   }, [
-    contentScope,
+    allSourceTokens,
+    deselectedSources,
     skills,
     selectedFolderId,
     selectedPageId,
@@ -250,14 +325,31 @@ function SearchPageInner() {
     sourceName,
   ]);
 
-  // The header search input writes the query into the URL; re-run the search
-  // in real time as it (or any filter) changes.
-  const urlQuery = searchParams.get("q") ?? "";
-
   useEffect(() => {
     if (fetching) return;
-    handleSearch(urlQuery);
-  }, [fetching, handleSearch, urlQuery]);
+    handleSearch(urlQuery, requestedLimit);
+  }, [fetching, handleSearch, urlQuery, requestedLimit]);
+
+  // Infinite scroll: when the sentinel below the list nears the viewport, ask
+  // the server for a longer list. Growing re-runs the search and REPLACES the
+  // results, so the observer re-arms after every load and cascades until the
+  // viewport is filled or the cap is reached.
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el || !hasMore || searching || loadingMore || requestedLimit >= MAX_SEARCH_LIMIT) {
+      return;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          setRequestedLimit((l) => Math.min(l + SEARCH_PAGE_SIZE, MAX_SEARCH_LIMIT));
+        }
+      },
+      { rootMargin: "600px" }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [hasMore, searching, loadingMore, requestedLimit]);
 
   if (loading) {
     return <BasicPageSkeleton />;
@@ -318,18 +410,17 @@ function SearchPageInner() {
               menuClassName="text-[12.5px]"
             />
 
-            <CustomSelect
-              value={contentScope}
-              options={CONTENT_SCOPES.map((scope) => ({
-                value: scope.id,
-                label: scope.id === "all" ? "All types" : scope.label,
-              }))}
-              onChange={(next) => setContentScope(next as ContentScope)}
-              ariaLabel="Content"
-              searchable
-              searchPlaceholder="Filter types…"
-              className="flex h-7 items-center gap-1.5 rounded-full border border-border bg-surface px-3 text-[12.5px] text-foreground hover:border-[var(--color-brand-300)]"
-              menuClassName="text-[12.5px]"
+            <SearchSourceFilter
+              tokens={allSourceTokens}
+              deselected={deselectedSources}
+              onToggle={(token) =>
+                setDeselectedSources((prev) => {
+                  const next = new Set(prev);
+                  if (next.has(token)) next.delete(token);
+                  else next.add(token);
+                  return next;
+                })
+              }
             />
           </div>
 
@@ -341,6 +432,16 @@ function SearchPageInner() {
             )}
 
             {searching && <SearchResultsSkeleton />}
+
+            {!searching && sourceNotices.length > 0 && (
+              <div className="mt-4 flex flex-col gap-1">
+                {sourceNotices.map((notice) => (
+                  <p key={notice} className="text-[12px] text-muted-foreground">
+                    ⚠ {notice}
+                  </p>
+                ))}
+              </div>
+            )}
 
             {!searching && searchedQuery && results.length === 0 && !error && (
               <p className="py-10 text-center text-[13px] text-muted-foreground">
@@ -359,34 +460,62 @@ function SearchPageInner() {
                   </p>
                 </div>
                 <div className="flex flex-col gap-2">
-                  {results.map((result) => (
-                    <Link
-                      key={`${result.kind}:${result.id}`}
-                      href={result.href}
-                      className="rounded-lg border border-border bg-base px-4 py-3 transition hover:border-[var(--color-brand-300)] hover:bg-[var(--color-brand-50)]"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className="rounded-md border border-border-subtle px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
-                              {result.kind}
-                            </span>
-                            <h3 className="truncate text-[14px] font-semibold text-foreground">
-                              {result.title}
-                            </h3>
-                          </div>
-                          <p className="mt-1 line-clamp-2 text-[13px] leading-relaxed text-muted-foreground">
-                            {result.detail}
-                          </p>
+                  {results.map((result) => {
+                    const key = `${result.kind}:${result.id}`;
+                    if (result.external) {
+                      return (
+                        <div key={key}>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setOpenExternalId(openExternalId === key ? null : key)
+                            }
+                            className="w-full cursor-pointer rounded-lg border border-border bg-base px-4 py-3 text-left transition hover:border-[var(--color-brand-300)] hover:bg-[var(--color-brand-50)]"
+                          >
+                            <ResultCard result={result} />
+                          </button>
+                          {openExternalId === key && (
+                            <SourceDocViewer
+                              source={result.external.source}
+                              providerLabel={result.sourceName}
+                              refValue={result.external.ref}
+                              name={result.external.name}
+                              onClose={() => setOpenExternalId(null)}
+                            />
+                          )}
                         </div>
-                        <div className="shrink-0 text-right text-[11px] text-muted-foreground">
-                          <div>{result.sourceName}</div>
-                          <div>{relativeTime(result.updatedAt)}</div>
-                        </div>
-                      </div>
-                    </Link>
-                  ))}
+                      );
+                    }
+                    return (
+                      <Link
+                        key={key}
+                        href={result.href!}
+                        className="rounded-lg border border-border bg-base px-4 py-3 transition hover:border-[var(--color-brand-300)] hover:bg-[var(--color-brand-50)]"
+                      >
+                        <ResultCard result={result} />
+                      </Link>
+                    );
+                  })}
                 </div>
+                {hasMore && requestedLimit < MAX_SEARCH_LIMIT && (
+                  <div ref={sentinelRef} className="mt-3 flex justify-center py-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setRequestedLimit((l) => Math.min(l + SEARCH_PAGE_SIZE, MAX_SEARCH_LIMIT))
+                      }
+                      disabled={loadingMore}
+                      className="cursor-pointer text-[12px] text-muted-foreground transition hover:text-foreground"
+                    >
+                      {loadingMore ? "Loading more…" : "Load more"}
+                    </button>
+                  </div>
+                )}
+                {hasMore && requestedLimit >= MAX_SEARCH_LIMIT && (
+                  <p className="mt-3 text-center text-[12px] text-muted-foreground">
+                    Showing the top {MAX_SEARCH_LIMIT} matches — refine your query to see more.
+                  </p>
+                )}
               </section>
             )}
           </main>
@@ -394,6 +523,126 @@ function SearchPageInner() {
       </div>
     </WorkspaceShell>
   );
+}
+
+function ResultCard({ result }: { result: SearchResult }) {
+  return (
+    <div className="flex items-start justify-between gap-3">
+      <div className="min-w-0">
+        <div className="flex items-center gap-2">
+          <span className="rounded-md border border-border-subtle px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+            {result.kind}
+          </span>
+          <h3 className="truncate text-[14px] font-semibold text-foreground">
+            {result.title}
+          </h3>
+        </div>
+        <p className="mt-1 line-clamp-2 text-[13px] leading-relaxed text-muted-foreground">
+          {result.detail}
+        </p>
+      </div>
+      <div className="shrink-0 text-right text-[11px] text-muted-foreground">
+        <div>{result.sourceName}</div>
+        {result.updatedAt && <div>{relativeTime(result.updatedAt)}</div>}
+      </div>
+    </div>
+  );
+}
+
+function unifiedResults(
+  hits: SourceSearchHit[],
+  query: string,
+  ctx: {
+    sourceName: string;
+    sessionsById: Map<string, SidebarSession>;
+    pagesById: Map<string, TreePage>;
+    selectedFolderId: string;
+    selectedPageId: string;
+    folderIds: Set<string>;
+  }
+): SearchResult[] {
+  const results: SearchResult[] = [];
+  const seenSessions = new Set<string>();
+  for (const hit of hits) {
+    if (!hit.ref) continue; // markers surface as notices, not result rows
+    const snippet = hit.snippet ?? "";
+    // Server rank carries the cross-source ordering; the client term score
+    // keeps unified hits comparable with client-scored tables and skills.
+    // Provider-id matches are lookups, not relevance guesses — always on top.
+    const relevance = hit.exact_ref
+      ? Number.POSITIVE_INFINITY
+      : (hit.rank ?? 0) * 1000 +
+        scoreValues(query, [
+          { value: hit.name, weight: 8 },
+          { value: snippet, weight: 1 },
+        ]);
+
+    if (hit.source === "sessions") {
+      // Several matching events can point at the same session; hits arrive
+      // rank-descending, so the first one is that session's best.
+      if (seenSessions.has(hit.ref)) continue;
+      seenSessions.add(hit.ref);
+      const session = ctx.sessionsById.get(hit.ref);
+      results.push({
+        id: hit.ref,
+        kind: "Session",
+        title: session?.title || hit.ref,
+        href: `/sessions/${encodeURIComponent(hit.ref)}`,
+        sourceName: ctx.sourceName,
+        detail: contextSnippet(snippet, query) ?? "",
+        updatedAt: session?.updated_at ?? null,
+        relevance,
+      });
+      continue;
+    }
+
+    if (hit.source === "files") {
+      if (ctx.selectedPageId && hit.ref !== ctx.selectedPageId) continue;
+      if (ctx.selectedFolderId) {
+        const page = ctx.pagesById.get(hit.ref);
+        if (!page?.folder_id || !ctx.folderIds.has(page.folder_id)) continue;
+      }
+      results.push({
+        id: hit.ref,
+        kind: "Page",
+        title: hit.name || hit.ref,
+        href: `/p/${hit.ref}`,
+        sourceName: ctx.sourceName,
+        detail: contextSnippet(snippet, query) ?? "Page",
+        updatedAt: hit.date_modified ?? null,
+        relevance,
+      });
+      continue;
+    }
+
+    results.push({
+      id: `${hit.source}:${hit.ref}`,
+      kind: "Source",
+      title: hit.name || hit.ref,
+      href: null,
+      external: { source: hit.source, ref: hit.ref, name: hit.name },
+      sourceName: hit.source_name ?? "Connected source",
+      detail: contextSnippet(snippet, query) ?? hit.ref,
+      updatedAt: hit.date_modified ?? null,
+      relevance,
+    });
+  }
+  return results;
+}
+
+// Marker entries (a dead source, a provider result cap) become notice lines so
+// "reconnect me" and "there was more" never read as "no matches."
+function markerNotices(hits: SourceSearchHit[]): string[] {
+  const notices: string[] = [];
+  for (const hit of hits) {
+    const label = hit.source_name ?? hit.source;
+    if (hit.error) notices.push(`${label}: ${hit.error}`);
+    if (hit.truncated) {
+      const total = hit.estimated_total ? ` of ~${hit.estimated_total}` : "";
+      notices.push(`${label}: showing the first ${hit.returned}${total} matches.`);
+    }
+  }
+  return notices;
 }
 
 function searchSingleSession(
@@ -485,54 +734,6 @@ function searchPublicSkillRecord(detail: PublicSkillDetail, query: string): Sear
   ];
 }
 
-function searchSessionsFromEvents(
-  events: HistoryEvent[],
-  query: string,
-  sourceName: string
-): SearchResult[] {
-  const resultsBySession = new Map<string, SearchResult>();
-  for (const event of events) {
-    if (!event.session_id) continue;
-    const id = event.session_id;
-    const existing = resultsBySession.get(id);
-    const relevance = scoreHistoryEvent(query, event);
-    if (
-      existing &&
-      (existing.relevance > relevance ||
-        (existing.relevance === relevance &&
-          new Date(existing.updatedAt) >= new Date(event.created_at)))
-    ) {
-      continue;
-    }
-    resultsBySession.set(id, {
-      id,
-      kind: "Session",
-      title: event.session_id,
-      href: `/sessions/${encodeURIComponent(event.session_id)}`,
-      sourceName,
-      detail: contextSnippet(event.content, query) ?? sessionSearchSnippet(event, query),
-      updatedAt: event.created_at,
-      relevance,
-    });
-  }
-  return [...resultsBySession.values()];
-}
-
-function sessionSearchSnippet(event: HistoryEvent, query: string): string {
-  const content = event.content.trim();
-  if (!content) return `${event.agent_name || "agent"} / ${event.event_type}`;
-
-  const lower = content.toLowerCase();
-  const index = lower.indexOf(query.toLowerCase());
-  if (index === -1) return content.slice(0, 220);
-
-  const start = Math.max(0, index - 80);
-  const end = Math.min(content.length, index + query.length + 140);
-  const prefix = start > 0 ? "..." : "";
-  const suffix = end < content.length ? "..." : "";
-  return `${prefix}${content.slice(start, end)}${suffix}`;
-}
-
 function sessionEventSnippet(event: SessionEvent, query: string): string {
   const content = event.content.trim();
   if (!content) return `${event.agent_name || "agent"} session event`;
@@ -546,43 +747,6 @@ function sessionEventSnippet(event: SessionEvent, query: string): string {
   const prefix = start > 0 ? "..." : "";
   const suffix = end < content.length ? "..." : "";
   return `${prefix}${content.slice(start, end)}${suffix}`;
-}
-
-function searchPages(
-  pages: Page[],
-  query: string,
-  sourceName: string,
-  scope: {
-    selectedFolderId: string;
-    selectedPageId: string;
-    folderIds: Set<string>;
-  }
-): SearchResult[] {
-  return pages
-    .filter((page) => {
-      if (scope.selectedPageId) return page.id === scope.selectedPageId;
-      if (!scope.selectedFolderId) return true;
-      return Boolean(page.folder_id && scope.folderIds.has(page.folder_id));
-    })
-    .map((page) => ({
-      id: page.id,
-      kind: "Page" as const,
-      title: page.name,
-      href: `/p/${page.id}`,
-      sourceName,
-      detail:
-          contextSnippet(
-            page.content_type === "html"
-              ? stripHtml(page.content_html ?? "")
-              : page.content_markdown ?? "",
-            query
-          ) ??
-          (page.content_type === "html"
-            ? stripHtml(page.content_html ?? "").slice(0, 220) || "HTML page"
-            : page.content_markdown?.slice(0, 220) || "Markdown page"),
-      updatedAt: page.updated_at,
-      relevance: scorePage(query, page),
-    }));
 }
 
 function searchTables(tables: TableWithOwner[], query: string): SearchResult[] {
@@ -776,8 +940,12 @@ function pageSnippet(markdown?: string | null, html?: string | null): string {
 function sortResults(results: SearchResult[]): SearchResult[] {
   return [...results].sort((a, b) => {
     if (b.relevance !== a.relevance) return b.relevance - a.relevance;
-    return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+    return timeValue(b.updatedAt) - timeValue(a.updatedAt);
   });
+}
+
+function timeValue(iso: string | null): number {
+  return iso ? new Date(iso).getTime() : 0;
 }
 
 function scoreSessionEvent(query: string, sessionId: string, event: SessionEvent): number {
@@ -787,36 +955,6 @@ function scoreSessionEvent(query: string, sessionId: string, event: SessionEvent
     { value: event.tool_name, weight: 2 },
     { value: event.content, weight: 1 },
   ]);
-}
-
-function scoreHistoryEvent(query: string, event: HistoryEvent): number {
-  const rank = typeof event.rank === "number" ? event.rank * 1000 : 0;
-  return (
-    rank +
-    scoreValues(query, [
-      { value: event.session_id, weight: 6 },
-      { value: event.agent_name, weight: 3 },
-      { value: event.tool_name, weight: 2 },
-      { value: event.event_type, weight: 1 },
-      { value: event.content, weight: 1 },
-    ])
-  );
-}
-
-function scorePage(query: string, page: Page): number {
-  const rankedPage = page as Page & { rank?: number; similarity?: number };
-  const rank = typeof rankedPage.rank === "number" ? rankedPage.rank * 1000 : 0;
-  const similarity = typeof rankedPage.similarity === "number" ? rankedPage.similarity * 100 : 0;
-
-  return (
-    rank +
-    similarity +
-    scoreValues(query, [
-      { value: page.name, weight: 8 },
-      { value: page.content_markdown, weight: 2 },
-      { value: stripHtml(page.content_html ?? ""), weight: 2 },
-    ])
-  );
 }
 
 function scoreValues(
@@ -885,29 +1023,19 @@ function highlightAll(text: string, query: string): ReactNode {
   return nodes;
 }
 
-// Context window around the FIRST occurrence of the query, with every match in
-// that window highlighted. Returns null when the query is not present so
-// callers can fall back to their default detail string.
+// The server already windows each snippet around the first query occurrence
+// (with "\u2026" edge markers); this only highlights the matches within it.
+// Returns null when the snippet is empty so callers can fall back to their
+// default detail string.
 function contextSnippet(
   source: string | null | undefined,
   query: string
 ): ReactNode | null {
   const text = (source ?? "").replace(/\s+/g, " ").trim();
   const trimmed = query.trim();
-  if (!text || !trimmed) return null;
-
-  const index = text.toLowerCase().indexOf(trimmed.toLowerCase());
-  if (index === -1) return null;
-
-  const start = Math.max(0, index - 80);
-  const end = Math.min(text.length, index + trimmed.length + 140);
-  return (
-    <>
-      {start > 0 ? "\u2026" : ""}
-      {highlightAll(text.slice(start, end), trimmed)}
-      {end < text.length ? "\u2026" : ""}
-    </>
-  );
+  if (!text) return null;
+  if (!trimmed) return text;
+  return highlightAll(text, trimmed);
 }
 
 function relativeTime(iso: string): string {

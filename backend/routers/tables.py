@@ -24,7 +24,12 @@ from ..models import (
     TableResponse,
     TableUpdateRequest,
 )
-from ..services import permission_service, table_service, user_scope_service
+from ..services import (
+    permission_service,
+    security_audit_service,
+    table_service,
+    user_scope_service,
+)
 
 me_router = APIRouter(prefix="/api/v1/me/tables", tags=["tables"])
 router = APIRouter(prefix="/api/v1/tables", tags=["tables"])
@@ -115,6 +120,13 @@ async def get_table_by_id(
     if not table or not table.get("owner_user_id"):
         raise HTTPException(status_code=404, detail="Table not found")
     await _check_table_access(table["owner_user_id"], table_id, current_user["id"])
+    await security_audit_service.record_content_read(
+        target_type="table",
+        target_id=str(table_id),
+        actor_user_id=current_user["id"],
+        owner_user_id=table["owner_user_id"],
+        metadata={"kind": "schema"},
+    )
     return TableResponse(**table)
 
 
@@ -152,6 +164,12 @@ async def list_ws_tables(
     owner_user_id = scope_user_id
     await _check_read(owner_user_id, current_user["id"])
     tables = await table_service.list_tables(owner_user_id, current_user["id"])
+    await security_audit_service.record_entries_listed(
+        target_type="tables",
+        actor_user_id=current_user["id"],
+        owner_user_id=owner_user_id,
+        metadata={"result_count": len(tables)},
+    )
     return TableListResponse(tables=[TableResponse(**t) for t in tables])
 
 
@@ -165,6 +183,13 @@ async def get_ws_table(
     await _check_read(owner_user_id, current_user["id"])
     table = await _check_ws_table(owner_user_id, table_id, with_row_count=True)
     await _check_table_access(owner_user_id, table_id, current_user["id"])
+    await security_audit_service.record_content_read(
+        target_type="table",
+        target_id=str(table_id),
+        actor_user_id=current_user["id"],
+        owner_user_id=owner_user_id,
+        metadata={"kind": "schema"},
+    )
     return TableResponse(**table)
 
 
@@ -311,6 +336,13 @@ async def list_ws_rows(
         limit=limit,
         offset=offset,
     )
+    await security_audit_service.record_content_read(
+        target_type="table",
+        target_id=str(table_id),
+        actor_user_id=current_user["id"],
+        owner_user_id=owner_user_id,
+        metadata={"kind": "rows"},
+    )
     return RowListResponse(
         rows=[RowResponse(**r) for r in rows],
         total_count=total,
@@ -370,6 +402,13 @@ async def semantic_search_ws_rows(
     if query_embedding is None:
         raise HTTPException(status_code=500, detail="Failed to embed query")
     rows = await table_service.search_rows_vector(table_id, query_embedding, limit)
+    await security_audit_service.record_content_read(
+        target_type="table",
+        target_id=str(table_id),
+        actor_user_id=current_user["id"],
+        owner_user_id=owner_user_id,
+        metadata={"kind": "search"},
+    )
     return {"rows": rows}
 
 
@@ -511,6 +550,13 @@ async def export_ws_csv(
         sort_by=sort_by,
         sort_order=sort_order,
     )
+    await security_audit_service.record_content_read(
+        target_type="table",
+        target_id=str(table_id),
+        actor_user_id=current_user["id"],
+        owner_user_id=owner_user_id,
+        metadata={"kind": "export"},
+    )
     cols = sorted(table["columns"], key=lambda c: c.get("order", 0))
 
     def generate():
@@ -551,6 +597,13 @@ async def search_ws_rows(
     await _check_ws_table(owner_user_id, table_id)
     await _check_table_access(owner_user_id, table_id, current_user["id"])
     rows, total = await table_service.search_rows(table_id, q, limit=limit, offset=offset)
+    await security_audit_service.record_content_read(
+        target_type="table",
+        target_id=str(table_id),
+        actor_user_id=current_user["id"],
+        owner_user_id=owner_user_id,
+        metadata={"kind": "search"},
+    )
     return RowListResponse(
         rows=[RowResponse(**r) for r in rows],
         total_count=total,

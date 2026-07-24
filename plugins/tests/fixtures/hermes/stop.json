@@ -1,0 +1,14 @@
+{
+  "hook_event_name": "post_llm_call",
+  "tool_name": null,
+  "tool_input": null,
+  "session_id": "herm-1",
+  "cwd": "/Users/alice/repo",
+  "extra": {
+    "user_message": "what does this do",
+    "assistant_response": "Tests pass.",
+    "conversation_history": [],
+    "model": "Hermes-4-405B",
+    "platform": "cli"
+  }
+}

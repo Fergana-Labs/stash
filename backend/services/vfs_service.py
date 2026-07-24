@@ -176,9 +176,35 @@ async def run_vfs_script(app, authorization: str, script: str, cwd: str) -> dict
     async with httpx.AsyncClient(
         transport=transport,
         base_url="http://vfs.internal",
-        headers={"Authorization": authorization},
+        # X-Stash-Via tags nested reads as ask-the-stash traffic in the audit
+        # trail (see auth._set_request_via).
+        headers={"Authorization": authorization, "X-Stash-Via": "ask"},
         timeout=None,
     ) as http:
         return await anyio.to_thread.run_sync(
             functools.partial(_run_script, http, loop, script, cwd)
         )
+
+
+def _resolve_node(http: httpx.AsyncClient, loop: asyncio.AbstractEventLoop, path: str) -> dict:
+    model = StashVfsModel(InProcessVfsClient(http, loop), include_computer=False)
+    model.refresh()
+    node = model._get_node(path)
+    return {"path": node.path, "app_url": node.app_url}
+
+
+async def resolve_vfs_path(app, authorization: str, path: str) -> dict:
+    """Map a VFS path to the app route of the Stash object behind it (chat
+    citations deep-link through this). Raises FileNotFoundError for a path
+    that doesn't exist in the caller's Stash."""
+    loop = asyncio.get_running_loop()
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(
+        transport=transport,
+        base_url="http://vfs.internal",
+        # X-Stash-Via tags nested reads as ask-the-stash traffic in the audit
+        # trail (see auth._set_request_via).
+        headers={"Authorization": authorization, "X-Stash-Via": "ask"},
+        timeout=None,
+    ) as http:
+        return await anyio.to_thread.run_sync(functools.partial(_resolve_node, http, loop, path))

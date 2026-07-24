@@ -198,6 +198,24 @@ def _enforce_key_access(user: dict, request: Request) -> None:
     )
 
 
+def _set_request_via(request: Request, user: dict | None) -> None:
+    """Tag the request's caller surface for audit rows: 'ask' for the
+    server-side VFS's nested reads (it marks them itself), 'auto' for
+    automated machinery (skills sync, plugin hooks — reads nobody asked for,
+    excluded from content-activity analytics), 'cli' for API-key callers,
+    'web' for browser JWTs and anonymous reads. Analytics-grade only — the
+    X-Stash-Via header is spoofable and must never gate authorization."""
+    from .services.security_audit_service import request_via
+
+    marker = request.headers.get("x-stash-via")
+    if marker in ("ask", "auto"):
+        request_via.set(marker)
+    elif user is not None and user.get("key_type"):
+        request_via.set("cli")
+    else:
+        request_via.set("web")
+
+
 async def get_current_user(
     request: Request,
     credentials: HTTPAuthorizationCredentials | None = Depends(security),
@@ -210,6 +228,7 @@ async def get_current_user(
 
     user = await authenticate_token(credentials.credentials)
     _enforce_key_access(user, request)
+    _set_request_via(request, user)
     return user
 
 
@@ -246,6 +265,7 @@ async def get_current_user_optional(
     credentials: HTTPAuthorizationCredentials | None = Depends(HTTPBearer(auto_error=False)),
 ) -> dict | None:
     if credentials is None:
+        _set_request_via(request, None)
         return None
     try:
         return await get_current_user(request, credentials)

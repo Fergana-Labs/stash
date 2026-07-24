@@ -8,6 +8,7 @@ import { MoreHorizontal } from "lucide-react";
 import { useBreadcrumbs } from "@/components/BreadcrumbContext";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { useAuth } from "@/hooks/useAuth";
+import SourceDocViewer from "@/components/SourceDocViewer";
 import {
   ApiError,
   deleteSource,
@@ -26,6 +27,7 @@ import {
 import {
   disconnectIntegration,
   listIntegrations,
+  purgeIntegrationData,
   startConnect,
   submitCredentials,
   type IntegrationStatus,
@@ -46,11 +48,14 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import type { User } from "@/lib/types";
+import { routes } from "@/lib/workspace-routes";
 
 // How often a row re-checks a source that is mid-sync, and how many times before
 // it gives up. A sync that hasn't settled in ~5 minutes is wedged; polling it for
 // as long as the tab happens to be open buys nothing.
 const SYNC_POLL_INTERVAL_MS = 3000;
+// The extension auto-syncs daily; silence for two cycles means it's dead.
+const EXTENSION_STALE_AFTER_MS = 48 * 3600 * 1000;
 const SYNC_POLL_MAX_ATTEMPTS = 100;
 
 export default function IntegrationRoute() {
@@ -66,6 +71,13 @@ export function IntegrationDetail({ provider }: { provider: string }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const highlightSourceId = searchParams.get("source");
+  // The OAuth callback lands here with an error flag when a reconnect was
+  // refused because it used a different provider account than the one whose
+  // data is kept.
+  const mismatchExpected =
+    searchParams.get("integration_error") === "account_mismatch"
+      ? searchParams.get("expected")
+      : null;
   const { user, loading } = useAuth();
   const confirm = useConfirm();
 
@@ -79,6 +91,8 @@ export function IntegrationDetail({ provider }: { provider: string }) {
   const [sources, setSources] = useState<Source[]>([]);
   const [openSourceId, setOpenSourceId] = useState<string | null>(highlightSourceId);
   const [showCreds, setShowCreds] = useState(false);
+  const [showDisconnect, setShowDisconnect] = useState(false);
+  const [disconnectDelete, setDisconnectDelete] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [paymentRequired, setPaymentRequired] = useState(false);
@@ -142,11 +156,23 @@ export function IntegrationDetail({ provider }: { provider: string }) {
   // Extension-fed connectors (X, Instagram) have no OAuth integration — they're
   // "connected" once the browser extension has pushed at least one source.
   const isExtension = connector.kind === "extension";
+  // Extension-fed sources have no token to health-check — the server stamps
+  // extension_last_push_at on every push, and silence beyond two daily push
+  // cycles means the pipeline is dead (extension uninstalled, IG logged out).
+  const extensionLastPush = isExtension
+    ? ((sources[0]?.settings?.extension_last_push_at as string | undefined) ?? null)
+    : null;
+  const extensionStale =
+    !!extensionLastPush &&
+    Date.now() - new Date(extensionLastPush).getTime() > EXTENSION_STALE_AFTER_MS;
   const singleSource = !!connector.singleSource;
   const connected = isExtension ? sources.length > 0 : !!status?.connected;
   const account = connectedAccountLabel(status);
   const canConnectAnother = connected && connector.provider === "gmail" && status?.auth_kind !== "api_key";
-  const staleAccounts = status?.accounts.filter((a) => a.needs_reconnect) ?? [];
+  // Deliberately-disconnected accounts get the "data kept" header state, not
+  // the expired-access warning banner.
+  const staleAccounts =
+    status?.accounts.filter((a) => a.needs_reconnect && !a.disconnected) ?? [];
 
   async function connect() {
     setBusy("connect");
@@ -183,20 +209,37 @@ export function IntegrationDetail({ provider }: { provider: string }) {
     }
   }
 
-  async function disconnect() {
-    const ok = await confirm({
-      title: `Disconnect ${connector!.label}?`,
-      body: "You'll need to reconnect to sync its sources again.",
-      confirmLabel: "Disconnect",
-    });
-    if (!ok) return;
+  async function confirmDisconnect(deleteData: boolean) {
+    setShowDisconnect(false);
     setBusy("disconnect");
     setError("");
     try {
-      await disconnectIntegration(connector!.provider);
+      await disconnectIntegration(connector!.provider, deleteData);
       await refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not disconnect");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function deleteKeptData() {
+    const ok = await confirm({
+      title: `Delete all ${connector!.label} data?`,
+      body:
+        `Permanently removes ${sources.length === 1 ? "its source" : `all ${sources.length} sources`} ` +
+        "and every saved item, including archived images and video. Cannot be undone.",
+      confirmLabel: "Delete everything",
+    });
+    if (!ok) return;
+    setBusy("purge");
+    setError("");
+    try {
+      await purgeIntegrationData(connector!.provider);
+      setOpenSourceId(null);
+      await refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not delete data");
     } finally {
       setBusy(null);
     }
@@ -257,9 +300,30 @@ export function IntegrationDetail({ provider }: { provider: string }) {
               </span>
             )}
             {isExtension ? (
-              <span className="text-[12.5px] text-muted-foreground">
-                {connected ? "Synced from the browser extension" : "Save items with the browser extension"}
-              </span>
+              <>
+                <span className="text-[12.5px] text-muted-foreground">
+                  {extensionLastPush
+                    ? `Extension ${relativeTime(extensionLastPush)}`
+                    : connected
+                    ? "Synced from the browser extension"
+                    : null}
+                </span>
+                {!connected && (
+                  <Link href={routes.extension} className="text-[12.5px] font-semibold text-brand hover:underline">
+                    Get the extension
+                  </Link>
+                )}
+                {sources.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => void deleteKeptData()}
+                    disabled={busy === "purge"}
+                    className="cursor-pointer rounded-lg px-3 py-1.5 text-[12px] font-semibold text-muted-foreground hover:bg-raised hover:text-foreground disabled:opacity-60"
+                  >
+                    {busy === "purge" ? "Deleting..." : "Delete data…"}
+                  </button>
+                )}
+              </>
             ) : connected ? (
               <>
                 {canConnectAnother && (
@@ -269,7 +333,10 @@ export function IntegrationDetail({ provider }: { provider: string }) {
                 )}
                 <button
                   type="button"
-                  onClick={() => void disconnect()}
+                  onClick={() => {
+                    setDisconnectDelete(false);
+                    setShowDisconnect(true);
+                  }}
                   disabled={busy === "disconnect"}
                   className="cursor-pointer rounded-lg px-3 py-1.5 text-[12px] font-semibold text-muted-foreground hover:bg-raised hover:text-foreground disabled:opacity-60"
                 >
@@ -278,6 +345,21 @@ export function IntegrationDetail({ provider }: { provider: string }) {
                     : connector.provider === "gmail" && (status?.accounts.length ?? 0) > 1
                     ? "Disconnect all"
                     : "Disconnect"}
+                </button>
+              </>
+            ) : status?.disconnected && sources.length > 0 ? (
+              <>
+                <span className="text-[12.5px] text-warning">Disconnected — data kept</span>
+                <button
+                  type="button"
+                  onClick={() => void deleteKeptData()}
+                  disabled={busy === "purge"}
+                  className="cursor-pointer rounded-lg px-3 py-1.5 text-[12px] font-semibold text-muted-foreground hover:bg-raised hover:text-foreground disabled:opacity-60"
+                >
+                  {busy === "purge" ? "Deleting..." : "Delete data…"}
+                </button>
+                <button type="button" onClick={() => void connect()} disabled={busy === "connect"} className={primaryButton()}>
+                  {busy === "connect" ? "Connecting..." : "Reconnect"}
                 </button>
               </>
             ) : status?.auth_kind === "api_key" ? (
@@ -305,6 +387,18 @@ export function IntegrationDetail({ provider }: { provider: string }) {
           </Link>
         </div>
 
+        {extensionStale && (
+          <div className="mt-4 flex items-center justify-between gap-3 rounded-md border border-warning/40 bg-warning-muted px-3 py-2 text-[12px] text-foreground">
+            <span>
+              {`The browser extension hasn't synced since ${new Date(
+                extensionLastPush!,
+              ).toLocaleDateString()} — check that it's installed and that you're signed in to ${connector.label}.`}
+            </span>
+            <Link href={routes.extension} className={secondaryButton()}>
+              Extension setup
+            </Link>
+          </div>
+        )}
         {staleAccounts.length > 0 && (
           <div className="mt-4 flex items-center justify-between gap-3 rounded-md border border-error/30 bg-error/10 px-3 py-2 text-[12px] text-error">
             <span>
@@ -326,6 +420,13 @@ export function IntegrationDetail({ provider }: { provider: string }) {
           />
         )}
 
+        {mismatchExpected && (
+          <div className="mt-4 rounded-md border border-error/30 bg-error/10 px-3 py-2 text-[12px] text-error">
+            That&apos;s a different account. This connection belongs to {mismatchExpected}, whose
+            data is kept — reconnect with {mismatchExpected}, or delete its data first to link
+            another account.
+          </div>
+        )}
         {error && (
           <div className="mt-4 rounded-md border border-error/30 bg-error/10 px-3 py-2 text-[12px] text-error">
             {error}
@@ -333,6 +434,83 @@ export function IntegrationDetail({ provider }: { provider: string }) {
         )}
 
         {paymentRequired && <PaywallModal onClose={() => setPaymentRequired(false)} />}
+        {showDisconnect && (
+          <div
+            className="fixed inset-0 z-[60] flex cursor-pointer items-center justify-center bg-black/30 px-4"
+            onClick={() => setShowDisconnect(false)}
+          >
+            <div
+              role="alertdialog"
+              aria-modal="true"
+              aria-label={`Disconnect ${connector.label}?`}
+              className="w-full max-w-sm rounded-xl border border-border bg-base p-5 shadow-xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="text-[14px] font-medium text-foreground">
+                Disconnect {connector.label}?
+              </div>
+              <div className="mt-1.5 text-[12.5px] text-muted-foreground">
+                Syncing stops and Stash&apos;s access is revoked.
+              </div>
+              <div className="mt-3 flex flex-col gap-2">
+                <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-border p-2.5 text-[12.5px]">
+                  <input
+                    type="radio"
+                    name="disconnect-mode"
+                    checked={!disconnectDelete}
+                    onChange={() => setDisconnectDelete(false)}
+                    className="mt-0.5"
+                  />
+                  <span>
+                    <span className="font-medium text-foreground">Keep my data</span>
+                    <span className="block text-muted-foreground">
+                      Saved items stay browsable and searchable. You can reconnect or delete
+                      them later.
+                    </span>
+                  </span>
+                </label>
+                <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-border p-2.5 text-[12.5px]">
+                  <input
+                    type="radio"
+                    name="disconnect-mode"
+                    checked={disconnectDelete}
+                    onChange={() => setDisconnectDelete(true)}
+                    className="mt-0.5"
+                  />
+                  <span>
+                    <span className="font-medium text-foreground">Delete everything</span>
+                    <span className="block text-muted-foreground">
+                      Permanently removes{" "}
+                      {sources.length === 1 ? "its source" : `all ${sources.length} sources`} and
+                      every saved item, including archived images and video. Cannot be undone.
+                    </span>
+                  </span>
+                </label>
+              </div>
+              <div className="mt-4 flex justify-end gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setShowDisconnect(false)}
+                  className="cursor-pointer rounded-md border border-border bg-base px-3 py-1.5 text-[12.5px] text-foreground hover:bg-raised"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void confirmDisconnect(disconnectDelete)}
+                  className={
+                    "cursor-pointer rounded-md px-3 py-1.5 text-[12.5px] font-medium text-white " +
+                    (disconnectDelete
+                      ? "bg-red-600 hover:bg-red-700"
+                      : "bg-[var(--color-brand-600)] hover:bg-[var(--color-brand-700)]")
+                  }
+                >
+                  {disconnectDelete ? "Disconnect & delete" : "Disconnect"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Add a <thing> (for GitHub: the all-vs-select repository access chooser).
             Extension-fed and single-source connectors (X) have nothing to add by
@@ -360,11 +538,18 @@ export function IntegrationDetail({ provider }: { provider: string }) {
           )}
           {sources.length === 0 ? (
             <div className="py-3 text-[12.5px] text-muted-foreground">
-              {isExtension
-                ? `Install the Stash browser extension and save on ${connector.label} — your items will appear here.`
-                : connected
-                  ? "Nothing added yet."
-                  : "Connect to add sources."}
+              {isExtension ? (
+                <>
+                  <Link href={routes.extension} className="font-semibold text-brand hover:underline">
+                    Install the Stash browser extension
+                  </Link>{" "}
+                  and save on {connector.label} — your items will appear here.
+                </>
+              ) : connected ? (
+                "Nothing added yet."
+              ) : (
+                "Connect to add sources."
+              )}
             </div>
           ) : (
             <div>
@@ -584,8 +769,16 @@ function SourceRow({
             )}
           </span>
         </div>
-        {status.sync_status === "failed" && status.sync_error && (
-          <div className="mt-1 truncate font-mono text-[11.5px] text-error">{status.sync_error}</div>
+        {status.sync_error && (
+          <div
+            className={
+              "mt-1 truncate font-mono text-[11.5px] " +
+              (status.sync_status === "failed" ? "text-error" : "text-warning")
+            }
+            title={status.sync_error}
+          >
+            {status.sync_error}
+          </div>
         )}
         {pollStopped && (
           <div className="mt-1 truncate text-[11.5px] text-muted-foreground">{pollStopped}</div>
@@ -679,9 +872,14 @@ function BrowsePanel({
 // bordered header that deep-links back to the provider when a url is available.
 // Hydrated saves lead with the tweet text, then a blank line, then the byline /
 // reply-context / link meta. Show the tweet prominently and mute the rest.
-function TweetBody({ content }: { content: string }) {
+function TweetBody({ content, linkedUrl }: { content: string; linkedUrl?: string | null }) {
   const [body, ...rest] = content.split("\n\n");
-  const meta = rest.join("\n\n").trim();
+  let meta = rest.join("\n\n").trim();
+  // The archived body ends with the post's URL; when the header already links
+  // there ("Open in X ↗"), printing it again is noise.
+  if (linkedUrl && meta.endsWith(linkedUrl)) {
+    meta = meta.slice(0, meta.length - linkedUrl.length).trim();
+  }
   return (
     <div className="scroll-thin max-h-96 space-y-3 overflow-auto bg-base px-4 py-4">
       <p className="whitespace-pre-wrap break-words text-[14px] leading-relaxed text-foreground">
@@ -696,14 +894,26 @@ function TweetBody({ content }: { content: string }) {
   );
 }
 
+// The provider URL a save points at, derivable from its path alone — so the
+// "open on the platform" link survives a failed archive (which has no stored
+// url to serve).
+function saveExternalUrl(sourceType: string | undefined, ref: string): string | null {
+  const leaf = ref.slice(ref.lastIndexOf("/") + 1);
+  if (sourceType === "x_saves") return `https://x.com/i/status/${leaf}`;
+  if (sourceType === "instagram_saves") return `https://www.instagram.com/p/${leaf}/`;
+  return null;
+}
+
 function DocViewer({
   source,
+  sourceType,
   providerLabel,
   refValue,
   name,
   onClose,
 }: {
   source: string;
+  sourceType?: string;
   providerLabel: string;
   refValue: string;
   name?: string;
@@ -765,7 +975,19 @@ function DocViewer({
         </div>
       </div>
       {error ? (
-        <div className="bg-base px-3 py-3 text-[12px] text-error">{error}</div>
+        <div className="bg-base px-3 py-3 text-[12px] text-error">
+          {error}
+          {saveExternalUrl(sourceType, refValue) && (
+            <a
+              href={saveExternalUrl(sourceType, refValue)!}
+              target="_blank"
+              rel="noreferrer"
+              className="ml-2 font-semibold text-brand hover:underline"
+            >
+              Open in {providerLabel} ↗
+            </a>
+          )}
+        </div>
       ) : content === null ? (
         <div className="bg-base px-3 py-3 text-[12px] text-muted-foreground">Loading…</div>
       ) : (
@@ -780,7 +1002,7 @@ function DocViewer({
               <img key={i} src={m.url} alt={title} className="max-h-72 w-full bg-black object-contain" />
             ),
           )}
-          <TweetBody content={content} />
+          <TweetBody content={content} linkedUrl={url} />
         </>
       )}
     </div>
@@ -824,7 +1046,7 @@ function SearchablePanel({
     setSearching(true);
     setSearchError(null);
     try {
-      setHits(await searchSource(query, source.source));
+      setHits((await searchSource(query, { source: source.source })).results);
     } catch (e) {
       // A scoped provider failure (rate limit, disconnected connection) must
       // never read as "No matches."
@@ -882,6 +1104,7 @@ function SearchablePanel({
                     {isOpen && (
                       <DocViewer
                         source={source.source}
+                        sourceType={source.type}
                         providerLabel={providerLabel}
                         refValue={hit.ref!}
                         name={hit.name}
@@ -920,6 +1143,7 @@ function SearchablePanel({
                 {isOpen && (
                   <DocViewer
                     source={source.source}
+                    sourceType={source.type}
                     providerLabel={providerLabel}
                     refValue={ref}
                     name={entry.name}
@@ -1132,8 +1356,11 @@ function NavigablePanel({
             const folder = isFolder(entry);
             const ref = entry.id ?? entry.path ?? entry.name;
             const isOpen = !folder && openDoc?.ref === ref;
-            // An un-hydrated save still has its raw numeric tweet id as its name.
-            const pending = !folder && /^\d+$/.test(entry.name);
+            // Saves report their archive state; an un-hydrated save also still
+            // has its raw numeric tweet id as its name.
+            const pending =
+              !folder && (entry.status === "pending" || /^\d+$/.test(entry.name));
+            const failed = !folder && entry.status === "failed";
             const key = `${folder ? "dir" : "doc"}:${ref}`;
             return (
               <div key={key}>
@@ -1149,12 +1376,19 @@ function NavigablePanel({
                     {folder ? "📁" : "📄"}
                   </span>
                   <span className="min-w-0 flex-1">
-                    {pending ? (
-                      <span className="truncate text-[12.5px] italic text-muted-foreground">Loading…</span>
+                    {failed ? (
+                      <span className="flex items-center gap-2">
+                        <span className="truncate text-[12.5px] text-foreground">{entry.name}</span>
+                        <span className="shrink-0 rounded-full border border-error/40 bg-error/10 px-1.5 text-[10px] font-semibold text-error">
+                          not archived
+                        </span>
+                      </span>
+                    ) : pending ? (
+                      <span className="truncate text-[12.5px] italic text-muted-foreground">Archiving…</span>
                     ) : (
                       <span className="block truncate text-[12.5px] text-foreground">{entry.name}</span>
                     )}
-                    {entry.snippet && !pending && (
+                    {entry.snippet && !pending && !failed && (
                       <span className="mt-0.5 block truncate text-[11.5px] text-muted-foreground">
                         {entry.snippet}
                       </span>
@@ -1164,6 +1398,7 @@ function NavigablePanel({
                 {isOpen && (
                   <DocViewer
                     source={source.source}
+                    sourceType={source.type}
                     providerLabel={providerLabel}
                     refValue={ref}
                     name={entry.name}
@@ -1198,6 +1433,16 @@ function NavigablePanel({
             </div>
           )}
         </div>
+      )}
+
+      {openDoc && (
+        <SourceDocViewer
+          source={source.source}
+          providerLabel={providerLabel}
+          refValue={openDoc.ref}
+          name={openDoc.name}
+          onClose={() => setOpenDoc(null)}
+        />
       )}
 
       {source.type === "slack" || source.type === "gong_calls" ? (

@@ -11,8 +11,11 @@ import {
   importBookmarks,
   importProgress,
   initClipper,
+  initImportWatch,
   uploadPageClip,
 } from './background/clip';
+import { initImportFetch } from './background/import_fetch';
+import { clearSurfaceError, getSurfaceErrors, setSurfaceError } from './lib/errors';
 import {
   initInstagram,
   receiveSavedItems,
@@ -27,14 +30,13 @@ const DEFAULT_API_BASE = 'https://api.joinstash.ai';
 initClipper();
 initChatPoll(syncConversation);
 initInstagram();
+initImportFetch();
 
-// The X bookmark harvest was removed (X syncs server-side over OAuth now); clear
-// any stale harvest error it left behind so the popup doesn't keep showing it.
-void chrome.storage.local.get('lastError').then(({ lastError }) => {
-  if (typeof lastError === 'string' && lastError.includes('X bookmarks')) {
-    void chrome.storage.local.set({ lastError: null });
-  }
-});
+initImportWatch();
+
+// The single `lastError` slot was replaced by per-surface slots — drop the
+// legacy key so pre-0.5.0 errors don't linger unreadably in storage.
+void chrome.storage.local.remove('lastError');
 // Auth sessions live 15 min server-side. The poll loop covers most of that,
 // and checkPendingConnect() collects an approval that lands after the loop
 // gave up (e.g. MV3 suspended the worker mid-wait).
@@ -68,7 +70,7 @@ async function handle(message: any, sender: chrome.runtime.MessageSender): Promi
     case 'SAVED_ITEMS_FAILED':
       return savedItemsFailed(message.error, sender);
     case 'CLIP_FAILED':
-      await chrome.storage.local.set({ lastError: `Save failed: ${message.error}` });
+      await setSurfaceError('clip', `Save failed: ${message.error}`);
       await setBadge('!', 'Save failed — click for details');
       return { ok: false, error: message.error };
     case 'PLATFORM_STATUS':
@@ -78,7 +80,7 @@ async function handle(message: any, sender: chrome.runtime.MessageSender): Promi
     case 'CONNECT':
       return connect();
     case 'DISCONNECT':
-      await chrome.storage.local.remove(['apiKey', 'username', 'folderId', 'folderName', 'folders', 'lastSync', 'lastClip', 'lastImport', 'lastError']);
+      await chrome.storage.local.remove(['apiKey', 'username', 'folderId', 'folderName', 'folders', 'lastSync', 'lastClip', 'lastImport', 'surfaceErrors']);
       return { ok: true };
     case 'GET_STATUS':
       return getStatus();
@@ -135,7 +137,7 @@ async function syncConversation(snapshot: ConversationSnapshot): Promise<any> {
   });
   if (!upsert.ok) {
     const detail = (await upsert.text()).slice(0, 200);
-    await chrome.storage.local.set({ lastError: `Session upsert failed (${upsert.status}): ${detail}` });
+    await setSurfaceError('chat', `Session upsert failed (${upsert.status}): ${detail}`);
     await setBadge('!', `Stash sync failing (${upsert.status}) — click for details`);
     return { ok: false, error: `upsert_failed_${upsert.status}` };
   }
@@ -153,7 +155,7 @@ async function syncConversation(snapshot: ConversationSnapshot): Promise<any> {
   });
   if (!res.ok) {
     const detail = (await res.text()).slice(0, 200);
-    await chrome.storage.local.set({ lastError: `Upload failed (${res.status}): ${detail}` });
+    await setSurfaceError('chat', `Upload failed (${res.status}): ${detail}`);
     await setBadge('!', `Stash sync failing (${res.status}) — click for details`);
     return { ok: false, error: `upload_failed_${res.status}` };
   }
@@ -161,8 +163,8 @@ async function syncConversation(snapshot: ConversationSnapshot): Promise<any> {
   await chrome.storage.session.set({ [hashKey]: hash });
   await chrome.storage.local.set({
     lastSync: { title: snapshot.title, sessionId, at: Date.now() },
-    lastError: null,
   });
+  await clearSurfaceError('chat');
   await setBadge('', 'Stash Chat Sync');
   return { ok: true };
 }
@@ -244,7 +246,7 @@ async function checkPendingConnect(): Promise<boolean> {
   const data = await res.json();
   if (data.status !== 'complete') return false;
 
-  await chrome.storage.local.set({ apiKey: data.api_key, username: data.username, lastError: null });
+  await chrome.storage.local.set({ apiKey: data.api_key, username: data.username, surfaceErrors: [] });
   await chrome.storage.local.remove(['pendingConnect']);
   await setBadge('', 'Stash Chat Sync');
   await refreshFolders();
@@ -292,7 +294,6 @@ async function getStatus(): Promise<any> {
     'lastSync',
     'lastClip',
     'lastImport',
-    'lastError',
   ]);
   return {
     ok: true,
@@ -304,6 +305,6 @@ async function getStatus(): Promise<any> {
     lastSync: cfg.lastSync || null,
     lastClip: cfg.lastClip || null,
     lastImport: cfg.lastImport || null,
-    lastError: cfg.lastError || null,
+    errors: await getSurfaceErrors(),
   };
 }

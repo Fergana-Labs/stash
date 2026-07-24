@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
@@ -8,6 +10,7 @@ import {
   getAgentChat,
   streamAgentChat,
 } from "@/lib/agentChat";
+import { apiFetch } from "@/lib/api";
 
 // A real multi-turn agent chat: a scrolling transcript + a composer. Enter
 // sends, Shift+Enter inserts a newline. Each turn is persisted server-side
@@ -257,6 +260,55 @@ function Code({ children }: { children: string }) {
   );
 }
 
+const chipLinkClass =
+  "font-mono underline decoration-dotted underline-offset-2 hover:text-foreground";
+
+// A grounding citation, linked to what it names: web fetches open the page,
+// app targets navigate in place, and VFS reads resolve their path to the
+// object's route on click (the stream only carries the path).
+function CitationChip({ citation }: { citation: Citation }) {
+  const router = useRouter();
+  const [resolving, setResolving] = useState(false);
+
+  if (citation.href && citation.href.startsWith("http")) {
+    return (
+      <a href={citation.href} target="_blank" rel="noreferrer" className={chipLinkClass}>
+        {citation.label}
+      </a>
+    );
+  }
+  if (citation.href) {
+    return (
+      <Link href={citation.href} className={chipLinkClass}>
+        {citation.label}
+      </Link>
+    );
+  }
+  if (citation.vfsPath) {
+    const open = async () => {
+      if (resolving) return;
+      setResolving(true);
+      try {
+        const { app_url } = await apiFetch<{ app_url: string | null }>(
+          `/api/v1/me/vfs/resolve?path=${encodeURIComponent(citation.vfsPath ?? "")}`,
+        );
+        if (app_url) router.push(app_url);
+      } catch {
+        // A stale citation (the object was deleted since the chat) resolves
+        // 404 — the chip stays inert rather than crashing the panel.
+      } finally {
+        setResolving(false);
+      }
+    };
+    return (
+      <button type="button" onClick={open} className={`${chipLinkClass} cursor-pointer`}>
+        {citation.label}
+      </button>
+    );
+  }
+  return <span className="font-mono">{citation.label}</span>;
+}
+
 function MessageBubble({ message }: { message: ChatMessage }) {
   const isUser = message.role === "user";
   return (
@@ -278,7 +330,7 @@ function MessageBubble({ message }: { message: ChatMessage }) {
             {message.citations.map((c, i) => (
               <span key={c.id}>
                 {i > 0 && ", "}
-                <span className="font-mono">{c.label}</span>
+                <CitationChip citation={c} />
               </span>
             ))}
           </div>

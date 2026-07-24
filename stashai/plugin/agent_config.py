@@ -40,7 +40,7 @@ def _read_json(path: Path) -> dict:
         return {}
 
 
-def _cli_config() -> dict:
+def cli_config() -> dict:
     """User-scoped CLI config (`~/.stash/config.json`)."""
     user_path = Path.home() / ".stash" / "config.json"
     if user_path.exists():
@@ -49,7 +49,7 @@ def _cli_config() -> dict:
 
 
 def get_config(client: str) -> dict:
-    cli = _cli_config()
+    cli = cli_config()
     return {
         "api_endpoint": cli.get("base_url", PRODUCTION_BASE_URL),
         "api_key": cli.get("api_key", ""),

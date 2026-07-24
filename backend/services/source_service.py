@@ -128,6 +128,11 @@ SOURCE_TYPE_PROVIDER = {
     for source_type in source_types
 }
 
+# The vocabulary for search's include_sources/exclude_sources filters: the two
+# native handles plus provider names. Providers, not source ids — users think
+# "gmail", not a connected-source UUID.
+SEARCH_SOURCE_TOKENS = frozenset({NATIVE_FILES, NATIVE_SESSIONS, *PROVIDER_SOURCE_TYPES})
+
 _JIRA_PROJECT_KEY_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")
 
 
@@ -280,7 +285,11 @@ async def create_source(
         ON CONFLICT (owner_user_id, source_type, external_ref)
         DO UPDATE SET
             display_name = EXCLUDED.display_name,
-            settings = EXCLUDED.settings,
+            -- Merge, don't replace: a reconnect must not wipe sync cursors
+            -- and one-time-walk state accumulated under this source.
+            settings = coalesce(user_sources.settings, '{}'::jsonb) || EXCLUDED.settings,
+            -- A disconnected-with-data source resumes syncing on reconnect.
+            sync_enabled = EXCLUDED.sync_enabled,
             updated_at = now()
         RETURNING *
         """,
@@ -391,28 +400,90 @@ async def get_readable_source(source_id: UUID, user_id: UUID) -> dict | None:
 
 
 async def delete_source(source_id: UUID, user_id: UUID) -> bool:
-    """Remove a connected source the user owns. Its documents cascade."""
-    result = await get_pool().execute(
-        "DELETE FROM user_sources WHERE id = $1 AND owner_user_id = $2",
+    """Remove a connected source the user owns: archived media blobs, share
+    grants, then the row (documents cascade). Same cleanup as the provider
+    purge — one deletion codepath, nothing orphaned."""
+    owned = await get_pool().fetchval(
+        "SELECT 1 FROM user_sources WHERE id = $1 AND owner_user_id = $2",
         source_id,
         user_id,
     )
+    if not owned:
+        return False
+    await _cleanup_source_data([source_id])
+    result = await get_pool().execute("DELETE FROM user_sources WHERE id = $1", source_id)
     return result.endswith("1")
 
 
-async def delete_sources_for_provider(user_id: UUID, provider: str) -> list[dict]:
-    """Remove all connected sources backed by one disconnected provider.
-    Returns the deleted rows so callers audit exactly what was removed."""
+async def _cleanup_source_data(source_ids: list[UUID]) -> None:
+    """What the FK cascade can't reach when source rows are deleted: media
+    archives in object storage (X/Instagram saves) and share grants."""
+    from . import storage_service
+
+    pool = get_pool()
+    x_rows = await pool.fetch(
+        "SELECT media FROM x_save_docs WHERE source_id = ANY($1::uuid[]) "
+        "AND jsonb_array_length(media) > 0",
+        source_ids,
+    )
+    for row in x_rows:
+        for item in row["media"]:
+            await storage_service.delete_file(item["storage_key"])
+    ig_rows = await pool.fetch(
+        "SELECT media_storage_key FROM instagram_save_docs "
+        "WHERE source_id = ANY($1::uuid[]) AND media_storage_key IS NOT NULL",
+        source_ids,
+    )
+    for row in ig_rows:
+        await storage_service.delete_file(row["media_storage_key"])
+    await pool.execute(
+        "DELETE FROM shares WHERE object_type = 'source' AND object_id = ANY($1::uuid[])",
+        source_ids,
+    )
+
+
+def _provider_source_types(provider: str) -> list[str]:
     source_types = PROVIDER_SOURCE_TYPES.get(provider)
     if source_types is None:
         raise ValueError(f"unknown provider source mapping: {provider}")
+    return list(source_types)
 
+
+async def disable_sources_for_provider(user_id: UUID, provider: str) -> list[dict]:
+    """Disconnect-keeps-data: stop syncing every source of the provider but
+    keep the rows and their documents. Reconnecting re-enables them (the
+    connect upsert sets sync_enabled back)."""
     rows = await get_pool().fetch(
-        "DELETE FROM user_sources "
+        "UPDATE user_sources SET sync_enabled = false, updated_at = now() "
         "WHERE owner_user_id = $1 AND source_type = ANY($2::text[]) "
         "RETURNING *",
         user_id,
-        list(source_types),
+        _provider_source_types(provider),
+    )
+    return [_source_row(row) for row in rows]
+
+
+async def purge_sources_for_provider(user_id: UUID, provider: str) -> list[dict]:
+    """The explicit delete-my-data path: archived media blobs, share grants,
+    then the source rows (documents cascade). Returns the deleted sources so
+    callers audit exactly what was removed."""
+    pool = get_pool()
+    source_types = _provider_source_types(provider)
+    source_ids = [
+        row["id"]
+        for row in await pool.fetch(
+            "SELECT id FROM user_sources WHERE owner_user_id = $1 AND source_type = ANY($2::text[])",
+            user_id,
+            source_types,
+        )
+    ]
+    if not source_ids:
+        return []
+
+    await _cleanup_source_data(source_ids)
+    rows = await pool.fetch(
+        "DELETE FROM user_sources WHERE id = ANY($1::uuid[]) RETURNING *",
+        source_ids,
     )
     return [_source_row(row) for row in rows]
 
@@ -483,6 +554,19 @@ async def mark_sync_done(source_id: UUID, cursor: str | None) -> None:
     )
 
 
+async def set_sync_warning(source_id: UUID, message: str) -> None:
+    """A non-fatal, owner-facing sync notice (e.g. one feed of a source needs a
+    paid provider tier while the rest keeps syncing). Stored in sync_error but
+    the source stays idle; the next sync start clears it, so a resolved warning
+    disappears on its own. Same safety rule as SourceSyncUserError: the message
+    must never contain tokens or provider payloads."""
+    await get_pool().execute(
+        "UPDATE user_sources SET sync_error = $2, updated_at = now() WHERE id = $1",
+        source_id,
+        message[:500],
+    )
+
+
 async def mark_sync_failed(source_id: UUID, error: str) -> None:
     await get_pool().execute(
         "UPDATE user_sources SET sync_status = 'failed', sync_error = $2, updated_at = now() "
@@ -536,6 +620,29 @@ CONTENT_TABLES = {
     # NB: heavi_learning_docs is intentionally absent — the table exists but
     # stays empty (no indexer); see the note on DEFAULT_SYNC_INTERVAL_S.
 }
+
+# content table -> its provider name, for provider-level FTS filtering. Each
+# content table holds exactly one provider's documents, so restricting the
+# UNION to a provider's tables filters exactly.
+CONTENT_TABLE_PROVIDER = {
+    SOURCE_TABLE[source_type]: SOURCE_TYPE_PROVIDER[source_type]
+    for source_type in SOURCE_TABLE
+    if SOURCE_TABLE[source_type] in CONTENT_TABLES
+}
+
+# Internal per-hit text cap, centered on the first query occurrence. High
+# enough that ranking (which scores this text) sees plenty of context, low
+# enough that pathological docs (multi-MB GitHub files, hour-long call
+# transcripts) can't bloat the search pipeline. Never returned to callers —
+# search_all windows each returned snippet to SEARCH_RESULT_SNIPPET_CHARS.
+SEARCH_SNIPPET_CHARS = 20_000
+
+# The snippet size the search API returns: a window centered on the first
+# query occurrence, with clipped edges marked by "…".
+SEARCH_RESULT_SNIPPET_CHARS = 300
+# Archive-style save tables: rows exist before their content is hydrated, so
+# they carry a hydration_status that listings and reads must surface.
+SAVE_TABLES = {"x_save_docs", "instagram_save_docs"}
 
 # Index-only source types whose `search` is federated live to the provider's
 # native search instead of our FTS (no copied content). source_type -> the
@@ -784,9 +891,10 @@ async def list_documents(
 ) -> list[dict]:
     """List a source's live documents, optionally under a path prefix. `source`
     is the registry row (from get_owned_source / get_source_for_sync). `after`
-    is a keyset cursor: only paths strictly greater (in the ORDER BY path
-    ordering) are returned, so callers page through big sources by passing the
-    last path of the previous page."""
+    is a keyset cursor: only paths strictly beyond it in the listing order are
+    returned, so callers page through big sources by passing the last path of
+    the previous page. Most sources list ascending by path; X saves list
+    newest-first (see the ordering note below)."""
     table = _table_for(source["source_type"])
     if table == "slack_messages":
         allowed_channel_ids = slack_allowed_channel_ids(source)
@@ -864,11 +972,26 @@ async def list_documents(
         if is_content
         else "NULL::text"
     )
+    # Saves carry their archive status so listings can mark a save that failed
+    # to archive (or is still archiving) instead of rendering it like the rest.
+    status_column = "hydration_status" if table in SAVE_TABLES else "NULL::text"
+    # X saves list newest-first — a bookmark list you can only read oldest-first
+    # buries the thing you saved five minutes ago. The path's tweet id grows
+    # over time but varies in digit count, so numeric order is (length, value).
+    # The keyset cursor flips with the ordering: a page continues strictly
+    # below the last path served.
+    if table == "x_save_docs":
+        order_by = "length(path) DESC, path DESC"
+        cursor_predicate = "($4 = '' OR (length(path), path) < (length($4), $4))"
+    else:
+        order_by = "path"
+        cursor_predicate = "path > $4"
     rows = await get_pool().fetch(
         f"SELECT path, name, kind, external_ref, external_updated_at, "
-        f"{size_column} AS size, {snippet_column} AS snippet FROM {table} "
-        f"WHERE source_id = $1 AND deleted_at IS NULL AND path LIKE $2 AND path > $4 "
-        f"ORDER BY path LIMIT $3",
+        f"{size_column} AS size, {snippet_column} AS snippet, {status_column} AS status "
+        f"FROM {table} "
+        f"WHERE source_id = $1 AND deleted_at IS NULL AND path LIKE $2 AND {cursor_predicate} "
+        f"ORDER BY {order_by} LIMIT $3",
         UUID(source["id"]),
         f"{prefix}%",
         limit,
@@ -887,6 +1010,7 @@ def _entry_row(r) -> dict:
         "external_updated_at": (external_updated_at.isoformat() if external_updated_at else None),
         "size": r["size"],
         "snippet": r["snippet"] if "snippet" in r.keys() else None,
+        "status": r["status"] if "status" in r.keys() else None,
     }
 
 
@@ -1146,6 +1270,19 @@ async def _read_drive_document(source_id: UUID, path: str) -> dict | None:
     }
 
 
+def _save_pending_error(status: str, provider_label: str) -> str:
+    """The user-facing body for a save whose content isn't archived yet. The
+    raw hydration_error stays on the row for diagnosis; the API serves a human
+    sentence — nobody should read a Python exception in their bookmark list."""
+    if status == "failed":
+        return (
+            "This post couldn't be archived — it was probably deleted, made private, "
+            f"or its account suspended before we could copy it. It may still be open "
+            f"on {provider_label}."
+        )
+    return "Still archiving this post — check back in a minute."
+
+
 async def _read_instagram_save(source_id: UUID, path: str) -> dict | None:
     """An Instagram save, or a loud explanation while hydration is pending —
     same contract as drive_documents: never hand back a blank body as if the
@@ -1163,14 +1300,13 @@ async def _read_instagram_save(source_id: UUID, path: str) -> dict | None:
     if not row:
         return None
     if row["content"] is None:
-        status = row["hydration_status"]
         return {
             "path": row["path"],
             "name": row["name"],
             "kind": row["kind"],
             "content": "",
-            "error": row["hydration_error"] or f"hydration {status}",
-            "http_status": 422 if status == "failed" else 409,
+            "error": _save_pending_error(row["hydration_status"], "Instagram"),
+            "http_status": 422 if row["hydration_status"] == "failed" else 409,
         }
     doc = {
         "path": row["path"],
@@ -1200,14 +1336,13 @@ async def _read_x_save(source_id: UUID, path: str) -> dict | None:
     if not row:
         return None
     if row["content"] is None:
-        status = row["hydration_status"]
         return {
             "path": row["path"],
             "name": row["name"],
             "kind": row["kind"],
             "content": "",
-            "error": row["hydration_error"] or f"hydration {status}",
-            "http_status": 422 if status == "failed" else 409,
+            "error": _save_pending_error(row["hydration_status"], "X"),
+            "http_status": 422 if row["hydration_status"] == "failed" else 409,
         }
     doc = {
         "path": row["path"],
@@ -1305,18 +1440,20 @@ def _scoped_search_error(source: dict, e: Exception) -> Exception:
 
 async def _federated_search(
     source: dict, query: str, limit: int, *, swallow_errors: bool = True
-) -> list[dict]:
-    """Run a federated source's native provider search. Returns unified hits
-    ({source, source_name, ref, name, snippet}). In the unscoped fan-out a
-    provider error (revoked token, rate limit) is logged and returned as a
-    single error marker ({source, source_name, error, needs_reconnect}) so the
-    rest of the search stays alive while the dead source is still surfaced —
-    dropping it silently would read as "no matches" for that source. A SCOPED
-    search raises instead, so the API serves an explicit HTTP error.
+) -> tuple[list[dict], list[dict]]:
+    """Run a federated source's native provider search. Returns (hits, markers):
+    hits are unified ({source, source_name, ref, name, snippet}); markers ride
+    alongside instead of mixing into the hit list so callers can rank/paginate
+    hits without sniffing dict keys. In the unscoped fan-out a provider error
+    (revoked token, rate limit) is logged and returned as an error marker
+    ({source, source_name, error, needs_reconnect}) so the rest of the search
+    stays alive while the dead source is still surfaced — dropping it silently
+    would read as "no matches" for that source. A SCOPED search raises instead,
+    so the API serves an explicit HTTP error.
 
     Providers cap results (SEARCH_LIMIT); when a provider reports it matched
-    more than it returned, a trailing truncation marker ({source, source_name,
-    truncated, returned, estimated_total}) is appended so callers disclose the
+    more than it returned, a truncation marker ({source, source_name,
+    truncated, returned, estimated_total}) is emitted so callers disclose the
     cut instead of presenting the top slice as the whole result."""
     source_type = source["source_type"]
     try:
@@ -1333,7 +1470,7 @@ async def _federated_search(
         elif source_type == "posthog_project":
             from ..integrations.posthog.indexer import search_posthog as fn
         else:
-            return []
+            return [], []
         result = await fn(source, query, limit)
     except Exception as exc:
         if not swallow_errors:
@@ -1353,7 +1490,7 @@ async def _federated_search(
         else:
             detail = f"{source['display_name'] or source_type} search failed"
             needs_reconnect = False
-        return [
+        return [], [
             {
                 "source": source["id"],
                 "source_name": source["display_name"],
@@ -1377,12 +1514,17 @@ async def _federated_search(
             "source_name": source["display_name"],
             "ref": h["ref"],
             "name": h.get("name", ""),
-            "snippet": h.get("snippet", ""),
+            # Providers return whole rendered bodies (a full email, a full
+            # issue) — cap them like every other candidate.
+            "snippet": _centered_window(h.get("snippet", ""), query, SEARCH_SNIPPET_CHARS),
+            # Not every provider's search response carries a timestamp.
+            "date_modified": h.get("date_modified"),
         }
         for h in hits
     ]
+    markers = []
     if truncated:
-        output.append(
+        markers.append(
             {
                 "source": source["id"],
                 "source_name": source["display_name"],
@@ -1391,7 +1533,7 @@ async def _federated_search(
                 "estimated_total": estimated_total,
             }
         )
-    return output
+    return output, markers
 
 
 async def search_documents(
@@ -1399,12 +1541,18 @@ async def search_documents(
     user_id: UUID,
     query: str,
     source: dict | None = None,
+    providers: frozenset[str] | None = None,
     limit: int = 20,
 ) -> list[dict]:
     """FTS over copied-content sources the user can read — their own or shared
     with them (github/slack/granola), UNIONed across their tables. Pass `source`
-    to scope to one; an index-only source has nothing to FTS, so it returns []."""
-    limit = min(limit, 100)
+    to scope to one; an index-only source has nothing to FTS, so it returns [].
+    Pass `providers` to restrict to those providers' tables — this must happen
+    at the table level, because readability includes sources shared directly
+    with the user that no connected-source listing enumerates."""
+    if source is not None and providers is not None:
+        raise ValueError("Pass either source or providers, not both")
+    limit = min(limit, 500)
     tables = sorted(CONTENT_TABLES)
     source_id: UUID | None = None
     if source is not None:
@@ -1413,6 +1561,10 @@ async def search_documents(
             return []
         tables = [table]
         source_id = UUID(source["id"])
+    if providers is not None:
+        tables = sorted(t for t in CONTENT_TABLES if CONTENT_TABLE_PROVIDER[t] in providers)
+        if not tables:
+            return []
 
     def visibility_clause(table: str) -> str:
         if table == "slack_messages":
@@ -1434,7 +1586,12 @@ async def search_documents(
     source_readable = permission_service.readable_content_condition("source", "s", 1)
     parts = [
         f"""
-        SELECT d.source_id, d.path, d.name, LEFT(d.content, 400) AS snippet,
+        SELECT d.source_id, d.path, d.name, d.external_updated_at,
+               substr(d.content,
+                      GREATEST(1, LEAST(strpos(lower(d.content), lower(btrim($2)))
+                                          - {SEARCH_SNIPPET_CHARS // 2},
+                                        length(d.content) - {SEARCH_SNIPPET_CHARS} + 1)),
+                      {SEARCH_SNIPPET_CHARS}) AS snippet,
                ts_rank(to_tsvector('english', coalesce(d.content, '')),
                        websearch_to_tsquery('english', $2)) AS rank
         FROM {t} d
@@ -1449,7 +1606,8 @@ async def search_documents(
     ]
     union = " UNION ALL ".join(parts)
     rows = await get_pool().fetch(
-        f"SELECT u.source_id, ws.display_name AS source_name, u.path, u.name, u.snippet "
+        f"SELECT u.source_id, ws.display_name AS source_name, u.path, u.name, "
+        f"u.external_updated_at, u.snippet "
         f"FROM ({union}) u JOIN user_sources ws ON ws.id = u.source_id "
         f"ORDER BY u.rank DESC LIMIT $4",
         user_id,
@@ -1464,6 +1622,7 @@ async def search_documents(
             "path": r["path"],
             "name": r["name"],
             "snippet": r["snippet"] or "",
+            "date_modified": r["external_updated_at"],
         }
         for r in rows
     ]
@@ -2032,8 +2191,10 @@ async def fetch_history(
 
 
 async def _external_ref_matches(sources: list[dict], query: str, limit: int) -> list[dict]:
-    """Documents whose provider id (`external_ref`) exactly equals the query,
-    across the given sources' document tables."""
+    """Documents whose provider id (`external_ref`) contains the query as a
+    substring, across the given sources' document tables. These hits carry
+    `exact_ref` so search_all pins them above everything else — an id match is
+    a lookup, not a relevance guess."""
     query = query.strip()
     if not query:
         return []
@@ -2043,8 +2204,9 @@ async def _external_ref_matches(sources: list[dict], query: str, limit: int) -> 
         if table is None:
             continue
         rows = await get_pool().fetch(
-            f"SELECT path, name FROM {table} "
-            f"WHERE source_id = $1 AND external_ref = $2 AND deleted_at IS NULL LIMIT $3",
+            f"SELECT path, name, external_updated_at FROM {table} "
+            f"WHERE source_id = $1 AND strpos(external_ref, $2) > 0 AND deleted_at IS NULL "
+            f"LIMIT $3",
             UUID(s["id"]),
             query,
             limit,
@@ -2056,47 +2218,122 @@ async def _external_ref_matches(sources: list[dict], query: str, limit: int) -> 
                 "ref": r["path"],
                 "name": r["name"],
                 "snippet": "",
+                "date_modified": r["external_updated_at"],
+                "exact_ref": True,
             }
             for r in rows
         ]
     return hits
 
 
-async def search_all(
+async def _uniform_ranks(query: str, texts: list[str]) -> list[float]:
+    """Score every candidate's display text against the query on ONE scale.
+    Per-source ts_rank/provider orderings are not comparable across sources,
+    so the merged ordering re-scores each hit's (name + snippet) identically."""
+    if not texts:
+        return []
+    rows = await get_pool().fetch(
+        "SELECT ts_rank(to_tsvector('english', t.text),"
+        "               websearch_to_tsquery('english', $2)) AS rank "
+        "FROM unnest($1::text[]) WITH ORDINALITY AS t(text, ord) "
+        "ORDER BY t.ord",
+        texts,
+        query,
+    )
+    return [r["rank"] for r in rows]
+
+
+def _rank_text(hit: dict) -> str:
+    return f"{hit.get('name') or ''}\n{hit.get('snippet') or ''}"
+
+
+def _centered_window(text: str, query: str, width: int, *, ellipsis: bool = False) -> str:
+    """A width-char window of text containing the first case-insensitive
+    occurrence of the query — a match 30 minutes into a transcript must show
+    the match, not the intro. Centered on the match, clamped to the text
+    bounds (a match near either edge still yields a full-width window). When
+    the query has no verbatim match (stemmed/multi-word FTS hits), the window
+    is the head of the text. ellipsis=True marks clipped edges with '…'."""
+    if len(text) <= width:
+        return text
+    q = query.strip().lower()
+    idx = text.lower().find(q) if q else -1
+    start = 0 if idx == -1 else min(max(0, idx - width // 2), len(text) - width)
+    window = text[start : start + width]
+    if ellipsis:
+        window = ("…" if start > 0 else "") + window + ("…" if start + width < len(text) else "")
+    return window
+
+
+def _validated_search_tokens(tokens: list[str] | None, param: str) -> frozenset[str]:
+    cleaned = frozenset(t.strip().lower() for t in tokens or [])
+    unknown = cleaned - SEARCH_SOURCE_TOKENS
+    if unknown:
+        raise ValueError(
+            f"Unknown {param} token(s): {', '.join(sorted(unknown))}. "
+            f"Valid tokens: {', '.join(sorted(SEARCH_SOURCE_TOKENS))}"
+        )
+    return cleaned
+
+
+def resolve_search_source_filter(
+    include_sources: list[str] | None, exclude_sources: list[str] | None
+) -> frozenset[str]:
+    """The set of source tokens a search may touch: everything (or the include
+    list, when given) minus the exclude list. A token in both lists is excluded.
+    Unknown tokens raise ValueError."""
+    include = _validated_search_tokens(include_sources, "include_sources")
+    exclude = _validated_search_tokens(exclude_sources, "exclude_sources")
+    base = include if include else SEARCH_SOURCE_TOKENS
+    return base - exclude
+
+
+async def _gather_search_candidates(
     owner_user_id: UUID,
     user_id: UUID,
     query: str,
-    source: str | None = None,
-    limit: int = 20,
-) -> list[dict] | None:
-    """Search across sources. Omit `source` to search everything the user can
-    see (native files + sessions + their connected sources), or pass a handle to
-    scope to one. Returns None when a named source is unknown / not owned."""
-    results: list[dict] = []
+    source: str | None,
+    allowed: frozenset[str],
+    fetch_limit: int,
+) -> tuple[list[dict], list[dict], dict | None] | None:
+    """Collect unranked hits from every sub-search: native sessions + pages,
+    exact provider-id matches, copied-content FTS, and federated provider
+    search. Returns (hits, markers, connected), or None when a named source is
+    unknown / not owned. Sub-searches keep their own caps (sessions and FTS
+    docs 500, providers SEARCH_LIMIT) — asking for more than those yields
+    has_more = False, not deeper results."""
+    hits: list[dict] = []
+    markers: list[dict] = []
 
-    if source in (None, NATIVE_SESSIONS):
+    if NATIVE_SESSIONS in allowed and source in (None, NATIVE_SESSIONS):
         from .memory_service import search_scope_events
 
-        events = await search_scope_events(owner_user_id, user_id, query, limit=limit)
-        results += [
+        events = await search_scope_events(owner_user_id, user_id, query, limit=fetch_limit)
+        hits += [
             {
                 "source": NATIVE_SESSIONS,
                 "ref": e.get("session_id"),
-                "snippet": (e.get("content") or "")[:300],
+                "snippet": _centered_window(e.get("content") or "", query, SEARCH_SNIPPET_CHARS),
+                "date_modified": e.get("created_at"),
             }
             for e in events
         ]
 
-    if source in (None, NATIVE_FILES):
+    if NATIVE_FILES in allowed and source in (None, NATIVE_FILES):
         from .files_tree_service import search_pages_fts
 
-        pages = await search_pages_fts(owner_user_id, query, limit=limit, user_id=user_id)
-        results += [
+        pages = await search_pages_fts(owner_user_id, query, limit=fetch_limit, user_id=user_id)
+        hits += [
             {
                 "source": NATIVE_FILES,
                 "ref": str(p["id"]),
                 "name": p["name"],
-                "snippet": (p.get("search_text") or p.get("content_markdown") or "")[:300],
+                "snippet": _centered_window(
+                    p.get("search_text") or p.get("content_markdown") or "",
+                    query,
+                    SEARCH_SNIPPET_CHARS,
+                ),
+                "date_modified": p.get("updated_at"),
             }
             for p in pages
         ]
@@ -2109,29 +2346,40 @@ async def search_all(
             return None
     if source is None or connected is not None:
         searched_sources = (
-            [connected] if connected is not None else await list_connected_sources(owner_user_id)
+            [connected]
+            if connected is not None
+            else [
+                s
+                for s in await list_connected_sources(owner_user_id)
+                if SOURCE_TYPE_PROVIDER[s["source_type"]] in allowed
+            ]
         )
 
-        # A query that IS a provider id (a Drive file id, a Gmail message id, …)
-        # resolves to the indexed document directly. This is how an agent holding
-        # only a provider URL finds the document's Stash path.
-        results += await _external_ref_matches(searched_sources, query, limit)
+        # A query that is (part of) a provider id (a Drive file id, a Gmail
+        # message id, …) resolves to the indexed document directly. This is how
+        # an agent holding only a provider URL finds the document's Stash path.
+        hits += await _external_ref_matches(searched_sources, query, fetch_limit)
 
         # Copied-content sources go through our FTS (returns [] for index-only /
-        # federated sources, which have no stored content to match).
+        # federated sources, which have no stored content to match). Unscoped
+        # search filters at the table level, not via searched_sources — FTS also
+        # reads sources shared directly with the user, which searched_sources
+        # never enumerates.
         docs = await search_documents(
             user_id=user_id,
             query=query,
             source=connected,
-            limit=limit,
+            providers=None if connected is not None else allowed - {NATIVE_FILES, NATIVE_SESSIONS},
+            limit=fetch_limit,
         )
-        results += [
+        hits += [
             {
                 "source": d["source_id"],
                 "source_name": d["source_name"],
                 "ref": d["path"],
                 "name": d["name"],
                 "snippet": d["snippet"],
+                "date_modified": d["date_modified"],
             }
             for d in docs
         ]
@@ -2143,13 +2391,89 @@ async def search_all(
         # error as a marker instead of raising).
         if connected is not None:
             if connected["source_type"] in FEDERATED_SEARCH_TYPES:
-                results += await _federated_search(connected, query, limit, swallow_errors=False)
+                fed_hits, fed_markers = await _federated_search(
+                    connected, query, fetch_limit, swallow_errors=False
+                )
+                hits += fed_hits
+                markers += fed_markers
         else:
             federated = [s for s in searched_sources if s["source_type"] in FEDERATED_SEARCH_TYPES]
-            for hits in await asyncio.gather(
-                *(_federated_search(s, query, limit) for s in federated)
+            for fed_hits, fed_markers in await asyncio.gather(
+                *(_federated_search(s, query, fetch_limit) for s in federated)
             ):
-                results += hits
+                hits += fed_hits
+                markers += fed_markers
+
+    return hits, markers, connected
+
+
+async def search_all(
+    owner_user_id: UUID,
+    user_id: UUID,
+    query: str,
+    source: str | None = None,
+    include_sources: list[str] | None = None,
+    exclude_sources: list[str] | None = None,
+    limit: int = 20,
+) -> dict | None:
+    """Search across sources. Omit `source` to search everything the user can
+    see (native files + sessions + their connected sources), or pass a handle to
+    scope to one. Returns {"results": [...], "has_more": bool}, or None when a
+    named source is unknown / not owned.
+
+    include_sources/exclude_sources filter by SEARCH_SOURCE_TOKENS (native
+    handles + provider names): searched = (include or everything) - exclude, so
+    disjoint lists yield empty results. Unknown tokens, or combining either
+    with `source`, raise ValueError.
+
+    Every candidate is re-scored on one uniform ts_rank scale over its display
+    text, then the merged list is sorted and sliced to the first `limit` hits —
+    there are no pages; callers wanting more results ask again with a larger
+    limit. has_more (hits only) says more matched than were returned.
+    Each hit's `snippet` is a SEARCH_RESULT_SNIPPET_CHARS window centered on
+    the first query occurrence, its clipped edges marked with "…". Each hit
+    carries `date_modified` (the document's provider-side modification time,
+    the page's update time, or the event's creation time) — None when the
+    integration doesn't provide one.
+    Each hit carries its `rank` so callers can merge these results with their
+    own scored lists (the web search page blends in tables/skills client-side).
+    Hits whose provider id contains the query (`exact_ref`) pin above all
+    text-ranked hits regardless of rank — an id match is a lookup, not a
+    relevance guess. Other rank-0 hits sink to the bottom but are never
+    dropped: provider-relevant name-only hits won't token-match the query.
+    Markers (provider errors, truncation) trail every response — they describe
+    the whole search, not the returned slice."""
+    if source is not None and (include_sources or exclude_sources):
+        raise ValueError("Pass either source or include_sources/exclude_sources, not both")
+    allowed = resolve_search_source_filter(include_sources, exclude_sources)
+
+    # +1 sentinel: gathering exactly `limit` hits could never prove more exist.
+    gathered = await _gather_search_candidates(
+        owner_user_id, user_id, query, source, allowed, fetch_limit=limit + 1
+    )
+    if gathered is None:
+        return None
+    hits, markers, connected = gathered
+
+    ranks = await _uniform_ranks(query, [_rank_text(h) for h in hits])
+    ranked = sorted(
+        zip(hits, ranks),
+        key=lambda pair: (pair[0].get("exact_ref", False), pair[1]),
+        reverse=True,
+    )
+    # Ranking scored the full internal text above; only the returned page gets
+    # the small display window.
+    page = [
+        {
+            **h,
+            "rank": r,
+            "snippet": _centered_window(
+                h.get("snippet") or "", query, SEARCH_RESULT_SNIPPET_CHARS, ellipsis=True
+            ),
+        }
+        for h, r in ranked[:limit]
+    ]
+    has_more = len(hits) > limit
 
     await _audit_source_read(
         action="source.searched",
@@ -2160,7 +2484,7 @@ async def search_all(
         metadata={
             "query_hash": security_audit_service.hash_value(query),
             "limit": limit,
-            "result_count": len(results),
+            "result_count": len(page) + len(markers),
         },
     )
-    return results
+    return {"results": page + markers, "has_more": has_more}

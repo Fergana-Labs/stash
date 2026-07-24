@@ -4,15 +4,15 @@ import json
 
 from mcp.server.fastmcp import FastMCP
 
-from cli.client import StashClient
-from cli.config import load_config
+from cli.client import StashClient, split_source_tokens
+from cli.config import load_config, save_scope
 
 mcp = FastMCP("stash", instructions="Stash — shared memory for AI coding agents")
 
 
 def _client() -> StashClient:
     cfg = load_config()
-    return StashClient(cfg["base_url"], cfg.get("api_key", ""))
+    return StashClient(cfg["base_url"], cfg.get("api_key", ""), scope=cfg.get("scope", ""))
 
 
 def _json(obj: object) -> str:
@@ -23,14 +23,81 @@ def _json(obj: object) -> str:
 
 
 @mcp.tool()
-def stash_search(query: str, source: str = "", limit: int = 20) -> str:
+def stash_search(
+    query: str,
+    source: str = "",
+    include_sources: str = "",
+    exclude_sources: str = "",
+    limit: int = 20,
+) -> str:
     """Search across all your sources — native files + session transcripts +
-    connected sources (GitHub/Drive/Gmail/Notion/Slack/Granola).
+    connected sources (GitHub/Drive/Gmail/Notion/Slack/Granola) — merged onto
+    one relevance scale. Returns {"results": [...], "has_more": bool};
+    has_more means more matched than `limit` — raise limit to see them.
 
     Pass `source` to scope to one (a handle from stash_list_sources: 'files',
     'sessions', or a connected-source id); omit it to search everything.
+    Or filter with comma-separated `include_sources`/`exclude_sources` (native
+    handles + provider names, e.g. "files,gmail"); not combinable with `source`.
     """
-    return _json(_client().search_sources(query, source=source or None, limit=limit))
+    return _json(
+        _client().search_sources(
+            query,
+            source=source or None,
+            include_sources=split_source_tokens(include_sources),
+            exclude_sources=split_source_tokens(exclude_sources),
+            limit=limit,
+        )
+    )
+
+
+@mcp.tool()
+def stash_vfs(script: str, cwd: str = "/") -> str:
+    """Run one read-only shell-shaped script over your whole Stash — `ls`,
+    `cat`, `find`, `grep`/`rg`, `tree`, pipes — exactly like `stash vfs` in a
+    terminal. Roots include /files, /sessions, /skills, /memory, /sources.
+    A non-zero exit_code is a shell result (grep found nothing), not an error;
+    read stdout/stderr like a terminal would show them."""
+    return _json(_client().run_vfs(script, cwd=cwd))
+
+
+@mcp.tool()
+def stash_memory_tree() -> str:
+    """The Memory wiki as a nested folder/page tree, rooted at your Memory
+    folder. The Files tree (stash_tree) deliberately hides this subtree, so
+    this is how you discover memory pages; read one with stash_read_page."""
+    return _json(_client().get_memory_tree())
+
+
+@mcp.tool()
+def stash_list_workspaces() -> str:
+    """Workspaces you belong to, plus which scope is active. The active scope
+    is where sessions/events/searches read and write ('' = personal)."""
+    cfg = load_config()
+    return _json(
+        {
+            "workspaces": _client().list_workspaces(),
+            "active_scope": cfg.get("scope", "") or None,
+        }
+    )
+
+
+@mcp.tool()
+def stash_switch_workspace(name: str) -> str:
+    """Switch the active scope to a workspace (by name or domain), or back to
+    'personal'. Applies to every subsequent tool call, and to the CLI and
+    agent plugins on this machine — it is the same setting as
+    `stash workspace switch`."""
+    if name == "personal":
+        save_scope(None)
+        return _json({"active_scope": None})
+    workspaces = _client().list_workspaces()
+    match = next((ws for ws in workspaces if name in (ws["name"], ws["domain"])), None)
+    if match is None:
+        known = [ws["name"] for ws in workspaces]
+        return _json({"error": f"no workspace named {name!r}", "workspaces": known})
+    save_scope(str(match["scope_user_id"]))
+    return _json({"active_scope": match["scope_user_id"], "workspace": match["name"]})
 
 
 @mcp.tool()
