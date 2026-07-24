@@ -38,11 +38,13 @@ async def test_unhandled_errors_are_redacted_and_keep_security_headers(
     assert resp.headers["X-Content-Type-Options"] == "nosniff"
     assert "secret-token" not in resp.text
     assert "customer transcript" not in resp.text
-    assert captured_logs == [
-        (
-            "Unhandled request failed method=%s path=%s exception_type=%s",
-            ("GET", "/__test_unhandled_error_redaction", "RuntimeError"),
-        )
-    ]
+    assert len(captured_logs) == 1
+    message, args = captured_logs[0]
+    assert message == "Unhandled request failed method=%s path=%s exception_type=%s\n%s"
+    assert args[:3] == ("GET", "/__test_unhandled_error_redaction", "RuntimeError")
+    # The stack is frame locations only — enough to diagnose the 500...
+    assert "in _raise_secret_error" in args[3]
+    # ...but never exception messages or source lines, which can carry user
+    # content.
     assert "secret-token" not in str(captured_logs)
     assert "customer transcript" not in str(captured_logs)

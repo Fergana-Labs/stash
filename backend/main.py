@@ -1,4 +1,5 @@
 import logging
+import traceback
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -174,11 +175,19 @@ async def add_security_headers(request: Request, call_next):
     try:
         response = await call_next(request)
     except Exception as exc:
+        # Frame locations only — no exception message and no source lines,
+        # either of which can carry user content. Type + file:line stack is
+        # what makes a prod 500 diagnosable at all.
+        frames = "".join(
+            f"  {f.filename}:{f.lineno} in {f.name}\n"
+            for f in traceback.extract_tb(exc.__traceback__)
+        )
         logger.error(
-            "Unhandled request failed method=%s path=%s exception_type=%s",
+            "Unhandled request failed method=%s path=%s exception_type=%s\n%s",
             request.method,
             request.url.path,
             type(exc).__name__,
+            frames,
         )
         response = JSONResponse(status_code=500, content={"detail": "Internal server error"})
     for key, value in SECURITY_HEADERS.items():

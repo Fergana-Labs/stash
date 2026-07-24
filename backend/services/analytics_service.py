@@ -1,6 +1,5 @@
 """Analytics service: aggregated views for dashboard visualizations."""
 
-import asyncio
 import logging
 import math
 import re
@@ -12,15 +11,11 @@ import numpy as np
 from ..database import get_pool
 from . import memory_service, permission_service
 
-# Numba's default threading layer aborts the whole process on concurrent
-# entry, so UMAP runs strictly one-at-a-time per process.
-_UMAP_LOCK = asyncio.Lock()
-
 
 def _umap_3d(embeddings: np.ndarray) -> np.ndarray:
     """3D UMAP of an embedding matrix, whitened per axis and clamped to
-    [-1, 1] at 2.5σ. CPU-heavy (seconds) — call via asyncio.to_thread,
-    holding _UMAP_LOCK."""
+    [-1, 1] at 2.5σ. CPU-heavy (numba JIT + fit) — worker-only; Celery's
+    prefork processes keep numba's non-threadsafe layer isolated."""
     # Deferred import: umap-learn's numba JIT makes module import slow, and
     # only this path needs it.
     import umap
@@ -739,23 +734,102 @@ async def get_knowledge_density(
     return {"clusters": clusters[:max_clusters]}
 
 
+_PROJECTION_TTL = timedelta(hours=1)
+_PROJECTION_COUNT_DRIFT = 0.1
+# Below this a 3D projection is meaningless — and UMAP's spectral init
+# crashes outright for n <= n_components + 1.
+_PROJECTION_MIN_POINTS = 10
+
+
+async def _accessible_scope_ids(user_id: UUID) -> list[UUID]:
+    """Every scope whose content can appear in this user's projection."""
+    pool = get_pool()
+    rows = await pool.fetch(
+        "SELECT u.id FROM users u WHERE u.id IN " + permission_service.accessible_scope_ids_sql(1),
+        user_id,
+    )
+    return sorted(r["id"] for r in rows)
+
+
+def _enqueue_projection_refresh(
+    user_id: UUID, source: str | None, owner_user_id: UUID | None
+) -> None:
+    from ..tasks.viz import refresh_projection
+
+    refresh_projection.delay(str(user_id), source, str(owner_user_id) if owner_user_id else None)
+
+
 async def get_embedding_projection(
     user_id: UUID,
     max_points: int = 500,
     source: str | None = None,
     owner_user_id: UUID | None = None,
 ) -> dict:
-    """3D UMAP projection of embeddings for the space explorer.
+    """Serve the cached 3D UMAP projection for the space explorer.
 
-    Pass ``owner_user_id`` to scope to one user.
+    Computing runs in the Celery worker (`tasks.viz.refresh_projection`) —
+    UMAP + numba JIT need far more memory and time than a web request
+    should spend; running it in-request OOM-crashlooped prod.
 
-    Only explicit scope-scoped requests use the embedding_projections cache.
-    User-wide results depend on current scope access."""
+    A cache row is served only to the scope set it was computed over — an
+    access change reads as a cache miss, so points from a revoked scope
+    never leak. Miss → empty payload with pending=True and a refresh
+    enqueued; time- or count-stale but scope-valid → served as-is with a
+    refresh enqueued (layout lags briefly, membership never does).
+    """
     pool = get_pool()
     max_points = min(max_points, 2000)
-
     source_key = source or "_all"
 
+    total_count = await _count_projectable(user_id, source, owner_user_id)
+    if total_count == 0:
+        return {
+            "points": [],
+            "stats": {"total_embeddings": 0, "projected": 0},
+            "cached": False,
+            "pending": False,
+        }
+
+    scope_ids = (
+        [owner_user_id] if owner_user_id is not None else await _accessible_scope_ids(user_id)
+    )
+    cache = await pool.fetchrow(
+        "SELECT points, embedding_count, computed_at, scope_ids FROM embedding_projections "
+        "WHERE user_id = $1 AND source_type = $2 "
+        "AND owner_user_id IS NOT DISTINCT FROM $3",
+        user_id,
+        source_key,
+        owner_user_id,
+    )
+
+    if cache is None or set(cache["scope_ids"]) != set(scope_ids):
+        _enqueue_projection_refresh(user_id, source, owner_user_id)
+        return {
+            "points": [],
+            "stats": {"total_embeddings": total_count, "projected": 0},
+            "cached": False,
+            "pending": True,
+        }
+
+    drift = abs(total_count - cache["embedding_count"]) / max(cache["embedding_count"], 1)
+    if (
+        datetime.now(UTC) - cache["computed_at"] > _PROJECTION_TTL
+        or drift >= _PROJECTION_COUNT_DRIFT
+    ):
+        _enqueue_projection_refresh(user_id, source, owner_user_id)
+
+    points = cache["points"][:max_points]
+    return {
+        "points": points,
+        "stats": {"total_embeddings": total_count, "projected": len(points)},
+        "cached": True,
+        "pending": False,
+    }
+
+
+async def _count_projectable(user_id: UUID, source: str | None, owner_user_id: UUID | None) -> int:
+    """Current number of embedded items the user can see for this source."""
+    pool = get_pool()
     content_count_args = [user_id]
     content_count_scope_idx = None
     if owner_user_id is not None:
@@ -767,22 +841,6 @@ async def get_embedding_projection(
         event_count_args.append(owner_user_id)
         event_scope_idx = 2
 
-    # Cache row keyed by (user_id, source_type, owner_user_id), explicit
-    # scopes only: user-wide results depend on the user's current scope access
-    # and must be recomputed when access changes.
-    cache = None
-    use_cache = owner_user_id is not None
-    if use_cache:
-        cache = await pool.fetchrow(
-            "SELECT points, embedding_count, computed_at FROM embedding_projections "
-            "WHERE user_id = $1 AND source_type = $2 "
-            "AND owner_user_id IS NOT DISTINCT FROM $3",
-            user_id,
-            source_key,
-            owner_user_id,
-        )
-
-    # Count current embeddings
     total_count = 0
     if source is None or source == "pages":
         row = await pool.fetchval(
@@ -836,19 +894,24 @@ async def get_embedding_projection(
         )
         total_count += row or 0
 
-    # Check if cache is still valid
-    one_hour_ago = datetime.now(UTC) - timedelta(hours=1)
-    if cache and cache["computed_at"] > one_hour_ago:
-        count_diff = abs(total_count - cache["embedding_count"])
-        if count_diff / max(cache["embedding_count"], 1) < 0.1:
-            return {
-                "points": cache["points"],
-                "stats": {"total_embeddings": total_count, "projected": len(cache["points"])},
-                "cached": True,
-            }
+    return total_count
 
-    if total_count == 0:
-        return {"points": [], "stats": {"total_embeddings": 0, "projected": 0}, "cached": False}
+
+async def compute_embedding_projection(
+    user_id: UUID,
+    source: str | None = None,
+    owner_user_id: UUID | None = None,
+    max_points: int = 2000,
+) -> int:
+    """Compute the 3D UMAP projection and upsert the cache row the endpoint
+    serves. Worker-only (see get_embedding_projection). Returns the number
+    of projected points."""
+    pool = get_pool()
+    source_key = source or "_all"
+    total_count = await _count_projectable(user_id, source, owner_user_id)
+    scope_ids = (
+        [owner_user_id] if owner_user_id is not None else await _accessible_scope_ids(user_id)
+    )
 
     # Fetch up to the full budget from each source — splitting it evenly
     # starved accounts that live in one source. The union is downsampled to
@@ -968,13 +1031,6 @@ async def get_embedding_projection(
                 }
             )
 
-    if not all_items:
-        return {
-            "points": [],
-            "stats": {"total_embeddings": total_count, "projected": 0},
-            "cached": False,
-        }
-
     # Downsample the union evenly (each source list is recency-ordered, so a
     # stride keeps the mix representative).
     if len(all_items) > max_points:
@@ -984,46 +1040,39 @@ async def get_embedding_projection(
     # 3D UMAP — neighbor-preserving, so related content clumps into visible
     # islands (PCA collapsed everything into one centered blob). Whiten each
     # axis and clamp outliers so a single far point can't compress the rest.
-    embeddings_matrix = np.stack([item["embedding"] for item in all_items])
-    if embeddings_matrix.shape[0] > 3:
-        async with _UMAP_LOCK:
-            coords = await asyncio.to_thread(_umap_3d, embeddings_matrix)
-    else:
-        coords = np.zeros((len(all_items), 3))
+    # Under the floor, cache an empty projection: too few points to mean
+    # anything in 3D, and UMAP's spectral init can't even run.
+    points: list[dict] = []
+    if len(all_items) >= _PROJECTION_MIN_POINTS:
+        embeddings_matrix = np.stack([item["embedding"] for item in all_items])
+        coords = _umap_3d(embeddings_matrix)
+        for i, item in enumerate(all_items):
+            points.append(
+                {
+                    "id": item["id"],
+                    "x": round(float(coords[i, 0]), 4),
+                    "y": round(float(coords[i, 1]), 4),
+                    "z": round(float(coords[i, 2]), 4),
+                    "source": item["source"],
+                    "label": item["label"],
+                    "created_at": item["created_at"],
+                }
+            )
 
-    # Build points
-    points = []
-    for i, item in enumerate(all_items):
-        points.append(
-            {
-                "id": item["id"],
-                "x": round(float(coords[i, 0]), 4),
-                "y": round(float(coords[i, 1]), 4),
-                "z": round(float(coords[i, 2]), 4),
-                "source": item["source"],
-                "label": item["label"],
-                "created_at": item["created_at"],
-            }
-        )
-
-    if use_cache:
-        await pool.execute(
-            "INSERT INTO embedding_projections "
-            "(user_id, source_type, owner_user_id, points, embedding_count, computed_at) "
-            "VALUES ($1, $2, $3, $4, $5, NOW()) "
-            "ON CONFLICT (user_id, source_type, owner_user_id) "
-            "DO UPDATE SET points = EXCLUDED.points, "
-            "              embedding_count = EXCLUDED.embedding_count, "
-            "              computed_at = NOW()",
-            user_id,
-            source_key,
-            owner_user_id,
-            points,
-            total_count,
-        )
-
-    return {
-        "points": points,
-        "stats": {"total_embeddings": total_count, "projected": len(points)},
-        "cached": False,
-    }
+    await pool.execute(
+        "INSERT INTO embedding_projections "
+        "(user_id, source_type, owner_user_id, points, embedding_count, computed_at, scope_ids) "
+        "VALUES ($1, $2, $3, $4, $5, NOW(), $6) "
+        "ON CONFLICT (user_id, source_type, owner_user_id) "
+        "DO UPDATE SET points = EXCLUDED.points, "
+        "              embedding_count = EXCLUDED.embedding_count, "
+        "              computed_at = NOW(), "
+        "              scope_ids = EXCLUDED.scope_ids",
+        user_id,
+        source_key,
+        owner_user_id,
+        points,
+        total_count,
+        scope_ids,
+    )
+    return len(points)
