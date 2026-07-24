@@ -27,7 +27,10 @@ def test_fresh_install_writes_settings_and_context(monkeypatch, tmp_path: Path) 
     events = set(settings["hooks"])
     assert {"SessionStart", "BeforeAgent", "AfterTool", "AfterAgent", "SessionEnd"} <= events
     commands = json.dumps(settings)
-    assert "stashai/plugin/assets/gemini" in commands
+    # Machine-independent commands: the CLI runs its own shipped scripts, so
+    # no absolute install path may leak into the user's settings.json.
+    assert "stash hook run gemini" in commands
+    assert "stashai/plugin/assets/gemini" not in commands
     assert "${PLUGIN_ROOT}" not in commands
 
     assert "stash" in (gemini_dir / "GEMINI.md").read_text()
@@ -47,7 +50,33 @@ def test_install_preserves_existing_settings_and_user_hooks(monkeypatch, tmp_pat
     assert settings["theme"] == "dark"
     session_start = settings["hooks"]["SessionStart"]
     assert user_hook in session_start
-    assert any("stashai/plugin/assets/gemini" in json.dumps(e) for e in session_start)
+    assert any("stash hook run gemini" in json.dumps(e) for e in session_start)
+
+
+def test_install_sweeps_stale_absolute_path_entries(monkeypatch, tmp_path: Path) -> None:
+    """Pre-`stash hook run` installs embedded the install dir's absolute path;
+    reinstalling must replace those with the stable command, not stack a
+    second stash entry per event."""
+    gemini_dir = tmp_path / ".gemini"
+    gemini_dir.mkdir(parents=True)
+    stale = {
+        "matcher": "*",
+        "hooks": [
+            {
+                "type": "command",
+                "name": "stash-session-start",
+                "command": "bash /old/venv/stashai/plugin/assets/gemini/scripts/_run.sh on_session_start",
+            }
+        ],
+    }
+    (gemini_dir / "settings.json").write_text(json.dumps({"hooks": {"SessionStart": [stale]}}))
+
+    _run_install(monkeypatch, tmp_path)
+
+    session_start = json.loads((gemini_dir / "settings.json").read_text())["hooks"]["SessionStart"]
+    stash_entries = [e for e in session_start if "stash" in json.dumps(e)]
+    assert len(stash_entries) == 1
+    assert "stash hook run gemini on_session_start" in json.dumps(stash_entries[0])
 
 
 def test_second_run_is_noop(monkeypatch, tmp_path: Path) -> None:
