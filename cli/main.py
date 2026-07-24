@@ -626,7 +626,7 @@ def _install_gemini(force: bool) -> tuple[str, str]:
     root = _assets_dir("gemini")
     dest = Path.home() / ".gemini" / "settings.json"
     template = (root / "settings.snippet.json").read_text()
-    status_ = _merge_json_hooks(dest, template, root)
+    status_ = _merge_json_hooks(dest, template, root, ("stashai/plugin/assets/gemini",))
 
     agents_dest = Path.home() / ".gemini" / "GEMINI.md"
     _upsert_agents_md(agents_dest, (root / "GEMINI.md").read_text())
