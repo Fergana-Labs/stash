@@ -35,6 +35,25 @@ jobs:
       - run: npm test
         working-directory: frontend
 
+  frontend-build:
+    name: Frontend build (next build + type-check)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+        working-directory: frontend
+      - run: npm run build
+        working-directory: frontend
+        env:
+          # next.config.ts fails loud without a backend origin; the build
+          # itself never contacts it.
+          BACKEND_INTERNAL_URL: http://localhost:3456
+
   backend-lint:
     name: Backend lint (ruff)
     runs-on: ubuntu-latest
