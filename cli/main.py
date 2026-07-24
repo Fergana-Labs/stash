@@ -626,7 +626,14 @@ def _install_gemini(force: bool) -> tuple[str, str]:
     root = _assets_dir("gemini")
     dest = Path.home() / ".gemini" / "settings.json"
     template = (root / "settings.snippet.json").read_text()
-    status_ = _merge_json_hooks(dest, template, root)
+    # The second marker sweeps stale absolute-path entries written by
+    # pre-`stash hook run` installs.
+    status_ = _merge_json_hooks(
+        dest,
+        template,
+        root,
+        ("stash hook run gemini", "stashai/plugin/assets/gemini"),
+    )
 
     agents_dest = Path.home() / ".gemini" / "GEMINI.md"
     _upsert_agents_md(agents_dest, (root / "GEMINI.md").read_text())
@@ -751,27 +758,36 @@ _INSTALLERS = {
 hook_app = typer.Typer(help="Hook plumbing invoked by coding agents. Not for interactive use.")
 app.add_typer(hook_app, name="hook", hidden=True)
 
-_CODEX_HOOK_EVENTS = ("on_session_start", "on_prompt", "on_tool_use", "on_stop")
+_HOOK_EVENTS = {
+    "claude": ("on_session_start", "on_prompt", "on_tool_use", "on_stop", "on_session_end"),
+    "codex": ("on_session_start", "on_prompt", "on_tool_use", "on_stop"),
+    "gemini": ("on_session_start", "on_prompt", "on_tool_use", "on_stop", "on_session_end"),
+    "opencode": ("on_session_start", "on_prompt", "on_tool_use", "on_session_end"),
+}
 
 
 @hook_app.command("run")
 def hook_run(agent: str = typer.Argument(...), event: str = typer.Argument(...)) -> None:
     """Run a plugin hook script. Reads the agent's JSON payload on stdin.
 
-    Codex hooks.json references this command so the hook definition stays
-    byte-identical across upgrades — Codex trusts hooks by command hash, so a
-    stable command means trust survives every stash/python upgrade.
+    Agent hook files reference this command so every hook runs the scripts
+    shipped inside the installed stashai package, under the package's own
+    interpreter — no venv hunting, no version skew between scripts and
+    library. The command is also byte-identical across upgrades, which is
+    what keeps Codex (which trusts hooks by command hash) from silently
+    distrusting the hooks after a stash/python upgrade.
     """
-    if agent != "codex":
+    events = _HOOK_EVENTS.get(agent)
+    if events is None:
         typer.echo(f"Unknown hook agent: {agent}", err=True)
         raise typer.Exit(1)
-    if event not in _CODEX_HOOK_EVENTS:
-        typer.echo(f"Unknown codex hook event: {event}", err=True)
+    if event not in events:
+        typer.echo(f"Unknown {agent} hook event: {event}", err=True)
         raise typer.Exit(1)
 
     import runpy
 
-    script = _assets_dir("codex") / "scripts" / f"{event}.py"
+    script = _assets_dir(agent) / "scripts" / f"{event}.py"
     sys.path.insert(0, str(script.parent))
     runpy.run_path(str(script), run_name="__main__")
 
