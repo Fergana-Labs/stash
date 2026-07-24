@@ -248,7 +248,7 @@ function ExtensionCta() {
           Download the extension
         </div>
         <div className="mt-0.5 text-[12.5px] text-muted-foreground">
-          Clip pages, import bookmarks, and sync your Instagram saves and AI chats into Stash.
+          Import bookmarks, save tabs, and sync Claude or ChatGPT chats into Stash.
         </div>
       </div>
       <span className="shrink-0 rounded-full bg-brand px-4 py-1.5 text-[12px] font-semibold text-white">
