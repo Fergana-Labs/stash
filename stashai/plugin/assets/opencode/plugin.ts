@@ -2,9 +2,9 @@
  * Stash plugin for opencode.
  *
  * Thin TS shim: each opencode event handler serializes its input and pipes it
- * into `stash hook run opencode <event>` via stdin. The hook scripts ship
- * inside the stashai package and run under its Python, reused from every
- * other agent's plugin.
+ * into the matching Python hook script via stdin. All real work happens in
+ * the `stashai.plugin` package (shipped with the stashai package), reused
+ * from every other agent's plugin.
  *
  * Bus events (session.*, message.*, file.*, etc.) are delivered through the
  * single `event` hook, NOT as keyed properties. Only the explicit allow-list
@@ -15,6 +15,12 @@
  */
 
 import { spawn } from "node:child_process";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const PLUGIN_ROOT = dirname(fileURLToPath(import.meta.url));
+const SCRIPTS = join(PLUGIN_ROOT, "scripts");
+const RUN_SH = join(SCRIPTS, "_run.sh");
 
 // opencode never emits a clean session-end signal. After this much idle time
 // inside a live opencode process, treat the session as ended and fire
@@ -30,7 +36,7 @@ function scheduleIdleEnd(sessionId: string): void {
   if (!sessionId) return;
   activeSessionId = sessionId;
   idleTimer = setTimeout(() => {
-    runHook("on_session_end", { session_id: sessionId, cwd: activeCwd });
+    runHook("on_session_end.py", { session_id: sessionId, cwd: activeCwd });
     activeSessionId = "";
     idleTimer = null;
   }, IDLE_END_MS);
@@ -42,20 +48,20 @@ function cancelIdleEnd(): void {
   activeSessionId = "";
 }
 
-function runHook(event: string, payload: unknown, showOutput = false): void {
+function runHook(script: string, payload: unknown, showOutput = false): void {
   // Fire-and-forget. We never want a flaky Stash backend to stall opencode.
   // detached + unref so the child belongs to its own process group and gets
   // reaped independently — otherwise zombies accumulate over long sessions.
-  // `stash hook run` executes the script shipped inside the stashai package,
-  // under the package's own python.
+  // _run.sh resolves the stashai venv's python so hooks work under pipx/uv.
+  const hookName = script.replace(/\.py$/, "");
   try {
     const stdio: ["pipe", "pipe", "pipe"] | ["pipe", "ignore", "ignore"] =
       showOutput ? ["pipe", "pipe", "pipe"] : ["pipe", "ignore", "ignore"];
-    const child = spawn("stash", ["hook", "run", "opencode", event], {
+    const child = spawn("bash", [RUN_SH, hookName], {
       stdio,
       detached: !showOutput,
     });
-    child.on("error", () => { /* stash missing / crash — swallow */ });
+    child.on("error", () => { /* bash missing / crash — swallow */ });
     if (showOutput) {
       child.stdout?.on("data", (chunk) => process.stderr.write(chunk));
       child.stderr?.on("data", (chunk) => process.stderr.write(chunk));
@@ -96,7 +102,7 @@ export const StashPlugin = async ({
     ) => {
       const text = extractText(output?.parts) || output?.message?.content || "";
       const sid = output?.message?.sessionID ?? "";
-      runHook("on_prompt", { session_id: sid, prompt: text, cwd });
+      runHook("on_prompt.py", { session_id: sid, prompt: text, cwd });
       scheduleIdleEnd(sid);
     },
 
@@ -108,7 +114,7 @@ export const StashPlugin = async ({
       input: { tool: string; sessionID: string; callID: string; args: any },
       output: { title: string; output: string; metadata: any },
     ) => {
-      runHook("on_tool_use", {
+      runHook("on_tool_use.py", {
         session_id: input?.sessionID ?? "",
         tool_name: input?.tool ?? "",
         tool_input: input?.args ?? {},
@@ -129,13 +135,13 @@ export const StashPlugin = async ({
         case "session.created": {
           const info = event.properties?.info;
           const sid = info?.id ?? "";
-          runHook("on_session_start", { session_id: sid, cwd }, true);
+          runHook("on_session_start.py", { session_id: sid, cwd }, true);
           scheduleIdleEnd(sid);
           break;
         }
         case "session.deleted": {
           const info = event.properties?.info;
-          runHook("on_session_end", { session_id: info?.id ?? "", cwd });
+          runHook("on_session_end.py", { session_id: info?.id ?? "", cwd });
           cancelIdleEnd();
           break;
         }

@@ -1,5 +1,5 @@
 {
-  "_comment": "Merged into ~/.gemini/settings.json by `stash signin` (or by hand for <project>/.gemini/settings.json). Commands are machine-independent — `stash hook run gemini <event>` executes the scripts shipped inside the stashai package. Timeouts are in MILLISECONDS.",
+  "_comment": "Merged into ~/.gemini/settings.json by `stash signin` (or by hand for <project>/.gemini/settings.json). ${PLUGIN_ROOT} is the absolute path to this plugin dir. Timeouts are in MILLISECONDS.",
   "hooks": {
     "SessionStart": [
       {
@@ -8,7 +8,7 @@
           {
             "type": "command",
             "name": "stash-session-start",
-            "command": "stash hook run gemini on_session_start",
+            "command": "bash ${PLUGIN_ROOT}/scripts/_run.sh on_session_start",
             "timeout": 5000,
             "description": "Record Stash session id"
           }
@@ -22,7 +22,7 @@
           {
             "type": "command",
             "name": "stash-prompt",
-            "command": "stash hook run gemini on_prompt",
+            "command": "bash ${PLUGIN_ROOT}/scripts/_run.sh on_prompt",
             "timeout": 3000,
             "description": "Stream user prompt to Stash"
           }
@@ -36,7 +36,7 @@
           {
             "type": "command",
             "name": "stash-tool-use",
-            "command": "stash hook run gemini on_tool_use",
+            "command": "bash ${PLUGIN_ROOT}/scripts/_run.sh on_tool_use",
             "timeout": 5000,
             "description": "Stream tool use to Stash history"
           }
@@ -50,7 +50,7 @@
           {
             "type": "command",
             "name": "stash-stop",
-            "command": "stash hook run gemini on_stop",
+            "command": "bash ${PLUGIN_ROOT}/scripts/_run.sh on_stop",
             "timeout": 10000,
             "description": "Stream session end to Stash"
           }
@@ -64,7 +64,7 @@
           {
             "type": "command",
             "name": "stash-session-end",
-            "command": "stash hook run gemini on_session_end",
+            "command": "bash ${PLUGIN_ROOT}/scripts/_run.sh on_session_end",
             "timeout": 5000,
             "description": "Clear Stash session state"
           }

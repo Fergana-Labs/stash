@@ -4,11 +4,10 @@ Streams opencode sessions to your Stash.
 
 ## Prerequisites
 
-- `stash` CLI installed (on PATH) and signed in
+- `stash` CLI installed and logged in
+- `.stash` manifest present in repo (or ancestor)
+- Python 3.10+ and `httpx`
 - opencode installed (Bun-based runtime — opencode transpiles TS directly, no build step needed)
-
-Streaming is gated globally: it is on whenever you are signed in
-(`stash signin`) and haven't stopped streaming (`stash disconnect`).
 
 ## Install
 
@@ -34,7 +33,7 @@ Restart opencode.
 
 ## How it works
 
-`plugin.ts` registers two keyed hooks (`chat.message`, `tool.execute.after`) plus a single `event` dispatcher for bus events. Each handler pipes its payload into `stash hook run opencode <event>`, which runs the hook scripts shipped inside the `stashai` package under the package's own Python — identical to the Claude/Gemini/Codex plugins.
+`plugin.ts` registers two keyed hooks (`chat.message`, `tool.execute.after`) plus a single `event` dispatcher for bus events. All real logic lives in the `stashai.plugin` Python package (shipped with the `stashai` package) and is identical to the Claude/Cursor/Gemini/Codex plugins.
 
 | opencode signal | Stash event |
 |---|---|

@@ -16,6 +16,7 @@ openclaw-plugin/
 ├── package.json        # openclaw.extensions entry
 ├── index.ts            # plugin entry — calls api.on(...) for plugin hooks
 ├── scripts/            # Python scripts reusing stashai.plugin
+│   ├── _run.sh
 │   ├── adapt.py
 │   ├── config.py
 │   ├── on_session_start.py
@@ -26,10 +27,9 @@ openclaw-plugin/
 ```
 
 `index.ts` runs inside the Openclaw Node process. On each hook it
-normalizes the event to a flat JSON payload and pipes it into
-`stash hook run openclaw <event>`, which runs the matching script shipped
-inside the `stashai` package under the package's own Python — just like
-every other agent's plugin.
+normalizes the event to a flat JSON payload and pipes it into the matching
+Python script. The Python side imports from `stashai.plugin` (shipped with the `stashai`
+package) just like every other agent's plugin.
 
 ## Install
 
@@ -51,8 +51,14 @@ install by hand from a local checkout:
 openclaw plugins install --dangerously-force-unsafe-install ./plugins/openclaw-plugin
 ```
 
-The gateway process needs `stash` on its PATH (the extension spawns
-`stash hook run openclaw <event>`); a `uv tool install stashai` puts it there.
+If `python3` on the gateway's PATH doesn't have `stashai` installed (e.g.
+you installed the CLI via uv), point the extension at the right interpreter:
+
+```bash
+# One-line LaunchAgent tweak on macOS
+/usr/libexec/PlistBuddy -c 'Add :EnvironmentVariables:STASH_PYTHON string /path/to/python-with-stashai' ~/Library/LaunchAgents/ai.openclaw.gateway.plist
+launchctl unload ~/Library/LaunchAgents/ai.openclaw.gateway.plist && launchctl load ~/Library/LaunchAgents/ai.openclaw.gateway.plist
+```
 
 ## Event mapping
 
@@ -72,6 +78,7 @@ Reads from `~/.stash/config.json` (populated by `stash signin` + `stash
 config …`). Overrides:
 
 - `STASH_OPENCLAW_DATA=<path>` — custom state dir (default `~/.stash/plugins/openclaw`)
+- `STASH_PYTHON=<path>` — Python interpreter to spawn (default `python3`)
 
 ## Retrieval
 

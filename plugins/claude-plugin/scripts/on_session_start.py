@@ -7,23 +7,44 @@ import os
 import sys
 
 from adapt import adapt_session_start
+from cache_drift import plugin_cache_drift_warning
 from config import DATA_DIR, get_config, get_stdin_data
 
-from stashai.plugin.doctor import shadow_install_warning
+try:
+    from stashai.plugin.doctor import shadow_install_warning
+except ImportError:
+    # Plugin scripts can refresh a session before the stashai package
+    # auto-updates; skip the check until the package catches up.
+    def shadow_install_warning() -> None:
+        return None
+
+
+try:
+    from stashai.plugin.hooks import color_upload_health_warning, upload_health_warning
+except ImportError:
+    # Same version-skew window as above.
+    def upload_health_warning(*_args) -> None:
+        return None
+
+    def color_upload_health_warning(text: str) -> str:
+        return text
+
+
+try:
+    from stashai.plugin.hooks import skills_update_notice
+except ImportError:
+    # Same version-skew window as above.
+    def skills_update_notice() -> None:
+        return None
+
+
 from stashai.plugin.hooks import (
-    color_upload_health_warning,
     create_session_record,
     reset_session_record_state,
-    skills_update_notice,
-    upload_health_warning,
     uploads_disabled_warning,
     uploads_enabled,
 )
-from stashai.plugin.session_upload import (
-    spawn_self_upgrade,
-    spawn_session_watcher,
-    spawn_skills_sync,
-)
+from stashai.plugin.session_upload import spawn_session_watcher, spawn_skills_sync
 from stashai.plugin.state import load_state, reset_stats, save_state
 
 CONTEXT = (
@@ -79,7 +100,9 @@ def main():
     state = load_state(DATA_DIR)
     if not uploads_enabled(cfg):
         warning = uploads_disabled_warning(cfg, state, event, DATA_DIR)
-        messages = [m for m in (warning, shadow_install_warning()) if m]
+        messages = [
+            m for m in (warning, shadow_install_warning(), plugin_cache_drift_warning()) if m
+        ]
         if messages:
             json.dump({"systemMessage": "\n\n".join(messages)}, sys.stdout)
         return
@@ -100,7 +123,6 @@ def main():
         session_url = None
 
     spawn_skills_sync(cfg)
-    spawn_self_upgrade()
 
     if session_url:
         # The link instruction is its own toggle (`stash settings` → Session
@@ -133,6 +155,7 @@ def main():
         m
         for m in (
             shadow_install_warning(),
+            plugin_cache_drift_warning(),
             skills_update_notice(),
             color_upload_health_warning(health_warning) if health_warning else None,
         )
