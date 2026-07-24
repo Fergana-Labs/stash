@@ -50,6 +50,7 @@ class InProcessVfsClient:
         self._http = http
         self._loop = loop
         self._internal = False
+        self._scan = False
         self._document_reads = 0
         self._reads_lock = threading.Lock()
 
@@ -66,12 +67,42 @@ class InProcessVfsClient:
         finally:
             self._internal = False
 
+    @contextmanager
+    def scan_calls(self):
+        """A grep's per-document reads (see stashvfs.VfsClient.scan_calls):
+        overrides the client-wide `ask` tag with `scan` so analytics count
+        the grep as the one search `record_search` writes, not as hundreds
+        of reads. Safe with prefetch's pool threads: the shell holds this
+        block open until `prefetch` returns, and prefetch joins its pool."""
+        self._scan = True
+        try:
+            yield
+        finally:
+            self._scan = False
+
+    def record_search(self, pattern: str, roots: list[str], docs_scanned: int) -> None:
+        future = asyncio.run_coroutine_threadsafe(
+            self._http.post(
+                "/api/v1/me/vfs/searches",
+                json={"pattern": pattern, "roots": roots, "docs_scanned": docs_scanned},
+            ),
+            self._loop,
+        )
+        response = future.result()
+        if response.status_code >= 400:
+            raise VfsClientError(_error_detail(response))
+
     def _request(self, method: str, endpoint: str, **params) -> httpx.Response:
         # Dispatched onto the app's event loop from whichever thread we are on.
         # `StashVfsModel.prefetch` calls loaders from a pool, so this must work
         # from an arbitrary thread — not just anyio's worker, which is all
         # `anyio.from_thread.run` supports.
-        headers = {"X-Stash-Via": "auto"} if self._internal else None
+        if self._internal:
+            headers = {"X-Stash-Via": "auto"}
+        elif self._scan:
+            headers = {"X-Stash-Via": "scan"}
+        else:
+            headers = None
         future = asyncio.run_coroutine_threadsafe(
             self._http.request(method, endpoint, params=params or None, headers=headers),
             self._loop,

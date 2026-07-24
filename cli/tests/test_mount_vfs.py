@@ -11,6 +11,10 @@ class FakeClient:
         # snapshot it so tests can pin what counts as internal traffic.
         self.internal = False
         self.internal_at_call: dict[str, bool] = {}
+        # Same idea for grep sweeps: True while the shell scans documents.
+        self.scan = False
+        self.scan_at_call: dict[str, bool] = {}
+        self.searches: list[tuple[str, list[str], int]] = []
 
     @contextmanager
     def internal_calls(self):
@@ -19,6 +23,17 @@ class FakeClient:
             yield
         finally:
             self.internal = False
+
+    @contextmanager
+    def scan_calls(self):
+        self.scan = True
+        try:
+            yield
+        finally:
+            self.scan = False
+
+    def record_search(self, pattern, roots, docs_scanned):
+        self.searches.append((pattern, roots, docs_scanned))
 
     def get_memory_folder(self):
         self.internal_at_call["get_memory_folder"] = self.internal
@@ -129,6 +144,7 @@ class FakeClient:
     def read_source_doc(self, source, ref):
         assert source == "src-gmail-1"
         self.internal_at_call["read_source_doc"] = self.internal
+        self.scan_at_call["read_source_doc"] = self.scan
         return {"content": f"BODY of {ref}"}
 
     def get_transcript_events(self, session_id):
@@ -390,6 +406,25 @@ def _grep_gmail(concurrency: int) -> tuple[str, CountingLoaderClient]:
         return result.stdout, client
     finally:
         model_module.PREFETCH_CONCURRENCY = original
+
+
+def test_grep_reads_are_scan_tagged_and_recorded_as_one_search():
+    """A recursive grep reads every document it walks. Those reads must run
+    inside scan_calls (so analytics exclude them) and the grep must record
+    exactly one search — before this, one agent grep landed on the analytics
+    dashboard as hundreds of user-driven reads."""
+    from stashvfs import SkillAppVfsShell
+
+    client = FakeClient()
+    model = StashVfsModel(client, include_computer=True)
+    model.refresh()
+    SkillAppVfsShell(model).run("grep -ri BODY /sources/gmail")
+
+    assert client.scan_at_call["read_source_doc"] is True
+    [(pattern, roots, docs_scanned)] = client.searches
+    assert pattern == "BODY"
+    assert roots == ["/sources/gmail"]
+    assert docs_scanned >= 2
 
 
 def test_prefetch_does_not_change_what_grep_finds():

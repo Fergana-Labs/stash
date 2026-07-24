@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 from stashvfs import MountError
 
 from ..auth import get_current_user
-from ..services import vfs_service
+from ..services import security_audit_service, vfs_service
 from ..services.vfs_service import VfsBudgetExceeded
 
 router = APIRouter(prefix="/api/v1/me/vfs", tags=["vfs"])
@@ -21,6 +21,12 @@ MAX_SCRIPT_LENGTH = 4096
 class VfsRequest(BaseModel):
     script: str = Field(max_length=MAX_SCRIPT_LENGTH)
     cwd: str = "/"
+
+
+class VfsSearch(BaseModel):
+    pattern: str = Field(max_length=MAX_SCRIPT_LENGTH)
+    roots: list[str] = Field(max_length=64)
+    docs_scanned: int = Field(ge=0)
 
 
 @router.post("")
@@ -47,6 +53,28 @@ async def run_vfs(
         raise HTTPException(status_code=400, detail=str(e)) from e
     except VfsBudgetExceeded as e:
         raise HTTPException(status_code=413, detail=str(e)) from e
+
+
+@router.post("/searches", status_code=204)
+async def record_vfs_search(
+    body: VfsSearch,
+    current_user: dict = Depends(get_current_user),
+):
+    """The one search audit event standing in for a VFS grep. The grep's
+    per-document reads carry via='scan' and are excluded from content-activity
+    analytics; this row is what the dashboard counts, on the caller's real
+    surface (cli for `stash vfs`, ask for the server-side VFS)."""
+    await security_audit_service.record_event(
+        action="source.searched",
+        actor_user_id=current_user["id"],
+        owner_user_id=current_user["id"],
+        target_type="vfs",
+        target_id=" ".join(body.roots),
+        metadata={
+            "query_hash": security_audit_service.hash_value(body.pattern),
+            "docs_scanned": body.docs_scanned,
+        },
+    )
 
 
 @router.get("/resolve")
