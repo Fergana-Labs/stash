@@ -5,7 +5,11 @@
   "main": "index.ts",
   "description": "Stream Openclaw sessions to a Stash workspace.",
   "openclaw": {
-    "extensions": ["./index.ts"]
+    "extensions": ["./index.ts"],
+    "runtimeExtensions": ["./dist/index.js"]
+  },
+  "scripts": {
+    "build": "npx -y esbuild@0.25.8 index.ts --outfile=dist/index.js --format=esm --target=node20"
   },
   "peerDependencies": {
     "openclaw": ">=2026.4.0"

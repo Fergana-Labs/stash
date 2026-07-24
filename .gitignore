@@ -11,6 +11,9 @@ __pycache__/
 venv/
 .venv/
 dist/
+# Openclaw requires compiled JS for installed plugins; its dist is committed.
+!plugins/openclaw-plugin/dist/
+!stashai/plugin/assets/openclaw/dist/
 build/
 .gstack/
 *.egg-info/
