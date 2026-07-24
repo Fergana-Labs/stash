@@ -155,6 +155,8 @@ async def search_sources(
     include_sources: list[str] | None = Query(None),
     exclude_sources: list[str] | None = Query(None),
     limit: int = Query(20, ge=1, le=500),
+    modified_after: datetime | None = Query(None),
+    modified_before: datetime | None = Query(None),
     current_user: dict = Depends(get_current_user),
     scope_user_id: UUID = Depends(get_scope),
 ):
@@ -164,7 +166,10 @@ async def search_sources(
     (files + sessions + its connected sources), or pass a handle to scope.
     Repeatable include_sources/exclude_sources params (native handles +
     provider names) filter which sources are searched:
-    (include or everything) - exclude."""
+    (include or everything) - exclude.
+    modified_after/modified_before (ISO-8601) restrict hits to those last
+    modified inside the range; hits with no known modification time are
+    excluded whenever a bound is set."""
     owner_user_id = scope_user_id
     await _require_member(owner_user_id, current_user["id"])
     try:
@@ -176,6 +181,8 @@ async def search_sources(
             include_sources=include_sources,
             exclude_sources=exclude_sources,
             limit=limit,
+            modified_after=modified_after,
+            modified_before=modified_before,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

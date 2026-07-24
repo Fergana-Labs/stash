@@ -2981,6 +2981,8 @@ def _print_search(
     exclude_sources: str,
     limit: int,
     as_json: bool,
+    modified_after: str = "",
+    modified_before: str = "",
 ) -> None:
     """Shared body for `stash search`."""
     telemetry.record("sources.search")
@@ -2992,6 +2994,8 @@ def _print_search(
                 include_sources=split_source_tokens(include_sources),
                 exclude_sources=split_source_tokens(exclude_sources),
                 limit=limit,
+                modified_after=modified_after or None,
+                modified_before=modified_before or None,
             )
         except StashError as e:
             _err(e)
@@ -3043,11 +3047,32 @@ def search(
         "--exclude-sources",
         help="Comma-separated sources to skip. Not combinable with --source.",
     ),
+    modified_after: str = typer.Option(
+        "",
+        "--modified-after",
+        help="Only results last modified after this ISO timestamp (e.g. 2026-01-01). "
+        "Results with no known modification time are excluded.",
+    ),
+    modified_before: str = typer.Option(
+        "",
+        "--modified-before",
+        help="Only results last modified before this ISO timestamp. "
+        "Results with no known modification time are excluded.",
+    ),
     limit: int = typer.Option(20, "-n", "--limit"),
     as_json: bool = typer.Option(False, "--json"),
 ):
     """Search everything you can see — files, sessions, and connected sources."""
-    _print_search(query, source, include_sources, exclude_sources, limit, as_json)
+    _print_search(
+        query,
+        source,
+        include_sources,
+        exclude_sources,
+        limit,
+        as_json,
+        modified_after=modified_after,
+        modified_before=modified_before,
+    )
 
 
 def _poll_recompute_outcome(

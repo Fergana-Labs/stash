@@ -9,6 +9,7 @@ import hashlib
 import logging
 import re
 from collections.abc import Awaitable, Callable
+from datetime import datetime
 from uuid import UUID
 
 import asyncpg
@@ -1453,6 +1454,8 @@ async def search_pages_fts(
     query: str,
     limit: int = 10,
     user_id: UUID | None = None,
+    modified_after: datetime | None = None,
+    modified_before: datetime | None = None,
 ) -> list[dict]:
     pool = get_pool()
     vec_expr = PAGES_FTS_VECTOR_EXPR
@@ -1466,6 +1469,12 @@ async def search_pages_fts(
     if user_id is not None:
         args.append(user_id)
         where += " AND " + permission_service.readable_content_condition("page", "p", 3)
+    if modified_after:
+        args.append(modified_after)
+        where += f" AND p.updated_at > ${len(args)}"
+    if modified_before:
+        args.append(modified_before)
+        where += f" AND p.updated_at < ${len(args)}"
     args.append(limit)
     rows = await pool.fetch(
         f"SELECT id, owner_user_id, folder_id, name, content_markdown, content_html, "
