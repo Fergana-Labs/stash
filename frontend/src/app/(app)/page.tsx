@@ -1,13 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { FileText, Code2, ExternalLink } from "lucide-react";
+import { FileText, Code2, ExternalLink, Globe, Lock } from "lucide-react";
 import Link from "next/link";
 import { CardGridSkeleton } from "@/components/SkeletonStates";
 import { GitHubIcon } from "@/components/integrations/BrandIcons";
 import ForkSkillCardButton from "@/components/skill/ForkSkillCardButton";
 import SkillCard from "@/components/skill/SkillCard";
-import { StashIcon } from "@/components/SkillIcons";
 import {
   getHomeFeed,
   githubOwner,
@@ -62,30 +61,26 @@ export default function HomePage() {
 
   return (
     <div className="min-h-full">
-      {/* Hero */}
-      <div className="relative overflow-hidden border-b border-border bg-gradient-to-br from-brand-100 via-brand-50 to-[color:var(--bg-surface)]">
-        <div className="mx-auto max-w-[720px] px-6 py-10">
-          <div className="flex items-center gap-2 text-brand-600">
-            <StashIcon className="text-[26px]" />
-            <span className="text-[13px] font-semibold uppercase tracking-[0.14em]">Home</span>
-          </div>
-          <h1 className="mt-3 font-display text-[32px] font-bold leading-[1.05] tracking-[-0.02em] text-foreground">
-            Your feed.
+      {/* Header */}
+      <div className="border-b border-border">
+        <div className="mx-auto flex max-w-[720px] items-baseline justify-between gap-4 px-6 py-8">
+          <h1 className="font-display text-[28px] font-bold leading-[1.05] tracking-[-0.02em] text-foreground">
+            Your feed
           </h1>
-          <p className="mt-2 max-w-[560px] text-[14.5px] leading-[1.6] text-dim">
-            Skills to copy, pages from the community, and things you saved that are worth another
-            look.{" "}
-            <Link href="/discover" className="font-medium text-brand-600 hover:underline">
-              Browse the full catalog →
-            </Link>
-          </p>
+          <Link
+            href="/discover"
+            className="shrink-0 text-[13px] font-medium text-brand-600 hover:underline"
+          >
+            View all collections →
+          </Link>
         </div>
       </div>
 
       {/* Feed */}
       <div className="mx-auto max-w-[720px] px-6 pb-20 pt-6">
+        <ExtensionCta />
         {initialLoad ? (
-          <CardGridSkeleton className="mt-2" />
+          <CardGridSkeleton className="mt-5" />
         ) : items.length === 0 ? (
           <section className="mt-12 rounded-lg border border-dashed border-border bg-base px-6 py-12 text-center">
             <h2 className="font-display text-[20px] font-bold text-foreground">Nothing here yet.</h2>
@@ -94,12 +89,9 @@ export default function HomePage() {
             </p>
           </section>
         ) : (
-          <div className="flex flex-col gap-3.5">
+          <div className="mt-5 flex flex-col gap-5">
             {items.map((item, i) => (
-              <span key={feedKey(item, i)} className="contents">
-                <FeedCard item={item} index={i} />
-                {i === 3 && <ExtensionCta />}
-              </span>
+              <FeedCard key={feedKey(item, i)} item={item} index={i} />
             ))}
           </div>
         )}
@@ -119,6 +111,37 @@ function feedKey(item: FeedItem, index: number): string {
 }
 
 function FeedCard({ item, index }: { item: FeedItem; index: number }) {
+  return (
+    <div>
+      <ProvenanceLabel internal={item.kind === "resurface"} />
+      <FeedCardBody item={item} index={index} />
+    </div>
+  );
+}
+
+// Every card says where it came from, so the user never has to wonder whether
+// they are looking at public community content or their own private data.
+function ProvenanceLabel({ internal }: { internal: boolean }) {
+  if (internal) {
+    return (
+      <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.1em] text-brand-600">
+        <Lock className="h-3 w-3" />
+        From your stash
+        <span className="font-normal normal-case tracking-normal text-muted-foreground">
+          · only visible to you
+        </span>
+      </div>
+    );
+  }
+  return (
+    <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+      <Globe className="h-3 w-3" />
+      From the community
+    </div>
+  );
+}
+
+function FeedCardBody({ item, index }: { item: FeedItem; index: number }) {
   if (item.kind === "skill") {
     const skill = item.data;
     return (
@@ -153,14 +176,11 @@ function FeedCard({ item, index }: { item: FeedItem; index: number }) {
 function ResurfaceCard({ data }: { data: ResurfaceCardData }) {
   const body = (
     <>
-      <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.1em] text-brand-600">
-        From your stash
-        <span className="rounded bg-brand-50 px-1.5 py-0.5 font-mono text-[10px] normal-case tracking-normal text-brand-600">
+      <div className="flex items-center gap-2 text-[11px]">
+        <span className="rounded bg-brand-50 px-1.5 py-0.5 font-mono text-[10px] text-brand-600">
           {sourceLabel(data.source)}
         </span>
-        <span className="font-normal normal-case tracking-normal text-muted-foreground">
-          saved {savedAgo(data.saved_at)}
-        </span>
+        <span className="text-muted-foreground">saved {savedAgo(data.saved_at)}</span>
       </div>
       <div className="mt-2 flex items-start gap-3">
         <div className="min-w-0 flex-1">
@@ -204,6 +224,9 @@ function ResurfaceCard({ data }: { data: ResurfaceCardData }) {
 function sourceLabel(source: ResurfaceCardData["source"]): string {
   if (source === "x") return "X";
   if (source === "instagram") return "Instagram";
+  if (source === "doc") return "Doc";
+  if (source === "file") return "File";
+  if (source === "memory") return "Memory";
   return "Clip";
 }
 
@@ -225,7 +248,7 @@ function ExtensionCta() {
           Download the extension
         </div>
         <div className="mt-0.5 text-[12.5px] text-muted-foreground">
-          Clip pages, import bookmarks, and sync your Instagram saves and AI chats into Stash.
+          Import bookmarks, save tabs, and sync Claude or ChatGPT chats into Stash.
         </div>
       </div>
       <span className="shrink-0 rounded-full bg-brand px-4 py-1.5 text-[12px] font-semibold text-white">

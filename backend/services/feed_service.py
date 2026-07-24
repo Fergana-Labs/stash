@@ -1,6 +1,7 @@
 """The home-page feed: one continuous stream of community skills to copy,
 fresh public pages, and — for a signed-in user — resurfaced items from their
-own stash (clips and X/Instagram saves old enough to be worth re-encountering).
+own stash (docs, files, memory pages, clips, and X/Instagram saves old enough
+to be worth re-encountering).
 
 Interleave happens server-side so the client renders a flat list. Resurface
 selection is deterministic per (user, day): an md5 sort seeded by user id +
@@ -22,7 +23,7 @@ from .clip_service import CLIPS_FOLDER, RAW_FOLDER
 
 PAGE_SKILLS = 6
 PAGE_PUBLIC_PAGES = 3
-PAGE_RESURFACE = 3
+PAGE_RESURFACE = 4
 # Only items past this age resurface — the feed re-encounters the archive,
 # it doesn't echo what the user just saved.
 RESURFACE_MIN_AGE_DAYS = 7
@@ -50,7 +51,7 @@ async def home_feed(user_id: UUID | None, cursor: int) -> dict:
 
 def _interleave(skills: list[dict], pages: list[dict], resurfaced: list[dict]) -> list[dict]:
     """Flat feed order: two skills per public page in the community stream,
-    with a resurface card landing every 4th slot."""
+    with a resurface card landing every 3rd slot."""
     community: list[dict] = []
     si, pi = 0, 0
     while si < len(skills) or pi < len(pages):
@@ -65,7 +66,7 @@ def _interleave(skills: list[dict], pages: list[dict], resurfaced: list[dict]) -
     items: list[dict] = []
     ci, ri = 0, 0
     while ci < len(community) or ri < len(resurfaced):
-        resurface_slot = len(items) % 4 == 3
+        resurface_slot = len(items) % 3 == 2
         if ri < len(resurfaced) and (resurface_slot or ci >= len(community)):
             items.append({"kind": "resurface", "data": resurfaced[ri]})
             ri += 1
@@ -79,9 +80,27 @@ async def _resurface_items(user_id: UUID, cursor: int) -> list[dict]:
     seed = f"{user_id}:{datetime.now(UTC).date().isoformat()}:"
     rows = await get_pool().fetch(
         f"""
-        WITH pool AS (
+        WITH RECURSIVE memory_folders AS (
+            SELECT id FROM folders WHERE owner_user_id = $1 AND is_memory
+            UNION
+            SELECT f.id FROM folders f
+            JOIN memory_folders m ON f.parent_folder_id = m.id
+        ), clip_folders AS (
+            SELECT raw_f.id FROM folders raw_f
+            JOIN folders clips_f ON raw_f.parent_folder_id = clips_f.id
+                 AND clips_f.name = $5 AND clips_f.parent_folder_id IS NULL
+            WHERE raw_f.owner_user_id = $1 AND raw_f.name = $4
+        ), skill_folders AS (
+            SELECT f.id FROM folders f
+            WHERE f.owner_user_id = $1
+              AND EXISTS (SELECT 1 FROM pages sp WHERE sp.folder_id = f.id
+                          AND sp.name = 'SKILL.md' AND sp.deleted_at IS NULL)
+            UNION
+            SELECT f.id FROM folders f
+            JOIN skill_folders st ON f.parent_folder_id = st.id
+        ), pool AS (
             SELECT 'x' AS source, id::text AS item_id, name AS title, content,
-                   created_at, external_ref, NULL::uuid AS page_id,
+                   created_at, external_ref,
                    media->0->>'storage_key' AS media_key
             FROM x_save_docs
             WHERE owner_user_id = $1 AND hydration_status = 'done'
@@ -89,21 +108,30 @@ async def _resurface_items(user_id: UUID, cursor: int) -> list[dict]:
               AND created_at < now() - interval '{RESURFACE_MIN_AGE_DAYS} days'
             UNION ALL
             SELECT 'instagram', id::text, name, content,
-                   created_at, external_ref, NULL::uuid, media_storage_key
+                   created_at, external_ref, media_storage_key
             FROM instagram_save_docs
             WHERE owner_user_id = $1 AND hydration_status = 'done'
               AND deleted_at IS NULL AND content IS NOT NULL
               AND created_at < now() - interval '{RESURFACE_MIN_AGE_DAYS} days'
             UNION ALL
-            SELECT 'clip', p.id::text, p.name,
+            SELECT CASE
+                     WHEN p.folder_id IN (SELECT id FROM memory_folders) THEN 'memory'
+                     WHEN p.folder_id IN (SELECT id FROM clip_folders) THEN 'clip'
+                     ELSE 'doc'
+                   END,
+                   p.id::text, p.name,
                    coalesce(p.content_markdown, p.content_html),
-                   p.created_at, NULL, p.id, NULL
+                   p.created_at, NULL, NULL
             FROM pages p
-            JOIN folders raw_f ON p.folder_id = raw_f.id AND raw_f.name = $4
-            JOIN folders clips_f ON raw_f.parent_folder_id = clips_f.id
-                 AND clips_f.name = $5 AND clips_f.parent_folder_id IS NULL
             WHERE p.owner_user_id = $1 AND p.deleted_at IS NULL
               AND p.created_at < now() - interval '{RESURFACE_MIN_AGE_DAYS} days'
+            UNION ALL
+            SELECT 'file', f.id::text, f.name, f.extracted_text,
+                   f.created_at, NULL,
+                   CASE WHEN f.content_type LIKE 'image/%' THEN f.storage_key END
+            FROM files f
+            WHERE f.owner_user_id = $1 AND f.deleted_at IS NULL
+              AND f.created_at < now() - interval '{RESURFACE_MIN_AGE_DAYS} days'
         )
         SELECT * FROM pool ORDER BY md5($2::text || item_id) LIMIT $3 OFFSET $6
         """,
@@ -125,8 +153,11 @@ async def _resurface_card(row: dict) -> dict:
     elif source == "instagram":
         app_url = None
         external_url = post_url(row["external_ref"])
+    elif source == "file":
+        app_url = f"/f/{row['item_id']}"
+        external_url = None
     else:
-        app_url = f"/p/{row['page_id']}"
+        app_url = f"/p/{row['item_id']}"
         external_url = None
 
     image_url = None

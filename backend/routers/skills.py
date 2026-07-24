@@ -77,20 +77,50 @@ class GithubImportRequest(BaseModel):
     repo_url: str
 
 
-@me_router.post("/skills/import-github")
-async def import_github_skill(
+@me_router.post("/import/github")
+async def import_github_repo(
     req: GithubImportRequest,
     current_user: dict = Depends(get_current_user),
 ):
-    """Import every SKILL.md folder in a public GitHub repo as private skills in
-    the caller's own scope (folders with SKILL.md)."""
+    """Copy a whole GitHub repo into the caller's scope as one new root folder.
+    Folders containing SKILL.md derive as skills automatically. Private repos
+    work when the caller's GitHub connection can read them."""
     try:
-        result = await github_skill_import.import_repo_for_user(current_user["id"], req.repo_url)
+        return await github_skill_import.import_repo_for_user(current_user["id"], req.repo_url)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-    if result["skills"] == 0:
-        raise HTTPException(status_code=404, detail="No SKILL.md folders found in that repo")
-    return result
+
+
+@me_router.get("/import/github/inspect")
+async def inspect_github_import(
+    repo_url: str,
+    current_user: dict = Depends(get_current_user),
+):
+    """Tree-only look at a repo before importing: which of its folders are
+    skills ('' = the repo root itself). The dialog uses this to warn when the
+    repo's content won't surface in the section the user imported from."""
+    token = await github_skill_import.user_github_token(current_user["id"])
+    try:
+        skill_dirs = await github_skill_import.inspect_repo(repo_url, token)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return {"skill_dirs": skill_dirs}
+
+
+@me_router.get("/import/github/repos")
+async def list_github_import_repos(
+    current_user: dict = Depends(get_current_user),
+):
+    """Repos the caller's GitHub connection can access, for the import picker.
+    connected=false when GitHub isn't connected — the picker then offers URL
+    paste only."""
+    token = await github_skill_import.user_github_token(current_user["id"])
+    if token is None:
+        return {"connected": False, "repos": []}
+    return {
+        "connected": True,
+        "repos": await github_skill_import.list_user_repos(current_user["id"]),
+    }
 
 
 @me_router.get("/skills/{name}")

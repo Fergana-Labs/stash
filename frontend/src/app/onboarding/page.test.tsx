@@ -52,25 +52,18 @@ describe("about step pills", () => {
     render(<OnboardingPage />);
     const role = screen.getByRole("button", { name: "Engineer" });
     const referral = screen.getByRole("button", { name: "Search" });
-    const plan = screen.getByRole("button", { name: "Personal — Free" });
     const continueButton = screen.getByRole("button", { name: "Continue" });
 
     fireEvent.click(role);
     fireEvent.click(referral);
-    fireEvent.click(plan);
     expect(continueButton).toBeEnabled();
 
     fireEvent.click(role);
     expect(continueButton).toBeDisabled();
   });
 
-  it("plan choice is required before Continue unlocks", () => {
+  it("there is no plan question — role and referral are the only requirements", () => {
     render(<OnboardingPage />);
-    fireEvent.click(screen.getByRole("button", { name: "Engineer" }));
-    fireEvent.click(screen.getByRole("button", { name: "Search" }));
-    expect(screen.getByRole("button", { name: "Continue" })).toBeDisabled();
-
-    fireEvent.click(screen.getByRole("button", { name: "Production agent — Enterprise" }));
-    expect(screen.getByRole("button", { name: "Continue" })).toBeEnabled();
+    expect(screen.queryByText("Which plan fits you?")).toBeNull();
   });
 });

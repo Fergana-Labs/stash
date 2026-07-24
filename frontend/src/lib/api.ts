@@ -495,11 +495,11 @@ export function githubOwner(sourceGithubUrl: string): string {
 
 // --- Home feed ---
 
-// An item from the caller's own stash the feed resurfaces: an old clip
-// (opens in-app via app_url) or an X/Instagram save (opens the original
-// via external_url; the archived text is the preview).
+// An item from the caller's own stash the feed resurfaces: an old doc, file,
+// memory page, or clip (opens in-app via app_url) or an X/Instagram save
+// (opens the original via external_url; the archived text is the preview).
 export interface ResurfaceCardData {
-  source: "x" | "instagram" | "clip";
+  source: "x" | "instagram" | "clip" | "doc" | "file" | "memory";
   title: string;
   preview: string;
   saved_at: string;
@@ -1416,13 +1416,34 @@ export async function listSkills(): Promise<Skill[]> {
 }
 
 // Import a public GitHub repo's SKILL.md folders as private skills in your scope.
-export async function importGithubSkill(
+// Straight copy of a whole repo into a new root folder; folders containing a
+// SKILL.md derive as skills automatically.
+export async function importGithubRepo(
   repoUrl: string,
-): Promise<{ skills: number; imported: number }> {
-  return apiFetch(`${ME}/skills/import-github`, {
+): Promise<{ folder_id: string; name: string; files: number }> {
+  return apiFetch(`${ME}/import/github`, {
     method: "POST",
     body: JSON.stringify({ repo_url: repoUrl }),
   });
+}
+
+// Tree-only pre-import look: which repo folders are skills ('' = repo root).
+export async function inspectGithubImport(repoUrl: string): Promise<{ skill_dirs: string[] }> {
+  return apiFetch(`${ME}/import/github/inspect?repo_url=${encodeURIComponent(repoUrl)}`);
+}
+
+export interface GithubImportRepo {
+  full_name: string;
+  html_url: string;
+  private: boolean;
+  description: string;
+}
+
+export async function listGithubImportRepos(): Promise<{
+  connected: boolean;
+  repos: GithubImportRepo[];
+}> {
+  return apiFetch(`${ME}/import/github/repos`);
 }
 
 // The full publish record, as returned by publish/update.
