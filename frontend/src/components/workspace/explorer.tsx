@@ -12,7 +12,7 @@ import { cn } from "@/lib/utils";
 import { useWorkspace, type TabKind } from "@/lib/workspace-store";
 import { urlForTab } from "@/lib/workspace-routes";
 import { CONNECTORS, connectorIcon, providerForSourceType } from "@/components/integrations/connectors";
-import { listIntegrations } from "@/lib/integrations";
+import { INTEGRATIONS_CHANGED_EVENT, listIntegrations } from "@/lib/integrations";
 import { opensNewTab } from "@/lib/tab-nav";
 import FilesExplorer, { type Item } from "./files-explorer";
 
@@ -69,11 +69,16 @@ function ToolsSection() {
   // integrations like Heavi) — null until loaded, then the allowed set.
   const [allowed, setAllowed] = useState<Set<string> | null>(null);
   useEffect(() => {
-    listSources().then((all) => setSourceProviders(new Set(all.map((s: Source) => providerForSourceType[s.type] ?? s.type)))).catch(() => {});
-    listIntegrations().then((r) => {
-      setAllowed(new Set(r.providers.map((p) => p.provider)));
-      setConnectedProviders(new Set(r.providers.filter((p) => p.connected).map((p) => p.provider)));
-    }).catch(() => {});
+    const load = () => {
+      listSources().then((all) => setSourceProviders(new Set(all.map((s: Source) => providerForSourceType[s.type] ?? s.type)))).catch(() => {});
+      listIntegrations().then((r) => {
+        setAllowed(new Set(r.providers.map((p) => p.provider)));
+        setConnectedProviders(new Set(r.providers.filter((p) => p.connected).map((p) => p.provider)));
+      }).catch(() => {});
+    };
+    load();
+    window.addEventListener(INTEGRATIONS_CHANGED_EVENT, load);
+    return () => window.removeEventListener(INTEGRATIONS_CHANGED_EVENT, load);
   }, []);
   if (allowed === null) return <LoadingRow />;
   return (
