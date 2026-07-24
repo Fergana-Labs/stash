@@ -7,6 +7,7 @@ import mimetypes
 import os
 import time
 from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 import httpx
@@ -43,6 +44,7 @@ class StashClient:
         # Automated housekeeping (skills sync) — its reads are tagged so
         # content-activity analytics can exclude them (see auth._set_request_via).
         self._auto = auto
+        self._internal = False
         self._http = httpx.Client(base_url=self._base_url, timeout=30)
 
     def close(self) -> None:
@@ -54,13 +56,24 @@ class StashClient:
     def __exit__(self, *args):
         self.close()
 
+    @contextmanager
+    def internal_calls(self):
+        """VFS mount bookkeeping (see stashvfs.VfsClient.internal_calls):
+        requests in this block are tagged like `auto` traffic so analytics
+        don't count tree refreshes as user-driven listings."""
+        self._internal = True
+        try:
+            yield
+        finally:
+            self._internal = False
+
     def _headers(self) -> dict[str, str]:
         if not self._api_key:
             return {}
         headers = {"Authorization": f"Bearer {self._api_key}"}
         if self._scope:
             headers["X-Stash-Scope"] = self._scope
-        if self._auto:
+        if self._auto or self._internal:
             headers["X-Stash-Via"] = "auto"
         return headers
 

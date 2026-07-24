@@ -183,3 +183,15 @@ def test_client_sends_auto_marker_only_when_asked():
 
     normal = StashClient("https://example.test", api_key="k")
     assert "X-Stash-Via" not in normal._headers()
+
+
+def test_client_sends_auto_marker_during_internal_calls():
+    """The VFS mount refresh is housekeeping like the skills sync: its
+    requests must carry the auto marker only inside the block, so the user's
+    actual reads through the same client keep their cli surface tag."""
+    from cli.client import StashClient
+
+    c = StashClient("https://example.test", api_key="k")
+    with c.internal_calls():
+        assert c._headers()["X-Stash-Via"] == "auto"
+    assert "X-Stash-Via" not in c._headers()
