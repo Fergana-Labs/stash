@@ -375,10 +375,24 @@ async def read_session_events_page(
 
 async def list_scope_sessions(owner_user_id: UUID, user_id: UUID) -> list[dict]:
     """One row per session_id in this scope. Powers the spine sessions
-    list — replaces a SELECT against session_transcripts."""
+    list — replaces a SELECT against session_transcripts.
+
+    Readability is decided once per SESSION (the readable_sessions CTE), not
+    once per event: the permission predicate is a function of the session row,
+    so evaluating it inside the per-event scan only multiplied its cost by the
+    event count. size_bytes is the stored (TOAST-compressed) size — summing
+    pg_column_size reads only value headers, where LENGTH would decompress
+    every transcript event on every sidebar load."""
     pool = get_pool()
+    readable_session = permission_service.readable_content_condition("session", "s", 2)
     rows = await pool.fetch(
-        "WITH title_sources AS ( "
+        "WITH readable_sessions AS ( "
+        "  SELECT s.id, s.owner_user_id, s.session_id "
+        "  FROM sessions s "
+        "  WHERE s.owner_user_id = $1 AND s.deleted_at IS NULL "
+        f"    AND {readable_session} "
+        "), "
+        "title_sources AS ( "
         "  SELECT DISTINCT ON (ht.owner_user_id, ht.session_id) "
         "    ht.owner_user_id, "
         "    ht.session_id, "
@@ -394,24 +408,24 @@ async def list_scope_sessions(owner_user_id: UUID, user_id: UUID) -> list[dict]:
         "  END, ht.created_at, ht.id "
         ") "
         "SELECT h.session_id, "
-        "       s.id::text AS id, "
-        f"       {linear_ticket_service.sql_json_agg('s')} AS linear_tickets, "
+        "       rs.id::text AS id, "
+        f"       {linear_ticket_service.sql_json_agg('rs')} AS linear_tickets, "
         "       MAX(h.agent_name) AS agent_name, "
         "       (ARRAY_AGG(NULLIF(u.display_name, '') ORDER BY h.created_at) "
         "        FILTER (WHERE NULLIF(u.display_name, '') IS NOT NULL))[1] AS user_name, "
         "       title_sources.title_source, "
         "       COUNT(*)::INT AS event_count, "
-        "       SUM(LENGTH(h.content))::BIGINT AS size_bytes, "
+        "       SUM(pg_column_size(h.content))::BIGINT AS size_bytes, "
         "       MIN(h.created_at) AS started_at, "
         "       MAX(h.created_at) AS last_at "
         "FROM history_events h "
-        "JOIN sessions s ON s.owner_user_id = h.owner_user_id AND s.session_id = h.session_id "
+        "JOIN readable_sessions rs ON rs.owner_user_id = h.owner_user_id "
+        "  AND rs.session_id = h.session_id "
         "LEFT JOIN title_sources ON title_sources.owner_user_id = h.owner_user_id "
         "  AND title_sources.session_id = h.session_id "
         "LEFT JOIN users u ON u.id = h.created_by "
         "WHERE h.owner_user_id = $1 AND h.session_id IS NOT NULL "
-        f"AND {readable_session_event_condition('h', 2)} "
-        "GROUP BY h.session_id, s.id, title_sources.title_source "
+        "GROUP BY h.session_id, rs.id, title_sources.title_source "
         "ORDER BY last_at DESC, user_name ASC, session_id ASC",
         owner_user_id,
         user_id,

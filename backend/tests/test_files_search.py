@@ -72,3 +72,23 @@ async def test_search_pages_finds_html_page_text(client: AsyncClient) -> None:
     pages = resp.json()["pages"]
     assert [page["name"] for page in pages] == ["HTML Guide"]
     assert pages[0]["content_type"] == "html"
+
+
+def test_fts_vector_expr_matches_index_expr() -> None:
+    """Postgres only uses an expression index when the query's expression is
+    syntactically identical to the indexed one. If PAGES_FTS_VECTOR_EXPR drifts
+    from the migration's copy, page search silently degrades to a sequential
+    scan that regex-strips every page's HTML on every query."""
+    import importlib.util
+    from pathlib import Path
+
+    migration_path = (
+        Path(__file__).parent.parent / "migrations/versions/0165_pages_fts_weighted_index.py"
+    )
+    spec = importlib.util.spec_from_file_location("migration_0165", migration_path)
+    migration = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(migration)
+
+    from backend.services.files_tree_service import PAGES_FTS_VECTOR_EXPR
+
+    assert migration.PAGES_FTS_VECTOR_EXPR == PAGES_FTS_VECTOR_EXPR
