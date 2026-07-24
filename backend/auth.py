@@ -26,6 +26,7 @@ _READ_KEY_WRITE_ALLOWLIST = {
     ("POST", "/api/v1/me/sessions/events"),
     ("POST", "/api/v1/me/sessions/events/batch"),
     ("POST", "/api/v1/me/ask"),
+    ("POST", "/api/v1/me/vfs/searches"),
 }
 
 
@@ -202,14 +203,16 @@ def _set_request_via(request: Request, user: dict | None) -> None:
     """Tag the request's caller surface for audit rows: 'ask' for the
     server-side VFS's nested reads (it marks them itself), 'auto' for
     automated machinery (skills sync, plugin hooks, VFS mount refreshes —
-    reads nobody asked for, excluded from content-activity analytics), 'cli'
-    for API-key callers, 'web' for browser JWTs and anonymous reads.
+    reads nobody asked for, excluded from content-activity analytics), 'scan'
+    for a VFS grep's per-document reads (kept in the audit trail but excluded
+    from analytics; the grep is counted as the one search event it records),
+    'cli' for API-key callers, 'web' for browser JWTs and anonymous reads.
     Analytics-grade only — the X-Stash-Via header is spoofable and must never
     gate authorization."""
     from .services.security_audit_service import request_via
 
     marker = request.headers.get("x-stash-via")
-    if marker in ("ask", "auto"):
+    if marker in ("ask", "auto", "scan"):
         request_via.set(marker)
     elif user is not None and user.get("key_type"):
         request_via.set("cli")

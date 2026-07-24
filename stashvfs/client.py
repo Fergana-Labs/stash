@@ -37,6 +37,21 @@ class VfsClient(Protocol):
         several listings per command, even for a `cat`."""
         ...
 
+    def scan_calls(self) -> AbstractContextManager[None]:
+        """Requests issued inside this block are a `grep` sweeping documents
+        for a pattern. Implementations tag them `X-Stash-Via: scan` so
+        content-activity analytics exclude them (see auth._set_request_via):
+        one recursive grep reads every document it walks, which used to land
+        as hundreds of user-driven reads. The grep itself is represented by
+        the single search event `record_search` writes afterwards."""
+        ...
+
+    def record_search(self, pattern: str, roots: list[str], docs_scanned: int) -> None:
+        """Write the one search audit event standing in for a grep's scan
+        reads (see `scan_calls`). Called once per grep invocation, after the
+        scan completes."""
+        ...
+
     def get_overview(self) -> dict: ...
 
     def get_memory_folder(self) -> dict: ...

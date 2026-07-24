@@ -156,6 +156,40 @@ async def test_vfs_mount_listings_are_tagged_auto_not_ask(client: AsyncClient, p
     assert [r["via"] for r in reads] == ["ask"]
 
 
+async def test_vfs_grep_counts_as_one_search_not_many_reads(client: AsyncClient, pool):
+    """A recursive grep reads every document it walks — one agent search used
+    to land in analytics as hundreds of user-driven 'ask' reads. The sweep's
+    reads must carry via='scan' (kept for the security trail, excluded from
+    analytics) and the grep itself one source.searched row on the caller's
+    real surface."""
+    api_key, user_id = await _register(client)
+    await _make_page(client, api_key, "One.md", "alpha needle")
+    await _make_page(client, api_key, "Two.md", "beta")
+    await _make_page(client, api_key, "Three.md", "gamma needle")
+
+    resp = await client.post(
+        "/api/v1/me/vfs",
+        json={"script": "grep -r 'needle' /files", "cwd": "/"},
+        headers=_auth(api_key),
+    )
+    assert resp.status_code == 200
+    assert resp.json()["exit_code"] == 0
+
+    reads = await _read_events(pool, "content.page_read")
+    assert len(reads) == 3
+    assert all(r["via"] == "scan" for r in reads)
+
+    searches = await _read_events(pool, "source.searched")
+    assert len(searches) == 1
+    assert searches[0]["actor_user_id"] == user_id
+    assert searches[0]["target_type"] == "vfs"
+    assert searches[0]["target_id"] == "/files"
+    # The nested search POST arrives via the server-side VFS's client, so it
+    # carries the ask surface — a `stash vfs` grep records the same row as cli.
+    assert searches[0]["via"] == "ask"
+    assert _metadata(searches[0])["docs_scanned"] == 3
+
+
 async def test_tree_listing_is_logged(client: AsyncClient, pool):
     api_key, user_id = await _register(client)
     await _make_page(client, api_key, "One.md", "x")
