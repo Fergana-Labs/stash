@@ -8,6 +8,7 @@ and knows about neither.
 
 from __future__ import annotations
 
+from contextlib import AbstractContextManager
 from typing import Protocol
 
 
@@ -27,6 +28,14 @@ class VfsClientError(Exception):
 class VfsClient(Protocol):
     """Everything `StashVfsModel` reads. Listing calls run during `refresh()`;
     the rest are lazy loaders fired when a file's bytes are first read."""
+
+    def internal_calls(self) -> AbstractContextManager[None]:
+        """Requests issued inside this block are mount bookkeeping, not reads
+        the user asked for. Implementations tag them `X-Stash-Via: auto` so
+        content-activity analytics exclude them (see auth._set_request_via) —
+        every VFS command rebuilds the tree, so counting these would log
+        several listings per command, even for a `cat`."""
+        ...
 
     def get_overview(self) -> dict: ...
 

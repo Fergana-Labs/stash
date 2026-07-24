@@ -269,8 +269,8 @@ LISTING_ACTIONS = [
 # and listings are UI noise (sidebar refetches, page opens while editing), so
 # only web *searches* count; cli and ask count for everything. Untagged rows
 # (pre-`via` history, anonymous pastes) are excluded, as are 'auto' rows —
-# automated machinery like the session-start skills sync, which reads content
-# nobody asked to see.
+# automated machinery like the session-start skills sync and the VFS's
+# mount-time tree refresh, which reads content nobody asked to see.
 ACTIVITY_SURFACES = {
     "reads": ["cli", "ask"],
     "searches": ["web", "cli", "ask"],
