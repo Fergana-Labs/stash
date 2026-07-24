@@ -1536,6 +1536,29 @@ async def _federated_search(
     return output, markers
 
 
+async def _readable_source_ids(
+    user_id: UUID, tables: list[str], source_id: UUID | None
+) -> dict[str, list[UUID]]:
+    """The sources the user may read, grouped by content table. Resolved before
+    the FTS query so it filters by explicit source ids: Postgres skips tables
+    with no readable sources outright instead of evaluating to_tsvector over
+    every tenant's documents and discarding them at the access check."""
+    source_types = [st for st, tb in SOURCE_TABLE.items() if tb in tables]
+    readable = permission_service.readable_content_condition("source", "s", 1)
+    rows = await get_pool().fetch(
+        f"SELECT s.id, s.source_type FROM user_sources s "
+        f"WHERE ({readable}) AND s.source_type = ANY($2) "
+        f"AND ($3::uuid IS NULL OR s.id = $3)",
+        user_id,
+        source_types,
+        source_id,
+    )
+    by_table: dict[str, list[UUID]] = {t: [] for t in tables}
+    for r in rows:
+        by_table[SOURCE_TABLE[r["source_type"]]].append(r["id"])
+    return by_table
+
+
 async def search_documents(
     *,
     user_id: UUID,
@@ -1549,7 +1572,10 @@ async def search_documents(
     to scope to one; an index-only source has nothing to FTS, so it returns [].
     Pass `providers` to restrict to those providers' tables — this must happen
     at the table level, because readability includes sources shared directly
-    with the user that no connected-source listing enumerates."""
+    with the user that no connected-source listing enumerates.
+
+    Readable sources are resolved first and the FTS runs only over their rows
+    (and only in their tables) — see _readable_source_ids."""
     if source is not None and providers is not None:
         raise ValueError("Pass either source or providers, not both")
     limit = min(limit, 500)
@@ -1565,6 +1591,12 @@ async def search_documents(
         tables = sorted(t for t in CONTENT_TABLES if CONTENT_TABLE_PROVIDER[t] in providers)
         if not tables:
             return []
+
+    by_table = await _readable_source_ids(user_id, tables, source_id)
+    tables = [t for t in tables if by_table[t]]
+    if not tables:
+        return []
+    readable_ids = [sid for t in tables for sid in by_table[t]]
 
     def visibility_clause(table: str) -> str:
         if table == "slack_messages":
@@ -1583,7 +1615,6 @@ async def search_documents(
             )
         return ""
 
-    source_readable = permission_service.readable_content_condition("source", "s", 1)
     parts = [
         f"""
         SELECT d.source_id, d.path, d.name, d.external_updated_at,
@@ -1596,8 +1627,7 @@ async def search_documents(
                        websearch_to_tsquery('english', $2)) AS rank
         FROM {t} d
         JOIN user_sources s ON s.id = d.source_id
-        WHERE {source_readable} AND d.deleted_at IS NULL
-          AND ($3::uuid IS NULL OR d.source_id = $3)
+        WHERE d.source_id = ANY($1) AND d.deleted_at IS NULL
           AND to_tsvector('english', coalesce(d.content, ''))
               @@ websearch_to_tsquery('english', $2)
           {visibility_clause(t)}
@@ -1609,10 +1639,9 @@ async def search_documents(
         f"SELECT u.source_id, ws.display_name AS source_name, u.path, u.name, "
         f"u.external_updated_at, u.snippet "
         f"FROM ({union}) u JOIN user_sources ws ON ws.id = u.source_id "
-        f"ORDER BY u.rank DESC LIMIT $4",
-        user_id,
+        f"ORDER BY u.rank DESC LIMIT $3",
+        readable_ids,
         query,
-        source_id,
         limit,
     )
     return [
