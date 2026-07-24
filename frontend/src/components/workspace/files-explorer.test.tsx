@@ -20,6 +20,10 @@ vi.mock("@/hooks/useAuth", () => ({
   useAuth: () => ({ user: null, loading: false }),
 }));
 
+vi.mock("@/components/ConfirmDialog", () => ({
+  useConfirm: () => async () => true,
+}));
+
 vi.mock("@/components/share/ResourceShareButton", () => ({
   ResourceShareDialog: () => null,
 }));
@@ -41,6 +45,7 @@ vi.mock("@/lib/api", () => ({
   updateSessionFolder: vi.fn(),
   uploadFileOrPage: vi.fn(),
   importGithubRepo: vi.fn(),
+  inspectGithubImport: vi.fn().mockResolvedValue({ skill_dirs: [] }),
   listGithubImportRepos: vi.fn().mockResolvedValue({ connected: false, repos: [] }),
 }));
 

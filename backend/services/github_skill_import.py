@@ -169,6 +169,17 @@ async def fetch_repo_files(repo_url: str, token: str | None = None) -> tuple[str
         return repo, files
 
 
+async def inspect_repo(repo_url: str, token: str | None = None) -> list[str]:
+    """Which directories in the repo are skills (contain a SKILL.md), without
+    downloading any blobs — the pre-import check behind the section-mismatch
+    confirmation in the import dialog."""
+    owner, repo = parse_repo_url(repo_url)
+    async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+        branch = await _fetch_default_branch(client, owner, repo, token)
+        tree = await _fetch_tree(client, owner, repo, branch, token)
+    return discover_skill_dirs(tree)
+
+
 # ===== Import into the curator scope =====
 
 

@@ -91,6 +91,22 @@ async def import_github_repo(
         raise HTTPException(status_code=400, detail=str(exc))
 
 
+@me_router.get("/import/github/inspect")
+async def inspect_github_import(
+    repo_url: str,
+    current_user: dict = Depends(get_current_user),
+):
+    """Tree-only look at a repo before importing: which of its folders are
+    skills ('' = the repo root itself). The dialog uses this to warn when the
+    repo's content won't surface in the section the user imported from."""
+    token = await github_skill_import.user_github_token(current_user["id"])
+    try:
+        skill_dirs = await github_skill_import.inspect_repo(repo_url, token)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return {"skill_dirs": skill_dirs}
+
+
 @me_router.get("/import/github/repos")
 async def list_github_import_repos(
     current_user: dict = Depends(get_current_user),

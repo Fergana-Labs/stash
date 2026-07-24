@@ -1427,6 +1427,11 @@ export async function importGithubRepo(
   });
 }
 
+// Tree-only pre-import look: which repo folders are skills ('' = repo root).
+export async function inspectGithubImport(repoUrl: string): Promise<{ skill_dirs: string[] }> {
+  return apiFetch(`${ME}/import/github/inspect?repo_url=${encodeURIComponent(repoUrl)}`);
+}
+
 export interface GithubImportRepo {
   full_name: string;
   html_url: string;

@@ -370,6 +370,7 @@ export default function Explorer({ section }: { section: ExplorerSection }) {
           }
           openRootTab={isSessions ? () => open("sessions-home", "sessions", "Sessions") : undefined}
           showImport={!isSessions}
+          importIntent={section === "skills" ? "skills" : "files"}
           vfsWritable={!isSessions}
           headerAction={
             section === "memory"

@@ -11,9 +11,10 @@ import {
 import {
   getTree, getFolderContents, createPage, createFolder, createTable, updateFolder, updatePage,
   updateFile, updateTable, trashItem, deleteFolder, deleteTable, deleteSessionFolder, updateSessionFolder,
-  uploadFileOrPage, importGithubRepo, listGithubImportRepos,
+  uploadFileOrPage, importGithubRepo, inspectGithubImport, listGithubImportRepos,
   type FolderBreadcrumb, type GithubImportRepo,
 } from "@/lib/api";
+import { useConfirm } from "@/components/ConfirmDialog";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { useWorkspace } from "@/lib/workspace-store";
@@ -61,6 +62,7 @@ export default function FilesExplorer({
   newRootItem,
   openRootTab,
   showImport = true,
+  importIntent = "files",
   vfsWritable = true,
   headerAction,
   confirmMemoryWrites = false,
@@ -88,6 +90,10 @@ export default function FilesExplorer({
   openRootTab?: () => void;
   /** Show the GitHub import button. Default true. */
   showImport?: boolean;
+  /** Where the user expects a GitHub import to surface. Content decides where
+   *  it actually lands (SKILL.md folders derive as skills), so a mismatch
+   *  gets a confirmation first. */
+  importIntent?: "files" | "skills";
   /** This section can create VFS items (new file/folder/upload). Default true;
    *  Sessions is a read-through view, so false. */
   vfsWritable?: boolean;
@@ -102,6 +108,7 @@ export default function FilesExplorer({
 }) {
   const router = useRouter();
   const { user } = useAuth();
+  const confirm = useConfirm();
   const openTab = useWorkspace((s) => s.openTab);
   const [folderId, setFolderId] = useState<string | null>(rootFolderId);
   // Item being shared from the context menu, anchored at the menu's position.
@@ -266,6 +273,26 @@ export default function FilesExplorer({
     if (!target) return;
     setImporting(true);
     try {
+      // Content decides where the import surfaces (SKILL.md folders derive as
+      // skills) — when that won't match the section the user is importing
+      // from, say so before copying anything.
+      const { skill_dirs } = await inspectGithubImport(target);
+      if (importIntent === "skills" && skill_dirs.length === 0) {
+        const ok = await confirm({
+          title: "No SKILL.md in this repo",
+          body: "It will be imported as a plain folder under Files, not Skills. You can add a SKILL.md afterwards to turn it into a skill.",
+          confirmLabel: "Import to Files",
+        });
+        if (!ok) return;
+      }
+      if (importIntent === "files" && skill_dirs.length > 0) {
+        const ok = await confirm({
+          title: "This repo contains skills",
+          body: `${skill_dirs.length} folder${skill_dirs.length !== 1 ? "s" : ""} with a SKILL.md will show up under Skills instead of Files. Everything else lands in Files as usual.`,
+          confirmLabel: "Import",
+        });
+        if (!ok) return;
+      }
       const r = await importGithubRepo(target);
       toast.success(`Imported ${r.name} (${r.files} file${r.files !== 1 ? "s" : ""})`);
       setImportOpen(false);

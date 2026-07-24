@@ -201,3 +201,31 @@ async def test_import_repo_for_user_copies_whole_repo(client: AsyncClient, pool,
     skills = await client.get("/api/v1/me/skills", headers={"Authorization": f"Bearer {api_key}"})
     names = {s["name"] for s in skills.json()["skills"]}
     assert "Cooking Wizard" in names  # derived from the copied SKILL.md, no publish record
+
+
+@pytest.mark.asyncio
+async def test_inspect_reports_skill_dirs_before_import(client: AsyncClient, monkeypatch):
+    """The import dialog warns on section mismatch using this tree-only look."""
+    from .conftest import unique_name
+
+    _fake_github(monkeypatch, FAKE_REPO)
+    reg = await client.post(
+        "/api/v1/users/register",
+        json={"name": unique_name("inspector"), "password": "securepassword1"},
+    )
+    auth = {"Authorization": f"Bearer {reg.json()['api_key']}"}
+
+    resp = await client.get(
+        "/api/v1/me/import/github/inspect",
+        params={"repo_url": "https://github.com/acme/skills"},
+        headers=auth,
+    )
+    assert resp.status_code == 200
+    assert resp.json() == {"skill_dirs": ["baking", "cooking"]}
+
+    bad = await client.get(
+        "/api/v1/me/import/github/inspect",
+        params={"repo_url": "https://gitlab.com/acme/skills"},
+        headers=auth,
+    )
+    assert bad.status_code == 400
