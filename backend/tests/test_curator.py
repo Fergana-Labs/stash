@@ -507,6 +507,30 @@ async def test_failed_manual_recompute_records_error(
 
 
 @pytest.mark.asyncio
+async def test_missing_cli_raises_clear_error(client: AsyncClient, _db_pool, monkeypatch):
+    """When the harness CLI isn't installed on the worker, fail loud with a
+    message that names the binary and says to install it — not a cryptic
+    FileNotFoundError from deep in asyncio. Reproduces issue #780."""
+    import shutil
+
+    from backend.tasks.agent_schedules import _run_curator_now
+
+    key, uid = await _register(client)
+    curator = await agent_service.get_or_create_curator(uid)
+
+    monkeypatch.setattr(shutil, "which", lambda bin: None)
+
+    with pytest.raises(RuntimeError, match="claude"):
+        await _run_curator_now(UUID(curator["id"]))
+
+    row = await _db_pool.fetchrow(
+        "SELECT last_run_error FROM agents WHERE id = $1", UUID(curator["id"])
+    )
+    assert "claude" in row["last_run_error"]
+    assert "PATH" in row["last_run_error"]
+
+
+@pytest.mark.asyncio
 async def test_recompute_409_when_nothing_changed(client: AsyncClient, _db_pool):
     key, uid = await _register(client)
     curator = await agent_service.get_or_create_curator(uid)

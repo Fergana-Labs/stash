@@ -21,6 +21,7 @@ import json
 import logging
 import re
 import secrets
+import shutil
 from collections.abc import AsyncIterator
 from uuid import UUID
 
@@ -594,6 +595,13 @@ async def run_chat(
         raise NeedsAuth
     except agent_auth.ProviderNotConfigured:
         raise RuntimeError("cloud agent is not configured")
+    # Fail loud before spawning: a missing CLI produces a cryptic FileNotFoundError
+    # deep in asyncio that doesn't tell the operator what to install.
+    if not shutil.which(auth.harness.bin):
+        raise RuntimeError(
+            f"agent CLI '{auth.harness.bin}' not found on PATH — "
+            f"install it on the worker host so the agent can run turns"
+        )
     async with _TurnLock(session_id):
         history = await _load_history(owner_user_id, session_id, user_id)
         await memory_service.push_event(
