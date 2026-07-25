@@ -86,14 +86,33 @@ def test_current_cli_refreshes_without_blocking(tmp_path):
     assert elapsed < 4, f"session start blocked for {elapsed:.1f}s on a background refresh"
 
 
-def test_stale_cli_is_upgraded_before_the_hook_runs(tmp_path):
-    """The regression itself: a CLI below the floor must be repaired here,
+def test_stale_cli_starts_an_upgrade(tmp_path):
+    """The regression itself: a CLI below the floor must be upgraded from here,
     because no code path inside the CLI's own scripts can do it."""
     stale = "0.1.314"
     assert _as_tuple(stale) < _as_tuple(_min_version())
     result = _run(tmp_path, stash_version=stale, uv_present=True)
-    assert result.returncode == 0
-    assert (tmp_path / "upgraded").exists()
+
+    marker = tmp_path / "upgraded"
+    for _ in range(50):
+        if marker.exists():
+            break
+        time.sleep(0.1)
+    assert marker.exists(), "no upgrade was started for a CLI below the floor"
+    # Exit 1 short-circuits the `&&`, so this message is the only one the user
+    # sees instead of the CLI's less useful "Unknown hook agent".
+    assert result.returncode == 1
+    assert "next one will be" in result.stderr
+
+
+def test_stale_cli_does_not_block_session_start(tmp_path):
+    """The upgrade is detached even on the stale path. One lost session is a
+    far better trade than a stall the user feels at every session start."""
+    started = time.monotonic()
+    _run(tmp_path, stash_version="0.1.314", uv_present=True, uv_seconds=5)
+    elapsed = time.monotonic() - started
+
+    assert elapsed < 4, f"session start blocked for {elapsed:.1f}s on the upgrade"
 
 
 def test_stale_cli_without_uv_fails_loudly(tmp_path):
@@ -107,10 +126,8 @@ def test_stale_cli_without_uv_fails_loudly(tmp_path):
 
 def test_missing_cli_is_treated_as_stale(tmp_path):
     result = _run(tmp_path, stash_version=None, uv_present=True)
-    assert (tmp_path / "upgraded").exists()
-    # Installed but still unreachable on this PATH, which is its own failure.
     assert result.returncode == 1
-    assert "not on PATH" in result.stderr
+    assert "not found" in result.stderr
 
 
 def test_session_start_hook_routes_through_the_floor_check():
@@ -124,10 +141,13 @@ def test_session_start_hook_routes_through_the_floor_check():
     )
 
 
-def test_session_start_timeout_allows_a_synchronous_upgrade():
+def test_session_start_timeout_stays_short():
+    """Nothing here waits on the network, so the timeout must not leave room
+    for a long stall. A user notices a blocked session start immediately; they
+    do not notice one missing transcript."""
     hooks = json.loads(HOOKS_JSON.read_text())
     timeout = hooks["hooks"]["SessionStart"][0]["hooks"][0]["timeout"]
-    assert timeout >= 30000, "a repair runs `uv tool install` inline and needs room"
+    assert timeout <= 15000, "SessionStart must not be able to hang on the upgrade"
 
 
 def test_min_version_is_already_published():
