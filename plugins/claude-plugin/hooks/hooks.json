@@ -5,8 +5,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "stash hook run claude on_session_start",
-            "timeout": 5000
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/ensure_cli.sh && stash hook run claude on_session_start",
+            "timeout": 60000
           }
         ]
       }
