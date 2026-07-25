@@ -85,11 +85,24 @@ def test_codex_hooks_json_template_shape() -> None:
 
 
 def test_claude_hooks_json_commands_are_machine_independent() -> None:
+    """No absolute paths: hooks.json ships to every machine as-is.
+
+    SessionStart additionally runs the plugin-owned CLI floor check first (see
+    test_ensure_cli.py) — the only upgrade path a too-old CLI can still reach —
+    so it is prefixed with a ${CLAUDE_PLUGIN_ROOT} invocation instead of
+    starting at `stash`. That variable is expanded by Claude Code, so the
+    command stays machine-independent.
+    """
     data = json.loads((PLUGINS_DIR / "claude-plugin" / "hooks" / "hooks.json").read_text())
     for entries in data["hooks"].values():
         for entry in entries:
             for hook in entry["hooks"]:
-                assert hook["command"].startswith("stash hook run claude ")
+                command = hook["command"]
+                assert "stash hook run claude " in command
+                assert not command.startswith("/")
+                assert "/Users/" not in command and "/home/" not in command
+                if "ensure_cli.sh" in command:
+                    assert command.startswith("bash ${CLAUDE_PLUGIN_ROOT}/scripts/")
 
 
 def test_gemini_settings_snippet_commands_are_machine_independent() -> None:

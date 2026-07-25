@@ -20,7 +20,6 @@ from stashai.plugin.hooks import (
     uploads_enabled,
 )
 from stashai.plugin.session_upload import (
-    spawn_self_upgrade,
     spawn_session_watcher,
     spawn_skills_sync,
 )
@@ -99,8 +98,9 @@ def main():
     except Exception:
         session_url = None
 
+    # The CLI upgrade runs from scripts/ensure_cli.sh before this script is
+    # reached: an upgrade invoked here cannot run on the stale CLIs that need it.
     spawn_skills_sync(cfg)
-    spawn_self_upgrade()
 
     if session_url:
         # The link instruction is its own toggle (`stash settings` → Session
