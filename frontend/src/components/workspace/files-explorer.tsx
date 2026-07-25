@@ -28,7 +28,10 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 
 type Kind = "folder" | "page" | "file" | "table" | "skill" | "session-folder" | "session";
-export type Item = { kind: Kind; id: string; name: string; ts?: string };
+// `readOnly` marks an item you can browse but not manage — a session folder
+// someone shared with you. Rename/Delete are hidden rather than offered and
+// left to fail against the owner-only server check.
+export type Item = { kind: Kind; id: string; name: string; ts?: string; readOnly?: boolean };
 // Kinds that live in the VFS (draggable, rename/move/delete via folder/page APIs).
 const VFS_KINDS = new Set<Kind>(["folder", "page", "file", "table", "skill"]);
 
@@ -449,8 +452,8 @@ export default function FilesExplorer({
           {(menu.item.kind === "folder" || menu.item.kind === "skill") && <button onClick={() => { const it = menu.item; setMenu(null); openAsTab(it); }} className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-foreground hover:bg-raised"><FolderInput className="h-3.5 w-3.5" /> Open in tab</button>}
           {menu.item.kind !== "session-folder" && <button onClick={() => { const it = menu.item; setMenu(null); openAsTab(it, { forceNewTab: true }); }} className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-foreground hover:bg-raised"><ExternalLink className="h-3.5 w-3.5" /> Open in new tab</button>}
           {VFS_KINDS.has(menu.item.kind) && user && <button onClick={() => { setSharing({ x: menu.x, y: menu.y, item: menu.item }); setMenu(null); }} className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-foreground hover:bg-raised"><Share2 className="h-3.5 w-3.5" /> Share</button>}
-          {menu.item.kind !== "session" && <button onClick={() => { setRenaming(menu.item.id); setMenu(null); }} className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-foreground hover:bg-raised"><Pencil className="h-3.5 w-3.5" /> Rename</button>}
-          <button onClick={async () => { const it = menu.item; setMenu(null); await del(it); }} className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-destructive hover:bg-raised"><Trash2 className="h-3.5 w-3.5" /> Delete</button>
+          {menu.item.kind !== "session" && !menu.item.readOnly && <button onClick={() => { setRenaming(menu.item.id); setMenu(null); }} className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-foreground hover:bg-raised"><Pencil className="h-3.5 w-3.5" /> Rename</button>}
+          {!menu.item.readOnly && <button onClick={async () => { const it = menu.item; setMenu(null); await del(it); }} className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-destructive hover:bg-raised"><Trash2 className="h-3.5 w-3.5" /> Delete</button>}
         </div>
       )}
 

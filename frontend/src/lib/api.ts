@@ -1910,6 +1910,7 @@ export interface SharedWithMeItem {
   object_id: string;
   name: string;
   owner_user_id: string;
+  owner_name: string;
   shared_by: string | null;
   permission: "read" | "write";
 }

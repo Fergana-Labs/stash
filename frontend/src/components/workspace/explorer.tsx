@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Bot, ChevronRight, File, Folder, Loader2, MessagesSquare, GraduationCap, Monitor, Plus, Settings, FolderTree, Brain, Plug, Sparkles, SquareTerminal } from "lucide-react";
 import { toast } from "sonner";
-import { ApiError, listMySessions, listSessionFolders, createSessionFolder, listSkills, listSources, createFolder, createPage, machineFsList, listAgents, createAgent, type Agent as AgentRow, type MachineEntry, type SessionSummary, type Source } from "@/lib/api";
+import { ApiError, listMySessions, listSessionFolders, listSharedWithMe, listSharedSessionFolderSessions, createSessionFolder, listSkills, listSources, createFolder, createPage, machineFsList, listAgents, createAgent, type Agent as AgentRow, type MachineEntry, type SessionSummary, type Source } from "@/lib/api";
 import { useMemoryFolderId } from "@/lib/memory-folder";
 import { SKILL_MD, skillMdTemplate } from "@/lib/localSkill";
 import { requestAgentConfigView, requestCuratorRun } from "@/lib/agent-tab-view";
@@ -288,21 +288,44 @@ export default function Explorer({ section }: { section: ExplorerSection }) {
   // Sessions are their own tree: session folders + loose sessions at the root,
   // sessions inside each folder. Flat (folders don't nest).
   const sessionLabel = (s: SessionSummary) => s.title || s.agent_name || "Session";
-  const sessionsRoot = useCallback(async (): Promise<Item[]> => {
-    const [folders, sessions] = await Promise.all([listSessionFolders(), listMySessions(100)]);
+
+  // Your own folders plus the ones shared with you. Without the shared half the
+  // tree can't reach another person's sessions at all: every session is filed
+  // into a folder at upload, and the root only lists unfiled ones.
+  // Shared rows carry the owner's name because folder names collide across
+  // people — everyone has a "Default".
+  const sessionFolderRows = useCallback(async () => {
+    const [own, shared] = await Promise.all([listSessionFolders(), listSharedWithMe()]);
     return [
-      ...folders.map((f) => ({ kind: "session-folder" as const, id: f.id, name: f.name })),
-      ...sessions.filter((s) => !s.session_folder_id).map((s) => ({ kind: "session" as const, id: s.session_id, name: sessionLabel(s), ts: s.last_event_at })),
+      ...own.map((f) => ({ id: f.id, name: f.name, shared: false })),
+      ...shared
+        .filter((s) => s.object_type === "session_folder")
+        .map((s) => ({ id: s.object_id, name: `${s.name} (${s.owner_name})`, shared: true })),
     ];
   }, []);
+
+  const sessionsRoot = useCallback(async (): Promise<Item[]> => {
+    const [folders, sessions] = await Promise.all([sessionFolderRows(), listMySessions(100)]);
+    return [
+      ...folders.map((f) => ({ kind: "session-folder" as const, id: f.id, name: f.name, readOnly: f.shared })),
+      ...sessions.filter((s) => !s.session_folder_id).map((s) => ({ kind: "session" as const, id: s.session_id, name: sessionLabel(s), ts: s.last_event_at })),
+    ];
+  }, [sessionFolderRows]);
+
   const sessionsFolder = useCallback(async (folderId: string) => {
-    const [folders, sessions] = await Promise.all([listSessionFolders(), listMySessions(100, folderId)]);
+    const folders = await sessionFolderRows();
     const folder = folders.find((f) => f.id === folderId);
+    if (!folder) throw new Error(`Session folder ${folderId} is neither yours nor shared with you`);
+    // A shared folder's sessions live in another scope, so they come from the
+    // share endpoint — the personal /me/sessions window is the wrong source.
+    const sessions = folder.shared
+      ? await listSharedSessionFolderSessions(folderId)
+      : await listMySessions(100, folderId);
     return {
-      crumbs: [{ id: folderId, name: folder?.name ?? "Folder", is_skill: false }],
+      crumbs: [{ id: folderId, name: folder.name, is_skill: false }],
       items: sessions.map((s) => ({ kind: "session" as const, id: s.session_id, name: sessionLabel(s), ts: s.last_event_at })),
     };
-  }, []);
+  }, [sessionFolderRows]);
   const createSessionFolderItem = useCallback(async () => { await createSessionFolder("New folder"); }, []);
 
   if (section === "agents") return <AgentsExplorer />;
