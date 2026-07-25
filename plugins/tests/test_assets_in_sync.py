@@ -37,9 +37,18 @@ def test_every_agent_has_shipped_assets():
         )
 
 
-def _assert_in_sync(agent: str, src_root: Path, dst_root: Path) -> None:
-    src_map = dict(_iter_tracked_files(src_root))
-    dst_map = dict(_iter_tracked_files(dst_root))
+def _assert_in_sync(
+    agent: str, src_root: Path, dst_root: Path, suffixes: set[str] | None = None
+) -> None:
+    def _tracked(root: Path) -> dict:
+        return {
+            rel: path
+            for rel, path in _iter_tracked_files(root)
+            if suffixes is None or path.suffix in suffixes
+        }
+
+    src_map = _tracked(src_root)
+    dst_map = _tracked(dst_root)
 
     assert set(src_map) == set(dst_map), (
         f"{agent}: file set drift between {src_root} and {dst_root}. "
@@ -65,5 +74,16 @@ def test_claude_scripts_match_shipped_assets():
     """Claude ships hooks.json and docs through the Claude Code marketplace,
     but `stash hook run claude` executes the scripts from the shipped assets —
     only scripts/ is mirrored (the marketplace manifest's version field is
-    CI-bumped, so a whole-dir mirror would drift on every release)."""
-    _assert_in_sync("claude", SRC_DIR / "claude-plugin" / "scripts", DST_DIR / "claude" / "scripts")
+    CI-bumped, so a whole-dir mirror would drift on every release).
+
+    Only `.py` is mirrored: `hook_run` resolves `<event>.py` and nothing else,
+    so a shell helper here would be unreachable. ensure_cli.sh is invoked by
+    Claude Code from ${CLAUDE_PLUGIN_ROOT}, which is the marketplace copy, and
+    is deliberately not vendored.
+    """
+    _assert_in_sync(
+        "claude",
+        SRC_DIR / "claude-plugin" / "scripts",
+        DST_DIR / "claude" / "scripts",
+        suffixes={".py"},
+    )
