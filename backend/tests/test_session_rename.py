@@ -137,8 +137,8 @@ async def test_user_set_title_survives_auto_regeneration(client: AsyncClient, po
     # Seed an event so the generator sees content to work with.
     await pool.execute(
         "INSERT INTO history_events "
-        "(owner_user_id, session_id, agent_name, event_type, content, created_at) "
-        "VALUES ($1, $2, 'claude', 'user_message', 'first prompt', now())",
+        "(owner_user_id, session_id, agent_name, event_type, content, created_at, source_uuid) "
+        "VALUES ($1, $2, 'claude', 'user_message', 'first prompt', now(), gen_random_uuid()::text)",
         scope["id"],
         "sess-rename-6",
     )

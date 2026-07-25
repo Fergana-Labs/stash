@@ -812,6 +812,135 @@ async def test_transcript_viewer_includes_streamed_legacy_event_types(client: As
 
 
 @pytest.mark.asyncio
+async def test_transcript_backstop_imports_after_session_end_only(client: AsyncClient):
+    """When live streaming failed and only the session_end event landed, the
+    transcript upload is the repair path — a lone bookkeeping row must not
+    trip the 'session already has events' guard."""
+    key = await _register(client)
+    headers = {"Authorization": f"Bearer {key}"}
+
+    ended = await client.post(
+        "/api/v1/me/sessions/events",
+        json={
+            "agent_name": "claude",
+            "event_type": "session_end",
+            "content": "Session ended. 2 tool uses.",
+            "session_id": "sess-end-only",
+        },
+        headers=headers,
+    )
+    assert ended.status_code == 201
+
+    up = await client.post(
+        "/api/v1/me/transcripts",
+        files={"file": ("s.jsonl", io.BytesIO(BODY), "application/jsonl")},
+        data={"session_id": "sess-end-only", "agent_name": "claude"},
+        headers=headers,
+    )
+    assert up.status_code == 201, up.text
+    assert up.json()["skipped"] is False
+    assert up.json()["imported"] == 2
+
+    events_resp = await client.get(
+        "/api/v1/me/transcripts/sess-end-only/events",
+        headers=headers,
+    )
+    assert events_resp.status_code == 200
+    assert [e["content"] for e in events_resp.json()["events"]] == ["hi", "hello"]
+
+
+@pytest.mark.asyncio
+async def test_end_only_session_hidden_from_search_and_viewable(client: AsyncClient):
+    """A session holding only a session_end row must not surface in event
+    search (its boilerplate isn't a turn), and opening its transcript must
+    return an empty page, not 404 — it's a legitimate empty session."""
+    key = await _register(client)
+    headers = {"Authorization": f"Bearer {key}"}
+
+    ended = await client.post(
+        "/api/v1/me/sessions/events",
+        json={
+            "agent_name": "claude",
+            "event_type": "session_end",
+            "content": "Session ended. 3 tool uses.",
+            "session_id": "sess-end-search",
+        },
+        headers=headers,
+    )
+    assert ended.status_code == 201
+
+    search = await client.get(
+        "/api/v1/me/sessions/events/search",
+        params={"q": "Session ended"},
+        headers=headers,
+    )
+    assert search.status_code == 200
+    assert search.json()["events"] == []
+
+    events_resp = await client.get(
+        "/api/v1/me/transcripts/sess-end-search/events",
+        headers=headers,
+    )
+    assert events_resp.status_code == 200
+    assert events_resp.json() == {"events": [], "total": 0, "has_more": False}
+
+
+@pytest.mark.asyncio
+async def test_push_event_is_idempotent(client: AsyncClient, pool):
+    """A redelivered event (hook timeout that raced a successful commit, queue
+    replay) carries the same source_uuid and must not create a second row."""
+    key = await _register(client)
+    scope = await _scope(client, key)
+    headers = {"Authorization": f"Bearer {key}"}
+    event = {
+        "agent_name": "claude",
+        "event_type": "user_message",
+        "content": "please fix the build",
+        "session_id": "sess-idem",
+        "source_uuid": "hook-generated-id",
+    }
+
+    first = await client.post("/api/v1/me/sessions/events", json=event, headers=headers)
+    assert first.status_code == 201
+    second = await client.post("/api/v1/me/sessions/events", json=event, headers=headers)
+    assert second.status_code == 201
+    assert second.json()["id"] == first.json()["id"]
+
+    count = await pool.fetchval(
+        "SELECT COUNT(*) FROM history_events WHERE owner_user_id = $1 AND session_id = $2",
+        UUID(scope),
+        "sess-idem",
+    )
+    assert count == 1
+
+
+@pytest.mark.asyncio
+async def test_double_import_is_idempotent(client: AsyncClient, pool):
+    """Stand-in for two concurrent uploads racing the guard: the parser emits
+    deterministic source_uuids, so inserting the same parsed transcript twice
+    lands every event exactly once."""
+    from backend.services import memory_service, transcript_import
+
+    key, user_id = await _register_user(client)
+    scope = await _scope(client, key)
+
+    events = transcript_import.parse_jsonl_to_events(
+        BODY, session_id="sess-race", agent_name="claude"
+    )
+    first = await memory_service.push_events_batch(UUID(scope), UUID(user_id), events)
+    assert len(first) == len(events)
+    second = await memory_service.push_events_batch(UUID(scope), UUID(user_id), events)
+    assert second == []
+
+    count = await pool.fetchval(
+        "SELECT COUNT(*) FROM history_events WHERE owner_user_id = $1 AND session_id = $2",
+        UUID(scope),
+        "sess-race",
+    )
+    assert count == len(events)
+
+
+@pytest.mark.asyncio
 async def test_oversize_rejected(client: AsyncClient):
     key = await _register(client)
     big = b"x" * (50 * 1024 * 1024 + 1)

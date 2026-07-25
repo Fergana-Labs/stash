@@ -136,8 +136,8 @@ async def _make_history_event(
 ):
     return await pool.fetchval(
         "INSERT INTO history_events "
-        "(owner_user_id, created_by, agent_name, event_type, content, session_id) "
-        "VALUES ($1, $2, 'agent', $3, $4, $5) RETURNING id",
+        "(owner_user_id, created_by, agent_name, event_type, content, session_id, source_uuid) "
+        "VALUES ($1, $2, 'agent', $3, $4, $5, gen_random_uuid()::text) RETURNING id",
         owner_user_id,
         created_by,
         event_type,

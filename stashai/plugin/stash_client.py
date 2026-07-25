@@ -15,6 +15,8 @@ from __future__ import annotations
 
 import json
 import time
+import uuid
+from datetime import UTC, datetime
 from pathlib import Path
 
 import httpx
@@ -176,6 +178,12 @@ class StashClient:
             merged_meta["client"] = client
         if merged_meta:
             body["metadata"] = merged_meta
+        # Set identity and time before the first POST so a queued retry
+        # resends the exact same event: the server dedups on source_uuid (a
+        # timeout that raced a successful commit becomes a no-op) and a
+        # genuinely queued event keeps its real time instead of drain time.
+        body["source_uuid"] = str(uuid.uuid4())
+        body["created_at"] = datetime.now(UTC).isoformat()
 
         path = self._EVENTS_PATH
         record_upload_attempt(self._data_dir, "event")

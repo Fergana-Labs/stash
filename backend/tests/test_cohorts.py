@@ -40,11 +40,12 @@ async def _insert_history_event(pool, user_id: UUID, created_at: datetime, metad
     await pool.execute(
         "INSERT INTO history_events "
         "(owner_user_id, created_by, agent_name, event_type, content, metadata, "
-        " created_at, session_id) "
+        " created_at, session_id, source_uuid) "
         # $2 goes over the wire as text and is cast in SQL: the pool's jsonb
         # codec would otherwise re-encode the string into a double-encoded
         # JSON string, breaking ->> lookups.
-        "VALUES ($1, $1, 'agent', 'message', 'hello', (($2)::text)::jsonb, $3, gen_random_uuid())",
+        "VALUES ($1, $1, 'agent', 'message', 'hello', (($2)::text)::jsonb, $3, gen_random_uuid(), "
+        "gen_random_uuid()::text)",
         user_id,
         metadata,
         created_at,

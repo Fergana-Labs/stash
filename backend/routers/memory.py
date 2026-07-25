@@ -64,6 +64,7 @@ async def push_event(
         metadata=req.metadata,
         attachments=attachments,
         created_at=req.created_at,
+        source_uuid=req.source_uuid,
     )
     if settings.ANTHROPIC_API_KEY and req.session_id and req.event_type in _TITLE_EVENT_TYPES:
         generate_session_title.delay(str(owner_user_id), req.session_id)

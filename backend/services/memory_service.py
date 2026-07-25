@@ -9,7 +9,7 @@ import hashlib
 import json
 import logging
 from datetime import UTC, datetime
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import numpy as np
 
@@ -119,8 +119,14 @@ async def push_event(
     metadata: dict | None = None,
     attachments: list[dict] | None = None,
     created_at: datetime | None = None,
+    source_uuid: str | None = None,
 ) -> dict:
-    """Push a single event."""
+    """Push a single event.
+
+    source_uuid is the producer's idempotency key: a redelivery (hook retry
+    queue, client timeout that raced a successful commit) conflicts on the
+    unique index and returns the already-stored row instead of a duplicate.
+    """
     pool = get_pool()
     agent_name = _strip_nuls(agent_name)
     event_type = _strip_nuls(event_type)
@@ -129,14 +135,16 @@ async def push_event(
     tool_name = _strip_nuls(tool_name)
     attachments = _strip_nuls(attachments)
     meta = _strip_nuls(metadata or {})
+    source_uuid = _strip_nuls(source_uuid) or str(uuid4())
     if created_at is None:
         ts = datetime.now(UTC)
     else:
         ts = _normalize_ts(created_at)
     row = await pool.fetchrow(
         "INSERT INTO history_events "
-        "(owner_user_id, created_by, agent_name, event_type, content, session_id, tool_name, metadata, attachments, created_at) "
-        "VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10) "
+        "(owner_user_id, created_by, agent_name, event_type, content, session_id, tool_name, metadata, attachments, created_at, source_uuid) "
+        "VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10, $11) "
+        "ON CONFLICT (owner_user_id, session_id, source_uuid) DO NOTHING "
         "RETURNING id, owner_user_id, created_by, agent_name, event_type, session_id, "
         "tool_name, content, metadata, attachments, created_at",
         owner_user_id,
@@ -149,7 +157,21 @@ async def push_event(
         meta,
         attachments,
         ts,
+        source_uuid,
     )
+    if row is None:
+        # Duplicate delivery: the first insert already ran the side effects
+        # (embed, session upsert, ticket/PR hints), so just return that row.
+        row = await pool.fetchrow(
+            "SELECT id, owner_user_id, created_by, agent_name, event_type, session_id, "
+            "tool_name, content, metadata, attachments, created_at "
+            "FROM history_events "
+            "WHERE owner_user_id IS NOT DISTINCT FROM $1 AND session_id = $2 AND source_uuid = $3",
+            owner_user_id,
+            session_id,
+            source_uuid,
+        )
+        return dict(row)
     event = dict(row)
     if embedding_service.is_configured():
         _schedule_event_embed(event["id"], content, _text_hash(content))
@@ -198,21 +220,26 @@ async def push_events_batch(
     metadatas = [json.dumps(e.get("metadata") or {}) for e in events]
     attachments = [json.dumps(e["attachments"]) if e.get("attachments") else None for e in events]
     timestamps = [_normalize_ts(e["created_at"]) if e.get("created_at") else now for e in events]
+    source_uuids = [e.get("source_uuid") or str(uuid4()) for e in events]
 
+    # ON CONFLICT DO NOTHING makes redeliveries (concurrent uploads of the
+    # same transcript, re-imports) no-ops; RETURNING yields only the rows
+    # actually inserted.
     rows = await pool.fetch(
         """
         INSERT INTO history_events
             (owner_user_id, created_by, agent_name, event_type, content,
-             session_id, tool_name, metadata, attachments, created_at)
+             session_id, tool_name, metadata, attachments, created_at, source_uuid)
         SELECT $1::uuid, $2::uuid, u.an, u.et, u.c,
                u.sid, u.tn, u.md::jsonb,
                CASE WHEN u.att IS NULL THEN NULL ELSE u.att::jsonb END,
-               u.ts
+               u.ts, u.su
         FROM UNNEST(
             $3::varchar[], $4::varchar[], $5::text[],
             $6::varchar[], $7::varchar[],
-            $8::text[], $9::text[], $10::timestamptz[]
-        ) AS u(an, et, c, sid, tn, md, att, ts)
+            $8::text[], $9::text[], $10::timestamptz[], $11::text[]
+        ) AS u(an, et, c, sid, tn, md, att, ts, su)
+        ON CONFLICT (owner_user_id, session_id, source_uuid) DO NOTHING
         RETURNING id, owner_user_id, created_by, agent_name, event_type,
                   session_id, tool_name, content, metadata, attachments, created_at
         """,
@@ -226,6 +253,7 @@ async def push_events_batch(
         metadatas,
         attachments,
         timestamps,
+        source_uuids,
     )
     results = [dict(r) for r in rows]
     await _upsert_sessions_for_events(owner_user_id, created_by, events)
@@ -576,7 +604,10 @@ async def search_scope_events(
     query: str,
     limit: int = 50,
 ) -> list[dict]:
-    """Full-text search on scope events."""
+    """Full-text search on scope events.
+
+    Restricted to renderable turns: bookkeeping rows like session_end would
+    otherwise surface sessions whose transcript has nothing to show."""
     pool = get_pool()
     limit = min(limit, 500)
     rows = await pool.fetch(
@@ -586,12 +617,14 @@ async def search_scope_events(
         "FROM history_events "
         "WHERE owner_user_id = $1 "
         f"AND {readable_session_event_condition('history_events', 4)} "
+        "AND event_type = ANY($5::text[]) "
         "AND to_tsvector('english', content) @@ websearch_to_tsquery('english', $2) "
         "ORDER BY rank DESC LIMIT $3",
         owner_user_id,
         query,
         limit,
         user_id,
+        list(RENDERABLE_EVENT_TYPES),
     )
     return [dict(r) for r in rows]
 
@@ -650,7 +683,9 @@ async def search_scope_events_vector(
     query_embedding: np.ndarray,
     limit: int = 20,
 ) -> list[dict]:
-    """Semantic vector search on scope events."""
+    """Semantic vector search on scope events.
+
+    Restricted to renderable turns, same as search_scope_events."""
     pool = get_pool()
     limit = min(limit, 200)
     rows = await pool.fetch(
@@ -660,12 +695,14 @@ async def search_scope_events_vector(
         "FROM history_events "
         "WHERE owner_user_id = $1 "
         f"AND {readable_session_event_condition('history_events', 4)} "
+        "AND event_type = ANY($5::text[]) "
         "AND embedding IS NOT NULL "
         "ORDER BY embedding <=> $2 LIMIT $3",
         owner_user_id,
         query_embedding,
         limit,
         user_id,
+        list(RENDERABLE_EVENT_TYPES),
     )
     return [dict(r) for r in rows]
 
