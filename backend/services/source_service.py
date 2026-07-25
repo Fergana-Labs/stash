@@ -50,6 +50,14 @@ class SourceSyncUserError(Exception):
     constant (see tasks/sources.py)."""
 
 
+class SourceSetupRequired(Exception):
+    """The source can't sync until the owner configures something (Slack with
+    no channels chosen). Nothing is broken and retrying changes nothing, so
+    this is NOT a failure: it parks the source in 'needs_setup' with an
+    instruction instead of a red error. Same safety rule as
+    SourceSyncUserError — the message is shown verbatim."""
+
+
 # A Linear issue identifier (FER-199). Any such ref is readable live from the
 # API, so reads work even before a sync has indexed the issue.
 LINEAR_IDENTIFIER_RE = re.compile(r"^[A-Za-z][A-Za-z0-9]*-\d+$")
@@ -562,6 +570,19 @@ async def set_sync_warning(source_id: UUID, message: str) -> None:
     must never contain tokens or provider payloads."""
     await get_pool().execute(
         "UPDATE user_sources SET sync_error = $2, updated_at = now() WHERE id = $1",
+        source_id,
+        message[:500],
+    )
+
+
+async def mark_needs_setup(source_id: UUID, message: str) -> None:
+    """Park a source that is waiting on the owner to configure it. Not a
+    failure: last_synced_at is left alone (nothing synced) and the status is
+    its own state so the UI can ask for the missing input instead of showing
+    a red error and promising an automatic retry that cannot help."""
+    await get_pool().execute(
+        "UPDATE user_sources SET sync_status = 'needs_setup', sync_error = $2, "
+        "updated_at = now() WHERE id = $1",
         source_id,
         message[:500],
     )

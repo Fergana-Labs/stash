@@ -18,6 +18,8 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 import httpx
+from fastapi import HTTPException
+from httpx import HTTPError
 
 from ...config import settings
 from ...database import get_pool
@@ -167,7 +169,24 @@ async def _backfill_bookmarks(
         source_id, {"x_bookmarks_checked_at": datetime.now(UTC).isoformat()}
     )
 
-    token = await integration_storage.get_valid_token(owner_user_id, "x")
+    try:
+        token = await integration_storage.get_valid_token(owner_user_id, "x")
+    except (HTTPException, HTTPError) as exc:
+        # X rotates refresh tokens single-use and kills grants that sit idle,
+        # so a dead grant is an expected end state only a reconnect can fix.
+        # Like the paid-tier gate below, it must not stop posts/replies/articles.
+        logger.warning(
+            "x oauth grant is dead source=%s exception_type=%s",
+            source_id,
+            type(exc).__name__,
+        )
+        await source_service.set_sync_warning(
+            source_id,
+            "The X connection is no longer valid, so bookmarks can't sync — "
+            "reconnect X from the integrations page. "
+            "Posts, replies, and articles still sync.",
+        )
+        return
     async with httpx.AsyncClient(
         timeout=30.0, headers={"Authorization": f"Bearer {token}"}
     ) as client:

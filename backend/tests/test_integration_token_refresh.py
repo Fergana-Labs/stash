@@ -12,11 +12,12 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 import pytest
-from httpx import AsyncClient
+from httpx import AsyncClient, HTTPError
 
 from backend.integrations import crypto as integration_crypto
 from backend.integrations import storage
 from backend.integrations.base import AccountInfo, TokenSet
+from backend.integrations.x_saves import tasks as x_tasks
 
 from .conftest import unique_name
 
@@ -78,3 +79,43 @@ async def test_concurrent_reads_of_expired_token_refresh_exactly_once(client, mo
 
     assert provider.refreshes == 1
     assert tokens == ["at-new"] * 4
+
+
+class _MixedRefreshProvider:
+    """One live grant, one dead one — like prod after X kills an idle grant."""
+
+    async def refresh(self, refresh_token: str) -> TokenSet:
+        if refresh_token == "rt-dead":
+            raise HTTPError("401 Unauthorized")
+        return TokenSet(
+            access_token="at-new",
+            refresh_token="rt-new",
+            expires_at=datetime.now(UTC) + timedelta(hours=2),
+            scopes=["tweet.read"],
+        )
+
+
+@pytest.mark.asyncio
+async def test_keep_tokens_fresh_refreshes_x_and_survives_dead_grants(client, monkeypatch):
+    # The keep-warm beat tick must exercise every connected X grant (X kills
+    # refresh tokens that idle ~a day), and one user's dead grant must not
+    # stop other users' tokens from refreshing.
+    alive_user = await _register(client)
+    dead_user = await _register(client)
+    for user_id, refresh_token in ((alive_user, "rt-good"), (dead_user, "rt-dead")):
+        await storage.store_token(
+            user_id,
+            "x",
+            TokenSet(
+                access_token="at-old",
+                refresh_token=refresh_token,
+                expires_at=datetime.now(UTC) - timedelta(minutes=5),
+                scopes=["tweet.read"],
+            ),
+            AccountInfo(email=None, display_name="@someone"),
+        )
+    monkeypatch.setattr(storage, "get_provider", lambda name: _MixedRefreshProvider())
+
+    assert await x_tasks._keep_tokens_fresh() == 1
+
+    assert await storage.get_valid_token(alive_user, "x") == "at-new"
