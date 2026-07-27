@@ -75,20 +75,29 @@ export default function AppView({ slug }: { slug: string }) {
   }, [slug]);
 
   const loadPage = useCallback(
-    async (offset: number) => {
+    async (
+      offset: number,
+      viewId: string | null = activeViewId,
+      preserveLoadedRows = false
+    ) => {
       const requestId = ++requestIdRef.current;
       const page = await listAppRows(slug, {
         q: query,
         topic: topic ?? undefined,
         filter: derived ?? undefined,
-        view_id: activeViewId ?? undefined,
+        view_id: viewId ?? undefined,
         limit: PAGE_SIZE,
         offset,
       });
       if (requestId !== requestIdRef.current) return;
       setTotal(page.total);
       setHasMore(page.has_more);
-      setRows((prev) => (offset === 0 ? page.rows : [...prev, ...page.rows]));
+      setRows((previous) => {
+        if (offset > 0) return [...previous, ...page.rows];
+        if (!preserveLoadedRows) return page.rows;
+        const refreshedIds = new Set(page.rows.map((row) => row.id));
+        return [...page.rows, ...previous.filter((row) => !refreshedIds.has(row.id))];
+      });
     },
     [slug, query, topic, derived, activeViewId]
   );
@@ -97,9 +106,12 @@ export default function AppView({ slug }: { slug: string }) {
     try {
       const app = await getApp(slug);
       setManifest(app.manifest);
-      setTable(await getTable(app.table_id));
+      const loadedTable = await getTable(app.table_id);
+      const initialViewId = loadedTable.views?.[0]?.id ?? null;
+      setTable(loadedTable);
+      setActiveViewId(initialViewId);
       setMissing(false);
-      await Promise.all([loadPage(0), refreshFacets()]);
+      await Promise.all([loadPage(0, initialViewId), refreshFacets()]);
     } catch (e) {
       if (e instanceof Error && /not set up|404/i.test(e.message)) setMissing(true);
       else setError("Couldn't load this app.");
@@ -154,11 +166,11 @@ export default function AppView({ slug }: { slug: string }) {
   useEffect(() => {
     if (pendingRowIds.size === 0) return;
     const t = setTimeout(() => {
-      void loadPage(0);
+      void loadPage(0, activeViewId, true);
       void refreshFacets();
     }, ENRICH_POLL_MS);
     return () => clearTimeout(t);
-  }, [pendingRowIds, loadPage, refreshFacets]);
+  }, [pendingRowIds, activeViewId, loadPage, refreshFacets]);
 
   const afterMutation = useCallback(async () => {
     setSelected(new Set());
@@ -187,9 +199,15 @@ export default function AppView({ slug }: { slug: string }) {
         <button
           type="button"
           onClick={async () => {
-            await installApp(slug);
             setLoading(true);
-            await init();
+            try {
+              await installApp(slug);
+              await init();
+            } catch {
+              setMissing(false);
+              setError("Couldn't set up this app.");
+              setLoading(false);
+            }
           }}
           className="mt-5 cursor-pointer rounded-lg bg-brand px-5 py-2.5 text-[13.5px] font-semibold text-white hover:bg-brand-hover"
         >

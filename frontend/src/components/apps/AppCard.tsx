@@ -4,7 +4,7 @@ import { ExternalLink, Sparkles } from "lucide-react";
 
 import type { MiniProgramManifest, TableRow } from "@/lib/types";
 
-import { cellText, cellLabels } from "./cells";
+import { cellText, cellLabels, displayTimestamp } from "./cells";
 
 /** One row rendered as a card. Every slot is optional: a manifest only maps
  *  the columns its table actually has, and a freshly saved row has no
@@ -31,7 +31,7 @@ export default function AppCard({
   const title = cellText(row, detail.title) || "Untitled";
   const subtitle = cellText(row, detail.subtitle);
   const badge = cellText(row, detail.badge);
-  const timestamp = cellText(row, detail.timestamp);
+  const timestamp = displayTimestamp(cellText(row, detail.timestamp));
   const body = cellText(row, detail.body);
   const labels = cellLabels(row, detail.labels);
   const link = cellText(row, detail.link);
@@ -56,7 +56,9 @@ export default function AppCard({
         aria-label="Select item"
         data-testid="card-select"
         className={`absolute left-2.5 top-2.5 z-10 cursor-pointer accent-[var(--brand)] transition-opacity ${
-          selected ? "opacity-100" : "opacity-0 group-hover:opacity-100 focus:opacity-100"
+          selected
+            ? "opacity-100"
+            : "opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100"
         }`}
       />
       <button

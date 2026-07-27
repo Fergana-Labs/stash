@@ -8,7 +8,7 @@ import { reenrichRow, setRowTopics } from "@/lib/api";
 import type { MiniProgramManifest, TableRow } from "@/lib/types";
 
 import TopicInput from "./TopicInput";
-import { cellText, cellLabels, internalPath } from "./cells";
+import { cellText, cellLabels, displayTimestamp, internalPath } from "./cells";
 
 /** The row detail pane — the reason an app beats a spreadsheet. Topics are
  *  editable here because the model's guess is a starting point, not a verdict;
@@ -37,7 +37,7 @@ export default function AppDetail({
   const title = cellText(row, detail.title) || "Untitled";
   const subtitle = cellText(row, detail.subtitle);
   const badge = cellText(row, detail.badge);
-  const timestamp = cellText(row, detail.timestamp);
+  const timestamp = displayTimestamp(cellText(row, detail.timestamp));
   const body = cellText(row, detail.body);
   const labels = cellLabels(row, detail.labels);
   const link = cellText(row, detail.link);
@@ -70,7 +70,7 @@ export default function AppDetail({
   return (
     <aside
       data-testid="app-detail"
-      className="flex h-full w-[340px] shrink-0 flex-col border-l border-border bg-base"
+      className="fixed inset-y-0 left-[74px] right-0 z-30 flex w-auto flex-col border-l border-border bg-base shadow-xl lg:static lg:z-auto lg:h-full lg:w-[340px] lg:shrink-0 lg:shadow-none"
     >
       <div className="flex items-start justify-between gap-2 border-b border-border px-4 py-3">
         <div className="min-w-0">
@@ -85,7 +85,7 @@ export default function AppDetail({
           type="button"
           onClick={onClose}
           aria-label="Close details"
-          className="cursor-pointer rounded p-1 text-muted-foreground hover:bg-raised hover:text-foreground"
+          className="cursor-pointer rounded p-2 text-muted-foreground hover:bg-raised hover:text-foreground"
         >
           <X className="h-4 w-4" />
         </button>

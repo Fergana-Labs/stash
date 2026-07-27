@@ -20,6 +20,15 @@ export function cellLabels(row: TableRow, columnId: string | undefined): string[
   return [];
 }
 
+export function displayTimestamp(value: string): string {
+  if (!value) return "";
+  return new Intl.DateTimeFormat(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  }).format(new Date(value));
+}
+
 /** Every distinct label across the loaded rows, most frequent first — the
  *  filter chips. Derived from the rows rather than the column's options so a
  *  chip never shows a topic that filters to nothing. */
