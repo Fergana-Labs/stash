@@ -792,12 +792,6 @@ details > summary::-webkit-details-marker {
 .tag-warning { background: rgba(234,179,8,0.18); color: #854D0E; }
 .tag-muted { background: var(--bg-raised); color: var(--text-dim); }
 
-/* Soft brand-gradient banner — used at top of pages */
-.brand-banner {
-  height: 56px;
-  background: linear-gradient(90deg, #FED7AA, #FFEDD5, #FEF3C7);
-}
-
 /* Card variants */
 .card {
   background: var(--bg-base);

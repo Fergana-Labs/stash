@@ -1,3 +1,5 @@
+from types import SimpleNamespace
+
 import pytest
 from httpx import AsyncClient
 
@@ -140,3 +142,61 @@ async def test_discover_session_labels_records_pr_and_upserts_ticket(
     assert label["ticket_identifier"] == "FER-19"
     assert label["source"] == "github_pr_title"
     assert label["confidence"] == pytest.approx(0.9)
+
+
+class _FakeGitHubResponse:
+    def __init__(self, status_code=200, headers=None, payload=None):
+        self.status_code = status_code
+        self.headers = headers or {}
+        self._payload = payload
+
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            raise RuntimeError(f"HTTP {self.status_code}")
+
+    def json(self):
+        return self._payload
+
+
+class _FakeGitHubClient:
+    responses: dict = {}
+
+    def __init__(self, **kwargs):
+        pass
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *args):
+        return False
+
+    async def get(self, url, params=None):
+        return type(self).responses[url]
+
+
+async def test_fetch_pull_request_returns_none_when_token_cannot_read(monkeypatch):
+    # A 403 on someone else's private repo is permanent for this token; None
+    # records the check so the reconciler stops re-enqueueing the session
+    # every 5 minutes forever.
+    ref = PullRequestRef(owner="acme", repo="private", number=7)
+    _FakeGitHubClient.responses = {
+        "https://api.github.com/repos/acme/private/pulls/7": _FakeGitHubResponse(status_code=403)
+    }
+    monkeypatch.setattr(github_pr_service, "httpx", SimpleNamespace(AsyncClient=_FakeGitHubClient))
+
+    assert await github_pr_service.fetch_pull_request(ref, "token") is None
+
+
+async def test_fetch_pull_request_raises_on_rate_limit(monkeypatch):
+    # Rate limiting also arrives as 403 but is transient — it must raise so
+    # the reconciler retries later instead of permanently recording the check.
+    ref = PullRequestRef(owner="acme", repo="busy", number=8)
+    _FakeGitHubClient.responses = {
+        "https://api.github.com/repos/acme/busy/pulls/8": _FakeGitHubResponse(
+            status_code=403, headers={"x-ratelimit-remaining": "0"}
+        )
+    }
+    monkeypatch.setattr(github_pr_service, "httpx", SimpleNamespace(AsyncClient=_FakeGitHubClient))
+
+    with pytest.raises(RuntimeError):
+        await github_pr_service.fetch_pull_request(ref, "token")

@@ -404,6 +404,12 @@ async def download_my_file(
     if not await _can_access_file(file_id, row["owner_user_id"], viewer_id):
         raise HTTPException(status_code=404, detail="File not found")
     content = await _download_storage_file_or_502(row["storage_key"], "file download")
+    await security_audit_service.record_content_read(
+        target_type="file",
+        target_id=str(file_id),
+        actor_user_id=viewer_id,
+        owner_user_id=row["owner_user_id"],
+    )
     content_type = row["content_type"] or "application/octet-stream"
     # content_type is stored verbatim from the upload, so normalize away MIME
     # parameters and casing before the SVG check — 'image/svg+xml;charset=utf-8'
@@ -442,6 +448,13 @@ async def get_my_file_text(
     )
     if not row:
         raise HTTPException(status_code=404, detail="File not found")
+    await security_audit_service.record_content_read(
+        target_type="file",
+        target_id=str(file_id),
+        actor_user_id=current_user["id"],
+        owner_user_id=owner_user_id,
+        metadata={"kind": "text"},
+    )
     return {
         "text": row["extracted_text"],
         "status": row["extraction_status"],

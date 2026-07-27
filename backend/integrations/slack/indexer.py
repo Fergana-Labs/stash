@@ -157,9 +157,11 @@ async def index_slack(source: dict) -> str | None:
     allowed_channel_ids = set(source_service.slack_allowed_channel_ids(source))
     await source_service.purge_disallowed_copied_documents(source)
     if not allowed_channel_ids:
-        # Fail loudly so the sync records a sync_error instead of reporting a
-        # successful sync that ingested nothing.
-        raise RuntimeError("no allowed channels configured")
+        # Nothing is wrong and no retry can help — Slack indexes only the
+        # channels the owner picks, and none are picked yet.
+        raise source_service.SourceSetupRequired(
+            "Choose the Slack channels to index — nothing syncs until you do."
+        )
 
     token = await get_valid_token(owner_user_id, "slack")
     headers = {"Authorization": f"Bearer {token}"}

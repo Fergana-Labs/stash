@@ -59,7 +59,7 @@ def test_merge_sweeps_stale_entries_from_other_roots(tmp_path: Path) -> None:
         ],
     )
 
-    status = _merge_json_hooks(dest, CURSOR_TEMPLATE, pipx_root)
+    status = _merge_json_hooks(dest, CURSOR_TEMPLATE, pipx_root, ("stashai/plugin/assets/cursor",))
 
     assert status == "installed"
     result = json.loads(dest.read_text())
@@ -76,8 +76,8 @@ def test_merge_is_idempotent_from_same_root(tmp_path: Path) -> None:
     dest = tmp_path / "cursor" / "hooks.json"
     pipx_root = tmp_path / "pipx/stashai/plugin/assets/cursor"
 
-    first = _merge_json_hooks(dest, CURSOR_TEMPLATE, pipx_root)
-    second = _merge_json_hooks(dest, CURSOR_TEMPLATE, pipx_root)
+    first = _merge_json_hooks(dest, CURSOR_TEMPLATE, pipx_root, ("stashai/plugin/assets/cursor",))
+    second = _merge_json_hooks(dest, CURSOR_TEMPLATE, pipx_root, ("stashai/plugin/assets/cursor",))
 
     assert first == "installed"
     assert second == "skipped"
@@ -89,7 +89,7 @@ def test_merge_preserves_user_entries(tmp_path: Path) -> None:
     user_entry = {"command": "echo my-own-hook", "timeout": 2}
 
     _write_hooks(dest, [user_entry])
-    _merge_json_hooks(dest, CURSOR_TEMPLATE, pipx_root)
+    _merge_json_hooks(dest, CURSOR_TEMPLATE, pipx_root, ("stashai/plugin/assets/cursor",))
 
     entries = json.loads(dest.read_text())["hooks"]["sessionStart"]
     assert user_entry in entries

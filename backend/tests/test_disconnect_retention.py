@@ -106,9 +106,17 @@ async def test_reconnect_under_a_different_account_is_refused(
     same = AccountInfo(email=None, display_name="@sam", account_ref="111")
     assert await storage.account_mismatch(user_id, "x", same) is None
 
-    # A provider that can't supply an id can't be checked — never a false block.
+    await pool.execute(
+        "UPDATE user_integrations SET account_ref = NULL WHERE user_id = $1 AND provider = 'x'",
+        user_id,
+    )
+    assert await storage.account_mismatch(user_id, "x", same) is None
+
+    # Missing identity must fail closed; otherwise a different account could
+    # inherit the disconnected account's retained source data.
     unknown = AccountInfo(email=None, display_name=None, account_ref=None)
-    assert await storage.account_mismatch(user_id, "x", unknown) is None
+    with pytest.raises(ValueError, match="x account identity is required"):
+        await storage.account_mismatch(user_id, "x", unknown)
 
 
 @pytest.mark.asyncio

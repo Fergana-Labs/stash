@@ -23,7 +23,7 @@ from stashai.plugin.doctor import shadow_install_warning
 from stashai.plugin.upload_status import read_upload_status
 
 from . import __version__, telemetry
-from .client import StashClient, StashError
+from .client import StashClient, StashError, split_source_tokens
 from .config import (
     MANIFEST_FILE,
     PRODUCTION_BASE_URL,
@@ -35,6 +35,7 @@ from .config import (
     save_enabled_agents,
     save_scope,
     session_link_enabled,
+    set_codex_auto_update,
     set_session_link,
     start_streaming,
     stop_streaming,
@@ -94,12 +95,15 @@ def upgrade() -> None:
     raise typer.Exit(result.returncode)
 
 
-def _client() -> StashClient:
+def _client(auto: bool = False) -> StashClient:
+    """auto=True tags every request as automated housekeeping so content-
+    activity analytics can exclude its reads (see auth._set_request_via)."""
     cfg = load_config()
     return StashClient(
         base_url=cfg["base_url"],
         api_key=cfg.get("api_key", ""),
         scope=cfg.get("scope", ""),
+        auto=auto,
     )
 
 
@@ -305,14 +309,16 @@ def _entry_references(obj: object, needle: str) -> bool:
     return False
 
 
-def _merge_json_hooks(dest: Path, template: str, plugin_root: Path) -> str:
+def _merge_json_hooks(
+    dest: Path, template: str, plugin_root: Path, markers: tuple[str, ...]
+) -> str:
     """Merge stash hook entries into a JSON hooks file under each event array.
 
-    Stash-owned entries are identified by the shared `stashai/plugin/assets/<agent>`
-    suffix embedded in their command strings — so re-runs sweep out every
-    stash-owned entry (including stale ones left by old dev checkouts or prior
-    pipx versions) and leave user-added entries untouched. Returns 'installed',
-    'skipped', or 'failed'.
+    Stash-owned entries are identified by `markers` — substrings embedded in
+    their command strings — so re-runs sweep out every stash-owned entry
+    (including stale ones left by old dev checkouts or prior pipx versions)
+    and leave user-added entries untouched. Returns 'installed', 'skipped',
+    or 'failed'.
     """
     from string import Template
 
@@ -333,7 +339,6 @@ def _merge_json_hooks(dest: Path, template: str, plugin_root: Path) -> str:
     except json.JSONDecodeError:
         return "failed"
 
-    stash_marker = f"stashai/plugin/assets/{plugin_root.name}"
     tmpl_hooks = tmpl_data.get("hooks", {})
     existing_hooks = existing.setdefault("hooks", {})
     changed = False
@@ -343,7 +348,7 @@ def _merge_json_hooks(dest: Path, template: str, plugin_root: Path) -> str:
         cur = existing_hooks.get(event) or []
         if not isinstance(cur, list):
             cur = []
-        user_entries = [e for e in cur if not _entry_references(e, stash_marker)]
+        user_entries = [e for e in cur if not any(_entry_references(e, m) for m in markers)]
         merged = user_entries + tmpl_entries
         if merged != cur:
             changed = True
@@ -370,7 +375,14 @@ def _install_cursor(force: bool) -> tuple[str, str]:
     root = _assets_dir("cursor")
     dest = Path.home() / ".cursor" / "hooks.json"
     template = (root / "hooks.json").read_text()
-    status_ = _merge_json_hooks(dest, template, root)
+    # The second marker sweeps stale absolute-path entries written by
+    # pre-`stash hook run` installs.
+    status_ = _merge_json_hooks(
+        dest,
+        template,
+        root,
+        ("stash hook run cursor", "stashai/plugin/assets/cursor"),
+    )
     return (status_, f"{dest}")
 
 
@@ -542,7 +554,23 @@ def _install_codex(force: bool) -> tuple[str, str]:
     root = _assets_dir("codex")
     hooks_dest = Path.home() / ".codex" / "hooks.json"
     template = (root / "hooks.json").read_text()
-    status_ = _merge_json_hooks(hooks_dest, template, root)
+    # The second marker sweeps stale absolute-path entries written by
+    # pre-`stash hook run` installs.
+    status_ = _merge_json_hooks(
+        hooks_dest,
+        template,
+        root,
+        ("stash hook run codex", "stashai/plugin/assets/codex"),
+    )
+
+    # One-shot cleanup: old installs wrote a top-level `_comment` key that
+    # makes Codex reject the entire hooks file.
+    if status_ != "failed":
+        hooks_data = json.loads(hooks_dest.read_text())
+        if "_comment" in hooks_data:
+            del hooks_data["_comment"]
+            hooks_dest.write_text(json.dumps(hooks_data, indent=2) + "\n")
+            status_ = "installed"
 
     # Append config.toml snippet idempotently via marker line.
     from string import Template
@@ -605,7 +633,14 @@ def _install_gemini(force: bool) -> tuple[str, str]:
     root = _assets_dir("gemini")
     dest = Path.home() / ".gemini" / "settings.json"
     template = (root / "settings.snippet.json").read_text()
-    status_ = _merge_json_hooks(dest, template, root)
+    # The second marker sweeps stale absolute-path entries written by
+    # pre-`stash hook run` installs.
+    status_ = _merge_json_hooks(
+        dest,
+        template,
+        root,
+        ("stash hook run gemini", "stashai/plugin/assets/gemini"),
+    )
 
     agents_dest = Path.home() / ".gemini" / "GEMINI.md"
     _upsert_agents_md(agents_dest, (root / "GEMINI.md").read_text())
@@ -630,13 +665,10 @@ def _install_hermes(force: bool) -> tuple[str, str]:
     so that case fails loud with a merge-by-hand message.
     """
     import re
-    from string import Template
 
     root = _assets_dir("hermes")
     cfg_path = Path.home() / ".hermes" / "config.yaml"
-    snippet = Template((root / "config.snippet.yaml").read_text()).safe_substitute(
-        PLUGIN_ROOT=str(root)
-    )
+    snippet = (root / "config.snippet.yaml").read_text()
     block = f"{_HERMES_MARKER_BEGIN}\n{snippet.rstrip()}\n{_HERMES_MARKER_END}"
 
     existing = cfg_path.read_text() if cfg_path.exists() else ""
@@ -721,6 +753,66 @@ _INSTALLERS = {
     "openclaw": _install_openclaw,
     "hermes": _install_hermes,
 }
+
+
+# ===========================================================================
+# Hook plumbing — invoked by coding agents, not interactively
+# ===========================================================================
+
+hook_app = typer.Typer(help="Hook plumbing invoked by coding agents. Not for interactive use.")
+app.add_typer(hook_app, name="hook", hidden=True)
+
+_HOOK_EVENTS = {
+    "claude": ("on_session_start", "on_prompt", "on_tool_use", "on_stop", "on_session_end"),
+    "codex": ("on_session_start", "on_prompt", "on_tool_use", "on_stop"),
+    "cursor": (
+        "on_session_start",
+        "on_prompt",
+        "on_tool_use",
+        "on_agent_response",
+        "on_session_end",
+    ),
+    "gemini": ("on_session_start", "on_prompt", "on_tool_use", "on_stop", "on_session_end"),
+    "hermes": ("on_session_start", "on_prompt", "on_tool_use", "on_stop", "on_session_end"),
+    "openclaw": ("on_session_start", "on_prompt", "on_stop", "on_session_end"),
+    "opencode": ("on_session_start", "on_prompt", "on_tool_use", "on_session_end"),
+}
+
+
+@hook_app.command("run")
+def hook_run(agent: str = typer.Argument(...), event: str = typer.Argument(...)) -> None:
+    """Run a plugin hook script. Reads the agent's JSON payload on stdin.
+
+    Agent hook files reference this command so every hook runs the scripts
+    shipped inside the installed stashai package, under the package's own
+    interpreter — no venv hunting, no version skew between scripts and
+    library. The command is also byte-identical across upgrades, which is
+    what keeps Codex (which trusts hooks by command hash) from silently
+    distrusting the hooks after a stash/python upgrade.
+    """
+    events = _HOOK_EVENTS.get(agent)
+    if events is None:
+        typer.echo(f"Unknown hook agent: {agent}", err=True)
+        raise typer.Exit(1)
+    if event not in events:
+        typer.echo(f"Unknown {agent} hook event: {event}", err=True)
+        raise typer.Exit(1)
+
+    import runpy
+
+    script = _assets_dir(agent) / "scripts" / f"{event}.py"
+    sys.path.insert(0, str(script.parent))
+    runpy.run_path(str(script), run_name="__main__")
+
+
+@hook_app.command("auto-update")
+def hook_auto_update(choice: str = typer.Argument(..., help="'on' or 'off'")) -> None:
+    """Record whether Stash may auto-update at Codex session start."""
+    if choice not in ("on", "off"):
+        typer.echo("Pass 'on' or 'off'.", err=True)
+        raise typer.Exit(1)
+    set_codex_auto_update(choice == "on")
+    console.print(f"Codex auto-update {choice}.")
 
 
 def _plugin_installed(agent: str) -> bool:
@@ -2063,7 +2155,9 @@ def skills_sync(
     manifest = _load_installed_manifest()
     installed = _installed_entry(manifest, root)
 
-    with _client() as c:
+    # Sync reads every skill's contents to compare hashes — housekeeping, not
+    # someone reading a document, so its requests are tagged auto.
+    with _client(auto=True) as c:
         try:
             summary, new_state = _sync_skills(
                 c,
@@ -2880,21 +2974,35 @@ sources_app = typer.Typer(
 app.add_typer(sources_app, name="sources")
 
 
-def _print_search(query: str, source: str, limit: int, as_json: bool) -> None:
+def _print_search(
+    query: str,
+    source: str,
+    include_sources: str,
+    exclude_sources: str,
+    limit: int,
+    as_json: bool,
+) -> None:
     """Shared body for `stash search`."""
     telemetry.record("sources.search")
     with _client() as c:
         try:
-            data = c.search_sources(query, source=source or None, limit=limit)
+            data = c.search_sources(
+                query,
+                source=source or None,
+                include_sources=split_source_tokens(include_sources),
+                exclude_sources=split_source_tokens(exclude_sources),
+                limit=limit,
+            )
         except StashError as e:
             _err(e)
     if _use_json(as_json):
         output_json(data)
         return
-    if not data:
+    hits = data["results"]
+    if not hits:
         console.print("[dim]No matches.[/dim]")
         return
-    for hit in data:
+    for hit in hits:
         label = hit.get("source_name") or hit.get("source")
         if hit.get("error"):
             console.print(f"  [yellow]⚠ {label}: {hit['error']}[/yellow]")
@@ -2909,9 +3017,13 @@ def _print_search(query: str, source: str, limit: int, as_json: bool) -> None:
             continue
         name = hit.get("name") or hit.get("ref") or ""
         console.print(f"  [bold]{name}[/bold]  [dim]({label}: {hit.get('ref')})[/dim]")
+        # The server sends a ~300-char window centered on the first query
+        # match, edges already marked with "…" — printable as-is.
         snippet = (hit.get("snippet") or "").replace("\n", " ").strip()
         if snippet:
             console.print(f"    {snippet}")
+    if data["has_more"]:
+        console.print("  [dim]More matches exist — raise -n or refine the query.[/dim]")
 
 
 @app.command("search")
@@ -2920,11 +3032,22 @@ def search(
     source: str = typer.Option(
         "", "--source", help="Scope to one source handle (omit to search everything)."
     ),
+    include_sources: str = typer.Option(
+        "",
+        "--include-sources",
+        help="Comma-separated sources to search (files, sessions, gmail, jira, …). "
+        "Not combinable with --source.",
+    ),
+    exclude_sources: str = typer.Option(
+        "",
+        "--exclude-sources",
+        help="Comma-separated sources to skip. Not combinable with --source.",
+    ),
     limit: int = typer.Option(20, "-n", "--limit"),
     as_json: bool = typer.Option(False, "--json"),
 ):
     """Search everything you can see — files, sessions, and connected sources."""
-    _print_search(query, source, limit, as_json)
+    _print_search(query, source, include_sources, exclude_sources, limit, as_json)
 
 
 def _poll_recompute_outcome(
@@ -4133,6 +4256,7 @@ def _install_all_hooks(agents: list[str] | None = None) -> None:
 
     to_install = [a for a in detected if a in agents] if agents is not None else detected
 
+    codex_needs_trust = False
     for agent in to_install:
         try:
             status_, detail = _INSTALLERS[agent](False)
@@ -4144,6 +4268,20 @@ def _install_all_hooks(agents: list[str] | None = None) -> None:
             console.print(f"  [green]✓[/green] {_AGENT_LABEL[agent]} hook up to date")
         elif status_ == "failed":
             console.print(f"  [red]✗[/red] {_AGENT_LABEL[agent]} hook failed  {detail}")
+        if agent == "codex" and status_ == "installed":
+            codex_needs_trust = True
+
+    # Codex only runs new or changed command hooks after the user approves
+    # them, so streaming is not live until that happens.
+    if codex_needs_trust:
+        console.print(
+            "\n  [yellow]Codex hooks were installed or changed — Codex will not run them"
+            " until you trust them:[/yellow]\n"
+            "    1. Restart Codex.\n"
+            "    2. When Codex prompts to review new hooks (or via its /hooks review),"
+            " approve the Stash hooks.\n"
+            "  Codex sessions start streaming to Stash only after the hooks are trusted."
+        )
 
 
 @app.command()

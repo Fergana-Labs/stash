@@ -5,21 +5,17 @@ plugin's event coverage.
 
 ## Prerequisites
 
-- `stash` CLI installed and logged in (`uv tool install stashai && stash signin`)
-- `.stash` manifest present in repo (or ancestor)
-- Python 3.10+ on PATH
-- `httpx` installed (`pip install httpx`)
+- `stash` CLI installed (on PATH) and signed in (`uv tool install stashai && stash signin`)
+
+Streaming is gated globally: it is on whenever you are signed in
+(`stash signin`) and haven't stopped streaming (`stash disconnect`).
 
 ## Install
 
-```bash
-cd path/to/stash/plugins/cursor-plugin
-
-# Symlink hooks.json into Cursor with PLUGIN_ROOT baked in.
-export PLUGIN_ROOT=$(pwd)
-mkdir -p ~/.cursor
-envsubst < hooks.json > ~/.cursor/hooks.json
-```
+`stash signin` detects Cursor and merges the hooks into `~/.cursor/hooks.json`
+automatically. For a manual install, copy `hooks.json` there as-is — every
+hook is the stable command `stash hook run cursor <event>`, so the file is
+machine-independent and never changes across upgrades.
 
 For agent context (so Cursor knows the `stash` CLI is available), Cursor
 only auto-loads `.mdc` rules from project-level `.cursor/rules/` — there
@@ -28,7 +24,7 @@ and the installer will drop a `.cursor/rules/stash.mdc` into that repo.
 Commit it so teammates' Cursor agents pick it up too.
 
 Or, for per-project use, drop `hooks.json` into `<project>/.cursor/hooks.json`
-with `${PLUGIN_ROOT}` replaced by the absolute path.
+as-is.
 
 ## Verify
 

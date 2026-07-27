@@ -1428,6 +1428,26 @@ async def list_scope_tree(owner_user_id: UUID, user_id: UUID | None = None) -> d
     return root
 
 
+# The page text that FTS matches against: HTML pages stripped of tags,
+# markdown pages as-is.
+_PAGES_CONTENT_TEXT_EXPR = (
+    "CASE WHEN content_type = 'html' "
+    "THEN regexp_replace(COALESCE(content_html, ''), '<[^>]+>', ' ', 'g') "
+    "ELSE COALESCE(content_markdown, '') END"
+)
+
+# The weighted search vector for pages: keywords (A) over body text (B). Every
+# sub-expression is immutable — no subqueries — so the whole thing is an
+# indexable expression, and idx_pages_fts_weighted (migration 0165) is built on
+# this EXACT text. Postgres matches expression indexes syntactically: change
+# this and the migration together, or page search silently falls back to a
+# sequential scan that regex-strips every page's HTML per query.
+PAGES_FTS_VECTOR_EXPR = (
+    f"setweight(to_tsvector('english', {_PAGES_CONTENT_TEXT_EXPR}), 'B') || "
+    "setweight(to_tsvector('english', COALESCE(metadata->>'keywords', '')), 'A')"
+)
+
+
 async def search_pages_fts(
     owner_user_id: UUID,
     query: str,
@@ -1435,19 +1455,8 @@ async def search_pages_fts(
     user_id: UUID | None = None,
 ) -> list[dict]:
     pool = get_pool()
-    kw_text_expr = (
-        "COALESCE((SELECT string_agg(kw, ' ') "
-        "FROM jsonb_array_elements_text(COALESCE(metadata->'keywords', '[]'::jsonb)) AS kw), '')"
-    )
-    content_text_expr = (
-        "CASE WHEN content_type = 'html' "
-        "THEN regexp_replace(COALESCE(content_html, ''), '<[^>]+>', ' ', 'g') "
-        "ELSE COALESCE(content_markdown, '') END"
-    )
-    vec_expr = (
-        f"setweight(to_tsvector('english', {content_text_expr}), 'B') || "
-        f"setweight(to_tsvector('english', {kw_text_expr}), 'A')"
-    )
+    vec_expr = PAGES_FTS_VECTOR_EXPR
+    content_text_expr = _PAGES_CONTENT_TEXT_EXPR
     args: list = [owner_user_id, query]
     where = (
         f"p.owner_user_id = $1 "

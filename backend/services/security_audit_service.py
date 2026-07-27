@@ -5,10 +5,18 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+from contextvars import ContextVar
 from uuid import UUID
 
 from ..config import settings
 from ..database import get_pool
+
+# The caller surface of the current request — 'web', 'cli', or 'ask' — set by
+# auth on every authenticated request and stamped onto each audit row. A
+# contextvar (not a parameter) so the many record_event call sites don't all
+# have to thread a Request through. None (e.g. the anonymous paste route)
+# stores NULL, which the per-surface dashboard excludes.
+request_via: ContextVar[str | None] = ContextVar("request_via", default=None)
 
 
 def hash_value(value: str | None) -> str | None:
@@ -29,6 +37,7 @@ def _event_row(row) -> dict:
         "owner_user_id": str(row["owner_user_id"]) if row["owner_user_id"] else None,
         "actor_user_id": str(row["actor_user_id"]) if row["actor_user_id"] else None,
         "action": row["action"],
+        "via": row["via"],
         "target_type": row["target_type"],
         "target_id": row["target_id"],
         "provider": row["provider"],
@@ -53,9 +62,9 @@ async def record_event(
         """
         INSERT INTO security_audit_events (
             owner_user_id, actor_user_id, action, target_type, target_id,
-            provider, source_type, metadata
+            provider, source_type, metadata, via
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9)
         """,
         owner_user_id,
         actor_user_id,
@@ -65,6 +74,7 @@ async def record_event(
         provider,
         source_type,
         json.dumps(metadata or {}),
+        request_via.get(),
     )
 
 
@@ -83,6 +93,47 @@ async def record_content_lifecycle_event(
         owner_user_id=owner_user_id,
         target_type=target_type,
         target_id=str(target_id),
+        metadata=metadata,
+    )
+
+
+async def record_content_read(
+    *,
+    target_type: str,
+    target_id: str | None,
+    actor_user_id: UUID | None,
+    owner_user_id: UUID | None,
+    metadata: dict | None = None,
+) -> None:
+    """Read trail for native content (pages, files, transcripts, tables, ...).
+
+    Connected-source reads are audited separately in source_service
+    (source.document_read); together the two cover every document read.
+    actor_user_id is None for anonymous public-link reads."""
+    await record_event(
+        action=f"content.{target_type}_read",
+        actor_user_id=actor_user_id,
+        owner_user_id=owner_user_id,
+        target_type=target_type,
+        target_id=target_id,
+        metadata=metadata,
+    )
+
+
+async def record_entries_listed(
+    *,
+    target_type: str,
+    actor_user_id: UUID,
+    owner_user_id: UUID,
+    metadata: dict | None = None,
+) -> None:
+    """Listing trail for native content (tree, overview, tables, ...) —
+    parallel to source.entries_listed for connected sources."""
+    await record_event(
+        action="content.entries_listed",
+        actor_user_id=actor_user_id,
+        owner_user_id=owner_user_id,
+        target_type=target_type,
         metadata=metadata,
     )
 

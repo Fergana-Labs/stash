@@ -536,16 +536,18 @@ async def _read_source(args: dict) -> dict:
     },
 )
 async def _search(args: dict) -> dict:
-    results = await source_service.search_all(
+    query = args.get("query", "")
+    result = await source_service.search_all(
         _current_scope(),
         _current_user(),
-        args.get("query", ""),
+        query,
         source=args.get("source"),
         limit=int(args.get("limit", 20)),
     )
-    if results is None:
+    if result is None:
         return _text_result(json.dumps({"error": "source not found"}))
-    return _text_result(json.dumps(results))
+    # Hits carry date_modified as a datetime; default=str renders it ISO.
+    return _text_result(json.dumps(result, default=str))
 
 
 @tool(

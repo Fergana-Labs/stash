@@ -36,7 +36,10 @@ def test_fresh_install_writes_marked_hooks_block(monkeypatch, tmp_path: Path) ->
     assert "# stash-plugin:end" in text
     for event in _HOOK_EVENTS:
         assert event in text
-    assert "stashai/plugin/assets/hermes" in text
+    # Machine-independent commands: the CLI runs its own shipped scripts, so
+    # no absolute install path may leak into the user's config.yaml.
+    assert "stash hook run hermes" in text
+    assert "stashai/plugin/assets/hermes" not in text
     assert "${PLUGIN_ROOT}" not in text
     # Hooks need one-time user approval inside Hermes — the installer must say so.
     assert "hermes hooks list" in detail

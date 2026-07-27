@@ -133,6 +133,11 @@ async def _run_harness(
         tail = _redact(" ".join(state.unparsed), provider_env)[-400:]
         if tail:
             state.error += f": {tail}"
+    if state.error:
+        # Harness-emitted errors can carry raw request/response fragments
+        # (the mappers now preserve them) — scrub the injected key like the
+        # plain-text tail above.
+        state.error = _redact(state.error, provider_env)
     if state.error and harness_mod.RESUME_MISSING_RE.search(state.error):
         state.resume_missing = True
 
@@ -185,6 +190,11 @@ async def _record_tool_event(
     )
 
 
+# Stored marker for a failed run's closing message — the runs API reads it back
+# to flag the run, so the client never string-matches message text itself.
+RUN_FAILED_PREFIX = "⚠️ Agent run failed:"
+
+
 async def _record_run_failure(
     owner_user_id: UUID, user_id: UUID, session_id: str, agent_name: str, error: str
 ) -> None:
@@ -195,7 +205,7 @@ async def _record_run_failure(
         owner_user_id,
         agent_name,
         "assistant_message",
-        f"⚠️ Agent run failed: {error}",
+        f"{RUN_FAILED_PREFIX} {error}",
         user_id,
         session_id=session_id,
     )
@@ -351,6 +361,13 @@ def _system_prompt(owner_name: str, persona: str | None) -> str:
     return f"{base}\n\n{persona}" if persona else base
 
 
+def scheduled_session_prefix(agent: dict) -> str:
+    """Prefix of every per-run session id build_scheduled_turn mints for this
+    agent — the runs API groups stored history by it."""
+    kind = "curate" if agent.get("is_curator") else "sched"
+    return f"agent-{kind}-{agent['id']}-"
+
+
 async def build_scheduled_turn(agent: dict, run_stamp: str) -> tuple[str, str]:
     """(session_id, message) for one run of a scheduled agent.
 
@@ -361,12 +378,12 @@ async def build_scheduled_turn(agent: dict, run_stamp: str) -> tuple[str, str]:
     from . import files_tree_service, prompts
 
     user_id = UUID(str(agent["user_id"]))
+    session_id = f"{scheduled_session_prefix(agent)}{run_stamp}"
     if agent.get("is_curator"):
         memory = await files_tree_service.get_or_create_memory_folder(user_id, user_id)
         since = agent["curated_through"].isoformat() if agent.get("curated_through") else None
-        message = prompts.render_curator_prompt(memory["id"], since)
-        return f"agent-curate-{agent['id']}-{run_stamp}", message
-    return f"agent-sched-{agent['id']}-{run_stamp}", agent["schedule_prompt"]
+        return session_id, prompts.render_curator_prompt(memory["id"], since)
+    return session_id, agent["schedule_prompt"]
 
 
 async def run_scheduled(agent: dict, run_stamp: str) -> str:
@@ -393,37 +410,43 @@ async def run_scheduled(agent: dict, run_stamp: str) -> str:
     )
 
 
-async def stream_chat(
+# Detached turn tasks need a strong reference until they finish — asyncio
+# holds only weak refs, and a GC'd task is a silently killed turn.
+_detached_turns: set[asyncio.Task] = set()
+
+_TURN_DONE = object()
+
+
+async def _pump_turn(
+    queue: asyncio.Queue,
     owner_user_id: UUID,
     owner_name: str,
     user_id: UUID,
     session_id: str,
     message: str,
     auth: agent_auth.RunAuth,
-    persona: str | None = None,
-    agent_name: str = AGENT_NAME,
-) -> AsyncIterator[str]:
-    """Multi-turn agent chat over a stored session, streamed as SSE.
+    persona: str | None,
+    agent_name: str,
+) -> None:
+    """One chat turn, decoupled from its viewer.
 
-    `auth` is the harness + credentials resolved (and gated) by the router
-    before the stream started, so a 402 is a clean HTTP error, not an SSE one.
-    `persona` is the selected agent's extra system prompt.
-    """
+    Events go to `queue`, but execution, recording, and the turn lock never
+    depend on anyone reading them: the sandboxed turn is the real work and
+    must survive a closed tab — the stream is only a live view of it."""
+
+    def put(event: dict) -> None:
+        queue.put_nowait(event)
+
     try:
         async with _TurnLock(session_id):
             history = await _load_history(owner_user_id, session_id, user_id)
             await memory_service.push_event(
                 owner_user_id, agent_name, "user_message", message, user_id, session_id=session_id
             )
-            yield _sse({"type": "session", "session_id": session_id})
-            yield _sse({"type": "status", "stage": "waking"})
+            put({"type": "session", "session_id": session_id})
+            put({"type": "status", "stage": "waking"})
 
-            acquire = asyncio.create_task(sprite_service.acquire(user_id))
-            while not acquire.done():
-                # SSE comment keepalives while a first-ever provision runs.
-                yield ": ping\n\n"
-                await asyncio.wait({acquire}, timeout=10)
-            sprite = acquire.result()
+            sprite = await sprite_service.acquire(user_id)
             await sprite_service.touch(user_id)
             # Registered MCP servers reach the harness via the workdir's
             # .mcp.json, rewritten every turn so removals propagate too.
@@ -449,11 +472,11 @@ async def stream_chat(
                         await _record_tool_event(
                             owner_user_id, user_id, session_id, event, auth.env, agent_name
                         )
-                    yield _sse(event)
+                    put(event)
             except TurnStopped:
                 final = STOPPED_NOTE
-                yield _sse({"type": "text", "delta": STOPPED_NOTE})
-                yield _sse({"type": "end"})
+                put({"type": "text", "delta": STOPPED_NOTE})
+                put({"type": "end"})
 
             if final:
                 await memory_service.push_event(
@@ -467,11 +490,10 @@ async def stream_chat(
             elif error:
                 await _record_run_failure(owner_user_id, user_id, session_id, agent_name, error)
     except TurnInProgress:
-        yield _sse({"type": "error", "message": "A turn is already running in this chat."})
-        yield _sse({"type": "end"})
+        put({"type": "error", "message": "A turn is already running in this chat."})
+        put({"type": "end"})
     except Exception:
-        # SSE has already started, so an exception can't become an HTTP error —
-        # without this the stream just dies and the client sees nothing.
+        # The client may be long gone, so the log is the only reliable trace.
         logger.exception("cloud agent: turn failed for session %s", session_id)
         try:
             await _record_run_failure(
@@ -481,8 +503,58 @@ async def stream_chat(
             # Recording is best-effort here — the client must still get its
             # error + end events even if the DB write is what's broken.
             logger.exception("cloud agent: could not record failure for %s", session_id)
-        yield _sse({"type": "error", "message": "The agent turn failed. Try again."})
-        yield _sse({"type": "end"})
+        put({"type": "error", "message": "The agent turn failed. Try again."})
+        put({"type": "end"})
+    finally:
+        queue.put_nowait(_TURN_DONE)
+
+
+async def stream_chat(
+    owner_user_id: UUID,
+    owner_name: str,
+    user_id: UUID,
+    session_id: str,
+    message: str,
+    auth: agent_auth.RunAuth,
+    persona: str | None = None,
+    agent_name: str = AGENT_NAME,
+) -> AsyncIterator[str]:
+    """Multi-turn agent chat over a stored session, streamed as SSE.
+
+    `auth` is the harness + credentials resolved (and gated) by the router
+    before the stream started, so a 402 is a clean HTTP error, not an SSE one.
+    `persona` is the selected agent's extra system prompt.
+
+    The turn itself runs as a detached task (_pump_turn): a dropped stream —
+    closed tab, in-app navigation — never cancels it, the reply is still
+    recorded into the session, and the turn lock still releases. A returning
+    client reloads the stored session and polls the status endpoint."""
+    queue: asyncio.Queue = asyncio.Queue()
+    turn = asyncio.create_task(
+        _pump_turn(
+            queue,
+            owner_user_id,
+            owner_name,
+            user_id,
+            session_id,
+            message,
+            auth,
+            persona,
+            agent_name,
+        )
+    )
+    _detached_turns.add(turn)
+    turn.add_done_callback(_detached_turns.discard)
+    while True:
+        try:
+            event = await asyncio.wait_for(queue.get(), timeout=10)
+        except TimeoutError:
+            # SSE comment keepalive through provisioning waits and long tool calls.
+            yield ": ping\n\n"
+            continue
+        if event is _TURN_DONE:
+            return
+        yield _sse(event)
 
 
 # Slack messages are an untrusted surface: strip the harness's own mutating

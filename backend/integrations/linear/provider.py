@@ -21,7 +21,7 @@ from ..base import AccountInfo, Integration, TokenSet
 AUTHORIZE_URL = "https://linear.app/oauth/authorize"
 TOKEN_URL = "https://api.linear.app/oauth/token"
 REVOKE_URL = "https://api.linear.app/oauth/revoke"
-VIEWER_QUERY = "query { viewer { name email } }"
+VIEWER_QUERY = "query { viewer { id name email } }"
 
 
 class LinearIntegration(Integration):
@@ -104,4 +104,8 @@ class LinearIntegration(Integration):
             resp = await client.post(settings.LINEAR_API_URL, json={"query": VIEWER_QUERY})
             resp.raise_for_status()
             viewer = (resp.json().get("data") or {}).get("viewer") or {}
-        return AccountInfo(email=viewer.get("email"), display_name=viewer.get("name"))
+        return AccountInfo(
+            email=viewer.get("email"),
+            display_name=viewer.get("name"),
+            account_ref=viewer.get("id"),
+        )

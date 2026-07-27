@@ -106,6 +106,11 @@ class StashClient:
         headers = {"Authorization": f"Bearer {self._api_key}"}
         if self._scope:
             headers["X-Stash-Scope"] = self._scope
+        # Everything through this client is plugin machinery (hook streaming,
+        # session watcher, detached uploads) — never a user or agent reading
+        # content on purpose, so content-activity analytics exclude it (see
+        # backend auth._set_request_via).
+        headers["X-Stash-Via"] = "auto"
         return headers
 
     def _request(self, method: str, path: str, **kwargs) -> httpx.Response:

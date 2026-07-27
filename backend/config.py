@@ -189,6 +189,11 @@ class Settings:
     # --- Email (Postmark) ---
     POSTMARK_SERVER_TOKEN: str | None = os.getenv("POSTMARK_SERVER_TOKEN")
 
+    # --- Ops alerts ---
+    # Slack incoming-webhook URL for operational alerts (scheduled agent run
+    # failures, stale curators). Unset → alerts are ERROR logs only.
+    ALERT_SLACK_WEBHOOK_URL: str | None = os.getenv("ALERT_SLACK_WEBHOOK_URL")
+
     # --- Admin ---
     # Shared secret for /api/v1/admin/* endpoints. The www admin page sends
     # this in X-Admin-Token from server-side fetches; never exposed to the

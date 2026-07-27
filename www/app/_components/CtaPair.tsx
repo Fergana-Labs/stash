@@ -3,13 +3,16 @@ import Link from "next/link";
 import ScrollLink from "./ScrollLink";
 
 const APP_URL = process.env.MANAGED_APP_URL || "https://app.joinstash.ai";
+// Signup must land on the auth flow — the app root is the public feed and
+// shows a signed-out visitor no way to create an account.
+const SIGNUP_URL = `${APP_URL}/login?mode=register`;
 const CALL_URL = "/contact-sales";
 
 // One consistent CTA pair everywhere across the landing: orange "Sign up free"
 // as the primary goal, outlined "Book a call" as the enterprise secondary.
 // Variant pages pass signupHref="#survey" so the primary scrolls to their form.
 export default function CtaPair({
-  signupHref = APP_URL,
+  signupHref = SIGNUP_URL,
   align = "start",
 }: {
   signupHref?: string;

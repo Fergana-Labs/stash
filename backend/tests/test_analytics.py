@@ -7,6 +7,7 @@ Covers:
 """
 
 import json
+from uuid import UUID
 
 import pytest
 from httpx import AsyncClient
@@ -171,6 +172,7 @@ async def test_admin_endpoints_require_token(client: AsyncClient):
         "/api/v1/admin/analytics/path-mix",
         "/api/v1/admin/analytics/surface-mix",
         "/api/v1/admin/analytics/top-events",
+        "/api/v1/admin/analytics/content-activity",
     ]:
         resp = await client.get(path)
         assert resp.status_code == 401, f"{path} should require admin token"
@@ -389,6 +391,166 @@ async def test_summary_counts_signups_and_cli_active(client: AsyncClient):
     assert body["signups"] >= 1
     assert body["cli_active_users"] == 1  # one distinct user, regardless of cmd count
     assert body["active_users"] >= 1
+
+
+@pytest.mark.asyncio
+async def test_internal_email_domains_are_excluded_by_default(client: AsyncClient, pool):
+    """Our own team's usage (ferganalabs/joinstash accounts) must not inflate
+    dashboard numbers unless the "Internal accounts" toggle asks for them —
+    by default only the external user should count anywhere."""
+    users = {}
+    for label in ("internal", "external"):
+        resp = await client.post(
+            "/api/v1/users/register",
+            json={"name": unique_name(label), "password": "securepassword1"},
+        )
+        assert resp.status_code == 201
+        users[label] = resp.json()
+
+    await pool.execute(
+        "UPDATE users SET email = 'team@ferganalabs.com' WHERE id = $1",
+        UUID(users["internal"]["id"]),
+    )
+    await pool.execute(
+        "UPDATE users SET email = 'someone@example.com' WHERE id = $1",
+        UUID(users["external"]["id"]),
+    )
+
+    for label in ("internal", "external"):
+        resp = await client.post(
+            "/api/v1/analytics/events",
+            json={
+                "events": [
+                    {
+                        "surface": "web",
+                        "event_name": "onboarding.viewed",
+                        "properties": {"has_path": False},
+                    },
+                    {
+                        "surface": "cli",
+                        "event_name": "cli.command_invoked",
+                        "properties": {"command": "connect"},
+                    },
+                ]
+            },
+            headers=_auth(users[label]["api_key"]),
+        )
+        assert resp.status_code == 200, resp.text
+
+    resp = await client.get("/api/v1/admin/analytics/summary?days=30", headers=_admin())
+    assert resp.status_code == 200, resp.text
+    summary = resp.json()
+    assert summary["signups"] == 1
+    assert summary["cli_active_users"] == 1
+    assert summary["active_users"] == 1
+
+    resp = await client.get("/api/v1/admin/analytics/onboarding-funnel", headers=_admin())
+    assert resp.status_code == 200, resp.text
+    by_stage = {s["stage"]: s["users"] for s in resp.json()["stages"]}
+    assert by_stage["viewed"] == 1
+
+    # The dashboard's "Internal accounts: Show" toggle turns the filter off —
+    # both users must count again.
+    resp = await client.get(
+        "/api/v1/admin/analytics/summary?days=30&exclude_internal=false", headers=_admin()
+    )
+    assert resp.status_code == 200, resp.text
+    summary = resp.json()
+    assert summary["signups"] == 2
+    assert summary["cli_active_users"] == 2
+    assert summary["active_users"] == 2
+
+
+@pytest.mark.asyncio
+async def test_content_activity_zero_state(client: AsyncClient):
+    resp = await client.get("/api/v1/admin/analytics/content-activity", headers=_admin())
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["totals"] == {
+        "reads": {"cli": 0, "ask": 0},
+        "searches": {"web": 0, "cli": 0, "ask": 0},
+        "listings": {"cli": 0, "ask": 0},
+    }
+    assert body["rows"] == []
+
+
+@pytest.mark.asyncio
+async def test_content_activity_splits_by_surface_and_drops_web_reads(client: AsyncClient):
+    resp = await client.post(
+        "/api/v1/users/register",
+        json={"name": unique_name("activity"), "password": "securepassword1"},
+    )
+    assert resp.status_code == 201
+    body = resp.json()
+    api_key, user_id = body["api_key"], UUID(body["id"])
+
+    # API-key traffic tags as 'cli': one page read + the tree listing.
+    resp = await client.post(
+        "/api/v1/me/pages/new",
+        json={"name": "Activity.md", "content": "x"},
+        headers=_auth(api_key),
+    )
+    page_id = resp.json()["id"]
+    assert (
+        await client.get(f"/api/v1/me/pages/{page_id}", headers=_auth(api_key))
+    ).status_code == 200
+    assert (await client.get("/api/v1/me/tree", headers=_auth(api_key))).status_code == 200
+
+    # Directly seeded rows stand in for the other surfaces.
+    security_audit_service.request_via.set("ask")
+    await security_audit_service.record_content_read(
+        target_type="page", target_id="p1", actor_user_id=user_id, owner_user_id=user_id
+    )
+    security_audit_service.request_via.set("web")
+    await security_audit_service.record_content_read(  # web read: must NOT count
+        target_type="page", target_id="p2", actor_user_id=user_id, owner_user_id=user_id
+    )
+    await security_audit_service.record_entries_listed(  # web listing: must NOT count
+        target_type="tree", actor_user_id=user_id, owner_user_id=user_id
+    )
+    await security_audit_service.record_event(  # web search: counts
+        action="source.searched",
+        actor_user_id=user_id,
+        owner_user_id=user_id,
+        target_type="source_collection",
+    )
+    security_audit_service.request_via.set("cli")
+    await security_audit_service.record_event(
+        action="source.searched",
+        actor_user_id=user_id,
+        owner_user_id=user_id,
+        target_type="source_collection",
+    )
+    security_audit_service.request_via.set("auto")
+    await security_audit_service.record_content_read(  # automated read: must NOT count
+        target_type="skill", target_id="s1", actor_user_id=user_id, owner_user_id=user_id
+    )
+    security_audit_service.request_via.set(None)
+    await security_audit_service.record_content_read(  # untagged legacy row: excluded
+        target_type="page", target_id="p3", actor_user_id=user_id, owner_user_id=user_id
+    )
+
+    resp = await client.get(
+        "/api/v1/admin/analytics/content-activity?days=30",
+        headers=_admin(),
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["totals"]["reads"] == {"cli": 1, "ask": 1}
+    assert body["totals"]["searches"] == {"web": 1, "cli": 1, "ask": 0}
+    assert body["totals"]["listings"] == {"cli": 1, "ask": 0}
+    by_kind: dict[str, int] = {}
+    for r in body["rows"]:
+        by_kind[r["kind"]] = by_kind.get(r["kind"], 0) + r["count"]
+    assert by_kind == {"reads": 2, "searches": 2, "listings": 1}
+    # Rows carry the surface so the dashboard chart can filter by source.
+    assert {(r["kind"], r["via"]) for r in body["rows"]} == {
+        ("reads", "cli"),
+        ("reads", "ask"),
+        ("searches", "web"),
+        ("searches", "cli"),
+        ("listings", "cli"),
+    }
 
 
 @pytest.mark.asyncio

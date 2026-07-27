@@ -5,11 +5,15 @@ everything before it is captured in git history (`git log`), not here.
 
 ## Unreleased
 
-- `GET /api/v1/me/agents/{agent_id}/runs` lists a named agent's past scheduled
-  runs (Memory curator included) with start time, duration, tool count, and a
-  status of completed, failed (with the error text), interrupted, or running.
-  The list is derived from each run's existing per-run session events plus
-  the live turn lock, so users no longer see only the single latest run.
+- Scheduled agent run history now reports each run's status, error, duration,
+  event count, and tool count while preserving the chronological transcript
+  feed used by the agent workspace.
+- `stash vfs stat` once again shows the source-sharing command for connected
+  source roots, including roots that do not have an app URL.
+- OAuth reconnects now require a stable provider account identity. Slack,
+  Asana, Jira, Linear, Notion, and Gong connections refuse to store new
+  credentials when identity lookup fails, preventing retained source data
+  from silently continuing under a different provider account.
 - Frontend server-side backend requests now require `BACKEND_INTERNAL_URL`
   or `NEXT_PUBLIC_API_URL` instead of guessing an environment, so missing
   managed deploy config fails during build rather than crashing public

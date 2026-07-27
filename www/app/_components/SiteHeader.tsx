@@ -4,11 +4,14 @@ import Logo from "./Logo";
 import ScrollLink from "./ScrollLink";
 
 const APP_URL = process.env.MANAGED_APP_URL || "https://app.joinstash.ai";
+// Signup must land on the auth flow — the app root is the public feed and
+// shows a signed-out visitor no way to create an account.
+const SIGNUP_URL = `${APP_URL}/login?mode=register`;
 
 // Shared top nav for the landing page and the use-case pages, so the two
 // primary use-case links stay identical everywhere they appear. The
 // message-test pages pass ctaHref="#survey" so signup leads to their form.
-export default function SiteHeader({ ctaHref = APP_URL }: { ctaHref?: string }) {
+export default function SiteHeader({ ctaHref = SIGNUP_URL }: { ctaHref?: string }) {
   const ctaClassName =
     "hidden h-10 items-center rounded-lg bg-brand px-[18px] text-[14px] font-medium text-white shadow-sm transition hover:bg-brand-hover sm:inline-flex";
   return (

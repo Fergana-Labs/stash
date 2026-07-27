@@ -7,6 +7,7 @@ import mimetypes
 import os
 import time
 from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 import httpx
@@ -28,11 +29,23 @@ class StashError(VfsClientError):
 SOURCE_ENTRIES_PAGE = 1000
 
 
+def split_source_tokens(value: str) -> list[str] | None:
+    """Comma-separated CLI value -> token list for search's source filters
+    ("files, gmail" -> ["files", "gmail"]); blank input -> None (no filter)."""
+    tokens = [t.strip() for t in value.split(",") if t.strip()]
+    return tokens or None
+
+
 class StashClient:
-    def __init__(self, base_url: str, api_key: str = "", scope: str = ""):
+    def __init__(self, base_url: str, api_key: str = "", scope: str = "", auto: bool = False):
         self._base_url = base_url.rstrip("/")
         self._api_key = api_key
         self._scope = scope
+        # Automated housekeeping (skills sync) — its reads are tagged so
+        # content-activity analytics can exclude them (see auth._set_request_via).
+        self._auto = auto
+        self._internal = False
+        self._scan = False
         self._http = httpx.Client(base_url=self._base_url, timeout=30)
 
     def close(self) -> None:
@@ -44,12 +57,44 @@ class StashClient:
     def __exit__(self, *args):
         self.close()
 
+    @contextmanager
+    def internal_calls(self):
+        """VFS mount bookkeeping (see stashvfs.VfsClient.internal_calls):
+        requests in this block are tagged like `auto` traffic so analytics
+        don't count tree refreshes as user-driven listings."""
+        self._internal = True
+        try:
+            yield
+        finally:
+            self._internal = False
+
+    @contextmanager
+    def scan_calls(self):
+        """A grep's per-document reads (see stashvfs.VfsClient.scan_calls):
+        requests in this block are tagged `scan` so analytics count the grep
+        as the one search `record_search` writes, not as hundreds of reads."""
+        self._scan = True
+        try:
+            yield
+        finally:
+            self._scan = False
+
+    def record_search(self, pattern: str, roots: list[str], docs_scanned: int) -> None:
+        self._post(
+            "/api/v1/me/vfs/searches",
+            json={"pattern": pattern, "roots": roots, "docs_scanned": docs_scanned},
+        )
+
     def _headers(self) -> dict[str, str]:
         if not self._api_key:
             return {}
         headers = {"Authorization": f"Bearer {self._api_key}"}
         if self._scope:
             headers["X-Stash-Scope"] = self._scope
+        if self._auto or self._internal:
+            headers["X-Stash-Via"] = "auto"
+        elif self._scan:
+            headers["X-Stash-Via"] = "scan"
         return headers
 
     def _request(self, method: str, path: str, **kwargs) -> httpx.Response:
@@ -675,11 +720,25 @@ class StashClient:
     def read_source_doc(self, source: str, ref: str) -> dict:
         return self._get(f"/api/v1/me/sources/{source}/doc", ref=ref)
 
-    def search_sources(self, query: str, source: str | None = None, limit: int = 20) -> list:
+    def search_sources(
+        self,
+        query: str,
+        source: str | None = None,
+        include_sources: list[str] | None = None,
+        exclude_sources: list[str] | None = None,
+        limit: int = 20,
+    ) -> dict:
+        """Returns the search envelope: {"results": [...], "has_more": bool}.
+        List params reach the server as repeated query params (httpx does this
+        natively), matching the endpoint's list[str] Query params."""
         params: dict = {"q": query, "limit": limit}
         if source:
             params["source"] = source
-        return self._list("/api/v1/me/sources/search", "results", **params)
+        if include_sources:
+            params["include_sources"] = include_sources
+        if exclude_sources:
+            params["exclude_sources"] = exclude_sources
+        return self._get("/api/v1/me/sources/search", **params)
 
     # --- Tables ---
 

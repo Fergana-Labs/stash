@@ -1,21 +1,21 @@
 {
-  "_comment": "Symlink or copy to ~/.cursor/hooks.json or <project>/.cursor/hooks.json. PLUGIN_ROOT must be set to the absolute path of this directory. Cursor timeouts are in SECONDS.",
+  "_comment": "Merged into ~/.cursor/hooks.json by `stash signin` (or copy by hand for <project>/.cursor/hooks.json). Commands are machine-independent — `stash hook run cursor <event>` executes the scripts shipped inside the stashai package. Cursor timeouts are in SECONDS.",
   "version": 1,
   "hooks": {
     "sessionStart": [
-      { "command": "bash ${PLUGIN_ROOT}/scripts/_run.sh on_session_start", "timeout": 5 }
+      { "command": "stash hook run cursor on_session_start", "timeout": 5 }
     ],
     "beforeSubmitPrompt": [
-      { "command": "bash ${PLUGIN_ROOT}/scripts/_run.sh on_prompt", "timeout": 3 }
+      { "command": "stash hook run cursor on_prompt", "timeout": 3 }
     ],
     "postToolUse": [
-      { "command": "bash ${PLUGIN_ROOT}/scripts/_run.sh on_tool_use", "timeout": 5 }
+      { "command": "stash hook run cursor on_tool_use", "timeout": 5 }
     ],
     "afterAgentResponse": [
-      { "command": "bash ${PLUGIN_ROOT}/scripts/_run.sh on_agent_response", "timeout": 10 }
+      { "command": "stash hook run cursor on_agent_response", "timeout": 10 }
     ],
     "sessionEnd": [
-      { "command": "bash ${PLUGIN_ROOT}/scripts/_run.sh on_session_end", "timeout": 5 }
+      { "command": "stash hook run cursor on_session_end", "timeout": 5 }
     ]
   }
 }

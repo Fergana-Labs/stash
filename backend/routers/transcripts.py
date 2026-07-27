@@ -22,6 +22,7 @@ from ..auth import get_current_user, get_scope
 from ..database import get_pool
 from ..services import (
     memory_service,
+    security_audit_service,
     session_folder_service,
     session_service,
     transcript_import,
@@ -111,6 +112,17 @@ async def upload_transcript(
                 "reason": "session already has events",
             }
 
+    events = transcript_import.parse_jsonl_to_events(
+        body, session_id=session_id, agent_name=agent_name
+    )
+    # The transcript's own event times are the truth about when the session
+    # ran. A history import replays conversations from months ago, so stamping
+    # the row with now() would file every one of them under today everywhere we
+    # order by started_at.
+    transcript_started_at = min(
+        (e["created_at"] for e in events if e.get("created_at")), default=None
+    )
+
     if not existing or replace:
         await session_service.upsert_session(
             owner_user_id,
@@ -119,11 +131,8 @@ async def upload_transcript(
             cwd=cwd,
             created_by=current_user["id"],
             session_folder_id=session_folder_id,
+            started_at=transcript_started_at,
         )
-
-    events = transcript_import.parse_jsonl_to_events(
-        body, session_id=session_id, agent_name=agent_name
-    )
     if cwd:
         for e in events:
             e["metadata"] = {**(e.get("metadata") or {}), "cwd": cwd}
@@ -238,6 +247,12 @@ async def get_transcript_events(
             owner_user_id, session_id, limit, offset
         )
         if total:
+            await security_audit_service.record_content_read(
+                target_type="transcript",
+                target_id=session_id,
+                actor_user_id=current_user["id"],
+                owner_user_id=owner_user_id,
+            )
             return {
                 "events": _events_to_viewer_shape(events),
                 "total": total,
@@ -259,7 +274,14 @@ async def export_transcript_jsonl(
     resolved = await _resolve_readable_events(session_id, current_user["id"])
     if not resolved:
         raise HTTPException(status_code=404, detail="Transcript not found")
-    _, events = resolved
+    owner_user_id, events = resolved
+    await security_audit_service.record_content_read(
+        target_type="transcript",
+        target_id=session_id,
+        actor_user_id=current_user["id"],
+        owner_user_id=owner_user_id,
+        metadata={"kind": "export"},
+    )
 
     lines: list[str] = []
     for ev in events:

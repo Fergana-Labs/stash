@@ -30,27 +30,40 @@ export default function Persistence() {
     hydrated.current = true;
 
     let timer: ReturnType<typeof setTimeout> | null = null;
-    const unsub = useWorkspace.subscribe((s) => {
+    const write = () => {
+      timer = null;
+      const s = useWorkspace.getState();
+      const slice: Persisted = {
+        tabs: s.tabs,
+        paneOf: s.paneOf,
+        activeTabId: s.activeTabId,
+        activeTab1: s.activeTab1,
+        split: s.split,
+        focusedPane: s.focusedPane,
+        railSection: s.railSection,
+        explorerFolderId: s.explorerFolderId,
+      };
+      localStorage.setItem(KEY, JSON.stringify(slice));
+    };
+    // A pending debounced write must land before we go away — dropping it
+    // leaves stale state in localStorage, which the next mount hydrates back
+    // over the live store (e.g. a just-closed tab reappears).
+    const flush = () => {
+      if (!timer) return;
+      clearTimeout(timer);
+      write();
+    };
+    const unsub = useWorkspace.subscribe(() => {
       if (!hydrated.current) return;
       if (timer) clearTimeout(timer);
-      timer = setTimeout(() => {
-        const slice: Persisted = {
-          tabs: s.tabs,
-          paneOf: s.paneOf,
-          activeTabId: s.activeTabId,
-          activeTab1: s.activeTab1,
-          split: s.split,
-          focusedPane: s.focusedPane,
-          railSection: s.railSection,
-          explorerFolderId: s.explorerFolderId,
-        };
-        localStorage.setItem(KEY, JSON.stringify(slice));
-      }, 1200);
+      timer = setTimeout(write, 1200);
     });
+    window.addEventListener("pagehide", flush);
 
     return () => {
-      if (timer) clearTimeout(timer);
       unsub();
+      window.removeEventListener("pagehide", flush);
+      flush();
     };
   }, []);
 

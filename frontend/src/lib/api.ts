@@ -304,8 +304,12 @@ export interface Source {
   // Present for connected sources (the integration page uses these).
   external_ref?: string | null;
   sync_enabled?: boolean; // false for search-driven types (no indexer)
-  sync_status?: string | null; // 'idle' | 'syncing' | 'failed'
+  sync_status?: string | null; // 'idle' | 'syncing' | 'failed' | 'needs_setup'
   sync_error?: string | null;
+  // A degraded feed on an otherwise healthy source (X bookmarks need a
+  // reconnect while posts keep syncing). Unlike sync_error it survives later
+  // syncs, until the feed works again.
+  sync_warning?: string | null;
   last_synced_at?: string | null;
   search_hint?: string | null;
   settings?: Record<string, unknown> | null;
@@ -406,23 +410,39 @@ export interface SourceSearchHit {
   ref?: string;
   name?: string;
   snippet?: string;
+  // Uniform ts_rank score all hits are merged on — comparable across sources.
+  rank?: number;
+  // The query is a substring of the document's provider id — a lookup, not a
+  // relevance guess; such hits rank above everything else.
+  exact_ref?: boolean;
+  // When the document was last modified (ISO 8601). Null when the integration
+  // doesn't provide one.
+  date_modified?: string | null;
   // Marker: a federated source hit its result cap — `returned` of ~`estimated_total`
   // matches are shown. `truncated` distinguishes it from a real hit.
   truncated?: boolean;
   returned?: number;
   estimated_total?: number | null;
+  // Marker: the source's provider search failed (dead token, rate limit).
+  error?: string;
+  needs_reconnect?: boolean;
+}
+
+export interface SourceSearchResponse {
+  results: SourceSearchHit[];
+  has_more: boolean;
 }
 
 export async function searchSource(
   query: string,
-  source?: string,
-): Promise<SourceSearchHit[]> {
+  opts: { source?: string; includeSources?: string[]; limit?: number } = {},
+): Promise<SourceSearchResponse> {
   const params = new URLSearchParams({ q: query });
-  if (source) params.set("source", source);
-  const data = await apiFetch<{ results: SourceSearchHit[] }>(
-    `${ME}/sources/search?${params.toString()}`,
-  );
-  return data.results;
+  if (opts.source) params.set("source", opts.source);
+  // Repeated params — the endpoint declares include_sources as a list.
+  for (const token of opts.includeSources ?? []) params.append("include_sources", token);
+  if (opts.limit !== undefined) params.set("limit", String(opts.limit));
+  return apiFetch<SourceSearchResponse>(`${ME}/sources/search?${params.toString()}`);
 }
 
 export async function fetchSourceHistory(
@@ -479,11 +499,11 @@ export function githubOwner(sourceGithubUrl: string): string {
 
 // --- Home feed ---
 
-// An item from the caller's own stash the feed resurfaces: an old clip
-// (opens in-app via app_url) or an X/Instagram save (opens the original
-// via external_url; the archived text is the preview).
+// An item from the caller's own stash the feed resurfaces: an old doc, file,
+// memory page, or clip (opens in-app via app_url) or an X/Instagram save
+// (opens the original via external_url; the archived text is the preview).
 export interface ResurfaceCardData {
-  source: "x" | "instagram" | "clip";
+  source: "x" | "instagram" | "clip" | "doc" | "file" | "memory";
   title: string;
   preview: string;
   saved_at: string;
@@ -1254,14 +1274,12 @@ export interface LinearTicketLabel {
 export async function listMySessions(
   limit = 50,
   sessionFolderId?: string,
-  offset = 0,
-  agentChatsOnly = false
+  offset = 0
 ): Promise<SessionSummary[]> {
   const qs = new URLSearchParams();
   qs.set("limit", String(limit));
   if (offset) qs.set("offset", String(offset));
   if (sessionFolderId) qs.set("session_folder_id", sessionFolderId);
-  if (agentChatsOnly) qs.set("agent_chats_only", "true");
   const data = await apiFetch<{ sessions: SessionSummary[] }>(
     `${ME}/sessions?${qs.toString()}`
   );
@@ -1400,13 +1418,34 @@ export async function listSkills(): Promise<Skill[]> {
 }
 
 // Import a public GitHub repo's SKILL.md folders as private skills in your scope.
-export async function importGithubSkill(
+// Straight copy of a whole repo into a new root folder; folders containing a
+// SKILL.md derive as skills automatically.
+export async function importGithubRepo(
   repoUrl: string,
-): Promise<{ skills: number; imported: number }> {
-  return apiFetch(`${ME}/skills/import-github`, {
+): Promise<{ folder_id: string; name: string; files: number }> {
+  return apiFetch(`${ME}/import/github`, {
     method: "POST",
     body: JSON.stringify({ repo_url: repoUrl }),
   });
+}
+
+// Tree-only pre-import look: which repo folders are skills ('' = repo root).
+export async function inspectGithubImport(repoUrl: string): Promise<{ skill_dirs: string[] }> {
+  return apiFetch(`${ME}/import/github/inspect?repo_url=${encodeURIComponent(repoUrl)}`);
+}
+
+export interface GithubImportRepo {
+  full_name: string;
+  html_url: string;
+  private: boolean;
+  description: string;
+}
+
+export async function listGithubImportRepos(): Promise<{
+  connected: boolean;
+  repos: GithubImportRepo[];
+}> {
+  return apiFetch(`${ME}/import/github/repos`);
 }
 
 // The full publish record, as returned by publish/update.
@@ -1543,15 +1582,15 @@ export async function getPublicSkill(slug: string): Promise<PublicSkillDetail> {
   return apiFetch(`/api/v1/skills/${slug}`);
 }
 
-// Fork: deep folder copy into the caller's own space, landing as a private
-// skill folder. The fork target is always the current user.
+// Fork: deep folder copy into the active scope, landing as a private skill
+// folder — the caller's own space, or the workspace they're working in.
 export async function forkSkill(
   slug: string
 ): Promise<{ folder_id: string; name: string }> {
-  const me = await getMe();
+  const targetScope = getScopeUserId() ?? (await getMe()).id;
   return apiFetch(`/api/v1/skills/${slug}/add-to-stash`, {
     method: "POST",
-    body: JSON.stringify({ owner_user_id: me.id }),
+    body: JSON.stringify({ owner_user_id: targetScope }),
   });
 }
 
@@ -1583,17 +1622,6 @@ export async function semanticSearchPages(
   const params = new URLSearchParams({ q: query, limit: String(limit) });
   const data = await apiFetch<{ pages: Page[] }>(
     `${ME}/pages/semantic-search?${params}`
-  );
-  return data.pages;
-}
-
-export async function searchPages(
-  query: string,
-  limit = 20
-): Promise<Page[]> {
-  const params = new URLSearchParams({ q: query, limit: String(limit) });
-  const data = await apiFetch<{ pages: Page[] }>(
-    `${ME}/pages/search?${params}`
   );
   return data.pages;
 }
@@ -1721,33 +1749,6 @@ export async function getSessionEvents(sessionId: string): Promise<SessionEvent[
     if (!page.has_more || page.events.length === 0) return all;
     offset += page.events.length;
   }
-}
-
-export interface HistoryEvent {
-  id: string;
-  owner_user_id: string;
-  created_by: string;
-  created_by_name: string | null;
-  agent_name: string;
-  event_type: string;
-  session_id: string | null;
-  tool_name: string | null;
-  content: string;
-  metadata: Record<string, unknown>;
-  attachments: Record<string, unknown>[] | null;
-  created_at: string;
-  rank?: number | null;
-}
-
-export async function searchEvents(
-  query: string,
-  limit = 100
-): Promise<HistoryEvent[]> {
-  const params = new URLSearchParams({ q: query, limit: String(limit) });
-  const res = await apiFetch<{ events: HistoryEvent[] }>(
-    `${ME}/sessions/events/search?${params}`
-  );
-  return res.events;
 }
 
 export interface UploadedTranscript {
@@ -1913,6 +1914,7 @@ export interface SharedWithMeItem {
   object_id: string;
   name: string;
   owner_user_id: string;
+  owner_name: string;
   shared_by: string | null;
   permission: "read" | "write";
 }
@@ -2153,6 +2155,29 @@ export type Agent = {
 export async function listAgents(): Promise<Agent[]> {
   const data = await apiFetch<{ agents: Agent[] }>("/api/v1/me/agents");
   return data.agents;
+}
+
+export async function getAgent(id: string): Promise<Agent> {
+  return apiFetch(`/api/v1/me/agents/${id}`);
+}
+
+export type AgentRun = {
+  session_id: string;
+  started_at: string;
+  finished_at: string | null;
+  duration_seconds: number | null;
+  event_count: number;
+  tool_count: number;
+  status: "completed" | "failed" | "running" | "interrupted" | "stopped";
+  error: string | null;
+  messages: { role: "user" | "assistant"; content: string }[];
+};
+
+/** A scheduled agent's runs, oldest first — each run is its own session
+ *  (fresh context), rendered as one feed with reset separators between runs. */
+export async function listAgentRuns(agentId: string): Promise<AgentRun[]> {
+  const data = await apiFetch<{ runs: AgentRun[] }>(`/api/v1/me/agents/${agentId}/runs`);
+  return data.runs;
 }
 
 /** Enqueue a curation pass on the worker — the same path the daily schedule

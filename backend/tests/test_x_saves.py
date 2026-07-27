@@ -14,6 +14,7 @@ from types import SimpleNamespace
 from uuid import UUID
 
 import pytest
+from fastapi import HTTPException
 from httpx import AsyncClient
 
 from backend.config import settings
@@ -702,10 +703,90 @@ async def test_bookmarks_paid_tier_gate_is_best_effort(client, pool, fake_sync) 
     )
     assert [k["kind"] for k in kinds] == ["Article", "Post", "Reply"]
     status = await pool.fetchrow(
-        "SELECT sync_status, sync_error FROM user_sources WHERE id = $1", UUID(source["id"])
+        "SELECT sync_status, sync_warning FROM user_sources WHERE id = $1", UUID(source["id"])
     )
     assert status["sync_status"] != "failed"
-    assert "paid tier" in status["sync_error"]
+    assert "paid tier" in status["sync_warning"]
+
+
+@pytest.mark.asyncio
+async def test_dead_oauth_grant_is_best_effort(client, pool, fake_sync, monkeypatch) -> None:
+    # X kills grants whose refresh token sits idle (401 from the token
+    # endpoint). Bookmarks pause with an owner-facing reconnect warning —
+    # the user's own posts/replies/articles must keep syncing.
+    async def _dead_token(user_id, provider, account_key=None):
+        raise HTTPException(status_code=401, detail="x token expired; reconnect required")
+
+    monkeypatch.setattr(integration_storage, "get_valid_token", _dead_token)
+    headers, owner_id = await _register(client)
+    source = await _x_source(pool, owner_id, x_user_id="999")
+
+    await x_indexer.index_x_saves(source)
+
+    kinds = await pool.fetch(
+        "SELECT DISTINCT kind FROM x_save_docs WHERE source_id = $1 ORDER BY kind",
+        UUID(source["id"]),
+    )
+    assert [k["kind"] for k in kinds] == ["Article", "Post", "Reply"]
+    status = await pool.fetchrow(
+        "SELECT sync_status, sync_warning, settings FROM user_sources WHERE id = $1",
+        UUID(source["id"]),
+    )
+    assert status["sync_status"] != "failed"
+    assert "reconnect X" in status["sync_warning"]
+    # The daily interval rations billed X reads, and this run made none — so
+    # it must not spend the day. Otherwise a reconnect sits idle until the
+    # next window instead of taking effect on the next sync.
+    assert "x_bookmarks_checked_at" not in status["settings"]
+
+
+@pytest.mark.asyncio
+async def test_reconnect_resumes_bookmarks_on_the_next_sync(
+    client, pool, fake_sync, monkeypatch
+) -> None:
+    # The whole point of not spending the day on a dead grant: once the owner
+    # reconnects, the very next sync pulls bookmarks again.
+    dead = True
+
+    async def _token(user_id, provider, account_key=None):
+        if dead:
+            raise HTTPException(status_code=401, detail="x token expired; reconnect required")
+        return "oauth-token"
+
+    monkeypatch.setattr(integration_storage, "get_valid_token", _token)
+    headers, owner_id = await _register(client)
+    source = await _x_source(pool, owner_id, x_user_id="999")
+
+    await x_indexer.index_x_saves(source)
+    assert _FakeApi.bookmarks_calls == []
+
+    dead = False
+    source = await source_service.get_source_for_sync(UUID(source["id"]))
+    await x_indexer.index_x_saves(source)
+
+    assert _FakeApi.bookmarks_calls  # no day-long wait after the reconnect
+    warning = await pool.fetchval(
+        "SELECT sync_warning FROM user_sources WHERE id = $1", UUID(source["id"])
+    )
+    assert warning is None  # the endpoint answered, so the notice is stale
+
+
+@pytest.mark.asyncio
+async def test_bookmark_warning_outlives_later_syncs(client, pool, fake_sync) -> None:
+    # A warning is only checked once a day, so it has to survive the syncs in
+    # between — a notice that a sync start blanks is one the owner never sees.
+    _FakeApi.bookmarks_status = 403
+    headers, owner_id = await _register(client)
+    source = await _x_source(pool, owner_id, x_user_id="999")
+
+    await x_indexer.index_x_saves(source)
+    await source_service.mark_sync_started(UUID(source["id"]))
+    await source_service.mark_sync_done(UUID(source["id"]), None)
+
+    warning = await pool.fetchval(
+        "SELECT sync_warning FROM user_sources WHERE id = $1", UUID(source["id"])
+    )
+    assert "paid tier" in warning
 
 
 async def _insert_done(pool, owner_id, source_id, path, content):

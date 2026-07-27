@@ -23,8 +23,9 @@ logger = logging.getLogger(__name__)
 
 API_BASE = "https://app.asana.com/api/1.0"
 TASKS_URL = API_BASE + "/projects/{project_gid}/tasks"
-# Fields rendered for a full read (lazy fetch).
-TASK_FIELDS = "name,notes,completed,assignee.name,due_on,permalink_url"
+# Fields rendered for a full task body (lazy reads and search hits), plus
+# modified_at, which search hits surface as date_modified.
+TASK_FIELDS = "name,notes,completed,assignee.name,due_on,permalink_url,modified_at"
 PAGE_SIZE = 100
 MAX_TASKS = 2000
 SEARCH_LIMIT = 25
@@ -138,7 +139,9 @@ async def index_asana(source: dict) -> str | None:
 async def search_asana(source: dict, query: str, limit: int = SEARCH_LIMIT) -> list[dict]:
     """Federated search via Asana's `/tasks/search` (paid tiers only). Scoped to
     the project; maps the returned gids back to our index paths (so read_source
-    resolves them) and only returns tasks we've indexed for this source."""
+    resolves them) and only returns tasks we've indexed for this source.
+    Requests the full TASK_FIELDS payload so each hit's snippet is the rendered
+    task body — same request count, callers get full text to rank on."""
     owner_user_id = UUID(source["owner_user_id"])
     project_gid = source["external_ref"]
     token = await get_valid_token(owner_user_id, "asana")
@@ -154,7 +157,7 @@ async def search_asana(source: dict, query: str, limit: int = SEARCH_LIMIT) -> l
             params={
                 "text": query,
                 "projects.any": project_gid,
-                "opt_fields": "name",
+                "opt_fields": TASK_FIELDS,
                 "limit": min(limit, 100),
             },
         )
@@ -169,7 +172,14 @@ async def search_asana(source: dict, query: str, limit: int = SEARCH_LIMIT) -> l
         if not entry:
             continue
         path, name = entry
-        hits.append({"ref": path, "name": name, "snippet": task.get("name") or ""})
+        hits.append(
+            {
+                "ref": path,
+                "name": name,
+                "snippet": _render_task(task),
+                "date_modified": _parse_time(task.get("modified_at")),
+            }
+        )
     return hits
 
 

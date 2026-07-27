@@ -1,12 +1,16 @@
-"""Import public GitHub repos containing SKILL.md folders as curated Skills.
+"""GitHub repo imports.
 
-Every directory whose immediate children include a SKILL.md (the repo root
-counts) becomes one published, discoverable skill in the curator scope,
-attributed via skills.source_github_url. Re-imports are idempotent: skills
-are matched by source_github_url and their folder contents replaced in
-place, so the slug and view count survive upstream updates.
-
-Run via scripts/import_github_skills.py.
+Two flavors:
+- User-facing (`import_repo_for_user`): straight copy of a whole repo into
+  the caller's scope as one root folder. Folders containing SKILL.md derive
+  as skills automatically. Uses the caller's GitHub connection when present,
+  so private repos work too.
+- Curator (`import_repo`, via scripts/import_github_skills.py): every
+  directory whose immediate children include a SKILL.md becomes one
+  published, discoverable skill in the curator scope, attributed via
+  skills.source_github_url. Re-imports are idempotent: skills are matched by
+  source_github_url and their folder contents replaced in place, so the slug
+  and view count survive upstream updates.
 """
 
 from __future__ import annotations
@@ -18,9 +22,11 @@ import secrets
 from uuid import UUID
 
 import httpx
+from fastapi import HTTPException
 
 from ..auth import hash_password
 from ..database import get_pool
+from ..integrations import storage as integration_storage
 from . import files_tree_service, shared_skill_service, skill_service
 
 logger = logging.getLogger(__name__)
@@ -64,35 +70,45 @@ def discover_skill_dirs(tree: list[dict]) -> list[str]:
 # ===== GitHub fetchers (monkeypatched in tests) =====
 
 
-def _api_headers() -> dict:
+def _api_headers(token: str | None = None) -> dict:
     headers = {"Accept": "application/vnd.github+json"}
-    token = os.environ.get("GITHUB_TOKEN")
+    token = token or os.environ.get("GITHUB_TOKEN")
     if token:
         headers["Authorization"] = f"Bearer {token}"
     return headers
 
 
-async def _fetch_default_branch(client: httpx.AsyncClient, owner: str, repo: str) -> str:
-    resp = await client.get(f"{_API}/repos/{owner}/{repo}", headers=_api_headers())
+async def _fetch_default_branch(
+    client: httpx.AsyncClient, owner: str, repo: str, token: str | None = None
+) -> str:
+    resp = await client.get(f"{_API}/repos/{owner}/{repo}", headers=_api_headers(token))
     resp.raise_for_status()
     return resp.json()["default_branch"]
 
 
-async def _fetch_tree(client: httpx.AsyncClient, owner: str, repo: str, ref: str) -> list[dict]:
+async def _fetch_tree(
+    client: httpx.AsyncClient, owner: str, repo: str, ref: str, token: str | None = None
+) -> list[dict]:
     resp = await client.get(
         f"{_API}/repos/{owner}/{repo}/git/trees/{ref}",
         params={"recursive": "1"},
-        headers=_api_headers(),
+        headers=_api_headers(token),
     )
     resp.raise_for_status()
     return resp.json()["tree"]
 
 
 async def _fetch_blob(
-    client: httpx.AsyncClient, owner: str, repo: str, ref: str, path: str
+    client: httpx.AsyncClient,
+    owner: str,
+    repo: str,
+    ref: str,
+    path: str,
+    token: str | None = None,
 ) -> bytes:
-    # raw.githubusercontent.com serves blobs without burning API rate limit.
-    resp = await client.get(f"{_RAW}/{owner}/{repo}/{ref}/{path}")
+    # raw.githubusercontent.com serves blobs without burning API rate limit;
+    # with the user's token it serves their private repos too.
+    resp = await client.get(f"{_RAW}/{owner}/{repo}/{ref}/{path}", headers=_api_headers(token))
     resp.raise_for_status()
     return resp.content
 
@@ -126,6 +142,42 @@ async def fetch_repo_skills(repo_url: str) -> list[dict]:
                 }
             )
         return skills
+
+
+async def fetch_repo_files(repo_url: str, token: str | None = None) -> tuple[str, list]:
+    """Every blob in a repo, paths relative to the repo root.
+    Returns (repo name, [(path, bytes)])."""
+    owner, repo = parse_repo_url(repo_url)
+    async with httpx.AsyncClient(timeout=60, follow_redirects=True) as client:
+        branch = await _fetch_default_branch(client, owner, repo, token)
+        tree = await _fetch_tree(client, owner, repo, branch, token)
+        files = []
+        for entry in tree:
+            if entry["type"] != "blob":
+                continue
+            if entry.get("size", 0) > MAX_FILE_BYTES:
+                logger.warning(
+                    "skipping oversized file %s (%s bytes)", entry["path"], entry["size"]
+                )
+                continue
+            files.append(
+                (
+                    entry["path"],
+                    await _fetch_blob(client, owner, repo, branch, entry["path"], token),
+                )
+            )
+        return repo, files
+
+
+async def inspect_repo(repo_url: str, token: str | None = None) -> list[str]:
+    """Which directories in the repo are skills (contain a SKILL.md), without
+    downloading any blobs — the pre-import check behind the section-mismatch
+    confirmation in the import dialog."""
+    owner, repo = parse_repo_url(repo_url)
+    async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+        branch = await _fetch_default_branch(client, owner, repo, token)
+        tree = await _fetch_tree(client, owner, repo, branch, token)
+    return discover_skill_dirs(tree)
 
 
 # ===== Import into the curator scope =====
@@ -188,12 +240,12 @@ async def import_skill(
         )
         return "updated"
 
-    folder_id = await _create_root_folder(owner_user_id, owner_id, title)
-    await files_tree_service.write_folder_files(owner_user_id, owner_id, folder_id, files)
+    folder = await _create_root_folder(owner_user_id, owner_id, title)
+    await files_tree_service.write_folder_files(owner_user_id, owner_id, folder["id"], files)
     await shared_skill_service.publish_folder(
         owner_user_id,
         owner_id,
-        folder_id,
+        folder["id"],
         title=title,
         description=description,
         discoverable=True,
@@ -202,16 +254,15 @@ async def import_skill(
     return "created"
 
 
-async def _create_root_folder(owner_user_id: UUID, owner_id: UUID, title: str) -> UUID:
-    # Skills from different repos can share a title; folder names are unique
-    # per parent, so suffix like fork_skill does.
+async def _create_root_folder(owner_user_id: UUID, owner_id: UUID, title: str) -> dict:
+    # Imports can share a title; folder names are unique per parent, so
+    # suffix like fork_skill does.
     name = title
     for n in range(2, 50):
         try:
-            folder = await files_tree_service.create_folder(
+            return await files_tree_service.create_folder(
                 owner_user_id=owner_user_id, name=name, created_by=owner_id
             )
-            return folder["id"]
         except files_tree_service.DuplicateFolderName:
             name = f"{title} ({n})"
     raise ValueError(f"Could not find a free folder name for {title!r}")
@@ -220,24 +271,50 @@ async def _create_root_folder(owner_user_id: UUID, owner_id: UUID, title: str) -
 # ===== Whole-repo operations (script + admin dashboard) =====
 
 
-async def import_repo_for_user(owner_user_id: UUID, repo_url: str) -> dict:
-    """Import every SKILL.md folder in a repo into a user's OWN scope as private
-    skills — a skill is just a folder containing SKILL.md, so we create the
-    folder and write the repo files; no publish/discover record. Returns
-    {skills, imported}. A user is their own scope (owner_user_id == created_by)."""
-    skills = await fetch_repo_skills(repo_url)
-    imported = 0
-    for skill in skills:
-        files = skill["files"]
-        skill_md = next((blob for path, blob in files if path == "SKILL.md"), None)
-        if skill_md is None:
-            continue
-        meta, _body = skill_service.parse_frontmatter(skill_md.decode("utf-8", errors="replace"))
-        title = str(meta.get("name") or skill["fallback_title"])
-        folder_id = await _create_root_folder(owner_user_id, owner_user_id, title)
-        await files_tree_service.write_folder_files(owner_user_id, owner_user_id, folder_id, files)
-        imported += 1
-    return {"skills": len(skills), "imported": imported}
+async def user_github_token(user_id: UUID) -> str | None:
+    """The user's GitHub connection token, or None when not connected.
+    Auth is opportunistic here — public repos import without it."""
+    try:
+        return await integration_storage.get_valid_token(user_id, "github")
+    except HTTPException:
+        return None
+
+
+async def import_repo_for_user(owner_user_id: UUID, user_id: UUID, repo_url: str) -> dict:
+    """Copy a whole repo into the active scope (the user's own, or a workspace
+    they belong to) as one new root folder — a straight copy preserving
+    structure. Any folder containing a SKILL.md derives as a skill
+    automatically (skill-ness is never stored). Private repos work when the
+    user's GitHub connection can read them."""
+    token = await user_github_token(user_id)
+    repo_name, files = await fetch_repo_files(repo_url, token)
+    if not files:
+        raise ValueError("That repo has no importable files")
+    folder = await _create_root_folder(owner_user_id, user_id, repo_name)
+    await files_tree_service.write_folder_files(owner_user_id, user_id, folder["id"], files)
+    return {"folder_id": str(folder["id"]), "name": folder["name"], "files": len(files)}
+
+
+async def list_user_repos(user_id: UUID) -> list[dict]:
+    """Repos the user's GitHub connection can access, most recently pushed
+    first. Raises 401 when GitHub isn't connected."""
+    token = await integration_storage.get_valid_token(user_id, "github")
+    async with httpx.AsyncClient(timeout=30) as client:
+        resp = await client.get(
+            f"{_API}/user/repos",
+            params={"per_page": 100, "sort": "pushed"},
+            headers=_api_headers(token),
+        )
+        resp.raise_for_status()
+        return [
+            {
+                "full_name": r["full_name"],
+                "html_url": r["html_url"],
+                "private": r["private"],
+                "description": r["description"] or "",
+            }
+            for r in resp.json()
+        ]
 
 
 async def import_repo(repo_url: str) -> dict:

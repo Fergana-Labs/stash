@@ -295,7 +295,7 @@ async def search_drive(source: dict, query: str, limit: int = 25) -> list[dict]:
             params={
                 **ALL_DRIVES,
                 "q": f"fullText contains '{_drive_q_escape(query)}' and trashed = false",
-                "fields": "files(id, name)",
+                "fields": "files(id, name, modifiedTime)",
                 "pageSize": min(limit, 50),
             },
         )
@@ -310,7 +310,14 @@ async def search_drive(source: dict, query: str, limit: int = 25) -> list[dict]:
         if entry is None:
             continue  # outside the indexed scope of this source
         path, name = entry
-        hits.append({"ref": path, "name": name, "snippet": ""})
+        hits.append(
+            {
+                "ref": path,
+                "name": name,
+                "snippet": "",
+                "date_modified": _parse_time(f.get("modifiedTime")),
+            }
+        )
     return hits
 
 

@@ -18,6 +18,8 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 import httpx
+from fastapi import HTTPException
+from httpx import HTTPError
 
 from ...config import settings
 from ...database import get_pool
@@ -152,6 +154,11 @@ async def _backfill_bookmarks(
     402/403/429 is expected and surfaced as a warning rather than fatal — it
     must not stop the user's posts/replies/articles from syncing.
 
+    The day is spent only once we hold a token: what the interval rations is
+    billed reads, and a run that dies on a dead grant never reaches the API.
+    Stamping before the token check would make a reconnect wait a further day
+    to take effect.
+
     Same two passes as the timeline, both idempotent per tweet:
     - a probe pass from the top (small first page — most syncs find nothing
       new) that stops once a page brings nothing new;
@@ -163,11 +170,29 @@ async def _backfill_bookmarks(
         BOOKMARK_CHECK_INTERVAL
     ):
         return
+
+    try:
+        token = await integration_storage.get_valid_token(owner_user_id, "x")
+    except (HTTPException, HTTPError) as exc:
+        # X rotates refresh tokens single-use and kills grants that sit idle,
+        # so a dead grant is an expected end state only a reconnect can fix.
+        # Like the paid-tier gate below, it must not stop posts/replies/articles.
+        logger.warning(
+            "x oauth grant is dead source=%s exception_type=%s",
+            source_id,
+            type(exc).__name__,
+        )
+        await source_service.set_sync_warning(
+            source_id,
+            "The X connection is no longer valid, so bookmarks can't sync — "
+            "reconnect X from the integrations page. "
+            "Posts, replies, and articles still sync.",
+        )
+        return
+
     await _merge_source_settings(
         source_id, {"x_bookmarks_checked_at": datetime.now(UTC).isoformat()}
     )
-
-    token = await integration_storage.get_valid_token(owner_user_id, "x")
     async with httpx.AsyncClient(
         timeout=30.0, headers={"Authorization": f"Bearer {token}"}
     ) as client:
@@ -177,6 +202,10 @@ async def _backfill_bookmarks(
             payload = await _fetch_bookmarks_page(client, source_id, x_user_id, size, page_token)
             if payload is None:
                 return
+            if page == 0:
+                # The endpoint answered, so whatever an earlier check left
+                # ("reconnect X", "needs a paid tier") no longer holds.
+                await source_service.clear_sync_warning(source_id)
             inserted, considered = await _insert_bookmarks_page(payload, source_id, owner_user_id)
             page_token = (payload.get("meta") or {}).get("next_token")
             # Bookmarks come newest-first, so a page of already-known ids
@@ -471,6 +500,35 @@ async def _hydrate_article(
         path,
         media,
     )
+
+
+async def fetch_tweet_markdown(tweet_id: str) -> dict:
+    """One tweet rendered as markdown, with its author thread and reply
+    parent — the standalone fetch behind web clips of x.com status URLs.
+    No user_source or media archiving involved. Returns {title, markdown}."""
+    if not settings.TWITTERAPI_IO_KEY:
+        raise RuntimeError("TWITTERAPI_IO_KEY is not set")
+    async with httpx.AsyncClient(
+        timeout=TAPI_TIMEOUT, headers={"X-API-Key": settings.TWITTERAPI_IO_KEY}
+    ) as client:
+        tweet = await _fetch_tweet(client, tweet_id)
+        thread = [tweet]
+        parent = None
+        if _in_conversation(tweet):
+            # Best-effort, like the saves indexer — the tweet itself matters.
+            try:
+                context = await _fetch_thread_context(client, tweet_id)
+                thread = _author_chain(tweet, context)
+                parent = _direct_parent(tweet, context)
+            except Exception as exc:
+                logger.warning(
+                    "x thread context fetch failed tweet=%s exception_type=%s",
+                    tweet_id,
+                    type(exc).__name__,
+                )
+    posted = tweet["created_at"]
+    title = f"@{tweet['author']} - {posted.date().isoformat()}" if posted else f"@{tweet['author']}"
+    return {"title": title, "markdown": _render(tweet, thread, parent)}
 
 
 # Draft.js-style block types twitterapi.io uses for article bodies.

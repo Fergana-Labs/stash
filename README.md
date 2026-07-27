@@ -6,9 +6,9 @@
 <h3 align="center">Knowledge bases for the agent era.</h3>
 
 <p align="center">
-  The one place your agents connect to all your data — GitHub, Drive, Gmail, <br>
-  Notion, Slack and more — plus an agent-native Drive in Markdown and HTML <br>
-  where their sessions, files, and pages all land.
+  The one place your agents connect to all your data — GitHub, Drive, Gmail, Notion, <br>
+  Slack, Linear, Jira, Asana, Granola and more — plus an agent-native Drive in <br>
+  Markdown and HTML where their sessions, files, and pages all land.
 </p>
 
 
@@ -39,8 +39,10 @@
 
 - **Sessions stream in automatically.** A hook for your coding agent pushes every transcript — prompts, tool calls, artifacts — into your Stash.
 - **Files and sessions live side by side.** Markdown, HTML, tables, PDFs. You and your agents both write here; both sides see edits in real time.
-- **Agents query it like a filesystem.** A CLI, MCP server, and virtual-filesystem shell expose your Stash to any agent. Semantic and keyword search across pages, sessions, and tables.
-- **Skills are the shareable slice.** Bundle pages and sessions into one link. Publish to the world, fork a public Skill into your own Stash, or `stash skills install` one into your agent — installed skills auto-update at session start, and `stash skills follow` auto-installs skills people share with you.
+- **Agents query it like a filesystem.** A CLI, MCP server (~70 read/write tools), REST API, and virtual-filesystem shell expose your Stash to any agent. One search spans your pages, sessions, and every connected source at once.
+- **There's an agent in the box too.** Chat with an agent that already has all of this — in the app, from Slack, or from Telegram. It's a real coding-agent CLI (Claude Code, Codex, or opencode) running on your own cloud VM, so it can read, write, and run things. Give it a cron and it becomes a scheduled agent.
+- **Memory is a wiki an agent keeps for you.** A scheduled curator reads whatever is new since its last run — sessions, files, saves — and compiles it into linked pages: entities, concepts, and a running log. It writes only inside the reserved Memory folder, and never reads its own output.
+- **Skills are the shareable slice.** A Skill is just a folder with a `SKILL.md` in it — put the pages, files, and tables that belong together in one folder and it becomes shareable as a unit. Publish it to the world, fork a public Skill into your own Stash, or `stash skills install` one into your agent — installed skills auto-update at session start, and `stash skills follow` auto-installs skills people share with you.
 - **Bring your own MCP servers.** Register MCP servers once (Tools page or `stash tools add`); your cloud agent gets them automatically and `stash tools install` writes them into any local agent's `.mcp.json`.
 
 ## Why persistent beats per-session
@@ -78,9 +80,12 @@ uv tool install stashai
 stash signin
 ```
 
-`stash signin` walks you through sign-in, connects your current repo when
-you want uploads, and wires up coding-agent plugins. Use `stash connect`
-later when you are already authenticated and only need to bind another repo.
+`stash signin` authenticates you in the browser, asks whether you want to
+share your agent transcripts, then finds the coding agents installed on your
+machine and installs hooks for the ones you pick. It offers to connect the
+repo you're standing in and to import conversations you've already had. Use
+`stash connect` later when you're already signed in and only need to bind
+another repo.
 
 <details>
 <summary>Prefer a one-liner?</summary>
@@ -114,7 +119,31 @@ stash vfs "find / -maxdepth 3 -type f | head -n 20"
 stash vfs "rg \"database migration\" /"
 ```
 
-## Integrations
+## Connected sources
+
+Connect a source once and every agent you point at Stash can read and search it.
+
+| Source | What lands in your Stash |
+|---|---|
+| **GitHub** | Repo contents, indexed for search — one repo, a pick-list, or every repo you can see |
+| **Google Drive** | Your Drive, searchable by name and path; pick a folder to extract full contents (PDFs and scans included) |
+| **Gmail** | Recent mail, with search federated live to Gmail. Multiple mailboxes supported |
+| **Slack** | Messages from the channels you choose, filed as a transcript per channel per day |
+| **Notion** | Pages and database rows as Markdown |
+| **Linear** / **Jira** / **Asana** | Issues and tasks, indexed by team, project, or board section |
+| **Granola** | Meeting notes and transcripts |
+| **PostHog** | Dashboards, insights, feature flags, and experiments |
+| **X** | Your bookmarks, posts, replies, and articles — with thread context and media archived |
+| **Instagram** | Saved posts and reels, captured by the browser extension |
+
+You can also drop in an **Obsidian vault**, and the **Chrome extension** adds a
+web clipper, a bookmark importer, YouTube transcripts, and your ChatGPT and
+Claude.ai conversations.
+
+Slack and Linear push changes to Stash over webhooks; everything else syncs on a
+schedule. Pick Slack's channels yourself — nothing is indexed until you do.
+
+## Coding agents
 
 Stash supports the following coding agents:
 - **Claude Code** 
@@ -192,14 +221,17 @@ claude
 
 Stash is built for engineering teams working in private repos.
 
-- **LLM calls are optional and scoped.** When an Anthropic API key is configured, the server uses it for ask-the-stash answers and auto-generated session titles. No key means those features are unavailable — the rest of Stash works without any LLM.
-- **Private by default.** Your Stash is yours alone. Public visibility is controlled by Skills.
+- **LLM calls are optional and scoped.** An Anthropic key powers ask-the-stash, session titles, and OCR for scanned PDFs; the chat agent runs on Anthropic, OpenAI, or OpenRouter with your own key. Without any of them, the rest of Stash works — those features are simply unavailable.
+- **Private by default.** Your Stash is yours alone. Content becomes public only when you make it so: publishing a Skill, creating a public link to a page, file, folder, or table, or posting to the pastebin.
 - **Transcripts are opt-in.** If you don't want to upload your agent transcripts, you can give your agent *read* access to your Stash without uploading any of your own session data.
   
 ## FAQ
 
 **What LLMs does Stash use?**
-When an Anthropic API key is provided, the server calls Claude for ask-the-stash (quality tier) and session title generation. Both are optional — without the key, Stash works but those features are disabled. There is one background writer: the Memory curator, a scheduled agent that maintains your Memory wiki from new sessions and files; it only writes inside the reserved Memory folder.
+An Anthropic key covers ask-the-stash, session titles, and scanned-PDF OCR. The chat agent is separate and runs whichever harness you point it at — Claude Code, Codex, or opencode — against your own Anthropic, OpenAI, or OpenRouter credentials. Embeddings are a third, independent choice (OpenAI, HuggingFace, or a local model). All of it is optional; without any keys the rest of Stash works and those features are disabled.
+
+**What writes to my Stash on its own?**
+One thing by default: the Memory curator, a scheduled agent that compiles your Memory wiki from new sessions and files. It only writes inside the reserved Memory folder, and it only reads what's new since its last run. Beyond that, nothing runs unless you create it — any agent you give a cron to becomes a scheduled agent, and those have the same reach you do.
 
 **Can I use this without Claude Code?**
 Yes. You can use the CLI with anything, and Stash has native plugins for Cursor, Codex, Opencode, Gemini CLI, and more.

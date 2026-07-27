@@ -37,31 +37,37 @@ async def _register(client: AsyncClient) -> tuple[dict, str]:
 # --- URL classification ---
 
 
-def test_is_youtube_matches_watch_shorts_and_short_links() -> None:
-    assert clip_router.is_youtube("https://www.youtube.com/watch?v=abc123")
-    assert clip_router.is_youtube("https://youtube.com/shorts/abc123")
-    assert clip_router.is_youtube("https://youtu.be/abc123")
-    assert not clip_router.is_youtube("https://youtu.be/")
-    assert not clip_router.is_youtube("https://www.youtube.com/@somechannel")
-    assert not clip_router.is_youtube("https://example.com/watch?v=abc123")
+def test_youtube_special_page_matches_watch_shorts_and_short_links() -> None:
+    yt = clip_router.YouTubeTranscriptPage()
+    assert yt.matches("https://www.youtube.com/watch?v=abc123")
+    assert yt.matches("https://youtube.com/shorts/abc123")
+    assert yt.matches("https://youtu.be/abc123")
+    assert not yt.matches("https://youtu.be/")
+    assert not yt.matches("https://www.youtube.com/@somechannel")
+    assert not yt.matches("https://example.com/watch?v=abc123")
 
 
-def test_normalize_arxiv_rewrites_abs_to_pdf() -> None:
-    assert (
-        clip_router.normalize_arxiv("https://arxiv.org/abs/2401.00001")
-        == "https://arxiv.org/pdf/2401.00001"
-    )
-    assert (
-        clip_router.normalize_arxiv("https://www.arxiv.org/abs/2401.00001v2")
-        == "https://arxiv.org/pdf/2401.00001v2"
-    )
-    assert clip_router.normalize_arxiv("https://example.com/abs/x") == "https://example.com/abs/x"
+def test_x_special_page_matches_status_urls_only() -> None:
+    x = clip_router.XThreadPage()
+    assert x.matches("https://x.com/someone/status/1808168603721650680")
+    assert x.matches("https://twitter.com/someone/statuses/9001?s=20")
+    assert x.matches("https://x.com/i/status/9001")
+    assert not x.matches("https://x.com/someone")
+    assert not x.matches("https://example.com/someone/status/9001")
 
 
-def test_is_async_url_covers_youtube_and_arxiv() -> None:
-    assert clip_router.is_async_url("https://www.youtube.com/watch?v=abc")
-    assert clip_router.is_async_url("https://arxiv.org/abs/2401.00001")
-    assert not clip_router.is_async_url("https://example.com/post")
+def test_arxiv_special_page_matches_abs_urls() -> None:
+    arxiv = clip_router.ArxivPdfPage()
+    assert arxiv.matches("https://arxiv.org/abs/2401.00001")
+    assert arxiv.matches("https://www.arxiv.org/abs/2401.00001v2")
+    assert not arxiv.matches("https://example.com/abs/x")
+
+
+def test_is_special_page_covers_youtube_x_and_arxiv() -> None:
+    assert clip_router.is_special_page("https://www.youtube.com/watch?v=abc")
+    assert clip_router.is_special_page("https://arxiv.org/abs/2401.00001")
+    assert clip_router.is_special_page("https://x.com/someone/status/9001")
+    assert not clip_router.is_special_page("https://example.com/post")
 
 
 # --- YouTube transcript fetching (ScrapeCreators + oEmbed) ---
@@ -286,6 +292,29 @@ async def test_worker_turns_youtube_url_into_transcript_page(
     assert page["name"] == "A Great Talk"
     assert page["folder_name"] == "raw"
     assert "words words" in page["content_markdown"]
+
+
+@pytest.mark.asyncio
+async def test_worker_turns_x_status_url_into_tweet_page(
+    client: AsyncClient, pool, monkeypatch
+) -> None:
+    _, owner_id = await _register(client)
+    import_id = await _make_import(owner_id, "https://x.com/someone/status/9001")
+
+    async def fake_tweet(tweet_id: str) -> dict:
+        assert tweet_id == "9001"
+        return {"title": "@someone - 2026-07-01", "markdown": "a banger\n\n— @someone"}
+
+    monkeypatch.setattr(clip_router.x_indexer, "fetch_tweet_markdown", fake_tweet)
+    await clips_tasks._process_batch([import_id])
+
+    row = await pool.fetchrow("SELECT * FROM url_imports WHERE id = $1", import_id)
+    assert row["status"] == "done"
+    page = await pool.fetchrow(
+        "SELECT name, content_markdown FROM pages WHERE id = $1", row["result_page_id"]
+    )
+    assert page["name"] == "@someone - 2026-07-01"
+    assert "a banger" in page["content_markdown"]
 
 
 SHELL_HTML = "<html><body><div id='root'></div></body></html>"

@@ -11,6 +11,29 @@ from datetime import UTC, datetime, timedelta
 
 from ..database import get_pool
 
+# Our own team's usage would pollute every dashboard number, so every
+# aggregation here (and the engagement-cohort query) excludes accounts whose
+# email is on one of these domains by default. The dashboard's "Internal
+# accounts" toggle passes exclude_internal=False to count them anyway.
+INTERNAL_EMAIL_DOMAINS = ("ferganalabs.com", "joinstash.ai")
+
+
+def internal_filter_sql(user_id_col: str, exclude_internal: bool) -> str:
+    """SQL predicate dropping rows whose user has an internal email domain,
+    or TRUE when internal usage should be counted.
+
+    Rows with a NULL user id (anonymous events) are always kept. The domain
+    list is a code constant, so inlining it as SQL literals is safe.
+    """
+    if not exclude_internal:
+        return "TRUE"
+    domains = ", ".join(f"'{d}'" for d in INTERNAL_EMAIL_DOMAINS)
+    return (
+        f"NOT EXISTS (SELECT 1 FROM users iu WHERE iu.id = {user_id_col} "
+        f"AND lower(split_part(iu.email, '@', 2)) IN ({domains}))"
+    )
+
+
 # Canonical funnel order. Reads top-of-funnel → bottom; missing steps render
 # as gaps so dashboards can show drop-off honestly.
 # Canonical funnel for the linear Connect → Ask onboarding (no path picker).
@@ -21,7 +44,9 @@ ONBOARDING_FUNNEL_STAGES: list[tuple[str, str]] = [
 ]
 
 
-async def get_onboarding_funnel(*, days: int = 30, path: str | None = None) -> dict:
+async def get_onboarding_funnel(
+    *, days: int = 30, path: str | None = None, exclude_internal: bool = True
+) -> dict:
     """Distinct-user counts per stage in the canonical onboarding order.
 
     A user 'enters' a stage if they emitted *any* event of that name in the
@@ -31,11 +56,12 @@ async def get_onboarding_funnel(*, days: int = 30, path: str | None = None) -> d
     pool = get_pool()
     since = datetime.now(UTC) - timedelta(days=days)
     rows = await pool.fetch(
-        """
+        f"""
         SELECT event_name, COUNT(DISTINCT user_id) AS users
         FROM analytics_events
         WHERE created_at >= $1 AND event_name = ANY($2::text[])
           AND ($3::text IS NULL OR properties->>'path' = $3)
+          AND {internal_filter_sql("analytics_events.user_id", exclude_internal)}
         GROUP BY event_name
         """,
         since,
@@ -67,7 +93,9 @@ async def get_onboarding_funnel(*, days: int = 30, path: str | None = None) -> d
     }
 
 
-async def get_path_mix(*, days: int = 30, bucket: str = "day") -> dict:
+async def get_path_mix(
+    *, days: int = 30, bucket: str = "day", exclude_internal: bool = True
+) -> dict:
     """Onboarding starts by path, counting one viewed event per start."""
     if bucket not in ("day", "week"):
         raise ValueError(f"unknown bucket: {bucket}")
@@ -86,6 +114,7 @@ async def get_path_mix(*, days: int = 30, bucket: str = "day") -> dict:
                COUNT(*) AS n
         FROM analytics_events
         WHERE created_at >= $1 AND event_name = 'onboarding.viewed'
+          AND {internal_filter_sql("analytics_events.user_id", exclude_internal)}
         GROUP BY 1, 2
         ORDER BY ts ASC
         """,
@@ -102,7 +131,9 @@ async def get_path_mix(*, days: int = 30, bucket: str = "day") -> dict:
     }
 
 
-async def get_surface_mix(*, days: int = 30, bucket: str = "day") -> dict:
+async def get_surface_mix(
+    *, days: int = 30, bucket: str = "day", exclude_internal: bool = True
+) -> dict:
     """Daily activity by surface across both tables.
 
     Surfaces we expose:
@@ -128,6 +159,7 @@ async def get_surface_mix(*, days: int = 30, bucket: str = "day") -> dict:
                    COUNT(*) AS n
             FROM analytics_events
             WHERE created_at >= $1
+              AND {internal_filter_sql("analytics_events.user_id", exclude_internal)}
             GROUP BY 1, 2
         ),
         he AS (
@@ -138,6 +170,7 @@ async def get_surface_mix(*, days: int = 30, bucket: str = "day") -> dict:
             WHERE created_at >= $1
               AND metadata->>'client' IS NOT NULL
               AND COALESCE(metadata->>'source', '') <> 'history_import'
+              AND {internal_filter_sql("history_events.created_by", exclude_internal)}
             GROUP BY 1, 2
         )
         SELECT * FROM ae
@@ -159,17 +192,18 @@ async def get_surface_mix(*, days: int = 30, bucket: str = "day") -> dict:
     }
 
 
-async def get_top_events(*, days: int = 30, limit: int = 20) -> dict:
+async def get_top_events(*, days: int = 30, limit: int = 20, exclude_internal: bool = True) -> dict:
     """Most-frequent event names in analytics_events over the window."""
     pool = get_pool()
     since = datetime.now(UTC) - timedelta(days=days)
     rows = await pool.fetch(
-        """
+        f"""
         SELECT event_name,
                COUNT(*) AS total,
                COUNT(DISTINCT user_id) AS users
         FROM analytics_events
         WHERE created_at >= $1
+          AND {internal_filter_sql("analytics_events.user_id", exclude_internal)}
         GROUP BY event_name
         ORDER BY total DESC
         LIMIT $2
@@ -191,16 +225,23 @@ async def get_top_events(*, days: int = 30, limit: int = 20) -> dict:
     }
 
 
-async def get_summary(*, days: int = 7) -> dict:
+async def get_summary(*, days: int = 7, exclude_internal: bool = True) -> dict:
     """Top-of-dashboard stat boxes: signups, completions, active users, CLI installs."""
     pool = get_pool()
     since = datetime.now(UTC) - timedelta(days=days)
 
-    signups = await pool.fetchval("SELECT COUNT(*) FROM users WHERE created_at >= $1", since)
+    signups = await pool.fetchval(
+        f"""
+        SELECT COUNT(*) FROM users
+        WHERE created_at >= $1 AND {internal_filter_sql("users.id", exclude_internal)}
+        """,
+        since,
+    )
     completed = await pool.fetchval(
-        """
+        f"""
         SELECT COUNT(DISTINCT user_id) FROM analytics_events
         WHERE event_name = 'onboarding.completed' AND created_at >= $1
+          AND {internal_filter_sql("analytics_events.user_id", exclude_internal)}
         """,
         since,
     )
@@ -209,25 +250,28 @@ async def get_summary(*, days: int = 7) -> dict:
     # is the canonical first-run, but a user invoking `share` or `upload`
     # is just as much an active CLI user.
     cli_active = await pool.fetchval(
-        """
+        f"""
         SELECT COUNT(DISTINCT user_id) FROM analytics_events
         WHERE event_name = 'cli.command_invoked' AND created_at >= $1
+          AND {internal_filter_sql("analytics_events.user_id", exclude_internal)}
         """,
         since,
     )
     # Active users = distinct user_id across analytics_events + non-plugin
     # history_events. Plugin events are firehose and would dominate.
     active_users = await pool.fetchval(
-        """
+        f"""
         SELECT COUNT(*) FROM (
             SELECT user_id FROM analytics_events
             WHERE user_id IS NOT NULL AND created_at >= $1
+              AND {internal_filter_sql("analytics_events.user_id", exclude_internal)}
             UNION
             SELECT created_by AS user_id FROM history_events
             WHERE created_by IS NOT NULL
               AND created_at >= $1
               AND (metadata->>'client') IS NULL
               AND COALESCE(metadata->>'source', '') <> 'history_import'
+              AND {internal_filter_sql("history_events.created_by", exclude_internal)}
         ) u
         """,
         since,
@@ -239,5 +283,111 @@ async def get_summary(*, days: int = 7) -> dict:
         "onboardings_completed": int(completed or 0),
         "active_users": int(active_users or 0),
         "cli_active_users": int(cli_active or 0),
+        "generated_at": datetime.now(UTC).isoformat(),
+    }
+
+
+# Read/search/listing actions written to security_audit_events by
+# record_content_read / record_entries_listed and source_service's
+# _audit_source_read. The dashboard's content-activity segment is a straight
+# aggregation of these — extend the lists when a new content action ships.
+CONTENT_READ_ACTIONS = [
+    "content.page_read",
+    "content.file_read",
+    "content.transcript_read",
+    "content.table_read",
+    "content.skill_read",
+    "content.machine_file_read",
+    "content.paste_read",
+    "source.document_read",
+]
+SEARCH_ACTION = "source.searched"
+LISTING_ACTIONS = [
+    "content.entries_listed",
+    "source.entries_listed",
+    "source.tree_listed",
+]
+
+
+# Caller surfaces stamped on audit rows by auth._set_request_via. Web reads
+# and listings are UI noise (sidebar refetches, page opens while editing), so
+# only web *searches* count; cli and ask count for everything. Untagged rows
+# (pre-`via` history, anonymous pastes) are excluded, as are 'auto' rows —
+# automated machinery like the session-start skills sync and the VFS's
+# mount-time tree refresh, which reads content nobody asked to see — and
+# 'scan' rows: a VFS grep's per-document sweep, counted instead as the one
+# source.searched event the grep records.
+ACTIVITY_SURFACES = {
+    "reads": ["cli", "ask"],
+    "searches": ["web", "cli", "ask"],
+    "listings": ["cli", "ask"],
+}
+
+
+async def get_content_activity(*, days: int = 30, exclude_internal: bool = True) -> dict:
+    """Document reads, searches, and listings split by caller surface (web /
+    cli / ask-the-stash), from the security_audit_events read trail: totals
+    over the window plus a daily series for the dashboard's top segment."""
+    pool = get_pool()
+    since = datetime.now(UTC) - timedelta(days=days)
+    all_actions = CONTENT_READ_ACTIONS + [SEARCH_ACTION] + LISTING_ACTIONS
+
+    kind_case = """
+        CASE
+            WHEN action = $2 THEN 'searches'
+            WHEN action = ANY($3::text[]) THEN 'listings'
+            ELSE 'reads'
+        END
+    """
+    counted = f"""
+        action = ANY($1::text[])
+        AND created_at >= $4
+        AND (via IN ('cli', 'ask') OR (via = 'web' AND action = $2))
+        AND {internal_filter_sql("security_audit_events.actor_user_id", exclude_internal)}
+    """
+
+    total_rows = await pool.fetch(
+        f"""
+        SELECT {kind_case} AS kind, via, COUNT(*) AS n
+        FROM security_audit_events
+        WHERE {counted}
+        GROUP BY 1, 2
+        """,
+        all_actions,
+        SEARCH_ACTION,
+        LISTING_ACTIONS,
+        since,
+    )
+    totals = {
+        kind: {surface: 0 for surface in surfaces} for kind, surfaces in ACTIVITY_SURFACES.items()
+    }
+    for r in total_rows:
+        totals[r["kind"]][r["via"]] = int(r["n"])
+
+    # via is carried per row so the dashboard's chart can filter by source
+    # client-side; the client sums across surfaces for its combined view.
+    series_rows = await pool.fetch(
+        f"""
+        SELECT date_trunc('day', created_at) AS ts,
+               {kind_case} AS kind,
+               via,
+               COUNT(*) AS n
+        FROM security_audit_events
+        WHERE {counted}
+        GROUP BY 1, 2, 3
+        ORDER BY ts ASC
+        """,
+        all_actions,
+        SEARCH_ACTION,
+        LISTING_ACTIONS,
+        since,
+    )
+    return {
+        "days": days,
+        "totals": totals,
+        "rows": [
+            {"ts": r["ts"].isoformat(), "kind": r["kind"], "via": r["via"], "count": int(r["n"])}
+            for r in series_rows
+        ],
         "generated_at": datetime.now(UTC).isoformat(),
     }

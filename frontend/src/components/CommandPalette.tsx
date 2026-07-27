@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { useCallback, useEffect, useRef, useState, type MouseEvent, type RefObject } from "react";
 import { getSidebar, listAllTables, semanticSearchPages, type Sidebar } from "../lib/api";
 import type { TableWithOwner } from "../lib/types";
 import type { SearchScope } from "@/lib/searchScope";
@@ -29,6 +29,7 @@ export default function CommandPalette({
   searchScope,
 }: CommandPaletteProps) {
   const router = useRouter();
+  const pathname = usePathname();
   const [query, setQuery] = useState("");
   const [spine, setSpine] = useState<Sidebar | null>(null);
   const [tables, setTables] = useState<TableWithOwner[]>([]);
@@ -38,6 +39,26 @@ export default function CommandPalette({
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEscapeKey(open, onClose);
+
+  // Searching from the search page only changes its ?q= — the page is fully
+  // client-rendered and re-runs the search from useSearchParams, so its server
+  // payload doesn't depend on the query. A shallow history push updates the
+  // URL without router.push's RSC round-trip to the Next server, which
+  // otherwise serializes ahead of every search. With a click event and no
+  // shallow case, the surrounding Link performs the navigation itself.
+  const openResult = useCallback(
+    (href: string, event?: MouseEvent<HTMLAnchorElement>) => {
+      const isSearchHref = href === "/search" || href.startsWith("/search?");
+      if (isSearchHref && pathname === "/search") {
+        event?.preventDefault();
+        window.history.pushState(null, "", href);
+      } else if (event === undefined) {
+        router.push(href);
+      }
+      onClose();
+    },
+    [pathname, router, onClose]
+  );
 
   useEffect(() => {
     if (open) setAnchorRect(anchorRef.current?.getBoundingClientRect() ?? null);
@@ -168,13 +189,12 @@ export default function CommandPalette({
         e.preventDefault();
         setSelected((s) => Math.max(s - 1, 0));
       } else if (e.key === "Enter" && results[selected]) {
-        router.push(results[selected].href);
-        onClose();
+        openResult(results[selected].href);
       }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open, results, selected, onClose, router]);
+  }, [open, results, selected, openResult]);
 
   if (!open) return null;
 
@@ -231,7 +251,7 @@ export default function CommandPalette({
               <Link
                 key={r.href + i}
                 href={r.href}
-                onClick={onClose}
+                onClick={(event) => openResult(r.href, event)}
                 className={
                   "flex items-center gap-2.5 rounded-md px-3 py-2 text-[13px] transition-colors " +
                   (i === selected ? "bg-[var(--color-brand-50)] text-foreground" : "text-dim hover:bg-raised")

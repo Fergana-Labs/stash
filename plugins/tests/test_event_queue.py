@@ -263,3 +263,12 @@ def test_no_data_dir_no_queue(tmp_path):
     with pytest.raises(Exception):
         client.push_event(agent_name="a", event_type="t", content="x", session_id="s1")
     assert not (tmp_path / QUEUE_FILENAME).exists()
+
+
+def test_every_plugin_request_carries_the_auto_marker(tmp_path):
+    """Everything this client sends is plugin machinery (hook streaming,
+    session watcher, detached uploads) — never a user or agent reading
+    content on purpose — so it must be tagged for the backend to keep it
+    out of content-activity analytics."""
+    client = StashClient(base_url="https://example.test", api_key="k", data_dir=tmp_path)
+    assert client._headers()["X-Stash-Via"] == "auto"

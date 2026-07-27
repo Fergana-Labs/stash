@@ -8,7 +8,7 @@ agent's own turn lock (Redis) prevents overlap with an in-flight run.
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from croniter import croniter
@@ -66,7 +66,13 @@ async def _run_curator_now(agent_id: UUID) -> None:
 async def _run_due() -> int:
     from ..config import settings
     from ..database import get_pool
-    from ..services import agent_auth, agent_service, curation_service, sprite_agent_service
+    from ..services import (
+        agent_auth,
+        agent_service,
+        alert_service,
+        curation_service,
+        sprite_agent_service,
+    )
 
     now = datetime.now(UTC)
     stamp = now.strftime("%Y%m%d%H%M")
@@ -116,4 +122,61 @@ async def _run_due() -> int:
         except Exception as e:
             logger.exception("agent schedule: run failed for agent %s", agent["id"])
             await agent_service.mark_run_failed(agent["id"], str(e))
+            email = await get_pool().fetchval("SELECT email FROM users WHERE id = $1", user_id)
+            await alert_service.send_alert(
+                f"Scheduled agent run failed: {agent['name']!r} for {email}: {str(e)[:300]}"
+            )
     return ran
+
+
+# A curator whose watermark is older than this while changes are pending has
+# been failing for multiple nightly runs — one bad night must not page.
+STALE_CURATOR_HOURS = 48
+
+
+@celery.task(name="backend.tasks.agent_schedules.alert_stale_curators")
+def alert_stale_curators() -> int:
+    return run_async(_alert_stale_curators())
+
+
+async def _alert_stale_curators() -> int:
+    """Alert on curators whose watermark stopped advancing despite pending
+    changes. Alerting on the stale *outcome* catches every cause — dead
+    provider keys, harness bugs, a wedged beat — where per-run failure alerts
+    only catch runs that started. `last_run_error IS NOT NULL` scopes this to
+    curators whose last attempted run actually failed; curators skipped by
+    design (credit allowance, no credential) keep a NULL error and stay quiet.
+    """
+    from ..database import get_pool
+    from ..services import alert_service, curation_service
+
+    cutoff = datetime.now(UTC) - timedelta(hours=STALE_CURATOR_HOURS)
+    rows = await get_pool().fetch(
+        """
+        SELECT a.user_id, a.curated_through, a.last_run_error, u.email
+        FROM agents a JOIN users u ON u.id = a.user_id
+        WHERE a.is_curator AND a.run_mode = 'scheduled'
+          AND a.curated_through IS NOT NULL AND a.curated_through < $1
+          AND a.last_run_error IS NOT NULL
+        """,
+        cutoff,
+    )
+    stale = [
+        r
+        for r in rows
+        if await curation_service.has_changes_since(
+            r["user_id"], r["user_id"], r["curated_through"]
+        )
+    ]
+    if not stale:
+        return 0
+    lines = [
+        f"- {r['email']}: last curated {r['curated_through']:%Y-%m-%d %H:%M} UTC "
+        f"({r['last_run_error'][:200]})"
+        for r in stale
+    ]
+    await alert_service.send_alert(
+        f"{len(stale)} Memory curator(s) stale >{STALE_CURATOR_HOURS}h with pending changes:\n"
+        + "\n".join(lines)
+    )
+    return len(stale)

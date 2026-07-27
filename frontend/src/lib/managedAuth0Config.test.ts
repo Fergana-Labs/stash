@@ -21,7 +21,7 @@ describe("managed Auth0 config", () => {
 
   it("rejects non-HTTPS app base URLs", () => {
     expect(() =>
-      requireHttpsAppBaseUrl({ APP_BASE_URL: "http://app.example.com" } as NodeJS.ProcessEnv),
+      requireHttpsAppBaseUrl({ APP_BASE_URL: "http://app.example.com" } as unknown as NodeJS.ProcessEnv),
     ).toThrow("APP_BASE_URL must be an HTTPS origin");
   });
 
@@ -29,7 +29,7 @@ describe("managed Auth0 config", () => {
     expect(() =>
       requireHttpsAppBaseUrl({
         APP_BASE_URL: "https://app.example.com/settings",
-      } as NodeJS.ProcessEnv),
+      } as unknown as NodeJS.ProcessEnv),
     ).toThrow("APP_BASE_URL must be an HTTPS origin");
   });
 
@@ -38,7 +38,7 @@ describe("managed Auth0 config", () => {
       requireManagedAuth0Config({
         AUTH0_AUDIENCE: "https://api.example.com",
         APP_BASE_URL: "https://app.example.com/",
-      } as NodeJS.ProcessEnv),
+      } as unknown as NodeJS.ProcessEnv),
     ).toEqual({ audience: "https://api.example.com" });
   });
 });

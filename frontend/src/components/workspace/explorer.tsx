@@ -2,10 +2,9 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { nanoid } from "nanoid";
 import { Bot, ChevronRight, File, Folder, Loader2, MessagesSquare, GraduationCap, Monitor, Plus, Settings, FolderTree, Brain, Plug, Sparkles, SquareTerminal } from "lucide-react";
 import { toast } from "sonner";
-import { ApiError, listMySessions, listSessionFolders, createSessionFolder, listSkills, listSources, createFolder, createPage, machineFsList, listAgents, createAgent, type Agent as AgentRow, type MachineEntry, type SessionSummary, type Source } from "@/lib/api";
+import { ApiError, listMySessions, listSessionFolders, listSharedWithMe, listSharedSessionFolderSessions, createSessionFolder, listSkills, listSources, createFolder, createPage, machineFsList, listAgents, createAgent, type Agent as AgentRow, type MachineEntry, type SessionSummary, type Source } from "@/lib/api";
 import { useMemoryFolderId } from "@/lib/memory-folder";
 import { SKILL_MD, skillMdTemplate } from "@/lib/localSkill";
 import { requestAgentConfigView, requestCuratorRun } from "@/lib/agent-tab-view";
@@ -13,7 +12,7 @@ import { cn } from "@/lib/utils";
 import { useWorkspace, type TabKind } from "@/lib/workspace-store";
 import { urlForTab } from "@/lib/workspace-routes";
 import { CONNECTORS, connectorIcon, providerForSourceType } from "@/components/integrations/connectors";
-import { listIntegrations } from "@/lib/integrations";
+import { INTEGRATIONS_CHANGED_EVENT, listIntegrations } from "@/lib/integrations";
 import { opensNewTab } from "@/lib/tab-nav";
 import FilesExplorer, { type Item } from "./files-explorer";
 
@@ -70,11 +69,16 @@ function ToolsSection() {
   // integrations like Heavi) — null until loaded, then the allowed set.
   const [allowed, setAllowed] = useState<Set<string> | null>(null);
   useEffect(() => {
-    listSources().then((all) => setSourceProviders(new Set(all.map((s: Source) => providerForSourceType[s.type] ?? s.type)))).catch(() => {});
-    listIntegrations().then((r) => {
-      setAllowed(new Set(r.providers.map((p) => p.provider)));
-      setConnectedProviders(new Set(r.providers.filter((p) => p.connected).map((p) => p.provider)));
-    }).catch(() => {});
+    const load = () => {
+      listSources().then((all) => setSourceProviders(new Set(all.map((s: Source) => providerForSourceType[s.type] ?? s.type)))).catch(() => {});
+      listIntegrations().then((r) => {
+        setAllowed(new Set(r.providers.map((p) => p.provider)));
+        setConnectedProviders(new Set(r.providers.filter((p) => p.connected).map((p) => p.provider)));
+      }).catch(() => {});
+    };
+    load();
+    window.addEventListener(INTEGRATIONS_CHANGED_EVENT, load);
+    return () => window.removeEventListener(INTEGRATIONS_CHANGED_EVENT, load);
   }, []);
   if (allowed === null) return <LoadingRow />;
   return (
@@ -200,15 +204,14 @@ function RootSection() {
   );
 }
 
-// ── Agents: named agent configs (each with New chat + settings), then chats ──
+// ── Agents: one row per named agent. Clicking opens the agent's single
+// conversation — a chat agent's persistent session, or a scheduled agent's
+// runs feed. Past ad-hoc sessions live in the Sessions view. ──
 function AgentsExplorer() {
   const open = useOpenTab();
   const [agents, setAgents] = useState<AgentRow[] | null>(null);
-  const [rows, setRows] = useState<SessionSummary[] | null>(null);
   const reloadAgents = useCallback(() => { listAgents().then(setAgents).catch(() => setAgents([])); }, []);
-  // Recent chats here are only conversations that ran through our platform
-  // agents — CLI transcripts live in the Sessions view, not here.
-  useEffect(() => { reloadAgents(); listMySessions(50, undefined, 0, true).then(setRows).catch(() => setRows([])); }, [reloadAgents]);
+  useEffect(() => { reloadAgents(); }, [reloadAgents]);
   // Keep the list fresh when the config panel saves/deletes an agent.
   useEffect(() => {
     const onChange = () => reloadAgents();
@@ -224,13 +227,7 @@ function AgentsExplorer() {
     open("agent", `agent-${a.id}`, a.name, { newTab: true });
   }
 
-  // The curator has no chat — its settings are their own tab. Every other
-  // agent's settings live on the Config side of its single chat tab.
   function openSettings(a: AgentRow) {
-    if (a.is_curator) {
-      open("agent-config", a.id, a.name);
-      return;
-    }
     requestAgentConfigView(a.id);
     open("agent", `agent-${a.id}`, a.name);
   }
@@ -247,42 +244,17 @@ function AgentsExplorer() {
         {(agents ?? []).map((a) => (
           <div key={a.id} className="group flex items-center gap-1 rounded px-2 py-1.5 text-[13px] text-sidebar-foreground hover:bg-sidebar-accent">
             <button
-              // The curator isn't a chat agent — open its config (Run now lives
-              // there). Everyone else opens their persistent chat session: a
-              // stable per-agent session id so the row resumes one conversation.
-              onClick={() =>
-                a.is_curator
-                  ? open("agent-config", a.id, a.name)
-                  : open("agent", `agent-${a.id}`, a.name)
-              }
+              onClick={() => open("agent", `agent-${a.id}`, a.name)}
               className="flex min-w-0 flex-1 cursor-pointer items-center gap-1 text-left"
-              title={a.is_curator ? "Open curator settings" : "Open chat"}
+              title={a.run_mode === "scheduled" ? "Open runs" : "Open chat"}
             >
               <Bot className="h-4 w-4 shrink-0 text-muted-foreground" />
               <span className="min-w-0 flex-1 truncate">{a.name}</span>
             </button>
-            {!a.is_curator && (
-              <button onClick={() => open("agent", `new:${a.id}:${nanoid(5)}`, a.name, { newTab: true })} className="cursor-pointer text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-foreground" title="New chat">
-                <Plus className="h-3.5 w-3.5" />
-              </button>
-            )}
             <button onClick={() => openSettings(a)} className="cursor-pointer text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-foreground" title="Settings">
               <Settings className="h-3.5 w-3.5" />
             </button>
           </div>
-        ))}
-        <div className="mx-2 my-1 border-t border-sidebar-border" />
-        <div className="px-2 py-1 text-[10.5px] font-medium uppercase tracking-wide text-muted-foreground">Recent chats</div>
-        {(rows ?? []).map((s) => (
-          <LeafRow
-            key={s.session_id}
-            icon={<MessagesSquare className="h-3.5 w-3.5" />}
-            label={s.title || s.agent_name || "Chat"}
-            onOpen={() => open("agent", s.session_id, s.title || s.agent_name || "Chat")}
-            // Which agent ran this chat — titles alone hide scheduled runs
-            // (e.g. the Memory curator's) in a flat list.
-            trailing={s.agent_name ? <span className="max-w-[90px] shrink-0 truncate text-[10.5px] text-muted-foreground/70">{s.agent_name}</span> : undefined}
-          />
         ))}
       </div>
     </div>
@@ -316,21 +288,44 @@ export default function Explorer({ section }: { section: ExplorerSection }) {
   // Sessions are their own tree: session folders + loose sessions at the root,
   // sessions inside each folder. Flat (folders don't nest).
   const sessionLabel = (s: SessionSummary) => s.title || s.agent_name || "Session";
-  const sessionsRoot = useCallback(async (): Promise<Item[]> => {
-    const [folders, sessions] = await Promise.all([listSessionFolders(), listMySessions(100)]);
+
+  // Your own folders plus the ones shared with you. Without the shared half the
+  // tree can't reach another person's sessions at all: every session is filed
+  // into a folder at upload, and the root only lists unfiled ones.
+  // Shared rows carry the owner's name because folder names collide across
+  // people — everyone has a "Default".
+  const sessionFolderRows = useCallback(async () => {
+    const [own, shared] = await Promise.all([listSessionFolders(), listSharedWithMe()]);
     return [
-      ...folders.map((f) => ({ kind: "session-folder" as const, id: f.id, name: f.name })),
-      ...sessions.filter((s) => !s.session_folder_id).map((s) => ({ kind: "session" as const, id: s.session_id, name: sessionLabel(s), ts: s.last_event_at })),
+      ...own.map((f) => ({ id: f.id, name: f.name, shared: false })),
+      ...shared
+        .filter((s) => s.object_type === "session_folder")
+        .map((s) => ({ id: s.object_id, name: `${s.name} (${s.owner_name})`, shared: true })),
     ];
   }, []);
+
+  const sessionsRoot = useCallback(async (): Promise<Item[]> => {
+    const [folders, sessions] = await Promise.all([sessionFolderRows(), listMySessions(100)]);
+    return [
+      ...folders.map((f) => ({ kind: "session-folder" as const, id: f.id, name: f.name, readOnly: f.shared })),
+      ...sessions.filter((s) => !s.session_folder_id).map((s) => ({ kind: "session" as const, id: s.session_id, name: sessionLabel(s), ts: s.last_event_at })),
+    ];
+  }, [sessionFolderRows]);
+
   const sessionsFolder = useCallback(async (folderId: string) => {
-    const [folders, sessions] = await Promise.all([listSessionFolders(), listMySessions(100, folderId)]);
+    const folders = await sessionFolderRows();
     const folder = folders.find((f) => f.id === folderId);
+    if (!folder) throw new Error(`Session folder ${folderId} is neither yours nor shared with you`);
+    // A shared folder's sessions live in another scope, so they come from the
+    // share endpoint — the personal /me/sessions window is the wrong source.
+    const sessions = folder.shared
+      ? await listSharedSessionFolderSessions(folderId)
+      : await listMySessions(100, folderId);
     return {
-      crumbs: [{ id: folderId, name: folder?.name ?? "Folder", is_skill: false }],
+      crumbs: [{ id: folderId, name: folder.name, is_skill: false }],
       items: sessions.map((s) => ({ kind: "session" as const, id: s.session_id, name: sessionLabel(s), ts: s.last_event_at })),
     };
-  }, []);
+  }, [sessionFolderRows]);
   const createSessionFolderItem = useCallback(async () => { await createSessionFolder("New folder"); }, []);
 
   if (section === "agents") return <AgentsExplorer />;
@@ -370,6 +365,7 @@ export default function Explorer({ section }: { section: ExplorerSection }) {
           }
           openRootTab={isSessions ? () => open("sessions-home", "sessions", "Sessions") : undefined}
           showImport={!isSessions}
+          importIntent={section === "skills" ? "skills" : "files"}
           vfsWritable={!isSessions}
           headerAction={
             section === "memory"

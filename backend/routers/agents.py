@@ -8,7 +8,8 @@ from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 
 from ..auth import get_current_user
-from ..services import agent_run_history_service, agent_service, sprite_agent_service
+from ..database import get_pool
+from ..services import agent_service, sprite_agent_service
 
 router = APIRouter(prefix="/api/v1/me/agents", tags=["agents"])
 
@@ -47,6 +48,101 @@ async def update_agent(
     )
 
 
+@router.get("/{agent_id}")
+async def get_agent(agent_id: UUID, current_user: dict = Depends(get_current_user)):
+    return await agent_service.get_agent(current_user["id"], agent_id)
+
+
+@router.get("/{agent_id}/runs")
+async def list_agent_runs(
+    agent_id: UUID,
+    limit: int = Query(30, ge=1, le=100),
+    current_user: dict = Depends(get_current_user),
+):
+    """A scheduled agent's newest runs as one chronological feed."""
+    agent = await agent_service.get_agent(current_user["id"], agent_id)
+    prefix = sprite_agent_service.scheduled_session_prefix(agent)
+    rows = await get_pool().fetch(
+        """
+        WITH newest_sessions AS (
+            SELECT session_id, MIN(created_at) AS started_at
+            FROM history_events
+            WHERE owner_user_id = $1
+              AND session_id LIKE $2
+            GROUP BY session_id
+            ORDER BY started_at DESC, session_id DESC
+            LIMIT $3
+        )
+        SELECT
+            he.session_id,
+            MIN(he.created_at) AS started_at,
+            MAX(he.created_at) AS last_event_at,
+            COUNT(*)::int AS event_count,
+            COUNT(*) FILTER (WHERE he.event_type = 'tool_use')::int AS tool_count,
+            (ARRAY_AGG(he.content ORDER BY he.created_at DESC, he.id DESC)
+                FILTER (WHERE he.event_type = 'assistant_message'))[1] AS final_text,
+            COALESCE(
+                JSONB_AGG(
+                    JSONB_BUILD_OBJECT(
+                        'role', REPLACE(he.event_type, '_message', ''),
+                        'content', he.content
+                    )
+                    ORDER BY he.created_at, he.id
+                ) FILTER (
+                    WHERE he.event_type IN ('user_message', 'assistant_message')
+                      AND NULLIF(BTRIM(he.content), '') IS NOT NULL
+                ),
+                '[]'::jsonb
+            ) AS messages
+        FROM history_events he
+        JOIN newest_sessions ns ON ns.session_id = he.session_id
+        WHERE he.owner_user_id = $1
+        GROUP BY he.session_id
+        ORDER BY started_at, he.session_id
+        """,
+        current_user["id"],
+        f"{prefix}%",
+        limit,
+    )
+    return {"runs": [await _run_from_row(row) for row in rows]}
+
+
+async def _run_from_row(row: dict) -> dict:
+    final_text = row["final_text"]
+    if final_text is None:
+        status = (
+            "running"
+            if await sprite_agent_service.turn_running(row["session_id"])
+            else "interrupted"
+        )
+        error = None
+    elif final_text.startswith(sprite_agent_service.RUN_FAILED_PREFIX):
+        status = "failed"
+        error = final_text.removeprefix(sprite_agent_service.RUN_FAILED_PREFIX).strip()
+    elif final_text == sprite_agent_service.STOPPED_NOTE:
+        status = "stopped"
+        error = None
+    else:
+        status = "completed"
+        error = None
+
+    finished_at = row["last_event_at"] if status in {"completed", "failed", "stopped"} else None
+    duration_seconds = (
+        (finished_at - row["started_at"]).total_seconds() if finished_at is not None else None
+    )
+    return {
+        "session_id": row["session_id"],
+        "started_at": row["started_at"],
+        "finished_at": finished_at,
+        "duration_seconds": duration_seconds,
+        "event_count": row["event_count"],
+        "tool_count": row["tool_count"],
+        "status": status,
+        "error": error,
+        "messages": row["messages"],
+    }
+
+
 @router.get("/{agent_id}/prompt")
 async def get_agent_prompt(agent_id: UUID, current_user: dict = Depends(get_current_user)):
     """The exact prompts a scheduled agent runs: the appended system prompt and
@@ -69,20 +165,3 @@ async def get_agent_prompt(agent_id: UUID, current_user: dict = Depends(get_curr
 async def delete_agent(agent_id: UUID, current_user: dict = Depends(get_current_user)):
     await agent_service.delete_agent(current_user["id"], agent_id)
     return {"ok": True}
-
-
-@router.get("/{agent_id}/runs")
-async def list_agent_runs(
-    agent_id: UUID,
-    limit: int = Query(20, ge=1, le=100),
-    offset: int = Query(0, ge=0),
-    current_user: dict = Depends(get_current_user),
-):
-    """Past scheduled runs of one named agent, newest first.
-
-    Derived from each run's per-run session events plus the live turn lock,
-    so a user can see when each run happened, how long it took, and whether
-    it completed, failed (with the error), was interrupted, or is still
-    running. No new storage: reuses the history_events already written by
-    sprite_agent_service for every scheduled turn."""
-    return await agent_run_history_service.list_runs(current_user["id"], agent_id, limit, offset)

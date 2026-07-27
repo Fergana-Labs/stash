@@ -15,7 +15,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from .client import MachineVfsClient, VfsClient, VfsClientError
+from .client import MachineVfsClient, VfsClient, VfsClientError, VfsScanBudget
 
 BytesLoader = Callable[[], bytes]
 
@@ -57,7 +57,7 @@ class VfsNode:
     # Set when `prefetch` already tried this loader and it failed. `read_file`
     # re-raises it rather than fetching again — a second fetch would hit the
     # provider twice and, server-side, spend the document budget twice.
-    error: VfsClientError | None = None
+    error: VfsClientError | VfsScanBudget | None = None
 
     @property
     def is_dir(self) -> bool:
@@ -89,7 +89,10 @@ class StashVfsModel:
         self._expanders = {}
         self._truncated = {}
         self._add_dir("/")
-        self._add_root()
+        # Lazy loaders and source expanders fire later, outside this block, so
+        # reads and descents the user actually drives still count.
+        with self.client.internal_calls():
+            self._add_root()
         computer_lines = (
             [
                 "- `computer` is a live, read-only view of the agent's "
@@ -177,16 +180,16 @@ class StashVfsModel:
         if len(pending) < 2:
             return
 
-        def load(node: VfsNode) -> tuple[VfsNode, bytes | VfsClientError]:
+        def load(node: VfsNode) -> tuple[VfsNode, bytes | VfsClientError | VfsScanBudget]:
             try:
                 return node, node.loader()
-            except VfsClientError as e:
+            except (VfsClientError, VfsScanBudget) as e:
                 return node, e
 
         workers = min(PREFETCH_CONCURRENCY, len(pending))
         with ThreadPoolExecutor(max_workers=workers) as pool:
             for node, result in pool.map(load, pending):
-                if isinstance(result, VfsClientError):
+                if isinstance(result, (VfsClientError, VfsScanBudget)):
                     node.error = result
                     continue
                 node.content = result

@@ -12,7 +12,7 @@ from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field
 
 from ..middleware import limiter
-from ..services import paste_service
+from ..services import paste_service, security_audit_service
 
 router = APIRouter(prefix="/api/v1/pastes", tags=["pastes"])
 
@@ -73,6 +73,13 @@ async def get_paste(request: Request, slug: str, format: str = ""):
     paste = await paste_service.get_paste(slug)
     if not paste:
         raise HTTPException(status_code=404, detail="Paste not found")
+    # Pastes are anonymous on both sides: no actor, no owner scope.
+    await security_audit_service.record_content_read(
+        target_type="paste",
+        target_id=slug,
+        actor_user_id=None,
+        owner_user_id=None,
+    )
     if format == "raw":
         media_type = "text/markdown" if paste["content_type"] == "markdown" else "text/plain"
         return PlainTextResponse(paste["content"], media_type=media_type)

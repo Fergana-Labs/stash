@@ -113,7 +113,11 @@ class GongIntegration(Integration):
             resp.raise_for_status()
             workspaces = resp.json().get("workspaces", [])
         display_name = workspaces[0]["name"] if workspaces else "Gong"
-        return AccountInfo(email=None, display_name=display_name)
+        return AccountInfo(
+            email=None,
+            display_name=display_name,
+            account_ref=creds["api_base_url"],
+        )
 
 
 def _payload_to_tokenset(payload: dict) -> TokenSet:

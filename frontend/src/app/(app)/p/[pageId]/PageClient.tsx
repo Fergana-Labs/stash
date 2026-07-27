@@ -579,7 +579,6 @@ export default function SkillPageView({ pageId }: { pageId: string }) {
   return (
     <div className="flex h-full flex-col">
       <FileViewerHeader
-        compact
         icon={isHtml ? <HtmlGlyph /> : <PageGlyph />}
         iconColor={isHtml ? "var(--color-brand-600)" : "var(--text-muted)"}
         breadcrumbs={ancestorCrumbs}

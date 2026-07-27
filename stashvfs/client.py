@@ -8,6 +8,7 @@ and knows about neither.
 
 from __future__ import annotations
 
+from contextlib import AbstractContextManager
 from typing import Protocol
 
 
@@ -24,9 +25,42 @@ class VfsClientError(Exception):
         super().__init__(str(detail))
 
 
+class VfsScanBudget(Exception):
+    """A document read was refused because the command's scan budget ran out.
+
+    Raised by clients that meter reads (the server-side VFS) for reads issued
+    inside `scan_calls`. The shell stops the grep sweep at this point and
+    reports the results so far with a loud truncation warning — an org-wide
+    sweep degrades to a partial answer instead of an aborted command.
+    """
+
+
 class VfsClient(Protocol):
     """Everything `StashVfsModel` reads. Listing calls run during `refresh()`;
     the rest are lazy loaders fired when a file's bytes are first read."""
+
+    def internal_calls(self) -> AbstractContextManager[None]:
+        """Requests issued inside this block are mount bookkeeping, not reads
+        the user asked for. Implementations tag them `X-Stash-Via: auto` so
+        content-activity analytics exclude them (see auth._set_request_via) —
+        every VFS command rebuilds the tree, so counting these would log
+        several listings per command, even for a `cat`."""
+        ...
+
+    def scan_calls(self) -> AbstractContextManager[None]:
+        """Requests issued inside this block are a `grep` sweeping documents
+        for a pattern. Implementations tag them `X-Stash-Via: scan` so
+        content-activity analytics exclude them (see auth._set_request_via):
+        one recursive grep reads every document it walks, which used to land
+        as hundreds of user-driven reads. The grep itself is represented by
+        the single search event `record_search` writes afterwards."""
+        ...
+
+    def record_search(self, pattern: str, roots: list[str], docs_scanned: int) -> None:
+        """Write the one search audit event standing in for a grep's scan
+        reads (see `scan_calls`). Called once per grep invocation, after the
+        scan completes."""
+        ...
 
     def get_overview(self) -> dict: ...
 

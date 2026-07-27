@@ -42,6 +42,9 @@ def _render_issue(issue: linear_api_service.LinearIssue) -> str:
     parts.append(f"URL: {issue.url}")
     if (issue.description or "").strip():
         parts.append(f"\n{issue.description.strip()}")
+    if issue.comments:
+        rendered = "\n\n".join(f"{c.author_name or 'Unknown'}: {c.body}" for c in issue.comments)
+        parts.append(f"\n## Comments\n{rendered}")
     return "\n".join(parts)
 
 
@@ -80,15 +83,18 @@ async def index_linear(source: dict) -> str | None:
 
 async def search_linear(source: dict, query: str, limit: int = SEARCH_LIMIT) -> list[dict]:
     """Federated search via Linear's native issue search. Returns hits keyed by
-    the index path so read_source resolves them."""
+    the index path so read_source resolves them. Each hit's snippet is the
+    rendered issue body — the search response already carries it, so callers
+    get full text to rank on at no extra request cost."""
     owner_user_id = UUID(source["owner_user_id"])
     token = await get_valid_token(owner_user_id, "linear")
     issues = await linear_api_service.search_issues(token, query, min(limit, 50))
     return [
         {
-            "ref": _issue_path(issue["identifier"]),
-            "name": f"{issue['identifier']} {issue['title']}",
-            "snippet": issue["title"],
+            "ref": _issue_path(issue.identifier),
+            "name": f"{issue.identifier} {issue.title}",
+            "snippet": _render_issue(issue),
+            "date_modified": issue.updated_at,
         }
         for issue in issues
     ]

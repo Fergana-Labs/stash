@@ -50,6 +50,14 @@ class SourceSyncUserError(Exception):
     constant (see tasks/sources.py)."""
 
 
+class SourceSetupRequired(Exception):
+    """The source can't sync until the owner configures something (Slack with
+    no channels chosen). Nothing is broken and retrying changes nothing, so
+    this is NOT a failure: it parks the source in 'needs_setup' with an
+    instruction instead of a red error. Same safety rule as
+    SourceSyncUserError — the message is shown verbatim."""
+
+
 # A Linear issue identifier (FER-199). Any such ref is readable live from the
 # API, so reads work even before a sync has indexed the issue.
 LINEAR_IDENTIFIER_RE = re.compile(r"^[A-Za-z][A-Za-z0-9]*-\d+$")
@@ -127,6 +135,11 @@ SOURCE_TYPE_PROVIDER = {
     for provider, source_types in PROVIDER_SOURCE_TYPES.items()
     for source_type in source_types
 }
+
+# The vocabulary for search's include_sources/exclude_sources filters: the two
+# native handles plus provider names. Providers, not source ids — users think
+# "gmail", not a connected-source UUID.
+SEARCH_SOURCE_TOKENS = frozenset({NATIVE_FILES, NATIVE_SESSIONS, *PROVIDER_SOURCE_TYPES})
 
 _JIRA_PROJECT_KEY_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")
 
@@ -239,6 +252,7 @@ def _source_row(row) -> dict:
         "sync_enabled": row["sync_enabled"],
         "sync_status": row["sync_status"],
         "sync_error": row["sync_error"],
+        "sync_warning": row["sync_warning"],
         "last_synced_at": row["last_synced_at"].isoformat() if row["last_synced_at"] else None,
         "settings": row["settings"] or {},
     }
@@ -551,12 +565,36 @@ async def mark_sync_done(source_id: UUID, cursor: str | None) -> None:
 
 async def set_sync_warning(source_id: UUID, message: str) -> None:
     """A non-fatal, owner-facing sync notice (e.g. one feed of a source needs a
-    paid provider tier while the rest keeps syncing). Stored in sync_error but
-    the source stays idle; the next sync start clears it, so a resolved warning
-    disappears on its own. Same safety rule as SourceSyncUserError: the message
-    must never contain tokens or provider payloads."""
+    paid provider tier or a reconnect while the rest keeps syncing). The source
+    stays idle and the run still counts as a success, so this lives in its own
+    column: sync_error is cleared by every sync start, which would blank a
+    once-a-day warning within one sync interval. Cleared by clear_sync_warning
+    when the degraded feed works again. Same safety rule as SourceSyncUserError:
+    the message must never contain tokens or provider payloads."""
     await get_pool().execute(
-        "UPDATE user_sources SET sync_error = $2, updated_at = now() WHERE id = $1",
+        "UPDATE user_sources SET sync_warning = $2, updated_at = now() WHERE id = $1",
+        source_id,
+        message[:500],
+    )
+
+
+async def clear_sync_warning(source_id: UUID) -> None:
+    """Drop a warning set by an earlier run — the degraded feed answered again."""
+    await get_pool().execute(
+        "UPDATE user_sources SET sync_warning = NULL, updated_at = now() "
+        "WHERE id = $1 AND sync_warning IS NOT NULL",
+        source_id,
+    )
+
+
+async def mark_needs_setup(source_id: UUID, message: str) -> None:
+    """Park a source that is waiting on the owner to configure it. Not a
+    failure: last_synced_at is left alone (nothing synced) and the status is
+    its own state so the UI can ask for the missing input instead of showing
+    a red error and promising an automatic retry that cannot help."""
+    await get_pool().execute(
+        "UPDATE user_sources SET sync_status = 'needs_setup', sync_error = $2, "
+        "updated_at = now() WHERE id = $1",
         source_id,
         message[:500],
     )
@@ -616,6 +654,25 @@ CONTENT_TABLES = {
     # stays empty (no indexer); see the note on DEFAULT_SYNC_INTERVAL_S.
 }
 
+# content table -> its provider name, for provider-level FTS filtering. Each
+# content table holds exactly one provider's documents, so restricting the
+# UNION to a provider's tables filters exactly.
+CONTENT_TABLE_PROVIDER = {
+    SOURCE_TABLE[source_type]: SOURCE_TYPE_PROVIDER[source_type]
+    for source_type in SOURCE_TABLE
+    if SOURCE_TABLE[source_type] in CONTENT_TABLES
+}
+
+# Internal per-hit text cap, centered on the first query occurrence. High
+# enough that ranking (which scores this text) sees plenty of context, low
+# enough that pathological docs (multi-MB GitHub files, hour-long call
+# transcripts) can't bloat the search pipeline. Never returned to callers —
+# search_all windows each returned snippet to SEARCH_RESULT_SNIPPET_CHARS.
+SEARCH_SNIPPET_CHARS = 20_000
+
+# The snippet size the search API returns: a window centered on the first
+# query occurrence, with clipped edges marked by "…".
+SEARCH_RESULT_SNIPPET_CHARS = 300
 # Archive-style save tables: rows exist before their content is hydrated, so
 # they carry a hydration_status that listings and reads must surface.
 SAVE_TABLES = {"x_save_docs", "instagram_save_docs"}
@@ -1416,18 +1473,20 @@ def _scoped_search_error(source: dict, e: Exception) -> Exception:
 
 async def _federated_search(
     source: dict, query: str, limit: int, *, swallow_errors: bool = True
-) -> list[dict]:
-    """Run a federated source's native provider search. Returns unified hits
-    ({source, source_name, ref, name, snippet}). In the unscoped fan-out a
-    provider error (revoked token, rate limit) is logged and returned as a
-    single error marker ({source, source_name, error, needs_reconnect}) so the
-    rest of the search stays alive while the dead source is still surfaced —
-    dropping it silently would read as "no matches" for that source. A SCOPED
-    search raises instead, so the API serves an explicit HTTP error.
+) -> tuple[list[dict], list[dict]]:
+    """Run a federated source's native provider search. Returns (hits, markers):
+    hits are unified ({source, source_name, ref, name, snippet}); markers ride
+    alongside instead of mixing into the hit list so callers can rank/paginate
+    hits without sniffing dict keys. In the unscoped fan-out a provider error
+    (revoked token, rate limit) is logged and returned as an error marker
+    ({source, source_name, error, needs_reconnect}) so the rest of the search
+    stays alive while the dead source is still surfaced — dropping it silently
+    would read as "no matches" for that source. A SCOPED search raises instead,
+    so the API serves an explicit HTTP error.
 
     Providers cap results (SEARCH_LIMIT); when a provider reports it matched
-    more than it returned, a trailing truncation marker ({source, source_name,
-    truncated, returned, estimated_total}) is appended so callers disclose the
+    more than it returned, a truncation marker ({source, source_name,
+    truncated, returned, estimated_total}) is emitted so callers disclose the
     cut instead of presenting the top slice as the whole result."""
     source_type = source["source_type"]
     try:
@@ -1444,7 +1503,7 @@ async def _federated_search(
         elif source_type == "posthog_project":
             from ..integrations.posthog.indexer import search_posthog as fn
         else:
-            return []
+            return [], []
         result = await fn(source, query, limit)
     except Exception as exc:
         if not swallow_errors:
@@ -1464,7 +1523,7 @@ async def _federated_search(
         else:
             detail = f"{source['display_name'] or source_type} search failed"
             needs_reconnect = False
-        return [
+        return [], [
             {
                 "source": source["id"],
                 "source_name": source["display_name"],
@@ -1488,12 +1547,17 @@ async def _federated_search(
             "source_name": source["display_name"],
             "ref": h["ref"],
             "name": h.get("name", ""),
-            "snippet": h.get("snippet", ""),
+            # Providers return whole rendered bodies (a full email, a full
+            # issue) — cap them like every other candidate.
+            "snippet": _centered_window(h.get("snippet", ""), query, SEARCH_SNIPPET_CHARS),
+            # Not every provider's search response carries a timestamp.
+            "date_modified": h.get("date_modified"),
         }
         for h in hits
     ]
+    markers = []
     if truncated:
-        output.append(
+        markers.append(
             {
                 "source": source["id"],
                 "source_name": source["display_name"],
@@ -1502,7 +1566,30 @@ async def _federated_search(
                 "estimated_total": estimated_total,
             }
         )
-    return output
+    return output, markers
+
+
+async def _readable_source_ids(
+    user_id: UUID, tables: list[str], source_id: UUID | None
+) -> dict[str, list[UUID]]:
+    """The sources the user may read, grouped by content table. Resolved before
+    the FTS query so it filters by explicit source ids: Postgres skips tables
+    with no readable sources outright instead of evaluating to_tsvector over
+    every tenant's documents and discarding them at the access check."""
+    source_types = [st for st, tb in SOURCE_TABLE.items() if tb in tables]
+    readable = permission_service.readable_content_condition("source", "s", 1)
+    rows = await get_pool().fetch(
+        f"SELECT s.id, s.source_type FROM user_sources s "
+        f"WHERE ({readable}) AND s.source_type = ANY($2) "
+        f"AND ($3::uuid IS NULL OR s.id = $3)",
+        user_id,
+        source_types,
+        source_id,
+    )
+    by_table: dict[str, list[UUID]] = {t: [] for t in tables}
+    for r in rows:
+        by_table[SOURCE_TABLE[r["source_type"]]].append(r["id"])
+    return by_table
 
 
 async def search_documents(
@@ -1510,12 +1597,21 @@ async def search_documents(
     user_id: UUID,
     query: str,
     source: dict | None = None,
+    providers: frozenset[str] | None = None,
     limit: int = 20,
 ) -> list[dict]:
     """FTS over copied-content sources the user can read — their own or shared
     with them (github/slack/granola), UNIONed across their tables. Pass `source`
-    to scope to one; an index-only source has nothing to FTS, so it returns []."""
-    limit = min(limit, 100)
+    to scope to one; an index-only source has nothing to FTS, so it returns [].
+    Pass `providers` to restrict to those providers' tables — this must happen
+    at the table level, because readability includes sources shared directly
+    with the user that no connected-source listing enumerates.
+
+    Readable sources are resolved first and the FTS runs only over their rows
+    (and only in their tables) — see _readable_source_ids."""
+    if source is not None and providers is not None:
+        raise ValueError("Pass either source or providers, not both")
+    limit = min(limit, 500)
     tables = sorted(CONTENT_TABLES)
     source_id: UUID | None = None
     if source is not None:
@@ -1524,6 +1620,16 @@ async def search_documents(
             return []
         tables = [table]
         source_id = UUID(source["id"])
+    if providers is not None:
+        tables = sorted(t for t in CONTENT_TABLES if CONTENT_TABLE_PROVIDER[t] in providers)
+        if not tables:
+            return []
+
+    by_table = await _readable_source_ids(user_id, tables, source_id)
+    tables = [t for t in tables if by_table[t]]
+    if not tables:
+        return []
+    readable_ids = [sid for t in tables for sid in by_table[t]]
 
     def visibility_clause(table: str) -> str:
         if table == "slack_messages":
@@ -1542,30 +1648,40 @@ async def search_documents(
             )
         return ""
 
-    source_readable = permission_service.readable_content_condition("source", "s", 1)
+    # Each arm ranks on the stored vector and keeps only its own top `limit`
+    # BEFORE the snippet expression runs: the 20KB substr detoasts the full
+    # document, so it must touch the few returned rows, never every match.
     parts = [
         f"""
-        SELECT d.source_id, d.path, d.name, LEFT(d.content, 400) AS snippet,
-               ts_rank(to_tsvector('english', coalesce(d.content, '')),
-                       websearch_to_tsquery('english', $2)) AS rank
-        FROM {t} d
-        JOIN user_sources s ON s.id = d.source_id
-        WHERE {source_readable} AND d.deleted_at IS NULL
-          AND ($3::uuid IS NULL OR d.source_id = $3)
-          AND to_tsvector('english', coalesce(d.content, ''))
-              @@ websearch_to_tsquery('english', $2)
-          {visibility_clause(t)}
+        SELECT sub.source_id, sub.path, sub.name, sub.external_updated_at,
+               substr(sub.content,
+                      GREATEST(1, LEAST(strpos(lower(sub.content), lower(btrim($2)))
+                                          - {SEARCH_SNIPPET_CHARS // 2},
+                                        length(sub.content) - {SEARCH_SNIPPET_CHARS} + 1)),
+                      {SEARCH_SNIPPET_CHARS}) AS snippet,
+               sub.rank
+        FROM (
+            SELECT d.source_id, d.path, d.name, d.external_updated_at, d.content,
+                   ts_rank(d.content_tsv, websearch_to_tsquery('english', $2)) AS rank
+            FROM {t} d
+            JOIN user_sources s ON s.id = d.source_id
+            WHERE d.source_id = ANY($1) AND d.deleted_at IS NULL
+              AND d.content_tsv @@ websearch_to_tsquery('english', $2)
+              {visibility_clause(t)}
+            ORDER BY rank DESC
+            LIMIT $3
+        ) sub
         """
         for t in tables
     ]
     union = " UNION ALL ".join(parts)
     rows = await get_pool().fetch(
-        f"SELECT u.source_id, ws.display_name AS source_name, u.path, u.name, u.snippet "
+        f"SELECT u.source_id, ws.display_name AS source_name, u.path, u.name, "
+        f"u.external_updated_at, u.snippet "
         f"FROM ({union}) u JOIN user_sources ws ON ws.id = u.source_id "
-        f"ORDER BY u.rank DESC LIMIT $4",
-        user_id,
+        f"ORDER BY u.rank DESC LIMIT $3",
+        readable_ids,
         query,
-        source_id,
         limit,
     )
     return [
@@ -1575,6 +1691,7 @@ async def search_documents(
             "path": r["path"],
             "name": r["name"],
             "snippet": r["snippet"] or "",
+            "date_modified": r["external_updated_at"],
         }
         for r in rows
     ]
@@ -1615,6 +1732,7 @@ async def list_sources(owner_user_id: UUID, user_id: UUID) -> list[dict]:
             "sync_enabled": s["sync_enabled"],
             "sync_status": s["sync_status"],
             "sync_error": s["sync_error"],
+            "sync_warning": s["sync_warning"],
             "last_synced_at": s["last_synced_at"],
             "settings": s["settings"],
         }
@@ -2143,34 +2261,244 @@ async def fetch_history(
 
 
 async def _external_ref_matches(sources: list[dict], query: str, limit: int) -> list[dict]:
-    """Documents whose provider id (`external_ref`) exactly equals the query,
-    across the given sources' document tables."""
+    """Documents whose provider id (`external_ref`) contains the query as a
+    substring, across the given sources' document tables. These hits carry
+    `exact_ref` so search_all pins them above everything else — an id match is
+    a lookup, not a relevance guess."""
     query = query.strip()
     if not query:
         return []
-    hits: list[dict] = []
-    for s in sources:
-        table = SOURCE_TABLE.get(s["source_type"])
-        if table is None:
-            continue
+
+    async def one_source(s: dict, table: str) -> list[dict]:
         rows = await get_pool().fetch(
-            f"SELECT path, name FROM {table} "
-            f"WHERE source_id = $1 AND external_ref = $2 AND deleted_at IS NULL LIMIT $3",
+            f"SELECT path, name, external_updated_at FROM {table} "
+            f"WHERE source_id = $1 AND strpos(external_ref, $2) > 0 AND deleted_at IS NULL "
+            f"LIMIT $3",
             UUID(s["id"]),
             query,
             limit,
         )
-        hits += [
+        return [
             {
                 "source": s["id"],
                 "source_name": s["display_name"],
                 "ref": r["path"],
                 "name": r["name"],
                 "snippet": "",
+                "date_modified": r["external_updated_at"],
+                "exact_ref": True,
             }
             for r in rows
         ]
-    return hits
+
+    with_tables = [
+        (s, SOURCE_TABLE[s["source_type"]])
+        for s in sources
+        if SOURCE_TABLE.get(s["source_type"]) is not None
+    ]
+    per_source = await asyncio.gather(*(one_source(s, table) for s, table in with_tables))
+    return [h for source_hits in per_source for h in source_hits]
+
+
+async def _uniform_ranks(query: str, texts: list[str]) -> list[float]:
+    """Score every candidate's display text against the query on ONE scale.
+    Per-source ts_rank/provider orderings are not comparable across sources,
+    so the merged ordering re-scores each hit's (name + snippet) identically."""
+    if not texts:
+        return []
+    rows = await get_pool().fetch(
+        "SELECT ts_rank(to_tsvector('english', t.text),"
+        "               websearch_to_tsquery('english', $2)) AS rank "
+        "FROM unnest($1::text[]) WITH ORDINALITY AS t(text, ord) "
+        "ORDER BY t.ord",
+        texts,
+        query,
+    )
+    return [r["rank"] for r in rows]
+
+
+def _rank_text(hit: dict) -> str:
+    return f"{hit.get('name') or ''}\n{hit.get('snippet') or ''}"
+
+
+def _centered_window(text: str, query: str, width: int, *, ellipsis: bool = False) -> str:
+    """A width-char window of text containing the first case-insensitive
+    occurrence of the query — a match 30 minutes into a transcript must show
+    the match, not the intro. Centered on the match, clamped to the text
+    bounds (a match near either edge still yields a full-width window). When
+    the query has no verbatim match (stemmed/multi-word FTS hits), the window
+    is the head of the text. ellipsis=True marks clipped edges with '…'."""
+    if len(text) <= width:
+        return text
+    q = query.strip().lower()
+    idx = text.lower().find(q) if q else -1
+    start = 0 if idx == -1 else min(max(0, idx - width // 2), len(text) - width)
+    window = text[start : start + width]
+    if ellipsis:
+        window = ("…" if start > 0 else "") + window + ("…" if start + width < len(text) else "")
+    return window
+
+
+def _validated_search_tokens(tokens: list[str] | None, param: str) -> frozenset[str]:
+    cleaned = frozenset(t.strip().lower() for t in tokens or [])
+    unknown = cleaned - SEARCH_SOURCE_TOKENS
+    if unknown:
+        raise ValueError(
+            f"Unknown {param} token(s): {', '.join(sorted(unknown))}. "
+            f"Valid tokens: {', '.join(sorted(SEARCH_SOURCE_TOKENS))}"
+        )
+    return cleaned
+
+
+def resolve_search_source_filter(
+    include_sources: list[str] | None, exclude_sources: list[str] | None
+) -> frozenset[str]:
+    """The set of source tokens a search may touch: everything (or the include
+    list, when given) minus the exclude list. A token in both lists is excluded.
+    Unknown tokens raise ValueError."""
+    include = _validated_search_tokens(include_sources, "include_sources")
+    exclude = _validated_search_tokens(exclude_sources, "exclude_sources")
+    base = include if include else SEARCH_SOURCE_TOKENS
+    return base - exclude
+
+
+async def _gather_search_candidates(
+    owner_user_id: UUID,
+    user_id: UUID,
+    query: str,
+    source: str | None,
+    allowed: frozenset[str],
+    fetch_limit: int,
+) -> tuple[list[dict], list[dict], dict | None] | None:
+    """Collect unranked hits from every sub-search: native sessions + pages,
+    exact provider-id matches, copied-content FTS, and federated provider
+    search. Returns (hits, markers, connected), or None when a named source is
+    unknown / not owned. Sub-searches keep their own caps (sessions and FTS
+    docs 500, providers SEARCH_LIMIT) — asking for more than those yields
+    has_more = False, not deeper results. The sub-searches are independent, so
+    they run concurrently; a search's latency is its slowest sub-search, not
+    the sum of all of them."""
+    # Resolve a named connected source first: an unknown handle must return
+    # None before any sub-search runs.
+    connected: dict | None = None
+    if source not in (None, NATIVE_FILES, NATIVE_SESSIONS):
+        connected = await _resolve_connected(source, owner_user_id, user_id)
+        if connected is None:
+            return None
+
+    async def session_hits() -> tuple[list[dict], list[dict]]:
+        from .memory_service import search_scope_events
+
+        events = await search_scope_events(owner_user_id, user_id, query, limit=fetch_limit)
+        return [
+            {
+                "source": NATIVE_SESSIONS,
+                "ref": e.get("session_id"),
+                "snippet": _centered_window(e.get("content") or "", query, SEARCH_SNIPPET_CHARS),
+                "date_modified": e.get("created_at"),
+            }
+            for e in events
+        ], []
+
+    async def page_hits() -> tuple[list[dict], list[dict]]:
+        from .files_tree_service import search_pages_fts
+
+        pages = await search_pages_fts(owner_user_id, query, limit=fetch_limit, user_id=user_id)
+        return [
+            {
+                "source": NATIVE_FILES,
+                "ref": str(p["id"]),
+                "name": p["name"],
+                "snippet": _centered_window(
+                    p.get("search_text") or p.get("content_markdown") or "",
+                    query,
+                    SEARCH_SNIPPET_CHARS,
+                ),
+                "date_modified": p.get("updated_at"),
+            }
+            for p in pages
+        ], []
+
+    async def connected_hits() -> tuple[list[dict], list[dict]]:
+        # Connected sources: all of the scope's own when unscoped, else the one
+        # named.
+        searched_sources = (
+            [connected]
+            if connected is not None
+            else [
+                s
+                for s in await list_connected_sources(owner_user_id)
+                if SOURCE_TYPE_PROVIDER[s["source_type"]] in allowed
+            ]
+        )
+
+        # Federated sources search the provider's native API live. Scoped → the
+        # one source, raising on provider errors so a dead connection is never
+        # mistaken for "no matches"; unscoped → fan out across the user's
+        # federated sources (each call keeps search alive by returning its own
+        # error as a marker instead of raising).
+        federated = [s for s in searched_sources if s["source_type"] in FEDERATED_SEARCH_TYPES]
+
+        # A query that is (part of) a provider id (a Drive file id, a Gmail
+        # message id, …) resolves to the indexed document directly. This is how
+        # an agent holding only a provider URL finds the document's Stash path.
+        #
+        # Copied-content sources go through our FTS (returns [] for index-only /
+        # federated sources, which have no stored content to match). Unscoped
+        # search filters at the table level, not via searched_sources — FTS also
+        # reads sources shared directly with the user, which searched_sources
+        # never enumerates.
+        ref_hits, docs, federated_results = await asyncio.gather(
+            _external_ref_matches(searched_sources, query, fetch_limit),
+            search_documents(
+                user_id=user_id,
+                query=query,
+                source=connected,
+                providers=None
+                if connected is not None
+                else allowed - {NATIVE_FILES, NATIVE_SESSIONS},
+                limit=fetch_limit,
+            ),
+            asyncio.gather(
+                *(
+                    _federated_search(s, query, fetch_limit, swallow_errors=connected is None)
+                    for s in federated
+                )
+            ),
+        )
+
+        hits = ref_hits
+        hits += [
+            {
+                "source": d["source_id"],
+                "source_name": d["source_name"],
+                "ref": d["path"],
+                "name": d["name"],
+                "snippet": d["snippet"],
+                "date_modified": d["date_modified"],
+            }
+            for d in docs
+        ]
+        markers: list[dict] = []
+        for fed_hits, fed_markers in federated_results:
+            hits += fed_hits
+            markers += fed_markers
+        return hits, markers
+
+    subsearches = []
+    if NATIVE_SESSIONS in allowed and source in (None, NATIVE_SESSIONS):
+        subsearches.append(session_hits())
+    if NATIVE_FILES in allowed and source in (None, NATIVE_FILES):
+        subsearches.append(page_hits())
+    if source is None or connected is not None:
+        subsearches.append(connected_hits())
+
+    hits: list[dict] = []
+    markers: list[dict] = []
+    for sub_hits, sub_markers in await asyncio.gather(*subsearches):
+        hits += sub_hits
+        markers += sub_markers
+    return hits, markers, connected
 
 
 async def search_all(
@@ -2178,89 +2506,68 @@ async def search_all(
     user_id: UUID,
     query: str,
     source: str | None = None,
+    include_sources: list[str] | None = None,
+    exclude_sources: list[str] | None = None,
     limit: int = 20,
-) -> list[dict] | None:
+) -> dict | None:
     """Search across sources. Omit `source` to search everything the user can
     see (native files + sessions + their connected sources), or pass a handle to
-    scope to one. Returns None when a named source is unknown / not owned."""
-    results: list[dict] = []
+    scope to one. Returns {"results": [...], "has_more": bool}, or None when a
+    named source is unknown / not owned.
 
-    if source in (None, NATIVE_SESSIONS):
-        from .memory_service import search_scope_events
+    include_sources/exclude_sources filter by SEARCH_SOURCE_TOKENS (native
+    handles + provider names): searched = (include or everything) - exclude, so
+    disjoint lists yield empty results. Unknown tokens, or combining either
+    with `source`, raise ValueError.
 
-        events = await search_scope_events(owner_user_id, user_id, query, limit=limit)
-        results += [
-            {
-                "source": NATIVE_SESSIONS,
-                "ref": e.get("session_id"),
-                "snippet": (e.get("content") or "")[:300],
-            }
-            for e in events
-        ]
+    Every candidate is re-scored on one uniform ts_rank scale over its display
+    text, then the merged list is sorted and sliced to the first `limit` hits —
+    there are no pages; callers wanting more results ask again with a larger
+    limit. has_more (hits only) says more matched than were returned.
+    Each hit's `snippet` is a SEARCH_RESULT_SNIPPET_CHARS window centered on
+    the first query occurrence, its clipped edges marked with "…". Each hit
+    carries `date_modified` (the document's provider-side modification time,
+    the page's update time, or the event's creation time) — None when the
+    integration doesn't provide one.
+    Each hit carries its `rank` so callers can merge these results with their
+    own scored lists (the web search page blends in tables/skills client-side).
+    Hits whose provider id contains the query (`exact_ref`) pin above all
+    text-ranked hits regardless of rank — an id match is a lookup, not a
+    relevance guess. Other rank-0 hits sink to the bottom but are never
+    dropped: provider-relevant name-only hits won't token-match the query.
+    Markers (provider errors, truncation) trail every response — they describe
+    the whole search, not the returned slice."""
+    if source is not None and (include_sources or exclude_sources):
+        raise ValueError("Pass either source or include_sources/exclude_sources, not both")
+    allowed = resolve_search_source_filter(include_sources, exclude_sources)
 
-    if source in (None, NATIVE_FILES):
-        from .files_tree_service import search_pages_fts
+    # +1 sentinel: gathering exactly `limit` hits could never prove more exist.
+    gathered = await _gather_search_candidates(
+        owner_user_id, user_id, query, source, allowed, fetch_limit=limit + 1
+    )
+    if gathered is None:
+        return None
+    hits, markers, connected = gathered
 
-        pages = await search_pages_fts(owner_user_id, query, limit=limit, user_id=user_id)
-        results += [
-            {
-                "source": NATIVE_FILES,
-                "ref": str(p["id"]),
-                "name": p["name"],
-                "snippet": (p.get("search_text") or p.get("content_markdown") or "")[:300],
-            }
-            for p in pages
-        ]
-
-    # Connected sources: all of the scope's own when unscoped, else the one named.
-    connected: dict | None = None
-    if source not in (None, NATIVE_FILES, NATIVE_SESSIONS):
-        connected = await _resolve_connected(source, owner_user_id, user_id)
-        if connected is None:
-            return None
-    if source is None or connected is not None:
-        searched_sources = (
-            [connected] if connected is not None else await list_connected_sources(owner_user_id)
-        )
-
-        # A query that IS a provider id (a Drive file id, a Gmail message id, …)
-        # resolves to the indexed document directly. This is how an agent holding
-        # only a provider URL finds the document's Stash path.
-        results += await _external_ref_matches(searched_sources, query, limit)
-
-        # Copied-content sources go through our FTS (returns [] for index-only /
-        # federated sources, which have no stored content to match).
-        docs = await search_documents(
-            user_id=user_id,
-            query=query,
-            source=connected,
-            limit=limit,
-        )
-        results += [
-            {
-                "source": d["source_id"],
-                "source_name": d["source_name"],
-                "ref": d["path"],
-                "name": d["name"],
-                "snippet": d["snippet"],
-            }
-            for d in docs
-        ]
-
-        # Federated sources search the provider's native API live. Scoped → the
-        # one source, raising on provider errors so a dead connection is never
-        # mistaken for "no matches"; unscoped → fan out across the user's
-        # federated sources (each call keeps search alive by returning its own
-        # error as a marker instead of raising).
-        if connected is not None:
-            if connected["source_type"] in FEDERATED_SEARCH_TYPES:
-                results += await _federated_search(connected, query, limit, swallow_errors=False)
-        else:
-            federated = [s for s in searched_sources if s["source_type"] in FEDERATED_SEARCH_TYPES]
-            for hits in await asyncio.gather(
-                *(_federated_search(s, query, limit) for s in federated)
-            ):
-                results += hits
+    ranks = await _uniform_ranks(query, [_rank_text(h) for h in hits])
+    ranked = sorted(
+        zip(hits, ranks),
+        key=lambda pair: (pair[0].get("exact_ref", False), pair[1]),
+        reverse=True,
+    )
+    # Ranking scored the full internal text above; only the returned page gets
+    # the small display window.
+    page = [
+        {
+            **h,
+            "rank": r,
+            "snippet": _centered_window(
+                h.get("snippet") or "", query, SEARCH_RESULT_SNIPPET_CHARS, ellipsis=True
+            ),
+        }
+        for h, r in ranked[:limit]
+    ]
+    has_more = len(hits) > limit
 
     await _audit_source_read(
         action="source.searched",
@@ -2271,7 +2578,7 @@ async def search_all(
         metadata={
             "query_hash": security_audit_service.hash_value(query),
             "limit": limit,
-            "result_count": len(results),
+            "result_count": len(page) + len(markers),
         },
     )
-    return results
+    return {"results": page + markers, "has_more": has_more}

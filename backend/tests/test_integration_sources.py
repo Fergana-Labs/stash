@@ -18,16 +18,23 @@ import httpx
 import pytest
 
 from backend.config import settings
+from backend.integrations.asana import provider as asana_provider
 from backend.integrations.asana.indexer import _render_task
+from backend.integrations.asana.provider import AsanaIntegration
 from backend.integrations.gmail import indexer as gmail_indexer
 from backend.integrations.gmail.provider import GmailIntegration
 from backend.integrations.gong import indexer as gong_indexer
 from backend.integrations.gong.indexer import _render_call
 from backend.integrations.gong.provider import GongIntegration
+from backend.integrations.jira import provider as jira_provider
 from backend.integrations.jira.indexer import _adf_to_text, _render_issue
+from backend.integrations.jira.provider import JiraIntegration
 from backend.integrations.linear import provider as linear_provider
 from backend.integrations.linear.provider import LinearIntegration
+from backend.integrations.notion import provider as notion_provider
+from backend.integrations.notion.provider import NotionIntegration
 from backend.integrations.registry import list_providers
+from backend.integrations.slack.provider import SlackIntegration
 from backend.services import agent_runtime, prompts, source_service
 from backend.tasks import sources as source_tasks
 
@@ -57,6 +64,17 @@ def test_render_issue_includes_meaningful_fields():
                     {"type": "paragraph", "content": [{"type": "text", "text": "repro steps"}]}
                 ],
             },
+            # JQL `text ~` matches on environment; the rendered text must carry
+            # it or environment-only hits rank as irrelevant in unified search.
+            "environment": {
+                "type": "doc",
+                "content": [
+                    {
+                        "type": "paragraph",
+                        "content": [{"type": "text", "text": "Chrome 126 on macOS 14"}],
+                    }
+                ],
+            },
             "comment": {
                 "comments": [
                     {
@@ -80,12 +98,41 @@ def test_render_issue_includes_meaningful_fields():
     assert "Status: In Progress" in text
     assert "Assignee: Ada Lovelace" in text
     assert "repro steps" in text
+    assert "Chrome 126 on macOS 14" in text
     assert "Alan Turing: cannot reproduce" in text
 
 
 def test_render_issue_handles_unassigned_and_empty():
     text = _render_issue({"key": "PROJ-1", "fields": {"summary": "stub"}})
     assert "Assignee: Unassigned" in text
+
+
+def test_render_linear_issue_carries_comments_linear_search_matches():
+    # Linear's native search matches comment bodies; unified search re-ranks
+    # each hit on its rendered text, so comments missing from the render make
+    # comment-only matches rank as irrelevant.
+    from backend.integrations.linear.indexer import _render_issue as render_linear_issue
+    from backend.services.linear_api_service import LinearComment, LinearIssue
+
+    issue = LinearIssue(
+        issue_id="issue-1",
+        identifier="FER-42",
+        title="Search misses comments",
+        url="https://linear.app/ferganalabs/issue/FER-42",
+        status="In Progress",
+        assignee_name=None,
+        team_key="FER",
+        team_name="Ferganalabs",
+        project_name=None,
+        updated_at=None,
+        description="repro steps",
+        comments=(LinearComment(author_name="Grace Hopper", body="root cause is the tokenizer"),),
+    )
+
+    text = render_linear_issue(issue)
+
+    assert "## Comments" in text
+    assert "Grace Hopper: root cause is the tokenizer" in text
 
 
 def test_render_task_includes_status_and_notes():
@@ -223,6 +270,38 @@ def test_gmail_message_rendering_prefers_plain_text_body():
     assert "Your invoice is past due." in rendered
 
 
+def test_gmail_message_rendering_carries_every_field_gmail_search_matches():
+    # Gmail's native search matches cc:, bcc:, and filename:; unified search
+    # then re-ranks each hit on its rendered text. A field missing from the
+    # render makes its matches score zero and sink as irrelevant.
+    message = {
+        "id": "msg-2",
+        "payload": {
+            "headers": [
+                {"name": "Subject", "value": "Q3 contract"},
+                {"name": "From", "value": "legal@example.com"},
+                {"name": "To", "value": "henry@example.com"},
+                {"name": "Cc", "value": "maria@example.com"},
+                {"name": "Bcc", "value": "archive@example.com"},
+            ],
+            "parts": [
+                {"mimeType": "text/plain", "body": {"data": ""}},
+                {
+                    "mimeType": "application/pdf",
+                    "filename": "q3-contract-final.pdf",
+                    "body": {"attachmentId": "att-1"},
+                },
+            ],
+        },
+    }
+
+    rendered = gmail_indexer._render_message(message)
+
+    assert "Cc: maria@example.com" in rendered
+    assert "Bcc: archive@example.com" in rendered
+    assert "Attachments: q3-contract-final.pdf" in rendered
+
+
 def test_render_call_labels_speakers_and_keeps_transcript():
     text = _render_call(
         {"title": "Q3 sync", "started": "2026-06-01T10:00:00Z"},
@@ -322,6 +401,79 @@ async def test_gong_exchange_refresh_and_fetch_account(monkeypatch):
     account = await GongIntegration().fetch_account(refreshed.access_token)
     assert account.email is None
     assert account.display_name == "Acme"
+    assert account.account_ref == "https://company-17.api.gong.io"
+
+
+@pytest.mark.asyncio
+async def test_slack_account_uses_team_id_as_stable_identity(monkeypatch):
+    integration = SlackIntegration()
+
+    async def team_info(access_token: str):
+        assert access_token == "slack-token"
+        return {"team_id": "T123", "team_name": "Acme", "user_id": "U123"}
+
+    monkeypatch.setattr(integration, "team_info", team_info)
+
+    account = await integration.fetch_account("slack-token")
+
+    assert account.display_name == "Acme"
+    assert account.account_ref == "T123"
+
+
+@pytest.mark.parametrize(
+    ("provider_module", "integration", "payload", "expected_ref"),
+    [
+        (
+            asana_provider,
+            AsanaIntegration(),
+            {"data": {"gid": "asana-user-1", "email": "a@example.com", "name": "Ada"}},
+            "asana-user-1",
+        ),
+        (
+            jira_provider,
+            JiraIntegration(),
+            {"account_id": "jira-user-1", "email": "j@example.com", "name": "Jules"},
+            "jira-user-1",
+        ),
+        (
+            notion_provider,
+            NotionIntegration(),
+            {
+                "bot": {
+                    "workspace_id": "notion-workspace-1",
+                    "workspace_name": "Acme",
+                }
+            },
+            "notion-workspace-1",
+        ),
+    ],
+)
+@pytest.mark.asyncio
+async def test_oauth_provider_account_uses_stable_identity(
+    monkeypatch,
+    provider_module,
+    integration,
+    payload,
+    expected_ref,
+):
+    monkeypatch.setattr(provider_module.httpx, "AsyncClient", _FakeClient(payload))
+
+    account = await integration.fetch_account("token")
+
+    assert account.account_ref == expected_ref
+
+
+@pytest.mark.asyncio
+async def test_linear_account_requests_and_returns_stable_identity(monkeypatch):
+    client = _FakeClient(
+        {"data": {"viewer": {"id": "linear-user-1", "name": "Lin", "email": "l@example.com"}}}
+    )
+    monkeypatch.setattr(linear_provider.httpx, "AsyncClient", client)
+
+    account = await LinearIntegration().fetch_account("token")
+
+    assert account.account_ref == "linear-user-1"
+    assert client.posts[0][1]["query"] == "query { viewer { id name email } }"
 
 
 @pytest.mark.asyncio
@@ -467,8 +619,8 @@ class _FakeClient:
         self.requests.append((url, params or {}))
         return self._response()
 
-    async def post(self, url, data=None, auth=None, headers=None):
-        self.posts.append((url, data or {}))
+    async def post(self, url, data=None, json=None, auth=None, headers=None):
+        self.posts.append((url, data if data is not None else json or {}))
         return self._response()
 
 

@@ -25,7 +25,7 @@ from pydantic import BaseModel
 from starlette.websockets import WebSocketDisconnect
 
 from ..auth import authenticate_token, get_current_user
-from ..services import sprite_service
+from ..services import security_audit_service, sprite_service
 from .files import ingest_bytes
 
 logger = logging.getLogger(__name__)
@@ -53,6 +53,15 @@ async def list_machine_dir(path: str = "", current_user: dict = Depends(get_curr
         raise HTTPException(status_code=400, detail=str(e)) from e
     except sprite_service.SpriteError as e:
         raise HTTPException(status_code=502, detail=str(e)) from e
+    await security_audit_service.record_entries_listed(
+        target_type="machine",
+        actor_user_id=current_user["id"],
+        owner_user_id=current_user["id"],
+        metadata={
+            "path_hash": security_audit_service.hash_value(path),
+            "result_count": len(entries),
+        },
+    )
     return {"path": path, "entries": entries}
 
 
@@ -66,6 +75,14 @@ async def read_machine_file(path: str, current_user: dict = Depends(get_current_
         raise HTTPException(status_code=400, detail=str(e)) from e
     except sprite_service.SpriteError as e:
         raise HTTPException(status_code=502, detail=str(e)) from e
+    # Live-machine paths can carry PII, so redact like source refs.
+    await security_audit_service.record_content_read(
+        target_type="machine_file",
+        target_id=None,
+        actor_user_id=current_user["id"],
+        owner_user_id=current_user["id"],
+        metadata={"path_hash": security_audit_service.hash_value(path)},
+    )
     try:
         text = content.decode("utf-8")
         return {"path": path, "size": len(content), "text": text}

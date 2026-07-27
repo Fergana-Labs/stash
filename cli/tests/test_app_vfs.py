@@ -190,20 +190,21 @@ def test_app_vfs_grep_no_match_stops_and_chain():
     assert result.stderr == ""
 
 
-def test_app_vfs_grep_rejects_bre_escapes_loudly():
-    """Patterns compile as extended regex, where BRE's `\\|` means a literal pipe —
-    a default-grep caller writing `foo\\|bar` would silently match nothing (this
-    burned Heavi's agent in prod). The shell must refuse with a correction, never
-    return a clean no-match exit 1."""
+def test_app_vfs_grep_accepts_bre_operator_escapes():
+    """Patterns compile as extended regex, but default-grep callers write BRE —
+    `foo\\|bar` (this burned Heavi's agent in prod, twice: first as a silent
+    no-match, then as a hard refusal that cost the agent its search). Both
+    dialects intend an operator there, so the escape must just work; `-F` stays
+    the literal-match path."""
     shell, _client = _shell()
 
-    result = shell.run("grep -ri 'hello\\|missing' /")
+    assert shell.run("grep -ri 'hello\\|missing' /").exit_code == 0
 
-    assert result.exit_code == 2
-    assert "extended" in result.stderr
-
-    # The same intent written as extended regex works.
+    # The same intent written as extended regex still works.
     assert shell.run("grep -ri 'hello|missing' /").exit_code == 0
+
+    # A literal backslash escape that is not a BRE operator is left alone.
+    assert shell.run("grep -ri 'hello\\d' /").exit_code == 1
 
 
 def test_app_vfs_grep_accepts_extended_and_fixed_string_flags():

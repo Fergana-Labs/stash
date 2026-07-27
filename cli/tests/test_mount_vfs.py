@@ -1,4 +1,5 @@
 import threading
+from contextlib import contextmanager
 
 from stashvfs import StashVfsModel, VfsClientError
 
@@ -6,11 +7,40 @@ from stashvfs import StashVfsModel, VfsClientError
 class FakeClient:
     def __init__(self):
         self.source_entry_calls = 0
+        # True while the model runs mount bookkeeping; individual methods
+        # snapshot it so tests can pin what counts as internal traffic.
+        self.internal = False
+        self.internal_at_call: dict[str, bool] = {}
+        # Same idea for grep sweeps: True while the shell scans documents.
+        self.scan = False
+        self.scan_at_call: dict[str, bool] = {}
+        self.searches: list[tuple[str, list[str], int]] = []
+
+    @contextmanager
+    def internal_calls(self):
+        self.internal = True
+        try:
+            yield
+        finally:
+            self.internal = False
+
+    @contextmanager
+    def scan_calls(self):
+        self.scan = True
+        try:
+            yield
+        finally:
+            self.scan = False
+
+    def record_search(self, pattern, roots, docs_scanned):
+        self.searches.append((pattern, roots, docs_scanned))
 
     def get_memory_folder(self):
+        self.internal_at_call["get_memory_folder"] = self.internal
         return {"id": "memfolder-12345678", "name": "Memory"}
 
     def get_overview(self):
+        self.internal_at_call["get_overview"] = self.internal
         return {
             "files": {
                 "folders": [
@@ -113,6 +143,8 @@ class FakeClient:
 
     def read_source_doc(self, source, ref):
         assert source == "src-gmail-1"
+        self.internal_at_call["read_source_doc"] = self.internal
+        self.scan_at_call["read_source_doc"] = self.scan
         return {"content": f"BODY of {ref}"}
 
     def get_transcript_events(self, session_id):
@@ -127,6 +159,7 @@ class FakeClient:
         return []
 
     def list_tables(self):
+        self.internal_at_call["list_tables"] = self.internal
         return [{"id": "table-12345678", "name": "Ideas", "columns": [], "row_count": 1}]
 
     def get_table(self, table_id):
@@ -156,6 +189,25 @@ def _model():
     model = StashVfsModel(FakeClient(), include_computer=True)
     model.refresh()
     return model
+
+
+def test_refresh_marks_mount_calls_internal_but_not_user_reads():
+    """Every VFS command rebuilds the tree, so the mount's listing calls must
+    be distinguishable from reads the user drives — otherwise analytics count
+    several listings per command, even for a `cat` (and the audit trail did
+    exactly that before internal_calls existed)."""
+    client = FakeClient()
+    model = StashVfsModel(client, include_computer=True)
+    model.refresh()
+
+    assert client.internal_at_call == {
+        "get_overview": True,
+        "get_memory_folder": True,
+        "list_tables": True,
+    }
+
+    model.read_file("/sources/gmail/Welcome email")
+    assert client.internal_at_call["read_source_doc"] is False
 
 
 def test_vfs_exposes_user_sections():
@@ -354,6 +406,25 @@ def _grep_gmail(concurrency: int) -> tuple[str, CountingLoaderClient]:
         return result.stdout, client
     finally:
         model_module.PREFETCH_CONCURRENCY = original
+
+
+def test_grep_reads_are_scan_tagged_and_recorded_as_one_search():
+    """A recursive grep reads every document it walks. Those reads must run
+    inside scan_calls (so analytics exclude them) and the grep must record
+    exactly one search — before this, one agent grep landed on the analytics
+    dashboard as hundreds of user-driven reads."""
+    from stashvfs import SkillAppVfsShell
+
+    client = FakeClient()
+    model = StashVfsModel(client, include_computer=True)
+    model.refresh()
+    SkillAppVfsShell(model).run("grep -ri BODY /sources/gmail")
+
+    assert client.scan_at_call["read_source_doc"] is True
+    [(pattern, roots, docs_scanned)] = client.searches
+    assert pattern == "BODY"
+    assert roots == ["/sources/gmail"]
+    assert docs_scanned >= 2
 
 
 def test_prefetch_does_not_change_what_grep_finds():

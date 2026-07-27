@@ -7,6 +7,7 @@ endpoint in the shape the session viewer can parse.
 
 import io
 import json
+from datetime import UTC, datetime
 from uuid import UUID
 
 import pytest
@@ -885,3 +886,56 @@ async def test_viewer_cannot_mutate_existing_session_artifacts_or_materialized_p
         == 0
     )
     assert await pool.fetchval("SELECT COUNT(*) FROM pages WHERE owner_user_id = $1", scope) == 0
+
+
+@pytest.mark.asyncio
+async def test_upload_dates_the_session_from_the_transcript(client: AsyncClient, pool):
+    """A history import replays conversations from months ago. The session row
+    must carry the transcript's own start time, not the moment of the import —
+    otherwise every imported session sorts as if it happened today."""
+    key = await _register(client)
+    scope = await _scope(client, key)
+
+    uploaded = await client.post(
+        "/api/v1/me/transcripts",
+        data={"session_id": "imported-old", "agent_name": "claude"},
+        files={"file": ("s.jsonl", io.BytesIO(BODY), "application/jsonl")},
+        headers={"Authorization": f"Bearer {key}"},
+    )
+    assert uploaded.status_code == 201
+
+    started_at = await pool.fetchval(
+        "SELECT started_at FROM sessions WHERE owner_user_id = $1 AND session_id = $2",
+        scope,
+        "imported-old",
+    )
+    # BODY's first event is 2026-05-10T20:00:00Z.
+    assert started_at == datetime(2026, 5, 10, 20, 0, 0, tzinfo=UTC)
+
+
+@pytest.mark.asyncio
+async def test_live_session_is_dated_now(client: AsyncClient, pool):
+    """A pushed event has no transcript to date it from, so the row's creation
+    time is the session start. This is the path the transcript fix must not
+    disturb."""
+    key = await _register(client)
+    scope = await _scope(client, key)
+
+    pushed = await client.post(
+        "/api/v1/me/sessions/events",
+        json={
+            "agent_name": "claude",
+            "event_type": "assistant_message",
+            "content": "live",
+            "session_id": "live-now",
+        },
+        headers={"Authorization": f"Bearer {key}"},
+    )
+    assert pushed.status_code == 201
+
+    started_at = await pool.fetchval(
+        "SELECT started_at FROM sessions WHERE owner_user_id = $1 AND session_id = $2",
+        scope,
+        "live-now",
+    )
+    assert (datetime.now(UTC) - started_at).total_seconds() < 60

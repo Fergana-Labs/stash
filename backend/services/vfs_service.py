@@ -17,15 +17,18 @@ from __future__ import annotations
 import asyncio
 import functools
 import threading
+from contextlib import contextmanager
 
 import anyio
 import anyio.to_thread
 import httpx
 
-from stashvfs import SkillAppVfsShell, StashVfsModel, VfsClientError
+from stashvfs import SkillAppVfsShell, StashVfsModel, VfsClientError, VfsScanBudget
 
 # A `grep -r /` loads every document it walks, one nested request each. Past this
-# many the caller has asked for a scan, not a search — fail loud rather than sit
+# many the budget is spent: a grep stops its sweep and returns partial results
+# with a loud truncation warning (VfsScanBudget), while direct reads — a `cat`
+# over hundreds of files — abort the command (VfsBudgetExceeded) rather than sit
 # on an open connection until the client's own timeout fires.
 MAX_DOCUMENT_READS = 400
 
@@ -33,9 +36,10 @@ SOURCE_ENTRIES_PAGE = 1000
 
 
 class VfsBudgetExceeded(Exception):
-    """More document reads than one shell invocation is allowed. Deliberately not
-    a VfsClientError: the shell downgrades those to per-file warnings, and this
-    must abort the whole command."""
+    """More direct document reads than one shell invocation is allowed.
+    Deliberately not a VfsClientError: the shell downgrades those to per-file
+    warnings, and this must abort the whole command. Reads inside a grep sweep
+    raise VfsScanBudget instead, which the shell turns into a partial result."""
 
 
 class InProcessVfsClient:
@@ -48,16 +52,63 @@ class InProcessVfsClient:
     def __init__(self, http: httpx.AsyncClient, loop: asyncio.AbstractEventLoop) -> None:
         self._http = http
         self._loop = loop
+        self._internal = False
+        self._scan = False
         self._document_reads = 0
         self._reads_lock = threading.Lock()
+
+    @contextmanager
+    def internal_calls(self):
+        """VFS mount bookkeeping (see stashvfs.VfsClient.internal_calls):
+        overrides the client-wide `ask` tag with `auto` so analytics don't
+        count tree refreshes as user-driven listings. Only `refresh()` runs
+        inside this, single-threaded — prefetch's pool threads fire loaders
+        long after the flag is back off."""
+        self._internal = True
+        try:
+            yield
+        finally:
+            self._internal = False
+
+    @contextmanager
+    def scan_calls(self):
+        """A grep's per-document reads (see stashvfs.VfsClient.scan_calls):
+        overrides the client-wide `ask` tag with `scan` so analytics count
+        the grep as the one search `record_search` writes, not as hundreds
+        of reads. Safe with prefetch's pool threads: the shell holds this
+        block open until `prefetch` returns, and prefetch joins its pool."""
+        self._scan = True
+        try:
+            yield
+        finally:
+            self._scan = False
+
+    def record_search(self, pattern: str, roots: list[str], docs_scanned: int) -> None:
+        future = asyncio.run_coroutine_threadsafe(
+            self._http.post(
+                "/api/v1/me/vfs/searches",
+                json={"pattern": pattern, "roots": roots, "docs_scanned": docs_scanned},
+            ),
+            self._loop,
+        )
+        response = future.result()
+        if response.status_code >= 400:
+            raise VfsClientError(_error_detail(response))
 
     def _request(self, method: str, endpoint: str, **params) -> httpx.Response:
         # Dispatched onto the app's event loop from whichever thread we are on.
         # `StashVfsModel.prefetch` calls loaders from a pool, so this must work
         # from an arbitrary thread — not just anyio's worker, which is all
         # `anyio.from_thread.run` supports.
+        if self._internal:
+            headers = {"X-Stash-Via": "auto"}
+        elif self._scan:
+            headers = {"X-Stash-Via": "scan"}
+        else:
+            headers = None
         future = asyncio.run_coroutine_threadsafe(
-            self._http.request(method, endpoint, params=params or None), self._loop
+            self._http.request(method, endpoint, params=params or None, headers=headers),
+            self._loop,
         )
         response = future.result()
         if response.status_code >= 400:
@@ -74,6 +125,8 @@ class InProcessVfsClient:
             self._document_reads += 1
             over_budget = self._document_reads > MAX_DOCUMENT_READS
         if over_budget:
+            if self._scan:
+                raise VfsScanBudget(f"scan budget of {MAX_DOCUMENT_READS} documents spent")
             raise VfsBudgetExceeded(
                 f"command read more than {MAX_DOCUMENT_READS} documents; "
                 "scope it to a subdirectory or use search"
@@ -176,7 +229,9 @@ async def run_vfs_script(app, authorization: str, script: str, cwd: str) -> dict
     async with httpx.AsyncClient(
         transport=transport,
         base_url="http://vfs.internal",
-        headers={"Authorization": authorization},
+        # X-Stash-Via tags nested reads as ask-the-stash traffic in the audit
+        # trail (see auth._set_request_via).
+        headers={"Authorization": authorization, "X-Stash-Via": "ask"},
         timeout=None,
     ) as http:
         return await anyio.to_thread.run_sync(
@@ -200,7 +255,9 @@ async def resolve_vfs_path(app, authorization: str, path: str) -> dict:
     async with httpx.AsyncClient(
         transport=transport,
         base_url="http://vfs.internal",
-        headers={"Authorization": authorization},
+        # X-Stash-Via tags nested reads as ask-the-stash traffic in the audit
+        # trail (see auth._set_request_via).
+        headers={"Authorization": authorization, "X-Stash-Via": "ask"},
         timeout=None,
     ) as http:
         return await anyio.to_thread.run_sync(functools.partial(_resolve_node, http, loop, path))

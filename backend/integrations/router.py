@@ -30,7 +30,6 @@ from ..auth import get_current_user
 from ..config import settings
 from ..services import billing_service, security_audit_service, source_service
 from . import storage
-from .base import AccountInfo
 from .crypto import integration_fernet, integration_keyring_error
 from .github import account_sync as github_account_sync
 from .registry import get_provider, list_providers
@@ -363,18 +362,12 @@ async def integration_callback(
                 token = await p.exchange_code(code, code_verifier)
             else:
                 token = await p.exchange_code(code)
-            # The account profile is display-only — a failure fetching it must
-            # NOT block the connection (the token is what matters). Degrade to
-            # an empty identity instead.
-            try:
-                account = await p.fetch_account(token.access_token)
-            except Exception as e:
-                logger.warning(
-                    "fetch_account failed for %s; connecting without profile (%s)",
-                    provider,
-                    type(e).__name__,
-                )
-                account = AccountInfo(email=None, display_name=None)
+            # The provider identity anchors reconnect safety. Storing a token
+            # without it would make a later account switch indistinguishable
+            # from a same-account reconnect.
+            account = await p.fetch_account(token.access_token)
+            if not account.account_ref:
+                raise RuntimeError(f"{provider} returned no stable account identity")
             # Reconnect identity check: refuse to link a DIFFERENT provider
             # account while the previous account's connection (and possibly
             # its kept data) exists. The identity comes from the provider's
