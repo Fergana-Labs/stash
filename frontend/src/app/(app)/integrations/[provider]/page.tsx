@@ -788,6 +788,14 @@ function SourceRow({
             {status.sync_error}
           </div>
         )}
+        {status.sync_warning && (
+          <div
+            className="mt-1 truncate font-mono text-[11.5px] text-warning"
+            title={status.sync_warning}
+          >
+            {status.sync_warning}
+          </div>
+        )}
         {pollStopped && (
           <div className="mt-1 truncate text-[11.5px] text-muted-foreground">{pollStopped}</div>
         )}
