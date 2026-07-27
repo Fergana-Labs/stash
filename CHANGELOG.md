@@ -8,6 +8,7 @@ everything before it is captured in git history (`git log`), not here.
 - Scheduled agent run history now reports each run's status, error, duration,
   event count, and tool count while preserving the chronological transcript
   feed used by the agent workspace.
+- Gong call documents now link back to the original call in Gong.
 - `stash vfs stat` once again shows the source-sharing command for connected
   source roots, including roots that do not have an app URL.
 - OAuth reconnects now require a stable provider account identity. Slack,
