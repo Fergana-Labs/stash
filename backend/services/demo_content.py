@@ -7,13 +7,15 @@ demo Stash as a `Stash knowledge base/` folder so the visitor's agent
 can keep editing the deck after the fact.
 
 `SLIDES_SKILL_MARKDOWN` is the same bytes a real user's scope seeds at
-`Skills/slides/SKILL.md` — sourced from `skill_seeds.py` so we never
-fork the slide format.
+`Skills/slides/SKILL.md` — read from the same `backend/skills/slides`
+directory so we never fork the slide format.
 """
 
 from __future__ import annotations
 
-from .skill_seeds import SLIDES_SKILL_MARKDOWN as SLIDES_SKILL_MARKDOWN  # re-export
+from .skill_seeds import skill_markdown
+
+SLIDES_SKILL_MARKDOWN = skill_markdown("slides")
 
 DEMO_DECK_FILENAME = "deck.html"
 DEMO_TRANSCRIPT_FILENAME = "qa-transcript.md"
