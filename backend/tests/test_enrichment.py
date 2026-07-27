@@ -376,6 +376,70 @@ async def test_a_claimed_row_is_not_handed_to_a_second_sweep(
     assert len(row_calls) == 1, "overlapping sweeps must not both enrich the row"
 
 
+async def test_edit_during_enrichment_is_preserved_and_requeued(
+    client: AsyncClient, pool, monkeypatch
+):
+    """A slow model response must never restore the stale row snapshot over
+    an edit the user made while the request was in flight."""
+    _, owner_id = await _register(client)
+    table, ids, row = await _bookmarks_row(client, owner_id, pool, Title="Original title")
+    model_started = asyncio.Event()
+    release_model = asyncio.Event()
+
+    async def _slow(**_kwargs):
+        model_started.set()
+        await release_model.wait()
+        return {"summary": "Summary of the old title.", "topics": ["Old"]}
+
+    monkeypatch.setattr(enrichment.llm, "complete_json", _slow)
+    task = asyncio.create_task(enrichment._reconcile())
+    await model_started.wait()
+    await table_service.update_row(row["id"], {ids["Title"]: "Edited title"}, owner_id, table["id"])
+    release_model.set()
+    await task
+
+    stored = await pool.fetchrow(
+        "SELECT data, enrich_stale FROM table_rows WHERE id = $1", row["id"]
+    )
+    assert stored["data"][ids["Title"]] == "Edited title"
+    assert ids["Summary"] not in stored["data"]
+    assert stored["enrich_stale"] is True
+
+
+async def test_clip_text_is_scoped_to_the_bookmark_owner(client: AsyncClient, pool):
+    """A forged Clip URL must not send another user's private page to the
+    enrichment model."""
+    _, victim_id = await _register(client)
+    _, attacker_id = await _register(client)
+    page_id = await pool.fetchval(
+        "INSERT INTO pages (owner_user_id, name, content_markdown, created_by) "
+        "VALUES ($1, 'Private', 'victim secret', $1) RETURNING id",
+        victim_id,
+    )
+
+    assert await enrichment._page_text(f"/p/{page_id}", attacker_id) == ""
+    assert await enrichment._page_text(f"/p/{page_id}", victim_id) == "victim secret"
+
+
+async def test_concurrent_labels_all_join_the_vocabulary(client: AsyncClient, pool):
+    """Rows enrich concurrently, so vocabulary updates must serialize instead
+    of replacing one another with stale copies of the columns JSON."""
+    _, owner_id = await _register(client)
+    table, ids, _ = await _bookmarks_row(client, owner_id, pool, Title="Seed")
+
+    labels = [f"Topic {index}" for index in range(8)]
+    await asyncio.gather(
+        *(
+            table_service.merge_column_options(table["id"], ids["Topics"], [label])
+            for label in labels
+        )
+    )
+
+    columns = await pool.fetchval("SELECT columns FROM tables WHERE id = $1", table["id"])
+    topics = next(column for column in columns if column["id"] == ids["Topics"])
+    assert set(labels).issubset(topics["options"])
+
+
 # --- API ---------------------------------------------------------------------
 
 
@@ -468,6 +532,39 @@ async def test_saved_views_survive_the_table_response(client: AsyncClient):
     views = resp.json()["views"]
     assert [v["name"] for v in views] == ["Recent", "By topic", "All rows"]
     assert [v["layout"] for v in views] == ["cards", "cards", "table"]
+
+
+async def test_saved_view_filter_and_sort_apply_to_app_rows(client: AsyncClient, pool):
+    """Selecting a saved view must change the dataset, not only swap the card
+    and table renderer."""
+    headers, owner_id = await _register(client)
+    table, ids, _ = await _bookmarks_row(
+        client, owner_id, pool, Title="Keep older", Saved="2026-01-01"
+    )
+    await table_service.create_row(
+        table["id"],
+        {ids["Title"]: "Ignore newest", ids["Saved"]: "2026-03-01"},
+        owner_id,
+    )
+    await table_service.create_row(
+        table["id"],
+        {ids["Title"]: "Keep newer", ids["Saved"]: "2026-02-01"},
+        owner_id,
+    )
+    view = {
+        "id": "view_keep",
+        "name": "Keep",
+        "layout": "cards",
+        "filters": [{"column_id": ids["Title"], "op": "contains", "value": "Keep"}],
+        "sort_by": ids["Saved"],
+        "sort_order": "desc",
+    }
+    await pool.execute("UPDATE tables SET views = $1 WHERE id = $2", [view], table["id"])
+
+    response = await client.get("/api/v1/me/apps/bookmarks/rows?view_id=view_keep", headers=headers)
+    assert response.status_code == 200
+    titles = [row["data"][ids["Title"]] for row in response.json()["rows"]]
+    assert titles == ["Keep newer", "Keep older"]
 
 
 # --- Filters, paging, editing -------------------------------------------------

@@ -58,6 +58,7 @@ export default function AppView({ slug }: { slug: string }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
   const sentinelRef = useRef<HTMLDivElement>(null);
+  const requestIdRef = useRef(0);
 
   // Debounce typing so a search doesn't fire a request per keystroke.
   useEffect(() => {
@@ -75,18 +76,21 @@ export default function AppView({ slug }: { slug: string }) {
 
   const loadPage = useCallback(
     async (offset: number) => {
+      const requestId = ++requestIdRef.current;
       const page = await listAppRows(slug, {
         q: query,
         topic: topic ?? undefined,
         filter: derived ?? undefined,
+        view_id: activeViewId ?? undefined,
         limit: PAGE_SIZE,
         offset,
       });
+      if (requestId !== requestIdRef.current) return;
       setTotal(page.total);
       setHasMore(page.has_more);
       setRows((prev) => (offset === 0 ? page.rows : [...prev, ...page.rows]));
     },
-    [slug, query, topic, derived]
+    [slug, query, topic, derived, activeViewId]
   );
 
   const init = useCallback(async () => {
@@ -116,7 +120,7 @@ export default function AppView({ slug }: { slug: string }) {
     if (loading) return;
     setSelected(new Set());
     void loadPage(0);
-  }, [query, topic, derived, loadPage, loading]);
+  }, [query, topic, derived, activeViewId, loadPage, loading]);
 
   // Infinite scroll.
   useEffect(() => {

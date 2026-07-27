@@ -23,8 +23,8 @@ tables stay exactly as they are and stay readable.
 
 from alembic import op
 
-revision = "0170"
-down_revision = "0169"
+revision = "0171"
+down_revision = "0170"
 branch_labels = None
 depends_on = None
 

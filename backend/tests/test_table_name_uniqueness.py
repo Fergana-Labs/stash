@@ -76,3 +76,36 @@ async def test_same_name_in_different_folders_is_allowed(client: AsyncClient):
     in_a = await table_service.create_table(owner_id, "Notes", "", [], owner_id, folder_id=a["id"])
     in_b = await table_service.create_table(owner_id, "Notes", "", [], owner_id, folder_id=b["id"])
     assert in_a["id"] != in_b["id"]
+
+
+async def test_rename_collision_is_reported_as_conflict(client: AsyncClient):
+    headers, owner_id = await _register(client)
+    await table_service.create_table(owner_id, "Existing", "", [], owner_id)
+    renamed = await table_service.create_table(owner_id, "Rename me", "", [], owner_id)
+
+    response = await client.patch(
+        f"/api/v1/me/tables/{renamed['id']}",
+        json={"name": "Existing"},
+        headers=headers,
+    )
+
+    assert response.status_code == 409
+    assert "already exists" in response.json()["detail"]
+
+
+async def test_move_collision_is_reported_as_conflict(client: AsyncClient):
+    from backend.services import files_tree_service
+
+    headers, owner_id = await _register(client)
+    folder = await files_tree_service.create_folder(owner_id, "Destination", owner_id)
+    await table_service.create_table(owner_id, "Notes", "", [], owner_id, folder_id=folder["id"])
+    moving = await table_service.create_table(owner_id, "Notes", "", [], owner_id)
+
+    response = await client.patch(
+        f"/api/v1/me/tables/{moving['id']}",
+        json={"folder_id": str(folder["id"])},
+        headers=headers,
+    )
+
+    assert response.status_code == 409
+    assert "already exists" in response.json()["detail"]

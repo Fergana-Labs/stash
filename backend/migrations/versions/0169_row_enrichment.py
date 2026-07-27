@@ -21,8 +21,8 @@ recorded rather than swallowed.
 
 from alembic import op
 
-revision = "0168"
-down_revision = "0167"
+revision = "0169"
+down_revision = "0168"
 branch_labels = None
 depends_on = None
 

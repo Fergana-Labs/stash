@@ -6,6 +6,11 @@ append the Summary and Topics columns, seed the views and enrichment config,
 and mark every existing row stale so the enrichment sweep backfills the
 library rather than only enriching things saved from now on.
 
+If an owner has multiple historical Bookmarks tables, the oldest is the
+canonical library. The others remain ordinary tables: the mini-program index
+allows exactly one Bookmarks app per owner, and merging user data here would
+be destructive.
+
 Column ids are generated here the same way table_service generates them, so
 the enrichment config and views can reference them immediately.
 """
@@ -15,8 +20,8 @@ import secrets
 
 from alembic import op
 
-revision = "0169"
-down_revision = "0168"
+revision = "0170"
+down_revision = "0169"
 branch_labels = None
 depends_on = None
 
@@ -33,13 +38,26 @@ def _column_id() -> str:
 def upgrade() -> None:
     conn = op.get_bind()
     tables = conn.exec_driver_sql(
-        "SELECT t.id, t.columns, t.created_by FROM tables t "
-        "JOIN folders f ON f.id = t.folder_id "
-        "WHERE t.name = 'Bookmarks' AND f.name = 'Clips' "
-        "  AND f.parent_folder_id IS NULL AND t.mini_program IS NULL"
+        """
+        SELECT id, columns
+        FROM (
+            SELECT t.id, t.columns,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY t.owner_user_id
+                       ORDER BY t.created_at, t.id
+                   ) AS owner_rank
+            FROM tables t
+            JOIN folders f ON f.id = t.folder_id
+            WHERE t.name = 'Bookmarks'
+              AND f.name = 'Clips'
+              AND f.parent_folder_id IS NULL
+              AND t.mini_program IS NULL
+        ) candidates
+        WHERE owner_rank = 1
+        """
     ).fetchall()
 
-    for table_id, columns, created_by in tables:
+    for table_id, columns in tables:
         columns = columns if isinstance(columns, list) else json.loads(columns)
         by_name = {c["name"]: c["id"] for c in columns}
 

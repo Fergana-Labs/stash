@@ -21,6 +21,7 @@ from urllib.parse import urlsplit, urlunsplit
 from uuid import UUID
 
 from ..database import get_pool
+from . import table_service
 
 # Filters that don't come from a cell value.
 FILTER_DUPLICATES = "duplicates"
@@ -77,12 +78,30 @@ def _labels(row_data: dict, col_id: str | None) -> list[str]:
     return []
 
 
-async def _all_rows(table_id: UUID) -> list[dict]:
-    rows = await get_pool().fetch(
-        "SELECT id, data, row_order FROM table_rows WHERE table_id = $1 ORDER BY row_order DESC",
+async def _all_rows(
+    table_id: UUID,
+    *,
+    filters: list[dict] | None = None,
+    sort_by: str | None = None,
+    sort_order: str = "desc",
+) -> list[dict]:
+    if filters is None and sort_by is None:
+        rows = await get_pool().fetch(
+            "SELECT id, data, row_order FROM table_rows "
+            "WHERE table_id = $1 ORDER BY row_order DESC",
+            table_id,
+        )
+        return [dict(row) for row in rows]
+
+    total = await table_service.count_rows(table_id, filters=filters)
+    rows, _ = await table_service.list_rows(
         table_id,
+        filters=filters,
+        sort_by=sort_by,
+        sort_order=sort_order,
+        limit=total,
     )
-    return [dict(r) for r in rows]
+    return rows
 
 
 def _duplicate_ids(rows: list[dict], link_col: str | None) -> set:
@@ -123,6 +142,7 @@ async def query_rows(
     q: str = "",
     topic: str | None = None,
     filter_: str | None = None,
+    view: dict | None = None,
     limit: int = 60,
     offset: int = 0,
 ) -> dict:
@@ -132,7 +152,12 @@ async def query_rows(
     the entire point of moving it server-side. A library of 10k bookmarks
     showed 100 of them when the client did this.
     """
-    rows = await _all_rows(table_id)
+    rows = await _all_rows(
+        table_id,
+        filters=view.get("filters") if view else None,
+        sort_by=view.get("sort_by") if view else None,
+        sort_order=view.get("sort_order", "asc") if view else "desc",
+    )
     label_col, link_col, status_col = slots.get("labels"), slots.get("link"), slots.get("status")
 
     if filter_ == FILTER_DUPLICATES:
@@ -197,7 +222,7 @@ async def set_topics(table_id: UUID, row_id: UUID, label_col: str, topics: list[
     hash is left alone so a later sweep won't overwrite what the user chose."""
     result = await get_pool().execute(
         "UPDATE table_rows SET data = jsonb_set(data, ARRAY[$1], $2::jsonb), "
-        "  embed_stale = TRUE, updated_at = now() "
+        "  embed_stale = TRUE, enrich_stale = FALSE, updated_at = now() "
         "WHERE id = $3 AND table_id = $4",
         label_col,
         topics,

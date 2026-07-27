@@ -2296,12 +2296,20 @@ export async function reenrichRow(slug: string, rowId: string): Promise<{ status
 
 export async function listAppRows(
   slug: string,
-  params: { q?: string; topic?: string; filter?: string; limit?: number; offset?: number } = {}
+  params: {
+    q?: string;
+    topic?: string;
+    filter?: string;
+    view_id?: string;
+    limit?: number;
+    offset?: number;
+  } = {}
 ): Promise<{ rows: TableRow[]; total: number; has_more: boolean }> {
   const query = new URLSearchParams();
   if (params.q) query.set("q", params.q);
   if (params.topic) query.set("topic", params.topic);
   if (params.filter) query.set("filter", params.filter);
+  if (params.view_id) query.set("view_id", params.view_id);
   query.set("limit", String(params.limit ?? 60));
   query.set("offset", String(params.offset ?? 0));
   return apiFetch(`${ME}/apps/${slug}/rows?${query.toString()}`);

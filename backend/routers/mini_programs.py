@@ -114,6 +114,7 @@ async def list_rows(
     q: str = "",
     topic: str | None = None,
     filter: str | None = Query(None, description="duplicates | untagged | broken"),
+    view_id: str | None = None,
     limit: int = Query(60, ge=1, le=MAX_PAGE),
     offset: int = Query(0, ge=0),
     current_user: dict = Depends(get_current_user),
@@ -122,12 +123,18 @@ async def list_rows(
     doing them client-side over a loaded page meant a large library silently
     searched only its first page."""
     table, manifest = await _resolve(slug, current_user["id"])
+    view = None
+    if view_id is not None:
+        view = next((item for item in table["views"] if item.get("id") == view_id), None)
+        if view is None:
+            raise HTTPException(status_code=404, detail="View not found")
     return await mini_program_query.query_rows(
         table["id"],
         manifest["detail"],
         q=q,
         topic=topic,
         filter_=filter,
+        view=view,
         limit=limit,
         offset=offset,
     )

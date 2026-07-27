@@ -21,8 +21,11 @@ been looked at for RECHECK_DAYS.
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import logging
+import socket
 from datetime import UTC, datetime, timedelta
+from urllib.parse import urljoin, urlsplit
 from uuid import UUID
 
 import httpx
@@ -38,6 +41,7 @@ BATCH_SIZE = 40
 CONCURRENCY = 8
 TIMEOUT = 12
 RECHECK_DAYS = 30
+MAX_REDIRECTS = 5
 USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"
@@ -49,19 +53,53 @@ STATUS_BROKEN = mini_program_query.STATUS_BROKEN
 _DEAD_CODES = {404, 410}
 
 
+async def _is_public_url(url: str) -> bool:
+    try:
+        parsed = urlsplit(url)
+        port = parsed.port
+    except ValueError:
+        return False
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        return False
+
+    loop = asyncio.get_running_loop()
+    try:
+        addresses = await loop.getaddrinfo(
+            parsed.hostname,
+            port or (443 if parsed.scheme == "https" else 80),
+            type=socket.SOCK_STREAM,
+        )
+    except socket.gaierror:
+        return False
+    return bool(addresses) and all(
+        ipaddress.ip_address(address[4][0]).is_global for address in addresses
+    )
+
+
 async def _probe(client: httpx.AsyncClient, url: str) -> str | None:
     """OK / Broken, or None when the result is inconclusive and the row should
     be left exactly as it is."""
-    try:
-        response = await client.head(url)
-        if response.status_code == 405:
-            response = await client.get(url)
-    except httpx.HTTPError:
-        return None  # network trouble is not evidence the link is dead
-    if response.status_code in _DEAD_CODES:
-        return STATUS_BROKEN
-    if response.status_code < 400:
-        return STATUS_OK
+    current_url = url
+    for _ in range(MAX_REDIRECTS + 1):
+        if not await _is_public_url(current_url):
+            return None
+        try:
+            response = await client.head(current_url)
+            if response.status_code == 405:
+                response = await client.get(current_url)
+        except httpx.HTTPError:
+            return None
+        if response.is_redirect:
+            location = response.headers.get("location")
+            if not location:
+                return None
+            current_url = urljoin(current_url, location)
+            continue
+        if response.status_code in _DEAD_CODES:
+            return STATUS_BROKEN
+        if response.status_code < 400:
+            return STATUS_OK
+        return None
     return None
 
 
@@ -91,7 +129,7 @@ async def _check_table(table_id: UUID, slots: dict, cutoff: datetime) -> int:
             return row["id"], await _probe(client, url)
 
     async with httpx.AsyncClient(
-        follow_redirects=True, timeout=TIMEOUT, headers={"User-Agent": USER_AGENT}
+        follow_redirects=False, timeout=TIMEOUT, headers={"User-Agent": USER_AGENT}
     ) as client:
         results = await asyncio.gather(*(_one(row) for row in rows))
 

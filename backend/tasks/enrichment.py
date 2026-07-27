@@ -58,7 +58,7 @@ def _content_hash(text: str) -> str:
     return hashlib.sha256(text.encode()).hexdigest()
 
 
-async def _page_text(clip_url: str | None) -> str:
+async def _page_text(clip_url: str | None, owner_user_id: UUID) -> str:
     """Resolve a Clip cell (an app URL for a page or file) to its stored text.
 
     Link-only bookmarks have no clip, and a clip whose page was deleted has
@@ -77,8 +77,10 @@ async def _page_text(clip_url: str | None) -> str:
     pool = get_pool()
     if kind == "p":
         row = await pool.fetchrow(
-            "SELECT content_markdown, content_html FROM pages WHERE id = $1 AND deleted_at IS NULL",
+            "SELECT content_markdown, content_html FROM pages "
+            "WHERE id = $1 AND owner_user_id = $2 AND deleted_at IS NULL",
             ref_id,
+            owner_user_id,
         )
         if not row:
             return ""
@@ -86,8 +88,10 @@ async def _page_text(clip_url: str | None) -> str:
     if kind == "f":
         return (
             await pool.fetchval(
-                "SELECT extracted_text FROM files WHERE id = $1 AND deleted_at IS NULL",
+                "SELECT extracted_text FROM files "
+                "WHERE id = $1 AND owner_user_id = $2 AND deleted_at IS NULL",
                 ref_id,
+                owner_user_id,
             )
             or ""
         )
@@ -100,13 +104,13 @@ def _strip_html(text: str) -> str:
     return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", text)).strip()
 
 
-async def _source_text(row_data: dict, config: dict) -> str:
+async def _source_text(row_data: dict, config: dict, owner_user_id: UUID) -> str:
     parts = [
         str(row_data.get(col_id, "")).strip()
         for col_id in config.get("context_columns", [])
         if row_data.get(col_id)
     ]
-    body = _strip_html(await _page_text(row_data.get(config.get("page_column"))))
+    body = _strip_html(await _page_text(row_data.get(config.get("page_column")), owner_user_id))
     if body:
         parts.append(body)
     return "\n".join(parts)[:MAX_SOURCE_CHARS]
@@ -247,8 +251,8 @@ async def _claim_batch() -> list[dict]:
         "    AND (t2.enrichment_config->>'enabled')::boolean "
         "  ORDER BY tr2.id FOR UPDATE OF tr2 SKIP LOCKED LIMIT $1"
         ") "
-        "RETURNING tr.id, tr.data, tr.table_id, tr.enrich_hash, "
-        "          t.enrichment_config, t.columns",
+        "RETURNING tr.id, tr.data, tr.table_id, tr.updated_at, tr.enrich_hash, "
+        "          t.owner_user_id, t.enrichment_config, t.columns",
         BATCH_SIZE,
     )
     return [dict(r) for r in rows]
@@ -264,6 +268,55 @@ async def _settle(row_id: UUID, *, hash_: str | None = None, error: str | None =
     )
 
 
+async def _apply_updates(row: dict, updates: dict, digest: str) -> bool:
+    """Write model output only if the row did not change during the model call.
+
+    A generic row edit changes updated_at. If only source cells changed, queue
+    a fresh pass so the summary matches the new content. If a derived cell was
+    edited, the manual value wins and the row stays settled.
+    """
+    applied = await get_pool().fetchval(
+        "UPDATE table_rows "
+        "SET data = data || $1, embed_stale = TRUE, enrich_hash = $2, enrich_error = NULL "
+        "WHERE id = $3 AND updated_at = $4 "
+        "RETURNING TRUE",
+        updates,
+        digest,
+        row["id"],
+        row["updated_at"],
+    )
+    if applied:
+        return True
+
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            current = await conn.fetchval(
+                "SELECT data FROM table_rows WHERE id = $1 FOR UPDATE",
+                row["id"],
+            )
+            if current is None:
+                return False
+
+            target_columns = {target["column"] for target in row["enrichment_config"]["targets"]}
+            manual_target_edit = any(
+                current.get(column) != row["data"].get(column) for column in target_columns
+            )
+            if manual_target_edit:
+                await conn.execute(
+                    "UPDATE table_rows SET enrich_hash = $1, enrich_error = NULL WHERE id = $2",
+                    digest,
+                    row["id"],
+                )
+                return False
+
+            await conn.execute(
+                "UPDATE table_rows SET enrich_stale = TRUE WHERE id = $1",
+                row["id"],
+            )
+    return False
+
+
 async def _enrich_row(row: dict) -> bool:
     """Enrich one row. Returns True if the model was called."""
     config = row["enrichment_config"]
@@ -272,7 +325,7 @@ async def _enrich_row(row: dict) -> bool:
         await _settle(row["id"], error="table has no enrichment targets")
         return False
 
-    source = await _source_text(row["data"], config)
+    source = await _source_text(row["data"], config, row["owner_user_id"])
     if not source:
         await _settle(row["id"], error="no source text to enrich from")
         return False
@@ -310,12 +363,7 @@ async def _enrich_row(row: dict) -> bool:
     if label_target and new_labels:
         await _merge_vocabulary(row["table_id"], label_target["column"], new_labels)
 
-    data = {**row["data"], **updates}
-    await get_pool().execute(
-        "UPDATE table_rows SET data = $1, embed_stale = TRUE WHERE id = $2", data, row["id"]
-    )
-    await _settle(row["id"], hash_=digest)
-    return True
+    return await _apply_updates(row, updates, digest)
 
 
 async def _reconcile() -> int:

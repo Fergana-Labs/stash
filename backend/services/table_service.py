@@ -138,6 +138,10 @@ async def update_table(
     move_to_root: bool = False,
 ) -> dict | None:
     pool = get_pool()
+    current = await get_table_metadata(table_id)
+    if current is None:
+        return None
+
     sets = ["updated_at = now()", "updated_by = $1"]
     args: list = [updated_by]
     idx = 2
@@ -158,12 +162,18 @@ async def update_table(
         idx += 1
 
     args.append(table_id)
-    row = await pool.fetchrow(
-        f"UPDATE tables SET {', '.join(sets)} WHERE id = ${idx} "
-        "RETURNING id, owner_user_id, folder_id, name, description, columns, views, "
-        "created_by, updated_by, created_at, updated_at",
-        *args,
-    )
+    try:
+        row = await pool.fetchrow(
+            f"UPDATE tables SET {', '.join(sets)} WHERE id = ${idx} "
+            "RETURNING id, owner_user_id, folder_id, name, description, columns, views, "
+            "created_by, updated_by, created_at, updated_at",
+            *args,
+        )
+    except UniqueViolationError as e:
+        target_folder = None if move_to_root else folder_id or current["folder_id"]
+        raise DuplicateTableName(
+            current["owner_user_id"], target_folder, name or current["name"]
+        ) from e
     if not row:
         return None
     result = dict(row)
@@ -1023,22 +1033,26 @@ async def merge_column_options(table_id: UUID, col_id: str, labels: list[str]) -
     if not labels:
         return
     pool = get_pool()
-    columns = await pool.fetchval("SELECT columns FROM tables WHERE id = $1", table_id)
-    if not columns:
-        return
-    column = next((c for c in columns if c["id"] == col_id), None)
-    if column is None:
-        return
-    options = list(column.get("options") or [])
-    lowered = {o.lower() for o in options}
-    for label in labels:
-        if label.lower() not in lowered and len(options) < MAX_COLUMN_OPTIONS:
-            options.append(label)
-            lowered.add(label.lower())
-    if options == (column.get("options") or []):
-        return
-    column["options"] = options
-    await pool.execute("UPDATE tables SET columns = $1 WHERE id = $2", columns, table_id)
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            columns = await conn.fetchval(
+                "SELECT columns FROM tables WHERE id = $1 FOR UPDATE", table_id
+            )
+            if not columns:
+                return
+            column = next((c for c in columns if c["id"] == col_id), None)
+            if column is None:
+                return
+            options = list(column.get("options") or [])
+            lowered = {o.lower() for o in options}
+            for label in labels:
+                if label.lower() not in lowered and len(options) < MAX_COLUMN_OPTIONS:
+                    options.append(label)
+                    lowered.add(label.lower())
+            if options == (column.get("options") or []):
+                return
+            column["options"] = options
+            await conn.execute("UPDATE tables SET columns = $1 WHERE id = $2", columns, table_id)
 
 
 async def create_table_unique(
