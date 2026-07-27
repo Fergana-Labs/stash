@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 
 from ..auth import get_current_user
-from ..services import agent_service, sprite_agent_service
+from ..services import agent_run_history_service, agent_service, sprite_agent_service
 
 router = APIRouter(prefix="/api/v1/me/agents", tags=["agents"])
 
@@ -69,3 +69,20 @@ async def get_agent_prompt(agent_id: UUID, current_user: dict = Depends(get_curr
 async def delete_agent(agent_id: UUID, current_user: dict = Depends(get_current_user)):
     await agent_service.delete_agent(current_user["id"], agent_id)
     return {"ok": True}
+
+
+@router.get("/{agent_id}/runs")
+async def list_agent_runs(
+    agent_id: UUID,
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    current_user: dict = Depends(get_current_user),
+):
+    """Past scheduled runs of one named agent, newest first.
+
+    Derived from each run's per-run session events plus the live turn lock,
+    so a user can see when each run happened, how long it took, and whether
+    it completed, failed (with the error), was interrupted, or is still
+    running. No new storage: reuses the history_events already written by
+    sprite_agent_service for every scheduled turn."""
+    return await agent_run_history_service.list_runs(current_user["id"], agent_id, limit, offset)
