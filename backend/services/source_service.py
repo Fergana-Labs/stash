@@ -252,6 +252,7 @@ def _source_row(row) -> dict:
         "sync_enabled": row["sync_enabled"],
         "sync_status": row["sync_status"],
         "sync_error": row["sync_error"],
+        "sync_warning": row["sync_warning"],
         "last_synced_at": row["last_synced_at"].isoformat() if row["last_synced_at"] else None,
         "settings": row["settings"] or {},
     }
@@ -564,14 +565,25 @@ async def mark_sync_done(source_id: UUID, cursor: str | None) -> None:
 
 async def set_sync_warning(source_id: UUID, message: str) -> None:
     """A non-fatal, owner-facing sync notice (e.g. one feed of a source needs a
-    paid provider tier while the rest keeps syncing). Stored in sync_error but
-    the source stays idle; the next sync start clears it, so a resolved warning
-    disappears on its own. Same safety rule as SourceSyncUserError: the message
-    must never contain tokens or provider payloads."""
+    paid provider tier or a reconnect while the rest keeps syncing). The source
+    stays idle and the run still counts as a success, so this lives in its own
+    column: sync_error is cleared by every sync start, which would blank a
+    once-a-day warning within one sync interval. Cleared by clear_sync_warning
+    when the degraded feed works again. Same safety rule as SourceSyncUserError:
+    the message must never contain tokens or provider payloads."""
     await get_pool().execute(
-        "UPDATE user_sources SET sync_error = $2, updated_at = now() WHERE id = $1",
+        "UPDATE user_sources SET sync_warning = $2, updated_at = now() WHERE id = $1",
         source_id,
         message[:500],
+    )
+
+
+async def clear_sync_warning(source_id: UUID) -> None:
+    """Drop a warning set by an earlier run — the degraded feed answered again."""
+    await get_pool().execute(
+        "UPDATE user_sources SET sync_warning = NULL, updated_at = now() "
+        "WHERE id = $1 AND sync_warning IS NOT NULL",
+        source_id,
     )
 
 
@@ -1720,6 +1732,7 @@ async def list_sources(owner_user_id: UUID, user_id: UUID) -> list[dict]:
             "sync_enabled": s["sync_enabled"],
             "sync_status": s["sync_status"],
             "sync_error": s["sync_error"],
+            "sync_warning": s["sync_warning"],
             "last_synced_at": s["last_synced_at"],
             "settings": s["settings"],
         }

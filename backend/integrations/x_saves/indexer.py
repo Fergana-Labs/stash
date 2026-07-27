@@ -154,6 +154,11 @@ async def _backfill_bookmarks(
     402/403/429 is expected and surfaced as a warning rather than fatal — it
     must not stop the user's posts/replies/articles from syncing.
 
+    The day is spent only once we hold a token: what the interval rations is
+    billed reads, and a run that dies on a dead grant never reaches the API.
+    Stamping before the token check would make a reconnect wait a further day
+    to take effect.
+
     Same two passes as the timeline, both idempotent per tweet:
     - a probe pass from the top (small first page — most syncs find nothing
       new) that stops once a page brings nothing new;
@@ -165,9 +170,6 @@ async def _backfill_bookmarks(
         BOOKMARK_CHECK_INTERVAL
     ):
         return
-    await _merge_source_settings(
-        source_id, {"x_bookmarks_checked_at": datetime.now(UTC).isoformat()}
-    )
 
     try:
         token = await integration_storage.get_valid_token(owner_user_id, "x")
@@ -187,6 +189,10 @@ async def _backfill_bookmarks(
             "Posts, replies, and articles still sync.",
         )
         return
+
+    await _merge_source_settings(
+        source_id, {"x_bookmarks_checked_at": datetime.now(UTC).isoformat()}
+    )
     async with httpx.AsyncClient(
         timeout=30.0, headers={"Authorization": f"Bearer {token}"}
     ) as client:
@@ -196,6 +202,10 @@ async def _backfill_bookmarks(
             payload = await _fetch_bookmarks_page(client, source_id, x_user_id, size, page_token)
             if payload is None:
                 return
+            if page == 0:
+                # The endpoint answered, so whatever an earlier check left
+                # ("reconnect X", "needs a paid tier") no longer holds.
+                await source_service.clear_sync_warning(source_id)
             inserted, considered = await _insert_bookmarks_page(payload, source_id, owner_user_id)
             page_token = (payload.get("meta") or {}).get("next_token")
             # Bookmarks come newest-first, so a page of already-known ids

@@ -255,7 +255,8 @@ async def source_status(
     current_user: dict = Depends(get_current_user),
 ):
     """Sync/index status for one connected source (for the integration page):
-    sync_status, last_synced_at, sync_error, and how many items are indexed."""
+    sync_status, last_synced_at, sync_error, sync_warning, and how many items
+    are indexed."""
     owner_user_id = current_user["id"]
     await _require_member(owner_user_id, current_user["id"])
     source = await source_service.get_owned_source(

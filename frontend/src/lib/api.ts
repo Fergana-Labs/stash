@@ -307,8 +307,12 @@ export interface Source {
   // Present for connected sources (the integration page uses these).
   external_ref?: string | null;
   sync_enabled?: boolean; // false for search-driven types (no indexer)
-  sync_status?: string | null; // 'idle' | 'syncing' | 'failed'
+  sync_status?: string | null; // 'idle' | 'syncing' | 'failed' | 'needs_setup'
   sync_error?: string | null;
+  // A degraded feed on an otherwise healthy source (X bookmarks need a
+  // reconnect while posts keep syncing). Unlike sync_error it survives later
+  // syncs, until the feed works again.
+  sync_warning?: string | null;
   last_synced_at?: string | null;
   search_hint?: string | null;
   settings?: Record<string, unknown> | null;
