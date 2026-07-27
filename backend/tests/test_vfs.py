@@ -184,16 +184,33 @@ async def test_unknown_cwd_is_a_client_error(client: AsyncClient):
     assert resp.status_code == 400
 
 
-async def test_document_read_budget_aborts_the_command(client: AsyncClient, monkeypatch):
-    """An unscoped `grep -r /` would walk every document in every source. The
-    ceiling must abort the command, not degrade into a per-file warning that the
-    caller reads as 'no matches'."""
+async def test_scan_budget_makes_grep_partial_and_loud(client: AsyncClient, monkeypatch):
+    """An org-wide grep that outruns the read budget must return whatever it
+    found so far with an explicit truncation warning — not abort with 413
+    (Heavi's agent lost entire per-VIN sweeps to that), and never a clean
+    no-match exit that reads as 'searched everything, found nothing'."""
     monkeypatch.setattr("backend.services.vfs_service.MAX_DOCUMENT_READS", 1)
     api_key, _ = await _register(client)
     await _make_page(client, api_key, "One", "alpha")
     await _make_page(client, api_key, "Two", "beta")
 
     resp = await _vfs(client, api_key, "grep -ri 'alpha' /files")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert "of 2 files" in body["stderr"]
+    assert "partial" in body["stderr"]
+
+
+async def test_document_read_budget_still_aborts_direct_reads(client: AsyncClient, monkeypatch):
+    """Outside a grep sweep there are no partial results to salvage: a `cat`
+    over more documents than the budget allows must abort the command."""
+    monkeypatch.setattr("backend.services.vfs_service.MAX_DOCUMENT_READS", 1)
+    api_key, _ = await _register(client)
+    await _make_page(client, api_key, "One", "alpha")
+    await _make_page(client, api_key, "Two", "beta")
+
+    resp = await _vfs(client, api_key, "cat '/files/One.md' '/files/Two.md'")
 
     assert resp.status_code == 413
 

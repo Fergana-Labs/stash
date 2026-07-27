@@ -23,10 +23,12 @@ import anyio
 import anyio.to_thread
 import httpx
 
-from stashvfs import SkillAppVfsShell, StashVfsModel, VfsClientError
+from stashvfs import SkillAppVfsShell, StashVfsModel, VfsClientError, VfsScanBudget
 
 # A `grep -r /` loads every document it walks, one nested request each. Past this
-# many the caller has asked for a scan, not a search — fail loud rather than sit
+# many the budget is spent: a grep stops its sweep and returns partial results
+# with a loud truncation warning (VfsScanBudget), while direct reads — a `cat`
+# over hundreds of files — abort the command (VfsBudgetExceeded) rather than sit
 # on an open connection until the client's own timeout fires.
 MAX_DOCUMENT_READS = 400
 
@@ -34,9 +36,10 @@ SOURCE_ENTRIES_PAGE = 1000
 
 
 class VfsBudgetExceeded(Exception):
-    """More document reads than one shell invocation is allowed. Deliberately not
-    a VfsClientError: the shell downgrades those to per-file warnings, and this
-    must abort the whole command."""
+    """More direct document reads than one shell invocation is allowed.
+    Deliberately not a VfsClientError: the shell downgrades those to per-file
+    warnings, and this must abort the whole command. Reads inside a grep sweep
+    raise VfsScanBudget instead, which the shell turns into a partial result."""
 
 
 class InProcessVfsClient:
@@ -122,6 +125,8 @@ class InProcessVfsClient:
             self._document_reads += 1
             over_budget = self._document_reads > MAX_DOCUMENT_READS
         if over_budget:
+            if self._scan:
+                raise VfsScanBudget(f"scan budget of {MAX_DOCUMENT_READS} documents spent")
             raise VfsBudgetExceeded(
                 f"command read more than {MAX_DOCUMENT_READS} documents; "
                 "scope it to a subdirectory or use search"
