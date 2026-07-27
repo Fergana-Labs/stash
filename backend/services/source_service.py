@@ -2099,7 +2099,9 @@ def source_document_url(
         return f"https://x.com/i/status/{path.rsplit('/', 1)[-1]}"
     if source_type == "instagram_saves":
         return f"https://www.instagram.com/p/{path}/"
-    # slack, granola, gong_calls: deep link TODO — needs team domain / note url / gong subdomain.
+    if source_type == "gong_calls":
+        return f"https://app.gong.io/call?id={quote(path, safe='')}"
+    # Slack and Granola need provider metadata that we do not store yet.
     return None
 
 
