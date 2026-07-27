@@ -564,6 +564,42 @@ _FILTER_OPS = {
 _COL_ID_RE = re.compile(r"^col_[a-f0-9]{12}$")
 
 
+def row_filter_clauses(
+    filters: list[dict],
+    valid_col_ids: set[str],
+    args: list,
+) -> list[str]:
+    """Build bound SQL predicates for the table API and app-shaped views."""
+    clauses = []
+    for filter_ in filters:
+        col_id = filter_.get("column_id", "")
+        op = filter_.get("op", "eq")
+        value = filter_.get("value")
+        if col_id not in valid_col_ids:
+            continue
+
+        if op == "is_empty":
+            clauses.append(f"(data->>'{col_id}' IS NULL OR data->>'{col_id}' = '')")
+            continue
+        if op == "is_not_empty":
+            clauses.append(f"(data->>'{col_id}' IS NOT NULL AND data->>'{col_id}' != '')")
+            continue
+        if op == "contains":
+            args.append(f"%{value}%")
+            clauses.append(f"data->>'{col_id}' ILIKE ${len(args)}")
+            continue
+
+        sql_op = _FILTER_OPS.get(op)
+        if sql_op is None:
+            continue
+        args.append(str(value) if not isinstance(value, str) else value)
+        if isinstance(value, (int, float)):
+            clauses.append(f"(data->>'{col_id}')::numeric {sql_op} ${len(args)}")
+        else:
+            clauses.append(f"data->>'{col_id}' {sql_op} ${len(args)}")
+    return clauses
+
+
 async def list_rows(
     table_id: UUID,
     filters: list[dict] | None = None,
@@ -583,43 +619,11 @@ async def list_rows(
 
     where_clauses = ["table_id = $1"]
     args: list = [table_id]
-    idx = 2
-
     if filters:
-        for f in filters:
-            col_id = f.get("column_id", "")
-            op = f.get("op", "eq")
-            value = f.get("value")
-
-            # Validate column ID against schema to prevent injection
-            if col_id not in valid_col_ids:
-                continue
-
-            if op == "is_empty":
-                where_clauses.append(f"(data->>'{col_id}' IS NULL OR data->>'{col_id}' = '')")
-                continue
-            if op == "is_not_empty":
-                where_clauses.append(f"(data->>'{col_id}' IS NOT NULL AND data->>'{col_id}' != '')")
-                continue
-            if op == "contains":
-                where_clauses.append(f"data->>'{col_id}' ILIKE ${idx}")
-                args.append(f"%{value}%")
-                idx += 1
-                continue
-
-            sql_op = _FILTER_OPS.get(op)
-            if not sql_op:
-                continue
-
-            # Numeric comparison for number values
-            if isinstance(value, (int, float)):
-                where_clauses.append(f"(data->>'{col_id}')::numeric {sql_op} ${idx}")
-            else:
-                where_clauses.append(f"data->>'{col_id}' {sql_op} ${idx}")
-            args.append(str(value) if not isinstance(value, str) else value)
-            idx += 1
+        where_clauses.extend(row_filter_clauses(filters, valid_col_ids, args))
 
     where = " AND ".join(where_clauses)
+    idx = len(args) + 1
 
     # Sort — validate sort_by against schema
     order = "row_order ASC"

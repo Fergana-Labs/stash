@@ -11,8 +11,6 @@ their own — including publishing the scope's skills. Owner-only powers
 import logging
 from uuid import UUID
 
-from . import skill_seeds
-
 logger = logging.getLogger(__name__)
 
 
@@ -41,17 +39,13 @@ async def can_write(owner_user_id: UUID | None, user_id: UUID | None) -> bool:
 
 
 async def seed_user_scope(user_id: UUID) -> None:
-    """Provision a new user's scope: seed the default skills (slides + the
-    generate-output skills) so agents can discover them, and the daily Memory
-    curator so sleep-time curation works for every account — including
-    API-key-only production integrations that never touch chat. Best-effort;
-    failures must not block signup."""
+    """Provision the daily Memory curator for a new scope.
+
+    Public Skills are opt-in and are installed from Discover, never seeded
+    into accounts.
+    """
     from . import agent_service
 
-    try:
-        await skill_seeds.seed_default_skills(user_id, user_id)
-    except Exception:
-        logger.exception("seed_default_skills failed for user %s", user_id)
     try:
         await agent_service.get_or_create_curator(user_id)
     except Exception:

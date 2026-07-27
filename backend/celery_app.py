@@ -30,7 +30,6 @@ celery = Celery(
         "backend.tasks.embeddings",
         "backend.tasks.enrichment",
         "backend.tasks.link_check",
-        "backend.tasks.skill_backfill",
         "backend.tasks.linear_tickets",
         "backend.tasks.session_titles",
         "backend.tasks.viz",
@@ -79,12 +78,6 @@ celery.conf.update(
             # Link rot is slow; a sweep every 30 min drains a large
             # library over days without hammering anyone's origin.
             "schedule": 1800.0,
-        },
-        "skill-backfill": {
-            "task": "backend.tasks.skill_backfill.reconcile",
-            # Only does work when a skill has been added since a scope
-            # was created, so an hourly tick is almost always one query.
-            "schedule": 3600.0,
         },
         "viz-precompute": {
             "task": "backend.tasks.viz.precompute",

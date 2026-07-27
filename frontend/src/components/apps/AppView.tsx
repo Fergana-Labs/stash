@@ -2,7 +2,15 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, Copy, LayoutGrid, Search, Table2, TagIcon } from "lucide-react";
+import {
+  AlertTriangle,
+  BookMarked,
+  Copy,
+  LayoutGrid,
+  Search,
+  Table2,
+  TagIcon,
+} from "lucide-react";
 
 import { appFacets, getApp, getTable, installApp, listAppRows } from "@/lib/api";
 import type {
@@ -322,9 +330,29 @@ export default function AppView({ slug }: { slug: string }) {
 
         <div className="scroll-thin min-h-0 flex-1 overflow-y-auto px-6 py-5">
           {rows.length === 0 ? (
-            <p className="py-12 text-center text-[13px] text-muted-foreground">
-              {filtering ? "Nothing matches that filter." : "Nothing saved yet."}
-            </p>
+            filtering ? (
+              <p className="py-12 text-center text-[13px] text-muted-foreground">
+                Nothing matches that filter.
+              </p>
+            ) : (
+              <div className="mx-auto flex max-w-md flex-col items-center py-14 text-center">
+                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-brand/10">
+                  <BookMarked className="h-5 w-5 text-brand" />
+                </div>
+                <h2 className="mt-4 text-[15px] font-semibold text-foreground">
+                  {manifest.empty_state.title}
+                </h2>
+                <p className="mt-1.5 text-[13px] leading-relaxed text-muted-foreground">
+                  {manifest.empty_state.description}
+                </p>
+                <Link
+                  href={manifest.empty_state.action.href}
+                  className="mt-4 rounded-lg bg-brand px-3.5 py-2 text-[12.5px] font-semibold text-white hover:bg-brand-hover"
+                >
+                  {manifest.empty_state.action.label}
+                </Link>
+              </div>
+            )
           ) : layout === "cards" ? (
             <div
               data-testid="card-grid"

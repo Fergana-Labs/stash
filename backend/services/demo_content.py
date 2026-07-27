@@ -6,16 +6,17 @@ about itself" for the demo flow. They're served verbatim from
 demo Stash as a `Stash knowledge base/` folder so the visitor's agent
 can keep editing the deck after the fact.
 
-`SLIDES_SKILL_MARKDOWN` is the same bytes a real user's scope seeds at
-`Skills/slides/SKILL.md` — read from the same `backend/skills/slides`
-directory so we never fork the slide format.
+`SLIDES_SKILL_MARKDOWN` is read from the documented Skill source so the demo
+and any later public catalog entry never fork the slide format.
 """
 
 from __future__ import annotations
 
-from .skill_seeds import skill_markdown
+from pathlib import Path
 
-SLIDES_SKILL_MARKDOWN = skill_markdown("slides")
+SLIDES_SKILL_MARKDOWN = (
+    Path(__file__).resolve().parents[2] / "docs" / "skills" / "slides" / "SKILL.md"
+).read_text()
 
 DEMO_DECK_FILENAME = "deck.html"
 DEMO_TRANSCRIPT_FILENAME = "qa-transcript.md"

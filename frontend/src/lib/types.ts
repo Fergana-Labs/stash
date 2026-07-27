@@ -127,6 +127,11 @@ export interface MiniProgramManifest {
   title: string;
   tagline: string;
   icon: string;
+  empty_state: {
+    title: string;
+    description: string;
+    action: { label: string; href: string };
+  };
   detail: MiniProgramDetail;
   /** Columns an LLM fills in the background — rendered as pending until they do. */
   enriched_columns: string[];

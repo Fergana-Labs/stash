@@ -38,6 +38,14 @@ BOOKMARKS_MANIFEST = {
     "folder": "Clips",
     "table_name": "Bookmarks",
     "description": "Everything you've saved with the Stash browser extension.",
+    "empty_state": {
+        "title": "Save your first bookmark",
+        "description": (
+            "Use the Stash browser extension to save a page, PDF, video, or post. "
+            "It will appear here and be summarised automatically."
+        ),
+        "action": {"label": "Learn how to save with Stash", "href": "/extension"},
+    },
     "columns": [
         {"name": "Title", "type": "text"},
         {"name": "URL", "type": "url"},
@@ -126,6 +134,7 @@ def resolve(manifest: dict, columns: list[dict]) -> dict:
         "title": manifest["title"],
         "tagline": manifest["tagline"],
         "icon": manifest["icon"],
+        "empty_state": manifest["empty_state"],
         "detail": detail,
         "enriched_columns": [
             ids[t["column"]] for t in manifest["enrichment"]["targets"] if t["column"] in ids

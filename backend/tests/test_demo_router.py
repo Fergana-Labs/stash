@@ -1,13 +1,8 @@
 """Tests for the public landing-page demo router.
 
-The demo router exposes six anonymous endpoints. These tests exercise
-all of them end-to-end through the FastAPI ASGI client, plus the
-visibility flags on the resulting Stash and the auto-attached KB
-folder.
-
-Conftest disables the boot-time seed (so other tests get clean
-scopes). These tests opt in by calling `seed_demo`
-themselves before each scenario.
+The demo router exposes six anonymous endpoints. These tests exercise all
+of them end-to-end through the FastAPI ASGI client, plus the visibility flags
+on the resulting Stash and the auto-attached KB folder.
 """
 
 import pytest
@@ -19,11 +14,7 @@ from backend.services import demo_service
 
 @pytest_asyncio.fixture(autouse=True)
 async def _seed_demo(_db_pool):
-    """Every demo test needs the Demo scope + KB folder pre-seeded.
-
-    Conftest cleanup runs *after* the test so the seed survives the test
-    body; the next test gets a fresh seed.
-    """
+    """Every demo test gets a fresh Demo scope and KB folder."""
     await demo_service.seed_demo()
     yield
 

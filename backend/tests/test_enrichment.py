@@ -63,6 +63,7 @@ def test_manifest_resolves_column_names_to_ids():
     # Summary/Site/URL aren't on this table, so no slot points at them.
     assert "body" not in resolved["detail"]
     assert resolved["enriched_columns"] == ["col_topics"]
+    assert resolved["empty_state"]["action"]["href"] == "/extension"
 
 
 async def test_ensure_table_is_idempotent_under_concurrency(client: AsyncClient, pool):

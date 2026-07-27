@@ -62,7 +62,10 @@ def normalize_url(url: str) -> str:
 
 
 async def _columns(table_id: UUID) -> list[dict]:
-    return await get_pool().fetchval("SELECT columns FROM tables WHERE id = $1", table_id) or []
+    columns = await get_pool().fetchval("SELECT columns FROM tables WHERE id = $1", table_id)
+    if columns is None:
+        raise ValueError(f"Table {table_id} does not exist")
+    return columns
 
 
 def _cell(row_data: dict, col_id: str | None) -> object:
@@ -78,61 +81,83 @@ def _labels(row_data: dict, col_id: str | None) -> list[str]:
     return []
 
 
-async def _all_rows(
-    table_id: UUID,
-    *,
-    filters: list[dict] | None = None,
-    sort_by: str | None = None,
-    sort_order: str = "desc",
-) -> list[dict]:
-    if filters is None and sort_by is None:
-        rows = await get_pool().fetch(
-            "SELECT id, data, row_order FROM table_rows "
-            "WHERE table_id = $1 ORDER BY row_order DESC",
-            table_id,
+def _url_key_sql(link_col: str | None) -> str:
+    """Postgres equivalent of normalize_url for duplicate ranking.
+
+    Column ids come from the table schema, not the request. Query values stay
+    bound parameters.
+    """
+    if link_col is None:
+        return "NULL::text"
+    return f"""
+        (
+            SELECT
+                lower(regexp_replace(parts.authority, '^www\\.', '', 'i'))
+                || COALESCE(NULLIF(rtrim(parts.path, '/'), ''), '/')
+                || CASE WHEN query.meaningful = '' THEN '' ELSE '?' || query.meaningful END
+            FROM (
+                SELECT
+                    split_part(split_part(clean.without_scheme, '/', 1), '?', 1) AS authority,
+                    CASE
+                        WHEN strpos(clean.without_scheme, '/') = 0 THEN '/'
+                        ELSE split_part(
+                            substring(clean.without_scheme FROM strpos(clean.without_scheme, '/')),
+                            '?',
+                            1
+                        )
+                    END AS path,
+                    split_part(clean.without_scheme, '?', 2) AS query_string
+                FROM (
+                    SELECT regexp_replace(
+                        split_part(trim(data->>'{link_col}'), '#', 1),
+                        '^[a-z][a-z0-9+.-]*://',
+                        '',
+                        'i'
+                    ) AS without_scheme
+                ) clean
+            ) parts
+            CROSS JOIN LATERAL (
+                SELECT COALESCE(string_agg(piece, '&' ORDER BY piece), '') AS meaningful
+                FROM regexp_split_to_table(parts.query_string, '&') piece
+                WHERE piece != ''
+                  AND split_part(piece, '=', 1)
+                      !~* '^(utm_[a-z]+|fbclid|gclid|mc_[a-z]+|ref|ref_src|source|igshid|si)$'
+            ) query
         )
-        return [dict(row) for row in rows]
-
-    total = await table_service.count_rows(table_id, filters=filters)
-    rows, _ = await table_service.list_rows(
-        table_id,
-        filters=filters,
-        sort_by=sort_by,
-        sort_order=sort_order,
-        limit=total,
-    )
-    return rows
+    """
 
 
-def _duplicate_ids(rows: list[dict], link_col: str | None) -> set:
-    """Row ids that share a normalized URL with an earlier row. The first save
-    of a URL is not a duplicate — only the repeats are, so 'delete duplicates'
-    leaves one copy behind."""
-    if not link_col:
-        return set()
-    seen: dict[str, object] = {}
-    dupes = set()
-    # Oldest first, so the original is the keeper.
-    for row in sorted(rows, key=lambda r: r["row_order"]):
-        key = normalize_url(str(_cell(row["data"], link_col) or ""))
-        if not key:
-            continue
-        if key in seen:
-            dupes.add(row["id"])
-        else:
-            seen[key] = row["id"]
-    return dupes
+async def _query_parts(
+    table_id: UUID,
+    slots: dict,
+    view: dict | None,
+    *,
+    include_url_key: bool,
+) -> tuple[str, str, list]:
+    columns = await _columns(table_id)
+    valid_col_ids = {column["id"] for column in columns}
+    for slot, col_id in slots.items():
+        if col_id not in valid_col_ids:
+            raise ValueError(f"Manifest slot {slot!r} points to a missing column")
 
+    args: list = [table_id]
+    clauses = ["table_id = $1"]
+    if view:
+        clauses.extend(
+            table_service.row_filter_clauses(view.get("filters", []), valid_col_ids, args)
+        )
 
-def _matches_query(row: dict, q: str) -> bool:
-    if not q:
-        return True
-    haystack = " ".join(
-        str(" ".join(map(str, v)) if isinstance(v, list) else v)
-        for v in row["data"].values()
-        if v is not None
-    ).lower()
-    return q in haystack
+    order = "row_order DESC"
+    sort_by = view.get("sort_by") if view else None
+    if sort_by in valid_col_ids:
+        direction = "DESC" if view.get("sort_order") == "desc" else "ASC"
+        order = f"data->>'{sort_by}' {direction}, row_order ASC"
+
+    fields = "id, data, row_order"
+    if include_url_key:
+        fields += f", {_url_key_sql(slots.get('link'))} AS normalized_url"
+    base_sql = f"SELECT {fields} FROM table_rows WHERE " + " AND ".join(clauses)
+    return base_sql, order, args
 
 
 async def query_rows(
@@ -146,71 +171,115 @@ async def query_rows(
     limit: int = 60,
     offset: int = 0,
 ) -> dict:
-    """Filtered, paged rows plus the total the filter matches.
-
-    Filtering happens over the whole table rather than a loaded page — that is
-    the entire point of moving it server-side. A library of 10k bookmarks
-    showed 100 of them when the client did this.
-    """
-    rows = await _all_rows(
+    """Filter, count, and page in Postgres without loading the table in Python."""
+    needs_duplicate_rank = filter_ == FILTER_DUPLICATES
+    base_sql, order, args = await _query_parts(
         table_id,
-        filters=view.get("filters") if view else None,
-        sort_by=view.get("sort_by") if view else None,
-        sort_order=view.get("sort_order", "asc") if view else "desc",
+        slots,
+        view,
+        include_url_key=needs_duplicate_rank,
     )
-    label_col, link_col, status_col = slots.get("labels"), slots.get("link"), slots.get("status")
+    label_col, status_col = slots.get("labels"), slots.get("status")
 
+    clauses = []
     if filter_ == FILTER_DUPLICATES:
-        dupes = _duplicate_ids(rows, link_col)
-        rows = [r for r in rows if r["id"] in dupes]
+        clauses.append("duplicate_rank > 1")
     elif filter_ == FILTER_UNTAGGED:
-        rows = [r for r in rows if not _labels(r["data"], label_col)]
+        clauses.append(f"COALESCE(jsonb_array_length(data->'{label_col}'), 0) = 0")
     elif filter_ == FILTER_BROKEN:
-        rows = [r for r in rows if _cell(r["data"], status_col) == STATUS_BROKEN]
+        args.append(STATUS_BROKEN)
+        clauses.append(f"data->>'{status_col}' = ${len(args)}")
 
     if topic:
-        rows = [r for r in rows if topic in _labels(r["data"], label_col)]
+        args.append(topic)
+        clauses.append(f"data->'{label_col}' ? ${len(args)}")
 
     needle = q.strip().lower()
     if needle:
-        rows = [r for r in rows if _matches_query(r, needle)]
+        args.append(f"%{needle}%")
+        clauses.append(
+            "EXISTS (SELECT 1 FROM jsonb_each(data) cell "
+            f"WHERE cell.value::text ILIKE ${len(args)})"
+        )
 
-    total = len(rows)
-    page = rows[offset : offset + limit]
+    where = " AND ".join(clauses) if clauses else "TRUE"
+    ctes = f"WITH base AS ({base_sql}), "
+    source = "base"
+    if needs_duplicate_rank:
+        ctes += (
+            "ranked AS ("
+            "  SELECT *, CASE "
+            "    WHEN normalized_url IS NULL OR normalized_url = '' THEN NULL "
+            "    ELSE row_number() OVER (PARTITION BY normalized_url ORDER BY row_order ASC) "
+            "  END AS duplicate_rank "
+            "  FROM base"
+            "), "
+        )
+        source = "ranked"
+    ctes += f"filtered AS (SELECT * FROM {source} WHERE {where}) "
+    total = await get_pool().fetchval(ctes + "SELECT count(*) FROM filtered", *args)
+    args.extend([limit, offset])
+    page = await get_pool().fetch(
+        ctes + f"SELECT id, data FROM filtered ORDER BY {order} "
+        f"LIMIT ${len(args) - 1} OFFSET ${len(args)}",
+        *args,
+    )
     return {
-        "rows": [{"id": str(r["id"]), "data": r["data"]} for r in page],
+        "rows": [{"id": str(row["id"]), "data": row["data"]} for row in page],
         "total": total,
         "has_more": offset + len(page) < total,
     }
 
 
 async def facets(table_id: UUID, slots: dict) -> dict:
-    """Counts for every filter chip, over the whole table.
-
-    Computed together in one pass because they all read the same rows, and
-    because a chip whose count is stale is worse than no chip.
-    """
-    rows = await _all_rows(table_id)
-    label_col, link_col, status_col = slots.get("labels"), slots.get("link"), slots.get("status")
-
-    counts: dict[str, int] = {}
-    untagged = 0
-    for row in rows:
-        labels = _labels(row["data"], label_col)
-        if not labels:
-            untagged += 1
-        for label in labels:
-            counts[label] = counts.get(label, 0) + 1
-
+    """Count all filter chips in Postgres without transferring every row."""
+    base_sql, _, args = await _query_parts(
+        table_id,
+        slots,
+        None,
+        include_url_key=True,
+    )
+    label_col, status_col = slots.get("labels"), slots.get("status")
+    args.append(STATUS_BROKEN)
+    row = await get_pool().fetchrow(
+        f"""
+        WITH base AS ({base_sql}),
+        ranked AS (
+            SELECT *, CASE
+                WHEN normalized_url IS NULL OR normalized_url = '' THEN NULL
+                ELSE row_number() OVER (
+                    PARTITION BY normalized_url ORDER BY row_order ASC
+                )
+            END AS duplicate_rank
+            FROM base
+        ),
+        topic_counts AS (
+            SELECT label, count(*) AS count
+            FROM ranked
+            CROSS JOIN LATERAL jsonb_array_elements_text(data->'{label_col}') label
+            GROUP BY label
+            ORDER BY count DESC, label ASC
+        )
+        SELECT
+            (SELECT count(*) FROM ranked) AS total,
+            (SELECT count(*) FROM ranked
+             WHERE COALESCE(jsonb_array_length(data->'{label_col}'), 0) = 0) AS untagged,
+            (SELECT count(*) FROM ranked WHERE duplicate_rank > 1) AS duplicates,
+            (SELECT count(*) FROM ranked
+             WHERE data->>'{status_col}' = ${len(args)}) AS broken,
+            (SELECT COALESCE(
+                jsonb_agg(jsonb_build_object('label', label, 'count', count)),
+                '[]'::jsonb
+             ) FROM topic_counts) AS topics
+        """,
+        *args,
+    )
     return {
-        "total": len(rows),
-        "topics": [
-            {"label": label, "count": count}
-            for label, count in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
-        ],
-        "untagged": untagged,
-        "duplicates": len(_duplicate_ids(rows, link_col)),
-        "broken": sum(1 for r in rows if _cell(r["data"], status_col) == STATUS_BROKEN),
+        "total": row["total"],
+        "topics": row["topics"],
+        "untagged": row["untagged"],
+        "duplicates": row["duplicates"],
+        "broken": row["broken"],
     }
 
 
