@@ -7,6 +7,8 @@ import re
 import secrets
 from uuid import UUID
 
+from asyncpg.exceptions import UniqueViolationError
+
 from ..database import get_pool
 from . import permission_service
 from .row_validation import RowValidationError, validate_row_data
@@ -42,6 +44,23 @@ _TABLE_FIELDS = (
 )
 
 
+class DuplicateTableName(Exception):
+    """A table with this name already exists in the target folder.
+
+    Mirrors DuplicatePageName: tables are unique per folder like pages and
+    folders are, so a name collision is a real answer rather than something
+    to paper over. Callers that should pick the next free name instead use
+    create_table_unique.
+    """
+
+    def __init__(self, owner_user_id: UUID | None, folder_id: UUID | None, name: str):
+        self.owner_user_id = owner_user_id
+        self.folder_id = folder_id
+        self.name = name
+        where = f"folder {folder_id}" if folder_id else "the root of the scope"
+        super().__init__(f"Table '{name}' already exists in {where}.")
+
+
 async def create_table(
     owner_user_id: UUID | None,
     name: str,
@@ -49,7 +68,12 @@ async def create_table(
     columns: list[dict],
     created_by: UUID,
     folder_id: UUID | None = None,
+    mini_program: str | None = None,
 ) -> dict:
+    """Create a table. `mini_program` stamps the manifest slug in the same
+    INSERT the row is created by — the unique index on (owner, mini_program)
+    only protects against a concurrent duplicate if the slug is written
+    atomically, not set by a follow-up UPDATE."""
     pool = get_pool()
     if folder_id is not None:
         folder = await pool.fetchrow("SELECT owner_user_id FROM folders WHERE id = $1", folder_id)
@@ -61,18 +85,28 @@ async def create_table(
             col["id"] = f"col_{secrets.token_hex(6)}"
         col["order"] = i
         col.setdefault("width", 180)
-    row = await pool.fetchrow(
-        "INSERT INTO tables (owner_user_id, folder_id, name, description, columns, created_by, updated_by) "
-        "VALUES ($1, $2, $3, $4, $5, $6, $6) "
-        "RETURNING id, owner_user_id, folder_id, name, description, columns, views, "
-        "created_by, updated_by, created_at, updated_at",
-        owner_user_id,
-        folder_id,
-        name,
-        description,
-        columns,
-        created_by,
-    )
+    try:
+        row = await pool.fetchrow(
+            "INSERT INTO tables "
+            "  (owner_user_id, folder_id, name, description, columns, created_by, updated_by, "
+            "   mini_program) "
+            "VALUES ($1, $2, $3, $4, $5, $6, $6, $7) "
+            "RETURNING id, owner_user_id, folder_id, name, description, columns, views, "
+            "created_by, updated_by, created_at, updated_at",
+            owner_user_id,
+            folder_id,
+            name,
+            description,
+            columns,
+            created_by,
+            mini_program,
+        )
+    except UniqueViolationError as e:
+        # The mini_program index has its own meaning — a second table for the
+        # same app — and callers of ensure_table depend on seeing that one.
+        if mini_program and "mini_program" in str(e):
+            raise
+        raise DuplicateTableName(owner_user_id, folder_id, name) from e
     result = dict(row)
     result["row_count"] = 0
     return result
@@ -348,10 +382,12 @@ async def create_row(table_id: UUID, data: dict, created_by: UUID) -> dict:
     columns = await _get_columns(table_id)
     validated = validate_row_data(columns, data)
     row = await pool.fetchrow(
-        "INSERT INTO table_rows (table_id, data, row_order, created_by, updated_by) "
+        # enrich_stale on insert only: the enrichment sweep fills derived
+        # columns once, and never overwrites a value the user later edited.
+        "INSERT INTO table_rows (table_id, data, row_order, created_by, updated_by, enrich_stale) "
         "VALUES ($1, $2, "
         "  COALESCE((SELECT MAX(row_order) FROM table_rows WHERE table_id = $1), -1) + 1, "
-        "  $3, $3) "
+        "  $3, $3, TRUE) "
         "RETURNING id, table_id, data, row_order, created_by, updated_by, created_at, updated_at",
         table_id,
         validated,
@@ -382,8 +418,9 @@ async def create_rows_batch(table_id: UUID, rows_data: list[dict], created_by: U
                 "  FROM jsonb_array_elements($2::jsonb) "
                 "  WITH ORDINALITY AS payload(data, ordinality)"
                 ") "
-                "INSERT INTO table_rows (table_id, data, row_order, created_by, updated_by) "
-                "SELECT $1, data, $3 + row_offset, $4, $4 "
+                "INSERT INTO table_rows "
+                "  (table_id, data, row_order, created_by, updated_by, enrich_stale) "
+                "SELECT $1, data, $3 + row_offset, $4, $4, TRUE "
                 "FROM payload "
                 "ORDER BY row_offset "
                 "RETURNING id, table_id, data, row_order, created_by, updated_by, created_at, updated_at",
@@ -957,3 +994,82 @@ async def backfill_embeddings(table_id: UUID) -> dict:
         asyncio.create_task(_embed_rows_batch(ids, texts))
 
     return {"embedded": len(texts), "total": len(rows)}
+
+
+async def mark_row_enrich_stale(table_id: UUID, row_id: str) -> bool:
+    """Queue a row for re-enrichment. Clears enrich_hash so the sweep doesn't
+    skip it as unchanged, and scopes by table_id so a row id from another
+    user's table can't be queued."""
+    result = await get_pool().execute(
+        "UPDATE table_rows SET enrich_stale = TRUE, enrich_hash = NULL, enrich_error = NULL "
+        "WHERE id = $1 AND table_id = $2",
+        UUID(row_id),
+        table_id,
+    )
+    return result.endswith(" 1")
+
+
+MAX_COLUMN_OPTIONS = 60
+
+
+async def merge_column_options(table_id: UUID, col_id: str, labels: list[str]) -> None:
+    """Append labels to a select/multiselect column's options, case-insensitively.
+
+    The options list is the vocabulary in both directions: it is what the
+    enrichment prompt offers the model, and what the UI renders as filter
+    chips. A label that never lands here can't be filtered on, so both the
+    worker and manual edits route through this.
+    """
+    if not labels:
+        return
+    pool = get_pool()
+    columns = await pool.fetchval("SELECT columns FROM tables WHERE id = $1", table_id)
+    if not columns:
+        return
+    column = next((c for c in columns if c["id"] == col_id), None)
+    if column is None:
+        return
+    options = list(column.get("options") or [])
+    lowered = {o.lower() for o in options}
+    for label in labels:
+        if label.lower() not in lowered and len(options) < MAX_COLUMN_OPTIONS:
+            options.append(label)
+            lowered.add(label.lower())
+    if options == (column.get("options") or []):
+        return
+    column["options"] = options
+    await pool.execute("UPDATE tables SET columns = $1 WHERE id = $2", columns, table_id)
+
+
+async def create_table_unique(
+    owner_user_id: UUID | None,
+    name: str,
+    description: str,
+    columns: list[dict],
+    created_by: UUID,
+    folder_id: UUID | None = None,
+) -> dict:
+    """Create a table, appending ' (2)', ' (3)', … until the name is free in
+    the target folder.
+
+    The counterpart to files_tree_service.create_page_unique, for the callers
+    that create a table as a side effect of something else — a spreadsheet
+    upload, a duplicate, an agent tool — where a collision should pick the
+    next free name rather than fail. Interactive creates keep raising
+    DuplicateTableName so the user hears about it.
+    """
+    candidate = name
+    n = 2
+    while True:
+        try:
+            return await create_table(
+                owner_user_id=owner_user_id,
+                name=candidate,
+                description=description,
+                columns=columns,
+                created_by=created_by,
+                folder_id=folder_id,
+            )
+        except DuplicateTableName:
+            candidate = f"{name} ({n})"
+            n += 1

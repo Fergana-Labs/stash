@@ -392,6 +392,10 @@ class TableResponse(BaseModel):
     name: str
     description: str
     columns: list[ColumnDefinition]
+    # Saved views are free-form dicts (name, filters, sort, layout, …) so that
+    # adding a view property costs no schema change. Omitting this field from
+    # the response silently dropped every saved view on load.
+    views: list[dict] | None = None
     created_by: UUID
     updated_by: UUID | None
     created_at: datetime
