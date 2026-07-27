@@ -25,6 +25,16 @@ class VfsClientError(Exception):
         super().__init__(str(detail))
 
 
+class VfsScanBudget(Exception):
+    """A document read was refused because the command's scan budget ran out.
+
+    Raised by clients that meter reads (the server-side VFS) for reads issued
+    inside `scan_calls`. The shell stops the grep sweep at this point and
+    reports the results so far with a loud truncation warning — an org-wide
+    sweep degrades to a partial answer instead of an aborted command.
+    """
+
+
 class VfsClient(Protocol):
     """Everything `StashVfsModel` reads. Listing calls run during `refresh()`;
     the rest are lazy loaders fired when a file's bytes are first read."""

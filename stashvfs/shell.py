@@ -10,7 +10,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime
 
-from .client import VfsClientError
+from .client import VfsClientError, VfsScanBudget
 from .model import MountError, StashVfsModel
 
 
@@ -435,9 +435,8 @@ class SkillAppVfsShell:
         if fixed_strings:
             regex = re.compile(re.escape(pattern), flags)
         else:
-            _reject_bre_escapes(pattern)
             try:
-                regex = re.compile(pattern, flags)
+                regex = re.compile(_translate_bre_escapes(pattern), flags)
             except re.error as e:
                 raise VfsShellError(str(e)) from e
 
@@ -459,27 +458,44 @@ class SkillAppVfsShell:
             paths = ["."]
         matches = []
         roots = []
+        # Resolve every root before reading anything (listings are unbudgeted),
+        # so a budget stop can say how much of the sweep went unsearched.
+        sweep: list[list[str]] = []
+        total_files = 0
+        for raw_path in paths:
+            path = self._resolve_path(raw_path)
+            roots.append(path)
+            node = self.model._get_node(path)
+            file_paths = [path] if node.is_file else self._file_paths(path) if recursive else []
+            if node.is_dir and not recursive:
+                raise VfsShellError(f"{raw_path}: is a directory")
+            sweep.append(file_paths)
+            total_files += len(file_paths)
         docs_scanned = 0
+        budget_hit = False
         # The per-document reads below are the mechanics of one search, not
         # documents the user asked to see — scan_calls tags them so analytics
         # skip them, and record_search writes the single search event that
         # stands in for the whole sweep.
         with self.model.client.scan_calls():
-            for raw_path in paths:
-                path = self._resolve_path(raw_path)
-                roots.append(path)
-                node = self.model._get_node(path)
-                file_paths = [path] if node.is_file else self._file_paths(path) if recursive else []
-                if node.is_dir and not recursive:
-                    raise VfsShellError(f"{raw_path}: is a directory")
+            for file_paths in sweep:
+                if budget_hit:
+                    break
                 self.model.prefetch(file_paths)
                 for file_path in file_paths:
-                    docs_scanned += 1
                     try:
                         text = self._read_text(file_path)
+                    except VfsScanBudget:
+                        # Out of reads mid-sweep: report what was found rather
+                        # than aborting, but never silently — the warning below
+                        # marks the results partial.
+                        budget_hit = True
+                        break
                     except VfsClientError as e:
+                        docs_scanned += 1
                         self._warn(f"{name}: {file_path}: {e.detail}")
                         continue
+                    docs_scanned += 1
                     matches.append(
                         _grep_text(
                             regex,
@@ -492,6 +508,12 @@ class SkillAppVfsShell:
                         )
                     )
         self.model.client.record_search(pattern, roots, docs_scanned)
+        if budget_hit:
+            self._warn(
+                f"{name}: stopped after reading {docs_scanned} of {total_files} files "
+                "(server scan budget); matches shown are partial — narrow the paths to "
+                "search the rest"
+            )
         output = "".join(matches)
         if not output:
             raise VfsShellExit(1)
@@ -860,23 +882,28 @@ def _render_printf_template(template: str, values: list[str]) -> tuple[str, int]
     return "".join(output), used
 
 
-def _reject_bre_escapes(pattern: str) -> None:
+def _translate_bre_escapes(pattern: str) -> str:
     """Patterns compile as Python (extended) regex, where BRE's operator escapes
-    `\\|` `\\(` `\\)` mean the *literal* character — so a caller writing default-grep
-    syntax like `foo\\|bar` would silently match nothing. Refuse loudly instead."""
+    `\\|` `\\(` `\\)` would mean the *literal* character — so a caller writing
+    default-grep syntax like `foo\\|bar` would silently match nothing. Both
+    dialects intend an operator there, so treat the escape as the operator;
+    `-F` remains the way to match the character literally."""
+    output: list[str] = []
     index = 0
-    while index < len(pattern) - 1:
-        if pattern[index] != "\\":
-            index += 1
+    while index < len(pattern):
+        char = pattern[index]
+        if char == "\\" and index + 1 < len(pattern):
+            escaped = pattern[index + 1]
+            if escaped in "|()":
+                output.append(escaped)
+            else:
+                output.append(char)
+                output.append(escaped)
+            index += 2
             continue
-        escaped = pattern[index + 1]
-        if escaped in "|()":
-            raise VfsShellError(
-                f"pattern escape \\{escaped} is BRE syntax; patterns here are extended "
-                f"regex — use {escaped} as the operator, or -F to match text literally",
-                exit_code=2,
-            )
-        index += 2
+        output.append(char)
+        index += 1
+    return "".join(output)
 
 
 def _grep_text(
