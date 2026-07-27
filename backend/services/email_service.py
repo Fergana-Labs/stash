@@ -67,7 +67,8 @@ def send_share_invite_email(to_email: str, owner_name: str, object_type: str) ->
             "Subject": f"{owner_name} shared a {object_type} with you on Stash",
             "HtmlBody": (
                 f"<p><strong>{owner_name}</strong> shared a {object_type} with you on "
-                f'<a href="{app_url}">Stash</a>.</p>'
+                f'<a href="{app_url}">Stash</a> &mdash; a shared workspace your AI '
+                "agents can read and write too.</p>"
                 f'<p><a href="{app_url}/login">Sign up with this email address</a> and '
                 "it will be waiting in your account.</p>"
             ),
@@ -86,39 +87,38 @@ def send_welcome_email(user_email: str, first_name: str | None = None) -> None:
     html = f"""
 <p>{greeting}</p>
 
-<p>Thanks for signing up for Stash. Two things it does for your agents:</p>
+<p>Thanks for signing up for Stash. It's one place your agents connect to all
+your data &mdash; and a Drive they can read and write natively.</p>
 
-<ul>
-  <li><strong>One place to connect to all your data</strong> &mdash; GitHub, Google Drive, Gmail, Notion, Slack, Granola. Your agent reads and searches across everything you connect, from day one.</li>
-  <li><strong>An agent-native Drive</strong> &mdash; Markdown and HTML pages, files, and session transcripts your agents read and write natively through the CLI, MCP, and API.</li>
-</ul>
-
-<p>Under the hood, your Stash is organized into three things:</p>
-
-<ul>
-  <li><strong>Skills</strong> &mdash; virtual sub-spaces. Bundle any subset of your Stash into a Skill, share it publicly, or keep it private. Use them for teams, workstreams, or projects (LinkedIn marketing, backend infra, kernel reading group).</li>
-  <li><strong>Files</strong> &mdash; a filesystem for documents (markdown, HTML, PDF, CSV, images). Built so agents can read and edit it natively.</li>
-  <li><strong>Sessions</strong> &mdash; every conversation between you and your coding agent (Claude Code, Codex, OpenCode), automatically pushed and indexed.</li>
-</ul>
-
-<p><strong>Three ways to get to a first &ldquo;aha&rdquo;:</strong></p>
+<p><strong>Start here. Any one of these is a real first win:</strong></p>
 
 <ol>
-  <li><a href="{app_url}"><strong>Connect your data sources</strong></a> &mdash; GitHub, Google Drive, Gmail, Notion, Slack, or Granola. Your agent reads across everything you connect from day one instead of starting empty.</li>
-  <li><a href="{app_url}"><strong>Give your agent memory</strong></a> &mdash; install the CLI, run a coding agent like you normally would, then ask it something only Stash would know.</li>
-  <li><a href="{app_url}"><strong>Publish your first artifact</strong></a> &mdash; drop a doc or deck, get a shareable link. Sharing is a first-class feature here, not an afterthought.</li>
+  <li><a href="{app_url}"><strong>Connect a source</strong></a> (Tools, in the sidebar) &mdash; GitHub, Google Drive, Gmail, Slack, Notion, Linear, Jira, Asana, Granola, PostHog, or X. Whatever you connect becomes searchable by every agent you point at Stash.</li>
+  <li><a href="{app_url}"><strong>Give your coding agent memory</strong></a> &mdash; run <code>uv tool install stashai</code> then <code>stash signin</code>. It finds the agents on your machine, wires them up, and from then on your sessions land in Stash automatically. Then ask one something only Stash would know.</li>
+  <li><a href="{app_url}/agents"><strong>Chat with the agent in the app</strong></a> &mdash; it already has everything above, and it's a real coding agent on its own cloud box, so it can read, write, and run things rather than just answer. Connect your Claude, Codex, or OpenRouter key in settings to point it at your own account.</li>
 </ol>
 
-<p><strong>A few things that make Stash different:</strong></p>
+<p><strong>What's in your Stash:</strong></p>
 
 <ul>
-  <li><strong>Real-time collaborative editing</strong> on every markdown page (two cursors at once).</li>
-  <li><strong>Agent-native by default</strong> &mdash; markdown, HTML, virtual filesystems. The formats agents are already fluent in.</li>
-  <li><strong>Search and ask across everything you&rsquo;ve added</strong> &mdash; your agent is grounded on your stuff, not just the pretty docs.</li>
-  <li><a href="{app_url}"><strong>Discover &amp; install Skills</strong></a> &mdash; browse skills and knowledge others have published; copy into your Stash in one click.</li>
+  <li><strong>Files</strong> &mdash; pages, documents, and tables. Markdown, HTML, PDFs, spreadsheets, decks. Pages are collaborative in real time, with your agents editing alongside you.</li>
+  <li><strong>Sessions</strong> &mdash; every conversation with your coding agents, pushed and indexed automatically.</li>
+  <li><strong>Memory</strong> &mdash; a wiki an agent maintains for you. It runs nightly over whatever is new and compiles it into linked pages you can actually read.</li>
+  <li><strong>Skills</strong> &mdash; a folder with a <code>SKILL.md</code> in it. Put related work in one folder and it becomes a unit you can share, publish, or install into an agent. We've put four in your account already.</li>
 </ul>
 
-<p><strong>Bring your team in.</strong> One person using Stash is a personal log. A team using Stash is a shared brain.</p>
+<p><strong>A few things worth knowing:</strong></p>
+
+<ul>
+  <li>One search covers your pages, sessions, and every source you've connected.</li>
+  <li>Your agent can reach Stash through the CLI, MCP, a filesystem-style shell, or the API.</li>
+  <li>You can reach <em>your</em> agent from Slack and Telegram too, not just the app.</li>
+  <li>Give an agent a schedule and it runs on its own &mdash; a standup summary, a nightly digest, whatever you'd otherwise forget.</li>
+  <li><a href="{app_url}/discover"><strong>Discover</strong></a> &mdash; browse what others have published and fork it into your Stash in one click.</li>
+</ul>
+
+<p>The free plan covers two connected accounts and ten Memory runs a month,
+which is enough to know whether this is for you.</p>
 
 <p>Hit reply if anything&rsquo;s broken or confusing. It lands in my inbox directly.</p>
 
@@ -130,7 +130,7 @@ def send_welcome_email(user_email: str, first_name: str | None = None) -> None:
             "From": FOUNDER_FROM,
             "To": user_email,
             "ReplyTo": "sam@joinstash.ai",
-            "Subject": "Welcome to Stash — connect your data and start writing",
+            "Subject": "Welcome to Stash — let's get your agents connected",
             "HtmlBody": html,
         }
     )
