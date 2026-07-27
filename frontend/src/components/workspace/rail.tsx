@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Bot, FolderTree, MessagesSquare, GraduationCap, Brain, Monitor, Wrench, Settings } from "lucide-react";
+import { Bot, FolderTree, MessagesSquare, GraduationCap, Brain, LayoutGrid, Monitor, Wrench, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
 import { useWorkspace, type RailSection } from "@/lib/workspace-store";
@@ -14,6 +14,7 @@ type RailItem = { key: RailSection; label: string; icon: typeof Bot; match: (p: 
 // Primary sections — each opens its own explorer panel (see workspace-shell).
 const PRIMARY: RailItem[] = [
   { key: "agents", label: "Agents", icon: Bot, match: (p) => p.startsWith("/agents") },
+  { key: "apps", label: "Views", icon: LayoutGrid, match: (p) => p.startsWith("/apps") },
   { key: "files", label: "Files", icon: FolderTree, match: (p) => p === "/files" || p.startsWith("/f/") || p.startsWith("/p/") || p.startsWith("/folders/") || p.startsWith("/tables/") },
   { key: "sessions", label: "Sessions", icon: MessagesSquare, match: (p) => p.startsWith("/sessions") || p.startsWith("/session-folders") },
   { key: "skills", label: "Skills", icon: GraduationCap, match: (p) => p.startsWith("/skills") },
@@ -21,6 +22,10 @@ const PRIMARY: RailItem[] = [
   { key: "tools", label: "Tools", icon: Wrench, match: (p) => p.startsWith("/tools") || p.startsWith("/integrations") },
   { key: "computer", label: "VM", icon: Monitor, match: () => false },
 ];
+
+// Agents and Views are lenses over the stash rather than places in it, so the
+// divider falls after them, above the VFS sections.
+const DIVIDER_AFTER_INDEX = 1;
 
 function RailButton({
   item,
@@ -101,11 +106,11 @@ export default function Rail({ user, onLogout }: { user: User; onLogout: () => v
   const requestedSection = searchParams.get("section");
 
   function selectSection(section: RailSection) {
-    // Memory's landing is the brain dashboard, so it navigates; other sections
-    // just swap the explorer beside whatever's open.
-    if (section === "memory") {
+    // Memory and Apps have their own landing pages, so they navigate; other
+    // sections just swap the explorer beside whatever's open.
+    if (section === "memory" || section === "apps") {
       setRailSection(section);
-      router.replace("/memory");
+      router.replace(section === "memory" ? "/memory" : "/apps");
       return;
     }
     const params = new URLSearchParams(searchParams);
@@ -123,8 +128,9 @@ export default function Rail({ user, onLogout }: { user: User; onLogout: () => v
             active={requestedSection === item.key || (!requestedSection && item.match(pathname))}
             onClick={() => selectSection(item.key)}
           />
-          {/* Agents (chat) is set apart from the VFS sections below. */}
-          {i === 0 && <div className="my-1 h-px w-7 bg-[var(--divider-color)]" />}
+          {i === DIVIDER_AFTER_INDEX && (
+            <div className="my-1 h-px w-7 bg-[var(--divider-color)]" />
+          )}
         </Fragment>
       ))}
       <div className="mt-auto flex w-full flex-col items-center gap-1">
