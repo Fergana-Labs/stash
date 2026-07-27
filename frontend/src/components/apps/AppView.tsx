@@ -129,10 +129,10 @@ export default function AppView({ slug }: { slug: string }) {
 
   // Any filter/search change resets to page one.
   useEffect(() => {
-    if (loading) return;
+    if (loading || missing || !manifest || !table) return;
     setSelected(new Set());
     void loadPage(0);
-  }, [query, topic, derived, activeViewId, loadPage, loading]);
+  }, [query, topic, derived, activeViewId, loadPage, loading, missing, manifest, table]);
 
   // Infinite scroll.
   useEffect(() => {
