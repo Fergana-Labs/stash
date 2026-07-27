@@ -5,6 +5,7 @@ everything before it is captured in git history (`git log`), not here.
 
 ## Unreleased
 
+- Gong call documents now link back to the original call in Gong.
 - `stash vfs stat` once again shows the source-sharing command for connected
   source roots, including roots that do not have an app URL.
 - OAuth reconnects now require a stable provider account identity. Slack,

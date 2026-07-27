@@ -1376,6 +1376,12 @@ async def test_gong_visibility_requires_account_allowlist(client: AsyncClient):
     blocked_hits = await source_service.search_documents(user_id=owner_id, query="blocked revenue")
     assert len(allowed_hits) == 1
     assert blocked_hits == []
+    source_ok, allowed_call = await source_service.source_document(
+        ws, owner_id, configured["id"], "call-1"
+    )
+    assert source_ok is True
+    assert allowed_call is not None
+    assert allowed_call["url"] == "https://app.gong.io/call?id=call-1"
 
 
 @pytest.mark.asyncio
@@ -3126,7 +3132,7 @@ async def test_read_source_rejects_unowned_connected_source(client: AsyncClient)
 
 def test_source_document_url_builds_provider_deep_links():
     """source_document_url derives a canonical provider URL from stored refs, and
-    returns None for sources we can't deep-link yet (Slack/Gong/Granola)."""
+    returns None for sources we can't deep-link yet (Slack/Granola)."""
     # GitHub: source external_ref is owner/repo, path is the file.
     assert (
         source_service.source_document_url("github_repo", "acme/widgets", "src/app.py")
@@ -3147,6 +3153,11 @@ def test_source_document_url_builds_provider_deep_links():
     assert (
         source_service.source_document_url("notion", None, "abc-def")
         == "https://www.notion.so/abcdef"
+    )
+    # Gong stores the call id as the document path.
+    assert (
+        source_service.source_document_url("gong_calls", "calls", "7782342274025937895")
+        == "https://app.gong.io/call?id=7782342274025937895"
     )
     # Slack has no deep link yet → None.
     assert source_service.source_document_url("slack", "T123", "#eng/1.ts") is None
