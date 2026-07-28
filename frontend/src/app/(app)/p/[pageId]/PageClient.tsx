@@ -41,6 +41,7 @@ import {
   getPage,
   getPublicSkill,
   listCommentThreads,
+  listMyWorkspaces,
   reconcileCommentAnchors,
   replyToCommentThread,
   setCommentResolved,
@@ -50,7 +51,8 @@ import {
   type PublicSkillPage,
 } from "@/lib/api";
 import { findInSkillContents } from "@/lib/localSkill";
-import type { CommentThread, Page } from "@/lib/types";
+import { getScope, getScopeUserId, setScope } from "@/lib/scope-store";
+import type { CommentThread, Page, Scope, Workspace } from "@/lib/types";
 import { subscribePageEvents } from "@/lib/pageEvents";
 import { refreshSidebar } from "@/lib/skillNavigationCache";
 
@@ -115,6 +117,14 @@ export default function SkillPageView({ pageId }: { pageId: string }) {
   const [skillAccessDenied, setSkillAccessDenied] = useState(false);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("saved");
   const [error, setError] = useState("");
+  // Every write route is scope-bound, so a page owned by a scope other than
+  // the active one renders read-only (saves from the wrong scope 404 with a
+  // baffling "Page not found"). We resolve the owning workspace to name it in
+  // the banner and offer a one-click switch. undefined = still resolving.
+  const [ownerWorkspace, setOwnerWorkspace] = useState<Workspace | null | undefined>(undefined);
+  const pageOwnerId = page?.owner_user_id ?? null;
+  const scopeMismatch =
+    !!page && !!user && !skillSlug && pageOwnerId !== (getScopeUserId() ?? user.id);
   // Save responses can arrive out of order if a fast save fires while a
   // slow save is still in flight. Treat the most-recently-issued seq as
   // the source of truth so older responses can't roll back the page.
@@ -164,6 +174,22 @@ export default function SkillPageView({ pageId }: { pageId: string }) {
     setCommentAnchorTops({});
     setExternalEdit(null);
   }, [pageId]);
+
+  useEffect(() => {
+    setOwnerWorkspace(undefined);
+    if (!scopeMismatch || !pageOwnerId) return;
+    // A page from the viewer's own personal stash needs no lookup — the
+    // switch target is Personal.
+    if (pageOwnerId === user?.id) {
+      setOwnerWorkspace(null);
+      return;
+    }
+    listMyWorkspaces()
+      .then((ws) => setOwnerWorkspace(ws.find((w) => w.scope_user_id === pageOwnerId) ?? null))
+      // Can't resolve the owner — the read-only view still stands, just
+      // without a named switch target.
+      .catch(() => setOwnerWorkspace(null));
+  }, [scopeMismatch, pageOwnerId, user?.id]);
 
   // Live updates: when an agent or another user edits this page on the backend,
   // refresh a passive view in place (HTML / read-only), or — when the user is
@@ -539,6 +565,15 @@ export default function SkillPageView({ pageId }: { pageId: string }) {
       </div>
     );
   }
+  if (page && scopeMismatch) {
+    return (
+      <WrongScopePageView
+        page={page}
+        ownerWorkspace={ownerWorkspace}
+        isPersonalPage={page.owner_user_id === user.id}
+      />
+    );
+  }
   if (!page && !error) return <DocumentPageSkeleton />;
 
   const isHtml = page?.content_type === "html";
@@ -901,6 +936,102 @@ function HtmlGlyph() {
       <circle cx="6" cy="6.5" r="0.6" fill="currentColor" />
       <circle cx="8.2" cy="6.5" r="0.6" fill="currentColor" />
     </svg>
+  );
+}
+
+// The active scope doesn't own this page: reads resolve the real owner, but
+// every write route runs against the active scope and would 404. So the page
+// renders read-only with a banner naming the owning scope and — when the
+// viewer can get there — a one-click switch (same mechanics as the scope
+// switcher: persist, then reload so every scoped fetch re-runs).
+function WrongScopePageView({
+  page,
+  ownerWorkspace,
+  isPersonalPage,
+}: {
+  page: Page;
+  ownerWorkspace: Workspace | null | undefined;
+  isPersonalPage: boolean;
+}) {
+  const activeScopeName = getScope()?.name ?? "Personal";
+
+  function switchTo(scope: Scope | null) {
+    setScope(scope);
+    window.location.reload();
+  }
+
+  let notice: ReactNode;
+  if (isPersonalPage) {
+    notice = (
+      <>
+        <span>
+          This page lives in your <strong>personal stash</strong> — you&apos;re
+          viewing it from the <strong>{activeScopeName}</strong>{" "}
+          workspace, so it&apos;s read-only here.
+        </span>
+        <button
+          type="button"
+          onClick={() => switchTo(null)}
+          className="shrink-0 cursor-pointer font-medium text-[var(--color-brand-600)] hover:underline"
+        >
+          Switch to Personal
+        </button>
+      </>
+    );
+  } else if (ownerWorkspace) {
+    notice = (
+      <>
+        <span>
+          This page belongs to the <strong>{ownerWorkspace.name}</strong>{" "}
+          workspace — you&apos;re in <strong>{activeScopeName}</strong>, so
+          it&apos;s read-only here.
+        </span>
+        <button
+          type="button"
+          onClick={() =>
+            switchTo({ scope_user_id: ownerWorkspace.scope_user_id, name: ownerWorkspace.name })
+          }
+          className="shrink-0 cursor-pointer font-medium text-[var(--color-brand-600)] hover:underline"
+        >
+          Switch to {ownerWorkspace.name}
+        </button>
+      </>
+    );
+  } else if (ownerWorkspace === null) {
+    notice = (
+      <span>This page was shared from another account — it&apos;s read-only here.</span>
+    );
+  } else {
+    // Owner lookup still in flight: state the read-only fact without yet
+    // claiming who owns the page.
+    notice = <span>This page belongs to a different scope — it&apos;s read-only here.</span>;
+  }
+
+  return (
+    <div className="scroll-thin flex-1 overflow-y-auto">
+      <div className="mx-auto max-w-[920px] px-12 pb-20 pt-6">
+        <div className="mb-6 flex items-center justify-between gap-3 rounded-lg border border-[var(--color-brand-600)]/40 bg-[var(--color-brand-600)]/10 px-4 py-2 text-[13px]">
+          {notice}
+        </div>
+        <h1 className="m-0 font-display text-[22px] font-bold leading-tight tracking-[-0.015em] text-foreground">
+          {page.name.replace(/\.(md|html)$/i, "") || "(untitled)"}
+        </h1>
+        <div className="mt-6">
+          <PageBody
+            page={{
+              id: page.id,
+              name: page.name,
+              content_type: page.content_type,
+              content_markdown: page.content_markdown,
+              content_html: page.content_html,
+              html_layout: page.html_layout,
+              updated_at: page.updated_at,
+              folder_path: [],
+            }}
+          />
+        </div>
+      </div>
+    </div>
   );
 }
 
