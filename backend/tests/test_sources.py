@@ -447,6 +447,7 @@ async def test_slack_channel_picker_lists_conversations(client: AsyncClient, mon
     class FakeSlackResponse:
         def __init__(self, payload):
             self._payload = payload
+            self.status_code = 200
 
         def raise_for_status(self):
             return None
@@ -466,19 +467,27 @@ async def test_slack_channel_picker_lists_conversations(client: AsyncClient, mon
             return None
 
         async def get(self, url, params):
-            if url == integrations_router.SLACK_CONVERSATIONS_LIST_URL:
-                assert params == {
-                    "types": integrations_router.SLACK_CHANNEL_TYPES,
-                    "limit": integrations_router.SLACK_CHANNEL_LIMIT,
-                }
+            if url == indexer.CONVERSATIONS_LIST_URL:
+                assert params["types"] == indexer.CHANNEL_TYPES
+                assert params["limit"] == indexer.CHANNEL_PAGE_SIZE
+                # Slack pages conversations.list; a user's DMs routinely sort
+                # onto a later page than the workspace's public channels.
+                if params.get("cursor") != "page2":
+                    return FakeSlackResponse(
+                        {
+                            "ok": True,
+                            "channels": [
+                                {"id": "C1", "name": "general", "is_private": False},
+                                {"id": "G1", "name": "leadership", "is_private": True},
+                            ],
+                            "response_metadata": {"next_cursor": "page2"},
+                        }
+                    )
                 return FakeSlackResponse(
                     {
                         "ok": True,
-                        "channels": [
-                            {"id": "C1", "name": "general", "is_private": False},
-                            {"id": "G1", "name": "leadership", "is_private": True},
-                            {"id": "D1", "is_im": True, "user": "U1"},
-                        ],
+                        "channels": [{"id": "D1", "is_im": True, "user": "U1"}],
+                        "response_metadata": {"next_cursor": ""},
                     }
                 )
             if url == indexer.AUTH_TEST_URL:
@@ -494,12 +503,84 @@ async def test_slack_channel_picker_lists_conversations(client: AsyncClient, mon
     resp = await client.get("/api/v1/integrations/slack/channels", headers=_auth(api_key))
 
     assert resp.status_code == 200
-    # The DM surfaces as the human it's with — never the raw D…/U… id.
+    # The DM surfaces as the human it's with — never the raw D…/U… id — and a
+    # DM that only appears on page 2 must still reach the picker.
     assert resp.json() == [
         {"id": "C1", "name": "general", "is_private": False},
         {"id": "G1", "name": "leadership", "is_private": True},
         {"id": "D1", "name": "dm-sam-liu", "is_private": False},
     ]
+
+
+@pytest.mark.asyncio
+async def test_slack_list_conversations_follows_cursor_to_the_last_page():
+    """conversations.list returns every public channel in the workspace, not
+    just the user's own, so a member's DMs sort onto later pages. Stopping at
+    page 1 makes those conversations un-pickable and un-indexable."""
+    from backend.integrations.slack import indexer
+
+    requested_cursors = []
+
+    class FakePagedClient:
+        async def get(self, url, params):
+            assert url == indexer.CONVERSATIONS_LIST_URL
+            requested_cursors.append(params.get("cursor"))
+            page = len(requested_cursors)
+            return _FakeSlackHttpResponse(
+                {
+                    "ok": True,
+                    "channels": [{"id": f"C{page}"}],
+                    "response_metadata": {"next_cursor": "next" if page < 3 else ""},
+                }
+            )
+
+    conversations = await indexer.list_conversations(FakePagedClient())
+
+    assert [c["id"] for c in conversations] == ["C1", "C2", "C3"]
+    assert requested_cursors == [None, "next", "next"]
+
+
+@pytest.mark.asyncio
+async def test_slack_get_honors_retry_after_on_rate_limit(monkeypatch):
+    """Paging a large workspace runs into Slack's tier-2 limit; a 429 is a
+    pacing signal, not a failure, so the sync must wait rather than abort."""
+    import asyncio
+
+    from backend.integrations.slack import indexer
+
+    slept = []
+
+    async def fake_sleep(seconds):
+        slept.append(seconds)
+
+    monkeypatch.setattr(asyncio, "sleep", fake_sleep)
+
+    responses = [
+        _FakeSlackHttpResponse({}, status_code=429, headers={"Retry-After": "2"}),
+        _FakeSlackHttpResponse({"ok": True, "channels": []}),
+    ]
+
+    class FakeRateLimitedClient:
+        async def get(self, url, params):
+            return responses.pop(0)
+
+    payload = await indexer._slack_get(FakeRateLimitedClient(), indexer.CONVERSATIONS_LIST_URL, {})
+
+    assert payload == {"ok": True, "channels": []}
+    assert slept == [2.0]
+
+
+class _FakeSlackHttpResponse:
+    def __init__(self, payload, status_code=200, headers=None):
+        self._payload = payload
+        self.status_code = status_code
+        self.headers = headers or {}
+
+    def raise_for_status(self):
+        return None
+
+    def json(self):
+        return self._payload
 
 
 # --- user-scoping (the access-control invariant) ----------------------------

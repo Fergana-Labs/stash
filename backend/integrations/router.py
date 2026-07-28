@@ -43,11 +43,6 @@ router = APIRouter(prefix="/api/v1/integrations", tags=["integrations"])
 STATE_TTL = timedelta(minutes=10)
 
 
-SLACK_CONVERSATIONS_LIST_URL = "https://slack.com/api/conversations.list"
-SLACK_CHANNEL_TYPES = "public_channel,private_channel,im,mpim"
-SLACK_CHANNEL_LIMIT = 100
-
-
 def _encode_state(
     user_id: UUID,
     provider: str,
@@ -609,18 +604,10 @@ async def slack_list_channels(current_user: dict = Depends(get_current_user)):
     access_token = await storage.get_valid_token(current_user["id"], "slack")
     headers = {"Authorization": f"Bearer {access_token}"}
     async with httpx.AsyncClient(timeout=30.0, headers=headers) as client:
-        resp = await client.get(
-            SLACK_CONVERSATIONS_LIST_URL,
-            params={"types": SLACK_CHANNEL_TYPES, "limit": SLACK_CHANNEL_LIMIT},
-        )
-        resp.raise_for_status()
-        payload = resp.json()
-
-        if not payload.get("ok"):
-            raise HTTPException(
-                status_code=502,
-                detail=f"Slack API error: {payload.get('error') or 'unknown_error'}",
-            )
+        try:
+            conversations = await slack_indexer.list_conversations(client)
+        except RuntimeError as e:
+            raise HTTPException(status_code=502, detail="Slack API error") from e
 
         # DMs carry no name in Slack's API — resolve them to the humans in the
         # conversation, exactly as the indexer names them, so the picker shows
@@ -628,7 +615,7 @@ async def slack_list_channels(current_user: dict = Depends(get_current_user)):
         self_user_id = await slack_indexer.authed_user_id(client)
         names: dict[str, str] = {}
         channels: list[SlackChannelSummary] = []
-        for channel in payload.get("channels", []):
+        for channel in conversations:
             channel_id = channel.get("id")
             if not channel_id:
                 continue
