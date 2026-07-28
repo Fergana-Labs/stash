@@ -194,9 +194,28 @@ fn mcp_allow_rules() -> Vec<String> {
     servers.keys().map(|name| format!("mcp__{name}")).collect()
 }
 
+/// The watermark the prompt's incremental pass filters against. The server
+/// prompt tells the agent what to do with it; the app only knows *when*.
+fn runtime_context() -> String {
+    let last_success = read_runs()
+        .iter()
+        .rev()
+        .find(|r| r["exit_code"] == 0)
+        .and_then(|r| r["finished_at"].as_str().map(str::to_string));
+    match last_success {
+        Some(ts) => format!(
+            "\n\n## Runtime context\n\nYour last successful curation run finished at {ts}. \
+             Treat material newer than that as new; earlier runs already covered the rest."
+        ),
+        None => "\n\n## Runtime context\n\nThis is the first curation run on this machine. \
+                 Survey roughly the last week of activity; do not ingest deep history."
+            .to_string(),
+    }
+}
+
 fn start_child() -> Result<(), String> {
     let cfg = load_local_config()?;
-    let prompt = fetch_prompt()?;
+    let prompt = fetch_prompt()? + &runtime_context();
     let started = chrono::Utc::now();
     let log_path = logs_dir().join(format!("{}.log", started.format("%Y%m%dT%H%M%SZ")));
     let log = std::fs::File::create(&log_path).map_err(|e| e.to_string())?;

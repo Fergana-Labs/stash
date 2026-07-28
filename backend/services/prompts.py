@@ -141,7 +141,11 @@ visible to whatever their sharing settings allow.
    `stash vfs "cat '/sessions/_index.jsonl'"`, and `stash search` on the
    topics you find.
 2. If MCP servers or other connectors are available in this environment,
-   check them for material that is new since the last curation run.
+   check them for material newer than your last successful run (the
+   timestamp is in the Runtime context section appended to this prompt).
+   Prefer each connector's time-filtered search/list tools; where a
+   connector can only list, read newest-first and stop as soon as items
+   are older than that timestamp.
 3. For each durable topic, write a short markdown note: what changed, the
    decisions made, key entities and terms of art, and where the detail lives.
    Check for an existing note on the topic first (`stash search`).
