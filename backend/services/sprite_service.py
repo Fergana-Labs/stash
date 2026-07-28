@@ -484,6 +484,15 @@ async def write_file(sprite: Sprite, abs_path: str, contents: str) -> None:
         raise SpriteError(f"write_file failed for {abs_path}")
 
 
+async def write_workdir_file(sprite: Sprite, rel_path: str, contents: str) -> None:
+    """Write a workdir-relative file, resolved for the active exec mode.
+
+    Callers must not hardcode SPRITE_WORKDIR: in local mode the exec layer
+    translates the cwd but not argv, so an absolute /home/sprite path would be
+    written literally on the developer's machine."""
+    await write_file(sprite, _box_path(rel_path), contents)
+
+
 async def fs_list(sprite: Sprite, rel_path: str) -> list[dict]:
     """Directory entries at a workdir-relative path on the box."""
     output, code = await exec_collect(

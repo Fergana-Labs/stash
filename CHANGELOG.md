@@ -5,6 +5,9 @@ everything before it is captured in git history (`git log`), not here.
 
 ## Unreleased
 
+- Scheduled agent runs no longer crash in local dev mode: the MCP registry's
+  `.mcp.json` is now written to the local simulated workdir instead of the
+  literal `/home/sprite/work` path, which is unwritable on dev machines.
 - Gong call documents now link back to the original call in Gong.
 - `stash vfs stat` once again shows the source-sharing command for connected
   source roots, including roots that do not have an app URL.
