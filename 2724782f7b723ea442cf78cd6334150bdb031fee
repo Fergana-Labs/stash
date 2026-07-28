@@ -1,0 +1,383 @@
+import { defineSoftwareMap } from "@dev.fast/progressive-review/software-map-model";
+
+export default defineSoftwareMap({
+  people: {
+    user: {
+      label: "Stash user",
+      description:
+        "Human who browses their Stash in the web UI and runs coding agents whose work is captured in Stash.",
+    },
+    selfHoster: {
+      label: "Self-hoster",
+      description: "Operator running the stack via docker-compose.prod.yml.",
+    },
+  },
+  systems: {
+    stash: {
+      label: "Stash",
+      description:
+        "Single-player home for AI-agent work: sessions, files/pages, tables, skills. Owned by Fergana Labs; hosted prod at joinstash.ai.",
+      containers: {
+        backend: {
+          label: "Backend API (FastAPI)",
+          description:
+            "Python 3.12 FastAPI app on port 3456. Serves the REST API, runs Alembic migrations at boot.",
+          coverage: {
+            globs: ["backend/**"],
+          },
+          components: {
+            auth: {
+              label: "Auth & request tagging",
+              description:
+                "API-key/JWT auth, read-key write allowlist, and X-Stash-Via caller-surface tagging (ask/auto/scan/cli/web) for audit rows.",
+              changeStatus: "modified",
+              coverage: { files: ["backend/auth.py", "backend/middleware.py"] },
+            },
+            vfs: {
+              label: "Server-side VFS",
+              description:
+                "Executes VFS shell scripts server-side (for ask-the-stash and the API) via an in-process stashvfs client; records one search audit event per grep.",
+              changeStatus: "modified",
+              coverage: {
+                files: [
+                  "backend/routers/vfs.py",
+                  "backend/services/vfs_service.py",
+                ],
+              },
+            },
+            securityAudit: {
+              label: "Security audit trail",
+              description:
+                "Records and serves content-access audit events (reads, searches, shares).",
+              coverage: {
+                files: [
+                  "backend/routers/security_audit.py",
+                  "backend/services/security_audit_service.py",
+                ],
+              },
+            },
+            analytics: {
+              label: "Analytics & admin dashboards",
+              description:
+                "Content-activity and admin analytics aggregation over audit events and usage; excludes auto/scan traffic.",
+              changeStatus: "modified",
+              coverage: {
+                files: [
+                  "backend/routers/analytics.py",
+                  "backend/routers/admin.py",
+                  "backend/services/admin_analytics_service.py",
+                  "backend/services/analytics_service.py",
+                  "backend/services/analytics_events_service.py",
+                ],
+              },
+            },
+            content: {
+              label: "Files, pages, skills & tables",
+              description:
+                "The Files tree (folders/pages/files), tables, skills bundles, publish/discover, shares, and trash.",
+              coverage: {
+                files: [
+                  "backend/routers/files_tree.py",
+                  "backend/routers/files.py",
+                  "backend/routers/skills.py",
+                  "backend/routers/publish.py",
+                  "backend/routers/discover.py",
+                  "backend/routers/tables.py",
+                  "backend/routers/shares.py",
+                  "backend/routers/trash.py",
+                ],
+                globs: [
+                  "backend/services/files*.py",
+                  "backend/services/skill*.py",
+                  "backend/services/table_service.py",
+                  "backend/services/share_service.py",
+                  "backend/services/storage_service.py",
+                ],
+              },
+            },
+            sessions: {
+              label: "Sessions & memory",
+              description:
+                "Coding-agent transcript upload, history events, session listing/materialization, and memory search.",
+              coverage: {
+                files: [
+                  "backend/routers/sessions.py",
+                  "backend/routers/memory.py",
+                  "backend/routers/transcripts.py",
+                  "backend/routers/session_folders.py",
+                ],
+                globs: [
+                  "backend/services/session*.py",
+                  "backend/services/memory_service.py",
+                  "backend/services/transcript_import.py",
+                ],
+              },
+            },
+            integrations: {
+              label: "Connected sources",
+              description:
+                "OAuth + import pipelines for external providers (GitHub, Google, Notion, Slack, Linear, ...).",
+              coverage: {
+                files: [
+                  "backend/routers/sources.py",
+                  "backend/services/source_service.py",
+                ],
+                globs: ["backend/integrations/**"],
+              },
+            },
+            ask: {
+              label: "Ask-the-stash",
+              description:
+                "Direct Anthropic tool-use loop answering questions over the user's Stash via the server-side VFS.",
+              coverage: {
+                files: [
+                  "backend/services/ask_service.py",
+                  "backend/services/tool_loop.py",
+                  "backend/services/llm.py",
+                  "backend/services/prompts.py",
+                ],
+              },
+            },
+            agentRuntime: {
+              label: "Cloud agent runtime",
+              description:
+                "Runs harness CLIs on Fly Sprites: agent sessions, credentials, schedules, MCP registry.",
+              coverage: {
+                files: [
+                  "backend/routers/agents.py",
+                  "backend/routers/agent_chat.py",
+                  "backend/routers/agent_credentials.py",
+                  "backend/routers/mcp_servers.py",
+                ],
+                globs: [
+                  "backend/services/agent_*.py",
+                  "backend/services/sprite_*.py",
+                  "backend/services/mcp_server_service.py",
+                ],
+              },
+            },
+          },
+        },
+        celeryWorker: {
+          label: "Celery workers & beat",
+          description:
+            "Background tasks: file/drive extraction, embeddings, session titles, source syncs, scheduled agents.",
+          coverage: {
+            files: ["backend/celery_app.py"],
+            globs: ["backend/tasks/**", "backend/workers/**"],
+          },
+        },
+        frontend: {
+          label: "Product UI (Next.js)",
+          description: "Next.js app on port 3457 — the product web UI.",
+          coverage: { globs: ["frontend/**"] },
+          components: {
+            appShell: {
+              label: "App shell & routes",
+              description:
+                "Next.js app router pages: home, sessions, files, skills, discover, settings, login/onboarding.",
+              coverage: { globs: ["frontend/src/app/**"] },
+            },
+            uiComponents: {
+              label: "UI components",
+              description:
+                "Shared React components: content viewers, skill pages, integrations, share, viz, workspace.",
+              coverage: { globs: ["frontend/src/components/**", "frontend/src/hooks/**"] },
+            },
+            clientLib: {
+              label: "Client lib",
+              description:
+                "API client, auth/scope stores, analytics, and other browser-side utilities.",
+              coverage: { globs: ["frontend/src/lib/**"] },
+            },
+          },
+        },
+        www: {
+          label: "Landing site (Next.js)",
+          description:
+            "Marketing/landing + docs/blog Next.js site on port 3100.",
+          coverage: { globs: ["www/**"] },
+        },
+        collab: {
+          label: "Collab server (Yjs)",
+          description:
+            "Node WebSocket sidecar on port 3458 for live collaborative page editing.",
+          coverage: { globs: ["collab/**"] },
+        },
+        cli: {
+          label: "stash CLI",
+          description:
+            "The `stash` command published to PyPI as `stashai`: uploads, skills, sources, VFS browsing, MCP server.",
+          coverage: { globs: ["cli/**"], files: ["pyproject.toml"] },
+          components: {
+            commands: {
+              label: "Command surface",
+              description: "Typer command tree and output formatting.",
+              coverage: {
+                files: [
+                  "cli/main.py",
+                  "cli/formatting.py",
+                  "cli/import_history.py",
+                ],
+              },
+            },
+            apiClient: {
+              label: "API client",
+              description:
+                "HTTP client for the backend API, config/token handling, telemetry; tags grep scan reads and records search events.",
+              changeStatus: "modified",
+              coverage: {
+                files: ["cli/client.py", "cli/config.py", "cli/telemetry.py"],
+              },
+            },
+            mcpServer: {
+              label: "MCP server",
+              description: "Exposes Stash operations to agents over MCP.",
+              coverage: { files: ["cli/mcp_server.py"] },
+            },
+          },
+        },
+        stashvfs: {
+          label: "stashvfs package",
+          description:
+            "Shared virtual-filesystem engine: lazy tree model, POSIX-ish shell (ls/cat/find/grep), and HTTP client. Consumed by the CLI and embedded in-process by the backend.",
+          coverage: { globs: ["stashvfs/**"] },
+          components: {
+            model: {
+              label: "VFS model",
+              description: "Lazy node tree with prefetch over the Stash API.",
+              coverage: { files: ["stashvfs/model.py"] },
+            },
+            shell: {
+              label: "VFS shell",
+              description:
+                "Parses and executes the supported shell commands against the model; grep wraps its per-document reads in scan_calls and records one search event.",
+              changeStatus: "modified",
+              coverage: { files: ["stashvfs/shell.py"] },
+            },
+            client: {
+              label: "VFS HTTP client",
+              description:
+                "Client interface to backend content endpoints, with scan_calls tagging and record_search hooks.",
+              changeStatus: "modified",
+              coverage: { files: ["stashvfs/client.py"] },
+            },
+          },
+        },
+        plugin: {
+          label: "Agent plugin (stashai.plugin)",
+          description:
+            "Hooks installed into coding-agent harnesses (Claude Code, Codex, Gemini, ...) that upload transcripts and artifacts to Stash.",
+          coverage: { globs: ["stashai/**", "plugins/**"] },
+        },
+        sdk: {
+          label: "Python SDK",
+          description: "Thin Python SDK for the Stash API.",
+          coverage: { globs: ["sdk/**"] },
+        },
+        chromeExtension: {
+          label: "Chrome extension",
+          description: "Browser capture extension (clips/saves into Stash).",
+          coverage: { globs: ["chrome_extension/**"] },
+        },
+        powerpointMcp: {
+          label: "PowerPoint MCP service",
+          description:
+            "Aspose-based PPTX rendering service (own Dockerfile, render.yaml service).",
+          coverage: { globs: ["powerpoint-mcp/**"] },
+        },
+      },
+      dataStores: {
+        postgres: {
+          label: "PostgreSQL",
+          kind: "database",
+          description:
+            "Primary store (Neon in hosted prod): users, sessions, history events, folders/pages/files, tables, skills, shares, audit events.",
+          coverage: {
+            files: ["backend/models.py", "backend/database.py"],
+            globs: ["backend/migrations/**"],
+          },
+        },
+        redis: {
+          label: "Redis",
+          kind: "database",
+          description: "Celery broker/result backend and caching.",
+        },
+        objectStorage: {
+          label: "S3 object storage",
+          kind: "objectStore",
+          description: "Binary file blobs for uploaded files and exports.",
+        },
+      },
+    },
+    anthropic: {
+      label: "Anthropic API",
+      external: true,
+      description:
+        "LLM provider for ask-the-stash and summarization; all calls are server-side.",
+    },
+    externalSources: {
+      label: "External SaaS providers",
+      external: true,
+      description:
+        "GitHub, Google Drive/Gmail, Notion, Slack, Linear, etc. — OAuth'd connected sources imported into Stash.",
+    },
+    auth0: {
+      label: "Auth0",
+      external: true,
+      description: "Managed-mode login provider for the hosted product.",
+    },
+    flySprites: {
+      label: "Fly Sprites",
+      external: true,
+      description: "Sandboxed VMs where the cloud agent runs harness CLIs.",
+    },
+    agentHarness: {
+      label: "Coding agent harness",
+      external: true,
+      description:
+        "Claude Code / Codex / Gemini etc. running on the user's machine; drives the CLI and fires plugin hooks.",
+    },
+  },
+  relationships: [
+    { kind: "semantic", from: "user", to: "stash.frontend.appShell", label: "uses", description: "Browses sessions, files, skills in the product UI." },
+    { kind: "semantic", from: "stash.frontend.appShell", to: "stash.frontend.uiComponents", label: "composes", description: "Routes render the shared component library." },
+    { kind: "semantic", from: "stash.frontend.uiComponents", to: "stash.frontend.clientLib", label: "uses", description: "Components fetch through the client lib." },
+    { kind: "semantic", from: "user", to: "stash.cli", label: "runs", description: "Runs `stash` commands in a terminal." },
+    { kind: "semantic", from: "selfHoster", to: "stash", label: "deploys", description: "Runs the stack from docker-compose.prod.yml / GHCR images." },
+    { kind: "semantic", from: "agentHarness", to: "stash.cli", label: "invokes", description: "Agents call the stash CLI and its MCP server." },
+    { kind: "semantic", from: "agentHarness", to: "stash.plugin", label: "fires hooks", description: "Harness lifecycle hooks trigger transcript/artifact uploads." },
+    { kind: "semantic", from: "stash.frontend.clientLib", to: "stash.backend", label: "REST", description: "Product UI calls the /api/v1 REST API." },
+    { kind: "semantic", from: "stash.frontend", to: "stash.collab", label: "WebSocket", description: "Yjs live page editing." },
+    { kind: "semantic", from: "stash.collab", to: "stash.backend", label: "persists", description: "Page snapshots persisted via the backend." },
+    { kind: "semantic", from: "stash.www", to: "stash.backend", label: "REST", description: "Landing/docs site calls the API for discover and auth checks." },
+    { kind: "semantic", from: "stash.cli.apiClient", to: "stash.backend", label: "REST", description: "CLI talks to the /api/v1 API with an API key." },
+    { kind: "semantic", from: "stash.cli.commands", to: "stash.stashvfs.shell", label: "embeds", description: "`stash vfs` runs the shared VFS shell locally." },
+    { kind: "semantic", from: "agentHarness", to: "stash.cli.mcpServer", label: "MCP", description: "Agents call Stash tools over MCP." },
+    { kind: "semantic", from: "stash.cli.mcpServer", to: "stash.cli.apiClient", label: "uses", description: "MCP tools reuse the CLI's API client." },
+    { kind: "semantic", from: "stash.stashvfs.shell", to: "stash.stashvfs.model", label: "queries", description: "Shell commands walk the lazy node tree." },
+    { kind: "semantic", from: "stash.stashvfs.model", to: "stash.stashvfs.client", label: "loads via", description: "Node loaders fetch content through the client." },
+    { kind: "semantic", from: "stash.stashvfs.client", to: "stash.backend.content", label: "REST", description: "VFS client reads content endpoints over HTTP." },
+    { kind: "semantic", from: "stash.stashvfs.client", to: "stash.backend.vfs", label: "records searches", description: "After a grep, posts the single search event to /api/v1/me/vfs/searches." },
+    { kind: "semantic", from: "stash.backend.vfs", to: "stash.backend.securityAudit", label: "records", description: "The /vfs/searches endpoint writes a source.searched audit event standing in for the grep's scan reads." },
+    { kind: "semantic", from: "stash.backend.vfs", to: "stash.stashvfs.shell", label: "embeds", description: "Server-side VFS runs the shared shell with an in-process client." },
+    { kind: "semantic", from: "stash.backend.ask", to: "stash.backend.vfs", label: "reads via", description: "Ask-the-stash tools browse the user's Stash through the server-side VFS." },
+    { kind: "semantic", from: "stash.backend.ask", to: "anthropic", label: "LLM calls", description: "Tool-use loop against the Anthropic API." },
+    { kind: "semantic", from: "stash.backend.auth", to: "stash.backend.securityAudit", label: "tags via", description: "Caller-surface (X-Stash-Via) tagging feeds audit rows." },
+    { kind: "semantic", from: "stash.backend.analytics", to: "stash.backend.securityAudit", label: "aggregates", description: "Dashboards aggregate content-activity from audit events." },
+    { kind: "semantic", from: "stash.backend.integrations", to: "externalSources", label: "OAuth + import", description: "Connect and sync external provider content." },
+    { kind: "semantic", from: "stash.backend.agentRuntime", to: "flySprites", label: "provisions", description: "Cloud agent sessions run on Fly Sprites." },
+    { kind: "semantic", from: "stash.backend", to: "auth0", label: "auth", description: "Managed-mode login and JWT verification." },
+    { kind: "semantic", from: "stash.backend", to: "stash.postgres", label: "reads/writes" },
+    { kind: "semantic", from: "stash.backend", to: "stash.objectStorage", label: "stores blobs" },
+    { kind: "semantic", from: "stash.backend", to: "stash.redis", label: "enqueues", description: "Celery task enqueue + caching." },
+    { kind: "semantic", from: "stash.celeryWorker", to: "stash.redis", label: "consumes" },
+    { kind: "semantic", from: "stash.celeryWorker", to: "stash.postgres", label: "reads/writes" },
+    { kind: "semantic", from: "stash.plugin", to: "stash.backend.sessions", label: "uploads", description: "Transcript, event, and artifact uploads via the API." },
+    { kind: "semantic", from: "stash.backend.sessions", to: "stash.backend.content", label: "materializes", description: "Session artifacts materialize into the Files tree." },
+    { kind: "semantic", from: "stash.frontend.clientLib", to: "stash.backend.content", label: "REST", description: "Files/skills views read and write content routes." },
+    { kind: "semantic", from: "stash.sdk", to: "stash.backend", label: "REST" },
+    { kind: "semantic", from: "stash.chromeExtension", to: "stash.backend", label: "REST", description: "Saves clips into the user's Stash." },
+    { kind: "semantic", from: "stash.backend", to: "stash.powerpointMcp", label: "renders PPTX" },
+  ],
+});
