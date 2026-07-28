@@ -1,0 +1,265 @@
+//! The local curator: runs `claude -p <prompt>` headlessly on this machine so
+//! curation happens with the user's own credentials and MCP connectors — the
+//! knowledge base never requires Stash's cloud to see private sources.
+//!
+//! The prompt is served by the backend (`GET /api/v1/me/local-curator-prompt`)
+//! and fetched fresh before every run, so prompt iterations reach every
+//! install without an app release. State lives in ~/.stash/curator/:
+//! config.json (enabled / interval / extra claude args), runs.jsonl (one
+//! record per completed run), and per-run logs. A scheduler thread triggers a
+//! run when the last one is older than the configured interval — which also
+//! covers "the laptop was closed at the scheduled time": the run fires as
+//! overdue on next launch.
+
+use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
+use std::io::Write;
+use std::path::PathBuf;
+use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
+
+static RUNNING: AtomicBool = AtomicBool::new(false);
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct LocalConfig {
+    pub enabled: bool,
+    pub interval_hours: u64,
+    /// Base permission rules for the headless run. The user's MCP servers are
+    /// discovered and appended at spawn time — see `mcp_allow_rules`.
+    pub allowed_tools: Vec<String>,
+}
+
+fn state_dir() -> PathBuf {
+    dirs::home_dir()
+        .expect("no home directory")
+        .join(".stash/curator")
+}
+
+fn config_path() -> PathBuf {
+    state_dir().join("config.json")
+}
+
+fn runs_path() -> PathBuf {
+    state_dir().join("runs.jsonl")
+}
+
+fn logs_dir() -> PathBuf {
+    state_dir().join("logs")
+}
+
+pub fn ensure_state_files() -> Result<(), std::io::Error> {
+    std::fs::create_dir_all(logs_dir())?;
+    if !config_path().exists() {
+        // Disabled until the user flips the switch in the UI: a fresh install
+        // must not silently start spending tokens on headless agent runs.
+        let default = LocalConfig {
+            enabled: false,
+            interval_hours: 6,
+            allowed_tools: vec!["Bash(stash:*)".into(), "Write".into()],
+        };
+        write_config(&default).map_err(std::io::Error::other)?;
+    }
+    Ok(())
+}
+
+fn load_local_config() -> Result<LocalConfig, String> {
+    let path = config_path();
+    let raw = std::fs::read_to_string(&path)
+        .map_err(|e| format!("read {}: {e}", path.display()))?;
+    serde_json::from_str(&raw).map_err(|e| format!("parse {}: {e}", path.display()))
+}
+
+fn write_config(cfg: &LocalConfig) -> Result<(), String> {
+    let pretty = serde_json::to_string_pretty(cfg).expect("serialize curator config");
+    std::fs::write(config_path(), pretty + "\n").map_err(|e| e.to_string())
+}
+
+fn last_run() -> Option<Value> {
+    let raw = std::fs::read_to_string(runs_path()).ok()?;
+    let line = raw.lines().rev().find(|l| !l.trim().is_empty())?;
+    serde_json::from_str(line).ok()
+}
+
+#[tauri::command]
+pub fn curator_local_status() -> Result<Value, String> {
+    let cfg = load_local_config()?;
+    let last = last_run();
+    let log_tail = last
+        .as_ref()
+        .and_then(|r| r["log"].as_str())
+        .and_then(|p| std::fs::read_to_string(p).ok())
+        .map(|s| {
+            let lines: Vec<&str> = s.lines().collect();
+            let start = lines.len().saturating_sub(30);
+            lines[start..].join("\n")
+        });
+    Ok(json!({
+        "enabled": cfg.enabled,
+        "interval_hours": cfg.interval_hours,
+        "running": RUNNING.load(Ordering::SeqCst),
+        "last_run": last,
+        "log_tail": log_tail,
+    }))
+}
+
+/// spawn_run does blocking work (the prompt fetch), so keep it off the
+/// webview's thread.
+#[tauri::command]
+pub async fn curator_run_now() -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(spawn_run)
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub fn curator_set_enabled(enabled: bool) -> Result<(), String> {
+    let mut cfg = load_local_config()?;
+    cfg.enabled = enabled;
+    write_config(&cfg)
+}
+
+#[tauri::command]
+pub fn curator_set_interval(hours: u64) -> Result<(), String> {
+    if hours == 0 {
+        return Err("interval must be at least 1 hour".into());
+    }
+    let mut cfg = load_local_config()?;
+    cfg.interval_hours = hours;
+    write_config(&cfg)
+}
+
+/// Start a curation run. Refuses if one is already in flight.
+pub fn spawn_run() -> Result<(), String> {
+    if RUNNING.swap(true, Ordering::SeqCst) {
+        return Err("Curator is already running".into());
+    }
+    let result = start_child();
+    if result.is_err() {
+        RUNNING.store(false, Ordering::SeqCst);
+    }
+    result
+}
+
+/// Fetched fresh before every run — no local copy, no stale-prompt codepath.
+fn fetch_prompt() -> Result<String, String> {
+    let cfg = crate::config::load()?;
+    let key = cfg.api_key.ok_or("Not signed in")?;
+    let resp = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .expect("build http client")
+        .get(format!("{}/api/v1/me/local-curator-prompt", cfg.base_url))
+        .bearer_auth(&key)
+        .send()
+        .map_err(|e| format!("fetch curator prompt: {e}"))?;
+    if !resp.status().is_success() {
+        return Err(format!(
+            "fetch curator prompt: HTTP {}",
+            resp.status().as_u16()
+        ));
+    }
+    let body: Value = resp.json().map_err(|e| format!("fetch curator prompt: {e}"))?;
+    body["prompt"]
+        .as_str()
+        .filter(|p| !p.is_empty())
+        .map(str::to_string)
+        .ok_or_else(|| "curator prompt response missing prompt".to_string())
+}
+
+/// One `mcp__<server>` allow rule per MCP server in the user's Claude config.
+/// Curation is supposed to read through the user's connectors, and a headless
+/// run denies any tool without an allow rule — there is no global MCP
+/// wildcard, so the grant has to be built per server, per run.
+fn mcp_allow_rules() -> Vec<String> {
+    let path = dirs::home_dir()
+        .expect("no home directory")
+        .join(".claude.json");
+    let Ok(raw) = std::fs::read_to_string(path) else {
+        return Vec::new();
+    };
+    let Ok(v) = serde_json::from_str::<Value>(&raw) else {
+        return Vec::new();
+    };
+    let Some(servers) = v["mcpServers"].as_object() else {
+        return Vec::new();
+    };
+    servers.keys().map(|name| format!("mcp__{name}")).collect()
+}
+
+fn start_child() -> Result<(), String> {
+    let cfg = load_local_config()?;
+    let prompt = fetch_prompt()?;
+    let started = chrono::Utc::now();
+    let log_path = logs_dir().join(format!("{}.log", started.format("%Y%m%dT%H%M%SZ")));
+    let log = std::fs::File::create(&log_path).map_err(|e| e.to_string())?;
+    let log_err = log.try_clone().map_err(|e| e.to_string())?;
+
+    let mut rules = cfg.allowed_tools.clone();
+    rules.extend(mcp_allow_rules());
+    let mut cmd = Command::new("claude");
+    cmd.arg("-p")
+        .arg(&prompt)
+        .arg("--allowedTools")
+        .arg(rules.join(","));
+    let mut child = cmd
+        .stdin(Stdio::null())
+        .stdout(log)
+        .stderr(log_err)
+        .spawn()
+        .map_err(|e| format!("spawn claude: {e} — is the Claude Code CLI installed?"))?;
+
+    std::thread::spawn(move || {
+        let status = child.wait();
+        let record = json!({
+            "started_at": started.to_rfc3339(),
+            "finished_at": chrono::Utc::now().to_rfc3339(),
+            "exit_code": status.ok().and_then(|s| s.code()),
+            "log": log_path.display().to_string(),
+        });
+        if let Ok(mut f) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(runs_path())
+        {
+            let _ = writeln!(f, "{record}");
+        }
+        RUNNING.store(false, Ordering::SeqCst);
+    });
+    Ok(())
+}
+
+pub fn start_scheduler() {
+    std::thread::spawn(|| loop {
+        std::thread::sleep(std::time::Duration::from_secs(60));
+        if RUNNING.load(Ordering::SeqCst) {
+            continue;
+        }
+        let cfg = match load_local_config() {
+            Ok(cfg) => cfg,
+            Err(e) => {
+                eprintln!("curator scheduler: {e}");
+                continue;
+            }
+        };
+        if !cfg.enabled || !due(cfg.interval_hours) {
+            continue;
+        }
+        if let Err(e) = spawn_run() {
+            eprintln!("curator scheduler: {e}");
+        }
+    });
+}
+
+fn due(interval_hours: u64) -> bool {
+    let Some(last) = last_run() else {
+        return true;
+    };
+    let Some(finished) = last["finished_at"]
+        .as_str()
+        .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+    else {
+        return true;
+    };
+    let elapsed = chrono::Utc::now().signed_duration_since(finished);
+    elapsed >= chrono::Duration::hours(interval_hours as i64)
+}

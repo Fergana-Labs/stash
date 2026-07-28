@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Stash Desktop</title>
+    <script type="module" src="/src/main.ts" defer></script>
+    <link rel="stylesheet" href="/src/styles.css" />
+  </head>
+
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark">⬡</span>
+        <span class="brand-name">Stash Desktop</span>
+      </div>
+      <div class="topbar-right">
+        <span id="account-chip" class="chip">…</span>
+        <button id="refresh-btn" class="btn btn-ghost" title="Refresh">Refresh</button>
+      </div>
+    </header>
+
+    <main>
+      <section class="card" id="setup-card">
+        <h2>Getting set up</h2>
+        <ul class="checklist" id="checklist"></ul>
+        <p class="error" id="setup-error" hidden></p>
+      </section>
+
+      <section class="card" id="health-card">
+        <h2>Health</h2>
+        <div id="backend-health" class="row"></div>
+        <h3>Integrations</h3>
+        <ul class="statuslist" id="integrations"></ul>
+        <h3>Sources</h3>
+        <ul class="statuslist" id="sources"></ul>
+        <p class="error" id="health-error" hidden></p>
+      </section>
+
+      <section class="card" id="memory-card">
+        <h2>Memory curator <span class="muted">(Stash cloud)</span></h2>
+        <div id="memory-status"></div>
+        <div class="actions">
+          <button id="recompute-btn" class="btn">Run now</button>
+          <span id="memory-msg" class="muted"></span>
+        </div>
+      </section>
+
+      <section class="card" id="local-card">
+        <h2>Local curator <span class="muted">(this machine)</span></h2>
+        <p class="muted">
+          Runs Claude Code headlessly with your own credentials and MCP
+          connectors, distilling recent activity into your Stash. The curation
+          prompt is managed by Stash and fetched fresh before every run.
+        </p>
+        <div id="local-status"></div>
+        <div class="actions">
+          <label class="toggle">
+            <input type="checkbox" id="local-enabled" />
+            Curate automatically every
+            <select id="local-interval">
+              <option value="1">1 hour</option>
+              <option value="3">3 hours</option>
+              <option value="6">6 hours</option>
+              <option value="12">12 hours</option>
+              <option value="24">24 hours</option>
+            </select>
+          </label>
+        </div>
+        <div class="actions">
+          <button id="local-run-btn" class="btn">Run now</button>
+          <label class="toggle">
+            <input type="checkbox" id="autostart-toggle" />
+            Launch at login
+          </label>
+        </div>
+        <pre id="local-log" class="log" hidden></pre>
+        <p class="error" id="local-error" hidden></p>
+      </section>
+    </main>
+  </body>
+</html>
