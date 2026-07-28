@@ -4,7 +4,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends
 
-from ..auth import get_scope
+from ..auth import get_read_scopes
 from ..database import get_pool
 from ..services import (
     files_service,
@@ -15,20 +15,37 @@ from ..services import (
 router = APIRouter(prefix="/api/v1/me", tags=["trash"])
 
 
+async def _fan_out(list_for_scope, read_scopes: list[UUID]) -> list[dict]:
+    """Run a single-scope listing across every scope the caller reads, tagging
+    each row with the scope it came from.
+
+    Trash is unpaginated, so gathering per scope and sorting in Python is exact.
+    A spanning SQL predicate is the right tool once LIMIT/OFFSET is involved —
+    merging pages of separate queries is not the same list.
+    """
+    rows: list[dict] = []
+    for owner_user_id in read_scopes:
+        for row in await list_for_scope(owner_user_id):
+            rows.append({**row, "owner_user_id": owner_user_id})
+    rows.sort(key=lambda row: row["deleted_at"], reverse=True)
+    return rows
+
+
 @router.get("/trash")
 async def list_trash(
-    scope_user_id: UUID = Depends(get_scope),
+    read_scopes: list[UUID] = Depends(get_read_scopes),
 ):
     """Trash listing: pages + files + sessions, each sorted by deleted_at DESC.
 
-    Includes deleted_by display name so the UI can show "Deleted by Alice"
-    without a second round-trip.
+    Spans every scope the caller reads — deleting something from a workspace
+    then hunting for it in a scope switcher is the exact confusion this model
+    removes. Each row carries `owner_user_id` so the UI can say which place it
+    came from, and `deleted_by`'s display name so it can say who did it without
+    a second round-trip.
     """
-    owner_user_id = scope_user_id
-
-    pages = await files_tree_service.list_trashed_pages(owner_user_id)
-    files = await files_service.list_trashed_files(owner_user_id)
-    sessions = await session_service.list_trashed_sessions(owner_user_id)
+    pages = await _fan_out(files_tree_service.list_trashed_pages, read_scopes)
+    files = await _fan_out(files_service.list_trashed_files, read_scopes)
+    sessions = await _fan_out(session_service.list_trashed_sessions, read_scopes)
 
     actor_ids = {row["deleted_by"] for row in pages + files + sessions if row.get("deleted_by")}
     actors: dict[UUID, dict] = {}
@@ -47,6 +64,7 @@ async def list_trash(
         return {
             "id": str(row["id"]),
             "name": row[name_key],
+            "owner_user_id": str(row["owner_user_id"]),
             "deleted_at": row["deleted_at"],
             "deleted_by": str(row["deleted_by"]) if row.get("deleted_by") else None,
             "deleted_by_name": (actor["display_name"] or actor["name"] if actor else None),

@@ -264,6 +264,23 @@ async def get_scope(
     return scope_user_id
 
 
+async def get_read_scopes(
+    current_user: dict = Depends(get_current_user),
+) -> list[UUID]:
+    """Every scope a read spans: the caller's own, then each workspace they
+    belong to.
+
+    Reads ignore `X-Stash-Scope` on purpose. Scope is a place, not a mode: a
+    read returns everything the caller owns, each row tagged with the scope it
+    came from, and the client renders those scopes as roots. Only writes still
+    resolve to a single scope (`get_scope`) — a new object has to land
+    somewhere, and that somewhere is the one thing a caller must choose.
+    """
+    from .services import permission_service
+
+    return await permission_service.read_scope_ids(current_user["id"])
+
+
 async def get_current_user_optional(
     request: Request,
     credentials: HTTPAuthorizationCredentials | None = Depends(HTTPBearer(auto_error=False)),
