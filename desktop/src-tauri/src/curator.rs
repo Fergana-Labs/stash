@@ -21,12 +21,20 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 static RUNNING: AtomicBool = AtomicBool::new(false);
 
+/// Harnesses the curator can run through, in auto-pick priority order.
+const AGENT_PRIORITY: [&str; 3] = ["claude", "openclaw", "hermes"];
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct LocalConfig {
     pub enabled: bool,
     pub interval_hours: u64,
-    /// Base permission rules for the headless run. The user's MCP servers are
-    /// discovered and appended at spawn time — see `mcp_allow_rules`.
+    /// "auto" picks the first installed harness from AGENT_PRIORITY; or name
+    /// one explicitly ("claude" | "openclaw" | "hermes").
+    pub agent: String,
+    /// Claude-only: base permission rules for the headless run. The user's
+    /// MCP servers are discovered and appended at spawn time — see
+    /// `mcp_allow_rules`. OpenClaw and Hermes have no per-tool grant flag;
+    /// their runs use the harness's own configured permissions.
     pub allowed_tools: Vec<String>,
 }
 
@@ -53,10 +61,14 @@ pub fn ensure_state_files() -> Result<(), std::io::Error> {
     if !config_path().exists() {
         // Disabled until the user flips the switch in the UI: a fresh install
         // must not silently start spending tokens on headless agent runs.
+        // No Write grant: the curator maintains the wiki through `stash files
+        // add-page/edit-page` and must not be able to modify local files —
+        // including this config, which governs future runs' permissions.
         let default = LocalConfig {
             enabled: false,
             interval_hours: 6,
-            allowed_tools: vec!["Bash(stash:*)".into(), "Write".into()],
+            agent: "auto".into(),
+            allowed_tools: vec!["Bash(stash:*)".into()],
         };
         write_config(&default).map_err(std::io::Error::other)?;
     }
@@ -101,9 +113,12 @@ pub fn curator_local_status() -> Result<Value, String> {
             let start = lines.len().saturating_sub(30);
             lines[start..].join("\n")
         });
+    let agent = resolve_agent(&cfg);
     Ok(json!({
         "enabled": cfg.enabled,
         "interval_hours": cfg.interval_hours,
+        "agent": agent.as_deref().ok(),
+        "agent_error": agent.as_deref().err(),
         "running": RUNNING.load(Ordering::SeqCst),
         "last_run": last,
         "log_tail": log_tail,
@@ -213,30 +228,98 @@ fn runtime_context() -> String {
     }
 }
 
+fn find_on_path(binary: &str) -> bool {
+    let Ok(path) = std::env::var("PATH") else {
+        return false;
+    };
+    std::env::split_paths(&path).any(|dir| dir.join(binary).is_file())
+}
+
+/// The harness this run will use. "auto" takes the first installed harness
+/// in priority order; a named agent must actually be installed.
+pub fn resolve_agent(cfg: &LocalConfig) -> Result<String, String> {
+    if cfg.agent != "auto" {
+        if !AGENT_PRIORITY.contains(&cfg.agent.as_str()) {
+            return Err(format!(
+                "unsupported curator agent '{}' (supported: {})",
+                cfg.agent,
+                AGENT_PRIORITY.join(", ")
+            ));
+        }
+        if !find_on_path(&cfg.agent) {
+            return Err(format!("configured curator agent '{}' is not installed", cfg.agent));
+        }
+        return Ok(cfg.agent.clone());
+    }
+    AGENT_PRIORITY
+        .iter()
+        .find(|b| find_on_path(b))
+        .map(|b| b.to_string())
+        .ok_or_else(|| {
+            format!(
+                "no supported agent harness installed (looked for: {})",
+                AGENT_PRIORITY.join(", ")
+            )
+        })
+}
+
+fn build_command(agent: &str, prompt: &str, cfg: &LocalConfig) -> Command {
+    let mut cmd = Command::new(agent);
+    match agent {
+        "claude" => {
+            let mut rules = cfg.allowed_tools.clone();
+            rules.extend(mcp_allow_rules());
+            cmd.arg("-p")
+                .arg(prompt)
+                .arg("--allowedTools")
+                .arg(rules.join(","));
+        }
+        // --deliver defaults to false: the reply never leaves the machine
+        // for a messaging channel. --local runs the embedded agent; a
+        // dedicated session id keeps curation out of their chat sessions
+        // (and is required — openclaw refuses a turn without a session).
+        "openclaw" => {
+            cmd.args([
+                "agent",
+                "--local",
+                "--session-id",
+                "stash-curator",
+                "--timeout",
+                "3600",
+                "-m",
+            ])
+            .arg(prompt);
+        }
+        // -z is Hermes's documented one-shot mode; HERMES_ACCEPT_HOOKS
+        // pre-approves shell hooks so an unattended run can't stall on an
+        // approval prompt.
+        "hermes" => {
+            cmd.arg("-z").arg(prompt).env("HERMES_ACCEPT_HOOKS", "1");
+        }
+        _ => unreachable!("resolve_agent validated the harness"),
+    }
+    // The knowledge base is per-person: pin every stash call in the run to
+    // the personal scope, even when config points at a workspace.
+    cmd.env("STASH_SCOPE", "");
+    cmd
+}
+
 fn start_child() -> Result<(), String> {
     let cfg = load_local_config()?;
+    let agent = resolve_agent(&cfg)?;
     let prompt = fetch_prompt()? + &runtime_context();
     let started = chrono::Utc::now();
     let log_path = logs_dir().join(format!("{}.log", started.format("%Y%m%dT%H%M%SZ")));
     let log = std::fs::File::create(&log_path).map_err(|e| e.to_string())?;
     let log_err = log.try_clone().map_err(|e| e.to_string())?;
 
-    let mut rules = cfg.allowed_tools.clone();
-    rules.extend(mcp_allow_rules());
-    let mut cmd = Command::new("claude");
-    cmd.arg("-p")
-        .arg(&prompt)
-        .arg("--allowedTools")
-        .arg(rules.join(","))
-        // The knowledge base is per-person: pin every stash call in the run
-        // to the personal scope, even when config points at a workspace.
-        .env("STASH_SCOPE", "");
+    let mut cmd = build_command(&agent, &prompt, &cfg);
     let mut child = cmd
         .stdin(Stdio::null())
         .stdout(log)
         .stderr(log_err)
         .spawn()
-        .map_err(|e| format!("spawn claude: {e} — is the Claude Code CLI installed?"))?;
+        .map_err(|e| format!("spawn {agent}: {e}"))?;
 
     std::thread::spawn(move || {
         let status = child.wait();
@@ -244,6 +327,7 @@ fn start_child() -> Result<(), String> {
             "started_at": started.to_rfc3339(),
             "finished_at": chrono::Utc::now().to_rfc3339(),
             "exit_code": status.ok().and_then(|s| s.code()),
+            "agent": agent,
             "log": log_path.display().to_string(),
         });
         if let Ok(mut f) = std::fs::OpenOptions::new()

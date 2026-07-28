@@ -7,6 +7,7 @@ interface Checks {
   base_url: string;
   cli_installed: boolean;
   cli_version: string | null;
+  harnesses: string[];
   claude_installed: boolean;
   plugin_installed: boolean;
 }
@@ -89,27 +90,25 @@ async function renderChecklist() {
 
   list.append(
     statusItem(
-      checks.claude_installed ? "ok" : "bad",
-      "Claude Code installed",
-      checks.claude_installed
-        ? ""
-        : "Install: <code>npm install -g @anthropic-ai/claude-code</code>",
+      checks.harnesses.length > 0 ? "ok" : "bad",
+      "Agent harness installed",
+      checks.harnesses.length > 0
+        ? checks.harnesses.join(", ")
+        : "Install Claude Code, OpenClaw, or Hermes",
     ),
   );
 
-  const plugin = statusItem(
-    checks.plugin_installed ? "ok" : "bad",
-    "Stash plugin for Claude Code",
-    checks.plugin_installed
-      ? ""
-      : checks.claude_installed
-        ? ""
-        : "Install Claude Code first",
-  );
-  if (!checks.plugin_installed && checks.claude_installed) {
-    plugin.append(installButton("install_plugin"));
+  // The one-click plugin install is Claude-specific; other harnesses get
+  // their hooks wired by `stash signin`.
+  if (checks.claude_installed) {
+    const plugin = statusItem(
+      checks.plugin_installed ? "ok" : "bad",
+      "Stash plugin for Claude Code",
+      "",
+    );
+    if (!checks.plugin_installed) plugin.append(installButton("install_plugin"));
+    list.append(plugin);
   }
-  list.append(plugin);
 }
 
 function installButton(command: string): HTMLButtonElement {
@@ -273,6 +272,11 @@ async function renderLocal() {
     const box = $("local-status");
     box.replaceChildren();
     const list = el("ul", "statuslist");
+    list.append(
+      status.agent
+        ? statusItem("ok", "Runs through", status.agent)
+        : statusItem("bad", "No agent harness", status.agent_error ?? ""),
+    );
     if (status.running) {
       list.append(statusItem("warn", "Curation run in progress", ""));
     }

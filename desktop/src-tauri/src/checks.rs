@@ -10,6 +10,8 @@ pub struct Checks {
     pub base_url: String,
     pub cli_installed: bool,
     pub cli_version: Option<String>,
+    /// Curator-capable harnesses found on this machine, in priority order.
+    pub harnesses: Vec<String>,
     pub claude_installed: bool,
     pub plugin_installed: bool,
 }
@@ -18,15 +20,28 @@ pub struct Checks {
 pub async fn run_checks() -> Result<Checks, String> {
     let cfg = crate::config::load()?;
     let cli_version = command_stdout("stash", &["--version"]);
+    let harnesses: Vec<String> = ["claude", "openclaw", "hermes"]
+        .iter()
+        .filter(|b| binary_on_path(b))
+        .map(|b| b.to_string())
+        .collect();
     Ok(Checks {
         signed_in: cfg.api_key.is_some(),
         username: cfg.username,
         base_url: cfg.base_url,
         cli_installed: cli_version.is_some(),
         cli_version,
-        claude_installed: command_stdout("claude", &["--version"]).is_some(),
+        claude_installed: harnesses.iter().any(|h| h == "claude"),
+        harnesses,
         plugin_installed: claude_plugin_installed(),
     })
+}
+
+fn binary_on_path(binary: &str) -> bool {
+    let Ok(path) = std::env::var("PATH") else {
+        return false;
+    };
+    std::env::split_paths(&path).any(|dir| dir.join(binary).is_file())
 }
 
 fn command_stdout(binary: &str, args: &[&str]) -> Option<String> {
