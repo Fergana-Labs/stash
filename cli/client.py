@@ -291,6 +291,19 @@ class StashClient:
     def list_object_shares(self, object_type: str, object_id: str) -> list:
         return self._list("/api/v1/share", "shares", object_type=object_type, object_id=object_id)
 
+    def set_general_access(self, object_type: str, object_id: str, public_permission: str) -> dict:
+        """The "anyone with the link" level for a page/file/folder/table.
+        Uploads are private until this is set, so the app_url an upload returns
+        opens only for its owner."""
+        return self._patch(
+            "/api/v1/share/general-access",
+            json={
+                "object_type": object_type,
+                "object_id": object_id,
+                "public_permission": public_permission,
+            },
+        )
+
     # --- Session folders (shareable grouping for sessions) ---
 
     def list_session_folders(self) -> list:

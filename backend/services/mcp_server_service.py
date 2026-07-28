@@ -115,8 +115,6 @@ async def sync_sprite_config(user_id: UUID, sprite: sprite_service.Sprite) -> No
     """
     servers = await list_servers(user_id)
     config = {"mcpServers": {s["name"]: claude_entry(s) for s in servers}}
-    await sprite_service.write_file(
-        sprite,
-        f"{sprite_service.SPRITE_WORKDIR}/.mcp.json",
-        json.dumps(config, indent=2) + "\n",
+    await sprite_service.write_workdir_file(
+        sprite, ".mcp.json", json.dumps(config, indent=2) + "\n"
     )

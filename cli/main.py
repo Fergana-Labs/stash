@@ -7,6 +7,7 @@ import json
 import re
 import shutil
 import sys
+import tempfile
 import textwrap
 import time
 from pathlib import Path
@@ -1282,6 +1283,11 @@ _UPLOAD_TEXT_EXTENSIONS = {
 }
 
 
+# Mirrors backend files_tree_service.HTML_EXTS — these become HTML pages
+# server-side, so the CLI must not pre-empt that by posting them as markdown.
+_HTML_UPLOAD_EXTENSIONS = {".html", ".htm"}
+
+
 def _is_upload_text_file(path: Path) -> bool:
     return path.suffix.lower() in _UPLOAD_TEXT_EXTENSIONS
 
@@ -1335,15 +1341,27 @@ def upload(
         "--public/--private",
         help="Skill visibility (only meaningful with --skill).",
     ),
+    public_link: bool = typer.Option(
+        False,
+        "--public-link",
+        help=(
+            "Give the upload an 'anyone with the link' grant, so the returned "
+            "app_url opens for people you send it to. Without this an upload "
+            "is private and its link works only for you."
+        ),
+    ),
     as_json: bool = typer.Option(False, "--json"),
 ):
     """Upload a local file or directory into your Files.
 
     A single file lands directly in your Files (Markdown/HTML become
-    editable pages, everything else a binary file) and the returned
-    ``app_url`` is the share link. A directory becomes a folder, and
+    editable pages, everything else a binary file). A directory becomes a folder, and
     every text file in it — Markdown, HTML, code, CSV, and friends —
     becomes an editable page. **No Skill is created.**
+
+    Uploads are private. The returned ``app_url`` opens for you alone unless
+    you pass ``--public-link``, which adds an "anyone with the link" grant —
+    that is what makes the URL worth handing to someone else.
 
     Pass ``--skill <title>`` to *also* bundle the upload into a shareable
     Skill. Use a Skill when you're publishing a folder of related
@@ -1352,6 +1370,11 @@ def upload(
     upload."""
     _require_auth()
     telemetry.record("upload")
+    # Callers that invoke this function directly bypass Typer's default
+    # resolution, so an unset flag arrives as a (truthy) OptionInfo. Publishing
+    # someone's upload to anyone-with-the-link is not a mistake we can make by
+    # accident, so nothing short of a literal True counts.
+    public_link = public_link is True
     target = Path(path)
     if not target.exists():
         console.print(f"[red]Not found: {path}[/red]")
@@ -1363,14 +1386,26 @@ def upload(
         with _client() as c:
             try:
                 data = _upload_path(c, str(target))
+                if public_link:
+                    c.set_general_access(data["kind"], data["id"], "read")
+                    # An HTML page's pictures are separate file rows; without
+                    # their own grant the shared page shows broken images.
+                    for asset_id in data.get("asset_file_ids") or []:
+                        c.set_general_access("file", asset_id, "read")
             except StashError as e:
                 _err(e)
+        data["public_link"] = public_link
         if _use_json(as_json):
             output_json(data)
             return
         label = "Uploaded as page" if data.get("kind") == "page" else "Uploaded"
         console.print(f"[green]{label}[/green] {data['name']}  [dim]{data['id']}[/dim]")
         console.print(data["app_url"])
+        if not public_link:
+            console.print(
+                "[dim]Private — only you can open that link. "
+                "Re-run with --public-link to share it.[/dim]"
+            )
         return
 
     files = _upload_file_list(target)
@@ -1387,7 +1422,12 @@ def upload(
         root_folder = c.create_folder(root_name)
         folder_cache: dict[tuple[str, str], str] = {}
 
-        for file_path in files:
+        # HTML last: by then every sibling picture has been uploaded, so the
+        # markup can be rewritten to point at those files instead of re-
+        # uploading them.
+        asset_urls: dict[Path, str] = {}
+        html_files = [f for f in files if f.suffix.lower() in _HTML_UPLOAD_EXTENSIONS]
+        for file_path in [f for f in files if f not in html_files] + html_files:
             relative_path = (
                 file_path.relative_to(target) if target.is_dir() else Path(file_path.name)
             )
@@ -1398,6 +1438,16 @@ def upload(
                 relative_path,
             )
 
+            # HTML goes through the server's ingest, which files it as an HTML
+            # page. Reading it here and posting it as `content` would store the
+            # markup in the markdown field, where it renders as escaped source
+            # instead of a page — the same file uploaded on its own renders
+            # correctly, and that inconsistency is the bug.
+            if file_path in html_files:
+                _upload_html_with_assets(c, file_path, folder_id, asset_urls)
+                console.print(f"  [dim]Page: {relative_path}[/dim]")
+                continue
+
             if _is_upload_text_file(file_path):
                 content = file_path.read_text(errors="replace")
                 c.create_page(file_path.name, content=content, folder_id=folder_id)
@@ -1407,6 +1457,7 @@ def upload(
             # Creating the stub page embeds the binary: the server claims any
             # root file whose download link appears in a saved page body.
             uploaded = c.upload_file(str(file_path))
+            asset_urls[file_path.resolve()] = f"/api/v1/me/files/{uploaded['id']}/download"
             c.create_page(
                 file_path.name,
                 content=_markdown_snippet(uploaded),
@@ -1416,6 +1467,11 @@ def upload(
 
         folder_url = f"{_web_app_url()}/folders/{root_folder['id']}"
         result: dict = {"folder": root_folder, "app_url": folder_url}
+        if public_link:
+            # Folder shares cascade to their contents at read time, so one
+            # grant on the root covers every page and file just uploaded.
+            c.set_general_access("folder", root_folder["id"], "read")
+            result["public_link"] = True
 
         if create_skill:
             # A skill is a folder with a SKILL.md; publishing makes it public.
@@ -3994,7 +4050,89 @@ def _upload_path(c: StashClient, path: str) -> dict:
     if not Path(path).is_file():
         console.print(f"[red]Not a file: {path}[/red]")
         raise typer.Exit(1)
+    if Path(path).suffix.lower() in _HTML_UPLOAD_EXTENSIONS:
+        return _upload_html_with_assets(c, Path(path))
     return c.upload_file(path)
+
+
+# src="chart.png" / href="logo.svg" / poster="…" / url(bg.png) — the forms an
+# exported HTML file uses to point at a picture sitting next to it.
+_HTML_ASSET_REF = re.compile(
+    r"""(?P<prefix>(?:src|href|poster)\s*=\s*["']|url\(\s*["']?)(?P<url>[^"')]+)""",
+    re.IGNORECASE,
+)
+_HTML_ASSET_EXTENSIONS = {
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".webp",
+    ".svg",
+    ".avif",
+    ".bmp",
+    ".ico",
+    ".mp4",
+    ".webm",
+    ".ogg",
+    ".mp3",
+    ".wav",
+}
+
+
+def _upload_html_with_assets(
+    c: StashClient,
+    html_path: Path,
+    folder_id: str | None = None,
+    known_assets: dict[Path, str] | None = None,
+) -> dict:
+    """Upload an HTML file along with the pictures it points at.
+
+    An exported report references its images by relative path. Uploading only
+    the markup leaves every one of them pointing at a path that doesn't exist
+    on the server, so the page renders with broken images. Each referenced file
+    that exists on disk is uploaded and its reference rewritten to the file's
+    permanent download route — the one route that also serves viewers holding a
+    public link. Anything already uploaded by the caller (`known_assets`) is
+    reused rather than uploaded twice.
+    """
+    html = html_path.read_text(errors="replace")
+    uploaded: dict[Path, str] = dict(known_assets or {})
+    rewritten: dict[str, str] = {}
+    # Assets uploaded here sit at the root with no parent folder, so they
+    # inherit no visibility. A public page whose pictures stay private renders
+    # with broken images, so the caller has to grant them too.
+    asset_file_ids: list[str] = []
+
+    for match in _HTML_ASSET_REF.finditer(html):
+        ref = match.group("url").strip()
+        if ref in rewritten or not ref:
+            continue
+        # Absolute URLs, data: payloads, and in-page anchors are already fine.
+        if ref.startswith(("http://", "https://", "//", "data:", "#", "mailto:", "/")):
+            continue
+        asset = (html_path.parent / ref.split("?")[0].split("#")[0]).resolve()
+        if asset.suffix.lower() not in _HTML_ASSET_EXTENSIONS or not asset.is_file():
+            continue
+        if asset not in uploaded:
+            asset_id = c.upload_file(str(asset))["id"]
+            uploaded[asset] = f"/api/v1/me/files/{asset_id}/download"
+            asset_file_ids.append(asset_id)
+            console.print(f"  [dim]Asset: {asset.name}[/dim]")
+        rewritten[ref] = uploaded[asset]
+
+    if rewritten:
+        for ref, url in rewritten.items():
+            html = html.replace(ref, url)
+        # The server names the page from the filename, so the rewritten copy
+        # has to keep it.
+        with tempfile.TemporaryDirectory() as tmp:
+            staged = Path(tmp) / html_path.name
+            staged.write_text(html)
+            page = c.upload_file(str(staged), folder_id)
+    else:
+        page = c.upload_file(str(html_path), folder_id)
+    page["asset_file_ids"] = asset_file_ids
+    return page
 
 
 def _get_file_meta(c: StashClient, file_id: str) -> dict:
