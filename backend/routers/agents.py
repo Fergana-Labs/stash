@@ -59,44 +59,88 @@ async def list_agent_runs(
     limit: int = Query(30, ge=1, le=100),
     current_user: dict = Depends(get_current_user),
 ):
-    """A scheduled agent's runs as one chronological feed, oldest first.
-
-    Every run is its own session (a fresh context), so the client draws a
-    context-reset separator between runs. Volume is one session per schedule
-    tick, so grouping the prefix's events in memory stays small."""
+    """A scheduled agent's newest runs as one chronological feed."""
     agent = await agent_service.get_agent(current_user["id"], agent_id)
     prefix = sprite_agent_service.scheduled_session_prefix(agent)
     rows = await get_pool().fetch(
         """
-        SELECT session_id, event_type, content, created_at
-        FROM history_events
-        WHERE owner_user_id = $1
-          AND session_id LIKE $2
-          AND event_type IN ('user_message', 'assistant_message')
-          AND NULLIF(BTRIM(content), '') IS NOT NULL
-        ORDER BY created_at, id
+        WITH newest_sessions AS (
+            SELECT session_id, MIN(created_at) AS started_at
+            FROM history_events
+            WHERE owner_user_id = $1
+              AND session_id LIKE $2
+            GROUP BY session_id
+            ORDER BY started_at DESC, session_id DESC
+            LIMIT $3
+        )
+        SELECT
+            he.session_id,
+            MIN(he.created_at) AS started_at,
+            MAX(he.created_at) AS last_event_at,
+            COUNT(*)::int AS event_count,
+            COUNT(*) FILTER (WHERE he.event_type = 'tool_use')::int AS tool_count,
+            (ARRAY_AGG(he.content ORDER BY he.created_at DESC, he.id DESC)
+                FILTER (WHERE he.event_type = 'assistant_message'))[1] AS final_text,
+            COALESCE(
+                JSONB_AGG(
+                    JSONB_BUILD_OBJECT(
+                        'role', REPLACE(he.event_type, '_message', ''),
+                        'content', he.content
+                    )
+                    ORDER BY he.created_at, he.id
+                ) FILTER (
+                    WHERE he.event_type IN ('user_message', 'assistant_message')
+                      AND NULLIF(BTRIM(he.content), '') IS NOT NULL
+                ),
+                '[]'::jsonb
+            ) AS messages
+        FROM history_events he
+        JOIN newest_sessions ns ON ns.session_id = he.session_id
+        WHERE he.owner_user_id = $1
+        GROUP BY he.session_id
+        ORDER BY started_at, he.session_id
         """,
         current_user["id"],
         f"{prefix}%",
+        limit,
     )
-    runs: dict[str, dict] = {}
-    for r in rows:
-        run = runs.setdefault(
-            r["session_id"],
-            {
-                "session_id": r["session_id"],
-                "started_at": r["created_at"],
-                "finished_at": r["created_at"],
-                "failed": False,
-                "messages": [],
-            },
+    return {"runs": [await _run_from_row(row) for row in rows]}
+
+
+async def _run_from_row(row: dict) -> dict:
+    final_text = row["final_text"]
+    if final_text is None:
+        status = (
+            "running"
+            if await sprite_agent_service.turn_running(row["session_id"])
+            else "interrupted"
         )
-        run["finished_at"] = r["created_at"]
-        role = r["event_type"].removesuffix("_message")
-        if role == "assistant" and r["content"].startswith(sprite_agent_service.RUN_FAILED_PREFIX):
-            run["failed"] = True
-        run["messages"].append({"role": role, "content": r["content"]})
-    return {"runs": list(runs.values())[-limit:]}
+        error = None
+    elif final_text.startswith(sprite_agent_service.RUN_FAILED_PREFIX):
+        status = "failed"
+        error = final_text.removeprefix(sprite_agent_service.RUN_FAILED_PREFIX).strip()
+    elif final_text == sprite_agent_service.STOPPED_NOTE:
+        status = "stopped"
+        error = None
+    else:
+        status = "completed"
+        error = None
+
+    finished_at = row["last_event_at"] if status in {"completed", "failed", "stopped"} else None
+    duration_seconds = (
+        (finished_at - row["started_at"]).total_seconds() if finished_at is not None else None
+    )
+    return {
+        "session_id": row["session_id"],
+        "started_at": row["started_at"],
+        "finished_at": finished_at,
+        "duration_seconds": duration_seconds,
+        "event_count": row["event_count"],
+        "tool_count": row["tool_count"],
+        "status": status,
+        "error": error,
+        "messages": row["messages"],
+    }
 
 
 @router.get("/{agent_id}/prompt")

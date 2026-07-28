@@ -5,6 +5,9 @@ everything before it is captured in git history (`git log`), not here.
 
 ## Unreleased
 
+- Scheduled agent run history now reports each run's status, error, duration,
+  event count, and tool count while preserving the chronological transcript
+  feed used by the agent workspace.
 - Scheduled agent runs no longer crash in local dev mode: the MCP registry's
   `.mcp.json` is now written to the local simulated workdir instead of the
   literal `/home/sprite/work` path, which is unwritable on dev machines.

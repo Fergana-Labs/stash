@@ -5,10 +5,11 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from httpx import AsyncClient
 
-from backend.services import agent_service
+from backend.services import agent_service, sprite_agent_service
 from backend.tasks.agent_schedules import _is_due
+from backend.tasks.session_titles import generate_session_title
 
-from .conftest import unique_name
+from .conftest import FakeRedis, unique_name
 
 
 async def _register(client: AsyncClient) -> str:
@@ -211,26 +212,41 @@ async def test_partial_patch_preserves_other_fields(client: AsyncClient):
 
 
 async def _push_event(
-    client: AsyncClient, key: str, session_id: str, event_type: str, content: str
+    client: AsyncClient,
+    key: str,
+    session_id: str,
+    event_type: str,
+    content: str,
+    created_at: datetime,
+    tool_name: str | None = None,
 ):
+    event = {
+        "agent_name": "Nightly",
+        "event_type": event_type,
+        "content": content,
+        "session_id": session_id,
+        "created_at": created_at.isoformat(),
+    }
+    if tool_name is not None:
+        event["tool_name"] = tool_name
     r = await client.post(
         "/api/v1/me/sessions/events",
-        json={
-            "agent_name": "Nightly",
-            "event_type": event_type,
-            "content": content,
-            "session_id": session_id,
-        },
+        json=event,
         headers=_auth(key),
     )
     assert r.status_code == 201, r.text
 
 
 @pytest.mark.asyncio
-async def test_agent_runs_groups_sessions_oldest_first_with_failure_flag(client: AsyncClient):
-    """The runs feed is the scheduled agent's whole history: one entry per
-    per-run session in chronological order, flagged when the closing message
-    is the stored run-failure marker."""
+async def test_agent_runs_report_outcomes_and_keep_the_transcript_feed(
+    client: AsyncClient, monkeypatch
+):
+    """Run metadata must not replace the chronological messages rendered by
+    the agent workspace."""
+    fake_redis = FakeRedis()
+    monkeypatch.setattr(sprite_agent_service, "_get_redis", lambda: fake_redis)
+    monkeypatch.setattr(generate_session_title, "delay", lambda *args, **kwargs: None)
+
     key = await _register(client)
     a = (
         await client.post(
@@ -246,35 +262,118 @@ async def test_agent_runs_groups_sessions_oldest_first_with_failure_flag(client:
     ).json()
 
     prefix = f"agent-sched-{a['id']}-"
+    base = datetime(2026, 7, 22, 8, tzinfo=UTC)
+    completed_session = f"{prefix}20260722080000"
+    failed_session = f"{prefix}20260723080000"
+    running_session = f"{prefix}20260724080000"
+    interrupted_session = f"{prefix}20260725080000"
+    stopped_session = f"{prefix}20260726080000"
+
+    await _push_event(client, key, completed_session, "user_message", "Do the nightly thing.", base)
     await _push_event(
-        client, key, f"{prefix}20260722080000", "user_message", "Do the nightly thing."
+        client,
+        key,
+        completed_session,
+        "tool_use",
+        "Read report.md",
+        base + timedelta(seconds=10),
+        tool_name="Read",
     )
-    await _push_event(client, key, f"{prefix}20260722080000", "assistant_message", "Done: 3 items.")
     await _push_event(
-        client, key, f"{prefix}20260723080000", "user_message", "Do the nightly thing."
+        client,
+        key,
+        completed_session,
+        "assistant_message",
+        "Done: 3 items.",
+        base + timedelta(seconds=30),
     )
     await _push_event(
-        client, key, f"{prefix}20260723080000", "assistant_message", "⚠️ Agent run failed: boom"
+        client,
+        key,
+        failed_session,
+        "user_message",
+        "Do the nightly thing.",
+        base + timedelta(days=1),
+    )
+    await _push_event(
+        client,
+        key,
+        failed_session,
+        "assistant_message",
+        "⚠️ Agent run failed: boom",
+        base + timedelta(days=1, seconds=5),
+    )
+    await _push_event(
+        client,
+        key,
+        running_session,
+        "user_message",
+        "Do the nightly thing.",
+        base + timedelta(days=2),
+    )
+    fake_redis.data[f"agent-turn:{running_session}"] = b"lock"
+    await _push_event(
+        client,
+        key,
+        interrupted_session,
+        "user_message",
+        "Do the nightly thing.",
+        base + timedelta(days=3),
+    )
+    await _push_event(
+        client,
+        key,
+        stopped_session,
+        "user_message",
+        "Do the nightly thing.",
+        base + timedelta(days=4),
+    )
+    await _push_event(
+        client,
+        key,
+        stopped_session,
+        "assistant_message",
+        "⏹ Stopped by user.",
+        base + timedelta(days=4, seconds=7),
     )
 
     r = await client.get(f"/api/v1/me/agents/{a['id']}/runs", headers=_auth(key))
     assert r.status_code == 200
     runs = r.json()["runs"]
     assert [run["session_id"] for run in runs] == [
-        f"{prefix}20260722080000",
-        f"{prefix}20260723080000",
+        completed_session,
+        failed_session,
+        running_session,
+        interrupted_session,
+        stopped_session,
     ]
-    assert [run["failed"] for run in runs] == [False, True]
+    assert [run["status"] for run in runs] == [
+        "completed",
+        "failed",
+        "running",
+        "interrupted",
+        "stopped",
+    ]
+
+    completed, failed, running, interrupted, stopped = runs
+    assert completed["duration_seconds"] == 30
+    assert completed["event_count"] == 3
+    assert completed["tool_count"] == 1
     assert runs[0]["messages"] == [
         {"role": "user", "content": "Do the nightly thing."},
         {"role": "assistant", "content": "Done: 3 items."},
     ]
+    assert failed["error"] == "boom"
+    assert running["finished_at"] is None
+    assert running["duration_seconds"] is None
+    assert interrupted["finished_at"] is None
+    assert stopped["duration_seconds"] == 7
 
     # limit keeps the newest runs while preserving chronological order.
     limited = (
         await client.get(f"/api/v1/me/agents/{a['id']}/runs?limit=1", headers=_auth(key))
     ).json()["runs"]
-    assert [run["session_id"] for run in limited] == [f"{prefix}20260723080000"]
+    assert [run["session_id"] for run in limited] == [stopped_session]
 
 
 @pytest.mark.asyncio

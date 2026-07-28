@@ -2164,8 +2164,12 @@ export async function getAgent(id: string): Promise<Agent> {
 export type AgentRun = {
   session_id: string;
   started_at: string;
-  finished_at: string;
-  failed: boolean;
+  finished_at: string | null;
+  duration_seconds: number | null;
+  event_count: number;
+  tool_count: number;
+  status: "completed" | "failed" | "running" | "interrupted" | "stopped";
+  error: string | null;
   messages: { role: "user" | "assistant"; content: string }[];
 };
 

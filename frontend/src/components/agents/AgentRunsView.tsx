@@ -106,7 +106,9 @@ export default function AgentRunsView({ agentId }: { agentId: string }) {
             }
           >
             {runDate(run)}
-            {run.failed && <span className="ml-1.5 align-middle text-[9px] text-error">●</span>}
+            {run.status === "failed" && (
+              <span className="ml-1.5 align-middle text-[9px] text-error">●</span>
+            )}
           </button>
         ))}
       </div>
@@ -129,7 +131,12 @@ function RunSeparator({ run }: { run: AgentRun }) {
       <div className="h-px flex-1 bg-border" />
       <span className="text-[11px] whitespace-nowrap text-muted-foreground">
         {runDate(run)} · fresh context
-        {run.failed && <span className="text-error"> · failed</span>}
+        {run.status !== "completed" && (
+          <span className={run.status === "failed" ? "text-error" : undefined}>
+            {" "}
+            · {run.status}
+          </span>
+        )}
       </span>
       <div className="h-px flex-1 bg-border" />
     </div>
