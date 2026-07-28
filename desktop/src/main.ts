@@ -79,15 +79,14 @@ async function renderChecklist() {
   }
   list.append(signin);
 
-  list.append(
-    statusItem(
-      checks.cli_installed ? "ok" : "bad",
-      "stash CLI installed",
-      checks.cli_installed
-        ? checks.cli_version ?? ""
-        : "Install: <code>uv tool install stashai</code>",
-    ),
+  const cli = statusItem(
+    checks.cli_installed ? "ok" : "bad",
+    "stash CLI installed",
+    checks.cli_installed ? checks.cli_version ?? "" : "",
   );
+  if (!checks.cli_installed) cli.append(installButton("install_cli"));
+  list.append(cli);
+
   list.append(
     statusItem(
       checks.claude_installed ? "ok" : "bad",
@@ -97,13 +96,35 @@ async function renderChecklist() {
         : "Install: <code>npm install -g @anthropic-ai/claude-code</code>",
     ),
   );
-  list.append(
-    statusItem(
-      checks.plugin_installed ? "ok" : "bad",
-      "Stash plugin for Claude Code",
-      checks.plugin_installed ? "" : "Run <code>stash signin</code> to install it",
-    ),
+
+  const plugin = statusItem(
+    checks.plugin_installed ? "ok" : "bad",
+    "Stash plugin for Claude Code",
+    checks.plugin_installed
+      ? ""
+      : checks.claude_installed
+        ? ""
+        : "Install Claude Code first",
   );
+  if (!checks.plugin_installed && checks.claude_installed) {
+    plugin.append(installButton("install_plugin"));
+  }
+  list.append(plugin);
+}
+
+function installButton(command: string): HTMLButtonElement {
+  const btn = el("button", "btn", "Install") as HTMLButtonElement;
+  btn.addEventListener("click", async () => {
+    btn.disabled = true;
+    btn.textContent = "Installing…";
+    try {
+      await invoke(command);
+    } catch (e) {
+      showError("setup-error", String(e));
+    }
+    await refreshAll();
+  });
+  return btn;
 }
 
 async function signIn(btn: HTMLButtonElement) {

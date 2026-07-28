@@ -2,6 +2,7 @@ mod api;
 mod checks;
 mod config;
 mod curator;
+mod install;
 mod signin;
 
 use tauri::menu::{Menu, MenuItem};
@@ -25,6 +26,8 @@ pub fn run() {
             api::recompute_memory,
             signin::signin_start,
             signin::signin_poll,
+            install::install_cli,
+            install::install_plugin,
             curator::curator_local_status,
             curator::curator_run_now,
             curator::curator_set_enabled,
