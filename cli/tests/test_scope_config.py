@@ -45,6 +45,26 @@ def test_uuid_scope_survives_load(monkeypatch, tmp_path):
     assert json.loads(cfg_file.read_text())["scope"] == scope
 
 
+def test_stash_scope_env_overrides_config(monkeypatch, tmp_path):
+    stored = "1c9f8a52-0000-4000-8000-000000000000"
+    other = "2d0f9b63-0000-4000-8000-000000000000"
+    _write_config(tmp_path, monkeypatch, {"api_key": "k", "scope": stored})
+    monkeypatch.setenv("STASH_SCOPE", other)
+
+    assert cli_config.load_config()["scope"] == other
+
+
+def test_empty_stash_scope_env_forces_personal(monkeypatch, tmp_path):
+    """Stash Desktop's curator sets STASH_SCOPE="" so a run maintains the
+    user's personal knowledge base even when the stored config points the
+    CLI at a shared workspace."""
+    stored = "1c9f8a52-0000-4000-8000-000000000000"
+    _write_config(tmp_path, monkeypatch, {"api_key": "k", "scope": stored})
+    monkeypatch.setenv("STASH_SCOPE", "")
+
+    assert not cli_config.load_config()["scope"]
+
+
 def test_plugin_client_never_sends_a_non_uuid_scope(monkeypatch, tmp_path):
     _write_config(tmp_path, monkeypatch, {"api_key": "k", "scope": "repo"})
 

@@ -85,6 +85,11 @@ def load_config() -> dict:
         cfg["base_url"] = url
     if key := os.environ.get("STASH_API_KEY"):
         cfg["api_key"] = key
+    # Empty string = personal scope. Stash Desktop's curator sets this so a
+    # run maintains the user's own knowledge base even when the stored config
+    # points at a workspace.
+    if (scope := os.environ.get("STASH_SCOPE")) is not None:
+        cfg["scope"] = scope or None
     return cfg
 
 

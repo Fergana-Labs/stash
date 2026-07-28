@@ -227,7 +227,10 @@ fn start_child() -> Result<(), String> {
     cmd.arg("-p")
         .arg(&prompt)
         .arg("--allowedTools")
-        .arg(rules.join(","));
+        .arg(rules.join(","))
+        // The knowledge base is per-person: pin every stash call in the run
+        // to the personal scope, even when config points at a workspace.
+        .env("STASH_SCOPE", "");
     let mut child = cmd
         .stdin(Stdio::null())
         .stdout(log)
