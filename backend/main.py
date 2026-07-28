@@ -14,7 +14,7 @@ from . import integrations as _integrations  # noqa: F401 — registers provider
 from .config import settings
 from .database import close_db, init_db
 from .integrations.router import router as integrations_router
-from .middleware import limiter
+from .middleware import GzipRequestMiddleware, limiter
 from .routers import (
     admin,
     agent_chat,
@@ -108,6 +108,7 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_exception_handler(RowValidationError, _row_validation_handler)
 app.add_middleware(SlowAPIMiddleware)
+app.add_middleware(GzipRequestMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
