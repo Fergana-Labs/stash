@@ -25,7 +25,7 @@ def _event(session_id: str) -> HookEvent:
 
 
 def _enable_streaming(monkeypatch):
-    monkeypatch.setattr(hooks, "streaming_enabled", lambda: True)
+    monkeypatch.setattr(hooks, "cwd_in_scope", lambda *a, **k: True)
     monkeypatch.setattr(hooks, "_read_user_config", lambda: {})
 
 
@@ -81,7 +81,7 @@ def test_uploads_enabled_requires_auth_and_streaming(monkeypatch):
 
 def test_uploads_disabled_warning_is_once_per_session(monkeypatch, tmp_path):
     monkeypatch.setattr(hooks.shutil, "which", lambda name: "/usr/local/bin/stash")
-    monkeypatch.setattr(hooks, "streaming_enabled", lambda: True)
+    monkeypatch.setattr(hooks, "cwd_in_scope", lambda *a, **k: True)
     monkeypatch.setattr(hooks, "_read_user_config", lambda: {})
     state = {}
     cfg = {**_cfg(), "api_key": ""}
@@ -101,7 +101,7 @@ def test_uploads_disabled_warning_is_once_per_session(monkeypatch, tmp_path):
 
 def test_uploads_disabled_warning_skips_disabled_agent(monkeypatch, tmp_path):
     monkeypatch.setattr(hooks.shutil, "which", lambda name: "/usr/local/bin/stash")
-    monkeypatch.setattr(hooks, "streaming_enabled", lambda: True)
+    monkeypatch.setattr(hooks, "cwd_in_scope", lambda *a, **k: True)
     monkeypatch.setattr(hooks, "_read_user_config", lambda: {"enabled_agents": ["claude"]})
 
     warning = uploads_disabled_warning(_cfg(), {}, _event("s1"), tmp_path)
@@ -111,7 +111,7 @@ def test_uploads_disabled_warning_skips_disabled_agent(monkeypatch, tmp_path):
 
 def test_uploads_disabled_warning_skips_when_streaming_stopped(monkeypatch, tmp_path):
     monkeypatch.setattr(hooks.shutil, "which", lambda name: "/usr/local/bin/stash")
-    monkeypatch.setattr(hooks, "streaming_enabled", lambda: False)
+    monkeypatch.setattr(hooks, "cwd_in_scope", lambda *a, **k: False)
     monkeypatch.setattr(hooks, "_read_user_config", lambda: {})
 
     warning = uploads_disabled_warning(_cfg(), {}, _event("s1"), tmp_path)
@@ -121,7 +121,7 @@ def test_uploads_disabled_warning_skips_when_streaming_stopped(monkeypatch, tmp_
 
 def test_uploads_disabled_warning_requires_stash_cli(monkeypatch, tmp_path):
     monkeypatch.setattr(hooks.shutil, "which", lambda name: None)
-    monkeypatch.setattr(hooks, "streaming_enabled", lambda: True)
+    monkeypatch.setattr(hooks, "cwd_in_scope", lambda *a, **k: True)
     monkeypatch.setattr(hooks, "_read_user_config", lambda: {})
 
     warning = uploads_disabled_warning({**_cfg(), "api_key": ""}, {}, _event("s1"), tmp_path)

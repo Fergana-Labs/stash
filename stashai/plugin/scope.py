@@ -1,10 +1,10 @@
-"""Global streaming gate for the plugin.
+"""Streaming gate for the plugin.
 
-There is no `.stash` manifest and no cwd/path-based scope anymore. A session
-streams iff the plugin is configured (an api_key is present in the user CLI
-config) and streaming has not been globally stopped (`stopped_streaming` in the
-user config). The `cwd` argument is kept only for call-site compatibility; it
-does not affect the result.
+A session streams iff the plugin is configured (an api_key is present in the
+user CLI config), streaming has not been globally stopped (`stopped_streaming`
+in the user config), and the session's working directory is not under any
+entry in `excluded_paths` — the per-folder opt-out that Stash Desktop's
+"Session uploads" card manages.
 """
 
 from __future__ import annotations
@@ -32,6 +32,23 @@ def streaming_enabled() -> bool:
     return not cfg.get("stopped_streaming")
 
 
+def _under(cwd: Path, excluded: Path) -> bool:
+    return cwd == excluded or excluded in cwd.parents
+
+
 def cwd_in_scope(cwd: str | None = None) -> bool:
-    """True if streaming is globally enabled. `cwd` is ignored."""
-    return streaming_enabled()
+    """True if a session in `cwd` should stream.
+
+    Globally enabled AND cwd is not inside an excluded folder. An empty cwd
+    (some per-turn events carry none) can't match an exclusion and streams.
+    """
+    if not streaming_enabled():
+        return False
+    if not cwd:
+        return True
+    cfg = _read_user_config()
+    cwd_path = Path(cwd).resolve()
+    for entry in cfg.get("excluded_paths") or []:
+        if isinstance(entry, str) and entry and _under(cwd_path, Path(entry).resolve()):
+            return False
+    return True

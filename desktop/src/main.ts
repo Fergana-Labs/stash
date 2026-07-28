@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { disable, enable, isEnabled } from "@tauri-apps/plugin-autostart";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
 
 interface Checks {
   signed_in: boolean;
@@ -211,6 +212,74 @@ async function renderHealth() {
 }
 
 // ---------------------------------------------------------------------------
+// Session uploads
+// ---------------------------------------------------------------------------
+
+interface UploadSettings {
+  streaming: boolean;
+  excluded_paths: string[];
+  recent_dirs: string[];
+}
+
+function pathButton(label: string, command: string, path: string): HTMLButtonElement {
+  const btn = el("button", "btn btn-ghost", label) as HTMLButtonElement;
+  btn.addEventListener("click", async () => {
+    btn.disabled = true;
+    try {
+      await invoke(command, { path });
+    } catch (e) {
+      showError("uploads-error", String(e));
+    }
+    await renderUploads();
+  });
+  return btn;
+}
+
+async function renderUploads() {
+  showError("uploads-error", null);
+  try {
+    const s = await invoke<UploadSettings>("upload_settings");
+    ($("streaming-toggle") as HTMLInputElement).checked = s.streaming;
+
+    const recent = $("recent-dirs");
+    recent.replaceChildren();
+    const uploading = s.recent_dirs.filter((d) => !s.excluded_paths.includes(d));
+    if (uploading.length === 0) {
+      recent.append(statusItem("off", "No sessions streamed yet", ""));
+    }
+    for (const dir of uploading) {
+      const li = statusItem(s.streaming ? "ok" : "off", dir, "");
+      li.append(pathButton("Exclude", "exclude_path", dir));
+      recent.append(li);
+    }
+
+    const excluded = $("excluded-dirs");
+    excluded.replaceChildren();
+    if (s.excluded_paths.length === 0) {
+      excluded.append(statusItem("off", "Nothing excluded", ""));
+    }
+    for (const dir of s.excluded_paths) {
+      const li = statusItem("bad", dir, "");
+      li.append(pathButton("Resume uploads", "include_path", dir));
+      excluded.append(li);
+    }
+  } catch (e) {
+    showError("uploads-error", String(e));
+  }
+}
+
+async function excludeFolderViaPicker() {
+  const dir = await openDialog({ directory: true, multiple: false });
+  if (typeof dir !== "string" || !dir) return;
+  try {
+    await invoke("exclude_path", { path: dir });
+  } catch (e) {
+    showError("uploads-error", String(e));
+  }
+  await renderUploads();
+}
+
+// ---------------------------------------------------------------------------
 // Memory curator (server-side)
 // ---------------------------------------------------------------------------
 
@@ -326,13 +395,30 @@ async function renderAutostart() {
 // ---------------------------------------------------------------------------
 
 async function refreshAll() {
-  await Promise.all([renderChecklist(), renderHealth(), renderMemory(), renderLocal()]);
+  await Promise.all([
+    renderChecklist(),
+    renderHealth(),
+    renderUploads(),
+    renderMemory(),
+    renderLocal(),
+  ]);
 }
 
 window.addEventListener("DOMContentLoaded", () => {
   $("refresh-btn").addEventListener("click", refreshAll);
   $("recompute-btn").addEventListener("click", recomputeMemory);
   $("local-run-btn").addEventListener("click", runLocalNow);
+
+  $("streaming-toggle").addEventListener("change", async (e) => {
+    const enabled = (e.target as HTMLInputElement).checked;
+    try {
+      await invoke("set_streaming", { enabled });
+    } catch (err) {
+      showError("uploads-error", String(err));
+    }
+    await renderUploads();
+  });
+  $("exclude-folder-btn").addEventListener("click", excludeFolderViaPicker);
 
   $("local-enabled").addEventListener("change", async (e) => {
     const enabled = (e.target as HTMLInputElement).checked;

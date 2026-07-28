@@ -4,6 +4,7 @@ mod config;
 mod curator;
 mod install;
 mod signin;
+mod uploads;
 
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::TrayIconBuilder;
@@ -12,6 +13,7 @@ use tauri::Manager;
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             None,
@@ -28,6 +30,10 @@ pub fn run() {
             signin::signin_poll,
             install::install_cli,
             install::install_plugin,
+            uploads::upload_settings,
+            uploads::set_streaming,
+            uploads::exclude_path,
+            uploads::include_path,
             curator::curator_local_status,
             curator::curator_run_now,
             curator::curator_set_enabled,
