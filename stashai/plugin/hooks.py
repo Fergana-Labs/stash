@@ -23,7 +23,7 @@ import shutil
 from pathlib import Path
 
 from stashai.plugin.event import HookEvent
-from stashai.plugin.scope import streaming_enabled
+from stashai.plugin.scope import cwd_in_scope
 from stashai.plugin.session_upload import spawn_session_upload
 from stashai.plugin.stash_client import StashClient
 from stashai.plugin.state import read_stats, record_tool_use, save_state
@@ -106,18 +106,23 @@ def _is_agent_enabled(cfg: dict) -> bool:
     return canonical in enabled
 
 
-def _short_circuit(cfg: dict) -> bool:
+def _cwd_of(event: HookEvent | None, state: dict) -> str:
+    return (event.cwd if event else "") or state.get("cwd", "")
+
+
+def _short_circuit(cfg: dict, cwd: str = "") -> bool:
     """Return True when this session should NOT stream.
 
     Streams by default whenever the plugin is configured and streaming hasn't
-    been globally stopped. Only skips when the agent is disabled, the plugin is
-    unconfigured, or the user ran `stash stop`.
+    been globally stopped. Skips when the agent is disabled, the plugin is
+    unconfigured, the user ran `stash stop`, or the session's directory is
+    inside an excluded folder (`excluded_paths` in the user config).
     """
     if not _is_agent_enabled(cfg):
         return True
     if not cfg.get("agent_name"):
         return True
-    return not streaming_enabled()
+    return not cwd_in_scope(cwd)
 
 
 def _event_metadata(event: HookEvent | None, base: dict | None = None) -> dict:
@@ -205,7 +210,7 @@ def create_session_record(
     The hook must stay best-effort: backend/network failures should never
     interrupt the user's coding agent.
     """
-    if _short_circuit(cfg):
+    if _short_circuit(cfg, _cwd_of(event, state)):
         return None
 
     sid = event.session_id or state.get("session_id", "")
@@ -213,6 +218,10 @@ def create_session_record(
         return None
     if event.cwd:
         state["cwd"] = event.cwd
+        # Rolling list of folders that have streamed sessions — Stash
+        # Desktop's "Session uploads" card shows it so uploading is visible.
+        recents = [c for c in state.get("recent_cwds", []) if c != event.cwd]
+        state["recent_cwds"] = [event.cwd, *recents][:20]
 
     if state.get("session_row_id") and state.get("uploaded_session_id") == sid:
         return state.get("session_url")
@@ -254,7 +263,7 @@ def finalize_session_upload(
     if not event.cwd and state.get("cwd"):
         event.cwd = state["cwd"]
 
-    if _short_circuit(cfg):
+    if _short_circuit(cfg, _cwd_of(event, state)):
         return False
 
     sid = event.session_id or state.get("session_id", "")
@@ -302,7 +311,7 @@ def stream_user_message(
     prompt_text: str,
     event: HookEvent | None = None,
 ) -> None:
-    if _short_circuit(cfg):
+    if _short_circuit(cfg, _cwd_of(event, state)):
         return
     if not prompt_text or not prompt_text.strip():
         return
@@ -333,7 +342,7 @@ def stream_tool_use(
     event: HookEvent,
     data_dir: Path | None = None,
 ) -> None:
-    if _short_circuit(cfg):
+    if _short_circuit(cfg, _cwd_of(event, state)):
         return
     if not event.tool_name:
         return
@@ -379,7 +388,7 @@ def stream_assistant_message(
     """Push the final assistant text for a turn. Call from per-turn Stop /
     afterAgentResponse / AfterAgent hooks. Never emits session_end — the
     session is still live."""
-    if _short_circuit(cfg):
+    if _short_circuit(cfg, _cwd_of(event, state)):
         return
     if not event.last_assistant_message:
         return
@@ -407,7 +416,7 @@ def upload_health_warning(
     data_dir: Path,
 ) -> str | None:
     """Return the once-per-session local upload failure warning, if needed."""
-    if _short_circuit(cfg):
+    if _short_circuit(cfg, _cwd_of(event, state)):
         return None
 
     session_id = event.session_id or state.get("session_id", "")
@@ -445,7 +454,7 @@ def stream_session_end(
     if not event.cwd and state.get("cwd"):
         event.cwd = state["cwd"]
 
-    if _short_circuit(cfg):
+    if _short_circuit(cfg, _cwd_of(event, state)):
         return None
 
     sid = event.session_id or state.get("session_id", "")

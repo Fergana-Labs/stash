@@ -37,6 +37,26 @@
         <p class="error" id="health-error" hidden></p>
       </section>
 
+      <section class="card" id="uploads-card">
+        <h2>Session uploads</h2>
+        <p class="muted">
+          Sessions from every folder upload to your Stash unless you exclude
+          the folder here.
+        </p>
+        <div class="actions">
+          <label class="toggle">
+            <input type="checkbox" id="streaming-toggle" />
+            Upload sessions
+          </label>
+          <button id="exclude-folder-btn" class="btn btn-ghost">Exclude a folder…</button>
+        </div>
+        <h3>Recently uploading</h3>
+        <ul class="statuslist" id="recent-dirs"></ul>
+        <h3>Excluded — never upload</h3>
+        <ul class="statuslist" id="excluded-dirs"></ul>
+        <p class="error" id="uploads-error" hidden></p>
+      </section>
+
       <section class="card" id="memory-card">
         <h2>Memory curator <span class="muted">(Stash cloud)</span></h2>
         <div id="memory-status"></div>

@@ -12,4 +12,4 @@ def _scope_wide_open(monkeypatch):
     # tests exercise the real gate directly.
     from stashai.plugin import hooks
 
-    monkeypatch.setattr(hooks, "streaming_enabled", lambda *a, **k: True)
+    monkeypatch.setattr(hooks, "cwd_in_scope", lambda *a, **k: True)

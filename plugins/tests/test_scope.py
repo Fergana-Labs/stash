@@ -1,11 +1,13 @@
-"""Scope gate — global, single-player streaming switch.
+"""Scope gate — global switch plus per-folder exclusions.
 
-There is no `.stash` manifest and no cwd/path-based scope. A session streams
-iff the plugin is configured (an `api_key` is present in the user CLI config)
-AND streaming has not been globally stopped (`stopped_streaming` flag). The
-`cwd` argument is kept only for call-site compatibility.
+A session streams iff the plugin is configured (an `api_key` is present in
+the user CLI config), streaming has not been globally stopped
+(`stopped_streaming` flag), and the session's cwd is not inside any
+`excluded_paths` entry — the per-folder opt-out Stash Desktop manages. The
+exclusion must be path-boundary-safe: excluding /repo must not silence
+/repo2, or an unrelated project goes dark without the user ever choosing it.
 
-Regression test: when the global gate is off, no event reaches the transport.
+Regression test: when the gate is off, no event reaches the transport.
 """
 
 from __future__ import annotations
@@ -49,12 +51,33 @@ def test_missing_config_does_not_stream(tmp_path, monkeypatch):
     assert not scope_mod.cwd_in_scope("/anywhere")
 
 
-def test_cwd_is_ignored(tmp_path, monkeypatch):
+def test_no_exclusions_streams_everywhere(tmp_path, monkeypatch):
     cfg = _write_config(tmp_path, {"api_key": "k"})
     monkeypatch.setattr(scope_mod, "_CONFIG_FILE", cfg)
     assert scope_mod.cwd_in_scope("")
     assert scope_mod.cwd_in_scope(None)
     assert scope_mod.cwd_in_scope("/some/deep/path")
+
+
+def test_excluded_folder_blocks_itself_and_children(tmp_path, monkeypatch):
+    cfg = _write_config(tmp_path, {"api_key": "k", "excluded_paths": ["/w/secret"]})
+    monkeypatch.setattr(scope_mod, "_CONFIG_FILE", cfg)
+    assert not scope_mod.cwd_in_scope("/w/secret")
+    assert not scope_mod.cwd_in_scope("/w/secret/sub/dir")
+    assert scope_mod.cwd_in_scope("/w/other")
+
+
+def test_exclusion_is_path_boundary_safe(tmp_path, monkeypatch):
+    cfg = _write_config(tmp_path, {"api_key": "k", "excluded_paths": ["/w/repo"]})
+    monkeypatch.setattr(scope_mod, "_CONFIG_FILE", cfg)
+    assert not scope_mod.cwd_in_scope("/w/repo")
+    assert scope_mod.cwd_in_scope("/w/repo2")
+
+
+def test_empty_cwd_cannot_match_an_exclusion(tmp_path, monkeypatch):
+    cfg = _write_config(tmp_path, {"api_key": "k", "excluded_paths": ["/w/secret"]})
+    monkeypatch.setattr(scope_mod, "_CONFIG_FILE", cfg)
+    assert scope_mod.cwd_in_scope("")
 
 
 # --- Regression: the global gate must short-circuit live events ------------
@@ -73,7 +96,7 @@ def test_gate_off_blocks_live_events(monkeypatch):
     from stashai.plugin import hooks
     from stashai.plugin.hooks import stream_user_message
 
-    monkeypatch.setattr(hooks, "streaming_enabled", lambda: False)
+    monkeypatch.setattr(hooks, "cwd_in_scope", lambda *a, **k: False)
 
     c = _RecordingClient()
     stream_user_message(
@@ -90,7 +113,7 @@ def test_gate_on_allows_live_events(monkeypatch):
     from stashai.plugin import hooks
     from stashai.plugin.hooks import stream_user_message
 
-    monkeypatch.setattr(hooks, "streaming_enabled", lambda: True)
+    monkeypatch.setattr(hooks, "cwd_in_scope", lambda *a, **k: True)
 
     c = _RecordingClient()
     stream_user_message(
