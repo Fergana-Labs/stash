@@ -23,6 +23,7 @@ import {
   SKILL_MD,
   skillMdTemplate,
 } from "@/lib/localSkill";
+import { loginPathWithNext } from "@/lib/loginRedirect";
 import { sectionCrumbs, useMemoryFolderId } from "@/lib/memory-folder";
 import { refreshSidebar } from "@/lib/skillNavigationCache";
 
@@ -85,9 +86,13 @@ export default function FolderDetailPage({ folderId: folderIdProp }: { folderId?
     }
   }, [skillSlug, folderId]);
 
+  // Signed-out visitors attempt the read too — getFolderContents is the
+  // authorization gate and succeeds for a folder with a public link. Only a
+  // failed read sends them to sign in (below).
   useEffect(() => {
-    if (!user) {
-      if (!loading && skillSlug) void loadSkillFallback();
+    if (loading) return;
+    if (!user && skillSlug) {
+      void loadSkillFallback();
       return;
     }
     let cancelled = false;
@@ -113,7 +118,9 @@ export default function FolderDetailPage({ folderId: folderIdProp }: { folderId?
           (e.status === 401 || e.status === 403 || e.status === 404)
         ) {
           await loadSkillFallback();
+          return;
         }
+        if (!user) router.push(loginPathWithNext(`/folders/${folderId}`));
       });
     return () => {
       cancelled = true;
@@ -163,16 +170,13 @@ export default function FolderDetailPage({ folderId: folderIdProp }: { folderId?
   }, [folderId, folderName, skillSlug, user, convertToSkill, converting]);
   useShareAction(shareAction);
 
-  useEffect(() => {
-    if (!loading && !user && !skillSlug) router.push("/login");
-  }, [user, loading, router, skillSlug]);
-
   if (loading) return <FileBrowserSkeleton />;
   if (skillFallback) {
     return <SkillFallbackFolderView {...skillFallback} />;
   }
-  if (!user) {
-    if (!skillSlug) return null;
+  // A signed-out visitor whose read succeeded is holding a public link — show
+  // them the folder. One whose read failed is already on their way to sign in.
+  if (!user && !folderName) {
     if (!error) return <FileBrowserSkeleton />;
     return (
       <div className="mx-auto max-w-md py-24 text-center">

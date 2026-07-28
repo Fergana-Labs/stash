@@ -58,11 +58,38 @@ _SVG_TAGS = {
     "polygon",
     "text",
     "tspan",
+    "textPath",
     "linearGradient",
     "radialGradient",
     "stop",
     "clipPath",
+    # Exporters lean on these constantly, and dropping a container is worse
+    # than dropping a leaf: nh3 keeps a stripped tag's CHILDREN, so a missing
+    # <mask> turned its shapes into visible ones painted over the diagram.
+    "symbol",
+    "use",
+    "mask",
+    "pattern",
+    "image",
+    "filter",
+    "feGaussianBlur",
+    "feOffset",
+    "feFlood",
+    "feComposite",
+    "feBlend",
+    "feMerge",
+    "feMergeNode",
+    "feDropShadow",
+    "feColorMatrix",
+    # <desc> renders nothing in a browser, but stripping the tag used to spill
+    # its text into the diagram as stray words.
+    "desc",
 }
+# Deliberately absent: <script> and <foreignObject>. foreignObject re-opens the
+# HTML namespace inside SVG, which is exactly the escape hatch this allowlist
+# exists to close. SVG <title> (a tooltip) is dropped with its text by
+# clean_content_tags below — nh3 can't tell it apart from a document <title>,
+# and letting document titles through leaks them into the body as bare text.
 _SVG_ATTRS = {
     "viewBox",
     "xmlns",
@@ -115,6 +142,32 @@ _SVG_ATTRS = {
     "stop-opacity",
     "clip-path",
     "clip-rule",
+    # References into <defs>: `href` for <use>/<textPath>/<image>, and the
+    # url(#id) attributes that point at a mask/pattern/filter.
+    "href",
+    "xlink:href",
+    "mask",
+    "filter",
+    "maskUnits",
+    "maskContentUnits",
+    "patternUnits",
+    "patternContentUnits",
+    "patternTransform",
+    "clipPathUnits",
+    "filterUnits",
+    "primitiveUnits",
+    "result",
+    "in",
+    "in2",
+    "mode",
+    "stdDeviation",
+    "flood-color",
+    "flood-opacity",
+    "values",
+    "type",
+    "operator",
+    "spreadMethod",
+    "startOffset",
 }
 _SANITIZE_TAGS = (
     nh3.ALLOWED_TAGS
