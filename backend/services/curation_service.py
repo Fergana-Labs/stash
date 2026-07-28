@@ -2,10 +2,11 @@
 
 `changes_since` is the incremental delta since the curator's watermark: new
 history events (excluding the curator's own run sessions), changed pages
-(excluding the Memory subtree), new files, and the user's connected sources as
-pointers (the agent pulls source specifics with `stash search`) — the curator
-never sees its own output. `has_changes_since` is the cheap EXISTS the beat
-task uses to skip idle users without waking a sprite.
+(excluding the Memory subtree), new files, changed Drive-folder documents,
+and the user's connected sources as pointers (the agent pulls source
+specifics with `stash search`) — the curator never sees its own output.
+`has_changes_since` is the cheap EXISTS the beat task uses to skip idle users
+without waking a sprite.
 """
 
 from __future__ import annotations
@@ -24,6 +25,7 @@ _MAX_EVENTS = 500
 _MAX_PAGES = 100
 _MAX_FILES = 100
 _MAX_SAVES = 100
+_MAX_SOURCE_DOCS = 100
 _SNIPPET = 280
 
 
@@ -46,6 +48,9 @@ async def has_changes_since(owner_user_id: UUID, user_id: UUID, since: datetime 
                             OR folder_id <> ALL($3)))
           OR EXISTS (SELECT 1 FROM files
                      WHERE owner_user_id = $1 AND created_at > $2)
+          OR EXISTS (SELECT 1 FROM drive_documents
+                     WHERE owner_user_id = $1 AND updated_at > $2
+                       AND extraction_status = 'done' AND deleted_at IS NULL)
           OR EXISTS (SELECT 1 FROM x_save_docs
                      WHERE owner_user_id = $1 AND updated_at > $2
                        AND hydration_status = 'done' AND deleted_at IS NULL)
@@ -63,7 +68,8 @@ async def has_changes_since(owner_user_id: UUID, user_id: UUID, since: datetime 
 
 async def changes_since(owner_user_id: UUID, user_id: UUID, since: datetime | None) -> dict:
     """The delta the curator reads: history events, changed pages (excl. Memory),
-    new files, newly hydrated X/Instagram saves, and connected-source pointers."""
+    new files, changed Drive-folder documents, newly hydrated X/Instagram
+    saves, and connected-source pointers."""
     pool = get_pool()
     memory_ids = await files_tree_service.memory_subtree_folder_ids(owner_user_id)
     exclude = list(memory_ids) or None
@@ -130,6 +136,36 @@ async def changes_since(owner_user_id: UUID, user_id: UUID, since: datetime | No
         for r in file_rows
     ]
 
+    # Changed Drive-folder documents, as items rather than source pointers — a
+    # picked Drive folder is the user's curated document set (edited outside
+    # Stash), so an edit there is curation input the same way an upload is.
+    # `updated_at` moves only on a real change: the sync upsert bumps it when
+    # Drive's modifiedTime differs, and extraction bumps it when the new body
+    # lands. Gating on 'done' presents a doc only once its text is readable.
+    source_doc_rows = await pool.fetch(
+        """
+        SELECT path, name, updated_at, left(coalesce(content, ''), $4) AS snippet
+        FROM drive_documents
+        WHERE owner_user_id = $1
+          AND ($2::timestamptz IS NULL OR updated_at > $2)
+          AND extraction_status = 'done' AND deleted_at IS NULL
+        ORDER BY updated_at DESC LIMIT $3
+        """,
+        owner_user_id,
+        since,
+        _MAX_SOURCE_DOCS,
+        _SNIPPET,
+    )
+    source_docs = [
+        {
+            "path": r["path"],
+            "name": r["name"],
+            "updated_at": _iso(r["updated_at"]),
+            "snippet": r["snippet"],
+        }
+        for r in source_doc_rows
+    ]
+
     # Newly hydrated X/Instagram saves, as items rather than source pointers —
     # a save the user made is deliberate curation input, like an upload.
     save_rows = await pool.fetch(
@@ -183,6 +219,7 @@ async def changes_since(owner_user_id: UUID, user_id: UUID, since: datetime | No
             "history": len(history),
             "pages": len(pages),
             "files": len(files),
+            "source_docs": len(source_docs),
             "saves": len(saves),
             "sources": len(sources),
         },
@@ -190,6 +227,7 @@ async def changes_since(owner_user_id: UUID, user_id: UUID, since: datetime | No
         "history_has_more": history_has_more,
         "pages": pages,
         "files": files,
+        "source_docs": source_docs,
         "saves": saves,
         "sources": sources,
     }

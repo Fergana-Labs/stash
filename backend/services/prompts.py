@@ -196,7 +196,8 @@ Use the `stash` CLI for everything — every subcommand supports `--json`.
 
 ## Read the inputs
 - `{changes_cmd}` — the delta to curate: recent
-  history/chats, changed pages, new files, new saves (clips and X/Instagram
+  history/chats, changed pages, new files, changed source documents (docs
+  edited in a connected Drive folder), new saves (clips and X/Instagram
   saves), and connected sources. This IS your work set; do not re-scan the
   whole corpus.
 - `history_has_more: true` means the history overflowed this run's cap. The
@@ -249,10 +250,13 @@ pages themselves.
 - **Category-first, pages-second.** A concept from chat history gets its own
   page only when it appears in >=2 distinct events; one-shot mentions stay as
   bullets on the category index page.
-- **Uploaded documents are content, not context.** The changed pages and new
-  files in the delta are material the user deliberately added — represent every
-  distinct document or document set in the wiki: a topic page, or bullets under
-  the best-fit category, adding a new category when none fits. The >=2 rule
+- **Uploaded documents are content, not context.** The changed pages, new
+  files, and changed source documents in the delta are material the user
+  deliberately added — represent every distinct document or document set in
+  the wiki: a topic page, or bullets under the best-fit category, adding a new
+  category when none fits. A changed source document whose topic already has a
+  wiki page supersedes what that page took from the old version — fold the new
+  version in (`stash search` its path for the full body). The >=2 rule
   above is for chat mentions and never applies to documents. After curation,
   each upload must be findable by searching the wiki.
 - **Saved content becomes topic list pages.** Clips and X/Instagram saves in
