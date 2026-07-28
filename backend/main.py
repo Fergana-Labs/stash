@@ -37,6 +37,7 @@ from .routers import (
     marketing,
     mcp_servers,
     memory,
+    mini_programs,
     pastes,
     pins,
     publish,
@@ -130,6 +131,7 @@ app.include_router(files.me_router)
 app.include_router(files.canonical_router)
 app.include_router(clips.router)
 app.include_router(clips.imports_router)
+app.include_router(mini_programs.router)
 app.include_router(batch.router)
 app.include_router(transcripts.router)
 app.include_router(aggregate.router)

@@ -10,19 +10,17 @@ So "Clips" reads like a bookmark manager (the table) with the full captured
 content one click away (the raw folder).
 """
 
-import asyncio
 from datetime import UTC, datetime
 from urllib.parse import urlparse
 from uuid import UUID
 
 from ..config import settings
 from ..database import get_pool
-from . import files_tree_service, image_archive_service, table_service
+from . import files_tree_service, image_archive_service, mini_program_service, table_service
 from .article_extraction import ArticleExtractionError, extract_article
 
 CLIPS_FOLDER = "Clips"
 RAW_FOLDER = "raw"
-BOOKMARKS_TABLE = "Bookmarks"
 
 # Clip types shown in the Bookmarks table's Type column.
 KIND_PAGE = "Page"
@@ -33,18 +31,9 @@ KIND_TWEET = "Tweet"
 # unsupported content) — the link itself is still worth keeping.
 KIND_LINK = "Link"
 
-_BOOKMARK_COLUMNS = [
-    {"name": "Title", "type": "text"},
-    {"name": "URL", "type": "url"},
-    {
-        "name": "Type",
-        "type": "select",
-        "options": ["Page", "PDF", "Video", "Tweet", "Instagram", "Link"],
-    },
-    {"name": "Saved", "type": "text"},
-    {"name": "Site", "type": "text"},
-    {"name": "Clip", "type": "url"},
-]
+# The Bookmarks schema lives in the bookmarks manifest — see
+# mini_program_service. Keeping it there means the columns, the enrichment
+# config, and the views the UI renders can't drift apart.
 
 
 async def clips_folder_id(owner_user_id: UUID, user_id: UUID) -> UUID:
@@ -88,34 +77,18 @@ async def raw_folder_id(owner_user_id: UUID, user_id: UUID) -> UUID:
 # --- Bookmarks table (the bookmark manager) -----------------------------------
 
 
-# tables has no unique (owner, folder, name) index, so a lost get-or-create
-# race would silently duplicate the Bookmarks table. This lock serializes
-# lookups within the process — batch imports save many bookmarks concurrently.
-_bookmarks_table_lock = asyncio.Lock()
-
-
 async def _bookmarks_table(owner_user_id: UUID, user_id: UUID) -> tuple[UUID, dict[str, str]]:
-    """Get-or-create the Bookmarks table in the Clips folder. Returns
-    (table_id, {column name -> column id}) so callers can build row data."""
-    clips_id = await clips_folder_id(owner_user_id, user_id)
-    async with _bookmarks_table_lock:
-        row = await get_pool().fetchrow(
-            "SELECT id, columns FROM tables WHERE owner_user_id = $1 AND folder_id = $2 AND name = $3",
-            owner_user_id,
-            clips_id,
-            BOOKMARKS_TABLE,
-        )
-        if row:
-            return row["id"], {c["name"]: c["id"] for c in row["columns"]}
-        table = await table_service.create_table(
-            owner_user_id,
-            BOOKMARKS_TABLE,
-            "Everything you've saved with the Stash browser extension.",
-            [dict(c) for c in _BOOKMARK_COLUMNS],
-            user_id,
-            folder_id=clips_id,
-        )
-        return table["id"], {c["name"]: c["id"] for c in table["columns"]}
+    """Get-or-create the Bookmarks table. Returns (table_id, {column name ->
+    column id}) so callers can build row data.
+
+    Race safety is the unique index on tables(owner_user_id, mini_program) —
+    bulk imports save many bookmarks concurrently across processes, which a
+    process-local lock could not have covered.
+    """
+    table = await mini_program_service.ensure_table(
+        mini_program_service.BOOKMARKS_SLUG, owner_user_id, user_id
+    )
+    return table["id"], {c["name"]: c["id"] for c in table["columns"]}
 
 
 def _clip_app_url(*, page_id: UUID | None = None, file_id: UUID | None = None) -> str:

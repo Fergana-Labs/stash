@@ -33,6 +33,7 @@ ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright
 RUN playwright install chromium && chown -R stash:stash /opt/playwright
 
 COPY backend/ ./backend/
+COPY docs/skills/ ./docs/skills/
 # The VFS model + shell, shared verbatim with the `stash vfs` CLI command.
 COPY stashvfs/ ./stashvfs/
 COPY backend/entrypoint.sh ./entrypoint.sh

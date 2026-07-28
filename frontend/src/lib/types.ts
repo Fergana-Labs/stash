@@ -94,13 +94,63 @@ export interface TableColumn {
   width: number;
 }
 
+/** How a saved view renders. Views are persisted as an untyped JSONB dict, so
+ *  `layout` costs nothing server-side — older views without it read as a grid. */
+export type TableViewLayout = "table" | "cards";
+
 export interface TableView {
   id: string;
   name: string;
+  layout?: TableViewLayout;
   filters?: { column_id: string; op: string; value: string }[];
   sort_by?: string;
   sort_order?: string;
   visible_columns?: string[];
+}
+
+/** Which column fills each slot of a card / detail pane, by column id. The
+ *  server resolves these from the manifest's column *names*, so the client
+ *  never needs to know that a bookmark has a "Site". */
+export interface MiniProgramDetail {
+  title?: string;
+  subtitle?: string;
+  body?: string;
+  labels?: string;
+  link?: string;
+  content?: string;
+  badge?: string;
+  timestamp?: string;
+}
+
+export interface MiniProgramManifest {
+  slug: string;
+  title: string;
+  tagline: string;
+  icon: string;
+  empty_state: {
+    title: string;
+    description: string;
+    action: { label: string; href: string };
+  };
+  detail: MiniProgramDetail;
+  /** Columns an LLM fills in the background — rendered as pending until they do. */
+  enriched_columns: string[];
+}
+
+export interface MiniProgramApp {
+  slug: string;
+  title: string;
+  tagline: string;
+  icon: string;
+  installed: boolean;
+  table_id: string | null;
+  row_count: number;
+}
+
+export interface MiniProgramResolved {
+  table_id: string;
+  row_count: number;
+  manifest: MiniProgramManifest;
 }
 
 export interface Table {
@@ -263,3 +313,13 @@ export interface Workspace {
 
 /** The selected scope — the slice of a workspace we persist and send. */
 export type Scope = Pick<Workspace, "scope_user_id" | "name">;
+
+/** Filter-chip counts, computed over the whole table rather than a loaded
+ *  page — a chip whose count reflects page one is worse than no chip. */
+export interface AppFacets {
+  total: number;
+  topics: { label: string; count: number }[];
+  untagged: number;
+  duplicates: number;
+  broken: number;
+}

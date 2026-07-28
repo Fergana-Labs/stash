@@ -35,3 +35,6 @@ coverage/
 .claude/
 .global-agents/
 .celerybeat-schedule*
+
+# Local env backup written when rotating keys
+.env.bak

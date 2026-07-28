@@ -255,35 +255,81 @@ async def _read_file(args: dict) -> dict:
 
 @tool(
     "query_table",
-    "List rows from a table by name. Returns the row payloads.",
+    "Query rows from a table. Returns the table's columns (id, name, type) "
+    "alongside the rows, plus the total matching the filter, so you can page. "
+    "Cells are keyed by column id — read them off the returned columns.",
     {
         "type": "object",
         "properties": {
-            "table_name": {"type": "string"},
+            "table_name": {"type": "string", "description": "Table name, or its id."},
+            "filters": {
+                "type": "array",
+                "description": (
+                    "Row filters, ANDed. Each is {column_id, op, value} where op is one of "
+                    "eq, gte, lte, contains, is_empty, is_not_empty. Dates stored as "
+                    "ISO strings compare correctly with gte/lte."
+                ),
+                "items": {"type": "object"},
+            },
+            "sort_by": {"type": "string", "description": "Column id to sort on."},
+            "sort_order": {"type": "string", "enum": ["asc", "desc"]},
             "limit": {"type": "integer", "default": 50},
+            "offset": {"type": "integer", "default": 0},
         },
         "required": ["table_name"],
     },
 )
 async def _query_table(args: dict) -> dict:
-    from ..database import get_pool
-
     owner_user_id = _current_scope()
     user_id = _current_user()
+    wanted = str(args.get("table_name", "")).strip()
+
     tables = await table_service.list_tables(owner_user_id, user_id)
-    match = next(
-        (t for t in tables if t.get("name", "").lower() == args.get("table_name", "").lower()),
-        None,
+    matches = [t for t in tables if str(t["id"]) == wanted]
+    if not matches:
+        matches = [t for t in tables if t.get("name", "").lower() == wanted.lower()]
+
+    if not matches:
+        return _text_result(json.dumps({"error": f"no table named {wanted!r}"}))
+    if len(matches) > 1:
+        # Names are unique per folder, so a bare name can still match two
+        # tables in different folders. Resolving that silently used to hand
+        # back whichever was touched most recently.
+        return _text_result(
+            json.dumps(
+                {
+                    "error": f"{len(matches)} tables are named {wanted!r}; pass an id",
+                    "candidates": [
+                        {"id": str(t["id"]), "name": t["name"], "folder_id": str(t["folder_id"])}
+                        for t in matches
+                    ],
+                }
+            )
+        )
+
+    table = matches[0]
+    rows, total = await table_service.list_rows(
+        table["id"],
+        filters=args.get("filters"),
+        sort_by=args.get("sort_by"),
+        sort_order=args.get("sort_order") or "asc",
+        limit=int(args.get("limit", 50)),
+        offset=int(args.get("offset", 0)),
     )
-    if not match:
-        return _text_result(json.dumps({"error": "table not found"}))
-    rows = await get_pool().fetch(
-        "SELECT id, data FROM table_rows WHERE table_id = $1 ORDER BY row_order LIMIT $2",
-        match["id"],
-        int(args.get("limit", 50)),
+    return _text_result(
+        json.dumps(
+            {
+                "table_id": str(table["id"]),
+                "columns": [
+                    {"id": c["id"], "name": c["name"], "type": c["type"]}
+                    for c in table.get("columns", [])
+                ],
+                "total": total,
+                "rows": [{"id": str(r["id"]), "data": r["data"]} for r in rows],
+            },
+            default=str,
+        )
     )
-    out = [{"id": str(r["id"]), "data": r["data"]} for r in rows]
-    return _text_result(json.dumps(out))
 
 
 @tool(
@@ -844,7 +890,7 @@ async def _create_table(args: dict) -> dict:
     user_id = _current_user()
     folder_id = UUID(args["folder_id"]) if args.get("folder_id") else None
     try:
-        table = await table_service.create_table(
+        table = await table_service.create_table_unique(
             owner_user_id,
             args["name"],
             args.get("description") or "",

@@ -1282,7 +1282,7 @@ async def _copy_table_into(
     from . import table_service
 
     meta = await table_service.get_table_metadata(table_id)
-    new_table = await table_service.create_table(
+    new_table = await table_service.create_table_unique(
         owner_user_id, name, meta["description"], meta["columns"], copied_by, folder_id=folder_id
     )
     pool = get_pool()

@@ -151,6 +151,10 @@ async def create_ws_table(
             current_user["id"],
             folder_id=req.folder_id,
         )
+    except table_service.DuplicateTableName as e:
+        # A person naming a table should be told it's taken, not silently
+        # handed "Notes (2)" — that's for side-effect creates (uploads, copies).
+        raise HTTPException(status_code=409, detail=str(e)) from e
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return TableResponse(**table)
@@ -204,14 +208,17 @@ async def update_ws_table(
     await _check_member(owner_user_id, current_user["id"])
     await _check_ws_table(owner_user_id, table_id)
     await _check_table_access(owner_user_id, table_id, current_user["id"], require_write=True)
-    table = await table_service.update_table(
-        table_id,
-        current_user["id"],
-        name=req.name,
-        description=req.description,
-        folder_id=req.folder_id,
-        move_to_root=req.move_to_root,
-    )
+    try:
+        table = await table_service.update_table(
+            table_id,
+            current_user["id"],
+            name=req.name,
+            description=req.description,
+            folder_id=req.folder_id,
+            move_to_root=req.move_to_root,
+        )
+    except table_service.DuplicateTableName as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
     if not table:
         raise HTTPException(status_code=404, detail="Table not found")
     return TableResponse(**table)

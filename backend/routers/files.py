@@ -697,7 +697,7 @@ async def ingest_csv_file(
         )
 
     table_name = row["name"].rsplit(".", 1)[0] or row["name"]
-    table = await table_service.create_table(
+    table = await table_service.create_table_unique(
         owner_user_id=owner_user_id,
         name=table_name,
         description=f"Imported from {row['name']}",

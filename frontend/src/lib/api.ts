@@ -16,6 +16,9 @@ import {
   KnowledgeDensity,
   EmbeddingProjection,
   Workspace,
+  MiniProgramApp,
+  MiniProgramResolved,
+  AppFacets,
 } from "./types";
 import { getScopeUserId, SCOPE_HEADER } from "./scope-store";
 
@@ -2275,4 +2278,68 @@ export async function createMcpServer(input: McpServerCreate): Promise<McpServer
 
 export async function deleteMcpServer(serverId: string): Promise<void> {
   await apiFetch(`${ME}/mcp-servers/${serverId}`, { method: "DELETE" });
+}
+
+// --- Mini programs (app-shaped tables) ---
+
+export async function listApps(): Promise<{ apps: MiniProgramApp[] }> {
+  return apiFetch(`${ME}/apps`);
+}
+
+export async function getApp(slug: string): Promise<MiniProgramResolved> {
+  return apiFetch(`${ME}/apps/${slug}`);
+}
+
+export async function installApp(slug: string): Promise<MiniProgramResolved> {
+  return apiFetch(`${ME}/apps/${slug}`, { method: "POST" });
+}
+
+export async function reenrichRow(slug: string, rowId: string): Promise<{ status: string }> {
+  return apiFetch(`${ME}/apps/${slug}/rows/${rowId}/reenrich`, { method: "POST" });
+}
+
+export async function listAppRows(
+  slug: string,
+  params: {
+    q?: string;
+    topic?: string;
+    filter?: string;
+    view_id?: string;
+    limit?: number;
+    offset?: number;
+  } = {}
+): Promise<{ rows: TableRow[]; total: number; has_more: boolean }> {
+  const query = new URLSearchParams();
+  if (params.q) query.set("q", params.q);
+  if (params.topic) query.set("topic", params.topic);
+  if (params.filter) query.set("filter", params.filter);
+  if (params.view_id) query.set("view_id", params.view_id);
+  query.set("limit", String(params.limit ?? 60));
+  query.set("offset", String(params.offset ?? 0));
+  return apiFetch(`${ME}/apps/${slug}/rows?${query.toString()}`);
+}
+
+export async function appFacets(slug: string): Promise<AppFacets> {
+  return apiFetch(`${ME}/apps/${slug}/facets`);
+}
+
+export async function setRowTopics(
+  slug: string,
+  rowId: string,
+  topics: string[]
+): Promise<{ topics: string[] }> {
+  return apiFetch(`${ME}/apps/${slug}/rows/${rowId}/topics`, {
+    method: "PUT",
+    body: JSON.stringify({ topics }),
+  });
+}
+
+export async function bulkEditRows(
+  slug: string,
+  body: { row_ids: string[]; action: "add_topics" | "remove_topic" | "delete"; topics?: string[] }
+): Promise<{ affected: number }> {
+  return apiFetch(`${ME}/apps/${slug}/rows/bulk`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
 }

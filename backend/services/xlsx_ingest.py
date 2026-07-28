@@ -100,7 +100,7 @@ async def ingest_xlsx_bytes(
             # Notion DB import uses random col ids (no _slugify); Sheets/CSV
             # use slugified ones. Mix is fine — id collisions within a single
             # table are what matters, and we de-dupe above.
-            table = await table_service.create_table(
+            table = await table_service.create_table_unique(
                 owner_user_id=owner_user_id,
                 name=table_name,
                 description=description_template.format(sheet=sheet.title),
