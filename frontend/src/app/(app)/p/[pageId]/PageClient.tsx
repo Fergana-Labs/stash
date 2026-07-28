@@ -34,7 +34,6 @@ import { useAuth } from "@/hooks/useAuth";
 import {
   ApiError,
   createCommentThread,
-  createPage,
   deleteCommentMessage,
   deleteCommentThread,
   getFolderContents,
@@ -54,7 +53,6 @@ import { findInSkillContents } from "@/lib/localSkill";
 import { getScope, getScopeUserId, setScope } from "@/lib/scope-store";
 import type { CommentThread, Page, Scope, Workspace } from "@/lib/types";
 import { subscribePageEvents } from "@/lib/pageEvents";
-import { refreshSidebar } from "@/lib/skillNavigationCache";
 
 function wrapHtml(title: string, body: string): string {
   // HTML pages can be stored as a full document (when imported from .html
