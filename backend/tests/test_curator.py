@@ -115,6 +115,40 @@ async def test_hydrated_saves_flow_through_the_feed(client: AsyncClient, _db_poo
     assert save["snippet"] == "a saved thread"
 
 
+@pytest.mark.asyncio
+async def test_changed_drive_docs_flow_through_the_feed(client: AsyncClient, _db_pool):
+    """A doc edited in a connected Drive folder is curation input like an
+    upload: once its new body is extracted it must trip the cheap gate and
+    appear in the delta. A doc still mid-extraction or deleted must do
+    neither — the curator only sees documents whose text is readable."""
+    from backend.services import source_service
+
+    key, uid = await _register(client)
+    old = datetime(2020, 1, 1, tzinfo=UTC)
+    source = await source_service.create_source(
+        owner_user_id=str(uid),
+        source_type="google_drive_folder",
+        external_ref=unique_name("folder"),
+        display_name="Part Cheat Sheets",
+    )
+    await _db_pool.execute(
+        "INSERT INTO drive_documents (owner_user_id, source_id, path, name, kind, "
+        "external_ref, content, extraction_status, deleted_at) VALUES "
+        "($1, $2, 'Sheets/Brakes', 'Brakes', 'file', 'g1', 'the final recipe', 'done', NULL), "
+        "($1, $2, 'Sheets/Hubs', 'Hubs', 'file', 'g2', NULL, 'pending', NULL), "
+        "($1, $2, 'Sheets/Old', 'Old', 'file', 'g3', 'stale', 'done', now())",
+        uid,
+        UUID(source["id"]),
+    )
+
+    assert await curation_service.has_changes_since(uid, uid, old) is True
+    feed = await curation_service.changes_since(uid, uid, old)
+    assert feed["counts"]["source_docs"] == 1
+    doc = feed["source_docs"][0]
+    assert doc["path"] == "Sheets/Brakes"
+    assert doc["snippet"] == "the final recipe"
+
+
 async def _push_events(client: AsyncClient, key: str, events: list[dict]) -> None:
     r = await client.post(
         "/api/v1/me/sessions/events/batch", json={"events": events}, headers=_auth(key)
