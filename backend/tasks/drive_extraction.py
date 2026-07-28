@@ -13,8 +13,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import subprocess
 import sys
+import tempfile
 from uuid import UUID
 
 from ..celery_app import celery
@@ -34,23 +36,42 @@ MAX_ATTEMPTS = 3
 # the sweep enqueues rows the claim then refuses.
 STALE_LOCK = "30 minutes"
 
+_CHILD_MODULE = "backend.workers.extract_drive_one"
 
-async def _run_child(row_id: UUID) -> int:
-    proc = await asyncio.create_subprocess_exec(
-        sys.executable,
-        "-m",
-        "backend.workers.extract_drive_one",
-        str(row_id),
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
-    try:
-        await asyncio.wait_for(proc.communicate(), timeout=CHILD_TIMEOUT_SECONDS)
-    except TimeoutError:
-        proc.kill()
-        await proc.wait()
-        return -1
-    return proc.returncode or 0
+# Enough stderr to hold the child's crash report (a redacted traceback), small
+# enough that parser-library noise ahead of it can't bloat a log line.
+STDERR_TAIL_BYTES = 2000
+
+
+async def _run_child(row_id: UUID) -> tuple[int, str]:
+    """Run the child; return its exit code and the tail of its stderr.
+
+    stderr goes to a temp file, not a pipe: parser libraries can spew
+    megabytes of warnings, and a pipe would buffer all of it inside this
+    worker — the exact exposure the child process exists to avoid. Only the
+    tail comes back, which is where the child's own crash report lands.
+    stdout stays discarded (parser libraries print document content there).
+    """
+    with tempfile.TemporaryFile() as errf:
+        proc = await asyncio.create_subprocess_exec(
+            sys.executable,
+            "-m",
+            _CHILD_MODULE,
+            str(row_id),
+            stdout=subprocess.DEVNULL,
+            stderr=errf,
+        )
+        try:
+            await asyncio.wait_for(proc.wait(), timeout=CHILD_TIMEOUT_SECONDS)
+        except TimeoutError:
+            proc.kill()
+            await proc.wait()
+            return -1, ""
+        errf.seek(0, os.SEEK_END)
+        size = errf.tell()
+        errf.seek(max(0, size - STDERR_TAIL_BYTES))
+        tail = errf.read().decode(errors="replace").strip()
+    return proc.returncode or 0, tail
 
 
 async def _claim(row_id: UUID) -> bool:
@@ -101,14 +122,19 @@ async def _extract(row_id: UUID) -> str:
     if not await _claim(row_id):
         return "skipped"
 
-    code = await _run_child(row_id)
+    code, err_tail = await _run_child(row_id)
     if code == 0:
         return "ok"
 
     reason = "extraction ran out of memory" if code in (-9, 137) else f"extraction exited {code}"
     if code == -1:
         reason = "extraction timed out"
-    logger.warning("drive extraction child failed row=%s reason=%s", row_id, reason)
+    logger.warning(
+        "drive extraction child failed row=%s reason=%s stderr=%s",
+        row_id,
+        reason,
+        err_tail or "<empty>",
+    )
     await _mark_failed_externally(row_id, reason)
     return "failed"
 

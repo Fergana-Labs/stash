@@ -7,6 +7,7 @@ child process's status transitions. Without this the read-side tests only prove
 that a correctly populated table reads correctly — never that anything fills it.
 """
 
+import sys
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from uuid import UUID, uuid4
@@ -357,11 +358,11 @@ async def test_a_row_is_claimed_once(client: AsyncClient, monkeypatch):
 
 
 async def _child_ok(_row_id):
-    return 0
+    return 0, ""
 
 
 async def _child_oom(_row_id):
-    return 137
+    return 137, ""
 
 
 async def test_a_child_killed_by_the_oom_killer_is_recorded(client: AsyncClient, monkeypatch):
@@ -378,6 +379,40 @@ async def test_a_child_killed_by_the_oom_killer_is_recorded(client: AsyncClient,
     )
     assert row["extraction_status"] == "pending"  # retryable, attempts = 1
     assert "out of memory" in row["extraction_error"]
+
+
+async def test_a_startup_crash_reaches_the_parents_log(monkeypatch):
+    """A child that dies before it can write its own reason — an import
+    failure, a refused DB connection — must not vanish into a bare 'exited 1'.
+    The parent captures the stderr tail, which carries the failure."""
+    monkeypatch.setattr(drive_extraction, "_CHILD_MODULE", "backend.no_such_module")
+
+    code, tail = await drive_extraction._run_child(uuid4())
+
+    assert code == 1
+    assert "No module named" in tail
+
+
+def test_a_child_crash_report_names_the_class_but_never_the_message(monkeypatch, capsys):
+    """The stderr crash report follows the same redaction rule as the row's
+    persisted error: frames locate the failure, the message stays out — it can
+    embed document text or provider responses, and this reaches the logs."""
+    monkeypatch.setattr(extract_drive_one, "_apply_memory_limit", lambda: None)
+
+    async def _boom(_row_id):
+        raise RuntimeError("token abc123 leaked into the message")
+
+    monkeypatch.setattr(extract_drive_one, "_run", _boom)
+    monkeypatch.setattr(sys, "argv", ["extract_drive_one", str(uuid4())])
+
+    with pytest.raises(SystemExit) as exc:
+        extract_drive_one.main()
+
+    assert exc.value.code == 1
+    err = capsys.readouterr().err
+    assert "RuntimeError" in err
+    assert "_boom" in err  # the frames locate the failure
+    assert "abc123" not in err
 
 
 async def test_a_file_removed_from_drive_stops_being_readable(client: AsyncClient, monkeypatch):
