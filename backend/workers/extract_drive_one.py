@@ -8,13 +8,16 @@ Isolated in its own OS process so pypdf on a 180 MB parts catalog OOMs this
 child rather than the Celery worker. RLIMIT_AS is applied before any heavy
 library loads, exactly as `extract_one` does for uploads.
 
-The dispatcher discards stdout/stderr (parser libraries print document content),
-so the child never logs: its only output channels are the exit code and the row
-it updates.
+The dispatcher discards stdout (parser libraries print document content there)
+but keeps the tail of stderr: a crash that happens before the row can record
+its own reason — an import failure, a refused DB connection, a MemoryError in
+startup — used to vanish into an unexplained exit 1. On any crash the child
+now writes a redacted traceback to stderr (frames and exception class only;
+messages can embed document text or provider responses) for the parent to log.
 
 Exit codes:
     0  success (the row carries the text, or a loud reason it has none)
-    1  failure (the row records a redacted error)
+    1  failure (the row records a redacted error; stderr carries the frames)
     137 SIGKILL — typically the OOM killer. The parent records it.
 """
 
@@ -24,6 +27,7 @@ import asyncio
 import os
 import resource
 import sys
+import traceback
 from uuid import UUID
 
 _MEM_LIMIT_BYTES = int(os.getenv("EXTRACTION_MEMORY_LIMIT_MB", "1024")) * 1024 * 1024
@@ -134,7 +138,16 @@ def main() -> None:
         print("invalid uuid", file=sys.stderr)
         sys.exit(2)
     _apply_memory_limit()
-    sys.exit(asyncio.run(_run(row_id)))
+    try:
+        code = asyncio.run(_run(row_id))
+    except Exception as e:
+        # Frame locations only — no source lines and no message. Either can
+        # embed document text, and this report reaches the parent's logs.
+        for filename, lineno, name, _line in traceback.extract_tb(e.__traceback__):
+            sys.stderr.write(f'  File "{filename}", line {lineno}, in {name}\n')
+        sys.stderr.write(f"{type(e).__name__}\n")
+        sys.exit(1)
+    sys.exit(code)
 
 
 if __name__ == "__main__":
