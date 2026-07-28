@@ -145,7 +145,6 @@ export default function SkillFolderClient({ folderId }: { folderId: string }) {
           objectId={folderId}
           resourceName={folderName}
           resourceUrlPath={`/skills/${folderId}`}
-          currentUser={user}
         />
         <SkillShareButton
           folderId={folderId}

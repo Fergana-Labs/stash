@@ -3,30 +3,42 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import ResourceShareButton from "./ResourceShareButton";
 import {
-  getGeneralAccess,
-  listObjectShares,
+  ApiError,
+  getObjectAccess,
   shareObjectByEmail,
   unshareObject,
   updateGeneralAccess,
+  type ObjectAccess,
+  type ObjectShare,
 } from "../../lib/api";
 
-vi.mock("../../lib/api", () => ({
-  listObjectShares: vi.fn(),
+vi.mock("../../lib/api", async () => ({
+  ...(await vi.importActual<typeof import("../../lib/api")>("../../lib/api")),
+  getObjectAccess: vi.fn(),
   shareObjectByEmail: vi.fn(),
   unshareObject: vi.fn(),
-  getGeneralAccess: vi.fn(),
   updateGeneralAccess: vi.fn(),
 }));
 
-const currentUser = {
-  id: "user-1",
-  name: "henry",
-  display_name: "Henry Dowling",
+const owner = {
+  user_id: "user-1",
+  label: "Henry Dowling",
   email: "henry@example.com",
-  description: "",
-  created_at: "2026-05-11T00:00:00Z",
-  last_seen: "2026-05-11T00:00:00Z",
+  is_you: true,
 };
+
+const adaShare: ObjectShare = {
+  principal_type: "user",
+  principal_id: "user-2",
+  label: "Ada Lovelace",
+  email: "ada@example.com",
+  permission: "read",
+  pending: false,
+};
+
+function access(overrides: Partial<ObjectAccess> = {}): ObjectAccess {
+  return { owner, shares: [adaShare], general_access: "none", ...overrides };
+}
 
 describe("ResourceShareButton", () => {
   beforeEach(() => {
@@ -35,19 +47,9 @@ describe("ResourceShareButton", () => {
       configurable: true,
       value: { writeText: vi.fn().mockResolvedValue(undefined) },
     });
-    vi.mocked(listObjectShares).mockResolvedValue([
-      {
-        principal_type: "user",
-        principal_id: "user-2",
-        label: "Ada Lovelace",
-        email: "ada@example.com",
-        permission: "read",
-        pending: false,
-      },
-    ]);
+    vi.mocked(getObjectAccess).mockResolvedValue(access());
     vi.mocked(shareObjectByEmail).mockResolvedValue(undefined);
     vi.mocked(unshareObject).mockResolvedValue(undefined);
-    vi.mocked(getGeneralAccess).mockResolvedValue("none");
     vi.mocked(updateGeneralAccess).mockImplementation(
       async (_type, _id, permission) => permission,
     );
@@ -64,7 +66,6 @@ describe("ResourceShareButton", () => {
         objectId="file-1"
         resourceName="launch.png"
         resourceUrlPath="/f/file-1"
-        currentUser={currentUser}
       />,
     );
 
@@ -73,7 +74,7 @@ describe("ResourceShareButton", () => {
     expect(
       await screen.findByRole("dialog", { name: "Share launch.png" }),
     ).toBeInTheDocument();
-    expect(screen.getByText("Henry Dowling (you)")).toBeInTheDocument();
+    expect(await screen.findByText("Henry Dowling (you)")).toBeInTheDocument();
     expect(await screen.findByText("Ada Lovelace")).toBeInTheDocument();
     expect(screen.getByText("Restricted")).toBeInTheDocument();
 
@@ -85,19 +86,78 @@ describe("ResourceShareButton", () => {
     expect(await screen.findByText("Link copied.")).toBeInTheDocument();
   });
 
-  it("invites people directly to the resource", async () => {
-    vi.mocked(listObjectShares)
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([
-        {
-          principal_type: "user",
-          principal_id: null,
-          label: "ada@example.com",
-          email: "ada@example.com",
-          permission: "write",
-          pending: true,
+  it("shows the true owner, not the viewer, when they differ", async () => {
+    // Workspace content is owned by the workspace's scope user; the dialog
+    // must render that owner instead of assuming the logged-in user owns it.
+    vi.mocked(getObjectAccess).mockResolvedValue(
+      access({
+        owner: {
+          user_id: "ws-1",
+          label: "Fergana Labs",
+          email: null,
+          is_you: false,
         },
-      ]);
+      }),
+    );
+
+    render(
+      <ResourceShareButton
+        objectType="page"
+        objectId="page-1"
+        resourceName="Org page"
+        resourceUrlPath="/p/page-1"
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Share" }));
+
+    expect(await screen.findByText("Fergana Labs")).toBeInTheDocument();
+    expect(screen.getByText("Workspace")).toBeInTheDocument();
+    expect(screen.queryByText(/\(you\)/)).toBeNull();
+  });
+
+  it("explains instead of offering controls when the viewer cannot share", async () => {
+    // A share/public-link recipient can open the dialog but the access
+    // listing 404s; dead invite controls must not render.
+    vi.mocked(getObjectAccess).mockRejectedValue(new ApiError(404, "Not found"));
+
+    render(
+      <ResourceShareButton
+        objectType="page"
+        objectId="page-1"
+        resourceName="Someone else's page"
+        resourceUrlPath="/p/page-1"
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Share" }));
+
+    expect(
+      await screen.findByText(
+        "You can view this item, but only its owner can manage sharing.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText("Add people")).toBeNull();
+    expect(screen.queryByText("General access")).toBeNull();
+  });
+
+  it("invites people directly to the resource", async () => {
+    vi.mocked(getObjectAccess)
+      .mockResolvedValueOnce(access({ shares: [] }))
+      .mockResolvedValueOnce(
+        access({
+          shares: [
+            {
+              principal_type: "user",
+              principal_id: null,
+              label: "ada@example.com",
+              email: "ada@example.com",
+              permission: "write",
+              pending: true,
+            },
+          ],
+        }),
+      );
 
     render(
       <ResourceShareButton
@@ -105,7 +165,6 @@ describe("ResourceShareButton", () => {
         objectId="table-1"
         resourceName="Prospects"
         resourceUrlPath="/tables/table-1"
-        currentUser={currentUser}
       />,
     );
 
@@ -139,7 +198,6 @@ describe("ResourceShareButton", () => {
         objectId="page-1"
         resourceName="Blog post outline"
         resourceUrlPath="/p/page-1"
-        currentUser={currentUser}
       />,
     );
 
@@ -170,7 +228,6 @@ describe("ResourceShareButton", () => {
         objectId="src-1"
         resourceName="Team Drive"
         resourceUrlPath="/integrations/google?source=src-1"
-        currentUser={currentUser}
       />,
     );
 

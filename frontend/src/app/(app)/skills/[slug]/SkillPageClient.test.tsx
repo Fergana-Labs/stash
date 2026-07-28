@@ -15,9 +15,8 @@ import {
 } from "@/components/ShellChromeContext";
 import { ConfirmDialogProvider } from "@/components/ConfirmDialog";
 import {
-  getGeneralAccess,
+  getObjectAccess,
   getPublicSkill,
-  listObjectShares,
   shareObjectByEmail,
   unpublishSkill,
   updateSkill,
@@ -62,8 +61,7 @@ vi.mock("../../../../lib/api", () => ({
   getPublicSkill: vi.fn(),
   githubOwner: (url: string) =>
     url.replace("https://github.com/", "").split("/")[0],
-  listObjectShares: vi.fn(),
-  getGeneralAccess: vi.fn(),
+  getObjectAccess: vi.fn(),
   updateGeneralAccess: vi.fn(),
   publishSkillFolder: vi.fn(),
   shareObjectByEmail: vi.fn(),
@@ -158,8 +156,16 @@ describe("SkillPageClient", () => {
       ...skillDetail(),
       can_write: true,
     });
-    vi.mocked(listObjectShares).mockResolvedValue([]);
-    vi.mocked(getGeneralAccess).mockResolvedValue("none");
+    vi.mocked(getObjectAccess).mockResolvedValue({
+      owner: {
+        user_id: "user-1",
+        label: "Henry",
+        email: "henry@example.com",
+        is_you: true,
+      },
+      shares: [],
+      general_access: "none",
+    });
     vi.mocked(updateSkill).mockImplementation(async (_skillId, updates) => ({
       ...skillDetail().skill,
       ...updates,
@@ -248,7 +254,7 @@ describe("SkillPageClient", () => {
     const dialog = await screen.findByRole("dialog", {
       name: "Share Shared Skill",
     });
-    expect(listObjectShares).toHaveBeenCalledWith("folder", "folder-1");
+    expect(getObjectAccess).toHaveBeenCalledWith("folder", "folder-1");
 
     fireEvent.change(within(dialog).getByPlaceholderText("Add people by email"), {
       target: { value: "sam@example.com" },

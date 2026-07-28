@@ -11,16 +11,16 @@ import {
 
 import { useEscapeKey } from "../../hooks/useEscapeKey";
 import {
-  getGeneralAccess,
-  listObjectShares,
+  ApiError,
+  getObjectAccess,
   shareObjectByEmail,
   unshareObject,
   updateGeneralAccess,
   type GeneralPermission,
   type ObjectShare,
+  type ShareOwner,
   type SharedObjectType,
 } from "../../lib/api";
-import type { User } from "../../lib/types";
 
 type SharePermission = Extract<GeneralPermission, "read" | "comment" | "write">;
 
@@ -46,13 +46,11 @@ export default function ResourceShareButton({
   objectId,
   resourceName,
   resourceUrlPath,
-  currentUser,
 }: {
   objectType: SharedObjectType;
   objectId: string;
   resourceName: string;
   resourceUrlPath: string;
-  currentUser: User;
 }) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -75,7 +73,6 @@ export default function ResourceShareButton({
           objectId={objectId}
           resourceName={resourceName}
           resourceUrlPath={resourceUrlPath}
-          currentUser={currentUser}
           boundaryRef={containerRef}
           onClose={() => setOpen(false)}
         />
@@ -94,7 +91,6 @@ export function ResourceShareDialog({
   objectId,
   resourceName,
   resourceUrlPath,
-  currentUser,
   boundaryRef,
   onClose,
 }: {
@@ -102,11 +98,15 @@ export function ResourceShareDialog({
   objectId: string;
   resourceName: string;
   resourceUrlPath: string;
-  currentUser: User;
   boundaryRef: RefObject<HTMLDivElement | null>;
   onClose: () => void;
 }) {
+  const [owner, setOwner] = useState<ShareOwner | null>(null);
   const [shares, setShares] = useState<ObjectShare[]>([]);
+  // False once the access listing 404s: the viewer reached this object through
+  // a share or public link, and only the owner (or workspace members, for
+  // workspace content) may manage sharing.
+  const [canShare, setCanShare] = useState(true);
   const [email, setEmail] = useState("");
   const [permission, setPermission] = useState<SharePermission>("read");
   const [busy, setBusy] = useState(false);
@@ -134,20 +134,21 @@ export function ResourceShareDialog({
     setLoadingShares(true);
     setMessage("");
     try {
-      const [shareRows, access] = await Promise.all([
-        listObjectShares(objectType, objectId),
-        supportsGeneralAccess
-          ? getGeneralAccess(objectType, objectId)
-          : Promise.resolve<GeneralPermission>("none"),
-      ]);
-      setShares(shareRows);
-      setGeneralAccess(access);
+      const access = await getObjectAccess(objectType, objectId);
+      setOwner(access.owner);
+      setShares(access.shares);
+      setGeneralAccess(access.general_access);
+      setCanShare(true);
     } catch (e) {
-      setMessage(e instanceof Error ? e.message : "Could not load access.");
+      if (e instanceof ApiError && e.status === 404) {
+        setCanShare(false);
+      } else {
+        setMessage(e instanceof Error ? e.message : "Could not load access.");
+      }
     } finally {
       setLoadingShares(false);
     }
-  }, [objectId, objectType, supportsGeneralAccess]);
+  }, [objectId, objectType]);
 
   async function changeGeneralAccess(next: GeneralPermission) {
     const previous = generalAccess;
@@ -277,6 +278,17 @@ export function ResourceShareDialog({
         </button>
       </div>
 
+      {!canShare && !loadingShares && (
+        <div
+          className="mt-4 rounded-md border border-border bg-surface px-3 py-3 text-[12.5px] text-muted-foreground"
+          role="status"
+        >
+          You can view this item, but only its owner can manage sharing.
+        </div>
+      )}
+
+      {canShare && (
+      <>
       <form onSubmit={addPerson} className="mt-4">
         <label className="sr-only" htmlFor="resource-share-email">
           Add people
@@ -326,11 +338,13 @@ export function ResourceShareDialog({
           People with access
         </h3>
         <div className="mt-2 flex flex-col gap-2">
-          <AccessRow
-            label={`${currentUser.display_name || currentUser.name} (you)`}
-            sublabel={currentUser.email ?? `@${currentUser.name}`}
-            permissionLabel="Owner"
-          />
+          {owner && (
+            <AccessRow
+              label={owner.is_you ? `${owner.label} (you)` : owner.label}
+              sublabel={owner.email ?? "Workspace"}
+              permissionLabel="Owner"
+            />
+          )}
 
           {loadingShares && (
             <div className="rounded-md border border-border bg-surface px-3 py-2 text-[12.5px] text-muted-foreground">
@@ -455,6 +469,8 @@ export function ResourceShareDialog({
           )}
         </div>
       </section>
+      </>
+      )}
 
       <div className="mt-5 flex items-center justify-between gap-3">
         <button

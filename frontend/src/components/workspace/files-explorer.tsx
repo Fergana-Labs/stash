@@ -469,7 +469,6 @@ export default function FilesExplorer({
               objectId={sharing.item.id}
               resourceName={sharing.item.name}
               resourceUrlPath={shareUrlPath(sharing.item)}
-              currentUser={user}
               boundaryRef={shareRef}
               onClose={() => setSharing(null)}
             />

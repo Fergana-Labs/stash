@@ -7,7 +7,7 @@ import {
   type ObjectShare,
   type SessionFolder,
   type SessionFolderVisibility,
-  listObjectShares,
+  getObjectAccess,
   revokePendingShareInvite,
   shareObjectByEmail,
   unshareObject,
@@ -51,7 +51,7 @@ export default function SessionFolderShareModal({
 
   const loadShares = useCallback(async () => {
     try {
-      setShares(await listObjectShares("session_folder", folder.id));
+      setShares((await getObjectAccess("session_folder", folder.id)).shares);
     } catch {
       /* owner-only; ignore on shared views */
     }

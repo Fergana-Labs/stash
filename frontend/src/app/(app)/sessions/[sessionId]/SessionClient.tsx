@@ -166,7 +166,6 @@ export default function SessionViewerPage({ sessionId }: { sessionId: string }) 
           objectId={sessionDetail.id}
           resourceName={sessionHeading(sessionDetail, sessionId)}
           resourceUrlPath={`/sessions/${encodeURIComponent(sessionId)}`}
-          currentUser={user}
         />
         <DownloadMenu
           options={[

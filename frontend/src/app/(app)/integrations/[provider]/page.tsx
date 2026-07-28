@@ -47,7 +47,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import type { User } from "@/lib/types";
 import { routes } from "@/lib/workspace-routes";
 
 // How often a row re-checks a source that is mid-sync, and how many times before
@@ -557,7 +556,6 @@ export function IntegrationDetail({ provider }: { provider: string }) {
                 <SourceRow
                   key={source.source}
                   source={source}
-                  currentUser={user}
                   highlighted={source.source === highlightSourceId}
                   open={source.source === openSourceId}
                   busySync={busy === `sync:${source.source}`}
@@ -666,7 +664,6 @@ function shortRef(source: Source): string | null {
 
 function SourceRow({
   source,
-  currentUser,
   highlighted,
   open,
   busySync,
@@ -676,7 +673,6 @@ function SourceRow({
   onRemove,
 }: {
   source: Source;
-  currentUser: User;
   highlighted: boolean;
   open: boolean;
   busySync: boolean;
@@ -841,7 +837,6 @@ function SourceRow({
               objectId={source.source}
               resourceName={source.display_name}
               resourceUrlPath={`/integrations/${providerForSourceType[source.type]}?source=${source.source}`}
-              currentUser={currentUser}
               boundaryRef={menuBoundaryRef}
               onClose={() => setShareOpen(false)}
             />

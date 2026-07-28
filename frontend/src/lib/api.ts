@@ -1944,26 +1944,28 @@ export interface ObjectShare {
   pending: boolean;
 }
 
-export async function listObjectShares(
-  objectType: SharedObjectType,
-  objectId: string,
-): Promise<ObjectShare[]> {
-  const res = await apiFetch<{ shares: ObjectShare[] }>(
-    `/api/v1/share?object_type=${objectType}&object_id=${objectId}`,
-  );
-  return res.shares;
+export interface ShareOwner {
+  user_id: string;
+  label: string;
+  email: string | null;
+  is_you: boolean;
 }
 
-// The object's current "anyone with the link" level ('none' when it's only
-// reachable by the owner and named shares).
-export async function getGeneralAccess(
+// The object's true owner (which may be a workspace scope user, not the
+// caller), its named shares/invites, and its "anyone with the link" level.
+export interface ObjectAccess {
+  owner: ShareOwner;
+  shares: ObjectShare[];
+  general_access: GeneralPermission;
+}
+
+export async function getObjectAccess(
   objectType: SharedObjectType,
   objectId: string,
-): Promise<GeneralPermission> {
-  const res = await apiFetch<{ general_access: GeneralPermission }>(
+): Promise<ObjectAccess> {
+  return apiFetch<ObjectAccess>(
     `/api/v1/share?object_type=${objectType}&object_id=${objectId}`,
   );
-  return res.general_access;
 }
 
 export async function updateGeneralAccess(

@@ -95,7 +95,6 @@ export default function SkillPageClient({ slug }: { slug: string }) {
             objectId={skill.folder_id}
             resourceName={skill.title}
             resourceUrlPath={`/skills/folder/${skill.folder_id}`}
-            currentUser={user}
           />
         )}
         <SkillShareButton

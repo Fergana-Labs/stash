@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import SessionFolderShareModal from "./SessionFolderShareModal";
 import {
-  listObjectShares,
+  getObjectAccess,
   revokePendingShareInvite,
   shareObjectByEmail,
   unshareObject,
@@ -11,7 +11,7 @@ import {
 import type { SessionFolder } from "../../lib/api";
 
 vi.mock("../../lib/api", () => ({
-  listObjectShares: vi.fn(),
+  getObjectAccess: vi.fn(),
   revokePendingShareInvite: vi.fn(),
   shareObjectByEmail: vi.fn(),
   unshareObject: vi.fn(),
@@ -47,18 +47,28 @@ describe("SessionFolderShareModal", () => {
   });
 
   it("revokes pending email invites instead of treating them as user shares", async () => {
-    vi.mocked(listObjectShares)
-      .mockResolvedValueOnce([
-        {
-          principal_type: "user",
-          principal_id: null,
-          label: "pending@example.com",
-          email: "pending@example.com",
-          permission: "read",
-          pending: true,
-        },
-      ])
-      .mockResolvedValueOnce([]);
+    const owner = {
+      user_id: "user-1",
+      label: "Henry",
+      email: "henry@example.com",
+      is_you: true,
+    };
+    vi.mocked(getObjectAccess)
+      .mockResolvedValueOnce({
+        owner,
+        shares: [
+          {
+            principal_type: "user",
+            principal_id: null,
+            label: "pending@example.com",
+            email: "pending@example.com",
+            permission: "read",
+            pending: true,
+          },
+        ],
+        general_access: "none",
+      })
+      .mockResolvedValueOnce({ owner, shares: [], general_access: "none" });
 
     render(
       <SessionFolderShareModal
@@ -79,6 +89,6 @@ describe("SessionFolderShareModal", () => {
       )
     );
     expect(unshareObject).not.toHaveBeenCalled();
-    await waitFor(() => expect(listObjectShares).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(getObjectAccess).toHaveBeenCalledTimes(2));
   });
 });

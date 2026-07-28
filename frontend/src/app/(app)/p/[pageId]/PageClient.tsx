@@ -235,7 +235,6 @@ export default function SkillPageView({ pageId }: { pageId: string }) {
         objectId={page.id}
         resourceName={title}
         resourceUrlPath={`/p/${page.id}`}
-        currentUser={user}
       />
     );
   }, [page, skillSlug, user]);
