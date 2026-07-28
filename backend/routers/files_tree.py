@@ -34,6 +34,7 @@ from ..services import (
     files_tree_service,
     page_events,
     permission_service,
+    prompts,
     security_audit_service,
     skill_service,
     user_scope_service,
@@ -200,6 +201,16 @@ async def get_memory_graph(
     """The Memory wiki as a graph — pages in the Memory subtree plus the
     links between them. Drives the dashboard's context-graph visual."""
     return await files_tree_service.memory_wiki_graph(scope_user_id)
+
+
+@router.get("/local-curator-prompt")
+async def get_local_curator_prompt(
+    current_user: dict = Depends(get_current_user),
+):
+    """The prompt Stash Desktop's local curator runs headlessly on user
+    machines. Fetched fresh before every run, so editing the prompt server-side
+    retunes the whole fleet without a desktop-app release."""
+    return {"prompt": prompts.LOCAL_CURATOR_PROMPT}
 
 
 @router.get("/changes")
