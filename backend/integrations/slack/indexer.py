@@ -11,6 +11,7 @@ attributed conversations instead of one-line files.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from uuid import UUID
@@ -31,8 +32,16 @@ USERS_INFO_URL = "https://slack.com/api/users.info"
 AUTH_TEST_URL = "https://slack.com/api/auth.test"
 
 CHANNEL_TYPES = "public_channel,private_channel,im,mpim"
-MAX_CHANNELS = 100
+# conversations.list accepts up to 1000 per page but Slack advises <= 200 —
+# larger pages time out on big workspaces. It returns every *public* channel
+# in the workspace, not just the ones the user belongs to, so on a workspace
+# with hundreds of channels a member's own DMs sort well past the first page.
+CHANNEL_PAGE_SIZE = 200
+MAX_CHANNEL_PAGES = 25
 MAX_MESSAGES_PER_CHANNEL = 200
+# Slack rate-limits conversations.list at tier 2 (~20 req/min), which paging a
+# large workspace will hit.
+SLACK_ATTEMPTS = 3
 
 # Sorts before any real YYYY-MM-DD transcript, so the cap disclosure is the
 # first entry an agent sees when listing a capped channel.
@@ -40,12 +49,46 @@ CAP_MARKER_LEAF = "0000-history-cap"
 
 
 async def _slack_get(client: httpx.AsyncClient, url: str, params: dict) -> dict:
-    resp = await client.get(url, params=params)
-    resp.raise_for_status()
-    payload = resp.json()
-    if not payload.get("ok"):
-        raise RuntimeError("Slack API returned ok=false")
-    return payload
+    # Every Web API method is rate limited by tier, and a 429 is a pacing
+    # signal carrying Retry-After rather than a failure — honor it a bounded
+    # number of times before failing the sync.
+    for attempt in range(SLACK_ATTEMPTS):
+        resp = await client.get(url, params=params)
+        if resp.status_code == 429 and attempt < SLACK_ATTEMPTS - 1:
+            await asyncio.sleep(float(resp.headers.get("Retry-After", "1")) + attempt)
+            continue
+        resp.raise_for_status()
+        payload = resp.json()
+        if not payload.get("ok"):
+            raise RuntimeError("Slack API returned ok=false")
+        return payload
+    raise AssertionError("unreachable")
+
+
+async def list_conversations(client: httpx.AsyncClient) -> list[dict]:
+    """Every conversation this token can see — channels, group DMs and 1:1
+    DMs. conversations.list is paginated: without following `next_cursor` we
+    only ever saw the first page, which silently dropped the conversations
+    that sorted past it (a member's own DMs, on any workspace with more than
+    a page of public channels)."""
+    conversations: list[dict] = []
+    cursor = ""
+    for _ in range(MAX_CHANNEL_PAGES):
+        params = {"types": CHANNEL_TYPES, "limit": CHANNEL_PAGE_SIZE}
+        if cursor:
+            params["cursor"] = cursor
+        payload = await _slack_get(client, CONVERSATIONS_LIST_URL, params)
+        conversations.extend(payload.get("channels", []))
+        cursor = (payload.get("response_metadata") or {}).get("next_cursor") or ""
+        if not cursor:
+            return conversations
+    logger.warning(
+        "slack: stopped paging conversations.list after %d pages (%d conversations) — "
+        "workspace has more, later conversations are not listed",
+        MAX_CHANNEL_PAGES,
+        len(conversations),
+    )
+    return conversations
 
 
 async def _author_of(
@@ -168,16 +211,12 @@ async def index_slack(source: dict) -> str | None:
     names: dict[str, str] = {}
 
     async with httpx.AsyncClient(timeout=30.0, headers=headers) as client:
-        channels_payload = await _slack_get(
-            client,
-            CONVERSATIONS_LIST_URL,
-            {"types": CHANNEL_TYPES, "limit": MAX_CHANNELS},
-        )
+        conversations = await list_conversations(client)
         self_user_id = await authed_user_id(client)
         named = _dedupe_channel_names(
             [
                 (channel, await channel_display_name(client, names, channel, self_user_id))
-                for channel in channels_payload.get("channels", [])
+                for channel in conversations
                 if channel["id"] in allowed_channel_ids
             ]
         )
@@ -248,11 +287,7 @@ async def fetch_history(source: dict, since, until, limit: int = 500) -> dict:
     refs: list[str] = []
     names: dict[str, str] = {}
     async with httpx.AsyncClient(timeout=30.0, headers=headers) as client:
-        channels = (
-            await _slack_get(
-                client, CONVERSATIONS_LIST_URL, {"types": CHANNEL_TYPES, "limit": MAX_CHANNELS}
-            )
-        ).get("channels", [])
+        channels = await list_conversations(client)
         self_user_id = await authed_user_id(client)
         named = _dedupe_channel_names(
             [
