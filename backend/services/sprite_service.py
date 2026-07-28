@@ -56,6 +56,13 @@ OPENCODE_VERSION = "1.17.18"
 
 # A first-ever provision creates the VM and seeds it (~10-30s).
 PROVISION_TIMEOUT_S = 180
+
+# Sprites auto-sleep when idle, and connecting is what wakes them — so the
+# WebSocket opening handshake must absorb a cold boot. The websockets default
+# (10s) is too tight for a box that sleeps between nightly curator runs: it
+# cost Heavi's curator two consecutive mornings ("timed out during opening
+# handshake") because nothing else touches their sprite during the day.
+WS_OPEN_TIMEOUT_S = 60
 # A provisioning row older than this is presumed crashed and retried.
 STALE_PROVISION_S = 300
 
@@ -359,7 +366,9 @@ async def _sprites_exec_stream(
     url = f"{ws_base}/v1/sprites/{sprite.name}/exec?{urlencode(params)}"
     headers = {"Authorization": f"Bearer {settings.SPRITES_TOKEN}"}
 
-    async with websockets.connect(url, additional_headers=headers, max_size=None) as ws:
+    async with websockets.connect(
+        url, additional_headers=headers, max_size=None, open_timeout=WS_OPEN_TIMEOUT_S
+    ) as ws:
         async for frame in ws:
             if not isinstance(frame, bytes):
                 continue  # JSON control messages (resize, session info)
@@ -589,6 +598,7 @@ class _SpriteTerminal(Terminal):
             url,
             additional_headers={"Authorization": f"Bearer {settings.SPRITES_TOKEN}"},
             max_size=None,
+            open_timeout=WS_OPEN_TIMEOUT_S,
         )
         return cls(ws)
 
