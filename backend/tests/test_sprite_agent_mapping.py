@@ -278,3 +278,26 @@ def test_box_path_rejects_escapes(monkeypatch):
     for bad in ("../etc/passwd", "../.ssh/id_rsa", "..", "a/../../.."):
         with pytest.raises(sprite_service.FsPathError):
             sprite_service._box_path(bad)
+
+
+@pytest.mark.asyncio
+async def test_write_workdir_file_resolves_per_exec_mode(monkeypatch):
+    from backend.services import sprite_service
+
+    written: list[str] = []
+
+    async def fake_write_file(sprite, abs_path, contents):
+        written.append(abs_path)
+
+    monkeypatch.setattr(sprite_service, "write_file", fake_write_file)
+    sprite = sprite_service.Sprite(name="test")
+
+    monkeypatch.setattr(settings, "AGENT_EXEC_MODE", "sprites")
+    await sprite_service.write_workdir_file(sprite, ".mcp.json", "{}")
+    assert written[-1] == "/home/sprite/work/.mcp.json"
+
+    # Local mode must land inside the simulated workdir, never the literal
+    # /home/sprite path — /home is root-owned on dev machines.
+    monkeypatch.setattr(settings, "AGENT_EXEC_MODE", "local")
+    await sprite_service.write_workdir_file(sprite, ".mcp.json", "{}")
+    assert written[-1] == str(sprite_service._local_workdir() / ".mcp.json")
