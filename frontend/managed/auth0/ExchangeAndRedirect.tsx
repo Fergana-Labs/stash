@@ -1,10 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 import { API_BASE, getAuth0AccessToken, revokeStoredApiKey } from "@/lib/api";
 import { auth0LogoutUrl } from "@/lib/authLogout";
+import { localNextPath } from "@/lib/loginRedirect";
 
 type Props = {
   cliSession?: string | null;
@@ -13,6 +14,11 @@ type Props = {
 
 export default function ExchangeAndRedirect({ cliSession, onCliApproved }: Props) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  // Someone who clicked a link they couldn't read yet arrives with ?next=.
+  // Without honoring it, signing in dumps them on the home page and the link
+  // they were trying to open is lost.
+  const nextPath = localNextPath(searchParams.get("next"));
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
@@ -62,13 +68,13 @@ export default function ExchangeAndRedirect({ cliSession, onCliApproved }: Props
         router.push("/onboarding");
         return;
       }
-      // Returning user: land on their home.
-      if (!cancelled) router.push("/");
+      // Returning user: back to whatever they were opening, else their home.
+      if (!cancelled) router.push(nextPath || "/");
     })();
     return () => {
       cancelled = true;
     };
-  }, [cliSession, provisionBrowserSession, router]);
+  }, [cliSession, provisionBrowserSession, router, nextPath]);
 
   async function handleAuthorizeCli() {
     if (!cliSession) return;
@@ -116,12 +122,24 @@ export default function ExchangeAndRedirect({ cliSession, onCliApproved }: Props
   }
 
   if (error) {
+    // This branch is reached *while already signed in to Auth0* — the session
+    // exists but couldn't produce a usable token. "Try again" re-runs the same
+    // silent auth and fails identically, so signing out is the only real way
+    // out and has to be offered here.
     return (
       <div className="text-center space-y-3">
         <p className="text-sm text-red-400">{error}</p>
-        <a href="/auth/login" className="text-sm text-brand hover:underline">
-          Try again
-        </a>
+        <p className="text-xs text-muted">
+          Your sign-in session has expired. Signing out and back in will fix it.
+        </p>
+        <div className="flex flex-col items-center gap-2">
+          <a href={auth0LogoutUrl()} className="text-sm text-brand hover:underline">
+            Sign out and start over
+          </a>
+          <a href="/auth/login" className="text-[11px] text-muted hover:text-foreground">
+            Try again
+          </a>
+        </div>
       </div>
     );
   }

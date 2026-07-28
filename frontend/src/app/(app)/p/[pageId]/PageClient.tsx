@@ -6,6 +6,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import type { ReactNode } from "react";
 import { useBreadcrumbs } from "@/components/BreadcrumbContext";
 import { useConfirm } from "@/components/ConfirmDialog";
+import { loginPathWithNext } from "@/lib/loginRedirect";
 import { recordRecent } from "@/lib/pins";
 import { PageBody } from "../../skills/[slug]/SkillItemBodies";
 import {
@@ -266,7 +267,7 @@ export default function SkillPageView({ pageId }: { pageId: string }) {
       // A logged-out visitor who can't read this page (it has no public link)
       // is sent to sign in rather than shown a raw error.
       if (!user) {
-        router.push("/login");
+        router.push(loginPathWithNext(`/p/${pageId}`));
         return;
       }
       setError(e instanceof Error ? e.message : "Failed to load page");

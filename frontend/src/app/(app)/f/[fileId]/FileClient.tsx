@@ -5,6 +5,7 @@ import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useBreadcrumbs } from "@/components/BreadcrumbContext";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { useShareAction } from "@/components/ShellChromeContext";
+import { loginPathWithNext } from "@/lib/loginRedirect";
 import { recordRecent } from "@/lib/pins";
 import { FileViewerSkeleton } from "@/components/SkeletonStates";
 import { useAuth } from "@/hooks/useAuth";
@@ -183,18 +184,26 @@ function FileViewerPageInner({ fileId }: { fileId: string }) {
       ) {
         if (await loadSkillFallback()) return;
       }
+      // Only a signed-out visitor who genuinely can't read this file is sent
+      // to sign in. Redirecting before the read would make every "anyone with
+      // the link" file unreachable — and bounce signed-in-elsewhere visitors
+      // into a login they don't need. `next` carries them back here after,
+      // instead of dropping them on the home page.
+      if (!user) {
+        router.push(loginPathWithNext(`/f/${fileId}`));
+        return;
+      }
       setError(e instanceof Error ? e.message : "Failed to load file");
     }
-  }, [fileId, router, skillSlug, loadSkillFallback]);
+  }, [fileId, router, skillSlug, loadSkillFallback, user]);
 
+  // Anonymous visitors attempt the read too: getFile is the authorization
+  // gate, and it succeeds for a file with a public link.
   useEffect(() => {
-    if (user) load();
-    else if (!loading && skillSlug) void loadSkillFallback();
+    if (loading) return;
+    if (user || !skillSlug) load();
+    else void loadSkillFallback();
   }, [user, loading, load, loadSkillFallback, skillSlug]);
-
-  useEffect(() => {
-    if (!loading && !user && !skillSlug) router.push("/login");
-  }, [user, loading, router, skillSlug]);
 
   const shareAction = useMemo(() => {
     if (!file || readOnly || !user) return null;
@@ -211,7 +220,8 @@ function FileViewerPageInner({ fileId }: { fileId: string }) {
   useShareAction(shareAction);
 
   if (loading) return <FileViewerSkeleton />;
-  if (!user && !skillSlug) return null;
+  // No `user` check here: a signed-out visitor holding a public link gets the
+  // file. One who can't read it was already redirected to sign in.
   if (!file && !error) return <FileViewerSkeleton />;
 
   const fileKindLabel = file ? kindLabel(file.content_type, file.name) : "";

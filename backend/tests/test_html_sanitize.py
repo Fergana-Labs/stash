@@ -88,6 +88,62 @@ async def test_inline_svg_keeps_geometry(scope, _db_pool):
 
 
 @pytest.mark.asyncio
+async def test_inline_svg_keeps_defs_referenced_by_url(scope, _db_pool):
+    """Real exporters lean on <mask>, <pattern>, <filter>, <use>/<symbol> and
+    <image>. Dropping a container is worse than dropping a leaf: nh3 keeps a
+    stripped tag's CHILDREN, so a discarded <mask> repainted its shapes on top
+    of the diagram, and a discarded <symbol> duplicated every icon."""
+    scope_id, user_id = scope
+    diagram = (
+        '<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">'
+        "<defs>"
+        '<symbol id="ic"><path d="M0 0 L4 4"/></symbol>'
+        '<mask id="m"><rect width="10" height="10" fill="#fff"/></mask>'
+        '<pattern id="p" patternUnits="userSpaceOnUse"><rect width="2" height="2"/></pattern>'
+        '<filter id="f"><feGaussianBlur stdDeviation="2"/></filter>'
+        "</defs>"
+        '<use href="#ic"/>'
+        '<rect width="50" height="50" mask="url(#m)" fill="url(#p)" filter="url(#f)"/>'
+        '<image href="https://cdn.example/chart.png" width="20" height="20"/>'
+        "</svg>"
+    )
+    page = await files_tree_service.create_page(
+        owner_user_id=scope_id,
+        name="Rich diagram",
+        created_by=user_id,
+        content_type="html",
+        content_html=diagram,
+    )
+    stored = await _db_pool.fetchval("SELECT content_html FROM pages WHERE id = $1", page["id"])
+    for tag in ("<symbol", "<use", "<mask", "<pattern", "<filter", "<feGaussianBlur", "<image"):
+        assert tag in stored, f"{tag} was stripped — its children would paint over the diagram"
+    for attr in ('mask="url(#m)"', 'fill="url(#p)"', 'filter="url(#f)"', 'stdDeviation="2"'):
+        assert attr in stored
+
+
+@pytest.mark.asyncio
+async def test_foreign_object_is_never_allowed(scope, _db_pool):
+    """<foreignObject> re-opens the HTML namespace inside SVG — the exact
+    escape hatch the SVG allowlist exists to close. Widening the allowlist for
+    diagram fidelity must never let it back in."""
+    scope_id, user_id = scope
+    page = await files_tree_service.create_page(
+        owner_user_id=scope_id,
+        name="Hostile diagram",
+        created_by=user_id,
+        content_type="html",
+        content_html=(
+            '<svg><foreignObject><img src=x onerror="alert(1)"></foreignObject>'
+            '<use href="javascript:alert(1)"/></svg>'
+        ),
+    )
+    stored = await _db_pool.fetchval("SELECT content_html FROM pages WHERE id = $1", page["id"])
+    assert "foreignObject" not in stored
+    assert "onerror" not in stored
+    assert "javascript:" not in stored
+
+
+@pytest.mark.asyncio
 async def test_title_text_does_not_leak_into_body(scope, _db_pool):
     """A full HTML document carries a <title>. nh3 drops the (disallowed) tag,
     but without clean_content_tags it would keep the title's text and render it

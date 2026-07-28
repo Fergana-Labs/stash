@@ -21,6 +21,7 @@ import CustomSelect from "../../../../components/CustomSelect";
 import { downloadBlob } from "../../../../components/DownloadMenu";
 import { useShareAction } from "../../../../components/ShellChromeContext";
 import ResourceShareButton from "../../../../components/share/ResourceShareButton";
+import { loginPathWithNext } from "../../../../lib/loginRedirect";
 import { useAuth } from "../../../../hooks/useAuth";
 import { useConfirm } from "../../../../components/ConfirmDialog";
 import { useEscapeKey } from "../../../../hooks/useEscapeKey";
@@ -1166,7 +1167,7 @@ function TableEditorPageInner({
 
   // Skill-scoped readers can be anonymous when the skill is public; only
   // redirect to /login when not in skill mode.
-  useEffect(() => { if (!readOnly && !loading && !user) router.push("/login"); }, [readOnly, user, loading, router]);
+  useEffect(() => { if (!readOnly && !loading && !user) router.push(loginPathWithNext(`/tables/${tableId}`)); }, [readOnly, user, loading, router, tableId]);
   if (loading && !readOnly) return <TableEditorSkeleton />;
   if (!user && !readOnly) return null;
   if (!table && !error) {

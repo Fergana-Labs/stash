@@ -8,6 +8,7 @@ import { useAuth } from "../../hooks/useAuth";
 import { track } from "../../lib/analytics";
 import { API_BASE, getToken, setToken } from "../../lib/api";
 import { consumeManualAuth0Logout } from "../../lib/authLogout";
+import { localNextPath } from "../../lib/loginRedirect";
 import { hasSignedInBefore } from "../../lib/returningUser";
 
 const AUTH0_ENABLED = process.env.NEXT_PUBLIC_AUTH0_ENABLED === "true";
@@ -230,12 +231,6 @@ function LoginPageInner() {
 // loading gate, so this only runs client-side after mount.
 function signInTitle(): string {
   return hasSignedInBefore() ? "Welcome back" : "Welcome";
-}
-
-function localNextPath(value: string | null): string {
-  if (!value) return "";
-  if (!value.startsWith("/") || value.startsWith("//")) return "";
-  return value;
 }
 
 // --- Authorize CLI (already signed-in) ---------------------------------------
