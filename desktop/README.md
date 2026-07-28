@@ -19,8 +19,10 @@ A Tauri app that makes the local-curator setup feel stable and real:
   run history, logs) lives in `~/.stash/curator/`.
 
 Closing the window hides to the tray; the scheduler keeps running. "Launch at
-login" is a toggle in the app. The interval check treats an overdue run as due,
-so a laptop closed at the scheduled time curates on next launch.
+login" is a toggle in the app. The interval is measured from the last
+*successful* run and an overdue run fires on next launch, so a laptop closed
+at the scheduled time curates on wake; a failed run retries after 30 minutes
+instead of waiting out the full interval.
 
 ## Develop
 

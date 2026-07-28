@@ -7,9 +7,10 @@
 //! install without an app release. State lives in ~/.stash/curator/:
 //! config.json (enabled / interval / extra claude args), runs.jsonl (one
 //! record per completed run), and per-run logs. A scheduler thread triggers a
-//! run when the last one is older than the configured interval — which also
-//! covers "the laptop was closed at the scheduled time": the run fires as
-//! overdue on next launch.
+//! run when the last successful one is older than the configured interval
+//! (failures retry after a short delay instead) — which also covers "the
+//! laptop was closed at the scheduled time": the run fires as overdue on
+//! next launch.
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -74,10 +75,17 @@ fn write_config(cfg: &LocalConfig) -> Result<(), String> {
     std::fs::write(config_path(), pretty + "\n").map_err(|e| e.to_string())
 }
 
+fn read_runs() -> Vec<Value> {
+    let Ok(raw) = std::fs::read_to_string(runs_path()) else {
+        return Vec::new();
+    };
+    raw.lines()
+        .filter_map(|l| serde_json::from_str(l).ok())
+        .collect()
+}
+
 fn last_run() -> Option<Value> {
-    let raw = std::fs::read_to_string(runs_path()).ok()?;
-    let line = raw.lines().rev().find(|l| !l.trim().is_empty())?;
-    serde_json::from_str(line).ok()
+    read_runs().pop()
 }
 
 #[tauri::command]
@@ -250,16 +258,32 @@ pub fn start_scheduler() {
     });
 }
 
+/// After a failed run (lid closed mid-run, network death), retry after this
+/// long instead of waiting out the full interval — a sleepy laptop should
+/// cost minutes of coverage, not a day. It still debounces a permanently
+/// broken setup out of crash-looping the agent every scheduler tick.
+const RETRY_DELAY_MINUTES: i64 = 30;
+
+/// The interval is measured from the last *successful* run; any run at all
+/// (including failures) imposes the shorter retry delay.
 fn due(interval_hours: u64) -> bool {
-    let Some(last) = last_run() else {
-        return true;
+    let runs = read_runs();
+    let now = chrono::Utc::now();
+    let elapsed_since = |r: &Value| {
+        r["finished_at"]
+            .as_str()
+            .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+            .map(|t| now.signed_duration_since(t))
     };
-    let Some(finished) = last["finished_at"]
-        .as_str()
-        .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
-    else {
-        return true;
-    };
-    let elapsed = chrono::Utc::now().signed_duration_since(finished);
-    elapsed >= chrono::Duration::hours(interval_hours as i64)
+
+    if let Some(since_last) = runs.last().and_then(&elapsed_since) {
+        if since_last < chrono::Duration::minutes(RETRY_DELAY_MINUTES) {
+            return false;
+        }
+    }
+    let last_success = runs.iter().rev().find(|r| r["exit_code"] == 0);
+    match last_success.and_then(&elapsed_since) {
+        None => true,
+        Some(since_success) => since_success >= chrono::Duration::hours(interval_hours as i64),
+    }
 }
