@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Callout, H3, P, Title, Subtitle } from "./components";
+import { Callout, Code, H3, P, Title, Subtitle } from "./components";
 
 export default function DocsOverview() {
   return (
@@ -230,8 +230,10 @@ export default function DocsOverview() {
       <H3>FAQ</H3>
       <p className="text-[15px] font-semibold text-foreground leading-7 mb-2">Do I have to upload my transcripts?</p>
       <P>
-        Transcript upload is opt-in. If you want, you can choose to give your coding agent shared
-        access to the repository memory without uploading anything.
+        No. Session recording is on by default during setup, but it&apos;s entirely yours to
+        control: decline it in the wizard, pause globally with <Code>stash stop</Code>, pick
+        which agents record, or exclude folders in <Code>stash settings</Code>. Your coding
+        agent keeps read access to your Stash either way.
       </P>
 
       <H3>Quick links</H3>

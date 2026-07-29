@@ -32,13 +32,12 @@ docker compose -f docker-compose.prod.yml pull
 docker compose -f docker-compose.prod.yml up -d
 curl https://app.example.com/health   # wait for {"status":"ok"}`}</CodeBlock>
       <P>
-        Then install the CLI and connect a repo:
+        Then install the CLI and point it at your instance:
       </P>
       <CodeBlock>{`uv tool install stashai
-cd /path/to/your/repo
-stash signin   # choose "Self-host" and enter http://localhost:3456`}</CodeBlock>
+stash signin --api http://localhost:3456`}</CodeBlock>
       <P>
-        Enter your public URL instead of <Code>http://localhost:3456</Code> for a
+        Pass your public URL instead of <Code>http://localhost:3456</Code> for a
         Caddy-backed install. <Code>stash signin</Code> opens it to register and
         authorize the CLI; change the endpoint later from <Code>stash settings</Code>.
       </P>

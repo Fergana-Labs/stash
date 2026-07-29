@@ -4493,6 +4493,7 @@ Common reads:
 - `stash sessions agents` — who's been active
 
 Common writes:
+- `stash memory write "<Topic>/<Page>" --content "..."` — fold what you learned into the Memory wiki
 - `stash share --title "..."` — share this session as a public Skill
 - `stash read <url>` — read a public Skill URL
 """

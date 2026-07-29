@@ -68,8 +68,7 @@ plugin captures tool history at higher fidelity.
 
 ## Config
 
-Reads from `~/.stash/config.json` (populated by `stash signin` + `stash
-config …`). Overrides:
+Reads from `~/.stash/config.json` (populated by `stash signin`; change it later with `stash settings`). Overrides:
 
 - `STASH_OPENCLAW_DATA=<path>` — custom state dir (default `~/.stash/plugins/openclaw`)
 
