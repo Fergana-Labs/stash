@@ -408,7 +408,18 @@ async def create_row(table_id: UUID, data: dict, created_by: UUID) -> dict:
     return result
 
 
-async def create_rows_batch(table_id: UUID, rows_data: list[dict], created_by: UUID) -> list[dict]:
+async def create_rows_batch(
+    table_id: UUID,
+    rows_data: list[dict],
+    created_by: UUID,
+    *,
+    enrich_stale: bool = True,
+) -> list[dict]:
+    """enrich_stale=False for rows whose enrichable content hasn't arrived yet.
+    The sweep clears the flag once and never revisits, so a row inserted stale
+    with an empty page column gets summarised from nothing and then never
+    re-summarised when the real content lands. Callers that pre-create rows
+    mark them stale themselves, after filling them in."""
     columns = await _get_columns(table_id)
     validated_rows = _validate_batch(columns, rows_data, partial=False)
     pool = get_pool()
@@ -430,7 +441,7 @@ async def create_rows_batch(table_id: UUID, rows_data: list[dict], created_by: U
                 ") "
                 "INSERT INTO table_rows "
                 "  (table_id, data, row_order, created_by, updated_by, enrich_stale) "
-                "SELECT $1, data, $3 + row_offset, $4, $4, TRUE "
+                "SELECT $1, data, $3 + row_offset, $4, $4, $5 "
                 "FROM payload "
                 "ORDER BY row_offset "
                 "RETURNING id, table_id, data, row_order, created_by, updated_by, created_at, updated_at",
@@ -438,6 +449,7 @@ async def create_rows_batch(table_id: UUID, rows_data: list[dict], created_by: U
                 validated_rows,
                 max_order,
                 created_by,
+                enrich_stale,
             )
     return [dict(row) for row in rows]
 

@@ -138,6 +138,14 @@ async def _create_import(
         total=len(new_items),
     )
     if new_items:
+        # The Bookmarks row goes in before any fetching, so the import is
+        # visible the moment it's accepted rather than whenever the worker
+        # reaches it — which, behind a large backfill, can be days.
+        bookmark_row_ids = await clip_service.create_pending_bookmarks(
+            owner_user_id, owner_user_id, new_items
+        )
+        for item, row_id in zip(new_items, bookmark_row_ids, strict=True):
+            item["bookmark_row_id"] = row_id
         await url_import_service.create_url_imports(
             owner_user_id=owner_user_id,
             created_by=owner_user_id,
@@ -274,6 +282,7 @@ async def client_result(
             html=body.html,
             title=body.title or row.get("title"),
             folder_id=row["folder_id"],
+            bookmark_row_id=row.get("bookmark_row_id"),
         )
     except ArticleExtractionError as e:
         await _resolve_link_only(row, f"{row['error']}; client HTML unusable: {e}")

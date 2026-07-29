@@ -19,13 +19,17 @@ async def create_url_imports(
     items: list[dict],
     batch_id: UUID | None = None,
 ) -> list[UUID]:
-    """Bulk-insert import rows. Each item: {url, title?, folder_id?}."""
+    """Bulk-insert import rows. Each item: {url, title?, folder_id?,
+    bookmark_row_id?} — bookmark_row_id is the Bookmarks row already standing
+    in for this URL, which the worker fills in once it has content."""
     pool = get_pool()
     rows = await pool.fetch(
         """
-        INSERT INTO url_imports (owner_user_id, created_by, batch_id, url, title, folder_id)
-        SELECT $1, $2, $3, i.url, i.title, i.folder_id
-        FROM unnest($4::text[], $5::text[], $6::uuid[]) AS i(url, title, folder_id)
+        INSERT INTO url_imports
+            (owner_user_id, created_by, batch_id, url, title, folder_id, bookmark_row_id)
+        SELECT $1, $2, $3, i.url, i.title, i.folder_id, i.bookmark_row_id
+        FROM unnest($4::text[], $5::text[], $6::uuid[], $7::uuid[])
+            AS i(url, title, folder_id, bookmark_row_id)
         RETURNING id
         """,
         owner_user_id,
@@ -34,6 +38,7 @@ async def create_url_imports(
         [i["url"] for i in items],
         [i.get("title") for i in items],
         [i.get("folder_id") for i in items],
+        [i.get("bookmark_row_id") for i in items],
     )
     return [r["id"] for r in rows]
 

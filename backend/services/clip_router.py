@@ -54,6 +54,7 @@ class YouTubeTranscriptPage:
             markdown=markdown,
             folder_id=row["folder_id"],
             kind=clip_service.KIND_VIDEO,
+            bookmark_row_id=row.get("bookmark_row_id"),
         )
         return {"page_id": page["id"]}
 
@@ -86,6 +87,7 @@ class XThreadPage:
             markdown=tweet["markdown"],
             folder_id=row["folder_id"],
             kind=clip_service.KIND_TWEET,
+            bookmark_row_id=row.get("bookmark_row_id"),
         )
         return {"page_id": page["id"]}
 
@@ -147,6 +149,7 @@ async def _fetch_and_save(row: dict, fetch_url: str) -> dict:
             content=content,
             content_type="application/pdf",
             folder_id=row["folder_id"],
+            bookmark_row_id=row.get("bookmark_row_id"),
         )
         return {"file_id": response.id}
 
@@ -160,6 +163,7 @@ async def _fetch_and_save(row: dict, fetch_url: str) -> dict:
                 html=html,
                 title=row.get("title"),
                 folder_id=row["folder_id"],
+                bookmark_row_id=row.get("bookmark_row_id"),
             )
         except ArticleExtractionError:
             # Escalation tier: the fetched HTML had no article — SPAs and
@@ -174,6 +178,7 @@ async def _fetch_and_save(row: dict, fetch_url: str) -> dict:
                 html=html,
                 title=row.get("title"),
                 folder_id=row["folder_id"],
+                bookmark_row_id=row.get("bookmark_row_id"),
             )
         return {"page_id": page["id"]}
 

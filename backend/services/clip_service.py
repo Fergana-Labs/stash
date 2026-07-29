@@ -130,6 +130,63 @@ async def add_bookmark(
     await table_service.create_row(table_id, data, user_id)
 
 
+async def create_pending_bookmarks(
+    owner_user_id: UUID,
+    user_id: UUID,
+    items: list[dict],
+) -> list[UUID]:
+    """One Bookmarks row per URL being imported, created before any fetching.
+
+    The import is what the user did; fetching the page is what we do about it,
+    and it can be days behind. So the row exists immediately — Type "Link",
+    which is exactly what a URL with no captured content is — and the worker
+    upgrades it in place once there's a clip to point at.
+
+    Not marked enrich_stale: there is nothing to summarise yet.
+    Returns row ids positionally, so the caller can pair them with its items.
+    """
+    table_id, cols = await _bookmarks_table(owner_user_id, user_id)
+    today = datetime.now(UTC).date().isoformat()
+    rows_data = [
+        {
+            cols["Title"]: item.get("title") or item["url"],
+            cols["URL"]: item["url"],
+            cols["Type"]: KIND_LINK,
+            cols["Saved"]: today,
+            cols["Site"]: _site(item["url"]),
+        }
+        for item in items
+    ]
+    rows = await table_service.create_rows_batch(table_id, rows_data, user_id, enrich_stale=False)
+    return [row["id"] for row in rows]
+
+
+async def attach_clip_to_bookmark(
+    owner_user_id: UUID,
+    user_id: UUID,
+    bookmark_row_id: UUID,
+    *,
+    title: str,
+    kind: str,
+    clip_url: str,
+) -> None:
+    """Fill in the row create_pending_bookmarks left as a bare Link: the real
+    title the page turned out to have, what kind of thing it is, and where the
+    captured content lives.
+
+    Marking it stale here — not at creation — is what gets it summarised from
+    the clip instead of from its URL.
+    """
+    table_id, cols = await _bookmarks_table(owner_user_id, user_id)
+    await table_service.update_row(
+        bookmark_row_id,
+        {cols["Title"]: title, cols["Type"]: kind, cols["Clip"]: clip_url},
+        user_id,
+        table_id=table_id,
+    )
+    await table_service.mark_row_enrich_stale(table_id, str(bookmark_row_id))
+
+
 async def save_link_only(
     owner_user_id: UUID,
     user_id: UUID,
@@ -139,7 +196,11 @@ async def save_link_only(
 ) -> None:
     """Index a bookmark whose content hydration is done trying: no raw clip,
     just the Bookmarks-table row. The URL doubles as the title when the
-    bookmark file didn't carry one."""
+    bookmark file didn't carry one.
+
+    Only for imports queued before pre-created rows existed — a newer one is
+    already sitting in the table as the Link it turned out to be.
+    """
     await add_bookmark(
         owner_user_id,
         user_id,
@@ -153,6 +214,32 @@ async def save_link_only(
 # --- Saving clips -------------------------------------------------------------
 
 
+async def _index_bookmark(
+    owner_user_id: UUID,
+    user_id: UUID,
+    *,
+    bookmark_row_id: UUID | None,
+    title: str,
+    url: str,
+    kind: str,
+    clip_url: str,
+) -> None:
+    """Put a finished clip in the Bookmarks table.
+
+    An import already has its row — created when the URL was accepted — so it
+    gets updated. An interactive clip has none, because its content arrived in
+    the same breath as the request and there was nothing to hold a place for.
+    """
+    if bookmark_row_id is None:
+        await add_bookmark(
+            owner_user_id, user_id, title=title, url=url, kind=kind, clip_url=clip_url
+        )
+        return
+    await attach_clip_to_bookmark(
+        owner_user_id, user_id, bookmark_row_id, title=title, kind=kind, clip_url=clip_url
+    )
+
+
 async def _create_raw_page(
     *,
     owner_user_id: UUID,
@@ -163,6 +250,7 @@ async def _create_raw_page(
     content: str = "",
     content_html: str = "",
     folder_id: UUID | None,
+    bookmark_row_id: UUID | None = None,
 ) -> dict:
     """Create the clip page in Clips/raw and index it in the Bookmarks table."""
     if image_archive_service.is_enabled():
@@ -184,9 +272,10 @@ async def _create_raw_page(
         content_type="html" if content_html else "markdown",
         metadata=metadata,
     )
-    await add_bookmark(
+    await _index_bookmark(
         owner_user_id,
         user_id,
+        bookmark_row_id=bookmark_row_id,
         title=name,
         url=url,
         kind=kind,
@@ -232,6 +321,7 @@ async def create_clip_page(
     markdown: str,
     folder_id: UUID | None = None,
     kind: str = KIND_PAGE,
+    bookmark_row_id: UUID | None = None,
 ) -> dict:
     """Markdown clip (server-side extraction / transcripts) → page + bookmark."""
     content = f"> Saved from <{url}> on {datetime.now(UTC).date().isoformat()}\n\n{markdown}"
@@ -243,6 +333,7 @@ async def create_clip_page(
         kind=kind,
         content=content,
         folder_id=folder_id,
+        bookmark_row_id=bookmark_row_id,
     )
 
 
@@ -254,6 +345,7 @@ async def save_page_clip(
     html: str,
     title: str | None,
     folder_id: UUID | None = None,
+    bookmark_row_id: UUID | None = None,
 ) -> dict:
     """Server-side path (URL/bookmark imports, no live DOM): extract the
     article and store it. The interactive clipper uses store_html_clip."""
@@ -268,6 +360,7 @@ async def save_page_clip(
         name=name,
         markdown=article["markdown"],
         folder_id=folder_id,
+        bookmark_row_id=bookmark_row_id,
     )
 
 
@@ -281,6 +374,7 @@ async def save_file_clip(
     content_type: str,
     folder_id: UUID | None = None,
     kind: str = KIND_PDF,
+    bookmark_row_id: UUID | None = None,
 ):
     """Store a binary clip (PDF) in Clips/raw, record its source URL, and index
     it in the Bookmarks table."""
@@ -299,9 +393,10 @@ async def save_file_clip(
         folder_id=folder_id,
     )
     await get_pool().execute("UPDATE files SET source_url = $1 WHERE id = $2", url, response.id)
-    await add_bookmark(
+    await _index_bookmark(
         owner_user_id,
         user_id,
+        bookmark_row_id=bookmark_row_id,
         title=filename,
         url=url,
         kind=kind,

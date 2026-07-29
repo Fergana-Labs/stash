@@ -699,3 +699,149 @@ async def test_needs_client_rows_expire_to_link_only(client: AsyncClient, pool) 
     assert "no browser extension" in row["error"]
     bookmarks = await _bookmark_rows(pool, owner_id)
     assert "Walled" in bookmarks[0].values()
+
+
+# --- The bookmark row exists before the content does ---
+#
+# Fetching a page can trail its import by days behind a large backfill. If the
+# Bookmarks row only appeared on landing, a bulk import would look like nothing
+# had happened — so the row is created when the import is accepted and filled
+# in later, in place.
+
+
+@pytest.mark.asyncio
+async def test_import_creates_the_bookmark_row_before_any_fetching(
+    client: AsyncClient, pool
+) -> None:
+    """Accepting the import is what puts it in the table. No worker has run,
+    so it stands as a Link with nothing to click through to yet."""
+    headers, owner_id = await _register(client)
+
+    resp = await client.post(
+        "/api/v1/me/imports/tabs",
+        json={"urls": ["https://example.com/unfetched"]},
+        headers=headers,
+    )
+    assert resp.status_code == 201
+    assert resp.json()["total"] == 1
+
+    bookmarks = await _bookmark_rows(pool, owner_id)
+    assert len(bookmarks) == 1
+    values = list(bookmarks[0].values())
+    assert "Link" in values
+    assert "https://example.com/unfetched" in values
+    assert "example.com" in values
+
+    row = await pool.fetchrow(
+        "SELECT bookmark_row_id FROM url_imports WHERE owner_user_id = $1", UUID(owner_id)
+    )
+    assert row["bookmark_row_id"] is not None
+
+
+@pytest.mark.asyncio
+async def test_landing_content_upgrades_that_row_instead_of_adding_one(
+    client: AsyncClient, pool, monkeypatch
+) -> None:
+    """The whole point of holding a row: the user watches one bookmark become
+    a real clip. Two rows for one URL would be a bug they'd have to clean up."""
+    headers, owner_id = await _register(client)
+    resp = await client.post(
+        "/api/v1/me/imports/tabs", json={"urls": ["https://example.com/post"]}, headers=headers
+    )
+    assert resp.status_code == 201
+
+    before = await _bookmark_rows(pool, owner_id)
+    assert len(before) == 1
+    assert "Link" in before[0].values()
+
+    import_row = await pool.fetchrow(
+        "SELECT id, bookmark_row_id FROM url_imports WHERE owner_user_id = $1", UUID(owner_id)
+    )
+
+    async def fake_fetch(url: str):
+        return ARTICLE_HTML.encode(), "text/html; charset=utf-8"
+
+    monkeypatch.setattr(clip_router, "_fetch", fake_fetch)
+    await clips_tasks._process_batch([import_row["id"]])
+
+    after = await _bookmark_rows(pool, owner_id)
+    assert len(after) == 1, "the pre-created row was duplicated instead of updated"
+
+    # Identity, not just the count: inserting on landing and deleting the
+    # placeholder would also leave one row, and would lose anything the user
+    # had already edited on it.
+    upgraded = await pool.fetchrow(
+        "SELECT data FROM table_rows WHERE id = $1", import_row["bookmark_row_id"]
+    )
+    assert upgraded is not None, "the row the import was holding no longer exists"
+    values = list(upgraded["data"].values())
+    assert "Page" in values, "Type should have been upgraded off Link"
+    assert any(isinstance(v, str) and "/p/" in v for v in values), "Clip cell was not filled"
+
+
+@pytest.mark.asyncio
+async def test_giving_up_on_content_leaves_the_single_link_row(
+    client: AsyncClient, pool, monkeypatch
+) -> None:
+    """A URL we can never capture is already sitting in the table as exactly
+    what it turned out to be, so the give-up path has nothing to write."""
+    headers, owner_id = await _register(client)
+    resp = await client.post(
+        "/api/v1/me/imports/tabs", json={"urls": ["https://example.com/video.mp4"]}, headers=headers
+    )
+    assert resp.status_code == 201
+    import_row = await pool.fetchrow(
+        "SELECT id, bookmark_row_id FROM url_imports WHERE owner_user_id = $1", UUID(owner_id)
+    )
+
+    async def fake_fetch(url: str):
+        return b"\x00\x01binary", "video/mp4"
+
+    monkeypatch.setattr(clip_router, "_fetch", fake_fetch)
+    await clips_tasks._process_batch([import_row["id"]])
+
+    bookmarks = await _bookmark_rows(pool, owner_id)
+    assert len(bookmarks) == 1, "the give-up path added a second row for the same URL"
+    kept = await pool.fetchrow(
+        "SELECT data FROM table_rows WHERE id = $1", import_row["bookmark_row_id"]
+    )
+    assert kept is not None, "the row the import was holding was replaced"
+    assert "Link" in kept["data"].values()
+
+
+@pytest.mark.asyncio
+async def test_pending_row_is_not_enriched_until_it_has_content(
+    client: AsyncClient, pool, monkeypatch
+) -> None:
+    """The enrichment sweep clears enrich_stale once and never revisits. A row
+    marked stale while its Clip cell is empty would be summarised from its URL
+    and then never re-summarised from the page — so it waits."""
+    headers, owner_id = await _register(client)
+    resp = await client.post(
+        "/api/v1/me/imports/tabs", json={"urls": ["https://example.com/post"]}, headers=headers
+    )
+    assert resp.status_code == 201
+
+    stale = await pool.fetchval(
+        "SELECT r.enrich_stale FROM table_rows r JOIN tables t ON t.id = r.table_id "
+        "WHERE t.name = 'Bookmarks' AND t.owner_user_id = $1",
+        UUID(owner_id),
+    )
+    assert stale is False, "a contentless row was queued for enrichment"
+
+    import_id = await pool.fetchval(
+        "SELECT id FROM url_imports WHERE owner_user_id = $1", UUID(owner_id)
+    )
+
+    async def fake_fetch(url: str):
+        return ARTICLE_HTML.encode(), "text/html; charset=utf-8"
+
+    monkeypatch.setattr(clip_router, "_fetch", fake_fetch)
+    await clips_tasks._process_batch([import_id])
+
+    stale = await pool.fetchval(
+        "SELECT r.enrich_stale FROM table_rows r JOIN tables t ON t.id = r.table_id "
+        "WHERE t.name = 'Bookmarks' AND t.owner_user_id = $1",
+        UUID(owner_id),
+    )
+    assert stale is True, "the clip landed but the row was never queued for enrichment"
