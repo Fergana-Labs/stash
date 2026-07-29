@@ -111,8 +111,13 @@ async def get_or_create_user_row_from_auth0(
     # Password signups arrive unverified and Auth0 is not guaranteed to get
     # them verified — send our own link so the account can still join its
     # domain workspace. OAuth signups are already verified and skip this.
+    # Guarded like the welcome email: a mail-provider outage must not fail
+    # the signup exchange, and the resend endpoint recovers later.
     if email and not email_verified:
-        await email_verification_service.start(user["id"], email)
+        try:
+            await email_verification_service.start(user["id"], email)
+        except Exception as exc:
+            logger.warning("verification email failed exception_type=%s", type(exc).__name__)
 
     if email:
         try:

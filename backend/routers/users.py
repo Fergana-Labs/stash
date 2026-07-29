@@ -50,7 +50,12 @@ async def register(request: Request, req: UserRegisterRequest):
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
     if req.email:
-        await email_verification_service.start(user["id"], req.email)
+        # Guarded like the welcome email: a mail-provider outage must not
+        # fail signup — the token row still lands, and resend recovers.
+        try:
+            await email_verification_service.start(user["id"], req.email)
+        except Exception as exc:
+            logger.warning("verification email failed exception_type=%s", type(exc).__name__)
     return UserRegisterResponse(
         id=user["id"],
         name=user["name"],
