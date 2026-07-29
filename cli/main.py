@@ -1397,12 +1397,16 @@ def upload(
     ),
     as_json: bool = typer.Option(False, "--json"),
 ):
-    """Upload a local file or directory into your Files.
+    """Upload a local file or directory into your Files. Creates new items — `stash edit` changes a page that's already there.
 
     A single file lands directly in your Files (Markdown/HTML become
     editable pages, everything else a binary file). A directory becomes a folder, and
     every text file in it — Markdown, HTML, code, CSV, and friends —
     becomes an editable page. **No Skill is created.**
+
+    Uploading never overwrites anything already in your Stash — re-uploading
+    a file creates a second copy. To change a page you uploaded earlier, run
+    ``stash edit <page_id>`` with the id or app_url this command printed.
 
     Uploads are private. The returned ``app_url`` opens for you alone unless
     you pass ``--public-link``, which adds an "anyone with the link" grant —
@@ -1451,6 +1455,8 @@ def upload(
                 "[dim]Private — only you can open that link. "
                 "Re-run with --public-link to share it.[/dim]"
             )
+        if data.get("kind") == "page":
+            console.print(f"[dim]Change it later with: stash edit {data['id']}[/dim]")
         return
 
     files = _upload_file_list(target)
@@ -1561,6 +1567,126 @@ def upload(
             f"[dim]Folder: {root_folder['id']}  "
             f"(pass --skill <title> to turn the folder into a shareable Skill)[/dim]"
         )
+
+
+def _parse_page_ref(ref: str) -> str:
+    """A page id, or the app URL an upload prints (…/p/<id>)."""
+    match = re.fullmatch(r".*/p/([^/?#]+)/?", ref)
+    return match.group(1) if match else ref
+
+
+@app.command("edit")
+def edit(
+    page: str = typer.Argument(
+        ..., help="Page id, or the app URL `stash upload` printed (…/p/<id>)."
+    ),
+    content: str = typer.Option(
+        None, "--content", help="Replacement body. Reads stdin if omitted."
+    ),
+    append: str = typer.Option(
+        None, "--append", help="Add this text to the end of the page instead of replacing it."
+    ),
+    name: str = typer.Option(None, "--name", help="Rename the page."),
+    page_type: str = typer.Option(
+        None, "--type", help="Switch the page to this type: markdown or html.", case_sensitive=False
+    ),
+    html_file: str = typer.Option(
+        None, "--html-file", help="Local HTML file to load as content_html."
+    ),
+    layout: str = typer.Option(
+        None,
+        "--layout",
+        help="Switch HTML layout: 'responsive', 'full-width' (full-window web pages), "
+        "or 'fixed-aspect' (16:9 slide decks).",
+        case_sensitive=False,
+    ),
+    attach: list[str] = typer.Option(
+        None, "--attach", help="Local file path to upload and prepend (repeatable)."
+    ),
+    as_json: bool = typer.Option(False, "--json"),
+):
+    """Edit a page already in your Stash — the counterpart to `stash upload`, which adds new items.
+
+    Every page in your Stash stays editable forever, including the ones
+    `stash upload` created from Markdown/HTML/code files. ``--content`` (or
+    stdin) replaces the body, ``--append`` adds to the end, ``--name``
+    renames. Binary files have no editable body — upload a new copy
+    instead."""
+    _require_auth()
+    telemetry.record("edit")
+    page_id = _parse_page_ref(page)
+    if append is not None and (content is not None or html_file is not None or page_type):
+        console.print(
+            "[red]--append can't be combined with --content, --html-file, or --type.[/red]"
+        )
+        raise typer.Exit(1)
+    html_body: str | None = None
+    if html_file:
+        if not Path(html_file).is_file():
+            console.print(f"[red]Not a file: {html_file}[/red]")
+            raise typer.Exit(1)
+        html_body = Path(html_file).read_text()
+    if content is None and append is None and not sys.stdin.isatty():
+        content = sys.stdin.read()
+    if page_type:
+        page_type = page_type.lower()
+        if page_type not in ("markdown", "html"):
+            console.print(f"[red]--type must be 'markdown' or 'html', got: {page_type}[/red]")
+            raise typer.Exit(1)
+    if layout is not None:
+        layout = layout.lower()
+        if layout not in ("responsive", "fixed-aspect", "full-width"):
+            console.print(
+                f"[red]--layout must be 'responsive', 'fixed-aspect', or 'full-width', "
+                f"got: {layout}[/red]"
+            )
+            raise typer.Exit(1)
+    if html_body is not None and page_type is None:
+        page_type = "html"
+    if page_type == "html" and html_body is None and content is not None:
+        html_body = content
+        content = None
+
+    with _client() as c:
+        try:
+            for p in attach or []:
+                if not Path(p).is_file():
+                    console.print(f"[red]Not a file: {p}[/red]")
+                    raise typer.Exit(1)
+            if append is not None:
+                current = c.get_page(page_id)
+                if (current.get("content_type") or "markdown") != "markdown":
+                    console.print("[red]--append only works on markdown pages.[/red]")
+                    raise typer.Exit(1)
+                base = current.get("content_markdown") or ""
+                content = f"{base.rstrip()}\n\n{append}" if base.strip() else append
+            if attach and page_type != "html":
+                base = (
+                    content
+                    if content is not None
+                    else c.get_page(page_id).get("content_markdown", "")
+                )
+                content = _prepend_attachments(c, base, attach)
+            elif attach:
+                console.print("[yellow]--attach is ignored for html pages[/yellow]")
+            kwargs: dict = {}
+            if content is not None:
+                kwargs["content"] = content
+            if name is not None:
+                kwargs["name"] = name
+            if page_type is not None:
+                kwargs["content_type"] = page_type
+            if html_body is not None:
+                kwargs["content_html"] = html_body
+            if layout is not None:
+                kwargs["html_layout"] = layout
+            data = c.update_page(page_id, **kwargs)
+        except StashError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(data)
+    else:
+        console.print(f"[green]Page updated.[/green] {data['name']}  [dim]{data['id']}[/dim]")
 
 
 @app.command("export")
@@ -2489,92 +2615,6 @@ def files_add_page(
         )
 
 
-@files_app.command("edit-page")
-def files_edit_page(
-    page_id: str = typer.Argument(...),
-    content: str = typer.Option(None, "--content"),
-    name: str = typer.Option(None, "--name"),
-    page_type: str = typer.Option(
-        None, "--type", help="Switch the page to this type: markdown or html.", case_sensitive=False
-    ),
-    html_file: str = typer.Option(
-        None, "--html-file", help="Local HTML file to load as content_html."
-    ),
-    layout: str = typer.Option(
-        None,
-        "--layout",
-        help="Switch HTML layout: 'responsive', 'full-width' (full-window web pages), "
-        "or 'fixed-aspect' (16:9 slide decks).",
-        case_sensitive=False,
-    ),
-    attach: list[str] = typer.Option(
-        None, "--attach", help="Local file path to upload and prepend (repeatable)."
-    ),
-    as_json: bool = typer.Option(False, "--json"),
-):
-    """Update a page. Reads from stdin if --content not given."""
-    html_body: str | None = None
-    if html_file:
-        if not Path(html_file).is_file():
-            console.print(f"[red]Not a file: {html_file}[/red]")
-            raise typer.Exit(1)
-        html_body = Path(html_file).read_text()
-    if content is None and not sys.stdin.isatty():
-        content = sys.stdin.read()
-    if page_type:
-        page_type = page_type.lower()
-        if page_type not in ("markdown", "html"):
-            console.print(f"[red]--type must be 'markdown' or 'html', got: {page_type}[/red]")
-            raise typer.Exit(1)
-    if layout is not None:
-        layout = layout.lower()
-        if layout not in ("responsive", "fixed-aspect", "full-width"):
-            console.print(
-                f"[red]--layout must be 'responsive', 'fixed-aspect', or 'full-width', "
-                f"got: {layout}[/red]"
-            )
-            raise typer.Exit(1)
-    if html_body is not None and page_type is None:
-        page_type = "html"
-    if page_type == "html" and html_body is None and content is not None:
-        html_body = content
-        content = None
-
-    with _client() as c:
-        try:
-            for p in attach or []:
-                if not Path(p).is_file():
-                    console.print(f"[red]Not a file: {p}[/red]")
-                    raise typer.Exit(1)
-            if attach and page_type != "html":
-                base = (
-                    content
-                    if content is not None
-                    else c.get_page(page_id).get("content_markdown", "")
-                )
-                content = _prepend_attachments(c, base, attach)
-            elif attach:
-                console.print("[yellow]--attach is ignored for html pages[/yellow]")
-            kwargs: dict = {}
-            if content is not None:
-                kwargs["content"] = content
-            if name is not None:
-                kwargs["name"] = name
-            if page_type is not None:
-                kwargs["content_type"] = page_type
-            if html_body is not None:
-                kwargs["content_html"] = html_body
-            if layout is not None:
-                kwargs["html_layout"] = layout
-            data = c.update_page(page_id, **kwargs)
-        except StashError as e:
-            _err(e)
-    if _use_json(as_json):
-        output_json(data)
-    else:
-        console.print("[green]Page updated.[/green]")
-
-
 # ===========================================================================
 # Sessions
 # ===========================================================================
@@ -3333,7 +3373,7 @@ def _print_memory_tree(node: dict, indent: int) -> None:
 
 @memory_app.command("ls")
 def memory_ls(as_json: bool = typer.Option(False, "--json")):
-    """The Memory wiki tree with ids — page ids feed `stash files edit-page`
+    """The Memory wiki tree with ids — page ids feed `stash edit`
     and `stash rm page:<id>`."""
     with _client() as c:
         try:
@@ -4494,6 +4534,7 @@ A Skill is **not** a wrapper to slap on every single file you happen to share. O
 clutter Discover and defeat the model. Pick the right tool:
 
 - Share a single file or a folder/project → `stash upload <path> --json`, hand over `app_url` (no Skill).
+- Change a page already in Stash → `stash edit <page_id> --content "..."` (`--append` adds to the end). Never re-upload to edit.
 - Publishing a curated bundle → `stash upload <path> --skill "<title>" --json`.
 - Creating a fresh skill → `stash skills create "<name>" --public --json`.
 - Share a coding session → `stash share <session_id>`.
@@ -5695,6 +5736,10 @@ Commands to reach for
   everything else a binary file) or a folder, into your storage. Returns
   `app_url`. No Skill created. This is the default for "share this one
   file."
+- `stash edit <page_id> --content "…"` — change a page that's already in
+  your Stash (pass the id or app URL the upload printed). `--append "…"`
+  adds to the end instead of replacing. Upload creates, edit updates —
+  never re-upload a file to change it.
 - `stash upload <path> --skill "<title>" --json` — same as above AND
   publish the uploaded folder as a Skill with the given title. Use only
   when you're producing a shareable collection.

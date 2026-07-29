@@ -30,9 +30,8 @@ Paste this into Claude Code, Codex, or Cursor — keep this tab open and watch t
 \`\`\`
 Install the Skill CLI: bash -c "$(curl -fsSL https://joinstash.ai/install)"
 Authenticate: ${authenticate}
-Read this page: stash files read-page ${pageId}
-Then append a short hello note at the bottom and save the full updated markdown with:
-stash files edit-page ${pageId} --content "<full updated markdown>"
+Then append a short hello note to the bottom of this page:
+stash edit ${pageId} --append "<your hello note>"
 \`\`\`
 
 ## What people keep here

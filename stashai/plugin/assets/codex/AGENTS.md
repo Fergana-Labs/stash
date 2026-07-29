@@ -16,6 +16,7 @@ A Skill is **not** a wrapper to slap on every single file you happen to share. O
 - **A folder / project into your Stash** → `stash upload <path> --json`. Returns the folder `app_url`. No Skill created by default.
 - **A curated bundle as one shareable thing** → `stash upload <path> --skill "<title>" --json`, or `stash skills create "<name>" --public` to start a fresh one. Returns the Skill `url`.
 - **A coding session (transcript + touched files)** → `stash share <session_id>`. Sessions are inherently a bundle.
+- **Changing a page already in your Stash** → `stash edit <page_id> --content "..."` (`--append` adds to the end; the page id or its app URL both work). `stash upload` always creates a NEW item — use `stash edit` to change an existing one.
 
 Run `stash prompts agent-guidance` any time you want this guidance reprinted in full.
 

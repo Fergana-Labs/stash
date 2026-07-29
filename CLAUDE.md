@@ -43,6 +43,7 @@ A Skill is a *special folder* — one containing a SKILL.md — holding related 
 A Skill is **not** a wrapper to slap on every single file you happen to share. One-item Skills clutter Discover and defeat the model. Pick the right tool:
 
 - Share a single file or a folder/project → `stash upload <path> --json`, hand over `app_url` (no Skill).
+- Change a page already in Stash → `stash edit <page_id> --content "..."` (`--append` adds to the end). Never re-upload to edit.
 - Publishing a curated bundle → `stash upload <path> --skill "<title>" --json`.
 - Creating a fresh skill → `stash skills create "<name>" --public --json`.
 - Share a coding session → `stash share <session_id>`.
