@@ -1,11 +1,11 @@
 from cli import main
 
-MEMORY_URL = "http://localhost:3457/memory"
+FRONTEND_URL = "http://localhost:3457"
 
 
 def _intro(connected=True, recording=True, importing=None):
     return main._setup_complete_intro(
-        MEMORY_URL, connected=connected, recording=recording, importing=importing
+        FRONTEND_URL, connected=connected, recording=recording, importing=importing
     )
 
 
@@ -20,11 +20,12 @@ def test_setup_complete_intro_omits_connect_prompt_when_connected() -> None:
     assert "stash connect" not in _intro(connected=True)
 
 
-def test_setup_complete_intro_always_links_memory() -> None:
+def test_setup_complete_intro_always_links_memory_and_integrations() -> None:
     for connected in (False, True):
         intro = _intro(connected=connected)
-        assert "See your knowledge base" in intro
-        assert MEMORY_URL in intro
+        assert "Your knowledge base" in intro
+        assert f"{FRONTEND_URL}/memory" in intro
+        assert f"{FRONTEND_URL}/integrations" in intro
 
 
 def test_setup_complete_intro_states_recording_on() -> None:

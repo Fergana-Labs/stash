@@ -5009,8 +5009,10 @@ def _active_import() -> dict | None:
 
 
 def _setup_complete_intro(
-    memory_url: str, connected: bool, recording: bool, importing: dict | None
+    frontend_url: str, connected: bool, recording: bool, importing: dict | None
 ) -> str:
+    memory_url = f"{frontend_url}/memory"
+    integrations_url = f"{frontend_url}/integrations"
     recording_section = (
         "[bold]You're recording[/bold]\n"
         "This machine's agent sessions upload to your private Stash.\n"
@@ -5024,7 +5026,7 @@ def _setup_complete_intro(
         if importing is None
         else "\n\n[bold]Your history is uploading right now[/bold]\n"
         f"{importing['done']}/{importing['total']} past conversations imported so far, in the\n"
-        "background — watch your knowledge base fill up at the link above.\n"
+        "background — watch your knowledge base fill up.\n"
         "[dim]Progress: stash import-history --status[/dim]"
     )
     connect_section = (
@@ -5035,22 +5037,20 @@ def _setup_complete_intro(
         "to its CLAUDE.md — agents working there will know how to use your Stash."
     )
     return (
-        "[bold]What just happened[/bold]\n"
-        "Your coding agent now has the [bold #1e3a8a]stash[/bold #1e3a8a] CLI on its PATH.\n"
-        "It can read the transcripts your coding agents push to Stash — so it\n"
-        "knows what you've been working on.\n"
+        "[bold]Your agents just got a memory[/bold]\n"
+        "Every coding session on this machine now lands in your private Stash.\n"
+        "Your agents can draw on everything you've worked on before — past fixes,\n"
+        "decisions, dead ends — instead of starting every session from zero.\n"
         "\n"
-        "[bold]See your knowledge base[/bold]\n"
+        "[bold]Your knowledge base[/bold]\n"
         f"  [link={memory_url}][bold #1e3a8a]{memory_url}[/bold #1e3a8a][/link]\n"
-        "Your command center: every session and memory in your Stash, embedded\n"
-        "and searchable by your agents.\n"
+        "Stash compiles your sessions into memory your agents check before they\n"
+        "work. The more you use it, the better they get.\n"
         "\n"
-        "[bold]Commands your agent can now use[/bold]\n"
-        '  [#1e3a8a]stash vfs "find / -maxdepth 3 -type f"[/#1e3a8a]   browse Stash like a filesystem\n'
-        '  [#1e3a8a]stash search "<query>"[/#1e3a8a]   full-text search across files, sessions, and sources\n'
-        "  [#1e3a8a]stash sessions agents[/#1e3a8a]   see which agents have been active\n"
-        "\n"
-        "Run [bold]stash --help[/bold] to see everything.\n"
+        "[bold]Make it smarter: connect your tools[/bold]\n"
+        f"  [link={integrations_url}][bold #1e3a8a]{integrations_url}[/bold #1e3a8a][/link]\n"
+        "Connect Slack, Drive, Notion, GitHub and more — your agents will see\n"
+        "through your connectors and answer with your team's actual context.\n"
         "\n"
         f"{recording_section}"
         f"{importing_section}"
@@ -5069,13 +5069,12 @@ def _show_setup_complete_splash() -> None:
     console.print(Align.center(Text.from_markup(f"[bold #1e3a8a]{logo}[/bold #1e3a8a]")))
     console.print("  [bold green]You're all set up.[/bold green]\n")
 
-    memory_url = f"{_frontend_base_url()}/memory"
     connected = load_manifest() is not None
     recording = not streaming_stopped()
     console.print(
         Panel(
             Text.from_markup(
-                _setup_complete_intro(memory_url, connected, recording, _active_import())
+                _setup_complete_intro(_frontend_base_url(), connected, recording, _active_import())
             ),
             title="[bold #1e3a8a]Your agent memory[/bold #1e3a8a]",
             border_style="#1e3a8a",
