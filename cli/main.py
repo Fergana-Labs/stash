@@ -4822,8 +4822,8 @@ def _setup_complete_intro(home_url: str, connected: bool, recording: bool) -> st
     return (
         "[bold]What just happened[/bold]\n"
         "Your coding agent now has the [bold #1e3a8a]stash[/bold #1e3a8a] CLI on its PATH.\n"
-        "Recording transcripts is one part of Stash — your agents can also search,\n"
-        "browse, upload, and share files, sessions, and connected sources.\n"
+        "It can read the transcripts your coding agents push to Stash — so it\n"
+        "knows what you've been working on.\n"
         "\n"
         "[bold]See your Stash[/bold]\n"
         f"  [link={home_url}][bold #1e3a8a]{home_url}[/bold #1e3a8a][/link]\n"
