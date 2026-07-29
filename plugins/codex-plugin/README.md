@@ -8,7 +8,7 @@ Streams Codex CLI sessions to Stash using Codex's native `hooks` system.
 - Codex CLI with `features.hooks = true` enabled for hook-based streaming
 
 Streaming is gated globally: it is on whenever you are signed in
-(`stash signin`) and haven't stopped streaming (`stash disconnect`). There is
+(`stash signin`) and haven't stopped recording (`stash stop`). There is
 no per-repo manifest.
 
 ## Install
@@ -42,9 +42,9 @@ Everything is a plain `stash` CLI subcommand — no slash commands or skills:
 
 | Command | Description |
 |---------|-------------|
-| `stash connect` | Interactive setup (auth + store) |
+| `stash signin` | Sign in + first-run setup (re-run the wizard anytime: `stash setup`) |
 | `stash settings` | Interactive settings page (streaming, scope, endpoint, …) |
-| `stash disconnect` | Pause event streaming across every installed plugin |
+| `stash stop` | Pause session recording across every installed plugin (`stash start` resumes) |
 
 ## Launching: use the `stash` profile
 

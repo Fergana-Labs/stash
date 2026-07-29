@@ -65,9 +65,9 @@ Everything is a `stash` CLI subcommand — there are no slash commands.
 
 | Command | Description |
 |---------|-------------|
-| `stash signin` | Onboarding wizard — auth + hook install |
+| `stash signin` | Sign in + first-run setup (re-run the wizard anytime: `stash setup`) |
 | `stash settings` | Interactive settings page (streaming, scope, endpoint, …) |
-| `stash disconnect` | Pause activity streaming across every installed plugin |
+| `stash stop` | Pause session recording across every installed plugin (`stash start` resumes) |
 
 The plugin also gives Claude access to the rest of the `stash` CLI. Key commands:
 

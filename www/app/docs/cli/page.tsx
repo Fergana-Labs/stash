@@ -18,15 +18,33 @@ export default function CLIPage() {
 
       <H2>First-time setup</H2>
       <P>
-        Run the interactive setup wizard. It configures the API endpoint, authenticates you
-        through the browser, and sets up your Stash — all in one shot. No manual config
-        editing required.
+        Run the setup wizard. It authenticates you through the browser, turns on session
+        recording (pause anytime with <Code>stash stop</Code>), lets you pick which coding
+        agents to record, sets up the folder you&apos;re standing in, and imports your
+        conversation history in the background. No manual config editing required.
       </P>
-      <CodeBlock>{`stash connect`}</CodeBlock>
+      <CodeBlock>{`stash signin`}</CodeBlock>
       <P>
-        The wizard saves everything to <Code>~/.stash/config.json</Code>. Once complete,
-        commands like <Code>stash sessions push</Code> work without extra flags.
+        The wizard saves everything to <Code>~/.stash/config.json</Code>. Re-run it anytime
+        with <Code>stash setup</Code> — no answer is final. Self-hosting? Point the CLI at
+        your instance with <Code>stash signin --api &lt;url&gt;</Code>.
       </P>
+      <CommandRef
+        command="stash setup"
+        description="Re-run the setup wizard: session recording, agent hooks, folder context, and history import. Safe to repeat."
+      />
+      <CommandRef
+        command="stash connect"
+        description="Set up the current folder for Stash: writes .stash and adds Stash instructions to CLAUDE.md so agents working there use your Stash. Works in any folder — a git repo is not required."
+      />
+      <CommandRef
+        command="stash import-history"
+        args="[--status]"
+        description="Import your historical agent conversations (Claude Code, Codex, Cursor) into Stash with parallel uploads. Safe to re-run — the server skips sessions that already exist. The wizard launches this in the background; --status attaches a live progress bar (Ctrl-C detaches)."
+        params={[
+          { name: "--status", type: "flag", desc: "Follow the running or last-finished import with a live progress bar." },
+        ]}
+      />
 
       <H2>Virtual filesystem</H2>
       <P>
@@ -56,7 +74,7 @@ stash vfs --cwd "/me/sources" "rg 'incident' ."`}</CodeBlock>
       <CommandRef
         command="stash signin"
         args="[--api <base_url>] [--api-key <key>] [--non-interactive]"
-        description="Authenticate this machine. With no flags it runs the browser flow: on first run it also picks the endpoint (managed or self-host) and offers to install streaming hooks for your coding agents. On SSH/headless it prints a URL to open instead of launching a browser. Pass --api-key to store a pre-minted key directly (no browser) on an unattended, browser-less machine — typically a self-hosted CI runner; get the key from your self-hosted instance's API-key page."
+        description="Authenticate this machine. With no flags it runs the browser flow against managed Stash and, on first run, continues into the setup wizard (recording, agent hooks, folder context, history import). Self-hosters pass --api with their instance URL. On SSH/headless it prints a URL to open instead of launching a browser. Pass --api-key to store a pre-minted key directly (no browser) on an unattended, browser-less machine — typically a self-hosted CI runner; get the key from your self-hosted instance's API-key page."
         params={[
           { name: "--api", type: "string", desc: "Base URL of the Stash server. Override for self-hosted deployments.", required: false },
           { name: "--api-key", type: "string", desc: "A pre-minted key to store directly, skipping the browser. For unattended, browser-less machines.", required: false },
@@ -80,7 +98,7 @@ stash vfs --cwd "/me/sources" "rg 'incident' ."`}</CodeBlock>
 
       <CommandRef
         command="stash disconnect"
-        description="Sign out and clear all stored credentials so the next stash connect re-onboards."
+        description="Sign out and clear all stored credentials so the next stash signin starts fresh."
       />
 
       <CommandRef
@@ -93,7 +111,7 @@ stash vfs --cwd "/me/sources" "rg 'incident' ."`}</CodeBlock>
       />
 
       <Callout>
-        After <Code>stash connect</Code>, your defaults are stored. Change the endpoint
+        After <Code>stash signin</Code>, your defaults are stored. Change the endpoint
         any time from <Code>stash settings</Code>, or set <Code>STASH_API_KEY</Code> /{" "}
         <Code>STASH_URL</Code> as environment variables for CI and scripts.
       </Callout>
@@ -218,6 +236,42 @@ stash vfs --cwd "/me/sources" "rg 'incident' ."`}</CodeBlock>
         params={[
           { name: "<session_id>", type: "string", desc: "ID of the session.", required: true },
           { name: "--save", type: "path", desc: "Save the transcript to a file instead of printing." },
+        ]}
+      />
+
+      <H2>Memory</H2>
+      <P>
+        Your Memory wiki lives in a reserved folder that the Memory curator — and, since{" "}
+        <Code>stash memory write</Code>, any agent — maintains. Pages are addressed by path.
+      </P>
+
+      <CommandRef
+        command="stash memory"
+        args="[--recompute] [--curator on|off] [--json]"
+        description="Show your reserved Memory folder and the nightly curator's schedule state. --recompute runs the curator now; --curator off|on toggles the nightly cloud run (on-demand runs keep working)."
+        params={[
+          { name: "--recompute", type: "flag", desc: "Run the Memory curator now." },
+          { name: "--curator", type: "string", desc: "Turn the nightly cloud curator run off or on." },
+          { name: "--json", type: "flag", desc: "Machine-readable output." },
+        ]}
+      />
+
+      <CommandRef
+        command="stash memory write"
+        args='"<Path>" [--content TEXT] [--json]'
+        description="Create or update a Memory wiki page at a path (e.g. 'Customers/Chainbase'). Missing subfolders are created; a trailing .md is stripped. Long bodies pipe on stdin."
+        params={[
+          { name: "--content", type: "string", desc: "Page body. Reads stdin if omitted." },
+          { name: "--json", type: "flag", desc: "Machine-readable output." },
+        ]}
+      />
+
+      <CommandRef
+        command="stash memory ls"
+        args="[--json]"
+        description="Print the Memory wiki tree with folder and page ids."
+        params={[
+          { name: "--json", type: "flag", desc: "Machine-readable output." },
         ]}
       />
 

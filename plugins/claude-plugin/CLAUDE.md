@@ -48,9 +48,17 @@ stash vfs "cat '/me/README.md'"
 
 ### Plugin control
 ```bash
-stash signin                       # Interactive setup (auth + hook install)
+stash signin                       # Sign in + first-run setup (auth, recording, hooks)
+stash setup                        # Re-run the setup wizard anytime
 stash settings                     # Interactive settings page (streaming, scope, endpoint, …)
-stash disconnect                   # Pause event streaming across every plugin
+stash stop                         # Pause session recording across every plugin (stash start resumes)
+```
+
+### Memory
+```bash
+stash memory ls                                # The Memory wiki tree with ids
+stash memory write "Topic/Page" --content "…"  # Create or update a wiki page (stdin for long bodies)
+stash memory --curator off                     # Turn the nightly cloud curator off (on to resume)
 ```
 
 ### Files, history, tables
