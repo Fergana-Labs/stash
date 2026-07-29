@@ -20,12 +20,11 @@ def test_setup_complete_intro_omits_connect_prompt_when_connected() -> None:
     assert "stash connect" not in _intro(connected=True)
 
 
-def test_setup_complete_intro_always_links_memory_and_integrations() -> None:
+def test_setup_complete_intro_always_links_memory() -> None:
     for connected in (False, True):
         intro = _intro(connected=connected)
         assert "Your knowledge base" in intro
         assert f"{FRONTEND_URL}/memory" in intro
-        assert f"{FRONTEND_URL}/integrations" in intro
 
 
 def test_setup_complete_intro_states_recording_on() -> None:
@@ -45,11 +44,11 @@ def test_setup_complete_intro_states_recording_off_with_way_back_in() -> None:
     assert "stash setup" in intro
 
 
-def test_setup_complete_intro_shows_running_import_with_counts() -> None:
+def test_setup_complete_intro_shows_running_import() -> None:
     intro = _intro(importing={"done": 120, "total": 6193})
 
     assert "Your history is uploading right now" in intro
-    assert "120/6193" in intro
+    assert "6193 past conversations" in intro
     assert "stash import-history --status" in intro
 
 

@@ -4868,8 +4868,13 @@ IMPORT_LOG_FILE = Path.home() / ".stash" / "import-history.log"
 
 
 def _write_import_status(total: int, done: int, errors: int, finished: bool) -> None:
+    import os
+
     IMPORT_STATUS_FILE.parent.mkdir(parents=True, exist_ok=True)
-    IMPORT_STATUS_FILE.write_text(
+    # Atomic replace: `--status` follows this file live and must never read a
+    # half-written JSON.
+    tmp = IMPORT_STATUS_FILE.with_suffix(".json.tmp")
+    tmp.write_text(
         json.dumps(
             {
                 "total": total,
@@ -4881,6 +4886,7 @@ def _write_import_status(total: int, done: int, errors: int, finished: bool) -> 
         )
         + "\n"
     )
+    os.replace(tmp, IMPORT_STATUS_FILE)
 
 
 def _onboarding_import_history(detected_agents: list[str]) -> None:
@@ -4930,6 +4936,36 @@ def _onboarding_import_history(detected_agents: list[str]) -> None:
     )
 
 
+def _show_import_status() -> None:
+    """Follow a running import with a live progress bar; print a summary when
+    it's already finished or stalled. Ctrl-C detaches without stopping it."""
+    from rich.progress import Progress
+
+    if not IMPORT_STATUS_FILE.exists():
+        console.print("No import has run on this machine.")
+        return
+
+    s = json.loads(IMPORT_STATUS_FILE.read_text())
+    stalled = not s["finished"] and time.time() - s["updated_at"] > 3600
+    if s["finished"] or stalled:
+        state = "finished" if s["finished"] else "stalled — re-run stash import-history to resume"
+        console.print(f"  {s['done']}/{s['total']} conversations, {s['errors']} errors — {state}")
+        return
+
+    try:
+        with Progress(console=console) as progress:
+            task = progress.add_task("Importing…", total=s["total"])
+            while not s["finished"]:
+                s = json.loads(IMPORT_STATUS_FILE.read_text())
+                progress.update(task, completed=s["done"], total=s["total"])
+                time.sleep(0.5)
+    except KeyboardInterrupt:
+        console.print("  [dim]Detached — the import keeps running in the background.[/dim]")
+        return
+    if s["errors"]:
+        console.print(f"  [yellow]{s['errors']} conversations failed[/yellow]")
+
+
 @app.command("import-history")
 def import_history_cmd(
     status: bool = typer.Option(
@@ -4942,14 +4978,7 @@ def import_history_cmd(
     wizard launches this as a background process; run it directly to import
     in the foreground with a progress bar."""
     if status:
-        if not IMPORT_STATUS_FILE.exists():
-            console.print("No import has run on this machine.")
-            return
-        s = json.loads(IMPORT_STATUS_FILE.read_text())
-        state = (
-            "finished" if s["finished"] else f"running (last update {_format_age(s['updated_at'])})"
-        )
-        console.print(f"  {s['done']}/{s['total']} conversations, {s['errors']} errors — {state}")
+        _show_import_status()
         return
 
     _require_auth()
@@ -5012,7 +5041,6 @@ def _setup_complete_intro(
     frontend_url: str, connected: bool, recording: bool, importing: dict | None
 ) -> str:
     memory_url = f"{frontend_url}/memory"
-    integrations_url = f"{frontend_url}/integrations"
     recording_section = (
         "[bold]You're recording[/bold]\n"
         "This machine's agent sessions upload to your private Stash.\n"
@@ -5025,9 +5053,9 @@ def _setup_complete_intro(
         ""
         if importing is None
         else "\n\n[bold]Your history is uploading right now[/bold]\n"
-        f"{importing['done']}/{importing['total']} past conversations imported so far, in the\n"
-        "background — watch your knowledge base fill up.\n"
-        "[dim]Progress: stash import-history --status[/dim]"
+        f"{importing['total']} past conversations are importing in the background —\n"
+        "watch your knowledge base fill up.\n"
+        "[dim]Live progress: stash import-history --status[/dim]"
     )
     connect_section = (
         ""
@@ -5046,11 +5074,6 @@ def _setup_complete_intro(
         f"  [link={memory_url}][bold #1e3a8a]{memory_url}[/bold #1e3a8a][/link]\n"
         "Stash compiles your sessions into memory your agents check before they\n"
         "work. The more you use it, the better they get.\n"
-        "\n"
-        "[bold]Make it smarter: connect your tools[/bold]\n"
-        f"  [link={integrations_url}][bold #1e3a8a]{integrations_url}[/bold #1e3a8a][/link]\n"
-        "Connect Slack, Drive, Notion, GitHub and more — your agents will see\n"
-        "through your connectors and answer with your team's actual context.\n"
         "\n"
         f"{recording_section}"
         f"{importing_section}"
