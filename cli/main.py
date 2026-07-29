@@ -4527,13 +4527,27 @@ def _run_setup_wizard() -> None:
     if record:
         start_streaming()
         if detected:
-            save_enabled_agents(detected)
-            _install_all_hooks(detected)
-            labels = ", ".join(_AGENT_LABEL.get(a, a) for a in detected)
-            console.print(
-                f"  [green]✓[/green] Recording sessions from: [bold]{labels}[/bold]\n"
-                "    [dim]Change agents with stash settings[/dim]"
-            )
+            enabled = load_enabled_agents()
+            default_enabled = enabled if enabled is not None else detected
+
+            _reserve_bottom_padding(len(detected) + 4)
+            selected = questionary.checkbox(
+                "Which coding agents should Stash record?",
+                instruction="(space toggles an agent, enter saves the whole set)",
+                choices=[
+                    questionary.Choice(
+                        _AGENT_LABEL.get(a, a),
+                        value=a,
+                        checked=a in default_enabled,
+                    )
+                    for a in detected
+                ],
+            ).ask()
+            if selected is None:
+                raise typer.Exit(1)
+
+            save_enabled_agents(selected)
+            _install_all_hooks(selected)
         else:
             save_enabled_agents([])
             console.print(
