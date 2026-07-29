@@ -568,6 +568,38 @@ async def test_saved_view_filter_and_sort_apply_to_app_rows(client: AsyncClient,
     assert titles == ["Keep newer", "Keep older"]
 
 
+async def test_app_rows_sort_by_any_table_column(client: AsyncClient, pool):
+    """The bookmark table sorts the full result set on the server, not only
+    whichever page the browser has loaded."""
+    headers, owner_id = await _register(client)
+    table, ids, _ = await _bookmarks_row(client, owner_id, pool, Title="Zulu")
+    await table_service.create_row(table["id"], {ids["Title"]: "Alpha"}, owner_id)
+
+    response = await client.get(
+        "/api/v1/me/apps/bookmarks/rows",
+        params={"sort_by": ids["Title"], "sort_order": "asc"},
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    titles = [row["data"][ids["Title"]] for row in response.json()["rows"]]
+    assert titles == ["Alpha", "Zulu"]
+
+
+async def test_app_rows_reject_unknown_sort_column(client: AsyncClient):
+    headers, _ = await _register(client)
+    await client.post("/api/v1/me/apps/bookmarks", headers=headers)
+
+    response = await client.get(
+        "/api/v1/me/apps/bookmarks/rows",
+        params={"sort_by": "not-a-column"},
+        headers=headers,
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Sort column not found"
+
+
 # --- Filters, paging, editing -------------------------------------------------
 
 

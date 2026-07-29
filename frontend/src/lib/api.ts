@@ -2332,6 +2332,8 @@ export async function listAppRows(
     topic?: string;
     filter?: string;
     view_id?: string;
+    sort_by?: string;
+    sort_order?: "asc" | "desc";
     limit?: number;
     offset?: number;
   } = {}
@@ -2341,6 +2343,8 @@ export async function listAppRows(
   if (params.topic) query.set("topic", params.topic);
   if (params.filter) query.set("filter", params.filter);
   if (params.view_id) query.set("view_id", params.view_id);
+  if (params.sort_by) query.set("sort_by", params.sort_by);
+  if (params.sort_order) query.set("sort_order", params.sort_order);
   query.set("limit", String(params.limit ?? 60));
   query.set("offset", String(params.offset ?? 0));
   return apiFetch(`${ME}/apps/${slug}/rows?${query.toString()}`);

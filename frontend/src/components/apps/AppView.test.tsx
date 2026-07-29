@@ -11,6 +11,7 @@ const api = vi.hoisted(() => ({
   installApp: vi.fn(),
   listAppRows: vi.fn(),
   listAppSkills: vi.fn(),
+  listSkills: vi.fn(),
   setRowTopics: vi.fn(),
   updateTableRow: vi.fn(),
 }));
@@ -113,6 +114,7 @@ beforeEach(() => {
   });
   api.listAppRows.mockResolvedValue({ rows, total: 3, has_more: false });
   api.listAppSkills.mockResolvedValue([]);
+  api.listSkills.mockResolvedValue([]);
   api.appFacets.mockResolvedValue({
     total: 3,
     topics: [{ label: "AI", count: 1 }],
@@ -138,10 +140,42 @@ describe("Bookmarks app", () => {
     expect(screen.getByRole("columnheader", { name: "URL" })).toBeTruthy();
     expect(screen.getByRole("columnheader", { name: "Topics" })).toBeTruthy();
     expect(screen.getByText("https://example.com/1")).toBeTruthy();
-    expect(screen.queryByTestId("card-grid")).toBeNull();
+    expect(screen.queryByTestId("bookmarks-cards")).toBeNull();
     expect(screen.queryByText("Recent")).toBeNull();
     expect(screen.queryByPlaceholderText("Search everything")).toBeNull();
     expect(screen.queryByText(manifest.tagline)).toBeNull();
+  });
+
+  it("keeps cards available without changing the table-first default", async () => {
+    render(<AppView slug="bookmarks" />);
+
+    await screen.findByTestId("bookmarks-table");
+    fireEvent.click(screen.getByRole("button", { name: "Card view" }));
+
+    expect(screen.getByTestId("bookmarks-cards")).toBeTruthy();
+    expect(screen.getAllByTestId("app-card")).toHaveLength(3);
+    expect(screen.queryByTestId("bookmarks-table")).toBeNull();
+  });
+
+  it("sorts the whole result set through the rows API", async () => {
+    render(<AppView slug="bookmarks" />);
+
+    const titleSort = await screen.findByRole("button", { name: "Sort by Title" });
+    fireEvent.click(titleSort);
+    await waitFor(() =>
+      expect(api.listAppRows).toHaveBeenLastCalledWith(
+        "bookmarks",
+        expect.objectContaining({ sort_by: "title", sort_order: "asc" }),
+      ),
+    );
+
+    fireEvent.click(titleSort);
+    await waitFor(() =>
+      expect(api.listAppRows).toHaveBeenLastCalledWith(
+        "bookmarks",
+        expect.objectContaining({ sort_by: "title", sort_order: "desc" }),
+      ),
+    );
   });
 
   it("selects a contiguous range with shift-click", async () => {

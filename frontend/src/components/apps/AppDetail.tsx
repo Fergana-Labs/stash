@@ -166,7 +166,7 @@ export default function AppDetail({
   return (
     <aside
       data-testid="app-detail"
-      className="fixed inset-y-0 left-[74px] right-0 z-30 flex w-auto flex-col border-l border-border bg-base shadow-xl lg:static lg:z-auto lg:h-full lg:w-[380px] lg:shrink-0 lg:shadow-none"
+      className="fixed inset-y-0 left-[74px] right-0 z-30 flex w-auto flex-col border-l border-border bg-surface shadow-xl lg:relative lg:inset-auto lg:z-auto lg:h-full lg:w-auto lg:shadow-none"
     >
       <div className="flex items-start justify-between gap-2 border-b border-border px-4 py-3">
         <h2 className="min-w-0 truncate text-[14px] font-semibold text-foreground">{title}</h2>

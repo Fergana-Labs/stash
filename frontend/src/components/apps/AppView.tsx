@@ -2,11 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { ArrowDown, ArrowUp, ArrowUpDown, LayoutGrid, Table2 } from "lucide-react";
 
 import { appFacets, getApp, getTable, installApp, listAppRows } from "@/lib/api";
 import type { AppFacets, MiniProgramManifest, Table, TableColumn, TableRow } from "@/lib/types";
 
 import AppBulkBar from "./AppBulkBar";
+import AppCard from "./AppCard";
 import AppDetail from "./AppDetail";
 import AppSkillsBanner from "./AppSkillsBanner";
 import { cellLabels, cellText, displayTimestamp } from "./cells";
@@ -14,6 +16,8 @@ import { cellLabels, cellText, displayTimestamp } from "./cells";
 const PAGE_SIZE = 60;
 // Rows enrich in the background; re-poll while any on screen is still bare.
 const ENRICH_POLL_MS = 6000;
+type Layout = "table" | "cards";
+type SortOrder = "asc" | "desc";
 
 const DERIVED = [
   { key: "duplicates", label: "Duplicates" },
@@ -74,6 +78,9 @@ export default function AppView({ slug }: { slug: string }) {
   const [defaultViewId, setDefaultViewId] = useState<string | null>(null);
   const [topic, setTopic] = useState<string | null>(null);
   const [derived, setDerived] = useState<string | null>(null);
+  const [layout, setLayout] = useState<Layout>("table");
+  const [sortBy, setSortBy] = useState<string | null>(null);
+  const [sortOrder, setSortOrder] = useState<SortOrder>("asc");
   const [openRowId, setOpenRowId] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
@@ -100,6 +107,8 @@ export default function AppView({ slug }: { slug: string }) {
         topic: topic ?? undefined,
         filter: derived ?? undefined,
         view_id: viewId ?? undefined,
+        sort_by: sortBy ?? undefined,
+        sort_order: sortBy ? sortOrder : undefined,
         limit: PAGE_SIZE,
         offset,
       });
@@ -113,7 +122,7 @@ export default function AppView({ slug }: { slug: string }) {
         return [...page.rows, ...previous.filter((row) => !refreshedIds.has(row.id))];
       });
     },
-    [slug, topic, derived, defaultViewId]
+    [slug, topic, derived, defaultViewId, sortBy, sortOrder]
   );
 
   const init = useCallback(async () => {
@@ -146,7 +155,18 @@ export default function AppView({ slug }: { slug: string }) {
     if (loading || missing || !manifest || !table) return;
     setSelected(new Set());
     void loadPage(0);
-  }, [topic, derived, defaultViewId, loadPage, loading, missing, manifest, table]);
+  }, [
+    topic,
+    derived,
+    defaultViewId,
+    sortBy,
+    sortOrder,
+    loadPage,
+    loading,
+    missing,
+    manifest,
+    table,
+  ]);
 
   // Infinite scroll.
   useEffect(() => {
@@ -214,6 +234,15 @@ export default function AppView({ slug }: { slug: string }) {
       return next;
     });
 
+  const changeSort = (columnId: string) => {
+    if (sortBy === columnId) {
+      setSortOrder((current) => (current === "asc" ? "desc" : "asc"));
+      return;
+    }
+    setSortBy(columnId);
+    setSortOrder("asc");
+  };
+
   const openRow = useMemo(() => rows.find((r) => r.id === openRowId) ?? null, [rows, openRowId]);
   const columns = useMemo(
     () => [...(table?.columns ?? [])].sort((a, b) => a.order - b.order),
@@ -257,8 +286,14 @@ export default function AppView({ slug }: { slug: string }) {
   const filtering = !!(topic || derived);
 
   return (
-    <div className="flex h-full min-h-0">
-      <div className="flex min-w-0 flex-1 flex-col">
+    <div
+      className={
+        openRow
+          ? "grid h-full min-h-0 min-w-0 grid-cols-1 overflow-hidden lg:grid-cols-[minmax(0,1fr)_420px]"
+          : "grid h-full min-h-0 min-w-0 grid-cols-1 overflow-hidden"
+      }
+    >
+      <div className="flex min-h-0 min-w-0 flex-col overflow-hidden">
         <header className="border-b border-border px-6 py-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h1 className="font-display text-[20px] font-bold tracking-tight text-foreground">
@@ -310,6 +345,72 @@ export default function AppView({ slug }: { slug: string }) {
                 Clear filters
               </button>
             )}
+
+            <div className="ml-auto flex items-center gap-2">
+              <select
+                aria-label="Sort bookmarks"
+                value={sortBy ?? ""}
+                onChange={(event) => {
+                  const columnId = event.target.value;
+                  setSortBy(columnId || null);
+                  setSortOrder("asc");
+                }}
+                className="rounded-md border border-border bg-base px-2.5 py-1.5 text-[12px] text-foreground"
+              >
+                <option value="">Default order</option>
+                {columns.map((column) => (
+                  <option key={column.id} value={column.id}>
+                    Sort by {column.name}
+                  </option>
+                ))}
+              </select>
+
+              {sortBy && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    setSortOrder((current) => (current === "asc" ? "desc" : "asc"))
+                  }
+                  aria-label={`Sort ${sortOrder === "asc" ? "descending" : "ascending"}`}
+                  className="rounded-md border border-border p-1.5 text-muted-foreground hover:bg-raised hover:text-foreground"
+                >
+                  {sortOrder === "asc" ? (
+                    <ArrowUp className="h-4 w-4" />
+                  ) : (
+                    <ArrowDown className="h-4 w-4" />
+                  )}
+                </button>
+              )}
+
+              <div className="flex rounded-md border border-border p-0.5">
+                <button
+                  type="button"
+                  onClick={() => setLayout("table")}
+                  aria-label="Table view"
+                  aria-pressed={layout === "table"}
+                  className={`rounded p-1.5 ${
+                    layout === "table"
+                      ? "bg-raised text-foreground"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  <Table2 className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLayout("cards")}
+                  aria-label="Card view"
+                  aria-pressed={layout === "cards"}
+                  className={`rounded p-1.5 ${
+                    layout === "cards"
+                      ? "bg-raised text-foreground"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  <LayoutGrid className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
           </div>
         </header>
 
@@ -337,7 +438,7 @@ export default function AppView({ slug }: { slug: string }) {
                 </Link>
               </div>
             )
-          ) : (
+          ) : layout === "table" ? (
             <table data-testid="bookmarks-table" className="min-w-full border-separate border-spacing-0 text-left text-[12px]">
               <thead className="sticky top-0 z-10 bg-surface">
                 <tr>
@@ -353,10 +454,26 @@ export default function AppView({ slug }: { slug: string }) {
                   {columns.map((column) => (
                     <th
                       key={column.id}
-                      className="whitespace-nowrap border-b border-r border-border px-3 py-2 font-medium text-muted-foreground last:border-r-0"
+                      className="whitespace-nowrap border-b border-r border-border p-0 font-medium text-muted-foreground last:border-r-0"
                       style={{ minWidth: Math.max(column.width || 120, 120) }}
                     >
-                      {column.name}
+                      <button
+                        type="button"
+                        onClick={() => changeSort(column.id)}
+                        aria-label={`Sort by ${column.name}`}
+                        className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left hover:bg-raised hover:text-foreground"
+                      >
+                        {column.name}
+                        {sortBy === column.id ? (
+                          sortOrder === "asc" ? (
+                            <ArrowUp className="h-3.5 w-3.5" />
+                          ) : (
+                            <ArrowDown className="h-3.5 w-3.5" />
+                          )
+                        ) : (
+                          <ArrowUpDown className="h-3.5 w-3.5 opacity-40" />
+                        )}
+                      </button>
                     </th>
                   ))}
                 </tr>
@@ -402,6 +519,24 @@ export default function AppView({ slug }: { slug: string }) {
                 ))}
               </tbody>
             </table>
+          ) : (
+            <div
+              data-testid="bookmarks-cards"
+              className="grid grid-cols-1 gap-3 p-5 sm:grid-cols-2 xl:grid-cols-3"
+            >
+              {rows.map((row, index) => (
+                <AppCard
+                  key={row.id}
+                  row={row}
+                  manifest={manifest}
+                  pendingEnrichment={pendingRowIds.has(row.id)}
+                  active={row.id === openRowId}
+                  selected={selected.has(row.id)}
+                  onToggleSelected={(range) => toggleSelected(row.id, index, range)}
+                  onOpen={() => setOpenRowId(row.id === openRowId ? null : row.id)}
+                />
+              ))}
+            </div>
           )}
 
           <div ref={sentinelRef} className="h-8" />
