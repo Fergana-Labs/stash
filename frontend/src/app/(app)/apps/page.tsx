@@ -43,10 +43,6 @@ export default function AppsRoute() {
     <div className="scroll-thin flex-1 overflow-y-auto">
       <div className="mx-auto max-w-3xl px-8 py-10">
         <h1 className="font-display text-[26px] font-bold tracking-tight text-foreground">Apps</h1>
-        <p className="mt-1.5 text-[13.5px] text-muted-foreground">
-          Focused views over your stash. Each one keeps its own table, filled in and
-          labelled for you as things arrive.
-        </p>
 
         {loading ? (
           <p className="mt-8 text-[13px] text-muted-foreground">Loading…</p>
@@ -94,9 +90,6 @@ export default function AppsRoute() {
                         <div className="mt-2.5 text-[14px] font-semibold text-foreground">
                           {app.title}
                         </div>
-                        <p className="mt-1 text-[12px] leading-relaxed text-muted-foreground">
-                          {app.tagline}
-                        </p>
                         <button
                           type="button"
                           onClick={() => handleInstall(app.slug)}

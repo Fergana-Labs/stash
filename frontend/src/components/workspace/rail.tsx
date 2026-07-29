@@ -14,7 +14,7 @@ type RailItem = { key: RailSection; label: string; icon: typeof Bot; match: (p: 
 // Primary sections — each opens its own explorer panel (see workspace-shell).
 const PRIMARY: RailItem[] = [
   { key: "agents", label: "Agents", icon: Bot, match: (p) => p.startsWith("/agents") },
-  { key: "apps", label: "Views", icon: LayoutGrid, match: (p) => p.startsWith("/apps") },
+  { key: "apps", label: "Apps", icon: LayoutGrid, match: (p) => p.startsWith("/apps") },
   { key: "files", label: "Files", icon: FolderTree, match: (p) => p === "/files" || p.startsWith("/f/") || p.startsWith("/p/") || p.startsWith("/folders/") || p.startsWith("/tables/") },
   { key: "sessions", label: "Sessions", icon: MessagesSquare, match: (p) => p.startsWith("/sessions") || p.startsWith("/session-folders") },
   { key: "skills", label: "Skills", icon: GraduationCap, match: (p) => p.startsWith("/skills") },
@@ -23,7 +23,7 @@ const PRIMARY: RailItem[] = [
   { key: "computer", label: "VM", icon: Monitor, match: () => false },
 ];
 
-// Agents and Views are lenses over the stash rather than places in it, so the
+// Agents and Apps are lenses over the stash rather than places in it, so the
 // divider falls after them, above the VFS sections.
 const DIVIDER_AFTER_INDEX = 1;
 

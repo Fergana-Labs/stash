@@ -1,22 +1,98 @@
 "use client";
 
-import { useState } from "react";
-import Link from "next/link";
-import { ExternalLink, FileText, Plus, RefreshCw, X } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Plus, X } from "lucide-react";
 
-import { reenrichRow, setRowTopics } from "@/lib/api";
-import type { MiniProgramManifest, TableRow } from "@/lib/types";
+import { setRowTopics, updateTableRow } from "@/lib/api";
+import type { MiniProgramManifest, Table, TableColumn, TableRow } from "@/lib/types";
 
 import TopicInput from "./TopicInput";
-import { cellText, cellLabels, displayTimestamp, internalPath } from "./cells";
+import { cellLabels, cellText } from "./cells";
 
-/** The row detail pane — the reason an app beats a spreadsheet. Topics are
- *  editable here because the model's guess is a starting point, not a verdict;
- *  everything else stays read-only so there's no mode to get stuck in. */
+function inputValue(row: TableRow, column: TableColumn): string {
+  const value = row.data[column.id];
+  if (value == null) return "";
+  if (Array.isArray(value)) return value.join(", ");
+  return String(value);
+}
+
+function parsedValue(column: TableColumn, value: string): unknown {
+  if (column.type === "number") return value === "" ? null : Number(value);
+  if (column.type === "boolean") return value === "true";
+  if (column.type === "multiselect") {
+    return value
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+  return value;
+}
+
+function FieldInput({
+  column,
+  value,
+  onChange,
+}: {
+  column: TableColumn;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  if (column.type === "select") {
+    return (
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="w-full rounded-md border border-border bg-base px-2.5 py-2 text-[12.5px] text-foreground"
+      >
+        <option value="">—</option>
+        {(column.options ?? []).map((option) => (
+          <option key={option} value={option}>
+            {option}
+          </option>
+        ))}
+      </select>
+    );
+  }
+
+  if (column.type === "boolean") {
+    return (
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="w-full rounded-md border border-border bg-base px-2.5 py-2 text-[12.5px] text-foreground"
+      >
+        <option value="false">No</option>
+        <option value="true">Yes</option>
+      </select>
+    );
+  }
+
+  if (column.name === "Summary") {
+    return (
+      <textarea
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        rows={5}
+        className="w-full resize-y rounded-md border border-border bg-base px-2.5 py-2 text-[12.5px] leading-relaxed text-foreground"
+      />
+    );
+  }
+
+  return (
+    <input
+      type={column.type === "number" ? "number" : column.type === "url" ? "url" : "text"}
+      value={value}
+      onChange={(event) => onChange(event.target.value)}
+      className="w-full rounded-md border border-border bg-base px-2.5 py-2 text-[12.5px] text-foreground"
+    />
+  );
+}
+
 export default function AppDetail({
   row,
   slug,
   manifest,
+  table,
   knownTopics,
   onClose,
   onChanged,
@@ -24,27 +100,34 @@ export default function AppDetail({
   row: TableRow;
   slug: string;
   manifest: MiniProgramManifest;
+  table: Table;
   knownTopics: string[];
   onClose: () => void;
   onChanged: () => Promise<void> | void;
 }) {
-  const [requeued, setRequeued] = useState(false);
+  const columns = useMemo(
+    () => [...table.columns].sort((a, b) => a.order - b.order),
+    [table.columns]
+  );
+  const [values, setValues] = useState<Record<string, string>>({});
   const [error, setError] = useState("");
   const [addingTopic, setAddingTopic] = useState(false);
-  const [savingTopics, setSavingTopics] = useState(false);
+  const [saving, setSaving] = useState(false);
 
-  const { detail } = manifest;
-  const title = cellText(row, detail.title) || "Untitled";
-  const subtitle = cellText(row, detail.subtitle);
-  const badge = cellText(row, detail.badge);
-  const timestamp = displayTimestamp(cellText(row, detail.timestamp));
-  const body = cellText(row, detail.body);
-  const labels = cellLabels(row, detail.labels);
-  const link = cellText(row, detail.link);
-  const archived = internalPath(cellText(row, detail.content));
+  const labelColumnId = manifest.detail.labels;
+  const labels = cellLabels(row, labelColumnId);
+  const title = cellText(row, manifest.detail.title) || "Untitled";
+
+  useEffect(() => {
+    setValues(
+      Object.fromEntries(columns.map((column) => [column.id, inputValue(row, column)]))
+    );
+    setError("");
+    setAddingTopic(false);
+  }, [row, columns]);
 
   const saveTopics = async (next: string[]) => {
-    setSavingTopics(true);
+    setSaving(true);
     setError("");
     try {
       await setRowTopics(slug, row.id, next);
@@ -53,135 +136,136 @@ export default function AppDetail({
     } catch {
       setError("Couldn't save topics.");
     } finally {
-      setSavingTopics(false);
+      setSaving(false);
     }
   };
 
-  const handleReenrich = async () => {
+  const saveFields = async () => {
+    const changes: Record<string, unknown> = {};
+    for (const column of columns) {
+      if (column.id === labelColumnId) continue;
+      const next = parsedValue(column, values[column.id] ?? "");
+      const current = row.data[column.id] ?? "";
+      if (JSON.stringify(next) !== JSON.stringify(current)) changes[column.id] = next;
+    }
+
+    if (Object.keys(changes).length === 0) return;
+
+    setSaving(true);
     setError("");
     try {
-      await reenrichRow(slug, row.id);
-      setRequeued(true);
+      await updateTableRow(table.id, row.id, changes);
+      await onChanged();
     } catch {
-      setError("Couldn't queue a refresh. Try again.");
+      setError("Couldn't save changes.");
+    } finally {
+      setSaving(false);
     }
   };
 
   return (
     <aside
       data-testid="app-detail"
-      className="fixed inset-y-0 left-[74px] right-0 z-30 flex w-auto flex-col border-l border-border bg-base shadow-xl lg:static lg:z-auto lg:h-full lg:w-[340px] lg:shrink-0 lg:shadow-none"
+      className="fixed inset-y-0 left-[74px] right-0 z-30 flex w-auto flex-col border-l border-border bg-base shadow-xl lg:static lg:z-auto lg:h-full lg:w-[380px] lg:shrink-0 lg:shadow-none"
     >
       <div className="flex items-start justify-between gap-2 border-b border-border px-4 py-3">
-        <div className="min-w-0">
-          <h2 className="text-[14px] font-semibold leading-snug text-foreground">{title}</h2>
-          <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-dim">
-            {badge && <span className="rounded bg-raised px-1.5 py-0.5">{badge}</span>}
-            {subtitle && <span className="truncate">{subtitle}</span>}
-            {timestamp && <span>· {timestamp}</span>}
-          </div>
-        </div>
+        <h2 className="min-w-0 truncate text-[14px] font-semibold text-foreground">{title}</h2>
         <button
           type="button"
           onClick={onClose}
           aria-label="Close details"
-          className="cursor-pointer rounded p-2 text-muted-foreground hover:bg-raised hover:text-foreground"
+          className="rounded p-1.5 text-muted-foreground hover:bg-raised hover:text-foreground"
         >
           <X className="h-4 w-4" />
         </button>
       </div>
 
       <div className="scroll-thin flex-1 space-y-4 overflow-y-auto px-4 py-4">
-        <section>
-          <h3 className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-dim">
-            Summary
-          </h3>
-          {body ? (
-            <p className="text-[13px] leading-relaxed text-foreground">{body}</p>
-          ) : (
-            <p className="text-[13px] italic text-dim">
-              Not summarised yet — this fills in shortly after saving.
-            </p>
-          )}
-        </section>
+        {columns.map((column) => {
+          if (column.id === labelColumnId) {
+            return (
+              <section key={column.id} data-testid="topics-editor">
+                <label className="mb-1.5 block text-[11.5px] font-medium text-muted-foreground">
+                  {column.name}
+                </label>
+                <div className="flex flex-wrap items-center gap-1">
+                  {labels.map((label) => (
+                    <span
+                      key={label}
+                      className="inline-flex items-center gap-1 rounded bg-raised py-1 pl-2 pr-1 text-[11.5px] text-foreground"
+                    >
+                      {label}
+                      <button
+                        type="button"
+                        aria-label={`Remove ${label}`}
+                        disabled={saving}
+                        onClick={() => saveTopics(labels.filter((item) => item !== label))}
+                        className="rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </span>
+                  ))}
+                  {!addingTopic && (
+                    <button
+                      type="button"
+                      onClick={() => setAddingTopic(true)}
+                      data-testid="add-topic"
+                      className="inline-flex items-center gap-1 rounded border border-border px-2 py-1 text-[11.5px] text-muted-foreground hover:bg-raised hover:text-foreground"
+                    >
+                      <Plus className="h-3 w-3" />
+                      Add topic
+                    </button>
+                  )}
+                </div>
+                {addingTopic && (
+                  <div className="mt-2">
+                    <TopicInput
+                      knownTopics={knownTopics.filter((topic) => !labels.includes(topic))}
+                      onSubmit={(topic) => saveTopics([...labels, topic])}
+                      onCancel={() => setAddingTopic(false)}
+                    />
+                  </div>
+                )}
+              </section>
+            );
+          }
 
-        <section data-testid="topics-editor">
-          <h3 className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-dim">
-            Topics
-          </h3>
-          <div className="flex flex-wrap items-center gap-1">
-            {labels.map((label) => (
-              <span
-                key={label}
-                className="inline-flex items-center gap-1 rounded-full bg-brand/10 py-0.5 pl-2 pr-1 text-[11px] font-medium text-brand"
-              >
-                {label}
-                <button
-                  type="button"
-                  aria-label={`Remove ${label}`}
-                  disabled={savingTopics}
-                  onClick={() => saveTopics(labels.filter((l) => l !== label))}
-                  className="cursor-pointer rounded-full p-0.5 hover:bg-brand/20"
-                >
-                  <X className="h-2.5 w-2.5" />
-                </button>
+          return (
+            <label key={column.id} className="block">
+              <span className="mb-1.5 block text-[11.5px] font-medium text-muted-foreground">
+                {column.name}
               </span>
-            ))}
-            {!addingTopic && (
-              <button
-                type="button"
-                onClick={() => setAddingTopic(true)}
-                data-testid="add-topic"
-                className="inline-flex cursor-pointer items-center gap-0.5 rounded-full border border-dashed border-border px-2 py-0.5 text-[11px] text-muted-foreground hover:border-brand hover:text-brand"
-              >
-                <Plus className="h-2.5 w-2.5" />
-                Add
-              </button>
-            )}
-          </div>
-          {addingTopic && (
-            <div className="mt-2">
-              <TopicInput
-                knownTopics={knownTopics.filter((t) => !labels.includes(t))}
-                onSubmit={(topic) => saveTopics([...labels, topic])}
-                onCancel={() => setAddingTopic(false)}
+              <FieldInput
+                column={column}
+                value={values[column.id] ?? ""}
+                onChange={(value) =>
+                  setValues((current) => ({ ...current, [column.id]: value }))
+                }
               />
-            </div>
-          )}
-        </section>
+            </label>
+          );
+        })}
 
-        <section className="space-y-1.5">
-          {archived && (
-            <Link
-              href={archived}
-              className="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-[12.5px] text-foreground hover:bg-raised"
-            >
-              <FileText className="h-3.5 w-3.5 text-brand" />
-              Open saved copy
-            </Link>
-          )}
-          {link && (
-            <a
-              href={link}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-[12.5px] text-foreground hover:bg-raised"
-            >
-              <ExternalLink className="h-3.5 w-3.5 text-brand" />
-              Open original
-            </a>
-          )}
-          <button
-            type="button"
-            onClick={handleReenrich}
-            disabled={requeued}
-            className="flex w-full cursor-pointer items-center gap-2 rounded-lg border border-border px-3 py-2 text-[12.5px] text-foreground hover:bg-raised disabled:cursor-default disabled:text-dim"
-          >
-            <RefreshCw className={`h-3.5 w-3.5 text-brand ${requeued ? "animate-spin" : ""}`} />
-            {requeued ? "Queued — refreshing shortly" : "Regenerate summary"}
-          </button>
-          {error && <p className="text-[11.5px] text-red-500">{error}</p>}
-        </section>
+        {error && <p className="text-[11.5px] text-red-500">{error}</p>}
+      </div>
+
+      <div className="flex items-center justify-end gap-2 border-t border-border px-4 py-3">
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded-md px-3 py-1.5 text-[12.5px] text-muted-foreground hover:bg-raised hover:text-foreground"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          onClick={saveFields}
+          disabled={saving}
+          className="rounded-md bg-brand px-3 py-1.5 text-[12.5px] font-medium text-white hover:bg-brand-hover disabled:opacity-50"
+        >
+          {saving ? "Saving…" : "Save changes"}
+        </button>
       </div>
     </aside>
   );
