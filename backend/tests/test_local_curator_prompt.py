@@ -22,5 +22,4 @@ async def test_serves_the_curation_prompt(client: AsyncClient):
     # it must ground the run in the stash CLI and include the page-update
     # loop, or runs regenerate instead of maintaining.
     assert "stash" in prompt
-    assert "edit-page" in prompt
-    assert "add-page" in prompt
+    assert "memory write" in prompt

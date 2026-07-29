@@ -276,6 +276,43 @@ async def test_scope_header_reroots_overview_for_members_only(client: AsyncClien
 
 
 @pytest.mark.asyncio
+async def test_scope_header_reroots_memory_tree(client: AsyncClient, pool):
+    """memory-folder, memory-tree, and the page/folder writes must all follow
+    the scope header together: `stash memory write` resolves its path against
+    the tree and writes into the folder, so a tree rooted in a different scope
+    than the folder makes every scoped upsert re-create existing pages."""
+    domain = _domain()
+    member_key, member = await _register_with_email(client, f"m@{domain}")
+    await _verify_email(pool, uuid.UUID(member["id"]))
+    ws = await _create_workspace(client, domain)
+    scoped = {**_auth(member_key), "X-Stash-Scope": ws["scope_user_id"]}
+
+    mem = (await client.get("/api/v1/me/memory-folder", headers=scoped)).json()
+    assert mem["owner_user_id"] == ws["scope_user_id"]
+    sub = (
+        await client.post(
+            "/api/v1/me/folders",
+            json={"name": "Customers", "parent_folder_id": mem["id"]},
+            headers=scoped,
+        )
+    ).json()
+    resp = await client.post(
+        "/api/v1/me/pages/new",
+        json={"name": "Chainbase", "content": "x", "folder_id": sub["id"]},
+        headers=scoped,
+    )
+    assert resp.status_code == 201, resp.text
+
+    tree = (await client.get("/api/v1/me/memory-tree", headers=scoped)).json()
+    assert [f["name"] for f in tree["folders"]] == ["Customers"]
+    assert [p["name"] for p in tree["folders"][0]["pages"]] == ["Chainbase"]
+
+    # The member's personal wiki stays untouched.
+    personal = (await client.get("/api/v1/me/memory-tree", headers=_auth(member_key))).json()
+    assert personal["folders"] == []
+
+
+@pytest.mark.asyncio
 async def test_member_creates_page_owned_by_workspace(client: AsyncClient, pool):
     domain = _domain()
     key, body = await _register_with_email(client, f"m@{domain}")

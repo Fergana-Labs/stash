@@ -3128,8 +3128,16 @@ def _poll_recompute_outcome(
     return "queued", None
 
 
-@app.command("memory")
-def memory(
+memory_app = typer.Typer(
+    help="Your Memory wiki — status, recompute, and direct page writes.",
+    invoke_without_command=True,
+)
+app.add_typer(memory_app, name="memory")
+
+
+@memory_app.callback()
+def memory_default(
+    ctx: typer.Context,
     recompute: bool = typer.Option(
         False,
         "--recompute",
@@ -3138,6 +3146,8 @@ def memory(
     as_json: bool = typer.Option(False, "--json"),
 ):
     """Show your reserved Memory folder (its id is where the wiki lives)."""
+    if ctx.invoked_subcommand is not None:
+        return
     with _client() as c:
         if recompute:
             before = c.get_curator()
@@ -3171,6 +3181,97 @@ def memory(
         console.print(f"Curator last run: {last_run}")
         if curator["last_run_error"]:
             console.print(f"[red]Curator last run failed:[/red] {curator['last_run_error']}")
+
+
+def _resolve_memory_target(c: StashClient, path: str) -> tuple[dict | None, str, str]:
+    """Walk `path` (relative to the Memory folder) to its page slot.
+
+    Returns (existing_page | None, folder_id, page_name), creating missing
+    intermediate folders along the way. A trailing `.md` on the page segment
+    is stripped — the VFS shows page names with that suffix."""
+    segments = [s for s in path.split("/") if s]
+    page_name = segments[-1].removesuffix(".md") if segments else ""
+    if not page_name:
+        raise ValueError(f"not a page path: {path!r}")
+    folder_id = c.get_memory_folder()["id"]
+    node: dict | None = c.get_memory_tree()
+    for segment in segments[:-1]:
+        child = next((f for f in node["folders"] if f["name"] == segment), None) if node else None
+        if child is None:
+            folder_id = c.create_folder(segment, parent_folder_id=folder_id)["id"]
+            node = None
+        else:
+            folder_id = child["id"]
+            node = child
+    pages = node["pages"] if node else []
+    page = next((p for p in pages if p["name"] == page_name), None)
+    return page, folder_id, page_name
+
+
+@memory_app.command("write")
+def memory_write(
+    path: str = typer.Argument(
+        ...,
+        help="Page path under the Memory folder, e.g. 'Product/Chainbase'. "
+        "Missing subfolders are created; a trailing .md is stripped.",
+    ),
+    content: str = typer.Option(None, "--content", help="Page body. Reads stdin if omitted."),
+    as_json: bool = typer.Option(False, "--json"),
+):
+    """Create or update a Memory wiki page at a path — the direct write
+    surface for agents that maintain the wiki themselves."""
+    if content is None and not sys.stdin.isatty():
+        content = sys.stdin.read()
+    if content is None:
+        console.print("[red]No content: pass --content or pipe the body on stdin.[/red]")
+        raise typer.Exit(1)
+    with _client() as c:
+        try:
+            page, folder_id, page_name = _resolve_memory_target(c, path)
+        except ValueError as e:
+            console.print(f"[red]{e}[/red]")
+            raise typer.Exit(1)
+        except StashError as e:
+            _err(e)
+        try:
+            if page is None:
+                data = c.create_page(page_name, content=content, folder_id=folder_id)
+                action = "created"
+            else:
+                data = c.update_page(page["id"], content=content)
+                action = "updated"
+        except StashError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json({**data, "action": action})
+    else:
+        console.print(f"[green]Page '{data['name']}' {action}.[/green]  ID: {data['id']}")
+
+
+def _print_memory_tree(node: dict, indent: int) -> None:
+    pad = "  " * indent
+    for f in node["folders"]:
+        console.print(f"{pad}[cyan]{f['name']}/[/cyan]  [dim]{f['id']}[/dim]")
+        _print_memory_tree(f, indent + 1)
+    for p in node["pages"]:
+        console.print(f"{pad}{p['name']}  [dim]{p['id']}[/dim]")
+
+
+@memory_app.command("ls")
+def memory_ls(as_json: bool = typer.Option(False, "--json")):
+    """The Memory wiki tree with ids — page ids feed `stash files edit-page`
+    and `stash rm page:<id>`."""
+    with _client() as c:
+        try:
+            folder = c.get_memory_folder()
+            tree = c.get_memory_tree()
+        except StashError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json({"id": folder["id"], "name": folder["name"], **tree})
+        return
+    console.print(f"[cyan]{folder['name']}/[/cyan]  [dim]{folder['id']}[/dim]")
+    _print_memory_tree(tree, indent=1)
 
 
 @app.command("changes")
