@@ -41,6 +41,7 @@ from .config import (
     start_streaming,
     stop_streaming,
     stored_base_url,
+    streaming_stopped,
     write_manifest,
 )
 from .formatting import console, output_json, print_user
@@ -432,15 +433,16 @@ def _ask_codex_network_access() -> bool:
     """Prompt the user to enable top-level `network_access` for codex's
     workspace-write sandbox."""
     console.print(
-        "For stash to work on codex specifically, we need to let bash ",
-        "commands make network requests so that we can upload session ",
-        "transcripts to the remote server.",
+        "For stash to work on codex specifically, we need to let bash "
+        "commands make network requests so that we can upload session "
+        "transcripts to the remote server."
     )
     answer = questionary.confirm(
         "Allow codex bash commands to make outbound network requests?",
         default=True,
     ).ask()
-    return True if answer is None else bool(answer)
+    # Dismissing the prompt (Esc/Ctrl-C) must not grant network access.
+    return bool(answer)
 
 
 def _merge_snippet_into_toml(existing: str, snippet: str) -> tuple[str, str]:
@@ -712,6 +714,9 @@ def _dir_content_matches(src: Path, dest: Path) -> bool:
     return True
 
 
+_OPENCLAW_MIN_VERSION = (2026, 4, 0)
+
+
 def _install_openclaw(force: bool) -> tuple[str, str]:
     import subprocess
 
@@ -719,6 +724,24 @@ def _install_openclaw(force: bool) -> tuple[str, str]:
     ext_dir = _openclaw_extension_dir()
     if ext_dir.is_dir() and _dir_content_matches(root, ext_dir):
         return ("skipped", f"{ext_dir}")
+
+    # The stash extension needs openclaw >= 2026.4.0 (its plugin-sdk layout
+    # and the install flags below). Older CLIs die with "unknown option
+    # '--force'", which tells the user nothing — name the real problem.
+    version_out = subprocess.run(
+        ["openclaw", "--version"], capture_output=True, text=True, timeout=30
+    )
+    match = re.search(r"\b(\d{4})\.(\d+)\.(\d+)\b", version_out.stdout)
+    if match:
+        version = tuple(int(g) for g in match.groups())
+        if version < _OPENCLAW_MIN_VERSION:
+            installed = ".".join(str(v) for v in version)
+            needed = ".".join(str(v) for v in _OPENCLAW_MIN_VERSION)
+            return (
+                "failed",
+                f"openclaw {installed} is older than {needed}, which the stash "
+                "extension needs — upgrade openclaw, then re-run stash setup",
+            )
 
     # --dangerously-force-unsafe-install: openclaw's code scanner blocks any
     # plugin that spawns processes, and piping hook events into the stashai
@@ -4356,36 +4379,6 @@ def _reserve_bottom_padding(lines: int = 4) -> None:
     sys.stdout.flush()
 
 
-def _self_host_walkthrough(cfg: dict) -> str:
-    """Walk the user through standing up a local Stash instance, then return its URL."""
-    console.print("\n[bold cyan]Self-hosting Stash[/bold cyan]\n")
-    console.print("You'll need [bold]Docker[/bold] installed.  https://docker.com/get-started\n")
-    console.print("Run these commands in a separate terminal:\n")
-    console.print(
-        "  [dim]1.[/dim] [cyan]git clone https://github.com/Fergana-Labs/stash.git[/cyan]"
-    )
-    console.print("  [dim]2.[/dim] [cyan]cd stash[/cyan]")
-    console.print("  [dim]3.[/dim] [cyan]cp .env.example .env[/cyan]")
-    console.print(
-        "  [dim]4.[/dim] edit [cyan].env[/cyan] and [cyan]Caddyfile[/cyan] for your domain"
-    )
-    console.print("  [dim]5.[/dim] [cyan]docker compose -f docker-compose.prod.yml up -d[/cyan]")
-    console.print("\n  [dim]Already running? Skip to the URL prompt below.[/dim]\n")
-
-    _reserve_bottom_padding(6)
-    ready = questionary.confirm("Is your instance running?", default=True).ask()
-    if ready is None or not ready:
-        console.print(
-            "\n[yellow]No problem — run [bold]stash connect[/bold] again when ready.[/yellow]"
-        )
-        raise typer.Exit(0)
-
-    current_url = cfg.get("base_url", "http://localhost:3456")
-    managed_hosts = ("https://joinstash.ai", "https://www.joinstash.ai", "https://api.joinstash.ai")
-    default_url = "http://localhost:3456" if current_url in managed_hosts else current_url
-    return typer.prompt("URL of your instance", default=default_url).rstrip("/")
-
-
 def _derive_display_name() -> str:
     """Pick a display name with zero interaction: git config → $USER → fallback."""
     import os
@@ -4416,7 +4409,10 @@ def _require_auth() -> dict:
 
 
 def _auto_connect_repo(repo_root: Path, cfg: dict) -> None:
-    """Connect a repo to Stash: write `.stash`, enable streaming, append CLAUDE.md."""
+    """Write `.stash` and append Stash context to CLAUDE.md in `repo_root`.
+
+    Works in any folder — a git repo is not required. Does not touch the
+    global streaming toggle; callers decide that."""
     manifest_path = repo_root / MANIFEST_FILE
 
     if manifest_path.is_file():
@@ -4432,14 +4428,13 @@ def _auto_connect_repo(repo_root: Path, cfg: dict) -> None:
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
     console.print(f"  Wrote [cyan]{MANIFEST_FILE}[/cyan]")
 
-    start_streaming()
-
     _append_claude_md(repo_root)
 
-    console.print(
-        f"\n  Commit [cyan]{MANIFEST_FILE}[/cyan] and [cyan]CLAUDE.md[/cyan] and push. "
-        "Teammates will start streaming automatically."
-    )
+    if _git_toplevel(repo_root):
+        console.print(
+            f"\n  Commit [cyan]{MANIFEST_FILE}[/cyan] and [cyan]CLAUDE.md[/cyan] and push. "
+            "Teammates will start streaming automatically."
+        )
 
 
 def _append_claude_md(repo_root: Path) -> None:
@@ -4516,6 +4511,89 @@ _AGENT_LABEL = {
 }
 
 
+def _pick_agents(message: str, agents: list[str], checked: list[str]) -> list[str] | None:
+    """Agent multi-select where enter (or space) toggles the highlighted agent
+    and a Done row submits — enter never means "save" while pointing at an
+    agent. Custom prompt_toolkit widget because questionary's checkbox
+    hard-binds enter to submit. Returns None if dismissed with Ctrl-C."""
+    from prompt_toolkit.application import Application
+    from prompt_toolkit.key_binding import KeyBindings
+    from prompt_toolkit.layout import Layout, Window
+    from prompt_toolkit.layout.controls import FormattedTextControl
+    from prompt_toolkit.styles import Style
+
+    selected = set(checked)
+    row = 0
+    done_row = len(agents)
+
+    def fragments():
+        lines = [
+            ("class:qmark", "? "),
+            ("class:question", message),
+            ("class:instruction", "  (enter toggles an agent, Done saves)\n"),
+            (
+                "class:instruction",
+                "   [x] = uploads its sessions to your Stash. Unchecked agents upload "
+                "nothing\n   but can still use the stash CLI — anyone can use a CLI.\n",
+            ),
+        ]
+        for i, agent in enumerate(agents):
+            box = "[x]" if agent in selected else "[ ]"
+            label = _AGENT_LABEL.get(agent, agent)
+            lines.append(("class:pointer", " » " if row == i else "   "))
+            lines.append(("class:checked" if agent in selected else "", f"{box} {label}\n"))
+        lines.append(("class:pointer", " » " if row == done_row else "   "))
+        lines.append(("bold", "Done"))
+        return lines
+
+    kb = KeyBindings()
+
+    @kb.add("up")
+    def _up(event):
+        nonlocal row
+        row = (row - 1) % (done_row + 1)
+
+    @kb.add("down")
+    def _down(event):
+        nonlocal row
+        row = (row + 1) % (done_row + 1)
+
+    @kb.add("enter")
+    @kb.add(" ")
+    def _toggle_or_submit(event):
+        if row == done_row:
+            event.app.exit(result=[a for a in agents if a in selected])
+            return
+        agent = agents[row]
+        if agent in selected:
+            selected.remove(agent)
+        else:
+            selected.add(agent)
+
+    @kb.add("c-c")
+    def _abort(event):
+        event.app.exit(result=None)
+
+    picker = Application(
+        layout=Layout(Window(FormattedTextControl(fragments), height=len(agents) + 4)),
+        key_bindings=kb,
+        erase_when_done=True,
+        style=Style(
+            [
+                ("qmark", "fg:#5f819d"),
+                ("question", "bold"),
+                ("instruction", "fg:#858585"),
+                ("checked", "fg:#16a34a"),
+            ]
+        ),
+    )
+    result = picker.run()
+    if result is not None:
+        labels = ", ".join(_AGENT_LABEL.get(a, a) for a in result) or "none"
+        console.print(f"[bold]?[/bold] {message}  [#FF9D00]{labels}[/#FF9D00]")
+    return result
+
+
 def _install_all_hooks(agents: list[str] | None = None) -> None:
     """Install/upgrade hooks for the given agents (defaults to all detected)."""
     detected = _detected_agents()
@@ -4574,10 +4652,10 @@ def signin(
 ):
     """Sign in to Stash through the browser.
 
-    Run interactively for guided first-run setup (endpoint, streaming agents,
-    repo). With --non-interactive — or whenever stdin isn't a terminal — it
-    skips the wizard and just authenticates, which is the path installers and
-    agents use. The browser opens automatically when one is available, and
+    Run interactively for guided first-run setup (session recording, agent
+    hooks, folder context) — re-runnable later via `stash setup`. With
+    --non-interactive — or whenever stdin isn't a terminal — it skips the
+    wizard and just authenticates, which is the path installers and agents use. The browser opens automatically when one is available, and
     otherwise a URL is printed to visit. For a fully unattended, browser-less
     machine, pass --api-key to store a pre-minted key directly (no handshake).
     """
@@ -4616,34 +4694,15 @@ def signin(
     cfg = load_config()
 
     # --- Step 1: API endpoint ---
-    prev_base = api or stored_base_url()
-    if prev_base:
-        base_url = prev_base
-        save_config(base_url=base_url)
-        console.print(f"  [green]✓[/green] Using endpoint: [bold]{base_url}[/bold]")
+    # Managed by default; self-hosters point at their instance with --api.
+    base_url = api or stored_base_url() or PRODUCTION_BASE_URL
+    save_config(base_url=base_url)
+    if base_url == PRODUCTION_BASE_URL:
+        console.print(
+            "  [dim]Self-hosting? Re-run with[/dim] stash signin --api <your-instance-url>"
+        )
     else:
-        mode_options = [
-            ("Managed", "hosted by Stash", "managed"),
-            ("Self-host", "run on your own machine", "self"),
-        ]
-        mode_label_w = max(len(label) for label, _, _ in mode_options)
-        _reserve_bottom_padding(8)
-        mode = questionary.select(
-            "Do you want to use managed Stash or self-host?",
-            choices=[
-                questionary.Choice(f"{label:<{mode_label_w}}   ({desc})", value=value)
-                for label, desc, value in mode_options
-            ],
-            use_shortcuts=True,
-        ).ask()
-        if mode is None:
-            raise typer.Exit(1)
-
-        if mode == "managed":
-            base_url = PRODUCTION_BASE_URL
-        else:
-            base_url = _self_host_walkthrough(cfg)
-        save_config(base_url=base_url)
+        console.print(f"  [green]✓[/green] Using endpoint: [bold]{base_url}[/bold]")
 
     # --- Step 2: Auth ---
     has_key = bool(cfg.get("api_key"))
@@ -4670,104 +4729,103 @@ def signin(
     # Returning user — just re-auth, no wizard
     if has_key:
         _install_all_hooks(load_enabled_agents())
-        console.print("\n  Run [cyan]stash settings[/cyan] to change agents or endpoint.")
+        console.print(
+            "\n  Run [cyan]stash setup[/cyan] to redo setup, or "
+            "[cyan]stash settings[/cyan] to change agents or endpoint."
+        )
         return
 
-    # --- Step 3: Share transcripts? ---
+    _run_setup_wizard()
+
+
+def _run_setup_wizard() -> None:
+    """First-run setup: session recording, agent hooks, folder context, history
+    import. Re-runnable anytime via `stash setup` — no answer here is final."""
+    cfg = load_config()
+
+    # --- Session recording ---
+    console.print(
+        "\nStash records your coding agent sessions to your private Stash so you\n"
+        "and your agents can search them later. Transcripts are visible only to\n"
+        "you unless you share them."
+    )
     _reserve_bottom_padding(4)
-    share_transcripts = questionary.confirm(
-        "Do you want to share your coding agent transcripts to Stash?",
+    record = questionary.confirm(
+        "Record your agent sessions? (pause anytime with `stash stop`)",
         default=True,
     ).ask()
-    if share_transcripts is None:
+    if record is None:
         raise typer.Exit(1)
 
-    if not share_transcripts:
-        _show_setup_complete_splash()
-        return
-
-    # --- Step 4: Agent detection + hook installation ---
     detected = _detected_agents()
-    if detected:
-        enabled = load_enabled_agents()
-        default_enabled = enabled if enabled is not None else detected
+    if record:
+        start_streaming()
+        if detected:
+            enabled = load_enabled_agents()
+            default_enabled = enabled if enabled is not None else detected
 
-        _reserve_bottom_padding(len(detected) + 4)
-        selected = questionary.checkbox(
-            "What coding agents do you want Stash to work on?",
-            choices=[
-                questionary.Choice(
-                    _AGENT_LABEL.get(a, a),
-                    value=a,
-                    checked=a in default_enabled,
-                )
-                for a in detected
-            ],
-        ).ask()
-        if selected is None:
-            raise typer.Exit(1)
+            _reserve_bottom_padding(len(detected) + 6)
+            selected = _pick_agents(
+                "Which coding agents should Stash record?", detected, default_enabled
+            )
+            if selected is None:
+                raise typer.Exit(1)
 
-        save_enabled_agents(selected)
-        _install_all_hooks(selected)
-    else:
-        save_enabled_agents([])
-
-    # --- Step 5: Which repo? ---
-    # Outside a git repo, treat the current directory as the repo root: the
-    # .stash manifest lands there.
-    repo_root = _git_toplevel() or Path.cwd()
-
-    repo_choices = [
-        questionary.Choice(f"This repo ({repo_root.name})", value="this"),
-        questionary.Choice("Another repo", value="other"),
-        questionary.Choice("Done", value="done"),
-    ]
-    _reserve_bottom_padding(6)
-    answer = questionary.select(
-        "Which repo do you want to upload transcripts in?",
-        choices=repo_choices,
-        default=repo_choices[0],
-        use_shortcuts=True,
-    ).ask()
-    if answer is None:
-        raise typer.Exit(1)
-
-    if answer == "this":
-        try:
-            _auto_connect_repo(repo_root, cfg)
-        except StashError as e:
-            console.print(f"[red]Could not connect repo: {e.detail}[/red]")
-    elif answer == "other":
-        _reserve_bottom_padding(4)
-        repo_path = typer.prompt("Path to repo").strip()
-        target = Path(repo_path).expanduser().resolve()
-        target_root = _git_toplevel(target)
-        if not target_root:
-            console.print(f"[red]{repo_path} is not a git repo.[/red]")
+            save_enabled_agents(selected)
+            _install_all_hooks(selected)
         else:
-            try:
-                _auto_connect_repo(target_root, cfg)
-            except StashError as e:
-                console.print(f"[red]Could not connect repo: {e.detail}[/red]")
+            save_enabled_agents([])
+            console.print(
+                "  [yellow]No coding agents found on this machine, so nothing will be\n"
+                "  recorded yet. Re-run [bold]stash setup[/bold] after installing one\n"
+                "  (Claude Code, Codex, Cursor, opencode, Gemini CLI…).[/yellow]"
+            )
+    else:
+        stop_streaming()
+        console.print(
+            "  Recording is off. Turn it on later with [cyan]stash setup[/cyan] "
+            "or [cyan]stash start[/cyan]."
+        )
 
-    # --- Step 6: Import historical conversations ---
-    _onboarding_import_history(detected)
+    # --- Folder context (any folder works — git repo not required) ---
+    repo_root = _git_toplevel() or Path.cwd()
+    _reserve_bottom_padding(4)
+    connect = questionary.confirm(
+        f"Add Stash instructions to CLAUDE.md in {repo_root.name}, so agents "
+        "working there know how to use Stash?",
+        default=True,
+    ).ask()
+    if connect is None:
+        raise typer.Exit(1)
+    if connect:
+        _auto_connect_repo(repo_root, cfg)
+    else:
+        console.print("  [dim]Run stash connect from any project folder later.[/dim]")
+
+    # --- Import historical conversations ---
+    if record:
+        _onboarding_import_history(detected)
 
     _show_setup_complete_splash()
 
 
+@app.command("setup")
+def setup_cmd():
+    """Re-run the setup wizard: session recording, agent hooks, folder context."""
+    _require_auth()
+    telemetry.record("setup")
+    _run_setup_wizard()
+
+
 @app.command("connect")
 def connect_cmd():
-    """Connect this repo to Stash so its agent sessions stream to your scope."""
+    """Add Stash instructions to this folder's CLAUDE.md and enable session uploads."""
     cfg = _require_auth()
     telemetry.record("connect")
 
-    repo_root = _git_toplevel()
-    if not repo_root:
-        console.print("[red]Not inside a git repo.[/red]")
-        raise typer.Exit(1)
-
+    repo_root = _git_toplevel() or Path.cwd()
     _auto_connect_repo(repo_root, cfg)
+    start_streaming()
 
 
 @app.command("start")
@@ -4787,7 +4845,7 @@ def stop_cmd():
 
 
 # ===========================================================================
-# Repo-level enablement: invoked from `stash connect`; toggled via enable/disable
+# Folder connection: `.stash` manifest + CLAUDE.md context, via `stash connect`
 # ===========================================================================
 
 
@@ -4843,11 +4901,6 @@ def _frontend_base_url() -> str:
     if host.startswith("api."):
         return f"{parsed.scheme}://app.{host[4:]}"
     return base_url
-
-
-def _home_url() -> str:
-    """The user-facing link to the signed-in user's home on the configured frontend."""
-    return _frontend_base_url()
 
 
 def _install_claude_plugin() -> bool:
@@ -4940,9 +4993,40 @@ def _enable_marketplace_autoupdate(settings_path: Path) -> bool:
     return True
 
 
+IMPORT_STATUS_FILE = Path.home() / ".stash" / "import-history.json"
+IMPORT_LOG_FILE = Path.home() / ".stash" / "import-history.log"
+
+
+def _write_import_status(total: int, done: int, errors: int, finished: bool) -> None:
+    import os
+
+    IMPORT_STATUS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    # Atomic replace: `--status` follows this file live and must never read a
+    # half-written JSON.
+    tmp = IMPORT_STATUS_FILE.with_suffix(".json.tmp")
+    tmp.write_text(
+        json.dumps(
+            {
+                "total": total,
+                "done": done,
+                "errors": errors,
+                "finished": finished,
+                "updated_at": time.time(),
+            }
+        )
+        + "\n"
+    )
+    os.replace(tmp, IMPORT_STATUS_FILE)
+
+
 def _onboarding_import_history(detected_agents: list[str]) -> None:
-    """Offer to import historical conversations during onboarding."""
-    from .import_history import discover_conversations, summarize_discovery, upload_conversation
+    """Offer to import historical conversations during onboarding.
+
+    The import itself runs as a detached `stash import-history` process —
+    thousands of uploads must not hold the wizard hostage."""
+    import subprocess as _sp
+
+    from .import_history import discover_conversations, summarize_discovery
 
     agents = detected_agents or None
     conversations = discover_conversations(agents)
@@ -4958,86 +5042,193 @@ def _onboarding_import_history(detected_agents: list[str]) -> None:
 
     _reserve_bottom_padding(4)
     ok = questionary.confirm(
-        f"Import {len(conversations)} historical conversations?", default=True
+        f"Import {len(conversations)} historical conversations? (runs in the background)",
+        default=True,
     ).ask()
     if not ok:
         return
 
+    # Seed the status file so the setup-complete splash can show the import
+    # immediately; the spawned process takes over updating it.
+    _write_import_status(total=len(conversations), done=0, errors=0, finished=False)
+
+    IMPORT_LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+    with open(IMPORT_LOG_FILE, "ab") as log:
+        _sp.Popen(
+            [sys.argv[0], "import-history"],
+            stdout=log,
+            stderr=log,
+            start_new_session=True,
+        )
+    console.print(
+        f"  [green]✓[/green] Importing {len(conversations)} conversations in the background.\n"
+        "    [dim]Check on it anytime: stash import-history --status[/dim]"
+    )
+
+
+def _show_import_status() -> None:
+    """Follow a running import with a live progress bar; print a summary when
+    it's already finished or stalled. Ctrl-C detaches without stopping it."""
     from rich.progress import Progress
 
-    imported = 0
+    if not IMPORT_STATUS_FILE.exists():
+        console.print("No import has run on this machine.")
+        return
+
+    s = json.loads(IMPORT_STATUS_FILE.read_text())
+    stalled = not s["finished"] and time.time() - s["updated_at"] > 3600
+    if s["finished"] or stalled:
+        state = "finished" if s["finished"] else "stalled — re-run stash import-history to resume"
+        console.print(f"  {s['done']}/{s['total']} conversations, {s['errors']} errors — {state}")
+        return
+
+    try:
+        with Progress(console=console) as progress:
+            task = progress.add_task("Importing…", total=s["total"])
+            while not s["finished"]:
+                s = json.loads(IMPORT_STATUS_FILE.read_text())
+                progress.update(task, completed=s["done"], total=s["total"])
+                time.sleep(0.5)
+    except KeyboardInterrupt:
+        console.print("  [dim]Detached — the import keeps running in the background.[/dim]")
+        return
+    if s["errors"]:
+        console.print(f"  [yellow]{s['errors']} conversations failed[/yellow]")
+
+
+@app.command("import-history")
+def import_history_cmd(
+    status: bool = typer.Option(
+        False, "--status", help="Show progress of the running or last-finished import."
+    ),
+):
+    """Import all historical agent conversations into your Stash.
+
+    Safe to re-run: the server skips sessions that already exist. The setup
+    wizard launches this as a background process; run it directly to import
+    in the foreground with a progress bar."""
+    if status:
+        _show_import_status()
+        return
+
+    _require_auth()
+    telemetry.record("import_history")
+
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    from rich.progress import Progress
+
+    from .import_history import discover_conversations, upload_conversation
+
+    conversations = discover_conversations(load_enabled_agents() or None)
+    if not conversations:
+        console.print("No historical conversations found.")
+        return
+
+    total = len(conversations)
+    done = 0
     errors = 0
     last_error = ""
+    _write_import_status(total=total, done=0, errors=0, finished=False)
+    # httpx.Client is thread-safe; sequential uploads were taking >1h for a
+    # machine with a few thousand conversations.
     with _client() as c, Progress(console=console) as progress:
-        task = progress.add_task("Importing…", total=len(conversations))
-        for conv in conversations:
-            try:
-                upload_conversation(c, conv)
-                imported += 1
-            except (StashError, httpx.HTTPError) as e:
-                errors += 1
-                last_error = str(e)
-            progress.advance(task)
+        task = progress.add_task("Importing…", total=total)
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            futures = [pool.submit(upload_conversation, c, conv) for conv in conversations]
+            for fut in as_completed(futures):
+                try:
+                    fut.result()
+                except (StashError, httpx.HTTPError) as e:
+                    errors += 1
+                    last_error = str(e)
+                done += 1
+                progress.advance(task)
+                if done % 25 == 0 or done == total:
+                    _write_import_status(
+                        total=total, done=done, errors=errors, finished=done == total
+                    )
 
-    console.print(f"  [green]��[/green] Imported {imported} conversations")
+    console.print(f"  [green]✓[/green] Imported {done - errors} conversations")
     if errors:
-        console.print(f"  [yellow]{errors} failed — {last_error}[/yellow]")
+        console.print(f"  [yellow]{errors} failed — last error: {last_error}[/yellow]")
 
 
-def _setup_complete_intro(home_url: str, connected: bool) -> str:
-    home_link_section = (
-        "[bold]See your Stash[/bold]   [dim](transcripts and activity)[/dim]\n"
-        f"  [link={home_url}][bold #1e3a8a]{home_url}[/bold #1e3a8a][/link]\n"
-        "\n"
-        if connected
-        else ""
+def _active_import() -> dict | None:
+    """The in-flight history import's status, or None when there isn't one.
+
+    A status file that stopped updating an hour ago means the import process
+    died — don't claim it's still uploading."""
+    if not IMPORT_STATUS_FILE.exists():
+        return None
+    status = json.loads(IMPORT_STATUS_FILE.read_text())
+    if status["finished"] or time.time() - status["updated_at"] > 3600:
+        return None
+    return status
+
+
+def _setup_complete_intro(
+    frontend_url: str, connected: bool, recording: bool, importing: dict | None
+) -> str:
+    memory_url = f"{frontend_url}/memory"
+    recording_section = (
+        "[bold]You're recording[/bold]\n"
+        "This machine's agent sessions upload to your private Stash.\n"
+        "[dim]Pause with stash stop · exclude folders in stash settings[/dim]"
+        if recording
+        else "[bold]Recording is off[/bold]\n"
+        "Turn it on anytime with [cyan]stash start[/cyan] or [cyan]stash setup[/cyan]."
     )
-    memory_section = (
-        "It can read the transcripts your coding agents push to Stash — so it\n"
-        "knows what you've been working on.\n"
-        "\n"
-        if connected
-        else "No repo is connected yet. Run [cyan]stash connect[/cyan] from a git repo when\n"
-        "you're ready to upload transcripts.\n"
-        "\n"
+    importing_section = (
+        ""
+        if importing is None
+        else "\n\n[bold]Your history is uploading right now[/bold]\n"
+        f"{importing['total']} past conversations are importing in the background —\n"
+        "watch your knowledge base fill up.\n"
+        "[dim]Live progress: stash import-history --status[/dim]"
     )
-    next_section = (
-        "[bold]You're streaming[/bold]\n"
-        "This repo's agent sessions now upload to your Stash automatically."
+    connect_section = (
+        ""
         if connected
-        else "[bold]Connect a repo when ready[/bold]\n"
-        "Run [cyan]stash connect[/cyan] from the repo you want Stash to remember."
+        else "\n\n[bold]Set up a project[/bold]\n"
+        "Run [cyan]stash connect[/cyan] in a project folder to add Stash instructions\n"
+        "to its CLAUDE.md — agents working there will know how to use your Stash."
     )
     return (
-        "[bold]What just happened[/bold]\n"
-        "Your coding agent now has the [bold #1e3a8a]stash[/bold #1e3a8a] CLI on its PATH.\n"
-        f"{memory_section}"
-        f"{home_link_section}"
-        "[bold]Commands your agent can now use[/bold]\n"
-        '  [#1e3a8a]stash vfs "find / -maxdepth 3 -type f"[/#1e3a8a]   browse Stash like a filesystem\n'
-        '  [#1e3a8a]stash search "<query>"[/#1e3a8a]   full-text search across files, sessions, and sources\n'
-        "  [#1e3a8a]stash sessions agents[/#1e3a8a]   see which agents have been active\n"
+        "[bold]Your agents just got a memory[/bold]\n"
+        "Every coding session on this machine now lands in your private Stash.\n"
+        "Your agents can draw on everything you've worked on before — past fixes,\n"
+        "decisions, dead ends — instead of starting every session from zero.\n"
         "\n"
-        "Run [bold]stash --help[/bold] to see everything.\n"
+        "[bold]Your knowledge base[/bold]\n"
+        f"  [link={memory_url}][bold #1e3a8a]{memory_url}[/bold #1e3a8a][/link]\n"
+        "Stash compiles your sessions into memory your agents check before they\n"
+        "work. The more you use it, the better they get.\n"
         "\n"
-        f"{next_section}"
+        f"{recording_section}"
+        f"{importing_section}"
+        f"{connect_section}"
     )
 
 
 def _show_setup_complete_splash() -> None:
-    """Show a clean success splash after first-run login."""
-    console.clear()
+    """Show a success splash after first-run login. Never clears the screen —
+    errors printed by earlier steps must stay visible."""
     octopus = textwrap.dedent(STASH_OCTOPUS.strip("\n"))
     logo = textwrap.dedent(STASH_LOGO.strip("\n"))
+    console.print()
     console.print(Align.center(Text.from_markup(f"[bold #F97316]{octopus}[/bold #F97316]")))
     console.print()
     console.print(Align.center(Text.from_markup(f"[bold #1e3a8a]{logo}[/bold #1e3a8a]")))
     console.print("  [bold green]You're all set up.[/bold green]\n")
 
     connected = load_manifest() is not None
+    recording = not streaming_stopped()
     console.print(
         Panel(
-            Text.from_markup(_setup_complete_intro(_home_url(), connected)),
+            Text.from_markup(
+                _setup_complete_intro(_frontend_base_url(), connected, recording, _active_import())
+            ),
             title="[bold #1e3a8a]Your agent memory[/bold #1e3a8a]",
             border_style="#1e3a8a",
             padding=(1, 2),
@@ -5247,17 +5438,9 @@ def settings_cmd(as_json: bool = typer.Option(False, "--json")):
 
         if picked == "enabled_agents":
             current_enabled = enabled if enabled is not None else detected
-            selected = questionary.checkbox(
-                "Which coding agents should stream to Stash?",
-                choices=[
-                    questionary.Choice(
-                        _AGENT_LABEL.get(a, a),
-                        value=a,
-                        checked=a in current_enabled,
-                    )
-                    for a in detected
-                ],
-            ).ask()
+            selected = _pick_agents(
+                "Which coding agents should stream to Stash?", detected, current_enabled
+            )
             if selected is not None:
                 save_enabled_agents(selected)
                 _install_all_hooks(selected)

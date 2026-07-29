@@ -602,6 +602,11 @@ def upload_conversation(
         if materialized:
             os.unlink(transcript_path)
 
+    # Skipped sessions (already streamed live, or deleted by the user) keep
+    # their real history — no import marker event.
+    if result.get("skipped"):
+        return result
+
     client.push_event(
         agent_name=conv.agent,
         event_type="session_end",

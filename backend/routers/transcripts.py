@@ -88,7 +88,29 @@ async def upload_transcript(
         session_id,
     )
     if existing:
-        if not await memory_service.can_read_session(owner_user_id, session_id, current_user["id"]):
+        session_row = await session_service.get_session(owner_user_id, session_id)
+        if session_row is None:
+            # A session the user deleted keeps its events until purge; a
+            # re-upload (e.g. history import) must not resurrect it — and it
+            # isn't an error, so report a skip.
+            deleted = await pool.fetchval(
+                "SELECT 1 FROM sessions "
+                "WHERE owner_user_id = $1 AND session_id = $2 AND deleted_at IS NOT NULL",
+                owner_user_id,
+                session_id,
+            )
+            if deleted:
+                return {
+                    "session_id": session_id,
+                    "imported": 0,
+                    "skipped": True,
+                    "reason": "session was deleted",
+                }
+            # Events without any session row (legacy orphans): fall through —
+            # the no-replace branch below recreates the row and skips.
+        elif not await memory_service.can_read_session(
+            owner_user_id, session_id, current_user["id"]
+        ):
             raise HTTPException(status_code=404, detail="Transcript not found")
         if replace:
             await pool.execute(
