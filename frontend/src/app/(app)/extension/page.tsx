@@ -5,7 +5,8 @@ import { BookMarked, Camera, Globe, MessagesSquare } from "lucide-react";
 // The one stable URL for getting the extension. Every CTA in the product
 // links here, so when the Chrome Web Store listing goes live only this
 // constant changes.
-const CHROME_WEB_STORE_URL: string | null = null;
+const CHROME_WEB_STORE_URL =
+  "https://chromewebstore.google.com/detail/stash-sync/cggimcbkomkpielefiannhmenmoehbea";
 
 const FEATURES = [
   {
@@ -42,21 +43,14 @@ export default function ExtensionPage() {
         </p>
 
         <div className="mt-7">
-          {CHROME_WEB_STORE_URL ? (
-            <a
-              href={CHROME_WEB_STORE_URL}
-              target="_blank"
-              rel="noopener"
-              className="inline-flex items-center gap-2 rounded-lg bg-brand px-5 py-2.5 text-[13.5px] font-semibold text-white transition-colors hover:bg-brand-hover"
-            >
-              Add to Chrome — it&apos;s free
-            </a>
-          ) : (
-            <div className="rounded-lg border border-border bg-surface px-4 py-3 text-[13px] text-muted-foreground">
-              The extension is in Chrome Web Store review — the install button lands here the
-              moment it&apos;s approved.
-            </div>
-          )}
+          <a
+            href={CHROME_WEB_STORE_URL}
+            target="_blank"
+            rel="noopener"
+            className="inline-flex items-center gap-2 rounded-lg bg-brand px-5 py-2.5 text-[13.5px] font-semibold text-white transition-colors hover:bg-brand-hover"
+          >
+            Add to Chrome — it&apos;s free
+          </a>
         </div>
 
         <div className="mt-9 grid grid-cols-1 gap-4 sm:grid-cols-2">
