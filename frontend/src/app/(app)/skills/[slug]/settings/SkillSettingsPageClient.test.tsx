@@ -150,7 +150,10 @@ describe("SkillSettingsPageClient", () => {
   it("saves title changes only", async () => {
     render(<SkillSettingsPageClient slug="shared-skill" />);
 
-    const titleInput = await screen.findByLabelText("Title");
+    // The component syncs the title input from the fetched skill in a passive
+    // effect. Typing before that effect flushes gets clobbered, so wait for
+    // the loaded value — not just the input's presence — before editing.
+    const titleInput = await screen.findByDisplayValue("Shared Skill");
     fireEvent.change(titleInput, {
       target: { value: "Better Skill" },
     });
