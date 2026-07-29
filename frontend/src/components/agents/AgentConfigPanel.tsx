@@ -92,6 +92,24 @@ export default function AgentConfigPanel({
     }
   }
 
+  // The curator's one user-facing setting: whether the nightly cloud run
+  // happens at all. Off is for users who curate locally (Stash Desktop or the
+  // stash CLI on their own machine) — "Run now" keeps working either way.
+  async function setCuratorSchedule(on: boolean) {
+    if (!agent) return;
+    setSaving(true);
+    setMsg(null);
+    try {
+      const updated = await updateAgent(agent.id, { run_mode: on ? "scheduled" : "chat" });
+      setAgent(updated);
+      window.dispatchEvent(new Event("agents-changed"));
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : "Could not save");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function remove() {
     if (!agent) return;
     await deleteAgent(agent.id);
@@ -195,8 +213,28 @@ export default function AgentConfigPanel({
           </p>
         </div>
 
-        <Field label="Schedule">
-          <div className="text-[13px] text-foreground">Daily · automatic</div>
+        <Field
+          label="Nightly cloud run"
+          hint={
+            agent.run_mode === "scheduled"
+              ? "Runs once a night on your cloud computer. Turn it off if you curate locally — Run now keeps working."
+              : "Off — nothing runs on a schedule. Use Run now below, or curate locally with the stash CLI."
+          }
+        >
+          <div className="flex items-center justify-between rounded-md border border-border bg-base px-3 py-2">
+            <span className="text-[13px] text-foreground">
+              {agent.run_mode === "scheduled" ? "On · daily, automatic" : "Off"}
+            </span>
+            <button
+              type="button"
+              onClick={() => void setCuratorSchedule(agent.run_mode !== "scheduled")}
+              disabled={saving}
+              className="rounded-md border border-border px-3 py-1.5 text-[12.5px] font-medium text-foreground hover:bg-raised disabled:opacity-60"
+            >
+              {saving ? "Saving…" : agent.run_mode === "scheduled" ? "Turn off" : "Turn on"}
+            </button>
+          </div>
+          {msg && <div className="mt-1.5 text-[12px] text-error">{msg}</div>}
         </Field>
 
         <RunOnDemand isCurator run={run} onRun={runNow} />

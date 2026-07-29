@@ -3143,12 +3143,39 @@ def memory_default(
         "--recompute",
         help="Run the Memory curator now instead of waiting for the daily pass.",
     ),
+    curator: str = typer.Option(
+        None,
+        "--curator",
+        help="Turn the curator's nightly cloud run 'on' or 'off'. Turn it off when "
+        "you curate locally; --recompute still works while it's off.",
+    ),
     as_json: bool = typer.Option(False, "--json"),
 ):
     """Show your reserved Memory folder (its id is where the wiki lives)."""
     if ctx.invoked_subcommand is not None:
         return
+    if curator is not None and curator not in ("on", "off"):
+        console.print("[red]--curator takes 'on' or 'off'.[/red]")
+        raise typer.Exit(1)
     with _client() as c:
+        if curator is not None:
+            row = c.get_curator()
+            if not row:
+                console.print("[red]No Memory curator found for this account.[/red]")
+                raise typer.Exit(1)
+            updated = c.set_curator_scheduled(row["id"], curator == "on")
+            if _use_json(as_json):
+                output_json(updated)
+            elif curator == "on":
+                console.print(
+                    "Curator nightly cloud run: [green]on[/green] — resumes at the next daily tick."
+                )
+            else:
+                console.print(
+                    "Curator nightly cloud run: [yellow]off[/yellow] — "
+                    "run it yourself with `stash memory --recompute` or locally."
+                )
+            return
         if recompute:
             before = c.get_curator()
             data = c.recompute_memory()
@@ -3171,16 +3198,18 @@ def memory_default(
                 raise typer.Exit(1)
             return
         folder = c.get_memory_folder()
-        curator = c.get_curator()
+        row = c.get_curator()
     if _use_json(as_json):
-        output_json({**folder, "curator": curator})
+        output_json({**folder, "curator": row})
         return
     console.print(f"Memory folder: [cyan]{folder['name']}[/cyan] (id {folder['id']})")
-    if curator:
-        last_run = curator["last_run_at"] or "never"
+    if row:
+        schedule = "nightly (cloud)" if row["run_mode"] == "scheduled" else "off — on-demand only"
+        console.print(f"Curator schedule: {schedule}")
+        last_run = row["last_run_at"] or "never"
         console.print(f"Curator last run: {last_run}")
-        if curator["last_run_error"]:
-            console.print(f"[red]Curator last run failed:[/red] {curator['last_run_error']}")
+        if row["last_run_error"]:
+            console.print(f"[red]Curator last run failed:[/red] {row['last_run_error']}")
 
 
 def _resolve_memory_target(c: StashClient, path: str) -> tuple[dict | None, str, str]:
