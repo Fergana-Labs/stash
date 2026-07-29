@@ -12,7 +12,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from ..auth import get_current_user
-from ..services import mini_program_query, mini_program_service, table_service
+from ..services import (
+    mini_program_query,
+    mini_program_service,
+    shared_skill_service,
+    table_service,
+)
 
 router = APIRouter(prefix="/api/v1/me/apps", tags=["mini-programs"])
 
@@ -86,6 +91,18 @@ async def install_app(slug: str, current_user: dict = Depends(get_current_user))
         "row_count": table["row_count"],
         "manifest": mini_program_service.resolve(manifest, table["columns"]),
     }
+
+
+@router.get("/{slug}/skills")
+async def app_skills(slug: str, current_user: dict = Depends(get_current_user)):
+    """The published skills that read this app's table — what the agent can do
+    with everything in it. Drives the strip above the app; each entry carries
+    its starter prompts so the launcher has something to run."""
+    manifest = mini_program_service.get_manifest(slug)
+    if manifest is None:
+        raise HTTPException(status_code=404, detail=f"No mini program named {slug!r}")
+    skills = await shared_skill_service.curated_skills_by_name(manifest.get("skills", []))
+    return {"skills": skills}
 
 
 @router.post("/{slug}/rows/{row_id}/reenrich")

@@ -438,6 +438,32 @@ async def get_public_skill_item(
     }
 
 
+class InstallSkillRequest(BaseModel):
+    slug: str
+
+
+@me_router.post("/skills/install")
+async def install_skill(
+    req: InstallSkillRequest,
+    current_user: dict = Depends(get_current_user),
+    owner_user_id: UUID = Depends(get_scope),
+):
+    """Ensure the scope holds a published skill so an agent can run it —
+    `list_skills` reads the scope, not the Discover catalog. Idempotent, which
+    is what separates it from add-to-stash: the launcher calls this on every
+    run and must not leave a trail of "brief (2)", "brief (3)"."""
+    if not await user_scope_service.can_write(owner_user_id, current_user["id"]):
+        raise HTTPException(
+            status_code=403, detail="You have read-only access and cannot create Skills"
+        )
+    result = await shared_skill_service.install_public_skill(
+        owner_user_id, req.slug, current_user["id"]
+    )
+    if not result:
+        raise HTTPException(status_code=404, detail="Skill not found")
+    return result
+
+
 @public_router.post("/{slug}/add-to-stash", status_code=201)
 async def fork_skill(
     slug: str,

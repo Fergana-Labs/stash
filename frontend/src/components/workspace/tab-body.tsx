@@ -17,6 +17,7 @@ import MachineFileView from "@/components/workspace/machine-file-view";
 import TerminalPanel from "@/components/agents/TerminalPanel";
 import AgentConfigPanel from "@/components/agents/AgentConfigPanel";
 import { takeAgentConfigView } from "@/lib/agent-tab-view";
+import { takeSkillRun } from "@/lib/skill-launch";
 import { getAgent, type Agent } from "@/lib/api";
 import type { WorkbenchTab } from "@/lib/workspace-store";
 
@@ -76,6 +77,9 @@ function AgentChatTab({ refId }: { refId: string }) {
   const isNew = refId.startsWith("new");
   const agentId = agentIdFromRef(refId);
   const [sessionId, setSessionId] = useState<string | null>(isNew ? null : refId);
+  // A skill launched into this tab: taken once, so reopening the tab shows the
+  // conversation rather than running the skill again.
+  const [openingMessage] = useState(() => takeSkillRun(refId));
   const [agent, setAgent] = useState<Agent | null>(null);
   const [view, setView] = useState<"chat" | "config">(() =>
     agentId && takeAgentConfigView(agentId) ? "config" : "chat",
@@ -97,7 +101,12 @@ function AgentChatTab({ refId }: { refId: string }) {
         {scheduled && agentId ? (
           <AgentRunsView agentId={agentId} />
         ) : (
-          <ChatPanel sessionId={sessionId} onSessionId={setSessionId} agentId={agentId} />
+          <ChatPanel
+            sessionId={sessionId}
+            onSessionId={setSessionId}
+            agentId={agentId}
+            openingMessage={openingMessage}
+          />
         )}
       </div>
       {agentId && (

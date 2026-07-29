@@ -52,4 +52,40 @@ describe("ChatPanel", () => {
     expect(screen.queryByText("Connect your local agent")).not.toBeInTheDocument();
     expect(onSessionId).toHaveBeenCalledWith("agent-session-1");
   });
+
+  it("sends a launched run by itself, exactly once", async () => {
+    // A skill run has no user to press Send: the launcher already collected
+    // the request. Re-sending on a re-render would run the skill twice and
+    // bill the user for both.
+    const run = "Use the resurface skill.\n\nWhat should I revisit?";
+    const { rerender } = render(
+      <ChatPanel
+        sessionId={null}
+        onSessionId={vi.fn()}
+        openingMessage={run}
+      />,
+    );
+
+    await waitFor(() => expect(streamAgentChat).toHaveBeenCalledTimes(1));
+    expect(streamAgentChat).toHaveBeenCalledWith(
+      expect.objectContaining({ message: run }),
+    );
+
+    rerender(
+      <ChatPanel
+        sessionId={null}
+        onSessionId={vi.fn()}
+        openingMessage={run}
+      />,
+    );
+
+    expect(streamAgentChat).toHaveBeenCalledTimes(1);
+  });
+
+  it("waits for the user when no run was launched into it", async () => {
+    render(<ChatPanel sessionId={null} onSessionId={vi.fn()} />);
+
+    await waitFor(() => expect(getAgentChat).not.toHaveBeenCalled());
+    expect(streamAgentChat).not.toHaveBeenCalled();
+  });
 });

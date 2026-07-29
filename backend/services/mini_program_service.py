@@ -38,6 +38,11 @@ BOOKMARKS_MANIFEST = {
     "folder": "Clips",
     "table_name": "Bookmarks",
     "description": "Everything you've saved with the Stash browser extension.",
+    # Published skills that read this table. Named, not slugged: slugs carry a
+    # random suffix minted at publish time, so the manifest would go stale the
+    # first time a skill was republished. Resolved against the service account
+    # at read time — a name nobody has published yet simply doesn't appear.
+    "skills": ["brief", "resurface", "overview", "cleanup"],
     "empty_state": {
         "title": "Save your first bookmark",
         "description": (

@@ -25,6 +25,7 @@ import type {
 import AppBulkBar from "./AppBulkBar";
 import AppCard from "./AppCard";
 import AppDetail from "./AppDetail";
+import AppSkillsBanner from "./AppSkillsBanner";
 import { cellText } from "./cells";
 
 const PAGE_SIZE = 60;
@@ -327,6 +328,8 @@ export default function AppView({ slug }: { slug: string }) {
             </div>
           )}
         </header>
+
+        <AppSkillsBanner slug={slug} />
 
         <div className="scroll-thin min-h-0 flex-1 overflow-y-auto px-6 py-5">
           {rows.length === 0 ? (

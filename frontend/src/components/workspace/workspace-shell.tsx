@@ -85,6 +85,9 @@ export function rendersRouteContent(
   // Memory routes (brain dashboard, wiki file system) render as pages
   // beside the explorer; opening an item switches to the workbench.
   if (pathname.startsWith("/memory")) return true;
+  // The Skills home is the launcher — pick a skill, run it. Only the bare
+  // path: /skills/folder/<id> is a skill you opened, which belongs in a tab.
+  if (pathname === "/skills") return true;
   // The MCP-server registry is a management page like /sessions.
   return pathname === "/tools";
 }

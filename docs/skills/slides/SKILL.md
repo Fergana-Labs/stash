@@ -2,6 +2,10 @@
 name: slides
 description: How to build presentation slide decks as HTML pages. Covers the slide format, canvas dimensions, and recommended libraries.
 when_to_use: When the user asks for slides, a slide deck, a presentation, a pitch, or a deck.
+examples:
+  - Turn what I saved this month into a slide deck.
+  - Build a deck explaining this to someone who has never seen it.
+  - Make a short pitch deck from my notes on this project.
 version: "1"
 ---
 

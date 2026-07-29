@@ -147,6 +147,19 @@ export interface MiniProgramApp {
   row_count: number;
 }
 
+/** A skill the launcher can run. Both a Skill you hold and a public catalog
+ *  entry narrow to this: a name to invoke, enough copy to say what it does,
+ *  and its starter prompts. `slug` is present when the skill is published —
+ *  the launcher installs it into your scope before the first run, because an
+ *  agent reads the scope's skills, not the catalog. */
+export interface LaunchableSkill {
+  name: string;
+  slug?: string | null;
+  description: string;
+  when_to_use: string;
+  examples: string[];
+}
+
 export interface MiniProgramResolved {
   table_id: string;
   row_count: number;

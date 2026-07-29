@@ -12,12 +12,14 @@ describe("rendersRouteContent", () => {
     expect(rendersRouteContent("/sessions", null, null)).toBe(true);
     expect(rendersRouteContent("/memory", null, null)).toBe(true);
     expect(rendersRouteContent("/memory/wiki", null, null)).toBe(true);
+    expect(rendersRouteContent("/skills", null, null)).toBe(true);
   });
 
   it("workbench sections do not render route content", () => {
     expect(rendersRouteContent("/files", null, null)).toBe(false);
-    expect(rendersRouteContent("/skills", null, null)).toBe(false);
     expect(rendersRouteContent("/agents", null, null)).toBe(false);
+    // An opened skill is a tab, not the launcher.
+    expect(rendersRouteContent("/skills/folder/abc", null, null)).toBe(false);
   });
 
   it("an explicit explorer section always wins", () => {

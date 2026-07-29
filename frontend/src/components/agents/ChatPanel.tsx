@@ -23,10 +23,14 @@ export default function ChatPanel({
   sessionId,
   onSessionId,
   agentId,
+  openingMessage,
 }: {
   sessionId: string | null;
   onSessionId: (id: string) => void;
   agentId?: string | null;
+  // Sent once when the panel mounts — how the Skills launcher starts a run in a
+  // fresh chat. Only meaningful for a chat with no session yet.
+  openingMessage?: string | null;
 }) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -148,6 +152,15 @@ export default function ChatPanel({
     },
     [sessionId, streaming, onSessionId, agentId],
   );
+
+  // A launched run sends itself. Guarded by a ref rather than the message list
+  // so a re-render mid-stream can't fire the same run twice.
+  const openingSent = useRef(false);
+  useEffect(() => {
+    if (!openingMessage || openingSent.current) return;
+    openingSent.current = true;
+    void send(openingMessage);
+  }, [openingMessage, send]);
 
   return (
     <div className="flex h-full min-h-[520px] flex-col rounded-xl border border-border bg-base">

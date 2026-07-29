@@ -18,6 +18,7 @@ import {
   Workspace,
   MiniProgramApp,
   MiniProgramResolved,
+  LaunchableSkill,
   AppFacets,
 } from "./types";
 import { getScopeUserId, SCOPE_HEADER } from "./scope-store";
@@ -481,6 +482,8 @@ export interface PublicSkillCard {
   slug: string;
   title: string;
   description: string;
+  when_to_use: string;
+  examples: string[];
   discoverable: boolean;
   cover_image_url: string | null;
   source_github_url: string | null;
@@ -1408,6 +1411,10 @@ export interface Skill {
   name: string;
   description: string;
   when_to_use: string;
+  // Starter prompts from SKILL.md frontmatter — what the launcher offers as
+  // one-click runs. A skill that declares none is launched from a prompt the
+  // user writes.
+  examples: string[];
   version: string;
   mcp_exposed: boolean;
   file_count: number;
@@ -1594,6 +1601,18 @@ export async function forkSkill(
   return apiFetch(`/api/v1/skills/${slug}/add-to-stash`, {
     method: "POST",
     body: JSON.stringify({ owner_user_id: targetScope }),
+  });
+}
+
+// Put a published skill in the scope so an agent can run it — an agent reads
+// the scope's skills, not the public catalog. Idempotent, unlike forkSkill:
+// the launcher calls this before every run.
+export async function installSkill(
+  slug: string
+): Promise<{ folder_id: string; name: string; installed: boolean }> {
+  return apiFetch(`${ME}/skills/install`, {
+    method: "POST",
+    body: JSON.stringify({ slug }),
   });
 }
 
@@ -2292,6 +2311,14 @@ export async function getApp(slug: string): Promise<MiniProgramResolved> {
 
 export async function installApp(slug: string): Promise<MiniProgramResolved> {
   return apiFetch(`${ME}/apps/${slug}`, { method: "POST" });
+}
+
+// The published skills that read this app's table — what an agent can do with
+// everything in it. Empty until those skills are published, which is why the
+// strip that renders them hides itself rather than showing placeholders.
+export async function listAppSkills(slug: string): Promise<LaunchableSkill[]> {
+  const data = await apiFetch<{ skills: LaunchableSkill[] }>(`${ME}/apps/${slug}/skills`);
+  return data.skills;
 }
 
 export async function reenrichRow(slug: string, rowId: string): Promise<{ status: string }> {

@@ -14,6 +14,7 @@ import SkillCard, {
   PUBLISH_COLOR,
   PublishBadge,
 } from "@/components/skill/SkillCard";
+import SkillLauncher from "@/components/skill/SkillLauncher";
 import ForkSkillCardButton from "@/components/skill/ForkSkillCardButton";
 import { SelectBox } from "@/components/content/file-browser/ItemsList";
 import {
@@ -30,6 +31,7 @@ import {
   type PublicSkillCard,
 } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
+import type { LaunchableSkill } from "@/lib/types";
 import { SKILL_MD, skillMdTemplate } from "@/lib/localSkill";
 import { usePins } from "@/lib/pins";
 import { skillSlugFromInput } from "@/lib/skillLinks";
@@ -48,10 +50,34 @@ const COVERS = ["cover-1", "cover-2", "cover-3", "cover-4", "cover-5", "cover-6"
 
 const TAB_COPY: Record<Tab, string> = {
   yours:
-    "Your Skill folders. Share them with people or publish them to the public library.",
+    "Your Skill folders. Run one to hand it to an agent, or open it to edit, share, and publish.",
   shared: "Skill folders other people shared with you, plus adding a skill by link.",
-  discover: "Public skills from the community — fork one into your Skills.",
+  discover:
+    "Public skills from the community — run one and it installs into your Skills first.",
 };
+
+// Both a Skill you hold and a Discover card narrow to what the launcher needs.
+// A skill you hold carries no slug: it is already in your scope, so there is
+// nothing for the launcher to install before running it.
+function launchableFromSkill(skill: Skill): LaunchableSkill {
+  return {
+    name: skill.name,
+    slug: null,
+    description: skill.description,
+    when_to_use: skill.when_to_use,
+    examples: skill.examples,
+  };
+}
+
+function launchableFromPublic(skill: PublicSkillCard): LaunchableSkill {
+  return {
+    name: skill.title,
+    slug: skill.slug,
+    description: skill.description,
+    when_to_use: skill.when_to_use,
+    examples: skill.examples,
+  };
+}
 
 export default function SkillsPage() {
   const router = useRouter();
@@ -65,6 +91,9 @@ export default function SkillsPage() {
   const [view, setView] = useState<ViewKey>("grid");
   const [error, setError] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  // The skill the launcher is open on. One at a time — a run is a decision,
+  // not a browsing mode.
+  const [launching, setLaunching] = useState<LaunchableSkill | null>(null);
 
   function toggleSelect(id: string) {
     setSelectedIds((current) => {
@@ -233,6 +262,7 @@ export default function SkillsPage() {
                 onTogglePin={(s) => pins.toggle(s.folder_id)}
                 selectedIds={selectedIds}
                 onToggleSelect={toggleSelect}
+                onRun={(s) => setLaunching(launchableFromSkill(s))}
               />
             ) : (
               <NoSkillsYet onBrowseDiscover={() => setTab("discover")} />
@@ -255,8 +285,14 @@ export default function SkillsPage() {
           </div>
         )}
 
-        {tab === "discover" && <DiscoverSection />}
+        {tab === "discover" && (
+          <DiscoverSection onRun={(s) => setLaunching(launchableFromPublic(s))} />
+        )}
       </div>
+
+      {launching && (
+        <SkillLauncher skill={launching} onClose={() => setLaunching(null)} />
+      )}
 
       {selectedSkills.length > 0 && (
         <div className="pointer-events-none fixed inset-x-0 bottom-6 z-50 flex justify-center">
@@ -499,7 +535,7 @@ async function fetchPublicSkills(params: {
 // The public marketplace as a section of the Skills page. Self-contained:
 // owns its own search/sort/fetch and isn't touched by the page's view
 // toggle, pins, or selection (those are for Skills you hold).
-function DiscoverSection() {
+function DiscoverSection({ onRun }: { onRun: (skill: PublicSkillCard) => void }) {
   const [sort, setSort] = useState<DiscoverSort>("trending");
   const [query, setQuery] = useState("");
   const [skills, setSkills] = useState<PublicSkillCard[]>([]);
@@ -597,9 +633,7 @@ function DiscoverSection() {
                     <span className="min-w-0 truncate">
                       {skill.owner_display_name}
                     </span>
-                    <span className="inline-flex flex-shrink-0 items-center gap-1 rounded-md border border-border bg-base px-2 py-0.5 text-[11.5px] font-medium text-foreground group-hover:border-[var(--color-brand-300)] group-hover:bg-[var(--color-brand-50)] group-hover:text-[var(--color-brand-700)]">
-                      Open →
-                    </span>
+                    <RunSkillButton onRun={() => onRun(skill)} />
                   </>
                 }
               />
@@ -631,6 +665,32 @@ function skillPublishBadge(skill: Skill): { discoverable: boolean } | null {
   return { discoverable: skill.published.discoverable };
 }
 
+// The primary action on a Skill anywhere it's listed: hand it to an agent.
+// Lives inside card/row links, so it stops the click from following them.
+function RunSkillButton({ onRun }: { onRun: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onRun();
+      }}
+      className="inline-flex flex-shrink-0 cursor-pointer items-center gap-1 rounded-md bg-[var(--color-brand-600)] px-2 py-0.5 text-[11.5px] font-medium text-white hover:bg-[var(--color-brand-700)]"
+    >
+      <PlayGlyph /> Run
+    </button>
+  );
+}
+
+function PlayGlyph() {
+  return (
+    <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+      <path d="M8 5v14l11-7z" />
+    </svg>
+  );
+}
+
 function SkillCollection({
   skills,
   view,
@@ -638,6 +698,7 @@ function SkillCollection({
   onTogglePin,
   selectedIds,
   onToggleSelect,
+  onRun,
 }: {
   skills: Skill[];
   view: ViewKey;
@@ -645,6 +706,7 @@ function SkillCollection({
   onTogglePin: (skill: Skill) => void;
   selectedIds: Set<string>;
   onToggleSelect: (id: string) => void;
+  onRun: (skill: Skill) => void;
 }) {
   if (view === "list") {
     return (
@@ -657,6 +719,7 @@ function SkillCollection({
             onTogglePin={onTogglePin}
             selected={selectedIds.has(skill.folder_id)}
             onToggleSelect={onToggleSelect}
+            onRun={onRun}
           />
         ))}
       </div>
@@ -696,6 +759,14 @@ function SkillCollection({
                 onCover
               />
             }
+            footer={
+              <>
+                <span className="min-w-0 truncate">
+                  {skill.when_to_use || "Hand this to an agent"}
+                </span>
+                <RunSkillButton onRun={() => onRun(skill)} />
+              </>
+            }
           />
         );
       })}
@@ -709,12 +780,14 @@ function SkillListRow({
   onTogglePin,
   selected,
   onToggleSelect,
+  onRun,
 }: {
   skill: Skill;
   pinned: boolean;
   onTogglePin: (skill: Skill) => void;
   selected: boolean;
   onToggleSelect: (id: string) => void;
+  onRun: (skill: Skill) => void;
 }) {
   return (
     <Link
@@ -723,7 +796,7 @@ function SkillListRow({
         "group grid items-center gap-3 border-b border-border-subtle px-4 py-2 text-[13px] last:border-b-0 " +
         (selected ? "bg-[var(--color-brand-50)]" : "hover:bg-[var(--color-brand-50)]/50")
       }
-      style={{ gridTemplateColumns: "auto minmax(0,2fr) minmax(0,1fr) auto auto" }}
+      style={{ gridTemplateColumns: "auto minmax(0,2fr) minmax(0,1fr) auto auto auto" }}
     >
       <SelectBox selected={selected} onToggle={() => onToggleSelect(skill.folder_id)} />
       <div className="flex min-w-0 items-center gap-2.5">
@@ -738,6 +811,7 @@ function SkillListRow({
         {skill.updated_at && ` · ${relativeTime(skill.updated_at)}`}
       </span>
       <PublishBadge published={skillPublishBadge(skill)} />
+      <RunSkillButton onRun={() => onRun(skill)} />
       <span
         className={
           pinned

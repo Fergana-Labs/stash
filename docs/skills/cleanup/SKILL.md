@@ -2,6 +2,10 @@
 name: cleanup
 description: Find duplicates, dead links and untagged items in a saved library and propose what to do about each.
 when_to_use: When the user asks to tidy up their bookmarks, clean their library, deal with duplicates or broken links, or asks what needs attention.
+examples:
+  - What needs attention in my bookmarks?
+  - Find my duplicate and dead-link saves and propose what to do.
+  - Which saves have no topics on them?
 version: "1"
 ---
 

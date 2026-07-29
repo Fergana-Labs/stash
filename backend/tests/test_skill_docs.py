@@ -24,6 +24,17 @@ def test_every_documented_skill_has_routing_metadata():
         assert body.strip()
 
 
+def test_every_documented_skill_offers_starter_prompts():
+    """The launcher shows these as one-click runs. A skill with none can still
+    be run, but the user has to know what to ask it for — which for a library
+    skill is the whole difficulty."""
+    for name in SKILL_NAMES:
+        metadata, _body = skill_service.parse_frontmatter(
+            (SKILL_DOCS / name / "SKILL.md").read_text()
+        )
+        assert skill_service.frontmatter_examples(metadata), name
+
+
 async def test_new_accounts_do_not_receive_built_in_skills(client: AsyncClient):
     response = await client.post(
         "/api/v1/users/register",

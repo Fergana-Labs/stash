@@ -26,6 +26,10 @@ from . import (
     user_scope_service,
 )
 
+# The service account that owns Stash-published Discover skills. It is never
+# logged into; the curator import operates as it through the services.
+CURATOR_USERNAME = "stash-curated"
+
 _SLUG_RE = re.compile(r"[^a-z0-9]+")
 _HTML_TAG_RE = re.compile(r"<[^>]+>")
 _HTML_BREAK_RE = re.compile(r"<br\s*/?>", re.IGNORECASE)
@@ -77,6 +81,14 @@ _SKILL_COLS = (
 )
 _SKILL_FROM = "FROM skills v JOIN users owner_user ON owner_user.id = v.owner_id"
 _SKILL_SELECT = f"SELECT {_SKILL_COLS} {_SKILL_FROM}"
+
+# A published skill's SKILL.md, for the metadata that lives in frontmatter
+# rather than on the skills row — when_to_use and the launcher's starter
+# prompts. Catalog rows carry it so Discover can launch a skill you don't hold.
+_SKILL_MD_SUBQUERY = (
+    "(SELECT p.content_markdown FROM pages p WHERE p.folder_id = v.folder_id "
+    " AND p.name = 'SKILL.md' AND p.deleted_at IS NULL LIMIT 1)"
+)
 
 
 def agent_install_pitch(stash_url: str) -> str:
@@ -328,7 +340,8 @@ async def list_public_skills(
         order = "v.updated_at DESC, v.id DESC"
 
     rows = await pool.fetch(
-        f"SELECT {_SKILL_COLS}, COALESCE(scope_user.display_name, scope_user.name) AS scope_name "
+        f"SELECT {_SKILL_COLS}, COALESCE(scope_user.display_name, scope_user.name) AS scope_name, "
+        f"{_SKILL_MD_SUBQUERY} AS skill_md "
         f"{_SKILL_FROM} "
         f"JOIN users scope_user ON scope_user.id = v.owner_user_id "
         f"WHERE {' AND '.join(where)} ORDER BY {order} "
@@ -339,12 +352,15 @@ async def list_public_skills(
     out: list[dict] = []
     for r in rows:
         skill = dict(r)
+        meta, _body = skill_service.parse_frontmatter(skill["skill_md"] or "")
         out.append(
             {
                 "id": str(skill["id"]),
                 "slug": skill["slug"],
                 "title": skill["title"],
                 "description": skill["description"],
+                "when_to_use": meta.get("when_to_use", ""),
+                "examples": skill_service.frontmatter_examples(meta),
                 "discoverable": skill["discoverable"],
                 "cover_image_url": skill["cover_image_url"],
                 "source_github_url": skill["source_github_url"],
@@ -732,6 +748,60 @@ async def _fork_folder(
         )
 
     return new_folder["id"]
+
+
+async def curated_skills_by_name(names: list[str]) -> list[dict]:
+    """The service account's published skills matching these frontmatter names,
+    in the order asked for. A name with nothing published against it is absent
+    from the result — that is what "not published yet" looks like to a caller,
+    and the surfaces that ask (an app's skill strip) show only what exists."""
+    if not names:
+        return []
+    pool = get_pool()
+    rows = await pool.fetch(
+        f"SELECT {_SKILL_COLS}, {_SKILL_MD_SUBQUERY} AS skill_md "
+        f"{_SKILL_FROM} "
+        "JOIN users scope_user ON scope_user.id = v.owner_user_id "
+        "WHERE scope_user.name = $1 AND v.discoverable = true AND v.title = ANY($2::text[])",
+        CURATOR_USERNAME,
+        names,
+    )
+    by_name = {}
+    for r in rows:
+        skill = dict(r)
+        meta, _body = skill_service.parse_frontmatter(skill["skill_md"] or "")
+        by_name[skill["title"]] = {
+            "name": skill["title"],
+            "slug": skill["slug"],
+            "description": skill["description"],
+            "when_to_use": meta.get("when_to_use", ""),
+            "examples": skill_service.frontmatter_examples(meta),
+        }
+    return [by_name[name] for name in names if name in by_name]
+
+
+async def install_public_skill(owner_user_id: UUID, slug: str, added_by: UUID) -> dict | None:
+    """Ensure the scope holds this published skill, then say what it is called
+    there. Held-ness is by skill name, not by provenance: a fork keeps no link
+    to its source, so matching any other way would hand out a second copy every
+    time someone launched the same skill.
+
+    Returns None when the slug names no published skill."""
+    title = await get_pool().fetchval("SELECT title FROM skills WHERE slug = $1", slug)
+    if title is None:
+        return None
+
+    held = await skill_service.list_skills(owner_user_id, added_by)
+    match = next((s for s in held if s["name"] == title), None)
+    if match:
+        return {"folder_id": match["folder_id"], "name": match["name"], "installed": False}
+
+    forked = await fork_skill(owner_user_id, slug, added_by)
+    if forked is None:
+        return None
+    # The folder may land as "brief (2)" if that name was taken, but the skill's
+    # frontmatter name is what an agent resolves, and that travels unchanged.
+    return {"folder_id": forked["folder_id"], "name": title, "installed": True}
 
 
 async def fork_skill(owner_user_id: UUID, slug: str, added_by: UUID) -> dict | None:
