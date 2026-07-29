@@ -4847,9 +4847,34 @@ def _enable_marketplace_autoupdate(settings_path: Path) -> bool:
     return True
 
 
+IMPORT_STATUS_FILE = Path.home() / ".stash" / "import-history.json"
+IMPORT_LOG_FILE = Path.home() / ".stash" / "import-history.log"
+
+
+def _write_import_status(total: int, done: int, errors: int, finished: bool) -> None:
+    IMPORT_STATUS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    IMPORT_STATUS_FILE.write_text(
+        json.dumps(
+            {
+                "total": total,
+                "done": done,
+                "errors": errors,
+                "finished": finished,
+                "updated_at": time.time(),
+            }
+        )
+        + "\n"
+    )
+
+
 def _onboarding_import_history(detected_agents: list[str]) -> None:
-    """Offer to import historical conversations during onboarding."""
-    from .import_history import discover_conversations, summarize_discovery, upload_conversation
+    """Offer to import historical conversations during onboarding.
+
+    The import itself runs as a detached `stash import-history` process —
+    thousands of uploads must not hold the wizard hostage."""
+    import subprocess as _sp
+
+    from .import_history import discover_conversations, summarize_discovery
 
     agents = detected_agents or None
     conversations = discover_conversations(agents)
@@ -4865,30 +4890,89 @@ def _onboarding_import_history(detected_agents: list[str]) -> None:
 
     _reserve_bottom_padding(4)
     ok = questionary.confirm(
-        f"Import {len(conversations)} historical conversations?", default=True
+        f"Import {len(conversations)} historical conversations? (runs in the background)",
+        default=True,
     ).ask()
     if not ok:
         return
 
+    IMPORT_LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+    with open(IMPORT_LOG_FILE, "ab") as log:
+        _sp.Popen(
+            [sys.argv[0], "import-history"],
+            stdout=log,
+            stderr=log,
+            start_new_session=True,
+        )
+    console.print(
+        f"  [green]✓[/green] Importing {len(conversations)} conversations in the background.\n"
+        "    [dim]Check on it anytime: stash import-history --status[/dim]"
+    )
+
+
+@app.command("import-history")
+def import_history_cmd(
+    status: bool = typer.Option(
+        False, "--status", help="Show progress of the running or last-finished import."
+    ),
+):
+    """Import all historical agent conversations into your Stash.
+
+    Safe to re-run: the server skips sessions that already exist. The setup
+    wizard launches this as a background process; run it directly to import
+    in the foreground with a progress bar."""
+    if status:
+        if not IMPORT_STATUS_FILE.exists():
+            console.print("No import has run on this machine.")
+            return
+        s = json.loads(IMPORT_STATUS_FILE.read_text())
+        state = (
+            "finished" if s["finished"] else f"running (last update {_format_age(s['updated_at'])})"
+        )
+        console.print(f"  {s['done']}/{s['total']} conversations, {s['errors']} errors — {state}")
+        return
+
+    _require_auth()
+    telemetry.record("import_history")
+
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
     from rich.progress import Progress
 
-    imported = 0
+    from .import_history import discover_conversations, upload_conversation
+
+    conversations = discover_conversations(load_enabled_agents() or None)
+    if not conversations:
+        console.print("No historical conversations found.")
+        return
+
+    total = len(conversations)
+    done = 0
     errors = 0
     last_error = ""
+    _write_import_status(total=total, done=0, errors=0, finished=False)
+    # httpx.Client is thread-safe; sequential uploads were taking >1h for a
+    # machine with a few thousand conversations.
     with _client() as c, Progress(console=console) as progress:
-        task = progress.add_task("Importing…", total=len(conversations))
-        for conv in conversations:
-            try:
-                upload_conversation(c, conv)
-                imported += 1
-            except (StashError, httpx.HTTPError) as e:
-                errors += 1
-                last_error = str(e)
-            progress.advance(task)
+        task = progress.add_task("Importing…", total=total)
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            futures = [pool.submit(upload_conversation, c, conv) for conv in conversations]
+            for fut in as_completed(futures):
+                try:
+                    fut.result()
+                except (StashError, httpx.HTTPError) as e:
+                    errors += 1
+                    last_error = str(e)
+                done += 1
+                progress.advance(task)
+                if done % 25 == 0 or done == total:
+                    _write_import_status(
+                        total=total, done=done, errors=errors, finished=done == total
+                    )
 
-    console.print(f"  [green]✓[/green] Imported {imported} conversations")
+    console.print(f"  [green]✓[/green] Imported {done - errors} conversations")
     if errors:
-        console.print(f"  [yellow]{errors} failed — {last_error}[/yellow]")
+        console.print(f"  [yellow]{errors} failed — last error: {last_error}[/yellow]")
 
 
 def _setup_complete_intro(home_url: str, connected: bool, recording: bool) -> str:
