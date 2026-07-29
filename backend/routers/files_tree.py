@@ -181,14 +181,16 @@ async def get_memory_folder(
 @router.get("/memory-tree", response_model=ScopeTreeResponse)
 async def get_memory_tree(
     current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
 ):
     """The Memory wiki as a nested file-system tree (folders + pages), rooted
-    at the caller's Memory folder. Drives the wiki browser page."""
-    tree = await files_tree_service.memory_tree(current_user["id"], current_user["id"])
+    at the scope's Memory folder. Drives the wiki browser page and `stash
+    memory ls`/`write`."""
+    tree = await files_tree_service.memory_tree(scope_user_id, current_user["id"])
     await security_audit_service.record_entries_listed(
         target_type="memory_tree",
         actor_user_id=current_user["id"],
-        owner_user_id=current_user["id"],
+        owner_user_id=scope_user_id,
         metadata={"result_count": len(tree["folders"]) + len(tree["pages"])},
     )
     return ScopeTreeResponse(**tree)
