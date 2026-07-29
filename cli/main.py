@@ -4380,6 +4380,11 @@ def _pick_agents(message: str, agents: list[str], checked: list[str]) -> list[st
             ("class:qmark", "? "),
             ("class:question", message),
             ("class:instruction", "  (enter toggles an agent, Done saves)\n"),
+            (
+                "class:instruction",
+                "   [x] = uploads its sessions to your Stash. Unchecked agents upload "
+                "nothing\n   but can still use the stash CLI — anyone can use a CLI.\n",
+            ),
         ]
         for i, agent in enumerate(agents):
             box = "[x]" if agent in selected else "[ ]"
@@ -4419,7 +4424,7 @@ def _pick_agents(message: str, agents: list[str], checked: list[str]) -> list[st
         event.app.exit(result=None)
 
     picker = Application(
-        layout=Layout(Window(FormattedTextControl(fragments), height=len(agents) + 2)),
+        layout=Layout(Window(FormattedTextControl(fragments), height=len(agents) + 4)),
         key_bindings=kb,
         erase_when_done=True,
         style=Style(
@@ -4608,7 +4613,7 @@ def _run_setup_wizard() -> None:
             enabled = load_enabled_agents()
             default_enabled = enabled if enabled is not None else detected
 
-            _reserve_bottom_padding(len(detected) + 4)
+            _reserve_bottom_padding(len(detected) + 6)
             selected = _pick_agents(
                 "Which coding agents should Stash record?", detected, default_enabled
             )
