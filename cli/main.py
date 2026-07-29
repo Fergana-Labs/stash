@@ -139,6 +139,27 @@ def _default_signin_page(api: str) -> str:
     return api + "/connect-token"
 
 
+def _refocus_terminal() -> None:
+    """Bring the user's terminal app back to the foreground after browser auth.
+
+    The browser steals focus during sign-in, so after clicking Authorize the
+    user is left staring at the done page while onboarding continues in a
+    hidden terminal. On macOS every GUI terminal stamps __CFBundleIdentifier
+    into its children's env, so `open -b` re-activates whichever app this CLI
+    is actually running in. Elsewhere (Linux, SSH) there's no reliable way to
+    grab focus, so we leave the user where they are.
+    """
+    import os
+    import subprocess
+
+    if sys.platform != "darwin":
+        return
+    bundle_id = os.environ.get("__CFBundleIdentifier")
+    if not bundle_id:
+        return
+    subprocess.run(["open", "-b", bundle_id], check=False, capture_output=True)
+
+
 def _browser_auth_flow(
     api: str,
     page: str | None = None,
@@ -194,6 +215,7 @@ def _browser_auth_flow(
                 console.print(f"[red]Polling failed: {e}[/red]")
                 raise typer.Exit(1)
             if data.get("status") == "complete":
+                _refocus_terminal()
                 return data["api_key"], data["username"]
             time.sleep(1)
 
