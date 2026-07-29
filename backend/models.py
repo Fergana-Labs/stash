@@ -264,6 +264,9 @@ class ScopeTreeFolder(BaseModel):
     created_by: UUID
     created_at: datetime
     updated_at: datetime
+    # Memory and Clips: the client hides Rename/Delete rather than offering an
+    # action the service refuses.
+    is_protected: bool = False
     folders: list["ScopeTreeFolder"] = []
     pages: list[PageSummary] = []
 

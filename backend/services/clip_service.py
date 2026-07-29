@@ -37,8 +37,10 @@ KIND_LINK = "Link"
 
 
 async def clips_folder_id(owner_user_id: UUID, user_id: UUID) -> UUID:
+    # Protected: everything the extension saves lands here, and code finds it
+    # by name at the root — a rename would quietly start a fresh empty one.
     folder = await files_tree_service.find_or_create_root_folder(
-        owner_user_id, CLIPS_FOLDER, user_id
+        owner_user_id, CLIPS_FOLDER, user_id, protected=True
     )
     return folder["id"]
 

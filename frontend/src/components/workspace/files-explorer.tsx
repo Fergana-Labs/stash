@@ -36,9 +36,10 @@ type Kind =
   | "session-folder"
   | "session"
   | "shared-root";
-// `readOnly` marks an item you can browse but not manage — a session folder
-// someone shared with you. Rename/Delete are hidden rather than offered and
-// left to fail against the owner-only server check.
+// `readOnly` marks an item you can browse but not manage: a session folder or
+// item someone shared with you, or a protected folder (Memory, Clips) the
+// product resolves by identity. Rename/Delete/drag are hidden rather than
+// offered and left to fail against the server check.
 export type Item = { kind: Kind; id: string; name: string; ts?: string; readOnly?: boolean };
 // Kinds that live in the VFS (draggable, rename/move/delete via folder/page APIs).
 const VFS_KINDS = new Set<Kind>(["folder", "page", "file", "table", "skill"]);
@@ -181,7 +182,7 @@ export default function FilesExplorer({
         const tree = await getTree();
         setCrumbs([]);
         setItems([
-          ...tree.folders.filter((f) => f.id !== hideFolderId).map((f) => ({ kind: "folder" as const, id: f.id, name: f.name, ts: f.updated_at })),
+          ...tree.folders.filter((f) => f.id !== hideFolderId).map((f) => ({ kind: "folder" as const, id: f.id, name: f.name, ts: f.updated_at, readOnly: f.is_protected })),
           ...tree.pages.map((p) => ({ kind: "page" as const, id: p.id, name: p.name || "Untitled", ts: p.updated_at })),
           ...(await sharedNode()),
         ]);
@@ -193,7 +194,7 @@ export default function FilesExplorer({
         const c = await getFolderContents(folderId);
         setCrumbs(c.breadcrumbs);
         setItems([
-          ...c.subfolders.map((f) => ({ kind: "folder" as const, id: f.id, name: f.name })),
+          ...c.subfolders.map((f) => ({ kind: "folder" as const, id: f.id, name: f.name, readOnly: f.is_protected })),
           ...c.pages.map((p) => ({ kind: "page" as const, id: p.id, name: p.name || "Untitled", ts: p.created_at })),
           ...c.files.map((f) => ({ kind: "file" as const, id: f.id, name: f.name, ts: f.created_at })),
           ...c.tables.map((t) => ({ kind: "table" as const, id: t.id, name: t.name, ts: t.created_at })),
@@ -462,7 +463,7 @@ export default function FilesExplorer({
           return (
             <div
               key={`${item.kind}-${item.id}`}
-              draggable={renaming !== item.id && VFS_KINDS.has(item.kind)}
+              draggable={renaming !== item.id && VFS_KINDS.has(item.kind) && !item.readOnly}
               onDragStart={(e) => e.dataTransfer.setData(DND, JSON.stringify(item))}
               onDragOver={isFolder ? (e) => { e.preventDefault(); setDropTarget(item.id); } : undefined}
               onDragLeave={isFolder ? () => setDropTarget((t) => (t === item.id ? null : t)) : undefined}

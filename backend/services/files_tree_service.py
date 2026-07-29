@@ -306,6 +306,7 @@ async def create_folder(
     name: str,
     created_by: UUID,
     parent_folder_id: UUID | None = None,
+    protected: bool = False,
 ) -> dict:
     pool = get_pool()
     if parent_folder_id is not None:
@@ -316,13 +317,14 @@ async def create_folder(
             raise ValueError("parent_folder_id does not belong to scope")
     try:
         row = await pool.fetchrow(
-            "INSERT INTO folders (owner_user_id, parent_folder_id, name, created_by) "
-            "VALUES ($1, $2, $3, $4) "
+            "INSERT INTO folders (owner_user_id, parent_folder_id, name, created_by, is_protected) "
+            "VALUES ($1, $2, $3, $4, $5) "
             "RETURNING id, owner_user_id, parent_folder_id, name, created_by, created_at, updated_at",
             owner_user_id,
             parent_folder_id,
             name,
             created_by,
+            protected,
         )
     except asyncpg.UniqueViolationError as e:
         raise DuplicateFolderName(owner_user_id, parent_folder_id, name) from e
@@ -347,7 +349,8 @@ async def list_folders(owner_user_id: UUID, user_id: UUID | None = None) -> list
         args.append(user_id)
         where += " AND " + permission_service.readable_content_condition("folder", "f", 2)
     rows = await pool.fetch(
-        "SELECT id, owner_user_id, parent_folder_id, name, created_by, created_at, updated_at "
+        "SELECT id, owner_user_id, parent_folder_id, name, created_by, created_at, updated_at, "
+        "  is_protected "
         f"FROM folders f WHERE {where} ORDER BY name",
         *args,
     )
@@ -367,8 +370,8 @@ async def get_or_create_memory_folder(owner_user_id: UUID, created_by: UUID) -> 
         return dict(row)
     try:
         row = await pool.fetchrow(
-            "INSERT INTO folders (owner_user_id, name, created_by, is_memory) "
-            "VALUES ($1, 'Memory', $2, true) "
+            "INSERT INTO folders (owner_user_id, name, created_by, is_memory, is_protected) "
+            "VALUES ($1, 'Memory', $2, true, true) "
             "RETURNING id, owner_user_id, parent_folder_id, name, created_by, created_at, updated_at",
             owner_user_id,
             created_by,
@@ -470,15 +473,20 @@ async def memory_tree(owner_user_id: UUID, created_by: UUID) -> dict:
     return {"folders": root["folders"], "pages": root["pages"]}
 
 
-async def _assert_not_memory(folder_id: UUID, owner_user_id: UUID) -> None:
+async def _assert_not_protected(folder_id: UUID, owner_user_id: UUID) -> None:
+    """Protected folders are the ones code resolves by identity and writes into
+    — Memory and Clips. Renaming or moving one doesn't fail loudly, it fails
+    silently: the next write recreates the folder and the user's saves start
+    landing somewhere they aren't looking. Guarded in the service, so the CLI,
+    the agent's tools, and the UI are all covered by one check."""
     pool = get_pool()
     row = await pool.fetchrow(
-        "SELECT is_memory FROM folders WHERE id = $1 AND owner_user_id = $2",
+        "SELECT name, is_protected FROM folders WHERE id = $1 AND owner_user_id = $2",
         folder_id,
         owner_user_id,
     )
-    if row and row["is_memory"]:
-        raise ValueError("the Memory folder can't be renamed, moved, or deleted")
+    if row and row["is_protected"]:
+        raise ValueError(f"the {row['name']} folder can't be renamed, moved, or deleted")
 
 
 async def update_folder(
@@ -490,7 +498,7 @@ async def update_folder(
 ) -> dict | None:
     """Rename and/or reparent a folder. Cycle-checks before moving."""
     pool = get_pool()
-    await _assert_not_memory(folder_id, owner_user_id)
+    await _assert_not_protected(folder_id, owner_user_id)
     if (parent_folder_id is not None or move_to_root) and not move_to_root:
         await _assert_no_cycle(folder_id, parent_folder_id)
 
@@ -531,7 +539,7 @@ async def delete_folder(folder_id: UUID, owner_user_id: UUID, deleted_by: UUID) 
     later restore files them at the scope root — same as restoring any item
     whose folder is gone.)
     """
-    await _assert_not_memory(folder_id, owner_user_id)
+    await _assert_not_protected(folder_id, owner_user_id)
     async with get_pool().acquire() as conn, conn.transaction():
         subtree = await conn.fetch(
             "WITH RECURSIVE tree AS ("
@@ -1583,11 +1591,18 @@ async def search_pages_vector(
 # --- Folder helpers used by other services ---
 
 
-async def find_or_create_root_folder(owner_user_id: UUID, name: str, created_by: UUID) -> dict:
+async def find_or_create_root_folder(
+    owner_user_id: UUID, name: str, created_by: UUID, protected: bool = False
+) -> dict:
     """Idempotent: returns the named top-level folder, creating it if missing.
 
     Used by publish (AI Drafts) and sessions (Sessions) which auto-target a
     well-known folder.
+
+    `protected` marks a folder the product resolves by identity and writes into
+    (Clips), so renaming or deleting it is refused rather than silently
+    stranding everything written there. Applied on a folder that already exists
+    too — these folders predate the flag.
     """
     pool = get_pool()
     row = await pool.fetchrow(
@@ -1597,9 +1612,16 @@ async def find_or_create_root_folder(owner_user_id: UUID, name: str, created_by:
         name,
     )
     if row:
+        if protected:
+            await pool.execute(
+                "UPDATE folders SET is_protected = true WHERE id = $1 AND NOT is_protected",
+                row["id"],
+            )
         return dict(row)
     try:
-        return await create_folder(owner_user_id, name, created_by, parent_folder_id=None)
+        return await create_folder(
+            owner_user_id, name, created_by, parent_folder_id=None, protected=protected
+        )
     except DuplicateFolderName:
         # Lost a get-or-create race (concurrent clip saves): the folder now
         # exists, so return it.

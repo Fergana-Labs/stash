@@ -1902,6 +1902,8 @@ export interface FolderSubfolder {
   name: string;
   page_count: number;
   file_count: number;
+  /** See Folder.is_protected — Rename/Delete/drag are hidden for these. */
+  is_protected?: boolean;
   created_at: string;
 }
 export interface FolderContents {

@@ -239,3 +239,41 @@ describe("FilesExplorer shared node", () => {
     expect(screen.queryByText("Delete")).not.toBeInTheDocument();
   });
 });
+
+// Memory and Clips are resolved by identity and written into by code the user
+// never sees, so the service refuses to rename, move, or delete one. The
+// explorer hides those actions rather than offering what will 400.
+describe("FilesExplorer protected folders", () => {
+  beforeEach(() => {
+    vi.mocked(getTree).mockResolvedValue({
+      folders: [
+        { id: "clips", name: "Clips", updated_at: "", is_protected: true },
+        { id: "notes", name: "Notes", updated_at: "", is_protected: false },
+      ],
+      pages: [],
+    } as never);
+  });
+
+  it("offers no Rename, Delete, or drag on a protected folder", async () => {
+    render(<FilesExplorer onRoot={() => {}} rootLabel="Files" />);
+    const clips = await screen.findByText("Clips");
+
+    fireEvent.contextMenu(clips);
+
+    expect(screen.queryByText("Rename")).not.toBeInTheDocument();
+    expect(screen.queryByText("Delete")).not.toBeInTheDocument();
+    expect(clips.closest("[draggable]")).toHaveAttribute("draggable", "false");
+  });
+
+  it("leaves an ordinary folder fully editable", async () => {
+    // The guard must not creep: everything else keeps its actions.
+    render(<FilesExplorer onRoot={() => {}} rootLabel="Files" />);
+    const notes = await screen.findByText("Notes");
+
+    fireEvent.contextMenu(notes);
+
+    expect(screen.getByText("Rename")).toBeInTheDocument();
+    expect(screen.getByText("Delete")).toBeInTheDocument();
+    expect(notes.closest("[draggable]")).toHaveAttribute("draggable", "true");
+  });
+});

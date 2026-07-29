@@ -197,8 +197,10 @@ async def ensure_table(slug: str, owner_user_id: UUID, user_id: UUID) -> dict:
     if existing:
         return existing
 
+    # The app's folder is structural — the manifest resolves it by name, so it
+    # is protected for the same reason Clips is.
     folder = await files_tree_service.find_or_create_root_folder(
-        owner_user_id, manifest["folder"], user_id
+        owner_user_id, manifest["folder"], user_id, protected=True
     )
     try:
         table = await table_service.create_table(

@@ -27,6 +27,10 @@ export interface Folder {
   created_by: string;
   created_at: string;
   updated_at: string;
+  /** Memory and Clips: code resolves these by identity and writes into them,
+   *  so the service refuses to rename, move, or delete one. Clients hide those
+   *  actions rather than offer what will be refused. */
+  is_protected?: boolean;
 }
 
 export type HtmlLayout = "responsive" | "fixed-aspect" | "full-width";
