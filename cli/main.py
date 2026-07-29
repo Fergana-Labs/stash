@@ -5468,18 +5468,32 @@ def workspace_list(as_json: bool = typer.Option(False, "--json")):
     active = load_config().get("scope", "")
     with _client() as c:
         try:
-            workspaces = c.list_workspaces()
+            data = c.list_workspaces()
         except StashError as e:
             _err(e)
+    workspaces = data["workspaces"]
+    pending = data.get("pending_domain_workspaces", [])
     if _use_json(as_json):
-        output_json({"workspaces": workspaces, "active_scope": active or None})
+        output_json(
+            {
+                "workspaces": workspaces,
+                "pending_domain_workspaces": pending,
+                "active_scope": active or None,
+            }
+        )
         return
     marker = " [green]*[/green]" if not active else ""
     console.print(f"  [bold]personal[/bold]{marker}")
     for ws in workspaces:
         marker = " [green]*[/green]" if ws["scope_user_id"] == active else ""
         console.print(f"  [bold]{ws['name']}[/bold]  [dim]{ws['domain']}[/dim]{marker}")
-    if not workspaces:
+    for ws in pending:
+        console.print(
+            f"  [yellow]{ws['name']}[/yellow]  [dim]{ws['domain']}[/dim]  "
+            "[yellow]— locked until your email is verified: sign in with Google/OAuth "
+            "([cyan]stash signin[/cyan] after signing out on the website)[/yellow]"
+        )
+    if not workspaces and not pending:
         console.print(
             "[dim]Team workspaces are set up for you — email sam@joinstash.ai "
             "and we'll get your team going.[/dim]"
@@ -5502,14 +5516,30 @@ def workspace_switch(
 
     with _client() as c:
         try:
-            workspaces = c.list_workspaces()
+            data = c.list_workspaces()
         except StashError as e:
             _err(e)
+    workspaces = data["workspaces"]
     match = next(
         (ws for ws in workspaces if name in (ws["name"], ws["domain"])),
         None,
     )
     if match is None:
+        pending = next(
+            (
+                ws
+                for ws in data.get("pending_domain_workspaces", [])
+                if name in (ws["name"], ws["domain"])
+            ),
+            None,
+        )
+        if pending:
+            console.print(
+                f"[red]Error:[/red] '{pending['name']}' matches your email domain, but your "
+                "email isn't verified, so membership is locked. Sign in with Google/OAuth "
+                "to verify it, then try again."
+            )
+            raise typer.Exit(1)
         known = ", ".join(ws["name"] for ws in workspaces) or "(none)"
         console.print(f"[red]Error:[/red] no workspace named '{name}'. You belong to: {known}")
         raise typer.Exit(1)

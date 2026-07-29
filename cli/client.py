@@ -160,8 +160,10 @@ class StashClient:
     def whoami(self) -> dict:
         return self._get("/api/v1/users/me")
 
-    def list_workspaces(self) -> list:
-        return self._list("/api/v1/me/workspaces", "workspaces")
+    def list_workspaces(self) -> dict:
+        """Full /me/workspaces payload: `workspaces` plus
+        `pending_domain_workspaces` (on-domain but email unverified)."""
+        return self._get("/api/v1/me/workspaces")
 
     def list_api_keys(self) -> list:
         return self._get("/api/v1/users/me/keys")

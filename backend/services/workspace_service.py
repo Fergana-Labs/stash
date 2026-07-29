@@ -109,6 +109,21 @@ async def remove_member(workspace_id: UUID, user_id: UUID) -> bool:
     return result.endswith(" 1")
 
 
+async def list_pending_for_user(user_id: UUID) -> list[dict]:
+    """Workspaces on the caller's email domain that they are NOT a member of
+    because their email is unverified. Exists so the product can say WHY a
+    teammate is locked out of their company workspace instead of silently
+    hiding it — the remedy is an OAuth sign-in, which verifies the address."""
+    pool = get_pool()
+    rows = await pool.fetch(
+        "SELECT w.id, w.name, w.domain FROM workspaces w "
+        "JOIN users u ON lower(split_part(u.email, '@', 2)) = w.domain "
+        "WHERE u.id = $1 AND NOT u.email_verified",
+        user_id,
+    )
+    return [dict(row) for row in rows]
+
+
 async def list_for_user(user_id: UUID) -> list[dict]:
     from . import permission_service
 
