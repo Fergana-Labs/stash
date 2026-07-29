@@ -2,10 +2,6 @@
 name: resurface
 description: Pick a few old saves worth revisiting now, and say why now.
 when_to_use: When the user asks what they've forgotten, wants something resurfaced from their archive, or a scheduled resurfacing fires.
-examples:
-  - What should I revisit from my archive this week?
-  - Find old saves that connect to what I'm working on now.
-  - Surface something I bookmarked and never used.
 version: "1"
 ---
 

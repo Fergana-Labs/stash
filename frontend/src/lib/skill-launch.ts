@@ -4,9 +4,6 @@
 // query string mangles — and because a stale prompt in the address bar would
 // re-run the skill on every reload. One-shot, like the agent config-view intent.
 
-import { installSkill } from "@/lib/api";
-import type { LaunchableSkill } from "@/lib/types";
-
 const pending = new Map<string, string>();
 
 export function stageSkillRun(tabRef: string, prompt: string): void {
@@ -25,18 +22,11 @@ export function newRunTabRef(): string {
   return `new-run-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-/** What we send the agent. Naming the skill is the whole mechanism — the agent
- *  resolves it with read_skill and follows it — so the instruction leads with
- *  the name and the user's request follows it. */
+/** What we send. The agent picks skills by matching your message against each
+ *  skill's when_to_use, which makes an unaided run a guess — naming the skill
+ *  is what makes Run mean *this* skill. That's the whole of what we compose:
+ *  one line off the skill's name, and then your words. Nothing is authored per
+ *  skill, and the skill's own SKILL.md says what to do once it's loaded. */
 export function runPrompt(skillName: string, request: string): string {
   return `Use the ${skillName} skill.\n\n${request.trim()}`;
-}
-
-/** Put the skill in the caller's scope if it isn't already, then return the
- *  name to invoke. Published skills live in the service account until someone
- *  installs them, and an agent only sees its own scope. */
-export async function ensureInstalled(skill: LaunchableSkill): Promise<string> {
-  if (!skill.slug) return skill.name;
-  const installed = await installSkill(skill.slug);
-  return installed.name;
 }

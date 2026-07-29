@@ -88,7 +88,6 @@ function skill(overrides: Partial<Skill> = {}): Skill {
     name: "Launch Plan",
     description: "How we launch",
     when_to_use: "",
-    examples: [],
     version: "",
     mcp_exposed: false,
     file_count: 3,

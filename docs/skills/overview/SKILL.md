@@ -2,10 +2,6 @@
 name: overview
 description: Chart what's in the library — topics, sources, saves over time — and say what the shape means.
 when_to_use: When the user asks for an overview of their saves, what they've been reading about, a breakdown by topic, or charts of their library.
-examples:
-  - Give me an overview of my library.
-  - What have I been reading about lately, by topic?
-  - Chart my saves over time and tell me what the shape means.
 version: "1"
 ---
 

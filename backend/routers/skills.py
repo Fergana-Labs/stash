@@ -448,10 +448,12 @@ async def install_skill(
     current_user: dict = Depends(get_current_user),
     owner_user_id: UUID = Depends(get_scope),
 ):
-    """Ensure the scope holds a published skill so an agent can run it —
+    """Add a published skill to the scope, so an agent can then run it —
     `list_skills` reads the scope, not the Discover catalog. Idempotent, which
-    is what separates it from add-to-stash: the launcher calls this on every
-    run and must not leave a trail of "brief (2)", "brief (3)"."""
+    is what separates it from add-to-stash: pressing Add on a skill you already
+    hold is a no-op rather than a second copy.
+
+    Running a skill never calls this. You add a skill, then you can run it."""
     if not await user_scope_service.can_write(owner_user_id, current_user["id"]):
         raise HTTPException(
             status_code=403, detail="You have read-only access and cannot create Skills"

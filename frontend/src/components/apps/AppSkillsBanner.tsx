@@ -1,39 +1,67 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Sparkles } from "lucide-react";
 
-import { listAppSkills } from "@/lib/api";
-import type { LaunchableSkill } from "@/lib/types";
+import { installSkill, listAppSkills, listSkills, type Skill } from "@/lib/api";
+import type { CuratedSkill, LaunchableSkill } from "@/lib/types";
 import SkillLauncher from "@/components/skill/SkillLauncher";
 
-// What your agent can do with everything in this app. A saved library is
-// inert until something reads it, and nothing in the app itself says that an
-// agent can — so the skills that operate on this table are listed here, each
-// one runnable in place.
+// What your agent can do with everything in this app. A saved library is inert
+// until something reads it, and nothing in the app itself says an agent can —
+// so the skills built for this table are listed here.
+//
+// A skill you haven't added shows Add, not Run. Adding is the user's decision:
+// an agent only ever runs what is in your Skills, and running one would have
+// meant putting it there on your behalf.
 //
 // Renders nothing when no such skill is published: an empty strip would be
 // worse than no strip, and this is the honest signal that the library skills
 // aren't in Discover yet.
 export default function AppSkillsBanner({ slug }: { slug: string }) {
-  const [skills, setSkills] = useState<LaunchableSkill[]>([]);
+  const [curated, setCurated] = useState<CuratedSkill[]>([]);
+  // Held skills by frontmatter name, so a Run opens the launcher on the real
+  // skill — its own description and when_to_use, not the catalog blurb.
+  const [held, setHeld] = useState<Map<string, Skill>>(new Map());
+  const [adding, setAdding] = useState<string | null>(null);
   const [launching, setLaunching] = useState<LaunchableSkill | null>(null);
+  const [error, setError] = useState("");
+
+  const loadHeld = useCallback(async () => {
+    const mine = await listSkills();
+    setHeld(new Map(mine.map((s) => [s.name, s])));
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
-    listAppSkills(slug)
-      .then((list) => {
-        if (!cancelled) setSkills(list);
+    Promise.all([listAppSkills(slug), listSkills()])
+      .then(([forApp, mine]) => {
+        if (cancelled) return;
+        setCurated(forApp);
+        setHeld(new Map(mine.map((s) => [s.name, s])));
       })
       .catch(() => {
-        if (!cancelled) setSkills([]);
+        if (!cancelled) setCurated([]);
       });
     return () => {
       cancelled = true;
     };
   }, [slug]);
 
-  if (skills.length === 0) return null;
+  async function add(skill: CuratedSkill) {
+    setAdding(skill.name);
+    setError("");
+    try {
+      await installSkill(skill.slug);
+      await loadHeld();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : `Couldn't add ${skill.name}`);
+    } finally {
+      setAdding(null);
+    }
+  }
+
+  if (curated.length === 0) return null;
 
   return (
     <>
@@ -48,18 +76,36 @@ export default function AppSkillsBanner({ slug }: { slug: string }) {
           Hand your library to an agent:
         </span>
         <div className="flex flex-wrap items-center gap-1.5">
-          {skills.map((skill) => (
-            <button
-              key={skill.name}
-              type="button"
-              title={skill.description}
-              onClick={() => setLaunching(skill)}
-              className="cursor-pointer rounded-full border border-border bg-base px-2.5 py-0.5 text-[12px] text-foreground transition-colors hover:border-[var(--color-brand-300)] hover:bg-[var(--color-brand-50)] hover:text-[var(--color-brand-700)]"
-            >
-              {skill.name}
-            </button>
-          ))}
+          {curated.map((skill) => {
+            const mine = held.get(skill.name);
+            return (
+              <button
+                key={skill.name}
+                type="button"
+                title={skill.description}
+                disabled={adding === skill.name}
+                onClick={() =>
+                  mine
+                    ? setLaunching({
+                        name: mine.name,
+                        description: mine.description,
+                        when_to_use: mine.when_to_use,
+                      })
+                    : void add(skill)
+                }
+                className={
+                  "cursor-pointer rounded-full border px-2.5 py-0.5 text-[12px] transition-colors disabled:opacity-50 " +
+                  (mine
+                    ? "border-border bg-base text-foreground hover:border-[var(--color-brand-300)] hover:bg-[var(--color-brand-50)] hover:text-[var(--color-brand-700)]"
+                    : "border-dashed border-border bg-transparent text-muted-foreground hover:border-[var(--color-brand-300)] hover:text-foreground")
+                }
+              >
+                {mine ? skill.name : `+ ${skill.name}`}
+              </button>
+            );
+          })}
         </div>
+        {error && <span className="text-[12px] text-red-500">{error}</span>}
       </div>
       {launching && (
         <SkillLauncher skill={launching} onClose={() => setLaunching(null)} />

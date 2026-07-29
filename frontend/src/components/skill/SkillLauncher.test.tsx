@@ -1,11 +1,10 @@
 // Running a skill from the launcher. The load-bearing part is what reaches the
-// agent: a skill that was never installed leaves the agent improvising, and a
-// prompt that never gets staged opens an empty chat.
+// agent, and what does not: a skill only reaches the launcher once it is in
+// your Skills, so a run must never install anything.
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import SkillLauncher from "./SkillLauncher";
-import { installSkill } from "@/lib/api";
 import { takeSkillRun } from "@/lib/skill-launch";
 import { useWorkspace, type WorkspaceState } from "@/lib/workspace-store";
 
@@ -13,20 +12,16 @@ const router = vi.hoisted(() => ({ push: vi.fn() }));
 
 vi.mock("next/navigation", () => ({ useRouter: () => router }));
 
-vi.mock("@/lib/api", () => ({ installSkill: vi.fn() }));
-
 const openTab = vi.fn();
 
 vi.mock("@/lib/workspace-store", () => ({
   useWorkspace: vi.fn(),
 }));
 
-const publicSkill = {
+const skill = {
   name: "resurface",
-  slug: "resurface-abc123",
   description: "Old saves worth revisiting.",
   when_to_use: "When the user asks what they have forgotten.",
-  examples: ["What should I revisit this week?", "Find old saves about agents."],
 };
 
 beforeEach(() => {
@@ -35,11 +30,6 @@ beforeEach(() => {
   vi.mocked(useWorkspace).mockImplementation((selector) =>
     selector({ openTab } as unknown as WorkspaceState),
   );
-  vi.mocked(installSkill).mockResolvedValue({
-    folder_id: "folder-1",
-    name: "resurface",
-    installed: true,
-  });
 });
 
 afterEach(() => {
@@ -53,65 +43,46 @@ function openedTabRef(): string {
 }
 
 describe("SkillLauncher", () => {
-  it("seeds the request with the skill's first starter prompt", () => {
-    render(<SkillLauncher skill={publicSkill} onClose={vi.fn()} />);
+  it("shows the skill's own frontmatter and nothing authored for the launcher", () => {
+    render(<SkillLauncher skill={skill} onClose={vi.fn()} />);
 
-    expect(screen.getByRole("textbox")).toHaveValue("What should I revisit this week?");
+    expect(screen.getByText("Old saves worth revisiting.")).toBeInTheDocument();
+    expect(
+      screen.getByText("When the user asks what they have forgotten."),
+    ).toBeInTheDocument();
   });
 
-  it("swaps the request when another starter prompt is picked", () => {
-    render(<SkillLauncher skill={publicSkill} onClose={vi.fn()} />);
+  it("will not run an empty request", () => {
+    render(<SkillLauncher skill={skill} onClose={vi.fn()} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Find old saves about agents." }));
-
-    expect(screen.getByRole("textbox")).toHaveValue("Find old saves about agents.");
+    expect(screen.getByRole("button", { name: /Run/ })).toBeDisabled();
   });
 
-  it("installs a published skill before running it, and sends the skill by name", async () => {
-    render(<SkillLauncher skill={publicSkill} onClose={vi.fn()} />);
-
-    fireEvent.click(screen.getByRole("button", { name: /Run/ }));
-
-    await waitFor(() => expect(openTab).toHaveBeenCalled());
-    expect(installSkill).toHaveBeenCalledWith("resurface-abc123");
-    expect(takeSkillRun(openedTabRef())).toBe(
-      "Use the resurface skill.\n\nWhat should I revisit this week?",
-    );
-    expect(router.push).toHaveBeenCalledWith("/agents");
-  });
-
-  it("does not install a skill you already hold", async () => {
-    const held = { ...publicSkill, slug: null };
-    render(<SkillLauncher skill={held} onClose={vi.fn()} />);
-
-    fireEvent.click(screen.getByRole("button", { name: /Run/ }));
-
-    await waitFor(() => expect(openTab).toHaveBeenCalled());
-    expect(installSkill).not.toHaveBeenCalled();
-  });
-
-  it("runs the edited request, not the starter prompt it began as", async () => {
-    render(<SkillLauncher skill={publicSkill} onClose={vi.fn()} />);
+  it("names the skill so the run is not left to the agent's routing", async () => {
+    render(<SkillLauncher skill={skill} onClose={vi.fn()} />);
 
     fireEvent.change(screen.getByRole("textbox"), {
-      target: { value: "Only the agent stuff." },
+      target: { value: "What should I revisit?" },
     });
     fireEvent.click(screen.getByRole("button", { name: /Run/ }));
 
     await waitFor(() => expect(openTab).toHaveBeenCalled());
     expect(takeSkillRun(openedTabRef())).toBe(
-      "Use the resurface skill.\n\nOnly the agent stuff.",
+      "Use the resurface skill.\n\nWhat should I revisit?",
     );
+    expect(router.push).toHaveBeenCalledWith("/agents");
   });
 
-  it("keeps the dialog open and says why when the install fails", async () => {
-    vi.mocked(installSkill).mockRejectedValue(new Error("Skill not found"));
-    render(<SkillLauncher skill={publicSkill} onClose={vi.fn()} />);
+  it("opens its own chat per run", async () => {
+    render(<SkillLauncher skill={skill} onClose={vi.fn()} />);
 
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "Go" } });
     fireEvent.click(screen.getByRole("button", { name: /Run/ }));
 
-    expect(await screen.findByText("Skill not found")).toBeInTheDocument();
-    expect(openTab).not.toHaveBeenCalled();
-    expect(router.push).not.toHaveBeenCalled();
+    await waitFor(() => expect(openTab).toHaveBeenCalled());
+    const [kind, refId, title] = openTab.mock.calls[0];
+    expect(kind).toBe("agent");
+    expect(refId).toMatch(/^new-run-/);
+    expect(title).toBe("Run: resurface");
   });
 });

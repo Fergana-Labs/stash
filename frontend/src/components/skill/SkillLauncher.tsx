@@ -4,22 +4,15 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Play, X } from "lucide-react";
 import { useWorkspace } from "@/lib/workspace-store";
-import {
-  ensureInstalled,
-  newRunTabRef,
-  runPrompt,
-  stageSkillRun,
-} from "@/lib/skill-launch";
+import { newRunTabRef, runPrompt, stageSkillRun } from "@/lib/skill-launch";
 import type { LaunchableSkill } from "@/lib/types";
 
-// Running a skill, as a dialog: what it does, its starter prompts, and the
-// request you're actually sending. The prompt stays editable because a skill is
-// a procedure, not a button — "brief me" and "brief me on the agent stuff only"
-// run the same skill and want different answers.
+// Running a skill, as a dialog: the skill's own frontmatter, and the request
+// you're sending. Everything shown here is read off the skill — nothing is
+// authored for the launcher, and the skill format gained no fields for it.
 //
-// Run opens a fresh agent chat and sends the prompt for you. Installing first
-// is not optional: an agent resolves skills from its own scope, so a Discover
-// skill that was never installed would have the agent improvising.
+// Only skills already in your Skills reach this. Running something you haven't
+// added would mean adding it for you, which is the user's decision to make.
 export default function SkillLauncher({
   skill,
   onClose,
@@ -29,9 +22,7 @@ export default function SkillLauncher({
 }) {
   const router = useRouter();
   const openTab = useWorkspace((s) => s.openTab);
-  const [request, setRequest] = useState(skill.examples[0] ?? "");
-  const [starting, setStarting] = useState(false);
-  const [error, setError] = useState("");
+  const [request, setRequest] = useState("");
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -41,20 +32,12 @@ export default function SkillLauncher({
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  async function run() {
-    if (!request.trim() || starting) return;
-    setStarting(true);
-    setError("");
-    try {
-      const name = await ensureInstalled(skill);
-      const ref = newRunTabRef();
-      stageSkillRun(ref, runPrompt(name, request));
-      openTab("agent", ref, `Run: ${name}`);
-      router.push("/agents");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not start the run");
-      setStarting(false);
-    }
+  function run() {
+    if (!request.trim()) return;
+    const ref = newRunTabRef();
+    stageSkillRun(ref, runPrompt(skill.name, request));
+    openTab("agent", ref, `Run: ${skill.name}`);
+    router.push("/agents");
   }
 
   return (
@@ -87,44 +70,32 @@ export default function SkillLauncher({
           </button>
         </div>
 
-        {skill.examples.length > 0 && (
-          <div className="mt-4">
+        {skill.when_to_use && (
+          <div className="mt-3 rounded-md border border-border-subtle bg-surface px-3 py-2">
             <p className="m-0 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-              Try
+              When to use
             </p>
-            <div className="mt-1.5 flex flex-col gap-1.5">
-              {skill.examples.map((example) => (
-                <button
-                  key={example}
-                  type="button"
-                  onClick={() => setRequest(example)}
-                  className={
-                    "cursor-pointer rounded-md border px-2.5 py-1.5 text-left text-[12.5px] transition-colors " +
-                    (request === example
-                      ? "border-[var(--color-brand-300)] bg-[var(--color-brand-50)] text-[var(--color-brand-700)]"
-                      : "border-border bg-surface text-foreground hover:border-[var(--color-brand-300)]")
-                  }
-                >
-                  {example}
-                </button>
-              ))}
-            </div>
+            <p className="m-0 mt-1 text-[12.5px] leading-[1.5] text-foreground">
+              {skill.when_to_use}
+            </p>
           </div>
         )}
 
-        <label className="mt-4 block text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+        <label
+          htmlFor="skill-run-request"
+          className="mt-4 block text-[11px] font-semibold uppercase tracking-wide text-muted-foreground"
+        >
           Your request
         </label>
         <textarea
+          id="skill-run-request"
           value={request}
           onChange={(e) => setRequest(e.target.value)}
           rows={3}
           autoFocus
-          placeholder={skill.when_to_use || `What should ${skill.name} do?`}
+          placeholder={`What should ${skill.name} do?`}
           className="mt-1.5 w-full resize-y rounded-md border border-border bg-surface px-3 py-2 text-[13px] text-foreground placeholder:text-muted-foreground focus:border-brand focus:outline-none"
         />
-
-        {error && <p className="mt-2 text-[12px] text-red-500">{error}</p>}
 
         <div className="mt-4 flex items-center justify-end gap-2">
           <button
@@ -136,12 +107,12 @@ export default function SkillLauncher({
           </button>
           <button
             type="button"
-            onClick={() => void run()}
-            disabled={!request.trim() || starting}
+            onClick={run}
+            disabled={!request.trim()}
             className="inline-flex cursor-pointer items-center gap-1.5 rounded-md bg-[var(--color-brand-600)] px-3 py-1.5 text-[12.5px] font-medium text-white hover:bg-[var(--color-brand-700)] disabled:opacity-45"
           >
             <Play className="h-3 w-3" />
-            {starting ? "Starting…" : "Run"}
+            Run
           </button>
         </div>
       </div>

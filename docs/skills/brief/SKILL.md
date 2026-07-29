@@ -2,10 +2,6 @@
 name: brief
 description: Brief the user on what they saved in a period — the thread running through it, not a list.
 when_to_use: When the user asks what they saved this week/month, wants catching up on recent saves, or a scheduled digest fires.
-examples:
-  - Brief me on what I saved this week.
-  - What was the thread running through last month's saves?
-  - Catch me up on everything I saved and haven't read.
 version: "1"
 ---
 

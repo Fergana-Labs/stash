@@ -44,21 +44,10 @@ async def skill_subtree_folder_ids(owner_user_id: UUID) -> set[UUID]:
     return {r["id"] for r in rows}
 
 
-def _scalar(val: str):
-    if val.lower() in ("true", "false"):
-        return val.lower() == "true"
-    if val.startswith('"') and val.endswith('"'):
-        return val[1:-1]
-    return val
-
-
 def parse_frontmatter(md: str) -> tuple[dict, str]:
-    """Tiny YAML-ish frontmatter parser. Supports `key: value` and one level of
-    block list (`key:` followed by `- item` lines) — no deeper nesting, no
-    quoted-with-escapes. Skill metadata stays flat apart from `examples`, the
-    starter prompts the Skills launcher offers. A bare `key:` with nothing
-    listed under it stays the empty string it has always been.
-    Returns (metadata, body)."""
+    """Tiny YAML-ish frontmatter parser. Supports `key: value` only — no nested
+    structures, lists, or quoted-with-escapes. That's deliberate: skill metadata
+    is supposed to be flat. Returns (metadata, body)."""
     if not md.startswith("---"):
         return {}, md
     end = md.find("\n---", 3)
@@ -66,35 +55,23 @@ def parse_frontmatter(md: str) -> tuple[dict, str]:
         return {}, md
     raw = md[3:end].strip("\n")
     body = md[end + 4 :].lstrip("\n")
-    lines = raw.splitlines()
     meta: dict = {}
-    i = 0
-    while i < len(lines):
-        line = lines[i].rstrip()
-        i += 1
-        if not line or line.startswith("#") or ":" not in line:
+    for line in raw.splitlines():
+        line = line.rstrip()
+        if not line or line.startswith("#"):
+            continue
+        if ":" not in line:
             continue
         key, _, val = line.partition(":")
         key = key.strip()
         val = val.strip()
-        if val:
-            meta[key] = _scalar(val)
-            continue
-        items = []
-        while i < len(lines) and lines[i].strip().startswith("- "):
-            items.append(_scalar(lines[i].strip()[2:].strip()))
-            i += 1
-        meta[key] = items if items else ""
+        if val.lower() in ("true", "false"):
+            meta[key] = val.lower() == "true"
+        elif val.startswith('"') and val.endswith('"'):
+            meta[key] = val[1:-1]
+        else:
+            meta[key] = val
     return meta, body
-
-
-def frontmatter_examples(meta: dict) -> list[str]:
-    """The skill's starter prompts. A skill that declares none has none — the
-    launcher composes a prompt from the skill name instead."""
-    raw = meta.get("examples")
-    if not isinstance(raw, list):
-        return []
-    return [str(item) for item in raw if str(item).strip()]
 
 
 async def list_skills(owner_user_id: UUID, user_id: UUID) -> list[dict]:
@@ -136,7 +113,6 @@ async def list_skills(owner_user_id: UUID, user_id: UUID) -> list[dict]:
                 "name": meta.get("name") or r["folder_name"],
                 "description": meta.get("description", ""),
                 "when_to_use": meta.get("when_to_use", ""),
-                "examples": frontmatter_examples(meta),
                 "version": meta.get("version", ""),
                 "mcp_exposed": bool(meta.get("mcp_exposed", False)),
                 "file_count": int(r["file_count"]),

@@ -1,13 +1,13 @@
-"""Launching a published skill: frontmatter lists, and installing before a run.
+"""Adding a published skill, which is what has to happen before it can be run.
 
-An agent resolves skills from its own scope, never from the Discover catalog,
-so the launcher has to put a public skill in the caller's scope first. That has
-to be idempotent — the launcher calls it on *every* run.
+An agent resolves skills from its own scope, never from the Discover catalog.
+Adding is always the user's explicit act — nothing runs a skill you did not
+add — but it has to be idempotent, because Add is a button people press twice.
 """
 
 from httpx import AsyncClient
 
-from backend.services import shared_skill_service, skill_service
+from backend.services import shared_skill_service
 
 from .conftest import unique_name
 
@@ -15,42 +15,11 @@ LIBRARY_SKILL_MD = """---
 name: resurface
 description: Old saves worth revisiting.
 when_to_use: When the user asks what they have forgotten.
-examples:
-  - What should I revisit this week?
-  - Find old saves about agents.
 version: "1"
 ---
 
 Body.
 """
-
-
-def test_frontmatter_reads_block_lists():
-    meta, body = skill_service.parse_frontmatter(LIBRARY_SKILL_MD)
-
-    assert meta["examples"] == [
-        "What should I revisit this week?",
-        "Find old saves about agents.",
-    ]
-    # Scalars either side of the list still parse, and the list doesn't swallow
-    # the key that follows it.
-    assert meta["name"] == "resurface"
-    assert meta["version"] == "1"
-    assert body.strip() == "Body."
-
-
-def test_a_key_with_nothing_listed_under_it_stays_a_string():
-    """Half the skills in the wild carry a bare `description:`. Turning that
-    into [] would change what every existing reader of it sees."""
-    meta, _body = skill_service.parse_frontmatter("---\nname: x\ndescription:\n---\nbody\n")
-
-    assert meta["description"] == ""
-
-
-def test_frontmatter_examples_ignores_a_scalar():
-    meta, _body = skill_service.parse_frontmatter("---\nexamples: not a list\n---\nbody\n")
-
-    assert skill_service.frontmatter_examples(meta) == []
 
 
 async def _register(client: AsyncClient) -> tuple[dict, dict]:
@@ -74,13 +43,20 @@ async def _publish_skill(client: AsyncClient, headers: dict, markdown: str) -> s
     assert page.status_code == 201, page.text
     published = await client.post(
         "/api/v1/me/skills",
-        json={"folder_id": folder_id, "title": "resurface", "discoverable": True},
+        json={
+            "folder_id": folder_id,
+            "title": "resurface",
+            # The curator import copies this off the frontmatter, so a curated
+            # skill always has one on the row — which is what the strip reads.
+            "description": "Old saves worth revisiting.",
+            "discoverable": True,
+        },
         headers=headers,
     )
     return published.json()["slug"]
 
 
-async def test_install_puts_a_public_skill_in_the_callers_scope(client: AsyncClient):
+async def test_add_puts_a_public_skill_in_the_callers_scope(client: AsyncClient):
     _author, author_headers = await _register(client)
     slug = await _publish_skill(client, author_headers, LIBRARY_SKILL_MD)
     _runner, runner_headers = await _register(client)
@@ -95,10 +71,10 @@ async def test_install_puts_a_public_skill_in_the_callers_scope(client: AsyncCli
     assert [s["name"] for s in held.json()["skills"]] == ["resurface"]
 
 
-async def test_installing_twice_does_not_make_a_second_copy(client: AsyncClient):
-    """Every launch installs first. If that forked each time, a user who ran
-    the same skill five times would end up choosing between "resurface (5)"
-    and the original — and the agent would resolve the wrong one."""
+async def test_adding_twice_does_not_make_a_second_copy(client: AsyncClient):
+    """Add is a button, and buttons get pressed twice. If the second press
+    forked, the user would end up choosing between "resurface" and
+    "resurface (2)" with the agent resolving whichever it found first."""
     _author, author_headers = await _register(client)
     slug = await _publish_skill(client, author_headers, LIBRARY_SKILL_MD)
     _runner, runner_headers = await _register(client)
@@ -116,7 +92,7 @@ async def test_installing_twice_does_not_make_a_second_copy(client: AsyncClient)
     assert [s["name"] for s in held.json()["skills"]] == ["resurface"]
 
 
-async def test_install_rejects_an_unknown_slug(client: AsyncClient):
+async def test_add_rejects_an_unknown_slug(client: AsyncClient):
     _runner, headers = await _register(client)
 
     response = await client.post(
@@ -126,21 +102,16 @@ async def test_install_rejects_an_unknown_slug(client: AsyncClient):
     assert response.status_code == 404
 
 
-async def test_discover_carries_the_starter_prompts(client: AsyncClient):
-    """A skill you have not installed still has to be launchable, so its
-    frontmatter has to reach the catalog — the skills row alone doesn't
-    carry when_to_use or examples."""
+async def test_a_published_skill_is_not_in_your_scope_until_you_add_it(client: AsyncClient):
+    """The reason Add exists at all: publishing to Discover puts a skill in the
+    catalog, not in anyone's Skills, so an agent cannot reach it."""
     _author, author_headers = await _register(client)
     await _publish_skill(client, author_headers, LIBRARY_SKILL_MD)
+    _runner, runner_headers = await _register(client)
 
-    catalog = await client.get("/api/v1/discover/skills")
-    card = next(s for s in catalog.json()["skills"] if s["title"] == "resurface")
+    held = await client.get("/api/v1/me/skills", headers=runner_headers)
 
-    assert card["examples"] == [
-        "What should I revisit this week?",
-        "Find old saves about agents.",
-    ]
-    assert card["when_to_use"] == "When the user asks what they have forgotten."
+    assert held.json()["skills"] == []
 
 
 async def test_curated_skills_resolve_by_name(client: AsyncClient, pool):
@@ -158,4 +129,15 @@ async def test_curated_skills_resolve_by_name(client: AsyncClient, pool):
     found = await shared_skill_service.curated_skills_by_name(["resurface", "not-published"])
 
     assert [s["name"] for s in found] == ["resurface"]
-    assert found[0]["examples"][0] == "What should I revisit this week?"
+    assert found[0]["description"] == "Old saves worth revisiting."
+
+
+async def test_curated_lookup_ignores_skills_outside_the_service_account(client: AsyncClient, pool):
+    """Anyone can publish a skill called "resurface". The strip must offer the
+    Stash-authored one, not whichever row happens to match the name."""
+    _author, author_headers = await _register(client)
+    await _publish_skill(client, author_headers, LIBRARY_SKILL_MD)
+
+    found = await shared_skill_service.curated_skills_by_name(["resurface"])
+
+    assert found == []

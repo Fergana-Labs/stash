@@ -147,17 +147,23 @@ export interface MiniProgramApp {
   row_count: number;
 }
 
-/** A skill the launcher can run. Both a Skill you hold and a public catalog
- *  entry narrow to this: a name to invoke, enough copy to say what it does,
- *  and its starter prompts. `slug` is present when the skill is published —
- *  the launcher installs it into your scope before the first run, because an
- *  agent reads the scope's skills, not the catalog. */
+/** A skill the launcher can run: the name to invoke plus the frontmatter that
+ *  says what it does. Only skills in your own Skills are launchable — an agent
+ *  reads its scope, not the public catalog — so this is always built from a
+ *  Skill you hold. */
 export interface LaunchableSkill {
   name: string;
-  slug?: string | null;
   description: string;
   when_to_use: string;
-  examples: string[];
+}
+
+/** A published skill an app's table is built for. Carries a slug because you
+ *  may not hold it yet: the strip that lists these offers Add for those, and
+ *  Run only once the skill is actually in your Skills. */
+export interface CuratedSkill {
+  name: string;
+  slug: string;
+  description: string;
 }
 
 export interface MiniProgramResolved {

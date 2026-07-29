@@ -15,9 +15,6 @@ them into an account.
 - `resurface` — find old saves that matter to the user's current work.
 - `slides` — author fixed-canvas HTML slide decks.
 
-Each declares `examples:` in its frontmatter — the starter prompts the Skills
-launcher offers as one-click runs.
-
 ## Publication
 
 These are published to the `stash-curated` service account by importing this
@@ -38,10 +35,22 @@ and view counts survive an edit. Run it after merging a change to any
 
 Publication must not add a signup seed, startup hook, or periodic backfill.
 
-## Running one
+## Adding and running
 
 An agent resolves skills from its own scope, never from the Discover catalog,
-so `POST /api/v1/me/skills/install` puts a published skill in the caller's
-scope before the first run. It is idempotent by skill name — the launcher
-calls it on every run, and forking each time would leave a user picking
-between `brief (2)` and `brief (3)`.
+so a published skill has to be added before anything can run it. `POST
+/api/v1/me/skills/install` does that, idempotently by skill name, so pressing
+Add twice can't leave a user picking between `brief` and `brief (2)`.
+
+**Adding is always explicit.** Running a skill never installs one as a side
+effect: the Skills launcher only opens on skills already in your Skills, and
+the strip above a mini program offers Add for the ones you don't hold. A skill
+shared with you is not in your scope either — same as a shared folder, you copy
+it in before it's yours — so it can't be run until you do.
+
+The launcher shows the skill's own frontmatter and sends `Use the <name>
+skill.` followed by the user's request. Naming the skill is what makes Run mean
+*that* skill: the agent otherwise picks skills by matching the message against
+each `when_to_use`, which makes an unnamed run a guess. That one templated line
+is the whole of what the product composes — the skill format carries no fields
+for the launcher, and nothing is authored per skill.

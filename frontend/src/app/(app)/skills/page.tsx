@@ -52,30 +52,16 @@ const TAB_COPY: Record<Tab, string> = {
   yours:
     "Your Skill folders. Run one to hand it to an agent, or open it to edit, share, and publish.",
   shared: "Skill folders other people shared with you, plus adding a skill by link.",
-  discover:
-    "Public skills from the community — run one and it installs into your Skills first.",
+  discover: "Public skills from the community — fork one into your Skills.",
 };
 
-// Both a Skill you hold and a Discover card narrow to what the launcher needs.
-// A skill you hold carries no slug: it is already in your scope, so there is
-// nothing for the launcher to install before running it.
+// Only a Skill you hold is launchable: an agent reads its own scope, so a
+// Discover skill has to be added before it can be run at all.
 function launchableFromSkill(skill: Skill): LaunchableSkill {
   return {
     name: skill.name,
-    slug: null,
     description: skill.description,
     when_to_use: skill.when_to_use,
-    examples: skill.examples,
-  };
-}
-
-function launchableFromPublic(skill: PublicSkillCard): LaunchableSkill {
-  return {
-    name: skill.title,
-    slug: skill.slug,
-    description: skill.description,
-    when_to_use: skill.when_to_use,
-    examples: skill.examples,
   };
 }
 
@@ -285,9 +271,7 @@ export default function SkillsPage() {
           </div>
         )}
 
-        {tab === "discover" && (
-          <DiscoverSection onRun={(s) => setLaunching(launchableFromPublic(s))} />
-        )}
+        {tab === "discover" && <DiscoverSection />}
       </div>
 
       {launching && (
@@ -535,7 +519,7 @@ async function fetchPublicSkills(params: {
 // The public marketplace as a section of the Skills page. Self-contained:
 // owns its own search/sort/fetch and isn't touched by the page's view
 // toggle, pins, or selection (those are for Skills you hold).
-function DiscoverSection({ onRun }: { onRun: (skill: PublicSkillCard) => void }) {
+function DiscoverSection() {
   const [sort, setSort] = useState<DiscoverSort>("trending");
   const [query, setQuery] = useState("");
   const [skills, setSkills] = useState<PublicSkillCard[]>([]);
@@ -633,7 +617,9 @@ function DiscoverSection({ onRun }: { onRun: (skill: PublicSkillCard) => void })
                     <span className="min-w-0 truncate">
                       {skill.owner_display_name}
                     </span>
-                    <RunSkillButton onRun={() => onRun(skill)} />
+                    <span className="inline-flex flex-shrink-0 items-center gap-1 rounded-md border border-border bg-base px-2 py-0.5 text-[11.5px] font-medium text-foreground group-hover:border-[var(--color-brand-300)] group-hover:bg-[var(--color-brand-50)] group-hover:text-[var(--color-brand-700)]">
+                      Open →
+                    </span>
                   </>
                 }
               />
