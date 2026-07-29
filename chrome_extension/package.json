@@ -7,6 +7,7 @@
     "build": "node esbuild.config.js",
     "watch": "node esbuild.config.js --watch",
     "typecheck": "tsc --noEmit",
+    "prepackage": "test -z \"$(find . -mindepth 2 -name manifest.json -not -path './node_modules/*')\" || { echo 'ERROR: another manifest.json exists below this directory. Chrome will happily load it as a separate extension, and you will debug the wrong code. Delete it before packaging:'; find . -mindepth 2 -name manifest.json -not -path './node_modules/*'; exit 1; }",
     "package": "npm run build && rm -f stash-chat-sync.zip && zip -r stash-chat-sync.zip manifest.json popup.html dist icons"
   },
   "devDependencies": {
