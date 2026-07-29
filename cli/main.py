@@ -4773,11 +4773,6 @@ def _frontend_base_url() -> str:
     return base_url
 
 
-def _home_url() -> str:
-    """The user-facing link to the signed-in user's home on the configured frontend."""
-    return _frontend_base_url()
-
-
 def _install_claude_plugin() -> bool:
     """Install the stash plugin for Claude Code via the official marketplace.
 
@@ -4917,6 +4912,10 @@ def _onboarding_import_history(detected_agents: list[str]) -> None:
     if not ok:
         return
 
+    # Seed the status file so the setup-complete splash can show the import
+    # immediately; the spawned process takes over updating it.
+    _write_import_status(total=len(conversations), done=0, errors=0, finished=False)
+
     IMPORT_LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
     with open(IMPORT_LOG_FILE, "ab") as log:
         _sp.Popen(
@@ -4996,7 +4995,22 @@ def import_history_cmd(
         console.print(f"  [yellow]{errors} failed — last error: {last_error}[/yellow]")
 
 
-def _setup_complete_intro(home_url: str, connected: bool, recording: bool) -> str:
+def _active_import() -> dict | None:
+    """The in-flight history import's status, or None when there isn't one.
+
+    A status file that stopped updating an hour ago means the import process
+    died — don't claim it's still uploading."""
+    if not IMPORT_STATUS_FILE.exists():
+        return None
+    status = json.loads(IMPORT_STATUS_FILE.read_text())
+    if status["finished"] or time.time() - status["updated_at"] > 3600:
+        return None
+    return status
+
+
+def _setup_complete_intro(
+    memory_url: str, connected: bool, recording: bool, importing: dict | None
+) -> str:
     recording_section = (
         "[bold]You're recording[/bold]\n"
         "This machine's agent sessions upload to your private Stash.\n"
@@ -5004,6 +5018,14 @@ def _setup_complete_intro(home_url: str, connected: bool, recording: bool) -> st
         if recording
         else "[bold]Recording is off[/bold]\n"
         "Turn it on anytime with [cyan]stash start[/cyan] or [cyan]stash setup[/cyan]."
+    )
+    importing_section = (
+        ""
+        if importing is None
+        else "\n\n[bold]Your history is uploading right now[/bold]\n"
+        f"{importing['done']}/{importing['total']} past conversations imported so far, in the\n"
+        "background — watch your knowledge base fill up at the link above.\n"
+        "[dim]Progress: stash import-history --status[/dim]"
     )
     connect_section = (
         ""
@@ -5018,8 +5040,10 @@ def _setup_complete_intro(home_url: str, connected: bool, recording: bool) -> st
         "It can read the transcripts your coding agents push to Stash — so it\n"
         "knows what you've been working on.\n"
         "\n"
-        "[bold]See your Stash[/bold]\n"
-        f"  [link={home_url}][bold #1e3a8a]{home_url}[/bold #1e3a8a][/link]\n"
+        "[bold]See your knowledge base[/bold]\n"
+        f"  [link={memory_url}][bold #1e3a8a]{memory_url}[/bold #1e3a8a][/link]\n"
+        "Your command center: every session and memory in your Stash, embedded\n"
+        "and searchable by your agents.\n"
         "\n"
         "[bold]Commands your agent can now use[/bold]\n"
         '  [#1e3a8a]stash vfs "find / -maxdepth 3 -type f"[/#1e3a8a]   browse Stash like a filesystem\n'
@@ -5029,6 +5053,7 @@ def _setup_complete_intro(home_url: str, connected: bool, recording: bool) -> st
         "Run [bold]stash --help[/bold] to see everything.\n"
         "\n"
         f"{recording_section}"
+        f"{importing_section}"
         f"{connect_section}"
     )
 
@@ -5044,11 +5069,14 @@ def _show_setup_complete_splash() -> None:
     console.print(Align.center(Text.from_markup(f"[bold #1e3a8a]{logo}[/bold #1e3a8a]")))
     console.print("  [bold green]You're all set up.[/bold green]\n")
 
+    memory_url = f"{_frontend_base_url()}/memory"
     connected = load_manifest() is not None
     recording = not streaming_stopped()
     console.print(
         Panel(
-            Text.from_markup(_setup_complete_intro(_home_url(), connected, recording)),
+            Text.from_markup(
+                _setup_complete_intro(memory_url, connected, recording, _active_import())
+            ),
             title="[bold #1e3a8a]Your agent memory[/bold #1e3a8a]",
             border_style="#1e3a8a",
             padding=(1, 2),
