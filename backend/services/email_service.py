@@ -76,6 +76,26 @@ def send_share_invite_email(to_email: str, owner_name: str, object_type: str) ->
     )
 
 
+def send_verification_email(to_email: str, token: str) -> None:
+    """One click sets `users.email_verified` — the trust anchor for joining
+    the workspace on the email's domain."""
+    app_url = settings.PUBLIC_URL.rstrip("/")
+    _send(
+        {
+            "From": DEFAULT_FROM,
+            "To": to_email,
+            "Subject": "Verify your email for Stash",
+            "HtmlBody": (
+                "<p>Click to verify this email address for your Stash account:</p>"
+                f'<p><a href="{app_url}/verify-email?token={token}">Verify my email</a></p>'
+                "<p>Verifying connects you to your company's workspace if one exists "
+                "for your email domain. The link works for 7 days; requesting a new "
+                "one replaces it.</p>"
+            ),
+        }
+    )
+
+
 def send_welcome_email(user_email: str, first_name: str | None = None) -> None:
     if not user_email:
         return

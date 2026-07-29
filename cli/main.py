@@ -4938,6 +4938,22 @@ def _run_setup_headless(
             console.print("  No historical conversations found.")
 
 
+@app.command("verify-email")
+def verify_email_cmd():
+    """Email yourself a verification link. Verifying your email is what joins
+    you to your company's workspace, if one exists for your email domain."""
+    _require_auth()
+    with _client() as c:
+        try:
+            result = c.resend_verification_email()
+        except StashError as e:
+            _err(e)
+    console.print(
+        f"  [green]✓[/green] Verification link sent to [bold]{result['sent_to']}[/bold] — "
+        "click it and you're done."
+    )
+
+
 @app.command("connect")
 def connect_cmd():
     """Add Stash instructions to this folder's CLAUDE.md and enable session uploads."""
@@ -5591,18 +5607,32 @@ def workspace_list(as_json: bool = typer.Option(False, "--json")):
     active = load_config().get("scope", "")
     with _client() as c:
         try:
-            workspaces = c.list_workspaces()
+            data = c.list_workspaces()
         except StashError as e:
             _err(e)
+    workspaces = data["workspaces"]
+    pending = data.get("pending_domain_workspaces", [])
     if _use_json(as_json):
-        output_json({"workspaces": workspaces, "active_scope": active or None})
+        output_json(
+            {
+                "workspaces": workspaces,
+                "pending_domain_workspaces": pending,
+                "active_scope": active or None,
+            }
+        )
         return
     marker = " [green]*[/green]" if not active else ""
     console.print(f"  [bold]personal[/bold]{marker}")
     for ws in workspaces:
         marker = " [green]*[/green]" if ws["scope_user_id"] == active else ""
         console.print(f"  [bold]{ws['name']}[/bold]  [dim]{ws['domain']}[/dim]{marker}")
-    if not workspaces:
+    for ws in pending:
+        console.print(
+            f"  [yellow]{ws['name']}[/yellow]  [dim]{ws['domain']}[/dim]  "
+            "[yellow]— joins once your email is verified: run "
+            "[cyan]stash verify-email[/cyan] and click the link we send[/yellow]"
+        )
+    if not workspaces and not pending:
         console.print(
             "[dim]Team workspaces are set up for you — email sam@joinstash.ai "
             "and we'll get your team going.[/dim]"
@@ -5625,14 +5655,30 @@ def workspace_switch(
 
     with _client() as c:
         try:
-            workspaces = c.list_workspaces()
+            data = c.list_workspaces()
         except StashError as e:
             _err(e)
+    workspaces = data["workspaces"]
     match = next(
         (ws for ws in workspaces if name in (ws["name"], ws["domain"])),
         None,
     )
     if match is None:
+        pending = next(
+            (
+                ws
+                for ws in data.get("pending_domain_workspaces", [])
+                if name in (ws["name"], ws["domain"])
+            ),
+            None,
+        )
+        if pending:
+            console.print(
+                f"[red]Error:[/red] '{pending['name']}' matches your email domain — you'll "
+                "join it as soon as your email is verified. Run [cyan]stash verify-email[/cyan], "
+                "click the link we send, then try again."
+            )
+            raise typer.Exit(1)
         known = ", ".join(ws["name"] for ws in workspaces) or "(none)"
         console.print(f"[red]Error:[/red] no workspace named '{name}'. You belong to: {known}")
         raise typer.Exit(1)

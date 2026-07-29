@@ -635,3 +635,29 @@ async def test_member_forks_public_skill_into_workspace(client: AsyncClient, poo
         headers=_auth(outsider_key),
     )
     assert denied.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_unverified_on_domain_user_sees_pending_workspace(client: AsyncClient, pool):
+    """A password signup on a workspace domain is locked out of membership
+    until the email is verified — and the lockout must be LOUD: the
+    workspace appears under pending_domain_workspaces with the reason
+    surface, not silently absent."""
+    domain = _domain()
+    ws = await _create_workspace(client, domain, name="Chainbase")
+    key, body = await _register_with_email(client, f"lewis@{domain}")
+
+    resp = await client.get("/api/v1/me/workspaces", headers=_auth(key))
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["workspaces"] == []
+    assert [w["name"] for w in payload["pending_domain_workspaces"]] == ["Chainbase"]
+    assert payload["pending_domain_workspaces"][0]["domain"] == domain
+
+    await _verify_email(pool, body["id"])
+
+    resp = await client.get("/api/v1/me/workspaces", headers=_auth(key))
+    payload = resp.json()
+    assert [w["name"] for w in payload["workspaces"]] == ["Chainbase"]
+    assert payload["pending_domain_workspaces"] == []
+    assert ws["workspace_id"] in [str(w["id"]) for w in payload["workspaces"]]
