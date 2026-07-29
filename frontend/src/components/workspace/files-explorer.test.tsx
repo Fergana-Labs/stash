@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import FilesExplorer, { type Item } from "./files-explorer";
-import { getFolderContents, getTree, uploadFileOrPage } from "@/lib/api";
+import { getFolderContents, getTree, updateFolder, uploadFileOrPage } from "@/lib/api";
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
@@ -188,6 +188,40 @@ describe("FilesExplorer shared node", () => {
     expect(screen.queryByLabelText("New file")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("New folder")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Import from GitHub")).not.toBeInTheDocument();
+  });
+
+  it("cannot itself be renamed, deleted, moved, or shared", async () => {
+    // The node is an index, not a folder: it has no server-side row to rename
+    // or delete, and dragging it somewhere would be dragging a UI affordance.
+    renderFiles(async () => [
+      { kind: "folder", id: "f1", name: "Q3 plan (Henry)", readOnly: true },
+    ]);
+    const node = await screen.findByText("Shared with me");
+
+    fireEvent.contextMenu(node);
+
+    expect(screen.queryByText("Rename")).not.toBeInTheDocument();
+    expect(screen.queryByText("Delete")).not.toBeInTheDocument();
+    expect(screen.queryByText("Share")).not.toBeInTheDocument();
+    expect(node.closest("[draggable]")).toHaveAttribute("draggable", "false");
+  });
+
+  it("takes no drop while you are inside it", async () => {
+    // Dropping your own folder "into" Shared with me would mean moving it into
+    // someone else's scope. There is no such move — and the list container
+    // catches drops the row itself ignores, so the guard has to be there too,
+    // or the item gets moved into the sentinel id.
+    renderFiles(async () => [
+      { kind: "folder", id: "f1", name: "Q3 plan (Henry)", readOnly: true },
+    ]);
+    fireEvent.click(await screen.findByText("Shared with me"));
+    const row = (await screen.findByText("Q3 plan (Henry)")).closest("[draggable]")!;
+
+    fireEvent.drop(row.parentElement!, {
+      dataTransfer: { getData: () => JSON.stringify({ kind: "folder", id: "mine", name: "My folder" }) },
+    });
+
+    expect(updateFolder).not.toHaveBeenCalled();
   });
 
   it("offers no Rename or Delete on a shared item", async () => {

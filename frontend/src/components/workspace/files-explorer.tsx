@@ -449,7 +449,10 @@ export default function FilesExplorer({
       <div
         className="min-h-0 flex-1 overflow-y-auto pt-1 pb-24"
         onDragOver={(e) => e.preventDefault()}
-        onDrop={(e) => { const raw = e.dataTransfer.getData(DND); if (raw) void move(JSON.parse(raw) as Item, folderId); }}
+        // The shared index isn't a folder, so "drop here" has no destination —
+        // without this the drop bubbles up and tries to move the item into the
+        // sentinel id.
+        onDrop={(e) => { if (inSharedIndex) return; const raw = e.dataTransfer.getData(DND); if (raw) void move(JSON.parse(raw) as Item, folderId); }}
       >
         {error && <div className="px-3 py-2 text-[12px] text-destructive">{error}</div>}
         {!items && !error && <div className="flex items-center gap-2 px-3 py-2 text-[12px] text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading…</div>}
