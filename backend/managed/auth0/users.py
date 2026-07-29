@@ -4,7 +4,7 @@ import logging
 import re
 
 from backend.database import get_pool
-from backend.services import share_service, user_scope_service
+from backend.services import email_verification_service, share_service, user_scope_service
 from backend.services.email_service import send_welcome_email
 
 logger = logging.getLogger(__name__)
@@ -58,9 +58,15 @@ async def get_or_create_user_row_from_auth0(
     if row:
         if email:
             # email_verified is the trust anchor for derived workspace
-            # membership — persisting it here IS the enrollment.
+            # membership — persisting it here IS the enrollment. OR-ing with
+            # the stored value means a sparse /userinfo payload (or our own
+            # emailed-link verification) is never downgraded by a later
+            # login; email changes still reset it via the email inequality.
             await pool.execute(
-                "UPDATE users SET last_seen = now(), email = $2, email_verified = $3 WHERE id = $1",
+                "UPDATE users SET last_seen = now(), "
+                "email_verified = (users.email = $2 AND users.email_verified) OR $3, "
+                "email = $2 "
+                "WHERE id = $1",
                 row["id"],
                 email,
                 email_verified,
@@ -101,6 +107,12 @@ async def get_or_create_user_row_from_auth0(
     await user_scope_service.seed_user_scope(user["id"])
 
     await share_service.convert_pending_invites(user["id"], email)
+
+    # Password signups arrive unverified and Auth0 is not guaranteed to get
+    # them verified — send our own link so the account can still join its
+    # domain workspace. OAuth signups are already verified and skip this.
+    if email and not email_verified:
+        await email_verification_service.start(user["id"], email)
 
     if email:
         try:

@@ -160,6 +160,9 @@ class StashClient:
     def whoami(self) -> dict:
         return self._get("/api/v1/users/me")
 
+    def resend_verification_email(self) -> dict:
+        return self._post("/api/v1/users/me/verify-email")
+
     def list_workspaces(self) -> dict:
         """Full /me/workspaces payload: `workspaces` plus
         `pending_domain_workspaces` (on-domain but email unverified)."""

@@ -17,7 +17,7 @@ from ..models import (
     UserRegisterResponse,
     UserUpdateRequest,
 )
-from ..services import user_service
+from ..services import email_verification_service, user_service
 from ..services.email_service import send_enterprise_lead_email
 
 logger = logging.getLogger(__name__)
@@ -49,12 +49,50 @@ async def register(request: Request, req: UserRegisterRequest):
         )
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
+    if req.email:
+        await email_verification_service.start(user["id"], req.email)
     return UserRegisterResponse(
         id=user["id"],
         name=user["name"],
         display_name=user["display_name"],
         api_key=api_key,
     )
+
+
+@router.post("/verify-email")
+@limiter.limit("10/minute")
+async def verify_email(request: Request, body: dict):
+    """Consume an emailed verification token. Unauthenticated — the link is
+    clicked from any browser. Sets `users.email_verified`, the trust anchor
+    for derived workspace membership."""
+    token = str(body.get("token") or "")
+    if not token:
+        raise HTTPException(status_code=400, detail="token is required")
+    if not await email_verification_service.confirm(token):
+        raise HTTPException(
+            status_code=400,
+            detail="This verification link is invalid, expired, or superseded — "
+            "request a new one and use the latest email.",
+        )
+    return {"verified": True}
+
+
+@router.post("/me/verify-email", status_code=202)
+@limiter.limit("5/minute")
+async def resend_verification_email(
+    request: Request, current_user: dict = Depends(get_current_user)
+):
+    """Send (or re-send) the caller's verification email."""
+    pool = get_pool()
+    row = await pool.fetchrow(
+        "SELECT email, email_verified FROM users WHERE id = $1", current_user["id"]
+    )
+    if not row["email"]:
+        raise HTTPException(status_code=400, detail="No email on this account to verify.")
+    if row["email_verified"]:
+        raise HTTPException(status_code=400, detail="Email is already verified.")
+    await email_verification_service.start(current_user["id"], row["email"])
+    return {"sent_to": row["email"]}
 
 
 @router.post("/login", response_model=UserRegisterResponse)

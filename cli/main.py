@@ -4818,6 +4818,22 @@ def setup_cmd():
     _run_setup_wizard()
 
 
+@app.command("verify-email")
+def verify_email_cmd():
+    """Email yourself a verification link. Verifying your email is what joins
+    you to your company's workspace, if one exists for your email domain."""
+    _require_auth()
+    with _client() as c:
+        try:
+            result = c.resend_verification_email()
+        except StashError as e:
+            _err(e)
+    console.print(
+        f"  [green]✓[/green] Verification link sent to [bold]{result['sent_to']}[/bold] — "
+        "click it and you're done."
+    )
+
+
 @app.command("connect")
 def connect_cmd():
     """Add Stash instructions to this folder's CLAUDE.md and enable session uploads."""
@@ -5490,8 +5506,8 @@ def workspace_list(as_json: bool = typer.Option(False, "--json")):
     for ws in pending:
         console.print(
             f"  [yellow]{ws['name']}[/yellow]  [dim]{ws['domain']}[/dim]  "
-            "[yellow]— locked until your email is verified: sign in with Google/OAuth "
-            "([cyan]stash signin[/cyan] after signing out on the website)[/yellow]"
+            "[yellow]— joins once your email is verified: run "
+            "[cyan]stash verify-email[/cyan] and click the link we send[/yellow]"
         )
     if not workspaces and not pending:
         console.print(
@@ -5535,9 +5551,9 @@ def workspace_switch(
         )
         if pending:
             console.print(
-                f"[red]Error:[/red] '{pending['name']}' matches your email domain, but your "
-                "email isn't verified, so membership is locked. Sign in with Google/OAuth "
-                "to verify it, then try again."
+                f"[red]Error:[/red] '{pending['name']}' matches your email domain — you'll "
+                "join it as soon as your email is verified. Run [cyan]stash verify-email[/cyan], "
+                "click the link we send, then try again."
             )
             raise typer.Exit(1)
         known = ", ".join(ws["name"] for ws in workspaces) or "(none)"
