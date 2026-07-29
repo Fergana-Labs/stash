@@ -4640,8 +4640,8 @@ def _run_setup_wizard() -> None:
     repo_root = _git_toplevel() or Path.cwd()
     _reserve_bottom_padding(4)
     connect = questionary.confirm(
-        f"Point agents in this folder ({repo_root.name}) at Stash? "
-        "(writes .stash and a CLAUDE.md section)",
+        f"Add Stash instructions to CLAUDE.md in {repo_root.name}, so agents "
+        "working there know how to use Stash?",
         default=True,
     ).ask()
     if connect is None:
@@ -4668,7 +4668,7 @@ def setup_cmd():
 
 @app.command("connect")
 def connect_cmd():
-    """Point agents in this folder at Stash and stream its sessions to your scope."""
+    """Add Stash instructions to this folder's CLAUDE.md and enable session uploads."""
     cfg = _require_auth()
     telemetry.record("connect")
 
@@ -4903,9 +4903,9 @@ def _setup_complete_intro(home_url: str, connected: bool, recording: bool) -> st
     connect_section = (
         ""
         if connected
-        else "\n\n[bold]Point a project at Stash[/bold]\n"
-        "Run [cyan]stash connect[/cyan] from any project folder (git repo or not) so\n"
-        "agents working there know to use your Stash."
+        else "\n\n[bold]Set up a project[/bold]\n"
+        "Run [cyan]stash connect[/cyan] in a project folder to add Stash instructions\n"
+        "to its CLAUDE.md — agents working there will know how to use your Stash."
     )
     return (
         "[bold]What just happened[/bold]\n"

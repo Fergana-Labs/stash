@@ -5,7 +5,7 @@ def test_setup_complete_intro_prompts_connect_when_not_connected() -> None:
     intro = main._setup_complete_intro("http://localhost:3457", connected=False, recording=True)
 
     assert "stash connect" in intro
-    assert "git repo or not" in intro
+    assert "CLAUDE.md" in intro
 
 
 def test_setup_complete_intro_omits_connect_prompt_when_connected() -> None:
