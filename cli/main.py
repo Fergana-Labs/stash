@@ -14,6 +14,7 @@ from pathlib import Path
 
 import httpx
 import questionary
+import questionary.prompts.common
 import typer
 from rich.align import Align
 from rich.panel import Panel
@@ -45,6 +46,15 @@ from .config import (
     write_manifest,
 )
 from .formatting import console, output_json, print_user
+
+# questionary's checkbox marks checked rows with ●/reverse-video, which reads
+# as a cursor highlight rather than "this agent is enabled". There is no
+# parameter for the tick marks — these module constants are the only knob.
+questionary.prompts.common.INDICATOR_SELECTED = "[x]"
+questionary.prompts.common.INDICATOR_UNSELECTED = "[ ]"
+
+# Checked rows: green instead of the default reverse-video block.
+CHECKBOX_STYLE = questionary.Style([("selected", "fg:#16a34a noreverse")])
 
 app = typer.Typer(
     name="stash",
@@ -4534,6 +4544,7 @@ def _run_setup_wizard() -> None:
             selected = questionary.checkbox(
                 "Which coding agents should Stash record?",
                 instruction="(space toggles an agent, enter saves the whole set)",
+                style=CHECKBOX_STYLE,
                 choices=[
                     questionary.Choice(
                         _AGENT_LABEL.get(a, a),
@@ -5082,6 +5093,7 @@ def settings_cmd(as_json: bool = typer.Option(False, "--json")):
             selected = questionary.checkbox(
                 "Which coding agents should stream to Stash?",
                 instruction="(space toggles an agent, enter saves the whole set)",
+                style=CHECKBOX_STYLE,
                 choices=[
                     questionary.Choice(
                         _AGENT_LABEL.get(a, a),
