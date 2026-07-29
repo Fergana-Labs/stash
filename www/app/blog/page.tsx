@@ -16,6 +16,13 @@ type Post = {
 
 const POSTS: Post[] = [
   {
+    title: "Open Questions in Memory, and Our Predictions",
+    blurb:
+      "The questions we argue about most with others building memory — labs vs startups, weight vs token space, retrieval vs blast radius, benchmarks — and where we think each one lands.",
+    href: "/blog/open-questions-in-memory",
+    author: "Sam Liu",
+  },
+  {
     title: "Giving yourself superpowers: Advice on building a simple company brain",
     blurb:
       "An opinionated take on the right way to build a company brain — integrations, retrieval, memory, and privacy — so your AI agents can do real knowledge work.",
