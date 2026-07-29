@@ -714,6 +714,9 @@ def _dir_content_matches(src: Path, dest: Path) -> bool:
     return True
 
 
+_OPENCLAW_MIN_VERSION = (2026, 4, 0)
+
+
 def _install_openclaw(force: bool) -> tuple[str, str]:
     import subprocess
 
@@ -721,6 +724,24 @@ def _install_openclaw(force: bool) -> tuple[str, str]:
     ext_dir = _openclaw_extension_dir()
     if ext_dir.is_dir() and _dir_content_matches(root, ext_dir):
         return ("skipped", f"{ext_dir}")
+
+    # The stash extension needs openclaw >= 2026.4.0 (its plugin-sdk layout
+    # and the install flags below). Older CLIs die with "unknown option
+    # '--force'", which tells the user nothing — name the real problem.
+    version_out = subprocess.run(
+        ["openclaw", "--version"], capture_output=True, text=True, timeout=30
+    )
+    match = re.search(r"\b(\d{4})\.(\d+)\.(\d+)\b", version_out.stdout)
+    if match:
+        version = tuple(int(g) for g in match.groups())
+        if version < _OPENCLAW_MIN_VERSION:
+            installed = ".".join(str(v) for v in version)
+            needed = ".".join(str(v) for v in _OPENCLAW_MIN_VERSION)
+            return (
+                "failed",
+                f"openclaw {installed} is older than {needed}, which the stash "
+                "extension needs — upgrade openclaw, then re-run stash setup",
+            )
 
     # --dangerously-force-unsafe-install: openclaw's code scanner blocks any
     # plugin that spawns processes, and piping hook events into the stashai
