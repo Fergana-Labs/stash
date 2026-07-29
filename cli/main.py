@@ -14,7 +14,6 @@ from pathlib import Path
 
 import httpx
 import questionary
-import questionary.prompts.common
 import typer
 from rich.align import Align
 from rich.panel import Panel
@@ -46,15 +45,6 @@ from .config import (
     write_manifest,
 )
 from .formatting import console, output_json, print_user
-
-# questionary's checkbox marks checked rows with ●/reverse-video, which reads
-# as a cursor highlight rather than "this agent is enabled". There is no
-# parameter for the tick marks — these module constants are the only knob.
-questionary.prompts.common.INDICATOR_SELECTED = "[x]"
-questionary.prompts.common.INDICATOR_UNSELECTED = "[ ]"
-
-# Checked rows: green instead of the default reverse-video block.
-CHECKBOX_STYLE = questionary.Style([("selected", "fg:#16a34a noreverse")])
 
 app = typer.Typer(
     name="stash",
@@ -4370,6 +4360,84 @@ _AGENT_LABEL = {
 }
 
 
+def _pick_agents(message: str, agents: list[str], checked: list[str]) -> list[str] | None:
+    """Agent multi-select where enter (or space) toggles the highlighted agent
+    and a Done row submits — enter never means "save" while pointing at an
+    agent. Custom prompt_toolkit widget because questionary's checkbox
+    hard-binds enter to submit. Returns None if dismissed with Ctrl-C."""
+    from prompt_toolkit.application import Application
+    from prompt_toolkit.key_binding import KeyBindings
+    from prompt_toolkit.layout import Layout, Window
+    from prompt_toolkit.layout.controls import FormattedTextControl
+    from prompt_toolkit.styles import Style
+
+    selected = set(checked)
+    row = 0
+    done_row = len(agents)
+
+    def fragments():
+        lines = [
+            ("class:qmark", "? "),
+            ("class:question", message),
+            ("class:instruction", "  (enter toggles an agent, Done saves)\n"),
+        ]
+        for i, agent in enumerate(agents):
+            box = "[x]" if agent in selected else "[ ]"
+            label = _AGENT_LABEL.get(agent, agent)
+            lines.append(("class:pointer", " » " if row == i else "   "))
+            lines.append(("class:checked" if agent in selected else "", f"{box} {label}\n"))
+        lines.append(("class:pointer", " » " if row == done_row else "   "))
+        lines.append(("bold", "Done"))
+        return lines
+
+    kb = KeyBindings()
+
+    @kb.add("up")
+    def _up(event):
+        nonlocal row
+        row = (row - 1) % (done_row + 1)
+
+    @kb.add("down")
+    def _down(event):
+        nonlocal row
+        row = (row + 1) % (done_row + 1)
+
+    @kb.add("enter")
+    @kb.add(" ")
+    def _toggle_or_submit(event):
+        if row == done_row:
+            event.app.exit(result=[a for a in agents if a in selected])
+            return
+        agent = agents[row]
+        if agent in selected:
+            selected.remove(agent)
+        else:
+            selected.add(agent)
+
+    @kb.add("c-c")
+    def _abort(event):
+        event.app.exit(result=None)
+
+    picker = Application(
+        layout=Layout(Window(FormattedTextControl(fragments), height=len(agents) + 2)),
+        key_bindings=kb,
+        erase_when_done=True,
+        style=Style(
+            [
+                ("qmark", "fg:#5f819d"),
+                ("question", "bold"),
+                ("instruction", "fg:#858585"),
+                ("checked", "fg:#16a34a"),
+            ]
+        ),
+    )
+    result = picker.run()
+    if result is not None:
+        labels = ", ".join(_AGENT_LABEL.get(a, a) for a in result) or "none"
+        console.print(f"[bold]?[/bold] {message}  [#FF9D00]{labels}[/#FF9D00]")
+    return result
+
+
 def _install_all_hooks(agents: list[str] | None = None) -> None:
     """Install/upgrade hooks for the given agents (defaults to all detected)."""
     detected = _detected_agents()
@@ -4541,19 +4609,9 @@ def _run_setup_wizard() -> None:
             default_enabled = enabled if enabled is not None else detected
 
             _reserve_bottom_padding(len(detected) + 4)
-            selected = questionary.checkbox(
-                "Which coding agents should Stash record?",
-                instruction="(space toggles an agent, enter saves the whole set)",
-                style=CHECKBOX_STYLE,
-                choices=[
-                    questionary.Choice(
-                        _AGENT_LABEL.get(a, a),
-                        value=a,
-                        checked=a in default_enabled,
-                    )
-                    for a in detected
-                ],
-            ).ask()
+            selected = _pick_agents(
+                "Which coding agents should Stash record?", detected, default_enabled
+            )
             if selected is None:
                 raise typer.Exit(1)
 
@@ -5090,19 +5148,9 @@ def settings_cmd(as_json: bool = typer.Option(False, "--json")):
 
         if picked == "enabled_agents":
             current_enabled = enabled if enabled is not None else detected
-            selected = questionary.checkbox(
-                "Which coding agents should stream to Stash?",
-                instruction="(space toggles an agent, enter saves the whole set)",
-                style=CHECKBOX_STYLE,
-                choices=[
-                    questionary.Choice(
-                        _AGENT_LABEL.get(a, a),
-                        value=a,
-                        checked=a in current_enabled,
-                    )
-                    for a in detected
-                ],
-            ).ask()
+            selected = _pick_agents(
+                "Which coding agents should stream to Stash?", detected, current_enabled
+            )
             if selected is not None:
                 save_enabled_agents(selected)
                 _install_all_hooks(selected)
