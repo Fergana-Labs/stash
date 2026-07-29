@@ -47,6 +47,52 @@ async def test_curator_cannot_be_deleted(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_curator_schedule_turns_off_and_back_on(client: AsyncClient, _db_pool):
+    """The off switch for users who curate locally (e.g. Chainbase): run_mode
+    'chat' takes the curator out of the beat's pickup so the nightly cloud run
+    can't fire mid-work, while the watermark survives so nothing un-curated is
+    lost when the schedule comes back on."""
+    key, uid = await _register(client)
+    curator = await agent_service.get_or_create_curator(uid)
+
+    r = await client.patch(
+        f"/api/v1/me/agents/{curator['id']}", json={"run_mode": "chat"}, headers=_auth(key)
+    )
+    assert r.status_code == 200
+    off = r.json()
+    assert off["run_mode"] == "chat"
+    # The cron baseline clears; the delta watermark stays.
+    assert off["last_run_at"] is None
+    assert datetime.fromisoformat(off["curated_through"]) == curator["curated_through"]
+    assert curator["id"] not in {a["id"] for a in await agent_service.list_scheduled()}
+
+    r = await client.patch(
+        f"/api/v1/me/agents/{curator['id']}", json={"run_mode": "scheduled"}, headers=_auth(key)
+    )
+    assert r.status_code == 200
+    on = r.json()
+    assert on["run_mode"] == "scheduled"
+    # Baseline re-seeds to now, so the schedule resumes at the next cron tick
+    # rather than firing immediately for the paused window.
+    assert on["last_run_at"] is not None
+    assert curator["id"] in {a["id"] for a in await agent_service.list_scheduled()}
+
+
+@pytest.mark.asyncio
+async def test_curator_only_run_mode_is_editable(client: AsyncClient):
+    """The curator is reserved: its staggered cron, name, and prompt are
+    Stash-managed. A PATCH touching anything but run_mode is refused."""
+    key, uid = await _register(client)
+    curator = await agent_service.get_or_create_curator(uid)
+    r = await client.patch(
+        f"/api/v1/me/agents/{curator['id']}",
+        json={"schedule_cron": "0 9 * * *"},
+        headers=_auth(key),
+    )
+    assert r.status_code == 400
+
+
+@pytest.mark.asyncio
 async def test_curator_provisioned_at_signup(client: AsyncClient):
     """Every account gets sleep-time curation from day one — including
     API-key-only production integrations that never touch chat or channels."""
@@ -483,6 +529,13 @@ async def test_recompute_runs_curator_now(client: AsyncClient, sprite_exec, _db_
     key, uid = await _register(client)
     await client.post(
         "/api/v1/me/pages/new", json={"name": "N", "content": "x"}, headers=_auth(key)
+    )
+
+    # On-demand runs are independent of the nightly switch: a user who turned
+    # the schedule off (curating locally) can still trigger a cloud pass.
+    curator = await agent_service.get_or_create_curator(uid)
+    await client.patch(
+        f"/api/v1/me/agents/{curator['id']}", json={"run_mode": "chat"}, headers=_auth(key)
     )
 
     started = []

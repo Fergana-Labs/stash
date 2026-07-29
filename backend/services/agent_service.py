@@ -168,6 +168,15 @@ async def create_agent(user_id: UUID, fields: dict) -> dict:
 
 async def update_agent(user_id: UUID, agent_id: UUID, fields: dict) -> dict:
     current = await get_agent(user_id, agent_id)
+    # The curator is a reserved system agent — its name, prompt, and staggered
+    # cron are managed by Stash. The one user decision is whether the nightly
+    # cloud run happens at all: run_mode 'scheduled' (on) or 'chat' (off, e.g.
+    # when curating locally). Off keeps on-demand runs working.
+    if current["is_curator"] and set(fields) - {"run_mode"}:
+        raise HTTPException(
+            status_code=400,
+            detail="only run_mode can change on the Memory curator (its schedule on/off switch)",
+        )
     merged = {**current, **fields}
     _validate(
         merged.get("model_provider"), merged.get("run_mode", "chat"), merged.get("schedule_cron")

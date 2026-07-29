@@ -386,6 +386,12 @@ class StashClient:
         agents = self._get("/api/v1/me/agents")["agents"]
         return next((a for a in agents if a["is_curator"]), None)
 
+    def set_curator_scheduled(self, agent_id: str, scheduled: bool) -> dict:
+        """Turn the curator's nightly cloud run on or off. Off keeps on-demand
+        runs (--recompute) working — it only stops the schedule."""
+        run_mode = "scheduled" if scheduled else "chat"
+        return self._patch(f"/api/v1/me/agents/{agent_id}", json={"run_mode": run_mode})
+
     # --- Pages (user-scoped) ---
 
     def create_page(
