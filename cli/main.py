@@ -41,6 +41,7 @@ from .config import (
     start_streaming,
     stop_streaming,
     stored_base_url,
+    streaming_stopped,
     write_manifest,
 )
 from .formatting import console, output_json, print_user
@@ -432,15 +433,16 @@ def _ask_codex_network_access() -> bool:
     """Prompt the user to enable top-level `network_access` for codex's
     workspace-write sandbox."""
     console.print(
-        "For stash to work on codex specifically, we need to let bash ",
-        "commands make network requests so that we can upload session ",
-        "transcripts to the remote server.",
+        "For stash to work on codex specifically, we need to let bash "
+        "commands make network requests so that we can upload session "
+        "transcripts to the remote server."
     )
     answer = questionary.confirm(
         "Allow codex bash commands to make outbound network requests?",
         default=True,
     ).ask()
-    return True if answer is None else bool(answer)
+    # Dismissing the prompt (Esc/Ctrl-C) must not grant network access.
+    return bool(answer)
 
 
 def _merge_snippet_into_toml(existing: str, snippet: str) -> tuple[str, str]:
@@ -4226,36 +4228,6 @@ def _reserve_bottom_padding(lines: int = 4) -> None:
     sys.stdout.flush()
 
 
-def _self_host_walkthrough(cfg: dict) -> str:
-    """Walk the user through standing up a local Stash instance, then return its URL."""
-    console.print("\n[bold cyan]Self-hosting Stash[/bold cyan]\n")
-    console.print("You'll need [bold]Docker[/bold] installed.  https://docker.com/get-started\n")
-    console.print("Run these commands in a separate terminal:\n")
-    console.print(
-        "  [dim]1.[/dim] [cyan]git clone https://github.com/Fergana-Labs/stash.git[/cyan]"
-    )
-    console.print("  [dim]2.[/dim] [cyan]cd stash[/cyan]")
-    console.print("  [dim]3.[/dim] [cyan]cp .env.example .env[/cyan]")
-    console.print(
-        "  [dim]4.[/dim] edit [cyan].env[/cyan] and [cyan]Caddyfile[/cyan] for your domain"
-    )
-    console.print("  [dim]5.[/dim] [cyan]docker compose -f docker-compose.prod.yml up -d[/cyan]")
-    console.print("\n  [dim]Already running? Skip to the URL prompt below.[/dim]\n")
-
-    _reserve_bottom_padding(6)
-    ready = questionary.confirm("Is your instance running?", default=True).ask()
-    if ready is None or not ready:
-        console.print(
-            "\n[yellow]No problem — run [bold]stash connect[/bold] again when ready.[/yellow]"
-        )
-        raise typer.Exit(0)
-
-    current_url = cfg.get("base_url", "http://localhost:3456")
-    managed_hosts = ("https://joinstash.ai", "https://www.joinstash.ai", "https://api.joinstash.ai")
-    default_url = "http://localhost:3456" if current_url in managed_hosts else current_url
-    return typer.prompt("URL of your instance", default=default_url).rstrip("/")
-
-
 def _derive_display_name() -> str:
     """Pick a display name with zero interaction: git config → $USER → fallback."""
     import os
@@ -4286,7 +4258,10 @@ def _require_auth() -> dict:
 
 
 def _auto_connect_repo(repo_root: Path, cfg: dict) -> None:
-    """Connect a repo to Stash: write `.stash`, enable streaming, append CLAUDE.md."""
+    """Write `.stash` and append Stash context to CLAUDE.md in `repo_root`.
+
+    Works in any folder — a git repo is not required. Does not touch the
+    global streaming toggle; callers decide that."""
     manifest_path = repo_root / MANIFEST_FILE
 
     if manifest_path.is_file():
@@ -4302,14 +4277,13 @@ def _auto_connect_repo(repo_root: Path, cfg: dict) -> None:
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
     console.print(f"  Wrote [cyan]{MANIFEST_FILE}[/cyan]")
 
-    start_streaming()
-
     _append_claude_md(repo_root)
 
-    console.print(
-        f"\n  Commit [cyan]{MANIFEST_FILE}[/cyan] and [cyan]CLAUDE.md[/cyan] and push. "
-        "Teammates will start streaming automatically."
-    )
+    if _git_toplevel(repo_root):
+        console.print(
+            f"\n  Commit [cyan]{MANIFEST_FILE}[/cyan] and [cyan]CLAUDE.md[/cyan] and push. "
+            "Teammates will start streaming automatically."
+        )
 
 
 def _append_claude_md(repo_root: Path) -> None:
@@ -4444,10 +4418,10 @@ def signin(
 ):
     """Sign in to Stash through the browser.
 
-    Run interactively for guided first-run setup (endpoint, streaming agents,
-    repo). With --non-interactive — or whenever stdin isn't a terminal — it
-    skips the wizard and just authenticates, which is the path installers and
-    agents use. The browser opens automatically when one is available, and
+    Run interactively for guided first-run setup (session recording, agent
+    hooks, folder context) — re-runnable later via `stash setup`. With
+    --non-interactive — or whenever stdin isn't a terminal — it skips the
+    wizard and just authenticates, which is the path installers and agents use. The browser opens automatically when one is available, and
     otherwise a URL is printed to visit. For a fully unattended, browser-less
     machine, pass --api-key to store a pre-minted key directly (no handshake).
     """
@@ -4486,34 +4460,15 @@ def signin(
     cfg = load_config()
 
     # --- Step 1: API endpoint ---
-    prev_base = api or stored_base_url()
-    if prev_base:
-        base_url = prev_base
-        save_config(base_url=base_url)
-        console.print(f"  [green]✓[/green] Using endpoint: [bold]{base_url}[/bold]")
+    # Managed by default; self-hosters point at their instance with --api.
+    base_url = api or stored_base_url() or PRODUCTION_BASE_URL
+    save_config(base_url=base_url)
+    if base_url == PRODUCTION_BASE_URL:
+        console.print(
+            "  [dim]Self-hosting? Re-run with[/dim] stash signin --api <your-instance-url>"
+        )
     else:
-        mode_options = [
-            ("Managed", "hosted by Stash", "managed"),
-            ("Self-host", "run on your own machine", "self"),
-        ]
-        mode_label_w = max(len(label) for label, _, _ in mode_options)
-        _reserve_bottom_padding(8)
-        mode = questionary.select(
-            "Do you want to use managed Stash or self-host?",
-            choices=[
-                questionary.Choice(f"{label:<{mode_label_w}}   ({desc})", value=value)
-                for label, desc, value in mode_options
-            ],
-            use_shortcuts=True,
-        ).ask()
-        if mode is None:
-            raise typer.Exit(1)
-
-        if mode == "managed":
-            base_url = PRODUCTION_BASE_URL
-        else:
-            base_url = _self_host_walkthrough(cfg)
-        save_config(base_url=base_url)
+        console.print(f"  [green]✓[/green] Using endpoint: [bold]{base_url}[/bold]")
 
     # --- Step 2: Auth ---
     has_key = bool(cfg.get("api_key"))
@@ -4540,104 +4495,98 @@ def signin(
     # Returning user — just re-auth, no wizard
     if has_key:
         _install_all_hooks(load_enabled_agents())
-        console.print("\n  Run [cyan]stash settings[/cyan] to change agents or endpoint.")
+        console.print(
+            "\n  Run [cyan]stash setup[/cyan] to redo setup, or "
+            "[cyan]stash settings[/cyan] to change agents or endpoint."
+        )
         return
 
-    # --- Step 3: Share transcripts? ---
+    _run_setup_wizard()
+
+
+def _run_setup_wizard() -> None:
+    """First-run setup: session recording, agent hooks, folder context, history
+    import. Re-runnable anytime via `stash setup` — no answer here is final."""
+    cfg = load_config()
+
+    # --- Session recording ---
+    console.print(
+        "\nStash records your coding agent sessions to your private Stash so you\n"
+        "and your agents can search them later. Transcripts are visible only to\n"
+        "you unless you share them."
+    )
     _reserve_bottom_padding(4)
-    share_transcripts = questionary.confirm(
-        "Do you want to share your coding agent transcripts to Stash?",
+    record = questionary.confirm(
+        "Record your agent sessions? (pause anytime with `stash stop`)",
         default=True,
     ).ask()
-    if share_transcripts is None:
+    if record is None:
         raise typer.Exit(1)
 
-    if not share_transcripts:
-        _show_setup_complete_splash()
-        return
-
-    # --- Step 4: Agent detection + hook installation ---
     detected = _detected_agents()
-    if detected:
-        enabled = load_enabled_agents()
-        default_enabled = enabled if enabled is not None else detected
-
-        _reserve_bottom_padding(len(detected) + 4)
-        selected = questionary.checkbox(
-            "What coding agents do you want Stash to work on?",
-            choices=[
-                questionary.Choice(
-                    _AGENT_LABEL.get(a, a),
-                    value=a,
-                    checked=a in default_enabled,
-                )
-                for a in detected
-            ],
-        ).ask()
-        if selected is None:
-            raise typer.Exit(1)
-
-        save_enabled_agents(selected)
-        _install_all_hooks(selected)
-    else:
-        save_enabled_agents([])
-
-    # --- Step 5: Which repo? ---
-    # Outside a git repo, treat the current directory as the repo root: the
-    # .stash manifest lands there.
-    repo_root = _git_toplevel() or Path.cwd()
-
-    repo_choices = [
-        questionary.Choice(f"This repo ({repo_root.name})", value="this"),
-        questionary.Choice("Another repo", value="other"),
-        questionary.Choice("Done", value="done"),
-    ]
-    _reserve_bottom_padding(6)
-    answer = questionary.select(
-        "Which repo do you want to upload transcripts in?",
-        choices=repo_choices,
-        default=repo_choices[0],
-        use_shortcuts=True,
-    ).ask()
-    if answer is None:
-        raise typer.Exit(1)
-
-    if answer == "this":
-        try:
-            _auto_connect_repo(repo_root, cfg)
-        except StashError as e:
-            console.print(f"[red]Could not connect repo: {e.detail}[/red]")
-    elif answer == "other":
-        _reserve_bottom_padding(4)
-        repo_path = typer.prompt("Path to repo").strip()
-        target = Path(repo_path).expanduser().resolve()
-        target_root = _git_toplevel(target)
-        if not target_root:
-            console.print(f"[red]{repo_path} is not a git repo.[/red]")
+    if record:
+        start_streaming()
+        if detected:
+            save_enabled_agents(detected)
+            _install_all_hooks(detected)
+            labels = ", ".join(_AGENT_LABEL.get(a, a) for a in detected)
+            console.print(
+                f"  [green]✓[/green] Recording sessions from: [bold]{labels}[/bold]\n"
+                "    [dim]Change agents with stash settings[/dim]"
+            )
         else:
-            try:
-                _auto_connect_repo(target_root, cfg)
-            except StashError as e:
-                console.print(f"[red]Could not connect repo: {e.detail}[/red]")
+            save_enabled_agents([])
+            console.print(
+                "  [yellow]No coding agents found on this machine, so nothing will be\n"
+                "  recorded yet. Re-run [bold]stash setup[/bold] after installing one\n"
+                "  (Claude Code, Codex, Cursor, opencode, Gemini CLI…).[/yellow]"
+            )
+    else:
+        stop_streaming()
+        console.print(
+            "  Recording is off. Turn it on later with [cyan]stash setup[/cyan] "
+            "or [cyan]stash start[/cyan]."
+        )
 
-    # --- Step 6: Import historical conversations ---
-    _onboarding_import_history(detected)
+    # --- Folder context (any folder works — git repo not required) ---
+    repo_root = _git_toplevel() or Path.cwd()
+    _reserve_bottom_padding(4)
+    connect = questionary.confirm(
+        f"Point agents in this folder ({repo_root.name}) at Stash? "
+        "(writes .stash and a CLAUDE.md section)",
+        default=True,
+    ).ask()
+    if connect is None:
+        raise typer.Exit(1)
+    if connect:
+        _auto_connect_repo(repo_root, cfg)
+    else:
+        console.print("  [dim]Run stash connect from any project folder later.[/dim]")
+
+    # --- Import historical conversations ---
+    if record:
+        _onboarding_import_history(detected)
 
     _show_setup_complete_splash()
 
 
+@app.command("setup")
+def setup_cmd():
+    """Re-run the setup wizard: session recording, agent hooks, folder context."""
+    _require_auth()
+    telemetry.record("setup")
+    _run_setup_wizard()
+
+
 @app.command("connect")
 def connect_cmd():
-    """Connect this repo to Stash so its agent sessions stream to your scope."""
+    """Point agents in this folder at Stash and stream its sessions to your scope."""
     cfg = _require_auth()
     telemetry.record("connect")
 
-    repo_root = _git_toplevel()
-    if not repo_root:
-        console.print("[red]Not inside a git repo.[/red]")
-        raise typer.Exit(1)
-
+    repo_root = _git_toplevel() or Path.cwd()
     _auto_connect_repo(repo_root, cfg)
+    start_streaming()
 
 
 @app.command("start")
@@ -4657,7 +4606,7 @@ def stop_cmd():
 
 
 # ===========================================================================
-# Repo-level enablement: invoked from `stash connect`; toggled via enable/disable
+# Folder connection: `.stash` manifest + CLAUDE.md context, via `stash connect`
 # ===========================================================================
 
 
@@ -4849,40 +4798,36 @@ def _onboarding_import_history(detected_agents: list[str]) -> None:
                 last_error = str(e)
             progress.advance(task)
 
-    console.print(f"  [green]��[/green] Imported {imported} conversations")
+    console.print(f"  [green]✓[/green] Imported {imported} conversations")
     if errors:
         console.print(f"  [yellow]{errors} failed — {last_error}[/yellow]")
 
 
-def _setup_complete_intro(home_url: str, connected: bool) -> str:
-    home_link_section = (
-        "[bold]See your Stash[/bold]   [dim](transcripts and activity)[/dim]\n"
-        f"  [link={home_url}][bold #1e3a8a]{home_url}[/bold #1e3a8a][/link]\n"
-        "\n"
-        if connected
-        else ""
+def _setup_complete_intro(home_url: str, connected: bool, recording: bool) -> str:
+    recording_section = (
+        "[bold]You're recording[/bold]\n"
+        "This machine's agent sessions upload to your private Stash.\n"
+        "[dim]Pause with stash stop · exclude folders in stash settings[/dim]"
+        if recording
+        else "[bold]Recording is off[/bold]\n"
+        "Turn it on anytime with [cyan]stash start[/cyan] or [cyan]stash setup[/cyan]."
     )
-    memory_section = (
-        "It can read the transcripts your coding agents push to Stash — so it\n"
-        "knows what you've been working on.\n"
-        "\n"
+    connect_section = (
+        ""
         if connected
-        else "No repo is connected yet. Run [cyan]stash connect[/cyan] from a git repo when\n"
-        "you're ready to upload transcripts.\n"
-        "\n"
-    )
-    next_section = (
-        "[bold]You're streaming[/bold]\n"
-        "This repo's agent sessions now upload to your Stash automatically."
-        if connected
-        else "[bold]Connect a repo when ready[/bold]\n"
-        "Run [cyan]stash connect[/cyan] from the repo you want Stash to remember."
+        else "\n\n[bold]Point a project at Stash[/bold]\n"
+        "Run [cyan]stash connect[/cyan] from any project folder (git repo or not) so\n"
+        "agents working there know to use your Stash."
     )
     return (
         "[bold]What just happened[/bold]\n"
         "Your coding agent now has the [bold #1e3a8a]stash[/bold #1e3a8a] CLI on its PATH.\n"
-        f"{memory_section}"
-        f"{home_link_section}"
+        "Recording transcripts is one part of Stash — your agents can also search,\n"
+        "browse, upload, and share files, sessions, and connected sources.\n"
+        "\n"
+        "[bold]See your Stash[/bold]\n"
+        f"  [link={home_url}][bold #1e3a8a]{home_url}[/bold #1e3a8a][/link]\n"
+        "\n"
         "[bold]Commands your agent can now use[/bold]\n"
         '  [#1e3a8a]stash vfs "find / -maxdepth 3 -type f"[/#1e3a8a]   browse Stash like a filesystem\n'
         '  [#1e3a8a]stash search "<query>"[/#1e3a8a]   full-text search across files, sessions, and sources\n'
@@ -4890,24 +4835,27 @@ def _setup_complete_intro(home_url: str, connected: bool) -> str:
         "\n"
         "Run [bold]stash --help[/bold] to see everything.\n"
         "\n"
-        f"{next_section}"
+        f"{recording_section}"
+        f"{connect_section}"
     )
 
 
 def _show_setup_complete_splash() -> None:
-    """Show a clean success splash after first-run login."""
-    console.clear()
+    """Show a success splash after first-run login. Never clears the screen —
+    errors printed by earlier steps must stay visible."""
     octopus = textwrap.dedent(STASH_OCTOPUS.strip("\n"))
     logo = textwrap.dedent(STASH_LOGO.strip("\n"))
+    console.print()
     console.print(Align.center(Text.from_markup(f"[bold #F97316]{octopus}[/bold #F97316]")))
     console.print()
     console.print(Align.center(Text.from_markup(f"[bold #1e3a8a]{logo}[/bold #1e3a8a]")))
     console.print("  [bold green]You're all set up.[/bold green]\n")
 
     connected = load_manifest() is not None
+    recording = not streaming_stopped()
     console.print(
         Panel(
-            Text.from_markup(_setup_complete_intro(_home_url(), connected)),
+            Text.from_markup(_setup_complete_intro(_home_url(), connected, recording)),
             title="[bold #1e3a8a]Your agent memory[/bold #1e3a8a]",
             border_style="#1e3a8a",
             padding=(1, 2),
@@ -5119,6 +5067,7 @@ def settings_cmd(as_json: bool = typer.Option(False, "--json")):
             current_enabled = enabled if enabled is not None else detected
             selected = questionary.checkbox(
                 "Which coding agents should stream to Stash?",
+                instruction="(space toggles an agent, enter saves the whole set)",
                 choices=[
                     questionary.Choice(
                         _AGENT_LABEL.get(a, a),
