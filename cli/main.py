@@ -4833,11 +4833,109 @@ def _run_setup_wizard() -> None:
 
 
 @app.command("setup")
-def setup_cmd():
-    """Re-run the setup wizard: session recording, agent hooks, folder context."""
+def setup_cmd(
+    record: bool | None = typer.Option(
+        None,
+        "--record/--no-record",
+        help="Record agent sessions on this machine (headless mode).",
+    ),
+    agents: str | None = typer.Option(
+        None,
+        "--agents",
+        help="Comma-separated agents to record, e.g. claude,codex. Requires --record.",
+    ),
+    connect: bool | None = typer.Option(
+        None,
+        "--connect/--no-connect",
+        help="Add Stash instructions to CLAUDE.md in the current folder (headless mode).",
+    ),
+    import_history: bool | None = typer.Option(
+        None,
+        "--import-history/--no-import-history",
+        help="Import historical conversations in the background. Requires --record.",
+    ),
+):
+    """Run the setup wizard: session recording, agent hooks, folder context.
+
+    Interactive in a terminal. With any flag — or whenever stdin isn't a
+    TTY — it runs headless instead, and every decision must arrive as a
+    flag. That is the path coding agents drive: ask the setup questions in
+    conversation, then run one deterministic command.
+    """
     _require_auth()
     telemetry.record("setup")
-    _run_setup_wizard()
+
+    headless = (
+        any(v is not None for v in (record, agents, connect, import_history))
+        or not sys.stdin.isatty()
+    )
+    if not headless:
+        _run_setup_wizard()
+        return
+
+    missing = []
+    if record is None:
+        missing.append("--record/--no-record")
+    if connect is None:
+        missing.append("--connect/--no-connect")
+    if record:
+        if agents is None:
+            missing.append("--agents")
+        if import_history is None:
+            missing.append("--import-history/--no-import-history")
+    if missing:
+        console.print(
+            "[red]Headless setup needs every decision as an explicit flag. "
+            f"Missing: {', '.join(missing)}[/red]"
+        )
+        raise typer.Exit(1)
+    if not record and (agents is not None or import_history):
+        console.print("[red]--agents and --import-history require --record.[/red]")
+        raise typer.Exit(1)
+
+    _run_setup_headless(record, agents, connect, import_history)
+
+
+def _run_setup_headless(
+    record: bool, agents_csv: str | None, connect: bool, import_history: bool | None
+) -> None:
+    """Non-interactive setup: every wizard decision arrives pre-answered.
+
+    Terse ✓-per-step output and no splash — the caller is a coding agent
+    relaying to a user, not a person at a terminal."""
+    cfg = load_config()
+
+    if record:
+        detected = _detected_agents()
+        selected = [a.strip() for a in agents_csv.split(",") if a.strip()]
+        unknown = sorted(set(selected) - set(detected))
+        if not selected or unknown:
+            what = f"not detected on this machine: {', '.join(unknown)}" if unknown else "empty"
+            console.print(
+                f"[red]--agents is {what}. Detected agents: {', '.join(detected) or 'none'}.[/red]"
+            )
+            raise typer.Exit(1)
+        start_streaming()
+        save_enabled_agents(selected)
+        _install_all_hooks(selected)
+        console.print(f"  [green]✓[/green] Recording on for: {', '.join(selected)}")
+    else:
+        stop_streaming()
+        console.print("  [green]✓[/green] Recording off")
+
+    if connect:
+        _auto_connect_repo(_git_toplevel() or Path.cwd(), cfg)
+    else:
+        console.print("  [green]✓[/green] Folder context skipped")
+
+    if import_history:
+        from .import_history import discover_conversations
+
+        conversations = discover_conversations(selected)
+        if conversations:
+            _spawn_history_import(len(conversations))
+        else:
+            console.print("  No historical conversations found.")
 
 
 @app.command("connect")
@@ -5042,13 +5140,31 @@ def _write_import_status(total: int, done: int, errors: int, finished: bool) -> 
     os.replace(tmp, IMPORT_STATUS_FILE)
 
 
-def _onboarding_import_history(detected_agents: list[str]) -> None:
-    """Offer to import historical conversations during onboarding.
-
-    The import itself runs as a detached `stash import-history` process —
-    thousands of uploads must not hold the wizard hostage."""
+def _spawn_history_import(count: int) -> None:
+    """Kick off the history import as a detached `stash import-history`
+    process — thousands of uploads must not hold setup hostage."""
     import subprocess as _sp
 
+    # Seed the status file so the setup-complete splash can show the import
+    # immediately; the spawned process takes over updating it.
+    _write_import_status(total=count, done=0, errors=0, finished=False)
+
+    IMPORT_LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+    with open(IMPORT_LOG_FILE, "ab") as log:
+        _sp.Popen(
+            [sys.argv[0], "import-history"],
+            stdout=log,
+            stderr=log,
+            start_new_session=True,
+        )
+    console.print(
+        f"  [green]✓[/green] Importing {count} conversations in the background.\n"
+        "    [dim]Check on it anytime: stash import-history --status[/dim]"
+    )
+
+
+def _onboarding_import_history(detected_agents: list[str]) -> None:
+    """Offer to import historical conversations during onboarding."""
     from .import_history import discover_conversations, summarize_discovery
 
     agents = detected_agents or None
@@ -5071,22 +5187,7 @@ def _onboarding_import_history(detected_agents: list[str]) -> None:
     if not ok:
         return
 
-    # Seed the status file so the setup-complete splash can show the import
-    # immediately; the spawned process takes over updating it.
-    _write_import_status(total=len(conversations), done=0, errors=0, finished=False)
-
-    IMPORT_LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
-    with open(IMPORT_LOG_FILE, "ab") as log:
-        _sp.Popen(
-            [sys.argv[0], "import-history"],
-            stdout=log,
-            stderr=log,
-            start_new_session=True,
-        )
-    console.print(
-        f"  [green]✓[/green] Importing {len(conversations)} conversations in the background.\n"
-        "    [dim]Check on it anytime: stash import-history --status[/dim]"
-    )
+    _spawn_history_import(len(conversations))
 
 
 def _show_import_status() -> None:
