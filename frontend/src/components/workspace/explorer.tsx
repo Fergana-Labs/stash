@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Bot, ChevronRight, File, Folder, Loader2, MessagesSquare, GraduationCap, Monitor, Plus, Settings, FolderTree, Brain, Plug, Sparkles, SquareTerminal } from "lucide-react";
 import { toast } from "sonner";
-import { ApiError, listMySessions, listSessionFolders, listSharedWithMe, listSharedSessionFolderSessions, createSessionFolder, listSkills, listSources, createFolder, createPage, machineFsList, listAgents, createAgent, type Agent as AgentRow, type MachineEntry, type SessionSummary, type Source } from "@/lib/api";
+import { ApiError, listMySessions, listSessionFolders, listSharedWithMe, listSkillsSharedWithMe, listSharedSessionFolderSessions, createSessionFolder, listSkills, listSources, createFolder, createPage, machineFsList, listAgents, createAgent, type Agent as AgentRow, type MachineEntry, type SessionSummary, type Source } from "@/lib/api";
 import { useMemoryFolderId } from "@/lib/memory-folder";
 import { SKILL_MD, skillMdTemplate } from "@/lib/localSkill";
 import { requestAgentConfigView, requestCuratorRun } from "@/lib/agent-tab-view";
@@ -27,6 +27,16 @@ const SECTIONS: { key: ExplorerSection; label: string; route: string; icon: Reac
   { key: "computer", label: "VM", route: "/agents", icon: <Monitor className="h-4 w-4 text-chart-4" /> },
 ];
 const LABEL: Record<ExplorerSection, string> = { files: "Files", skills: "Skills", sessions: "Sessions", memory: "Memory", tools: "Tools", agents: "Agents", computer: "VM" };
+
+// Shared kinds the Files explorer indexes. Session folders are excluded: the
+// Sessions tree already merges those into its own root.
+const SHARED_FILE_KINDS = new Set(["folder", "page", "file", "table"]);
+const SHARED_ITEM_KIND: Record<string, "folder" | "page" | "file" | "table"> = {
+  folder: "folder",
+  page: "page",
+  file: "file",
+  table: "table",
+};
 
 /** Open any item as a workbench tab and sync the URL. A plain click navigates
  *  the current tab; cmd/ctrl-click (or an explicit newTab) opens a new one. */
@@ -279,6 +289,35 @@ export default function Explorer({ section }: { section: ExplorerSection }) {
     const skills = await listSkills();
     return skills.map((s) => ({ kind: "skill" as const, id: s.folder_id, name: s.name }));
   }, []);
+
+  // Skill folders someone shared with you. They stay in the owner's scope — so
+  // they're read-only here, and your agent can't run them until you copy one in.
+  const sharedSkills = useCallback(async (): Promise<Item[]> => {
+    const shared = await listSkillsSharedWithMe();
+    return shared.map((s) => ({
+      kind: "skill" as const,
+      id: s.folder_id,
+      // Names collide across people — everyone writes a "brief".
+      name: `${s.name} (${s.owner_name})`,
+      readOnly: true,
+    }));
+  }, []);
+
+  // Everything else shared with you. Skill folders are filtered out because
+  // Files and Skills are MECE everywhere else in the app, and a shared skill
+  // belongs under Skills.
+  const sharedFiles = useCallback(async (): Promise<Item[]> => {
+    const [shared, skills] = await Promise.all([listSharedWithMe(), listSkillsSharedWithMe()]);
+    const skillFolderIds = new Set(skills.map((s) => s.folder_id));
+    return shared
+      .filter((s) => SHARED_FILE_KINDS.has(s.object_type) && !skillFolderIds.has(s.object_id))
+      .map((s) => ({
+        kind: SHARED_ITEM_KIND[s.object_type],
+        id: s.object_id,
+        name: `${s.name} (${s.owner_name})`,
+        readOnly: true,
+      }));
+  }, []);
   // A skill is a folder + SKILL.md — the Skills root's "create native item" action.
   const createSkill = useCallback(async () => {
     const folder = await createFolder("New skill", null);
@@ -359,6 +398,11 @@ export default function Explorer({ section }: { section: ExplorerSection }) {
           tabSection={section === "memory" ? "memory" : undefined}
           loadRoot={section === "skills" ? skillsRoot : isSessions ? sessionsRoot : undefined}
           loadFolder={isSessions ? sessionsFolder : undefined}
+          // Sessions already merges shared folders into its root, and Memory is
+          // the curator's own scope — neither gets a second shared surface.
+          loadShared={
+            section === "skills" ? sharedSkills : section === "files" ? sharedFiles : undefined
+          }
           newRootItem={
             section === "skills" ? { label: "New skill", run: createSkill } :
             isSessions ? { label: "New folder", run: createSessionFolderItem } : undefined

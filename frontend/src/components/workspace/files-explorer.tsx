@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import {
   Loader2, FilePlus, FolderPlus, Upload, Trash2, Pencil, FolderInput,
   Plus, ArrowDownAZ, Clock, FileText, Code2, Table2, GitBranch, GraduationCap, MessagesSquare,
-  ExternalLink, Share2,
+  ExternalLink, Share2, Users,
 } from "lucide-react";
 import {
   getTree, getFolderContents, createPage, createFolder, createTable, updateFolder, updatePage,
@@ -27,13 +27,29 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 
-type Kind = "folder" | "page" | "file" | "table" | "skill" | "session-folder" | "session";
+type Kind =
+  | "folder"
+  | "page"
+  | "file"
+  | "table"
+  | "skill"
+  | "session-folder"
+  | "session"
+  | "shared-root";
 // `readOnly` marks an item you can browse but not manage — a session folder
 // someone shared with you. Rename/Delete are hidden rather than offered and
 // left to fail against the owner-only server check.
 export type Item = { kind: Kind; id: string; name: string; ts?: string; readOnly?: boolean };
 // Kinds that live in the VFS (draggable, rename/move/delete via folder/page APIs).
 const VFS_KINDS = new Set<Kind>(["folder", "page", "file", "table", "skill"]);
+
+// The "Shared with me" node. A share is a permission row, never a copy, so the
+// things under here live in someone else's scope — this is an index of them,
+// not a folder in your VFS. The id is a sentinel, not a folder id: nothing
+// server-side has it, and every path that would write to a folder checks
+// `readOnly` or VFS_KINDS first.
+export const SHARED_ROOT_ID = "__shared__";
+const SHARED_ROOT_LABEL = "Shared with me";
 
 // VFS kinds map onto the generic object-share model; a skill is just a folder.
 function shareObjectType(kind: Kind): "folder" | "page" | "file" | "table" {
@@ -62,6 +78,7 @@ export default function FilesExplorer({
   hideFolderId = null,
   loadRoot,
   loadFolder,
+  loadShared,
   newRootItem,
   openRootTab,
   showImport = true,
@@ -86,6 +103,9 @@ export default function FilesExplorer({
   /** Custom folder navigation (e.g. Sessions folders aren't VFS folders). Default =
    *  getFolderContents. */
   loadFolder?: (folderId: string) => Promise<{ crumbs: FolderBreadcrumb[]; items: Item[] }>;
+  /** Listing for the "Shared with me" node. Given, the node appears at this
+   *  explorer's root; omitted, the section has no shared surface at all. */
+  loadShared?: () => Promise<Item[]>;
   /** At a virtual root (loadRoot), the "create" action for that root's native item
    *  (e.g. New skill) — replaces new-file/folder/upload, which need a real folder. */
   newRootItem?: { label: string; run: () => Promise<void> };
@@ -138,18 +158,32 @@ export default function FilesExplorer({
   const fileRef = useRef<HTMLInputElement>(null);
   const clickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // The shared node sits last at the root, after your own items — it indexes
+  // other people's things, so it shouldn't lead. Absent when nothing is shared
+  // with you, so the tree stays as quiet as it is today for most accounts.
+  const sharedNode = useCallback(async (): Promise<Item[]> => {
+    if (!loadShared) return [];
+    const shared = await loadShared().catch(() => []);
+    if (shared.length === 0) return [];
+    return [{ kind: "shared-root" as const, id: SHARED_ROOT_ID, name: SHARED_ROOT_LABEL, readOnly: true }];
+  }, [loadShared]);
+
   const load = useCallback(async () => {
     setError(null);
     try {
-      if (folderId === null && loadRoot) {
+      if (folderId === SHARED_ROOT_ID && loadShared) {
+        setCrumbs([{ id: SHARED_ROOT_ID, name: SHARED_ROOT_LABEL, is_skill: false }]);
+        setItems(await loadShared());
+      } else if (folderId === null && loadRoot) {
         setCrumbs([]);
-        setItems(await loadRoot());
+        setItems([...(await loadRoot()), ...(await sharedNode())]);
       } else if (folderId === null) {
         const tree = await getTree();
         setCrumbs([]);
         setItems([
           ...tree.folders.filter((f) => f.id !== hideFolderId).map((f) => ({ kind: "folder" as const, id: f.id, name: f.name, ts: f.updated_at })),
           ...tree.pages.map((p) => ({ kind: "page" as const, id: p.id, name: p.name || "Untitled", ts: p.updated_at })),
+          ...(await sharedNode()),
         ]);
       } else if (loadFolder) {
         const { crumbs: c, items: it } = await loadFolder(folderId);
@@ -168,7 +202,7 @@ export default function FilesExplorer({
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load");
     }
-  }, [folderId, hideFolderId, loadRoot, loadFolder]);
+  }, [folderId, hideFolderId, loadRoot, loadFolder, loadShared, sharedNode]);
 
   useEffect(() => { setItems(null); load(); }, [load]);
   useEffect(() => {
@@ -181,7 +215,9 @@ export default function FilesExplorer({
   // Open an item as a workbench tab (folder → folder tab; skill → skill tab; …).
   // Session folders have no tab view, so they only ever navigate in the explorer.
   function openAsTab(item: Item, opts?: { forceNewTab?: boolean }) {
-    if (item.kind === "session-folder") { setFolderId(item.id); return; }
+    // Neither has a tab view: a session folder is a listing, and the shared
+    // node is an index of other people's items. Both only navigate.
+    if (item.kind === "session-folder" || item.kind === "shared-root") { setFolderId(item.id); return; }
     const kind = item.kind === "folder" ? "folder" : item.kind === "skill" ? "skill" : item.kind === "session" ? "session" : item.kind === "table" ? "table" : item.kind === "page" ? "page" : "file";
     // Plain click navigates the current tab; cmd/ctrl-click (or the explicit
     // "Open in new tab" menu item) opens a new one.
@@ -193,7 +229,11 @@ export default function FilesExplorer({
   // Single-click opens files/pages/tables as a tab (web convention). Folders
   // (and skill/session folders) browse on single-click and open as a tab on
   // double-click; a short timer lets the dblclick cancel the pending navigate.
-  const isFolderLike = (item: Item) => item.kind === "folder" || item.kind === "skill" || item.kind === "session-folder";
+  const isFolderLike = (item: Item) =>
+    item.kind === "folder" ||
+    item.kind === "skill" ||
+    item.kind === "session-folder" ||
+    item.kind === "shared-root";
   function onRowClick(item: Item) {
     if (!isFolderLike(item)) { openAsTab(item); return; }
     if (clickTimer.current) clearTimeout(clickTimer.current);
@@ -228,6 +268,9 @@ export default function FilesExplorer({
   }
 
   async function del(item: Item) {
+    // The shared node is an index, not a thing — Delete is hidden on readOnly
+    // rows, so reaching here at all is a bug rather than a user action.
+    if (item.kind === "shared-root") throw new Error("The shared index cannot be deleted");
     if (item.kind === "folder" || item.kind === "skill") await deleteFolder(item.id);
     else if (item.kind === "session-folder") await deleteSessionFolder(item.id);
     else if (item.kind === "table") await deleteTable(item.id);
@@ -318,6 +361,9 @@ export default function FilesExplorer({
 
   // A virtual root (Skills list) has no folder to create loose files into.
   const atVirtualRoot = !!loadRoot && folderId === rootFolderId;
+  // The shared index is someone else's scope. Offering New/Upload/Import here
+  // would offer actions whose only possible outcome is a 403.
+  const inSharedIndex = folderId === SHARED_ROOT_ID;
 
   const sortedItems = items && [...items].sort((a, b) => {
     // Folders always first.
@@ -350,7 +396,7 @@ export default function FilesExplorer({
           </span>
         ))}
         <div className="ml-auto flex shrink-0 items-center gap-0.5">
-          {atVirtualRoot ? (
+          {inSharedIndex ? null : atVirtualRoot ? (
             newRootItem && (
               <button title={newRootItem.label} aria-label={newRootItem.label} onClick={runNewRootItem} className="flex h-7 items-center gap-1 rounded px-1.5 text-[12px] text-sidebar-foreground hover:bg-sidebar-accent">
                 <FolderPlus className="h-4 w-4" /><Plus className="h-2.5 w-2.5" />
@@ -374,7 +420,7 @@ export default function FilesExplorer({
               <ToolBtn icon={<Upload className="h-4 w-4" />} label="Upload" onClick={() => fileRef.current?.click()} />
             </>
           ) : null}
-          {showImport && <ToolBtn icon={<GitBranch className="h-4 w-4" />} label="Import from GitHub" onClick={openImport} />}
+          {showImport && !inSharedIndex && <ToolBtn icon={<GitBranch className="h-4 w-4" />} label="Import from GitHub" onClick={openImport} />}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button title="Sort" aria-label="Sort" className="flex h-7 w-7 items-center justify-center rounded text-sidebar-foreground hover:bg-sidebar-accent">
@@ -428,7 +474,7 @@ export default function FilesExplorer({
               title={item.name}
             >
               <span className="flex h-4 w-4 shrink-0 items-center justify-center text-muted-foreground">
-                {item.kind === "skill" ? <GraduationCap className="h-3.5 w-3.5 text-chart-4" /> : item.kind === "session-folder" ? <FolderIcon className="text-[13px] text-chart-4" /> : item.kind === "session" ? <MessagesSquare className="h-3.5 w-3.5" /> : item.kind === "folder" ? <FolderIcon className="text-[13px] text-chart-4" /> : item.kind === "page" ? <PageIcon className="text-[13px]" /> : item.kind === "table" ? <TableIcon className="text-[13px]" /> : <FileIcon className="text-[13px]" />}
+                {item.kind === "shared-root" ? <Users className="h-3.5 w-3.5 text-chart-4" /> : item.kind === "skill" ? <GraduationCap className="h-3.5 w-3.5 text-chart-4" /> : item.kind === "session-folder" ? <FolderIcon className="text-[13px] text-chart-4" /> : item.kind === "session" ? <MessagesSquare className="h-3.5 w-3.5" /> : item.kind === "folder" ? <FolderIcon className="text-[13px] text-chart-4" /> : item.kind === "page" ? <PageIcon className="text-[13px]" /> : item.kind === "table" ? <TableIcon className="text-[13px]" /> : <FileIcon className="text-[13px]" />}
               </span>
               {renaming === item.id ? (
                 <input

@@ -12,8 +12,6 @@ import {
   createFolder,
   createPage,
   listSkills,
-  listSkillsSharedWithMe,
-  type SharedSkill,
   type Skill,
 } from "@/lib/api";
 import type { Page } from "@/lib/types";
@@ -61,7 +59,6 @@ vi.mock("@/lib/api", () => ({
   deleteFolder: vi.fn(),
   forkSkill: vi.fn(),
   listSkills: vi.fn(),
-  listSkillsSharedWithMe: vi.fn(),
   // useAuth (mounted by the page) short-circuits to a signed-out state when
   // there's no token, so these never hit the network.
   getToken: vi.fn(() => null),
@@ -97,19 +94,6 @@ function skill(overrides: Partial<Skill> = {}): Skill {
   };
 }
 
-function sharedSkill(overrides: Partial<SharedSkill> = {}): SharedSkill {
-  return {
-    folder_id: "folder-ext",
-    name: "Onboarding",
-    description: "How we onboard",
-    owner_user_id: "user-2",
-    shared_by: "Henry",
-    permission: "read",
-    slug: null,
-    ...overrides,
-  };
-}
-
 describe("SkillsPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -131,7 +115,6 @@ describe("SkillsPage", () => {
         },
       }),
     ]);
-    vi.mocked(listSkillsSharedWithMe).mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -174,29 +157,6 @@ describe("SkillsPage", () => {
     expect(
       screen.getByRole("button", { name: /browse Discover/ }),
     ).toBeInTheDocument();
-  });
-
-  it("lists skill folders shared with you and links by publish state", async () => {
-    vi.mocked(listSkillsSharedWithMe).mockResolvedValue([
-      sharedSkill(),
-      sharedSkill({
-        folder_id: "folder-pub",
-        name: "Published Guide",
-        slug: "published-guide",
-      }),
-    ]);
-
-    render(<SkillsPage />);
-
-    fireEvent.click(await screen.findByRole("button", { name: /Shared with you/ }));
-
-    // Unpublished shared skill links to the sharer's folder route (the share
-    // grants read); published ones link to the public skill page.
-    expect(await screen.findByText("Onboarding")).toBeInTheDocument();
-    expect(screen.getAllByText(/shared by Henry/)).toHaveLength(2);
-    const viewLinks = screen.getAllByRole("link", { name: "View" });
-    expect(viewLinks[0]).toHaveAttribute("href", "/folders/folder-ext");
-    expect(viewLinks[1]).toHaveAttribute("href", "/skills/published-guide");
   });
 
   it("creates a New Skill folder with a SKILL.md and navigates to it", async () => {

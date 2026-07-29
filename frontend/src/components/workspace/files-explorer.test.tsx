@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import FilesExplorer from "./files-explorer";
-import { getFolderContents, uploadFileOrPage } from "@/lib/api";
+import FilesExplorer, { type Item } from "./files-explorer";
+import { getFolderContents, getTree, uploadFileOrPage } from "@/lib/api";
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
@@ -133,5 +133,75 @@ describe("FilesExplorer memory write confirmation", () => {
 
     await waitFor(() => expect(uploadFileOrPage).toHaveBeenCalledWith(file, MEMORY_FOLDER));
     expect(screen.queryByText("Add to Memory?")).not.toBeInTheDocument();
+  });
+});
+
+// A share is a permission row, never a copy: the things under "Shared with me"
+// live in someone else's scope. The node exists so they're reachable at all —
+// before it, GET /shares/with-me had no surface in the app — but nothing under
+// it may be treated as yours.
+describe("FilesExplorer shared node", () => {
+  const emptyTree = { folders: [], pages: [] };
+
+  function renderFiles(loadShared?: () => Promise<Item[]>) {
+    return render(<FilesExplorer onRoot={() => {}} rootLabel="Files" loadShared={loadShared} />);
+  }
+
+  beforeEach(() => {
+    vi.mocked(getTree).mockResolvedValue(emptyTree as never);
+  });
+
+  it("stays out of the tree when nothing is shared with you", async () => {
+    renderFiles(async () => []);
+
+    await screen.findByText("Empty folder.");
+    expect(screen.queryByText("Shared with me")).not.toBeInTheDocument();
+  });
+
+  it("is absent entirely for a section that has no shared surface", async () => {
+    renderFiles(undefined);
+
+    await screen.findByText("Empty folder.");
+    expect(screen.queryByText("Shared with me")).not.toBeInTheDocument();
+  });
+
+  it("lists shared items under the node, tagged with their owner", async () => {
+    renderFiles(async () => [
+      { kind: "folder", id: "f1", name: "Q3 plan (Henry)", readOnly: true },
+    ]);
+
+    fireEvent.click(await screen.findByText("Shared with me"));
+
+    expect(await screen.findByText("Q3 plan (Henry)")).toBeInTheDocument();
+  });
+
+  it("offers no create or import actions inside the shared index", async () => {
+    // Every write here targets someone else's scope, so the only outcome the
+    // buttons could have is a 403.
+    renderFiles(async () => [
+      { kind: "folder", id: "f1", name: "Q3 plan (Henry)", readOnly: true },
+    ]);
+
+    fireEvent.click(await screen.findByText("Shared with me"));
+    await screen.findByText("Q3 plan (Henry)");
+
+    expect(screen.queryByLabelText("New file")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("New folder")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Import from GitHub")).not.toBeInTheDocument();
+  });
+
+  it("offers no Rename or Delete on a shared item", async () => {
+    // Rename/Delete hit owner-only endpoints. Offering them would mean showing
+    // an action whose only outcome is a 403.
+    renderFiles(async () => [
+      { kind: "folder", id: "f1", name: "Q3 plan (Henry)", readOnly: true },
+    ]);
+    fireEvent.click(await screen.findByText("Shared with me"));
+    const row = await screen.findByText("Q3 plan (Henry)");
+
+    fireEvent.contextMenu(row);
+
+    expect(screen.queryByText("Rename")).not.toBeInTheDocument();
+    expect(screen.queryByText("Delete")).not.toBeInTheDocument();
   });
 });

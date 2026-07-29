@@ -1498,6 +1498,9 @@ export interface SharedSkill {
   name: string;
   description: string;
   owner_user_id: string;
+  /** Whose scope the skill lives in — shown inline because skill names collide
+   *  across people. Distinct from `shared_by`, who sent you the share. */
+  owner_name: string;
   shared_by: string | null;
   permission: "read" | "write";
   slug: string | null;
