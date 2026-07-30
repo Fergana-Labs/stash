@@ -8,7 +8,7 @@ plugin's event coverage.
 - `stash` CLI installed (on PATH) and signed in (`uv tool install stashai && stash signin`)
 
 Streaming is gated globally: it is on whenever you are signed in
-(`stash signin`) and haven't stopped streaming (`stash disconnect`).
+(`stash signin`) and haven't stopped recording (`stash stop`).
 
 ## Install
 
@@ -19,8 +19,8 @@ machine-independent and never changes across upgrades.
 
 For agent context (so Cursor knows the `stash` CLI is available), Cursor
 only auto-loads `.mdc` rules from project-level `.cursor/rules/` — there
-is no global file location for user rules. Run `stash init` inside a repo
-and the installer will drop a `.cursor/rules/stash.mdc` into that repo.
+is no global file location for user rules. Run `stash connect` in the project folder
+and the installer will drop a `.cursor/rules/stash.mdc` there.
 Commit it so teammates' Cursor agents pick it up too.
 
 Or, for per-project use, drop `hooks.json` into `<project>/.cursor/hooks.json`
@@ -60,9 +60,9 @@ Everything is a plain `stash` CLI subcommand — no Cursor-specific slash comman
 
 | Command | Description |
 |---------|-------------|
-| `stash connect` | Interactive setup (auth + store) |
+| `stash signin` | Sign in + first-run setup (re-run the wizard anytime: `stash setup`) |
 | `stash settings` | Interactive settings page (streaming, scope, endpoint, …) |
-| `stash disconnect` | Pause event streaming across every installed plugin |
+| `stash stop` | Pause session recording across every installed plugin (`stash start` resumes) |
 
 ## Known gaps vs Claude plugin
 

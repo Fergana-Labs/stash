@@ -14,7 +14,7 @@ A Tauri app that makes the local-curator setup feel stable and real:
   user's own credentials and MCP connectors, on a schedule, from the tray.
   Off by default; enabled with one switch. Each run maintains the user's
   **personal** knowledge base — the wiki in their personal scope's Memory
-  folder — directly (`stash files add-page` / `edit-page`), pinned to the
+  folder — directly (`stash memory write "<Path>"`), pinned to the
   personal scope via `STASH_SCOPE=""` regardless of workspace config. One
   curator per person; nothing is shared with the team. The curation prompt
   is served by the backend (`GET /api/v1/me/local-curator-prompt`, defined
@@ -23,8 +23,9 @@ A Tauri app that makes the local-curator setup feel stable and real:
   run history, logs) lives in `~/.stash/curator/`.
 
   Onboarding note: accounts using the local curator should have the
-  server-side Memory curator turned off — one agent maintains the wiki, not
-  two.
+  server-side Memory curator's nightly run turned off (`stash memory
+  --curator off`) — one agent maintains the wiki, not two. On-demand
+  recomputes keep working either way.
 
 Closing the window hides to the tray; the scheduler keeps running. "Launch at
 login" is a toggle in the app. The interval is measured from the last

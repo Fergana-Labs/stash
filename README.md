@@ -80,12 +80,13 @@ uv tool install stashai
 stash signin
 ```
 
-`stash signin` authenticates you in the browser, asks whether you want to
-share your agent transcripts, then finds the coding agents installed on your
-machine and installs hooks for the ones you pick. It offers to connect the
-repo you're standing in and to import conversations you've already had. Use
-`stash connect` later when you're already signed in and only need to bind
-another repo.
+`stash signin` authenticates you in the browser, then walks first-run setup:
+session recording (on by default — pause anytime with `stash stop`), which
+coding agents to record, Stash instructions for the folder you're standing in
+(any folder — a git repo isn't required), and a background import of the
+conversations you've already had (`stash import-history --status` follows it
+live). Re-run the wizard anytime with `stash setup`; use `stash connect` from
+any other project folder to set it up for Stash.
 
 <details>
 <summary>Prefer a one-liner?</summary>
@@ -202,12 +203,11 @@ Then install the CLI:
 
 ```bash
 uv tool install stashai
-cd /path/to/the/repo/you/want/to/connect
-stash signin   # choose "Self-host" and enter http://localhost:3456
+stash signin --api http://localhost:3456
 ```
 
-When connecting to a domain-backed install, enter your public URL (e.g.
-`https://app.example.com`) at the same prompt. To change the endpoint later,
+For a domain-backed install, pass your public URL instead (e.g.
+`stash signin --api https://app.example.com`). To change the endpoint later,
 run `stash settings`.
 
 Finally see it in action:
@@ -223,7 +223,7 @@ Stash is built for engineering teams working in private repos.
 
 - **LLM calls are optional and scoped.** An Anthropic key powers ask-the-stash, session titles, and OCR for scanned PDFs; the chat agent runs on Anthropic, OpenAI, or OpenRouter with your own key. Without any of them, the rest of Stash works — those features are simply unavailable.
 - **Private by default.** Your Stash is yours alone. Content becomes public only when you make it so: publishing a Skill, creating a public link to a page, file, folder, or table, or posting to the pastebin.
-- **Transcripts are opt-in.** If you don't want to upload your agent transcripts, you can give your agent *read* access to your Stash without uploading any of your own session data.
+- **Recording is yours to control.** Session recording is on by default during setup, and every control is one command away: decline it in the wizard, pause globally with `stash stop`, pick which agents record, or exclude folders in `stash settings`. Saying no still gives your agent *read* access to your Stash — nothing about using Stash requires uploading your own sessions.
   
 ## FAQ
 
@@ -231,7 +231,7 @@ Stash is built for engineering teams working in private repos.
 An Anthropic key covers ask-the-stash, session titles, and scanned-PDF OCR. The chat agent is separate and runs whichever harness you point it at — Claude Code, Codex, or opencode — against your own Anthropic, OpenAI, or OpenRouter credentials. Embeddings are a third, independent choice (OpenAI, HuggingFace, or a local model). All of it is optional; without any keys the rest of Stash works and those features are disabled.
 
 **What writes to my Stash on its own?**
-One thing by default: the Memory curator, a scheduled agent that compiles your Memory wiki from new sessions and files. It only writes inside the reserved Memory folder, and it only reads what's new since its last run. Beyond that, nothing runs unless you create it — any agent you give a cron to becomes a scheduled agent, and those have the same reach you do.
+One thing by default: the Memory curator, a scheduled agent that compiles your Memory wiki from new sessions and files. It only writes inside the reserved Memory folder, and it only reads what's new since its last run. Turn the nightly run off or on with `stash memory --curator off|on` (on-demand runs keep working). Beyond that, nothing runs unless you create it — any agent you give a cron to becomes a scheduled agent, and those have the same reach you do.
 
 **Can I use this without Claude Code?**
 Yes. You can use the CLI with anything, and Stash has native plugins for Cursor, Codex, Opencode, Gemini CLI, and more.

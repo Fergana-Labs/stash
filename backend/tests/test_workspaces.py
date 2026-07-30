@@ -276,6 +276,43 @@ async def test_scope_header_reroots_overview_for_members_only(client: AsyncClien
 
 
 @pytest.mark.asyncio
+async def test_scope_header_reroots_memory_tree(client: AsyncClient, pool):
+    """memory-folder, memory-tree, and the page/folder writes must all follow
+    the scope header together: `stash memory write` resolves its path against
+    the tree and writes into the folder, so a tree rooted in a different scope
+    than the folder makes every scoped upsert re-create existing pages."""
+    domain = _domain()
+    member_key, member = await _register_with_email(client, f"m@{domain}")
+    await _verify_email(pool, uuid.UUID(member["id"]))
+    ws = await _create_workspace(client, domain)
+    scoped = {**_auth(member_key), "X-Stash-Scope": ws["scope_user_id"]}
+
+    mem = (await client.get("/api/v1/me/memory-folder", headers=scoped)).json()
+    assert mem["owner_user_id"] == ws["scope_user_id"]
+    sub = (
+        await client.post(
+            "/api/v1/me/folders",
+            json={"name": "Customers", "parent_folder_id": mem["id"]},
+            headers=scoped,
+        )
+    ).json()
+    resp = await client.post(
+        "/api/v1/me/pages/new",
+        json={"name": "Chainbase", "content": "x", "folder_id": sub["id"]},
+        headers=scoped,
+    )
+    assert resp.status_code == 201, resp.text
+
+    tree = (await client.get("/api/v1/me/memory-tree", headers=scoped)).json()
+    assert [f["name"] for f in tree["folders"]] == ["Customers"]
+    assert [p["name"] for p in tree["folders"][0]["pages"]] == ["Chainbase"]
+
+    # The member's personal wiki stays untouched.
+    personal = (await client.get("/api/v1/me/memory-tree", headers=_auth(member_key))).json()
+    assert personal["folders"] == []
+
+
+@pytest.mark.asyncio
 async def test_member_creates_page_owned_by_workspace(client: AsyncClient, pool):
     domain = _domain()
     key, body = await _register_with_email(client, f"m@{domain}")
@@ -598,3 +635,29 @@ async def test_member_forks_public_skill_into_workspace(client: AsyncClient, poo
         headers=_auth(outsider_key),
     )
     assert denied.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_unverified_on_domain_user_sees_pending_workspace(client: AsyncClient, pool):
+    """A password signup on a workspace domain is locked out of membership
+    until the email is verified — and the lockout must be LOUD: the
+    workspace appears under pending_domain_workspaces with the reason
+    surface, not silently absent."""
+    domain = _domain()
+    ws = await _create_workspace(client, domain, name="Chainbase")
+    key, body = await _register_with_email(client, f"lewis@{domain}")
+
+    resp = await client.get("/api/v1/me/workspaces", headers=_auth(key))
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["workspaces"] == []
+    assert [w["name"] for w in payload["pending_domain_workspaces"]] == ["Chainbase"]
+    assert payload["pending_domain_workspaces"][0]["domain"] == domain
+
+    await _verify_email(pool, body["id"])
+
+    resp = await client.get("/api/v1/me/workspaces", headers=_auth(key))
+    payload = resp.json()
+    assert [w["name"] for w in payload["workspaces"]] == ["Chainbase"]
+    assert payload["pending_domain_workspaces"] == []
+    assert ws["workspace_id"] in [str(w["id"]) for w in payload["workspaces"]]

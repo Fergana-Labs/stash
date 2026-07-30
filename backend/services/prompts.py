@@ -136,10 +136,9 @@ personal Stash scope and is not shared with their team.
 
 ## Steps
 
-1. Find the wiki. `stash memory --json` prints the reserved Memory folder id
-   — every page you create belongs under it. Read the current structure with
-   `stash vfs "ls /memory"` and read any page that might overlap this run's
-   topics with `stash vfs "cat '/memory/<page>.md'"`.
+1. Find the wiki. `stash memory ls --json` prints its full tree with ids.
+   Read any page that might overlap this run's topics with
+   `stash vfs "cat '/memory/<page>.md'"`.
 2. Gather what's new since your last successful run (the timestamp is in the
    Runtime context section appended to this prompt):
    - Recent agent activity: `stash sessions agents`, recent entries in
@@ -149,9 +148,9 @@ personal Stash scope and is not shared with their team.
      each connector's time-filtered search/list tools; where a connector can
      only list, read newest-first and stop as soon as items are older than
      the timestamp.
-3. Decide, per durable topic: update an existing page (`stash files
-   edit-page`), or create a new one (`stash files add-page --folder
-   <memory_folder_id>`). If the wiki is empty, this is a bootstrap: cluster
+3. Write, per durable topic: `stash memory write "<Category>/<Page>"
+   --content "<markdown>"` creates or updates the page at that path (missing
+   subfolders are created). If the wiki is empty, this is a bootstrap: cluster
    the material into a handful of themes and create a small page per theme —
    structure first, completeness later.
 4. Keep runs small: fold in the handful of things that mattered, cross-link
@@ -268,9 +267,9 @@ pages themselves.
   claim, and which supersedes, with a one-line reason.
 
 ## Write the wiki (under the Memory folder)
-- Category subfolder: `stash files create-folder "<Category>" --parent {memory_folder_id} --json`.
-- New page: `stash files add-page "<Title>" --folder <category_folder_id> --content "<markdown>" --json`.
-- Update page: `stash files edit-page <page_id> --content "<markdown>" --json`.
+- Create or update a page: `stash memory write "<Category>/<Title>" --content "<markdown>" --json`
+  — the path is relative to the Memory folder and missing category subfolders
+  are created for you. Long bodies pipe on stdin instead of --content.
 - Every page: a one-sentence summary; a markdown link up to its category;
   sideways links to related pages; confidence tags; date new content
   `<!-- added YYYY-MM-DD -->`.

@@ -8,7 +8,7 @@ Streams opencode sessions to your Stash.
 - opencode installed (Bun-based runtime — opencode transpiles TS directly, no build step needed)
 
 Streaming is gated globally: it is on whenever you are signed in
-(`stash signin`) and haven't stopped streaming (`stash disconnect`).
+(`stash signin`) and haven't stopped recording (`stash stop`).
 
 ## Install
 
@@ -51,9 +51,9 @@ Everything is a plain `stash` CLI subcommand — no opencode-specific slash comm
 
 | Command | Description |
 |---------|-------------|
-| `stash connect` | Interactive setup (auth + store) |
+| `stash signin` | Sign in + first-run setup (re-run the wizard anytime: `stash setup`) |
 | `stash settings` | Interactive settings page (streaming, scope, endpoint, …) |
-| `stash disconnect` | Pause event streaming across every installed plugin |
+| `stash stop` | Pause session recording across every installed plugin (`stash start` resumes) |
 
 ## Known gaps
 

@@ -5,6 +5,24 @@ everything before it is captured in git history (`git log`), not here.
 
 ## Unreleased
 
+- CLI onboarding redesigned (#940). `stash signin` walks a first-run wizard
+  that can be re-run anytime with the new `stash setup` — no answer is final.
+  Session recording is framed as private-by-default and on by default
+  (`stash stop` pauses). The agent picker uses `[x]` checkboxes where enter
+  toggles and a `Done` row saves. `stash connect` works in any folder — a git
+  repo is no longer required. History import runs in the background via the
+  new `stash import-history` (parallel uploads; `--status` attaches a live
+  progress bar). Re-uploading a transcript for a deleted session now reports
+  a clean skip instead of a 404 error, and no longer pollutes plugin upload
+  health.
+- `stash memory` is now a command group (#941): `stash memory write "<Path>"`
+  creates or updates a Memory wiki page (stdin for long bodies) and
+  `stash memory ls` prints the wiki tree — the direct write surface for
+  agents that maintain the wiki themselves. Bare `stash memory` and
+  `--recompute` are unchanged.
+- The nightly cloud Memory curator has an off switch (#942):
+  `stash memory --curator off|on`, also surfaced in the web curator panel.
+  On-demand recomputes keep working while it's off.
 - Scheduled agent run history now reports each run's status, error, duration,
   event count, and tool count while preserving the chronological transcript
   feed used by the agent workspace.
@@ -25,9 +43,6 @@ everything before it is captured in git history (`git log`), not here.
 - Added a committed `docker-compose.local.yml` override for laptop
   self-hosting dry runs. It exposes backend, frontend, and collab on
   localhost ports and disables Caddy.
-- CLI onboarding now says to run `stash connect` when setup finishes
-  without connecting a repo, instead of telling users to commit a
-  `.stash` file that was never created.
 - Self-hosting now uses a prebuilt `ghcr.io/fergana-labs/stash-frontend`
   image alongside the backend and collab images, so
   `docker-compose.prod.yml` no longer builds application containers on the

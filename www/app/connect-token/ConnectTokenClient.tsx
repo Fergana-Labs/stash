@@ -71,8 +71,8 @@ export default function ConnectTokenClient({ apiUrl, sessionId, device, userName
             <>{device} now has its token. You can close this tab.</>
           ) : (
             <>
-              Head back to your terminal — the <code>stash</code> CLI has the token and will
-              finish wiring up your Stash. You can close this tab.
+              Sending you back to your terminal — the <code>stash</code> CLI has the token
+              and is finishing wiring up your Stash. You can close this tab.
             </>
           )}
         </p>

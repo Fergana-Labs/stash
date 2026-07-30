@@ -74,9 +74,11 @@ def stash_list_workspaces() -> str:
     """Workspaces you belong to, plus which scope is active. The active scope
     is where sessions/events/searches read and write ('' = personal)."""
     cfg = load_config()
+    data = _client().list_workspaces()
     return _json(
         {
-            "workspaces": _client().list_workspaces(),
+            "workspaces": data["workspaces"],
+            "pending_domain_workspaces": data.get("pending_domain_workspaces", []),
             "active_scope": cfg.get("scope", "") or None,
         }
     )
@@ -91,7 +93,7 @@ def stash_switch_workspace(name: str) -> str:
     if name == "personal":
         save_scope(None)
         return _json({"active_scope": None})
-    workspaces = _client().list_workspaces()
+    workspaces = _client().list_workspaces()["workspaces"]
     match = next((ws for ws in workspaces if name in (ws["name"], ws["domain"])), None)
     if match is None:
         known = [ws["name"] for ws in workspaces]

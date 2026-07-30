@@ -939,3 +939,43 @@ async def test_live_session_is_dated_now(client: AsyncClient, pool):
         "live-now",
     )
     assert (datetime.now(UTC) - started_at).total_seconds() < 60
+
+
+@pytest.mark.asyncio
+async def test_reupload_to_deleted_session_skips_without_resurrecting(client: AsyncClient, pool):
+    """A history import that hits a session the user deleted must report a
+    skip, not an error — and must not undelete the session."""
+    key = await _register(client)
+    headers = {"Authorization": f"Bearer {key}"}
+    scope = await _scope(client, key)
+
+    up = await client.post(
+        "/api/v1/me/transcripts",
+        files={"file": ("s.jsonl", io.BytesIO(BODY), "application/jsonl")},
+        data={"session_id": "sess-del", "agent_name": "claude"},
+        headers=headers,
+    )
+    assert up.status_code == 201, up.text
+
+    row_id = await pool.fetchval(
+        "SELECT id FROM sessions WHERE owner_user_id = $1 AND session_id = $2",
+        UUID(scope),
+        "sess-del",
+    )
+    deleted = await client.delete(f"/api/v1/me/sessions/{row_id}", headers=headers)
+    assert deleted.status_code == 204
+
+    second = await client.post(
+        "/api/v1/me/transcripts",
+        files={"file": ("s.jsonl", io.BytesIO(BODY), "application/jsonl")},
+        data={"session_id": "sess-del", "agent_name": "claude"},
+        headers=headers,
+    )
+    assert second.status_code == 201, second.text
+    body = second.json()
+    assert body["skipped"] is True
+    assert body["reason"] == "session was deleted"
+
+    assert (
+        await pool.fetchval("SELECT deleted_at FROM sessions WHERE id = $1", row_id)
+    ) is not None

@@ -381,8 +381,15 @@ async def _check_overview_access(owner_user_id: UUID, user_id: UUID) -> None:
 @router.get("/workspaces")
 async def list_my_workspaces(current_user: dict = Depends(get_current_user)):
     """Workspaces the caller belongs to. Powers the frontend scope switcher;
-    an empty list hides it."""
-    return {"workspaces": await workspace_service.list_for_user(current_user["id"])}
+    an empty list hides it. `pending_domain_workspaces` names workspaces on
+    the caller's email domain that stay locked until the email is verified
+    (i.e. sign in with OAuth) — loud, instead of silently absent."""
+    return {
+        "workspaces": await workspace_service.list_for_user(current_user["id"]),
+        "pending_domain_workspaces": await workspace_service.list_pending_for_user(
+            current_user["id"]
+        ),
+    }
 
 
 async def _sidebar_etag(owner_user_id: UUID, user_id: UUID) -> str:

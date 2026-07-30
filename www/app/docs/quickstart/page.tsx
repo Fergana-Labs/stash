@@ -17,10 +17,11 @@ export default function QuickstartPage() {
 stash signin`}</CodeBlock>
       <P>
         <Code>stash signin</Code> opens your browser to create an account (or sign in) and
-        hands the CLI a key automatically — nothing to copy. It then detects the coding
-        agents installed on your machine — Claude Code, Cursor, Codex, OpenCode, Gemini
-        CLI, Openclaw — and installs their hooks, so sessions start streaming to your
-        Stash right away.
+        hands the CLI a key automatically — nothing to copy. It then walks setup: session
+        recording (on by default; pause anytime with <Code>stash stop</Code>), which of
+        your installed coding agents to record — Claude Code, Cursor, Codex, OpenCode,
+        Gemini CLI, Openclaw — and a background import of your existing conversation
+        history. Re-run the wizard anytime with <Code>stash setup</Code>.
       </P>
       <Callout>
         On an unattended, browser-less machine (a CI runner, a headless box), use{" "}

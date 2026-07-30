@@ -36,7 +36,7 @@ Everything is a plain `stash` CLI subcommand — no Gemini-specific slash comman
 |---------|-------------|
 | `stash signin` | Interactive setup (auth + hook install) |
 | `stash settings` | Interactive settings page (streaming, endpoint, …) |
-| `stash disconnect` | Pause event streaming across every installed plugin |
+| `stash stop` | Pause session recording across every installed plugin (`stash start` resumes) |
 
 ## Known gaps
 

@@ -424,3 +424,37 @@ async def test_returning_login_grants_membership_once_verified(pool):
         auth0_sub=sub, email=email, name="Late", email_verified=True
     )
     assert await permission_service.is_workspace_member(ws["scope_user_id"], user["id"])
+
+
+@pytest.mark.asyncio
+async def test_returning_db_login_never_downgrades_verified_email(pool):
+    """A database-connection user who verified (via our emailed link or
+    Auth0's) must STAY verified when a later login's /userinfo omits the
+    claim — the claim-absent update used to write email_verified=false."""
+    sub = f"auth0|{unique_name()}"
+    email = f"{unique_name('pw')}@example.com"
+    user, _created = await get_or_create_user_row_from_auth0(
+        auth0_sub=sub, email=email, name="Password Person", email_verified=False
+    )
+    await pool.execute("UPDATE users SET email_verified = true WHERE id = $1", user["id"])
+
+    await get_or_create_user_row_from_auth0(
+        auth0_sub=sub, email=email, name="Password Person", email_verified=False
+    )
+    assert await pool.fetchval("SELECT email_verified FROM users WHERE id = $1", user["id"])
+
+
+@pytest.mark.asyncio
+async def test_changed_email_resets_verification(pool):
+    """Verification vouches for one address. When a login arrives with a
+    different email, the flag must reset until the new address is verified."""
+    sub = f"auth0|{unique_name()}"
+    user, _created = await get_or_create_user_row_from_auth0(
+        auth0_sub=sub, email=f"{unique_name('a')}@example.com", name="P", email_verified=False
+    )
+    await pool.execute("UPDATE users SET email_verified = true WHERE id = $1", user["id"])
+
+    await get_or_create_user_row_from_auth0(
+        auth0_sub=sub, email=f"{unique_name('b')}@example.com", name="P", email_verified=False
+    )
+    assert not await pool.fetchval("SELECT email_verified FROM users WHERE id = $1", user["id"])

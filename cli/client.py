@@ -160,8 +160,13 @@ class StashClient:
     def whoami(self) -> dict:
         return self._get("/api/v1/users/me")
 
-    def list_workspaces(self) -> list:
-        return self._list("/api/v1/me/workspaces", "workspaces")
+    def resend_verification_email(self) -> dict:
+        return self._post("/api/v1/users/me/verify-email")
+
+    def list_workspaces(self) -> dict:
+        """Full /me/workspaces payload: `workspaces` plus
+        `pending_domain_workspaces` (on-domain but email unverified)."""
+        return self._get("/api/v1/me/workspaces")
 
     def list_api_keys(self) -> list:
         return self._get("/api/v1/users/me/keys")
@@ -385,6 +390,12 @@ class StashClient:
     def get_curator(self) -> dict | None:
         agents = self._get("/api/v1/me/agents")["agents"]
         return next((a for a in agents if a["is_curator"]), None)
+
+    def set_curator_scheduled(self, agent_id: str, scheduled: bool) -> dict:
+        """Turn the curator's nightly cloud run on or off. Off keeps on-demand
+        runs (--recompute) working — it only stops the schedule."""
+        run_mode = "scheduled" if scheduled else "chat"
+        return self._patch(f"/api/v1/me/agents/{agent_id}", json={"run_mode": run_mode})
 
     # --- Pages (user-scoped) ---
 
