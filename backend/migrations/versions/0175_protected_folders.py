@@ -9,14 +9,14 @@ per-folder special case.
 is_memory stays: it answers "which folder is Memory" (identity), which is a
 different question from "may this be renamed" (policy).
 
-Revision ID: 0174
-Revises: 0173
+Revision ID: 0175
+Revises: 0174
 """
 
 from alembic import op
 
-revision = "0174"
-down_revision = "0173"
+revision = "0175"
+down_revision = "0174"
 branch_labels = None
 depends_on = None
 
