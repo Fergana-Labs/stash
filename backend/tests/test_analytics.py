@@ -87,6 +87,38 @@ async def test_ingest_rejects_unknown_event(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_ingest_accepts_every_onboarding_event_the_web_app_fires(client: AsyncClient):
+    """A call site the allowlist doesn't know about costs more than its own row.
+
+    The endpoint rejects the whole batch on one unrecognised name, and the web
+    client's flush is fire-and-forget — so an unlisted event silently takes up
+    to 19 legitimate events down with it. `onboarding.api_key_minted` shipped
+    that way and recorded zero rows. Every name below has a live `track()` call
+    in frontend/src/app/onboarding/page.tsx; adding one there means adding it
+    here too.
+    """
+    key = await _register(client)
+    fired_by_onboarding_page = [
+        "onboarding.viewed",
+        "onboarding.step_viewed",
+        "onboarding.about_submitted",
+        "onboarding.collab_path_chosen",
+        "onboarding.api_key_minted",
+        "onboarding.skipped",
+        "onboarding.completed",
+    ]
+    resp = await client.post(
+        "/api/v1/analytics/events",
+        json={
+            "events": [{"surface": "web", "event_name": name} for name in fired_by_onboarding_page]
+        },
+        headers=_auth(key),
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json() == {"recorded": len(fired_by_onboarding_page)}
+
+
+@pytest.mark.asyncio
 async def test_ingest_accepts_round_2_event_names(client: AsyncClient):
     """The second batch of events (file_uploaded, stash_created, page_edited,
     search_query, signed_up, plus CLI history.*) must all pass the allowlist."""
