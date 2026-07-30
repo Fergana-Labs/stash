@@ -482,9 +482,19 @@ export default function AppView({ slug }: { slug: string }) {
                 {rows.map((row, index) => (
                   <tr
                     key={row.id}
-                    className={row.id === openRowId ? "bg-brand/5" : "hover:bg-raised/60"}
+                    // The whole row opens the detail pane, not just the title
+                    // cell — a row that highlights on hover but only responds
+                    // on one word reads as broken. The checkbox cell stops
+                    // propagation so selecting still works.
+                    onClick={() => setOpenRowId(row.id === openRowId ? null : row.id)}
+                    className={`cursor-pointer ${
+                      row.id === openRowId ? "bg-brand/5" : "hover:bg-raised/60"
+                    }`}
                   >
-                    <td className="border-b border-r border-border px-3 py-2">
+                    <td
+                      className="border-b border-r border-border px-3 py-2"
+                      onClick={(event) => event.stopPropagation()}
+                    >
                       <input
                         type="checkbox"
                         checked={selected.has(row.id)}
@@ -503,13 +513,9 @@ export default function AppView({ slug }: { slug: string }) {
                         className="border-b border-r border-border px-3 py-2 text-foreground last:border-r-0"
                       >
                         {column.id === manifest.detail.title ? (
-                          <button
-                            type="button"
-                            onClick={() => setOpenRowId(row.id === openRowId ? null : row.id)}
-                            className="block max-w-80 truncate text-left font-medium hover:text-brand"
-                          >
+                          <span className="block max-w-80 truncate font-medium">
                             {cellText(row, column.id) || "Untitled"}
-                          </button>
+                          </span>
                         ) : (
                           <CellValue row={row} column={column} />
                         )}
