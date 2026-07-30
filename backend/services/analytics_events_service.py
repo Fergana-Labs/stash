@@ -26,6 +26,7 @@ ALLOWED_EVENT_NAMES = {
     "onboarding.about_submitted",
     "onboarding.source_selected",
     "onboarding.collab_path_chosen",
+    "onboarding.api_key_minted",
     "onboarding.skipped",
     "onboarding.completed",
     # Web actions
