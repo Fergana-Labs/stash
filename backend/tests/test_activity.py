@@ -5,6 +5,8 @@ from uuid import UUID
 import pytest
 from httpx import AsyncClient
 
+from backend.services import analytics_service
+
 from .conftest import unique_name
 
 
@@ -185,6 +187,53 @@ async def test_user_wide_embedding_projection_ignores_stale_cache_without_curren
         "points": [],
         "stats": {"total_embeddings": 0, "projected": 0},
         "cached": False,
+    }
+
+
+@pytest.mark.asyncio
+async def test_user_wide_embedding_projection_serves_cache_while_access_unchanged(
+    client: AsyncClient,
+    pool,
+):
+    """The memory page's embeddings map must come from the cache, not an
+    inline UMAP fit — recomputing per load is the minute-long-render bug.
+    The row is only trusted while its scope signature still matches."""
+    resp = await client.post(
+        "/api/v1/users/register",
+        json={"name": unique_name("cached_projection"), "password": "securepassword1"},
+    )
+    assert resp.status_code == 201
+    body = resp.json()
+    user_id = UUID(body["id"])
+
+    point = {
+        "id": "cached-point",
+        "x": 0.1,
+        "y": 0.2,
+        "z": 0.3,
+        "source": "pages",
+        "label": "Roadmap",
+        "created_at": "2026-07-01T00:00:00Z",
+    }
+    await pool.execute(
+        "INSERT INTO embedding_projections "
+        "(user_id, source_type, owner_user_id, points, embedding_count, scope_signature, computed_at) "
+        "VALUES ($1, '_all', NULL, $2, 0, $3, now())",
+        user_id,
+        [point],
+        await analytics_service.scope_signature(user_id),
+    )
+
+    projection = await client.get(
+        "/api/v1/me/embedding-projection",
+        headers=_auth(body["api_key"]),
+    )
+
+    assert projection.status_code == 200
+    assert projection.json() == {
+        "points": [point],
+        "stats": {"total_embeddings": 0, "projected": 1},
+        "cached": True,
     }
 
 
