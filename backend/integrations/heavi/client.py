@@ -14,6 +14,7 @@ caches a copy for search/embeddings.
 from __future__ import annotations
 
 import json
+from urllib.parse import urlparse
 from uuid import UUID
 
 import httpx
@@ -29,6 +30,11 @@ async def fetch_learnings(owner_user_id: UUID) -> list[dict]:
 
 
 async def fetch_learnings_with(base_url: str, api_token: str) -> list[dict]:
+    parsed = urlparse(base_url)
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        raise ValueError("base_url must use an http(s) scheme with a hostname")
+    if parsed.hostname in ("localhost", "127.0.0.1", "0.0.0.0", "::1"):
+        raise ValueError("base_url must not point to a loopback address")
     headers = {"Authorization": f"Bearer {api_token}"}
     async with httpx.AsyncClient(timeout=15.0, headers=headers) as client:
         resp = await client.get(base_url)
