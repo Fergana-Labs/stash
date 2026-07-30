@@ -952,11 +952,10 @@ function DocViewer({
         if (cancelled) return;
         setContent(doc.content ?? "");
         setUrl(doc.url ?? null);
-        // X carries up to 4 media items (media[]); Instagram a single blob.
+        // Both X and Instagram carry a media array now — a tweet's up-to-four
+        // attachments and a carousel's up-to-ten slides render the same way.
         if (doc.media?.length) {
           setMedia(doc.media.map((m) => ({ url: m.url, contentType: m.content_type ?? "" })));
-        } else if (doc.media_url) {
-          setMedia([{ url: doc.media_url, contentType: doc.media_content_type ?? "" }]);
         }
         if (doc.name) setTitle(doc.name);
       })

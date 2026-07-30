@@ -28,7 +28,12 @@ SC_TRANSCRIPT_URL = "https://api.scrapecreators.com/v2/instagram/media/transcrip
 
 # The transcript endpoint transcribes on demand (10-30s per reel).
 SC_TIMEOUT = 90
-MAX_MEDIA_BYTES = 50 * 1024 * 1024
+# Matches the X saves ceiling. 50 MB rejected ordinary reels, and because the
+# archive used to run before the document was written, an oversized video
+# discarded the caption and transcript along with it.
+MAX_MEDIA_BYTES = 100 * 1024 * 1024
+# A carousel holds up to 10 items.
+MAX_MEDIA_PER_POST = 10
 HYDRATION_BATCH = 25
 MAX_HYDRATION_ATTEMPTS = 3
 
@@ -93,8 +98,6 @@ async def _hydrate_one(
     if post["is_video"]:
         transcript = await _fetch_transcript(client, url)
 
-    media_key, media_content_type = await _archive_media(owner_user_id, shortcode, post)
-
     posted = post["posted_at"]
     parts = [
         f"# @{post['username']} — Instagram save",
@@ -119,14 +122,29 @@ async def _hydrate_one(
         external_ref=shortcode,
         external_updated_at=posted,
     )
+    # The document is written before any media is fetched, and archiving is
+    # best-effort from here. The caption and transcript are the part worth
+    # keeping and they are already in hand; losing them because a video was
+    # oversized or its CDN URL had expired is the wrong trade. A media failure
+    # is recorded on the row rather than swallowed.
+    media: list[dict] = []
+    media_error: str | None = None
+    try:
+        media = await _archive_media(owner_user_id, shortcode, _media_items(post))
+    except Exception as e:  # noqa: BLE001 — recorded below, never fatal to the save
+        media_error = f"media archive failed: {e}"
+        logger.warning("instagram media archive failed shortcode=%s error=%s", shortcode, e)
+
     await get_pool().execute(
-        "UPDATE instagram_save_docs SET media_storage_key = $3, media_content_type = $4, "
-        "hydration_status = 'done', hydration_error = NULL, updated_at = now() "
+        # The pool registers a jsonb codec, so the list goes across as-is —
+        # json.dumps here would double-encode it into a JSON string.
+        "UPDATE instagram_save_docs SET media = $3, "
+        "hydration_status = 'done', hydration_error = $4, updated_at = now() "
         "WHERE source_id = $1 AND path = $2",
         source_id,
         shortcode,
-        media_key,
-        media_content_type,
+        media,
+        media_error,
     )
 
 
@@ -141,8 +159,31 @@ async def _fetch_post(client: httpx.AsyncClient, url: str) -> dict:
         "caption": caption,
         "posted_at": datetime.fromtimestamp(media["taken_at_timestamp"], UTC),
         "is_video": bool(media.get("is_video")),
-        "media_url": media.get("video_url") or media.get("display_url"),
+        # Kept whole so _media_items can walk a carousel's children; the
+        # top-level video_url/display_url only describes the first slide.
+        "node": media,
     }
+
+
+def _media_items(post: dict) -> list[dict]:
+    """[{url, is_video}] for every image or video on the post.
+
+    A carousel puts its slides under `edge_sidecar_to_children`, and the
+    post's own `display_url` is just the first of them. Reading only the top
+    level archived slide one and silently dropped the other nine.
+    """
+
+    def _one(node: dict) -> dict | None:
+        url = node.get("video_url") or node.get("display_url")
+        return {"url": url, "is_video": bool(node.get("is_video"))} if url else None
+
+    node = post["node"]
+    children = (node.get("edge_sidecar_to_children") or {}).get("edges") or []
+    if children:
+        items = [_one(edge["node"]) for edge in children if edge.get("node")]
+    else:
+        items = [_one(node)]
+    return [item for item in items if item][:MAX_MEDIA_PER_POST]
 
 
 async def _fetch_transcript(client: httpx.AsyncClient, url: str) -> str:
@@ -156,26 +197,43 @@ async def _fetch_transcript(client: httpx.AsyncClient, url: str) -> str:
     return " ".join(t["text"] for t in (payload.get("transcripts") or []) if t.get("text")).strip()
 
 
-async def _archive_media(owner_user_id: UUID, shortcode: str, post: dict) -> tuple[str, str]:
-    """Download the post's video/image from Instagram's CDN (the signed URL
-    ScrapeCreators just returned is fresh) into object storage."""
-    media_url = post["media_url"]
-    if not media_url:
-        raise ValueError("Post has no media URL")
+async def _archive_media(owner_user_id: UUID, shortcode: str, items: list[dict]) -> list[dict]:
+    """Download each image/video from Instagram's CDN (the signed URLs
+    ScrapeCreators just returned are fresh) into object storage.
+
+    Returns [{storage_key, content_type}] — the same shape X saves use.
+    Streamed with the cap enforced *while* downloading, because buffering a
+    long 1080p video just to measure it is what OOM-killed the X worker.
+    An oversized item is skipped so the rest of a carousel still archives.
+    """
+    stored: list[dict] = []
+    if not items:
+        return stored
     async with httpx.AsyncClient(timeout=60, follow_redirects=True) as media_client:
-        response = await media_client.get(media_url)
-        response.raise_for_status()
-        content = response.content
-        if len(content) > MAX_MEDIA_BYTES:
-            raise ValueError(f"Media larger than {MAX_MEDIA_BYTES} bytes")
-        content_type = response.headers.get(
-            "content-type", "video/mp4" if post["is_video"] else "image/jpeg"
-        )
-    extension = "mp4" if post["is_video"] else "jpg"
-    storage_key = await storage_service.upload_file(
-        str(owner_user_id),
-        f"instagram-{shortcode}.{extension}",
-        content,
-        content_type,
-    )
-    return storage_key, content_type
+        for index, item in enumerate(items):
+            async with media_client.stream("GET", item["url"]) as response:
+                response.raise_for_status()
+                declared = response.headers.get("content-length")
+                if declared is not None and int(declared) > MAX_MEDIA_BYTES:
+                    continue
+                chunks: list[bytes] = []
+                total = 0
+                async for chunk in response.aiter_bytes(64 * 1024):
+                    total += len(chunk)
+                    if total > MAX_MEDIA_BYTES:
+                        break
+                    chunks.append(chunk)
+                if total > MAX_MEDIA_BYTES:
+                    continue
+                content_type = response.headers.get(
+                    "content-type", "video/mp4" if item["is_video"] else "image/jpeg"
+                )
+            extension = "mp4" if item["is_video"] else "jpg"
+            storage_key = await storage_service.upload_file(
+                str(owner_user_id),
+                f"instagram-{shortcode}-{index}.{extension}",
+                b"".join(chunks),
+                content_type,
+            )
+            stored.append({"storage_key": storage_key, "content_type": content_type})
+    return stored
