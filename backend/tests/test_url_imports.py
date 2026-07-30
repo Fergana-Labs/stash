@@ -711,10 +711,11 @@ async def test_needs_client_rows_expire_to_link_only(client: AsyncClient, pool) 
 
 @pytest.mark.asyncio
 async def test_import_creates_the_bookmark_row_before_any_fetching(
-    client: AsyncClient, pool
+    client: AsyncClient, pool, monkeypatch
 ) -> None:
     """Accepting the import is what puts it in the table. No worker has run,
     so it stands as a Link with nothing to click through to yet."""
+    monkeypatch.setattr(clips_tasks.process_url_imports, "delay", lambda ids: None)
     headers, owner_id = await _register(client)
 
     resp = await client.post(
@@ -744,6 +745,7 @@ async def test_landing_content_upgrades_that_row_instead_of_adding_one(
 ) -> None:
     """The whole point of holding a row: the user watches one bookmark become
     a real clip. Two rows for one URL would be a bug they'd have to clean up."""
+    monkeypatch.setattr(clips_tasks.process_url_imports, "delay", lambda ids: None)
     headers, owner_id = await _register(client)
     resp = await client.post(
         "/api/v1/me/imports/tabs", json={"urls": ["https://example.com/post"]}, headers=headers
@@ -785,6 +787,7 @@ async def test_giving_up_on_content_leaves_the_single_link_row(
 ) -> None:
     """A URL we can never capture is already sitting in the table as exactly
     what it turned out to be, so the give-up path has nothing to write."""
+    monkeypatch.setattr(clips_tasks.process_url_imports, "delay", lambda ids: None)
     headers, owner_id = await _register(client)
     resp = await client.post(
         "/api/v1/me/imports/tabs", json={"urls": ["https://example.com/video.mp4"]}, headers=headers
@@ -816,6 +819,7 @@ async def test_pending_row_is_not_enriched_until_it_has_content(
     """The enrichment sweep clears enrich_stale once and never revisits. A row
     marked stale while its Clip cell is empty would be summarised from its URL
     and then never re-summarised from the page — so it waits."""
+    monkeypatch.setattr(clips_tasks.process_url_imports, "delay", lambda ids: None)
     headers, owner_id = await _register(client)
     resp = await client.post(
         "/api/v1/me/imports/tabs", json={"urls": ["https://example.com/post"]}, headers=headers
