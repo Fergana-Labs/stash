@@ -108,7 +108,7 @@ async def _resurface_items(user_id: UUID, cursor: int) -> list[dict]:
               AND created_at < now() - interval '{RESURFACE_MIN_AGE_DAYS} days'
             UNION ALL
             SELECT 'instagram', id::text, name, content,
-                   created_at, external_ref, media_storage_key
+                   created_at, external_ref, media->0->>'storage_key'
             FROM instagram_save_docs
             WHERE owner_user_id = $1 AND hydration_status = 'done'
               AND deleted_at IS NULL AND content IS NOT NULL

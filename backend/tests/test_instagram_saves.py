@@ -51,10 +51,33 @@ class _FakeResponse:
         return self._payload
 
 
+class _FakeStream:
+    """Media is downloaded with `stream()` so the size cap can hold while the
+    bytes arrive, rather than after buffering a whole video."""
+
+    def __init__(self, content: bytes, content_type: str = "video/mp4"):
+        self._content = content
+        self.headers = {"content-type": content_type, "content-length": str(len(content))}
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *args):
+        return False
+
+    def raise_for_status(self):
+        pass
+
+    async def aiter_bytes(self, chunk_size=65536):
+        for start in range(0, len(self._content), chunk_size):
+            yield self._content[start : start + chunk_size]
+
+
 class _FakeScrapeCreators:
-    """Answers the SC post + transcript endpoints and the CDN media URL."""
+    """Answers the SC post + transcript endpoints and the CDN media URLs."""
 
     media_bytes = b"fake video bytes"
+    post_payload = _POST_PAYLOAD
 
     def __init__(self, **kwargs):
         pass
@@ -67,12 +90,15 @@ class _FakeScrapeCreators:
 
     async def get(self, url, params=None):
         if url == ig_indexer.SC_POST_URL:
-            return _FakeResponse(payload=_POST_PAYLOAD)
+            return _FakeResponse(payload=type(self).post_payload)
         if url == ig_indexer.SC_TRANSCRIPT_URL:
             return _FakeResponse(payload=_TRANSCRIPT_PAYLOAD)
-        if url == "https://cdn.example/reel.mp4":
-            return _FakeResponse(content=type(self).media_bytes)
         raise AssertionError(f"unexpected URL {url}")
+
+    def stream(self, method, url):
+        if url.startswith("https://cdn.example/"):
+            return _FakeStream(type(self).media_bytes)
+        raise AssertionError(f"unexpected media URL {url}")
 
 
 @pytest.fixture
@@ -281,17 +307,24 @@ async def test_indexer_hydrates_content_transcript_and_media(
     assert row["name"] == "@chefkim - 2025-07-01"
     assert "60-second focaccia" in row["content"]
     assert "mix the flour and water" in row["content"]
-    assert row["media_storage_key"] == "store/instagram-ABC123xyz.mp4"
-    assert row["media_content_type"] == "video/mp4"
+    assert row["media"] == [
+        {"storage_key": "store/instagram-ABC123xyz-0.mp4", "content_type": "video/mp4"}
+    ]
     assert row["embed_stale"] is True
-    assert fake_hydration == [("instagram-ABC123xyz.mp4", "video/mp4")]
+    assert fake_hydration == [("instagram-ABC123xyz-0.mp4", "video/mp4")]
     assert row["external_updated_at"] == datetime.fromtimestamp(1751371200, UTC)
 
-    # The doc read serves a fresh presigned media URL.
+    # The doc read serves fresh presigned media URLs.
     ok, doc = await source_service.source_document(
         UUID(owner_id), UUID(owner_id), str(source["id"]), "ABC123xyz"
     )
-    assert ok and doc["media_url"] == "https://blob.example/store/instagram-ABC123xyz.mp4"
+    assert ok
+    assert doc["media"] == [
+        {
+            "url": "https://blob.example/store/instagram-ABC123xyz-0.mp4",
+            "content_type": "video/mp4",
+        }
+    ]
 
 
 @pytest.mark.asyncio
@@ -336,3 +369,149 @@ async def test_hydration_failure_lands_on_the_row(
     assert ok and doc["http_status"] == 422
     assert "couldn't be archived" in doc["error"]
     assert "scrapecreators exploded" not in doc["error"]
+
+
+_CAROUSEL_PAYLOAD = {
+    "data": {
+        "xdt_shortcode_media": {
+            "owner": {"username": "chefkim"},
+            "edge_media_to_caption": {"edges": [{"node": {"text": "three ways with dough"}}]},
+            "taken_at_timestamp": 1751371200,
+            "is_video": False,
+            "display_url": "https://cdn.example/slide-1.jpg",
+            "edge_sidecar_to_children": {
+                "edges": [
+                    {"node": {"is_video": False, "display_url": "https://cdn.example/slide-1.jpg"}},
+                    {"node": {"is_video": False, "display_url": "https://cdn.example/slide-2.jpg"}},
+                    {
+                        "node": {
+                            "is_video": True,
+                            "video_url": "https://cdn.example/slide-3.mp4",
+                            "display_url": "https://cdn.example/slide-3.jpg",
+                        }
+                    },
+                ]
+            },
+        }
+    }
+}
+
+
+def test_carousel_yields_every_slide():
+    """A carousel's slides live under edge_sidecar_to_children; the post's own
+    display_url is only the first. Reading the top level archived one image
+    and silently dropped the rest."""
+    post = {"node": _CAROUSEL_PAYLOAD["data"]["xdt_shortcode_media"]}
+
+    items = ig_indexer._media_items(post)
+
+    assert [item["url"] for item in items] == [
+        "https://cdn.example/slide-1.jpg",
+        "https://cdn.example/slide-2.jpg",
+        "https://cdn.example/slide-3.mp4",
+    ]
+    # The video slide keeps its video URL, not its poster frame.
+    assert [item["is_video"] for item in items] == [False, False, True]
+
+
+def test_single_post_still_yields_its_one_item():
+    post = {"node": _POST_PAYLOAD["data"]["xdt_shortcode_media"]}
+    assert ig_indexer._media_items(post) == [
+        {"url": "https://cdn.example/reel.mp4", "is_video": True}
+    ]
+
+
+async def test_carousel_archives_every_slide(
+    client: AsyncClient, pool, fake_hydration, monkeypatch
+):
+    monkeypatch.setattr(_FakeScrapeCreators, "post_payload", _CAROUSEL_PAYLOAD)
+    headers, owner_id = await _register(client)
+    await client.post(
+        "/api/v1/me/saved-items",
+        json={"platform": "instagram", "items": [{"url": "https://www.instagram.com/p/CARO123/"}]},
+        headers=headers,
+    )
+    source = await pool.fetchrow(
+        "SELECT id FROM user_sources WHERE owner_user_id = $1 AND source_type = 'instagram_saves'",
+        UUID(owner_id),
+    )
+    await ig_indexer.index_instagram_saves(await source_service.get_source_for_sync(source["id"]))
+
+    row = await pool.fetchrow(
+        "SELECT media, hydration_status FROM instagram_save_docs WHERE source_id = $1", source["id"]
+    )
+    assert row["hydration_status"] == "done"
+    assert [m["storage_key"] for m in row["media"]] == [
+        "store/instagram-CARO123-0.jpg",
+        "store/instagram-CARO123-1.jpg",
+        "store/instagram-CARO123-2.mp4",
+    ]
+
+
+async def test_media_failure_keeps_the_caption_and_transcript(
+    client: AsyncClient, pool, fake_hydration, monkeypatch
+):
+    """The archive used to run before the document was written, so an
+    oversized video or an expired CDN URL discarded the caption and
+    transcript too — the parts already fetched and worth keeping."""
+
+    async def _explode(*args, **kwargs):
+        raise RuntimeError("CDN url expired")
+
+    monkeypatch.setattr(ig_indexer, "_archive_media", _explode)
+    headers, owner_id = await _register(client)
+    await client.post(
+        "/api/v1/me/saved-items",
+        json={
+            "platform": "instagram",
+            "items": [{"url": "https://www.instagram.com/p/ABC123xyz/"}],
+        },
+        headers=headers,
+    )
+    source = await pool.fetchrow(
+        "SELECT id FROM user_sources WHERE owner_user_id = $1 AND source_type = 'instagram_saves'",
+        UUID(owner_id),
+    )
+    await ig_indexer.index_instagram_saves(await source_service.get_source_for_sync(source["id"]))
+
+    row = await pool.fetchrow(
+        "SELECT content, media, hydration_status, hydration_error "
+        "FROM instagram_save_docs WHERE source_id = $1",
+        source["id"],
+    )
+    assert row["hydration_status"] == "done"
+    assert "60-second focaccia" in row["content"], "the caption must survive a media failure"
+    assert "mix the flour and water" in row["content"]
+    assert row["media"] == []
+    # Recorded, not swallowed.
+    assert "CDN url expired" in row["hydration_error"]
+
+
+async def test_oversized_media_is_skipped_without_losing_the_save(
+    client: AsyncClient, pool, fake_hydration, monkeypatch
+):
+    """The cap holds while streaming, and one oversized blob skips itself
+    rather than failing the post."""
+    monkeypatch.setattr(ig_indexer, "MAX_MEDIA_BYTES", 4)
+    headers, owner_id = await _register(client)
+    await client.post(
+        "/api/v1/me/saved-items",
+        json={
+            "platform": "instagram",
+            "items": [{"url": "https://www.instagram.com/p/ABC123xyz/"}],
+        },
+        headers=headers,
+    )
+    source = await pool.fetchrow(
+        "SELECT id FROM user_sources WHERE owner_user_id = $1 AND source_type = 'instagram_saves'",
+        UUID(owner_id),
+    )
+    await ig_indexer.index_instagram_saves(await source_service.get_source_for_sync(source["id"]))
+
+    row = await pool.fetchrow(
+        "SELECT content, media, hydration_status FROM instagram_save_docs WHERE source_id = $1",
+        source["id"],
+    )
+    assert row["hydration_status"] == "done"
+    assert row["media"] == []
+    assert "60-second focaccia" in row["content"]

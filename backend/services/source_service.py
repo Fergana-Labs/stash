@@ -439,12 +439,15 @@ async def _cleanup_source_data(source_ids: list[UUID]) -> None:
         for item in row["media"]:
             await storage_service.delete_file(item["storage_key"])
     ig_rows = await pool.fetch(
-        "SELECT media_storage_key FROM instagram_save_docs "
-        "WHERE source_id = ANY($1::uuid[]) AND media_storage_key IS NOT NULL",
+        "SELECT media FROM instagram_save_docs "
+        "WHERE source_id = ANY($1::uuid[]) AND media <> '[]'::jsonb",
         source_ids,
     )
     for row in ig_rows:
-        await storage_service.delete_file(row["media_storage_key"])
+        # A carousel stores one blob per slide, so disconnecting has to walk
+        # the array or it orphans every slide but the first.
+        for item in row["media"]:
+            await storage_service.delete_file(item["storage_key"])
     await pool.execute(
         "DELETE FROM shares WHERE object_type = 'source' AND object_id = ANY($1::uuid[])",
         source_ids,
@@ -1324,8 +1327,8 @@ async def _read_instagram_save(source_id: UUID, path: str) -> dict | None:
     from . import storage_service
 
     row = await get_pool().fetchrow(
-        "SELECT path, name, kind, content, external_ref, media_storage_key, "
-        "media_content_type, hydration_status, hydration_error "
+        "SELECT path, name, kind, content, external_ref, media, "
+        "hydration_status, hydration_error "
         "FROM instagram_save_docs WHERE source_id = $1 AND path = $2 AND deleted_at IS NULL",
         source_id,
         path,
@@ -1348,9 +1351,17 @@ async def _read_instagram_save(source_id: UUID, path: str) -> dict | None:
         "content": row["content"],
         "external_ref": row["external_ref"],
     }
-    if row["media_storage_key"]:
-        doc["media_url"] = await storage_service.get_file_url(row["media_storage_key"])
-        doc["media_content_type"] = row["media_content_type"]
+    # Same shape as a saved tweet: a carousel is many slides, so the reader
+    # returns a list rather than a single media_url.
+    media = row["media"] or []
+    if media:
+        doc["media"] = [
+            {
+                "url": await storage_service.get_file_url(m["storage_key"]),
+                "content_type": m.get("content_type"),
+            }
+            for m in media
+        ]
     return doc
 
 

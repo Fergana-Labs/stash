@@ -398,10 +398,8 @@ export async function readSourceDoc(
   name?: string;
   content?: string;
   url?: string | null;
-  // Archived save media served via fresh presigned URLs. Instagram carries a
-  // single blob (media_url); X can carry up to 4 (media[]).
-  media_url?: string | null;
-  media_content_type?: string | null;
+  // Archived save media served via fresh presigned URLs — a tweet's
+  // attachments or a carousel's slides, same shape for both.
   media?: { url: string; content_type?: string | null }[] | null;
 }> {
   return apiFetch(`${ME}/sources/${source}/doc?ref=${encodeURIComponent(ref)}`);
