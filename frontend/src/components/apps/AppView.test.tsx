@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import AppView from "./AppView";
@@ -76,6 +76,7 @@ const manifest = {
     body: "summary",
     labels: "topics",
     link: "url",
+    content: "clip",
   },
   enriched_columns: ["summary", "topics"],
 };
@@ -86,6 +87,10 @@ const rows = ["First", "Second", "Third"].map((title, index) => ({
   data: {
     title,
     url: `https://example.com/${index + 1}`,
+    // The Clip cell holds an absolute app URL — possibly on a different
+    // origin than the one being viewed, which is why the drawer reduces it
+    // to a path rather than linking it verbatim.
+    clip: `https://app.example.test/p/0000000${index + 1}-0000-4000-8000-000000000000`,
     summary: `Summary ${index + 1}`,
     topics: index === 0 ? ["AI"] : [],
   },
@@ -194,7 +199,7 @@ describe("Bookmarks app", () => {
   it("opens an editable field drawer and saves changed row values", async () => {
     render(<AppView slug="bookmarks" />);
 
-    fireEvent.click(await screen.findByRole("button", { name: "First" }));
+    fireEvent.click((await screen.findByText("First")).closest("tr")!);
     const title = screen.getByLabelText("Title");
     fireEvent.change(title, { target: { value: "Updated title" } });
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
@@ -209,7 +214,7 @@ describe("Bookmarks app", () => {
   it("keeps generated topics visible and editable", async () => {
     render(<AppView slug="bookmarks" />);
 
-    fireEvent.click(await screen.findByRole("button", { name: "First" }));
+    fireEvent.click((await screen.findByText("First")).closest("tr")!);
     expect(screen.getAllByText("AI").length).toBeGreaterThan(0);
     fireEvent.click(screen.getByTestId("add-topic"));
     fireEvent.change(screen.getByPlaceholderText("Add a topic…"), {
@@ -223,5 +228,41 @@ describe("Bookmarks app", () => {
         "Research",
       ])
     );
+  });
+
+  it("opens the drawer from anywhere in the row, not just the title", async () => {
+    render(<AppView slug="bookmarks" />);
+
+    // A non-title cell. The row highlights on hover across its whole width,
+    // so responding only on the title reads as a broken row.
+    const titleCell = (await screen.findByText("First")).closest("td")!;
+    const otherCell = titleCell.nextElementSibling as HTMLElement;
+    fireEvent.click(otherCell);
+
+    expect(await screen.findByTestId("app-detail")).toBeTruthy();
+  });
+
+  it("does not open the drawer when ticking the row's checkbox", async () => {
+    render(<AppView slug="bookmarks" />);
+
+    const row = (await screen.findByText("First")).closest("tr")!;
+    fireEvent.mouseDown(row.querySelector('input[type="checkbox"]')!);
+
+    expect(screen.getByText("1 selected")).toBeTruthy();
+    expect(screen.queryByTestId("app-detail")).toBeNull();
+  });
+
+  it("keeps links to the saved copy and the original in the drawer", async () => {
+    render(<AppView slug="bookmarks" />);
+
+    fireEvent.click((await screen.findByText("First")).closest("tr")!);
+
+    // The two things a bookmark is for. A drawer that can edit fields but
+    // can't reach either is a spreadsheet cell with extra steps.
+    const links = within(screen.getByTestId("detail-links")).getAllByRole("link");
+    const hrefs = links.map((link) => link.getAttribute("href"));
+    expect(hrefs).toContain("https://example.com/1");
+    expect(hrefs.some((href) => href?.startsWith("/p/"))).toBe(true);
+    expect(links.every((link) => link.getAttribute("target") === "_blank")).toBe(true);
   });
 });
