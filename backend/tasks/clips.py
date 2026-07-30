@@ -104,12 +104,19 @@ async def _resolve_failure(row: dict, error: str) -> None:
 
 
 async def _resolve_link_only(row: dict, error: str) -> None:
-    await clip_service.save_link_only(
-        row["owner_user_id"],
-        row["created_by"],
-        url=row["url"],
-        title=row.get("title"),
-    )
+    """Give up on the content and keep the link.
+
+    A row created since pre-created bookmarks landed already sits in the table
+    as a Link with no Clip — which is precisely the outcome — so there is
+    nothing to write. Only imports queued before that need the row indexed now.
+    """
+    if row.get("bookmark_row_id") is None:
+        await clip_service.save_link_only(
+            row["owner_user_id"],
+            row["created_by"],
+            url=row["url"],
+            title=row.get("title"),
+        )
     await url_import_service.mark_done(row["id"], error=error)
 
 

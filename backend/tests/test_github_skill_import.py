@@ -65,6 +65,15 @@ def test_parse_repo_url():
         gsi.parse_repo_url("https://gitlab.com/acme/skills")
 
 
+def test_parse_repo_target_reads_a_subdirectory():
+    assert gsi.parse_repo_target("https://github.com/acme/skills") == ("acme", "skills", "")
+    assert gsi.parse_repo_target("https://github.com/acme/skills/tree/main/docs/skills") == (
+        "acme",
+        "skills",
+        "docs/skills",
+    )
+
+
 def test_discover_skill_dirs_finds_root_and_nested():
     tree = [
         {"path": "SKILL.md", "type": "blob"},
@@ -74,6 +83,39 @@ def test_discover_skill_dirs_finds_root_and_nested():
         {"path": "plain", "type": "tree"},
     ]
     assert gsi.discover_skill_dirs(tree) == ["", "sub"]
+
+
+def test_subdir_import_leaves_the_rest_of_the_repo_alone():
+    """A repo can hold skills next to SKILL.md files that are not skills we
+    publish (fixtures, static assets). Without the narrowing, importing the
+    library also publishes those."""
+    tree = [
+        {"path": "SKILL.md", "type": "blob"},
+        {"path": "static/SKILL.md", "type": "blob"},
+        {"path": "docs/skills/brief/SKILL.md", "type": "blob"},
+        {"path": "docs/skills/slides/SKILL.md", "type": "blob"},
+    ]
+    assert gsi.discover_skill_dirs(tree, "docs/skills") == [
+        "docs/skills/brief",
+        "docs/skills/slides",
+    ]
+    # A prefix that only matches as a string, not as a path, is not a parent.
+    assert gsi.discover_skill_dirs(tree, "docs/skill") == []
+
+
+@pytest.mark.asyncio
+async def test_subdir_import_publishes_only_that_directory(client: AsyncClient, pool, monkeypatch):
+    _fake_github(
+        monkeypatch,
+        {
+            "static/SKILL.md": b"---\nname: Not Ours\n---\nbody\n",
+            "docs/skills/brief/SKILL.md": b"---\nname: brief\n---\nbody\n",
+        },
+    )
+    await _import_repo("https://github.com/acme/skills/tree/main/docs/skills")
+
+    titles = [r["title"] for r in await pool.fetch("SELECT title FROM skills ORDER BY title")]
+    assert titles == ["brief"]
 
 
 @pytest.mark.asyncio

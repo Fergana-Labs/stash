@@ -38,6 +38,11 @@ BOOKMARKS_MANIFEST = {
     "folder": "Clips",
     "table_name": "Bookmarks",
     "description": "Everything you've saved with the Stash browser extension.",
+    # Published skills that read this table. Named, not slugged: slugs carry a
+    # random suffix minted at publish time, so the manifest would go stale the
+    # first time a skill was republished. Resolved against the service account
+    # at read time — a name nobody has published yet simply doesn't appear.
+    "skills": ["brief", "resurface", "overview", "cleanup"],
     "empty_state": {
         "title": "Save your first bookmark",
         "description": (
@@ -192,8 +197,10 @@ async def ensure_table(slug: str, owner_user_id: UUID, user_id: UUID) -> dict:
     if existing:
         return existing
 
+    # The app's folder is structural — the manifest resolves it by name, so it
+    # is protected for the same reason Clips is.
     folder = await files_tree_service.find_or_create_root_folder(
-        owner_user_id, manifest["folder"], user_id
+        owner_user_id, manifest["folder"], user_id, protected=True
     )
     try:
         table = await table_service.create_table(

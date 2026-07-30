@@ -6,13 +6,19 @@ says which column is the title, the body, the labels — so it can render cards
 and a detail pane without knowing what a bookmark is.
 """
 
+from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from ..auth import get_current_user
-from ..services import mini_program_query, mini_program_service, table_service
+from ..services import (
+    mini_program_query,
+    mini_program_service,
+    shared_skill_service,
+    table_service,
+)
 
 router = APIRouter(prefix="/api/v1/me/apps", tags=["mini-programs"])
 
@@ -88,6 +94,18 @@ async def install_app(slug: str, current_user: dict = Depends(get_current_user))
     }
 
 
+@router.get("/{slug}/skills")
+async def app_skills(slug: str, current_user: dict = Depends(get_current_user)):
+    """The published skills that read this app's table — what the agent can do
+    with everything in it. Drives the strip above the app; each entry carries
+    its starter prompts so the launcher has something to run."""
+    manifest = mini_program_service.get_manifest(slug)
+    if manifest is None:
+        raise HTTPException(status_code=404, detail=f"No mini program named {slug!r}")
+    skills = await shared_skill_service.curated_skills_by_name(manifest.get("skills", []))
+    return {"skills": skills}
+
+
 @router.post("/{slug}/rows/{row_id}/reenrich")
 async def reenrich_row(
     slug: str,
@@ -115,6 +133,8 @@ async def list_rows(
     topic: str | None = None,
     filter: str | None = Query(None, description="duplicates | untagged | broken"),
     view_id: str | None = None,
+    sort_by: str | None = None,
+    sort_order: Literal["asc", "desc"] = "asc",
     limit: int = Query(60, ge=1, le=MAX_PAGE),
     offset: int = Query(0, ge=0),
     current_user: dict = Depends(get_current_user),
@@ -128,6 +148,10 @@ async def list_rows(
         view = next((item for item in table["views"] if item.get("id") == view_id), None)
         if view is None:
             raise HTTPException(status_code=404, detail="View not found")
+    if sort_by is not None:
+        column_ids = {column["id"] for column in table["columns"]}
+        if sort_by not in column_ids:
+            raise HTTPException(status_code=400, detail="Sort column not found")
     return await mini_program_query.query_rows(
         table["id"],
         manifest["detail"],
@@ -135,6 +159,8 @@ async def list_rows(
         topic=topic,
         filter_=filter,
         view=view,
+        sort_by=sort_by,
+        sort_order=sort_order,
         limit=limit,
         offset=offset,
     )

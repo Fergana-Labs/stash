@@ -2,47 +2,65 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import {
-  AlertTriangle,
-  BookMarked,
-  Copy,
-  LayoutGrid,
-  Search,
-  Table2,
-  TagIcon,
-} from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, LayoutGrid, Table2 } from "lucide-react";
 
 import { appFacets, getApp, getTable, installApp, listAppRows } from "@/lib/api";
-import type {
-  AppFacets,
-  MiniProgramManifest,
-  Table,
-  TableRow,
-  TableView,
-  TableViewLayout,
-} from "@/lib/types";
+import type { AppFacets, MiniProgramManifest, Table, TableColumn, TableRow } from "@/lib/types";
 
 import AppBulkBar from "./AppBulkBar";
 import AppCard from "./AppCard";
 import AppDetail from "./AppDetail";
-import { cellText } from "./cells";
+import AppSkillsBanner from "./AppSkillsBanner";
+import { cellLabels, cellText, displayTimestamp } from "./cells";
 
 const PAGE_SIZE = 60;
-const SEARCH_DEBOUNCE_MS = 250;
 // Rows enrich in the background; re-poll while any on screen is still bare.
 const ENRICH_POLL_MS = 6000;
+type Layout = "table" | "cards";
+type SortOrder = "asc" | "desc";
 
-function layoutOf(view: TableView | null): TableViewLayout {
-  return view?.layout === "cards" ? "cards" : view ? "table" : "cards";
-}
-
-/** The derived filters, in Raindrop's model: not separate screens, just
- *  filters over the same list with a count beside each. */
 const DERIVED = [
-  { key: "duplicates", label: "Duplicates", icon: Copy },
-  { key: "broken", label: "Broken", icon: AlertTriangle },
-  { key: "untagged", label: "Untagged", icon: TagIcon },
+  { key: "duplicates", label: "Duplicates" },
+  { key: "broken", label: "Broken links" },
+  { key: "untagged", label: "Without topics" },
 ] as const;
+
+function CellValue({ row, column }: { row: TableRow; column: TableColumn }) {
+  const value = row.data[column.id];
+
+  if (column.type === "multiselect") {
+    const labels = cellLabels(row, column.id);
+    if (labels.length === 0) return <span className="text-dim">—</span>;
+    return (
+      <span className="flex flex-wrap gap-1">
+        {labels.map((label) => (
+          <span key={label} className="rounded bg-raised px-1.5 py-0.5 text-[11px]">
+            {label}
+          </span>
+        ))}
+      </span>
+    );
+  }
+
+  const text = value == null ? "" : String(value);
+  if (!text) return <span className="text-dim">—</span>;
+
+  if (column.type === "url") {
+    return (
+      <a
+        href={text}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="block max-w-72 truncate text-brand hover:underline"
+      >
+        {text}
+      </a>
+    );
+  }
+
+  if (column.name === "Saved") return <>{displayTimestamp(text)}</>;
+  return <span className="block max-w-80 truncate">{text}</span>;
+}
 
 export default function AppView({ slug }: { slug: string }) {
   const [manifest, setManifest] = useState<MiniProgramManifest | null>(null);
@@ -57,22 +75,18 @@ export default function AppView({ slug }: { slug: string }) {
   const [missing, setMissing] = useState(false);
   const [error, setError] = useState("");
 
-  const [activeViewId, setActiveViewId] = useState<string | null>(null);
+  const [defaultViewId, setDefaultViewId] = useState<string | null>(null);
   const [topic, setTopic] = useState<string | null>(null);
   const [derived, setDerived] = useState<string | null>(null);
-  const [queryInput, setQueryInput] = useState("");
-  const [query, setQuery] = useState("");
+  const [layout, setLayout] = useState<Layout>("table");
+  const [sortBy, setSortBy] = useState<string | null>(null);
+  const [sortOrder, setSortOrder] = useState<SortOrder>("asc");
   const [openRowId, setOpenRowId] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
   const sentinelRef = useRef<HTMLDivElement>(null);
   const requestIdRef = useRef(0);
-
-  // Debounce typing so a search doesn't fire a request per keystroke.
-  useEffect(() => {
-    const t = setTimeout(() => setQuery(queryInput), SEARCH_DEBOUNCE_MS);
-    return () => clearTimeout(t);
-  }, [queryInput]);
+  const lastSelectedIndexRef = useRef<number | null>(null);
 
   const refreshFacets = useCallback(async () => {
     try {
@@ -85,15 +99,16 @@ export default function AppView({ slug }: { slug: string }) {
   const loadPage = useCallback(
     async (
       offset: number,
-      viewId: string | null = activeViewId,
+      viewId: string | null = defaultViewId,
       preserveLoadedRows = false
     ) => {
       const requestId = ++requestIdRef.current;
       const page = await listAppRows(slug, {
-        q: query,
         topic: topic ?? undefined,
         filter: derived ?? undefined,
         view_id: viewId ?? undefined,
+        sort_by: sortBy ?? undefined,
+        sort_order: sortBy ? sortOrder : undefined,
         limit: PAGE_SIZE,
         offset,
       });
@@ -107,7 +122,7 @@ export default function AppView({ slug }: { slug: string }) {
         return [...page.rows, ...previous.filter((row) => !refreshedIds.has(row.id))];
       });
     },
-    [slug, query, topic, derived, activeViewId]
+    [slug, topic, derived, defaultViewId, sortBy, sortOrder]
   );
 
   const init = useCallback(async () => {
@@ -115,9 +130,9 @@ export default function AppView({ slug }: { slug: string }) {
       const app = await getApp(slug);
       setManifest(app.manifest);
       const loadedTable = await getTable(app.table_id);
-      const initialViewId = loadedTable.views?.[0]?.id ?? null;
+      const initialViewId = loadedTable.views?.find((view) => view.name === "Recent")?.id ?? null;
       setTable(loadedTable);
-      setActiveViewId(initialViewId);
+      setDefaultViewId(initialViewId);
       setMissing(false);
       await Promise.all([loadPage(0, initialViewId), refreshFacets()]);
     } catch (e) {
@@ -135,12 +150,23 @@ export default function AppView({ slug }: { slug: string }) {
     void init();
   }, [init]);
 
-  // Any filter/search change resets to page one.
+  // Any filter change resets to page one.
   useEffect(() => {
     if (loading || missing || !manifest || !table) return;
     setSelected(new Set());
     void loadPage(0);
-  }, [query, topic, derived, activeViewId, loadPage, loading, missing, manifest, table]);
+  }, [
+    topic,
+    derived,
+    defaultViewId,
+    sortBy,
+    sortOrder,
+    loadPage,
+    loading,
+    missing,
+    manifest,
+    table,
+  ]);
 
   // Infinite scroll.
   useEffect(() => {
@@ -159,12 +185,6 @@ export default function AppView({ slug }: { slug: string }) {
     return () => observer.disconnect();
   }, [hasMore, loadingMore, rows.length, loadPage]);
 
-  const activeView = useMemo(
-    () => table?.views?.find((v) => v.id === activeViewId) ?? null,
-    [table, activeViewId]
-  );
-  const layout = layoutOf(activeView);
-
   const pendingRowIds = useMemo(() => {
     const enriched = manifest?.enriched_columns ?? [];
     if (!enriched.length) return new Set<string>();
@@ -174,26 +194,60 @@ export default function AppView({ slug }: { slug: string }) {
   useEffect(() => {
     if (pendingRowIds.size === 0) return;
     const t = setTimeout(() => {
-      void loadPage(0, activeViewId, true);
+      void loadPage(0, defaultViewId, true);
       void refreshFacets();
     }, ENRICH_POLL_MS);
     return () => clearTimeout(t);
-  }, [pendingRowIds, activeViewId, loadPage, refreshFacets]);
+  }, [pendingRowIds, defaultViewId, loadPage, refreshFacets]);
 
   const afterMutation = useCallback(async () => {
     setSelected(new Set());
     await Promise.all([loadPage(0), refreshFacets()]);
   }, [loadPage, refreshFacets]);
 
-  const toggleSelected = (id: string) =>
-    setSelected((prev) => {
-      const next = new Set(prev);
+  const toggleSelected = (id: string, index: number, range: boolean) => {
+    const rangeStart = lastSelectedIndexRef.current;
+    lastSelectedIndexRef.current = index;
+
+    setSelected((previous) => {
+      if (range && rangeStart !== null) {
+        const start = Math.min(rangeStart, index);
+        const end = Math.max(rangeStart, index);
+        const next = new Set(previous);
+        rows.slice(start, end + 1).forEach((row) => next.add(row.id));
+        return next;
+      }
+
+      const next = new Set(previous);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
+  };
+
+  const toggleAllVisible = () =>
+    setSelected((previous) => {
+      const allVisibleSelected = rows.every((row) => previous.has(row.id));
+      if (allVisibleSelected) return new Set();
+      const next = new Set(previous);
+      rows.forEach((row) => next.add(row.id));
+      return next;
+    });
+
+  const changeSort = (columnId: string) => {
+    if (sortBy === columnId) {
+      setSortOrder((current) => (current === "asc" ? "desc" : "asc"));
+      return;
+    }
+    setSortBy(columnId);
+    setSortOrder("asc");
+  };
 
   const openRow = useMemo(() => rows.find((r) => r.id === openRowId) ?? null, [rows, openRowId]);
+  const columns = useMemo(
+    () => [...(table?.columns ?? [])].sort((a, b) => a.order - b.order),
+    [table]
+  );
 
   if (loading) return <div className="p-8 text-[13px] text-muted-foreground">Loading…</div>;
 
@@ -229,117 +283,148 @@ export default function AppView({ slug }: { slug: string }) {
     return <div className="p-8 text-[13px] text-red-500">{error || "Couldn't load this app."}</div>;
   }
 
-  const filtering = !!(query || topic || derived);
+  const filtering = !!(topic || derived);
 
   return (
-    <div className="flex h-full min-h-0">
-      <div className="flex min-w-0 flex-1 flex-col">
+    <div
+      className={
+        openRow
+          ? "grid h-full min-h-0 min-w-0 grid-cols-1 overflow-hidden lg:grid-cols-[minmax(0,1fr)_420px]"
+          : "grid h-full min-h-0 min-w-0 grid-cols-1 overflow-hidden"
+      }
+    >
+      <div className="flex min-h-0 min-w-0 flex-col overflow-hidden">
         <header className="border-b border-border px-6 py-4">
-          <div className="flex flex-wrap items-baseline justify-between gap-3">
-            <div>
-              <h1 className="font-display text-[20px] font-bold tracking-tight text-foreground">
-                {manifest.title}
-              </h1>
-              <p className="mt-0.5 text-[12.5px] text-muted-foreground">{manifest.tagline}</p>
-            </div>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h1 className="font-display text-[20px] font-bold tracking-tight text-foreground">
+              {manifest.title}
+            </h1>
             <span className="text-[12px] text-dim">
               {filtering ? `${total} of ${facets?.total ?? total}` : `${total} saved`}
             </span>
           </div>
 
           <div className="mt-3 flex flex-wrap items-center gap-2">
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-dim" />
-              <input
-                value={queryInput}
-                onChange={(e) => setQueryInput(e.target.value)}
-                placeholder="Search everything"
-                className="w-60 rounded-lg border border-border bg-base py-1.5 pl-8 pr-3 text-[12.5px] text-foreground placeholder:text-dim focus:border-brand focus:outline-none"
-              />
-            </div>
-
-            {(table.views ?? []).map((view) => (
-              <button
-                key={view.id}
-                type="button"
-                data-testid="view-switch"
-                onClick={() => setActiveViewId(view.id === activeViewId ? null : view.id)}
-                className={`inline-flex cursor-pointer items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12px] ${
-                  view.id === activeViewId
-                    ? "bg-brand/15 font-medium text-brand"
-                    : "text-muted-foreground hover:bg-raised hover:text-foreground"
-                }`}
-              >
-                {view.layout === "cards" ? (
-                  <LayoutGrid className="h-3.5 w-3.5" />
-                ) : (
-                  <Table2 className="h-3.5 w-3.5" />
-                )}
-                {view.name}
-              </button>
-            ))}
-
-            <Link
-              href={`/tables/${table.id}`}
-              className="ml-auto text-[12px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+            <select
+              aria-label="Filter bookmarks"
+              value={derived ?? ""}
+              onChange={(event) => setDerived(event.target.value || null)}
+              className="rounded-md border border-border bg-base px-2.5 py-1.5 text-[12px] text-foreground"
             >
-              Open as table
-            </Link>
-          </div>
+              <option value="">All bookmarks</option>
+              {DERIVED.filter((item) => (facets?.[item.key] ?? 0) > 0).map((item) => (
+                <option key={item.key} value={item.key}>
+                  {item.label} ({facets?.[item.key]})
+                </option>
+              ))}
+            </select>
 
-          {facets && (
-            <div className="mt-2.5 flex flex-wrap gap-1.5">
-              {DERIVED.filter((d) => (facets[d.key] ?? 0) > 0).map((d) => {
-                const Icon = d.icon;
-                const on = derived === d.key;
-                return (
-                  <button
-                    key={d.key}
-                    type="button"
-                    data-testid="derived-chip"
-                    onClick={() => setDerived(on ? null : d.key)}
-                    className={`inline-flex cursor-pointer items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium ${
-                      on
-                        ? "bg-amber-500 text-white"
-                        : "bg-amber-500/10 text-amber-700 hover:bg-amber-500/20 dark:text-amber-400"
-                    }`}
-                  >
-                    <Icon className="h-3 w-3" />
-                    {d.label} {facets[d.key]}
-                  </button>
-                );
-              })}
-              {facets.topics.map((t) => (
+            <select
+              aria-label="Filter by topic"
+              value={topic ?? ""}
+              onChange={(event) => setTopic(event.target.value || null)}
+              className="rounded-md border border-border bg-base px-2.5 py-1.5 text-[12px] text-foreground"
+            >
+              <option value="">All topics</option>
+              {(facets?.topics ?? []).map((item) => (
+                <option key={item.label} value={item.label}>
+                  {item.label} ({item.count})
+                </option>
+              ))}
+            </select>
+
+            {filtering && (
+              <button
+                type="button"
+                onClick={() => {
+                  setDerived(null);
+                  setTopic(null);
+                }}
+                className="text-[12px] text-muted-foreground hover:text-foreground"
+              >
+                Clear filters
+              </button>
+            )}
+
+            <div className="ml-auto flex items-center gap-2">
+              <select
+                aria-label="Sort bookmarks"
+                value={sortBy ?? ""}
+                onChange={(event) => {
+                  const columnId = event.target.value;
+                  setSortBy(columnId || null);
+                  setSortOrder("asc");
+                }}
+                className="rounded-md border border-border bg-base px-2.5 py-1.5 text-[12px] text-foreground"
+              >
+                <option value="">Default order</option>
+                {columns.map((column) => (
+                  <option key={column.id} value={column.id}>
+                    Sort by {column.name}
+                  </option>
+                ))}
+              </select>
+
+              {sortBy && (
                 <button
-                  key={t.label}
                   type="button"
-                  data-testid="topic-chip"
-                  onClick={() => setTopic(t.label === topic ? null : t.label)}
-                  className={`cursor-pointer rounded-full px-2.5 py-1 text-[11px] font-medium ${
-                    t.label === topic
-                      ? "bg-brand text-white"
-                      : "bg-raised text-muted-foreground hover:text-foreground"
+                  onClick={() =>
+                    setSortOrder((current) => (current === "asc" ? "desc" : "asc"))
+                  }
+                  aria-label={`Sort ${sortOrder === "asc" ? "descending" : "ascending"}`}
+                  className="rounded-md border border-border p-1.5 text-muted-foreground hover:bg-raised hover:text-foreground"
+                >
+                  {sortOrder === "asc" ? (
+                    <ArrowUp className="h-4 w-4" />
+                  ) : (
+                    <ArrowDown className="h-4 w-4" />
+                  )}
+                </button>
+              )}
+
+              <div className="flex rounded-md border border-border p-0.5">
+                <button
+                  type="button"
+                  onClick={() => setLayout("table")}
+                  aria-label="Table view"
+                  aria-pressed={layout === "table"}
+                  className={`rounded p-1.5 ${
+                    layout === "table"
+                      ? "bg-raised text-foreground"
+                      : "text-muted-foreground hover:text-foreground"
                   }`}
                 >
-                  {t.label} <span className="opacity-60">{t.count}</span>
+                  <Table2 className="h-4 w-4" />
                 </button>
-              ))}
+                <button
+                  type="button"
+                  onClick={() => setLayout("cards")}
+                  aria-label="Card view"
+                  aria-pressed={layout === "cards"}
+                  className={`rounded p-1.5 ${
+                    layout === "cards"
+                      ? "bg-raised text-foreground"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  <LayoutGrid className="h-4 w-4" />
+                </button>
+              </div>
             </div>
-          )}
+          </div>
         </header>
 
-        <div className="scroll-thin min-h-0 flex-1 overflow-y-auto px-6 py-5">
+        <AppSkillsBanner slug={slug} />
+
+        <div className="scroll-thin min-h-0 flex-1 overflow-auto">
           {rows.length === 0 ? (
             filtering ? (
               <p className="py-12 text-center text-[13px] text-muted-foreground">
                 Nothing matches that filter.
               </p>
             ) : (
-              <div className="mx-auto flex max-w-md flex-col items-center py-14 text-center">
-                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-brand/10">
-                  <BookMarked className="h-5 w-5 text-brand" />
-                </div>
-                <h2 className="mt-4 text-[15px] font-semibold text-foreground">
+              <div className="mx-auto max-w-md py-14 text-center">
+                <h2 className="text-[15px] font-semibold text-foreground">
                   {manifest.empty_state.title}
                 </h2>
                 <p className="mt-1.5 text-[13px] leading-relaxed text-muted-foreground">
@@ -353,12 +438,93 @@ export default function AppView({ slug }: { slug: string }) {
                 </Link>
               </div>
             )
-          ) : layout === "cards" ? (
+          ) : layout === "table" ? (
+            <table data-testid="bookmarks-table" className="min-w-full border-separate border-spacing-0 text-left text-[12px]">
+              <thead className="sticky top-0 z-10 bg-surface">
+                <tr>
+                  <th className="w-10 border-b border-r border-border px-3 py-2">
+                    <input
+                      type="checkbox"
+                      checked={rows.length > 0 && rows.every((row) => selected.has(row.id))}
+                      onChange={toggleAllVisible}
+                      aria-label="Select all visible bookmarks"
+                      className="accent-[var(--brand)]"
+                    />
+                  </th>
+                  {columns.map((column) => (
+                    <th
+                      key={column.id}
+                      className="whitespace-nowrap border-b border-r border-border p-0 font-medium text-muted-foreground last:border-r-0"
+                      style={{ minWidth: Math.max(column.width || 120, 120) }}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => changeSort(column.id)}
+                        aria-label={`Sort by ${column.name}`}
+                        className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left hover:bg-raised hover:text-foreground"
+                      >
+                        {column.name}
+                        {sortBy === column.id ? (
+                          sortOrder === "asc" ? (
+                            <ArrowUp className="h-3.5 w-3.5" />
+                          ) : (
+                            <ArrowDown className="h-3.5 w-3.5" />
+                          )
+                        ) : (
+                          <ArrowUpDown className="h-3.5 w-3.5 opacity-40" />
+                        )}
+                      </button>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row, index) => (
+                  <tr
+                    key={row.id}
+                    className={row.id === openRowId ? "bg-brand/5" : "hover:bg-raised/60"}
+                  >
+                    <td className="border-b border-r border-border px-3 py-2">
+                      <input
+                        type="checkbox"
+                        checked={selected.has(row.id)}
+                        onMouseDown={(event) => {
+                          event.preventDefault();
+                          toggleSelected(row.id, index, event.shiftKey);
+                        }}
+                        onChange={() => undefined}
+                        aria-label={`Select ${cellText(row, manifest.detail.title) || "bookmark"}`}
+                        className="accent-[var(--brand)]"
+                      />
+                    </td>
+                    {columns.map((column) => (
+                      <td
+                        key={column.id}
+                        className="border-b border-r border-border px-3 py-2 text-foreground last:border-r-0"
+                      >
+                        {column.id === manifest.detail.title ? (
+                          <button
+                            type="button"
+                            onClick={() => setOpenRowId(row.id === openRowId ? null : row.id)}
+                            className="block max-w-80 truncate text-left font-medium hover:text-brand"
+                          >
+                            {cellText(row, column.id) || "Untitled"}
+                          </button>
+                        ) : (
+                          <CellValue row={row} column={column} />
+                        )}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
             <div
-              data-testid="card-grid"
-              className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3"
+              data-testid="bookmarks-cards"
+              className="grid grid-cols-1 gap-3 p-5 sm:grid-cols-2 xl:grid-cols-3"
             >
-              {rows.map((row) => (
+              {rows.map((row, index) => (
                 <AppCard
                   key={row.id}
                   row={row}
@@ -366,40 +532,9 @@ export default function AppView({ slug }: { slug: string }) {
                   pendingEnrichment={pendingRowIds.has(row.id)}
                   active={row.id === openRowId}
                   selected={selected.has(row.id)}
-                  onToggleSelected={() => toggleSelected(row.id)}
+                  onToggleSelected={(range) => toggleSelected(row.id, index, range)}
                   onOpen={() => setOpenRowId(row.id === openRowId ? null : row.id)}
                 />
-              ))}
-            </div>
-          ) : (
-            <div data-testid="compact-list" className="divide-y divide-border rounded-xl border border-border">
-              {rows.map((row) => (
-                <div
-                  key={row.id}
-                  className={`flex items-baseline gap-3 px-4 py-2.5 hover:bg-raised ${
-                    row.id === openRowId ? "bg-brand/5" : ""
-                  }`}
-                >
-                  <input
-                    type="checkbox"
-                    checked={selected.has(row.id)}
-                    onChange={() => toggleSelected(row.id)}
-                    aria-label="Select row"
-                    className="cursor-pointer accent-[var(--brand)]"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setOpenRowId(row.id === openRowId ? null : row.id)}
-                    className="flex min-w-0 flex-1 cursor-pointer items-baseline gap-3 text-left"
-                  >
-                    <span className="min-w-0 flex-1 truncate text-[13px] text-foreground">
-                      {cellText(row, manifest.detail.title) || "Untitled"}
-                    </span>
-                    <span className="shrink-0 text-[11.5px] text-dim">
-                      {cellText(row, manifest.detail.subtitle)}
-                    </span>
-                  </button>
-                </div>
               ))}
             </div>
           )}
@@ -426,6 +561,7 @@ export default function AppView({ slug }: { slug: string }) {
           row={openRow}
           slug={slug}
           manifest={manifest}
+          table={table}
           knownTopics={(facets?.topics ?? []).map((t) => t.label)}
           onClose={() => setOpenRowId(null)}
           onChanged={afterMutation}

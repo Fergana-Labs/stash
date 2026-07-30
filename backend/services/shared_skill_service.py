@@ -26,6 +26,10 @@ from . import (
     user_scope_service,
 )
 
+# The service account that owns Stash-published Discover skills. It is never
+# logged into; the curator import operates as it through the services.
+CURATOR_USERNAME = "stash-curated"
+
 _SLUG_RE = re.compile(r"[^a-z0-9]+")
 _HTML_TAG_RE = re.compile(r"<[^>]+>")
 _HTML_BREAK_RE = re.compile(r"<br\s*/?>", re.IGNORECASE)
@@ -732,6 +736,54 @@ async def _fork_folder(
         )
 
     return new_folder["id"]
+
+
+async def curated_skills_by_name(names: list[str]) -> list[dict]:
+    """The service account's published skills matching these names, in the
+    order asked for. A name with nothing published against it is absent from
+    the result — that is what "not published yet" looks like to a caller, and
+    the surfaces that ask (an app's skill strip) show only what exists."""
+    if not names:
+        return []
+    pool = get_pool()
+    rows = await pool.fetch(
+        # Qualified: users carries a description column too, and an unqualified
+        # reference is ambiguous across this join.
+        "SELECT v.title, v.slug, v.description FROM skills v "
+        "JOIN users scope_user ON scope_user.id = v.owner_user_id "
+        "WHERE scope_user.name = $1 AND v.discoverable = true AND v.title = ANY($2::text[])",
+        CURATOR_USERNAME,
+        names,
+    )
+    by_name = {
+        r["title"]: {"name": r["title"], "slug": r["slug"], "description": r["description"]}
+        for r in rows
+    }
+    return [by_name[name] for name in names if name in by_name]
+
+
+async def install_public_skill(owner_user_id: UUID, slug: str, added_by: UUID) -> dict | None:
+    """Add a published skill to the scope — what the Add button does, never a
+    side effect of running one. Held-ness is by skill name, not by provenance:
+    a fork keeps no link to its source, so matching any other way would hand
+    out a second copy every time someone pressed Add.
+
+    Returns None when the slug names no published skill."""
+    title = await get_pool().fetchval("SELECT title FROM skills WHERE slug = $1", slug)
+    if title is None:
+        return None
+
+    held = await skill_service.list_skills(owner_user_id, added_by)
+    match = next((s for s in held if s["name"] == title), None)
+    if match:
+        return {"folder_id": match["folder_id"], "name": match["name"], "installed": False}
+
+    forked = await fork_skill(owner_user_id, slug, added_by)
+    if forked is None:
+        return None
+    # The folder may land as "brief (2)" if that name was taken, but the skill's
+    # frontmatter name is what an agent resolves, and that travels unchanged.
+    return {"folder_id": forked["folder_id"], "name": title, "installed": True}
 
 
 async def fork_skill(owner_user_id: UUID, slug: str, added_by: UUID) -> dict | None:

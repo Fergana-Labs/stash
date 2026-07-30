@@ -374,7 +374,7 @@ async def get_folder_contents(
     readable_file = permission_service.readable_content_condition("file", "fi", 3)
     readable_table = permission_service.readable_content_condition("table", "t", 3)
     subfolders = await pool.fetch(
-        "SELECT id, name, created_at, "
+        "SELECT id, name, created_at, is_protected, "
         "       ("
         "         SELECT COUNT(*) FROM pages p WHERE p.folder_id = f.id "
         "         AND p.owner_user_id = $2 "
@@ -459,6 +459,7 @@ async def get_folder_contents(
                 "name": r["name"],
                 "page_count": int(r["page_count"] or 0),
                 "file_count": int(r["file_count"] or 0),
+                "is_protected": r["is_protected"],
                 "created_at": r["created_at"],
             }
             for r in subfolders

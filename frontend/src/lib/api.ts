@@ -18,6 +18,7 @@ import {
   Workspace,
   MiniProgramApp,
   MiniProgramResolved,
+  CuratedSkill,
   AppFacets,
 } from "./types";
 import { getScopeUserId, SCOPE_HEADER } from "./scope-store";
@@ -1497,6 +1498,9 @@ export interface SharedSkill {
   name: string;
   description: string;
   owner_user_id: string;
+  /** Whose scope the skill lives in — shown inline because skill names collide
+   *  across people. Distinct from `shared_by`, who sent you the share. */
+  owner_name: string;
   shared_by: string | null;
   permission: "read" | "write";
   slug: string | null;
@@ -1594,6 +1598,18 @@ export async function forkSkill(
   return apiFetch(`/api/v1/skills/${slug}/add-to-stash`, {
     method: "POST",
     body: JSON.stringify({ owner_user_id: targetScope }),
+  });
+}
+
+// Add a published skill to the scope so an agent can then run it — an agent
+// reads the scope's skills, not the public catalog. Idempotent, unlike
+// forkSkill, so pressing Add twice can't leave two copies.
+export async function installSkill(
+  slug: string
+): Promise<{ folder_id: string; name: string; installed: boolean }> {
+  return apiFetch(`${ME}/skills/install`, {
+    method: "POST",
+    body: JSON.stringify({ slug }),
   });
 }
 
@@ -1886,6 +1902,8 @@ export interface FolderSubfolder {
   name: string;
   page_count: number;
   file_count: number;
+  /** See Folder.is_protected — Rename/Delete/drag are hidden for these. */
+  is_protected?: boolean;
   created_at: string;
 }
 export interface FolderContents {
@@ -2294,6 +2312,14 @@ export async function installApp(slug: string): Promise<MiniProgramResolved> {
   return apiFetch(`${ME}/apps/${slug}`, { method: "POST" });
 }
 
+// The published skills that read this app's table — what an agent can do with
+// everything in it. Empty until those skills are published, which is why the
+// strip that renders them hides itself rather than showing placeholders.
+export async function listAppSkills(slug: string): Promise<CuratedSkill[]> {
+  const data = await apiFetch<{ skills: CuratedSkill[] }>(`${ME}/apps/${slug}/skills`);
+  return data.skills;
+}
+
 export async function reenrichRow(slug: string, rowId: string): Promise<{ status: string }> {
   return apiFetch(`${ME}/apps/${slug}/rows/${rowId}/reenrich`, { method: "POST" });
 }
@@ -2305,6 +2331,8 @@ export async function listAppRows(
     topic?: string;
     filter?: string;
     view_id?: string;
+    sort_by?: string;
+    sort_order?: "asc" | "desc";
     limit?: number;
     offset?: number;
   } = {}
@@ -2314,6 +2342,8 @@ export async function listAppRows(
   if (params.topic) query.set("topic", params.topic);
   if (params.filter) query.set("filter", params.filter);
   if (params.view_id) query.set("view_id", params.view_id);
+  if (params.sort_by) query.set("sort_by", params.sort_by);
+  if (params.sort_order) query.set("sort_order", params.sort_order);
   query.set("limit", String(params.limit ?? 60));
   query.set("offset", String(params.offset ?? 0));
   return apiFetch(`${ME}/apps/${slug}/rows?${query.toString()}`);

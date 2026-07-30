@@ -8,6 +8,7 @@ import { initChatPoll } from './background/chat_poll';
 import {
   clipActiveTab,
   clipAllTabs,
+  clippableTabUrls,
   importBookmarks,
   importProgress,
   initClipper,
@@ -59,6 +60,8 @@ async function handle(message: any, sender: chrome.runtime.MessageSender): Promi
       return uploadPageClip(message.clip);
     case 'CLIP_ALL_TABS':
       return clipAllTabs();
+    case 'CLIPPABLE_TABS':
+      return { count: (await clippableTabUrls()).length };
     case 'IMPORT_BOOKMARKS':
       return importBookmarks(message.name, message.content);
     case 'IMPORT_PROGRESS':

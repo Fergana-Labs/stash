@@ -34,6 +34,114 @@ const PLATFORMS: { key: string; label: string }[] = [
   { key: 'instagram', label: 'Instagram' },
 ];
 
+// Confirmation for the save that just happened, rendered above the buttons
+// until the next action replaces it. Saving used to report itself only
+// through a 3s badge flash on the toolbar icon — which the open popup covers.
+let confirmation: {
+  headline: string;
+  detail?: string;
+  href?: string;
+  pending?: boolean;
+} | null = null;
+let actionError: string | null = null;
+// A save in flight. Kept across re-renders so the acknowledgement can paint
+// before the request returns without leaving a live button behind it.
+let busy = false;
+
+async function saveThisTab(since: number): Promise<void> {
+  actionError = null;
+  busy = true;
+  confirmation = { headline: 'Saving this tab…', pending: true };
+  await render();
+  await send({ type: 'CLIP_TAB' });
+
+  const outcome = await waitForClip(since);
+  busy = false;
+  confirmation = null;
+  if (outcome.state === 'saved') {
+    confirmation = { headline: `Saved "${outcome.clip.title}"`, href: outcome.clip.appUrl };
+  } else if (outcome.state === 'slow') {
+    actionError = 'Still saving — this page is taking a while. It will finish in the background.';
+  }
+  // 'failed' needs nothing: clipFailed already wrote a clip error, and the
+  // error list below renders it.
+  await render();
+}
+
+// The clip lands after CLIP_TAB has already returned — the injected clipper
+// posts the page back to the worker, which then uploads it. So watch storage
+// for whichever terminal state arrives first.
+type ClipOutcome = { state: 'saved'; clip: any } | { state: 'failed' } | { state: 'slow' };
+
+async function waitForClip(since: number): Promise<ClipOutcome> {
+  for (let attempt = 0; attempt < 25; attempt++) {
+    await new Promise((r) => setTimeout(r, 400));
+    const status = await send({ type: 'GET_STATUS' });
+    if ((status.lastClip?.at ?? 0) > since) return { state: 'saved', clip: status.lastClip };
+    const failed = (status.errors ?? []).some((e: any) => e.surface === 'clip' && e.at > since);
+    if (failed) return { state: 'failed' };
+  }
+  return { state: 'slow' };
+}
+
+async function saveAllTabs(count: number): Promise<void> {
+  actionError = null;
+  // Acknowledge before the request finishes. Saving 200 tabs means a dedupe
+  // query and a bulk insert, and a button that just sits there reads as a
+  // click that didn't land.
+  busy = true;
+  confirmation = {
+    headline: `Saving ${count} tab${count === 1 ? '' : 's'}…`,
+    detail: 'You can close this popup — it keeps going without you.',
+    pending: true,
+  };
+  await render();
+
+  const result = await send({ type: 'CLIP_ALL_TABS' });
+  busy = false;
+  if (!result.ok) {
+    actionError = result.error;
+    await render();
+    return;
+  }
+  if (result.total === 0) {
+    // Every tab was a duplicate. Nothing was saved and nothing is downloading,
+    // so neither a count nor a progress promise belongs here.
+    confirmation = {
+      headline: 'Nothing new to save',
+      detail: `All ${result.skipped} open tabs are already in your Stash.`,
+    };
+  } else {
+    // Two separate facts, and they finish at different times: the links are
+    // saved now, the page contents are still downloading.
+    const links = `${result.total} link${result.total === 1 ? '' : 's'}`;
+    confirmation = {
+      headline: `${links} saved`,
+      detail:
+        `Downloading page contents now.` +
+        (result.skipped > 0 ? ` ${result.skipped} were already in your Stash.` : ''),
+    };
+  }
+  await render();
+}
+
+function renderConfirmation(): HTMLElement {
+  const c = confirmation!;
+  // The tick is a claim. It only goes on once the save has actually landed.
+  const box = el('div', { className: c.pending ? 'saved pending' : 'saved' }, [
+    el('div', { className: 'headline' }, [c.pending ? c.headline : `✓ ${c.headline}`]),
+  ]);
+  if (c.detail) box.append(el('div', { className: 'detail' }, [c.detail]));
+  if (c.href) {
+    box.append(
+      el('div', { className: 'detail' }, [
+        el('a', { href: c.href, target: '_blank', textContent: 'View in Stash' }),
+      ])
+    );
+  }
+  return box;
+}
+
 async function render(): Promise<void> {
   const status = await send({ type: 'GET_STATUS' });
   app.replaceChildren();
@@ -64,35 +172,42 @@ async function render(): Promise<void> {
   app.append(el('p', {}, ['Connected as ', el('strong', { textContent: status.username || '?' })]));
 
   // Save actions: this tab, then all tabs right below it.
-  app.append(
-    el('div', { className: 'row' }, [
-      el('button', {
-        textContent: 'Save this tab',
-        onclick: async () => {
-          await send({ type: 'CLIP_TAB' });
-          setTimeout(() => void render(), 1200);
-        },
-      }),
-    ]),
-    el('div', { className: 'row' }, [
-      el('button', {
-        className: 'outline',
-        textContent: 'Save all open tabs',
-        onclick: async () => {
-          const result = await send({ type: 'CLIP_ALL_TABS' });
-          if (!result?.ok) await render();
-        },
-      }),
-    ])
-  );
+  const { count } = await send({ type: 'CLIPPABLE_TABS' });
+  const saveTab = el('button', {
+    textContent: 'Save this tab',
+    disabled: busy,
+    onclick: () => void saveThisTab(status.lastClip?.at ?? 0),
+  });
+  const saveAll = el('button', {
+    className: 'outline',
+    // The count on the button face is the whole promise of the action: you
+    // know what you're about to save before you commit to it.
+    textContent: `Save all ${count} open tab${count === 1 ? '' : 's'}`,
+    disabled: busy || count === 0,
+    onclick: () => void saveAllTabs(count),
+  });
+  app.append(el('div', { className: 'row' }, [saveTab]), el('div', { className: 'row' }, [saveAll]));
 
+  if (confirmation) {
+    app.append(renderConfirmation());
+  } else if (status.lastClip) {
+    app.append(
+      el('div', { className: 'last-clip' }, [
+        `Last saved: ${status.lastClip.title} · ${timeAgo(status.lastClip.at)}`,
+      ])
+    );
+  }
+
+  if (actionError) app.append(el('div', { className: 'error', textContent: actionError }));
   for (const err of status.errors ?? []) {
     app.append(el('div', { className: 'error', textContent: err.message }));
   }
 
   // A running bulk import is the thing the user most wants to see — top
-  // level, not tucked in Advanced (its file input stays there).
-  if (status.lastImport?.id) {
+  // level, not tucked in Advanced (its file input stays there). Once it has
+  // finished and announced itself, the row has nothing left to say and would
+  // otherwise sit there until the next import replaced it.
+  if (status.lastImport?.id && !status.lastImport.doneNotified) {
     const progressRow = el('div', { className: 'row muted' });
     app.append(progressRow);
     void showImportProgress(status.lastImport.id, progressRow);
@@ -165,13 +280,13 @@ async function showImportProgress(importId: string, row: HTMLElement): Promise<v
   }
   const p = result.progress;
   const running = p.pending > 0 || p.needs_client > 0;
-  const parts = [`${p.done} saved`];
-  if (p.link_only > 0) parts.push(`${p.link_only} link-only`);
-  if (p.needs_client > 0) parts.push(`${p.needs_client} fetching via this browser`);
+  // The links are already saved by the time this row exists; every number
+  // here is about the page contents, so the label says so.
+  const parts = [`${p.done} of ${p.total} downloaded`];
+  if (p.link_only > 0) parts.push(`${p.link_only} kept as link-only`);
+  if (p.needs_client > 0) parts.push(`${p.needs_client} via this browser`);
   if (p.pending > 0) parts.push(`${p.pending} pending`);
-  row.textContent = running
-    ? `Importing (${p.total} total): ${parts.join(', ')}`
-    : `Import finished: ${parts.join(', ')}`;
+  row.textContent = `Page contents: ${parts.join(', ')}`;
   if (running) setTimeout(() => void showImportProgress(importId, row), 2000);
 }
 

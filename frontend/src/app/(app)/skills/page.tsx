@@ -14,6 +14,7 @@ import SkillCard, {
   PUBLISH_COLOR,
   PublishBadge,
 } from "@/components/skill/SkillCard";
+import SkillLauncher from "@/components/skill/SkillLauncher";
 import ForkSkillCardButton from "@/components/skill/ForkSkillCardButton";
 import { SelectBox } from "@/components/content/file-browser/ItemsList";
 import {
@@ -24,23 +25,23 @@ import {
   createPage,
   deleteFolder,
   listSkills,
-  listSkillsSharedWithMe,
-  type SharedSkill,
   type Skill,
   type PublicSkillCard,
 } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
+import type { LaunchableSkill } from "@/lib/types";
 import { SKILL_MD, skillMdTemplate } from "@/lib/localSkill";
 import { usePins } from "@/lib/pins";
 import { skillSlugFromInput } from "@/lib/skillLinks";
 import { refreshSidebar } from "@/lib/skillNavigationCache";
 
 type ViewKey = "grid" | "list";
-// The primary axis: which set of Skills you're looking at. Yours and Shared
-// share the view toggle / quick-access; Discover is its own public-library
-// surface. Each row carries its own Private/Shared/Public badge — there's no
-// visibility filter to learn.
-type Tab = "yours" | "shared" | "discover";
+// The primary axis: your Skills, or the public library. Skills other people
+// shared with you are not in your VFS — they live in the owner's scope, so they
+// are indexed under the explorer's "Shared with me" node, the same place shared
+// files and session folders appear. Each row carries its own
+// Private/Shared/Public badge — there's no visibility filter to learn.
+type Tab = "yours" | "discover";
 
 const VIEW_STORAGE_KEY = "stash_skills_view";
 
@@ -48,10 +49,19 @@ const COVERS = ["cover-1", "cover-2", "cover-3", "cover-4", "cover-5", "cover-6"
 
 const TAB_COPY: Record<Tab, string> = {
   yours:
-    "Your Skill folders. Share them with people or publish them to the public library.",
-  shared: "Skill folders other people shared with you, plus adding a skill by link.",
+    "Your Skill folders. Run one to hand it to an agent, or open it to edit, share, and publish.",
   discover: "Public skills from the community — fork one into your Skills.",
 };
+
+// Only a Skill you hold is launchable: an agent reads its own scope, so a
+// Discover skill has to be added before it can be run at all.
+function launchableFromSkill(skill: Skill): LaunchableSkill {
+  return {
+    name: skill.name,
+    description: skill.description,
+    when_to_use: skill.when_to_use,
+  };
+}
 
 export default function SkillsPage() {
   const router = useRouter();
@@ -60,11 +70,13 @@ export default function SkillsPage() {
   const confirm = useConfirm();
 
   const [skills, setSkills] = useState<Skill[] | null>(null);
-  const [sharedSkills, setSharedSkills] = useState<SharedSkill[]>([]);
   const [tab, setTab] = useState<Tab>("yours");
   const [view, setView] = useState<ViewKey>("grid");
   const [error, setError] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  // The skill the launcher is open on. One at a time — a run is a decision,
+  // not a browsing mode.
+  const [launching, setLaunching] = useState<LaunchableSkill | null>(null);
 
   function toggleSelect(id: string) {
     setSelectedIds((current) => {
@@ -105,14 +117,6 @@ export default function SkillsPage() {
   useEffect(() => {
     load();
   }, [load]);
-
-  // Skill folders others shared directly with you (folder shares) — surfaced
-  // in the "Shared with you" section. Non-critical: failure leaves it empty.
-  useEffect(() => {
-    listSkillsSharedWithMe()
-      .then(setSharedSkills)
-      .catch(() => setSharedSkills([]));
-  }, []);
 
   async function newSkill() {
     const name = window.prompt("Skill name?");
@@ -197,13 +201,8 @@ export default function SkillsPage() {
           </div>
         )}
 
-        {/* The primary selector: Yours / Shared with you / Discover. */}
-        <SkillTabs
-          tab={tab}
-          onChange={setTab}
-          yoursCount={skills.length}
-          sharedCount={sharedSkills.length}
-        />
+        {/* The primary selector: Yours / Discover. */}
+        <SkillTabs tab={tab} onChange={setTab} yoursCount={skills.length} />
         <p className="mt-2 text-[12.5px] text-muted-foreground">{TAB_COPY[tab]}</p>
 
         {/* Quick-access + the view toolbar belong to your held Skills, so
@@ -233,23 +232,10 @@ export default function SkillsPage() {
                 onTogglePin={(s) => pins.toggle(s.folder_id)}
                 selectedIds={selectedIds}
                 onToggleSelect={toggleSelect}
+                onRun={(s) => setLaunching(launchableFromSkill(s))}
               />
             ) : (
               <NoSkillsYet onBrowseDiscover={() => setTab("discover")} />
-            )}
-          </div>
-        )}
-
-        {tab === "shared" && (
-          <div className="mt-4">
-            {sharedSkills.length > 0 ? (
-              <div className="overflow-hidden rounded-xl border border-border bg-surface">
-                {sharedSkills.map((shared) => (
-                  <SharedSkillRow key={shared.folder_id} shared={shared} />
-                ))}
-              </div>
-            ) : (
-              <EmptyHint>Nothing shared with you yet.</EmptyHint>
             )}
             <ExternalSkillLinkForm onAdded={() => void load()} />
           </div>
@@ -257,6 +243,10 @@ export default function SkillsPage() {
 
         {tab === "discover" && <DiscoverSection />}
       </div>
+
+      {launching && (
+        <SkillLauncher skill={launching} onClose={() => setLaunching(null)} />
+      )}
 
       {selectedSkills.length > 0 && (
         <div className="pointer-events-none fixed inset-x-0 bottom-6 z-50 flex justify-center">
@@ -360,16 +350,13 @@ function SkillTabs({
   tab,
   onChange,
   yoursCount,
-  sharedCount,
 }: {
   tab: Tab;
   onChange: (next: Tab) => void;
   yoursCount: number;
-  sharedCount: number;
 }) {
   const tabs: { key: Tab; label: string; count?: number }[] = [
     { key: "yours", label: "Yours", count: yoursCount },
-    { key: "shared", label: "Shared with you", count: sharedCount },
     { key: "discover", label: "Discover" },
   ];
   return (
@@ -399,14 +386,6 @@ function SkillTabs({
   );
 }
 
-function EmptyHint({ children }: { children: React.ReactNode }) {
-  return (
-    <p className="rounded-lg border border-dashed border-border bg-surface/30 px-4 py-10 text-center text-[12.5px] text-muted-foreground">
-      {children}
-    </p>
-  );
-}
-
 // Empty state for the Yours tab: point at the CLI create command and the
 // public library instead of dead-ending.
 function NoSkillsYet({ onBrowseDiscover }: { onBrowseDiscover: () => void }) {
@@ -428,45 +407,6 @@ function NoSkillsYet({ onBrowseDiscover }: { onBrowseDiscover: () => void }) {
         </button>{" "}
         and fork a public skill into your Skills.
       </p>
-    </div>
-  );
-}
-
-// A skill folder shared with you, as a drive-style row. View opens the public
-// skill page when it's published, else the shared folder route.
-function sharedSkillHref(shared: SharedSkill): string {
-  if (shared.slug) return `/skills/${shared.slug}`;
-  return `/folders/${shared.folder_id}`;
-}
-
-function SharedSkillRow({ shared }: { shared: SharedSkill }) {
-  return (
-    <div
-      className="grid items-center gap-3 border-b border-border-subtle px-4 py-2 text-[13px] last:border-b-0"
-      style={{ gridTemplateColumns: "minmax(0,2fr) minmax(0,1fr) auto" }}
-    >
-      <div className="flex min-w-0 items-center gap-2.5">
-        <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center text-[var(--color-brand-600)]">
-          <SkillIcon />
-        </span>
-        <span className="min-w-0 truncate font-medium text-foreground">{shared.name}</span>
-        {shared.description && (
-          <span className="min-w-0 truncate text-[12px] text-muted-foreground">
-            {shared.description}
-          </span>
-        )}
-      </div>
-      <span className="truncate text-[12px] text-muted-foreground">
-        shared by {shared.shared_by ?? "someone"}
-      </span>
-      <div className="flex items-center justify-end">
-        <Link
-          href={sharedSkillHref(shared)}
-          className="rounded-md bg-[var(--color-brand-600)] px-2 py-1 text-[12px] font-medium text-white hover:bg-[var(--color-brand-700)]"
-        >
-          View
-        </Link>
-      </div>
     </div>
   );
 }
@@ -631,6 +571,32 @@ function skillPublishBadge(skill: Skill): { discoverable: boolean } | null {
   return { discoverable: skill.published.discoverable };
 }
 
+// The primary action on a Skill anywhere it's listed: hand it to an agent.
+// Lives inside card/row links, so it stops the click from following them.
+function RunSkillButton({ onRun }: { onRun: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onRun();
+      }}
+      className="inline-flex flex-shrink-0 cursor-pointer items-center gap-1 rounded-md bg-[var(--color-brand-600)] px-2 py-0.5 text-[11.5px] font-medium text-white hover:bg-[var(--color-brand-700)]"
+    >
+      <PlayGlyph /> Run
+    </button>
+  );
+}
+
+function PlayGlyph() {
+  return (
+    <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+      <path d="M8 5v14l11-7z" />
+    </svg>
+  );
+}
+
 function SkillCollection({
   skills,
   view,
@@ -638,6 +604,7 @@ function SkillCollection({
   onTogglePin,
   selectedIds,
   onToggleSelect,
+  onRun,
 }: {
   skills: Skill[];
   view: ViewKey;
@@ -645,6 +612,7 @@ function SkillCollection({
   onTogglePin: (skill: Skill) => void;
   selectedIds: Set<string>;
   onToggleSelect: (id: string) => void;
+  onRun: (skill: Skill) => void;
 }) {
   if (view === "list") {
     return (
@@ -657,6 +625,7 @@ function SkillCollection({
             onTogglePin={onTogglePin}
             selected={selectedIds.has(skill.folder_id)}
             onToggleSelect={onToggleSelect}
+            onRun={onRun}
           />
         ))}
       </div>
@@ -696,6 +665,14 @@ function SkillCollection({
                 onCover
               />
             }
+            footer={
+              <>
+                <span className="min-w-0 truncate">
+                  {skill.when_to_use || "Hand this to an agent"}
+                </span>
+                <RunSkillButton onRun={() => onRun(skill)} />
+              </>
+            }
           />
         );
       })}
@@ -709,12 +686,14 @@ function SkillListRow({
   onTogglePin,
   selected,
   onToggleSelect,
+  onRun,
 }: {
   skill: Skill;
   pinned: boolean;
   onTogglePin: (skill: Skill) => void;
   selected: boolean;
   onToggleSelect: (id: string) => void;
+  onRun: (skill: Skill) => void;
 }) {
   return (
     <Link
@@ -723,7 +702,7 @@ function SkillListRow({
         "group grid items-center gap-3 border-b border-border-subtle px-4 py-2 text-[13px] last:border-b-0 " +
         (selected ? "bg-[var(--color-brand-50)]" : "hover:bg-[var(--color-brand-50)]/50")
       }
-      style={{ gridTemplateColumns: "auto minmax(0,2fr) minmax(0,1fr) auto auto" }}
+      style={{ gridTemplateColumns: "auto minmax(0,2fr) minmax(0,1fr) auto auto auto" }}
     >
       <SelectBox selected={selected} onToggle={() => onToggleSelect(skill.folder_id)} />
       <div className="flex min-w-0 items-center gap-2.5">
@@ -738,6 +717,7 @@ function SkillListRow({
         {skill.updated_at && ` · ${relativeTime(skill.updated_at)}`}
       </span>
       <PublishBadge published={skillPublishBadge(skill)} />
+      <RunSkillButton onRun={() => onRun(skill)} />
       <span
         className={
           pinned

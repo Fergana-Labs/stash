@@ -10,7 +10,9 @@ Two flavors:
   published, discoverable skill in the curator scope, attributed via
   skills.source_github_url. Re-imports are idempotent: skills are matched by
   source_github_url and their folder contents replaced in place, so the slug
-  and view count survive upstream updates.
+  and view count survive upstream updates. A `/tree/<branch>/<dir>` suffix on
+  the repo URL narrows the import to that directory, which is how a repo whose
+  skills sit beside unrelated SKILL.md files publishes only the skills.
 """
 
 from __future__ import annotations
@@ -31,19 +33,30 @@ from . import files_tree_service, shared_skill_service, skill_service
 
 logger = logging.getLogger(__name__)
 
-CURATOR_USERNAME = "stash-curated"
 MAX_FILE_BYTES = 50 * 1024 * 1024  # matches the upload endpoint's limit
 
-_REPO_URL_RE = re.compile(r"^https://github\.com/([^/]+)/([^/]+?)(?:\.git)?/?$")
+_REPO_URL_RE = re.compile(
+    r"^https://github\.com/([^/]+)/([^/]+?)(?:\.git)?(?:/tree/[^/]+/(.+?))?/?$"
+)
 _API = "https://api.github.com"
 _RAW = "https://raw.githubusercontent.com"
 
 
 def parse_repo_url(url: str) -> tuple[str, str]:
+    owner, repo, _subdir = parse_repo_target(url)
+    return owner, repo
+
+
+def parse_repo_target(url: str) -> tuple[str, str, str]:
+    """(owner, repo, subdir) from a repo URL. A `/tree/<branch>/<path>` suffix
+    narrows the import to that directory, which is how a repo that holds
+    skills alongside unrelated SKILL.md files publishes only the skills.
+    The branch in the URL is ignored — imports always track the default
+    branch, so a re-import can't silently pin to a stale ref."""
     match = _REPO_URL_RE.match(url.strip())
     if not match:
         raise ValueError(f"Not a GitHub repo URL: {url}")
-    return match.group(1), match.group(2)
+    return match.group(1), match.group(2), (match.group(3) or "").strip("/")
 
 
 def source_url(owner: str, repo: str, branch: str, skill_dir: str) -> str:
@@ -53,17 +66,23 @@ def source_url(owner: str, repo: str, branch: str, skill_dir: str) -> str:
     return f"https://github.com/{owner}/{repo}/tree/{branch}/{skill_dir}"
 
 
-def discover_skill_dirs(tree: list[dict]) -> list[str]:
-    """Directories whose immediate children include SKILL.md ('' = repo root)."""
+def discover_skill_dirs(tree: list[dict], subdir: str = "") -> list[str]:
+    """Directories whose immediate children include SKILL.md ('' = repo root),
+    restricted to `subdir` and below when one is given."""
     dirs = []
     for entry in tree:
         if entry["type"] != "blob":
             continue
         path = entry["path"]
         if path == "SKILL.md":
-            dirs.append("")
+            skill_dir = ""
         elif path.endswith("/SKILL.md"):
-            dirs.append(path[: -len("/SKILL.md")])
+            skill_dir = path[: -len("/SKILL.md")]
+        else:
+            continue
+        if subdir and skill_dir != subdir and not skill_dir.startswith(f"{subdir}/"):
+            continue
+        dirs.append(skill_dir)
     return sorted(dirs)
 
 
@@ -116,12 +135,12 @@ async def _fetch_blob(
 async def fetch_repo_skills(repo_url: str) -> list[dict]:
     """Fetch every skill in a repo: [{source_url, fallback_title, files}]
     where files is [(path relative to the skill dir, bytes)]."""
-    owner, repo = parse_repo_url(repo_url)
+    owner, repo, subdir = parse_repo_target(repo_url)
     async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
         branch = await _fetch_default_branch(client, owner, repo)
         tree = await _fetch_tree(client, owner, repo, branch)
         skills = []
-        for skill_dir in discover_skill_dirs(tree):
+        for skill_dir in discover_skill_dirs(tree, subdir):
             prefix = f"{skill_dir}/" if skill_dir else ""
             files = []
             for entry in tree:
@@ -190,7 +209,9 @@ async def ensure_curator() -> tuple[UUID, UUID]:
     IS their own scope. Idempotent.
     """
     pool = get_pool()
-    owner_id = await pool.fetchval("SELECT id FROM users WHERE name = $1", CURATOR_USERNAME)
+    owner_id = await pool.fetchval(
+        "SELECT id FROM users WHERE name = $1", shared_skill_service.CURATOR_USERNAME
+    )
     if owner_id is None:
         # Random unrecoverable password — this account is never logged into;
         # the import script operates as it via the services directly.
@@ -198,7 +219,7 @@ async def ensure_curator() -> tuple[UUID, UUID]:
         owner_id = await pool.fetchval(
             "INSERT INTO users (name, display_name, password_hash, description) "
             "VALUES ($1, $2, $3, $4) RETURNING id",
-            CURATOR_USERNAME,
+            shared_skill_service.CURATOR_USERNAME,
             "Stash",
             pw_hash,
             "System user that owns GitHub-imported Discover skills.",
@@ -375,14 +396,24 @@ async def remove_repo_skills(repo_url: str) -> int:
 
     Deleting the root folder cascades the skills row (folder_id FK); we clear
     the subtree first so child pages/files (folder FK SET NULL) don't orphan."""
-    owner, repo = parse_repo_url(repo_url)
+    owner, repo, subdir = parse_repo_target(repo_url)
     base = f"https://github.com/{owner}/{repo}"
     pool = get_pool()
-    rows = await pool.fetch(
-        "SELECT folder_id FROM skills WHERE source_github_url = $1 OR source_github_url LIKE $2",
-        base,
-        f"{base}/tree/%",
-    )
+    # Removal mirrors what the same URL imports: a bare repo URL clears every
+    # skill from it, a subdirectory URL clears only that subtree. The branch
+    # segment is a wildcard because the default branch can move between runs.
+    if subdir:
+        rows = await pool.fetch(
+            "SELECT folder_id FROM skills WHERE source_github_url LIKE $1",
+            f"{base}/tree/%/{subdir}%",
+        )
+    else:
+        rows = await pool.fetch(
+            "SELECT folder_id FROM skills "
+            "WHERE source_github_url = $1 OR source_github_url LIKE $2",
+            base,
+            f"{base}/tree/%",
+        )
     for r in rows:
         await files_tree_service.clear_folder_contents(r["folder_id"])
         await pool.execute("DELETE FROM folders WHERE id = $1", r["folder_id"])

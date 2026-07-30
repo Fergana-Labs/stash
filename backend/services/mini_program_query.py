@@ -133,6 +133,8 @@ async def _query_parts(
     view: dict | None,
     *,
     include_url_key: bool,
+    sort_by: str | None = None,
+    sort_order: str = "asc",
 ) -> tuple[str, str, list]:
     columns = await _columns(table_id)
     valid_col_ids = {column["id"] for column in columns}
@@ -147,11 +149,21 @@ async def _query_parts(
             table_service.row_filter_clauses(view.get("filters", []), valid_col_ids, args)
         )
 
+    if sort_by is not None and sort_by not in valid_col_ids:
+        raise ValueError("Sort column not found")
+    if sort_order not in {"asc", "desc"}:
+        raise ValueError("Sort order must be asc or desc")
+
     order = "row_order DESC"
-    sort_by = view.get("sort_by") if view else None
-    if sort_by in valid_col_ids:
-        direction = "DESC" if view.get("sort_order") == "desc" else "ASC"
-        order = f"data->>'{sort_by}' {direction}, row_order ASC"
+    active_sort = sort_by if sort_by is not None else view.get("sort_by") if view else None
+    active_order = (
+        sort_order if sort_by is not None else view.get("sort_order", "asc") if view else "asc"
+    )
+    if active_sort in valid_col_ids:
+        if active_order not in {"asc", "desc"}:
+            raise ValueError("Sort order must be asc or desc")
+        direction = "DESC" if active_order == "desc" else "ASC"
+        order = f"data->>'{active_sort}' {direction}, row_order ASC"
 
     fields = "id, data, row_order"
     if include_url_key:
@@ -168,6 +180,8 @@ async def query_rows(
     topic: str | None = None,
     filter_: str | None = None,
     view: dict | None = None,
+    sort_by: str | None = None,
+    sort_order: str = "asc",
     limit: int = 60,
     offset: int = 0,
 ) -> dict:
@@ -178,6 +192,8 @@ async def query_rows(
         slots,
         view,
         include_url_key=needs_duplicate_rank,
+        sort_by=sort_by,
+        sort_order=sort_order,
     )
     label_col, status_col = slots.get("labels"), slots.get("status")
 
