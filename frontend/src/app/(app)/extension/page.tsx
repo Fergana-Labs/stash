@@ -12,22 +12,22 @@ const FEATURES = [
   {
     icon: Globe,
     title: "Clip any page",
-    body: "Save the page you're reading — or every open tab — as a clean, readable copy in your Stash. PDFs included.",
+    body: "Articles, PDFs, and every open tab. Saved clean and readable.",
   },
   {
     icon: BookMarked,
-    title: "Import your bookmarks",
-    body: "Bring your whole bookmarks file. Stash fetches every page's content in the background and files them under Clips.",
+    title: "Bring your bookmarks",
+    body: "Import the whole file. We fetch what's behind every link.",
   },
   {
     icon: Camera,
     title: "Instagram saves",
-    body: "Your saved posts sync automatically — captions, images, and video archived so they outlive the post.",
+    body: "Your saved posts, synced. Captions, images, and video kept.",
   },
   {
     icon: MessagesSquare,
     title: "AI chats",
-    body: "ChatGPT and Claude conversations stream into your Stash as transcripts, searchable like everything else.",
+    body: "ChatGPT and Claude, streamed in. Searchable like everything else.",
   },
 ];
 
@@ -36,10 +36,10 @@ export default function ExtensionPage() {
     <div className="scroll-thin flex-1 overflow-y-auto">
       <div className="mx-auto max-w-2xl px-8 py-12">
         <h1 className="font-display text-[30px] font-bold tracking-tight text-foreground">
-          The Stash browser extension
+          Save anything from the web
         </h1>
         <p className="mt-2 max-w-lg text-[14px] leading-relaxed text-dim">
-          Everything you read, save, and discuss — captured into your Stash while you browse.
+          Automatic. Searchable. Read by your agents.
         </p>
 
         <div className="mt-7">
@@ -64,11 +64,11 @@ export default function ExtensionPage() {
         </div>
 
         <div className="mt-9 rounded-xl border border-border bg-base p-5">
-          <div className="text-[13.5px] font-semibold text-foreground">How it connects</div>
+          <div className="text-[13.5px] font-semibold text-foreground">One click to connect</div>
           <p className="mt-1.5 text-[12.5px] leading-relaxed text-muted-foreground">
-            After installing, click the extension icon and hit <span className="font-medium text-foreground">Connect</span>.
-            You&apos;ll sign in to Stash once in a normal tab — no tokens to copy. The extension
-            gets its own key you can revoke any time from Settings.
+            Click the icon and hit <span className="font-medium text-foreground">Connect</span>. You
+            sign in once, in a normal tab. No tokens to copy. The extension gets its own key, and
+            you can revoke it any time in Settings.
           </p>
         </div>
       </div>
