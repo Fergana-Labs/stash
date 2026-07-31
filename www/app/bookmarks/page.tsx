@@ -6,9 +6,9 @@ import SiteHeader from "../_components/SiteHeader";
 import Texture from "../_components/Texture";
 
 export const metadata: Metadata = {
-  title: "Drive & bookmarks · Stash",
+  title: "A bookmark manager that read the bookmarks · Stash",
   description:
-    "An AI-native Google Drive and bookmark manager. Everything you save — files, clipped pages, bookmarks, X saves, and AI chats — in one Drive your AI can actually read.",
+    "Clip any page, import your whole bookmarks file, and sync your X bookmarks. Stash keeps the page itself — text, images, PDFs — so you can ask what it said months later.",
 };
 
 const SAVES = [
@@ -28,36 +28,28 @@ const SAVES = [
     "AI chats",
     "ChatGPT and Claude conversations stream in as transcripts, searchable next to everything else you've saved.",
   ],
-  [
-    "Your existing accounts",
-    "Connect Gmail, Google Drive, Notion, and the rest. Stash reads them in place — nothing to migrate, nothing to re-file.",
-  ],
-  [
-    "Files and folders",
-    "Upload anything. Markdown, HTML, CSV, PDF, images — stored as real files in real folders, not rows in someone's database.",
-  ],
 ];
 
-const DRIVE = [
+const KEEPS = [
   [
-    "Ask, don't dig",
-    "Search by meaning, not filename. Ask what you saved about a topic six months ago and get the answer with links back to the source.",
+    "It keeps the page, not the link",
+    "A saved link is a promise the site will still be up. Stash stores the whole text, the images, and the PDF, so a dead URL still has the article behind it.",
   ],
   [
-    "Your AI can read it",
-    "The whole Drive mounts as a filesystem your agent can ls, find, and rg — through the CLI, the MCP server, or the API. Point ChatGPT or Claude at it and it works from what you actually saved.",
+    "Ask, don't dig",
+    "Search by meaning, not title. Ask what you saved about a topic six months ago and get the answer with links back to the source.",
   ],
   [
     "It organizes itself",
     "Saved pages get titles, summaries, and tags on the way in. The pile stays browsable without you filing anything.",
   ],
   [
-    "Share a link",
-    "Any file or folder gets a public URL when you want one, and stays private when you don't.",
+    "Your AI reads it too",
+    "Everything you save lands in the same Drive your agents work from — so the answer comes from what you actually read, not from the open web.",
   ],
 ];
 
-export default function PersonalPage() {
+export default function BookmarksPage() {
   return (
     <main className="min-h-screen bg-background text-foreground">
       <SiteHeader />
@@ -73,16 +65,16 @@ export default function PersonalPage() {
           }}
         />
         <div className="relative z-10 mx-auto max-w-[1200px] px-7">
-          <p className="kicker rise-in mb-6">For.users</p>
+          <p className="kicker rise-in mb-6">Bookmark.manager</p>
           <h1 className="max-w-[920px] text-balance font-display text-[clamp(40px,5.4vw,72px)] font-bold leading-[1.02] tracking-[-0.035em] text-ink">
-            An AI-native Google Drive{" "}
-            <span className="text-brand">and bookmark manager.</span>
+            A bookmark manager{" "}
+            <span className="text-brand">that read the bookmarks.</span>
           </h1>
           <p className="mt-7 max-w-[620px] text-[18px] leading-[1.55] text-foreground">
-            You save things all day — tabs, bookmarks, files, chats — into five
-            different places you never look at again. Stash is one Drive for all
-            of it, and unlike a folder of links, your AI can read every word of
-            what&apos;s in it.
+            You save things all day — tabs, bookmarks, X threads — into places
+            you never look at again. Stash keeps the page itself, so months
+            later you can ask what it said instead of hoping the site is still
+            up.
           </p>
           <div className="mt-9">
             <CtaPair />
@@ -92,11 +84,10 @@ export default function PersonalPage() {
 
       <section className="border-b border-border-subtle bg-surface py-20 md:py-28">
         <div className="mx-auto max-w-[1200px] px-7">
-          <p className="kicker">Everything.you.save</p>
-          <h2 className="mt-5 max-w-[760px] text-balance font-display text-[clamp(28px,3.4vw,44px)] font-bold leading-[1.1] tracking-[-0.02em] text-ink">
+          <h2 className="max-w-[760px] text-balance font-display text-[clamp(28px,3.4vw,44px)] font-bold leading-[1.1] tracking-[-0.02em] text-ink">
             Saving to it takes one click. Usually zero.
           </h2>
-          <div className="mt-12 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="mt-12 grid grid-cols-1 gap-4 sm:grid-cols-2">
             {SAVES.map(([name, blurb]) => (
               <div
                 key={name}
@@ -114,17 +105,11 @@ export default function PersonalPage() {
 
       <section className="border-b border-border-subtle py-20 md:py-28">
         <div className="mx-auto max-w-[1200px] px-7">
-          <p className="kicker">Your.drive</p>
-          <h2 className="mt-5 max-w-[760px] text-balance font-display text-[clamp(28px,3.4vw,44px)] font-bold leading-[1.1] tracking-[-0.02em] text-ink">
-            A bookmark manager that read the bookmarks.
+          <h2 className="max-w-[760px] text-balance font-display text-[clamp(28px,3.4vw,44px)] font-bold leading-[1.1] tracking-[-0.02em] text-ink">
+            Then it does what a folder of links can&apos;t.
           </h2>
-          <p className="mt-5 max-w-[640px] text-[16px] leading-[1.6] text-foreground">
-            A saved link is a link. Stash keeps the page — the whole text, the
-            images, the PDF — so months later you can ask what it said instead
-            of hoping the site is still up.
-          </p>
           <div className="mt-12 grid grid-cols-1 gap-4 sm:grid-cols-2">
-            {DRIVE.map(([name, blurb]) => (
+            {KEEPS.map(([name, blurb]) => (
               <div
                 key={name}
                 className="rounded-[12px] border border-border bg-background p-5 transition-colors hover:border-brand"
@@ -149,10 +134,10 @@ export default function PersonalPage() {
             <CtaPair align="center" />
           </div>
           <Link
-            href="/company-brain"
+            href="/drive"
             className="mt-6 inline-flex font-mono text-[13px] text-dim transition hover:text-brand"
           >
-            Using it with a team? See Company Brain →
+            See the Drive it all lands in →
           </Link>
         </div>
       </section>
