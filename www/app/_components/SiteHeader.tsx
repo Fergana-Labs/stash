@@ -75,11 +75,8 @@ const FOR_FIRMS = [
 ];
 
 const FOR_USERS = [
-  [
-    "Drive & bookmarks",
-    "/personal",
-    "An AI-native Google Drive and bookmark manager for everything you save",
-  ],
+  ["AI-native Drive", "/drive", "Your files and folders, in a Drive your AI can read"],
+  ["Bookmark manager", "/bookmarks", "Clip pages and keep what's behind every link"],
 ];
 
 // CSS-only dropdown (no client JS): opens on hover and on keyboard focus of
