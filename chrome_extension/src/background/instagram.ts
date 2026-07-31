@@ -9,6 +9,7 @@
 
 import { clearSurfaceError, setSurfaceError } from '../lib/errors';
 import { setBadge, stashConfig } from '../lib/stash';
+import { isSyncEnabled } from './sync_settings';
 
 const VISIT_ALARM = 'instagram-saves-visit';
 const VISIT_TIMEOUT_ALARM = 'instagram-saves-visit-timeout';
@@ -30,6 +31,7 @@ function schedule(): void {
 export async function shouldFetchSaves(): Promise<any> {
   const { apiKey } = await chrome.storage.local.get(['apiKey']);
   if (!apiKey) return { fetch: false };
+  if (!(await isSyncEnabled('instagram'))) return { fetch: false };
   const { igFetchedAt } = await chrome.storage.local.get(['igFetchedAt']);
   return { fetch: !igFetchedAt || Date.now() - igFetchedAt > HARVEST_INTERVAL_MS };
 }

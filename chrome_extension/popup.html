@@ -4,7 +4,9 @@
   <meta charset="utf-8" />
   <style>
     body {
-      width: 320px;
+      /* Wide enough that a source row fits its name, status, Sync now, and
+         the switch on one line. */
+      width: 352px;
       margin: 0;
       padding: 16px;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -120,6 +122,31 @@
       flex: none;
     }
     button.sync-now:disabled { opacity: 0.5; cursor: default; }
+    .source-row.off .source-name { color: #9ca3af; }
+    input.switch {
+      appearance: none;
+      width: 30px;
+      height: 18px;
+      flex: none;
+      margin: 0;
+      padding: 0;
+      border-radius: 9px;
+      background: #d1d5db;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    input.switch:checked { background: #F97316; }
+    input.switch::after {
+      content: '';
+      display: block;
+      width: 14px;
+      height: 14px;
+      margin: 2px;
+      border-radius: 50%;
+      background: white;
+      transition: transform 0.15s;
+    }
+    input.switch:checked::after { transform: translateX(12px); }
   </style>
 </head>
 <body>

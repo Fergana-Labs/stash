@@ -24,6 +24,7 @@ import {
   shouldFetchSaves,
 } from './background/instagram';
 import { platformStatus, syncNow } from './background/status';
+import { setSyncEnabled, isSyncEnabled } from './background/sync_settings';
 import type { ConversationSnapshot } from './content/sync';
 
 const DEFAULT_API_BASE = 'https://api.joinstash.ai';
@@ -80,6 +81,9 @@ async function handle(message: any, sender: chrome.runtime.MessageSender): Promi
       return platformStatus();
     case 'SYNC_NOW':
       return syncNow(message.platform);
+    case 'SET_SYNC_ENABLED':
+      await setSyncEnabled(message.platform, message.enabled);
+      return { ok: true };
     case 'CONNECT':
       return connect();
     case 'DISCONNECT':
@@ -106,6 +110,11 @@ async function handle(message: any, sender: chrome.runtime.MessageSender): Promi
 // ---------------------------------------------------------------------------
 
 async function syncConversation(snapshot: ConversationSnapshot): Promise<any> {
+  // The content scripts keep pushing from an open tab regardless; the switch
+  // is enforced here so turning ChatGPT or Claude off stops that too.
+  const platform = snapshot.platform === 'claude-web' ? 'claude' : 'chatgpt';
+  if (!(await isSyncEnabled(platform))) return { ok: true, skipped: true };
+
   const cfg = await chrome.storage.local.get(['apiBase', 'apiKey', 'folderId']);
   if (!cfg.apiKey) {
     await setBadge('!', 'Not connected to Stash — click to sign in');
