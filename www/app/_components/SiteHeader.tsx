@@ -71,12 +71,11 @@ function NavLink({
 const FOR_FIRMS = [
   ["Company Brain", "/company-brain", "All your tools as one agent-native source of truth"],
   ["Memory & Observability", "/memory", "Retrieval that doesn't miss, plus every agent session"],
-  ["For SMBs", "/smb", "Find the hours AI can give back"],
 ];
 
 const FOR_USERS = [
   ["AI-native Drive", "/drive", "Your files and folders, in a Drive your AI can read"],
-  ["Bookmark manager", "/bookmarks", "Clip pages and keep what's behind every link"],
+  ["Everything you've read", "/bookmarks", "Your reading, in one place your agent can act on"],
 ];
 
 // CSS-only dropdown (no client JS): opens on hover and on keyboard focus of
