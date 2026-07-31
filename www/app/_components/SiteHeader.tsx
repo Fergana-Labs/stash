@@ -8,8 +8,8 @@ const APP_URL = process.env.MANAGED_APP_URL || "https://app.joinstash.ai";
 // shows a signed-out visitor no way to create an account.
 const SIGNUP_URL = `${APP_URL}/login?mode=register`;
 
-// Shared top nav for the landing page and the use-case pages, so the two
-// primary use-case links stay identical everywhere they appear. The
+// Shared top nav for the landing page and the audience pages, so the firm-
+// and user-facing links stay identical everywhere they appear. The
 // message-test pages pass ctaHref="#survey" so signup leads to their form.
 export default function SiteHeader({ ctaHref = SIGNUP_URL }: { ctaHref?: string }) {
   const ctaClassName =
@@ -25,7 +25,8 @@ export default function SiteHeader({ ctaHref = SIGNUP_URL }: { ctaHref?: string 
           stash
         </Link>
         <nav className="flex items-center gap-2 text-[14px] text-dim">
-          <UseCasesMenu />
+          <NavMenu label="For firms" items={FOR_FIRMS} />
+          <NavMenu label="For users" items={FOR_USERS} />
           <NavLink href="/docs">Docs</NavLink>
           <NavLink href="/blog">Blog</NavLink>
           <NavLink href="/contact-sales">Book a call</NavLink>
@@ -67,22 +68,30 @@ function NavLink({
   );
 }
 
-const USE_CASES = [
+const FOR_FIRMS = [
   ["Company Brain", "/company-brain", "All your tools as one agent-native source of truth"],
   ["Memory & Observability", "/memory", "Retrieval that doesn't miss, plus every agent session"],
   ["For SMBs", "/smb", "Find the hours AI can give back"],
 ];
 
+const FOR_USERS = [
+  [
+    "Drive & bookmarks",
+    "/personal",
+    "An AI-native Google Drive and bookmark manager for everything you save",
+  ],
+];
+
 // CSS-only dropdown (no client JS): opens on hover and on keyboard focus of
 // any child via group-focus-within. Collapses below lg so the nav stays tidy.
-function UseCasesMenu() {
+function NavMenu({ label, items }: { label: string; items: string[][] }) {
   return (
     <div className="group relative hidden lg:block">
       <button
         type="button"
         className="inline-flex items-center gap-1 rounded-md px-3 py-2 transition hover:bg-raised hover:text-ink group-hover:bg-raised group-hover:text-ink"
       >
-        Use-cases
+        {label}
         <svg
           width="12"
           height="12"
@@ -100,7 +109,7 @@ function UseCasesMenu() {
       </button>
       <div className="invisible absolute left-0 top-full z-50 pt-2 opacity-0 transition group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100">
         <div className="w-64 rounded-xl border border-border bg-background p-1.5 shadow-[var(--shadow-card)]">
-          {USE_CASES.map(([name, href, blurb]) => (
+          {items.map(([name, href, blurb]) => (
             <Link
               key={href}
               href={href}
