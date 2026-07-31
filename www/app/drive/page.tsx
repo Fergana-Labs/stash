@@ -69,6 +69,22 @@ export default function DrivePage() {
         </div>
       </section>
 
+      <section className="border-b border-border-subtle py-16 md:py-20">
+        <div className="mx-auto max-w-[1000px] px-7">
+          <figure>
+            <img
+              src="/screens/drive.jpg"
+              alt="The Stash Drive: folders in the explorer on the left, a Markdown note open and rendered on the right."
+              className="w-full rounded-xl border border-border shadow-[var(--shadow-card)]"
+            />
+            <figcaption className="mt-3 text-[13.5px] leading-[1.55] text-dim">
+              Folders on the left, the file open on the right — and the same tree mounted as a
+              filesystem your agent reads.
+            </figcaption>
+          </figure>
+        </div>
+      </section>
+
       <section className="border-b border-border-subtle bg-surface py-20 md:py-28">
         <div className="mx-auto max-w-[1200px] px-7">
           <h2 className="max-w-[760px] text-balance font-display text-[clamp(28px,3.4vw,44px)] font-bold leading-[1.1] tracking-[-0.02em] text-ink">
