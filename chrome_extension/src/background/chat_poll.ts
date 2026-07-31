@@ -15,6 +15,7 @@ import {
 } from '../lib/chat_apis';
 import type { ConversationSnapshot } from '../content/sync';
 import { setBadge } from '../lib/stash';
+import { isSyncEnabled } from './sync_settings';
 
 const ALARM_NAME = 'chat-poll';
 const POLL_PERIOD_MINUTES = 24 * 60;
@@ -46,7 +47,10 @@ function schedule(): void {
 async function pollAll(): Promise<void> {
   const { apiKey } = await chrome.storage.local.get(['apiKey']);
   if (!apiKey) return;
-  const results = await Promise.all([syncChat('chatgpt'), syncChat('claude')]);
+  const results = [];
+  for (const platform of ['chatgpt', 'claude'] as ChatPlatform[]) {
+    if (await isSyncEnabled(platform)) results.push(await syncChat(platform));
+  }
   const errors = results.filter((r) => !r.ok);
   if (errors.length > 0) {
     // No notification — a logged-out site would nag daily. Badge + popup error.

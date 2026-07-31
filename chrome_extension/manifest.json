@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Stash Sync",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "Saves webpages, PDFs, and your ChatGPT/Claude conversations to Stash.",
   "permissions": [
     "storage",

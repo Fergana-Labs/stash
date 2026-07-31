@@ -231,7 +231,8 @@ async function render(): Promise<void> {
 }
 
 // The background pollers: each shows whether you're signed in to the site and
-// when it last synced, with a Sync-now button.
+// when it last synced, with a switch that turns its syncing off entirely and
+// a Sync-now button.
 async function renderSources(): Promise<HTMLElement> {
   const section = el('div', { className: 'sources' }, [
     el('div', { className: 'section-label' }, ['Sources']),
@@ -239,17 +240,19 @@ async function renderSources(): Promise<HTMLElement> {
   const statuses = await send({ type: 'PLATFORM_STATUS' });
 
   for (const { key, label } of PLATFORMS) {
-    const s = statuses?.[key] || { connected: false, lastSyncAt: null };
-    const detail = !s.connected
-      ? 'Not connected — sign in on the site'
-      : s.lastSyncAt
-        ? `Synced ${timeAgo(s.lastSyncAt)}`
-        : 'Connected';
+    const s = statuses[key];
+    const detail = !s.enabled
+      ? 'Sync off'
+      : !s.connected
+        ? 'Not connected — sign in on the site'
+        : s.lastSyncAt
+          ? `Synced ${timeAgo(s.lastSyncAt)}`
+          : 'Connected';
 
     const syncBtn = el('button', {
       className: 'secondary sync-now',
       textContent: 'Sync now',
-      disabled: !s.connected,
+      disabled: !s.connected || !s.enabled,
       onclick: async () => {
         syncBtn.textContent = 'Syncing…';
         syncBtn.disabled = true;
@@ -258,14 +261,27 @@ async function renderSources(): Promise<HTMLElement> {
       },
     });
 
+    const toggle = el('input', {
+      type: 'checkbox',
+      className: 'switch',
+      checked: s.enabled,
+      title: `Sync ${label}`,
+      onchange: async () => {
+        await send({ type: 'SET_SYNC_ENABLED', platform: key, enabled: toggle.checked });
+        await render();
+      },
+    });
+    toggle.setAttribute('aria-label', `Sync ${label}`);
+
     section.append(
-      el('div', { className: 'source-row' }, [
-        el('span', { className: `dot ${s.connected ? 'on' : 'off'}` }),
+      el('div', { className: s.enabled ? 'source-row' : 'source-row off' }, [
+        el('span', { className: `dot ${s.enabled && s.connected ? 'on' : 'off'}` }),
         el('div', { className: 'source-meta' }, [
           el('div', { className: 'source-name' }, [label]),
           el('div', { className: 'source-detail muted' }, [detail]),
         ]),
         syncBtn,
+        toggle,
       ])
     );
   }
