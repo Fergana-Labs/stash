@@ -38,7 +38,7 @@ const SHOTS = [
   },
   {
     src: "/extension/saved-clip.jpg",
-    caption: "The page lands in your Stash under Clips, kept in full and searchable.",
+    caption: "Everything you save piles up in one library — filterable, sortable, and kept in full.",
   },
 ];
 

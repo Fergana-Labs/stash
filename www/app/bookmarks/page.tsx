@@ -49,6 +49,19 @@ const KEEPS = [
   ],
 ];
 
+function Shot({ src, caption }: { src: string; caption: string }) {
+  return (
+    <figure>
+      <img
+        src={src}
+        alt={caption}
+        className="w-full rounded-xl border border-border shadow-[var(--shadow-card)]"
+      />
+      <figcaption className="mt-3 text-[13.5px] leading-[1.55] text-dim">{caption}</figcaption>
+    </figure>
+  );
+}
+
 export default function BookmarksPage() {
   return (
     <main className="min-h-screen bg-background text-foreground">
@@ -78,6 +91,21 @@ export default function BookmarksPage() {
           </p>
           <div className="mt-9">
             <CtaPair />
+          </div>
+        </div>
+      </section>
+
+      <section className="border-b border-border-subtle py-16 md:py-20">
+        <div className="mx-auto max-w-[1200px] px-7">
+          <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
+            <Shot
+              src="/screens/save-page.jpg"
+              caption="One click from the browser extension, on any page you're reading."
+            />
+            <Shot
+              src="/screens/bookmarks-library.jpg"
+              caption="Everything you've saved in one library — filterable, sortable, kept in full."
+            />
           </div>
         </div>
       </section>
