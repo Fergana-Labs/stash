@@ -8,6 +8,7 @@ const ROUTES = [
   "",
   "/company-brain",
   "/memory",
+  "/personal",
   "/discover",
   "/docs",
   "/blog",

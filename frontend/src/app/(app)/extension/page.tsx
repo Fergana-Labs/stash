@@ -1,6 +1,6 @@
 "use client";
 
-import { BookMarked, Camera, Globe, MessagesSquare } from "lucide-react";
+import { BookMarked, Bookmark, Globe, MessagesSquare } from "lucide-react";
 
 // The one stable URL for getting the extension. Every CTA in the product
 // links here, so when the Chrome Web Store listing goes live only this
@@ -20,14 +20,25 @@ const FEATURES = [
     body: "Import the whole file. We fetch what's behind every link.",
   },
   {
-    icon: Camera,
-    title: "Instagram saves",
-    body: "Your saved posts, synced. Captions, images, and video kept.",
+    icon: Bookmark,
+    title: "Twitter bookmarks",
+    body: "Your X bookmarks, synced. Text, images, and threads kept.",
   },
   {
     icon: MessagesSquare,
     title: "AI chats",
     body: "ChatGPT and Claude, streamed in. Searchable like everything else.",
+  },
+];
+
+const SHOTS = [
+  {
+    src: "/extension/save-page.jpg",
+    caption: "Click the extension on any page and hit Save this tab — or Save all open tabs.",
+  },
+  {
+    src: "/extension/saved-clip.jpg",
+    caption: "The page lands in your Stash under Clips, kept in full and searchable.",
   },
 ];
 
@@ -51,6 +62,21 @@ export default function ExtensionPage() {
           >
             Add to Chrome — it&apos;s free
           </a>
+        </div>
+
+        <div className="mt-9 space-y-6">
+          {SHOTS.map((s) => (
+            <figure key={s.src}>
+              <img
+                src={s.src}
+                alt={s.caption}
+                className="w-full rounded-xl border border-border"
+              />
+              <figcaption className="mt-2 text-[12.5px] leading-relaxed text-muted-foreground">
+                {s.caption}
+              </figcaption>
+            </figure>
+          ))}
         </div>
 
         <div className="mt-9 grid grid-cols-1 gap-4 sm:grid-cols-2">
