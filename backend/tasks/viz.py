@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime, timedelta
+from uuid import UUID
 
 from ..celery_app import celery
 from ..database import get_pool
@@ -84,3 +85,19 @@ async def _precompute() -> int:
 @celery.task(name="backend.tasks.viz.precompute")
 def precompute() -> int:
     return run_async(_precompute())
+
+
+@celery.task(name="backend.tasks.viz.refresh_projection")
+def refresh_projection(
+    user_id: str, source: str | None = None, owner_user_id: str | None = None
+) -> int:
+    """Recompute one embedding projection, enqueued by the projection
+    endpoint on cache miss or staleness. UMAP + numba live here because the
+    web instances can't afford them (memory + latency)."""
+    return run_async(
+        analytics_service.compute_embedding_projection(
+            UUID(user_id),
+            source=source,
+            owner_user_id=UUID(owner_user_id) if owner_user_id else None,
+        )
+    )
