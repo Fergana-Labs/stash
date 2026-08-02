@@ -24,7 +24,7 @@
     "@tiptap/pm": "^3.26.1",
     "@tiptap/react": "^3.26.1",
     "@tiptap/starter-kit": "^3.26.1",
-    "next": "16.2.7",
+    "next": "16.2.11",
     "pako": "^2.1.0",
     "react": "19.2.3",
     "react-dom": "19.2.3",
@@ -46,7 +46,7 @@
     "typescript": "^5"
   },
   "overrides": {
-    "postcss": "8.5.10",
+    "postcss": "8.5.18",
     "sharp": "^0.35.3"
   }
 }
