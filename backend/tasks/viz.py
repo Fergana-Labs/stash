@@ -3,9 +3,10 @@
 Replaces `workers/viz_precompute.py`. Beat-scheduled (every 300s in
 `celery_app.py`).
 
-Walks users active in the last 7 days whose knowledge_density_cache is
-older than 6 hours and recomputes their clusters.
-"""
+Walks users active in the last 7 days whose knowledge_density_cache or
+user-wide embedding projection is older than 6 hours and recomputes both.
+The projection is the expensive one (UMAP fit, tens of seconds); computing
+it here is what keeps the memory page's embeddings map instant."""
 
 from __future__ import annotations
 
@@ -40,6 +41,9 @@ async def _recompute_one(user_id) -> None:
         clusters,
         signature,
     )
+    # max_points matches the memory page's request; the cache row is keyed by
+    # source only, so this is the row the embeddings map will be served.
+    await analytics_service.get_embedding_projection(user_id, max_points=2000, refresh=True)
 
 
 async def _precompute() -> int:
@@ -53,9 +57,15 @@ async def _precompute() -> int:
         FROM users u
         LEFT JOIN knowledge_density_cache kdc
                ON kdc.user_id = u.id AND kdc.owner_user_id IS NULL
+        LEFT JOIN embedding_projections ep
+               ON ep.user_id = u.id AND ep.source_type = '_all' AND ep.owner_user_id IS NULL
         WHERE u.last_seen >= $1
-          AND (kdc.computed_at IS NULL OR kdc.computed_at < $2)
-        ORDER BY kdc.computed_at ASC NULLS FIRST
+          AND (kdc.computed_at IS NULL OR kdc.computed_at < $2
+               OR ep.computed_at IS NULL OR ep.computed_at < $2)
+        ORDER BY LEAST(
+            COALESCE(kdc.computed_at, 'epoch'::timestamptz),
+            COALESCE(ep.computed_at, 'epoch'::timestamptz)
+        ) ASC
         LIMIT $3
         """,
         active_since,

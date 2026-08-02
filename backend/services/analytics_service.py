@@ -1,6 +1,7 @@
 """Analytics service: aggregated views for dashboard visualizations."""
 
 import asyncio
+import hashlib
 import logging
 import math
 import re
@@ -49,6 +50,55 @@ logger = logging.getLogger(__name__)
 # SIGNATURE_TOLERANCE" so typo-level edits don't thrash.
 _DENSITY_CACHE_TTL = timedelta(hours=24)
 _DENSITY_SIGNATURE_TOLERANCE = 0.1
+
+# Projection cache rows are also guarded by a live count-drift check and (for
+# user-wide rows) a scope signature on every request, so the TTL only forces a
+# periodic re-layout; the viz precompute task refreshes rows well before this.
+_PROJECTION_CACHE_TTL = timedelta(hours=24)
+
+
+async def scope_signature(user_id: UUID) -> str:
+    """Hash of the scope-owner ids the user can currently access.
+
+    User-wide projection cache rows are served only while the stored signature
+    matches this, so gaining or losing access to another user's content
+    invalidates the cached projection immediately."""
+    pool = get_pool()
+    rows = await pool.fetch(
+        f"SELECT id FROM {permission_service.accessible_scope_ids_sql(1)} scope_ids ORDER BY id",
+        user_id,
+    )
+    joined = ",".join(str(r["id"]) for r in rows)
+    return hashlib.sha256(joined.encode()).hexdigest()
+
+
+async def _store_projection(
+    user_id: UUID,
+    source_key: str,
+    owner_user_id: UUID | None,
+    points: list[dict],
+    total_count: int,
+    signature: str | None,
+) -> None:
+    """Upsert a projection cache row. Empty results are stored too, so the
+    precompute task doesn't reselect embedding-less users every cycle."""
+    pool = get_pool()
+    await pool.execute(
+        "INSERT INTO embedding_projections "
+        "(user_id, source_type, owner_user_id, points, embedding_count, scope_signature, computed_at) "
+        "VALUES ($1, $2, $3, $4, $5, $6, NOW()) "
+        "ON CONFLICT (user_id, source_type, owner_user_id) "
+        "DO UPDATE SET points = EXCLUDED.points, "
+        "              embedding_count = EXCLUDED.embedding_count, "
+        "              scope_signature = EXCLUDED.scope_signature, "
+        "              computed_at = NOW()",
+        user_id,
+        source_key,
+        owner_user_id,
+        points,
+        total_count,
+        signature,
+    )
 
 
 def _truncate_activity_bucket(value: datetime, bucket: str) -> datetime:
@@ -744,17 +794,26 @@ async def get_embedding_projection(
     max_points: int = 500,
     source: str | None = None,
     owner_user_id: UUID | None = None,
+    refresh: bool = False,
 ) -> dict:
     """3D UMAP projection of embeddings for the space explorer.
 
-    Pass ``owner_user_id`` to scope to one user.
+    Pass ``owner_user_id`` to scope to one user. Pass ``refresh=True`` to skip
+    the cache read and recompute unconditionally (the viz precompute task).
 
-    Only explicit scope-scoped requests use the embedding_projections cache.
-    User-wide results depend on current scope access."""
+    User-wide results depend on which other users' content the requester can
+    currently access, so their cache rows are additionally guarded by a scope
+    signature: any access change invalidates them immediately."""
     pool = get_pool()
     max_points = min(max_points, 2000)
 
     source_key = source or "_all"
+
+    # Explicit scopes are keyed by owner_user_id and need no signature (None
+    # matches their NULL column).
+    current_signature = None
+    if owner_user_id is None:
+        current_signature = await scope_signature(user_id)
 
     content_count_args = [user_id]
     content_count_scope_idx = None
@@ -767,14 +826,11 @@ async def get_embedding_projection(
         event_count_args.append(owner_user_id)
         event_scope_idx = 2
 
-    # Cache row keyed by (user_id, source_type, owner_user_id), explicit
-    # scopes only: user-wide results depend on the user's current scope access
-    # and must be recomputed when access changes.
     cache = None
-    use_cache = owner_user_id is not None
-    if use_cache:
+    if not refresh:
         cache = await pool.fetchrow(
-            "SELECT points, embedding_count, computed_at FROM embedding_projections "
+            "SELECT points, embedding_count, scope_signature, computed_at "
+            "FROM embedding_projections "
             "WHERE user_id = $1 AND source_type = $2 "
             "AND owner_user_id IS NOT DISTINCT FROM $3",
             user_id,
@@ -837,8 +893,12 @@ async def get_embedding_projection(
         total_count += row or 0
 
     # Check if cache is still valid
-    one_hour_ago = datetime.now(UTC) - timedelta(hours=1)
-    if cache and cache["computed_at"] > one_hour_ago:
+    fresh_cutoff = datetime.now(UTC) - _PROJECTION_CACHE_TTL
+    if (
+        cache
+        and cache["computed_at"] > fresh_cutoff
+        and cache["scope_signature"] == current_signature
+    ):
         count_diff = abs(total_count - cache["embedding_count"])
         if count_diff / max(cache["embedding_count"], 1) < 0.1:
             return {
@@ -848,6 +908,7 @@ async def get_embedding_projection(
             }
 
     if total_count == 0:
+        await _store_projection(user_id, source_key, owner_user_id, [], 0, current_signature)
         return {"points": [], "stats": {"total_embeddings": 0, "projected": 0}, "cached": False}
 
     # Fetch up to the full budget from each source — splitting it evenly
@@ -969,6 +1030,9 @@ async def get_embedding_projection(
             )
 
     if not all_items:
+        await _store_projection(
+            user_id, source_key, owner_user_id, [], total_count, current_signature
+        )
         return {
             "points": [],
             "stats": {"total_embeddings": total_count, "projected": 0},
@@ -1006,21 +1070,9 @@ async def get_embedding_projection(
             }
         )
 
-    if use_cache:
-        await pool.execute(
-            "INSERT INTO embedding_projections "
-            "(user_id, source_type, owner_user_id, points, embedding_count, computed_at) "
-            "VALUES ($1, $2, $3, $4, $5, NOW()) "
-            "ON CONFLICT (user_id, source_type, owner_user_id) "
-            "DO UPDATE SET points = EXCLUDED.points, "
-            "              embedding_count = EXCLUDED.embedding_count, "
-            "              computed_at = NOW()",
-            user_id,
-            source_key,
-            owner_user_id,
-            points,
-            total_count,
-        )
+    await _store_projection(
+        user_id, source_key, owner_user_id, points, total_count, current_signature
+    )
 
     return {
         "points": points,
