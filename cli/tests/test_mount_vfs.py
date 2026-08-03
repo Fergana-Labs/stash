@@ -76,8 +76,17 @@ class FakeClient:
                         "name": "diagram.txt",
                         "folder_id": None,
                         "size_bytes": 12,
+                        "content_type": "text/plain",
                         "created_at": "2026-04-20T12:00:00Z",
-                    }
+                    },
+                    {
+                        "id": "pdffile-12345678",
+                        "name": "catalog.pdf",
+                        "folder_id": None,
+                        "size_bytes": 9,
+                        "content_type": "application/pdf",
+                        "created_at": "2026-04-20T12:00:00Z",
+                    },
                 ],
             },
             "skills": [
@@ -105,8 +114,12 @@ class FakeClient:
         return {"content_type": "markdown", "content_markdown": "# Plan\n", "content_html": ""}
 
     def download_file(self, file_id):
-        assert file_id == "file-12345678"
-        return b"diagram body"
+        assert file_id in ("file-12345678", "pdffile-12345678")
+        return b"%PDF raw" if file_id == "pdffile-12345678" else b"diagram body"
+
+    def get_file_text(self, file_id):
+        assert file_id == "pdffile-12345678"
+        return {"text": "# Catalog\n| part | cross |\n", "status": "done"}
 
     def get_skill_text(self, slug):
         assert slug == "demo-stash"
@@ -351,13 +364,41 @@ def test_read_raw_fetches_source_doc_original_bytes():
     assert model.read_raw(f"{gmail_dir}/{doc_name}") == b"RAW BYTES of msg-1"
 
 
-def test_read_raw_of_native_nodes_is_their_content():
-    """Uploads already load raw bytes and a page's bytes ARE its markdown — for
-    everything that isn't a connected-source document, read_raw and read_file
-    must agree, so `download` never invents a second body for a node."""
+def test_binary_upload_reads_as_sidecar_and_downloads_as_original():
+    """`cat` on an uploaded PDF must never flood a shell with raw bytes — it
+    shows the extracted sidecar text, exactly like a connected-source document.
+    The original stays one `read_raw` away."""
+    model = _model()
+    pdf_name = next(name for name in model.list_dir("/files") if name.startswith("catalog"))
+
+    assert model.read_file(f"/files/{pdf_name}") == b"# Catalog\n| part | cross |\n"
+    assert model.read_raw(f"/files/{pdf_name}") == b"%PDF raw"
+
+
+class UnextractedPdfClient(FakeClient):
+    def get_file_text(self, file_id):
+        return {"text": None, "status": "pending"}
+
+
+def test_unextracted_binary_upload_says_so_instead_of_dumping_bytes():
+    """Extraction hasn't run yet (or produced nothing): the reader gets told
+    loudly, with the escape hatches named — never silence, never mojibake."""
+    model = StashVfsModel(UnextractedPdfClient(), include_computer=True)
+    model.refresh()
+    pdf_name = next(name for name in model.list_dir("/files") if name.startswith("catalog"))
+
+    text = model.read_file(f"/files/{pdf_name}").decode()
+    assert "no extracted text" in text
+    assert "stash download" in text
+
+
+def test_text_upload_reads_and_downloads_the_same_bytes():
+    """A text upload's bytes ARE its content — read_raw and read_file must
+    agree, so `download` never invents a second body for a node."""
     model = _model()
     upload_name = next(name for name in model.list_dir("/files") if name.startswith("diagram"))
 
+    assert model.read_file(f"/files/{upload_name}") == b"diagram body"
     assert model.read_raw(f"/files/{upload_name}") == b"diagram body"
 
 
