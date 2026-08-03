@@ -346,7 +346,7 @@ async def extract_drive_text(
     - Google Doc       → markdown export
     - Google Sheet     → XLSX export, rendered as one TSV block per sheet
     - Google Slides    → text/plain export
-    - PDF              → with `transcribe_pdfs`, Claude vision grounded by the
+    - PDF              → with `transcribe_pdfs`, Gemini vision grounded by the
                          embedded text layer (structure from the page images,
                          characters from the layer; a scan just has no layer);
                          without it, the raw pypdf text layer
