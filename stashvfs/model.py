@@ -581,15 +581,14 @@ class StashVfsModel:
 
     def _load_file_sidecar(self, file_id: str) -> bytes:
         """A binary upload's extracted text. When there is none, say so and
-        point at the escape hatches — never dump raw bytes into a shell."""
+        point at the escape hatch — never dump raw bytes into a shell."""
         doc = self.client.get_file_text(file_id)
         if doc.get("text"):
             return _text_bytes(doc["text"])
         status = doc.get("status") or "missing"
         return _text_bytes(
             f"[binary file: no extracted text (extraction {status}). "
-            "Fetch the original with `stash download <path>`, or ask about its "
-            'pages with `stash pdf ask <path> "<question>"`.]\n'
+            "Fetch the original with `stash download <path>`.]\n"
         )
 
     def _load_page(self, page_id: str) -> bytes:
