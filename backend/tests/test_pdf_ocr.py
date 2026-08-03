@@ -352,3 +352,36 @@ async def test_transcription_failure_marks_row_for_retry(monkeypatch):
 
     assert await extract_one._run(file_id) == 1
     assert persisted_errors == ["Extraction failed: RuntimeError"]
+
+
+@pytest.mark.asyncio
+async def test_a_rate_limit_hands_the_attempt_back(monkeypatch):
+    """HTTP 429 means "later", not "broken". Counting it against the attempt
+    budget let one quota blip march 20 real customer documents to permanent
+    failure in seconds — the row must go back to pending with its attempt
+    returned, so the next dispatch retries it as if this one never happened."""
+    import httpx
+
+    file_id = uuid.uuid4()
+    executed_queries = []
+
+    class RateLimitedConnection(_FakeConnection):
+        async def execute(self, query, *args):
+            executed_queries.append(query)
+
+    conn = RateLimitedConnection(file_id, "application/pdf")
+    _wire_extract_one(monkeypatch, conn, _blank_pdf(1))
+
+    async def rate_limited_transcribe(content):
+        request = httpx.Request("POST", "https://generativelanguage.googleapis.com")
+        raise httpx.HTTPStatusError(
+            "429", request=request, response=httpx.Response(429, request=request)
+        )
+
+    monkeypatch.setattr(pdf_ocr, "transcribe_pdf", rate_limited_transcribe)
+
+    assert await extract_one._run(file_id) == 1
+    (query,) = executed_queries
+    assert "extraction_status = 'pending'" in query
+    assert "extraction_attempts = greatest(extraction_attempts - 1, 0)" in query
+    assert "failed" not in query
