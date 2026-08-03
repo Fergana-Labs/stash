@@ -20,12 +20,22 @@ jobs:
   bump:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
-      actions: write    # required to dispatch publish.yml after the bump
+      contents: read
     steps:
+      # Push as the stash-release-bot GitHub App: main's ruleset requires a
+      # reviewed PR from everyone except this app, and app-token pushes
+      # (unlike GITHUB_TOKEN ones) fire publish.yml's `on: push` trigger, so
+      # no explicit dispatch is needed after the bump.
+      - name: Mint release-bot token
+        id: app-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.RELEASE_BOT_APP_ID }}
+          private-key: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
+
       - uses: actions/checkout@v4
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ steps.app-token.outputs.token }}
 
       - name: Check triggering commit
         id: trigger
@@ -96,19 +106,9 @@ jobs:
       - name: Commit and push
         if: steps.trigger.outputs.skip != 'true'
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.name "stash-release-bot[bot]"
+          git config user.email "stash-release-bot[bot]@users.noreply.github.com"
           git add pyproject.toml plugins/claude-plugin/.claude-plugin/plugin.json .claude-plugin/marketplace.json docker-compose.prod.yml
           git diff --cached --quiet && echo "No change" && exit 0
           git commit -m "chore: bump stash release to ${{ steps.bump.outputs.package_version }} and plugin to ${{ steps.bump.outputs.plugin_version }}"
           git push
-
-      # The bump commit is pushed with GITHUB_TOKEN, which never fires
-      # publish.yml's `on: push` trigger (GitHub's recursion guard), so the
-      # release would otherwise wait for the next human push to main.
-      # workflow_dispatch is exempt from the guard.
-      - name: Publish release
-        if: steps.trigger.outputs.skip != 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh workflow run publish.yml --ref main
