@@ -5908,7 +5908,9 @@ def download_command(
     data = _read_vfs_raw(path)
     dest = Path(output) if output else Path(posixpath.basename(path.rstrip("/")))
     dest.write_bytes(data)
-    console.print(f"[green]Downloaded[/green] {path} → {dest} [dim]{len(data)} bytes[/dim]")
+    console.print(
+        f"[green]Downloaded[/green] {path} → {dest.resolve()} [dim]{len(data)} bytes[/dim]"
+    )
 
 
 pdf_app = typer.Typer(help="Visual reads of PDFs and images.")
