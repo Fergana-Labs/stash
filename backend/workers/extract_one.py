@@ -71,12 +71,16 @@ async def _run(file_id: UUID) -> int:
             return 1
 
         content = await storage_service.download_file(row["storage_key"])
-        text = extract_text(content, row["content_type"])
-        if text is None and is_pdf(row["content_type"]):
-            # A PDF with no embedded text layer is a scan. OCR errors
-            # propagate to the except below so the row records the
-            # failure and the retry machinery re-runs it.
+        if is_pdf(row["content_type"]):
+            # One codepath for every PDF: vision reads the pages, the embedded
+            # text layer (empty for a scan) grounds the characters. pypdf alone
+            # scrambles multi-column tables, and a scrambled parts table reads
+            # fine while crossing the wrong part numbers. Transcription errors
+            # propagate to the except below so the row records the failure and
+            # the retry machinery re-runs it.
             text = await transcribe_pdf(content) or None
+        else:
+            text = extract_text(content, row["content_type"])
         if text and len(text) > MAX_EXTRACTED_TEXT:
             text = text[:MAX_EXTRACTED_TEXT] + "\n\n[truncated]"
 
