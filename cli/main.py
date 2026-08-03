@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import mimetypes
 import posixpath
 import re
 import shutil
@@ -5845,44 +5844,6 @@ def download_command(
     console.print(
         f"[green]Downloaded[/green] {path} → {dest.resolve()} [dim]{len(data)} bytes[/dim]"
     )
-
-
-pdf_app = typer.Typer(help="Visual reads of PDFs and images.")
-app.add_typer(pdf_app, name="pdf")
-
-
-@pdf_app.command("ask")
-def pdf_ask(
-    path: str = typer.Argument(..., help="Local file path, or a VFS path in your Stash."),
-    question: str = typer.Argument(..., help="What to find out from the document."),
-):
-    """Ask a question about a PDF or image; a vision model looks at the actual
-    pages server-side and answers as text.
-
-    This is for agents that cannot see images themselves — figures, diagrams,
-    and table layouts get looked at on your behalf, conditioned on your
-    question. If your harness reads PDFs natively, prefer `stash download`
-    and look with your own eyes.
-    """
-    local = Path(path)
-    if local.is_file():
-        content = local.read_bytes()
-        filename = local.name
-    else:
-        content = _read_vfs_raw(path)
-        filename = posixpath.basename(path.rstrip("/"))
-
-    content_type = mimetypes.guess_type(filename)[0]
-    if content_type is None:
-        console.print(f"[red]Cannot tell the document type from the name: {filename}[/red]")
-        raise typer.Exit(1)
-
-    with _client() as c:
-        try:
-            answer = c.ask_document(filename, content, content_type, question)
-        except StashError as e:
-            _err(e)
-    console.print(answer)
 
 
 # ===========================================================================

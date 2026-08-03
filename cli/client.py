@@ -749,16 +749,6 @@ class StashClient:
             "GET", f"/api/v1/me/sources/{source}/doc/raw", params={"ref": ref}, timeout=300
         ).content
 
-    def ask_document(self, filename: str, content: bytes, content_type: str, question: str) -> str:
-        response = self._request(
-            "POST",
-            "/api/v1/ask-document",
-            files={"file": (filename, content, content_type)},
-            data={"question": question},
-            timeout=300,
-        )
-        return response.json()["answer"]
-
     def search_sources(
         self,
         query: str,
