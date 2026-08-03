@@ -47,9 +47,10 @@ class VfsNode:
     # Provider-side id of a connected-source document (a Drive file id, a Gmail
     # message id, …), so `stat` can tie a VFS path back to the provider object.
     external_ref: str | None = None
-    # (source handle, document ref) for a connected-source document, so
-    # `read_raw` can fetch the original bytes behind the extracted text.
-    source_doc_ref: tuple[str, str] | None = None
+    # Fetches the original bytes behind this node when they differ from what
+    # `cat` shows — the provider document behind a connected-source text, the
+    # uploaded binary behind a sidecar. None means the content IS the original.
+    raw_loader: BytesLoader | None = None
     # Stash id of the connected source this node is the root of. It's the object
     # id `shares add source <id>` takes, so `stat` surfaces it for sharing.
     source_id: str | None = None
@@ -156,17 +157,16 @@ class StashVfsModel:
         return node.content
 
     def read_raw(self, path: str) -> bytes:
-        """The original bytes behind a node. A connected-source document comes
-        back verbatim from the provider — the PDF itself, not its extracted
-        text — so a vision-capable agent can look at the actual pages. Every
-        other file's bytes ARE its content (uploads already load raw; pages
-        and transcripts are text), so this reads the same body `cat` shows."""
+        """The original bytes behind a node. Binary documents — connected-source
+        files and uploads alike — come back verbatim (the PDF itself, not its
+        extracted text), so a vision-capable agent can look at the actual pages.
+        Everything else's bytes ARE its content (pages and transcripts are
+        text), so this reads the same body `cat` shows."""
         node = self._get_node(path)
         if not node.is_file:
             raise IsADirectoryError(path)
-        if node.source_doc_ref is not None:
-            handle, ref = node.source_doc_ref
-            return self.client.download_source_doc(handle, ref)
+        if node.raw_loader is not None:
+            return node.raw_loader()
         return self.read_file(path)
 
     def prefetch(self, paths: list[str]) -> None:
@@ -340,9 +340,20 @@ class StashVfsModel:
             # Uploaded files are immutable — there is no separate update event,
             # so the file's last-modified time is its creation time.
             created_at = file.get("created_at")
+            # A binary upload reads as its extracted sidecar text — `cat` on a
+            # PDF must never flood a context window with raw bytes — while the
+            # original stays reachable through `read_raw` / `stash download`,
+            # mirroring connected-source documents exactly.
+            if _is_binary_upload(file.get("content_type")):
+                loader = lambda fid=file_id: self._load_file_sidecar(fid)  # noqa: E731
+                raw_loader = lambda fid=file_id: self.client.download_file(fid)  # noqa: E731
+            else:
+                loader = lambda fid=file_id: self.client.download_file(fid)  # noqa: E731
+                raw_loader = None
             self._add_file(
                 f"{parent_path}/{name}",
-                loader=lambda fid=file_id: self.client.download_file(fid),
+                loader=loader,
+                raw_loader=raw_loader,
                 size_hint=file.get("size_bytes"),
                 created_at=created_at,
                 updated_at=created_at,
@@ -565,7 +576,20 @@ class StashVfsModel:
             size_hint=entry.get("size"),
             updated_at=entry.get("external_updated_at"),
             external_ref=entry.get("external_ref") or None,
-            source_doc_ref=(handle, ref),
+            raw_loader=lambda h=handle, r=ref: self.client.download_source_doc(h, r),
+        )
+
+    def _load_file_sidecar(self, file_id: str) -> bytes:
+        """A binary upload's extracted text. When there is none, say so and
+        point at the escape hatches — never dump raw bytes into a shell."""
+        doc = self.client.get_file_text(file_id)
+        if doc.get("text"):
+            return _text_bytes(doc["text"])
+        status = doc.get("status") or "missing"
+        return _text_bytes(
+            f"[binary file: no extracted text (extraction {status}). "
+            "Fetch the original with `stash download <path>`, or ask about its "
+            'pages with `stash pdf ask <path> "<question>"`.]\n'
         )
 
     def _load_page(self, page_id: str) -> bytes:
@@ -631,7 +655,7 @@ class StashVfsModel:
         created_at: str | None = None,
         updated_at: str | None = None,
         external_ref: str | None = None,
-        source_doc_ref: tuple[str, str] | None = None,
+        raw_loader: BytesLoader | None = None,
         app_url: str | None = None,
     ) -> str:
         path = self._clean_path(path)
@@ -651,7 +675,7 @@ class StashVfsModel:
             created_at=_parse_iso(created_at),
             updated_at=_parse_iso(updated_at),
             external_ref=external_ref,
-            source_doc_ref=source_doc_ref,
+            raw_loader=raw_loader,
             app_url=app_url,
         )
         self.nodes[parent].children[name] = path
@@ -754,6 +778,18 @@ def _group_by_provider(connected: list[dict]) -> dict[str, list[dict]]:
             continue
         groups.setdefault(str(source.get("provider") or "source"), []).append(source)
     return groups
+
+
+# Upload content types whose bytes are directly readable text. Everything else
+# (PDFs, Office files, images, archives) reads as its extracted sidecar.
+_TEXT_UPLOAD_TYPES = ("application/json", "application/xml")
+
+
+def _is_binary_upload(content_type: str | None) -> bool:
+    ct = (content_type or "").lower().split(";")[0].strip()
+    if not ct:
+        return False
+    return not (ct.startswith("text/") or ct in _TEXT_UPLOAD_TYPES)
 
 
 def _source_doc_text(doc: dict) -> str:
