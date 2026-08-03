@@ -45,6 +45,12 @@ def _apply_memory_limit() -> None:
         pass
 
 
+def _is_rate_limit(e: Exception) -> bool:
+    import httpx
+
+    return isinstance(e, httpx.HTTPStatusError) and e.response.status_code == 429
+
+
 async def _run(file_id: UUID) -> int:
     # Lazy imports so the RLIMIT above applies to everything heavy.
     import asyncpg
@@ -108,15 +114,29 @@ async def _run(file_id: UUID) -> int:
         # persisted error carries only the exception class — never the
         # message, which may embed document text or provider responses.
         try:
-            await conn.execute(
-                "UPDATE files SET "
-                "extraction_status = CASE WHEN extraction_attempts >= 3 THEN 'failed' ELSE 'pending' END, "
-                "extraction_error = $2, "
-                "locked_at = NULL "
-                "WHERE id = $1",
-                file_id,
-                f"Extraction failed: {type(e).__name__}",
-            )
+            if _is_rate_limit(e):
+                # A rate limit means "later", not "broken": hand the attempt
+                # back, or a quota blip marches every in-flight document to
+                # permanent failure in seconds.
+                await conn.execute(
+                    "UPDATE files SET "
+                    "extraction_status = 'pending', "
+                    "extraction_attempts = greatest(extraction_attempts - 1, 0), "
+                    "extraction_error = 'Extraction rate limited: HTTP 429', "
+                    "locked_at = NULL "
+                    "WHERE id = $1",
+                    file_id,
+                )
+            else:
+                await conn.execute(
+                    "UPDATE files SET "
+                    "extraction_status = CASE WHEN extraction_attempts >= 3 THEN 'failed' ELSE 'pending' END, "
+                    "extraction_error = $2, "
+                    "locked_at = NULL "
+                    "WHERE id = $1",
+                    file_id,
+                    f"Extraction failed: {type(e).__name__}",
+                )
         except Exception:
             pass
         return 1
