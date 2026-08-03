@@ -57,6 +57,7 @@ async def _run_curator_now(agent_id: UUID) -> None:
     except Exception as e:
         await agent_service.mark_run_failed(agent_id, str(e))
         raise
+    await agent_service.mark_run_succeeded(agent_id)
     through = await curation_service.complete_through(
         UUID(str(agent["user_id"])), agent["curated_through"], now
     )
@@ -94,21 +95,25 @@ async def _run_due() -> int:
                 logger.info(
                     "agent schedule: curator credits exhausted for user %s — skipping", user_id
                 )
+                await agent_service.mark_run_skipped(agent["id"], "credits")
                 continue
         # No runnable credential (unconnected free user) → nothing can run.
         try:
             await agent_auth.resolve(user_id, agent["model_provider"])
         except (agent_auth.NeedsAuth, agent_auth.ProviderNotConfigured):
             logger.info("agent schedule: no credential for agent %s — skipping", agent["id"])
+            await agent_service.mark_run_skipped(agent["id"], "no_credential")
             continue
         # Cost gate: skip the curator (and the sprite wake) when nothing changed
         # since its watermark. Idle users cost one EXISTS per day.
         if agent["is_curator"] and not await curation_service.has_changes_since(
             user_id, user_id, agent["curated_through"]
         ):
+            await agent_service.mark_run_skipped(agent["id"], "no_changes")
             continue
         try:
             await sprite_agent_service.run_scheduled(agent, stamp)
+            await agent_service.mark_run_succeeded(agent["id"])
             if agent["is_curator"]:
                 # `now` predates the run, so changes made during it stay ahead
                 # of the watermark and are picked up next time. If the delta
@@ -143,9 +148,11 @@ async def _alert_stale_curators() -> int:
     """Alert on curators whose watermark stopped advancing despite pending
     changes. Alerting on the stale *outcome* catches every cause — dead
     provider keys, harness bugs, a wedged beat — where per-run failure alerts
-    only catch runs that started. `last_run_error IS NOT NULL` scopes this to
-    curators whose last attempted run actually failed; curators skipped by
-    design (credit allowance, no credential) keep a NULL error and stay quiet.
+    only catch runs that started. Two shapes qualify: the last attempted run
+    failed (last_run_error), or it stamped 'started' and never resolved — a
+    run that died mid-flight without reaching the failure path. Curators
+    skipped by design (credit allowance, no credential, no changes) resolve
+    to 'skipped_<reason>' with a NULL error and stay quiet.
     """
     from ..database import get_pool
     from ..services import alert_service, curation_service
@@ -157,7 +164,7 @@ async def _alert_stale_curators() -> int:
         FROM agents a JOIN users u ON u.id = a.user_id
         WHERE a.is_curator AND a.run_mode = 'scheduled'
           AND a.curated_through IS NOT NULL AND a.curated_through < $1
-          AND a.last_run_error IS NOT NULL
+          AND (a.last_run_error IS NOT NULL OR a.last_run_outcome = 'started')
         """,
         cutoff,
     )
@@ -172,7 +179,7 @@ async def _alert_stale_curators() -> int:
         return 0
     lines = [
         f"- {r['email']}: last curated {r['curated_through']:%Y-%m-%d %H:%M} UTC "
-        f"({r['last_run_error'][:200]})"
+        f"({(r['last_run_error'] or 'run died mid-flight — started, never resolved')[:200]})"
         for r in stale
     ]
     await alert_service.send_alert(
