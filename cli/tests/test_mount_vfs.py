@@ -361,6 +361,32 @@ def test_vfs_suffixes_only_colliding_names():
     assert "Untitled table" not in entries
 
 
+class QuotedTitleClient(FakeClient):
+    """A session titled with quotes — agents drive the VFS through
+    `stash vfs "<script>"`, so quotes in a path must survive two layers of
+    shell parsing. Sanitizing them out of the projected name is what keeps
+    session dirs addressable from a shell one-liner."""
+
+    def get_overview(self):
+        overview = super().get_overview()
+        overview["sessions"] = [
+            {
+                "id": "dddddddd-4444",
+                "session_id": "sess-1",
+                "title": 'Buy the "best" product from Bob\'s $5 `deals`',
+            }
+        ]
+        return overview
+
+
+def test_vfs_strips_shell_hostile_chars_from_names():
+    model = StashVfsModel(QuotedTitleClient(), include_computer=True)
+    model.refresh()
+
+    (name,) = [n for n in model.list_dir("/sessions") if n != "_index.jsonl"]
+    assert name == "Buy the best product from Bobs 5 deals"
+
+
 class CountingLoaderClient(FakeClient):
     """Records every document body fetched, and whether two fetches ever overlapped.
 

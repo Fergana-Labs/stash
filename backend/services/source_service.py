@@ -2400,13 +2400,22 @@ async def _gather_search_candidates(
             return None
 
     async def session_hits() -> tuple[list[dict], list[dict]]:
+        from stashvfs import safe_name
+
+        from . import session_title_service
         from .memory_service import search_scope_events
 
         events = await search_scope_events(owner_user_id, user_id, query, limit=fetch_limit)
+        # Session hits carry `name` — the session's display title in the VFS's
+        # spelling, so a hit can be followed straight into /sessions/<name>/.
+        # `ref` stays the raw session id; the web search page links with it.
+        ids = [sid for sid in {e.get("session_id") for e in events} if sid]
+        titles = await session_title_service.titles_for_session_ids(owner_user_id, ids)
         return [
             {
                 "source": NATIVE_SESSIONS,
                 "ref": e.get("session_id"),
+                "name": safe_name(titles.get(e.get("session_id"), e.get("session_id"))),
                 "snippet": _centered_window(e.get("content") or "", query, SEARCH_SNIPPET_CHARS),
                 "date_modified": e.get("created_at"),
             }

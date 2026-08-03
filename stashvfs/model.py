@@ -701,7 +701,20 @@ def _inode_for_path(path: str) -> int:
     return int.from_bytes(digest[:8], "big") & 0x7FFFFFFFFFFFFFFF
 
 
+def safe_name(value: str) -> str:
+    """The VFS spelling of a display name — what `ls` shows and paths use.
+
+    Public so other surfaces (e.g. search results) can name objects exactly
+    as the VFS does; a name that differs only in shell-hostile punctuation
+    sends agents down unfollowable paths."""
+    return _safe_name(value)
+
+
 def _safe_name(value: str) -> str:
+    # Quotes, backticks, and `$` make paths hostile to shell-quote — agents
+    # drive the VFS through `stash vfs "<script>"`, where names pass two
+    # layers of shell parsing.
+    value = re.sub(r"['\"`$]", "", value)
     value = re.sub(r"[\x00/\\:]", "-", value.strip())
     value = re.sub(r"\s+", " ", value)
     value = value.strip(". ")

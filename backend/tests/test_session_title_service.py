@@ -102,6 +102,21 @@ def test_clean_generated_title_strips_markdown_heading_prefixes():
     )
 
 
+def test_clean_generated_title_strips_quotes():
+    # Titles become VFS directory names — quotes and backticks don't survive
+    # the shell parsing agents reach those paths through.
+    assert clean_generated_title('Fix the "flaky" auth test') == "Fix the flaky auth test"
+    assert (
+        clean_generated_title("Debug Bob's `stash vfs` wrapper") == "Debug Bobs stash vfs wrapper"
+    )
+
+
+def test_title_from_text_strips_quotes():
+    title = title_from_text('please fix the "best" deploy script', "session-1")
+
+    assert title == "Fix the best deploy script"
+
+
 @pytest.mark.asyncio
 async def test_titles_for_sessions_prefers_generated_cache(monkeypatch):
     class Pool:
