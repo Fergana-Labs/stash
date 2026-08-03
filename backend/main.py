@@ -29,6 +29,7 @@ from .routers import (
     collab,
     demo,
     discover,
+    document_qa,
     exports,
     feed,
     files,
@@ -150,6 +151,7 @@ app.include_router(tasks.router)
 app.include_router(integrations_router)
 app.include_router(sources.router)
 app.include_router(sources.saved_items_router)
+app.include_router(document_qa.router)
 app.include_router(vfs.router)
 app.include_router(agent_chat.router)
 app.include_router(agent_credentials.router)

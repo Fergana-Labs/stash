@@ -189,6 +189,9 @@ class InProcessVfsClient:
     def read_source_doc(self, source: str, ref: str) -> dict:
         return self._read_document("GET", f"/api/v1/me/sources/{source}/doc", ref=ref).json()
 
+    def download_source_doc(self, source: str, ref: str) -> bytes:
+        return self._read_document("GET", f"/api/v1/me/sources/{source}/doc/raw", ref=ref).content
+
 
 def _error_detail(response: httpx.Response) -> str:
     """The route's `detail` when it raised HTTPException, else the status line.
