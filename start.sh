@@ -563,10 +563,16 @@ uvicorn backend.main:app --host 0.0.0.0 --port "$BACKEND_PORT" \
     --proxy-headers --forwarded-allow-ips '*' &
 PIDS+=($!)
 
-# --- Celery worker + beat ---
+# --- Celery workers + beat ---
 # Same commands as docker-compose.prod.yml; beat must run as exactly one instance.
-echo "[worker]   Starting celery worker..."
-celery -A backend.celery_app worker --loglevel=info --concurrency=4 &
+# Two workers: heavy tasks can hold the default pool for up to 30 min each, so
+# the cadence-sensitive beat tasks get their own pool (see task_routes).
+echo "[worker]   Starting celery worker (default queue)..."
+celery -A backend.celery_app worker --loglevel=info --concurrency=4 -Q default &
+PIDS+=($!)
+
+echo "[worker]   Starting celery heartbeat worker..."
+celery -A backend.celery_app worker --loglevel=info --concurrency=2 -Q heartbeat &
 PIDS+=($!)
 
 echo "[beat]     Starting celery beat..."

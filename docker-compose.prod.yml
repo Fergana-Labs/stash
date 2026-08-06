@@ -98,7 +98,27 @@ services:
       REDIS_URL: redis://redis:6379/0
     volumes:
       - backend_secrets:/app/.secrets
-    command: ["celery", "-A", "backend.celery_app", "worker", "--loglevel=info", "--concurrency=4"]
+    command: ["celery", "-A", "backend.celery_app", "worker", "--loglevel=info", "--concurrency=4", "-Q", "default"]
+
+  # Cadence-sensitive beat tasks (X token keep-fresh, ticket reconcilers)
+  # run in their own pool so 30-min heavy tasks can't delay them.
+  heartbeat-worker:
+    image: ghcr.io/fergana-labs/stash-backend:0.1.362
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      REDIS_URL: redis://redis:6379/0
+    volumes:
+      - backend_secrets:/app/.secrets
+    command: ["celery", "-A", "backend.celery_app", "worker", "--loglevel=info", "--concurrency=2", "-Q", "heartbeat"]
 
   beat:
     image: ghcr.io/fergana-labs/stash-backend:0.1.362
