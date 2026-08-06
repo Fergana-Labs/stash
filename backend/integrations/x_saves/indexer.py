@@ -59,13 +59,20 @@ MAX_USER_TWEET_PAGES = 5
 MAX_TIMELINE_BACKFILL_PAGES = 25
 # The X API bills per post returned (unlike twitterapi.io, which is cheap),
 # and most checks find no new bookmark — so bookmarks are checked at most
-# once a day, starting with one small probe page. Backlog and history pages
-# use the full size, capped per check. Posts/replies/articles are unaffected:
-# they ride twitterapi.io on the source's normal sync cadence.
+# once a day, starting with one small probe page. Posts/replies/articles are
+# unaffected: they ride twitterapi.io on the source's normal sync cadence.
 BOOKMARK_CHECK_INTERVAL = timedelta(days=1)
 BOOKMARK_PROBE_SIZE = 10
-BOOKMARK_PAGE_SIZE = 100
-MAX_BOOKMARK_PAGES = 5
+# X's bookmarks pagination silently drops next_token after a page or two at
+# max_results=100 even when thousands of bookmarks remain (confirmed on a
+# real account: 100/page ended at ~110 of 2,895; 20/page served all of them).
+# Small pages are the only size known to paginate to the true end.
+BOOKMARK_PAGE_SIZE = 20
+MAX_BOOKMARK_PROBE_PAGES = 5
+# Pages per daily check spent walking bookmark history. The endpoint allows
+# 180 requests / 15 min per user, so one check can walk ~3,000 bookmarks;
+# bigger archives resume from the stored cursor on later checks.
+MAX_BOOKMARK_WALK_PAGES = 150
 
 
 def tweet_url(tweet_id: str) -> str:
@@ -197,7 +204,7 @@ async def _backfill_bookmarks(
         timeout=30.0, headers={"Authorization": f"Bearer {token}"}
     ) as client:
         page_token: str | None = None
-        for page in range(MAX_BOOKMARK_PAGES):
+        for page in range(MAX_BOOKMARK_PROBE_PAGES):
             size = BOOKMARK_PROBE_SIZE if page == 0 else BOOKMARK_PAGE_SIZE
             payload = await _fetch_bookmarks_page(client, source_id, x_user_id, size, page_token)
             if payload is None:
@@ -216,18 +223,25 @@ async def _backfill_bookmarks(
         if source_settings.get("x_bookmarks_complete"):
             return
         page_token = source_settings.get("x_bookmarks_cursor")
-        for _ in range(MAX_BOOKMARK_PAGES):
+        for _ in range(MAX_BOOKMARK_WALK_PAGES):
             payload = await _fetch_bookmarks_page(
                 client, source_id, x_user_id, BOOKMARK_PAGE_SIZE, page_token
             )
             if payload is None:
-                return
+                return  # gate closed mid-walk; the stored cursor resumes next check
             await _insert_bookmarks_page(payload, source_id, owner_user_id)
-            page_token = (payload.get("meta") or {}).get("next_token")
-            if not page_token:
-                await _merge_source_settings(source_id, {"x_bookmarks_complete": True})
+            next_token = (payload.get("meta") or {}).get("next_token")
+            if not next_token:
+                if len(payload.get("data") or []) < BOOKMARK_PAGE_SIZE:
+                    await _merge_source_settings(source_id, {"x_bookmarks_complete": True})
+                # A FULL page with no next_token is X's truncation bug, not
+                # the end of the list — leave the cursor pointing at this page
+                # so the next daily check retries it instead of believing X.
                 return
-        await _merge_source_settings(source_id, {"x_bookmarks_cursor": page_token})
+            page_token = next_token
+            # Parked after every page so a mid-walk stop (page budget, rate
+            # limit, redeploy) never refetches — and re-bills — walked pages.
+            await _merge_source_settings(source_id, {"x_bookmarks_cursor": page_token})
 
 
 async def _fetch_bookmarks_page(
