@@ -1,4 +1,11 @@
-"""Auto-detection and global singleton for the active embedding provider."""
+"""Auto-detection and global singleton for the active embedding provider.
+
+Hosted prod (joinstash.ai) resolves to the **openai** provider — OpenAI
+text-embedding-3-small truncated to 384 dims — because OPENAI_API_KEY is set
+in the Render environment. The other providers are self-hosting affordances.
+Which provider runs is a deployment fact, not a code fact: check the
+"Embedding provider: <name>" line in worker logs, not this file.
+"""
 
 import logging
 import os

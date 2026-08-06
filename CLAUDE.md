@@ -72,6 +72,16 @@ Two model tiers, configured in `backend/.env`:
   ask-the-stash.
 - `ANTHROPIC_FAST_MODEL` — fast tier (default `claude-haiku-4-5`).
 
+**Embeddings: prod uses OpenAI.** Hosted prod (joinstash.ai) embeds with
+OpenAI `text-embedding-3-small` truncated to 384 dims (matching the
+`vector(384)` columns), selected because `OPENAI_API_KEY` is set in the Render
+environment. The provider is resolved by auto-detection in
+`backend/services/embeddings/` (openai → huggingface → local, in that order —
+a self-hosting affordance, deliberately added in 96ee3b6f); do not add
+`HF_TOKEN` or change embedding env vars in prod without understanding this
+chain, and never infer the prod provider from the code alone — it is a
+deployment fact (verified via prod worker logs, 2026-08-05).
+
 ## Project layout
 
 - `backend/` — FastAPI app (Python 3.12), runs on port `3456`. Migrations via Alembic.
