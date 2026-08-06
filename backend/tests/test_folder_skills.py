@@ -170,7 +170,13 @@ async def test_published_skill_grants_subtree_read_never_write(pool):
     # Unpublished: a skill folder on its own grants nothing to outsiders.
     assert not await permission_service.check_access("page", page, stranger)
 
-    await shared_skill_service.publish_folder(scope, owner, root, title="Subtree skill")
+    await shared_skill_service.publish_folder(
+        scope,
+        owner,
+        root,
+        title="Subtree skill",
+        description="Use for subtree permission tests.",
+    )
 
     # The publish record grants READ on the whole subtree — anonymous included.
     assert await permission_service.check_access("page", page, stranger)
@@ -256,7 +262,11 @@ async def test_publish_creates_skill_md_when_missing_and_rejects_double_publish(
 
     published = await client.post(
         "/api/v1/me/skills",
-        json={"folder_id": folder, "title": "Minted skill"},
+        json={
+            "folder_id": folder,
+            "title": "Minted skill",
+            "description": "Use for testing skill publication.",
+        },
         headers=_auth(api_key),
     )
     assert published.status_code == 201, published.text
@@ -435,7 +445,11 @@ async def test_install_ping_counts_adoption_separately_from_views(client: AsyncC
 async def test_create_skill_makes_a_folder_with_a_skill_md(client: AsyncClient):
     key, _ = await _register(client)
 
-    resp = await client.post("/api/v1/me/skills/new", json={}, headers=_auth(key))
+    resp = await client.post(
+        "/api/v1/me/skills/new",
+        json={"name": "New skill", "description": "Use for a new workflow."},
+        headers=_auth(key),
+    )
 
     assert resp.status_code == 201
     assert resp.json()["name"] == "New skill"
@@ -452,8 +466,9 @@ async def test_create_skill_never_collides_with_a_name_squatting_folder(client: 
     scope = await _scope(client, key)
     await _folder(client, key, scope, "New skill")
 
-    first = await client.post("/api/v1/me/skills/new", json={}, headers=_auth(key))
-    second = await client.post("/api/v1/me/skills/new", json={}, headers=_auth(key))
+    payload = {"name": "New skill", "description": "Use for a new workflow."}
+    first = await client.post("/api/v1/me/skills/new", json=payload, headers=_auth(key))
+    second = await client.post("/api/v1/me/skills/new", json=payload, headers=_auth(key))
 
     assert first.status_code == 201
     assert second.status_code == 201
@@ -464,5 +479,31 @@ async def test_create_skill_never_collides_with_a_name_squatting_folder(client: 
 @pytest.mark.asyncio
 async def test_create_skill_rejects_a_blank_name(client: AsyncClient):
     key, _ = await _register(client)
-    resp = await client.post("/api/v1/me/skills/new", json={"name": "  "}, headers=_auth(key))
+    resp = await client.post(
+        "/api/v1/me/skills/new",
+        json={"name": "  ", "description": "Use for a new workflow."},
+        headers=_auth(key),
+    )
     assert resp.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_create_skill_rejects_a_blank_description(client: AsyncClient):
+    key, _ = await _register(client)
+    resp = await client.post(
+        "/api/v1/me/skills/new",
+        json={"name": "Deploy", "description": "  "},
+        headers=_auth(key),
+    )
+    assert resp.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_create_skill_rejects_a_name_codex_cannot_load(client: AsyncClient):
+    key, _ = await _register(client)
+    resp = await client.post(
+        "/api/v1/me/skills/new",
+        json={"name": "x" * 65, "description": "Use for deploys."},
+        headers=_auth(key),
+    )
+    assert resp.status_code == 422

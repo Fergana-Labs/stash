@@ -134,9 +134,15 @@ export default function FolderDetailPage({ folderId: folderIdProp }: { folderId?
 
   const convertToSkill = useCallback(async () => {
     if (!folderName || !user) return;
+    const description = window.prompt("When should an agent use this skill?");
+    if (!description?.trim()) return;
     setConverting(true);
     try {
-      await createPage(SKILL_MD, folderId, skillMdTemplate(folderName));
+      await createPage(
+        SKILL_MD,
+        folderId,
+        skillMdTemplate(folderName, description.trim()),
+      );
       await refreshSidebar().catch(() => {});
       router.push(`/skills/${folderId}`);
     } catch (e) {

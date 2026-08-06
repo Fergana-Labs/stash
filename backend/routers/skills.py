@@ -4,7 +4,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile
 from fastapi.responses import PlainTextResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from ..auth import get_current_user, get_current_user_optional, get_scope
 from ..config import settings
@@ -34,7 +34,10 @@ _PUBLIC_ITEM_TYPES = {"page", "file", "table", "folder"}
 
 
 class SkillCreateRequest(BaseModel):
-    name: str = "New skill"
+    name: str = Field(..., min_length=1, max_length=skill_service.MAX_SKILL_NAME_LENGTH)
+    description: str = Field(
+        ..., min_length=1, max_length=skill_service.MAX_SKILL_DESCRIPTION_LENGTH
+    )
 
 
 @me_router.post("/skills/new", status_code=201)
@@ -46,9 +49,14 @@ async def create_skill(
     """Create a skill (root folder + SKILL.md) in one server-side call. The
     name is uniquified against existing root folders, so this never 409s."""
     name = req.name.strip()
+    description = req.description.strip()
     if not name:
         raise HTTPException(status_code=400, detail="name must not be blank")
-    folder = await files_tree_service.create_skill(owner_user_id, current_user["id"], name)
+    if not description:
+        raise HTTPException(status_code=400, detail="description must not be blank")
+    folder = await files_tree_service.create_skill(
+        owner_user_id, current_user["id"], name, description
+    )
     return {"folder_id": str(folder["id"]), "name": folder["name"]}
 
 

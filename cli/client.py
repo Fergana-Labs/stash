@@ -895,6 +895,7 @@ class StashClient:
     def publish(
         self,
         title: str,
+        description: str,
         content: str,
         content_type: str = "markdown",
         audience: str = "public",
@@ -902,6 +903,7 @@ class StashClient:
     ) -> dict:
         body: dict = {
             "title": title,
+            "description": description,
             "content": content,
             "content_type": content_type,
             "audience": audience,

@@ -10,16 +10,21 @@ folder (shared_skill_service).
 
 from __future__ import annotations
 
+import json
 from uuid import UUID
 
 from ..database import get_pool
 from . import permission_service
 
 SKILL_MD_NAME = "SKILL.md"
+MAX_SKILL_NAME_LENGTH = 64
+MAX_SKILL_DESCRIPTION_LENGTH = 1024
 
 
-def skill_md_template(name: str) -> str:
-    return f"---\nname: {name}\ndescription: \n---\n\n# {name}\n"
+def skill_md_template(name: str, description: str) -> str:
+    return (
+        f"---\nname: {json.dumps(name)}\ndescription: {json.dumps(description)}\n---\n\n# {name}\n"
+    )
 
 
 def not_skill_folder_pred(alias: str) -> str:
@@ -72,10 +77,26 @@ def parse_frontmatter(md: str) -> tuple[dict, str]:
         if val.lower() in ("true", "false"):
             meta[key] = val.lower() == "true"
         elif val.startswith('"') and val.endswith('"'):
-            meta[key] = val[1:-1]
+            meta[key] = json.loads(val)
         else:
             meta[key] = val
     return meta, body
+
+
+def validate_skill_md(md: str) -> None:
+    meta, _body = parse_frontmatter(md)
+    name = str(meta.get("name", "")).strip()
+    description = str(meta.get("description", "")).strip()
+    if not name:
+        raise ValueError("SKILL.md frontmatter requires a nonblank name")
+    if len(name) > MAX_SKILL_NAME_LENGTH:
+        raise ValueError(f"SKILL.md name must be at most {MAX_SKILL_NAME_LENGTH} characters")
+    if not description:
+        raise ValueError("SKILL.md frontmatter requires a nonblank description")
+    if len(description) > MAX_SKILL_DESCRIPTION_LENGTH:
+        raise ValueError(
+            f"SKILL.md description must be at most {MAX_SKILL_DESCRIPTION_LENGTH} characters"
+        )
 
 
 async def list_skills(owner_user_id: UUID, user_id: UUID) -> list[dict]:

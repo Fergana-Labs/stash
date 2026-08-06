@@ -319,7 +319,11 @@ export default function Explorer({ section }: { section: ExplorerSection }) {
   }, []);
   // A skill is a folder + SKILL.md — the Skills root's "create native item" action.
   const createSkill = useCallback(async () => {
-    await createSkillApi();
+    const name = window.prompt("Skill name?");
+    if (!name?.trim()) return;
+    const description = window.prompt("When should an agent use this skill?");
+    if (!description?.trim()) return;
+    await createSkillApi(name.trim(), description.trim());
   }, []);
 
   // Sessions are their own tree: session folders + loose sessions at the root,

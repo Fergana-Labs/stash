@@ -152,14 +152,18 @@ describe("SkillsPage", () => {
   });
 
   it("creates the skill server-side and navigates to it", async () => {
-    vi.stubGlobal("prompt", vi.fn(() => "My Skill"));
+    vi.stubGlobal("prompt", vi.fn()
+      .mockReturnValueOnce("My Skill")
+      .mockReturnValueOnce("Use for release planning."));
     vi.mocked(createSkill).mockResolvedValue({ folder_id: "folder-9", name: "My Skill" });
 
     render(<SkillsPage />);
 
     fireEvent.click(await screen.findByRole("button", { name: /New Skill/ }));
 
-    await waitFor(() => expect(createSkill).toHaveBeenCalledWith("My Skill"));
+    await waitFor(() =>
+      expect(createSkill).toHaveBeenCalledWith("My Skill", "Use for release planning."),
+    );
     await waitFor(() =>
       expect(router.push).toHaveBeenCalledWith("/skills/folder/folder-9"),
     );

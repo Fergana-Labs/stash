@@ -117,11 +117,15 @@ def agent_install_pitch(stash_url: str) -> str:
     )
 
 
-def skill_md_template(name: str, description: str = "") -> str:
-    return f"---\nname: {name}\ndescription: {description}\n---\n\n# {name}\n"
+def skill_md_template(name: str, description: str) -> str:
+    return (
+        f"---\nname: {json.dumps(name)}\ndescription: {json.dumps(description)}\n---\n\n# {name}\n"
+    )
 
 
-async def _ensure_skill_md(owner_user_id: UUID, folder_id: UUID, user_id: UUID, title: str) -> None:
+async def _ensure_skill_md(
+    owner_user_id: UUID, folder_id: UUID, user_id: UUID, title: str, description: str
+) -> None:
     pool = get_pool()
     existing = await pool.fetchval(
         "SELECT 1 FROM pages WHERE folder_id = $1 AND name = 'SKILL.md' "
@@ -130,12 +134,16 @@ async def _ensure_skill_md(owner_user_id: UUID, folder_id: UUID, user_id: UUID, 
     )
     if existing:
         return
+    if not description.strip():
+        raise ValueError("description is required when publishing a folder as a skill")
+    skill_md = skill_md_template(title, description)
+    skill_service.validate_skill_md(skill_md)
     await files_tree_service.create_page(
         owner_user_id,
         "SKILL.md",
         user_id,
         folder_id=folder_id,
-        content=skill_md_template(title),
+        content=skill_md,
         content_type="markdown",
     )
 
@@ -181,7 +189,7 @@ async def publish_folder(
         title = meta.get("name") or folder["name"]
         description = description or meta.get("description", "")
 
-    await _ensure_skill_md(owner_user_id, folder_id, owner_id, title)
+    await _ensure_skill_md(owner_user_id, folder_id, owner_id, title, description)
     try:
         inserted = await pool.fetchrow(
             "INSERT INTO skills (owner_user_id, folder_id, slug, title, description, owner_id, "

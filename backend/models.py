@@ -105,7 +105,7 @@ SkillGeneralPermission = str  # 'none' | 'read' | 'write'
 class SkillPublishRequest(BaseModel):
     folder_id: UUID
     title: str | None = Field(None, min_length=1, max_length=160)
-    description: str = Field("", max_length=2000)
+    description: str = Field("", max_length=1024)
     discoverable: bool = False
     cover_image_url: str | None = None
     icon_url: str | None = None
@@ -544,6 +544,7 @@ class PublishRequest(BaseModel):
 
     owner_user_id: UUID | None = None
     title: str = Field(..., min_length=1, max_length=255)
+    description: str = Field(..., min_length=1, max_length=1024)
     content: str = ""
     content_type: str = Field("markdown", pattern=r"^(markdown|html)$")
     html_layout: str = Field("responsive", pattern=r"^(responsive|fixed-aspect|full-width)$")
