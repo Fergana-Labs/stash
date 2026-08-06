@@ -21,8 +21,7 @@ import {
   forkSkill,
   ApiError,
   API_BASE,
-  createFolder,
-  createPage,
+  createSkill,
   deleteFolder,
   listSkills,
   type Skill,
@@ -30,7 +29,6 @@ import {
 } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import type { LaunchableSkill } from "@/lib/types";
-import { SKILL_MD, skillMdTemplate } from "@/lib/localSkill";
 import { usePins } from "@/lib/pins";
 import { skillSlugFromInput } from "@/lib/skillLinks";
 import { refreshSidebar } from "@/lib/skillNavigationCache";
@@ -122,10 +120,9 @@ export default function SkillsPage() {
     const name = window.prompt("Skill name?");
     if (!name?.trim()) return;
     try {
-      const folder = await createFolder(name.trim());
-      await createPage(SKILL_MD, folder.id, skillMdTemplate(name.trim()));
+      const created = await createSkill(name.trim());
       if (user) await refreshSidebar().catch(() => {});
-      router.push(`/skills/folder/${folder.id}`);
+      router.push(`/skills/folder/${created.folder_id}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to create skill");
     }

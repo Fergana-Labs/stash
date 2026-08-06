@@ -33,6 +33,25 @@ public_router = APIRouter(prefix="/api/v1/skills", tags=["skills"])
 _PUBLIC_ITEM_TYPES = {"page", "file", "table", "folder"}
 
 
+class SkillCreateRequest(BaseModel):
+    name: str = "New skill"
+
+
+@me_router.post("/skills/new", status_code=201)
+async def create_skill(
+    req: SkillCreateRequest,
+    current_user: dict = Depends(get_current_user),
+    owner_user_id: UUID = Depends(get_scope),
+):
+    """Create a skill (root folder + SKILL.md) in one server-side call. The
+    name is uniquified against existing root folders, so this never 409s."""
+    name = req.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="name must not be blank")
+    folder = await files_tree_service.create_skill(owner_user_id, current_user["id"], name)
+    return {"folder_id": str(folder["id"]), "name": folder["name"]}
+
+
 @me_router.post("/skills", response_model=SkillResponse, status_code=201)
 async def publish_skill(
     req: SkillPublishRequest,
