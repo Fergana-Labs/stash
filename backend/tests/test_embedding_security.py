@@ -1,7 +1,7 @@
 import pytest
 
 from backend.services import embeddings
-from backend.services.embeddings import huggingface, local, openai_compat
+from backend.services.embeddings import openai_compat
 from backend.services.embeddings.base import BaseEmbedder, TransientEmbeddingError
 
 
@@ -89,42 +89,5 @@ async def test_openai_compat_rejection_logs_only_status(monkeypatch):
 
     assert result is None
     assert captured_logs == [("OpenAI-compat embedding rejected status_code=%s", (400,), {})]
-    assert "secret-token" not in str(captured_logs)
-    assert "customer transcript" not in str(captured_logs)
-
-
-@pytest.mark.asyncio
-async def test_huggingface_rejection_logs_only_status(monkeypatch):
-    captured_logs = _capture_logs(huggingface.logger, monkeypatch)
-    embedder = huggingface.HuggingFaceEmbedder(api_key="secret-api-key")
-    monkeypatch.setattr(
-        embedder,
-        "_get_client",
-        lambda: _FakeClient(_FakeResponse(400, "customer transcript text with token=secret-token")),
-    )
-
-    result = await embedder.embed_batch(["customer transcript text token=secret-token"])
-
-    assert result is None
-    assert captured_logs == [("HuggingFace embedding rejected status_code=%s", (400,), {})]
-    assert "secret-token" not in str(captured_logs)
-    assert "customer transcript" not in str(captured_logs)
-
-
-@pytest.mark.asyncio
-async def test_local_embedding_failure_logs_only_exception_type(monkeypatch):
-    captured_logs = _capture_logs(local.logger, monkeypatch)
-
-    class BadModel:
-        def encode(self, texts):
-            raise RuntimeError("customer transcript text with token=secret-token")
-
-    embedder = local.LocalEmbedder()
-    embedder._model = BadModel()
-
-    result = await embedder.embed_batch(["customer transcript text token=secret-token"])
-
-    assert result is None
-    assert captured_logs == [("Local embedding failed exception_type=%s", ("RuntimeError",), {})]
     assert "secret-token" not in str(captured_logs)
     assert "customer transcript" not in str(captured_logs)

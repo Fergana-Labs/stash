@@ -1,4 +1,4 @@
-"""Base embedding interface. Subclass this to bring your own provider."""
+"""Base embedding interface. Subclassed by the OpenAI-compatible embedder and test fakes."""
 
 from abc import ABC, abstractmethod
 
@@ -14,21 +14,7 @@ class TransientEmbeddingError(Exception):
 
 
 class BaseEmbedder(ABC):
-    """Override embed_batch() to bring your own embedding provider.
-
-    Example::
-
-        from backend.services.embeddings import BaseEmbedder, set_embedder
-
-        class MyEmbedder(BaseEmbedder):
-            name = "my-custom"
-            dims = 768
-
-            async def embed_batch(self, texts):
-                return [my_model.encode(t) for t in texts]
-
-        set_embedder(MyEmbedder())
-    """
+    """Interface for the OpenAI-compatible embedder; tests subclass it for fakes."""
 
     name: str = "base"
     dims: int = 384

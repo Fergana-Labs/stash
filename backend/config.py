@@ -165,12 +165,10 @@ class Settings:
     )
 
     # --- Embeddings ---
-    # Provider: "openai", "huggingface", "local", or "auto" (default).
-    # Auto-detect: OPENAI_API_KEY → openai, HF_TOKEN → huggingface, else → local.
-    EMBEDDING_PROVIDER: str = os.getenv("EMBEDDING_PROVIDER", "auto")
+    # One provider: an OpenAI-compatible /v1/embeddings API (OpenAI by default,
+    # any compatible endpoint via EMBEDDING_API_URL). No key → embeddings off.
     OPENAI_API_KEY: str | None = os.getenv("OPENAI_API_KEY")
     EMBEDDING_API_KEY: str | None = os.getenv("EMBEDDING_API_KEY") or os.getenv("OPENAI_API_KEY")
-    HF_TOKEN: str | None = os.getenv("HF_TOKEN")
     EMBEDDING_MODEL: str | None = os.getenv("EMBEDDING_MODEL")
     EMBEDDING_DIMS: int = int(os.getenv("EMBEDDING_DIMS", "384"))
 

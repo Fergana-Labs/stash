@@ -23,7 +23,7 @@
 #
 # Optional:
 #   ANTHROPIC_API_KEY           (enables ask-the-workspace + session summarization)
-#   OPENAI_API_KEY or HF_TOKEN  (use hosted embedding provider instead of local)
+#   OPENAI_API_KEY              (enables embeddings: semantic search, memory, map)
 #   S3_ENDPOINT / S3_BUCKET / …  (enable file uploads)
 #   INTEGRATIONS_ENCRYPTION_KEY (optional override; generated durably when unset)
 

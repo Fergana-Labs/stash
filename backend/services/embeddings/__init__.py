@@ -1,24 +1,11 @@
-"""Pluggable embedding service.
+"""Embedding service: OpenAI-compatible /v1/embeddings endpoint, or nothing.
 
-Supports multiple providers out of the box:
-  - **openai** — OpenAI, Gemini, Cohere, or any /v1/embeddings-compatible API
-  - **huggingface** — Hugging Face Inference API (any HF Hub model)
-  - **local** — sentence-transformers (on-device, free, no API key)
+There is exactly one provider: `OpenAICompatEmbedder`. It talks to OpenAI by
+default and to any /v1/embeddings-compatible API via EMBEDDING_API_URL.
+Requires OPENAI_API_KEY (or EMBEDDING_API_KEY); without a key, embedding
+features report unconfigured and stay off — nothing substitutes silently.
 
-Set EMBEDDING_PROVIDER in your environment, or leave it as "auto" to
-auto-detect from available API keys.
-
-Bring your own::
-
-    from backend.services.embeddings import BaseEmbedder, set_embedder
-
-    class MyEmbedder(BaseEmbedder):
-        name = "my-custom"
-        dims = 768
-        async def embed_batch(self, texts):
-            return [my_model.encode(t) for t in texts]
-
-    set_embedder(MyEmbedder())
+`set_embedder` exists so tests can inject a fake; it is not a provider system.
 """
 
 import asyncio
@@ -28,10 +15,53 @@ import random
 
 import numpy as np
 
-from .auto import close_embedder, get_embedder, set_embedder
 from .base import BaseEmbedder, TransientEmbeddingError
+from .openai_compat import OpenAICompatEmbedder
 
 logger = logging.getLogger(__name__)
+
+_embedder: BaseEmbedder | None = None
+
+# Removed providers must fail loud, not silently reroute to OpenAI: a
+# self-hoster upgrading with EMBEDDING_PROVIDER=local would otherwise send
+# their content to an external API they never opted into.
+_REMOVED_PROVIDERS_MSG = (
+    "EMBEDDING_PROVIDER={value!r} is no longer supported. The huggingface and "
+    "local providers were removed; the only embedding path is an OpenAI-"
+    "compatible /v1/embeddings API. Unset EMBEDDING_PROVIDER and set "
+    "OPENAI_API_KEY (or EMBEDDING_API_KEY + EMBEDDING_API_URL for a "
+    "compatible endpoint)."
+)
+
+
+def get_embedder() -> BaseEmbedder:
+    """Return the active embedder, creating the OpenAI-compatible one if needed."""
+    global _embedder
+    if _embedder is not None:
+        return _embedder
+
+    provider = os.getenv("EMBEDDING_PROVIDER")
+    if provider not in (None, "", "openai"):
+        raise RuntimeError(_REMOVED_PROVIDERS_MSG.format(value=provider))
+
+    _embedder = OpenAICompatEmbedder()
+    logger.info("Embedding provider: %s", _embedder.name)
+    return _embedder
+
+
+def set_embedder(embedder: BaseEmbedder) -> None:
+    """Replace the active embedder. Test seam — call before any embedding happens."""
+    global _embedder
+    _embedder = embedder
+
+
+async def close_embedder() -> None:
+    """Shut down the active embedder."""
+    global _embedder
+    if _embedder is not None:
+        await _embedder.close()
+        _embedder = None
+
 
 __all__ = [
     "BaseEmbedder",
