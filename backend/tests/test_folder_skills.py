@@ -429,3 +429,40 @@ async def test_install_ping_counts_adoption_separately_from_views(client: AsyncC
     assert detail.json()["skill"]["install_count"] == 2
 
     assert (await client.post("/api/v1/skills/not-a-real-slug/installs")).status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_create_skill_makes_a_folder_with_a_skill_md(client: AsyncClient):
+    key, _ = await _register(client)
+
+    resp = await client.post("/api/v1/me/skills/new", json={}, headers=_auth(key))
+
+    assert resp.status_code == 201
+    assert resp.json()["name"] == "New skill"
+    held = await client.get("/api/v1/me/skills", headers=_auth(key))
+    assert [s["folder_id"] for s in held.json()["skills"]] == [resp.json()["folder_id"]]
+
+
+@pytest.mark.asyncio
+async def test_create_skill_never_collides_with_a_name_squatting_folder(client: AsyncClient):
+    """A plain root folder can hold the wanted name while being invisible on
+    the Skills surface (e.g. a skill whose SKILL.md was deleted). Creation must
+    pick the next free name instead of 409ing on something the user can't see."""
+    key, _ = await _register(client)
+    scope = await _scope(client, key)
+    await _folder(client, key, scope, "New skill")
+
+    first = await client.post("/api/v1/me/skills/new", json={}, headers=_auth(key))
+    second = await client.post("/api/v1/me/skills/new", json={}, headers=_auth(key))
+
+    assert first.status_code == 201
+    assert second.status_code == 201
+    assert first.json()["name"] == "New skill (2)"
+    assert second.json()["name"] == "New skill (3)"
+
+
+@pytest.mark.asyncio
+async def test_create_skill_rejects_a_blank_name(client: AsyncClient):
+    key, _ = await _register(client)
+    resp = await client.post("/api/v1/me/skills/new", json={"name": "  "}, headers=_auth(key))
+    assert resp.status_code == 400

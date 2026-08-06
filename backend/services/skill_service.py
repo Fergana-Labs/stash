@@ -18,6 +18,10 @@ from . import permission_service
 SKILL_MD_NAME = "SKILL.md"
 
 
+def skill_md_template(name: str) -> str:
+    return f"---\nname: {name}\ndescription: \n---\n\n# {name}\n"
+
+
 def not_skill_folder_pred(alias: str) -> str:
     """SQL fragment: folder ``alias`` has no live SKILL.md child."""
     return (

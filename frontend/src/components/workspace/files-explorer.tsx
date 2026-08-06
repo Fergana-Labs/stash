@@ -297,7 +297,16 @@ export default function FilesExplorer({
     openAsTab({ kind: "table", id: t.id, name: t.name });
   }
   async function newFolder(folder: string | null) { await createFolder("New folder", folder); await load(); }
-  async function runNewRootItem() { if (!newRootItem) return; await newRootItem.run(); await load(); }
+  async function runNewRootItem() {
+    if (!newRootItem) return;
+    try {
+      await newRootItem.run();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : `${newRootItem.label} failed`);
+      return;
+    }
+    await load();
+  }
   async function uploadFiles(files: File[], folder: string | null) {
     const label = files.length === 1 ? files[0].name : `${files.length} files`;
     const toastId = toast.loading(`Uploading ${label}…`);

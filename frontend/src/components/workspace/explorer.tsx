@@ -4,9 +4,8 @@ import { useCallback, useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Bot, ChevronRight, File, Folder, Loader2, MessagesSquare, GraduationCap, Monitor, Plus, Settings, FolderTree, Brain, Plug, Sparkles, SquareTerminal } from "lucide-react";
 import { toast } from "sonner";
-import { ApiError, listMySessions, listSessionFolders, listSharedWithMe, listSkillsSharedWithMe, listSharedSessionFolderSessions, createSessionFolder, listSkills, listSources, createFolder, createPage, machineFsList, listAgents, createAgent, type Agent as AgentRow, type MachineEntry, type SessionSummary, type Source } from "@/lib/api";
+import { ApiError, listMySessions, listSessionFolders, listSharedWithMe, listSkillsSharedWithMe, listSharedSessionFolderSessions, createSessionFolder, listSkills, listSources, createSkill as createSkillApi, machineFsList, listAgents, createAgent, type Agent as AgentRow, type MachineEntry, type SessionSummary, type Source } from "@/lib/api";
 import { useMemoryFolderId } from "@/lib/memory-folder";
-import { SKILL_MD, skillMdTemplate } from "@/lib/localSkill";
 import { requestAgentConfigView, requestCuratorRun } from "@/lib/agent-tab-view";
 import { cn } from "@/lib/utils";
 import { useWorkspace, type TabKind } from "@/lib/workspace-store";
@@ -320,8 +319,7 @@ export default function Explorer({ section }: { section: ExplorerSection }) {
   }, []);
   // A skill is a folder + SKILL.md — the Skills root's "create native item" action.
   const createSkill = useCallback(async () => {
-    const folder = await createFolder("New skill", null);
-    await createPage(SKILL_MD, folder.id, skillMdTemplate("New skill"));
+    await createSkillApi();
   }, []);
 
   // Sessions are their own tree: session folders + loose sessions at the root,

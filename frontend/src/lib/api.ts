@@ -584,6 +584,15 @@ export async function createFolder(
   });
 }
 
+// Create a skill (folder + SKILL.md) server-side. The name is uniquified
+// against existing root folders, so this never fails on a name collision.
+export async function createSkill(name?: string): Promise<{ folder_id: string; name: string }> {
+  return apiFetch(`${ME}/skills/new`, {
+    method: "POST",
+    body: JSON.stringify(name ? { name } : {}),
+  });
+}
+
 export async function updateFolder(
   folderId: string,
   data: { name?: string; parent_folder_id?: string | null; move_to_root?: boolean }
