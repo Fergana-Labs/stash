@@ -1090,16 +1090,32 @@ async def delete_page(page_id: UUID, owner_user_id: UUID, deleted_by: UUID) -> b
 
 
 async def restore_page(page_id: UUID, owner_user_id: UUID, restored_by: UUID) -> bool:
+    """Restore a trashed page. Uniqueness only covers live pages, so the name
+    may have been retaken while this sat in trash — restore then lands on the
+    next free ' (2)', ' (3)', … name rather than failing."""
     pool = get_pool()
-    result = await pool.execute(
-        "UPDATE pages SET deleted_at = NULL, deleted_by = NULL "
-        "WHERE id = $1 AND owner_user_id = $2  "
-        "AND deleted_at IS NOT NULL",
+    row = await pool.fetchrow(
+        "SELECT name FROM pages WHERE id = $1 AND owner_user_id = $2 AND deleted_at IS NOT NULL",
         page_id,
         owner_user_id,
     )
-    if result != "UPDATE 1":
+    if not row:
         return False
+    name = row["name"]
+    n = 2
+    while True:
+        try:
+            await pool.execute(
+                "UPDATE pages SET deleted_at = NULL, deleted_by = NULL, name = $3 "
+                "WHERE id = $1 AND owner_user_id = $2",
+                page_id,
+                owner_user_id,
+                name,
+            )
+            break
+        except asyncpg.UniqueViolationError:
+            name = f"{row['name']} ({n})"
+            n += 1
     await security_audit_service.record_content_lifecycle_event(
         operation="restored",
         actor_user_id=restored_by,
