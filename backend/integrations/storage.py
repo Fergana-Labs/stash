@@ -12,6 +12,7 @@ returning it.
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
@@ -22,6 +23,8 @@ from ..database import get_pool
 from .base import AccountInfo, TokenSet
 from .crypto import integration_fernet
 from .registry import get_provider
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_ACCOUNT_KEY = "default"
 
@@ -118,10 +121,18 @@ async def store_token(
 
 
 _TOKEN_QUERY = """
-    SELECT access_token_encrypted, refresh_token_encrypted, expires_at
+    SELECT access_token_encrypted, refresh_token_encrypted, expires_at, updated_at
     FROM user_integrations
     WHERE user_id = $1 AND provider = $2 AND account_key = $3
 """
+
+# How close to expiry a token must be before a read refreshes it. Providers
+# with single-use rotating refresh tokens (X) override `refresh_margin` wide
+# enough that the 30-min keep-fresh tick always rotates BEFORE expiry: every
+# grant death we've autopsied was a refresh token first presented well after
+# its access token expired, so rotation happens on a calm schedule instead of
+# at the moment of use.
+_DEFAULT_REFRESH_MARGIN = timedelta(seconds=60)
 
 
 def _require_token_row(row, provider: str) -> None:
@@ -136,8 +147,8 @@ def _require_token_row(row, provider: str) -> None:
         )
 
 
-def _needs_refresh(expires_at: datetime | None) -> bool:
-    return expires_at is not None and expires_at < datetime.now(UTC) + timedelta(seconds=60)
+def _needs_refresh(expires_at: datetime | None, margin: timedelta) -> bool:
+    return expires_at is not None and expires_at < datetime.now(UTC) + margin
 
 
 async def get_valid_token(
@@ -150,10 +161,11 @@ async def get_valid_token(
     if getattr(provider_impl, "auth_kind", "oauth") == "mcp_oauth":
         return await provider_impl.get_valid_access_token(user_id)
 
+    margin = getattr(provider_impl, "refresh_margin", _DEFAULT_REFRESH_MARGIN)
     pool = get_pool()
     row = await pool.fetchrow(_TOKEN_QUERY, user_id, provider, account_key)
     _require_token_row(row, provider)
-    if not _needs_refresh(row["expires_at"]):
+    if not _needs_refresh(row["expires_at"], margin):
         return _decrypt(row["access_token_encrypted"])  # type: ignore[return-value]
 
     # Refresh under an advisory lock. Some providers (X) rotate refresh tokens
@@ -168,7 +180,7 @@ async def get_valid_token(
         )
         row = await conn.fetchrow(_TOKEN_QUERY, user_id, provider, account_key)
         _require_token_row(row, provider)
-        if not _needs_refresh(row["expires_at"]):
+        if not _needs_refresh(row["expires_at"], margin):
             return _decrypt(row["access_token_encrypted"])  # type: ignore[return-value]
 
         refresh_token = _decrypt(row["refresh_token_encrypted"])
@@ -179,7 +191,29 @@ async def get_valid_token(
                 detail=f"{provider} token expired; reconnect required",
             )
 
-        new_token = await provider_impl.refresh(refresh_token)
+        # The forensic trail for grant deaths: every presentation of a refresh
+        # token, with how long it sat since the last rotation. When a provider
+        # revokes a grant, this is what says whether we raced, idled, or were
+        # simply refused.
+        idle_s = int((datetime.now(UTC) - row["updated_at"]).total_seconds())
+        try:
+            new_token = await provider_impl.refresh(refresh_token)
+        except Exception as exc:
+            logger.warning(
+                "oauth refresh refused provider=%s user=%s idle_s=%s exception_type=%s",
+                provider,
+                user_id,
+                idle_s,
+                type(exc).__name__,
+            )
+            raise
+        logger.info(
+            "oauth refresh ok provider=%s user=%s idle_s=%s new_expires_at=%s",
+            provider,
+            user_id,
+            idle_s,
+            new_token.expires_at,
+        )
         await conn.execute(
             """
             UPDATE user_integrations SET
