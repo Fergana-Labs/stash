@@ -602,6 +602,14 @@ export async function convertFolderToSkill(
   return apiFetch(`${ME}/folders/${folderId}/convert-to-skill`, { method: "POST" });
 }
 
+// Demote a skill back to a plain folder. Contents are untouched — it simply
+// stops appearing under Skills and stops loading for agents.
+export async function convertSkillToFolder(
+  folderId: string
+): Promise<{ folder_id: string; name: string; is_skill: boolean }> {
+  return apiFetch(`${ME}/folders/${folderId}/convert-to-folder`, { method: "POST" });
+}
+
 export async function updateFolder(
   folderId: string,
   data: { name?: string; parent_folder_id?: string | null; move_to_root?: boolean }

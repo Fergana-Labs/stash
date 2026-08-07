@@ -349,7 +349,7 @@ async def snapshot_source(
             "skill_id": str(skill_id),
         },
     )
-    return PageResponse(**page)
+    return PageResponse(**{**page, "can_write": True})
 
 
 class MaterializeSessionRequest(BaseModel):
@@ -376,7 +376,7 @@ async def materialize_session(
     )
     if page is None:
         raise HTTPException(status_code=404, detail="Session not found")
-    return PageResponse(**page)
+    return PageResponse(**{**page, "can_write": True})
 
 
 @public_router.patch("/{skill_id}", response_model=SkillResponse)
