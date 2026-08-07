@@ -332,6 +332,12 @@ async def _query_table(args: dict) -> dict:
     )
 
 
+def _skill_app_url(folder_id: object) -> str:
+    """The skill's page in the app. /skills/{slug} belongs to *published*
+    skills only — a folder id pasted there renders "Skill not found"."""
+    return f"{settings.PUBLIC_URL.rstrip('/')}/skills/folder/{folder_id}"
+
+
 @tool(
     "list_skills",
     "List skills (folders with SKILL.md) in this Stash account, with their "
@@ -342,6 +348,9 @@ async def _list_skills(args: dict) -> dict:
     owner_user_id = _current_scope()
     user_id = _current_user()
     skills = await skill_service.list_skills(owner_user_id, user_id)
+    # app_url is included so the model links to the real page instead of
+    # composing a plausible-but-wrong URL (folder ids aren't publish slugs;
+    # /skills/{folder_id} renders "Skill not found").
     out = [
         {
             "name": s["name"],
@@ -349,6 +358,7 @@ async def _list_skills(args: dict) -> dict:
             "folder_id": s["folder_id"],
             "files": s["file_count"],
             "published": s["published"],
+            "app_url": _skill_app_url(s["folder_id"]),
         }
         for s in skills
     ]
@@ -404,14 +414,10 @@ async def _read_skill(args: dict) -> dict:
 async def _create_skill(args: dict) -> dict:
     owner_user_id = _current_scope()
     user_id = _current_user()
-    folder = await files_tree_service.create_folder(owner_user_id, args["name"], user_id)
-    await files_tree_service.create_page(
-        owner_user_id,
-        "SKILL.md",
-        user_id,
-        folder_id=folder["id"],
-        content=args["skill_md"],
-        content_type="markdown",
+    # Same collision-proof create the web button uses: an existing folder
+    # holding the name means ' (2)', not an error the model has to handle.
+    folder = await files_tree_service.create_skill(
+        owner_user_id, user_id, args["name"], skill_md=args["skill_md"]
     )
     for extra in args.get("files") or []:
         await files_tree_service.create_page(
@@ -422,7 +428,15 @@ async def _create_skill(args: dict) -> dict:
             content=extra["content"],
             content_type="markdown",
         )
-    return _text_result(json.dumps({"folder_id": str(folder["id"]), "name": args["name"]}))
+    return _text_result(
+        json.dumps(
+            {
+                "folder_id": str(folder["id"]),
+                "name": folder["name"],
+                "app_url": _skill_app_url(folder["id"]),
+            }
+        )
+    )
 
 
 @tool(

@@ -118,10 +118,15 @@ async def test_skill_tools_create_publish_update_and_unpublish(scope: UUID, _db_
         agent_runtime._scope_ctx.reset(scope_token)
 
     assert created["name"] == "Launch bundle"
+    # The tool hands the model the real page URL — models compose plausible
+    # wrong ones (/skills/{folder_id} is the published-slug route) when made
+    # to guess.
+    assert created["app_url"].endswith(f"/skills/folder/{created['folder_id']}")
     [skill] = [s for s in listed if s["folder_id"] == created["folder_id"]]
     assert skill["name"] == "Launch bundle"
     assert skill["files"] == 2  # SKILL.md + checklist.md
     assert skill["published"] is None  # creating a skill does not share it
+    assert skill["app_url"] == created["app_url"]
 
     # Publishing alone makes the skill public but not Discover-listed.
     assert published["discoverable"] is False
@@ -538,3 +543,38 @@ async def test_fork_skill_deep_copies_folder_without_publish_record(scope: UUID,
         fork_page["id"],
     )
     assert fork_content == "External Stash source"
+
+
+@pytest.mark.asyncio
+async def test_agent_create_skill_never_collides_on_a_taken_name(scope: UUID, _db_pool):
+    """The agent tool used a raw exact-name folder create, so a name squatted
+    by any folder — including one invisible to skill listings — errored. It
+    now uniquifies like the web button: the model gets ' (2)', not a failure
+    to handle."""
+    user_id = scope
+
+    scope_token = agent_runtime._scope_ctx.set(scope)
+    user_token = agent_runtime._user_ctx.set(user_id)
+    try:
+        first = json.loads(
+            (await agent_runtime._create_skill.handler({"name": "Fitment", "skill_md": "# one"}))[
+                "content"
+            ][0]["text"]
+        )
+        second = json.loads(
+            (await agent_runtime._create_skill.handler({"name": "Fitment", "skill_md": "# two"}))[
+                "content"
+            ][0]["text"]
+        )
+    finally:
+        agent_runtime._user_ctx.reset(user_token)
+        agent_runtime._scope_ctx.reset(scope_token)
+
+    assert first["name"] == "Fitment"
+    assert second["name"] == "Fitment (2)"
+    # Each skill's SKILL.md carries the content the model authored for it.
+    md = await _db_pool.fetchval(
+        "SELECT content_markdown FROM pages WHERE folder_id = $1 AND name = 'SKILL.md'",
+        UUID(second["folder_id"]),
+    )
+    assert md == "# two"
