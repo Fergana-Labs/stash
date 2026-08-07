@@ -830,11 +830,6 @@ export default function SkillPageView({ pageId }: { pageId: string }) {
                   onSave={handleSave}
                   conflictMessage={conflictMessage}
                   onSaveStatusChange={setSaveStatus}
-                  onNavigateInternal={(href) => router.push(href)}
-                  onAddComment={handleAddCommentMarkdown}
-                  onActivateThread={setActiveThreadId}
-                  activeThreadId={activeThreadId}
-                  stripCommentToken={stripCommentToken}
                 />
               )
             ) : null}
