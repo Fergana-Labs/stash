@@ -105,6 +105,9 @@ export default function SkillPageView({ pageId }: { pageId: string }) {
   const skillSlug = searchParams.get("skill");
 
   const [page, setPage] = useState<Page | null>(null);
+  // A save was refused (409): the page changed under this tab. Editing
+  // freezes until the user reloads — never silently overwrite newer work.
+  const [conflictMessage, setConflictMessage] = useState<string | null>(null);
   // The scope is the current user. Empty until auth resolves — every
   // consumer below renders or fires only after that.
   const scopeId = user?.id ?? "";
@@ -336,15 +339,22 @@ export default function SkillPageView({ pageId }: { pageId: string }) {
       try {
         const updated = await updatePage(pageId, {
           content,
-          collab_projection: true,
+          // Save on top of the version we loaded: a 409 means another tab,
+          // agent, or person saved since — freeze and ask for a reload
+          // instead of silently overwriting their work.
+          expected_content_hash: page?.content_hash ?? null,
         });
         if (saveSeq.current === seq) setPage(updated);
         reconcileAfterSave(content, "markdown");
       } catch (e) {
+        if (e instanceof ApiError && e.status === 409) {
+          setConflictMessage(e.message);
+          return;
+        }
         setError(e instanceof Error ? e.message : "Save failed");
       }
     },
-    [pageId, reconcileAfterSave]
+    [pageId, reconcileAfterSave, page?.content_hash]
   );
 
   const handleHtmlMutated = useCallback(
@@ -818,10 +828,7 @@ export default function SkillPageView({ pageId }: { pageId: string }) {
                 <MarkdownEditor
                   file={page}
                   onSave={handleSave}
-                  collaborationUser={{
-                    id: user.id,
-                    name: user.display_name || user.name,
-                  }}
+                  conflictMessage={conflictMessage}
                   onSaveStatusChange={setSaveStatus}
                   onNavigateInternal={(href) => router.push(href)}
                   onAddComment={handleAddCommentMarkdown}
