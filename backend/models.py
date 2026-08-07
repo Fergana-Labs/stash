@@ -197,6 +197,10 @@ class PageUpdateRequest(BaseModel):
     folder_id: UUID | None = None
     content: str | None = None
     collab_projection: bool = False
+    # The content_hash the client loaded before editing. Given, a content
+    # save lands only if the page still has that hash — otherwise 409, so a
+    # stale tab reloads instead of silently overwriting someone's newer save.
+    expected_content_hash: str | None = None
     content_type: str | None = Field(None, pattern=r"^(markdown|html)$")
     content_html: str | None = None
     html_layout: str | None = Field(None, pattern=r"^(responsive|fixed-aspect|full-width)$")
@@ -235,6 +239,9 @@ class PageResponse(BaseModel):
     content_html: str = ""
     html_layout: str = "responsive"
     content_hash: str | None = None
+    # Whether the requesting viewer may write this page — the editor uses
+    # this to open read-only instead of discovering a 403 on first save.
+    can_write: bool = False
     metadata: dict = {}
     last_edit_session_id: str | None = None
     last_edit_agent_name: str | None = None

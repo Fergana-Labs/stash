@@ -783,6 +783,7 @@ async def update_page(
     move_to_root: bool = False,
     metadata: dict | None = None,
     guard_content_hash: bool = True,
+    expected_content_hash: str | None = None,
     on_conflict: Callable[[dict], Awaitable[str]] | None = None,
     edit_session_id: str | None = None,
     edit_agent_name: str | None = None,
@@ -817,6 +818,13 @@ async def update_page(
             )
             if current is None:
                 return None
+            # The caller edited on top of a specific version; a different hash
+            # now means someone saved since — refuse rather than overwrite.
+            if (
+                expected_content_hash is not None
+                and current["content_hash"] != expected_content_hash
+            ):
+                raise ConcurrentEditError({"id": page_id, **dict(current)})
             expected_hash = current["content_hash"]
             current_type = current["content_type"]
 
