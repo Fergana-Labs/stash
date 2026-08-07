@@ -7,6 +7,7 @@ stray SKILL.md could promote Memory into a wipeable "skill". Membership now
 changes only through deliberate verbs.
 """
 
+import json
 from uuid import UUID, uuid4
 
 import pytest
@@ -251,3 +252,30 @@ async def test_convert_to_folder_keeps_the_files_and_needs_no_deletion(client, _
     assert again.status_code == 200
     listed = (await client.get("/api/v1/me/skills", headers=headers)).json()["skills"]
     assert [s["folder_id"] for s in listed] == [folder_id]
+
+
+@pytest.mark.asyncio
+async def test_agent_read_skill_refuses_a_draft_rather_than_returning_emptiness(scope, _db_pool):
+    """A skill with no SKILL.md is a draft. Returning its (empty) document to
+    an agent would let the model act as though it had guidance; the boundary
+    says so instead."""
+    from backend.services import agent_runtime
+
+    folder = await files_tree_service.create_skill(scope, scope, "Draft skill")
+    await _db_pool.execute(
+        "UPDATE pages SET deleted_at = now() WHERE folder_id = $1 AND name = 'SKILL.md'",
+        folder["id"],
+    )
+
+    scope_token = agent_runtime._scope_ctx.set(scope)
+    user_token = agent_runtime._user_ctx.set(scope)
+    try:
+        result = json.loads(
+            (await agent_runtime._read_skill.handler({"name": "Draft skill"}))["content"][0]["text"]
+        )
+    finally:
+        agent_runtime._user_ctx.reset(user_token)
+        agent_runtime._scope_ctx.reset(scope_token)
+
+    assert result["error"] == "no_instructions"
+    assert result["name"] == "Draft skill"

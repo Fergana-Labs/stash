@@ -380,6 +380,19 @@ async def _read_skill(args: dict) -> dict:
     skill = await skill_service.read_skill(owner_user_id, args.get("name", ""), user_id)
     if not skill:
         return _text_result(json.dumps({"error": "not found"}))
+    if not skill["has_instructions"]:
+        # A draft skill exists and is named but has no SKILL.md. Handing back
+        # an empty document would let the model act as if it had guidance.
+        return _text_result(
+            json.dumps(
+                {
+                    "error": "no_instructions",
+                    "name": skill["name"],
+                    "folder_id": skill["folder_id"],
+                    "hint": "This skill has no SKILL.md yet, so there is nothing to follow.",
+                }
+            )
+        )
     return _text_result(json.dumps({"name": skill["name"], "combined": skill["combined"]}))
 
 
