@@ -617,7 +617,11 @@ async def test_source_snapshot_audit_uses_hashes_not_sensitive_values(client: As
     assert folder.status_code == 201
     skill = await client.post(
         "/api/v1/me/skills",
-        json={"folder_id": folder.json()["id"], "title": "Snapshot bundle"},
+        json={
+            "folder_id": folder.json()["id"],
+            "title": "Snapshot bundle",
+            "description": "Snapshot audit bundle",
+        },
         headers=headers,
     )
     assert skill.status_code == 201

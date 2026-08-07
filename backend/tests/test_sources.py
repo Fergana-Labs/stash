@@ -3285,7 +3285,11 @@ async def test_snapshot_source_into_skill_copies_lazy_content(client: AsyncClien
     assert folder.status_code == 201
     skill = await client.post(
         "/api/v1/me/skills",
-        json={"folder_id": folder.json()["id"], "title": "Bundle"},
+        json={
+            "folder_id": folder.json()["id"],
+            "title": "Bundle",
+            "description": "Snapshot bundle",
+        },
         headers=_auth(api_key),
     )
     assert skill.status_code == 201
@@ -3349,7 +3353,11 @@ async def test_snapshot_source_into_skill_fails_when_provider_fetch_fails(
     assert folder.status_code == 201
     skill = await client.post(
         "/api/v1/me/skills",
-        json={"folder_id": folder.json()["id"], "title": "Bundle"},
+        json={
+            "folder_id": folder.json()["id"],
+            "title": "Bundle",
+            "description": "Snapshot bundle",
+        },
         headers=_auth(api_key),
     )
     assert skill.status_code == 201
@@ -3408,7 +3416,11 @@ async def test_snapshot_source_into_skill_requires_same_owner(client: AsyncClien
     folder_id = folder.json()["id"]
     skill = await client.post(
         "/api/v1/me/skills",
-        json={"folder_id": folder_id, "title": "Bundle"},
+        json={
+            "folder_id": folder_id,
+            "title": "Bundle",
+            "description": "Snapshot bundle",
+        },
         headers=_auth(other_key),
     )
     assert skill.status_code == 201

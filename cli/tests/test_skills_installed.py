@@ -9,6 +9,11 @@ and installed dirs never get pushed to the user's own Stash in project mode.
 from cli import main
 
 
+def _skill_md(name: str, body: str) -> str:
+    """A SKILL.md that passes _validate_skill_markdown, with a distinct body."""
+    return f"---\nname: {name}\ndescription: {body}\n---\n\n{body}\n"
+
+
 def _contents(files: dict[str, str]) -> dict:
     pages = [
         {
@@ -66,22 +71,22 @@ def _install(c, slug: str, root, entry) -> None:
 
 def test_changed_install_refreshes_and_unchanged_does_not(tmp_path):
     c = _FakeInstallClient()
-    c.add_public("pdf-tools", "pdf-tools", {"SKILL.md": "v1"})
+    c.add_public("pdf-tools", "pdf-tools", {"SKILL.md": _skill_md("pdf-tools", "v1")})
     entry = {"skills": {}, "follow_shared": False}
     _install(c, "pdf-tools", tmp_path, entry)
 
     updated, notes = main._sync_installed(c, tmp_path, entry, c.fetch_bytes)
     assert updated == [] and notes == []
 
-    c.add_public("pdf-tools", "pdf-tools", {"SKILL.md": "v2"})
+    c.add_public("pdf-tools", "pdf-tools", {"SKILL.md": _skill_md("pdf-tools", "v2")})
     updated, _ = main._sync_installed(c, tmp_path, entry, c.fetch_bytes)
     assert updated == ["pdf-tools"]
-    assert (tmp_path / "pdf-tools" / "SKILL.md").read_text() == "v2"
+    assert (tmp_path / "pdf-tools" / "SKILL.md").read_text() == _skill_md("pdf-tools", "v2")
 
 
 def test_deleted_local_copy_is_reinstalled(tmp_path):
     c = _FakeInstallClient()
-    c.add_public("pdf-tools", "pdf-tools", {"SKILL.md": "v1"})
+    c.add_public("pdf-tools", "pdf-tools", {"SKILL.md": _skill_md("pdf-tools", "v1")})
     entry = {"skills": {}, "follow_shared": False}
     _install(c, "pdf-tools", tmp_path, entry)
 
@@ -95,12 +100,14 @@ def test_deleted_local_copy_is_reinstalled(tmp_path):
 
 def test_follow_installs_new_shared_skill_exactly_once(tmp_path):
     c = _FakeInstallClient()
-    c.add_shared("f-1", "team-deploys", {"SKILL.md": "runbook"})
+    c.add_shared("f-1", "team-deploys", {"SKILL.md": _skill_md("team-deploys", "runbook")})
     entry = {"skills": {}, "follow_shared": True}
 
     updated, notes = main._sync_installed(c, tmp_path, entry, c.fetch_bytes)
     assert updated == ["team-deploys (newly shared)"]
-    assert (tmp_path / "team-deploys" / "SKILL.md").read_text() == "runbook"
+    assert (tmp_path / "team-deploys" / "SKILL.md").read_text() == _skill_md(
+        "team-deploys", "runbook"
+    )
     assert entry["skills"]["team-deploys"]["shared_folder_id"] == "f-1"
 
     updated, notes = main._sync_installed(c, tmp_path, entry, c.fetch_bytes)
@@ -132,15 +139,15 @@ def test_new_share_colliding_with_local_dir_is_skipped_loudly(tmp_path):
 
 def test_cloud_rename_moves_the_install(tmp_path):
     c = _FakeInstallClient()
-    c.add_public("pdf-tools", "pdf-tools", {"SKILL.md": "v1"})
+    c.add_public("pdf-tools", "pdf-tools", {"SKILL.md": _skill_md("pdf-tools", "v1")})
     entry = {"skills": {}, "follow_shared": False}
     _install(c, "pdf-tools", tmp_path, entry)
 
-    c.add_public("pdf-tools", "pdf-toolkit", {"SKILL.md": "v2"})
+    c.add_public("pdf-tools", "pdf-toolkit", {"SKILL.md": _skill_md("pdf-toolkit", "v2")})
     updated, _ = main._sync_installed(c, tmp_path, entry, c.fetch_bytes)
     assert updated == ["pdf-toolkit"]
     assert not (tmp_path / "pdf-tools").exists()
-    assert (tmp_path / "pdf-toolkit" / "SKILL.md").read_text() == "v2"
+    assert (tmp_path / "pdf-toolkit" / "SKILL.md").read_text() == _skill_md("pdf-toolkit", "v2")
     assert set(entry["skills"]) == {"pdf-toolkit"}
 
 

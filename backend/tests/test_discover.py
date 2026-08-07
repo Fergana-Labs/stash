@@ -56,7 +56,11 @@ async def test_discover_lists_discoverable_public_product_stashes(client: AsyncC
 
     public_unlisted = await client.post(
         "/api/v1/me/skills",
-        json={"folder_id": unlisted_folder, "title": "Public but unlisted"},
+        json={
+            "folder_id": unlisted_folder,
+            "title": "Public but unlisted",
+            "description": "Reachable by slug only",
+        },
         headers=_auth(api_key),
     )
     assert public_unlisted.status_code == 201
@@ -123,7 +127,11 @@ async def test_unlisted_skill_public_by_slug_but_absent_from_discover(client: As
 
     published = await client.post(
         "/api/v1/me/skills",
-        json={"folder_id": folder_id, "title": "Unlisted only"},
+        json={
+            "folder_id": folder_id,
+            "title": "Unlisted only",
+            "description": "Not listed on Discover",
+        },
         headers=_auth(api_key),
     )
     assert published.status_code == 201
@@ -148,7 +156,12 @@ async def test_discover_search_filters_product_stashes(client: AsyncClient):
         folder_id = await _create_skill_folder(client, api_key, scope["id"], folder_name)
         resp = await client.post(
             "/api/v1/me/skills",
-            json={"folder_id": folder_id, "title": title, "discoverable": True},
+            json={
+                "folder_id": folder_id,
+                "title": title,
+                "description": f"{title} description",
+                "discoverable": True,
+            },
             headers=_auth(api_key),
         )
         assert resp.status_code == 201
