@@ -69,7 +69,7 @@ async def create_skill(
 @me_router.post("/folders/{folder_id}/convert-to-skill", status_code=200)
 async def convert_folder_to_skill(
     folder_id: UUID,
-    req: SkillDescriptionRequest,
+    req: SkillDescriptionRequest | None = None,
     current_user: dict = Depends(get_current_user),
     owner_user_id: UUID = Depends(get_scope),
 ):
@@ -77,11 +77,15 @@ async def convert_folder_to_skill(
     and skill creation are the only ways in; a SKILL.md appearing inside a
     folder no longer promotes it.
 
-    The folder also gets a starter SKILL.md if it has none, so converting
-    leaves a skill an agent can actually load rather than a draft."""
-    description = req.description.strip()
-    if not description:
-        raise HTTPException(status_code=400, detail="description must not be blank")
+    A folder that already has a SKILL.md needs no description (the CLI writes
+    the file first, then converts). A folder without one gets a starter
+    SKILL.md, which requires a description."""
+    description = req.description.strip() if req is not None else ""
+    if not description and not await shared_skill_service.folder_has_skill_md(folder_id):
+        raise HTTPException(
+            status_code=400,
+            detail="description is required to convert a folder with no SKILL.md",
+        )
     result = await _set_is_skill(folder_id, owner_user_id, current_user["id"], True)
     await shared_skill_service.ensure_skill_md(
         owner_user_id,

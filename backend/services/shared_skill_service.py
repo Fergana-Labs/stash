@@ -123,6 +123,17 @@ def skill_md_template(name: str, description: str) -> str:
     )
 
 
+async def folder_has_skill_md(folder_id: UUID) -> bool:
+    pool = get_pool()
+    return bool(
+        await pool.fetchval(
+            "SELECT 1 FROM pages WHERE folder_id = $1 AND name = 'SKILL.md' "
+            "AND deleted_at IS NULL LIMIT 1",
+            folder_id,
+        )
+    )
+
+
 async def ensure_skill_md(
     owner_user_id: UUID, folder_id: UUID, user_id: UUID, title: str, description: str
 ) -> None:
@@ -131,13 +142,7 @@ async def ensure_skill_md(
     Publishing/forking/installing a skill is an explicit "this is a skill"
     act by the caller, so it sets membership — unlike a user editing files
     inside a folder, which never reclassifies anything."""
-    pool = get_pool()
-    existing = await pool.fetchval(
-        "SELECT 1 FROM pages WHERE folder_id = $1 AND name = 'SKILL.md' "
-        "AND deleted_at IS NULL LIMIT 1",
-        folder_id,
-    )
-    if existing:
+    if await folder_has_skill_md(folder_id):
         await files_tree_service.set_folder_is_skill(folder_id, owner_user_id, True)
         return
     if not description.strip():

@@ -197,7 +197,9 @@ async def test_shared_skill_without_instructions_still_lists(client, _db_pool):
     friend_h = {"Authorization": f"Bearer {friend.json()['api_key']}"}
 
     made = await client.post(
-        "/api/v1/me/skills/new", json={"name": "Shared draft"}, headers=owner_h
+        "/api/v1/me/skills/new",
+        json={"name": "Shared draft", "description": "Draft to share"},
+        headers=owner_h,
     )
     folder_id = made.json()["folder_id"]
     # Force the draft state (the delete route refuses, by design).
@@ -230,7 +232,11 @@ async def test_convert_to_folder_keeps_the_files_and_needs_no_deletion(client, _
     )
     headers = {"Authorization": f"Bearer {reg.json()['api_key']}"}
     folder_id = (
-        await client.post("/api/v1/me/skills/new", json={"name": "Demote me"}, headers=headers)
+        await client.post(
+            "/api/v1/me/skills/new",
+            json={"name": "Demote me", "description": "Round-trips demotion"},
+            headers=headers,
+        )
     ).json()["folder_id"]
 
     # The old mechanism is refused, and says so.
