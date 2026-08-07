@@ -799,6 +799,10 @@ async def update_page(
     pool = get_pool()
     if name is not None:
         await _assert_not_a_skills_instructions(page_id, owner_user_id)
+    if folder_id is not None or move_to_root:
+        await _assert_not_a_skills_instructions(
+            page_id, owner_user_id, moving=True, moving_to=None if move_to_root else folder_id
+        )
     if content_html is not None:
         content_html = _sanitize_html(content_html)
     content_changed = content is not None or content_type is not None or content_html is not None
@@ -1076,8 +1080,10 @@ async def _reconcile_embedded_files(
     )
 
 
-async def _assert_not_a_skills_instructions(page_id: UUID, owner_user_id: UUID) -> None:
-    """A skill's SKILL.md can't be deleted or renamed.
+async def _assert_not_a_skills_instructions(
+    page_id: UUID, owner_user_id: UUID, *, moving_to: UUID | None = None, moving: bool = False
+) -> None:
+    """A skill's SKILL.md can't be deleted, renamed, or moved out.
 
     It is the document agents load; without it the skill is a draft that can
     do nothing. Deleting it used to silently demote the whole folder (a
@@ -1087,16 +1093,20 @@ async def _assert_not_a_skills_instructions(page_id: UUID, owner_user_id: UUID) 
     a plain folder first if that's really what they want."""
     pool = get_pool()
     row = await pool.fetchrow(
-        "SELECT p.name, f.is_skill FROM pages p JOIN folders f ON f.id = p.folder_id "
+        "SELECT p.name, p.folder_id, f.is_skill FROM pages p JOIN folders f ON f.id = p.folder_id "
         "WHERE p.id = $1 AND p.owner_user_id = $2",
         page_id,
         owner_user_id,
     )
-    if row and row["is_skill"] and row["name"] == skill_service.SKILL_MD_NAME:
-        raise ValueError(
-            "SKILL.md holds this skill's instructions and can't be deleted or renamed. "
-            "Convert the skill to a folder first if you want to remove it."
-        )
+    if not (row and row["is_skill"] and row["name"] == skill_service.SKILL_MD_NAME):
+        return
+    # A move only matters when it actually leaves the skill folder.
+    if moving and moving_to == row["folder_id"]:
+        return
+    raise ValueError(
+        "SKILL.md holds this skill's instructions and can't be deleted, renamed, or moved "
+        "out. Convert the skill to a folder first if you want to remove it."
+    )
 
 
 async def delete_page(page_id: UUID, owner_user_id: UUID, deleted_by: UUID) -> bool:
@@ -1303,6 +1313,17 @@ async def set_folder_is_skill(folder_id: UUID, owner_user_id: UUID, is_skill: bo
         return None
     if is_skill and row["is_protected"]:
         raise ValueError(f"the {row['name']} folder can't be turned into a skill")
+    if not is_skill:
+        published = await pool.fetchval("SELECT slug FROM skills WHERE folder_id = $1", folder_id)
+        if published:
+            # Demoting used to leave the publish record live: the folder
+            # stopped being a skill while its public URL kept serving it, and
+            # the confirm dialog told the user the link would stop working.
+            # Refuse instead of silently disagreeing with ourselves.
+            raise ValueError(
+                f"'{row['name']}' is published at /skills/{published}. Unpublish it first, "
+                "then convert it back to a folder."
+            )
     updated = await pool.fetchrow(
         "UPDATE folders SET is_skill = $3, updated_at = now() "
         "WHERE id = $1 AND owner_user_id = $2 "
