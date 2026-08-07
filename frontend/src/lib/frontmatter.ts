@@ -16,8 +16,15 @@ export function splitFrontmatter(markdown: string): SplitMarkdown {
   const rest = markdown.slice(afterFence);
   // The closing fence must be a whole line: "---\n" or "---" at EOF.
   if (rest !== "" && !rest.startsWith("\n")) return { frontmatter: null, body: markdown };
+  const block = markdown.slice(4, end);
+  // A document that opens with a horizontal rule also matches the fences.
+  // Frontmatter is key/value lines, so require the first non-empty line to
+  // look like one — otherwise the author's opening paragraph would be hidden
+  // in the read-only metadata strip and become uneditable.
+  const firstLine = block.split("\n").find((line) => line.trim() !== "") ?? "";
+  if (!/^[A-Za-z_][\w-]*\s*:/.test(firstLine)) return { frontmatter: null, body: markdown };
   return {
-    frontmatter: markdown.slice(4, end),
+    frontmatter: block,
     body: rest.replace(/^\n+/, ""),
   };
 }

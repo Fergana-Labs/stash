@@ -7,12 +7,13 @@ stray SKILL.md could promote Memory into a wipeable "skill". Membership now
 changes only through deliberate verbs.
 """
 
+import json
 from uuid import UUID, uuid4
 
 import pytest
 import pytest_asyncio
 
-from backend.services import files_tree_service, skill_service
+from backend.services import files_tree_service, shared_skill_service, skill_service
 
 
 @pytest_asyncio.fixture
@@ -63,9 +64,9 @@ async def test_deleting_skill_md_leaves_a_draft_skill_not_a_silent_demotion(scop
         "SELECT id FROM pages WHERE folder_id = $1 AND name = 'SKILL.md'", folder["id"]
     )
 
-    with pytest.raises(ValueError, match="can't be deleted or renamed"):
+    with pytest.raises(ValueError, match="can't be deleted, renamed, or moved"):
         await files_tree_service.delete_page(page_id, scope, scope)
-    with pytest.raises(ValueError, match="can't be deleted or renamed"):
+    with pytest.raises(ValueError, match="can't be deleted, renamed, or moved"):
         await files_tree_service.update_page(page_id, scope, scope, name="notes.md")
 
     await _db_pool.execute("UPDATE pages SET deleted_at = now() WHERE id = $1", page_id)
@@ -251,3 +252,75 @@ async def test_convert_to_folder_keeps_the_files_and_needs_no_deletion(client, _
     assert again.status_code == 200
     listed = (await client.get("/api/v1/me/skills", headers=headers)).json()["skills"]
     assert [s["folder_id"] for s in listed] == [folder_id]
+
+
+@pytest.mark.asyncio
+async def test_agent_read_skill_refuses_a_draft_rather_than_returning_emptiness(scope, _db_pool):
+    """A skill with no SKILL.md is a draft. Returning its (empty) document to
+    an agent would let the model act as though it had guidance; the boundary
+    says so instead."""
+    from backend.services import agent_runtime
+
+    folder = await files_tree_service.create_skill(scope, scope, "Draft skill")
+    await _db_pool.execute(
+        "UPDATE pages SET deleted_at = now() WHERE folder_id = $1 AND name = 'SKILL.md'",
+        folder["id"],
+    )
+
+    scope_token = agent_runtime._scope_ctx.set(scope)
+    user_token = agent_runtime._user_ctx.set(scope)
+    try:
+        result = json.loads(
+            (await agent_runtime._read_skill.handler({"name": "Draft skill"}))["content"][0]["text"]
+        )
+    finally:
+        agent_runtime._user_ctx.reset(user_token)
+        agent_runtime._scope_ctx.reset(scope_token)
+
+    assert result["error"] == "no_instructions"
+    assert result["name"] == "Draft skill"
+
+
+@pytest.mark.asyncio
+async def test_skill_md_cannot_be_moved_out_of_its_skill(scope, _db_pool):
+    """The guard blocked rename and delete but not moves, so dragging SKILL.md
+    into another folder still demoted a skill silently — the same hole through
+    a different door."""
+    folder = await files_tree_service.create_skill(scope, scope, "Movable")
+    elsewhere = await files_tree_service.create_folder(scope, "Elsewhere", scope)
+    page_id = await _db_pool.fetchval(
+        "SELECT id FROM pages WHERE folder_id = $1 AND name = 'SKILL.md'", folder["id"]
+    )
+
+    with pytest.raises(ValueError, match="can't be deleted, renamed, or moved"):
+        await files_tree_service.update_page(page_id, scope, scope, folder_id=elsewhere["id"])
+    with pytest.raises(ValueError, match="can't be deleted, renamed, or moved"):
+        await files_tree_service.update_page(page_id, scope, scope, move_to_root=True)
+
+    # Editing its content is untouched — only leaving the skill is refused.
+    edited = await files_tree_service.update_page(page_id, scope, scope, content="# new body")
+    assert edited is not None
+    [skill] = await skill_service.list_skills(scope, scope)
+    assert skill["has_instructions"] is True
+
+
+@pytest.mark.asyncio
+async def test_a_published_skill_refuses_demotion_until_unpublished(scope, _db_pool):
+    """Demotion left the publish record live: the folder stopped being a skill
+    while its public URL kept serving it — and the confirm dialog told the
+    user the share link would stop working. Refuse rather than lie."""
+    folder = await files_tree_service.create_skill(scope, scope, "Public thing")
+    published = await shared_skill_service.publish_folder(
+        scope, scope, folder["id"], title="Public thing", description="d"
+    )
+
+    with pytest.raises(ValueError, match="Unpublish it first"):
+        await files_tree_service.set_folder_is_skill(folder["id"], scope, False)
+    assert [s["folder_id"] for s in await skill_service.list_skills(scope, scope)] == [
+        str(folder["id"])
+    ]
+
+    # Unpublish, and demotion proceeds.
+    await shared_skill_service.unpublish_skill(UUID(str(published["id"])), scope)
+    demoted = await files_tree_service.set_folder_is_skill(folder["id"], scope, False)
+    assert demoted["is_skill"] is False

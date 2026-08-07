@@ -262,15 +262,23 @@ export default function FilesExplorer({
     await load();
   }
 
+  // Rename and delete can be refused with an explanation the user needs to
+  // read (a skill's SKILL.md can't be renamed or deleted; Memory can't be
+  // touched at all). Swallowing those rejections is how "I click and nothing
+  // happens" bugs are born — surface them.
   async function rename(item: Item, name: string) {
     setRenaming(null);
     if (!name.trim() || name === item.name) return;
-    if (item.kind === "folder" || item.kind === "skill") await updateFolder(item.id, { name });
-    else if (item.kind === "session-folder") await updateSessionFolder(item.id, { name });
-    else if (item.kind === "session") return;
-    else if (item.kind === "page") await updatePage(item.id, { name });
-    else if (item.kind === "table") await updateTable(item.id, { name });
-    else await updateFile(item.id, { name });
+    try {
+      if (item.kind === "folder" || item.kind === "skill") await updateFolder(item.id, { name });
+      else if (item.kind === "session-folder") await updateSessionFolder(item.id, { name });
+      else if (item.kind === "session") return;
+      else if (item.kind === "page") await updatePage(item.id, { name });
+      else if (item.kind === "table") await updateTable(item.id, { name });
+      else await updateFile(item.id, { name });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Rename failed");
+    }
     await load();
   }
 
@@ -278,10 +286,14 @@ export default function FilesExplorer({
     // The shared node is an index, not a thing — Delete is hidden on readOnly
     // rows, so reaching here at all is a bug rather than a user action.
     if (item.kind === "shared-root") throw new Error("The shared index cannot be deleted");
-    if (item.kind === "folder" || item.kind === "skill") await deleteFolder(item.id);
-    else if (item.kind === "session-folder") await deleteSessionFolder(item.id);
-    else if (item.kind === "table") await deleteTable(item.id);
-    else await trashItem(item.kind, item.id); // page | file | session
+    try {
+      if (item.kind === "folder" || item.kind === "skill") await deleteFolder(item.id);
+      else if (item.kind === "session-folder") await deleteSessionFolder(item.id);
+      else if (item.kind === "table") await deleteTable(item.id);
+      else await trashItem(item.kind, item.id); // page | file | session
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Delete failed");
+    }
     await load();
   }
 
