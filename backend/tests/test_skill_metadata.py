@@ -41,7 +41,7 @@ def test_skill_validation_rejects_metadata_codex_cannot_load(markdown, message):
 
 
 def test_skill_migration_repairs_blank_legacy_metadata():
-    migration = importlib.import_module("backend.migrations.versions.0180_valid_skill_frontmatter")
+    migration = importlib.import_module("backend.migrations.versions.0182_valid_skill_frontmatter")
 
     migrated = migration._valid_markdown(
         "---\nname: Legacy skill\ndescription: \n---\n\n# Instructions\n",

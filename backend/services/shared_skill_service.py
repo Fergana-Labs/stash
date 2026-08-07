@@ -123,9 +123,14 @@ def skill_md_template(name: str, description: str) -> str:
     )
 
 
-async def _ensure_skill_md(
+async def ensure_skill_md(
     owner_user_id: UUID, folder_id: UUID, user_id: UUID, title: str, description: str
 ) -> None:
+    """Give the folder instructions if it has none, and mark it a skill.
+
+    Publishing/forking/installing a skill is an explicit "this is a skill"
+    act by the caller, so it sets membership — unlike a user editing files
+    inside a folder, which never reclassifies anything."""
     pool = get_pool()
     existing = await pool.fetchval(
         "SELECT 1 FROM pages WHERE folder_id = $1 AND name = 'SKILL.md' "
@@ -133,11 +138,13 @@ async def _ensure_skill_md(
         folder_id,
     )
     if existing:
+        await files_tree_service.set_folder_is_skill(folder_id, owner_user_id, True)
         return
     if not description.strip():
         raise ValueError("description is required when publishing a folder as a skill")
     skill_md = skill_md_template(title, description)
     skill_service.validate_skill_md(skill_md)
+    await files_tree_service.set_folder_is_skill(folder_id, owner_user_id, True)
     await files_tree_service.create_page(
         owner_user_id,
         "SKILL.md",
@@ -189,7 +196,7 @@ async def publish_folder(
         title = meta.get("name") or folder["name"]
         description = description or meta.get("description", "")
 
-    await _ensure_skill_md(owner_user_id, folder_id, owner_id, title, description)
+    await ensure_skill_md(owner_user_id, folder_id, owner_id, title, description)
     try:
         inserted = await pool.fetchrow(
             "INSERT INTO skills (owner_user_id, folder_id, slug, title, description, owner_id, "
@@ -678,17 +685,22 @@ async def _fork_folder(
     user_id: UUID,
     name_override: str | None = None,
 ) -> UUID:
-    folder = await conn.fetchrow("SELECT name FROM folders WHERE id = $1", source_folder_id)
+    folder = await conn.fetchrow(
+        "SELECT name, is_skill FROM folders WHERE id = $1", source_folder_id
+    )
     if not folder:
         raise ValueError("Skill folder not found")
 
+    # Forking a skill is an explicit "give me this skill" — membership travels
+    # with the copy, exactly like its files do.
     new_folder = await conn.fetchrow(
-        "INSERT INTO folders (owner_user_id, parent_folder_id, name, created_by) "
-        "VALUES ($1, $2, $3, $4) RETURNING id",
+        "INSERT INTO folders (owner_user_id, parent_folder_id, name, created_by, is_skill) "
+        "VALUES ($1, $2, $3, $4, $5) RETURNING id",
         owner_user_id,
         parent_folder_id,
         name_override or folder["name"],
         user_id,
+        folder["is_skill"],
     )
 
     child_folders = await conn.fetch(

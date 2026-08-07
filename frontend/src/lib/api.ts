@@ -596,6 +596,19 @@ export async function createSkill(
   });
 }
 
+// Promote a plain folder to a skill (and give it starter instructions if it
+// has none). Membership is a stored flag now — writing a SKILL.md into a
+// folder no longer promotes it.
+export async function convertFolderToSkill(
+  folderId: string,
+  description: string,
+): Promise<{ folder_id: string; name: string; is_skill: boolean }> {
+  return apiFetch(`${ME}/folders/${folderId}/convert-to-skill`, {
+    method: "POST",
+    body: JSON.stringify({ description }),
+  });
+}
+
 export async function updateFolder(
   folderId: string,
   data: { name?: string; parent_folder_id?: string | null; move_to_root?: boolean }
@@ -645,7 +658,8 @@ export async function updatePage(
     name?: string;
     folder_id?: string | null;
     content?: string;
-    collab_projection?: boolean;
+    /** The content_hash this save was edited on top of — mismatch is a 409. */
+    expected_content_hash?: string | null;
     content_type?: "markdown" | "html";
     content_html?: string;
     html_layout?: "responsive" | "fixed-aspect" | "full-width";
@@ -657,7 +671,7 @@ export async function updatePage(
     body: JSON.stringify(data),
   });
   // Only count actual content/title changes as "edits." Folder moves,
-  // collab_projection passes, and pure layout flips are uninteresting.
+  // conflict-refused saves, and pure layout flips are uninteresting.
   const isContentEdit =
     data.content !== undefined ||
     data.content_html !== undefined ||
@@ -1101,6 +1115,9 @@ export async function uploadFileOrPage(
       content_markdown: result.content_markdown ?? "",
       content_html: result.content_html ?? "",
       html_layout: "responsive",
+      content_hash: null,
+      // The uploader owns what they just uploaded.
+      can_write: true,
       created_by: result.created_by ?? "",
       updated_by: null,
       created_at: result.created_at,

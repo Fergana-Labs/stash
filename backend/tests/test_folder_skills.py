@@ -66,7 +66,7 @@ def _all_tree_folder_ids(node: dict) -> set[str]:
 
 
 @pytest.mark.asyncio
-async def test_skill_folder_is_hidden_from_files_surfaces_until_skill_md_deleted(
+async def test_skill_folder_is_hidden_from_files_surfaces_until_converted_back(
     client: AsyncClient,
 ):
     api_key, _ = await _register(client)
@@ -76,6 +76,13 @@ async def test_skill_folder_is_hidden_from_files_surfaces_until_skill_md_deleted
     skill_folder = await _folder(client, api_key, scope, "my-skill", parent_folder_id=docs)
     nested = await _folder(client, api_key, scope, "refs", parent_folder_id=skill_folder)
     skill_md = await _page(client, api_key, scope, "SKILL.md", folder_id=skill_folder)
+    # Membership is explicit now: writing SKILL.md no longer promotes.
+    promoted = await client.post(
+        f"/api/v1/me/folders/{skill_folder}/convert-to-skill",
+        json={"description": "Use this skill to manage the test folder."},
+        headers=_auth(api_key),
+    )
+    assert promoted.status_code == 200
     nested_page = await _page(client, api_key, scope, "notes", folder_id=nested)
 
     # /tree hides the whole skill subtree (the SKILL.md folder + descendants).
@@ -114,9 +121,18 @@ async def test_skill_folder_is_hidden_from_files_surfaces_until_skill_md_deleted
     assert "SKILL.md" in [p["name"] for p in body["pages"]]
     assert nested in [f["id"] for f in body["subfolders"]]
 
-    # Deleting SKILL.md ends skill-ness: the folder rejoins the Files tree.
-    deleted = await client.delete(f"/api/v1/me/pages/{skill_md}", headers=_auth(api_key))
-    assert deleted.status_code == 204
+    # SKILL.md can't be deleted out from under a skill — that used to demote
+    # the folder silently and cost a customer their skill three times.
+    refused = await client.delete(f"/api/v1/me/pages/{skill_md}", headers=_auth(api_key))
+    assert refused.status_code == 400
+    assert "can't be deleted" in refused.json()["detail"]
+
+    # Converting back to a folder is the explicit way out, and it returns the
+    # folder to the Files tree.
+    demoted = await client.post(
+        f"/api/v1/me/folders/{skill_folder}/convert-to-folder", headers=_auth(api_key)
+    )
+    assert demoted.status_code == 200
     tree_after = (await client.get("/api/v1/me/tree", headers=_auth(api_key))).json()
     assert skill_folder in _all_tree_folder_ids(tree_after)
 
