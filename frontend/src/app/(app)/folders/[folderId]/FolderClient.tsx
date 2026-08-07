@@ -11,18 +11,14 @@ import FileBrowser from "@/components/content/file-browser/FileBrowser";
 import { useAuth } from "@/hooks/useAuth";
 import {
   ApiError,
-  createPage,
+  convertFolderToSkill,
   getFolderContents,
   getPublicSkill,
   type FolderBreadcrumb,
   type PublicSkillContents,
   type PublicSkillSubfolder,
 } from "@/lib/api";
-import {
-  findInSkillContents,
-  SKILL_MD,
-  skillMdTemplate,
-} from "@/lib/localSkill";
+import { findInSkillContents } from "@/lib/localSkill";
 import { loginPathWithNext } from "@/lib/loginRedirect";
 import { sectionCrumbs, useMemoryFolderId } from "@/lib/memory-folder";
 import { refreshSidebar } from "@/lib/skillNavigationCache";
@@ -136,9 +132,13 @@ export default function FolderDetailPage({ folderId: folderIdProp }: { folderId?
     if (!folderName || !user) return;
     setConverting(true);
     try {
-      await createPage(SKILL_MD, folderId, skillMdTemplate(folderName));
+      // The explicit verb — writing a SKILL.md hasn't promoted a folder
+      // since membership became a stored flag.
+      await convertFolderToSkill(folderId);
       await refreshSidebar().catch(() => {});
-      router.push(`/skills/${folderId}`);
+      // /skills/<x> is the published-slug route; a folder id there renders
+      // "Skill not found". The skill's own page is /skills/folder/<id>.
+      router.push(`/skills/folder/${folderId}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Convert failed");
     } finally {
