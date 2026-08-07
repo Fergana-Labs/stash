@@ -142,3 +142,118 @@ async def test_convert_endpoint_leaves_a_loadable_skill(client, _db_pool):
     )
     assert kept == 1
     assert owner
+
+
+@pytest.mark.asyncio
+async def test_folder_plus_skill_md_plus_convert_is_the_cli_recipe(client, _db_pool):
+    """What every CLI skill-creating command does: make a folder, write its
+    SKILL.md, then say "this is a skill". The middle step alone used to be
+    enough, which is why `stash skills create` broke silently when membership
+    became a flag — this pins the sequence the CLI depends on."""
+    reg = await client.post(
+        "/api/v1/users/register",
+        json={"name": f"cli_{uuid4().hex[:8]}", "password": "securepassword1"},
+    )
+    headers = {"Authorization": f"Bearer {reg.json()['api_key']}"}
+
+    folder_id = (
+        await client.post("/api/v1/me/folders", json={"name": "cli-skill"}, headers=headers)
+    ).json()["id"]
+    await client.post(
+        "/api/v1/me/pages/new",
+        json={"name": "SKILL.md", "folder_id": folder_id, "content": "---\nname: cli-skill\n---\n"},
+        headers=headers,
+    )
+
+    # Writing the file is not enough — that is the whole point of the flag.
+    assert (await client.get("/api/v1/me/skills", headers=headers)).json()["skills"] == []
+
+    convert = await client.post(f"/api/v1/me/folders/{folder_id}/convert-to-skill", headers=headers)
+    assert convert.status_code == 200
+    listed = (await client.get("/api/v1/me/skills", headers=headers)).json()["skills"]
+    assert [s["folder_id"] for s in listed] == [folder_id]
+    # Converting did not clobber the instructions the caller just wrote.
+    kept = await _db_pool.fetchval(
+        "SELECT content_markdown FROM pages WHERE folder_id = $1 AND name = 'SKILL.md'",
+        UUID(folder_id),
+    )
+    assert "name: cli-skill" in kept
+
+
+@pytest.mark.asyncio
+async def test_shared_skill_without_instructions_still_lists(client, _db_pool):
+    """A skill shared with you shows up even as a draft. The listing used to
+    inner-join SKILL.md, so a shared skill missing instructions vanished
+    instead of appearing with has_instructions false."""
+    owner = await client.post(
+        "/api/v1/users/register",
+        json={"name": f"own_{uuid4().hex[:8]}", "password": "securepassword1"},
+    )
+    owner_h = {"Authorization": f"Bearer {owner.json()['api_key']}"}
+    friend = await client.post(
+        "/api/v1/users/register",
+        json={"name": f"fr_{uuid4().hex[:8]}", "password": "securepassword1"},
+    )
+    friend_h = {"Authorization": f"Bearer {friend.json()['api_key']}"}
+
+    made = await client.post(
+        "/api/v1/me/skills/new", json={"name": "Shared draft"}, headers=owner_h
+    )
+    folder_id = made.json()["folder_id"]
+    # Force the draft state (the delete route refuses, by design).
+    await _db_pool.execute(
+        "UPDATE pages SET deleted_at = now() WHERE folder_id = $1 AND name = 'SKILL.md'",
+        UUID(folder_id),
+    )
+    await _db_pool.execute(
+        "INSERT INTO shares (owner_user_id, object_type, object_id, principal_type, "
+        "                    principal_id, permission, created_by) "
+        "VALUES ($1, 'folder', $2, 'user', $3, 'read', $1)",
+        UUID(owner.json()["id"]),
+        UUID(folder_id),
+        UUID(friend.json()["id"]),
+    )
+
+    listed = (await client.get("/api/v1/me/shared-skills", headers=friend_h)).json()
+    assert folder_id in [s["folder_id"] for s in listed["skills"]]
+
+
+@pytest.mark.asyncio
+async def test_convert_to_folder_keeps_the_files_and_needs_no_deletion(client, _db_pool):
+    """The Convert-to-folder button used to demote by deleting SKILL.md. That
+    stopped demoting anything (membership is a flag) and is now refused
+    outright — so the button errored with 'convert the skill to a folder
+    first', which is what it was. Demotion is the verb; files stay put."""
+    reg = await client.post(
+        "/api/v1/users/register",
+        json={"name": f"dem_{uuid4().hex[:8]}", "password": "securepassword1"},
+    )
+    headers = {"Authorization": f"Bearer {reg.json()['api_key']}"}
+    folder_id = (
+        await client.post("/api/v1/me/skills/new", json={"name": "Demote me"}, headers=headers)
+    ).json()["folder_id"]
+
+    # The old mechanism is refused, and says so.
+    page_id = await _db_pool.fetchval(
+        "SELECT id FROM pages WHERE folder_id = $1 AND name = 'SKILL.md'", UUID(folder_id)
+    )
+    refused = await client.delete(f"/api/v1/me/pages/{page_id}", headers=headers)
+    assert refused.status_code == 400
+
+    # The verb works, and keeps the instructions.
+    demoted = await client.post(
+        f"/api/v1/me/folders/{folder_id}/convert-to-folder", headers=headers
+    )
+    assert demoted.status_code == 200
+    assert demoted.json()["is_skill"] is False
+    assert (await client.get("/api/v1/me/skills", headers=headers)).json()["skills"] == []
+    still_there = await _db_pool.fetchval(
+        "SELECT count(*) FROM pages WHERE folder_id = $1 AND deleted_at IS NULL", UUID(folder_id)
+    )
+    assert still_there == 1
+
+    # And it round-trips: promote again without re-uploading anything.
+    again = await client.post(f"/api/v1/me/folders/{folder_id}/convert-to-skill", headers=headers)
+    assert again.status_code == 200
+    listed = (await client.get("/api/v1/me/skills", headers=headers)).json()["skills"]
+    assert [s["folder_id"] for s in listed] == [folder_id]

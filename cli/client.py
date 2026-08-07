@@ -339,6 +339,12 @@ class StashClient:
             body["parent_folder_id"] = parent_folder_id
         return self._post("/api/v1/me/folders", json=body)
 
+    def convert_folder_to_skill(self, folder_id: str) -> dict:
+        """Mark a folder as a skill (and give it starter instructions if it has
+        none). Skill membership is a stored flag server-side — writing a
+        SKILL.md into a folder does not make it a skill."""
+        return self._post(f"/api/v1/me/folders/{folder_id}/convert-to-skill")
+
     def delete_folder(self, folder_id: str) -> None:
         self._delete(f"/api/v1/me/folders/{folder_id}")
 
@@ -751,10 +757,13 @@ class StashClient:
         include_sources: list[str] | None = None,
         exclude_sources: list[str] | None = None,
         limit: int = 20,
+        modified_after: str | None = None,
+        modified_before: str | None = None,
     ) -> dict:
         """Returns the search envelope: {"results": [...], "has_more": bool}.
         List params reach the server as repeated query params (httpx does this
-        natively), matching the endpoint's list[str] Query params."""
+        natively), matching the endpoint's list[str] Query params. The modified
+        bounds are raw ISO-8601 strings — the server parses and validates."""
         params: dict = {"q": query, "limit": limit}
         if source:
             params["source"] = source
@@ -762,6 +771,10 @@ class StashClient:
             params["include_sources"] = include_sources
         if exclude_sources:
             params["exclude_sources"] = exclude_sources
+        if modified_after:
+            params["modified_after"] = modified_after
+        if modified_before:
+            params["modified_before"] = modified_before
         return self._get("/api/v1/me/sources/search", **params)
 
     # --- Tables ---

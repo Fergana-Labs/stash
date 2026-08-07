@@ -38,6 +38,7 @@ def test_upload_with_skill_flag_publishes_the_folder(monkeypatch, tmp_path) -> N
     uploaded.write_bytes(b"png")
     published: dict = {}
     created_pages: list[str] = []
+    converted: list[str] = []
 
     class FakeClient:
         def __enter__(self):
@@ -58,6 +59,10 @@ def test_upload_with_skill_flag_publishes_the_folder(monkeypatch, tmp_path) -> N
             created_pages.append(name)
             return {"id": f"page-{len(created_pages)}"}
 
+        def convert_folder_to_skill(self, folder_id):
+            converted.append(folder_id)
+            return {"folder_id": folder_id, "name": "shot", "is_skill": True}
+
         def publish_skill_folder(self, folder_id, **kwargs):
             published["folder_id"] = folder_id
             published["kwargs"] = kwargs
@@ -68,8 +73,10 @@ def test_upload_with_skill_flag_publishes_the_folder(monkeypatch, tmp_path) -> N
 
     main.upload(str(uploaded), name="", skill="shot", public=True, as_json=False)
 
-    # --skill makes the folder a skill (SKILL.md) and --public publishes it.
+    # --skill writes the instructions AND marks the folder a skill — writing
+    # SKILL.md alone stopped conferring membership when it became a stored flag.
     assert "SKILL.md" in created_pages
+    assert converted == ["folder-1"]
     assert published["folder_id"] == "folder-1"
 
 
@@ -78,6 +85,7 @@ def test_upload_with_skill_flag_private_skips_publish(monkeypatch, tmp_path) -> 
     uploaded.write_text("# Notes")
     published: dict = {}
     created_pages: list[str] = []
+    converted: list[str] = []
 
     class FakeClient:
         def __enter__(self):
@@ -95,6 +103,10 @@ def test_upload_with_skill_flag_private_skips_publish(monkeypatch, tmp_path) -> 
             assert folder_id == "folder-1"
             return {"id": f"page-{len(created_pages)}"}
 
+        def convert_folder_to_skill(self, folder_id):
+            converted.append(folder_id)
+            return {"folder_id": folder_id, "name": "notes", "is_skill": True}
+
         def publish_skill_folder(self, folder_id, **kwargs):
             published["folder_id"] = folder_id
             return {"id": "skill-1", "slug": "notes", "title": "notes"}
@@ -104,6 +116,8 @@ def test_upload_with_skill_flag_private_skips_publish(monkeypatch, tmp_path) -> 
 
     main.upload(str(uploaded), name="", skill="notes", public=False, as_json=False)
 
-    # Private: the folder becomes a skill (SKILL.md) but nothing is published.
+    # Private: the folder becomes a skill (instructions + explicit convert)
+    # but nothing is published.
     assert "SKILL.md" in created_pages
+    assert converted == ["folder-1"]
     assert published == {}

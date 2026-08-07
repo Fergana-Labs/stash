@@ -1519,7 +1519,8 @@ def upload(
             result["public_link"] = True
 
         if create_skill:
-            # A skill is a folder with a SKILL.md; publishing makes it public.
+            # Skill membership is a stored flag: writing a SKILL.md does not
+            # make a folder a skill, the convert verb does.
             try:
                 c.create_page(
                     name="SKILL.md",
@@ -1530,6 +1531,7 @@ def upload(
             except StashError as e:
                 if e.status_code != 409:
                     raise
+            c.convert_folder_to_skill(root_folder["id"])
             if public:
                 skill_row = c.publish_skill_folder(
                     root_folder["id"],
@@ -1643,7 +1645,8 @@ def skills_add(
     folder_name = src.name
     with _client() as c:
         try:
-            # Skills are represented as folders containing markdown pages.
+            # A skill is a folder marked as one; its markdown pages (SKILL.md
+            # plus siblings) are its content.
             new_folder = c.create_folder(folder_name)
             folder_id = new_folder["id"]
             for md_file in sorted(src.glob("*.md")):
@@ -1653,6 +1656,7 @@ def skills_add(
                     folder_id=folder_id,
                     content_type="markdown",
                 )
+            c.convert_folder_to_skill(folder_id)
         except StashError as e:
             _err(e)
     console.print(f"[green]Added skill '{folder_name}' to your Files.[/green]")
@@ -1690,6 +1694,9 @@ def skills_create(
                 folder_id=folder["id"],
                 content_type="markdown",
             )
+            # Membership is a stored flag; the SKILL.md above is the skill's
+            # instructions, not what makes the folder a skill.
+            c.convert_folder_to_skill(folder["id"])
             skill = None
             if public:
                 skill = c.publish_skill_folder(
@@ -3136,6 +3143,8 @@ def _print_search(
     exclude_sources: str,
     limit: int,
     as_json: bool,
+    modified_after: str = "",
+    modified_before: str = "",
 ) -> None:
     """Shared body for `stash search`."""
     telemetry.record("sources.search")
@@ -3147,6 +3156,8 @@ def _print_search(
                 include_sources=split_source_tokens(include_sources),
                 exclude_sources=split_source_tokens(exclude_sources),
                 limit=limit,
+                modified_after=modified_after or None,
+                modified_before=modified_before or None,
             )
         except StashError as e:
             _err(e)
@@ -3198,11 +3209,32 @@ def search(
         "--exclude-sources",
         help="Comma-separated sources to skip. Not combinable with --source.",
     ),
+    modified_after: str = typer.Option(
+        "",
+        "--modified-after",
+        help="Only results last modified after this ISO timestamp (e.g. 2026-01-01). "
+        "Results with no known modification time are excluded.",
+    ),
+    modified_before: str = typer.Option(
+        "",
+        "--modified-before",
+        help="Only results last modified before this ISO timestamp. "
+        "Results with no known modification time are excluded.",
+    ),
     limit: int = typer.Option(20, "-n", "--limit"),
     as_json: bool = typer.Option(False, "--json"),
 ):
     """Search everything you can see — files, sessions, and connected sources."""
-    _print_search(query, source, include_sources, exclude_sources, limit, as_json)
+    _print_search(
+        query,
+        source,
+        include_sources,
+        exclude_sources,
+        limit,
+        as_json,
+        modified_after=modified_after,
+        modified_before=modified_before,
+    )
 
 
 def _poll_recompute_outcome(

@@ -92,9 +92,7 @@ async def _resurface_items(user_id: UUID, cursor: int) -> list[dict]:
             WHERE raw_f.owner_user_id = $1 AND raw_f.name = $4
         ), skill_folders AS (
             SELECT f.id FROM folders f
-            WHERE f.owner_user_id = $1
-              AND EXISTS (SELECT 1 FROM pages sp WHERE sp.folder_id = f.id
-                          AND sp.name = 'SKILL.md' AND sp.deleted_at IS NULL)
+            WHERE f.owner_user_id = $1 AND f.is_skill
             UNION
             SELECT f.id FROM folders f
             JOIN skill_folders st ON f.parent_folder_id = st.id

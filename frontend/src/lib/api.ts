@@ -437,13 +437,21 @@ export interface SourceSearchResponse {
 
 export async function searchSource(
   query: string,
-  opts: { source?: string; includeSources?: string[]; limit?: number } = {},
+  opts: {
+    source?: string;
+    includeSources?: string[];
+    limit?: number;
+    modifiedAfter?: string;
+    modifiedBefore?: string;
+  } = {},
 ): Promise<SourceSearchResponse> {
   const params = new URLSearchParams({ q: query });
   if (opts.source) params.set("source", opts.source);
   // Repeated params — the endpoint declares include_sources as a list.
   for (const token of opts.includeSources ?? []) params.append("include_sources", token);
   if (opts.limit !== undefined) params.set("limit", String(opts.limit));
+  if (opts.modifiedAfter) params.set("modified_after", opts.modifiedAfter);
+  if (opts.modifiedBefore) params.set("modified_before", opts.modifiedBefore);
   return apiFetch<SourceSearchResponse>(`${ME}/sources/search?${params.toString()}`);
 }
 
@@ -607,6 +615,14 @@ export async function convertFolderToSkill(
     method: "POST",
     body: JSON.stringify({ description }),
   });
+}
+
+// Demote a skill back to a plain folder. Contents are untouched — it simply
+// stops appearing under Skills and stops loading for agents.
+export async function convertSkillToFolder(
+  folderId: string
+): Promise<{ folder_id: string; name: string; is_skill: boolean }> {
+  return apiFetch(`${ME}/folders/${folderId}/convert-to-folder`, { method: "POST" });
 }
 
 export async function updateFolder(
