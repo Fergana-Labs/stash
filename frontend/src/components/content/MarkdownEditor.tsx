@@ -94,6 +94,9 @@ export default function MarkdownEditor({
   const lastSaved = useRef<string>(file.content_markdown);
   const [collabError, setCollabError] = useState("");
   const [readOnly, setReadOnly] = useState(false);
+  // True once the collab provider has delivered the server doc (see onSynced).
+  const [synced, setSynced] = useState(false);
+  const syncedRef = useRef(false);
   // Refs that closures inside `useEditor` / window listeners can call
   // without re-creating the editor every render.
   const saveMarkdownRef = useRef<(md: string) => void>(() => {});
@@ -124,6 +127,8 @@ export default function MarkdownEditor({
     let active = true;
     setCollabError("");
     setReadOnly(false);
+    setSynced(false);
+    syncedRef.current = false;
 
     const document = new Y.Doc();
     const provider = new HocuspocusProvider({
@@ -138,6 +143,18 @@ export default function MarkdownEditor({
         if (!active) return;
         setReadOnly(scope === "readonly");
         setCollabError("");
+      },
+      // The collab doc is the content's source of truth, seeded server-side.
+      // Until it has synced down, the editor holds an empty local doc —
+      // letting the user edit then would autosave that empty doc over the
+      // real page (silent total data loss when collab is down; hit by a
+      // customer 2026-08-06). Synced flips once per mount and stays true
+      // through reconnect blips: after first sync the local doc is real, so
+      // offline edits are safe to keep.
+      onSynced: () => {
+        if (!active) return;
+        syncedRef.current = true;
+        setSynced(true);
       },
       onAuthenticationFailed: ({ reason }) => {
         if (!active) return;
@@ -162,7 +179,7 @@ export default function MarkdownEditor({
     () => colorFromId(collaborationUser.id),
     [collaborationUser.id],
   );
-  const canEdit = !!collaboration && !readOnly;
+  const canEdit = !!collaboration && !readOnly && synced;
 
   const editor = useEditor({
     immediatelyRender: false,
@@ -321,7 +338,7 @@ export default function MarkdownEditor({
       },
     },
     onUpdate: ({ editor }) => {
-      if (readOnly) return;
+      if (readOnly || !syncedRef.current) return;
       const md = serializeMarkdown(editor.getJSON(), lastSaved.current);
       if (md === lastSaved.current) return;
       setDirty(true);
