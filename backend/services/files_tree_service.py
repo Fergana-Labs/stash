@@ -474,11 +474,17 @@ async def memory_tree(owner_user_id: UUID, created_by: UUID) -> dict:
 
 
 async def _assert_not_protected(folder_id: UUID, owner_user_id: UUID) -> None:
-    """Protected folders are the ones code resolves by identity and writes into
-    — Memory and Clips. Renaming or moving one doesn't fail loudly, it fails
-    silently: the next write recreates the folder and the user's saves start
-    landing somewhere they aren't looking. Guarded in the service, so the CLI,
-    the agent's tools, and the UI are all covered by one check."""
+    """Refuse rename/move/delete of a protected folder (Memory, Clips) by
+    raising; the routers map the ValueError to a 400 with this message.
+
+    Protected folders are fixtures the product finds on its own — by reserved
+    marker (the is_memory flag, the root 'Clips' name), never by an id a
+    caller handed in — and the lookup is a get-or-create. So without this
+    check the destructive act would SUCCEED with no error, and the damage
+    would surface later, silently: the next write re-creates an empty
+    replacement under the marker, and the user's wiki or clips start landing
+    somewhere they aren't looking. One check here in the service covers every
+    front door — UI, CLI, and agent tools."""
     pool = get_pool()
     row = await pool.fetchrow(
         "SELECT name, is_protected FROM folders WHERE id = $1 AND owner_user_id = $2",
@@ -1090,16 +1096,32 @@ async def delete_page(page_id: UUID, owner_user_id: UUID, deleted_by: UUID) -> b
 
 
 async def restore_page(page_id: UUID, owner_user_id: UUID, restored_by: UUID) -> bool:
+    """Restore a trashed page. Uniqueness only covers live pages, so the name
+    may have been retaken while this sat in trash — restore then lands on the
+    next free ' (2)', ' (3)', … name rather than failing."""
     pool = get_pool()
-    result = await pool.execute(
-        "UPDATE pages SET deleted_at = NULL, deleted_by = NULL "
-        "WHERE id = $1 AND owner_user_id = $2  "
-        "AND deleted_at IS NOT NULL",
+    row = await pool.fetchrow(
+        "SELECT name FROM pages WHERE id = $1 AND owner_user_id = $2 AND deleted_at IS NOT NULL",
         page_id,
         owner_user_id,
     )
-    if result != "UPDATE 1":
+    if not row:
         return False
+    name = row["name"]
+    n = 2
+    while True:
+        try:
+            await pool.execute(
+                "UPDATE pages SET deleted_at = NULL, deleted_by = NULL, name = $3 "
+                "WHERE id = $1 AND owner_user_id = $2",
+                page_id,
+                owner_user_id,
+                name,
+            )
+            break
+        except asyncpg.UniqueViolationError:
+            name = f"{row['name']} ({n})"
+            n += 1
     await security_audit_service.record_content_lifecycle_event(
         operation="restored",
         actor_user_id=restored_by,

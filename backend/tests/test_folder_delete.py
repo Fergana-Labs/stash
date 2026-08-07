@@ -118,3 +118,43 @@ async def test_delete_folder_still_refuses_memory(scope, _db_pool):
     memory = await files_tree_service.get_or_create_memory_folder(scope_id, user_id)
     with pytest.raises(ValueError):
         await files_tree_service.delete_folder(memory["id"], scope_id, user_id)
+
+
+@pytest.mark.asyncio
+async def test_deleting_two_skill_folders_back_to_back(scope, _db_pool):
+    """Each skill folder trashes a SKILL.md to the scope root on delete. With
+    uniqueness enforced over trash too, the second delete blew up on the root
+    name index (prod, 2026-08-06) — trash must accept repeated names."""
+    scope_id, user_id = scope
+    for _ in range(2):
+        folder = await files_tree_service.create_skill(scope_id, user_id, "New skill")
+        assert await files_tree_service.delete_folder(folder["id"], scope_id, user_id) is True
+
+    trashed = await _db_pool.fetchval(
+        "SELECT count(*) FROM pages WHERE owner_user_id = $1 AND name = 'SKILL.md' "
+        "AND folder_id IS NULL AND deleted_at IS NOT NULL",
+        scope_id,
+    )
+    assert trashed == 2
+
+
+@pytest.mark.asyncio
+async def test_restore_uniquifies_when_the_name_was_retaken(scope, _db_pool):
+    """Trash no longer holds names, so a live page may take a trashed page's
+    name. Restore must land on the next free name, not die on the index."""
+    scope_id, user_id = scope
+    old = await files_tree_service.create_page(
+        owner_user_id=scope_id, name="Doc", created_by=user_id, content="v1"
+    )
+    assert await files_tree_service.delete_page(old["id"], scope_id, user_id) is True
+    await files_tree_service.create_page(
+        owner_user_id=scope_id, name="Doc", created_by=user_id, content="v2"
+    )
+
+    assert await files_tree_service.restore_page(old["id"], scope_id, user_id) is True
+
+    restored = await _db_pool.fetchrow(
+        "SELECT name, deleted_at FROM pages WHERE id = $1", old["id"]
+    )
+    assert restored["deleted_at"] is None
+    assert restored["name"] == "Doc (2)"
