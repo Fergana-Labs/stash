@@ -593,6 +593,15 @@ export async function createSkill(name?: string): Promise<{ folder_id: string; n
   });
 }
 
+// Promote a plain folder to a skill (and give it starter instructions if it
+// has none). Membership is a stored flag now — writing a SKILL.md into a
+// folder no longer promotes it.
+export async function convertFolderToSkill(
+  folderId: string
+): Promise<{ folder_id: string; name: string; is_skill: boolean }> {
+  return apiFetch(`${ME}/folders/${folderId}/convert-to-skill`, { method: "POST" });
+}
+
 export async function updateFolder(
   folderId: string,
   data: { name?: string; parent_folder_id?: string | null; move_to_root?: boolean }

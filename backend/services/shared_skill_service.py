@@ -121,7 +121,7 @@ def skill_md_template(name: str, description: str = "") -> str:
     return f"---\nname: {name}\ndescription: {description}\n---\n\n# {name}\n"
 
 
-async def _ensure_skill_md(owner_user_id: UUID, folder_id: UUID, user_id: UUID, title: str) -> None:
+async def ensure_skill_md(owner_user_id: UUID, folder_id: UUID, user_id: UUID, title: str) -> None:
     """Give the folder instructions if it has none, and mark it a skill.
 
     Publishing/forking/installing a skill is an explicit "this is a skill"
@@ -187,7 +187,7 @@ async def publish_folder(
         title = meta.get("name") or folder["name"]
         description = description or meta.get("description", "")
 
-    await _ensure_skill_md(owner_user_id, folder_id, owner_id, title)
+    await ensure_skill_md(owner_user_id, folder_id, owner_id, title)
     try:
         inserted = await pool.fetchrow(
             "INSERT INTO skills (owner_user_id, folder_id, slug, title, description, owner_id, "

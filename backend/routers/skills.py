@@ -60,8 +60,15 @@ async def convert_folder_to_skill(
 ):
     """Promote a plain folder to a skill. Membership is explicit — this verb
     and skill creation are the only ways in; a SKILL.md appearing inside a
-    folder no longer promotes it."""
-    return await _set_is_skill(folder_id, owner_user_id, current_user["id"], True)
+    folder no longer promotes it.
+
+    The folder also gets a starter SKILL.md if it has none, so converting
+    leaves a skill an agent can actually load rather than a draft."""
+    result = await _set_is_skill(folder_id, owner_user_id, current_user["id"], True)
+    await shared_skill_service.ensure_skill_md(
+        owner_user_id, folder_id, current_user["id"], result["name"]
+    )
+    return result
 
 
 @me_router.post("/folders/{folder_id}/convert-to-folder", status_code=200)
