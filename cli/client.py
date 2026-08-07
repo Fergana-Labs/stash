@@ -339,6 +339,12 @@ class StashClient:
             body["parent_folder_id"] = parent_folder_id
         return self._post("/api/v1/me/folders", json=body)
 
+    def convert_folder_to_skill(self, folder_id: str) -> dict:
+        """Mark a folder as a skill (and give it starter instructions if it has
+        none). Skill membership is a stored flag server-side — writing a
+        SKILL.md into a folder does not make it a skill."""
+        return self._post(f"/api/v1/me/folders/{folder_id}/convert-to-skill")
+
     def delete_folder(self, folder_id: str) -> None:
         self._delete(f"/api/v1/me/folders/{folder_id}")
 
