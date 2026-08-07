@@ -317,9 +317,11 @@ export default function Explorer({ section }: { section: ExplorerSection }) {
         readOnly: true,
       }));
   }, []);
-  // A skill is a folder + SKILL.md — the Skills root's "create native item" action.
-  const createSkill = useCallback(async () => {
-    await createSkillApi();
+  // A skill is a folder + SKILL.md — the Skills root's "create native item"
+  // action. Returns the created Item so the explorer opens and highlights it.
+  const createSkill = useCallback(async (): Promise<Item> => {
+    const created = await createSkillApi();
+    return { kind: "skill", id: created.folder_id, name: created.name };
   }, []);
 
   // Sessions are their own tree: session folders + loose sessions at the root,
