@@ -1,11 +1,15 @@
-"""Skill service — skills are special folders containing a SKILL.md file.
+"""Skill service — a skill is a folder whose ``is_skill`` flag is set.
 
-Detection rule: any folder whose immediate children include a page named
-``SKILL.md``. Skill-ness is derived, never stored; reads/writes go through
-the Files API. Files and Skills are MECE: skill subtrees are filtered out of
-every Files surface (see ``skill_subtree_folder_ids``) and surfaced in the
-Skills area instead. Publishing/sharing attaches a 1:1 ``skills`` row to the
-folder (shared_skill_service).
+Membership is stored, never derived: it changes only through deliberate
+verbs (create a skill, convert a folder, import a repo), so editing files
+inside a folder can never reclassify it. SKILL.md still holds the skill's
+instructions and frontmatter metadata — a skill missing it is a draft that
+says so, not a folder that quietly stopped being a skill.
+
+Files and Skills are MECE: skill subtrees are filtered out of every Files
+surface (see ``skill_subtree_folder_ids``) and surfaced in the Skills area
+instead. Publishing/sharing attaches a 1:1 ``skills`` row to the folder
+(shared_skill_service).
 """
 
 from __future__ import annotations
@@ -23,11 +27,8 @@ def skill_md_template(name: str) -> str:
 
 
 def not_skill_folder_pred(alias: str) -> str:
-    """SQL fragment: folder ``alias`` has no live SKILL.md child."""
-    return (
-        f"NOT EXISTS (SELECT 1 FROM pages skp WHERE skp.folder_id = {alias}.id "
-        "AND skp.name = 'SKILL.md' AND skp.deleted_at IS NULL)"
-    )
+    """SQL fragment: folder ``alias`` is not a skill."""
+    return f"NOT {alias}.is_skill"
 
 
 async def skill_subtree_folder_ids(owner_user_id: UUID) -> set[UUID]:
@@ -36,10 +37,7 @@ async def skill_subtree_folder_ids(owner_user_id: UUID) -> set[UUID]:
     pool = get_pool()
     rows = await pool.fetch(
         "WITH RECURSIVE skill_tree AS ("
-        "  SELECT f.id FROM folders f "
-        "  WHERE f.owner_user_id = $1 "
-        "    AND EXISTS (SELECT 1 FROM pages p WHERE p.folder_id = f.id "
-        "                AND p.name = 'SKILL.md' AND p.deleted_at IS NULL)"
+        "  SELECT f.id FROM folders f WHERE f.owner_user_id = $1 AND f.is_skill"
         "  UNION"
         "  SELECT f.id FROM folders f JOIN skill_tree st ON f.parent_folder_id = st.id"
         ") SELECT id FROM skill_tree",
@@ -80,20 +78,24 @@ def parse_frontmatter(md: str) -> tuple[dict, str]:
 
 async def list_skills(owner_user_id: UUID, user_id: UUID) -> list[dict]:
     """List every skill folder in the scope: folder + SKILL.md frontmatter,
-    plus the publish record when the skill has been shared."""
+    plus the publish record when the skill has been shared.
+
+    LEFT JOIN on SKILL.md, not INNER: membership is the flag, so a skill
+    whose instructions are missing still lists — as a draft, with
+    has_instructions false — instead of vanishing from every surface."""
     pool = get_pool()
     readable = permission_service.readable_content_condition("folder", "f", 2)
     rows = await pool.fetch(
-        "SELECT f.id AS folder_id, f.name AS folder_name, "
+        "SELECT f.id AS folder_id, f.name AS folder_name, f.updated_at AS folder_updated_at, "
         "  p.id AS skill_md_id, p.content_markdown AS skill_md, p.updated_at, "
         "  (SELECT COUNT(*) FROM pages p2 WHERE p2.folder_id = f.id "
         "   AND p2.deleted_at IS NULL) AS file_count, "
         "  s.id AS publish_id, s.slug, s.title, s.discoverable, "
         "  s.cover_image_url, s.icon_url, s.view_count "
         "FROM folders f "
-        "JOIN pages p ON p.folder_id = f.id AND p.name = 'SKILL.md' AND p.deleted_at IS NULL "
+        "LEFT JOIN pages p ON p.folder_id = f.id AND p.name = 'SKILL.md' AND p.deleted_at IS NULL "
         "LEFT JOIN skills s ON s.folder_id = f.id "
-        f"WHERE f.owner_user_id = $1 AND {readable} "
+        f"WHERE f.owner_user_id = $1 AND f.is_skill AND {readable} "
         "ORDER BY f.name",
         owner_user_id,
         user_id,
@@ -120,7 +122,10 @@ async def list_skills(owner_user_id: UUID, user_id: UUID) -> list[dict]:
                 "version": meta.get("version", ""),
                 "mcp_exposed": bool(meta.get("mcp_exposed", False)),
                 "file_count": int(r["file_count"]),
-                "updated_at": r["updated_at"],
+                "updated_at": r["updated_at"] or r["folder_updated_at"],
+                # False = a draft skill: it exists and is named, but has no
+                # instructions for an agent to load yet. Surfaces say so.
+                "has_instructions": r["skill_md_id"] is not None,
                 "published": published,
             }
         )
@@ -180,6 +185,10 @@ async def read_skill(owner_user_id: UUID, name: str, user_id: UUID) -> dict | No
         "name": match["name"],
         "description": match["description"],
         "when_to_use": match["when_to_use"],
+        # A draft skill loads with no instructions. Callers that need them
+        # (agent load, publish, install) refuse on this rather than handing
+        # an agent an empty document and calling it a skill.
+        "has_instructions": skill_md is not None,
         "body": body,
         "files": [
             {

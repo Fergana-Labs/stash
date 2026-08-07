@@ -1,0 +1,102 @@
+"""Skill membership is stored and explicit, never derived from file contents.
+
+A folder used to be a skill because it contained a live SKILL.md, so ordinary
+file edits silently reclassified folders: deleting the file demoted a
+customer's skill out of every agent's catalog three times in two weeks, and a
+stray SKILL.md could promote Memory into a wipeable "skill". Membership now
+changes only through deliberate verbs.
+"""
+
+from uuid import uuid4
+
+import pytest
+import pytest_asyncio
+
+from backend.services import files_tree_service, skill_service
+
+
+@pytest_asyncio.fixture
+async def scope(_db_pool):
+    user_id = uuid4()
+    await _db_pool.execute(
+        "INSERT INTO users (id, name, display_name) VALUES ($1, $2, $2)",
+        user_id,
+        f"u_{user_id.hex[:6]}",
+    )
+    return user_id
+
+
+@pytest.mark.asyncio
+async def test_dropping_a_skill_md_into_a_folder_does_not_promote_it(scope, _db_pool):
+    folder = await files_tree_service.create_folder(scope, "Notes", scope)
+    await files_tree_service.create_page(
+        scope, "SKILL.md", scope, folder_id=folder["id"], content="# not a skill"
+    )
+
+    skills = await skill_service.list_skills(scope, scope)
+
+    assert [s["folder_id"] for s in skills] == []
+
+
+@pytest.mark.asyncio
+async def test_convert_verbs_are_the_only_way_membership_changes(scope, _db_pool):
+    folder = await files_tree_service.create_folder(scope, "Recipes", scope)
+
+    promoted = await files_tree_service.set_folder_is_skill(folder["id"], scope, True)
+    assert promoted["is_skill"] is True
+    assert [s["folder_id"] for s in await skill_service.list_skills(scope, scope)] == [
+        str(folder["id"])
+    ]
+
+    demoted = await files_tree_service.set_folder_is_skill(folder["id"], scope, False)
+    assert demoted["is_skill"] is False
+    assert await skill_service.list_skills(scope, scope) == []
+
+
+@pytest.mark.asyncio
+async def test_deleting_skill_md_leaves_a_draft_skill_not_a_silent_demotion(scope, _db_pool):
+    """The customer's exact move. Before: the skill vanished from every
+    surface with no warning. Now: the delete is refused outright, and even
+    forced at the data layer the skill still lists — as a draft."""
+    folder = await files_tree_service.create_skill(scope, scope, "Brake Shoes")
+    page_id = await _db_pool.fetchval(
+        "SELECT id FROM pages WHERE folder_id = $1 AND name = 'SKILL.md'", folder["id"]
+    )
+
+    with pytest.raises(ValueError, match="can't be deleted or renamed"):
+        await files_tree_service.delete_page(page_id, scope, scope)
+    with pytest.raises(ValueError, match="can't be deleted or renamed"):
+        await files_tree_service.update_page(page_id, scope, scope, name="notes.md")
+
+    await _db_pool.execute("UPDATE pages SET deleted_at = now() WHERE id = $1", page_id)
+    [skill] = await skill_service.list_skills(scope, scope)
+    assert skill["folder_id"] == str(folder["id"])
+    assert skill["has_instructions"] is False
+
+
+@pytest.mark.asyncio
+async def test_memory_can_never_become_a_skill(scope, _db_pool):
+    memory = await files_tree_service.get_or_create_memory_folder(scope, scope)
+
+    with pytest.raises(ValueError, match="can't be turned into a skill"):
+        await files_tree_service.set_folder_is_skill(memory["id"], scope, True)
+
+    # And a stray SKILL.md inside it changes nothing.
+    await files_tree_service.create_page(
+        scope, "SKILL.md", scope, folder_id=memory["id"], content="# stray"
+    )
+    assert await skill_service.list_skills(scope, scope) == []
+
+
+@pytest.mark.asyncio
+async def test_bulk_write_carrying_a_skill_md_promotes_explicitly(scope, _db_pool):
+    """Import/sync is a caller saying "this is a skill" — unlike a user
+    editing files inside an existing folder."""
+    folder = await files_tree_service.create_folder(scope, "imported-repo", scope)
+    await files_tree_service.write_folder_files(
+        scope, scope, folder["id"], [("SKILL.md", b"# imported"), ("notes.md", b"context")]
+    )
+
+    assert [s["folder_id"] for s in await skill_service.list_skills(scope, scope)] == [
+        str(folder["id"])
+    ]

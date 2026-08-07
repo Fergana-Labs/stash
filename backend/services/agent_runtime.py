@@ -425,10 +425,8 @@ async def _create_skill(args: dict) -> dict:
         from ..database import get_pool
 
         existing = await get_pool().fetchrow(
-            "SELECT f.id, EXISTS (SELECT 1 FROM pages p WHERE p.folder_id = f.id "
-            "  AND p.name = 'SKILL.md' AND p.deleted_at IS NULL) AS is_skill "
-            "FROM folders f WHERE f.owner_user_id = $1 AND f.parent_folder_id IS NULL "
-            "  AND f.name = $2",
+            "SELECT f.id, f.is_skill FROM folders f "
+            "WHERE f.owner_user_id = $1 AND f.parent_folder_id IS NULL AND f.name = $2",
             owner_user_id,
             args["name"],
         )
@@ -449,6 +447,7 @@ async def _create_skill(args: dict) -> dict:
                 }
             )
         )
+    await files_tree_service.set_folder_is_skill(folder["id"], owner_user_id, True)
     await files_tree_service.create_page(
         owner_user_id,
         "SKILL.md",
