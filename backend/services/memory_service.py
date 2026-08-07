@@ -575,23 +575,33 @@ async def search_scope_events(
     user_id: UUID,
     query: str,
     limit: int = 50,
+    modified_after: datetime | None = None,
+    modified_before: datetime | None = None,
 ) -> list[dict]:
-    """Full-text search on scope events."""
+    """Full-text search on scope events, optionally bounded to a created_at
+    range (strict bounds; naive datetimes read as UTC)."""
     pool = get_pool()
     limit = min(limit, 500)
+    args: list = [owner_user_id, query, user_id]
+    where = (
+        "owner_user_id = $1 "
+        f"AND {readable_session_event_condition('history_events', 3)} "
+        "AND to_tsvector('english', content) @@ websearch_to_tsquery('english', $2)"
+    )
+    if modified_after:
+        args.append(_normalize_ts(modified_after))
+        where += f" AND created_at > ${len(args)}"
+    if modified_before:
+        args.append(_normalize_ts(modified_before))
+        where += f" AND created_at < ${len(args)}"
+    args.append(limit)
     rows = await pool.fetch(
         "SELECT id, owner_user_id, created_by, agent_name, event_type, session_id, "
         "tool_name, content, metadata, attachments, created_at, "
         "ts_rank(to_tsvector('english', content), websearch_to_tsquery('english', $2)) AS rank "
-        "FROM history_events "
-        "WHERE owner_user_id = $1 "
-        f"AND {readable_session_event_condition('history_events', 4)} "
-        "AND to_tsvector('english', content) @@ websearch_to_tsquery('english', $2) "
-        "ORDER BY rank DESC LIMIT $3",
-        owner_user_id,
-        query,
-        limit,
-        user_id,
+        f"FROM history_events WHERE {where} "
+        f"ORDER BY rank DESC LIMIT ${len(args)}",
+        *args,
     )
     return [dict(r) for r in rows]
 

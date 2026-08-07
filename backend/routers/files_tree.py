@@ -351,16 +351,13 @@ async def get_folder_contents(
     ancestry_rows = await pool.fetch(
         """
         WITH RECURSIVE chain AS (
-          SELECT id, name, parent_folder_id, 0 AS depth
+          SELECT id, name, parent_folder_id, is_skill, 0 AS depth
           FROM folders WHERE id = $1
           UNION ALL
-          SELECT f.id, f.name, f.parent_folder_id, c.depth + 1
+          SELECT f.id, f.name, f.parent_folder_id, f.is_skill, c.depth + 1
           FROM folders f JOIN chain c ON c.parent_folder_id = f.id
         )
-        SELECT id, name,
-               EXISTS(SELECT 1 FROM pages skp WHERE skp.folder_id = chain.id
-                      AND skp.name = 'SKILL.md' AND skp.deleted_at IS NULL) AS is_skill
-        FROM chain ORDER BY depth DESC
+        SELECT id, name, is_skill FROM chain ORDER BY depth DESC
         """,
         folder_id,
     )
@@ -614,7 +611,8 @@ async def create_page(
         content_html=req.content_html,
         html_layout=req.html_layout,
     )
-    return PageResponse(**page)
+    # The creator just wrote it; the response must not demote the editor.
+    return PageResponse(**{**page, "can_write": True})
 
 
 @router.post("/pages/{page_id}/copy", response_model=PageResponse, status_code=201)
@@ -638,7 +636,7 @@ async def copy_page(
     )
     if not page:
         raise HTTPException(status_code=404, detail="Page not found")
-    return PageResponse(**page)
+    return PageResponse(**{**page, "can_write": True})
 
 
 @router.get("/pages/semantic-search")
@@ -697,7 +695,10 @@ async def get_page_by_id(
         actor_user_id=viewer_id,
         owner_user_id=page["owner_user_id"],
     )
-    return PageResponse(**page)
+    can_write = viewer_id is not None and await permission_service.check_access(
+        "page", page_id, viewer_id, owner_user_id=page["owner_user_id"], require="write"
+    )
+    return PageResponse(**page, can_write=can_write)
 
 
 @router.get("/pages/{page_id}", response_model=PageResponse)
@@ -720,7 +721,10 @@ async def get_page(
         actor_user_id=current_user["id"],
         owner_user_id=owner_user_id,
     )
-    return PageResponse(**page)
+    can_write = await permission_service.check_access(
+        "page", page_id, current_user["id"], owner_user_id=owner_user_id, require="write"
+    )
+    return PageResponse(**page, can_write=can_write)
 
 
 @router.get("/pages/{page_id}/download")
@@ -799,13 +803,23 @@ async def update_page(
             html_layout=req.html_layout,
             move_to_root=req.move_to_root,
             guard_content_hash=not (req.collab_projection and req.content is not None),
+            expected_content_hash=req.expected_content_hash,
             notify=not req.collab_projection,
         )
     except DuplicatePageName as e:
         raise HTTPException(status_code=409, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except files_tree_service.ConcurrentEditError:
+        raise HTTPException(
+            status_code=409,
+            detail="This page changed since you loaded it — reload to get the latest version.",
+        )
     if not page:
         raise HTTPException(status_code=404, detail="Page not found")
-    return PageResponse(**page)
+    # Write access was checked above; a save response must not flip the
+    # editor read-only by omitting the flag.
+    return PageResponse(**{**page, "can_write": True})
 
 
 @router.delete("/pages/{page_id}", status_code=204)
@@ -822,7 +836,10 @@ async def delete_page(
         current_user["id"],
         require="write",
     )
-    deleted = await files_tree_service.delete_page(page_id, owner_user_id, current_user["id"])
+    try:
+        deleted = await files_tree_service.delete_page(page_id, owner_user_id, current_user["id"])
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     if not deleted:
         raise HTTPException(status_code=404, detail="Page not found")
 

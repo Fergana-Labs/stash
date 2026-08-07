@@ -2,8 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { EditorContent, useEditor } from "@tiptap/react";
-import Collaboration from "@tiptap/extension-collaboration";
-import CollaborationCaret from "@tiptap/extension-collaboration-caret";
 import StarterKit from "@tiptap/starter-kit";
 import Heading from "@tiptap/extension-heading";
 import Bold from "@tiptap/extension-bold";
@@ -16,22 +14,21 @@ import Typography from "@tiptap/extension-typography";
 import Image from "@tiptap/extension-image";
 import Placeholder from "@tiptap/extension-placeholder";
 import { Table, TableCell, TableHeader, TableRow } from "@tiptap/extension-table";
-import { HocuspocusProvider } from "@hocuspocus/provider";
-import * as Y from "yjs";
+import MarkdownIt from "markdown-it";
 import EditorToolbar from "./EditorToolbar";
 import CommentMark from "./CommentMark";
 import CommentComposerPopover from "./CommentComposerPopover";
 import { Page } from "../../lib/types";
-import {
-  getAuthToken,
-  getCollabUrl,
-  uploadFile,
-  fileDownloadUrl,
-} from "../../lib/api";
+import { uploadFile, fileDownloadUrl } from "../../lib/api";
+import { splitFrontmatter, joinFrontmatter } from "../../lib/frontmatter";
 import { openInNewTab, shouldOpenInNewTab } from "../../lib/linkNavigation";
 
 const AUTOSAVE_DEBOUNCE_MS = 1500;
 const ANCHOR_CONTEXT_CHARS = 32;
+
+// Same converter settings the collab server used, so existing pages render
+// identically after the switch to direct loading.
+const markdown = new MarkdownIt({ html: true, linkify: true, typographer: false });
 
 export type SaveStatus = "saved" | "dirty" | "saving";
 
@@ -42,20 +39,12 @@ export type AddCommentArgs = {
   body: string;
 };
 
-type CollaborationUser = {
-  id: string;
-  name: string;
-};
-
-type CollaborationState = {
-  document: Y.Doc;
-  provider: HocuspocusProvider;
-};
-
 interface MarkdownEditorProps {
   file: Page;
   onSave: (content: string) => void | Promise<void>;
-  collaborationUser: CollaborationUser;
+  /** A save was refused because the page changed elsewhere (409). Shown as
+   *  a banner; editing freezes until the parent reloads the page. */
+  conflictMessage?: string | null;
   confirmSave?: () => boolean;
   onSaveStatusChange?: (status: SaveStatus) => void;
   /** Called on clicks to same-origin skill routes so the page
@@ -79,7 +68,7 @@ interface MarkdownEditorProps {
 export default function MarkdownEditor({
   file,
   onSave,
-  collaborationUser,
+  conflictMessage,
   confirmSave,
   onSaveStatusChange,
   onNavigateInternal,
@@ -92,8 +81,10 @@ export default function MarkdownEditor({
   const [saving, setSaving] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSaved = useRef<string>(file.content_markdown);
-  const [collabError, setCollabError] = useState("");
-  const [readOnly, setReadOnly] = useState(false);
+  const readOnly = !file.can_write || !!conflictMessage;
+  // Frontmatter is split off before the editor ever renders the document and
+  // reattached on save — the editor cannot represent it, only destroy it.
+  const frontmatterRef = useRef<string | null>(splitFrontmatter(file.content_markdown).frontmatter);
   // Refs that closures inside `useEditor` / window listeners can call
   // without re-creating the editor every render.
   const saveMarkdownRef = useRef<(md: string) => void>(() => {});
@@ -112,61 +103,22 @@ export default function MarkdownEditor({
     suffix: string;
   } | null>(null);
 
-  const [collaboration, setCollaboration] = useState<CollaborationState | null>(
-    null
+  // The page body the editor renders: the stored markdown minus its
+  // frontmatter, converted once per page open. After that the editor holds
+  // the document and saves export it back to markdown. Keyed on file.id
+  // only — save echoes update file.content_markdown and must not reset the
+  // document under the caret.
+  const initialBodyHtml = useMemo(
+    () => markdown.render(splitFrontmatter(file.content_markdown).body),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [file.id]
   );
-
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      setCollaboration(null);
-      return;
-    }
-    let active = true;
-    setCollabError("");
-    setReadOnly(false);
-
-    const document = new Y.Doc();
-    const provider = new HocuspocusProvider({
-      url: getCollabUrl(),
-      name: `scope:${file.owner_user_id}:page:${file.id}`,
-      document,
-      sessionAwareness: true,
-      // Async factory, re-run on every (re)connect — Auth0 access tokens
-      // expire, so a reconnect must not re-send a stale token.
-      token: async () => (await getAuthToken()) ?? "",
-      onAuthenticated: ({ scope }) => {
-        if (!active) return;
-        setReadOnly(scope === "readonly");
-        setCollabError("");
-      },
-      onAuthenticationFailed: ({ reason }) => {
-        if (!active) return;
-        setCollabError(reason || "Live editing authentication failed");
-      },
-      onClose: ({ event }) => {
-        if (!active) return;
-        if (event.code === 1000) return;
-        setCollabError("Live editing connection closed");
-      },
-    });
-    setCollaboration({ document, provider });
-
-    return () => {
-      active = false;
-      provider.destroy();
-      document.destroy();
-    };
-  }, [file.id, file.owner_user_id]);
-
-  const collaborationUserColor = useMemo(
-    () => colorFromId(collaborationUser.id),
-    [collaborationUser.id],
-  );
-  const canEdit = !!collaboration && !readOnly;
+  const canEdit = !readOnly;
 
   const editor = useEditor({
     immediatelyRender: false,
     editable: canEdit,
+    content: initialBodyHtml,
     extensions: [
       StarterKit.configure({
         blockquote: false,
@@ -179,7 +131,6 @@ export default function MarkdownEditor({
         // avoid the "Duplicate extension names" warning + drift.
         link: false,
         underline: false,
-        undoRedo: false,
       }),
       Heading.configure({ levels: [1, 2, 3] }),
       Bold,
@@ -214,39 +165,6 @@ export default function MarkdownEditor({
       TableCell,
       Placeholder.configure({ placeholder: "Start typing..." }),
       CommentMark,
-      ...(collaboration
-        ? [
-            Collaboration.configure({
-              document: collaboration.document,
-              provider: collaboration.provider,
-            }),
-            CollaborationCaret.configure({
-              provider: collaboration.provider,
-              user: {
-                name: collaborationUser.name,
-                color: collaborationUserColor,
-              },
-              render: (user) => {
-                const cursor = document.createElement("span");
-                cursor.classList.add("collaboration-cursor__caret");
-                cursor.style.borderColor = user.color;
-
-                const label = document.createElement("span");
-                label.classList.add("collaboration-cursor__label");
-                label.style.backgroundColor = user.color;
-                label.textContent = user.name;
-
-                cursor.append(label);
-                return cursor;
-              },
-              selectionRender: (user) => ({
-                nodeName: "span",
-                class: "collaboration-selection",
-                style: `background-color: ${user.color}33`,
-              }),
-            }),
-          ]
-        : []),
     ],
     editorProps: {
       attributes: {
@@ -322,7 +240,10 @@ export default function MarkdownEditor({
     },
     onUpdate: ({ editor }) => {
       if (readOnly) return;
-      const md = serializeMarkdown(editor.getJSON(), lastSaved.current);
+      const md = joinFrontmatter(
+        frontmatterRef.current,
+        serializeMarkdown(editor.getJSON(), splitFrontmatter(lastSaved.current).body)
+      );
       if (md === lastSaved.current) return;
       setDirty(true);
       if (saveTimer.current) clearTimeout(saveTimer.current);
@@ -331,7 +252,14 @@ export default function MarkdownEditor({
         saveMarkdownRef.current(md);
       }, AUTOSAVE_DEBOUNCE_MS);
     },
-  }, [collaboration, collaborationUser.name, collaborationUserColor, canEdit, readOnly]);
+    // Recreated only on page switch. Editability flips live via setEditable
+    // below — recreating on a permission/conflict flip would rewind the
+    // document to its mount-time content, discarding what the user typed.
+  }, [initialBodyHtml]);
+
+  useEffect(() => {
+    editor?.setEditable(canEdit);
+  }, [editor, canEdit]);
 
   const saveMarkdown = useCallback(
     async (md: string) => {
@@ -342,7 +270,12 @@ export default function MarkdownEditor({
         // If the doc changed during the save (user kept typing), leave the
         // dirty flag alone so the next debounce flushes — only clear it when
         // what we saved is still what's on screen.
-        const currentMd = editor ? serializeMarkdown(editor.getJSON(), md) : md;
+        const currentMd = editor
+          ? joinFrontmatter(
+              frontmatterRef.current,
+              serializeMarkdown(editor.getJSON(), splitFrontmatter(md).body)
+            )
+          : md;
         if (currentMd === md) {
           lastSaved.current = md;
           setDirty(false);
@@ -398,6 +331,13 @@ export default function MarkdownEditor({
     setSaving(false);
   }, [file.content_markdown, file.id]);
 
+  // Re-split the frontmatter when switching pages — id only: an edit echo
+  // must not clobber the held frontmatter mid-session.
+  useEffect(() => {
+    frontmatterRef.current = splitFrontmatter(file.content_markdown).frontmatter;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [file.id]);
+
   // Bubble save status to parent
   useEffect(() => {
     if (onSaveStatusChange) {
@@ -411,7 +351,10 @@ export default function MarkdownEditor({
       if (saveTimer.current) {
         clearTimeout(saveTimer.current);
         if (editor) {
-          const md = serializeMarkdown(editor.getJSON(), lastSaved.current);
+          const md = joinFrontmatter(
+            frontmatterRef.current,
+            serializeMarkdown(editor.getJSON(), splitFrontmatter(lastSaved.current).body)
+          );
           if (md !== lastSaved.current) {
             saveMarkdownRef.current(md);
           }
@@ -518,7 +461,10 @@ export default function MarkdownEditor({
           clearTimeout(saveTimer.current);
           saveTimer.current = null;
         }
-        const md = serializeMarkdown(editor.getJSON(), lastSaved.current);
+        const md = joinFrontmatter(
+          frontmatterRef.current,
+          serializeMarkdown(editor.getJSON(), splitFrontmatter(lastSaved.current).body)
+        );
         saveMarkdownRef.current(md);
       }
     };
@@ -532,14 +478,19 @@ export default function MarkdownEditor({
         editor={editor}
         onStartComment={!readOnly && onAddComment ? openComposer : undefined}
       />
-      {collabError && (
+      {conflictMessage && (
         <div className="border-b border-red-300/40 bg-red-500/10 px-4 py-2 text-[13px] text-red-500">
-          {collabError}
+          {conflictMessage}
         </div>
       )}
-      {readOnly && !collabError && (
+      {readOnly && !conflictMessage && (
         <div className="border-b border-border-subtle bg-raised px-4 py-2 text-[12px] text-muted-foreground">
-          Read-only live view
+          Read-only
+        </div>
+      )}
+      {frontmatterRef.current !== null && (
+        <div className="border-b border-border-subtle bg-raised/60 px-4 py-2 font-mono text-[11px] leading-relaxed text-muted-foreground whitespace-pre-wrap">
+          {frontmatterRef.current}
         </div>
       )}
       <div
@@ -560,21 +511,6 @@ export default function MarkdownEditor({
       </div>
     </div>
   );
-}
-
-const CARET_COLORS = [
-  "#2563eb",
-  "#059669",
-  "#dc2626",
-  "#7c3aed",
-  "#c2410c",
-  "#0891b2",
-];
-
-function colorFromId(id: string): string {
-  let hash = 0;
-  for (const char of id) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
-  return CARET_COLORS[hash % CARET_COLORS.length];
 }
 
 type JSONNode = {

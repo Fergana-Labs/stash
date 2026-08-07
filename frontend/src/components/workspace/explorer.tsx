@@ -4,9 +4,8 @@ import { useCallback, useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Bot, ChevronRight, File, Folder, Loader2, MessagesSquare, GraduationCap, Monitor, Plus, Settings, FolderTree, Brain, Plug, Sparkles, SquareTerminal } from "lucide-react";
 import { toast } from "sonner";
-import { ApiError, listMySessions, listSessionFolders, listSharedWithMe, listSkillsSharedWithMe, listSharedSessionFolderSessions, createSessionFolder, listSkills, listSources, createFolder, createPage, machineFsList, listAgents, createAgent, type Agent as AgentRow, type MachineEntry, type SessionSummary, type Source } from "@/lib/api";
+import { ApiError, listMySessions, listSessionFolders, listSharedWithMe, listSkillsSharedWithMe, listSharedSessionFolderSessions, createSessionFolder, listSkills, listSources, createSkill as createSkillApi, machineFsList, listAgents, createAgent, type Agent as AgentRow, type MachineEntry, type SessionSummary, type Source } from "@/lib/api";
 import { useMemoryFolderId } from "@/lib/memory-folder";
-import { SKILL_MD, skillMdTemplate } from "@/lib/localSkill";
 import { requestAgentConfigView, requestCuratorRun } from "@/lib/agent-tab-view";
 import { cn } from "@/lib/utils";
 import { useWorkspace, type TabKind } from "@/lib/workspace-store";
@@ -318,10 +317,11 @@ export default function Explorer({ section }: { section: ExplorerSection }) {
         readOnly: true,
       }));
   }, []);
-  // A skill is a folder + SKILL.md — the Skills root's "create native item" action.
-  const createSkill = useCallback(async () => {
-    const folder = await createFolder("New skill", null);
-    await createPage(SKILL_MD, folder.id, skillMdTemplate("New skill"));
+  // A skill is a folder + SKILL.md — the Skills root's "create native item"
+  // action. Returns the created Item so the explorer opens and highlights it.
+  const createSkill = useCallback(async (): Promise<Item> => {
+    const created = await createSkillApi();
+    return { kind: "skill", id: created.folder_id, name: created.name };
   }, []);
 
   // Sessions are their own tree: session folders + loose sessions at the root,
@@ -395,7 +395,10 @@ export default function Explorer({ section }: { section: ExplorerSection }) {
           rootLabel={LABEL[section]}
           rootFolderId={section === "memory" ? memoryFolderId : null}
           hideFolderId={section === "files" ? memoryFolderId : null}
-          tabSection={section === "memory" ? "memory" : undefined}
+          // Stamp the section on opened tabs so the shell keeps you where you
+          // are. Without it every folder/page route reads as Files, and opening
+          // a file inside a skill teleported you to the Files tab.
+          tabSection={section === "memory" || section === "skills" ? section : undefined}
           loadRoot={section === "skills" ? skillsRoot : isSessions ? sessionsRoot : undefined}
           loadFolder={isSessions ? sessionsFolder : undefined}
           // Sessions already merges shared folders into its root, and Memory is

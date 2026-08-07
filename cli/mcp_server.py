@@ -29,6 +29,8 @@ def stash_search(
     include_sources: str = "",
     exclude_sources: str = "",
     limit: int = 20,
+    modified_after: str = "",
+    modified_before: str = "",
 ) -> str:
     """Search across all your sources — native files + session transcripts +
     connected sources (GitHub/Drive/Gmail/Notion/Slack/Granola) — merged onto
@@ -39,6 +41,9 @@ def stash_search(
     'sessions', or a connected-source id); omit it to search everything.
     Or filter with comma-separated `include_sources`/`exclude_sources` (native
     handles + provider names, e.g. "files,gmail"); not combinable with `source`.
+    Pass `modified_after`/`modified_before` (ISO-8601) to restrict to a
+    last-modified window; results with no known modification time are excluded
+    whenever a bound is set.
     """
     return _json(
         _client().search_sources(
@@ -47,6 +52,8 @@ def stash_search(
             include_sources=split_source_tokens(include_sources),
             exclude_sources=split_source_tokens(exclude_sources),
             limit=limit,
+            modified_after=modified_after or None,
+            modified_before=modified_before or None,
         )
     )
 
@@ -518,6 +525,9 @@ def stash_create_skill(
     client.create_page(
         name="SKILL.md", content=content, folder_id=folder["id"], content_type="markdown"
     )
+    # Membership is a stored flag server-side: writing SKILL.md is the skill's
+    # instructions, the convert verb is what makes the folder a skill.
+    client.convert_folder_to_skill(folder["id"])
     return _json({"folder_id": folder["id"], "name": name})
 
 

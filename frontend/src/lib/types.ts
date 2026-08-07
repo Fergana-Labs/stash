@@ -44,6 +44,9 @@ export interface Page {
   content_markdown: string;
   content_html: string;
   html_layout: HtmlLayout;
+  content_hash: string | null;
+  /** Whether the requesting viewer may write this page. */
+  can_write: boolean;
   last_edit_session_id?: string | null;
   last_edit_agent_name?: string | null;
   created_by: string;

@@ -18,9 +18,27 @@ class _FakeClient:
         return None
 
     def search_sources(
-        self, query, source=None, include_sources=None, exclude_sources=None, limit=20
+        self,
+        query,
+        source=None,
+        include_sources=None,
+        exclude_sources=None,
+        limit=20,
+        modified_after=None,
+        modified_before=None,
     ):
-        self._calls.append(("search", query, source, include_sources, exclude_sources, limit))
+        self._calls.append(
+            (
+                "search",
+                query,
+                source,
+                include_sources,
+                exclude_sources,
+                limit,
+                modified_after,
+                modified_before,
+            )
+        )
         return {
             "results": [{"source": "files", "ref": "p1", "name": "Runbook", "snippet": "deploy"}],
             "has_more": False,
@@ -56,17 +74,31 @@ def _wire(monkeypatch) -> list:
 def test_search_everything_passes_no_source(monkeypatch) -> None:
     calls = _wire(monkeypatch)
     main.search(
-        "migration", source="", include_sources="", exclude_sources="", limit=20, as_json=True
+        "migration",
+        source="",
+        include_sources="",
+        exclude_sources="",
+        modified_after="",
+        modified_before="",
+        limit=20,
+        as_json=True,
     )
-    assert calls == [("search", "migration", None, None, None, 20)]
+    assert calls == [("search", "migration", None, None, None, 20, None, None)]
 
 
 def test_search_scoped_passes_the_source(monkeypatch) -> None:
     calls = _wire(monkeypatch)
     main.search(
-        "rotate", source="src-9", include_sources="", exclude_sources="", limit=5, as_json=True
+        "rotate",
+        source="src-9",
+        include_sources="",
+        exclude_sources="",
+        modified_after="",
+        modified_before="",
+        limit=5,
+        as_json=True,
     )
-    assert calls == [("search", "rotate", "src-9", None, None, 5)]
+    assert calls == [("search", "rotate", "src-9", None, None, 5, None, None)]
 
 
 def test_search_splits_comma_separated_source_filters(monkeypatch) -> None:
@@ -76,10 +108,33 @@ def test_search_splits_comma_separated_source_filters(monkeypatch) -> None:
         source="",
         include_sources="files, gmail,,jira",
         exclude_sources="slack",
+        modified_after="",
+        modified_before="",
         limit=20,
         as_json=True,
     )
-    assert calls == [("search", "migration", None, ["files", "gmail", "jira"], ["slack"], 20)]
+    assert calls == [
+        ("search", "migration", None, ["files", "gmail", "jira"], ["slack"], 20, None, None)
+    ]
+
+
+def test_search_forwards_modified_range(monkeypatch) -> None:
+    """The bounds are raw ISO strings passed through untouched — the server
+    parses and validates, so the CLI must not reformat or reject them."""
+    calls = _wire(monkeypatch)
+    main.search(
+        "migration",
+        source="",
+        include_sources="",
+        exclude_sources="",
+        modified_after="2026-01-01",
+        modified_before="2026-02-01T00:00:00Z",
+        limit=20,
+        as_json=True,
+    )
+    assert calls == [
+        ("search", "migration", None, None, None, 20, "2026-01-01", "2026-02-01T00:00:00Z")
+    ]
 
 
 def test_split_source_tokens() -> None:
@@ -120,6 +175,27 @@ def test_search_sends_source_filters_as_repeated_query_params(monkeypatch) -> No
     ]
 
 
+def test_search_sends_modified_bounds_only_when_set(monkeypatch) -> None:
+    """Blank bounds must stay off the wire entirely (the repeated-params test
+    above shows they're absent by default); set bounds ride as query params."""
+    requests: list = []
+
+    class _Resp:
+        def json(self):
+            return {"results": [], "has_more": False}
+
+    def fake_request(method, url, **kwargs):
+        requests.append(kwargs.get("params"))
+        return _Resp()
+
+    client = StashClient("http://test")
+    monkeypatch.setattr(client, "_request", fake_request)
+    client.search_sources("q", modified_after="2026-01-01", modified_before="2026-02-01")
+    assert requests == [
+        {"q": "q", "limit": 20, "modified_after": "2026-01-01", "modified_before": "2026-02-01"}
+    ]
+
+
 def test_list_source_entries_sends_path_as_query_param(monkeypatch) -> None:
     """The entries endpoint takes a query param literally named "path". The real
     client method must not collide with the helpers' URL argument (it did once:
@@ -153,9 +229,7 @@ def test_search_renders_error_and_truncation_markers(monkeypatch, capsys) -> Non
         def __exit__(self, *_args):
             return None
 
-        def search_sources(
-            self, query, source=None, include_sources=None, exclude_sources=None, limit=20
-        ):
+        def search_sources(self, query, **kwargs):
             return {
                 "results": [
                     {
@@ -181,7 +255,16 @@ def test_search_renders_error_and_truncation_markers(monkeypatch, capsys) -> Non
 
     monkeypatch.setattr(main, "_require_auth", lambda: None)
     monkeypatch.setattr(main, "_client", lambda: _MarkerClient())
-    main.search("q", source="", include_sources="", exclude_sources="", limit=30, as_json=False)
+    main.search(
+        "q",
+        source="",
+        include_sources="",
+        exclude_sources="",
+        modified_after="",
+        modified_before="",
+        limit=30,
+        as_json=False,
+    )
 
     out = capsys.readouterr().out
     assert "Hello" in out
@@ -204,9 +287,7 @@ def test_search_prints_the_server_snippet_whole(monkeypatch, capsys) -> None:
         def __exit__(self, *_args):
             return None
 
-        def search_sources(
-            self, query, source=None, include_sources=None, exclude_sources=None, limit=20
-        ):
+        def search_sources(self, query, **kwargs):
             return {
                 "results": [{"source": "files", "ref": "p1", "name": "Notes", "snippet": snippet}],
                 "has_more": False,
@@ -214,6 +295,15 @@ def test_search_prints_the_server_snippet_whole(monkeypatch, capsys) -> None:
 
     monkeypatch.setattr(main, "_require_auth", lambda: None)
     monkeypatch.setattr(main, "_client", lambda: _SnippetClient())
-    main.search("match", source="", include_sources="", exclude_sources="", limit=20, as_json=False)
+    main.search(
+        "match",
+        source="",
+        include_sources="",
+        exclude_sources="",
+        modified_after="",
+        modified_before="",
+        limit=20,
+        as_json=False,
+    )
 
     assert "ZFINALZ" in capsys.readouterr().out

@@ -6,8 +6,15 @@ import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type React
 import WorkspaceShell from "@/components/workspace/workspace-shell";
 import CustomSelect from "../../components/CustomSelect";
 import SearchSourceFilter from "../../components/SearchSourceFilter";
+import SearchModifiedFilter from "../../components/SearchModifiedFilter";
 import { providerForSourceType } from "../../components/integrations/connectors";
 import { CLIENT_SIDE_TOKENS, unifiedSearchTokens } from "./unified-tokens";
+import {
+  DEFAULT_MODIFIED_RANGE,
+  modifiedRangeParams,
+  withinModifiedRange,
+  type ModifiedRange,
+} from "./modified-range";
 import { BasicPageSkeleton, SearchResultsSkeleton, SearchSkeleton } from "../../components/SkeletonStates";
 import { useAuth } from "../../hooks/useAuth";
 import { track } from "../../lib/analytics";
@@ -91,6 +98,7 @@ function SearchPageInner() {
   // The chip stores what's UNCHECKED, so "all selected" is the default even
   // before the connected providers load, and the default sends no filter.
   const [deselectedSources, setDeselectedSources] = useState<Set<string>>(new Set());
+  const [modifiedRange, setModifiedRange] = useState<ModifiedRange>(DEFAULT_MODIFIED_RANGE);
   const [results, setResults] = useState<SearchResult[]>([]);
   const [sourceNotices, setSourceNotices] = useState<string[]>([]);
   const [hasMore, setHasMore] = useState(false);
@@ -121,6 +129,7 @@ function SearchPageInner() {
     selectedPageId,
     selectedProductSkillId,
     selectedProductSkillSlug,
+    modifiedRange,
   ]);
   const [prevSearchKey, setPrevSearchKey] = useState(searchKey);
   if (prevSearchKey !== searchKey) {
@@ -234,6 +243,10 @@ function SearchPageInner() {
       const includePages = selected.includes("files");
       const includeTables = selected.includes("tables");
       const includeSkills = selected.includes("skills");
+      // Computed per fetch so relative presets ("Past 24 hours") anchor to
+      // now. The scoped modes below (single session, public skill) are
+      // explicit navigation targets, not the unified surface — unfiltered.
+      const modifiedBounds = modifiedRangeParams(modifiedRange, new Date());
 
       if (selectedSessionId) {
         const events = await getSessionEvents(selectedSessionId);
@@ -259,7 +272,11 @@ function SearchPageInner() {
       }
 
       if (includeSkills && !selectedFolderId && !selectedPageId) {
-        nextResults.push(...searchSkills(skills, q, sourceName));
+        nextResults.push(
+          ...searchSkills(skills, q, sourceName).filter((r) =>
+            withinModifiedRange(r.updatedAt, modifiedBounds)
+          )
+        );
       }
 
       // One unified call covers sessions + pages + connected sources, merged
@@ -275,6 +292,8 @@ function SearchPageInner() {
         const { results: hits, has_more } = await searchSource(q, {
           includeSources: tokens.length === allApiTokenCount ? undefined : tokens,
           limit,
+          modifiedAfter: modifiedBounds.modifiedAfter,
+          modifiedBefore: modifiedBounds.modifiedBefore,
         });
         if (searchSeq.current !== seq) return;
         const folderIds = sidebar
@@ -295,7 +314,9 @@ function SearchPageInner() {
       }
 
       if (includeTables && !selectedFolderId && !selectedPageId) {
-        nextResults.push(...searchTables(tables, q));
+        nextResults.push(
+          ...searchTables(tables, q).filter((r) => withinModifiedRange(r.updatedAt, modifiedBounds))
+        );
       }
 
       setResults(sortResults(nextResults));
@@ -316,6 +337,7 @@ function SearchPageInner() {
   }, [
     allSourceTokens,
     deselectedSources,
+    modifiedRange,
     skills,
     selectedFolderId,
     selectedPageId,
@@ -424,6 +446,8 @@ function SearchPageInner() {
                 })
               }
             />
+
+            <SearchModifiedFilter range={modifiedRange} onChange={setModifiedRange} />
           </div>
 
           <main className="min-w-0">

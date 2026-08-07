@@ -108,8 +108,10 @@ export default function FilesExplorer({
    *  explorer's root; omitted, the section has no shared surface at all. */
   loadShared?: () => Promise<Item[]>;
   /** At a virtual root (loadRoot), the "create" action for that root's native item
-   *  (e.g. New skill) — replaces new-file/folder/upload, which need a real folder. */
-  newRootItem?: { label: string; run: () => Promise<void> };
+   *  (e.g. New skill) — replaces new-file/folder/upload, which need a real folder.
+   *  Returning the created Item makes the explorer open it and highlight its
+   *  row; returning void leaves the list refresh as the only effect. */
+  newRootItem?: { label: string; run: () => Promise<Item | void> };
   /** Double-clicking the root crumb can open a native overview tab. */
   openRootTab?: () => void;
   /** Show the GitHub import button. Default true. */
@@ -145,6 +147,10 @@ export default function FilesExplorer({
   const [menu, setMenu] = useState<Menu>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
+  const [creatingRoot, setCreatingRoot] = useState(false);
+  // Row to visually call out after a create, so the new item is findable in a
+  // long list. Cleared on a timer.
+  const [highlightId, setHighlightId] = useState<string | null>(null);
   const [sort, setSort] = useState<Sort>("name");
   const [importOpen, setImportOpen] = useState(false);
   const [repoUrl, setRepoUrl] = useState("");
@@ -297,7 +303,29 @@ export default function FilesExplorer({
     openAsTab({ kind: "table", id: t.id, name: t.name });
   }
   async function newFolder(folder: string | null) { await createFolder("New folder", folder); await load(); }
-  async function runNewRootItem() { if (!newRootItem) return; await newRootItem.run(); await load(); }
+  async function runNewRootItem() {
+    if (!newRootItem || creatingRoot) return;
+    setCreatingRoot(true);
+    let created: Item | void;
+    try {
+      created = await newRootItem.run();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : `${newRootItem.label} failed`);
+      return;
+    } finally {
+      setCreatingRoot(false);
+    }
+    await load();
+    if (!created) return;
+    const item = created;
+    toast.success(`Created ${item.name}`);
+    // Land the user on the new item: its row is highlighted (and scrolled to —
+    // an alphabetical list files "New skill" below the fold) and it opens as a
+    // tab, ready to rename. Without this the click reads as a no-op.
+    setHighlightId(item.id);
+    setTimeout(() => setHighlightId((h) => (h === item.id ? null : h)), 3000);
+    openAsTab(item);
+  }
   async function uploadFiles(files: File[], folder: string | null) {
     const label = files.length === 1 ? files[0].name : `${files.length} files`;
     const toastId = toast.loading(`Uploading ${label}…`);
@@ -399,8 +427,8 @@ export default function FilesExplorer({
         <div className="ml-auto flex shrink-0 items-center gap-0.5">
           {inSharedIndex ? null : atVirtualRoot ? (
             newRootItem && (
-              <button title={newRootItem.label} aria-label={newRootItem.label} onClick={runNewRootItem} className="flex h-7 items-center gap-1 rounded px-1.5 text-[12px] text-sidebar-foreground hover:bg-sidebar-accent">
-                <FolderPlus className="h-4 w-4" /><Plus className="h-2.5 w-2.5" />
+              <button title={newRootItem.label} aria-label={newRootItem.label} onClick={runNewRootItem} disabled={creatingRoot} className="flex h-7 cursor-pointer items-center gap-1 rounded px-1.5 text-[12px] text-sidebar-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground disabled:cursor-default disabled:opacity-50">
+                {creatingRoot ? <Loader2 className="h-4 w-4 animate-spin" /> : <><FolderPlus className="h-4 w-4" /><Plus className="h-2.5 w-2.5" /></>}
               </button>
             )
           ) : vfsWritable ? (
@@ -471,9 +499,11 @@ export default function FilesExplorer({
               onClick={() => onRowClick(item)}
               onDoubleClick={() => onRowDoubleClick(item)}
               onContextMenu={(e) => { e.preventDefault(); setMenu({ x: e.clientX, y: e.clientY, item }); }}
+              ref={item.id === highlightId ? (el) => el?.scrollIntoView({ block: "nearest" }) : undefined}
               className={cn(
-                "group flex cursor-pointer items-center gap-1.5 rounded px-2 py-1 text-[13px] text-sidebar-foreground hover:bg-sidebar-accent",
+                "group flex cursor-pointer items-center gap-1.5 rounded px-2 py-1 text-[13px] text-sidebar-foreground transition-colors hover:bg-sidebar-accent",
                 dropTarget === item.id && "ring-1 ring-brand-400",
+                item.id === highlightId && "bg-brand-400/15 ring-1 ring-brand-400",
               )}
               title={item.name}
             >

@@ -522,7 +522,8 @@ async def test_member_sessions_and_events_land_in_workspace_scope(client: AsyncC
 async def _workspace_skill_folder(pool, scope_user_id, name="team-skill") -> uuid.UUID:
     scope_id = uuid.UUID(scope_user_id)
     folder = await pool.fetchrow(
-        "INSERT INTO folders (owner_user_id, name, created_by) VALUES ($1, $2, $1) RETURNING id",
+        "INSERT INTO folders (owner_user_id, name, created_by, is_skill) "
+        "VALUES ($1, $2, $1, true) RETURNING id",
         scope_id,
         name,
     )
