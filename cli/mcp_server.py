@@ -518,6 +518,9 @@ def stash_create_skill(
     client.create_page(
         name="SKILL.md", content=content, folder_id=folder["id"], content_type="markdown"
     )
+    # Membership is a stored flag server-side: writing SKILL.md is the skill's
+    # instructions, the convert verb is what makes the folder a skill.
+    client.convert_folder_to_skill(folder["id"])
     return _json({"folder_id": folder["id"], "name": name})
 
 
