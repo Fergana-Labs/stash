@@ -805,9 +805,7 @@ async def update_page(
             content_html=req.content_html,
             html_layout=req.html_layout,
             move_to_root=req.move_to_root,
-            guard_content_hash=not (req.collab_projection and req.content is not None),
             expected_content_hash=req.expected_content_hash,
-            notify=not req.collab_projection,
         )
     except DuplicatePageName as e:
         raise HTTPException(status_code=409, detail=str(e))

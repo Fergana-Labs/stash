@@ -10,7 +10,7 @@ export default function SelfHostingPage() {
       <P>
         The production Compose file pulls Stash application images from{" "}
         <Code>ghcr.io/fergana-labs</Code>. You do not need to build the backend,
-        frontend, or collab containers locally.
+        or frontend containers locally.
       </P>
 
       <H3>Host locally</H3>
