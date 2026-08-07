@@ -395,7 +395,10 @@ export default function Explorer({ section }: { section: ExplorerSection }) {
           rootLabel={LABEL[section]}
           rootFolderId={section === "memory" ? memoryFolderId : null}
           hideFolderId={section === "files" ? memoryFolderId : null}
-          tabSection={section === "memory" ? "memory" : undefined}
+          // Stamp the section on opened tabs so the shell keeps you where you
+          // are. Without it every folder/page route reads as Files, and opening
+          // a file inside a skill teleported you to the Files tab.
+          tabSection={section === "memory" || section === "skills" ? section : undefined}
           loadRoot={section === "skills" ? skillsRoot : isSessions ? sessionsRoot : undefined}
           loadFolder={isSessions ? sessionsFolder : undefined}
           // Sessions already merges shared folders into its root, and Memory is
