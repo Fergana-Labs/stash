@@ -346,6 +346,8 @@ stash vfs --cwd "/me/sources" "rg 'incident' ."`}</CodeBlock>
         params={[
           { name: "<query>", type: "string", desc: "Search query.", required: true },
           { name: "--source", type: "string", desc: "Scope to one source handle (from stash sources ls). Omit to search everything." },
+          { name: "--modified-after", type: "string", desc: "Only results last modified after this ISO timestamp (e.g. 2026-01-01). Results with no known modification time are excluded." },
+          { name: "--modified-before", type: "string", desc: "Only results last modified before this ISO timestamp. Results with no known modification time are excluded." },
           { name: "-n, --limit", type: "number", desc: "Maximum number of results. Defaults to 20." },
         ]}
       />
