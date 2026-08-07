@@ -1519,7 +1519,8 @@ def upload(
             result["public_link"] = True
 
         if create_skill:
-            # A skill is a folder with a SKILL.md; publishing makes it public.
+            # Skill membership is a stored flag: writing a SKILL.md does not
+            # make a folder a skill, the convert verb does.
             try:
                 c.create_page(
                     name="SKILL.md",
@@ -1530,6 +1531,7 @@ def upload(
             except StashError as e:
                 if e.status_code != 409:
                     raise
+            c.convert_folder_to_skill(root_folder["id"])
             if public:
                 skill_row = c.publish_skill_folder(
                     root_folder["id"],
@@ -1643,7 +1645,8 @@ def skills_add(
     folder_name = src.name
     with _client() as c:
         try:
-            # Skills are represented as folders containing markdown pages.
+            # A skill is a folder marked as one; its markdown pages (SKILL.md
+            # plus siblings) are its content.
             new_folder = c.create_folder(folder_name)
             folder_id = new_folder["id"]
             for md_file in sorted(src.glob("*.md")):
@@ -1653,6 +1656,7 @@ def skills_add(
                     folder_id=folder_id,
                     content_type="markdown",
                 )
+            c.convert_folder_to_skill(folder_id)
         except StashError as e:
             _err(e)
     console.print(f"[green]Added skill '{folder_name}' to your Files.[/green]")
@@ -1680,6 +1684,9 @@ def skills_create(
                 folder_id=folder["id"],
                 content_type="markdown",
             )
+            # Membership is a stored flag; the SKILL.md above is the skill's
+            # instructions, not what makes the folder a skill.
+            c.convert_folder_to_skill(folder["id"])
             skill = None
             if public:
                 skill = c.publish_skill_folder(

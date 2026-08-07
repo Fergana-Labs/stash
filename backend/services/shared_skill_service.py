@@ -383,8 +383,8 @@ async def list_skills_shared_with_user(user_id: UUID) -> list[dict]:
                p.content_markdown AS skill_md,
                v.slug
         FROM shares sh
-        JOIN folders f ON f.id = sh.object_id AND sh.object_type = 'folder'
-        JOIN pages p ON p.folder_id = f.id AND p.name = 'SKILL.md' AND p.deleted_at IS NULL
+        JOIN folders f ON f.id = sh.object_id AND sh.object_type = 'folder' AND f.is_skill
+        LEFT JOIN pages p ON p.folder_id = f.id AND p.name = 'SKILL.md' AND p.deleted_at IS NULL
         JOIN users ow ON ow.id = sh.owner_user_id
         LEFT JOIN users u ON u.id = sh.created_by
         LEFT JOIN skills v ON v.folder_id = f.id
