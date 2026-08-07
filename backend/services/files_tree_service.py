@@ -319,7 +319,7 @@ async def create_folder(
         row = await pool.fetchrow(
             "INSERT INTO folders (owner_user_id, parent_folder_id, name, created_by, is_protected) "
             "VALUES ($1, $2, $3, $4, $5) "
-            "RETURNING id, owner_user_id, parent_folder_id, name, created_by, created_at, updated_at",
+            "RETURNING id, owner_user_id, parent_folder_id, name, is_skill, created_by, created_at, updated_at",
             owner_user_id,
             parent_folder_id,
             name,
@@ -334,7 +334,7 @@ async def create_folder(
 async def get_folder(folder_id: UUID) -> dict | None:
     pool = get_pool()
     row = await pool.fetchrow(
-        "SELECT id, owner_user_id, parent_folder_id, name, created_by, created_at, updated_at "
+        "SELECT id, owner_user_id, parent_folder_id, name, is_skill, created_by, created_at, updated_at "
         "FROM folders WHERE id = $1",
         folder_id,
     )
@@ -349,7 +349,7 @@ async def list_folders(owner_user_id: UUID, user_id: UUID | None = None) -> list
         args.append(user_id)
         where += " AND " + permission_service.readable_content_condition("folder", "f", 2)
     rows = await pool.fetch(
-        "SELECT id, owner_user_id, parent_folder_id, name, created_by, created_at, updated_at, "
+        "SELECT id, owner_user_id, parent_folder_id, name, is_skill, created_by, created_at, updated_at, "
         "  is_protected "
         f"FROM folders f WHERE {where} ORDER BY name",
         *args,
@@ -362,7 +362,7 @@ async def get_or_create_memory_folder(owner_user_id: UUID, created_by: UUID) -> 
     One per owner (partial unique index); created on first access."""
     pool = get_pool()
     select = (
-        "SELECT id, owner_user_id, parent_folder_id, name, created_by, created_at, updated_at "
+        "SELECT id, owner_user_id, parent_folder_id, name, is_skill, created_by, created_at, updated_at "
         "FROM folders WHERE owner_user_id = $1 AND is_memory LIMIT 1"
     )
     row = await pool.fetchrow(select, owner_user_id)
@@ -372,7 +372,7 @@ async def get_or_create_memory_folder(owner_user_id: UUID, created_by: UUID) -> 
         row = await pool.fetchrow(
             "INSERT INTO folders (owner_user_id, name, created_by, is_memory, is_protected) "
             "VALUES ($1, 'Memory', $2, true, true) "
-            "RETURNING id, owner_user_id, parent_folder_id, name, created_by, created_at, updated_at",
+            "RETURNING id, owner_user_id, parent_folder_id, name, is_skill, created_by, created_at, updated_at",
             owner_user_id,
             created_by,
         )
@@ -525,7 +525,7 @@ async def update_folder(
         row = await pool.fetchrow(
             f"UPDATE folders SET {', '.join(sets)} "
             f"WHERE id = ${idx} AND owner_user_id = ${idx + 1} "
-            "RETURNING id, owner_user_id, parent_folder_id, name, created_by, created_at, updated_at",
+            "RETURNING id, owner_user_id, parent_folder_id, name, is_skill, created_by, created_at, updated_at",
             *args,
         )
     except asyncpg.UniqueViolationError as e:
@@ -797,6 +797,8 @@ async def update_page(
     event to open viewers and invalidates any persisted collab doc so a reopened
     editor reloads the fresh content instead of stale Yjs state."""
     pool = get_pool()
+    if name is not None:
+        await _assert_not_a_skills_instructions(page_id, owner_user_id)
     if content_html is not None:
         content_html = _sanitize_html(content_html)
     content_changed = content is not None or content_type is not None or content_html is not None
@@ -1074,6 +1076,29 @@ async def _reconcile_embedded_files(
     )
 
 
+async def _assert_not_a_skills_instructions(page_id: UUID, owner_user_id: UUID) -> None:
+    """A skill's SKILL.md can't be deleted or renamed.
+
+    It is the document agents load; without it the skill is a draft that can
+    do nothing. Deleting it used to silently demote the whole folder (a
+    customer did this three times), and now that membership is a flag it
+    would instead leave a skill nobody can run. Either way the user did not
+    mean to break their skill, so refuse and tell them: convert the skill to
+    a plain folder first if that's really what they want."""
+    pool = get_pool()
+    row = await pool.fetchrow(
+        "SELECT p.name, f.is_skill FROM pages p JOIN folders f ON f.id = p.folder_id "
+        "WHERE p.id = $1 AND p.owner_user_id = $2",
+        page_id,
+        owner_user_id,
+    )
+    if row and row["is_skill"] and row["name"] == skill_service.SKILL_MD_NAME:
+        raise ValueError(
+            "SKILL.md holds this skill's instructions and can't be deleted or renamed. "
+            "Convert the skill to a folder first if you want to remove it."
+        )
+
+
 async def delete_page(page_id: UUID, owner_user_id: UUID, deleted_by: UUID) -> bool:
     """Soft delete: stamps deleted_at + deleted_by. Restore via restore_page.
 
@@ -1081,6 +1106,7 @@ async def delete_page(page_id: UUID, owner_user_id: UUID, deleted_by: UUID) -> b
     their page exists. A file owned by a trashed page is exactly as invisible
     as a trashed one (nothing displays it but the page), restore has nothing
     to undo, and purge_page is the destructor either way."""
+    await _assert_not_a_skills_instructions(page_id, owner_user_id)
     pool = get_pool()
     result = await pool.execute(
         "UPDATE pages SET deleted_at = NOW(), deleted_by = $3 "
@@ -1249,6 +1275,7 @@ async def create_skill(owner_user_id: UUID, created_by: UUID, base_name: str) ->
     Skills surface, and the hard-coded 'New skill' default made that a
     guaranteed collision on the second create."""
     folder = await _create_folder_unique(owner_user_id, base_name, created_by, None)
+    await set_folder_is_skill(folder["id"], owner_user_id, True)
     await create_page(
         owner_user_id,
         skill_service.SKILL_MD_NAME,
@@ -1256,7 +1283,36 @@ async def create_skill(owner_user_id: UUID, created_by: UUID, base_name: str) ->
         folder_id=folder["id"],
         content=skill_service.skill_md_template(folder["name"]),
     )
-    return folder
+    return {**folder, "is_skill": True}
+
+
+async def set_folder_is_skill(folder_id: UUID, owner_user_id: UUID, is_skill: bool) -> dict | None:
+    """Promote a folder to a skill, or demote it back. The only way membership
+    ever changes — editing files inside a folder never reclassifies it.
+
+    Protected folders (Memory, Clips) refuse promotion: a DB constraint makes
+    the state unrepresentable, and this raises before reaching it so the
+    caller gets a sentence instead of an integrity error."""
+    pool = get_pool()
+    row = await pool.fetchrow(
+        "SELECT name, is_protected FROM folders WHERE id = $1 AND owner_user_id = $2",
+        folder_id,
+        owner_user_id,
+    )
+    if row is None:
+        return None
+    if is_skill and row["is_protected"]:
+        raise ValueError(f"the {row['name']} folder can't be turned into a skill")
+    updated = await pool.fetchrow(
+        "UPDATE folders SET is_skill = $3, updated_at = now() "
+        "WHERE id = $1 AND owner_user_id = $2 "
+        "RETURNING id, owner_user_id, parent_folder_id, name, is_skill, created_by, "
+        "  created_at, updated_at",
+        folder_id,
+        owner_user_id,
+        is_skill,
+    )
+    return dict(updated) if updated else None
 
 
 def _page_content_kwargs(src: dict) -> dict:
@@ -1417,6 +1473,9 @@ async def copy_folder(
     new_root = await _create_folder_unique(
         owner_user_id, f"Copy of {src['name']}", copied_by, parent
     )
+    # A copy of a skill is a skill: the user duplicated the thing as it is.
+    if src["is_skill"]:
+        new_root = await set_folder_is_skill(new_root["id"], owner_user_id, True)
     await _copy_folder_contents(folder_id, new_root["id"], owner_user_id, copied_by)
     return new_root
 
@@ -1653,7 +1712,7 @@ async def find_or_create_root_folder(
     """
     pool = get_pool()
     row = await pool.fetchrow(
-        "SELECT id, owner_user_id, parent_folder_id, name, created_by, created_at, updated_at "
+        "SELECT id, owner_user_id, parent_folder_id, name, is_skill, created_by, created_at, updated_at "
         "FROM folders WHERE owner_user_id = $1 AND parent_folder_id IS NULL AND name = $2",
         owner_user_id,
         name,
@@ -1673,7 +1732,7 @@ async def find_or_create_root_folder(
         # Lost a get-or-create race (concurrent clip saves): the folder now
         # exists, so return it.
         row = await pool.fetchrow(
-            "SELECT id, owner_user_id, parent_folder_id, name, created_by, created_at, updated_at "
+            "SELECT id, owner_user_id, parent_folder_id, name, is_skill, created_by, created_at, updated_at "
             "FROM folders WHERE owner_user_id = $1 AND parent_folder_id IS NULL AND name = $2",
             owner_user_id,
             name,
@@ -1719,9 +1778,13 @@ async def write_folder_files(
     files: list[tuple[str, bytes]],
 ) -> int:
     """Write (relative_path, bytes) pairs into the folder, creating subfolders
-    as needed. Markdown/HTML become pages keeping their full filenames (skill
-    detection requires a page named literally SKILL.md); everything else goes
-    to file storage. Returns the number of items written."""
+    as needed. Markdown/HTML become pages keeping their full filenames;
+    everything else goes to file storage. Returns the number of items written.
+
+    Any folder that receives a SKILL.md is promoted to a skill: a bulk import
+    or sync carrying one is an explicit "this is a skill" statement by the
+    caller, unlike a user editing files inside an existing folder. Protected
+    folders are never promoted."""
     import mimetypes
 
     from . import storage_service
@@ -1744,9 +1807,12 @@ async def write_folder_files(
         return folder["id"]
 
     written = 0
+    promote: set[UUID] = set()
     for rel_path, blob in files:
         dir_path, _, filename = rel_path.rpartition("/")
         folder_id = await ensure_dir(dir_path)
+        if filename == skill_service.SKILL_MD_NAME:
+            promote.add(folder_id)
         page_kind = detect_page_kind(filename, "")
         if page_kind is not None:
             text = blob.decode("utf-8", errors="replace")
@@ -1780,4 +1846,11 @@ async def write_folder_files(
             owner_id,
         )
         written += 1
+    if promote:
+        await get_pool().execute(
+            "UPDATE folders SET is_skill = true "
+            "WHERE id = ANY($1::uuid[]) AND owner_user_id = $2 AND NOT is_protected",
+            list(promote),
+            owner_user_id,
+        )
     return written
