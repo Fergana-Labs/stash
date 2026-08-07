@@ -477,12 +477,14 @@ async def _assert_not_protected(folder_id: UUID, owner_user_id: UUID) -> None:
     """Refuse rename/move/delete of a protected folder (Memory, Clips) by
     raising; the routers map the ValueError to a 400 with this message.
 
-    Protected folders are the ones product code resolves by identity and
-    writes into. Without this check the destructive act would SUCCEED with no
-    error, and the damage would surface later, silently: the next write
-    recreates an empty folder under the reserved name, and the user's wiki or
-    clips start landing somewhere they aren't looking. One check here in the
-    service covers every front door — UI, CLI, and agent tools."""
+    Protected folders are fixtures the product finds on its own — by reserved
+    marker (the is_memory flag, the root 'Clips' name), never by an id a
+    caller handed in — and the lookup is a get-or-create. So without this
+    check the destructive act would SUCCEED with no error, and the damage
+    would surface later, silently: the next write re-creates an empty
+    replacement under the marker, and the user's wiki or clips start landing
+    somewhere they aren't looking. One check here in the service covers every
+    front door — UI, CLI, and agent tools."""
     pool = get_pool()
     row = await pool.fetchrow(
         "SELECT name, is_protected FROM folders WHERE id = $1 AND owner_user_id = $2",
