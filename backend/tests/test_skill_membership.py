@@ -7,7 +7,7 @@ stray SKILL.md could promote Memory into a wipeable "skill". Membership now
 changes only through deliberate verbs.
 """
 
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 import pytest_asyncio
@@ -100,3 +100,39 @@ async def test_bulk_write_carrying_a_skill_md_promotes_explicitly(scope, _db_poo
     assert [s["folder_id"] for s in await skill_service.list_skills(scope, scope)] == [
         str(folder["id"])
     ]
+
+
+@pytest.mark.asyncio
+async def test_convert_endpoint_leaves_a_loadable_skill(client, _db_pool):
+    """The Convert-to-Skill button's contract: one call promotes the folder
+    AND leaves instructions, so the user lands on a skill an agent can load —
+    not a draft, and not (as before) a SKILL.md write that no longer promotes
+    anything."""
+    reg = await client.post(
+        "/api/v1/users/register",
+        json={"name": f"conv_{uuid4().hex[:8]}", "password": "securepassword1"},
+    )
+    body = reg.json()
+    headers = {"Authorization": f"Bearer {body['api_key']}"}
+    owner = UUID(body["id"])
+
+    folder = await client.post("/api/v1/me/folders", json={"name": "Runbooks"}, headers=headers)
+    folder_id = folder.json()["id"]
+
+    resp = await client.post(f"/api/v1/me/folders/{folder_id}/convert-to-skill", headers=headers)
+    assert resp.status_code == 200
+    assert resp.json()["is_skill"] is True
+
+    listed = (await client.get("/api/v1/me/skills", headers=headers)).json()["skills"]
+    [skill] = [s for s in listed if s["folder_id"] == folder_id]
+    assert skill["has_instructions"] is True
+
+    # And back again: demotion is equally explicit, contents untouched.
+    back = await client.post(f"/api/v1/me/folders/{folder_id}/convert-to-folder", headers=headers)
+    assert back.status_code == 200
+    assert (await client.get("/api/v1/me/skills", headers=headers)).json()["skills"] == []
+    kept = await _db_pool.fetchval(
+        "SELECT count(*) FROM pages WHERE folder_id = $1 AND deleted_at IS NULL", UUID(folder_id)
+    )
+    assert kept == 1
+    assert owner
