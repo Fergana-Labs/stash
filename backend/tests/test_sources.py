@@ -874,9 +874,7 @@ async def test_missing_index_only_rows_are_soft_deleted(client: AsyncClient, poo
             external_ref=f"provider-{path}",
         )
 
-    removed = await source_service.remove_missing_documents(
-        "drive_index", sid, ["kept-doc"]
-    )
+    removed = await source_service.remove_missing_documents("drive_index", sid, ["kept-doc"])
 
     assert removed == 1
     assert (
