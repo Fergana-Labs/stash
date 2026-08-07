@@ -901,7 +901,25 @@ async def remove_missing_documents(table: str, source_id: UUID, present_paths: l
     Copied-content tables hold customer text and embeddings, so missing rows are
     physically deleted. Index-only tables hold provider refs with no copied body,
     so soft-delete keeps navigation state cheap to resurrect on the next sync.
+
+    An EMPTY crawl never deletes: providers return empty listings for reasons
+    that aren't "the user deleted everything" — API contract drift, silent
+    truncation (X bookmarks, 2026-08-06), auth quirks that 200 with no data
+    (Granola, 2026-08). Deleting to match would destroy the whole archive on
+    the word of one flaky response, so refuse loudly instead; the sync shows
+    the error and the stored documents survive.
     """
+    if not present_paths:
+        stored = await get_pool().fetchval(
+            f"SELECT COUNT(*) FROM {table} WHERE source_id = $1", source_id
+        )
+        if stored:
+            raise SourceSyncUserError(
+                f"The provider listed no documents, but {stored} are stored from earlier "
+                "syncs. Refusing to delete them — if the provider account really is "
+                "empty now, disconnect and reconnect the source to reset it."
+            )
+        return 0
     if table in CONTENT_TABLES:
         result = await get_pool().execute(
             f"DELETE FROM {table} WHERE source_id = $1 AND path <> ALL($2::text[])",

@@ -16,6 +16,7 @@ spot to adjust against a live account.
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 from datetime import datetime, timedelta, timezone
@@ -250,6 +251,18 @@ async def index_granola(source: dict) -> str | None:
         else:
             meetings = _as_list(data, "meetings", "results", "items", "documents", "notes", "data")
         logger.info("granola source %s: listed %d meeting(s)", source_id, len(meetings))
+        if not meetings:
+            # A zero-meeting listing has been wiping archives silently (2026-08).
+            # Log the payload's shape so the next occurrence is diagnosable from
+            # worker logs: what did the provider actually send?
+            preview = data if isinstance(data, str) else json.dumps(data, default=str)
+            logger.warning(
+                "granola source %s: empty listing; raw type=%s len=%d head=%r",
+                source_id,
+                type(data).__name__,
+                len(preview or ""),
+                (preview or "")[:400],
+            )
 
         for meeting in meetings[:MAX_MEETINGS]:
             if not isinstance(meeting, dict):
