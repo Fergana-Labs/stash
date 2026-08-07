@@ -414,10 +414,48 @@ async def _read_skill(args: dict) -> dict:
 async def _create_skill(args: dict) -> dict:
     owner_user_id = _current_scope()
     user_id = _current_user()
-    # Same collision-proof create the web button uses: an existing folder
-    # holding the name means ' (2)', not an error the model has to handle.
-    folder = await files_tree_service.create_skill(
-        owner_user_id, user_id, args["name"], skill_md=args["skill_md"]
+    # The model chose this name, and later loads resolve by it — silently
+    # landing on 'name (2)' would make load_skill(name) return the WRONG
+    # skill while the model believes it created it. Unlike the web button
+    # (placeholder name, can't negotiate), a model can act on a refusal, so
+    # a collision returns the existing holder and its real URL instead.
+    try:
+        folder = await files_tree_service.create_folder(owner_user_id, args["name"], user_id)
+    except files_tree_service.DuplicateFolderName:
+        from ..database import get_pool
+
+        existing = await get_pool().fetchrow(
+            "SELECT f.id, EXISTS (SELECT 1 FROM pages p WHERE p.folder_id = f.id "
+            "  AND p.name = 'SKILL.md' AND p.deleted_at IS NULL) AS is_skill "
+            "FROM folders f WHERE f.owner_user_id = $1 AND f.parent_folder_id IS NULL "
+            "  AND f.name = $2",
+            owner_user_id,
+            args["name"],
+        )
+        holder_url = (
+            _skill_app_url(existing["id"])
+            if existing["is_skill"]
+            else f"{settings.PUBLIC_URL.rstrip('/')}/folders/{existing['id']}"
+        )
+        return _text_result(
+            json.dumps(
+                {
+                    "error": "name_taken",
+                    "name": args["name"],
+                    "held_by": "skill" if existing["is_skill"] else "folder",
+                    "existing_folder_id": str(existing["id"]),
+                    "existing_url": holder_url,
+                    "hint": "Update the existing skill's pages, or create under a different name.",
+                }
+            )
+        )
+    await files_tree_service.create_page(
+        owner_user_id,
+        "SKILL.md",
+        user_id,
+        folder_id=folder["id"],
+        content=args["skill_md"],
+        content_type="markdown",
     )
     for extra in args.get("files") or []:
         await files_tree_service.create_page(

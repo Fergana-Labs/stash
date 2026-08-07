@@ -546,11 +546,12 @@ async def test_fork_skill_deep_copies_folder_without_publish_record(scope: UUID,
 
 
 @pytest.mark.asyncio
-async def test_agent_create_skill_never_collides_on_a_taken_name(scope: UUID, _db_pool):
-    """The agent tool used a raw exact-name folder create, so a name squatted
-    by any folder — including one invisible to skill listings — errored. It
-    now uniquifies like the web button: the model gets ' (2)', not a failure
-    to handle."""
+async def test_agent_create_skill_refuses_a_taken_name_with_the_holder(scope: UUID, _db_pool):
+    """The model chose the name and later loads resolve by it — silently
+    creating 'Fitment (2)' would leave load_skill('Fitment') returning the
+    WRONG skill while the model believes it created it. A collision returns a
+    structured refusal naming the existing holder, so the model can update it
+    or pick a new name deliberately."""
     user_id = scope
 
     scope_token = agent_runtime._scope_ctx.set(scope)
@@ -571,10 +572,18 @@ async def test_agent_create_skill_never_collides_on_a_taken_name(scope: UUID, _d
         agent_runtime._scope_ctx.reset(scope_token)
 
     assert first["name"] == "Fitment"
-    assert second["name"] == "Fitment (2)"
-    # Each skill's SKILL.md carries the content the model authored for it.
+    assert second["error"] == "name_taken"
+    assert second["held_by"] == "skill"
+    assert second["existing_folder_id"] == first["folder_id"]
+    assert second["existing_url"] == first["app_url"]
+    # Nothing was created by the refused call: one Fitment, holding the
+    # first call's content.
     md = await _db_pool.fetchval(
         "SELECT content_markdown FROM pages WHERE folder_id = $1 AND name = 'SKILL.md'",
-        UUID(second["folder_id"]),
+        UUID(first["folder_id"]),
     )
-    assert md == "# two"
+    assert md == "# one"
+    count = await _db_pool.fetchval(
+        "SELECT count(*) FROM folders WHERE owner_user_id = $1 AND name LIKE 'Fitment%'", scope
+    )
+    assert count == 1
