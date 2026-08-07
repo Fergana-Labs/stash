@@ -42,7 +42,7 @@
     "d3-selection": "^3.0.0",
     "d3-zoom": "^3.0.0",
     "lucide-react": "^1.23.0",
-    "markdown-it": "15.0.0",
+    "markdown-it": "14.2.0",
     "nanoid": "^5.1.16",
     "next": "16.2.11",
     "radix-ui": "^1.6.1",
