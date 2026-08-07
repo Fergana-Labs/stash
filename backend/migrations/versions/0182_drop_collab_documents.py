@@ -6,14 +6,14 @@ reader. pages.content_markdown has always carried the exported markdown of
 every edit, so no content is lost — these tables were a second copy of the
 document in a format only the deleted server could read.
 
-Revision ID: 0181
-Revises: 0180
+Revision ID: 0182
+Revises: 0181
 """
 
 from alembic import op
 
-revision = "0181"
-down_revision = "0180"
+revision = "0182"
+down_revision = "0181"
 branch_labels = None
 depends_on = None
 
