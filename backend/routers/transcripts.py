@@ -59,8 +59,15 @@ async def upload_transcript(
 ):
     """Parse the uploaded JSONL into history_events rows.
 
-    Existing sessions are left alone unless the caller explicitly asks to
-    replace them.
+    Sessions with renderable events are left alone unless the caller
+    explicitly asks to replace them: live-streamed rows carry random
+    source_uuids while imported rows carry line-derived ones, so merging the
+    two would double every turn. Bookkeeping rows (session_end) don't count —
+    the upload is the backstop for exactly the sessions where live streaming
+    failed and only session_end landed. The guard's check-then-insert race is
+    closed by the unique (owner_user_id, session_id, source_uuid) index:
+    concurrent imports of the same file compute identical ids and the loser
+    inserts nothing.
     """
     # Transcripts land in the active scope, matching where the session's
     # events were pushed (X-Stash-Scope header, personal when absent).
@@ -83,9 +90,11 @@ async def upload_transcript(
 
     pool = get_pool()
     existing = await pool.fetchval(
-        "SELECT COUNT(*) FROM history_events WHERE owner_user_id = $1 AND session_id = $2",
+        "SELECT COUNT(*) FROM history_events "
+        "WHERE owner_user_id = $1 AND session_id = $2 AND event_type = ANY($3::text[])",
         owner_user_id,
         session_id,
+        list(memory_service.RENDERABLE_EVENT_TYPES),
     )
     if existing:
         session_row = await session_service.get_session(owner_user_id, session_id)
@@ -261,6 +270,7 @@ async def get_transcript_events(
 
     No ownership gate: can_read_session is enforced per scope below, so
     another user the session is shared with can read it."""
+    readable_but_empty = False
     for row in await session_service.list_sessions_for_session_id(session_id):
         owner_user_id = row["owner_user_id"]
         if not await memory_service.can_read_session(owner_user_id, session_id, current_user["id"]):
@@ -280,6 +290,12 @@ async def get_transcript_events(
                 "total": total,
                 "has_more": offset + len(events) < total,
             }
+        readable_but_empty = True
+    if readable_but_empty:
+        # A session whose only rows are bookkeeping events (session_end) is a
+        # legitimate empty transcript, not a missing one — 404 is reserved for
+        # unknown/unauthorized sessions.
+        return {"events": [], "total": 0, "has_more": False}
     raise HTTPException(status_code=404, detail="Transcript not found")
 
 

@@ -18,6 +18,7 @@ events.
 from __future__ import annotations
 
 import gzip
+import hashlib
 import json
 from datetime import UTC, datetime
 from typing import Any
@@ -145,13 +146,20 @@ def parse_jsonl_to_events(
     """Parse a transcript blob into event dicts ready for push_events_batch.
 
     Each event dict has: agent_name, event_type, content, session_id,
-    tool_name, metadata, created_at. Caller supplies owner_user_id and
-    created_by when calling push_events_batch.
+    tool_name, metadata, created_at, source_uuid. Caller supplies
+    owner_user_id and created_by when calling push_events_batch.
+
+    source_uuid is deterministic per line (the line's own uuid when present,
+    a hash of the line otherwise) so re-uploading the same transcript
+    conflicts on the unique index instead of duplicating rows. A message
+    Claude re-serializes under a *new* uuid after compaction still gets a
+    new id — content-based dedup is deliberately not attempted, since it
+    can't match across the live/import representations and would collapse
+    genuinely repeated messages.
     """
     text = _decompress(blob)
     events: list[dict] = []
-    fallback_idx = 0
-    for line in text.splitlines():
+    for line_idx, line in enumerate(text.splitlines()):
         line = line.strip()
         if not line:
             continue
@@ -162,52 +170,63 @@ def parse_jsonl_to_events(
         if not isinstance(obj, dict):
             continue
 
+        line_events: list[dict] = []
         entry_type = obj.get("type")
         if entry_type == "response_item":
-            events.extend(
-                _parse_codex_response_item(obj, session_id=session_id, agent_name=agent_name)
+            line_events = _parse_codex_response_item(
+                obj, session_id=session_id, agent_name=agent_name
             )
+        elif entry_type in ("user", "assistant"):
+            message = obj.get("message") if isinstance(obj.get("message"), dict) else {}
+            content_raw = message.get("content", "")
+            text_content = _text_from_content(content_raw)
+            created_at = _parse_ts(obj.get("timestamp")) or _parse_ts(message.get("timestamp"))
+
+            if text_content.strip():
+                line_events.append(
+                    {
+                        "agent_name": agent_name,
+                        "event_type": "user_message"
+                        if entry_type == "user"
+                        else "assistant_message",
+                        "content": text_content,
+                        "session_id": session_id,
+                        "tool_name": None,
+                        "metadata": {"source": "transcript_import"},
+                        "created_at": created_at,
+                    }
+                )
+
+            # Surface tool_use blocks (assistant side) as their own events so
+            # the timeline shows tool calls alongside messages — mirrors what
+            # the live hook does.
+            for tu in _tool_blocks(content_raw):
+                tool_name = tu.get("name") or ""
+                tool_input = tu.get("input")
+                line_events.append(
+                    {
+                        "agent_name": agent_name,
+                        "event_type": "tool_use",
+                        "content": _content_repr(tool_input),
+                        "session_id": session_id,
+                        "tool_name": tool_name or None,
+                        "metadata": {"source": "transcript_import"},
+                        "created_at": created_at,
+                    }
+                )
+
+        if not line_events:
             continue
 
-        if entry_type not in ("user", "assistant"):
-            continue
-
-        message = obj.get("message") if isinstance(obj.get("message"), dict) else {}
-        content_raw = message.get("content", "")
-        text_content = _text_from_content(content_raw)
-        created_at = _parse_ts(obj.get("timestamp")) or _parse_ts(message.get("timestamp"))
-
-        if text_content.strip():
-            events.append(
-                {
-                    "agent_name": agent_name,
-                    "event_type": "user_message" if entry_type == "user" else "assistant_message",
-                    "content": text_content,
-                    "session_id": session_id,
-                    "tool_name": None,
-                    "metadata": {"source": "transcript_import"},
-                    "created_at": created_at,
-                }
-            )
-
-        # Surface tool_use blocks (assistant side) as their own events so
-        # the timeline shows tool calls alongside messages — mirrors what
-        # the live hook does.
-        for tu in _tool_blocks(content_raw):
-            tool_name = tu.get("name") or ""
-            tool_input = tu.get("input")
-            events.append(
-                {
-                    "agent_name": agent_name,
-                    "event_type": "tool_use",
-                    "content": _content_repr(tool_input),
-                    "session_id": session_id,
-                    "tool_name": tool_name or None,
-                    "metadata": {"source": "transcript_import"},
-                    "created_at": created_at,
-                }
-            )
-
-        fallback_idx += 1
+        raw_uuid = obj.get("uuid")
+        if isinstance(raw_uuid, str) and raw_uuid:
+            base = raw_uuid
+        else:
+            # Codex lines carry no per-line id; transcript files are
+            # append-only, so the line index is stable across re-uploads.
+            base = hashlib.sha256(f"{session_id}:{line_idx}:{line}".encode()).hexdigest()
+        for j, ev in enumerate(line_events):
+            ev["source_uuid"] = f"{base}:{j}"
+        events.extend(line_events)
 
     return events

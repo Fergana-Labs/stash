@@ -145,3 +145,55 @@ def test_empty_input_returns_empty_list():
 def test_skips_empty_content():
     body = (_line(type="user", message={"content": ""}) + "\n").encode()
     assert parse_jsonl_to_events(body, session_id="s6", agent_name="claude") == []
+
+
+def test_source_uuids_are_deterministic():
+    """source_uuid is the import idempotency key: re-uploading the same file
+    must produce identical ids so the unique index dedups instead of
+    duplicating rows."""
+    body = (
+        "\n".join(
+            [
+                _line(
+                    type="user",
+                    uuid="line-uuid-1",
+                    message={"content": "hi"},
+                ),
+                _line(
+                    type="assistant",
+                    uuid="line-uuid-2",
+                    message={
+                        "content": [
+                            {"type": "text", "text": "reading"},
+                            {"type": "tool_use", "name": "Read", "input": {"file": "x.py"}},
+                        ]
+                    },
+                ),
+                # Codex lines carry no uuid — id falls back to a line hash.
+                _line(
+                    type="response_item",
+                    payload={
+                        "type": "message",
+                        "role": "user",
+                        "content": [{"type": "input_text", "text": "fix it"}],
+                    },
+                ),
+            ]
+        )
+        + "\n"
+    ).encode()
+
+    first = parse_jsonl_to_events(body, session_id="s7", agent_name="claude")
+    second = parse_jsonl_to_events(body, session_id="s7", agent_name="claude")
+
+    ids = [e["source_uuid"] for e in first]
+    assert ids == [e["source_uuid"] for e in second]
+    assert len(set(ids)) == len(ids)
+    assert ids[0] == "line-uuid-1:0"
+    # Two events from one line get distinct suffixes.
+    assert ids[1] == "line-uuid-2:0"
+    assert ids[2] == "line-uuid-2:1"
+    # The hash id is scoped to the session so identical lines in different
+    # sessions never collide.
+    other_session = parse_jsonl_to_events(body, session_id="s8", agent_name="claude")
+    assert other_session[3]["source_uuid"] != first[3]["source_uuid"]

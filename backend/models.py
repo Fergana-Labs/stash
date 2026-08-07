@@ -499,6 +499,11 @@ class HistoryEventCreateRequest(BaseModel):
     created_at: datetime | None = Field(
         None, description="ISO timestamp; defaults to now if omitted"
     )
+    source_uuid: str | None = Field(
+        None,
+        max_length=128,
+        description="Producer idempotency key; server generates one when absent",
+    )
 
 
 class HistoryEventBatchRequest(BaseModel):
