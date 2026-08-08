@@ -1786,10 +1786,22 @@ async def clear_folder_contents(root_folder_id: UUID) -> None:
     folders, skills.folder_id cascades on folder delete, so dropping the root
     would unpublish the skill. Pages/files folder FKs are ON DELETE SET NULL,
     so their rows must be deleted explicitly or they'd orphan into the
-    scope root."""
+    scope root.
+
+    Protected folders (Memory, Clips) refuse this like every other destructive
+    verb. Skill-ness is derived, so a stray SKILL.md inside Memory makes it
+    pass ``_require_skill_folder`` — and this is the one destructive path with
+    no trash to recover from, so it must not trust that derivation."""
     from . import storage_service
 
     pool = get_pool()
+    row = await pool.fetchrow(
+        "SELECT name, is_protected FROM folders WHERE id = $1", root_folder_id
+    )
+    if row is None:
+        raise ValueError("folder not found")
+    if row["is_protected"]:
+        raise ValueError(f"the {row['name']} folder can't be emptied or replaced")
     if storage_service.is_configured():
         rows = await pool.fetch(
             f"SELECT storage_key FROM files WHERE folder_id IN ({_SUBTREE})", root_folder_id
