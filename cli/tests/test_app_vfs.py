@@ -346,6 +346,17 @@ def test_app_vfs_reports_unsupported_commands():
     assert "unsupported command: python" in result.stderr
 
 
+def test_app_vfs_points_download_at_the_cli_verb():
+    """`download` inside the shell is the mistake everyone makes first — the
+    error must teach the correct invocation, not shrug."""
+    shell, _client = _shell()
+
+    result = shell.run("download '/files/catalog.pdf'")
+
+    assert result.exit_code == 1
+    assert "stash download /files/catalog.pdf" in result.stderr
+
+
 def test_app_vfs_cd_updates_virtual_working_directory():
     shell, _client = _shell()
 
