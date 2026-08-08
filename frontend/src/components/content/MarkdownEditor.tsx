@@ -127,11 +127,22 @@ export default function MarkdownEditor({
   // The editor sits in the page's normal document flow (its ancestors have no
   // height), so the textarea can't fill a parent: it grows to fit its content
   // and the page itself scrolls.
+  //
+  // Measuring requires momentarily collapsing the textarea, which the ancestor
+  // scroll container sees as the document shrinking — it clamps or re-anchors
+  // its position, teleporting the viewport. Snapshot and restore the scroll
+  // position in the same pre-paint pass so edits never move the view.
   const syncHeight = useCallback(() => {
     const area = textareaRef.current;
     if (!area) return;
+    let scroller: HTMLElement | null = area.parentElement;
+    while (scroller && !/auto|scroll/.test(getComputedStyle(scroller).overflowY)) {
+      scroller = scroller.parentElement;
+    }
+    const scrollTop = scroller?.scrollTop ?? 0;
     area.style.height = "auto";
     area.style.height = `${area.scrollHeight}px`;
+    if (scroller) scroller.scrollTop = scrollTop;
   }, []);
 
   useLayoutEffect(() => {
