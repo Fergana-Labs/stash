@@ -9,6 +9,7 @@ from typing import Any
 import httpx
 
 from ..config import settings
+from . import source_service
 
 ISSUE_QUERY = """
 query Issue($id: String!) {
@@ -139,7 +140,8 @@ async def list_issues(
     payload = await _graphql(ISSUES_QUERY, {"after": after}, access_token)
     _raise_on_errors(payload, "issue listing")
 
-    connection = payload.get("data", {}).get("issues") or {}
+    connection = payload.get("data", {}).get("issues")
+    nodes = source_service.expect_items(connection, "nodes", provider="Linear")
     page_info = connection.get("pageInfo") or {}
     issues = [
         {
@@ -147,7 +149,7 @@ async def list_issues(
             "title": node.get("title") or node["identifier"],
             "updated_at": _parse_datetime(node["updatedAt"]) if node.get("updatedAt") else None,
         }
-        for node in connection.get("nodes") or []
+        for node in nodes
         if node.get("identifier")
     ]
     next_cursor = page_info.get("endCursor") if page_info.get("hasNextPage") else None

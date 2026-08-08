@@ -333,9 +333,7 @@ async def index_granola(source: dict) -> str | None:
 
     # We only reach here after the listing fully parsed (declared == parsed
     # above), so an empty `present` means Granola reported an empty account, not
-    # a broken response — let the sweep mirror that deletion instead of refusing.
-    await source_service.remove_missing_documents(
-        "granola_notes", source_id, present, confirmed_complete=True
-    )
+    # a broken response — the sweep mirrors that deletion.
+    await source_service.remove_missing_documents("granola_notes", source_id, present)
     logger.info("granola source %s: indexed %d meeting(s)", source_id, len(present))
     return None

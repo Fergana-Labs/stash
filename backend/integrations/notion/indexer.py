@@ -76,8 +76,13 @@ async def _index_page(
     if depth > MAX_PAGE_DEPTH:
         return
     meta_resp = await client.get(PAGE_URL.format(id=page_id))
-    if meta_resp.status_code != 200:
+    if meta_resp.status_code in (403, 404):
+        # The page is deleted or not shared with the integration — legitimately
+        # gone, so skip it. Any other non-2xx (429 rate-limit, 401, 500) is a
+        # transient/auth failure that must fail loud, never silently drop this
+        # page and let the sweep delete it.
         return
+    meta_resp.raise_for_status()
     meta = meta_resp.json()
     title = _safe(_extract_title(meta))
     # Render the blocks to markdown — both to discover sub-pages and to store
@@ -128,7 +133,7 @@ async def _index_database(
         resp = await client.post(DATABASE_QUERY_URL.format(id=database_id), json=body)
         resp.raise_for_status()
         payload = resp.json()
-        for row in payload.get("results", []):
+        for row in source_service.expect_items(payload, "results", provider="Notion"):
             props = row.get("properties", {}) or {}
             title = _safe(_row_title(props))
             path = _dedupe(f"{db_title}/{title}", row["id"], present)

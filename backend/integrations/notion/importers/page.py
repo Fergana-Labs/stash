@@ -17,6 +17,8 @@ from typing import Any
 
 import httpx
 
+from ....services import source_service
+
 logger = logging.getLogger(__name__)
 
 NOTION_PAGE_URL = "https://api.notion.com/v1/pages/{page_id}"
@@ -152,7 +154,7 @@ async def fetch_block_tree(
             )
         resp.raise_for_status()
         payload = resp.json()
-        for block in payload.get("results", []):
+        for block in source_service.expect_items(payload, "results", provider="Notion"):
             btype = block.get("type")
 
             # Tables and child databases need their own async children

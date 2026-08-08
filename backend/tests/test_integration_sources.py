@@ -760,8 +760,8 @@ def _granola_harness(monkeypatch, list_blob: str):
     async def noop_upsert(**kwargs):
         return None
 
-    async def capture_remove(table, source_id, paths, *, confirmed_complete=False):
-        removes.append((paths, confirmed_complete))
+    async def capture_remove(table, source_id, paths):
+        removes.append(paths)
 
     monkeypatch.setattr(granola_indexer, "get_pool", lambda: FakePool())
     monkeypatch.setattr(granola_indexer, "call_tool_data", fake_call_tool_data)
@@ -797,9 +797,9 @@ async def test_granola_genuinely_empty_account_is_honored(monkeypatch):
     granola_indexer, removes = _granola_harness(monkeypatch, blob)
 
     await granola_indexer.index_granola({"id": str(uuid4()), "owner_user_id": str(uuid4())})
-    # Sweep ran once with an empty listing marked complete, so it mirrors the
-    # empty account (deletes) instead of refusing.
-    assert removes == [([], True)]
+    # Sweep ran once with an empty listing; the dumb mirror deletes to match the
+    # empty account. The indexer already vouched the emptiness is real.
+    assert removes == [[]]
 
 
 @pytest.mark.asyncio

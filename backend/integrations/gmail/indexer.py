@@ -117,11 +117,15 @@ async def _list_message_refs(
     )
     resp.raise_for_status()
     body = resp.json()
-    return (
-        body.get("messages", []) or [],
-        body.get("nextPageToken"),
-        body.get("resultSizeEstimate"),
-    )
+    # Gmail omits `messages` when nothing matched and reports resultSizeEstimate
+    # 0 — that is a real empty result, believed. Any other shape (messages
+    # missing with a non-zero estimate, or a non-list) is a response we could
+    # not read, so expect_items fails loud rather than reading it as empty.
+    estimate = body.get("resultSizeEstimate")
+    if "messages" not in body and estimate == 0:
+        return ([], body.get("nextPageToken"), estimate)
+    messages = source_service.expect_items(body, "messages", provider="Gmail")
+    return (messages, body.get("nextPageToken"), estimate)
 
 
 async def _get_message(client: httpx.AsyncClient, message_id: str, message_format: str) -> dict:

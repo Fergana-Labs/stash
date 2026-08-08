@@ -84,7 +84,7 @@ async def _list(client: httpx.AsyncClient, q: str) -> list[dict]:
         resp = await client.get(DRIVE_LIST_URL, params=params)
         resp.raise_for_status()
         body = resp.json()
-        out.extend(body.get("files", []))
+        out.extend(source_service.expect_items(body, "files", provider="Google Drive"))
         page_token = body.get("nextPageToken")
         if not page_token:
             return out

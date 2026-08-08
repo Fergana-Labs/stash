@@ -152,3 +152,46 @@ async def test_gmail_sources_target_specific_mailboxes(client: AsyncClient):
         "htdowling@gmail.com",
         "henry@joinstash.ai",
     }
+
+
+class _StubResponse:
+    def __init__(self, body: dict):
+        self._body = body
+
+    def raise_for_status(self) -> None:
+        return None
+
+    def json(self) -> dict:
+        return self._body
+
+
+class _StubClient:
+    def __init__(self, body: dict):
+        self._body = body
+
+    async def get(self, url: str, params: dict | None = None) -> _StubResponse:
+        return _StubResponse(self._body)
+
+
+@pytest.mark.asyncio
+async def test_gmail_empty_query_is_believed_not_treated_as_malformed():
+    # Gmail omits `messages` and reports resultSizeEstimate 0 when nothing
+    # matched — a real empty result, believed (returns []), never raised.
+    from backend.integrations.gmail.indexer import _list_message_refs
+
+    refs, token, estimate = await _list_message_refs(
+        _StubClient({"resultSizeEstimate": 0}), "in:inbox", 100
+    )
+    assert refs == []
+    assert estimate == 0
+
+
+@pytest.mark.asyncio
+async def test_gmail_missing_messages_with_matches_fails_loud():
+    # messages absent but the estimate says matches exist → a response we could
+    # not read. It must raise, never sweep-delete the mailbox as "empty".
+    from backend.integrations.gmail.indexer import _list_message_refs
+    from backend.services.source_service import SourceSyncUserError
+
+    with pytest.raises(SourceSyncUserError, match="could not read"):
+        await _list_message_refs(_StubClient({"resultSizeEstimate": 42}), "in:inbox", 100)

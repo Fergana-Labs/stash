@@ -58,6 +58,26 @@ class SourceSetupRequired(Exception):
     SourceSyncUserError — the message is shown verbatim."""
 
 
+def expect_items(payload: object, key: str, *, provider: str) -> list:
+    """Return the list a provider nests under `key`, or fail loud.
+
+    This is the one gate between a sync and the delete-to-mirror sweep. A list
+    that is present but empty is a real empty result and is believed. A payload
+    that is not a dict, is missing `key`, or holds a non-list there is a response
+    we could not read — never "the account is empty" — so it raises instead of
+    letting a malformed or truncated page drive a deletion. Providers that omit
+    the container when empty (Gmail) must not use this; they check their own
+    empty signal.
+    """
+    if isinstance(payload, dict) and isinstance(payload.get(key), list):
+        return payload[key]
+    raise SourceSyncUserError(
+        f"{provider} returned a response we could not read, so syncing is paused for "
+        "this source to protect your saved data. This is a bug on our side, not your "
+        "account — nothing was deleted."
+    )
+
+
 # A Linear issue identifier (FER-199). Any such ref is readable live from the
 # API, so reads work even before a sync has indexed the issue.
 LINEAR_IDENTIFIER_RE = re.compile(r"^[A-Za-z][A-Za-z0-9]*-\d+$")
@@ -895,40 +915,20 @@ async def upsert_drive_document(
     return row["id"]
 
 
-async def remove_missing_documents(
-    table: str,
-    source_id: UUID,
-    present_paths: list[str],
-    *,
-    confirmed_complete: bool = False,
-) -> int:
-    """Remove live docs whose path was absent from the latest crawl.
+async def remove_missing_documents(table: str, source_id: UUID, present_paths: list[str]) -> int:
+    """Mirror the provider: remove live docs whose path was absent from the crawl.
 
     Copied-content tables hold customer text and embeddings, so missing rows are
     physically deleted. Index-only tables hold provider refs with no copied body,
     so soft-delete keeps navigation state cheap to resurrect on the next sync.
 
-    An EMPTY crawl deletes only when the caller sets `confirmed_complete` — i.e.
-    the indexer verified the listing is a faithful, whole picture of the provider
-    (Granola cross-checks the count the provider states on its own envelope), so
-    an empty listing really means an empty account and the mirror should follow.
-    Without that proof an empty crawl refuses loudly: providers return empty for
-    reasons that aren't "the user deleted everything" — API contract drift,
-    silent truncation (X bookmarks, 2026-08-06), auth quirks that 200 with no
-    data (Granola, 2026-08) — and deleting to match would destroy the whole
-    archive on the word of one flaky response.
+    This is a dumb mirror: an empty `present_paths` deletes everything, because it
+    means the provider reported an empty account. The decision that an empty (or
+    short) listing is *real* and not a broken response lives in each indexer,
+    which fails loud on a malformed response before it ever reaches this sweep
+    (see `expect_items`). A single source of truth: the provider, believed only
+    once the indexer has confirmed it understood the response.
     """
-    if not present_paths and not confirmed_complete:
-        stored = await get_pool().fetchval(
-            f"SELECT COUNT(*) FROM {table} WHERE source_id = $1", source_id
-        )
-        if stored:
-            raise SourceSyncUserError(
-                f"The provider listed no documents, but {stored} are stored from earlier "
-                "syncs. Refusing to delete them — if the provider account really is "
-                "empty now, disconnect and reconnect the source to reset it."
-            )
-        return 0
     if table in CONTENT_TABLES:
         result = await get_pool().execute(
             f"DELETE FROM {table} WHERE source_id = $1 AND path <> ALL($2::text[])",
