@@ -243,6 +243,25 @@ def accessible_scope_ids_sql(user_arg: int) -> str:
     )"""
 
 
+async def read_scope_ids(user_id: UUID) -> list[UUID]:
+    """Every scope the user reads as their own: themselves, then each workspace
+    they belong to (membership order by workspace name).
+
+    These are the *places* a client renders — /personal plus one /workspace per
+    membership — and the owner set a spanning read filters on. Shares are
+    deliberately excluded: shared-in content lives in somebody else's scope and
+    surfaces per-object through `readable_content_condition`, so it is never a
+    root of your own. The caller's own id always comes first.
+    """
+    pool = get_pool()
+    rows = await pool.fetch(
+        f"SELECT w.scope_user_id FROM workspaces w "
+        f"WHERE {workspace_member_condition('w', 1)} ORDER BY w.name",
+        user_id,
+    )
+    return [user_id] + [row["scope_user_id"] for row in rows]
+
+
 async def resolve_owner_user_id(object_type: str, object_id: UUID) -> UUID | None:
     pool = get_pool()
     if object_type not in _OWNER_LOOKUP:

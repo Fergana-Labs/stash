@@ -13,7 +13,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from pydantic import BaseModel, Field
 
-from ..auth import get_current_user, get_scope
+from ..auth import get_current_user, get_read_scopes, get_scope
 from ..config import settings
 from ..database import get_pool
 from ..services import (
@@ -94,19 +94,19 @@ async def list_my_sessions(
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     current_user: dict = Depends(get_current_user),
-    scope_user_id: UUID = Depends(get_scope),
 ):
     """Recent sessions across the user's accessible scopes, grouped by
     session_id. Each row carries the agent name, event count, first & last
-    timestamps, and a preview of the first prompt.
+    timestamps, a preview of the first prompt, and the `owner_user_id` of the
+    scope it belongs to — that is what buckets a row under /personal or a
+    /workspace root.
 
-    Pass `session_folder_id` to scope to one folder — without it the list is a
-    global recent window, so a folder's older sessions would never appear.
-    `offset` pages through the (last_event_at DESC) order for infinite scroll."""
-    # The personal view spans every accessible scope (own + shared + workspace);
-    # switching into a workspace narrows the window to that scope's sessions.
-    if owner_user_id is None and scope_user_id != current_user["id"]:
-        owner_user_id = scope_user_id
+    The window always spans every accessible scope. Pass `owner_user_id` to
+    look at one scope on its own; that is a filter the caller asks for, never
+    ambient state. Pass `session_folder_id` to scope to one folder — without it
+    the list is a global recent window, so a folder's older sessions would never
+    appear. `offset` pages through the (last_event_at DESC) order for infinite
+    scroll."""
     pool = get_pool()
     args: list = [current_user["id"]]
     accessible_ws = permission_service.accessible_scope_ids_sql(1)
@@ -287,13 +287,24 @@ async def get_session_canonical(
 async def get_my_session(
     session_id: str,
     current_user: dict = Depends(get_current_user),
-    scope_user_id: UUID = Depends(get_scope),
+    read_scopes: list[UUID] = Depends(get_read_scopes),
 ):
-    owner_user_id = scope_user_id
-    payload = await _session_detail_payload(owner_user_id, session_id, current_user["id"])
-    if not payload:
-        raise HTTPException(status_code=404, detail="Session not found")
-    return payload
+    """A session in one of the caller's own scopes, newest first when the same
+    session_id exists in several of them (a session streamed personally before
+    the machine was pointed at a workspace exists in both).
+
+    session_id is unique per scope, so the scope has to be resolved rather than
+    supplied: the caller addresses a session by id, not by first selecting where
+    to look."""
+    for row in await session_service.list_sessions_for_session_id(session_id):
+        if row["owner_user_id"] not in read_scopes:
+            continue
+        payload = await _session_detail_payload(
+            row["owner_user_id"], session_id, current_user["id"]
+        )
+        if payload:
+            return payload
+    raise HTTPException(status_code=404, detail="Session not found")
 
 
 class SessionTitleRequest(BaseModel):

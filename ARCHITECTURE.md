@@ -46,9 +46,19 @@ S3-backed binary, vs. an in-app-editable page, vs. a folder).
   integrations keyring. The cloud agent's sprite gets the registry written
   into its `.mcp.json` every turn.
 - A workspace is an org-owned, login-less scope (`workspaces.domain`,
-  membership derived from verified email domain). Content routes select the
-  scope via the `X-Stash-Scope` header — including the plugin's session,
-  event, transcript, and artifact writes — and non-members are hard-403'd.
+  membership derived from verified email domain). Non-members are hard-403'd.
+- **Scope is a place, not a mode.** A caller owns one scope per membership —
+  themselves, plus each workspace — and those are the roots a client renders
+  (/personal, /workspace/&lt;domain&gt;). Reads span all of them
+  (`auth.get_read_scopes` → `permission_service.read_scope_ids`) and tag each row
+  with its `owner_user_id`, so what a GET returns never depends on ambient state.
+  Writes still resolve to exactly one scope (`auth.get_scope`, selected by the
+  `X-Stash-Scope` header) because a new object has to land somewhere: that is the
+  plugin's session, event, transcript, and artifact destination.
+  - Three read shapes, by pagination: paginated lists span in SQL
+    (`accessible_scope_ids_sql`, since merging separate pages is not one list);
+    unpaginated listings fan out per scope and sort in Python; by-id reads
+    resolve which owned scope holds the id rather than being told.
 
 Object-level privacy tables and page-link graph tables are intentionally not part
 of the current architecture. Privacy is mediated by Skills.
