@@ -48,7 +48,7 @@ async def test_stale_expected_hash_409s_and_fresh_hash_saves(client: AsyncClient
         headers=_auth(api_key),
     )
     assert stale.status_code == 409
-    assert "reload" in stale.json()["detail"]
+    assert "read it again" in stale.json()["detail"]
 
     untouched = await client.get(f"/api/v1/pages/{page['id']}", headers=_auth(api_key))
     assert untouched.json()["content_markdown"] == "v2"

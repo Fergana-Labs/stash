@@ -42,9 +42,6 @@ export type AddCommentArgs = {
 interface MarkdownEditorProps {
   file: Page;
   onSave: (content: string) => void | Promise<void>;
-  /** A save was refused because the page changed elsewhere (409). Shown as
-   *  a banner; editing freezes until the parent reloads the page. */
-  conflictMessage?: string | null;
   confirmSave?: () => boolean;
   onSaveStatusChange?: (status: SaveStatus) => void;
   /** Called on clicks to same-origin skill routes so the page
@@ -68,7 +65,6 @@ interface MarkdownEditorProps {
 export default function MarkdownEditor({
   file,
   onSave,
-  conflictMessage,
   confirmSave,
   onSaveStatusChange,
   onNavigateInternal,
@@ -81,7 +77,7 @@ export default function MarkdownEditor({
   const [saving, setSaving] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSaved = useRef<string>(file.content_markdown);
-  const readOnly = !file.can_write || !!conflictMessage;
+  const readOnly = !file.can_write;
   // Frontmatter is split off before the editor ever renders the document and
   // reattached on save — the editor cannot represent it, only destroy it.
   const frontmatterRef = useRef<string | null>(splitFrontmatter(file.content_markdown).frontmatter);
@@ -478,12 +474,7 @@ export default function MarkdownEditor({
         editor={editor}
         onStartComment={!readOnly && onAddComment ? openComposer : undefined}
       />
-      {conflictMessage && (
-        <div className="border-b border-red-300/40 bg-red-500/10 px-4 py-2 text-[13px] text-red-500">
-          {conflictMessage}
-        </div>
-      )}
-      {readOnly && !conflictMessage && (
+      {readOnly && (
         <div className="border-b border-border-subtle bg-raised px-4 py-2 text-[12px] text-muted-foreground">
           Read-only
         </div>

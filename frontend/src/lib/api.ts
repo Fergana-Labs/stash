@@ -655,8 +655,6 @@ export async function updatePage(
     name?: string;
     folder_id?: string | null;
     content?: string;
-    /** The content_hash this save was edited on top of — mismatch is a 409. */
-    expected_content_hash?: string | null;
     content_type?: "markdown" | "html";
     content_html?: string;
     html_layout?: "responsive" | "fixed-aspect" | "full-width";
