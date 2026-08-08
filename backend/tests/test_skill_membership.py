@@ -59,7 +59,9 @@ async def test_deleting_skill_md_leaves_a_draft_skill_not_a_silent_demotion(scop
     """The customer's exact move. Before: the skill vanished from every
     surface with no warning. Now: the delete is refused outright, and even
     forced at the data layer the skill still lists — as a draft."""
-    folder = await files_tree_service.create_skill(scope, scope, "Brake Shoes")
+    folder = await files_tree_service.create_skill(
+        scope, scope, "Brake Shoes", "Use this skill to service brake shoes."
+    )
     page_id = await _db_pool.fetchval(
         "SELECT id FROM pages WHERE folder_id = $1 AND name = 'SKILL.md'", folder["id"]
     )
@@ -120,7 +122,11 @@ async def test_convert_endpoint_leaves_a_loadable_skill(client, _db_pool):
     folder = await client.post("/api/v1/me/folders", json={"name": "Runbooks"}, headers=headers)
     folder_id = folder.json()["id"]
 
-    resp = await client.post(f"/api/v1/me/folders/{folder_id}/convert-to-skill", headers=headers)
+    resp = await client.post(
+        f"/api/v1/me/folders/{folder_id}/convert-to-skill",
+        json={"description": "Use this skill for runbooks."},
+        headers=headers,
+    )
     assert resp.status_code == 200
     assert resp.json()["is_skill"] is True
 
@@ -192,7 +198,9 @@ async def test_shared_skill_without_instructions_still_lists(client, _db_pool):
     friend_h = {"Authorization": f"Bearer {friend.json()['api_key']}"}
 
     made = await client.post(
-        "/api/v1/me/skills/new", json={"name": "Shared draft"}, headers=owner_h
+        "/api/v1/me/skills/new",
+        json={"name": "Shared draft", "description": "Draft to share"},
+        headers=owner_h,
     )
     folder_id = made.json()["folder_id"]
     # Force the draft state (the delete route refuses, by design).
@@ -225,7 +233,11 @@ async def test_convert_to_folder_keeps_the_files_and_needs_no_deletion(client, _
     )
     headers = {"Authorization": f"Bearer {reg.json()['api_key']}"}
     folder_id = (
-        await client.post("/api/v1/me/skills/new", json={"name": "Demote me"}, headers=headers)
+        await client.post(
+            "/api/v1/me/skills/new",
+            json={"name": "Demote me", "description": "Round-trips demotion"},
+            headers=headers,
+        )
     ).json()["folder_id"]
 
     # The old mechanism is refused, and says so.

@@ -119,8 +119,10 @@ export default function SkillsPage() {
   async function newSkill() {
     const name = window.prompt("Skill name?");
     if (!name?.trim()) return;
+    const description = window.prompt("When should an agent use this skill?");
+    if (!description?.trim()) return;
     try {
-      const created = await createSkill(name.trim());
+      const created = await createSkill(name.trim(), description.trim());
       if (user) await refreshSidebar().catch(() => {});
       router.push(`/skills/folder/${created.folder_id}`);
     } catch (e) {

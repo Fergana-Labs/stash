@@ -68,6 +68,7 @@ async def publish(
             current_user["id"],
             target_folder["id"],
             title=req.title,
+            description=req.description,
         )
     except (ValueError, PermissionError) as e:
         raise HTTPException(status_code=400, detail=str(e))

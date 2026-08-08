@@ -130,11 +130,13 @@ export default function FolderDetailPage({ folderId: folderIdProp }: { folderId?
 
   const convertToSkill = useCallback(async () => {
     if (!folderName || !user) return;
+    const description = window.prompt("When should an agent use this skill?");
+    if (!description?.trim()) return;
     setConverting(true);
     try {
       // The explicit verb — writing a SKILL.md hasn't promoted a folder
       // since membership became a stored flag.
-      await convertFolderToSkill(folderId);
+      await convertFolderToSkill(folderId, description.trim());
       await refreshSidebar().catch(() => {});
       // /skills/<x> is the published-slug route; a folder id there renders
       // "Skill not found". The skill's own page is /skills/folder/<id>.

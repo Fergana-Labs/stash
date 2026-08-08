@@ -117,31 +117,45 @@ def agent_install_pitch(stash_url: str) -> str:
     )
 
 
-def skill_md_template(name: str, description: str = "") -> str:
-    return f"---\nname: {name}\ndescription: {description}\n---\n\n# {name}\n"
+def skill_md_template(name: str, description: str) -> str:
+    return (
+        f"---\nname: {json.dumps(name)}\ndescription: {json.dumps(description)}\n---\n\n# {name}\n"
+    )
 
 
-async def ensure_skill_md(owner_user_id: UUID, folder_id: UUID, user_id: UUID, title: str) -> None:
+async def folder_has_skill_md(folder_id: UUID) -> bool:
+    pool = get_pool()
+    return bool(
+        await pool.fetchval(
+            "SELECT 1 FROM pages WHERE folder_id = $1 AND name = 'SKILL.md' "
+            "AND deleted_at IS NULL LIMIT 1",
+            folder_id,
+        )
+    )
+
+
+async def ensure_skill_md(
+    owner_user_id: UUID, folder_id: UUID, user_id: UUID, title: str, description: str
+) -> None:
     """Give the folder instructions if it has none, and mark it a skill.
 
     Publishing/forking/installing a skill is an explicit "this is a skill"
     act by the caller, so it sets membership — unlike a user editing files
     inside a folder, which never reclassifies anything."""
-    await files_tree_service.set_folder_is_skill(folder_id, owner_user_id, True)
-    pool = get_pool()
-    existing = await pool.fetchval(
-        "SELECT 1 FROM pages WHERE folder_id = $1 AND name = 'SKILL.md' "
-        "AND deleted_at IS NULL LIMIT 1",
-        folder_id,
-    )
-    if existing:
+    if await folder_has_skill_md(folder_id):
+        await files_tree_service.set_folder_is_skill(folder_id, owner_user_id, True)
         return
+    if not description.strip():
+        raise ValueError("description is required when publishing a folder as a skill")
+    skill_md = skill_md_template(title, description)
+    skill_service.validate_skill_md(skill_md)
+    await files_tree_service.set_folder_is_skill(folder_id, owner_user_id, True)
     await files_tree_service.create_page(
         owner_user_id,
         "SKILL.md",
         user_id,
         folder_id=folder_id,
-        content=skill_md_template(title),
+        content=skill_md,
         content_type="markdown",
     )
 
@@ -187,7 +201,7 @@ async def publish_folder(
         title = meta.get("name") or folder["name"]
         description = description or meta.get("description", "")
 
-    await ensure_skill_md(owner_user_id, folder_id, owner_id, title)
+    await ensure_skill_md(owner_user_id, folder_id, owner_id, title, description)
     try:
         inserted = await pool.fetchrow(
             "INSERT INTO skills (owner_user_id, folder_id, slug, title, description, owner_id, "

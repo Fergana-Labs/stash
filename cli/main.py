@@ -1665,7 +1665,7 @@ def skills_add(
 @skills_app.command("create")
 def skills_create(
     name: str = typer.Argument(..., help="Skill name (becomes the folder name)."),
-    description: str = typer.Option("", "--description"),
+    description: str = typer.Option(..., "--description"),
     public: bool = typer.Option(False, "--public", help="Publish immediately."),
     discover: bool = typer.Option(False, "--discover", help="List the public Skill in Discover."),
     as_json: bool = typer.Option(False, "--json"),
@@ -1674,7 +1674,17 @@ def skills_create(
     if discover and not public:
         console.print("[red]--discover requires --public.[/red]")
         raise typer.Exit(1)
-    skill_md = f"---\nname: {name}\ndescription: {description}\n---\n\n# {name}\n"
+    name = name.strip()
+    description = description.strip()
+    if not name or len(name) > 64:
+        console.print("[red]Error:[/red] skill name must contain 1-64 characters.")
+        raise typer.Exit(1)
+    if not description or len(description) > 1024:
+        console.print("[red]Error:[/red] skill description must contain 1-1024 characters.")
+        raise typer.Exit(1)
+    skill_md = (
+        f"---\nname: {json.dumps(name)}\ndescription: {json.dumps(description)}\n---\n\n# {name}\n"
+    )
     with _client() as c:
         try:
             folder = c.create_folder(name)
@@ -1780,6 +1790,37 @@ def _safe_skill_dirname(name: str) -> str:
     return cleaned or "skill"
 
 
+def _validate_skill_markdown(markdown: str) -> None:
+    if not markdown.startswith("---\n") or "\n---" not in markdown[4:]:
+        raise ValueError("SKILL.md must start with YAML frontmatter")
+    raw = markdown[4 : markdown.find("\n---", 4)]
+    metadata = {}
+    for line in raw.splitlines():
+        key, separator, value = line.partition(":")
+        if separator:
+            value = value.strip()
+            metadata[key.strip()] = json.loads(value) if value.startswith('"') else value
+    name = metadata.get("name", "")
+    description = metadata.get("description", "")
+    if not name:
+        raise ValueError("SKILL.md frontmatter requires a nonblank name")
+    if len(name) > 64:
+        raise ValueError("SKILL.md name must be at most 64 characters")
+    if not description:
+        raise ValueError("SKILL.md frontmatter requires a nonblank description")
+    if len(description) > 1024:
+        raise ValueError("SKILL.md description must be at most 1024 characters")
+
+
+def _validate_skill_contents(contents: dict) -> None:
+    skill_pages = [
+        page for page in contents["pages"] if page["name"] == "SKILL.md" and not page["folder_path"]
+    ]
+    if len(skill_pages) != 1:
+        raise ValueError("skill must contain one root SKILL.md")
+    _validate_skill_markdown(skill_pages[0]["content_markdown"] or "")
+
+
 def _materialize_skill(detail: dict, skills_root: Path, fetch_bytes) -> tuple[Path, int]:
     """Write a public-skill payload to skills_root/<folder_name>.
 
@@ -1788,6 +1829,7 @@ def _materialize_skill(detail: dict, skills_root: Path, fetch_bytes) -> tuple[Pa
     is allowed only when the target already looks like a skill (has a
     SKILL.md) — never delete an arbitrary directory on a name collision."""
     contents = detail["contents"]
+    _validate_skill_contents(contents)
     target = skills_root / _safe_skill_dirname(detail["folder_name"])
     if target.exists():
         if not (target / "SKILL.md").exists():
@@ -1892,10 +1934,12 @@ def skills_install(
     with _client() as c:
         try:
             detail = c.get_public_skill(slug)
+            target, written = _materialize_skill(detail, root, _fetch_bytes)
         except StashError as e:
             _err(e)
-
-        target, written = _materialize_skill(detail, root, _fetch_bytes)
+        except ValueError as e:
+            console.print(f"[red]Invalid skill:[/red] {e}")
+            raise typer.Exit(1) from e
         # Adoption ping — best-effort: a metrics hiccup must not fail an
         # install that already succeeded on disk.
         try:
@@ -2143,6 +2187,7 @@ def _sync_skills(
         summary["pulled"].append(name)
 
     def push(name: str, folder_id: str) -> None:
+        _validate_skill_markdown((local[name] / "SKILL.md").read_text())
         c.replace_skill_contents(folder_id, _collect_local_files(local[name]))
         record(name, c.get_skill_contents(folder_id))
         summary["pushed"].append(name)
@@ -2181,8 +2226,9 @@ def _sync_skills(
                 else:
                     new_state[name] = rec
                     summary["unchanged"].append(name)
-        except StashError as e:
-            summary["conflicts"].append(f"{name} (sync failed: {e.detail})")
+        except (StashError, ValueError) as e:
+            detail = e.detail if isinstance(e, StashError) else str(e)
+            summary["conflicts"].append(f"{name} (sync failed: {detail})")
             if rec:
                 new_state[name] = rec
     return summary, new_state
@@ -2206,7 +2252,11 @@ def _sync_installed(c, root: Path, entry: dict, fetch_bytes) -> tuple[list[str],
             if name in skills or (root / name).exists():
                 notes.append(f"{name} (new shared skill collides with an existing dir; skipped)")
                 continue
-            target, _written = _materialize_skill(detail, root, fetch_bytes)
+            try:
+                target, _written = _materialize_skill(detail, root, fetch_bytes)
+            except ValueError as e:
+                notes.append(f"{name} (invalid skill: {e})")
+                continue
             skills[target.name] = {
                 "shared_folder_id": shared["folder_id"],
                 "remote_hash": _hash_remote_contents(detail["contents"]),
@@ -2225,7 +2275,11 @@ def _sync_installed(c, root: Path, entry: dict, fetch_bytes) -> tuple[list[str],
         remote_hash = _hash_remote_contents(detail["contents"])
         if remote_hash == rec.get("remote_hash") and (root / name).is_dir():
             continue
-        target, _written = _materialize_skill(detail, root, fetch_bytes)
+        try:
+            target, _written = _materialize_skill(detail, root, fetch_bytes)
+        except ValueError as e:
+            notes.append(f"{name} (invalid skill: {e})")
+            continue
         if target.name != name:
             # Renamed in the cloud: the old dir is superseded by the new one.
             old = root / name

@@ -319,8 +319,12 @@ export default function Explorer({ section }: { section: ExplorerSection }) {
   }, []);
   // A skill is a folder + SKILL.md — the Skills root's "create native item"
   // action. Returns the created Item so the explorer opens and highlights it.
-  const createSkill = useCallback(async (): Promise<Item> => {
-    const created = await createSkillApi();
+  const createSkill = useCallback(async (): Promise<Item | void> => {
+    const name = window.prompt("Skill name?");
+    if (!name?.trim()) return;
+    const description = window.prompt("When should an agent use this skill?");
+    if (!description?.trim()) return;
+    const created = await createSkillApi(name.trim(), description.trim());
     return { kind: "skill", id: created.folder_id, name: created.name };
   }, []);
 

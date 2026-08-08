@@ -1265,7 +1265,11 @@ async def create_page_unique(
 
 
 async def _create_folder_unique(
-    owner_user_id: UUID, base_name: str, created_by: UUID, parent_folder_id: UUID | None
+    owner_user_id: UUID,
+    base_name: str,
+    created_by: UUID,
+    parent_folder_id: UUID | None,
+    max_length: int | None = None,
 ) -> dict:
     name = base_name
     n = 2
@@ -1275,24 +1279,36 @@ async def _create_folder_unique(
                 owner_user_id, name, created_by, parent_folder_id=parent_folder_id
             )
         except DuplicateFolderName:
-            name = f"{base_name} ({n})"
+            suffix = f" ({n})"
+            stem = base_name if max_length is None else base_name[: max_length - len(suffix)]
+            name = f"{stem}{suffix}"
             n += 1
 
 
-async def create_skill(owner_user_id: UUID, created_by: UUID, base_name: str) -> dict:
+async def create_skill(
+    owner_user_id: UUID, created_by: UUID, base_name: str, description: str
+) -> dict:
     """Create a skill: a root folder plus its SKILL.md, in one server-side call.
     The folder name is uniquified (' (2)', ' (3)', …) so creation never 409s —
     a plain root folder can hold the wanted name without being visible on the
     Skills surface, and the hard-coded 'New skill' default made that a
     guaranteed collision on the second create."""
-    folder = await _create_folder_unique(owner_user_id, base_name, created_by, None)
+    folder = await _create_folder_unique(
+        owner_user_id,
+        base_name,
+        created_by,
+        None,
+        max_length=skill_service.MAX_SKILL_NAME_LENGTH,
+    )
+    skill_md = skill_service.skill_md_template(folder["name"], description)
+    skill_service.validate_skill_md(skill_md)
     await set_folder_is_skill(folder["id"], owner_user_id, True)
     await create_page(
         owner_user_id,
         skill_service.SKILL_MD_NAME,
         created_by,
         folder_id=folder["id"],
-        content=skill_service.skill_md_template(folder["name"]),
+        content=skill_md,
     )
     return {**folder, "is_skill": True}
 

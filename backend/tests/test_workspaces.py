@@ -570,7 +570,9 @@ async def test_member_publishes_workspace_skill_and_teammate_manages_it(client: 
 
     scoped_a = {**_auth(a_key), "X-Stash-Scope": ws["scope_user_id"]}
     published = await client.post(
-        "/api/v1/me/skills", json={"folder_id": str(folder_id)}, headers=scoped_a
+        "/api/v1/me/skills",
+        json={"folder_id": str(folder_id), "description": "Workspace deploy runbook"},
+        headers=scoped_a,
     )
     assert published.status_code == 201, published.text
     skill = published.json()
@@ -610,7 +612,11 @@ async def test_member_forks_public_skill_into_workspace(client: AsyncClient, poo
     )
     published = await client.post(
         "/api/v1/me/skills",
-        json={"folder_id": str(author_folder["id"]), "title": "public-howto"},
+        json={
+            "folder_id": str(author_folder["id"]),
+            "title": "public-howto",
+            "description": "How-to guide",
+        },
         headers=_auth(author_key),
     )
     assert published.status_code == 201, published.text
