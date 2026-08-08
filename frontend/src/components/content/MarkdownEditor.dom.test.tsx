@@ -103,16 +103,4 @@ describe("MarkdownEditor", () => {
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
   });
 
-  it("freezes on a save conflict and says why", async () => {
-    render(
-      <MarkdownEditor
-        file={page}
-        onSave={vi.fn()}
-        conflictMessage="This page changed since you loaded it — reload to get the latest version."
-      />,
-    );
-
-    // The banner shows in view mode, and the editor behind Edit is frozen.
-    expect(await screen.findByText(/changed since you loaded it/)).toBeInTheDocument();
-  });
 });

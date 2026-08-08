@@ -110,7 +110,7 @@ async def index_asana(source: dict) -> str | None:
             resp = await client.get(url, params=params)
             resp.raise_for_status()
             payload = resp.json()
-            for task in payload.get("data", []):
+            for task in source_service.expect_items(payload, "data", provider="Asana"):
                 gid = task.get("gid")
                 if not gid:
                     continue

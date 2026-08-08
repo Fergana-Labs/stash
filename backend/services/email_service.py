@@ -121,7 +121,7 @@ your data &mdash; and a Drive they can read and write natively.</p>
 <p><strong>What's in your Stash:</strong></p>
 
 <ul>
-  <li><strong>Files</strong> &mdash; pages, documents, and tables. Markdown, HTML, PDFs, spreadsheets, decks. Pages are collaborative in real time, with your agents editing alongside you.</li>
+  <li><strong>Files</strong> &mdash; pages, documents, and tables. Markdown, HTML, PDFs, spreadsheets, decks. Your agents read and edit pages alongside you, with conflict-safe saves.</li>
   <li><strong>Sessions</strong> &mdash; every conversation with your coding agents, pushed and indexed automatically.</li>
   <li><strong>Memory</strong> &mdash; a wiki an agent maintains for you. It runs nightly over whatever is new and compiles it into linked pages you can actually read.</li>
   <li><strong>Skills</strong> &mdash; a folder with a <code>SKILL.md</code> in it. Put related work in one folder and it becomes a unit you can share, publish, or install into an agent. We've put four in your account already.</li>

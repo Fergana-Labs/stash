@@ -77,21 +77,6 @@ async def get_paste(slug: str) -> dict | None:
     return dict(row) if row else None
 
 
-async def authorize_collab(slug: str, token: str) -> dict | None:
-    """Resolve a paste for a live-editing socket: valid edit token plus
-    markdown content (HTML pages don't have collab, same as the app)."""
-    pool = get_pool()
-    row = await pool.fetchrow(
-        """
-        SELECT id FROM pastes
-        WHERE slug = $1 AND edit_token = $2 AND content_type = 'markdown'
-        """,
-        slug,
-        token,
-    )
-    return dict(row) if row else None
-
-
 async def update_paste(
     slug: str,
     token: str,
@@ -124,19 +109,13 @@ async def update_paste(
     if not row:
         return None
     paste = dict(row)
-    if content:
-        # A content write makes any persisted Y.Doc state stale — an agent
-        # PATCH would otherwise be silently reverted the next time someone
-        # opens the live editor. Live sessions are unaffected (the doc is
-        # in collab-server memory and re-persists on its own debounce).
-        await pool.execute("DELETE FROM paste_collab_documents WHERE paste_id = $1", paste["id"])
     paste.pop("id")
     return paste
 
 
 async def delete_paste(slug: str, token: str) -> bool:
-    """True when a paste matched slug+token and was deleted. Comments and
-    collab state cascade via their FK ON DELETE CASCADE."""
+    """True when a paste matched slug+token and was deleted. Comments
+    cascade via their FK ON DELETE CASCADE."""
     pool = get_pool()
     result = await pool.execute(
         "DELETE FROM pastes WHERE slug = $1 AND edit_token = $2",

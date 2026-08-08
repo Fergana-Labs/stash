@@ -52,7 +52,7 @@ export default function AddToStashButton({ slug }: Props) {
       {attached ? (
         <button
           type="button"
-          onClick={() => router.push(`/skills/${attached.folderId}`)}
+          onClick={() => router.push(`/skills/folder/${attached.folderId}`)}
           className="cursor-pointer rounded-lg border border-border-subtle px-4 py-2 text-[14px] font-medium text-foreground transition hover:border-brand hover:text-brand"
         >
           Open {attached.name}

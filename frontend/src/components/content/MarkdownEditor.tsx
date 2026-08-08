@@ -14,9 +14,6 @@ export type SaveStatus = "saved" | "dirty" | "saving";
 interface MarkdownEditorProps {
   file: Page;
   onSave: (content: string) => void | Promise<void>;
-  /** A save was refused because the page changed elsewhere (409). Shown as a
-   *  banner; editing freezes until the parent reloads the page. */
-  conflictMessage?: string | null;
   confirmSave?: () => boolean;
   onSaveStatusChange?: (status: SaveStatus) => void;
 }
@@ -38,7 +35,6 @@ interface MarkdownEditorProps {
 export default function MarkdownEditor({
   file,
   onSave,
-  conflictMessage,
   confirmSave,
   onSaveStatusChange,
 }: MarkdownEditorProps) {
@@ -54,7 +50,7 @@ export default function MarkdownEditor({
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSaved = useRef(file.content_markdown);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-  const readOnly = !file.can_write || !!conflictMessage;
+  const readOnly = !file.can_write;
 
   // Load the file when the page changes. Keyed on id, not content: a save
   // echo must not yank the buffer out from under the cursor.
@@ -193,25 +189,18 @@ export default function MarkdownEditor({
   if (mode === "view") {
     return (
       <div className="flex flex-col">
-        {(!readOnly || conflictMessage) && (
+        {!readOnly && (
           <div className="flex shrink-0 items-center justify-end gap-1 border-b border-border-subtle px-3 py-1.5">
-            {!readOnly && (
-              <button
-                type="button"
-                onClick={() => setMode("edit")}
-                className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-border bg-base px-2.5 py-1 text-[12.5px] font-medium text-foreground hover:bg-raised"
-              >
-                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                  <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
-                </svg>
-                Edit
-              </button>
-            )}
-          </div>
-        )}
-        {conflictMessage && (
-          <div className="border-b border-red-300/40 bg-red-500/10 px-4 py-2 text-[13px] text-red-500">
-            {conflictMessage}
+            <button
+              type="button"
+              onClick={() => setMode("edit")}
+              className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-border bg-base px-2.5 py-1 text-[12.5px] font-medium text-foreground hover:bg-raised"
+            >
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+              </svg>
+              Edit
+            </button>
           </div>
         )}
         <article className="prose markdown-content mx-auto w-full max-w-[920px] bg-background px-8 py-10 text-foreground">
@@ -236,12 +225,7 @@ export default function MarkdownEditor({
         </button>
       </div>
 
-      {conflictMessage && (
-        <div className="border-b border-red-300/40 bg-red-500/10 px-4 py-2 text-[13px] text-red-500">
-          {conflictMessage}
-        </div>
-      )}
-      {readOnly && !conflictMessage && (
+      {readOnly && (
         <div className="border-b border-border-subtle bg-raised px-4 py-2 text-[12px] text-muted-foreground">
           Read-only
         </div>
