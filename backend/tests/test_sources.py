@@ -864,16 +864,17 @@ async def test_missing_index_only_rows_are_soft_deleted(client: AsyncClient, poo
         display_name="Drive",
     )
     sid = UUID(src["id"])
-    await source_service.upsert_index_row(
-        table="drive_index",
-        source_id=sid,
-        owner_user_id=ws,
-        path="old-doc",
-        name="Old Doc",
-        external_ref="provider-doc",
-    )
+    for path, name in [("old-doc", "Old Doc"), ("kept-doc", "Kept Doc")]:
+        await source_service.upsert_index_row(
+            table="drive_index",
+            source_id=sid,
+            owner_user_id=ws,
+            path=path,
+            name=name,
+            external_ref=f"provider-{path}",
+        )
 
-    removed = await source_service.remove_missing_documents("drive_index", sid, [])
+    removed = await source_service.remove_missing_documents("drive_index", sid, ["kept-doc"])
 
     assert removed == 1
     assert (
@@ -891,7 +892,8 @@ async def test_missing_index_only_rows_are_soft_deleted(client: AsyncClient, poo
         )
         == 1
     )
-    assert await source_service.list_documents(src) == []
+    live = await source_service.list_documents(src)
+    assert {d["path"] for d in live} == {"kept-doc"}
 
 
 @pytest.mark.asyncio

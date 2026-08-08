@@ -61,11 +61,12 @@ async def _fetch_call_meta(client: httpx.AsyncClient, from_dt: str, to_dt: str) 
         if cursor:
             params["cursor"] = cursor
         resp = await client.get("/v2/calls", params=params)
-        if resp.status_code == 404:
-            break  # no calls in window
+        # A 404 is an error, not "the account has no calls" — raise rather than
+        # let an empty result drive the delete sweep. A genuinely empty window
+        # returns 200 with an empty `calls` list, which expect_items believes.
         resp.raise_for_status()
         payload = resp.json()
-        for call in payload.get("calls", []):
+        for call in source_service.expect_items(payload, "calls", provider="Gong"):
             meta_by_id[call["id"]] = call
         cursor = (payload.get("records") or {}).get("cursor")
         if not cursor:
