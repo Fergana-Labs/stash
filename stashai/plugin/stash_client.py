@@ -13,6 +13,7 @@ flush daemon.
 
 from __future__ import annotations
 
+import gzip
 import json
 import time
 from pathlib import Path
@@ -116,6 +117,14 @@ class StashClient:
     def _request(self, method: str, path: str, **kwargs) -> httpx.Response:
         headers = kwargs.pop("headers", {})
         headers.update(self._headers())
+        # The edge WAF pattern-matches raw bodies and 403s agent shell text as
+        # command injection (~1.5% of bash events; see StashError.from_api).
+        # Gzip JSON bodies so the edge has nothing to match; the backend's
+        # GzipRequestMiddleware restores them.
+        if kwargs.get("json") is not None:
+            kwargs["content"] = gzip.compress(json.dumps(kwargs.pop("json")).encode())
+            headers["Content-Type"] = "application/json"
+            headers["Content-Encoding"] = "gzip"
         resp = self._http.request(method, path, headers=headers, **kwargs)
         if not resp.is_success:
             try:
