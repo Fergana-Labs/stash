@@ -1,876 +1,275 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { EditorContent, useEditor } from "@tiptap/react";
-import StarterKit from "@tiptap/starter-kit";
-import Heading from "@tiptap/extension-heading";
-import Bold from "@tiptap/extension-bold";
-import Italic from "@tiptap/extension-italic";
-import Link from "@tiptap/extension-link";
-import Underline from "@tiptap/extension-underline";
-import Subscript from "@tiptap/extension-subscript";
-import Superscript from "@tiptap/extension-superscript";
-import Typography from "@tiptap/extension-typography";
-import Image from "@tiptap/extension-image";
-import Placeholder from "@tiptap/extension-placeholder";
-import { Table, TableCell, TableHeader, TableRow } from "@tiptap/extension-table";
-import MarkdownIt from "markdown-it";
-import EditorToolbar from "./EditorToolbar";
-import CommentMark from "./CommentMark";
-import CommentComposerPopover from "./CommentComposerPopover";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import Markdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+
 import { Page } from "../../lib/types";
 import { uploadFile, fileDownloadUrl } from "../../lib/api";
-import { splitFrontmatter, joinFrontmatter } from "../../lib/frontmatter";
-import { openInNewTab, shouldOpenInNewTab } from "../../lib/linkNavigation";
 
 const AUTOSAVE_DEBOUNCE_MS = 1500;
-const ANCHOR_CONTEXT_CHARS = 32;
-
-// Same converter settings the collab server used, so existing pages render
-// identically after the switch to direct loading.
-const markdown = new MarkdownIt({ html: true, linkify: true, typographer: false });
 
 export type SaveStatus = "saved" | "dirty" | "saving";
-
-export type AddCommentArgs = {
-  quoted_text: string;
-  prefix: string;
-  suffix: string;
-  body: string;
-};
 
 interface MarkdownEditorProps {
   file: Page;
   onSave: (content: string) => void | Promise<void>;
   confirmSave?: () => boolean;
   onSaveStatusChange?: (status: SaveStatus) => void;
-  /** Called on clicks to same-origin skill routes so the page
-   *  can SPA-select the target instead of reloading. */
-  onNavigateInternal?: (href: string) => void;
-  /** Adds a comment thread anchored to the current selection. Resolves
-   *  with the new thread id so we can paint the `comment` mark onto the
-   *  range. If the host doesn't pass this prop the "Comment" button is
-   *  hidden (e.g. read-only / public view). */
-  onAddComment?: (args: AddCommentArgs) => Promise<string | null>;
-  /** Click on an anchored span surfaces the thread in the sidebar. */
-  onActivateThread?: (threadId: string) => void;
-  /** Highlight the currently selected thread's anchor more strongly. */
-  activeThreadId?: string | null;
-  /** Asks the editor to strip every `comment` mark matching the given id
-   *  (the anchor wrapper for a thread that the user just deleted). Pass
-   *  a fresh `nonce` each time so the effect re-fires for repeat ids. */
-  stripCommentToken?: { id: string; nonce: number } | null;
 }
 
+/** The markdown editor edits markdown.
+ *
+ *  It used to be a rich-text editor: every open converted the file into a
+ *  visual document and every save converted it back. Anything that document
+ *  had no block for was flattened on the way through — fenced code blocks
+ *  came back as inline spans with their line breaks stripped (turning two
+ *  shell commands into one unrunnable string), blockquotes lost their
+ *  markers, and a frontmatter block turned into a heading. 193 pages in
+ *  production carry code fences, 99 of them SKILL.md files, and one keystroke
+ *  anywhere in the document was enough to rewrite the lot.
+ *
+ *  So there is no conversion now. The textarea holds the file's bytes, the
+ *  preview renders a copy for looking at, and a save writes back exactly what
+ *  is in the box. Nothing can be lost in a round trip that does not happen. */
 export default function MarkdownEditor({
   file,
   onSave,
   confirmSave,
   onSaveStatusChange,
-  onNavigateInternal,
-  onAddComment,
-  onActivateThread,
-  activeThreadId,
-  stripCommentToken,
 }: MarkdownEditorProps) {
+  const [value, setValue] = useState(file.content_markdown);
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
-  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const lastSaved = useRef<string>(file.content_markdown);
-  const readOnly = !file.can_write;
-  // Frontmatter is split off before the editor ever renders the document and
-  // reattached on save — the editor cannot represent it, only destroy it.
-  const frontmatterRef = useRef<string | null>(splitFrontmatter(file.content_markdown).frontmatter);
-  // Refs that closures inside `useEditor` / window listeners can call
-  // without re-creating the editor every render.
-  const saveMarkdownRef = useRef<(md: string) => void>(() => {});
-  const insertUploadedFilesRef = useRef<(files: FileList | File[]) => void>(() => {});
-  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
-  // Holds the selection range alive while the composer is open — the
-  // <textarea> taking focus changes the editor's selection, so we capture
-  // the range up front and re-apply when we set the mark.
-  const [composerState, setComposerState] = useState<{
-    top: number;
-    left: number;
-    from: number;
-    to: number;
-    quoted_text: string;
-    prefix: string;
-    suffix: string;
-  } | null>(null);
-
-  // The page body the editor renders: the stored markdown minus its
-  // frontmatter, converted once per page open. After that the editor holds
-  // the document and saves export it back to markdown. Keyed on file.id
-  // only — save echoes update file.content_markdown and must not reset the
-  // document under the caret.
-  const initialBodyHtml = useMemo(
-    () => markdown.render(splitFrontmatter(file.content_markdown).body),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [file.id]
+  const [showPreview, setShowPreview] = useState(false);
+  // Pages open as a rendered document; editing the raw markdown is an
+  // explicit step. A new empty page opens straight into the editor.
+  const [mode, setMode] = useState<"view" | "edit">(
+    file.content_markdown ? "view" : "edit"
   );
-  const canEdit = !readOnly;
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastSaved = useRef(file.content_markdown);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const readOnly = !file.can_write;
 
-  const editor = useEditor({
-    immediatelyRender: false,
-    editable: canEdit,
-    content: initialBodyHtml,
-    extensions: [
-      StarterKit.configure({
-        blockquote: false,
-        codeBlock: false,
-        heading: false,
-        bold: false,
-        italic: false,
-        // StarterKit 3.x ships link + underline by default; we configure
-        // those separately below, so disable the StarterKit copies to
-        // avoid the "Duplicate extension names" warning + drift.
-        link: false,
-        underline: false,
-      }),
-      Heading.configure({ levels: [1, 2, 3] }),
-      Bold,
-      Italic,
-      Underline,
-      Subscript,
-      Superscript,
-      Typography,
-      Link.configure({
-        // We route clicks ourselves via editorProps.handleClickOn below
-        // so internal skill URLs SPA-navigate instead of opening a new
-        // tab, and relative/dead hrefs don't trigger 404s. Keep TipTap's
-        // own click plugin disabled.
-        openOnClick: false,
-        autolink: true,
-        HTMLAttributes: {
-          // No class here — CSS classifies each anchor by href pattern
-          // (see globals.css .ProseMirror a[...] rules) so internal,
-          // external, and dead links style themselves consistently.
-          rel: "noopener noreferrer",
-        },
-      }),
-      Image.configure({
-        HTMLAttributes: { class: "max-w-full rounded-md my-2" },
-      }),
-      Table.configure({
-        resizable: false,
-        HTMLAttributes: { class: "file-page-table" },
-      }),
-      TableRow,
-      TableHeader,
-      TableCell,
-      Placeholder.configure({ placeholder: "Start typing..." }),
-      CommentMark,
-    ],
-    editorProps: {
-      attributes: {
-        class:
-          "prose prose-sm max-w-none min-h-full px-12 pt-10 pb-24 focus:outline-none file-page-body" +
-          (canEdit ? " cursor-text" : ""),
-        spellcheck: "false",
-      },
-      handleDOMEvents: {
-        paste: (_view, event) => {
-          const files = event.clipboardData?.files;
-          if (!files || files.length === 0) return false;
-          const hasImage = Array.from(files).some((file) => file.type.startsWith("image/"));
-          if (!hasImage) return false;
-          event.preventDefault();
-          insertUploadedFilesRef.current(files);
-          return true;
-        },
-        drop: (_view, event) => {
-          const files = event.dataTransfer?.files;
-          if (!files || files.length === 0) return false;
-          event.preventDefault();
-          insertUploadedFilesRef.current(files);
-          return true;
-        },
-        click: (_view, event) => {
-          const target = event.target as HTMLElement | null;
-
-          const commentEl = target?.closest?.("[data-comment-id]") as
-            | HTMLElement
-            | null;
-          if (commentEl && onActivateThread) {
-            const threadId = commentEl.getAttribute("data-comment-id");
-            if (threadId) {
-              event.preventDefault();
-              onActivateThread(threadId);
-              return true;
-            }
-          }
-
-          const anchor = target?.closest?.("a");
-          if (!anchor) return false;
-          const href = anchor.getAttribute("href");
-          if (!href) return false;
-
-          const isSkillAbsolute = /^https?:\/\/(app\.)?skill\.ac\//i.test(href);
-          const isRouteRelative = href.startsWith("/");
-          const hasScheme = /^[a-z][a-z0-9+.-]*:/i.test(href);
-
-          if (isSkillAbsolute || isRouteRelative) {
-            event.preventDefault();
-            if (shouldOpenInNewTab(event)) {
-              openInNewTab(href);
-            } else {
-              onNavigateInternal?.(href);
-            }
-            return true;
-          }
-
-          if (hasScheme) {
-            event.preventDefault();
-            openInNewTab(href);
-            return true;
-          }
-
-          // Relative href with no scheme and no leading slash — a stale
-          // import artifact. Block it so the browser doesn't try to
-          // resolve e.g. "README.md" against the current URL.
-          event.preventDefault();
-          return true;
-        },
-      },
-    },
-    onUpdate: ({ editor }) => {
-      if (readOnly) return;
-      const md = joinFrontmatter(
-        frontmatterRef.current,
-        serializeMarkdown(editor.getJSON(), splitFrontmatter(lastSaved.current).body)
-      );
-      if (md === lastSaved.current) return;
-      setDirty(true);
-      if (saveTimer.current) clearTimeout(saveTimer.current);
-      saveTimer.current = setTimeout(() => {
-        saveTimer.current = null;
-        saveMarkdownRef.current(md);
-      }, AUTOSAVE_DEBOUNCE_MS);
-    },
-    // Recreated only on page switch. Editability flips live via setEditable
-    // below — recreating on a permission/conflict flip would rewind the
-    // document to its mount-time content, discarding what the user typed.
-  }, [initialBodyHtml]);
+  // Load the file when the page changes. Keyed on id, not content: a save
+  // echo must not yank the buffer out from under the cursor.
+  useEffect(() => {
+    setValue(file.content_markdown);
+    lastSaved.current = file.content_markdown;
+    setDirty(false);
+    setSaving(false);
+    setMode(file.content_markdown ? "view" : "edit");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [file.id]);
 
   useEffect(() => {
-    editor?.setEditable(canEdit);
-  }, [editor, canEdit]);
+    onSaveStatusChange?.(saving ? "saving" : dirty ? "dirty" : "saved");
+  }, [saving, dirty, onSaveStatusChange]);
 
-  const saveMarkdown = useCallback(
-    async (md: string) => {
+  const save = useCallback(
+    async (next: string) => {
       if (readOnly || (confirmSave && !confirmSave())) return;
       setSaving(true);
       try {
-        await onSave(md);
-        // If the doc changed during the save (user kept typing), leave the
-        // dirty flag alone so the next debounce flushes — only clear it when
-        // what we saved is still what's on screen.
-        const currentMd = editor
-          ? joinFrontmatter(
-              frontmatterRef.current,
-              serializeMarkdown(editor.getJSON(), splitFrontmatter(md).body)
-            )
-          : md;
-        if (currentMd === md) {
-          lastSaved.current = md;
-          setDirty(false);
-        }
+        await onSave(next);
+        lastSaved.current = next;
+        setDirty(false);
       } finally {
         setSaving(false);
       }
     },
-    [confirmSave, editor, onSave, readOnly]
+    [confirmSave, onSave, readOnly]
   );
 
-  const insertUploadedFiles = useCallback(
-    async (files: FileList | File[]) => {
-      if (!editor) return;
-      for (const fileToUpload of Array.from(files)) {
-        // Inserting the download link embeds the file: the server claims it
-        // when the page body saves.
-        const result = await uploadFile(fileToUpload);
-        // Build each insertion from the current editor state. Uploads can
-        // overlap with remote Yjs updates, so old transactions may no longer
-        // match the document by the time the upload finishes.
-        if (editor.isDestroyed) return;
-        const href = fileDownloadUrl(result.id);
-        if (result.content_type.startsWith("image/")) {
-          editor.commands.setImage({ src: href, alt: result.name });
-        } else {
-          editor.commands.insertContent({
-            type: "text",
-            text: result.name,
-            marks: [{ type: "link", attrs: { href } }],
-          });
-        }
-      }
-    },
-    [editor]
-  );
-
+  const saveRef = useRef(save);
   useEffect(() => {
-    saveMarkdownRef.current = (md: string) => {
-      void saveMarkdown(md);
-    };
-  }, [saveMarkdown]);
+    saveRef.current = save;
+  }, [save]);
 
-  useEffect(() => {
-    insertUploadedFilesRef.current = (files: FileList | File[]) => {
-      void insertUploadedFiles(files);
-    };
-  }, [insertUploadedFiles]);
+  function onChange(next: string) {
+    setValue(next);
+    setDirty(next !== lastSaved.current);
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      saveTimer.current = null;
+      if (next !== lastSaved.current) void saveRef.current(next);
+    }, AUTOSAVE_DEBOUNCE_MS);
+  }
 
-  useEffect(() => {
-    lastSaved.current = file.content_markdown;
-    setDirty(false);
-    setSaving(false);
-  }, [file.content_markdown, file.id]);
-
-  // Re-split the frontmatter when switching pages — id only: an edit echo
-  // must not clobber the held frontmatter mid-session.
-  useEffect(() => {
-    frontmatterRef.current = splitFrontmatter(file.content_markdown).frontmatter;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [file.id]);
-
-  // Bubble save status to parent
-  useEffect(() => {
-    if (onSaveStatusChange) {
-      onSaveStatusChange(saving ? "saving" : dirty ? "dirty" : "saved");
-    }
-  }, [saving, dirty, onSaveStatusChange]);
-
-  // Flush pending save on unmount / page switch
+  // Flush a pending save when leaving the page.
   useEffect(() => {
     return () => {
+      if (!saveTimer.current) return;
+      clearTimeout(saveTimer.current);
+      const pending = textareaRef.current?.value;
+      if (pending !== undefined && pending !== lastSaved.current) {
+        void saveRef.current(pending);
+      }
+    };
+  }, [file.id]);
+
+  // Cmd/Ctrl+S flushes immediately.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!((e.metaKey || e.ctrlKey) && e.key === "s")) return;
+      e.preventDefault();
+      if (readOnly) return;
       if (saveTimer.current) {
         clearTimeout(saveTimer.current);
-        if (editor) {
-          const md = joinFrontmatter(
-            frontmatterRef.current,
-            serializeMarkdown(editor.getJSON(), splitFrontmatter(lastSaved.current).body)
-          );
-          if (md !== lastSaved.current) {
-            saveMarkdownRef.current(md);
-          }
-        }
+        saveTimer.current = null;
       }
+      const current = textareaRef.current?.value;
+      if (current !== undefined && current !== lastSaved.current) void saveRef.current(current);
     };
-  }, [editor]);
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [readOnly, save]);
 
-  // Paint the active thread's anchor strongly. Toggles an `is-active`
-  // class on the matching span(s) via direct DOM ops — the editor's
-  // schema doesn't need to track presentation state.
-  useEffect(() => {
-    const container = scrollContainerRef.current;
-    if (!container) return;
-    const all = container.querySelectorAll<HTMLElement>("[data-comment-id]");
-    all.forEach((el) => {
-      el.classList.toggle(
-        "is-active",
-        !!activeThreadId && el.getAttribute("data-comment-id") === activeThreadId,
-      );
-    });
-  }, [activeThreadId, file.id]);
-
-  // When the parent reports a deleted thread, walk the doc and strip the
-  // `comment` mark from every text node that carried this id. Dispatching
-  // the resulting transaction fires onUpdate → autosave, so the markdown
-  // on disk loses the `<span data-comment-id>` wrapper too.
-  useEffect(() => {
-    if (!editor || !stripCommentToken) return;
-    const { state } = editor;
-    const commentMark = state.schema.marks.comment;
-    if (!commentMark) return;
-    const tr = state.tr;
-    let modified = false;
-    state.doc.descendants((node, pos) => {
-      if (!node.isText) return;
-      for (const mark of node.marks) {
-        if (mark.type === commentMark && mark.attrs.id === stripCommentToken.id) {
-          tr.removeMark(pos, pos + node.nodeSize, mark);
-          modified = true;
-        }
-      }
-    });
-    if (modified) editor.view.dispatch(tr);
-  }, [editor, stripCommentToken]);
-
-  function openComposer() {
-    if (!editor) return;
-    const { from, to, empty } = editor.state.selection;
-    if (empty) return;
-    const doc = editor.state.doc;
-    const quoted = doc.textBetween(from, to, "\n", "\n");
-    const prefixStart = Math.max(0, from - ANCHOR_CONTEXT_CHARS);
-    const suffixEnd = Math.min(doc.content.size, to + ANCHOR_CONTEXT_CHARS);
-    const prefix = doc.textBetween(prefixStart, from, "\n", "\n");
-    const suffix = doc.textBetween(to, suffixEnd, "\n", "\n");
-    const container = scrollContainerRef.current;
-    if (!container) return;
-    const coords = editor.view.coordsAtPos(to);
-    const rect = container.getBoundingClientRect();
-    setComposerState({
-      top: coords.bottom - rect.top + container.scrollTop + 6,
-      left: Math.min(
-        Math.max(0, coords.left - rect.left + container.scrollLeft),
-        rect.width - 280,
-      ),
-      from,
-      to,
-      quoted_text: quoted,
-      prefix,
-      suffix,
-    });
-  }
-
-  async function submitComposer(body: string) {
-    if (!editor || !onAddComment || !composerState) return;
-    const threadId = await onAddComment({
-      quoted_text: composerState.quoted_text,
-      prefix: composerState.prefix,
-      suffix: composerState.suffix,
-      body,
-    });
-    if (!threadId) {
-      setComposerState(null);
-      return;
+  // The editor sits in the page's normal document flow (its ancestors have no
+  // height), so the textarea can't fill a parent: it grows to fit its content
+  // and the page itself scrolls.
+  //
+  // Measuring requires momentarily collapsing the textarea, which the ancestor
+  // scroll container sees as the document shrinking — it clamps or re-anchors
+  // its position, teleporting the viewport. Snapshot and restore the scroll
+  // position in the same pre-paint pass so edits never move the view.
+  const syncHeight = useCallback(() => {
+    const area = textareaRef.current;
+    if (!area) return;
+    let scroller: HTMLElement | null = area.parentElement;
+    while (scroller && !/auto|scroll/.test(getComputedStyle(scroller).overflowY)) {
+      scroller = scroller.parentElement;
     }
-    editor
-      .chain()
-      .focus()
-      .setTextSelection({ from: composerState.from, to: composerState.to })
-      .setMark("comment", { id: threadId })
-      .setTextSelection(composerState.to)
-      .run();
-    setComposerState(null);
-  }
+    const scrollTop = scroller?.scrollTop ?? 0;
+    area.style.height = "auto";
+    area.style.height = `${area.scrollHeight}px`;
+    if (scroller) scroller.scrollTop = scrollTop;
+  }, []);
 
-  // Ctrl/Cmd+S → flush immediately
+  useLayoutEffect(() => {
+    syncHeight();
+  }, [value, showPreview, mode, syncHeight]);
+
+  // Wrapping changes with the viewport, and wrapping changes the height.
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === "s") {
-        e.preventDefault();
-        if (!editor || readOnly) return;
-        if (saveTimer.current) {
-          clearTimeout(saveTimer.current);
-          saveTimer.current = null;
-        }
-        const md = joinFrontmatter(
-          frontmatterRef.current,
-          serializeMarkdown(editor.getJSON(), splitFrontmatter(lastSaved.current).body)
-        );
-        saveMarkdownRef.current(md);
+    window.addEventListener("resize", syncHeight);
+    return () => window.removeEventListener("resize", syncHeight);
+  }, [syncHeight]);
+
+  /** Dropped and pasted files upload, then their markdown link lands at the
+   *  cursor — the one editor affordance worth keeping from the rich version. */
+  const insertFiles = useCallback(
+    async (files: FileList | File[]) => {
+      const area = textareaRef.current;
+      if (!area || readOnly) return;
+      for (const file of Array.from(files)) {
+        const result = await uploadFile(file);
+        const href = fileDownloadUrl(result.id);
+        const snippet = result.content_type.startsWith("image/")
+          ? `![${result.name}](${href})`
+          : `[${result.name}](${href})`;
+        const at = area.selectionStart;
+        const next = area.value.slice(0, at) + snippet + area.value.slice(area.selectionEnd);
+        onChange(next);
+        // Put the caret after what we just inserted.
+        requestAnimationFrame(() => {
+          area.selectionStart = area.selectionEnd = at + snippet.length;
+          area.focus();
+        });
       }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [editor, readOnly]);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [readOnly]
+  );
+
+  const toolbarButton =
+    "cursor-pointer rounded px-2 py-1 text-[12px] text-muted-foreground transition-colors hover:bg-raised hover:text-foreground";
+
+  if (mode === "view") {
+    return (
+      <div className="flex flex-col">
+        {!readOnly && (
+          <div className="flex shrink-0 items-center justify-end gap-1 border-b border-border-subtle px-3 py-1.5">
+            <button
+              type="button"
+              onClick={() => setMode("edit")}
+              className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-border bg-base px-2.5 py-1 text-[12.5px] font-medium text-foreground hover:bg-raised"
+            >
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+              </svg>
+              Edit
+            </button>
+          </div>
+        )}
+        <article className="prose markdown-content mx-auto w-full max-w-[920px] bg-background px-8 py-10 text-foreground">
+          <Markdown remarkPlugins={[remarkGfm]}>{value}</Markdown>
+        </article>
+      </div>
+    );
+  }
 
   return (
-    <div className="flex h-full flex-col">
-      <EditorToolbar
-        editor={editor}
-        onStartComment={!readOnly && onAddComment ? openComposer : undefined}
-      />
+    <div className="flex flex-col">
+      <div className="flex shrink-0 items-center justify-end gap-1 border-b border-border-subtle px-3 py-1.5">
+        <button
+          type="button"
+          onClick={() => setShowPreview((p) => !p)}
+          className={toolbarButton}
+        >
+          {showPreview ? "Hide preview" : "Preview"}
+        </button>
+        <button type="button" onClick={() => setMode("view")} className={toolbarButton}>
+          Done
+        </button>
+      </div>
+
       {readOnly && (
         <div className="border-b border-border-subtle bg-raised px-4 py-2 text-[12px] text-muted-foreground">
           Read-only
         </div>
       )}
-      {frontmatterRef.current !== null && (
-        <div className="border-b border-border-subtle bg-raised/60 px-4 py-2 font-mono text-[11px] leading-relaxed text-muted-foreground whitespace-pre-wrap">
-          {frontmatterRef.current}
-        </div>
-      )}
-      <div
-        ref={scrollContainerRef}
-        className="relative flex-1 overflow-y-auto bg-background"
-      >
-        <div className="mx-auto min-h-full w-full max-w-[920px]">
-          <EditorContent editor={editor} className="file-page-content min-h-full" />
-        </div>
-        {composerState && onAddComment && (
-          <CommentComposerPopover
-            top={composerState.top}
-            left={composerState.left}
-            onCancel={() => setComposerState(null)}
-            onSubmit={submitComposer}
-          />
+
+      <div className="flex bg-background">
+        <textarea
+          ref={textareaRef}
+          value={value}
+          readOnly={readOnly}
+          onChange={(e) => onChange(e.target.value)}
+          onPaste={(e) => {
+            const files = e.clipboardData?.files;
+            if (!files || files.length === 0) return;
+            e.preventDefault();
+            void insertFiles(files);
+          }}
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={(e) => {
+            const files = e.dataTransfer?.files;
+            if (!files || files.length === 0) return;
+            e.preventDefault();
+            void insertFiles(files);
+          }}
+          spellCheck={false}
+          placeholder="Start typing..."
+          className="min-h-[75vh] flex-1 resize-none overflow-hidden bg-transparent px-12 pt-10 pb-24 font-mono text-[13px] leading-[1.7] text-foreground outline-none"
+        />
+        {showPreview && (
+          <div className="flex-1 border-l border-border-subtle">
+            <article className="prose prose-sm markdown-content mx-auto max-w-[920px] px-8 py-8 text-foreground">
+              <Markdown remarkPlugins={[remarkGfm]}>{value}</Markdown>
+            </article>
+          </div>
         )}
       </div>
     </div>
   );
 }
 
-type JSONNode = {
-  type?: string;
-  text?: string;
-  marks?: Array<{ type: string; attrs?: Record<string, string> }>;
-  attrs?: Record<string, unknown>;
-  content?: JSONNode[];
-};
-
-function isSupportedImageUrl(url: string): boolean {
-  return /^https?:\/\//i.test(url) || isFileDownloadPath(url);
-}
-
-function isFileDownloadPath(url: string): boolean {
-  return /^\/api\/v1\/me\/files\/[^/]+\/download(?:[?#].*)?$/i.test(url);
-}
-
-const COMMENT_SPAN_RE = /<span\s+data-comment-id="([^"]+)">([\s\S]*?)<\/span>/g;
-
-function parseInlineMarkdown(text: string): JSONNode[] {
-  // Empty inputs (e.g. a bullet line that's just "-   " from a Google Doc
-  // export) must not produce a {type: "text", text: ""} node — prosemirror
-  // rejects empty text nodes and the whole document fails to render.
-  if (!text) return [];
-  const out: JSONNode[] = [];
-  let lastIndex = 0;
-  let m: RegExpExecArray | null;
-  COMMENT_SPAN_RE.lastIndex = 0;
-  while ((m = COMMENT_SPAN_RE.exec(text)) !== null) {
-    if (m.index > lastIndex) {
-      out.push(...parseInlineMarkdownInner(text.slice(lastIndex, m.index)));
-    }
-    const id = m[1];
-    const innerNodes = parseInlineMarkdownInner(m[2]);
-    for (const node of innerNodes) {
-      if (node.type === "text") {
-        node.marks = [
-          ...(node.marks || []),
-          { type: "comment", attrs: { id } },
-        ];
-      }
-    }
-    out.push(...innerNodes);
-    lastIndex = m.index + m[0].length;
-  }
-  if (lastIndex < text.length) {
-    out.push(...parseInlineMarkdownInner(text.slice(lastIndex)));
-  }
-  const filtered = out.filter(
-    (n) => n.type !== "text" || (typeof n.text === "string" && n.text.length > 0),
-  );
-  if (filtered.length > 0) return filtered;
-  return text ? [{ type: "text", text }] : [];
-}
-
-function parseInlineMarkdownInner(text: string): JSONNode[] {
-  // Inline grammar, ordered by priority:
-  //   [[bracketed text]]       — plain text
-  //   [![alt](src)](href)      — image inside a link (matched before plain image
-  //                              so the outer brackets don't swallow the image)
-  //   ![alt](src)              — image node (absolute URLs only)
-  //   [text](url)              — link mark
-  //   **bold**                 — bold mark
-  //   *italic*                 — italic mark
-  //   `code`                   — code mark
-  const inlinePattern =
-    /(\[\[([^\]]+)\]\]|\[!\[([^\]]*)\]\(([^)]+)\)\]\(([^)]+)\)|!\[([^\]]*)\]\(([^)]+)\)|\[([^\]]+)\]\(([^)]+)\)|\*\*(.+?)\*\*|\*(.+?)\*|`([^`]+)`)/g;
-  const nodes: JSONNode[] = [];
-  let lastIndex = 0;
-  let match: RegExpExecArray | null;
-
-  while ((match = inlinePattern.exec(text)) !== null) {
-    if (match.index > lastIndex) {
-      nodes.push({ type: "text", text: text.slice(lastIndex, match.index) });
-    }
-
-    if (match[2] !== undefined) {
-      // The filesystem has no bracket-link syntax; bracket refs stay plain.
-      nodes.push({ type: "text", text: match[0] });
-    } else if (match[3] !== undefined) {
-      // [![alt](src)](href) — linked image. Render as the image (TipTap's
-      // inline nodes can't nest a link around an image cleanly without the
-      // ProseMirror schema also allowing it). The href is preserved as the
-      // image's alt/title so it isn't silently dropped.
-      const alt = match[3];
-      const src = match[4];
-      const href = match[5];
-      if (isSupportedImageUrl(src)) {
-        nodes.push({ type: "image", attrs: { src, alt, title: href } });
-      } else {
-        nodes.push({ type: "text", text: match[0] });
-      }
-    } else if (match[6] !== undefined) {
-      // ![alt](src)
-      const alt = match[6];
-      const src = match[7];
-      if (isSupportedImageUrl(src)) {
-        nodes.push({ type: "image", attrs: { src, alt } });
-      } else {
-        // Keep the raw markdown visible so it isn't silently lost.
-        nodes.push({ type: "text", text: match[0] });
-      }
-    } else if (match[8] !== undefined) {
-      // [text](url)
-      nodes.push({
-        type: "text",
-        text: match[8],
-        marks: [{ type: "link", attrs: { href: match[9] } }],
-      });
-    } else if (match[10] !== undefined) {
-      // **bold**
-      nodes.push({ type: "text", text: match[10], marks: [{ type: "bold" }] });
-    } else if (match[11] !== undefined) {
-      // *italic*
-      nodes.push({ type: "text", text: match[11], marks: [{ type: "italic" }] });
-    } else if (match[12] !== undefined) {
-      // `code`
-      nodes.push({ type: "text", text: match[12], marks: [{ type: "code" }] });
-    }
-
-    lastIndex = match.index + match[0].length;
-  }
-
-  if (lastIndex < text.length) {
-    nodes.push({ type: "text", text: text.slice(lastIndex) });
-  }
-
-  return nodes.length > 0 ? nodes : [{ type: "text", text }];
-}
-
-export function markdownToInitialJSON(markdown: string): JSONNode {
-  if (!markdown || !markdown.trim()) {
-    return { type: "doc", content: [{ type: "paragraph" }] };
-  }
-
-  // Heading lines often appear without a leading or trailing blank line in
-  // agent-authored markdown. Force a paragraph break both BEFORE and AFTER
-  // every ATX heading so block-splitting puts each heading on its own block.
-  const normalized = markdown
-    .replace(/(?<!\n\n)(\n)(#{1,6}[ \t]+)/g, "\n\n$2")
-    .replace(/(^|\n\n)(#{1,6}[ \t]+[^\n]+)\n(?!\n)/g, "$1$2\n\n");
-  const blocks = normalized.split(/\n{2,}/).map((b) => b.trim()).filter(Boolean);
-  const nodes: JSONNode[] = blocks.map((block) => {
-    const headingMatch = block.match(/^(#{1,3})\s+(.+)$/);
-    if (headingMatch) {
-      return {
-        type: "heading",
-        attrs: { level: headingMatch[1].length },
-        content: parseInlineMarkdown(headingMatch[2]),
-      };
-    }
-
-    const tableNode = parseTableBlock(block);
-    if (tableNode) return tableNode;
-
-    const listNode = parseListBlock(block);
-    if (listNode) return listNode;
-
-    return {
-      type: "paragraph",
-      content: parseInlineMarkdown(block),
-    };
-  });
-  return { type: "doc", content: nodes };
-}
-
-// --- Lists ---
-
-const BULLET_RE = /^([-*+])\s+(.*)$/;
-const ORDERED_RE = /^\d+\.\s+(.*)$/;
-
-function parseListBlock(block: string): JSONNode | null {
-  const lines = block.split("\n");
-  const first = lines[0];
-  const isBullet = BULLET_RE.test(first);
-  const isOrdered = ORDERED_RE.test(first);
-  if (!isBullet && !isOrdered) return null;
-
-  const items: JSONNode[] = [];
-  for (const line of lines) {
-    const m = isBullet ? line.match(BULLET_RE) : line.match(ORDERED_RE);
-    if (!m) {
-      // Not a list line — fold into the previous item's text if one exists.
-      if (items.length > 0) {
-        const last = items[items.length - 1];
-        const para = last.content?.[0];
-        if (para && para.type === "paragraph") {
-          para.content = [
-            ...(para.content || []),
-            { type: "text", text: " " + line.trim() },
-          ];
-        }
-      }
-      continue;
-    }
-    const body = (isBullet ? m[2] : m[1]).trim();
-    // Skip bullets with no content (e.g. "-   " from Google Doc exports) —
-    // they'd become empty list items that crash the prosemirror renderer.
-    if (!body) continue;
-    items.push({
-      type: "listItem",
-      content: [
-        {
-          type: "paragraph",
-          content: parseInlineMarkdown(body),
-        },
-      ],
-    });
-  }
-  if (items.length === 0) return null;
-  return {
-    type: isBullet ? "bulletList" : "orderedList",
-    content: items,
-  };
-}
-
-// --- Tables (GitHub-flavored pipe tables) ---
-
-const TABLE_SEPARATOR_RE = /^\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)+\|?$/;
-
-function splitPipeRow(line: string): string[] {
-  // Trim leading/trailing pipe and split on unescaped |.
-  const trimmed = line.replace(/^\s*\|/, "").replace(/\|\s*$/, "");
-  return trimmed.split(/(?<!\\)\|/).map((c) => c.trim().replace(/\\\|/g, "|"));
-}
-
-function parseTableBlock(block: string): JSONNode | null {
-  const lines = block.split("\n");
-  if (lines.length < 2) return null;
-  if (!lines[0].includes("|")) return null;
-  if (!TABLE_SEPARATOR_RE.test(lines[1].trim())) return null;
-
-  const headerCells = splitPipeRow(lines[0]);
-  const bodyLines = lines.slice(2);
-
-  const headerRow: JSONNode = {
-    type: "tableRow",
-    content: headerCells.map((cell) => ({
-      type: "tableHeader",
-      content: [{ type: "paragraph", content: parseInlineMarkdown(cell) }],
-    })),
-  };
-
-  const bodyRows: JSONNode[] = bodyLines
-    .filter((l) => l.trim())
-    .map((line) => {
-      const cells = splitPipeRow(line);
-      // Normalise cell count to header width.
-      while (cells.length < headerCells.length) cells.push("");
-      cells.length = headerCells.length;
-      return {
-        type: "tableRow",
-        content: cells.map((cell) => ({
-          type: "tableCell",
-          content: [{ type: "paragraph", content: parseInlineMarkdown(cell) }],
-        })),
-      };
-    });
-
-  return { type: "table", content: [headerRow, ...bodyRows] };
-}
-
-export function serializeMarkdown(doc: JSONNode | null | undefined, fallback: string): string {
-  if (!doc || !doc.content) return fallback;
-  return doc.content.map((node) => renderNode(node, 0)).join("").trim() || fallback;
-}
-
-function renderNode(node: JSONNode, depth: number): string {
-  const children = (node.content || []).map((child) => renderNode(child, depth + 1)).join("");
-  switch (node.type) {
-    case "paragraph":
-      return `${children}\n\n`;
-    case "heading": {
-      const level = Number(node.attrs?.level || 1);
-      return `${"#".repeat(Math.min(Math.max(level, 1), 6))} ${children.trim()}\n\n`;
-    }
-    case "bulletList":
-      return `${(node.content || []).map((child) => renderNode(child, depth)).join("")}\n`;
-    case "orderedList":
-      return `${(node.content || []).map((child, index) => renderListItem(child, depth, index + 1)).join("")}\n`;
-    case "listItem":
-      return renderListItem(node, depth, null);
-    case "blockquote":
-      return `${children.trim().split("\n").map((line) => `> ${line}`).join("\n")}\n\n`;
-    case "hardBreak":
-      return "\n";
-    case "image": {
-      const src = String(node.attrs?.src || "");
-      const alt = String(node.attrs?.alt || "");
-      const title = node.attrs?.title ? String(node.attrs.title) : "";
-      return title ? `[![${alt}](${src})](${title})` : `![${alt}](${src})`;
-    }
-    case "table":
-      return renderTable(node);
-    case "text":
-      return applyMarks(node.text || "", node.marks || []);
-    default:
-      return children;
-  }
-}
-
-function renderTable(node: JSONNode): string {
-  const rows = node.content || [];
-  if (rows.length === 0) return "";
-  // Each row has tableHeader/tableCell children, each of which contains a
-  // paragraph whose text is what we want to serialize.
-  const cellsFor = (row: JSONNode): string[] =>
-    (row.content || []).map((cell) => {
-      const para = (cell.content || [])[0];
-      const inline = (para?.content || [])
-        .map((child) => renderNode(child, 0))
-        .join("")
-        .trim();
-      return inline.replace(/\|/g, "\\|");
-    });
-
-  const headerCells = cellsFor(rows[0]);
-  const colCount = headerCells.length;
-  const separator = new Array(colCount).fill("---");
-  const bodyRows = rows.slice(1).map(cellsFor);
-  const toLine = (cells: string[]) => `| ${cells.join(" | ")} |`;
-  return [
-    toLine(headerCells),
-    toLine(separator),
-    ...bodyRows.map(toLine),
-  ].join("\n") + "\n\n";
-}
-
-function renderListItem(node: JSONNode, depth: number, index: number | null): string {
-  const prefix = index === null ? `${"  ".repeat(depth)}- ` : `${"  ".repeat(depth)}${index}. `;
-  const text = (node.content || []).map((child) => renderNode(child, depth + 1)).join("").trimEnd();
-  const lines = text.split("\n");
-  return `${prefix}${lines[0] || ""}${lines.slice(1).map((line) => `\n${"  ".repeat(depth + 1)}${line}`).join("")}\n`;
-}
-
-function applyMarks(text: string, marks: Array<{ type: string; attrs?: Record<string, string> }>): string {
-  // The `comment` mark must be the outermost wrapper so the round-trip
-  // produces `<span data-comment-id>**bold**</span>`, not
-  // `**<span>bold</span>**` (which would break our parser).
-  const commentMark = marks.find((m) => m.type === "comment");
-  const others = marks.filter((m) => m.type !== "comment");
-  const inner = others.reduce((value, mark) => {
-    switch (mark.type) {
-      case "bold":
-        return `**${value}**`;
-      case "italic":
-        return `*${value}*`;
-      case "underline":
-        return `<u>${value}</u>`;
-      case "subscript":
-        return `<sub>${value}</sub>`;
-      case "superscript":
-        return `<sup>${value}</sup>`;
-      case "link":
-        return `[${value}](${mark.attrs?.href || ""})`;
-      case "code":
-        return `\`${value}\``;
-      default:
-        return value;
-    }
-  }, text);
-  const id = commentMark?.attrs?.id;
-  if (id) return `<span data-comment-id="${id}">${inner}</span>`;
-  return inner;
-}
-
-// Extract every `data-comment-id` value present in the saved content.
-// Used by the page route to reconcile orphans after each save.
+/** Comment anchors are `<span data-comment-id>` wrappers embedded in the
+ *  markdown. The plain editor neither creates nor understands them, but pages
+ *  written before it still carry them, and the thread list is reconciled
+ *  against what the file actually contains after every save. */
 export function extractCommentIdsFromMarkdown(markdown: string): string[] {
   const ids: string[] = [];
   const re = /<span\s+data-comment-id="([^"]+)"/g;
