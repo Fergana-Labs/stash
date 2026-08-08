@@ -153,22 +153,20 @@ stash vfs --cwd "/me/sources" "rg 'incident' ."`}</CodeBlock>
         ]}
       />
 
-      <CommandRef
-        command="stash files read-page"
-        args="<page_id>"
-        description="Read a page."
-        params={[
-          { name: "<page_id>", type: "string", desc: "ID of the page.", required: true },
-        ]}
-      />
+      <Callout type="tip">
+        Reading pages goes through the VFS:{" "}
+        <Code>{`stash vfs "cat '/me/files/<page>.md'"`}</Code>.
+      </Callout>
 
       <CommandRef
-        command="stash files edit-page"
-        args="<page_id> --content '...'"
-        description="Update a page. Reads from stdin if --content is not given."
+        command="stash edit"
+        args="<page_id> [--content '...'] [--append '...']"
+        description="Edit a page already in your Stash — the counterpart to stash upload, which creates new items. Accepts the page id or the app URL upload printed."
         params={[
-          { name: "<page_id>", type: "string", desc: "ID of the page.", required: true },
-          { name: "--content", type: "string", desc: "New page content. Reads from stdin if omitted." },
+          { name: "<page_id>", type: "string", desc: "Page id, or its app URL (…/p/<id>).", required: true },
+          { name: "--content", type: "string", desc: "Replacement body. Reads from stdin if omitted." },
+          { name: "--append", type: "string", desc: "Add text to the end of the page instead of replacing it." },
+          { name: "--name", type: "string", desc: "Rename the page." },
         ]}
       />
 
@@ -499,7 +497,7 @@ stash vfs --cwd "/me/sources" "rg 'incident' ."`}</CodeBlock>
       <CommandRef
         command="stash upload"
         args="<path> [--skill TITLE]"
-        description="Upload a single file (Markdown/HTML become pages, everything else a binary file) or a folder into your Stash. Pass --skill to also bundle it into a shareable Skill."
+        description="Upload a single file (Markdown/HTML become pages, everything else a binary file) or a folder into your Stash. Always creates a new item — use stash edit to change a page that's already there. Pass --skill to also bundle it into a shareable Skill."
         params={[
           { name: "<path>", type: "path", desc: "File or directory to upload.", required: true },
           { name: "--skill", type: "string", desc: "Also publish the upload as a Skill with this title." },

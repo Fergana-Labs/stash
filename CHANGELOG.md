@@ -5,6 +5,15 @@ everything before it is captured in git history (`git log`), not here.
 
 ## Unreleased
 
+- `stash edit` is now a top-level command, sitting next to `stash upload` in
+  `--help` so agents can see that both creating and editing are supported.
+  It replaces `stash files edit-page` (same options), additionally accepts
+  the page's app URL (`…/p/<id>`) in place of an id, and gains `--append`
+  to add text to the end of a markdown page without resending the body.
+  `stash upload`'s help and output now say explicitly that uploads always
+  create new items and point at `stash edit` for changing existing pages —
+  the upload-vs-edit confusion that made agents conclude pages couldn't be
+  edited at all.
 - CLI onboarding redesigned (#940). `stash signin` walks a first-run wizard
   that can be re-run anytime with the new `stash setup` — no answer is final.
   Session recording is framed as private-by-default and on by default

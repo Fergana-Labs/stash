@@ -14,6 +14,7 @@ A Skill is **not** a wrapper around every single file you happen to share. One-i
 |---|---|---|
 | Share one file (publicly) | `stash upload <path> --json` | the returned `app_url` |
 | Upload a folder / project into your Stash | `stash upload <path> --json` | the returned `app_url` |
+| Change a page already in your Stash | `stash edit <page_id> --content "..."` | — (never re-upload to edit) |
 | Publish a curated bundle as one shareable thing | `stash upload <path> --skill "<title>" --json` | the returned `url` |
 | Create a fresh skill folder | `stash skills create "<name>" --public --json` | the returned folder |
 | Share a coding session (transcript + files) | `stash share <session_id>` | the returned `url` |
@@ -71,7 +72,7 @@ stash vfs "find /me -name '*.md'"                   # List your pages
 stash files create-folder "name"                    # Create a folder
 stash files add-page "title" --content "markdown content"
 stash vfs "cat '/me/files/<page>.md'"               # Read a page
-stash files edit-page <page_id> --content "new content"
+stash edit <page_id> --content "new content"        # Update any page (--append adds to the end)
 ```
 
 ### History (Agent Event Logs)

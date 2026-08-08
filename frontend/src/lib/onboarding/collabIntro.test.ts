@@ -10,7 +10,7 @@ describe("generateCollabIntroMarkdown", () => {
     });
 
     expect(md).toContain("Authenticate: export STASH_API_KEY=self-hosted-key");
-    expect(md).toContain("stash files read-page page-1");
+    expect(md).toContain("stash edit page-1 --append");
   });
 
   it("points managed Auth0 users at the CLI sign-in flow instead of a key", () => {
@@ -22,6 +22,6 @@ describe("generateCollabIntroMarkdown", () => {
 
     expect(md).toContain("Authenticate: stash signin");
     expect(md).not.toContain("STASH_API_KEY");
-    expect(md).toContain("stash files read-page page-1");
+    expect(md).toContain("stash edit page-1 --append");
   });
 });

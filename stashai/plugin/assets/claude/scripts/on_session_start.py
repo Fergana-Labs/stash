@@ -47,6 +47,11 @@ CONTEXT = (
     " - Using a public Skill locally → `stash skills install <slug>` "
     "writes it into ~/.claude/skills so it loads next session "
     "(`--project` for ./.claude/skills).\n\n"
+    "Everything uploaded stays editable: `stash edit <page_id> --content "
+    '"..."` changes a page already in Stash (`--append` adds to the end; '
+    "the id or app URL the upload printed both work). `stash upload` always "
+    "creates a NEW item — reach for `stash edit` to change an existing "
+    "one.\n\n"
     "Run `stash prompts agent-guidance` any time you want this guidance "
     "reprinted in full.\n\n"
     "`stash ls` shows everything Stash can reach as one filesystem — files, "
