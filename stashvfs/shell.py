@@ -298,6 +298,7 @@ class SkillAppVfsShell:
 
     def _tree(self, args: list[str]) -> str:
         max_depth: int | None = None
+        dirs_only = False
         path = "."
         index = 0
         while index < len(args):
@@ -310,6 +311,8 @@ class SkillAppVfsShell:
                     max_depth = int(args[index])
                 except ValueError as e:
                     raise VfsShellError("-L value must be an integer", exit_code=2) from e
+            elif arg == "-d":
+                dirs_only = True
             elif arg.startswith("-"):
                 if arg != "-a":
                     raise VfsShellError(f"unsupported tree option: {arg}", exit_code=2)
@@ -320,7 +323,9 @@ class SkillAppVfsShell:
         root = self._resolve_path(path)
         self.model._get_node(root)
         lines = [root]
-        lines.extend(self._tree_lines(root, prefix="", depth=1, max_depth=max_depth))
+        lines.extend(
+            self._tree_lines(root, prefix="", depth=1, max_depth=max_depth, dirs_only=dirs_only)
+        )
         for source_root, shown in self.model.truncated_roots_under(root):
             self._warn(
                 f"tree: '{source_root}' has more than {shown} entries; only the first "
@@ -335,6 +340,7 @@ class SkillAppVfsShell:
         prefix: str,
         depth: int,
         max_depth: int | None,
+        dirs_only: bool = False,
     ) -> list[str]:
         if max_depth is not None and depth > max_depth:
             return []
@@ -343,6 +349,10 @@ class SkillAppVfsShell:
             return []
 
         names = self.model.list_dir(path)
+        if dirs_only:
+            names = [
+                name for name in names if self.model._get_node(posixpath.join(path, name)).is_dir
+            ]
         rows = []
         for index, name in enumerate(names):
             child_path = posixpath.join(path, name)
@@ -356,6 +366,7 @@ class SkillAppVfsShell:
                     prefix=child_prefix,
                     depth=depth + 1,
                     max_depth=max_depth,
+                    dirs_only=dirs_only,
                 )
             )
         return rows

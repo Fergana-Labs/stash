@@ -105,6 +105,18 @@ def test_app_vfs_supports_common_agent_listing_patterns():
     assert client.lazy_loads == 0
 
 
+def test_tree_dirs_only_hides_files():
+    shell, _client = _shell()
+
+    page_path = _page_path(shell)
+    folder_path, page_name = page_path.rsplit("/", 1)
+
+    output = shell.run("tree /files -d").stdout
+
+    assert folder_path.rsplit("/", 1)[1] in output
+    assert page_name not in output
+
+
 def test_app_vfs_surfaces_backend_timestamps_and_marks_unknown():
     """A node's modified time comes from the backend payload and flows through
     to `ls -l` and `stat`. A node the backend gave no timestamp for shows `-`,
