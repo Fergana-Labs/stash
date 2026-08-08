@@ -196,7 +196,14 @@ export default function MarkdownEditor({
         {(!readOnly || conflictMessage) && (
           <div className="flex shrink-0 items-center justify-end gap-1 border-b border-border-subtle px-3 py-1.5">
             {!readOnly && (
-              <button type="button" onClick={() => setMode("edit")} className={toolbarButton}>
+              <button
+                type="button"
+                onClick={() => setMode("edit")}
+                className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-border bg-base px-2.5 py-1 text-[12.5px] font-medium text-foreground hover:bg-raised"
+              >
+                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+                </svg>
                 Edit
               </button>
             )}
