@@ -213,7 +213,6 @@ function FileViewerPageInner({ fileId }: { fileId: string }) {
         objectId={file.id}
         resourceName={file.name}
         resourceUrlPath={`/f/${file.id}`}
-        currentUser={user}
       />
     );
   }, [file, readOnly, user]);

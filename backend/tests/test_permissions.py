@@ -336,7 +336,7 @@ async def test_table_share_by_email_grants_direct_read(pool):
         object_id=table,
         email="friend@example.com",
         permission="read",
-        owner_id=owner,
+        actor_id=owner,
     )
 
     assert await permission_service.check_access("table", table, friend)

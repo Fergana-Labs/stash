@@ -3993,7 +3993,7 @@ async def test_connected_source_is_shareable_read_only(client: AsyncClient, pool
         object_id=source_id,
         email="invitee@example.com",
         permission="read",
-        owner_id=owner_id,
+        actor_id=owner_id,
     )
     # Only the owner may share it.
     with pytest.raises(Exception):
@@ -4002,7 +4002,7 @@ async def test_connected_source_is_shareable_read_only(client: AsyncClient, pool
             object_id=source_id,
             email="invitee@example.com",
             permission="read",
-            owner_id=friend_id,
+            actor_id=friend_id,
         )
 
     # Before a share lands: friend can't read, list, or manage.
@@ -4210,7 +4210,7 @@ async def test_source_recipient_cannot_reshare_or_share_write(client: AsyncClien
             object_id=source_id,
             email="third@example.com",
             permission="read",
-            owner_id=friend_id,
+            actor_id=friend_id,
         )
     # Even the owner cannot grant above read on a source.
     with pytest.raises(Exception):
@@ -4219,5 +4219,5 @@ async def test_source_recipient_cannot_reshare_or_share_write(client: AsyncClien
             object_id=source_id,
             email="third@example.com",
             permission="write",
-            owner_id=owner_id,
+            actor_id=owner_id,
         )

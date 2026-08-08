@@ -1,7 +1,8 @@
 """Sharing: grant a principal (user or skill) access to an object.
 
-Primary path is sharing a folder/file/session with a person by email. Only the
-object's owner may share it. Folder/session-folder shares
+Primary path is sharing a folder/file/session with a person by email. The
+object's scope owner may share it, and for workspace-scoped content so may any
+workspace member — see `_require_share_access`. Folder/session-folder shares
 cascade to contents — that's handled at read time by permission_service, not here.
 
 Sharing with an email that isn't a Stash user yet records a pending invite
@@ -28,12 +29,22 @@ _GENERAL_ACCESS_TABLE = {"page": "pages", "file": "files", "folder": "folders", 
 _PUBLIC_PERMISSIONS = {"none", "read", "comment", "write"}
 
 
-async def _require_owner(object_type: str, object_id: UUID, user_id: UUID) -> UUID:
-    """The caller must be an owner of the object's scope."""
+async def _require_share_access(object_type: str, object_id: UUID, user_id: UUID) -> UUID:
+    """The caller must be the object's scope owner or, for content in a
+    workspace scope, a workspace member — a member can already read and copy
+    workspace content, so sharing it grants nothing they couldn't leak by hand.
+    Sources stay owner-only: a shared source delegates reads through the
+    scope's OAuth token, which members don't otherwise hold."""
     owner_user_id = await permission_service.resolve_owner_user_id(object_type, object_id)
-    if owner_user_id is None or not await user_scope_service.is_owner(owner_user_id, user_id):
+    if owner_user_id is None:
         raise HTTPException(status_code=404, detail="Not found")
-    return owner_user_id
+    if await user_scope_service.is_owner(owner_user_id, user_id):
+        return owner_user_id
+    if object_type != "source" and await permission_service.is_workspace_member(
+        owner_user_id, user_id
+    ):
+        return owner_user_id
+    raise HTTPException(status_code=404, detail="Not found")
 
 
 async def _record_share_event(
@@ -61,7 +72,7 @@ async def share_with_user_by_email(
     object_id: UUID,
     email: str,
     permission: str,
-    owner_id: UUID,
+    actor_id: UUID,
     expires_at: datetime | None = None,
 ) -> dict:
     if object_type not in _SHAREABLE:
@@ -72,7 +83,7 @@ async def share_with_user_by_email(
     # read (delegated). Management/sync/write stay owner-only by design.
     if object_type == "source" and permission != "read":
         raise HTTPException(status_code=400, detail="a source can only be shared read-only")
-    owner_user_id = await _require_owner(object_type, object_id, owner_id)
+    owner_user_id = await _require_share_access(object_type, object_id, actor_id)
     normalized_email = email.strip().lower()
 
     pool = get_pool()
@@ -102,21 +113,21 @@ async def share_with_user_by_email(
             object_id,
             normalized_email,
             permission,
-            owner_id,
+            actor_id,
             expires_at,
         )
         # Email only on the FIRST invite for this object+address — re-sharing to
         # tweak permission must not re-spam the recipient.
         if newly_invited:
             sharer_name = await pool.fetchval(
-                "SELECT COALESCE(display_name, name) FROM users WHERE id = $1", owner_id
+                "SELECT COALESCE(display_name, name) FROM users WHERE id = $1", actor_id
             )
             email_service.send_share_invite_email(
                 normalized_email, sharer_name, object_type.replace("_", " ")
             )
         await _record_share_event(
             action="share.invited",
-            actor_user_id=owner_id,
+            actor_user_id=actor_id,
             owner_user_id=owner_user_id,
             object_type=object_type,
             object_id=object_id,
@@ -126,8 +137,8 @@ async def share_with_user_by_email(
             },
         )
         return {"ok": True, "email": normalized_email}
-    if user["id"] == owner_id:
-        raise HTTPException(status_code=400, detail="You already own this")
+    if user["id"] == actor_id:
+        raise HTTPException(status_code=400, detail="You already have access")
     await pool.execute(
         """
         INSERT INTO shares (owner_user_id, object_type, object_id, principal_type,
@@ -141,12 +152,12 @@ async def share_with_user_by_email(
         object_id,
         user["id"],
         permission,
-        owner_id,
+        actor_id,
         expires_at,
     )
     await _record_share_event(
         action="share.granted",
-        actor_user_id=owner_id,
+        actor_user_id=actor_id,
         owner_user_id=owner_user_id,
         object_type=object_type,
         object_id=object_id,
@@ -219,9 +230,9 @@ async def convert_pending_invites(user_id: UUID, email: str | None) -> int:
 
 
 async def unshare(
-    *, object_type: str, object_id: UUID, principal_type: str, principal_id: UUID, owner_id: UUID
+    *, object_type: str, object_id: UUID, principal_type: str, principal_id: UUID, actor_id: UUID
 ) -> None:
-    owner_user_id = await _require_owner(object_type, object_id, owner_id)
+    owner_user_id = await _require_share_access(object_type, object_id, actor_id)
     removed = await get_pool().fetchrow(
         "DELETE FROM shares WHERE object_type = $1 AND object_id = $2 "
         "AND principal_type = $3 AND principal_id = $4 "
@@ -235,7 +246,7 @@ async def unshare(
         hash_key = "recipient_user_hash" if principal_type == "user" else "principal_id_hash"
         await _record_share_event(
             action="share.revoked",
-            actor_user_id=owner_id,
+            actor_user_id=actor_id,
             owner_user_id=owner_user_id,
             object_type=object_type,
             object_id=object_id,
@@ -252,9 +263,9 @@ async def revoke_pending_invite_by_email(
     object_type: str,
     object_id: UUID,
     email: str,
-    owner_id: UUID,
+    actor_id: UUID,
 ) -> None:
-    owner_user_id = await _require_owner(object_type, object_id, owner_id)
+    owner_user_id = await _require_share_access(object_type, object_id, actor_id)
     normalized_email = email.strip().lower()
     removed = await get_pool().fetchrow(
         "DELETE FROM share_invites "
@@ -267,7 +278,7 @@ async def revoke_pending_invite_by_email(
     if removed:
         await _record_share_event(
             action="share.invite_revoked",
-            actor_user_id=owner_id,
+            actor_user_id=actor_id,
             owner_user_id=owner_user_id,
             object_type=object_type,
             object_id=object_id,
@@ -278,8 +289,14 @@ async def revoke_pending_invite_by_email(
         )
 
 
-async def list_object_shares(object_type: str, object_id: UUID, owner_id: UUID) -> list[dict]:
-    await _require_owner(object_type, object_id, owner_id)
+async def object_access(object_type: str, object_id: UUID, actor_id: UUID) -> dict:
+    """Everything the share dialog needs in one gated read: the object's true
+    owner (which may be a workspace scope user, not the caller), the named
+    shares and pending invites, and the public-link level."""
+    owner_user_id = await _require_share_access(object_type, object_id, actor_id)
+    owner = await get_pool().fetchrow(
+        "SELECT name, display_name, email FROM users WHERE id = $1", owner_user_id
+    )
     rows = await get_pool().fetch(
         """
         SELECT s.principal_type, s.principal_id, s.permission, s.expires_at,
@@ -330,32 +347,39 @@ async def list_object_shares(object_type: str, object_id: UUID, owner_id: UUID) 
         }
         for inv in invites
     )
-    return shares
 
+    general_access = "none"
+    if object_type in _GENERAL_ACCESS_TABLE:
+        table = _GENERAL_ACCESS_TABLE[object_type]
+        general_access = (
+            await get_pool().fetchval(
+                f"SELECT public_permission FROM {table} WHERE id = $1", object_id
+            )
+            or "none"
+        )
 
-async def get_general_access(object_type: str, object_id: UUID, user_id: UUID) -> str:
-    """The object's current public link level ('none' when only owner/shares can
-    reach it). Owner-only, so it sits behind the same gate as the share list."""
-    if object_type not in _GENERAL_ACCESS_TABLE:
-        return "none"
-    await _require_owner(object_type, object_id, user_id)
-    table = _GENERAL_ACCESS_TABLE[object_type]
-    value = await get_pool().fetchval(
-        f"SELECT public_permission FROM {table} WHERE id = $1", object_id
-    )
-    return value or "none"
+    return {
+        "owner": {
+            "user_id": str(owner_user_id),
+            "label": owner["display_name"] or owner["name"],
+            "email": owner["email"],
+            "is_you": owner_user_id == actor_id,
+        },
+        "shares": shares,
+        "general_access": general_access,
+    }
 
 
 async def set_general_access(
     *, object_type: str, object_id: UUID, public_permission: str, user_id: UUID
 ) -> str:
-    """Set the "anyone with the link" level for a page/file/folder/table. Only the
-    scope owner may change publicity, mirroring session-folder general access."""
+    """Set the "anyone with the link" level for a page/file/folder/table.
+    Same gate as sharing: scope owner, or workspace member for workspace content."""
     if object_type not in _GENERAL_ACCESS_TABLE:
         raise HTTPException(status_code=400, detail=f"{object_type} has no general access link")
     if public_permission not in _PUBLIC_PERMISSIONS:
         raise HTTPException(status_code=400, detail="invalid public_permission")
-    owner_user_id = await _require_owner(object_type, object_id, user_id)
+    owner_user_id = await _require_share_access(object_type, object_id, user_id)
     table = _GENERAL_ACCESS_TABLE[object_type]
     await get_pool().execute(
         f"UPDATE {table} SET public_permission = $1 WHERE id = $2",

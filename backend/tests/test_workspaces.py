@@ -8,7 +8,8 @@ What matters here:
 - `workspace_members` rows are off-domain-only (explicit admin adds), so
   admin removal always sticks — a login can never re-derive a removed row.
 - The X-Stash-Scope header re-roots content routes for members only.
-- Owner-only powers (sharing, key minting) never leak to members.
+- Sharing workspace content extends to members (they can already copy it out);
+  key minting and source management stay owner-only.
 - A read-access workspace key can feed the KB (transcripts) but not destroy it.
 """
 
@@ -221,13 +222,46 @@ async def test_member_can_edit_workspace_page(client: AsyncClient, pool):
 
 
 @pytest.mark.asyncio
-async def test_member_cannot_manage_workspace_shares(client: AsyncClient, pool):
-    """Sharing is an owner power: a member must not be able to share (leak)
-    the org KB to outsiders."""
+async def test_member_shares_workspace_page(client: AsyncClient, pool):
+    """Members get share powers on workspace content: they can already read
+    and copy it, so sharing grants nothing they couldn't leak by hand. The
+    access listing names the workspace — not the caller — as owner, so the
+    share dialog renders the true owner instead of assuming the viewer."""
     domain = _domain()
     key, body = await _register_with_email(client, f"editor@{domain}")
     await _verify_email(pool, uuid.UUID(body["id"]))
     ws = await _create_workspace(client, domain)
+    page_id = await _workspace_page(pool, ws["scope_user_id"])
+    invited = f"{unique_name('s')}@other.io"
+
+    resp = await client.post(
+        "/api/v1/share",
+        json={
+            "object_type": "page",
+            "object_id": str(page_id),
+            "email": invited,
+            "permission": "read",
+        },
+        headers=_auth(key),
+    )
+    assert resp.status_code == 200
+
+    listing = await client.get(
+        f"/api/v1/share?object_type=page&object_id={page_id}", headers=_auth(key)
+    )
+    assert listing.status_code == 200
+    access = listing.json()
+    assert access["owner"]["label"] == "Acme"
+    assert access["owner"]["is_you"] is False
+    assert [s["email"] for s in access["shares"] if s["pending"]] == [invited]
+
+
+@pytest.mark.asyncio
+async def test_outsider_cannot_manage_workspace_shares(client: AsyncClient, pool):
+    """Share powers stop at membership: an off-domain user gets the same 404
+    as for any object they can't see."""
+    outsider_key, _ = await _register_with_email(client, f"{unique_name('o')}@other.io")
+    ws = await _create_workspace(client, _domain())
     page_id = await _workspace_page(pool, ws["scope_user_id"])
 
     resp = await client.post(
@@ -235,6 +269,36 @@ async def test_member_cannot_manage_workspace_shares(client: AsyncClient, pool):
         json={
             "object_type": "page",
             "object_id": str(page_id),
+            "email": f"{unique_name('s')}@other.io",
+            "permission": "read",
+        },
+        headers=_auth(outsider_key),
+    )
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_member_cannot_share_workspace_source(client: AsyncClient, pool):
+    """Sources stay owner-only even for members: a shared source delegates
+    reads through the scope's OAuth token, which members don't otherwise hold."""
+    from backend.services import source_service
+
+    domain = _domain()
+    key, body = await _register_with_email(client, f"editor@{domain}")
+    await _verify_email(pool, uuid.UUID(body["id"]))
+    ws = await _create_workspace(client, domain)
+    source = await source_service.create_source(
+        owner_user_id=uuid.UUID(ws["scope_user_id"]),
+        source_type="google_drive_folder",
+        external_ref=f"folder-{unique_name('gd')}",
+        display_name="Org KB",
+    )
+
+    resp = await client.post(
+        "/api/v1/share",
+        json={
+            "object_type": "source",
+            "object_id": str(source["id"]),
             "email": f"{unique_name('s')}@other.io",
             "permission": "read",
         },

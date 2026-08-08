@@ -163,7 +163,6 @@ export default function FolderDetailPage({ folderId: folderIdProp }: { folderId?
           objectId={folderId}
           resourceName={folderName}
           resourceUrlPath={`/folders/${folderId}`}
-          currentUser={user}
         />
       </div>
     );

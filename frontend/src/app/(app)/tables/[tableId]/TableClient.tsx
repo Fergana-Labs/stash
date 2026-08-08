@@ -383,7 +383,6 @@ function TableEditorPageInner({
         objectId={table.id}
         resourceName={table.name}
         resourceUrlPath={`/tables/${table.id}`}
-        currentUser={user}
       />
     );
   }, [readOnly, table, user]);
