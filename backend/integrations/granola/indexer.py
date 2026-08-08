@@ -16,7 +16,6 @@ spot to adjust against a live account.
 
 from __future__ import annotations
 
-import json
 import logging
 import re
 from datetime import datetime, timedelta, timezone
@@ -55,43 +54,44 @@ def _pick_tool(names: list[str], hints: tuple[str, ...]) -> str | None:
     return None
 
 
-def _as_list(result, *keys) -> list:
-    """MCP tools may return a bare list or wrap it under a key — accept both."""
-    if isinstance(result, list):
-        return result
-    if isinstance(result, dict):
-        for key in keys:
-            value = result.get(key)
-            if isinstance(value, list):
-                return value
-    return []
-
-
 def _meeting_id(meeting: dict) -> str | None:
     return meeting.get("id") or meeting.get("meeting_id") or meeting.get("document_id")
 
 
-# Granola's list_meetings returns an XML-ish text blob (not JSON):
-#   <meetings_data ...><meeting id=".." title=".." date="..">…</meeting>…
+# Granola's list_meetings returns an XML-ish text blob (not JSON), wrapped in a
+# <meetings_data ... count="N"> envelope:
+#   <meetings_data ... count="2">
+#     <meeting id=".." title=".." date=".." captured_by_me=".." ...>…</meeting>
+#   </meetings_data>
 # It isn't valid XML (participant emails contain raw <>), so parse with a regex.
-_MEETING_RE = re.compile(
-    r'<meeting\s+id="(?P<id>[^"]+)"\s+title="(?P<title>[^"]*)"\s+date="(?P<date>[^"]*)"\s*>'
-    r"(?P<body>.*?)</meeting>",
-    re.DOTALL,
-)
+# The <meeting> tag gains attributes over time, so match the whole tag and read
+# attributes by name — anchoring to a fixed attribute order silently returned
+# zero meetings once Granola added attributes after `date` (2026-08).
+_MEETINGS_COUNT_RE = re.compile(r'<meetings_data\b[^>]*\bcount="(?P<count>\d+)"')
+_MEETING_BLOCK_RE = re.compile(r"<meeting\s+(?P<attrs>[^>]*?)>(?P<body>.*?)</meeting>", re.DOTALL)
+_ATTR_RE = re.compile(r'(\w+)="([^"]*)"')
+
+
+def _declared_meeting_count(text: str) -> int | None:
+    """Granola states its own meeting tally on the envelope. None if the
+    envelope is absent, which itself means the response is not what we expect."""
+    match = _MEETINGS_COUNT_RE.search(text)
+    return int(match.group("count")) if match else None
 
 
 def _parse_meetings_text(text: str) -> list[dict]:
     meetings = []
-    for m in _MEETING_RE.finditer(text):
-        body = m.group("body")
-        participants = re.sub(r"</?known_participants>", "", body)
+    for block in _MEETING_BLOCK_RE.finditer(text):
+        attrs = dict(_ATTR_RE.findall(block.group("attrs")))
+        if not attrs.get("id"):
+            continue
+        participants = re.sub(r"</?known_participants>", "", block.group("body"))
         participants = " ".join(participants.split())
         meetings.append(
             {
-                "id": m.group("id"),
-                "title": m.group("title") or "Untitled meeting",
-                "date": m.group("date"),
+                "id": attrs["id"],
+                "title": attrs.get("title") or "Untitled meeting",
+                "date": attrs.get("date"),
                 "participants": participants,
             }
         )
@@ -244,24 +244,42 @@ async def index_granola(source: dict) -> str | None:
             list_tool,
             {"time_range": "custom", "custom_start": "2000-01-01", "custom_end": "2100-01-01"},
         )
-        # Granola returns an XML-ish text blob; other shapes (JSON list/dict) are
-        # handled too for resilience.
-        if isinstance(data, str):
-            meetings = _parse_meetings_text(data)
-        else:
-            meetings = _as_list(data, "meetings", "results", "items", "documents", "notes", "data")
-        logger.info("granola source %s: listed %d meeting(s)", source_id, len(meetings))
-        if not meetings:
-            # A zero-meeting listing has been wiping archives silently (2026-08).
-            # Log the payload's shape so the next occurrence is diagnosable from
-            # worker logs: what did the provider actually send?
-            preview = data if isinstance(data, str) else json.dumps(data, default=str)
+        meetings = _parse_meetings_text(data) if isinstance(data, str) else []
+        declared = _declared_meeting_count(data) if isinstance(data, str) else None
+        logger.info(
+            "granola source %s: parsed %d meeting(s) (declared %s)",
+            source_id,
+            len(meetings),
+            declared,
+        )
+        # Only a listing we fully parsed may drive the delete-to-mirror sweep
+        # below. Granola states its own count on the envelope: read exactly that
+        # many and the response is genuine (0 = a truly empty account, honored);
+        # read fewer, or find no envelope at all, and the response drifted under
+        # us — fail loud and keep every stored note rather than delete to match
+        # a response we did not understand (this exact mismatch wiped the archive
+        # in 2026-08, when Granola added attributes our parser could not read).
+        if declared is None or len(meetings) != declared:
+            # Log the shape, never the content: attribute names reveal a tag
+            # drift (the 2026-08 cause) without putting meeting titles or
+            # participant emails in worker logs. Replay against a live token for
+            # detail if the names are not enough.
+            first_tag = _MEETING_BLOCK_RE.search(data) if isinstance(data, str) else None
+            meeting_attrs = (
+                sorted(dict(_ATTR_RE.findall(first_tag.group("attrs")))) if first_tag else []
+            )
             logger.warning(
-                "granola source %s: empty listing; raw type=%s len=%d head=%r",
+                "granola source %s: unreadable listing declared=%s parsed=%d type=%s meeting_attrs=%s",
                 source_id,
+                declared,
+                len(meetings),
                 type(data).__name__,
-                len(preview or ""),
-                (preview or "")[:400],
+                meeting_attrs,
+            )
+            raise source_service.SourceSyncUserError(
+                "Granola returned a response we could not fully read, so syncing is "
+                "paused for this source to protect your saved notes. This is a bug on "
+                "our side, not your account — nothing was deleted."
             )
 
         for meeting in meetings[:MAX_MEETINGS]:
@@ -313,6 +331,11 @@ async def index_granola(source: dict) -> str | None:
             )
             present.append(path)
 
-    await source_service.remove_missing_documents("granola_notes", source_id, present)
+    # We only reach here after the listing fully parsed (declared == parsed
+    # above), so an empty `present` means Granola reported an empty account, not
+    # a broken response — let the sweep mirror that deletion instead of refusing.
+    await source_service.remove_missing_documents(
+        "granola_notes", source_id, present, confirmed_complete=True
+    )
     logger.info("granola source %s: indexed %d meeting(s)", source_id, len(present))
     return None

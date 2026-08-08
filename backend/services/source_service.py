@@ -895,21 +895,30 @@ async def upsert_drive_document(
     return row["id"]
 
 
-async def remove_missing_documents(table: str, source_id: UUID, present_paths: list[str]) -> int:
+async def remove_missing_documents(
+    table: str,
+    source_id: UUID,
+    present_paths: list[str],
+    *,
+    confirmed_complete: bool = False,
+) -> int:
     """Remove live docs whose path was absent from the latest crawl.
 
     Copied-content tables hold customer text and embeddings, so missing rows are
     physically deleted. Index-only tables hold provider refs with no copied body,
     so soft-delete keeps navigation state cheap to resurrect on the next sync.
 
-    An EMPTY crawl never deletes: providers return empty listings for reasons
-    that aren't "the user deleted everything" — API contract drift, silent
-    truncation (X bookmarks, 2026-08-06), auth quirks that 200 with no data
-    (Granola, 2026-08). Deleting to match would destroy the whole archive on
-    the word of one flaky response, so refuse loudly instead; the sync shows
-    the error and the stored documents survive.
+    An EMPTY crawl deletes only when the caller sets `confirmed_complete` — i.e.
+    the indexer verified the listing is a faithful, whole picture of the provider
+    (Granola cross-checks the count the provider states on its own envelope), so
+    an empty listing really means an empty account and the mirror should follow.
+    Without that proof an empty crawl refuses loudly: providers return empty for
+    reasons that aren't "the user deleted everything" — API contract drift,
+    silent truncation (X bookmarks, 2026-08-06), auth quirks that 200 with no
+    data (Granola, 2026-08) — and deleting to match would destroy the whole
+    archive on the word of one flaky response.
     """
-    if not present_paths:
+    if not present_paths and not confirmed_complete:
         stored = await get_pool().fetchval(
             f"SELECT COUNT(*) FROM {table} WHERE source_id = $1", source_id
         )

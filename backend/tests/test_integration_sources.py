@@ -703,6 +703,105 @@ def test_granola_parses_xml_meeting_blob():
     assert "# Standup" in text and "we shipped the thing" in text
 
 
+def test_granola_parses_meeting_tag_with_extra_attributes():
+    # The 2026-08 wipe: Granola added attributes after `date`, and a parser that
+    # anchored to a fixed attribute order matched zero meetings. Read attributes
+    # by name so new ones never break parsing.
+    from backend.integrations.granola.indexer import (
+        _declared_meeting_count,
+        _parse_meetings_text,
+    )
+
+    blob = (
+        '<meetings_data from="Sep 14, 2025" to="Aug 7, 2026" count="1">'
+        '<meeting id="abc-123" title="Standup" date="Jun 5, 2026" '
+        'captured_by_me="true" listed_as_participant="true" is_workspace_visible="false">'
+        "<known_participants>sam@x.com</known_participants>"
+        "</meeting></meetings_data>"
+    )
+    meetings = _parse_meetings_text(blob)
+    assert len(meetings) == 1 == _declared_meeting_count(blob)
+    assert meetings[0]["id"] == "abc-123"
+    assert meetings[0]["title"] == "Standup"
+
+
+def _granola_harness(monkeypatch, list_blob: str):
+    """Run index_granola against a fake MCP session returning `list_blob`, with
+    no stored transcripts. Returns the list of remove_missing_documents calls."""
+    from contextlib import asynccontextmanager
+    from types import SimpleNamespace
+
+    from backend.integrations.granola import indexer as granola_indexer
+
+    removes: list[list[str]] = []
+
+    class FakePool:
+        async def fetch(self, query, *args):
+            return []
+
+    async def fake_call_tool_data(session, tool, params):
+        return list_blob
+
+    @asynccontextmanager
+    async def fake_session(access_token):
+        async def list_tools():
+            return SimpleNamespace(
+                tools=[
+                    SimpleNamespace(name="list_meetings"),
+                    SimpleNamespace(name="get_meeting_transcript"),
+                ]
+            )
+
+        yield SimpleNamespace(list_tools=list_tools)
+
+    async def fake_token(user_id):
+        return "tok"
+
+    async def noop_upsert(**kwargs):
+        return None
+
+    async def capture_remove(table, source_id, paths, *, confirmed_complete=False):
+        removes.append((paths, confirmed_complete))
+
+    monkeypatch.setattr(granola_indexer, "get_pool", lambda: FakePool())
+    monkeypatch.setattr(granola_indexer, "call_tool_data", fake_call_tool_data)
+    monkeypatch.setattr(granola_indexer, "granola_session", fake_session)
+    monkeypatch.setattr(granola_indexer, "get_valid_access_token", fake_token)
+    monkeypatch.setattr(granola_indexer.source_service, "upsert_content_document", noop_upsert)
+    monkeypatch.setattr(granola_indexer.source_service, "remove_missing_documents", capture_remove)
+    return granola_indexer, removes
+
+
+@pytest.mark.asyncio
+async def test_granola_unreadable_listing_raises_and_never_deletes(monkeypatch):
+    # A response we could not fully read (declared 1, parsed 0 — a drifted tag)
+    # must fail loud and never reach the delete-to-mirror sweep. This is the
+    # invariant that stops an empty/garbled listing from wiping the archive.
+    from uuid import uuid4
+
+    blob = '<meetings_data count="1"><mtg id="x" title="Renamed tag" /></meetings_data>'
+    granola_indexer, removes = _granola_harness(monkeypatch, blob)
+
+    with pytest.raises(source_service.SourceSyncUserError, match="could not fully read"):
+        await granola_indexer.index_granola({"id": str(uuid4()), "owner_user_id": str(uuid4())})
+    assert removes == []  # sweep never ran, so nothing was deleted
+
+
+@pytest.mark.asyncio
+async def test_granola_genuinely_empty_account_is_honored(monkeypatch):
+    # count="0" is Granola stating the account is really empty. That is honored:
+    # the sweep runs with an empty listing so local state mirrors the provider.
+    from uuid import uuid4
+
+    blob = '<meetings_data from="x" to="y" count="0"></meetings_data>'
+    granola_indexer, removes = _granola_harness(monkeypatch, blob)
+
+    await granola_indexer.index_granola({"id": str(uuid4()), "owner_user_id": str(uuid4())})
+    # Sweep ran once with an empty listing marked complete, so it mirrors the
+    # empty account (deletes) instead of refusing.
+    assert removes == [([], True)]
+
+
 @pytest.mark.asyncio
 async def test_github_sync_skips_crawl_when_head_unchanged(monkeypatch):
     # The whole point of the sync cursor: an unchanged repo must not be

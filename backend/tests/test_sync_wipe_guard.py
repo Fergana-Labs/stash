@@ -71,3 +71,17 @@ async def test_partial_listing_still_prunes_normally(granola_source, _db_pool):
 @pytest.mark.asyncio
 async def test_empty_listing_on_empty_source_is_a_no_op(_db_pool):
     assert await source_service.remove_missing_documents("granola_notes", uuid4(), []) == 0
+
+
+@pytest.mark.asyncio
+async def test_confirmed_complete_empty_listing_deletes_to_mirror(granola_source, _db_pool):
+    # The indexer verified the empty listing is real (provider reported an empty
+    # account), so an empty crawl now mirrors that deletion instead of refusing.
+    removed = await source_service.remove_missing_documents(
+        "granola_notes", granola_source, [], confirmed_complete=True
+    )
+    assert removed == 2
+    kept = await _db_pool.fetchval(
+        "SELECT COUNT(*) FROM granola_notes WHERE source_id = $1", granola_source
+    )
+    assert kept == 0
