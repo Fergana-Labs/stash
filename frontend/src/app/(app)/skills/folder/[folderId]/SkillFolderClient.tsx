@@ -85,7 +85,7 @@ export default function SkillFolderClient({ folderId }: { folderId: string }) {
       .slice(firstSkillIndex === -1 ? 0 : firstSkillIndex, -1)
       .map((cr) => ({
         label: cr.name,
-        href: `/skills/${cr.id}`,
+        href: `/skills/folder/${cr.id}`,
       }));
     return [
       { label: "Skills", href: `/skills` },
@@ -141,7 +141,7 @@ export default function SkillFolderClient({ folderId }: { folderId: string }) {
           objectType="folder"
           objectId={folderId}
           resourceName={folderName}
-          resourceUrlPath={`/skills/${folderId}`}
+          resourceUrlPath={`/skills/folder/${folderId}`}
           currentUser={user}
         />
         <SkillShareButton
@@ -169,7 +169,7 @@ export default function SkillFolderClient({ folderId }: { folderId: string }) {
   return (
     <FileBrowser
       folderId={folderId}
-      folderHrefBase={`/skills`}
+      folderHrefBase={`/skills/folder`}
     />
   );
 }
