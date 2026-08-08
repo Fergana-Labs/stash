@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -124,6 +124,26 @@ export default function MarkdownEditor({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [readOnly, save]);
 
+  // The editor sits in the page's normal document flow (its ancestors have no
+  // height), so the textarea can't fill a parent: it grows to fit its content
+  // and the page itself scrolls.
+  const syncHeight = useCallback(() => {
+    const area = textareaRef.current;
+    if (!area) return;
+    area.style.height = "auto";
+    area.style.height = `${area.scrollHeight}px`;
+  }, []);
+
+  useLayoutEffect(() => {
+    syncHeight();
+  }, [value, showPreview, syncHeight]);
+
+  // Wrapping changes with the viewport, and wrapping changes the height.
+  useEffect(() => {
+    window.addEventListener("resize", syncHeight);
+    return () => window.removeEventListener("resize", syncHeight);
+  }, [syncHeight]);
+
   /** Dropped and pasted files upload, then their markdown link lands at the
    *  cursor — the one editor affordance worth keeping from the rich version. */
   const insertFiles = useCallback(
@@ -151,7 +171,7 @@ export default function MarkdownEditor({
   );
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex flex-col">
       <div className="flex shrink-0 items-center justify-end gap-1 border-b border-border-subtle px-3 py-1.5">
         <button
           type="button"
@@ -173,7 +193,7 @@ export default function MarkdownEditor({
         </div>
       )}
 
-      <div className="flex min-h-0 flex-1 bg-background">
+      <div className="flex bg-background">
         <textarea
           ref={textareaRef}
           value={value}
@@ -194,10 +214,10 @@ export default function MarkdownEditor({
           }}
           spellCheck={false}
           placeholder="Start typing..."
-          className="min-h-0 flex-1 resize-none bg-transparent px-12 pt-10 pb-24 font-mono text-[13px] leading-[1.7] text-foreground outline-none"
+          className="min-h-[75vh] flex-1 resize-none overflow-hidden bg-transparent px-12 pt-10 pb-24 font-mono text-[13px] leading-[1.7] text-foreground outline-none"
         />
         {showPreview && (
-          <div className="min-h-0 flex-1 overflow-y-auto border-l border-border-subtle">
+          <div className="flex-1 border-l border-border-subtle">
             <article className="prose prose-sm markdown-content mx-auto max-w-[920px] px-8 py-8 text-foreground">
               <Markdown remarkPlugins={[remarkGfm]}>{value}</Markdown>
             </article>
