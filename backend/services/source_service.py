@@ -2173,6 +2173,68 @@ async def source_document(
     return True, doc
 
 
+# Source types whose documents have original bytes we can serve verbatim.
+# Everything else is provider API objects (messages, tickets, threads) with no
+# underlying file — raw download is a category error there, not a missing case.
+RAW_DOWNLOAD_TYPES = ("google_drive", "google_drive_folder")
+
+
+async def source_document_raw(
+    owner_user_id: UUID, user_id: UUID, source: str, ref: str
+) -> tuple[bool, dict | None]:
+    """One connected-source document's original bytes (the PDF itself, not its
+    extracted text), for vision-capable agents that read documents with their
+    own eyes. Same return contract as `source_document`: `(source_ok, doc)`,
+    with unreadable documents reported as `{"error", "http_status"}` dicts."""
+    connected = await _resolve_connected(source, owner_user_id, user_id)
+    if connected is None:
+        return False, None
+    source_type = connected["source_type"]
+    if source_type not in RAW_DOWNLOAD_TYPES:
+        return True, {
+            "error": f"raw download is not available for {source_type} documents; read as text",
+            "http_status": 415,
+        }
+
+    table = _table_for(source_type)
+    row = await get_pool().fetchrow(
+        f"SELECT external_ref, name FROM {table} "
+        f"WHERE source_id = $1 AND path = $2 AND deleted_at IS NULL",
+        UUID(connected["id"]),
+        ref,
+    )
+    if row is None or not row["external_ref"]:
+        return True, None
+
+    from ..integrations.google.indexer import (
+        MAX_NATIVE_DOWNLOAD_BYTES,
+        DriveFileTooLarge,
+        DriveFileUnsupported,
+        download_drive_file,
+    )
+
+    try:
+        content, mime, name = await download_drive_file(
+            UUID(connected["owner_user_id"]),
+            row["external_ref"],
+            max_bytes=MAX_NATIVE_DOWNLOAD_BYTES,
+        )
+    except DriveFileUnsupported as exc:
+        return True, {"error": str(exc), "http_status": 415}
+    except DriveFileTooLarge as exc:
+        return True, {"error": str(exc), "http_status": 413}
+
+    await _audit_source_read(
+        action="source.document_download",
+        owner_user_id=owner_user_id,
+        user_id=user_id,
+        source=source,
+        connected=connected,
+        metadata={"ref_hash": security_audit_service.hash_value(ref)},
+    )
+    return True, {"content": content, "content_type": mime, "name": name}
+
+
 async def _deep_link(source: dict, doc: dict) -> str | None:
     """The provider URL for one read document. Jira needs a network lookup for the
     site URL; everything else derives from stored refs (see source_document_url).

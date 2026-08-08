@@ -47,6 +47,9 @@ class VfsNode:
     # Provider-side id of a connected-source document (a Drive file id, a Gmail
     # message id, …), so `stat` can tie a VFS path back to the provider object.
     external_ref: str | None = None
+    # (source handle, document ref) for a connected-source document, so
+    # `read_raw` can fetch the original bytes behind the extracted text.
+    source_doc_ref: tuple[str, str] | None = None
     # Stash id of the connected source this node is the root of. It's the object
     # id `shares add source <id>` takes, so `stat` surfaces it for sharing.
     source_id: str | None = None
@@ -151,6 +154,20 @@ class StashVfsModel:
                 node.content = node.loader()
                 node.size_hint = len(node.content)
         return node.content
+
+    def read_raw(self, path: str) -> bytes:
+        """The original bytes behind a node. A connected-source document comes
+        back verbatim from the provider — the PDF itself, not its extracted
+        text — so a vision-capable agent can look at the actual pages. Every
+        other file's bytes ARE its content (uploads already load raw; pages
+        and transcripts are text), so this reads the same body `cat` shows."""
+        node = self._get_node(path)
+        if not node.is_file:
+            raise IsADirectoryError(path)
+        if node.source_doc_ref is not None:
+            handle, ref = node.source_doc_ref
+            return self.client.download_source_doc(handle, ref)
+        return self.read_file(path)
 
     def prefetch(self, paths: list[str]) -> None:
         """Load these files' bodies concurrently, so a later `read_file` on each
@@ -548,6 +565,7 @@ class StashVfsModel:
             size_hint=entry.get("size"),
             updated_at=entry.get("external_updated_at"),
             external_ref=entry.get("external_ref") or None,
+            source_doc_ref=(handle, ref),
         )
 
     def _load_page(self, page_id: str) -> bytes:
@@ -613,6 +631,7 @@ class StashVfsModel:
         created_at: str | None = None,
         updated_at: str | None = None,
         external_ref: str | None = None,
+        source_doc_ref: tuple[str, str] | None = None,
         app_url: str | None = None,
     ) -> str:
         path = self._clean_path(path)
@@ -632,6 +651,7 @@ class StashVfsModel:
             created_at=_parse_iso(created_at),
             updated_at=_parse_iso(updated_at),
             external_ref=external_ref,
+            source_doc_ref=source_doc_ref,
             app_url=app_url,
         )
         self.nodes[parent].children[name] = path

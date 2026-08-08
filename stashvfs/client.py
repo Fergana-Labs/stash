@@ -90,6 +90,8 @@ class VfsClient(Protocol):
 
     def read_source_doc(self, source: str, ref: str) -> dict: ...
 
+    def download_source_doc(self, source: str, ref: str) -> bytes: ...
+
 
 class MachineVfsClient(VfsClient, Protocol):
     """A `VfsClient` that can also read the user's cloud computer. Only the CLI

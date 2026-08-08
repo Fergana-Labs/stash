@@ -147,6 +147,10 @@ class FakeClient:
         self.scan_at_call["read_source_doc"] = self.scan
         return {"content": f"BODY of {ref}"}
 
+    def download_source_doc(self, source, ref):
+        assert source == "src-gmail-1"
+        return f"RAW BYTES of {ref}".encode()
+
     def get_transcript_events(self, session_id):
         assert session_id == "session-abc"
         return [{"role": "user", "content": "hello", "created_at": "2026-05-19T10:00:00Z"}]
@@ -333,6 +337,38 @@ def test_vfs_reads_files_and_pages():
     folder_path = f"{files_path}/{folder_name}"
     page_name = next(name for name in model.list_dir(folder_path) if name.startswith("Plan"))
     assert model.read_file(f"{folder_path}/{page_name}") == b"# Plan\n"
+
+
+def test_read_raw_fetches_source_doc_original_bytes():
+    """`cat` on a connected-source document shows its extracted text; read_raw
+    must return the provider's original bytes instead — that's the whole
+    difference between reading about a PDF and downloading the PDF."""
+    model = _model()
+    gmail_dir = "/sources/gmail"
+    doc_name = next(name for name in model.list_dir(gmail_dir) if name.startswith("Welcome"))
+
+    assert model.read_file(f"{gmail_dir}/{doc_name}") == b"BODY of msg-1"
+    assert model.read_raw(f"{gmail_dir}/{doc_name}") == b"RAW BYTES of msg-1"
+
+
+def test_read_raw_of_native_nodes_is_their_content():
+    """Uploads already load raw bytes and a page's bytes ARE its markdown — for
+    everything that isn't a connected-source document, read_raw and read_file
+    must agree, so `download` never invents a second body for a node."""
+    model = _model()
+    upload_name = next(name for name in model.list_dir("/files") if name.startswith("diagram"))
+
+    assert model.read_raw(f"/files/{upload_name}") == b"diagram body"
+
+
+def test_read_raw_of_a_directory_raises():
+    model = _model()
+
+    try:
+        model.read_raw("/files")
+        raise AssertionError("expected IsADirectoryError")
+    except IsADirectoryError:
+        pass
 
 
 class DuplicateNameClient(FakeClient):
