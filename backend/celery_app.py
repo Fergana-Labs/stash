@@ -2,7 +2,9 @@
 
 One process model:
   - `backend` (uvicorn)         — HTTP API, dispatches tasks via `.delay()`.
-  - `worker`  (celery worker)   — executes tasks.
+  - `worker`  (celery worker)   — executes tasks (`-Q default`).
+  - `heartbeat worker`          — executes the cadence-sensitive beat tasks
+                                  (`-Q heartbeat`), see `task_routes`.
   - `beat`    (celery beat)     — fires the periodic tasks in `beat_schedule`.
 
 Each task module is added to `include` when it lands. Adding a module to
@@ -16,6 +18,7 @@ the same scheduled task multiple times.
 
 from celery import Celery
 from celery.schedules import crontab
+from kombu import Queue
 
 from .config import settings
 
@@ -46,6 +49,21 @@ celery = Celery(
 
 celery.conf.update(
     task_default_queue="default",
+    # Heavy tasks (Playwright renders, PDF extraction, zip exports) legally
+    # run up to 30 min each, so a saturated pool delays everything queued
+    # behind them. Beat tasks whose cadence is load-bearing — X token
+    # keep-fresh (the 45-min refresh_margin assumes a tick roughly every 30
+    # min) and the ticket reconcilers — run on the separate "heartbeat" queue
+    # so they can never sit behind heavy work. A worker started without -Q
+    # consumes every queue listed in task_queues, so a deploy whose worker
+    # command predates the split still executes heartbeat tasks; -Q flags
+    # (start.sh, docker-compose.prod.yml) give the real isolation.
+    task_queues=(Queue("default"), Queue("heartbeat")),
+    task_routes={
+        "backend.integrations.x_saves.keep_tokens_fresh": {"queue": "heartbeat"},
+        "backend.tasks.linear_tickets.reconcile": {"queue": "heartbeat"},
+        "backend.tasks.linear_tickets.reconcile_github_prs": {"queue": "heartbeat"},
+    },
     task_acks_late=True,
     task_reject_on_worker_lost=True,
     worker_prefetch_multiplier=1,
