@@ -793,10 +793,8 @@ async def update_page(
 ) -> dict | None:
     """Update a page with optimistic concurrency on content_hash.
 
-    When `notify` (the default for agent/REST writes, but False for the live
-    editor's own Yjs->DB projection), a content change broadcasts a page-update
-    event to open viewers and invalidates any persisted collab doc so a reopened
-    editor reloads the fresh content instead of stale Yjs state."""
+    When `notify` (the default), a content change broadcasts a page-update
+    event so open viewers refetch the page."""
     pool = get_pool()
     if name is not None:
         await _assert_not_a_skills_instructions(page_id, owner_user_id)
@@ -921,9 +919,7 @@ async def update_page(
                     await _reconcile_embedded_files(page["id"], owner_user_id, updated_by, active)
                     _schedule_embed(page["id"], active)
                 if notify:
-                    # An external (non-editor) write: drop stale collab state so a
-                    # reopened editor reloads fresh, and tell open viewers.
-                    await delete_page_collab_state(page["id"], owner_user_id)
+                    # Tell open viewers so they refetch the page.
                     page_events.publish_page_update(
                         owner_user_id, page["id"], page["content_hash"], edit_agent_name
                     )
@@ -1215,15 +1211,6 @@ async def purge_page(page_id: UUID, owner_user_id: UUID) -> bool:
         owner_user_id,
     )
     return result == "DELETE 1"
-
-
-async def delete_page_collab_state(page_id: UUID, owner_user_id: UUID) -> None:
-    pool = get_pool()
-    await pool.execute(
-        "DELETE FROM page_collab_documents WHERE page_id = $1 AND owner_user_id = $2",
-        page_id,
-        owner_user_id,
-    )
 
 
 async def list_trashed_pages(owner_user_id: UUID) -> list[dict]:

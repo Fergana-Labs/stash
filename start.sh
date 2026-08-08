@@ -4,7 +4,7 @@ set -euo pipefail
 # -------------------------------------------------------
 # start.sh — Start all Stash services locally:
 # database, redis, backend, celery worker, celery beat,
-# collab, and frontend.
+# and frontend.
 # Each worktree gets its own pgvector database and redis
 # containers, created on demand and garbage-collected
 # after the worktree is deleted. Set DATABASE_URL /
@@ -164,7 +164,7 @@ ensure_python_deps() {
 
 ensure_node_deps() {
     local dir
-    for dir in frontend collab; do
+    for dir in frontend; do
         # Reinstall when node_modules is missing or the lockfile changed since
         # the last install (npm ci recreates node_modules, refreshing its mtime).
         if [ ! -d "$PROJECT_ROOT/$dir/node_modules" ] || \
@@ -181,7 +181,6 @@ ensure_node_deps() {
 # per machine; if a port is taken, we fail loud instead of shifting.
 BACKEND_PORT=3456
 FRONTEND_PORT=3457
-COLLAB_PORT=3458
 
 database_is_ready() {
     python - <<'PY' >/dev/null 2>&1
@@ -410,7 +409,7 @@ find_free_port() {
 
 ensure_app_ports_free() {
     local port pid cmd cwd
-    for port in "$BACKEND_PORT" "$FRONTEND_PORT" "$COLLAB_PORT"; do
+    for port in "$BACKEND_PORT" "$FRONTEND_PORT"; do
         if port_is_free "$port"; then
             continue
         fi
@@ -433,7 +432,7 @@ ensure_app_ports_free() {
             echo "[ports]   That process belongs to THIS checkout — you already have a stack (or part"
             echo "[ports]   of one) running here. Use it, or stop it (kill ${pid}) and rerun ./start.sh."
         else
-            echo "[ports]   App ports are fixed (backend ${BACKEND_PORT}, frontend ${FRONTEND_PORT}, collab ${COLLAB_PORT}); OAuth"
+            echo "[ports]   App ports are fixed (backend ${BACKEND_PORT}, frontend ${FRONTEND_PORT}); OAuth"
             echo "[ports]   redirect URIs are registered against them, so nothing may run elsewhere."
             echo "[ports]   One local stack at a time. If that process is another checkout's live"
             echo "[ports]   stack, wait your turn; only kill ${pid} if you know it's abandoned."
@@ -445,7 +444,7 @@ ensure_app_ports_free() {
 # Next.js allows one dev server per checkout: `next dev` holds an exclusive
 # flock on frontend/.next/dev/lock, and a second one exits at startup. Without
 # a preflight check that failure happens last — after the database, backend,
-# and collab are already up — and tears the whole stack down on the way out.
+# are already up — and tears the whole stack down on the way out.
 
 frontend_dev_server_info() {
     # Prints "<pid> <appUrl>" if a live dev server holds the lock, else nothing.
@@ -574,20 +573,10 @@ celery -A backend.celery_app beat --loglevel=info \
     --schedule "$PROJECT_ROOT/.celerybeat-schedule" &
 PIDS+=($!)
 
-# --- Collab (Hocuspocus) ---
-echo "[collab]   Starting on port ${COLLAB_PORT}..."
-cd "$PROJECT_ROOT/collab"
-PORT="$COLLAB_PORT" \
-BACKEND_URL="http://localhost:${BACKEND_PORT}" \
-DATABASE_URL="$DATABASE_URL" \
-npm run dev &
-PIDS+=($!)
-
 # --- Frontend (Next.js) ---
 echo "[frontend] Starting on port ${FRONTEND_PORT}..."
 cd "$PROJECT_ROOT/frontend"
 BACKEND_INTERNAL_URL="http://localhost:${BACKEND_PORT}" \
-NEXT_PUBLIC_COLLAB_URL="ws://localhost:${COLLAB_PORT}" \
 PORT="$FRONTEND_PORT" \
 npm run dev &
 PIDS+=($!)
@@ -603,7 +592,6 @@ TSC_WATCH_PID=$!
 echo "================================"
 echo "All services started. Press Ctrl+C to stop."
 echo "  Backend  -> http://localhost:${BACKEND_PORT}"
-echo "  Collab   -> ws://localhost:${COLLAB_PORT}"
 echo "  Frontend -> http://localhost:${FRONTEND_PORT}"
 echo "  Database -> ${DATABASE_URL}"
 echo "  Redis    -> ${REDIS_URL}"

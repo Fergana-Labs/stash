@@ -105,9 +105,6 @@ export default function SkillPageView({ pageId }: { pageId: string }) {
   const skillSlug = searchParams.get("skill");
 
   const [page, setPage] = useState<Page | null>(null);
-  // A save was refused (409): the page changed under this tab. Editing
-  // freezes until the user reloads — never silently overwrite newer work.
-  const [conflictMessage, setConflictMessage] = useState<string | null>(null);
   // The scope is the current user. Empty until auth resolves — every
   // consumer below renders or fires only after that.
   const scopeId = user?.id ?? "";
@@ -200,11 +197,16 @@ export default function SkillPageView({ pageId }: { pageId: string }) {
   const [externalEdit, setExternalEdit] = useState<{ agentName: string | null } | null>(null);
   const liveViewRef = useRef({ isHtml: false, htmlEditMode: false });
   const loadRef = useRef<() => Promise<void>>(async () => {});
+  // Hashes this tab's own saves produced. Every save is broadcast back to
+  // the whole scope, so without this the tab would flag its own echo as an
+  // external edit.
+  const ownContentHashes = useRef(new Set<string>());
 
   useEffect(() => {
     if (!user || skillSlug) return;
     return subscribePageEvents((evt) => {
       if (evt.page_id !== pageId) return;
+      if (evt.content_hash && ownContentHashes.current.has(evt.content_hash)) return;
       const { isHtml, htmlEditMode } = liveViewRef.current;
       if (isHtml && !htmlEditMode) {
         loadRef.current();
@@ -337,24 +339,21 @@ export default function SkillPageView({ pageId }: { pageId: string }) {
       const seq = saveSeq.current + 1;
       saveSeq.current = seq;
       try {
-        const updated = await updatePage(pageId, {
-          content,
-          // Save on top of the version we loaded: a 409 means another tab,
-          // agent, or person saved since — freeze and ask for a reload
-          // instead of silently overwriting their work.
-          expected_content_hash: page?.content_hash ?? null,
-        });
+        // The human's save always lands, even over an agent's concurrent
+        // write — agents are the guarded, retrying party (they send
+        // expected_content_hash; this tab deliberately does not).
+        const updated = await updatePage(pageId, { content });
+        if (updated.content_hash) ownContentHashes.current.add(updated.content_hash);
         if (saveSeq.current === seq) setPage(updated);
+        // The buffer just became the page, so an "edited externally" banner
+        // would now describe a version this save overwrote.
+        setExternalEdit(null);
         reconcileAfterSave(content, "markdown");
       } catch (e) {
-        if (e instanceof ApiError && e.status === 409) {
-          setConflictMessage(e.message);
-          return;
-        }
         setError(e instanceof Error ? e.message : "Save failed");
       }
     },
-    [pageId, reconcileAfterSave, page?.content_hash]
+    [pageId, reconcileAfterSave]
   );
 
   const handleHtmlMutated = useCallback(
@@ -828,7 +827,6 @@ export default function SkillPageView({ pageId }: { pageId: string }) {
                 <MarkdownEditor
                   file={page}
                   onSave={handleSave}
-                  conflictMessage={conflictMessage}
                   onSaveStatusChange={setSaveStatus}
                   onNavigateInternal={(href) => router.push(href)}
                   onAddComment={handleAddCommentMarkdown}

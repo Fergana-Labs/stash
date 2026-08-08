@@ -339,34 +339,3 @@ async def test_delete_cascades_comments(client: AsyncClient):
     # Comments endpoint on a deleted paste returns an empty list, not the orphan.
     listed = await client.get(f"/api/v1/pastes/{paste['slug']}/comments")
     assert listed.json()["comments"] == []
-
-
-async def test_collab_authorize_paste(client: AsyncClient):
-    paste = await _create(client)
-    resp = await client.post(
-        "/api/v1/collab/authorize-paste",
-        json={"document_name": f"paste:{paste['slug']}"},
-        headers={"Authorization": f"Bearer {paste['edit_token']}"},
-    )
-    assert resp.status_code == 200
-    assert resp.json()["can_write"] is True
-
-
-async def test_collab_authorize_paste_bad_token_404(client: AsyncClient):
-    paste = await _create(client)
-    resp = await client.post(
-        "/api/v1/collab/authorize-paste",
-        json={"document_name": f"paste:{paste['slug']}"},
-        headers={"Authorization": "Bearer wrong"},
-    )
-    assert resp.status_code == 404
-
-
-async def test_collab_authorize_paste_html_rejected(client: AsyncClient):
-    paste = await _create(client, content="<html><body>hi</body></html>", content_type="html")
-    resp = await client.post(
-        "/api/v1/collab/authorize-paste",
-        json={"document_name": f"paste:{paste['slug']}"},
-        headers={"Authorization": f"Bearer {paste['edit_token']}"},
-    )
-    assert resp.status_code == 404

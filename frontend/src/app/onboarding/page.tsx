@@ -113,7 +113,7 @@ function OnboardingInner() {
   }, [exitToHome, stepIdx]);
 
   // The "I just want to write with my agent" path: skip connecting sources,
-  // seed a starter page, and drop the user straight into the collaborative
+  // seed a starter page, and drop the user straight into the
   // editor. This is the Google-Docs-for-agents wedge, so it bypasses the ask step.
   const finishToCollabDoc = useCallback(async () => {
     track("onboarding.collab_path_chosen", {});
@@ -438,7 +438,7 @@ function TryItOutStep({
         >
           <div>
             <div className="text-[13.5px] font-medium text-foreground">
-              Start a collaborative doc
+              Start a doc
             </div>
             <div className="text-[12px] text-muted-foreground">
               You and your agent edit the same page — two cursors at once.

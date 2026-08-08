@@ -279,10 +279,17 @@ def stash_create_page(
 def stash_edit_page(
     page_id: str,
     content: str,
+    expected_content_hash: str,
     name: str = "",
 ) -> str:
-    """Update an existing page's content (and optionally rename)."""
-    kwargs: dict = {"content": content}
+    """Update an existing page's content (and optionally rename).
+
+    expected_content_hash is the content_hash from the stash_read_page call
+    this edit is based on. If the page changed since that read — for example
+    a human typing in the web editor — the edit is refused with a 409: read
+    the page again and reapply your edit on top of the latest content.
+    """
+    kwargs: dict = {"content": content, "expected_content_hash": expected_content_hash}
     if name:
         kwargs["name"] = name
     return _json(_client().update_page(page_id, **kwargs))
