@@ -69,10 +69,14 @@ async def test_stale_failing_curator_alerts(client: AsyncClient, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_skipped_by_design_curator_stays_quiet(client: AsyncClient, monkeypatch):
-    # Curators skipped on purpose (credit allowance, no credential) never run,
-    # so their error stays NULL — a stalled watermark there is not a failure.
+    # Curators skipped on purpose (credit allowance, no credential, no
+    # changes) resolve to 'skipped_<reason>' with a NULL error — a stalled
+    # watermark there is not a failure.
     user_id = await _register(client)
-    await _make_curator(user_id, curated_hours_ago=72, last_run_error=None)
+    agent = await _make_curator(user_id, curated_hours_ago=72, last_run_error=None)
+    await get_pool().execute(
+        "UPDATE agents SET last_run_outcome = 'skipped_no_changes' WHERE id = $1", agent["id"]
+    )
     await memory_service.push_event(
         user_id, "test", "user_message", "hello", user_id, f"sess-{uuid.uuid4()}"
     )
@@ -80,6 +84,26 @@ async def test_skipped_by_design_curator_stays_quiet(client: AsyncClient, monkey
 
     assert await agent_schedules._alert_stale_curators() == 0
     assert sent == []
+
+
+@pytest.mark.asyncio
+async def test_stale_curator_died_mid_run_alerts(client: AsyncClient, monkeypatch):
+    # A run that stamps 'started' and never resolves died mid-flight — no
+    # last_run_error exists, which is exactly why the watchdog must not key
+    # off the error alone (the July 2026 silent-stop shape).
+    user_id = await _register(client)
+    agent = await _make_curator(user_id, curated_hours_ago=72, last_run_error=None)
+    await get_pool().execute(
+        "UPDATE agents SET last_run_outcome = 'started' WHERE id = $1", agent["id"]
+    )
+    await memory_service.push_event(
+        user_id, "test", "user_message", "hello", user_id, f"sess-{uuid.uuid4()}"
+    )
+    sent = _capture_alerts(monkeypatch)
+
+    assert await agent_schedules._alert_stale_curators() == 1
+    assert len(sent) == 1
+    assert "died mid-flight" in sent[0]
 
 
 @pytest.mark.asyncio
@@ -138,7 +162,43 @@ async def test_run_due_failure_sends_alert(client: AsyncClient, monkeypatch):
     assert "Scheduled agent run failed" in sent[0] and "opencode error" in sent[0]
     # The failure is also stored on the agent, which is what the stale-curator
     # watchdog keys off — the two alert paths must stay connected.
-    error = await get_pool().fetchval(
-        "SELECT last_run_error FROM agents WHERE id = $1", agent["id"]
+    row = await get_pool().fetchrow(
+        "SELECT last_run_error, last_run_outcome FROM agents WHERE id = $1", agent["id"]
     )
-    assert error is not None and "opencode error" in error
+    assert row["last_run_error"] is not None and "opencode error" in row["last_run_error"]
+    assert row["last_run_outcome"] == "failed"
+
+
+@pytest.mark.asyncio
+async def test_run_due_records_skip_outcome(client: AsyncClient, monkeypatch):
+    from backend.services import agent_auth, curation_service, sprite_agent_service
+
+    # A due curator with nothing to curate: the cost gate skips the run, and
+    # the consumed tick must resolve to a legible skip — not linger at
+    # 'started', where it reads as a run that died mid-flight.
+    user_id = await _register(client)
+    agent = await _make_curator(user_id, curated_hours_ago=1, last_run_error=None)
+    await get_pool().execute(
+        "UPDATE agents SET schedule_cron = '* * * * *', last_run_at = $2 WHERE id = $1",
+        agent["id"],
+        datetime.now(UTC) - timedelta(minutes=5),
+    )
+
+    async def fake_resolve(user_id, prefer_provider=None):
+        return None
+
+    async def no_changes(owner_user_id, user_id, since):
+        return False
+
+    async def must_not_run(agent, stamp):
+        raise AssertionError("run_scheduled must not fire when the cost gate skips")
+
+    monkeypatch.setattr(agent_auth, "resolve", fake_resolve)
+    monkeypatch.setattr(curation_service, "has_changes_since", no_changes)
+    monkeypatch.setattr(sprite_agent_service, "run_scheduled", must_not_run)
+
+    assert await agent_schedules._run_due() == 0
+    outcome = await get_pool().fetchval(
+        "SELECT last_run_outcome FROM agents WHERE id = $1", agent["id"]
+    )
+    assert outcome == "skipped_no_changes"
