@@ -51,9 +51,19 @@ const page: Page = {
 };
 
 describe("MarkdownEditor", () => {
-  it("edits the file's bytes, not a rendering of them", async () => {
+  it("opens as a rendered document, not raw source", async () => {
     render(<MarkdownEditor file={page} onSave={vi.fn()} />);
 
+    // Readers land on the rendered page; the raw textarea is behind Edit.
+    expect(await screen.findByRole("heading", { name: "Setup" })).toBeInTheDocument();
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Edit" })).toBeInTheDocument();
+  });
+
+  it("Edit shows the file's bytes, not a rendering of them", async () => {
+    render(<MarkdownEditor file={page} onSave={vi.fn()} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
     const area = await screen.findByRole("textbox");
     expect((area as HTMLTextAreaElement).value).toBe(TRICKY);
   });
@@ -62,6 +72,7 @@ describe("MarkdownEditor", () => {
     const onSave = vi.fn();
     render(<MarkdownEditor file={page} onSave={onSave} />);
 
+    fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
     const area = (await screen.findByRole("textbox")) as HTMLTextAreaElement;
     fireEvent.change(area, { target: { value: `${TRICKY} x` } });
 
@@ -76,12 +87,20 @@ describe("MarkdownEditor", () => {
     expect(saved.startsWith(TRICKY.slice(0, TRICKY.length - 1))).toBe(true);
   });
 
-  it("opens read-only when the viewer cannot write", async () => {
+  it("a new empty page opens straight into the editor", async () => {
+    render(
+      <MarkdownEditor file={{ ...page, content_markdown: "" }} onSave={vi.fn()} />,
+    );
+
+    expect(await screen.findByRole("textbox")).toBeInTheDocument();
+  });
+
+  it("viewers without write access get the rendered page and no Edit", async () => {
     render(<MarkdownEditor file={{ ...page, can_write: false }} onSave={vi.fn()} />);
 
-    const area = (await screen.findByRole("textbox")) as HTMLTextAreaElement;
-    expect(area.readOnly).toBe(true);
-    expect(screen.getByText("Read-only")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Setup" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Edit" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
   });
 
   it("freezes on a save conflict and says why", async () => {
@@ -93,8 +112,7 @@ describe("MarkdownEditor", () => {
       />,
     );
 
-    const area = (await screen.findByRole("textbox")) as HTMLTextAreaElement;
-    expect(area.readOnly).toBe(true);
-    expect(screen.getByText(/changed since you loaded it/)).toBeInTheDocument();
+    // The banner shows in view mode, and the editor behind Edit is frozen.
+    expect(await screen.findByText(/changed since you loaded it/)).toBeInTheDocument();
   });
 });

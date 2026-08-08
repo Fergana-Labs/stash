@@ -46,6 +46,11 @@ export default function MarkdownEditor({
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
+  // Pages open as a rendered document; editing the raw markdown is an
+  // explicit step. A new empty page opens straight into the editor.
+  const [mode, setMode] = useState<"view" | "edit">(
+    file.content_markdown ? "view" : "edit"
+  );
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSaved = useRef(file.content_markdown);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -58,6 +63,7 @@ export default function MarkdownEditor({
     lastSaved.current = file.content_markdown;
     setDirty(false);
     setSaving(false);
+    setMode(file.content_markdown ? "view" : "edit");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [file.id]);
 
@@ -147,7 +153,7 @@ export default function MarkdownEditor({
 
   useLayoutEffect(() => {
     syncHeight();
-  }, [value, showPreview, syncHeight]);
+  }, [value, showPreview, mode, syncHeight]);
 
   // Wrapping changes with the viewport, and wrapping changes the height.
   useEffect(() => {
@@ -181,15 +187,45 @@ export default function MarkdownEditor({
     [readOnly]
   );
 
+  const toolbarButton =
+    "cursor-pointer rounded px-2 py-1 text-[12px] text-muted-foreground transition-colors hover:bg-raised hover:text-foreground";
+
+  if (mode === "view") {
+    return (
+      <div className="flex flex-col">
+        {(!readOnly || conflictMessage) && (
+          <div className="flex shrink-0 items-center justify-end gap-1 border-b border-border-subtle px-3 py-1.5">
+            {!readOnly && (
+              <button type="button" onClick={() => setMode("edit")} className={toolbarButton}>
+                Edit
+              </button>
+            )}
+          </div>
+        )}
+        {conflictMessage && (
+          <div className="border-b border-red-300/40 bg-red-500/10 px-4 py-2 text-[13px] text-red-500">
+            {conflictMessage}
+          </div>
+        )}
+        <article className="prose markdown-content mx-auto w-full max-w-[920px] bg-background px-8 py-10 text-foreground">
+          <Markdown remarkPlugins={[remarkGfm]}>{value}</Markdown>
+        </article>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col">
       <div className="flex shrink-0 items-center justify-end gap-1 border-b border-border-subtle px-3 py-1.5">
         <button
           type="button"
           onClick={() => setShowPreview((p) => !p)}
-          className="cursor-pointer rounded px-2 py-1 text-[12px] text-muted-foreground transition-colors hover:bg-raised hover:text-foreground"
+          className={toolbarButton}
         >
           {showPreview ? "Hide preview" : "Preview"}
+        </button>
+        <button type="button" onClick={() => setMode("view")} className={toolbarButton}>
+          Done
         </button>
       </div>
 
