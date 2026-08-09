@@ -147,3 +147,42 @@ async def test_run_due_failure_sends_alert(client: AsyncClient, monkeypatch):
         "SELECT last_run_error FROM agents WHERE id = $1", agent["id"]
     )
     assert error is not None and "opencode error" in error
+
+
+@pytest.mark.asyncio
+async def test_run_bookkeeping_failure_sends_alert(client: AsyncClient, monkeypatch):
+    """A run whose post-turn bookkeeping fails must record last_run_error and
+    alert, exactly like a failed turn — otherwise the watermark silently stops
+    advancing with no trace on the agent row."""
+    from backend.services import curation_service, sprite_agent_service
+
+    user_id = await _register(client)
+    agent = await _make_curator(user_id, curated_hours_ago=72, last_run_error=None)
+
+    async def fake_run_scheduled(agent, stamp):
+        return ""
+
+    async def boom(user_id, curated_through, now):
+        raise RuntimeError("watermark write failed")
+
+    monkeypatch.setattr(sprite_agent_service, "run_scheduled", fake_run_scheduled)
+    monkeypatch.setattr(curation_service, "complete_through", boom)
+    sent = _capture_alerts(monkeypatch)
+
+    await agent_schedules._run_scheduled_agent(uuid.UUID(agent["id"]), "202608091200")
+
+    assert len(sent) == 1 and "watermark write failed" in sent[0]
+    error = await get_pool().fetchval(
+        "SELECT last_run_error FROM agents WHERE id = $1", agent["id"]
+    )
+    assert error is not None and "watermark write failed" in error
+
+
+@pytest.mark.asyncio
+async def test_deleted_agent_run_is_a_quiet_no_op(client: AsyncClient, monkeypatch):
+    """An agent deleted between the beat tick and its dispatched run has
+    nothing to run and no row left to record a failure on — the task must
+    return quietly instead of dying as a bare task error."""
+    sent = _capture_alerts(monkeypatch)
+    await agent_schedules._run_scheduled_agent(uuid.uuid4(), "202608091200")
+    assert sent == []

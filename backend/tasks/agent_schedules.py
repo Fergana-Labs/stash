@@ -118,11 +118,28 @@ async def _run_scheduled_agent(agent_id: UUID, stamp: str) -> None:
     from ..database import get_pool
     from ..services import agent_service, alert_service, curation_service, sprite_agent_service
 
-    agent = await agent_service.get_agent_by_id(agent_id)
+    try:
+        agent = await agent_service.get_agent_by_id(agent_id)
+    except ValueError:
+        # Deleted between the beat tick and this run — nothing to do, and no
+        # agent row left to record a failure on.
+        logger.info("agent schedule: agent %s deleted before its run", agent_id)
+        return
     user_id = UUID(str(agent["user_id"]))
     now = datetime.now(UTC)
     try:
         await sprite_agent_service.run_scheduled(agent, stamp)
+        if agent["is_curator"]:
+            # `now` predates the run, so changes made during it stay ahead of
+            # the watermark and are picked up next time. If the delta
+            # overflowed the event cap, the watermark stops at the last event
+            # that fit — the overflow drains on subsequent runs. Bookkeeping
+            # failures share the run's try so they also record last_run_error
+            # and alert, instead of dying as a bare task error.
+            through = await curation_service.complete_through(
+                user_id, agent["curated_through"], now
+            )
+            await agent_service.mark_curated(agent_id, through)
     except Exception as e:
         logger.exception("agent schedule: run failed for agent %s", agent_id)
         await agent_service.mark_run_failed(agent_id, str(e))
@@ -130,14 +147,6 @@ async def _run_scheduled_agent(agent_id: UUID, stamp: str) -> None:
         await alert_service.send_alert(
             f"Scheduled agent run failed: {agent['name']!r} for {email}: {str(e)[:300]}"
         )
-        return
-    if agent["is_curator"]:
-        # `now` predates the run, so changes made during it stay ahead of the
-        # watermark and are picked up next time. If the delta overflowed the
-        # event cap, the watermark stops at the last event that fit — the
-        # overflow drains on subsequent runs.
-        through = await curation_service.complete_through(user_id, agent["curated_through"], now)
-        await agent_service.mark_curated(agent_id, through)
 
 
 # A curator whose watermark is older than this while changes are pending has
