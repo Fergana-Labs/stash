@@ -100,9 +100,11 @@ services:
       - backend_secrets:/app/.secrets
     command: ["celery", "-A", "backend.celery_app", "worker", "--loglevel=info", "--concurrency=4", "-Q", "default"]
 
-  # Cadence-sensitive beat tasks (X token keep-fresh, ticket reconcilers)
-  # run in their own pool so 30-min heavy tasks can't delay them.
-  heartbeat-worker:
+  # Long-running tasks (renders, extractions, crawls, agent runs) get their
+  # own pool so beat sweeps and cheap tasks on "default" never queue behind
+  # a 30-min task. Concurrency 2 keeps 2 children x 800MB (see
+  # worker_max_memory_per_child) plus the parent inside a 2GB box.
+  heavy-worker:
     image: ghcr.io/fergana-labs/stash-backend:0.1.362
     restart: always
     depends_on:
@@ -118,7 +120,7 @@ services:
       REDIS_URL: redis://redis:6379/0
     volumes:
       - backend_secrets:/app/.secrets
-    command: ["celery", "-A", "backend.celery_app", "worker", "--loglevel=info", "--concurrency=2", "-Q", "heartbeat"]
+    command: ["celery", "-A", "backend.celery_app", "worker", "--loglevel=info", "--concurrency=2", "-Q", "heavy"]
 
   beat:
     image: ghcr.io/fergana-labs/stash-backend:0.1.362

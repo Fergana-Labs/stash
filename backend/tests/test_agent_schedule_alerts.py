@@ -133,7 +133,12 @@ async def test_run_due_failure_sends_alert(client: AsyncClient, monkeypatch):
     monkeypatch.setattr(sprite_agent_service, "run_scheduled", fake_run_scheduled)
     sent = _capture_alerts(monkeypatch)
 
-    assert await agent_schedules._run_due() == 0
+    dispatched = []
+    monkeypatch.setattr(
+        agent_schedules.run_scheduled_agent, "delay", lambda *args: dispatched.append(args)
+    )
+    assert await agent_schedules._run_due() == 1
+    await agent_schedules._run_scheduled_agent(uuid.UUID(dispatched[0][0]), dispatched[0][1])
     assert len(sent) == 1
     assert "Scheduled agent run failed" in sent[0] and "opencode error" in sent[0]
     # The failure is also stored on the agent, which is what the stale-curator

@@ -2,8 +2,8 @@
 
 Work arrives in batches of ids rather than one task per URL, and the
 dispatcher only keeps WINDOW_URLS in flight at once — a 40k bookmark
-import trickles through 2 of the worker's 4 slots instead of starving
-embeddings and syncs behind a flooded queue. Batches are interleaved
+import trickles through one heavy-queue slot instead of monopolizing the
+pool that renders, extractions, and source syncs share. Batches are interleaved
 across domains and fetches are capped per domain, because bookmark files
 cluster heavily (a quarter of a real export is youtube.com) and hammering
 one site from a datacenter IP is how imports get rate-limited.
@@ -43,8 +43,9 @@ logger = logging.getLogger(__name__)
 BATCH_SIZE = 100
 CONCURRENCY = 8
 PER_DOMAIN_CONCURRENCY = 2
-# 2 batches in flight leaves 2 of the worker's 4 slots free for other work.
-WINDOW_URLS = 2 * BATCH_SIZE
+# One batch in flight occupies one slot of the heavy pool, leaving the rest
+# for renders, extractions, and source syncs during a bulk import.
+WINDOW_URLS = BATCH_SIZE
 NEEDS_CLIENT_EXPIRY_HOURS = 24
 EXPIRY_SWEEP_LIMIT = 200
 

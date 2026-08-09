@@ -2,9 +2,9 @@
 
 One process model:
   - `backend` (uvicorn)         — HTTP API, dispatches tasks via `.delay()`.
-  - `worker`  (celery worker)   — executes tasks (`-Q default`).
-  - `heartbeat worker`          — executes the cadence-sensitive beat tasks
-                                  (`-Q heartbeat`), see `task_routes`.
+  - `worker`  (celery worker)   — executes cheap, bounded tasks (`-Q default`).
+  - `heavy worker`              — executes the long-running task families
+                                  (`-Q heavy`), see `task_routes`.
   - `beat`    (celery beat)     — fires the periodic tasks in `beat_schedule`.
 
 Each task module is added to `include` when it lands. Adding a module to
@@ -49,20 +49,30 @@ celery = Celery(
 
 celery.conf.update(
     task_default_queue="default",
-    # Heavy tasks (Playwright renders, PDF extraction, zip exports) legally
-    # run up to 30 min each, so a saturated pool delays everything queued
-    # behind them. Beat tasks whose cadence is load-bearing — X token
-    # keep-fresh (the 45-min refresh_margin assumes a tick roughly every 30
-    # min) and the ticket reconcilers — run on the separate "heartbeat" queue
-    # so they can never sit behind heavy work. A worker started without -Q
-    # consumes every queue listed in task_queues, so a deploy whose worker
-    # command predates the split still executes heartbeat tasks; -Q flags
-    # (start.sh, docker-compose.prod.yml) give the real isolation.
-    task_queues=(Queue("default"), Queue("heartbeat")),
+    # Two queues, split by task weight. Anything that can hold a worker slot
+    # for minutes — subprocess extractions, Playwright renders, exports,
+    # source crawls, bulk URL fetches, headless agent runs — routes to
+    # "heavy" and gets its own worker pool. Everything else (every beat
+    # sweep, every cheap bounded task) stays on "default", which therefore
+    # never stalls: cadence-sensitive tasks like X token keep-fresh (its
+    # 45-min refresh_margin assumes a tick roughly every 30 min) get their
+    # guarantee without being enumerated. Interactive agent replies
+    # (Slack/Telegram) also stay on "default" deliberately: a user is
+    # waiting, and "heavy" would queue them behind renders. A worker started
+    # without -Q consumes every queue listed in task_queues, so a deploy
+    # whose worker command predates the split still executes both queues;
+    # -Q flags (start.sh, docker-compose.prod.yml) give the real isolation.
+    task_queues=(Queue("default"), Queue("heavy")),
     task_routes={
-        "backend.integrations.x_saves.keep_tokens_fresh": {"queue": "heartbeat"},
-        "backend.tasks.linear_tickets.reconcile": {"queue": "heartbeat"},
-        "backend.tasks.linear_tickets.reconcile_github_prs": {"queue": "heartbeat"},
+        "backend.tasks.extraction.extract_file_text": {"queue": "heavy"},
+        "backend.tasks.drive_extraction.extract_drive_document": {"queue": "heavy"},
+        "backend.tasks.clips.process_url_imports": {"queue": "heavy"},
+        "backend.tasks.sources.sync_source": {"queue": "heavy"},
+        "backend.exports.pdf.export_pdf": {"queue": "heavy"},
+        "backend.exports.pptx.export_pptx": {"queue": "heavy"},
+        "backend.exports.gslides.export_to_google_slides": {"queue": "heavy"},
+        "backend.tasks.agent_schedules.run_scheduled_agent": {"queue": "heavy"},
+        "backend.tasks.agent_schedules.run_curator_now": {"queue": "heavy"},
     },
     task_acks_late=True,
     task_reject_on_worker_lost=True,
