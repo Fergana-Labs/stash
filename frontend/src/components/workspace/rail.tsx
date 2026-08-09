@@ -106,11 +106,13 @@ export default function Rail({ user, onLogout }: { user: User; onLogout: () => v
   const requestedSection = searchParams.get("section");
 
   function selectSection(section: RailSection) {
-    // Memory and Apps have their own landing pages, so they navigate; other
-    // sections just swap the explorer beside whatever's open.
-    if (section === "memory" || section === "apps") {
+    // Memory, Apps, and Files have their own landing pages, so they navigate;
+    // other sections just swap the explorer beside whatever's open.
+    const LANDING: Partial<Record<RailSection, string>> = { memory: "/memory", apps: "/apps", files: "/files" };
+    const landing = LANDING[section];
+    if (landing) {
       setRailSection(section);
-      router.replace(section === "memory" ? "/memory" : "/apps");
+      router.replace(landing);
       return;
     }
     const params = new URLSearchParams(searchParams);

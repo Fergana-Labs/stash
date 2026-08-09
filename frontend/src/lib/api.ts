@@ -333,6 +333,38 @@ export async function listSources(): Promise<Source[]> {
   return data.sources.filter((s) => !NATIVE_SOURCE_TYPES.has(s.type));
 }
 
+// One node in a source's entry tree (GET /me/sources/tree). Directories carry
+// `children`; a capped directory ends with a {kind: "truncated", hidden: N}
+// marker so renderers can say "+N more" honestly.
+export interface SourceTreeEntry {
+  name: string;
+  kind: string; // 'folder' | 'file' | 'page' | 'session' | 'truncated' | ...
+  path?: string;
+  ref?: string;
+  hidden?: number;
+  source?: string; // connection handle, on multi-connection member folders
+  sync_status?: string | null;
+  children?: SourceTreeEntry[];
+}
+
+export interface SourceTreeRoot {
+  source: string; // provider key ("github") or native handle
+  type: string; // 'provider' | 'native_files' | 'native_sessions'
+  provider?: string;
+  display_name: string;
+  members?: { handle: string; display_name: string }[];
+  sync_status?: string | null;
+  last_synced_at?: string | null;
+  tree: SourceTreeEntry[];
+}
+
+export async function getSourcesTree(depth = 4): Promise<SourceTreeRoot[]> {
+  const data = await apiFetch<{ sources: SourceTreeRoot[] }>(`${ME}/sources/tree?depth=${depth}`);
+  // Files and sessions render from their own richer endpoints; this call is
+  // for the connected-source trees.
+  return data.sources.filter((s) => s.type === "provider");
+}
+
 export async function addSource(body: {
   source_type: string;
   external_ref?: string;

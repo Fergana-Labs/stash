@@ -81,6 +81,9 @@ export function rendersRouteContent(
   workspaceParam: string | null,
 ): boolean {
   if (selectedSection) return false;
+  // The Files home is the bird's-eye view of the whole stash; opening any
+  // item navigates to its own route, which returns to the workbench.
+  if (pathname === "/files") return true;
   if (pathname === "/sessions") return workspaceParam !== "1";
   // Memory routes (brain dashboard, wiki file system) render as pages
   // beside the explorer; opening an item switches to the workbench.
@@ -119,6 +122,9 @@ export default function WorkspaceShell({
     selectedSection,
     searchParams.get("workspace"),
   );
+  // /files IS a file tree — showing the explorer's tree beside it would be
+  // the same thing twice. An explicit ?section= still summons the panel.
+  const showExplorer = section !== null && !(pathname === "/files" && !selectedSection);
 
   return (
     // Chrome surface — the content panel floats on top of it.
@@ -128,7 +134,7 @@ export default function WorkspaceShell({
       <div className="flex min-h-0 flex-1">
         <Rail user={user} onLogout={onLogout} />
         <div className="min-w-0 flex-1 pb-0">
-          {section ? (
+          {section && showExplorer ? (
             <div className="flex h-full">
               <ExplorerPanel section={section} />
               {/* Floating content panel: clean white paper, subtly elevated. */}
