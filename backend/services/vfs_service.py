@@ -168,6 +168,9 @@ class InProcessVfsClient:
     def download_file(self, file_id: str) -> bytes:
         return self._read_document("GET", f"/api/v1/me/files/{file_id}/download").content
 
+    def get_file_text(self, file_id: str) -> dict:
+        return self._read_document("GET", f"/api/v1/me/files/{file_id}/text").json()
+
     def get_skill_text(self, slug: str) -> str:
         return self._read_document("GET", f"/api/v1/skills/{slug}", format="text").text
 
@@ -188,6 +191,9 @@ class InProcessVfsClient:
 
     def read_source_doc(self, source: str, ref: str) -> dict:
         return self._read_document("GET", f"/api/v1/me/sources/{source}/doc", ref=ref).json()
+
+    def download_source_doc(self, source: str, ref: str) -> bytes:
+        return self._read_document("GET", f"/api/v1/me/sources/{source}/doc/raw", ref=ref).content
 
 
 def _error_detail(response: httpx.Response) -> str:

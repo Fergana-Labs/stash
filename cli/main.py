@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import posixpath
 import re
 import shutil
 import sys
@@ -5862,6 +5863,53 @@ def vfs_command(
         raise typer.Exit(1)
     finally:
         client.close()
+
+
+def _read_vfs_raw(path: str) -> bytes:
+    """The original bytes behind a VFS path — a connected-source document comes
+    back verbatim from the provider (the PDF itself, not its extracted text)."""
+    from stashvfs import MountError, StashVfsModel, VfsClientError
+
+    client = _client()
+    try:
+        model = StashVfsModel(client, include_computer=True)
+        model.refresh()
+        return model.read_raw(path)
+    except FileNotFoundError:
+        console.print(f"[red]No such file: {path}[/red]")
+        raise typer.Exit(1) from None
+    except IsADirectoryError:
+        console.print(f"[red]Is a directory: {path}[/red]")
+        raise typer.Exit(1) from None
+    except (MountError, VfsClientError) as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1) from None
+    finally:
+        client.close()
+
+
+@app.command("download")
+def download_command(
+    path: str = typer.Argument(
+        ..., help="VFS path (e.g. '/sources/google/Part Catalogs/bendix.pdf')."
+    ),
+    output: str = typer.Option(
+        None, "--output", "-o", help="Destination path. Defaults to the file's name in cwd."
+    ),
+):
+    """Download the original bytes behind a VFS path.
+
+    `stash vfs cat` shows a document's extracted text; this fetches the file
+    itself. Use it when your harness can read PDFs and images directly —
+    download the document, then read it with your own file tools to see
+    figures, diagrams, scans, and table layout with your own eyes.
+    """
+    data = _read_vfs_raw(path)
+    dest = Path(output) if output else Path(posixpath.basename(path.rstrip("/")))
+    dest.write_bytes(data)
+    console.print(
+        f"[green]Downloaded[/green] {path} → {dest.resolve()} [dim]{len(data)} bytes[/dim]"
+    )
 
 
 # ===========================================================================
