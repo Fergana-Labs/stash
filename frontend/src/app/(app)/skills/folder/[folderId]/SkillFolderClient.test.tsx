@@ -102,7 +102,7 @@ describe("SkillFolderClient", () => {
     const crumbs = vi.mocked(useBreadcrumbs).mock.calls.at(-1)?.[0];
     expect(crumbs).toEqual([
       { label: "Skills", href: "/skills" },
-      { label: "Launch Plan", href: "/skills/folder-root" },
+      { label: "Launch Plan", href: "/skills/folder/folder-root" },
       { label: "research" },
     ]);
     // Ancestors above the skill root (plain folders) stay out of the trail.
