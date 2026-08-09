@@ -196,7 +196,6 @@ class PageUpdateRequest(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=255)
     folder_id: UUID | None = None
     content: str | None = None
-    collab_projection: bool = False
     # The content_hash the client loaded before editing. Given, a content
     # save lands only if the page still has that hash — otherwise 409, so a
     # stale tab reloads instead of silently overwriting someone's newer save.

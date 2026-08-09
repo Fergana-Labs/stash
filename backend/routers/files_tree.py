@@ -802,9 +802,7 @@ async def update_page(
             content_html=req.content_html,
             html_layout=req.html_layout,
             move_to_root=req.move_to_root,
-            guard_content_hash=not (req.collab_projection and req.content is not None),
             expected_content_hash=req.expected_content_hash,
-            notify=not req.collab_projection,
         )
     except DuplicatePageName as e:
         raise HTTPException(status_code=409, detail=str(e))
@@ -813,7 +811,7 @@ async def update_page(
     except files_tree_service.ConcurrentEditError:
         raise HTTPException(
             status_code=409,
-            detail="This page changed since you loaded it — reload to get the latest version.",
+            detail="This page changed since you loaded it — read it again and apply your edit on top.",
         )
     if not page:
         raise HTTPException(status_code=404, detail="Page not found")

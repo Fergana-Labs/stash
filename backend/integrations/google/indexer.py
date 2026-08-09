@@ -84,7 +84,7 @@ async def _list(client: httpx.AsyncClient, q: str) -> list[dict]:
         resp = await client.get(DRIVE_LIST_URL, params=params)
         resp.raise_for_status()
         body = resp.json()
-        out.extend(body.get("files", []))
+        out.extend(source_service.expect_items(body, "files", provider="Google Drive"))
         page_token = body.get("nextPageToken")
         if not page_token:
             return out
@@ -332,6 +332,50 @@ async def fetch_drive_content(owner_user_id: UUID, file_id: str) -> str:
         max_bytes=MAX_NATIVE_DOWNLOAD_BYTES,
         transcribe_pdfs=False,
     )
+
+
+async def download_drive_file(
+    owner_user_id: UUID, file_id: str, *, max_bytes: int
+) -> tuple[bytes, str, str]:
+    """A Drive file's original bytes, as `(content, mime_type, name)`.
+
+    Only binary files have original bytes. Google-native documents (Docs,
+    Sheets, Slides) exist solely as cloud objects — there is no file to
+    download — so they raise DriveFileUnsupported; read them as text instead.
+    """
+    token = await get_valid_token(owner_user_id, "google")
+    headers = {"Authorization": f"Bearer {token}"}
+    async with httpx.AsyncClient(timeout=120.0, headers=headers) as client:
+        meta = await client.get(
+            DRIVE_FILE_URL.format(file_id=file_id),
+            params={**ALL_DRIVES, "fields": "mimeType,name,size"},
+        )
+        meta.raise_for_status()
+        info = meta.json()
+        mime = info.get("mimeType") or ""
+        name = info.get("name") or file_id
+
+        if mime.startswith("application/vnd.google-apps."):
+            raise DriveFileUnsupported(
+                f"{mime} is a Google-native document with no original file; read it as text"
+            )
+        size = int(info.get("size") or 0)
+        if size > max_bytes:
+            raise DriveFileTooLarge(
+                f"{size // (1024 * 1024)} MB exceeds the {max_bytes // (1024 * 1024)} MB limit"
+            )
+
+        media = await client.get(
+            DRIVE_FILE_URL.format(file_id=file_id),
+            params={**ALL_DRIVES, "alt": "media"},
+        )
+        media.raise_for_status()
+        if len(media.content) > max_bytes:
+            raise DriveFileTooLarge(
+                f"{len(media.content) // (1024 * 1024)} MB exceeds the "
+                f"{max_bytes // (1024 * 1024)} MB limit"
+            )
+        return media.content, mime, name
 
 
 async def extract_drive_text(

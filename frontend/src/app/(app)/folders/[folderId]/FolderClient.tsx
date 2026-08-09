@@ -99,8 +99,8 @@ export default function FolderDetailPage({ folderId: folderIdProp }: { folderId?
       .then((c) => {
         if (cancelled) return;
         // Skill folders live on the skill browse route — deep links self-heal.
-        // (/skills/<x> is the published-slug route; a folder id belongs on
-        // /skills/folder/<id>.)
+        // /skills/<x> is the published-slug route; a folder id there renders
+        // "Skill not found". The skill's own page is /skills/folder/<id>.
         if (c.folder.is_skill || c.breadcrumbs.some((b) => b.is_skill)) {
           router.replace(`/skills/folder/${folderId}`);
           return;

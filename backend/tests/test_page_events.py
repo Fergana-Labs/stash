@@ -42,17 +42,13 @@ def test_pubsub_delivers_then_stops_after_unsubscribe():
 
 
 @pytest.mark.asyncio
-async def test_update_page_notifies_and_invalidates_collab(scope, _db_pool):
+async def test_update_page_notifies_open_viewers(scope, _db_pool):
+    """A content write broadcasts so open viewers refetch. (The collab-state
+    invalidation this test also covered is gone with the collab server: there
+    is no second copy of the document to go stale.)"""
     scope_id, user_id = scope
     page = await files_tree_service.create_page(
         owner_user_id=scope_id, name="Live", created_by=user_id, content="v1"
-    )
-    # Simulate a persisted collab doc (as if the page had been opened in the editor).
-    await _db_pool.execute(
-        "INSERT INTO page_collab_documents (page_id, owner_user_id, yjs_state) VALUES ($1, $2, $3)",
-        page["id"],
-        scope_id,
-        b"\x00",
     )
     queue = page_events.subscribe(scope_id)
     try:
@@ -65,39 +61,3 @@ async def test_update_page_notifies_and_invalidates_collab(scope, _db_pool):
 
     assert event["page_id"] == str(page["id"])
     assert event["agent_name"] == "Stash Agent"
-    # Stale collab state was dropped so a reopened editor reloads fresh content.
-    remaining = await _db_pool.fetchval(
-        "SELECT count(*) FROM page_collab_documents WHERE page_id = $1", page["id"]
-    )
-    assert remaining == 0
-
-
-@pytest.mark.asyncio
-async def test_collab_projection_save_does_not_notify(scope, _db_pool):
-    """The editor's own Yjs->DB projection (notify=False) must not broadcast or
-    wipe collab state — that would fight the live editor."""
-    scope_id, user_id = scope
-    page = await files_tree_service.create_page(
-        owner_user_id=scope_id, name="Editing", created_by=user_id, content="a"
-    )
-    await _db_pool.execute(
-        "INSERT INTO page_collab_documents (page_id, owner_user_id, yjs_state) VALUES ($1, $2, $3)",
-        page["id"],
-        scope_id,
-        b"\x00",
-    )
-    queue = page_events.subscribe(scope_id)
-    try:
-        await files_tree_service.update_page(
-            page["id"], scope_id, user_id, content="b", notify=False
-        )
-        await asyncio.sleep(0.05)
-        empty = queue.empty()
-    finally:
-        page_events.unsubscribe(scope_id, queue)
-
-    assert empty  # no broadcast
-    kept = await _db_pool.fetchval(
-        "SELECT count(*) FROM page_collab_documents WHERE page_id = $1", page["id"]
-    )
-    assert kept == 1  # collab state preserved

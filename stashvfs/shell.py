@@ -141,6 +141,14 @@ class SkillAppVfsShell:
             return self._stat(args)
         if name == "help":
             return _help_text()
+        if name == "download":
+            # Not a shell builtin: download writes to the caller's disk, and
+            # the shell is a read-only text view — so it lives beside `vfs`,
+            # not inside it. Everyone tries it here first.
+            raise VfsShellError(
+                f"download is not a shell command - run it directly: "
+                f"`stash download {' '.join(args)}`"
+            )
         raise VfsShellError(f"unsupported command: {name}")
 
     def _cd(self, args: list[str]) -> str:

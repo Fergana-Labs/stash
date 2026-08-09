@@ -58,6 +58,26 @@ class SourceSetupRequired(Exception):
     SourceSyncUserError — the message is shown verbatim."""
 
 
+def expect_items(payload: object, key: str, *, provider: str) -> list:
+    """Return the list a provider nests under `key`, or fail loud.
+
+    This is the one gate between a sync and the delete-to-mirror sweep. A list
+    that is present but empty is a real empty result and is believed. A payload
+    that is not a dict, is missing `key`, or holds a non-list there is a response
+    we could not read — never "the account is empty" — so it raises instead of
+    letting a malformed or truncated page drive a deletion. Providers that omit
+    the container when empty (Gmail) must not use this; they check their own
+    empty signal.
+    """
+    if isinstance(payload, dict) and isinstance(payload.get(key), list):
+        return payload[key]
+    raise SourceSyncUserError(
+        f"{provider} returned a response we could not read, so syncing is paused for "
+        "this source to protect your saved data. This is a bug on our side, not your "
+        "account — nothing was deleted."
+    )
+
+
 # A Linear issue identifier (FER-199). Any such ref is readable live from the
 # API, so reads work even before a sync has indexed the issue.
 LINEAR_IDENTIFIER_RE = re.compile(r"^[A-Za-z][A-Za-z0-9]*-\d+$")
@@ -896,11 +916,18 @@ async def upsert_drive_document(
 
 
 async def remove_missing_documents(table: str, source_id: UUID, present_paths: list[str]) -> int:
-    """Remove live docs whose path was absent from the latest crawl.
+    """Mirror the provider: remove live docs whose path was absent from the crawl.
 
     Copied-content tables hold customer text and embeddings, so missing rows are
     physically deleted. Index-only tables hold provider refs with no copied body,
     so soft-delete keeps navigation state cheap to resurrect on the next sync.
+
+    This is a dumb mirror: an empty `present_paths` deletes everything, because it
+    means the provider reported an empty account. The decision that an empty (or
+    short) listing is *real* and not a broken response lives in each indexer,
+    which fails loud on a malformed response before it ever reaches this sweep
+    (see `expect_items`). A single source of truth: the provider, believed only
+    once the indexer has confirmed it understood the response.
     """
     if table in CONTENT_TABLES:
         result = await get_pool().execute(
@@ -2171,6 +2198,68 @@ async def source_document(
             metadata={"ref_hash": security_audit_service.hash_value(ref)},
         )
     return True, doc
+
+
+# Source types whose documents have original bytes we can serve verbatim.
+# Everything else is provider API objects (messages, tickets, threads) with no
+# underlying file — raw download is a category error there, not a missing case.
+RAW_DOWNLOAD_TYPES = ("google_drive", "google_drive_folder")
+
+
+async def source_document_raw(
+    owner_user_id: UUID, user_id: UUID, source: str, ref: str
+) -> tuple[bool, dict | None]:
+    """One connected-source document's original bytes (the PDF itself, not its
+    extracted text), for vision-capable agents that read documents with their
+    own eyes. Same return contract as `source_document`: `(source_ok, doc)`,
+    with unreadable documents reported as `{"error", "http_status"}` dicts."""
+    connected = await _resolve_connected(source, owner_user_id, user_id)
+    if connected is None:
+        return False, None
+    source_type = connected["source_type"]
+    if source_type not in RAW_DOWNLOAD_TYPES:
+        return True, {
+            "error": f"raw download is not available for {source_type} documents; read as text",
+            "http_status": 415,
+        }
+
+    table = _table_for(source_type)
+    row = await get_pool().fetchrow(
+        f"SELECT external_ref, name FROM {table} "
+        f"WHERE source_id = $1 AND path = $2 AND deleted_at IS NULL",
+        UUID(connected["id"]),
+        ref,
+    )
+    if row is None or not row["external_ref"]:
+        return True, None
+
+    from ..integrations.google.indexer import (
+        MAX_NATIVE_DOWNLOAD_BYTES,
+        DriveFileTooLarge,
+        DriveFileUnsupported,
+        download_drive_file,
+    )
+
+    try:
+        content, mime, name = await download_drive_file(
+            UUID(connected["owner_user_id"]),
+            row["external_ref"],
+            max_bytes=MAX_NATIVE_DOWNLOAD_BYTES,
+        )
+    except DriveFileUnsupported as exc:
+        return True, {"error": str(exc), "http_status": 415}
+    except DriveFileTooLarge as exc:
+        return True, {"error": str(exc), "http_status": 413}
+
+    await _audit_source_read(
+        action="source.document_download",
+        owner_user_id=owner_user_id,
+        user_id=user_id,
+        source=source,
+        connected=connected,
+        metadata={"ref_hash": security_audit_service.hash_value(ref)},
+    )
+    return True, {"content": content, "content_type": mime, "name": name}
 
 
 async def _deep_link(source: dict, doc: dict) -> str | None:

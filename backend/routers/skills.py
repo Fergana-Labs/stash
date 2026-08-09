@@ -281,7 +281,10 @@ async def replace_skill_contents(
     if not any(path == "SKILL.md" for path, _blob in payload):
         raise HTTPException(status_code=400, detail="A skill must include a SKILL.md")
 
-    await files_tree_service.clear_folder_contents(folder_id)
+    try:
+        await files_tree_service.clear_folder_contents(folder_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     written = await files_tree_service.write_folder_files(
         owner_user_id, current_user["id"], folder_id, payload
     )

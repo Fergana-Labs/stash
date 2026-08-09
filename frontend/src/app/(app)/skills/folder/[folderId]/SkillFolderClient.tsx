@@ -102,7 +102,7 @@ export default function SkillFolderClient({ folderId }: { folderId: string }) {
   const convertToFolder = useCallback(async () => {
     if (!contents || !user) return;
     const publishedWarning = publish
-      ? " Its share link will stop working."
+      ? " It's published, so you'll need to unpublish it first — the convert will be refused until you do."
       : "";
     const yes = await confirm({
       title: `Convert "${contents.folder.name}" back to a plain folder?`,
@@ -169,7 +169,7 @@ export default function SkillFolderClient({ folderId }: { folderId: string }) {
   return (
     <FileBrowser
       folderId={folderId}
-      folderHrefBase={`/skills`}
+      folderHrefBase={`/skills/folder`}
     />
   );
 }

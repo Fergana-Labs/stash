@@ -121,3 +121,37 @@ async def test_the_api_reports_which_folders_are_protected(client):
     by_name = {f["name"]: f for f in tree.json()["folders"]}
     assert by_name["Clips"]["is_protected"] is True
     assert by_name["Notes"]["is_protected"] is False
+
+
+async def test_memory_refuses_content_wipe_even_disguised_as_a_skill(client, pool):
+    """Skill-ness is derived (folder with a live SKILL.md), so a stray SKILL.md
+    inside Memory makes it pass the skills sync gate — and skills sync empties
+    the folder with a hard delete, no trash. The wipe must refuse protected
+    folders no matter what the derivation claims."""
+    user = await _user(client)
+    owner = user["id"]
+    memory = await files_tree_service.get_or_create_memory_folder(owner, owner)
+    wiki_page = await files_tree_service.create_page(
+        owner, "Wiki Index", owner, folder_id=memory["id"], content="precious"
+    )
+    await files_tree_service.create_page(
+        owner, "SKILL.md", owner, folder_id=memory["id"], content="# stray"
+    )
+
+    with pytest.raises(ValueError, match="can't be emptied"):
+        await files_tree_service.clear_folder_contents(memory["id"])
+
+    response = await client.put(
+        f"/api/v1/me/skills/{memory['id']}/contents",
+        files=[("files", ("SKILL.md", b"# replacement", "text/markdown"))],
+        headers=user["headers"],
+    )
+    assert response.status_code == 400
+    assert "can't be emptied" in response.json()["detail"]
+
+    # The wiki survived both attempts, live and in place.
+    row = await pool.fetchrow(
+        "SELECT folder_id, deleted_at FROM pages WHERE id = $1", wiki_page["id"]
+    )
+    assert row["folder_id"] == memory["id"]
+    assert row["deleted_at"] is None

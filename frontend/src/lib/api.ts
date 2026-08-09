@@ -37,7 +37,6 @@ function trackEvent(
   if (typeof window === "undefined") return;
   void import("./analytics").then((m) => m.track(event, properties, opts));
 }
-const DEFAULT_LOCAL_COLLAB_URL = "ws://localhost:3458";
 
 // --- Token management (for CLI API key fallback) ---
 
@@ -99,17 +98,6 @@ export function getAgentApiKey(): string | null {
 
 export async function getAuthToken(): Promise<string | null> {
   return getToken() ?? (await getAuth0AccessToken());
-}
-
-export function getCollabUrl(): string {
-  const configured = process.env.NEXT_PUBLIC_COLLAB_URL?.trim();
-  if (configured) return configured.replace(/\/$/, "");
-  if (typeof window === "undefined") return DEFAULT_LOCAL_COLLAB_URL;
-  if (["localhost", "127.0.0.1"].includes(window.location.hostname)) {
-    return DEFAULT_LOCAL_COLLAB_URL;
-  }
-  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-  return `${protocol}//${window.location.host}/collab`;
 }
 
 export class ApiError extends Error {
@@ -674,8 +662,6 @@ export async function updatePage(
     name?: string;
     folder_id?: string | null;
     content?: string;
-    /** The content_hash this save was edited on top of — mismatch is a 409. */
-    expected_content_hash?: string | null;
     content_type?: "markdown" | "html";
     content_html?: string;
     html_layout?: "responsive" | "fixed-aspect" | "full-width";

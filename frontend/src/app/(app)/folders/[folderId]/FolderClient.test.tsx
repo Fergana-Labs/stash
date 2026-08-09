@@ -1,6 +1,6 @@
 import { cleanup, render, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import FolderDetailPage from "./FolderClient";
+import FolderClient from "./FolderClient";
 import { getFolderContents } from "@/lib/api";
 
 const router = vi.hoisted(() => ({
@@ -9,38 +9,31 @@ const router = vi.hoisted(() => ({
 }));
 
 vi.mock("next/navigation", () => ({
-  useParams: () => ({}),
+  useParams: () => ({ folderId: "folder-root" }),
   useRouter: () => router,
   useSearchParams: () => new URLSearchParams(),
 }));
 
 vi.mock("@/lib/api", () => ({
   ApiError: class ApiError extends Error {
-    status: number;
-    constructor(status: number, message: string) {
-      super(message);
-      this.status = status;
-    }
+    status = 500;
   },
   convertFolderToSkill: vi.fn(),
   getFolderContents: vi.fn(),
   getPublicSkill: vi.fn(),
 }));
 
-vi.mock("@/hooks/useAuth", () => ({
-  useAuth: () => ({
-    user: { id: "user-1", name: "henry", display_name: "Henry" },
-    loading: false,
-  }),
+vi.mock("@/lib/skillNavigationCache", () => ({
+  refreshSidebar: vi.fn(() => Promise.resolve()),
+}));
+
+vi.mock("@/lib/localSkill", () => ({
+  findInSkillContents: vi.fn(() => null),
 }));
 
 vi.mock("@/lib/memory-folder", () => ({
   sectionCrumbs: () => [],
   useMemoryFolderId: () => null,
-}));
-
-vi.mock("@/lib/skillNavigationCache", () => ({
-  refreshSidebar: vi.fn(() => Promise.resolve()),
 }));
 
 vi.mock("@/components/BreadcrumbContext", () => ({
@@ -59,32 +52,57 @@ vi.mock("@/components/content/file-browser/FileBrowser", () => ({
   default: () => <div data-testid="file-browser" />,
 }));
 
-describe("FolderDetailPage", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
+vi.mock("@/hooks/useAuth", () => ({
+  useAuth: () => ({ user: { id: "user-1", name: "henry" }, loading: false }),
+}));
+
+function contents(folderIsSkill: boolean, breadcrumbIsSkill = false) {
+  return {
+    folder: {
+      id: "folder-root",
+      name: "Brake Shoes",
+      parent_folder_id: null,
+      is_skill: folderIsSkill,
+    },
+    breadcrumbs: [{ id: "folder-root", name: "Brake Shoes", is_skill: breadcrumbIsSkill }],
+    subfolders: [],
+    pages: [],
+    files: [],
+    tables: [],
+  };
+}
+
+describe("FolderClient skill redirect", () => {
+  beforeEach(() => vi.clearAllMocks());
+  afterEach(() => cleanup());
+
+  // /skills/<x> is the *published slug* route. Sending a folder id there
+  // renders "Skill not found" — which is what a user saw right after
+  // creating a skill. The skill's own browse page is /skills/folder/<id>.
+  it("sends a skill folder to the skill browse route, not the published-slug route", async () => {
+    vi.mocked(getFolderContents).mockResolvedValue(contents(true));
+
+    render(<FolderClient folderId="folder-root" />);
+
+    await waitFor(() => expect(router.replace).toHaveBeenCalled());
+    expect(router.replace).toHaveBeenCalledWith("/skills/folder/folder-root");
   });
 
-  afterEach(() => {
-    cleanup();
+  it("redirects a plain subfolder that lives inside a skill", async () => {
+    vi.mocked(getFolderContents).mockResolvedValue(contents(false, true));
+
+    render(<FolderClient folderId="folder-root" />);
+
+    await waitFor(() => expect(router.replace).toHaveBeenCalled());
+    expect(router.replace).toHaveBeenCalledWith("/skills/folder/folder-root");
   });
 
-  // Recurring bug: /skills/<x> is the published-slug route, so sending a
-  // folder id there renders "Skill not found". Skill folders must bounce to
-  // /skills/folder/<id>.
-  it("bounces a skill folder to the skill browse route, not the slug route", async () => {
-    vi.mocked(getFolderContents).mockResolvedValue({
-      folder: { id: "folder-1", name: "My Skill", parent_folder_id: null, is_skill: true },
-      breadcrumbs: [{ id: "folder-1", name: "My Skill", is_skill: true }],
-      subfolders: [],
-      pages: [],
-      files: [],
-      tables: [],
-    });
+  it("leaves an ordinary folder where it is", async () => {
+    vi.mocked(getFolderContents).mockResolvedValue(contents(false));
 
-    render(<FolderDetailPage folderId="folder-1" />);
+    render(<FolderClient folderId="folder-root" />);
 
-    await waitFor(() =>
-      expect(router.replace).toHaveBeenCalledWith("/skills/folder/folder-1"),
-    );
+    await waitFor(() => expect(getFolderContents).toHaveBeenCalled());
+    expect(router.replace).not.toHaveBeenCalled();
   });
 });

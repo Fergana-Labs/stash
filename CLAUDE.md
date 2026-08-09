@@ -72,6 +72,16 @@ Two model tiers, configured in `backend/.env`:
   ask-the-stash.
 - `ANTHROPIC_FAST_MODEL` — fast tier (default `claude-haiku-4-5`).
 
+**Embeddings: prod uses OpenAI.** Hosted prod (joinstash.ai) embeds with
+OpenAI `text-embedding-3-small` truncated to 384 dims (matching the
+`vector(384)` columns), selected because `OPENAI_API_KEY` is set in the Render
+environment. The provider is resolved by auto-detection in
+`backend/services/embeddings/` (openai → huggingface → local, in that order —
+a self-hosting affordance, deliberately added in 96ee3b6f); do not add
+`HF_TOKEN` or change embedding env vars in prod without understanding this
+chain, and never infer the prod provider from the code alone — it is a
+deployment fact (verified via prod worker logs, 2026-08-05).
+
 ## Project layout
 
 - `backend/` — FastAPI app (Python 3.12), runs on port `3456`. Migrations via Alembic.
@@ -109,15 +119,15 @@ By default `stash` is the released PyPI build (`uv tool` install, self-updating)
 - Lint: `cd www && npm run lint`
 
 ### Local stack
-- One-shot start (db + redis + backend + celery + collab + frontend): `./start.sh`
-- App ports are fixed and exclusive per machine: backend 3456, frontend 3457, collab 3458. OAuth redirect URIs are registered against 3456, so there is no way to run the stack on other ports. If a port is taken, `start.sh` fails and prints the holding process: one local stack at a time — kill the holder only if it's yours or a zombie, otherwise wait. Tests, lint, and most dev work don't need the live stack.
+- One-shot start (db + redis + backend + celery + frontend): `./start.sh`
+- App ports are fixed and exclusive per machine: backend 3456, frontend 3457. OAuth redirect URIs are registered against 3456, so there is no way to run the stack on other ports. If a port is taken, `start.sh` fails and prints the holding process: one local stack at a time — kill the holder only if it's yours or a zombie, otherwise wait. Tests, lint, and most dev work don't need the live stack.
 - There is no dev docker compose. `./start.sh` is the only local dev path; `docker-compose.prod.yml` is for self-hosters only.
 
 ### Deployment (hosted prod — joinstash.ai)
 **Merging to `main` deploys to production. There is no separate release step for the hosted app.**
 
 - Hosted prod runs on **Render** (team `Stash`, region oregon), building directly from this repo's Dockerfiles. Every service has `autoDeploy: yes` on `branch: main`, so a commit to `main` triggers a build + deploy within a couple of minutes. Confirm/inspect via the Render MCP (`list_services`, `list_deploys`, `list_logs`) — do not infer deploy state from repo files.
-- Services (all `Fergana-Labs/stash`, branch `main`): `stash_backend` (slug `moltchat`, → api.joinstash.ai, `backend/Dockerfile`), `stash_app_frontend`, `stash_collab`, `stash-celery-worker`, `stash-celery-beat`. `aspose-pptx` is the one service defined in `render.yaml`; the rest are configured in the Render dashboard, so the repo holds no blueprint for them.
+- Services (all `Fergana-Labs/stash`, branch `main`): `stash_backend` (slug `moltchat`, → api.joinstash.ai, `backend/Dockerfile`), `stash_app_frontend`, `stash-celery-worker`, `stash-celery-beat`. `aspose-pptx` is the one service defined in `render.yaml`; the rest are configured in the Render dashboard, so the repo holds no blueprint for them.
 - **Migrations run automatically at backend boot** (`backend/database.py` runs `alembic upgrade head`), so a merged migration applies to the prod DB on the next deploy — no manual `alembic` step.
 - Prod DB is **Neon** (`stash-prod`, id `little-scene-08473932`), not Render Postgres. Query read-only via the Neon MCP.
 - `docker-compose.prod.yml` and the **GHCR images are for self-hosters only** — they are NOT how joinstash.ai deploys. Editing them does not affect prod.

@@ -25,10 +25,6 @@ jobs:
             context: .
             dockerfile: backend/Dockerfile
             build_args: ""
-          - image: stash-collab
-            context: ./collab
-            dockerfile: Dockerfile
-            build_args: ""
           - image: stash-frontend
             context: ./frontend
             dockerfile: Dockerfile

@@ -17,7 +17,6 @@ on:
       - "sdk/pyproject.toml"
       - "frontend/package-lock.json"
       - "www/package-lock.json"
-      - "collab/package-lock.json"
 
 jobs:
   dependency-audit:
@@ -56,6 +55,3 @@ jobs:
         run: npm audit --audit-level=moderate --package-lock-only
         working-directory: www
 
-      - name: Audit collab npm lock
-        run: npm audit --audit-level=moderate --package-lock-only
-        working-directory: collab

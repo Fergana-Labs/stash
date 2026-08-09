@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import posixpath
 import re
 import shutil
 import sys
@@ -2550,10 +2551,30 @@ def files_add_page(
         )
 
 
+@files_app.command("read-page")
+def files_read_page(page_id: str = typer.Argument(...)):
+    """Print a page as JSON. Its content_hash is what a later edit-page
+    --expected-content-hash must carry."""
+    with _client() as c:
+        try:
+            data = c.get_page(page_id)
+        except StashError as e:
+            _err(e)
+    output_json(data)
+
+
 @files_app.command("edit-page")
 def files_edit_page(
     page_id: str = typer.Argument(...),
     content: str = typer.Option(None, "--content"),
+    expected_content_hash: str = typer.Option(
+        None,
+        "--expected-content-hash",
+        help="The content_hash from the read this edit is based on "
+        "(`stash files read-page`). Required with --content: if the page "
+        "changed since that read, the edit is refused instead of "
+        "overwriting the newer version.",
+    ),
     name: str = typer.Option(None, "--name"),
     page_type: str = typer.Option(
         None, "--type", help="Switch the page to this type: markdown or html.", case_sensitive=False
@@ -2581,7 +2602,9 @@ def files_edit_page(
             raise typer.Exit(1)
         html_body = Path(html_file).read_text()
     if content is None and not sys.stdin.isatty():
-        content = sys.stdin.read()
+        # Empty stdin means "no content given", not "clear the page" — a
+        # scripted rename must not slurp a blank pipe as the new content.
+        content = sys.stdin.read() or None
     if page_type:
         page_type = page_type.lower()
         if page_type not in ("markdown", "html"):
@@ -2608,17 +2631,29 @@ def files_edit_page(
                     console.print(f"[red]Not a file: {p}[/red]")
                     raise typer.Exit(1)
             if attach and page_type != "html":
-                base = (
-                    content
-                    if content is not None
-                    else c.get_page(page_id).get("content_markdown", "")
-                )
+                if content is None:
+                    # This flow reads the page itself, so that read is the
+                    # version the edit is based on.
+                    current = c.get_page(page_id)
+                    base = current.get("content_markdown", "")
+                    if expected_content_hash is None:
+                        expected_content_hash = current.get("content_hash")
+                else:
+                    base = content
                 content = _prepend_attachments(c, base, attach)
             elif attach:
                 console.print("[yellow]--attach is ignored for html pages[/yellow]")
+            if content is not None and expected_content_hash is None:
+                console.print(
+                    "[red]--content requires --expected-content-hash: pass the "
+                    "content_hash from `stash files read-page` so a concurrent "
+                    "edit is refused instead of overwritten.[/red]"
+                )
+                raise typer.Exit(1)
             kwargs: dict = {}
             if content is not None:
                 kwargs["content"] = content
+                kwargs["expected_content_hash"] = expected_content_hash
             if name is not None:
                 kwargs["name"] = name
             if page_type is not None:
@@ -5882,6 +5917,53 @@ def vfs_command(
         raise typer.Exit(1)
     finally:
         client.close()
+
+
+def _read_vfs_raw(path: str) -> bytes:
+    """The original bytes behind a VFS path — a connected-source document comes
+    back verbatim from the provider (the PDF itself, not its extracted text)."""
+    from stashvfs import MountError, StashVfsModel, VfsClientError
+
+    client = _client()
+    try:
+        model = StashVfsModel(client, include_computer=True)
+        model.refresh()
+        return model.read_raw(path)
+    except FileNotFoundError:
+        console.print(f"[red]No such file: {path}[/red]")
+        raise typer.Exit(1) from None
+    except IsADirectoryError:
+        console.print(f"[red]Is a directory: {path}[/red]")
+        raise typer.Exit(1) from None
+    except (MountError, VfsClientError) as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1) from None
+    finally:
+        client.close()
+
+
+@app.command("download")
+def download_command(
+    path: str = typer.Argument(
+        ..., help="VFS path (e.g. '/sources/google/Part Catalogs/bendix.pdf')."
+    ),
+    output: str = typer.Option(
+        None, "--output", "-o", help="Destination path. Defaults to the file's name in cwd."
+    ),
+):
+    """Download the original bytes behind a VFS path.
+
+    `stash vfs cat` shows a document's extracted text; this fetches the file
+    itself. Use it when your harness can read PDFs and images directly —
+    download the document, then read it with your own file tools to see
+    figures, diagrams, scans, and table layout with your own eyes.
+    """
+    data = _read_vfs_raw(path)
+    dest = Path(output) if output else Path(posixpath.basename(path.rstrip("/")))
+    dest.write_bytes(data)
+    console.print(
+        f"[green]Downloaded[/green] {path} → {dest.resolve()} [dim]{len(data)} bytes[/dim]"
+    )
 
 
 # ===========================================================================
