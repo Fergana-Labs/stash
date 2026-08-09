@@ -65,5 +65,11 @@ export default defineSoftwareMap({
       to: "stash.api",
       label: "Reads content",
     },
+    {
+      kind: "semantic",
+      from: "stash.cli.vfsShell.directoryOnlyTest",
+      to: "stash.cli.vfsShell.treeCommand",
+      label: "Verifies directory filtering",
+    },
   ],
 });
