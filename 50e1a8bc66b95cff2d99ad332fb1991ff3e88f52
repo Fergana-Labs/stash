@@ -1,0 +1,64 @@
+import { defineSoftwareMap } from "@dev.fast/progressive-review/software-map-model";
+
+export default defineSoftwareMap({
+  people: {
+    agent: {
+      label: "CLI user or agent",
+      description: "Browses Stash content with bash-shaped commands.",
+    },
+  },
+  systems: {
+    stash: {
+      label: "Stash",
+      description: "Stores team knowledge and exposes it to people and agents.",
+      containers: {
+        cli: {
+          label: "Stash CLI",
+          description: "Runs local commands and accesses the Stash API.",
+          components: {
+            vfsShell: {
+              label: "Virtual filesystem shell",
+              description: "Parses and runs bash-shaped read commands over the Stash VFS model.",
+              coverage: {
+                files: ["stashvfs/shell.py", "cli/tests/test_app_vfs.py"],
+              },
+              codeElements: {
+                treeCommand: {
+                  label: "tree command",
+                  description: "Parses tree options and renders the recursive listing.",
+                  sourceRanges: [
+                    { file: "stashvfs/shell.py", fromLine: 299, toLine: 361 },
+                  ],
+                },
+              },
+            },
+          },
+        },
+        api: {
+          label: "Stash API",
+          description: "Serves stored content and integration data.",
+          coverage: { globs: ["backend/**"] },
+        },
+        web: {
+          label: "Stash web app",
+          description: "Provides the browser interface.",
+          coverage: { globs: ["frontend/**"] },
+        },
+      },
+    },
+  },
+  relationships: [
+    {
+      kind: "semantic",
+      from: "agent",
+      to: "stash.cli",
+      label: "Runs commands",
+    },
+    {
+      kind: "semantic",
+      from: "stash.cli",
+      to: "stash.api",
+      label: "Reads content",
+    },
+  ],
+});
