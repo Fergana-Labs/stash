@@ -275,12 +275,6 @@ export default defineSoftwareMap({
             },
           },
         },
-        collab: {
-          label: "Collab server (Yjs)",
-          description:
-            "Node WebSocket sidecar on port 3458 for live collaborative page editing.",
-          coverage: { globs: ["collab/**"] },
-        },
         cli: {
           label: "stash CLI",
           description:
@@ -449,8 +443,6 @@ export default defineSoftwareMap({
     { kind: "semantic", from: "agentHarness", to: "stash.cli", label: "invokes", description: "Agents call the stash CLI and its MCP server." },
     { kind: "semantic", from: "agentHarness", to: "stash.plugin", label: "fires hooks", description: "Harness lifecycle hooks trigger transcript/artifact uploads." },
     { kind: "semantic", from: "stash.frontend.clientLib", to: "stash.backend", label: "REST", description: "Product UI calls the /api/v1 REST API." },
-    { kind: "semantic", from: "stash.frontend", to: "stash.collab", label: "WebSocket", description: "Yjs live page editing." },
-    { kind: "semantic", from: "stash.collab", to: "stash.backend", label: "persists", description: "Page snapshots persisted via the backend." },
     { kind: "semantic", from: "stash.www", to: "stash.backend", label: "REST", description: "Landing/docs site calls the API for discover and auth checks." },
     { kind: "semantic", from: "stash.cli.apiClient", to: "stash.backend", label: "REST", description: "CLI talks to the /api/v1 API with an API key." },
     { kind: "semantic", from: "stash.cli.commands", to: "stash.stashvfs.shell", label: "embeds", description: "`stash vfs` runs the shared VFS shell locally." },
