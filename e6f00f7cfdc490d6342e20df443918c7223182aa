@@ -191,7 +191,7 @@ export default defineSoftwareMap({
         celeryWorker: {
           label: "Celery workers & beat",
           description:
-            "Background tasks: file/drive extraction, embeddings, session titles, source syncs, scheduled agents.",
+            "Background tasks: file/drive extraction, embeddings, session titles, source syncs, and scheduled-agent dispatch to a dedicated heavy queue.",
           coverage: {
             files: ["backend/celery_app.py"],
             globs: ["backend/tasks/**", "backend/workers/**"],
