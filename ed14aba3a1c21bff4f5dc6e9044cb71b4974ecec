@@ -1,0 +1,69 @@
+import { defineSoftwareMap } from "@dev.fast/progressive-review/software-map-model";
+
+export default defineSoftwareMap({
+  people: {
+    agent: {
+      label: "CLI user or agent",
+      description: "Browses Stash content with bash-shaped commands.",
+    },
+  },
+  systems: {
+    stash: {
+      label: "Stash",
+      description: "Stores team knowledge and exposes it to people and agents.",
+      containers: {
+        cli: {
+          label: "Stash CLI",
+          description: "Runs local commands and accesses the Stash API.",
+          components: {
+            vfsShell: {
+              label: "Virtual filesystem shell",
+              description: "Parses and runs bash-shaped read commands over the Stash VFS model.",
+              changeStatus: "modified",
+              coverage: {
+                files: ["stashvfs/shell.py", "cli/tests/test_app_vfs.py"],
+              },
+              codeElements: {
+                treeCommand: {
+                  label: "tree command",
+                  description: "Parses tree options and renders the recursive listing.",
+                  changeStatus: "modified",
+                  sourceRanges: [
+                    { file: "stashvfs/shell.py", fromLine: 299, toLine: 372 },
+                  ],
+                },
+                directoryOnlyTest: {
+                  label: "directory-only tree regression test",
+                  description: "Proves that directory entries remain visible while file entries are hidden.",
+                  changeStatus: "added",
+                  sourceRanges: [
+                    { file: "cli/tests/test_app_vfs.py", fromLine: 108, toLine: 117 },
+                  ],
+                },
+              },
+            },
+          },
+        },
+        api: {
+          label: "Stash API",
+          description: "Serves stored content and integration data.",
+          coverage: { globs: ["backend/**"] },
+        },
+      },
+    },
+  },
+  relationships: [
+    {
+      kind: "semantic",
+      from: "agent",
+      to: "stash.cli",
+      label: "Runs commands",
+    },
+    {
+      kind: "semantic",
+      from: "stash.cli",
+      to: "stash.api",
+      label: "Reads content",
+    },
+  ],
+});
