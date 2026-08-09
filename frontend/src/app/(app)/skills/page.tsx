@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useConfirm } from "@/components/ConfirmDialog";
 import CopyableCommandBlock from "@/components/CopyableCommandBlock";
@@ -15,6 +15,7 @@ import SkillCard, {
   PublishBadge,
 } from "@/components/skill/SkillCard";
 import SkillLauncher from "@/components/skill/SkillLauncher";
+import { SkillComposer } from "@/components/skill/SkillComposer";
 import ForkSkillCardButton from "@/components/skill/ForkSkillCardButton";
 import { SelectBox } from "@/components/content/file-browser/ItemsList";
 import {
@@ -116,18 +117,18 @@ export default function SkillsPage() {
     load();
   }, [load]);
 
-  async function newSkill() {
-    const name = window.prompt("Skill name?");
-    if (!name?.trim()) return;
-    const description = window.prompt("When should an agent use this skill?");
-    if (!description?.trim()) return;
-    try {
-      const created = await createSkill(name.trim(), description.trim());
-      if (user) await refreshSidebar().catch(() => {});
-      router.push(`/skills/folder/${created.folder_id}`);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to create skill");
-    }
+  const [composerOpen, setComposerOpen] = useState(false);
+  // The sidebar's "New skill" action lands here with ?new=1 — creation lives
+  // in this page's inline composer, not a modal.
+  const searchParams = useSearchParams();
+  useEffect(() => {
+    if (searchParams.get("new") === "1") setComposerOpen(true);
+  }, [searchParams]);
+
+  async function newSkill({ name, description }: { name: string; description: string }) {
+    const created = await createSkill(name, description);
+    if (user) await refreshSidebar().catch(() => {});
+    router.push(`/skills/folder/${created.folder_id}`);
   }
 
   const visible = useMemo(() => {
@@ -187,12 +188,18 @@ export default function SkillsPage() {
           </h1>
           <button
             type="button"
-            onClick={() => void newSkill()}
+            onClick={() => setComposerOpen(true)}
             className="inline-flex cursor-pointer items-center gap-1.5 rounded-md bg-[var(--color-brand-600)] px-2.5 py-1.5 text-[12.5px] font-medium text-white hover:bg-[var(--color-brand-700)]"
           >
             <PlusGlyph /> New Skill
           </button>
         </div>
+
+        {composerOpen && (
+          <div className="mt-4">
+            <SkillComposer onSubmit={newSkill} onCancel={() => setComposerOpen(false)} />
+          </div>
+        )}
 
         {error && (
           <div className="mt-4 rounded-lg border border-red-300/40 bg-red-500/10 px-4 py-2 text-[13px] text-red-500">
