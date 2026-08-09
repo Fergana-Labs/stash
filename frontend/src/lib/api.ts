@@ -2199,6 +2199,14 @@ export type Agent = {
   telegram_bound: boolean;
   last_run_at: string | null;
   last_run_error: string | null;
+  last_run_outcome:
+    | "started"
+    | "ran"
+    | "failed"
+    | "skipped_credits"
+    | "skipped_no_credential"
+    | "skipped_no_changes"
+    | null;
   curated_through: string | null;
 };
 

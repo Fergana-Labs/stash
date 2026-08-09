@@ -122,10 +122,11 @@ async def test_free_curator_credits_exhausted_skips_run(
 
     assert ran == 0
     assert sprite_exec.calls == []  # no sprite wake
-    after = await _db_pool.fetchval(
-        "SELECT curated_through FROM agents WHERE id = $1", UUID(curator["id"])
+    after = await _db_pool.fetchrow(
+        "SELECT curated_through, last_run_outcome FROM agents WHERE id = $1", UUID(curator["id"])
     )
-    assert after == watermark  # skipped run never discards un-curated changes
+    assert after["curated_through"] == watermark  # skipped run never discards un-curated changes
+    assert after["last_run_outcome"] == "skipped_credits"
 
     # Enterprise grant → the same overdue curator runs on the next beat.
     await _db_pool.execute("UPDATE users SET plan = 'enterprise' WHERE id = $1", uid)
