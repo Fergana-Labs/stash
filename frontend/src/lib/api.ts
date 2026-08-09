@@ -582,10 +582,13 @@ export async function createFolder(
 
 // Create a skill (folder + SKILL.md) server-side. The name is uniquified
 // against existing root folders, so this never fails on a name collision.
-export async function createSkill(name?: string): Promise<{ folder_id: string; name: string }> {
+export async function createSkill(
+  name: string,
+  description: string,
+): Promise<{ folder_id: string; name: string }> {
   return apiFetch(`${ME}/skills/new`, {
     method: "POST",
-    body: JSON.stringify(name ? { name } : {}),
+    body: JSON.stringify({ name, description }),
   });
 }
 
@@ -593,9 +596,13 @@ export async function createSkill(name?: string): Promise<{ folder_id: string; n
 // has none). Membership is a stored flag now — writing a SKILL.md into a
 // folder no longer promotes it.
 export async function convertFolderToSkill(
-  folderId: string
+  folderId: string,
+  description: string,
 ): Promise<{ folder_id: string; name: string; is_skill: boolean }> {
-  return apiFetch(`${ME}/folders/${folderId}/convert-to-skill`, { method: "POST" });
+  return apiFetch(`${ME}/folders/${folderId}/convert-to-skill`, {
+    method: "POST",
+    body: JSON.stringify({ description }),
+  });
 }
 
 // Demote a skill back to a plain folder. Contents are untouched — it simply

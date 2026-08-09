@@ -522,15 +522,13 @@ def stash_delete_file(file_id: str) -> str:
 @mcp.tool()
 def stash_create_skill(
     name: str,
-    skill_md: str = "",
+    skill_md: str,
 ) -> str:
-    """Create a skill: a folder with a SKILL.md. Pass skill_md as the full
-    SKILL.md content (frontmatter + body); a template is used when omitted."""
+    """Create a skill from full SKILL.md content (frontmatter + body)."""
     client = _client()
     folder = client.create_folder(name)
-    content = skill_md or f"---\nname: {name}\ndescription: \n---\n\n# {name}\n"
     client.create_page(
-        name="SKILL.md", content=content, folder_id=folder["id"], content_type="markdown"
+        name="SKILL.md", content=skill_md, folder_id=folder["id"], content_type="markdown"
     )
     # Membership is a stored flag server-side: writing SKILL.md is the skill's
     # instructions, the convert verb is what makes the folder a skill.
@@ -603,6 +601,7 @@ def stash_whoami() -> str:
 @mcp.tool()
 def stash_publish_html(
     title: str,
+    description: str,
     html: str,
     audience: str = "public",
     folder_id: str = "",
@@ -614,6 +613,7 @@ def stash_publish_html(
     return _json(
         _client().publish(
             title=title,
+            description=description,
             content=html,
             content_type="html",
             audience=audience,
@@ -625,6 +625,7 @@ def stash_publish_html(
 @mcp.tool()
 def stash_publish_markdown(
     title: str,
+    description: str,
     markdown: str,
     audience: str = "public",
     folder_id: str = "",
@@ -634,6 +635,7 @@ def stash_publish_markdown(
     return _json(
         _client().publish(
             title=title,
+            description=description,
             content=markdown,
             content_type="markdown",
             audience=audience,

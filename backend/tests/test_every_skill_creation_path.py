@@ -49,7 +49,9 @@ async def _assert_is_a_usable_skill(scope, folder_id, _db_pool, *, via: str):
 @pytest.mark.asyncio
 async def test_service_create_skill(scope, _db_pool):
     """What the web New-skill button and POST /me/skills/new call."""
-    folder = await files_tree_service.create_skill(scope, scope, "Via create_skill")
+    folder = await files_tree_service.create_skill(
+        scope, scope, "Via create_skill", "Use when testing the service create path."
+    )
     await _assert_is_a_usable_skill(scope, folder["id"], _db_pool, via="create_skill")
 
 
@@ -58,7 +60,9 @@ async def test_convert_a_plain_folder(scope, _db_pool):
     """The Convert-to-Skill button on a folder page."""
     folder = await files_tree_service.create_folder(scope, "Plain", scope)
     await files_tree_service.set_folder_is_skill(folder["id"], scope, True)
-    await shared_skill_service.ensure_skill_md(scope, folder["id"], scope, "Plain")
+    await shared_skill_service.ensure_skill_md(
+        scope, folder["id"], scope, "Plain", "Use when testing folder conversion."
+    )
     await _assert_is_a_usable_skill(scope, folder["id"], _db_pool, via="convert-to-skill")
 
 
@@ -75,7 +79,9 @@ async def test_publishing_a_folder(scope, _db_pool):
 @pytest.mark.asyncio
 async def test_forking_into_another_scope(scope, _db_pool):
     """`stash skills install` and the Discover fork button land here."""
-    source = await files_tree_service.create_skill(scope, scope, "Forkable")
+    source = await files_tree_service.create_skill(
+        scope, scope, "Forkable", "Use when testing skill forking."
+    )
     published = await shared_skill_service.publish_folder(
         scope, scope, source["id"], title="Forkable", description="d"
     )

@@ -40,7 +40,12 @@ async def _publish_skill(client: AsyncClient, api_key: str, title: str) -> None:
     assert page.status_code == 201
     published = await client.post(
         "/api/v1/me/skills",
-        json={"folder_id": folder.json()["id"], "title": title, "discoverable": True},
+        json={
+            "folder_id": folder.json()["id"],
+            "title": title,
+            "description": f"{title} notes",
+            "discoverable": True,
+        },
         headers=_auth(api_key),
     )
     assert published.status_code == 201

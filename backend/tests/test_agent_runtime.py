@@ -500,6 +500,7 @@ async def test_fork_skill_deep_copies_folder_without_publish_record(scope: UUID,
         owner_id,
         folder_id,
         title="Fork source Stash",
+        description="Use for fork tests.",
     )
 
     attached = await shared_skill_service.fork_skill(

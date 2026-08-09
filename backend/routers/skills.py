@@ -4,7 +4,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile
 from fastapi.responses import PlainTextResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from ..auth import get_current_user, get_current_user_optional, get_scope
 from ..config import settings
@@ -34,7 +34,16 @@ _PUBLIC_ITEM_TYPES = {"page", "file", "table", "folder"}
 
 
 class SkillCreateRequest(BaseModel):
-    name: str = "New skill"
+    name: str = Field(..., min_length=1, max_length=skill_service.MAX_SKILL_NAME_LENGTH)
+    description: str = Field(
+        ..., min_length=1, max_length=skill_service.MAX_SKILL_DESCRIPTION_LENGTH
+    )
+
+
+class SkillDescriptionRequest(BaseModel):
+    description: str = Field(
+        ..., min_length=1, max_length=skill_service.MAX_SKILL_DESCRIPTION_LENGTH
+    )
 
 
 @me_router.post("/skills/new", status_code=201)
@@ -46,15 +55,21 @@ async def create_skill(
     """Create a skill (root folder + SKILL.md) in one server-side call. The
     name is uniquified against existing root folders, so this never 409s."""
     name = req.name.strip()
+    description = req.description.strip()
     if not name:
         raise HTTPException(status_code=400, detail="name must not be blank")
-    folder = await files_tree_service.create_skill(owner_user_id, current_user["id"], name)
+    if not description:
+        raise HTTPException(status_code=400, detail="description must not be blank")
+    folder = await files_tree_service.create_skill(
+        owner_user_id, current_user["id"], name, description
+    )
     return {"folder_id": str(folder["id"]), "name": folder["name"]}
 
 
 @me_router.post("/folders/{folder_id}/convert-to-skill", status_code=200)
 async def convert_folder_to_skill(
     folder_id: UUID,
+    req: SkillDescriptionRequest | None = None,
     current_user: dict = Depends(get_current_user),
     owner_user_id: UUID = Depends(get_scope),
 ):
@@ -62,11 +77,22 @@ async def convert_folder_to_skill(
     and skill creation are the only ways in; a SKILL.md appearing inside a
     folder no longer promotes it.
 
-    The folder also gets a starter SKILL.md if it has none, so converting
-    leaves a skill an agent can actually load rather than a draft."""
+    A folder that already has a SKILL.md needs no description (the CLI writes
+    the file first, then converts). A folder without one gets a starter
+    SKILL.md, which requires a description."""
+    description = req.description.strip() if req is not None else ""
+    if not description and not await shared_skill_service.folder_has_skill_md(folder_id):
+        raise HTTPException(
+            status_code=400,
+            detail="description is required to convert a folder with no SKILL.md",
+        )
     result = await _set_is_skill(folder_id, owner_user_id, current_user["id"], True)
     await shared_skill_service.ensure_skill_md(
-        owner_user_id, folder_id, current_user["id"], result["name"]
+        owner_user_id,
+        folder_id,
+        current_user["id"],
+        result["name"],
+        description,
     )
     return result
 

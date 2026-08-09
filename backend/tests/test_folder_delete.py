@@ -127,7 +127,9 @@ async def test_deleting_two_skill_folders_back_to_back(scope, _db_pool):
     name index (prod, 2026-08-06) — trash must accept repeated names."""
     scope_id, user_id = scope
     for _ in range(2):
-        folder = await files_tree_service.create_skill(scope_id, user_id, "New skill")
+        folder = await files_tree_service.create_skill(
+            scope_id, user_id, "New skill", "Use this skill for deletion tests."
+        )
         assert await files_tree_service.delete_folder(folder["id"], scope_id, user_id) is True
 
     trashed = await _db_pool.fetchval(

@@ -21,6 +21,7 @@ const router = vi.hoisted(() => ({
 
 vi.mock("next/navigation", () => ({
   useRouter: () => router,
+  useSearchParams: () => new URLSearchParams(),
 }));
 
 vi.mock("next/link", () => ({
@@ -151,15 +152,28 @@ describe("SkillsPage", () => {
     ).toBeInTheDocument();
   });
 
-  it("creates the skill server-side and navigates to it", async () => {
-    vi.stubGlobal("prompt", vi.fn(() => "My Skill"));
+  it("creates the skill through the inline composer and navigates to it", async () => {
     vi.mocked(createSkill).mockResolvedValue({ folder_id: "folder-9", name: "My Skill" });
 
     render(<SkillsPage />);
 
     fireEvent.click(await screen.findByRole("button", { name: /New Skill/ }));
 
-    await waitFor(() => expect(createSkill).toHaveBeenCalledWith("My Skill"));
+    // Both fields are required: Create stays disabled until each is filled,
+    // so a skill can never be created without the agent-trigger description.
+    const create = await screen.findByRole("button", { name: "Create skill" });
+    expect(create).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "My Skill" } });
+    expect(create).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("When should an agent use it?"), {
+      target: { value: "Use for release planning." },
+    });
+    expect(create).toBeEnabled();
+    fireEvent.click(create);
+
+    await waitFor(() =>
+      expect(createSkill).toHaveBeenCalledWith("My Skill", "Use for release planning."),
+    );
     await waitFor(() =>
       expect(router.push).toHaveBeenCalledWith("/skills/folder/folder-9"),
     );

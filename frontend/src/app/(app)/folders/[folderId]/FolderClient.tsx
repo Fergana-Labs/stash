@@ -7,6 +7,7 @@ import { useBreadcrumbs } from "@/components/BreadcrumbContext";
 import { useShareAction } from "@/components/ShellChromeContext";
 import { FileBrowserSkeleton } from "@/components/SkeletonStates";
 import ResourceShareButton from "@/components/share/ResourceShareButton";
+import { SkillComposer } from "@/components/skill/SkillComposer";
 import FileBrowser from "@/components/content/file-browser/FileBrowser";
 import { useAuth } from "@/hooks/useAuth";
 import {
@@ -57,7 +58,7 @@ export default function FolderDetailPage({ folderId: folderIdProp }: { folderId?
     contents: PublicSkillContents;
   } | null>(null);
   const [error, setError] = useState("");
-  const [converting, setConverting] = useState(false);
+  const [convertOpen, setConvertOpen] = useState(false);
 
   const loadSkillFallback = useCallback(async () => {
     if (!skillSlug) return false;
@@ -130,23 +131,18 @@ export default function FolderDetailPage({ folderId: folderIdProp }: { folderId?
     `files/${folderId}/${crumbs.map((c) => c.label).join("/")}`
   );
 
-  const convertToSkill = useCallback(async () => {
-    if (!folderName || !user) return;
-    setConverting(true);
-    try {
+  const convertToSkill = useCallback(
+    async ({ description }: { name: string; description: string }) => {
       // The explicit verb — writing a SKILL.md hasn't promoted a folder
       // since membership became a stored flag.
-      await convertFolderToSkill(folderId);
+      await convertFolderToSkill(folderId, description);
       await refreshSidebar().catch(() => {});
       // /skills/<x> is the published-slug route; a folder id there renders
       // "Skill not found". The skill's own page is /skills/folder/<id>.
       router.push(`/skills/folder/${folderId}`);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Convert failed");
-    } finally {
-      setConverting(false);
-    }
-  }, [folderName, user, folderId, router]);
+    },
+    [folderId, router],
+  );
 
   const shareAction = useMemo(() => {
     if (!folderName || skillSlug || !user) return null;
@@ -154,11 +150,10 @@ export default function FolderDetailPage({ folderId: folderIdProp }: { folderId?
       <div className="flex items-center gap-1.5">
         <button
           type="button"
-          onClick={() => void convertToSkill()}
-          disabled={converting}
-          className="cursor-pointer rounded-md bg-surface px-2.5 py-1 text-[12.5px] font-medium text-dim ring-1 ring-inset ring-border hover:bg-raised hover:text-foreground disabled:opacity-50"
+          onClick={() => setConvertOpen(true)}
+          className="cursor-pointer rounded-md bg-surface px-2.5 py-1 text-[12.5px] font-medium text-dim ring-1 ring-inset ring-border hover:bg-raised hover:text-foreground"
         >
-          {converting ? "Converting…" : "Convert to Skill"}
+          Convert to Skill
         </button>
         <ResourceShareButton
           objectType="folder"
@@ -169,7 +164,7 @@ export default function FolderDetailPage({ folderId: folderIdProp }: { folderId?
         />
       </div>
     );
-  }, [folderId, folderName, skillSlug, user, convertToSkill, converting]);
+  }, [folderId, folderName, skillSlug, user]);
   useShareAction(shareAction);
 
   if (loading) return <FileBrowserSkeleton />;
@@ -188,7 +183,22 @@ export default function FolderDetailPage({ folderId: folderIdProp }: { folderId?
     );
   }
 
-  return <FileBrowser folderId={folderId} />;
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      {convertOpen && folderName && (
+        <div className="shrink-0 px-8 pt-5">
+          <div className="mx-auto max-w-5xl">
+            <SkillComposer
+              convertFolderName={folderName}
+              onSubmit={convertToSkill}
+              onCancel={() => setConvertOpen(false)}
+            />
+          </div>
+        </div>
+      )}
+      <FileBrowser folderId={folderId} />
+    </div>
+  );
 }
 
 // Read-only listing of the subfolder's contents, sourced from the public

@@ -59,7 +59,9 @@ async def test_deleting_skill_md_leaves_a_draft_skill_not_a_silent_demotion(scop
     """The customer's exact move. Before: the skill vanished from every
     surface with no warning. Now: the delete is refused outright, and even
     forced at the data layer the skill still lists — as a draft."""
-    folder = await files_tree_service.create_skill(scope, scope, "Brake Shoes")
+    folder = await files_tree_service.create_skill(
+        scope, scope, "Brake Shoes", "Use this skill to service brake shoes."
+    )
     page_id = await _db_pool.fetchval(
         "SELECT id FROM pages WHERE folder_id = $1 AND name = 'SKILL.md'", folder["id"]
     )
@@ -120,7 +122,11 @@ async def test_convert_endpoint_leaves_a_loadable_skill(client, _db_pool):
     folder = await client.post("/api/v1/me/folders", json={"name": "Runbooks"}, headers=headers)
     folder_id = folder.json()["id"]
 
-    resp = await client.post(f"/api/v1/me/folders/{folder_id}/convert-to-skill", headers=headers)
+    resp = await client.post(
+        f"/api/v1/me/folders/{folder_id}/convert-to-skill",
+        json={"description": "Use this skill for runbooks."},
+        headers=headers,
+    )
     assert resp.status_code == 200
     assert resp.json()["is_skill"] is True
 
@@ -192,7 +198,9 @@ async def test_shared_skill_without_instructions_still_lists(client, _db_pool):
     friend_h = {"Authorization": f"Bearer {friend.json()['api_key']}"}
 
     made = await client.post(
-        "/api/v1/me/skills/new", json={"name": "Shared draft"}, headers=owner_h
+        "/api/v1/me/skills/new",
+        json={"name": "Shared draft", "description": "Draft to share"},
+        headers=owner_h,
     )
     folder_id = made.json()["folder_id"]
     # Force the draft state (the delete route refuses, by design).
@@ -225,7 +233,11 @@ async def test_convert_to_folder_keeps_the_files_and_needs_no_deletion(client, _
     )
     headers = {"Authorization": f"Bearer {reg.json()['api_key']}"}
     folder_id = (
-        await client.post("/api/v1/me/skills/new", json={"name": "Demote me"}, headers=headers)
+        await client.post(
+            "/api/v1/me/skills/new",
+            json={"name": "Demote me", "description": "Round-trips demotion"},
+            headers=headers,
+        )
     ).json()["folder_id"]
 
     # The old mechanism is refused, and says so.
@@ -261,7 +273,9 @@ async def test_agent_read_skill_refuses_a_draft_rather_than_returning_emptiness(
     says so instead."""
     from backend.services import agent_runtime
 
-    folder = await files_tree_service.create_skill(scope, scope, "Draft skill")
+    folder = await files_tree_service.create_skill(
+        scope, scope, "Draft skill", "Use when testing draft skills."
+    )
     await _db_pool.execute(
         "UPDATE pages SET deleted_at = now() WHERE folder_id = $1 AND name = 'SKILL.md'",
         folder["id"],
@@ -286,7 +300,9 @@ async def test_skill_md_cannot_be_moved_out_of_its_skill(scope, _db_pool):
     """The guard blocked rename and delete but not moves, so dragging SKILL.md
     into another folder still demoted a skill silently — the same hole through
     a different door."""
-    folder = await files_tree_service.create_skill(scope, scope, "Movable")
+    folder = await files_tree_service.create_skill(
+        scope, scope, "Movable", "Use when testing SKILL.md moves."
+    )
     elsewhere = await files_tree_service.create_folder(scope, "Elsewhere", scope)
     page_id = await _db_pool.fetchval(
         "SELECT id FROM pages WHERE folder_id = $1 AND name = 'SKILL.md'", folder["id"]
@@ -309,7 +325,9 @@ async def test_a_published_skill_refuses_demotion_until_unpublished(scope, _db_p
     """Demotion left the publish record live: the folder stopped being a skill
     while its public URL kept serving it — and the confirm dialog told the
     user the share link would stop working. Refuse rather than lie."""
-    folder = await files_tree_service.create_skill(scope, scope, "Public thing")
+    folder = await files_tree_service.create_skill(
+        scope, scope, "Public thing", "Use when testing published skills."
+    )
     published = await shared_skill_service.publish_folder(
         scope, scope, folder["id"], title="Public thing", description="d"
     )
