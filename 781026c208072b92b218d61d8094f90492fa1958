@@ -1,0 +1,56 @@
+import { defineSoftwareMap } from "@dev.fast/progressive-review/software-map-model";
+
+export default defineSoftwareMap({
+  people: {
+    agentCaller: {
+      label: "Agent caller",
+      description: "Runs read-only shell commands against Stash over HTTP.",
+    },
+  },
+  systems: {
+    stash: {
+      label: "Stash",
+      description: "Stores a user's files, sessions, skills, tables, and connected sources.",
+      containers: {
+        backend: {
+          label: "Backend API",
+          description: "FastAPI application that authenticates and executes VFS requests.",
+          components: {
+            vfsRoute: {
+              label: "VFS HTTP route",
+              description: "Accepts a shell script and maps VFS failures to HTTP responses.",
+              coverage: { files: ["backend/routers/vfs.py"] },
+            },
+            vfsService: {
+              label: "VFS execution service",
+              description: "Builds an in-process filesystem model and runs its synchronous shell in a worker thread.",
+              coverage: { files: ["backend/services/vfs_service.py"] },
+              codeElements: {
+                inProcessClient: {
+                  label: "In-process client",
+                  description: "Re-enters authenticated FastAPI routes for listings and document reads.",
+                  sourceRanges: [{ file: "backend/services/vfs_service.py", fromLine: 41, toLine: 138 }],
+                },
+                executeScript: {
+                  label: "Script execution",
+                  description: "Creates the full VFS model, refreshes it, and runs the requested shell script.",
+                  sourceRanges: [{ file: "backend/services/vfs_service.py", fromLine: 151, toLine: 184 }],
+                },
+              },
+            },
+          },
+        },
+        vfsLibrary: {
+          label: "stashvfs library",
+          description: "Shared lazy filesystem model and POSIX-like read-only shell.",
+          coverage: { globs: ["stashvfs/**"] },
+        },
+      },
+    },
+  },
+  relationships: [
+    { kind: "semantic", from: "agentCaller", to: "stash.backend.vfsRoute", label: "POSTs a VFS script" },
+    { kind: "call", from: "stash.backend.vfsRoute", to: "stash.backend.vfsService", label: "runs the script" },
+    { kind: "call", from: "stash.backend.vfsService", to: "stash.vfsLibrary", label: "builds the model and shell" },
+  ],
+});
