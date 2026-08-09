@@ -1,0 +1,60 @@
+import { defineSoftwareMap } from "@dev.fast/progressive-review/software-map-model";
+
+export default defineSoftwareMap({
+  people: {
+    agentCaller: {
+      label: "Agent caller",
+      description: "Runs read-only shell commands against Stash over HTTP and retries overload responses.",
+    },
+  },
+  systems: {
+    stash: {
+      label: "Stash",
+      description: "Stores a user's files, sessions, skills, tables, and connected sources.",
+      containers: {
+        backend: {
+          label: "Backend API",
+          description: "FastAPI application that authenticates and executes VFS requests.",
+          components: {
+            vfsRoute: {
+              label: "VFS HTTP route",
+              description: "Accepts a shell script and returns 429 when the process has no execution slot.",
+              changeStatus: "modified",
+              coverage: { files: ["backend/routers/vfs.py"] },
+            },
+            vfsService: {
+              label: "VFS execution service",
+              description: "Runs at most four scripts per process and checks a 60-second deadline before each nested read.",
+              changeStatus: "modified",
+              coverage: { files: ["backend/services/vfs_service.py"] },
+              codeElements: {
+                deadline: {
+                  label: "Read-time deadline",
+                  description: "Aborts before a nested request when the script has run for more than 60 seconds.",
+                  changeStatus: "added",
+                  sourceRanges: [{ file: "backend/services/vfs_service.py", fromLine: 68, toLine: 75 }],
+                },
+                concurrencyGate: {
+                  label: "Process-local concurrency gate",
+                  description: "Rejects a fifth active script and releases the slot in a finally block.",
+                  changeStatus: "added",
+                  sourceRanges: [{ file: "backend/services/vfs_service.py", fromLine: 192, toLine: 222 }],
+                },
+              },
+            },
+          },
+        },
+        vfsLibrary: {
+          label: "stashvfs library",
+          description: "Shared lazy filesystem model and POSIX-like read-only shell.",
+          coverage: { globs: ["stashvfs/**"] },
+        },
+      },
+    },
+  },
+  relationships: [
+    { kind: "semantic", from: "agentCaller", to: "stash.backend.vfsRoute", label: "POSTs a VFS script" },
+    { kind: "call", from: "stash.backend.vfsRoute", to: "stash.backend.vfsService", label: "runs the script" },
+    { kind: "call", from: "stash.backend.vfsService", to: "stash.vfsLibrary", label: "builds the model and shell" },
+  ],
+});
