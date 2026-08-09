@@ -1,7 +1,7 @@
 """Make every stored SKILL.md valid for agent skill loaders.
 
-Revision ID: 0182
-Revises: 0181
+Revision ID: 0183
+Revises: 0182
 """
 
 import hashlib
@@ -10,8 +10,8 @@ import json
 from alembic import op
 from sqlalchemy import text
 
-revision = "0182"
-down_revision = "0181"
+revision = "0183"
+down_revision = "0182"
 branch_labels = None
 depends_on = None
 

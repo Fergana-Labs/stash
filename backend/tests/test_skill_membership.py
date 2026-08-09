@@ -273,7 +273,9 @@ async def test_agent_read_skill_refuses_a_draft_rather_than_returning_emptiness(
     says so instead."""
     from backend.services import agent_runtime
 
-    folder = await files_tree_service.create_skill(scope, scope, "Draft skill")
+    folder = await files_tree_service.create_skill(
+        scope, scope, "Draft skill", "Use when testing draft skills."
+    )
     await _db_pool.execute(
         "UPDATE pages SET deleted_at = now() WHERE folder_id = $1 AND name = 'SKILL.md'",
         folder["id"],
@@ -298,7 +300,9 @@ async def test_skill_md_cannot_be_moved_out_of_its_skill(scope, _db_pool):
     """The guard blocked rename and delete but not moves, so dragging SKILL.md
     into another folder still demoted a skill silently — the same hole through
     a different door."""
-    folder = await files_tree_service.create_skill(scope, scope, "Movable")
+    folder = await files_tree_service.create_skill(
+        scope, scope, "Movable", "Use when testing SKILL.md moves."
+    )
     elsewhere = await files_tree_service.create_folder(scope, "Elsewhere", scope)
     page_id = await _db_pool.fetchval(
         "SELECT id FROM pages WHERE folder_id = $1 AND name = 'SKILL.md'", folder["id"]
@@ -321,7 +325,9 @@ async def test_a_published_skill_refuses_demotion_until_unpublished(scope, _db_p
     """Demotion left the publish record live: the folder stopped being a skill
     while its public URL kept serving it — and the confirm dialog told the
     user the share link would stop working. Refuse rather than lie."""
-    folder = await files_tree_service.create_skill(scope, scope, "Public thing")
+    folder = await files_tree_service.create_skill(
+        scope, scope, "Public thing", "Use when testing published skills."
+    )
     published = await shared_skill_service.publish_folder(
         scope, scope, folder["id"], title="Public thing", description="d"
     )

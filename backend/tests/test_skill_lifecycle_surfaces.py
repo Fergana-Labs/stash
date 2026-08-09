@@ -27,7 +27,9 @@ async def scope(_db_pool):
 async def _draft_skill(scope, pool, name):
     """A skill whose instructions are missing — the draft state the flag makes
     representable. Forced at the data layer, since the routes refuse it."""
-    folder = await files_tree_service.create_skill(scope, scope, name)
+    folder = await files_tree_service.create_skill(
+        scope, scope, name, "Use when testing skill lifecycle surfaces."
+    )
     await pool.execute(
         "UPDATE pages SET deleted_at = now() WHERE folder_id = $1 AND name = 'SKILL.md'",
         folder["id"],
@@ -85,7 +87,9 @@ async def test_publishing_cannot_turn_memory_into_a_skill(scope, _db_pool):
 async def test_restoring_a_page_does_not_resurrect_a_deleted_skill(scope, _db_pool):
     """Deleting a skill hard-deletes the folder row; its pages land in trash
     with a null folder. Restoring one must not bring the skill back."""
-    folder = await files_tree_service.create_skill(scope, scope, "Doomed")
+    folder = await files_tree_service.create_skill(
+        scope, scope, "Doomed", "Use when testing skill deletion."
+    )
     page_id = await _db_pool.fetchval(
         "SELECT id FROM pages WHERE folder_id = $1 AND name = 'SKILL.md'", folder["id"]
     )
