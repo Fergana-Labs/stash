@@ -7,12 +7,14 @@ partner: reads run as the calling credential, and the caller's cloud computer is
 not part of the tree.
 """
 
+import asyncio
+import threading
 from uuid import UUID
 
 import pytest
 from httpx import AsyncClient
 
-from backend.services import source_service
+from backend.services import source_service, vfs_service
 
 from .conftest import unique_name
 
@@ -213,6 +215,78 @@ async def test_document_read_budget_still_aborts_direct_reads(client: AsyncClien
     resp = await _vfs(client, api_key, "cat '/files/One.md' '/files/Two.md'")
 
     assert resp.status_code == 413
+
+
+async def test_concurrency_cap_rejects_an_overlapping_request(client: AsyncClient, monkeypatch):
+    """A burst must reject excess work before it builds another VFS model."""
+    monkeypatch.setattr("backend.services.vfs_service.MAX_CONCURRENT_SCRIPTS", 1)
+    started = threading.Event()
+    release = threading.Event()
+
+    def run_script(*_args):
+        started.set()
+        release.wait()
+        return {"stdout": "", "stderr": "", "exit_code": 0, "cwd": "/"}
+
+    monkeypatch.setattr("backend.services.vfs_service._run_script", run_script)
+    api_key, _ = await _register(client)
+    first = asyncio.create_task(_vfs(client, api_key, "ls /"))
+
+    try:
+        assert await asyncio.to_thread(started.wait, 1)
+        second = await _vfs(client, api_key, "ls /")
+
+        assert second.status_code == 429
+        assert second.headers["retry-after"] == "2"
+    finally:
+        release.set()
+
+    assert (await first).status_code == 200
+
+
+async def test_concurrency_slot_is_released_after_failure(client: AsyncClient, monkeypatch):
+    """A crashed command must not permanently reduce the process capacity."""
+    monkeypatch.setattr("backend.services.vfs_service.MAX_CONCURRENT_SCRIPTS", 1)
+    calls = 0
+
+    def run_script(*_args):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise RuntimeError("script crashed")
+        return {"stdout": "", "stderr": "", "exit_code": 0, "cwd": "/"}
+
+    monkeypatch.setattr("backend.services.vfs_service._run_script", run_script)
+    api_key, _ = await _register(client)
+
+    first = await _vfs(client, api_key, "ls /")
+
+    assert first.status_code == 500
+    assert (await _vfs(client, api_key, "ls /")).status_code == 200
+
+
+async def test_wall_clock_budget_aborts_the_command(client: AsyncClient, monkeypatch):
+    monkeypatch.setattr("backend.services.vfs_service.MAX_SCRIPT_SECONDS", 0)
+    api_key, _ = await _register(client)
+
+    resp = await _vfs(client, api_key, "ls /")
+
+    assert resp.status_code == 413
+    assert "longer than" in resp.json()["detail"]
+
+
+async def test_wall_clock_budget_cancels_a_slow_nested_request(monkeypatch):
+    """A stalled content route must not hold a VFS slot past the deadline."""
+    monkeypatch.setattr("backend.services.vfs_service.MAX_SCRIPT_SECONDS", 0.05)
+
+    class SlowHttp:
+        async def request(self, *_args, **_kwargs):
+            await asyncio.sleep(10)
+
+    client = vfs_service.InProcessVfsClient(SlowHttp(), asyncio.get_running_loop())
+
+    with pytest.raises(vfs_service.VfsBudgetExceeded, match="longer than"):
+        await asyncio.to_thread(client._request, "GET", "/slow")
 
 
 async def test_machine_fs_404s_without_provisioned_computer(client: AsyncClient, monkeypatch):

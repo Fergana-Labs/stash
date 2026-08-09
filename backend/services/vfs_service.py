@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import functools
 import threading
+import time
 from contextlib import contextmanager
 
 import anyio
@@ -32,14 +33,27 @@ from stashvfs import SkillAppVfsShell, StashVfsModel, VfsClientError, VfsScanBud
 # on an open connection until the client's own timeout fires.
 MAX_DOCUMENT_READS = 400
 
+# Each active script retains a full VFS model and the documents it reads. This
+# cap keeps one caller's burst below the API process's memory limit.
+MAX_CONCURRENT_SCRIPTS = 4
+
+# Nested ASGI requests must finish inside the script's remaining budget. The
+# worker itself stays attached so a timed-out request never frees a slot while
+# memory-heavy work is still running.
+MAX_SCRIPT_SECONDS = 60
+
 SOURCE_ENTRIES_PAGE = 1000
 
 
 class VfsBudgetExceeded(Exception):
-    """More direct document reads than one shell invocation is allowed.
+    """More document reads or time than one shell invocation is allowed.
     Deliberately not a VfsClientError: the shell downgrades those to per-file
     warnings, and this must abort the whole command. Reads inside a grep sweep
     raise VfsScanBudget instead, which the shell turns into a partial result."""
+
+
+class VfsBusy(Exception):
+    """This API process is already running its safe number of VFS scripts."""
 
 
 class InProcessVfsClient:
@@ -56,6 +70,24 @@ class InProcessVfsClient:
         self._scan = False
         self._document_reads = 0
         self._reads_lock = threading.Lock()
+        self._started = time.monotonic()
+
+    def _result_before_deadline(self, future):
+        seconds_left = MAX_SCRIPT_SECONDS - (time.monotonic() - self._started)
+        if seconds_left <= 0:
+            future.cancel()
+            raise VfsBudgetExceeded(
+                f"command ran longer than {MAX_SCRIPT_SECONDS}s; "
+                "scope it to a smaller subtree or use search"
+            )
+        try:
+            return future.result(timeout=seconds_left)
+        except TimeoutError:
+            future.cancel()
+            raise VfsBudgetExceeded(
+                f"command ran longer than {MAX_SCRIPT_SECONDS}s; "
+                "scope it to a smaller subtree or use search"
+            ) from None
 
     @contextmanager
     def internal_calls(self):
@@ -91,7 +123,7 @@ class InProcessVfsClient:
             ),
             self._loop,
         )
-        response = future.result()
+        response = self._result_before_deadline(future)
         if response.status_code >= 400:
             raise VfsClientError(_error_detail(response))
 
@@ -110,7 +142,7 @@ class InProcessVfsClient:
             self._http.request(method, endpoint, params=params or None, headers=headers),
             self._loop,
         )
-        response = future.result()
+        response = self._result_before_deadline(future)
         if response.status_code >= 400:
             raise VfsClientError(_error_detail(response))
         return response
@@ -224,25 +256,37 @@ def _run_script(
     }
 
 
+_scripts_running = 0
+
+
 async def run_vfs_script(app, authorization: str, script: str, cwd: str) -> dict:
     """Execute one read-only shell script against the caller's Stash.
 
     `authorization` is forwarded verbatim onto every nested request, so the VFS
     sees precisely what that credential sees anywhere else in the API.
     """
-    loop = asyncio.get_running_loop()
-    transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(
-        transport=transport,
-        base_url="http://vfs.internal",
-        # X-Stash-Via tags nested reads as ask-the-stash traffic in the audit
-        # trail (see auth._set_request_via).
-        headers={"Authorization": authorization, "X-Stash-Via": "ask"},
-        timeout=None,
-    ) as http:
-        return await anyio.to_thread.run_sync(
-            functools.partial(_run_script, http, loop, script, cwd)
+    global _scripts_running
+    if _scripts_running >= MAX_CONCURRENT_SCRIPTS:
+        raise VfsBusy(
+            f"{MAX_CONCURRENT_SCRIPTS} VFS commands are already running; retry in a moment"
         )
+    _scripts_running += 1
+    try:
+        loop = asyncio.get_running_loop()
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(
+            transport=transport,
+            base_url="http://vfs.internal",
+            # X-Stash-Via tags nested reads as ask-the-stash traffic in the audit
+            # trail (see auth._set_request_via).
+            headers={"Authorization": authorization, "X-Stash-Via": "ask"},
+            timeout=None,
+        ) as http:
+            return await anyio.to_thread.run_sync(
+                functools.partial(_run_script, http, loop, script, cwd)
+            )
+    finally:
+        _scripts_running -= 1
 
 
 def _resolve_node(http: httpx.AsyncClient, loop: asyncio.AbstractEventLoop, path: str) -> dict:
