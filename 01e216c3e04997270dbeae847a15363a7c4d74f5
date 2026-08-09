@@ -1,0 +1,138 @@
+import { defineSoftwareMap } from "@dev.fast/progressive-review/software-map-model";
+
+export default defineSoftwareMap({
+  people: {
+    user: {
+      label: "Stash user",
+      description:
+        "Human who publishes a skill and chooses whether it appears in Discover.",
+    },
+    agent: {
+      label: "Cloud agent",
+      description: "Server-side agent that uses Stash's declared tool library.",
+    },
+  },
+  systems: {
+    stash: {
+      label: "Stash",
+      description: "Stores, shares, and publishes agent work and skills.",
+      containers: {
+        backend: {
+          label: "Backend API",
+          description: "FastAPI application and server-side agent runtime.",
+          components: {
+            agentRuntime: {
+              label: "Agent tool library",
+              description:
+                "Declares agent-facing skill tools and executes their handlers.",
+              changeStatus: "modified",
+              coverage: {
+                files: [
+                  "backend/services/agent_runtime.py",
+                  "backend/tests/test_agent_runtime.py",
+                ],
+              },
+              codeElements: {
+                publishSkill: {
+                  label: "publish_skill tool",
+                  changeStatus: "modified",
+                  sourceRanges: [
+                    {
+                      file: "backend/services/agent_runtime.py",
+                      fromLine: 382,
+                      toLine: 406,
+                    },
+                  ],
+                },
+                updateSkill: {
+                  label: "update_skill tool",
+                  changeStatus: "modified",
+                  sourceRanges: [
+                    {
+                      file: "backend/services/agent_runtime.py",
+                      fromLine: 409,
+                      toLine: 434,
+                    },
+                  ],
+                },
+                discoverGuardTest: {
+                  label: "Agent Discover guard regression test",
+                  changeStatus: "added",
+                  sourceRanges: [
+                    {
+                      file: "backend/tests/test_agent_runtime.py",
+                      fromLine: 143,
+                      toLine: 186,
+                    },
+                  ],
+                },
+              },
+            },
+            skillsApi: {
+              label: "Human skill settings API",
+              description:
+                "Accepts human-authenticated publish and update requests, including Discover settings.",
+              coverage: { files: ["backend/routers/skills.py"] },
+            },
+            skillPublishing: {
+              label: "Skill publishing service",
+              description:
+                "Creates and updates public skill records and reads the Discover catalog.",
+              coverage: { files: ["backend/services/shared_skill_service.py"] },
+            },
+          },
+        },
+      },
+      dataStores: {
+        postgres: {
+          kind: "database",
+          label: "PostgreSQL",
+          tables: {
+            skills: {
+              label: "Published skills",
+              schema: {
+                id: { type: "uuid", pk: true },
+                folder_id: { type: "uuid" },
+                title: { type: "text" },
+                description: { type: "text" },
+                discoverable: { type: "boolean", example: false },
+              },
+            },
+          },
+        },
+      },
+    },
+  },
+  relationships: [
+    {
+      kind: "semantic",
+      from: "user",
+      to: "stash.backend.skillsApi",
+      label: "Changes skill settings",
+    },
+    {
+      kind: "semantic",
+      from: "agent",
+      to: "stash.backend.agentRuntime",
+      label: "Calls declared tools",
+    },
+    {
+      kind: "call",
+      from: "stash.backend.agentRuntime.publishSkill",
+      to: "stash.backend.skillPublishing",
+      label: "Publishes a skill",
+    },
+    {
+      kind: "call",
+      from: "stash.backend.agentRuntime.updateSkill",
+      to: "stash.backend.skillPublishing",
+      label: "Updates a skill",
+    },
+    {
+      kind: "semantic",
+      from: "stash.backend.skillPublishing",
+      to: "stash.postgres",
+      label: "Reads and writes published skills",
+    },
+  ],
+});
