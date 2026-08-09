@@ -40,6 +40,24 @@ def test_skill_validation_rejects_metadata_codex_cannot_load(markdown, message):
         skill_service.validate_skill_md(markdown)
 
 
+def test_skill_migration_leaves_valid_files_untouched():
+    """The migration exists to repair broken metadata, not to reserialize the
+    whole database: a file that already validates — even in the legacy
+    unquoted style — must not be rewritten (no updated_at churn, no sync
+    re-pulls, no forced trip through the web editor's frontmatter handling)."""
+    migration = importlib.import_module("backend.migrations.versions.0182_valid_skill_frontmatter")
+
+    unquoted_but_valid = (
+        "---\n\nname: Brake Shoes and Linings\n\n"
+        "description: How to identify a drum brake shoe and its matching lining.\n\n"
+        "when_to_use: The user needs brake shoes.\n\n---\n\n# Instructions\n"
+    )
+    assert migration._is_valid(unquoted_but_valid)
+    assert not migration._is_valid("---\nname: Legacy skill\ndescription: \n---\n\n# I\n")
+    assert not migration._is_valid(f"---\nname: {'x' * 65}\ndescription: ok\n---\n")
+    assert not migration._is_valid("# No frontmatter at all\n")
+
+
 def test_skill_migration_repairs_blank_legacy_metadata():
     migration = importlib.import_module("backend.migrations.versions.0182_valid_skill_frontmatter")
 

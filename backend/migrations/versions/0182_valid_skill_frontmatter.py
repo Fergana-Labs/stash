@@ -37,6 +37,16 @@ def _metadata_value(lines: list[str], key: str) -> str:
     return value
 
 
+def _is_valid(markdown: str) -> bool:
+    lines, _body = _metadata_lines(markdown)
+    name = _metadata_value(lines, "name").strip()
+    description = _metadata_value(lines, "description").strip()
+    return (
+        0 < len(name) <= MAX_SKILL_NAME_LENGTH
+        and 0 < len(description) <= MAX_SKILL_DESCRIPTION_LENGTH
+    )
+
+
 def _valid_markdown(markdown: str, folder_name: str, published_description: str) -> str:
     lines, body = _metadata_lines(markdown)
     name = (_metadata_value(lines, "name") or folder_name).strip()[:MAX_SKILL_NAME_LENGTH]
@@ -70,6 +80,10 @@ def upgrade() -> None:
     ).mappings()
     for row in rows:
         markdown = row["content_markdown"] or ""
+        # A file that already passes validation stays exactly as its author
+        # wrote it — only broken metadata is worth rewriting user content for.
+        if _is_valid(markdown):
+            continue
         valid = _valid_markdown(markdown, row["folder_name"], row["published_description"])
         if valid == markdown:
             continue
