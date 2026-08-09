@@ -1,8 +1,11 @@
 """Run scheduled agents on their cron.
 
-The beat task fires every minute; for each scheduled agent it checks whether a
-cron tick is due since the agent's last run and, if so, runs it headless. The
-agent's own turn lock (Redis) prevents overlap with an in-flight run.
+The beat task fires every minute and is a pure dispatcher: it finds agents
+whose cron tick is due, consumes the tick, applies the cheap gates (credits,
+credential, pending changes), and hands each eligible run to
+`run_scheduled_agent` on the heavy queue — a headless agent turn runs for
+minutes and must not hold a default-queue slot. The agent's own turn lock
+(Redis) prevents overlap with an in-flight run.
 """
 
 from __future__ import annotations
@@ -36,6 +39,11 @@ def run_due() -> int:
     return run_async(_run_due())
 
 
+@celery.task(name="backend.tasks.agent_schedules.run_scheduled_agent")
+def run_scheduled_agent(agent_id: str, stamp: str) -> None:
+    run_async(_run_scheduled_agent(UUID(agent_id), stamp))
+
+
 @celery.task(name="backend.tasks.agent_schedules.run_curator_now")
 def run_curator_now(agent_id: str) -> None:
     run_async(_run_curator_now(UUID(agent_id)))
@@ -66,17 +74,11 @@ async def _run_curator_now(agent_id: UUID) -> None:
 async def _run_due() -> int:
     from ..config import settings
     from ..database import get_pool
-    from ..services import (
-        agent_auth,
-        agent_service,
-        alert_service,
-        curation_service,
-        sprite_agent_service,
-    )
+    from ..services import agent_auth, agent_service, curation_service
 
     now = datetime.now(UTC)
     stamp = now.strftime("%Y%m%d%H%M")
-    ran = 0
+    dispatched = 0
     for agent in await agent_service.list_scheduled():
         if not _is_due(agent["schedule_cron"], agent["last_run_at"], now):
             continue
@@ -107,26 +109,44 @@ async def _run_due() -> int:
             user_id, user_id, agent["curated_through"]
         ):
             continue
-        try:
-            await sprite_agent_service.run_scheduled(agent, stamp)
-            if agent["is_curator"]:
-                # `now` predates the run, so changes made during it stay ahead
-                # of the watermark and are picked up next time. If the delta
-                # overflowed the event cap, the watermark stops at the last
-                # event that fit — the overflow drains on subsequent runs.
-                through = await curation_service.complete_through(
-                    user_id, agent["curated_through"], now
-                )
-                await agent_service.mark_curated(agent["id"], through)
-            ran += 1
-        except Exception as e:
-            logger.exception("agent schedule: run failed for agent %s", agent["id"])
-            await agent_service.mark_run_failed(agent["id"], str(e))
-            email = await get_pool().fetchval("SELECT email FROM users WHERE id = $1", user_id)
-            await alert_service.send_alert(
-                f"Scheduled agent run failed: {agent['name']!r} for {email}: {str(e)[:300]}"
+        run_scheduled_agent.delay(str(agent["id"]), stamp)
+        dispatched += 1
+    return dispatched
+
+
+async def _run_scheduled_agent(agent_id: UUID, stamp: str) -> None:
+    from ..database import get_pool
+    from ..services import agent_service, alert_service, curation_service, sprite_agent_service
+
+    try:
+        agent = await agent_service.get_agent_by_id(agent_id)
+    except ValueError:
+        # Deleted between the beat tick and this run — nothing to do, and no
+        # agent row left to record a failure on.
+        logger.info("agent schedule: agent %s deleted before its run", agent_id)
+        return
+    user_id = UUID(str(agent["user_id"]))
+    now = datetime.now(UTC)
+    try:
+        await sprite_agent_service.run_scheduled(agent, stamp)
+        if agent["is_curator"]:
+            # `now` predates the run, so changes made during it stay ahead of
+            # the watermark and are picked up next time. If the delta
+            # overflowed the event cap, the watermark stops at the last event
+            # that fit — the overflow drains on subsequent runs. Bookkeeping
+            # failures share the run's try so they also record last_run_error
+            # and alert, instead of dying as a bare task error.
+            through = await curation_service.complete_through(
+                user_id, agent["curated_through"], now
             )
-    return ran
+            await agent_service.mark_curated(agent_id, through)
+    except Exception as e:
+        logger.exception("agent schedule: run failed for agent %s", agent_id)
+        await agent_service.mark_run_failed(agent_id, str(e))
+        email = await get_pool().fetchval("SELECT email FROM users WHERE id = $1", user_id)
+        await alert_service.send_alert(
+            f"Scheduled agent run failed: {agent['name']!r} for {email}: {str(e)[:300]}"
+        )
 
 
 # A curator whose watermark is older than this while changes are pending has

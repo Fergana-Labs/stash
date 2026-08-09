@@ -2,7 +2,9 @@
 
 One process model:
   - `backend` (uvicorn)         — HTTP API, dispatches tasks via `.delay()`.
-  - `worker`  (celery worker)   — executes tasks.
+  - `worker`  (celery worker)   — executes cheap, bounded tasks (`-Q default`).
+  - `heavy worker`              — executes the long-running task families
+                                  (`-Q heavy`), see `task_routes`.
   - `beat`    (celery beat)     — fires the periodic tasks in `beat_schedule`.
 
 Each task module is added to `include` when it lands. Adding a module to
@@ -16,6 +18,7 @@ the same scheduled task multiple times.
 
 from celery import Celery
 from celery.schedules import crontab
+from kombu import Queue
 
 from .config import settings
 
@@ -46,6 +49,31 @@ celery = Celery(
 
 celery.conf.update(
     task_default_queue="default",
+    # Two queues, split by task weight. Anything that can hold a worker slot
+    # for minutes — subprocess extractions, Playwright renders, exports,
+    # source crawls, bulk URL fetches, headless agent runs — routes to
+    # "heavy" and gets its own worker pool. Everything else (every beat
+    # sweep, every cheap bounded task) stays on "default", which therefore
+    # never stalls: cadence-sensitive tasks like X token keep-fresh (its
+    # 45-min refresh_margin assumes a tick roughly every 30 min) get their
+    # guarantee without being enumerated. Interactive agent replies
+    # (Slack/Telegram) also stay on "default" deliberately: a user is
+    # waiting, and "heavy" would queue them behind renders. A worker started
+    # without -Q consumes every queue listed in task_queues, so a deploy
+    # whose worker command predates the split still executes both queues;
+    # -Q flags (start.sh, docker-compose.prod.yml) give the real isolation.
+    task_queues=(Queue("default"), Queue("heavy")),
+    task_routes={
+        "backend.tasks.extraction.extract_file_text": {"queue": "heavy"},
+        "backend.tasks.drive_extraction.extract_drive_document": {"queue": "heavy"},
+        "backend.tasks.clips.process_url_imports": {"queue": "heavy"},
+        "backend.tasks.sources.sync_source": {"queue": "heavy"},
+        "backend.exports.pdf.export_pdf": {"queue": "heavy"},
+        "backend.exports.pptx.export_pptx": {"queue": "heavy"},
+        "backend.exports.gslides.export_to_google_slides": {"queue": "heavy"},
+        "backend.tasks.agent_schedules.run_scheduled_agent": {"queue": "heavy"},
+        "backend.tasks.agent_schedules.run_curator_now": {"queue": "heavy"},
+    },
     task_acks_late=True,
     task_reject_on_worker_lost=True,
     worker_prefetch_multiplier=1,
