@@ -22,9 +22,6 @@ export default defineSoftwareMap({
           label: "Backend API (FastAPI)",
           description:
             "Python 3.12 FastAPI app on port 3456. Serves the REST API, runs Alembic migrations at boot.",
-          coverage: {
-            globs: ["backend/**"],
-          },
           components: {
             auth: {
               label: "Auth & request tagging",
@@ -212,12 +209,6 @@ export default defineSoftwareMap({
               label: "Mini program UI",
               description:
                 "The Apps surface: app list, card grid, detail pane, bulk actions, and the derived/facet filters rendered from a mini program's manifest.",
-              coverage: {
-                globs: [
-                  "frontend/src/components/apps/**",
-                  "frontend/src/app/(app)/apps/**",
-                ],
-              },
             },
             clientLib: {
               label: "Client lib",
