@@ -39,11 +39,6 @@ export default defineSoftwareMap({
           description: "Serves stored content and integration data.",
           coverage: { globs: ["backend/**"] },
         },
-        web: {
-          label: "Stash web app",
-          description: "Provides the browser interface.",
-          coverage: { globs: ["frontend/**"] },
-        },
       },
     },
   },
