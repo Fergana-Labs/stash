@@ -134,5 +134,11 @@ export default defineSoftwareMap({
       to: "stash.postgres",
       label: "Reads and writes published skills",
     },
+    {
+      kind: "semantic",
+      from: "stash.backend.agentRuntime.discoverGuardTest",
+      to: "stash.backend.agentRuntime.publishSkill",
+      label: "Verifies ignored Discover input",
+    },
   ],
 });
