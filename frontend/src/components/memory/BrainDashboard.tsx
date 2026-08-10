@@ -337,13 +337,14 @@ function EmptyStashSetup() {
           and you can choose which folders transcripts are uploaded from.
         </p>
         <div className="mx-auto mt-6 max-w-md text-left">
-          <CopyableCommandBlock
-            commands={`bash -c "$(curl -fsSL https://joinstash.ai/install)"\nstash signin`}
-          />
+          {/* One command on purpose: the installer ends by exec'ing
+              `stash signin`, which runs the whole setup wizard. */}
+          <CopyableCommandBlock commands={`bash -c "$(curl -fsSL https://joinstash.ai/install)"`} />
         </div>
         <p className="mt-4 text-[12.5px] text-muted-foreground">
-          Then use your coding agent like you always do. This page becomes your agents&apos;
-          shared memory as transcripts arrive.
+          The installer signs you in and sets up session recording. Then use your coding
+          agent like you always do — this page becomes your agents&apos; shared memory as
+          transcripts arrive.
         </p>
       </div>
     </div>
