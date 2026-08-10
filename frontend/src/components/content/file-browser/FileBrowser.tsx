@@ -79,7 +79,7 @@ export default function FileBrowser({ folderId, folderHrefBase }: Props) {
   const [rootFiles, setRootFiles] = useState<GridItem[]>([]);
   const [rootTables, setRootTables] = useState<GridItem[]>([]);
   const [allFiles, setAllFiles] = useState<GridItem[]>([]);
-  const [view, setView] = useState<View>("grid");
+  const [view, setView] = useState<View>("list");
   const [scope, setScope] = useState<Scope>("mine");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const pins = useFilePins();

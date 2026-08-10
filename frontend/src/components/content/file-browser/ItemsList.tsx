@@ -98,7 +98,9 @@ const DEFAULT_SORT: Sort = { key: "modified", dir: "desc" };
 // author (HTML, Markdown). Other file types (PDFs, images, tables) stay hidden
 // until chosen from the Type menu, so uploads don't clutter the default view.
 // `typeFilter === null` means this doc set; ALL_TYPES means show everything.
-const DEFAULT_TYPES = new Set(["Folder", "HTML", "Markdown"]);
+// Tables are first-class residents of the folder tree, so they show by
+// default like documents do.
+const DEFAULT_TYPES = new Set(["Folder", "HTML", "Markdown", "Table"]);
 const ALL_TYPES = "__all__";
 
 function readSort(): Sort {
