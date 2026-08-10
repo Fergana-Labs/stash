@@ -474,9 +474,11 @@ function TryItOutStep({
         lead="Stream every Claude Code / Codex session into Stash automatically."
       >
         <div className="space-y-2">
-          <p className="text-[12px] text-dim">Run this in your terminal:</p>
+          <p className="text-[12px] text-dim">
+            Run this in your terminal — the installer signs you in and sets up recording:
+          </p>
+          {/* One command on purpose: install.sh ends by exec'ing `stash signin`. */}
           <CommandBlock command={CLI_INSTALL_COMMAND} />
-          <CommandBlock command="stash signin" />
         </div>
       </TryOption>
       <TryOption badge="Clip" lead="Save anything you read, straight from your browser.">
