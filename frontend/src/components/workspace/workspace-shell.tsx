@@ -17,10 +17,11 @@ const MAX_W = 600;
 const EXPLORER_SECTIONS: ExplorerSection[] = ["files", "sessions", "skills", "agents", "tools", "computer"];
 
 // Experiment (2026-08-10): only the VFS keeps the tree sidebar. Sessions,
-// Skills, and Tools render full-width — their explorer was a second nav axis
-// over the same content as the rail, and the two looked independent. Agents
-// (chat list) and the VM (browser) keep panels: that content lives nowhere else.
-const PANELLED_SECTIONS: ExplorerSection[] = ["files", "agents", "computer"];
+// Skills, Tools, and Agents render full-width — the explorers were a second
+// nav axis over the same content as the rail, and the two looked independent.
+// Agents brings its own ChatGPT-style chat list; the VM (browser) keeps its
+// panel because that content lives nowhere else.
+const PANELLED_SECTIONS: ExplorerSection[] = ["files", "computer"];
 
 /** Resizable explorer panel — drag the right edge to set width (persisted). */
 function ExplorerPanel({ section }: { section: ExplorerSection }) {
@@ -95,7 +96,9 @@ export function rendersRouteContent(
   // path: /skills/folder/<id> is a skill you opened, which belongs in a tab.
   if (pathname === "/skills") return true;
   // The MCP-server registry is a management page like /sessions.
-  return pathname === "/tools";
+  if (pathname === "/tools") return true;
+  // /agents is the ChatGPT-style chat page — its own sidebar, no workbench.
+  return pathname === "/agents";
 }
 
 

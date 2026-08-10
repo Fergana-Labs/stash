@@ -1,9 +1,14 @@
-"use client";
+import type { Metadata } from "next";
+import { Suspense } from "react";
 
-// /agents is a workbench route: the workspace shell renders the Agents explorer
-// and the tab workbench instead of this page (see rendersRouteContent). The
-// route only exists so the path resolves; `?resume=` is consumed by the
-// Workbench's URL → tab sync.
+import AgentsChat from "@/components/agents/AgentsChat";
+
+export const metadata: Metadata = { title: "Chat - Stash" };
+
 export default function AgentsPage() {
-  return null;
+  return (
+    <Suspense>
+      <AgentsChat />
+    </Suspense>
+  );
 }
