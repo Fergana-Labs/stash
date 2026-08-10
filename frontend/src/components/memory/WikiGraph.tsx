@@ -118,6 +118,10 @@ export default function WikiGraph({ data }: { data: WikiGraphData }) {
   // (the settling layout grows past the canvas otherwise). Double-click
   // hands control back to the auto-fit.
   const userAdjustedRef = useRef(false);
+  // The render loop parks itself whenever nothing is moving; every handler
+  // that changes what the canvas should show wakes it for a frame.
+  const wakeRef = useRef<() => void>(() => {});
+  const refitRef = useRef(false);
   const [cursor, setCursor] = useState("grab");
 
   const toWorld = useCallback((mx: number, my: number) => {
@@ -255,8 +259,14 @@ export default function WikiGraph({ data }: { data: WikiGraphData }) {
 
     let raf = 0;
     const step = () => {
-      if (sim.alpha > 0.02) tick(sim, w, HEIGHT);
-      if (!userAdjustedRef.current) fitView();
+      raf = 0;
+      const settling = sim.alpha > 0.02;
+      if (settling) tick(sim, w, HEIGHT);
+      // Auto-fit follows the layout while it moves, plus one frame on demand
+      // when a double-click hands control back to it. Refitting on a settled
+      // graph re-sorts every coordinate for a view that cannot change.
+      if (!userAdjustedRef.current && (settling || refitRef.current)) fitView();
+      refitRef.current = false;
       // A held node stays glued to the cursor — the tick above would
       // otherwise spring it back toward its neighbors every frame.
       const drag = dragRef.current;
@@ -267,10 +277,21 @@ export default function WikiGraph({ data }: { data: WikiGraphData }) {
         sim.vy[drag.index] = 0;
       }
       draw();
-      raf = requestAnimationFrame(step);
+      // Park once the physics has settled and nothing is being dragged: the
+      // canvas keeps its last frame until something wakes it. This loop used
+      // to redraw every node, edge, and label at 60fps for as long as the tab
+      // stayed open, which starved the rest of the page on a large wiki.
+      if (settling || dragRef.current) wake();
     };
-    raf = requestAnimationFrame(step);
-    return () => cancelAnimationFrame(raf);
+    const wake = () => {
+      if (!raf) raf = requestAnimationFrame(step);
+    };
+    wakeRef.current = wake;
+    wake();
+    return () => {
+      if (raf) cancelAnimationFrame(raf);
+      wakeRef.current = () => {};
+    };
   }, [data, draw]);
 
   // React registers onWheel passively, so preventDefault (needed to stop the
@@ -294,6 +315,7 @@ export default function WikiGraph({ data }: { data: WikiGraphData }) {
       v.tx = mx - ((mx - v.tx) / v.scale) * next;
       v.ty = my - ((my - v.ty) / v.scale) * next;
       v.scale = next;
+      wakeRef.current();
     };
     canvas.addEventListener("wheel", onWheel, { passive: false });
     return () => canvas.removeEventListener("wheel", onWheel);
@@ -316,6 +338,7 @@ export default function WikiGraph({ data }: { data: WikiGraphData }) {
               ? { mode: "node", index: i, moved: false, wx, wy }
               : { mode: "pan", lastX: mx, lastY: my, moved: false };
           if (i < 0) setCursor("grabbing");
+          wakeRef.current();
         }}
         onMouseMove={(e) => {
           const rect = e.currentTarget.getBoundingClientRect();
@@ -331,6 +354,7 @@ export default function WikiGraph({ data }: { data: WikiGraphData }) {
             if (Math.abs(mx - drag.lastX) + Math.abs(my - drag.lastY) > 2) drag.moved = true;
             drag.lastX = mx;
             drag.lastY = my;
+            wakeRef.current();
             return;
           }
           if (drag?.mode === "node" && sim) {
@@ -343,17 +367,22 @@ export default function WikiGraph({ data }: { data: WikiGraphData }) {
             // Re-warm so neighbors re-settle around the dragged node.
             sim.alpha = Math.max(sim.alpha, 0.25);
             drag.moved = true;
+            wakeRef.current();
             return;
           }
 
           const { wx, wy } = toWorld(mx, my);
           const i = findNode(wx, wy);
-          hoverRef.current = i;
+          if (hoverRef.current !== i) {
+            hoverRef.current = i;
+            wakeRef.current();
+          }
           setCursor(i >= 0 ? "pointer" : "grab");
         }}
         onMouseUp={() => {
           const drag = dragRef.current;
           if (drag?.mode === "pan") setCursor("grab");
+          wakeRef.current();
           // The click handler (which fires synchronously after mouseup) still
           // needs `moved` to suppress navigation — clear on the next task.
           setTimeout(() => {
@@ -364,6 +393,7 @@ export default function WikiGraph({ data }: { data: WikiGraphData }) {
           dragRef.current = null;
           hoverRef.current = -1;
           setCursor("grab");
+          wakeRef.current();
         }}
         onClick={(e) => {
           const drag = dragRef.current;
@@ -377,6 +407,8 @@ export default function WikiGraph({ data }: { data: WikiGraphData }) {
         }}
         onDoubleClick={() => {
           userAdjustedRef.current = false;
+          refitRef.current = true;
+          wakeRef.current();
         }}
       />
       <div className="absolute bottom-2 left-2 rounded-md border border-border bg-base/85 px-2.5 py-1.5 font-mono text-[10.5px] text-muted-foreground backdrop-blur">
