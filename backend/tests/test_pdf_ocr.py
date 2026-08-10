@@ -162,6 +162,85 @@ async def test_an_empty_candidate_list_raises(monkeypatch):
         await pdf_ocr._transcribe_chunk(client, _blank_pdf(1))
 
 
+def _annotated_pdf(pages: int = 1) -> bytes:
+    """A PDF carrying the three annotation types an expert reaches for:
+    a sticky note, a highlight with popup text, and a visible text box."""
+    from pypdf.annotations import FreeText, Highlight, Text
+    from pypdf.generic import ArrayObject, NumberObject
+
+    writer = pypdf.PdfWriter()
+    for _ in range(pages):
+        writer.add_blank_page(*PAGE_SIZE)
+    rect = (72, 700, 200, 720)
+    quad = ArrayObject(NumberObject(v) for v in (72, 720, 200, 720, 72, 700, 200, 700))
+    writer.add_annotation(0, Text(text="the 4707 row is deprecated", rect=rect, open=False))
+    writer.add_annotation(0, Highlight(rect=rect, quad_points=quad, highlight_color="ff0000"))
+    writer.add_annotation(
+        0,
+        FreeText(text="fitment matrix on page 40 is authoritative", rect=(72, 600, 400, 640)),
+    )
+    # Give the highlight popup text after the fact — pypdf's Highlight builder
+    # takes no text, but real ones (Preview, Acrobat) carry /Contents.
+    from pypdf.generic import NameObject, TextStringObject
+
+    annots = writer.pages[0]["/Annots"]
+    annots[1].get_object()[NameObject("/Contents")] = TextStringObject(
+        "crossref only valid for 21K axles"
+    )
+    buf = io.BytesIO()
+    writer.write(buf)
+    return buf.getvalue()
+
+
+@pytest.mark.asyncio
+async def test_annotations_ride_along_in_the_prompt(monkeypatch):
+    """Sticky notes and highlight popups render as bare icons, so vision alone
+    loses the expert's commentary. The annotation layer must ride along with
+    page numbers and an instruction to transcribe each note in place."""
+    client = _FakeGeminiClient(_payload("out"))
+    monkeypatch.setattr(pdf_ocr, "extract_text", lambda content, ct: None)
+
+    await pdf_ocr._transcribe_chunk(client, _annotated_pdf())
+
+    prompt = _prompt_of(client)
+    assert "<annotations>" in prompt
+    assert "Page 1: the 4707 row is deprecated" in prompt
+    assert "Page 1: crossref only valid for 21K axles" in prompt
+    assert "Page 1: fitment matrix on page 40 is authoritative" in prompt
+    assert "[Annotation:" in prompt
+
+
+@pytest.mark.asyncio
+async def test_a_pdf_without_annotations_sends_no_annotations_block(monkeypatch):
+    """Same rule as the empty text layer: no empty <annotations> block that
+    invites the model to invent notes."""
+    client = _FakeGeminiClient(_payload("out"))
+    monkeypatch.setattr(pdf_ocr, "extract_text", lambda content, ct: None)
+
+    await pdf_ocr._transcribe_chunk(client, _blank_pdf(1))
+
+    assert "<annotations>" not in _prompt_of(client)
+
+
+def test_annotations_survive_chunk_slicing():
+    """_slice_pdf rebuilds pages with pypdf; if the writer dropped /Annots the
+    prompt block would silently vanish for every multi-chunk document."""
+    reader = pypdf.PdfReader(io.BytesIO(_annotated_pdf(pages=3)))
+    chunk = pdf_ocr._slice_pdf(reader, 0, 2)
+
+    assert "the 4707 row is deprecated" in pdf_ocr._annotations_block(chunk)
+
+
+def test_annotations_past_the_vision_cap_land_in_the_tail():
+    """The vision cap bounds API spend; an expert note on page 120 of a giant
+    catalog must still reach the stored text."""
+    reader = pypdf.PdfReader(io.BytesIO(_annotated_pdf(pages=2)))
+
+    tail = pdf_ocr._text_layer_tail(reader, 0)
+
+    assert "[Annotation, page 1] the 4707 row is deprecated" in tail
+
+
 @pytest.mark.asyncio
 async def test_pages_past_the_vision_cap_keep_their_text_layer(monkeypatch):
     """The cap bounds vision spend on giant catalogs. It must not discard text

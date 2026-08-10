@@ -26,6 +26,11 @@ Chunk slices are built lazily, one per in-flight request: the whole
 document held simultaneously as slices plus their base64 copies is what
 used to breach the extraction child's RLIMIT_AS on scanned catalogs.
 
+Reader annotations (sticky notes, highlight popups, text boxes) carry
+expert commentary but mostly render as bare icons, so vision alone
+loses them. Each request therefore also carries the annotation layer,
+read via pypdf, with instructions to transcribe every note in place.
+
 Unlike `file_extraction.extract_text`, this module raises on failure
 (missing API key, API errors) so the extraction pipeline's retry
 machinery records the error and retries instead of silently storing
@@ -78,6 +83,41 @@ _LAYER_PROMPT = (
 )
 
 
+_ANNOTATIONS_PROMPT = (
+    "\n\nThe document carries reader annotations (comments, sticky notes, highlight notes), "
+    "listed below by page. Most render only as icons, so the page images do not show their "
+    "text. Transcribe every one of them: include each at the point in the page's content it "
+    "refers to, formatted as [Annotation: <its text, reproduced word-for-word, never "
+    "shortened or relabeled>]. If an annotation's text is also visible on the page itself "
+    "(a text box), output it once, as an [Annotation: ...]. Do not describe the annotation "
+    "icons themselves (note symbols, highlight marks) as figures.\n\n"
+    "<annotations>\n{annotations}\n</annotations>"
+)
+
+
+def _page_annotations(page: pypdf.PageObject) -> list[str]:
+    """Text content of a page's reader annotations. Popup annotations mirror
+    their parent markup annotation's text, so they are skipped to avoid
+    emitting every note twice."""
+    notes = []
+    for ref in page.get("/Annots") or []:
+        annot = ref.get_object()
+        if annot.get("/Subtype") == "/Popup":
+            continue
+        content = str(annot.get("/Contents") or "").strip()
+        if content:
+            notes.append(content)
+    return notes
+
+
+def _annotations_block(content: bytes) -> str:
+    reader = pypdf.PdfReader(io.BytesIO(content))
+    lines = []
+    for number, page in enumerate(reader.pages, start=1):
+        lines.extend(f"Page {number}: {note}" for note in _page_annotations(page))
+    return "\n".join(lines)
+
+
 def _slice_pdf(reader: pypdf.PdfReader, start: int, end: int) -> bytes:
     writer = pypdf.PdfWriter()
     for page in reader.pages[start:end]:
@@ -89,7 +129,12 @@ def _slice_pdf(reader: pypdf.PdfReader, start: int, end: int) -> bytes:
 
 async def _transcribe_chunk(client: httpx.AsyncClient, chunk: bytes) -> str:
     layer = extract_text(chunk, "application/pdf")
-    prompt = _PROMPT + (_LAYER_PROMPT.format(layer=layer) if layer else "")
+    annotations = _annotations_block(chunk)
+    prompt = (
+        _PROMPT
+        + (_LAYER_PROMPT.format(layer=layer) if layer else "")
+        + (_ANNOTATIONS_PROMPT.format(annotations=annotations) if annotations else "")
+    )
     response = await client.post(
         _GENERATE_URL.format(model=settings.GEMINI_EXTRACTION_MODEL),
         json={
@@ -125,11 +170,15 @@ def _text_layer_tail(reader: pypdf.PdfReader, start: int) -> str:
     building a sliced copy of a several-hundred-page tail is itself enough
     to breach the extraction child's memory cap."""
     parts: list[str] = []
-    for page in reader.pages[start:]:
+    for number, page in enumerate(reader.pages[start:], start=start + 1):
         try:
-            parts.append(page.extract_text() or "")
+            text = page.extract_text() or ""
+            notes = "\n".join(
+                f"[Annotation, page {number}] {note}" for note in _page_annotations(page)
+            )
         except Exception:
             continue
+        parts.append("\n\n".join(p for p in (text, notes) if p))
     return "\n\n".join(p for p in parts if p).strip()
 
 
