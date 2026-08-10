@@ -275,6 +275,22 @@ def test_annotations_past_the_vision_cap_land_in_the_tail():
     assert "[Annotation, page 1] the 4707 row is deprecated" in tail
 
 
+def test_a_broken_text_layer_does_not_eat_the_pages_notes_in_the_tail(monkeypatch):
+    """A page can have a corrupt content stream and perfectly readable
+    annotations. A text-layer failure must lose only the text, not the
+    expert's notes."""
+    reader = pypdf.PdfReader(io.BytesIO(_annotated_pdf()))
+
+    def boom(self, *args, **kwargs):
+        raise RuntimeError("corrupt content stream")
+
+    monkeypatch.setattr(pypdf.PageObject, "extract_text", boom)
+
+    tail = pdf_ocr._text_layer_tail(reader, 0)
+
+    assert "[Annotation, page 1] the 4707 row is deprecated" in tail
+
+
 @pytest.mark.asyncio
 async def test_pages_past_the_vision_cap_keep_their_text_layer(monkeypatch):
     """The cap bounds vision spend on giant catalogs. It must not discard text

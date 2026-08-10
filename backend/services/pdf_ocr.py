@@ -181,13 +181,11 @@ def _text_layer_tail(reader: pypdf.PdfReader, start: int) -> str:
     to breach the extraction child's memory cap."""
     parts: list[str] = []
     for number, page in enumerate(reader.pages[start:], start=start + 1):
+        notes = "\n".join(f"[Annotation, page {number}] {note}" for note in _page_annotations(page))
         try:
             text = page.extract_text() or ""
-            notes = "\n".join(
-                f"[Annotation, page {number}] {note}" for note in _page_annotations(page)
-            )
         except Exception:
-            continue
+            text = ""
         parts.append("\n\n".join(p for p in (text, notes) if p))
     return "\n\n".join(p for p in parts if p).strip()
 
