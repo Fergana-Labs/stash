@@ -192,15 +192,64 @@ async def test_writes_are_rejected(client: AsyncClient):
         "DELETE FROM jobs",
         "DROP TABLE jobs",
         "SELECT 1; SELECT 2",
+        # EXPLAIN ANALYZE runs the statement it wraps while still parsing as an
+        # EXPLAIN, so allowing EXPLAIN would let any write through the gate.
+        "EXPLAIN ANALYZE DELETE FROM jobs",
+        "EXPLAIN ANALYZE INSERT INTO jobs VALUES ('x', 'Evil', 1, DATE '2026-01-01')",
     ]:
         resp = await _sql(client, headers, query)
         assert resp.status_code == 400, query
 
 
+async def test_read_only_introspection_still_works(client: AsyncClient):
+    """Rejecting EXPLAIN must not cost the caller schema discovery: DESCRIBE,
+    SHOW and SUMMARIZE all parse as SELECT and stay available."""
+    headers, _ = await _register(client)
+    await _make_table(client, headers, "Jobs", JOBS_COLUMNS, JOBS_ROWS)
+
+    for query in ["DESCRIBE jobs", "SHOW TABLES", "SUMMARIZE jobs"]:
+        resp = await _sql(client, headers, query)
+        assert resp.status_code == 200, query
+
+
 async def test_sql_errors_surface_as_400(client: AsyncClient):
+    """A binder error and a syntax error are both the caller's mistake. They
+    take different paths — the binder error comes from executing the query, the
+    syntax error from parsing it before anything is materialized — and both
+    have to reach the caller as a 400 they can act on."""
     headers, _ = await _register(client)
 
     resp = await _sql(client, headers, "SELECT * FROM nonexistent")
-
     assert resp.status_code == 400
     assert "nonexistent" in resp.json()["detail"]
+
+    malformed = await _sql(client, headers, "SELEC * FROM jobs")
+    assert malformed.status_code == 400
+    assert "SELEC" in malformed.json()["detail"]
+
+
+async def test_stale_column_type_names_the_offending_table(client: AsyncClient):
+    """Changing a column's type does not rewrite rows already stored, so a text
+    value can end up under a number column. Every query materializes every table
+    in the scope, so this one table decides whether `stash sql` works at all —
+    it must come back as a 400 naming the table, not an opaque 500."""
+    headers, _ = await _register(client)
+    table = await _make_table(
+        client,
+        headers,
+        "Payroll",
+        [{"name": "Salary", "type": "text"}],
+        [{"Salary": "not a number"}],
+    )
+    column_id = table["columns"][0]["id"]
+    patched = await client.patch(
+        f"/api/v1/me/tables/{table['id']}/columns/{column_id}",
+        json={"type": "number"},
+        headers=headers,
+    )
+    assert patched.status_code == 200
+
+    resp = await _sql(client, headers, "SELECT 1")
+
+    assert resp.status_code == 400
+    assert "Payroll" in resp.json()["detail"]

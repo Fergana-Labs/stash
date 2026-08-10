@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from cli import main
 from cli.main import _agent_present
 
@@ -103,3 +105,82 @@ def test_undetected_claude_would_strand_its_history_import(monkeypatch, tmp_path
     assert detected == ["claude"]
     found = import_history.discover_conversations(detected)
     assert [(c.agent, c.session_id) for c in found] == [("claude", "s1")]
+
+
+def test_finder_cancel_is_told_apart_from_a_real_failure(monkeypatch, tmp_path: Path) -> None:
+    """osascript echoes the offending path into stderr, so matching "-128"
+    anywhere in the message turns a genuine failure under a folder like
+    ~/work/PROJ-128 into a fake Cancel — and a fake Cancel aborts setup with no
+    message and no recorded_paths written. Only the trailing code means Cancel."""
+    import subprocess
+
+    def run_with(returncode: int, stderr: str):
+        monkeypatch.setattr(
+            subprocess,
+            "run",
+            lambda *a, **k: subprocess.CompletedProcess(a[0], returncode, "", stderr),
+        )
+        return main._choose_folder_finder(tmp_path)
+
+    assert run_with(1, "execution error: User canceled. (-128)") is None
+
+    with pytest.raises(RuntimeError):
+        run_with(1, 'execution error: Can\'t make file "HD:work:PROJ-128" into type file. (-1700)')
+
+    # Exit 0 with no folder is an anomaly, not a silent "never mind".
+    with pytest.raises(RuntimeError):
+        run_with(0, "")
+
+
+def test_claude_plugin_freshen_uses_the_resolved_binary(monkeypatch, tmp_path: Path) -> None:
+    """The whole point of resolving the binary is the install that parks claude
+    outside PATH; a bare "claude" in any one call fails for exactly that user."""
+    import subprocess
+
+    binary = str(tmp_path / ".claude" / "local" / "claude")
+    monkeypatch.setattr(main, "_claude_binary", lambda: binary)
+    monkeypatch.setattr(main, "_enable_marketplace_autoupdate", lambda _p: True)
+
+    argv0: list[str] = []
+
+    def fake_run(cmd, *a, **k):
+        argv0.append(cmd[0])
+        return subprocess.CompletedProcess(cmd, 0, "ok", "")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    main._install_claude_plugin()
+
+    assert argv0, "expected the installer to shell out"
+    assert set(argv0) == {binary}, f"a call still used a bare binary name: {argv0}"
+
+
+def test_agent_folder_candidates_never_offer_a_relative_path(monkeypatch, tmp_path: Path) -> None:
+    """Cursor reports an encoded slug, not a path. A relative entry written into
+    recorded_paths resolves against each session's own cwd, matches nothing, and
+    the scope gate then reads that as "record nothing" — recording silently off."""
+    from cli import import_history
+
+    real = tmp_path / "repo"
+    real.mkdir()
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "Users-someone-projects-stash").mkdir()
+
+    class Conv:
+        def __init__(self, cwd):
+            self.cwd = cwd
+
+    monkeypatch.setattr(
+        main,
+        "_agent_folder_candidates",
+        main._agent_folder_candidates,
+    )
+    monkeypatch.setattr(
+        import_history,
+        "discover_conversations",
+        lambda *a, **k: [Conv("Users-someone-projects-stash")] * 5 + [Conv(str(real))],
+    )
+
+    candidates = main._agent_folder_candidates()
+
+    assert [str(p) for p, _ in candidates] == [str(real)]
+    assert all(p.is_absolute() for p, _ in candidates)

@@ -5,6 +5,30 @@ export const routes = {
   extension: "/extension",
 };
 
+/** Tab kinds whose permanent URL renders the workbench. The workbench pushes
+ *  urlForTab on every focus, so a kind missing from this list is a tab you can
+ *  open but never click back into — focusing it navigates the strip away.
+ *  workspace-store migrates persisted tabs against this list. */
+export const WORKBENCH_TAB_KINDS: TabKind[] = [
+  "page",
+  "file",
+  "table",
+  "session",
+  "sessions-home",
+  "skill",
+  "folder",
+  "tool",
+];
+
+/** Tabs that live only inside the workbench: the cloud box's terminal and its
+ *  files exist on the box, not at an address. Opening or refocusing one must
+ *  leave the URL alone — ask urlForTab for one and it throws, by design. */
+const WORKBENCH_ONLY_KINDS: TabKind[] = ["machine-file", "terminal", "agent-config"];
+
+export function hasPermanentUrl(kind: TabKind): boolean {
+  return !WORKBENCH_ONLY_KINDS.includes(kind);
+}
+
 /** Canonical permanent URL for a tab — the same route that deep-links/sharing use. */
 export function urlForTab(tab: Pick<WorkbenchTab, "kind" | "refId">): string {
   switch (tab.kind) {
@@ -23,17 +47,20 @@ export function urlForTab(tab: Pick<WorkbenchTab, "kind" | "refId">): string {
     case "folder":
       return `/folders/${tab.refId}`;
     case "agent":
-      return `/agents`;
+      // Chat left the workbench: a conversation's address is now the chat
+      // page's ?chat= ref, the same one the skill launcher pushes.
+      return `/agents?chat=${encodeURIComponent(tab.refId)}`;
     case "tool":
       // A provider slug deep-links to its manager; the legacy list stays /tools.
       return tab.refId === "integrations" ? `/tools` : `/integrations/${tab.refId}`;
     case "machine-file":
-      // Machine files have no permanent route — they live on the box.
-      return `/agents`;
     case "terminal":
-      return `/agents`;
     case "agent-config":
-      return `/agents`;
+      // These exist only inside the workbench — nothing routes to them. They
+      // used to borrow /agents, which worked only while /agents rendered the
+      // workbench; it is the chat page now, so borrowing it evicts the user
+      // from the strip. There is no honest URL to hand back.
+      throw new Error(`${tab.kind} tabs have no permanent URL`);
   }
 }
 

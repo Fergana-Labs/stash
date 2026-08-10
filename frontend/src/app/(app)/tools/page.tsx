@@ -95,6 +95,7 @@ function IntegrationsGrid() {
   // was disconnected with its data kept reads "Connect", not "Connected".
   const [sourceProviders, setSourceProviders] = useState<Set<string>>(new Set());
   const [statuses, setStatuses] = useState<Record<string, IntegrationStatus> | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [paywalled, setPaywalled] = useState(false);
 
@@ -112,23 +113,36 @@ function IntegrationsGrid() {
     }
   }
 
+  // Both calls decide what a row says — statuses which rows exist, sources
+  // whether an extension row reads Connected — so either one failing makes
+  // the whole list wrong. Fail together, loudly, instead of showing a list
+  // that lies or skeletons that never resolve.
   useEffect(() => {
     const load = () => {
-      listSources()
-        .then((all) => setSourceProviders(new Set(all.map((s: Source) => providerForSourceType[s.type] ?? s.type))))
-        .catch(() => {});
-      listIntegrations()
-        .then((r) => {
+      setLoadError(null);
+      Promise.all([listSources(), listIntegrations()])
+        .then(([sources, integrations]) => {
+          setSourceProviders(new Set(sources.map((s: Source) => providerForSourceType[s.type])));
           const byProvider: Record<string, IntegrationStatus> = {};
-          for (const p of r.providers) byProvider[p.provider] = p;
+          for (const p of integrations.providers) byProvider[p.provider] = p;
           setStatuses(byProvider);
         })
-        .catch(() => {});
+        .catch((e) =>
+          setLoadError(e instanceof Error ? e.message : "Failed to load integrations")
+        );
     };
     load();
     window.addEventListener(INTEGRATIONS_CHANGED_EVENT, load);
     return () => window.removeEventListener(INTEGRATIONS_CHANGED_EVENT, load);
   }, []);
+
+  if (loadError) {
+    return (
+      <div className="rounded-xl border border-border bg-surface px-4 py-6 text-center text-[13px] text-destructive">
+        Couldn&apos;t load integrations: {loadError}
+      </div>
+    );
+  }
 
   if (statuses === null) {
     return (

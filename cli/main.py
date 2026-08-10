@@ -4899,7 +4899,11 @@ def _agent_folder_candidates(limit: int = 6) -> list[tuple[Path, int]]:
 
     counts: dict[str, int] = {}
     for conv in discover_conversations():
-        if conv.cwd:
+        # Cursor reports an encoded project slug rather than a path
+        # (import_history._encode_cursor_dir), and a relative entry in
+        # recorded_paths resolves against each session's own cwd — matching
+        # nothing, which the scope gate reads as "record nothing at all".
+        if conv.cwd and conv.cwd.startswith("/"):
             counts[conv.cwd] = counts.get(conv.cwd, 0) + 1
     ranked = sorted(counts.items(), key=lambda kv: -kv[1])
     result: list[tuple[Path, int]] = []
@@ -4913,9 +4917,18 @@ def _agent_folder_candidates(limit: int = 6) -> list[tuple[Path, int]]:
 
 
 def _pretty_path(path: Path) -> str:
-    home = str(Path.home())
+    home = Path.home()
     raw = str(path)
-    return "~" + raw[len(home) :] if raw.startswith(home) else raw
+    if path != home and home not in path.parents:
+        return raw
+    return "~" + raw[len(str(home)) :]
+
+
+# AppleScript's "User canceled." Matched as the trailing error code, never as a
+# substring of the message: osascript echoes the offending path into stderr, so
+# a plain `"-128" in stderr` reads a real failure under ~/work/PROJ-128 as a
+# cancel and drops the user's answer on the floor.
+_APPLESCRIPT_CANCELED = re.compile(r"\(-128\)\s*$")
 
 
 def _choose_folder_finder(start: Path) -> Path | None:
@@ -4924,18 +4937,23 @@ def _choose_folder_finder(start: Path) -> Path | None:
     user re-runs and picks "Type a path" instead of silently losing the answer."""
     import subprocess
 
+    # A quoted AppleScript string: backslashes first, then the quotes that end it.
+    literal = str(start).replace("\\", "\\\\").replace('"', '\\"')
     script = (
         "POSIX path of (choose folder with prompt "
         '"Where should Stash record agent sessions?" '
-        f'default location POSIX file "{start}")'
+        f'default location POSIX file "{literal}")'
     )
     result = subprocess.run(["osascript", "-e", script], capture_output=True, text=True)
+    stderr = result.stderr.strip()
     if result.returncode != 0:
-        if "-128" in result.stderr:  # AppleScript's "User canceled."
+        if _APPLESCRIPT_CANCELED.search(stderr):
             return None
-        raise RuntimeError(f"Finder dialog failed: {result.stderr.strip()}")
+        raise RuntimeError(f"Finder dialog failed: {stderr}")
     raw = result.stdout.strip()
-    return Path(raw) if raw else None
+    if not raw:
+        raise RuntimeError("Finder dialog returned no folder")
+    return Path(raw)
 
 
 def _browse_folders(start: Path) -> Path | None:
@@ -4943,13 +4961,12 @@ def _browse_folders(start: Path) -> Path | None:
     go up, subfolders to drill into. No typing required."""
     cur = start.resolve()
     while True:
-        try:
-            subdirs = sorted(
-                (d for d in cur.iterdir() if d.is_dir() and not d.name.startswith(".")),
-                key=lambda d: d.name.lower(),
-            )
-        except PermissionError:
-            subdirs = []
+        # An unreadable directory is not an empty one: rendering it as empty
+        # would let the user record a folder believing they saw its contents.
+        subdirs = sorted(
+            (d for d in cur.iterdir() if d.is_dir() and not d.name.startswith(".")),
+            key=lambda d: d.name.lower(),
+        )
         use = f"✓ Record {_pretty_path(cur)}"
         up = ".. (up one level)"
         choices: list[str] = [use]
@@ -4996,7 +5013,17 @@ def _pick_record_folder(start: Path) -> Path | None:
         typed = questionary.path("Folder path:", only_directories=True).ask()
         if typed is None:
             return None
-        return Path(typed).expanduser().resolve()
+        folder = Path(typed).expanduser().resolve()
+        # An empty answer resolves to the current folder and a typo resolves to
+        # a folder no session will ever run in — one records the wrong place,
+        # the other records nothing at all, both without saying so.
+        if not typed.strip() or not folder.is_dir():
+            console.print(
+                f"[red]Not a folder: {typed!r}. Nothing was changed — "
+                "re-run [bold]stash setup[/bold] to pick again.[/red]"
+            )
+            raise typer.Exit(1)
+        return folder
     return Path(picked)
 
 
@@ -5177,9 +5204,17 @@ def _run_setup_headless(
             )
             raise typer.Exit(1)
         start_streaming()
+        # Headless has no folder-scope flag, so `--record` means this machine.
+        # Writing that explicitly is what makes the run deterministic: without
+        # it a folder scope left by an earlier `stash setup` would silently
+        # survive, and the ✓ below would be describing recording that isn't
+        # happening outside that folder.
+        save_recorded_paths([])
         save_enabled_agents(selected)
         _install_all_hooks(selected)
-        console.print(f"  [green]✓[/green] Recording on for: {', '.join(selected)}")
+        console.print(
+            f"  [green]✓[/green] Recording on everywhere on this machine for: {', '.join(selected)}"
+        )
     else:
         stop_streaming()
         console.print("  [green]✓[/green] Recording off")
@@ -5190,9 +5225,7 @@ def _run_setup_headless(
         console.print("  [green]✓[/green] Folder context skipped")
 
     if import_history:
-        from .import_history import discover_conversations
-
-        conversations = discover_conversations(selected)
+        conversations = _conversations_to_import(selected)
         if conversations:
             _spawn_history_import(len(conversations))
         else:
@@ -5357,8 +5390,8 @@ def _install_claude_plugin() -> bool:
     # a working install, and the plugin's session-start drift warning names any
     # remaining staleness.
     for cmd in (
-        ["claude", "plugin", "marketplace", "update", "stash-plugins"],
-        ["claude", "plugin", "update", "stash@stash-plugins"],
+        [binary, "plugin", "marketplace", "update", "stash-plugins"],
+        [binary, "plugin", "update", "stash@stash-plugins"],
     ):
         try:
             _sp.run(cmd, check=True, capture_output=True, text=True, timeout=120)
@@ -5450,12 +5483,36 @@ def _spawn_history_import(count: int) -> None:
     )
 
 
+def _conversations_to_import(agents: list[str] | None) -> list:
+    """Past conversations the recording scope covers.
+
+    Importing is recording, backwards: a user who answered "only this folder"
+    must not have every other folder's history uploaded behind that answer.
+    `recorded_paths` is the same list the plugin's live gate reads, so past and
+    future sessions obey one setting."""
+    from .import_history import discover_conversations
+
+    recorded = [p for p in (load_config().get("recorded_paths") or []) if p]
+    if not recorded:
+        return discover_conversations(agents)
+
+    seen: set[tuple[str, str]] = set()
+    scoped = []
+    for folder in recorded:
+        for conv in discover_conversations(agents, repo_dir=folder):
+            if (conv.agent, conv.session_id) in seen:
+                continue
+            seen.add((conv.agent, conv.session_id))
+            scoped.append(conv)
+    return scoped
+
+
 def _onboarding_import_history(detected_agents: list[str]) -> None:
     """Offer to import historical conversations during onboarding."""
-    from .import_history import discover_conversations, summarize_discovery
+    from .import_history import summarize_discovery
 
     agents = detected_agents or None
-    conversations = discover_conversations(agents)
+    conversations = _conversations_to_import(agents)
     if not conversations:
         return
 
@@ -5515,9 +5572,10 @@ def import_history_cmd(
 ):
     """Import all historical agent conversations into your Stash.
 
-    Safe to re-run: the server skips sessions that already exist. The setup
-    wizard launches this as a background process; run it directly to import
-    in the foreground with a progress bar."""
+    Scoped to the folders you chose to record (`recorded_paths`), so the import
+    covers exactly what live recording covers. Safe to re-run: the server skips
+    sessions that already exist. The setup wizard launches this as a background
+    process; run it directly to import in the foreground with a progress bar."""
     if status:
         _show_import_status()
         return
@@ -5529,9 +5587,9 @@ def import_history_cmd(
 
     from rich.progress import Progress
 
-    from .import_history import discover_conversations, upload_conversation
+    from .import_history import upload_conversation
 
-    conversations = discover_conversations(load_enabled_agents() or None)
+    conversations = _conversations_to_import(load_enabled_agents() or None)
     if not conversations:
         console.print("No historical conversations found.")
         return
@@ -5579,14 +5637,24 @@ def _active_import() -> dict | None:
 
 
 def _setup_complete_intro(
-    frontend_url: str, connected: bool, recording: bool, importing: dict | None
+    frontend_url: str,
+    connected: bool,
+    recording: bool,
+    importing: dict | None,
+    recorded_paths: list[str] | None = None,
 ) -> str:
     # Home *is* the memory dashboard — there is no /memory route.
     memory_url = frontend_url
+    # Empty = everywhere, the contract `recorded_paths` carries everywhere else
+    # (cli/config.py, the plugin's gate). The splash has to say which one the
+    # user just chose — promising machine-wide capture to someone who scoped
+    # recording to one folder is the setup lying about what it did.
+    scope = ", ".join(_pretty_path(Path(p)) for p in recorded_paths or [])
+    where = f"in {scope}" if scope else "on this machine"
     recording_section = (
         "[bold]You're recording[/bold]\n"
-        "This machine's agent sessions upload to your private Stash.\n"
-        "[dim]Pause with stash stop, exclude folders in stash settings[/dim]"
+        f"Agent sessions {where} upload to your private Stash.\n"
+        "[dim]Pause with stash stop, change folders with stash setup[/dim]"
         if recording
         else "[bold]Recording is off[/bold]\n"
         "Turn it on anytime with [cyan]stash start[/cyan] or [cyan]stash setup[/cyan]."
@@ -5608,7 +5676,7 @@ def _setup_complete_intro(
     )
     return (
         "[bold]Your agents just got a memory[/bold]\n"
-        "Every coding session on this machine now lands in your private Stash.\n"
+        f"Every coding session {where} now lands in your private Stash.\n"
         "Your agents can draw on everything you've worked on before — past fixes,\n"
         "decisions, dead ends — instead of starting every session from zero.\n"
         "\n"
@@ -5639,7 +5707,13 @@ def _show_setup_complete_splash() -> None:
     console.print(
         Panel(
             Text.from_markup(
-                _setup_complete_intro(_frontend_base_url(), connected, recording, _active_import())
+                _setup_complete_intro(
+                    _frontend_base_url(),
+                    connected,
+                    recording,
+                    _active_import(),
+                    load_config().get("recorded_paths"),
+                )
             ),
             title="[bold #1e3a8a]Your agent memory[/bold #1e3a8a]",
             border_style="#1e3a8a",

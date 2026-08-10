@@ -29,8 +29,13 @@ import type { EmbeddingProjection } from "@/lib/types";
 
 const PAGE_SIZE = 50;
 
+// The feed pages back indefinitely, so a bare "Mar 3" would read as this
+// year's March once the reader scrolls past the year boundary.
 function editTimestamp(iso: string): string {
-  return new Date(iso).toLocaleString(undefined, {
+  const at = new Date(iso);
+  const year = at.getFullYear() === new Date().getFullYear() ? undefined : "numeric";
+  return at.toLocaleString(undefined, {
+    year,
     month: "short",
     day: "numeric",
     hour: "numeric",
@@ -54,13 +59,19 @@ export default function BrainDashboard() {
   const [graphLoaded, setGraphLoaded] = useState(false);
   const [firstName, setFirstName] = useState<string | null>(null);
   const [vitals, setVitals] = useState<MeOverview | null>(null);
+  const [vitalsError, setVitalsError] = useState<string | null>(null);
   const [vitalsLoaded, setVitalsLoaded] = useState(false);
 
+  // The vitals decide whether this stash is brand new, so losing them isn't
+  // cosmetic: without them Home would drop a first-run user into a grid of
+  // empty panels instead of the setup instruction.
   useEffect(() => {
-    getMe().then((me) => setFirstName(me.display_name.split(" ")[0])).catch(() => {});
-    getMeOverview()
-      .then(setVitals)
-      .catch(() => {})
+    Promise.all([getMe(), getMeOverview()])
+      .then(([me, overview]) => {
+        setFirstName(me.display_name.split(" ")[0]);
+        setVitals(overview);
+      })
+      .catch((e) => setVitalsError(e instanceof Error ? e.message : "Failed to load your stash"))
       .finally(() => setVitalsLoaded(true));
   }, []);
 
@@ -96,8 +107,16 @@ export default function BrainDashboard() {
     }
   }, [events, hasMore, loadingMore]);
 
+  // The dashboard renders only once both the feed and the vitals have
+  // settled, in whichever order they arrive.
+  const ready = !fetching && vitalsLoaded;
+
+  // The sentinel exists only while the dashboard is rendered, so this has to
+  // re-run when the skeleton clears: if the vitals settle last, `loadMore`
+  // keeps its identity across that render and the observer would never
+  // attach — infinite scroll dead, feed silently capped at one page.
   useEffect(() => {
-    if (!sentinelRef.current) return;
+    if (!ready || !sentinelRef.current) return;
     const obs = new IntersectionObserver(
       ([entry]) => {
         if (entry.isIntersecting) loadMore();
@@ -106,7 +125,7 @@ export default function BrainDashboard() {
     );
     obs.observe(sentinelRef.current);
     return () => obs.disconnect();
-  }, [loadMore]);
+  }, [loadMore, ready]);
 
   // The brain's vitals + visualizations. All span the user's own content plus
   // everything shared with them (the /me/* aggregates, called without a
@@ -136,13 +155,23 @@ export default function BrainDashboard() {
     };
   }, []);
 
+  if (vitalsError) {
+    return (
+      <div className="flex h-full min-h-0 items-center justify-center px-8">
+        <p className="max-w-md text-center text-[13px] text-destructive">
+          Couldn&apos;t load your stash: {vitalsError}
+        </p>
+      </div>
+    );
+  }
+
   // A brand-new stash has nothing to dashboard. Until the first transcripts
   // arrive, Home is a single instruction: upload your agent transcripts.
   if (vitalsLoaded && vitals && vitals.pages === 0 && vitals.files === 0 && vitals.sessions === 0) {
     return <EmptyStashSetup />;
   }
 
-  if (fetching || !vitalsLoaded) {
+  if (!ready) {
     return (
       <div className="h-full min-h-0 overflow-y-auto">
         <ActivitySkeleton />

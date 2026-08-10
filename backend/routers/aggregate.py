@@ -80,13 +80,14 @@ async def list_file_activity(
     current_user: dict = Depends(get_current_user),
 ):
     """New and edited files and pages across accessible scopes, cursor-paginated
-    by ts. The Memory subtree is excluded: curation output is the curator log's
-    story, not file activity."""
+    by ts. Memory subtrees are excluded: curation output is the curator log's
+    story, not file activity. Every scope's Memory is excluded, not just the
+    caller's — a workspace scope's nightly curation churn would otherwise flood
+    the feed of every member who can read it."""
     pool = get_pool()
-    memory_ids = list(await files_tree_service.memory_subtree_folder_ids(current_user["id"]))
     events = await pool.fetch(
         """
-        WITH accessible_scopes AS (
+        WITH RECURSIVE accessible_scopes AS (
           -- The user's own scope plus any scope that has shared content with
           -- the user. Page/file rows still pass readable_content_condition, so
           -- a share only surfaces the specific shared rows — never the whole
@@ -97,6 +98,14 @@ async def list_file_activity(
         + permission_service.accessible_scope_ids_sql(1)
         + """
           AND ($3::uuid IS NULL OR u.id = $3)
+        ),
+        memory_folders AS (
+          SELECT mf.id FROM folders mf
+          JOIN accessible_scopes aw ON aw.id = mf.owner_user_id
+          WHERE mf.is_memory
+          UNION
+          SELECT mf.id FROM folders mf
+          JOIN memory_folders m ON m.id = mf.parent_folder_id
         )
         SELECT * FROM (
         (
@@ -111,7 +120,7 @@ async def list_file_activity(
           FROM pages p
           JOIN accessible_scopes aw ON aw.id = p.owner_user_id
           WHERE p.deleted_at IS NULL
-            AND ($5::uuid[] = '{}' OR p.folder_id IS NULL OR p.folder_id <> ALL($5))
+            AND NOT EXISTS (SELECT 1 FROM memory_folders m WHERE m.id = p.folder_id)
             AND """
         + permission_service.readable_content_condition("page", "p", 1)
         + """
@@ -129,6 +138,7 @@ async def list_file_activity(
           FROM files f
           JOIN accessible_scopes aw ON aw.id = f.owner_user_id
           WHERE f.deleted_at IS NULL
+            AND NOT EXISTS (SELECT 1 FROM memory_folders m WHERE m.id = f.folder_id)
             AND """
         + permission_service.readable_content_condition("file", "f", 1)
         + """
@@ -141,7 +151,6 @@ async def list_file_activity(
         limit + 1,
         owner_user_id,
         before,
-        memory_ids,
     )
     has_more = len(events) > limit
     if has_more:

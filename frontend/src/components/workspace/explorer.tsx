@@ -7,7 +7,7 @@ import { ApiError, listMySessions, listSessionFolders, listSharedWithMe, listSki
 import { requestAgentConfigView } from "@/lib/agent-tab-view";
 import { cn } from "@/lib/utils";
 import { useWorkspace, type TabKind } from "@/lib/workspace-store";
-import { urlForTab } from "@/lib/workspace-routes";
+import { urlForTab, hasPermanentUrl } from "@/lib/workspace-routes";
 import { CONNECTORS, connectorIcon, providerForSourceType } from "@/components/integrations/connectors";
 import { INTEGRATIONS_CHANGED_EVENT, listIntegrations } from "@/lib/integrations";
 import { opensNewTab } from "@/lib/tab-nav";
@@ -32,7 +32,7 @@ function useOpenTab() {
   const openTab = useWorkspace((s) => s.openTab);
   return (kind: TabKind, refId: string, title: string, opts?: { newTab?: boolean }) => {
     openTab(kind, refId, { title, newTab: opts?.newTab ?? opensNewTab() });
-    router.replace(urlForTab({ kind, refId }));
+    if (hasPermanentUrl(kind)) router.replace(urlForTab({ kind, refId }));
   };
 }
 

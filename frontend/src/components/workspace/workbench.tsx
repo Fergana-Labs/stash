@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils";
 import { createPage } from "@/lib/api";
 import { useWorkspace, titleKey, type WorkbenchTab } from "@/lib/workspace-store";
 import { ShellChromeScope, useShellChromeValue } from "@/components/ShellChromeContext";
-import { urlForTab, tabFromPath } from "@/lib/workspace-routes";
+import { urlForTab, tabFromPath, hasPermanentUrl } from "@/lib/workspace-routes";
 import { PageIcon, FileIcon, TableIcon, SessionsIcon, SkillIcon, FolderIcon } from "@/components/SkillIcons";
 import TabBody from "./tab-body";
 
@@ -86,6 +86,9 @@ function TabPane({ pane }: { pane: 0 | 1 }) {
   // derived from the URL, and switching tabs must never move the sidebar.
   function focus(tab: WorkbenchTab) {
     setActiveTab(tab.id);
+    // A workbench-only tab (the box's terminal and its files) has no address;
+    // refocusing one leaves the URL pointing at whatever it was.
+    if (!hasPermanentUrl(tab.kind)) return;
     const section = searchParams.get("section");
     router.replace(urlForTab(tab) + (section ? `?section=${section}` : ""));
   }

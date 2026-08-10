@@ -91,6 +91,7 @@ async def _session_artifacts(session_row_id: UUID) -> list[dict]:
 async def list_my_sessions(
     owner_user_id: UUID | None = Query(None),
     session_folder_id: UUID | None = Query(None),
+    session_id_prefix: str | None = Query(None, max_length=64),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     current_user: dict = Depends(get_current_user),
@@ -102,6 +103,10 @@ async def list_my_sessions(
 
     Pass `session_folder_id` to scope to one folder — without it the list is a
     global recent window, so a folder's older sessions would never appear.
+    `session_id_prefix` narrows to one family of sessions by id — the chat
+    sidebar asks for `agent-` so a user whose recent window is full of recorded
+    CLI transcripts still sees their web chats; filtering client-side loses
+    every chat that falls outside the window.
     `offset` pages through the (last_event_at DESC) order for infinite scroll."""
     # The personal view spans every accessible scope (own + shared + workspace);
     # switching into a workspace narrows the window to that scope's sessions.
@@ -130,6 +135,12 @@ async def list_my_sessions(
     if session_folder_id is not None:
         args.append(session_folder_id)
         where.append(f"s.session_folder_id = ${len(args)}")
+    if session_id_prefix is not None:
+        args.append(session_id_prefix)
+        # starts_with, not LIKE: the prefix is caller-supplied and LIKE would
+        # read '%' and '_' in it as wildcards.
+        where.append(f"starts_with(he.session_id, ${len(args)})")
+        title_where.append(f"starts_with(he_title.session_id, ${len(args)})")
 
     rows = await pool.fetch(
         f"""

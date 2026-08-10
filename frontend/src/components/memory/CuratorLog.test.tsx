@@ -70,4 +70,13 @@ describe("CuratorLog", () => {
     render(<CuratorLog />);
     expect(await screen.findByText(/No entries yet/)).toBeTruthy();
   });
+
+  // "No entries yet" is a statement about the curator, not about the network:
+  // claiming it after a failed load tells the user their curator never ran.
+  it("reports a failed load instead of claiming the curator never ran", async () => {
+    vi.mocked(getCuratorLog).mockRejectedValue(new Error("curator log unavailable"));
+    render(<CuratorLog />);
+    expect(await screen.findByText(/curator log unavailable/)).toBeTruthy();
+    expect(screen.queryByText(/No entries yet/)).toBeNull();
+  });
 });

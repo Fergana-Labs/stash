@@ -577,23 +577,33 @@ async def mark_sync_started(source_id: UUID) -> None:
     )
 
 
-# How stale a source may get before merely looking at it triggers a sync.
-# Listing sources IS the access path — integration pages and every VFS read go
-# through GET /me/sources — so freshness rides on usage instead of only the
-# 30-minute schedule.
+# How quiet a source must be before merely looking at it triggers a sync.
+# Listing sources is the access path, so this is the debounce that keeps a
+# burst of page views (or a source that fails every run) from churning.
 ACCESS_KICK_STALE_S = 300
+
+# One listing claims at most this many sources, matching the Beat reconciler's
+# batch: a single page view must not fan out into an unbounded number of
+# Celery publishes.
+ACCESS_KICK_LIMIT = 50
 
 
 async def kick_stale_sources(owner_user_id: UUID) -> list[str]:
-    """Claim the scope's stale, sync-enabled sources for an access-triggered
+    """Claim the scope's due, sync-enabled sources for an access-triggered
     sync; the caller enqueues one sync task per returned id.
 
+    Access pulls a sync forward, it does not invent a new cadence: a source is
+    only claimed once next_sync_at has passed, the same bar the Beat reconciler
+    uses, so a source configured to sync every 6 hours still syncs every 6
+    hours no matter how often its owner opens the page. The updated_at guard is
+    the debounce on top of that — every sync start/finish/failure touches
+    updated_at, so a source is kicked at most once per window even when it
+    fails every time, and a just-created source (next_sync_at defaults to now)
+    is not re-kicked by the listing that follows its own connect.
+
     The claim applies mark_sync_started's mutation atomically, so concurrent
-    listings enqueue each source at most once. The updated_at guard is the
-    debounce: every sync start/finish/failure touches updated_at, so a source
-    is kicked at most once per window even when it fails every time.
-    'needs_setup' is excluded — it means the user must act, and re-syncing on
-    read cannot fix it."""
+    listings enqueue each source at most once. 'needs_setup' is excluded — it
+    means the user must act, and re-syncing on read cannot fix it."""
     rows = await get_pool().fetch(
         "UPDATE user_sources SET sync_status = 'syncing', sync_error = NULL, "
         "next_sync_at = now() + (sync_interval_s || ' seconds')::interval, updated_at = now() "
@@ -601,11 +611,15 @@ async def kick_stale_sources(owner_user_id: UUID) -> list[str]:
         "  SELECT id FROM user_sources "
         "  WHERE owner_user_id = $1 AND sync_enabled "
         "  AND sync_status NOT IN ('syncing', 'needs_setup') "
+        "  AND next_sync_at <= now() "
         "  AND updated_at < now() - ($2 || ' seconds')::interval "
+        "  ORDER BY next_sync_at "
+        "  LIMIT $3 "
         "  FOR UPDATE SKIP LOCKED"
         ") RETURNING id",
         owner_user_id,
         str(ACCESS_KICK_STALE_S),
+        ACCESS_KICK_LIMIT,
     )
     return [str(r["id"]) for r in rows]
 

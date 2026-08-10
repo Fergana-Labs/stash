@@ -369,6 +369,13 @@ class StashVfsModel:
         for table in tables:
             table_id = str(table["id"])
             parent_id = table.get("folder_id")
+            # The table listing is its own endpoint and does not hide skill
+            # subtrees the way the overview's file tree does, so a table filed
+            # inside a skill names a folder that has no path here. Its whole
+            # subtree is projected under /skills, not /files — skip it rather
+            # than crash the mount on the missing folder.
+            if parent_id and str(parent_id) not in folders and str(parent_id) != memory_folder_id:
+                continue
             parent_path = folder_path(str(parent_id)) if parent_id else root_path
             created_at = table.get("created_at")
             updated_at = table.get("updated_at")

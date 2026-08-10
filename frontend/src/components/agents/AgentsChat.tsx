@@ -11,6 +11,7 @@ import { nanoid } from "nanoid";
 import { SquarePen } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { listMySessions, type SessionSummary } from "@/lib/api";
+import { useAuth } from "@/hooks/useAuth";
 import { timeAgo } from "@/components/content/files-overview/build";
 import AgentChatView from "./AgentChatView";
 
@@ -18,6 +19,19 @@ import AgentChatView from "./AgentChatView";
 // `agent-sched-…` / `agent-curate-…`, and coding-agent sessions have their own
 // shapes. The id shape is the discriminator the whole agent surface uses.
 const CHAT_SESSION_ID = /^agent-[0-9a-f]{32}$/;
+// The server-side narrowing for the same family. Scheduled and curator runs
+// share it, so the regex above still does the exact match.
+const CHAT_SESSION_PREFIX = "agent-";
+// A named agent's ref — the other thing ?chat= is allowed to point at.
+const AGENT_REF = /^agent-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+/** ?chat= only ever carries a ref this app minted: a fresh chat (`new-…`), a
+ *  stored chat session, or a named agent. An unrecognized ref cannot be opened
+ *  as a chat — the first message would mint a real session under whatever id
+ *  the URL happened to carry. */
+function isChatRef(ref: string): boolean {
+  return ref.startsWith("new-") || CHAT_SESSION_ID.test(ref) || AGENT_REF.test(ref);
+}
 
 function SideRow({
   label,
@@ -50,10 +64,12 @@ function SideRow({
 export default function AgentsChat() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { user } = useAuth();
   // ?chat= selects a conversation (a stored session, a named agent, or a
   // staged `new-…` skill run); ?resume= is the deep link from a stored
   // session's "Resume in chat". A bare /agents is a fresh chat.
-  const urlRef = searchParams.get("chat") ?? searchParams.get("resume");
+  const chatRef = searchParams.get("chat");
+  const urlRef = chatRef ?? searchParams.get("resume");
   const [newRef, setNewRef] = useState(() => `new-${nanoid(5)}`);
   const selected = urlRef ?? newRef;
   // When a fresh chat's session is minted mid-stream, the URL flips to the
@@ -63,24 +79,43 @@ export default function AgentsChat() {
   const viewRef = mintedFrom?.sessionId === selected ? mintedFrom.ref : selected;
 
   const [chats, setChats] = useState<SessionSummary[] | null>(null);
+  const [chatsError, setChatsError] = useState<string | null>(null);
 
   const loadChats = useCallback(async () => {
-    const all = await listMySessions(100);
-    setChats(all.filter((s) => CHAT_SESSION_ID.test(s.session_id)));
-  }, []);
+    // The list needs the caller's id to filter, and useAuth resolves it a tick
+    // after mount; the effect re-runs once it lands.
+    if (!user) return;
+    setChatsError(null);
+    try {
+      // Narrowed server-side: a recent window of every session kind is mostly
+      // recorded CLI transcripts, so filtering to chats here would hide every
+      // chat that fell outside it — "No chats yet" for someone with chats.
+      const all = await listMySessions(100, undefined, 0, CHAT_SESSION_PREFIX);
+      // The chat API reads a session in the caller's own scope only, so a chat
+      // shared in from another scope would open blank — it doesn't belong in a
+      // list whose only action is opening it.
+      setChats(
+        all.filter((s) => CHAT_SESSION_ID.test(s.session_id) && s.owner_user_id === user.id),
+      );
+    } catch (e) {
+      setChatsError(e instanceof Error ? e.message : String(e));
+    }
+  }, [user]);
   useEffect(() => {
-    loadChats().catch(() => setChats([]));
+    void loadChats();
   }, [loadChats]);
 
+  // push, not replace: a conversation is a place, so Back walks the chats you
+  // visited. (Minting below stays a replace — it renames the chat you're in.)
   function select(ref: string) {
     setMintedFrom(null);
-    router.replace(`/agents?chat=${encodeURIComponent(ref)}`);
+    router.push(`/agents?chat=${encodeURIComponent(ref)}`);
   }
 
   function newChat() {
     setMintedFrom(null);
     setNewRef(`new-${nanoid(5)}`);
-    router.replace("/agents");
+    router.push("/agents");
   }
 
   return (
@@ -99,31 +134,47 @@ export default function AgentsChat() {
           <div className="px-2.5 pb-1 pt-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
             Chats
           </div>
-          {chats?.map((s) => (
-            <SideRow
-              key={s.session_id}
-              label={s.title || "Untitled chat"}
-              annotation={timeAgo(s.last_event_at)}
-              active={selected === s.session_id}
-              onClick={() => select(s.session_id)}
-            />
-          ))}
-          {chats !== null && chats.length === 0 && (
-            <div className="px-2.5 py-1.5 text-[12px] text-muted-foreground">No chats yet</div>
+          {chatsError ? (
+            // An unreadable list is not an empty one: "No chats yet" here would
+            // read as lost history.
+            <div className="px-2.5 py-1.5 text-[12px] text-error">
+              {`Couldn't load your chats: ${chatsError}`}
+            </div>
+          ) : (
+            <>
+              {chats?.map((s) => (
+                <SideRow
+                  key={s.session_id}
+                  label={s.title || "Untitled chat"}
+                  annotation={timeAgo(s.last_event_at)}
+                  active={selected === s.session_id}
+                  onClick={() => select(s.session_id)}
+                />
+              ))}
+              {chats !== null && chats.length === 0 && (
+                <div className="px-2.5 py-1.5 text-[12px] text-muted-foreground">No chats yet</div>
+              )}
+            </>
           )}
         </div>
       </aside>
       <main className="min-w-0 flex-1 bg-base">
-        {/* Keyed so switching conversations remounts a clean view. */}
-        <AgentChatView
-          key={viewRef}
-          refId={viewRef}
-          onSessionMinted={(id) => {
-            setMintedFrom({ sessionId: id, ref: viewRef });
-            router.replace(`/agents?chat=${encodeURIComponent(id)}`);
-            void loadChats();
-          }}
-        />
+        {chatRef !== null && !isChatRef(chatRef) ? (
+          <div className="flex h-full items-center justify-center px-6 text-center text-[13px] text-error">
+            {`This link doesn't point at a chat: ${chatRef}`}
+          </div>
+        ) : (
+          /* Keyed so switching conversations remounts a clean view. */
+          <AgentChatView
+            key={viewRef}
+            refId={viewRef}
+            onSessionMinted={(id) => {
+              setMintedFrom({ sessionId: id, ref: viewRef });
+              router.replace(`/agents?chat=${encodeURIComponent(id)}`);
+              void loadChats();
+            }}
+          />
+        )}
       </main>
     </div>
   );
