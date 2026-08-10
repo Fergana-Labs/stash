@@ -4884,6 +4884,95 @@ def signin(
     _run_setup_wizard()
 
 
+def _agent_folder_candidates(limit: int = 6) -> list[tuple[Path, int]]:
+    """Folders the user actually runs agents in, ranked by session count —
+    mined from the same transcript history the importer reads, so the folder
+    question can offer real answers instead of a blank path prompt. Only
+    folders that still exist qualify."""
+    from .import_history import discover_conversations
+
+    counts: dict[str, int] = {}
+    for conv in discover_conversations():
+        if conv.cwd:
+            counts[conv.cwd] = counts.get(conv.cwd, 0) + 1
+    ranked = sorted(counts.items(), key=lambda kv: -kv[1])
+    result: list[tuple[Path, int]] = []
+    for raw, count in ranked:
+        path = Path(raw)
+        if path.is_dir():
+            result.append((path, count))
+        if len(result) == limit:
+            break
+    return result
+
+
+def _pretty_path(path: Path) -> str:
+    home = str(Path.home())
+    raw = str(path)
+    return "~" + raw[len(home) :] if raw.startswith(home) else raw
+
+
+def _browse_folders(start: Path) -> Path | None:
+    """Arrow-key folder browser: 'record this folder' pinned on top, '..' to
+    go up, subfolders to drill into. No typing required."""
+    cur = start.resolve()
+    while True:
+        try:
+            subdirs = sorted(
+                (d for d in cur.iterdir() if d.is_dir() and not d.name.startswith(".")),
+                key=lambda d: d.name.lower(),
+            )
+        except PermissionError:
+            subdirs = []
+        use = f"✓ Record {_pretty_path(cur)}"
+        up = ".. (up one level)"
+        choices: list[str] = [use]
+        if cur.parent != cur:
+            choices.append(up)
+        choices.extend(f"{d.name}/" for d in subdirs)
+        _reserve_bottom_padding(min(len(choices), 15) + 2)
+        picked = questionary.select(f"Browsing {_pretty_path(cur)}", choices=choices).ask()
+        if picked is None:
+            return None
+        if picked == use:
+            return cur
+        if picked == up:
+            cur = cur.parent
+            continue
+        cur = cur / picked.rstrip("/")
+
+
+def _pick_record_folder(start: Path) -> Path | None:
+    """The ergonomic folder choice: your agents' actual working folders first,
+    a browser second, a typed path as the escape hatch."""
+    candidates = _agent_folder_candidates()
+    browse = "Browse folders…"
+    type_it = "Type a path"
+    choices: list[questionary.Choice] = [
+        questionary.Choice(f"{_pretty_path(p)}  ({n} session{'s' if n != 1 else ''})", value=str(p))
+        for p, n in candidates
+    ]
+    choices.append(questionary.Choice(browse, value=browse))
+    choices.append(questionary.Choice(type_it, value=type_it))
+    _reserve_bottom_padding(len(choices) + 3)
+    picked = questionary.select(
+        "Which folder? (these are where your agents already run)"
+        if candidates
+        else "Which folder?",
+        choices=choices,
+    ).ask()
+    if picked is None:
+        return None
+    if picked == browse:
+        return _browse_folders(start)
+    if picked == type_it:
+        typed = questionary.path("Folder path:", only_directories=True).ask()
+        if typed is None:
+            return None
+        return Path(typed).expanduser().resolve()
+    return Path(picked)
+
+
 def _run_setup_wizard() -> None:
     """First-run setup: session recording, agent hooks, folder context, history
     import. Re-runnable anytime via `stash setup` — no answer here is final."""
@@ -4900,23 +4989,38 @@ def _run_setup_wizard() -> None:
     everywhere = "Everywhere on this machine"
     here = f"Only this folder ({cwd.name})"
     custom = "Only a folder I pick…"
-    _reserve_bottom_padding(6)
+    # The folders this user's agents already run in go straight into the
+    # question — most people should recognize their answer, not produce it.
+    inline = [(p, n) for p, n in _agent_folder_candidates(limit=3) if p.resolve() != cwd.resolve()]
+    choices: list[questionary.Choice] = [
+        questionary.Choice(everywhere, value=everywhere),
+        questionary.Choice(here, value=str(cwd)),
+        *(
+            questionary.Choice(
+                f"Only {_pretty_path(p)}  ({n} session{'s' if n != 1 else ''})",
+                value=str(p),
+            )
+            for p, n in inline
+        ),
+        questionary.Choice(custom, value=custom),
+    ]
+    _reserve_bottom_padding(len(choices) + 3)
     where = questionary.select(
         "Where should Stash record agent sessions?",
-        choices=[everywhere, here, custom],
+        choices=choices,
         default=everywhere,
     ).ask()
     if where is None:
         raise typer.Exit(1)
-    if where == here:
-        save_recorded_paths([str(cwd)])
+    if where == everywhere:
+        save_recorded_paths([])
     elif where == custom:
-        picked = questionary.path("Which folder?", only_directories=True).ask()
+        picked = _pick_record_folder(cwd)
         if picked is None:
             raise typer.Exit(1)
-        save_recorded_paths([str(Path(picked).expanduser().resolve())])
+        save_recorded_paths([str(picked)])
     else:
-        save_recorded_paths([])
+        save_recorded_paths([where])
     start_streaming()
 
     detected = _detected_agents()
