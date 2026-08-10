@@ -2,7 +2,7 @@
 // agent, and what does not: a skill only reaches the launcher once it is in
 // your Skills, so a run must never install anything.
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import SkillLauncher from "./SkillLauncher";
 import { takeSkillRun } from "@/lib/skill-launch";
