@@ -801,18 +801,9 @@ function SourceRow({
         )}
       </button>
       <div className="flex shrink-0 items-center gap-1.5">
-        <div className="flex items-center gap-1.5 opacity-55 transition-opacity group-hover:opacity-100">
-          <button type="button" onClick={onOpen} className={rowButton()}>
-            {open ? "Close" : "Browse"}
-          </button>
-          {syncs && (
-            <button type="button" disabled={busySync} onClick={onSync} className={rowButton()}>
-              {busySync ? "Syncing..." : "Sync"}
-            </button>
-          )}
-        </div>
-        {/* The menu and share dialog live outside the hover-dim group: an open
-            dialog must not inherit the row's hover-dimming. */}
+        {/* Browsing is the row itself (and the VFS); syncing is automatic —
+            scheduled, plus kicked by access when stale. The old Browse/Sync
+            buttons duplicated those, so the escape hatches live in ⋯ now. */}
         <div ref={menuBoundaryRef} className="relative">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -825,6 +816,11 @@ function SourceRow({
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-max min-w-28">
+              {syncs && (
+                <DropdownMenuItem disabled={busySync} onClick={onSync}>
+                  {busySync ? "Syncing..." : "Sync now"}
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem onClick={() => setShareOpen(true)}>Share</DropdownMenuItem>
               <DropdownMenuItem
                 variant="destructive"
@@ -850,11 +846,6 @@ function SourceRow({
       </div>
     </div>
   );
-}
-
-// The quiet bordered row action (Browse/Sync).
-function rowButton(): string {
-  return "cursor-pointer rounded-lg border border-[var(--color-border)] bg-base px-3 py-1.5 text-[12px] font-semibold text-foreground hover:bg-raised disabled:opacity-60";
 }
 
 function BrowsePanel({
