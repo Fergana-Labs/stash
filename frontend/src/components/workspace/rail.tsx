@@ -23,8 +23,9 @@ const PRIMARY: RailItem[] = [
 
 // Home is the memory dashboard — the divider separates it from the VFS
 // sections. Chat sits last: it's a lens over the stash, not a place in it.
-// Apps and the VM aren't rail-worthy: Apps lives at /apps, the VM under the
-// explorer's Home root.
+// Apps lives at /apps. The VM has NO entry point since it left this rail: the
+// explorer's Home root is the only thing that lists it, and that root only
+// renders once you are already inside the VM section (?section=computer).
 const DIVIDER_AFTER_INDEX = 0;
 
 function RailButton({

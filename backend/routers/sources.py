@@ -11,6 +11,7 @@ endpoints just manage the registry.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 from datetime import UTC, datetime
@@ -137,6 +138,16 @@ async def _resolve_posthog_source(user_id) -> tuple[str, str]:
     return "project", f"PostHog ({display_name})"
 
 
+def _enqueue_source_syncs(source_ids: list[str]) -> None:
+    """Publishing to the broker is blocking socket work, so a batch of them
+    runs off the event loop."""
+    for source_id in source_ids:
+        celery.send_task(
+            "backend.tasks.sources.sync_source",
+            kwargs={"source_id": source_id},
+        )
+
+
 @router.get("")
 async def list_sources(
     current_user: dict = Depends(get_current_user),
@@ -145,17 +156,17 @@ async def list_sources(
     """Sources in the active scope's view: native files + sessions, plus the
     scope's connected sources.
 
-    Listing doubles as the freshness trigger: any stale source in the scope is
-    claimed and enqueued for sync before the listing is built, so the response
-    already shows it as syncing. Both the integration pages and the VFS read
-    through here — accessing your sources is what keeps them fresh."""
+    Listing doubles as the freshness trigger: any source in the scope that is
+    already due is claimed and enqueued before the listing is built, so the
+    response shows it as syncing. The integration pages and the workspace
+    explorer read through here, so looking at your sources pulls their next
+    sync forward instead of waiting for the Beat tick. Entry trees (/tree) do
+    not kick — they read what the last sync indexed."""
     owner_user_id = scope_user_id
     await _require_member(owner_user_id, current_user["id"])
-    for source_id in await source_service.kick_stale_sources(owner_user_id):
-        celery.send_task(
-            "backend.tasks.sources.sync_source",
-            kwargs={"source_id": source_id},
-        )
+    source_ids = await source_service.kick_stale_sources(owner_user_id)
+    if source_ids:
+        await asyncio.to_thread(_enqueue_source_syncs, source_ids)
     return {"sources": await source_service.list_sources(owner_user_id, current_user["id"])}
 
 

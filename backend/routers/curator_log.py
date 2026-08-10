@@ -14,6 +14,7 @@ from ..services.sprite_agent_service import (
     RUN_FAILED_PREFIX,
     STOPPED_NOTE,
     scheduled_session_prefix,
+    turn_running,
 )
 
 router = APIRouter(prefix="/api/v1/me", tags=["curator-log"])
@@ -43,13 +44,16 @@ async def curator_log(
         f"{prefix}%",
         limit,
     )
-    return {"entries": [_entry(dict(run)) for run in runs]}
+    return {"entries": [await _entry(dict(run)) for run in runs]}
 
 
-def _entry(run: dict) -> dict:
+async def _entry(run: dict) -> dict:
     final_text = run["final_text"]
     if final_text is None:
-        status, summary, error = "interrupted", None, None
+        # Tonight's pass is still writing: no final message yet. The turn lock
+        # is what separates it from a run that died before writing one.
+        status = "running" if await turn_running(run["session_id"]) else "interrupted"
+        summary, error = None, None
     elif final_text.startswith(RUN_FAILED_PREFIX):
         status, summary = "failed", None
         error = final_text.removeprefix(RUN_FAILED_PREFIX).strip()

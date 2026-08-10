@@ -30,8 +30,7 @@ export default function TabBody({ tab }: { tab: WorkbenchTab }) {
   if (tab.kind === "folder") return <FolderClient folderId={tab.refId} />;
   if (tab.kind === "agent") return <AgentChatView refId={tab.refId} />;
   // Tool + agent-config bodies are plain document flows with no height or
-  // scroller of their own, so the tab gives them one (same as AgentChatTab
-  // does for the config side of a chat tab).
+  // scroller of their own, so the tab gives them one.
   if (tab.kind === "tool")
     return (
       <div className="min-h-0 flex-1 overflow-y-auto">

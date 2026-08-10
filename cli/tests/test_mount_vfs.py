@@ -448,6 +448,32 @@ def test_vfs_suffixes_only_colliding_names():
     assert "Untitled table" not in entries
 
 
+class SkillFolderTableClient(FakeClient):
+    """A table filed inside a skill folder, alongside a normal one. Tables come
+    from their own listing, which does not hide skill subtrees the way the
+    overview's file tree does — so this table names a folder the files tree
+    never mentions."""
+
+    def list_tables(self):
+        return [
+            {"id": "skilltable-99999999", "name": "Rubrics", "folder_id": "skillfolder-12345678"},
+            *super().list_tables(),
+        ]
+
+
+def test_a_table_inside_a_skill_folder_does_not_break_the_mount():
+    """A skill's folder subtree is deliberately absent from /files, so a table
+    filed there has no path to mount at. It has to be left out rather than take
+    the whole tree down: every VFS command rebuilds this model, so one such
+    table turned every `stash vfs` call into a crash."""
+    model = StashVfsModel(SkillFolderTableClient(), include_computer=True)
+    model.refresh()
+
+    assert "Rubrics" not in model.list_dir("/files")
+    # The tables that do have a home are unaffected — the skip is surgical.
+    assert b'"Name": "Mount"' in model.read_file("/files/Notes/Ideas/rows.json")
+
+
 class CountingLoaderClient(FakeClient):
     """Records every document body fetched, and whether two fetches ever overlapped.
 

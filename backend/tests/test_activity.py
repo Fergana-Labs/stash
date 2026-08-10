@@ -394,6 +394,93 @@ async def test_file_activity_is_scoped_and_excludes_memory(client: AsyncClient):
     assert "Wiki page" not in labels
 
 
+async def _file_row(pool, owner_user_id: UUID, name: str, folder_id: UUID | None) -> None:
+    await pool.execute(
+        "INSERT INTO files (owner_user_id, name, content_type, size_bytes, storage_key, "
+        "uploaded_by, folder_id) VALUES ($1, $2, 'image/png', 9, $2, $1, $3)",
+        owner_user_id,
+        name,
+        folder_id,
+    )
+
+
+@pytest.mark.asyncio
+async def test_file_activity_excludes_files_inside_the_memory_subtree(client: AsyncClient, pool):
+    """The Memory exclusion is about what the curator churns through, and the
+    curator writes files as well as pages — a filter that only covers pages
+    leaks half of that churn into Home. Nested folders count too: Memory's
+    descendants are Memory."""
+    api_key = await _register(client, "activity_mem_files")
+    scope = UUID((await _scope(client, api_key))["id"])
+    memory_id = UUID(
+        (await client.get("/api/v1/me/memory-folder", headers=_auth(api_key))).json()["id"]
+    )
+    nested_id = await pool.fetchval(
+        "INSERT INTO folders (owner_user_id, parent_folder_id, name, created_by) "
+        "VALUES ($1, $2, 'Wiki', $1) RETURNING id",
+        scope,
+        memory_id,
+    )
+
+    await _file_row(pool, scope, "Loose file", None)
+    await _file_row(pool, scope, "Memory file", memory_id)
+    await _file_row(pool, scope, "Nested memory file", nested_id)
+
+    resp = await client.get(
+        "/api/v1/me/file-activity", params={"limit": 200}, headers=_auth(api_key)
+    )
+    assert resp.status_code == 200
+    labels = [e["target_label"] for e in resp.json()["events"]]
+    assert "Loose file" in labels
+    assert "Memory file" not in labels
+    assert "Nested memory file" not in labels
+
+
+@pytest.mark.asyncio
+async def test_file_activity_excludes_memory_shared_from_another_scope(client: AsyncClient, pool):
+    """Memory belongs to the curator log whoever's Memory it is. The feed spans
+    every scope the caller can read, so excluding only the caller's Memory lets
+    a teammate's nightly curation churn land in the caller's Home."""
+    owner_key = await _register(client, "activity_mem_owner")
+    friend_key = await _register(client, "activity_mem_friend")
+    owner = UUID((await _scope(client, owner_key))["id"])
+    friend = UUID((await _scope(client, friend_key))["id"])
+
+    memory_id = (await client.get("/api/v1/me/memory-folder", headers=_auth(owner_key))).json()[
+        "id"
+    ]
+    wiki = await client.post(
+        "/api/v1/me/pages/new",
+        json={"name": "Their wiki page", "content": "curated", "folder_id": memory_id},
+        headers=_auth(owner_key),
+    )
+    assert wiki.status_code == 201
+    plain = await client.post(
+        "/api/v1/me/pages/new",
+        json={"name": "Their shared page", "content": "hello"},
+        headers=_auth(owner_key),
+    )
+    assert plain.status_code == 201
+    for page_id in (wiki.json()["id"], plain.json()["id"]):
+        await pool.execute(
+            "INSERT INTO shares (owner_user_id, object_type, object_id, principal_type, "
+            "principal_id, permission, created_by) VALUES ($1,'page',$2,'user',$3,'read',$1)",
+            owner,
+            UUID(page_id),
+            friend,
+        )
+
+    resp = await client.get(
+        "/api/v1/me/file-activity", params={"limit": 200}, headers=_auth(friend_key)
+    )
+    assert resp.status_code == 200
+    labels = [e["target_label"] for e in resp.json()["events"]]
+    # The plain share proves the feed does surface another scope's content —
+    # so the wiki page's absence is the Memory rule, not a missing share.
+    assert "Their shared page" in labels
+    assert "Their wiki page" not in labels
+
+
 @pytest.mark.asyncio
 async def test_file_activity_paginates_with_before_cursor(client: AsyncClient):
     api_key = await _register(client, "activity_paged")

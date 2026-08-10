@@ -118,12 +118,6 @@ export default function FilesExplorer({
   /** This section can create VFS items (new file/folder/upload). Default true;
    *  Sessions is a read-through view, so false. */
   vfsWritable?: boolean;
-  /** A labeled section-specific action on its own row under the toolbar (e.g.
-   *  Memory's "Curate wiki"). The toolbar row itself can't fit a labeled
-   *  button — its action cluster doesn't shrink, so it would overflow the
-   *  sidebar. */
-  /** Memory is the curator agent's knowledge base, so a manual write there is
-   *  unusual: confirm it first and offer to send the item to Files instead. */
 }) {
   const router = useRouter();
   const { user } = useAuth();
@@ -152,8 +146,6 @@ export default function FilesExplorer({
   // but empty; stays null when GitHub isn't connected → URL paste only).
   const [githubRepos, setGithubRepos] = useState<GithubImportRepo[] | null>(null);
   const [repoFilter, setRepoFilter] = useState("");
-  // A write action waiting on the "Add to Memory?" confirmation. `run` receives
-  // the destination folder: the browsed Memory folder, or null for Files root.
   const fileRef = useRef<HTMLInputElement>(null);
   const clickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 

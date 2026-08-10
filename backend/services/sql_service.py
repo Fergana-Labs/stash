@@ -120,12 +120,20 @@ def _run_in_duckdb(
     schema_by_folder: dict[UUID, str],
     query: str,
 ) -> dict:
-    statements = duckdb.extract_statements(query)
+    # Parsing is where a syntax error lands, and it is the user's mistake.
+    try:
+        statements = duckdb.extract_statements(query)
+    except duckdb.Error as exc:
+        raise SqlError(str(exc)) from None
     if len(statements) != 1:
         raise SqlError("stash sql runs exactly one statement per call")
-    if statements[0].type not in (duckdb.StatementType.SELECT, duckdb.StatementType.EXPLAIN):
+    # EXPLAIN is not allowed: `EXPLAIN ANALYZE <write>` reports the EXPLAIN
+    # statement type while actually running the write it wraps, and DuckDB
+    # exposes no way to inspect the wrapped statement. DESCRIBE, SHOW and
+    # SUMMARIZE all parse as SELECT, so introspection is unaffected.
+    if statements[0].type != duckdb.StatementType.SELECT:
         raise SqlError(
-            "stash sql is read-only: only SELECT (and EXPLAIN) are supported. "
+            "stash sql is read-only: only SELECT is supported. "
             "Write through the tables API or `stash tables` commands."
         )
 
@@ -133,21 +141,24 @@ def _run_in_duckdb(
         ":memory:",
         config={"enable_external_access": False, "memory_limit": "512MB", "threads": 2},
     )
+    # The timer covers materialization too: a scope near the row cap can spend
+    # the whole budget on INSERTs before the user's query ever starts.
+    timer = threading.Timer(QUERY_TIMEOUT_SECONDS, con.interrupt)
+    timer.start()
     try:
         _materialize(con, tables, rows_by_table, schema_by_folder)
-        timer = threading.Timer(QUERY_TIMEOUT_SECONDS, con.interrupt)
-        timer.start()
-        try:
-            cursor = con.execute(query)
-            columns = [{"name": d[0], "type": str(d[1])} for d in (cursor.description or [])]
-            fetched = cursor.fetchmany(MAX_RESULT_ROWS + 1)
-        except duckdb.InterruptException:
-            raise SqlError(f"query timed out after {QUERY_TIMEOUT_SECONDS}s") from None
-        except duckdb.Error as exc:
-            raise SqlError(str(exc)) from None
-        finally:
-            timer.cancel()
+        cursor = con.execute(query)
+        columns = [{"name": d[0], "type": str(d[1])} for d in (cursor.description or [])]
+        fetched = cursor.fetchmany(MAX_RESULT_ROWS + 1)
+    except duckdb.InterruptException:
+        raise SqlError(f"query timed out after {QUERY_TIMEOUT_SECONDS}s") from None
+    except duckdb.Error as exc:
+        raise SqlError(str(exc)) from None
     finally:
+        # cancel() does not wait out a timer that already fired, and
+        # interrupting a closed connection is a use-after-free.
+        timer.cancel()
+        timer.join()
         con.close()
 
     truncated = len(fetched) > MAX_RESULT_ROWS
@@ -168,12 +179,12 @@ def _materialize(
 ) -> None:
     name_counts: dict[str, int] = {}
     for table in tables:
-        key = (table["name"] or "table").lower()
+        key = table["name"].lower()
         name_counts[key] = name_counts.get(key, 0) + 1
 
     seen_qualified: set[tuple[str, str]] = set()
     for table in tables:
-        table_name = table["name"] or "table"
+        table_name = table["name"]
         folder_id = table.get("folder_id")
         schema = schema_by_folder[folder_id] if folder_id else "files"
         # DuckDB resolves identifiers case-insensitively, so "Jobs" and "jobs"
@@ -183,23 +194,31 @@ def _materialize(
         seen_qualified.add((schema, table_name.lower()))
 
         columns = _column_defs(table["columns"])
-        con.execute(f"CREATE SCHEMA IF NOT EXISTS {_ident(schema)}")
         qualified = f"{_ident(schema)}.{_ident(table_name)}"
         column_sql = ", ".join(
             f"{_ident(name)} {_DUCKDB_TYPES[ctype]}" for name, ctype, _ in columns
         )
-        con.execute(f"CREATE TABLE {qualified} ({column_sql})")
-
         records = rows_by_table.get(table["id"], [])
-        if records:
-            placeholders = ", ".join("?" for _ in columns)
-            con.executemany(
-                f"INSERT INTO {qualified} VALUES ({placeholders})",
-                [_row_values(record, columns) for record in records],
-            )
-
-        if name_counts[(table["name"] or "table").lower()] == 1:
-            con.execute(f"CREATE VIEW main.{_ident(table_name)} AS SELECT * FROM {qualified}")
+        try:
+            con.execute(f"CREATE SCHEMA IF NOT EXISTS {_ident(schema)}")
+            con.execute(f"CREATE TABLE {qualified} ({column_sql})")
+            if records:
+                placeholders = ", ".join("?" for _ in columns)
+                con.executemany(
+                    f"INSERT INTO {qualified} VALUES ({placeholders})",
+                    [_row_values(record, columns) for record in records],
+                )
+            if name_counts[table["name"].lower()] == 1:
+                con.execute(f"CREATE VIEW main.{_ident(table_name)} AS SELECT * FROM {qualified}")
+        except duckdb.InterruptException:
+            # A timeout stays a timeout; it is not this table's fault.
+            raise
+        except duckdb.Error as exc:
+            # Every query materializes every table, so a table whose rows no
+            # longer match its column types (the column type was changed after
+            # the rows were written) would otherwise break `stash sql` for the
+            # entire scope with an opaque 500.
+            raise SqlError(f"table {table['name']!r} could not be loaded: {exc}") from None
 
 
 def _column_defs(columns: list[dict]) -> list[tuple[str, str, str | None]]:

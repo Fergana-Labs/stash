@@ -21,6 +21,7 @@ const ENTRY_ROWS = 5;
  *  A failed run shows as failed. */
 export default function CuratorLog() {
   const [entries, setEntries] = useState<CuratorLogEntry[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [showOlder, setShowOlder] = useState(false);
 
@@ -30,7 +31,9 @@ export default function CuratorLog() {
       .then((log) => {
         if (!cancelled) setEntries(log.entries);
       })
-      .catch(() => {})
+      .catch((e) => {
+        if (!cancelled) setError(e instanceof Error ? e.message : "Failed to load the curator log");
+      })
       .finally(() => {
         if (!cancelled) setLoaded(true);
       });
@@ -44,6 +47,19 @@ export default function CuratorLog() {
       <section>
         <div className="sys-label mb-1.5">Curator log</div>
         <SkeletonBlock className="h-[120px] w-full" />
+      </section>
+    );
+  }
+
+  // An empty log and an unreachable log look identical from here, and "no
+  // entries yet" is a claim about the curator — never make it on a failure.
+  if (error) {
+    return (
+      <section>
+        <div className="sys-label mb-1.5">Curator log</div>
+        <div className="card-soft px-4 py-6 text-center text-[12.5px] text-destructive">
+          Couldn&apos;t load the curator log: {error}
+        </div>
       </section>
     );
   }

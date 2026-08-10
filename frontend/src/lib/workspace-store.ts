@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { create } from "zustand";
 import { nanoid } from "nanoid";
+import { WORKBENCH_TAB_KINDS } from "@/lib/workspace-routes";
 
 /**
  * Workspace shell state — the tab strip, split view, rail section, and explorer
@@ -76,6 +77,32 @@ function placeTab(s: WorkspaceState, tab: WorkbenchTab): Partial<WorkspaceState>
     paneOf: { ...s.paneOf, [tab.id]: pane },
     ...(pane === 0 ? { activeTabId: tab.id } : { activeTab1: tab.id, split: true }),
   };
+}
+
+/** Pre-revamp state holds tabs the workbench can no longer host: chat became a
+ *  page of its own, so focusing one of its tabs navigates out of the strip
+ *  instead of into it, and the whole workbench disappears. Carry the layout
+ *  forward once, on hydrate, minus those tabs — the conversations themselves
+ *  are not lost, they are listed on /agents. */
+function dropUnhostableTabs(data: Partial<WorkspaceState>): Partial<WorkspaceState> {
+  if (!data.tabs) return data;
+  const tabs = data.tabs.filter((t) => WORKBENCH_TAB_KINDS.includes(t.kind));
+  if (tabs.length === data.tabs.length) return data;
+
+  const live = new Set(tabs.map((t) => t.id));
+  const paneOf = Object.fromEntries(
+    Object.entries(data.paneOf ?? {}).filter(([id]) => live.has(id)),
+  );
+  const lastInPane = (pane: 0 | 1) => {
+    const inPane = tabs.filter((t) => (paneOf[t.id] ?? 0) === pane);
+    return inPane[inPane.length - 1]?.id ?? null;
+  };
+  const activeTabId = data.activeTabId && live.has(data.activeTabId) ? data.activeTabId : lastInPane(0);
+  const activeTab1 = data.activeTab1 && live.has(data.activeTab1) ? data.activeTab1 : lastInPane(1);
+  const split = activeTab1 !== null;
+  const migrated = { ...data, tabs, paneOf, activeTabId, activeTab1, split };
+  // The right pane can't stay focused once the drop emptied it.
+  return split ? migrated : { ...migrated, focusedPane: 0 as const };
 }
 
 /** Focus an existing tab in whichever pane holds it. */
@@ -183,7 +210,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
   setLastVfsUrl: (url) => set({ lastVfsUrl: url }),
 
-  hydrate: (data) => set({ ...data }),
+  hydrate: (data) => set(dropUnhostableTabs(data)),
 }));
 
 /** Declare the hosting tab's title from inside a content body. Call with the

@@ -565,7 +565,7 @@ export async function getMemoryGraph(): Promise<WikiGraph> {
 export interface CuratorLogEntry {
   session_id: string;
   started_at: string;
-  status: "completed" | "failed" | "stopped" | "interrupted";
+  status: "completed" | "failed" | "stopped" | "interrupted" | "running";
   summary: string | null;
   error: string | null;
 }
@@ -1321,12 +1321,14 @@ export interface LinearTicketLabel {
 export async function listMySessions(
   limit = 50,
   sessionFolderId?: string,
-  offset = 0
+  offset = 0,
+  sessionIdPrefix?: string
 ): Promise<SessionSummary[]> {
   const qs = new URLSearchParams();
   qs.set("limit", String(limit));
   if (offset) qs.set("offset", String(offset));
   if (sessionFolderId) qs.set("session_folder_id", sessionFolderId);
+  if (sessionIdPrefix) qs.set("session_id_prefix", sessionIdPrefix);
   const data = await apiFetch<{ sessions: SessionSummary[] }>(
     `${ME}/sessions?${qs.toString()}`
   );
