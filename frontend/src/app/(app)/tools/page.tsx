@@ -23,6 +23,7 @@ import {
 import {
   INTEGRATIONS_CHANGED_EVENT,
   listIntegrations,
+  startConnect,
   type IntegrationStatus,
 } from "@/lib/integrations";
 import {
@@ -31,11 +32,24 @@ import {
   providerForSourceType,
   type Connector,
 } from "@/components/integrations/connectors";
+import PaywallModal from "@/components/PaywallModal";
 
-// One row per connector — the standard integrations list. The row is a
-// link: connecting, picking sources, and disconnecting all live on the
-// provider's own page.
-function IntegrationRow({ connector, connected }: { connector: Connector; connected: boolean }) {
+// One row per connector — the standard integrations list. The row is a link
+// to the provider's page (manage, pick sources, disconnect). For OAuth
+// providers the Connect button skips the page and goes straight to the
+// consent screen, returning here; api-key and extension providers still
+// route through their page (credential form / extension install).
+function IntegrationRow({
+  connector,
+  connected,
+  busy,
+  onOauthConnect,
+}: {
+  connector: Connector;
+  connected: boolean;
+  busy: boolean;
+  onOauthConnect: (() => void) | null;
+}) {
   return (
     <Link
       href={`/integrations/${connector.provider}`}
@@ -53,6 +67,19 @@ function IntegrationRow({ connector, connected }: { connector: Connector; connec
           <span className="h-1.5 w-1.5 rounded-full bg-[var(--color-success)]" />
           Connected
         </span>
+      ) : onOauthConnect ? (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onOauthConnect();
+          }}
+          disabled={busy}
+          className="shrink-0 cursor-pointer text-[12px] font-medium text-muted-foreground transition-colors hover:text-brand-700 disabled:cursor-not-allowed"
+        >
+          {busy ? "Connecting…" : "Connect"}
+        </button>
       ) : (
         <span className="shrink-0 text-[12px] font-medium text-muted-foreground transition-colors group-hover:text-brand-700">
           Connect
@@ -68,6 +95,22 @@ function IntegrationsGrid() {
   // was disconnected with its data kept reads "Connect", not "Connected".
   const [sourceProviders, setSourceProviders] = useState<Set<string>>(new Set());
   const [statuses, setStatuses] = useState<Record<string, IntegrationStatus> | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [paywalled, setPaywalled] = useState(false);
+
+  // Straight to the consent screen; the OAuth flow returns to /tools, where
+  // the row reads Connected. No successful-return path resets `busy` — the
+  // whole page navigates away.
+  async function connectNow(connector: Connector) {
+    setBusy(connector.provider);
+    try {
+      await startConnect(connector.provider, "/tools");
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 402) setPaywalled(true);
+      else toast.error(e instanceof Error ? e.message : "Could not start connection");
+      setBusy(null);
+    }
+  }
 
   useEffect(() => {
     const load = () => {
@@ -102,13 +145,21 @@ function IntegrationsGrid() {
   const rows = CONNECTORS.filter((c) => c.kind === "extension" || c.provider in statuses);
   return (
     <div className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-surface">
-      {rows.map((c) => (
-        <IntegrationRow
-          key={c.provider}
-          connector={c}
-          connected={c.kind === "extension" ? sourceProviders.has(c.provider) : !!statuses[c.provider]?.connected}
-        />
-      ))}
+      {rows.map((c) => {
+        const status = statuses[c.provider];
+        const oauth =
+          c.kind !== "extension" && status?.auth_kind !== "api_key" && !status?.disabled_reason;
+        return (
+          <IntegrationRow
+            key={c.provider}
+            connector={c}
+            connected={c.kind === "extension" ? sourceProviders.has(c.provider) : !!status?.connected}
+            busy={busy === c.provider}
+            onOauthConnect={oauth ? () => void connectNow(c) : null}
+          />
+        );
+      })}
+      {paywalled && <PaywallModal onClose={() => setPaywalled(false)} />}
     </div>
   );
 }
