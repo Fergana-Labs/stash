@@ -137,6 +137,8 @@ export default function EmbeddingSpaceExplorer({ data, onPointClick }: Props) {
   const movedRef = useRef(false);
   const lastMouseRef = useRef({ x: 0, y: 0 });
   const autoRotateRef = useRef(true);
+  // Wakes the render loop after an interaction changes what should be shown.
+  const wakeRef = useRef<() => void>(() => {});
   const animRef = useRef<number>(0);
 
   const prep = useMemo(() => prepare(data.points), [data]);
@@ -225,17 +227,44 @@ export default function EmbeddingSpaceExplorer({ data, onPointClick }: Props) {
     }
   }, [data, prep, project]);
 
-  // Animation loop for auto-rotation
+  // Animation loop for auto-rotation. It runs only while there is something
+  // to animate: the cloud is actually spinning and on screen, or the user is
+  // dragging it. Left unconditional, this redrew thousands of projected
+  // points at 60fps for the life of the tab — including after the user
+  // stopped the rotation, while scrolled out of view, and in a background
+  // tab — which is enough to starve the rest of the page.
   useEffect(() => {
-    const tick = () => {
-      if (autoRotateRef.current) {
-        rotYRef.current += 0.003;
-      }
+    const canvas = canvasRef.current;
+    let raf = 0;
+    let onScreen = true;
+
+    const spinning = () => autoRotateRef.current && onScreen && !document.hidden;
+    const step = () => {
+      raf = 0;
+      if (spinning()) rotYRef.current += 0.003;
       draw();
-      animRef.current = requestAnimationFrame(tick);
+      if (spinning() || draggingRef.current) wake();
     };
-    animRef.current = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(animRef.current);
+    const wake = () => {
+      if (!raf) raf = requestAnimationFrame(step);
+    };
+    wakeRef.current = wake;
+
+    const observer = new IntersectionObserver(([entry]) => {
+      onScreen = entry.isIntersecting;
+      if (onScreen) wake();
+    });
+    if (canvas) observer.observe(canvas);
+    const onVisibilityChange = () => wake();
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
+    wake();
+    return () => {
+      if (raf) cancelAnimationFrame(raf);
+      observer.disconnect();
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      wakeRef.current = () => {};
+    };
   }, [draw]);
 
   const findPoint = useCallback(
@@ -287,6 +316,7 @@ export default function EmbeddingSpaceExplorer({ data, onPointClick }: Props) {
         rotXRef.current = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, rotXRef.current));
         lastMouseRef.current = { x: mx, y: my };
         setTooltip(null);
+        wakeRef.current();
         return;
       }
 
@@ -309,10 +339,12 @@ export default function EmbeddingSpaceExplorer({ data, onPointClick }: Props) {
     lastMouseRef.current = pos;
     downPosRef.current = pos;
     movedRef.current = false;
+    wakeRef.current();
   }, []);
 
   const handleMouseUp = useCallback(() => {
     draggingRef.current = false;
+    wakeRef.current();
   }, []);
 
   const handleClick = useCallback(
@@ -337,6 +369,7 @@ export default function EmbeddingSpaceExplorer({ data, onPointClick }: Props) {
         onMouseLeave={() => {
           setTooltip(null);
           draggingRef.current = false;
+          wakeRef.current();
         }}
         onMouseDown={handleMouseDown}
         onMouseUp={handleMouseUp}
