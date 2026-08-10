@@ -9,7 +9,7 @@ export interface SectionCrumb {
  *  folder is an ordinary crumb in the chain — memory lives in the filesystem. */
 export function sectionCrumbs(chain: FolderBreadcrumb[]): SectionCrumb[] {
   return [
-    { label: "Files", href: "/files" },
+    { label: "VFS", href: "/files" },
     ...chain.map((b) => ({ label: b.name, href: `/folders/${b.id}` })),
   ];
 }

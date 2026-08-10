@@ -16,13 +16,13 @@ import FilesExplorer, { type Item } from "./files-explorer";
 export type ExplorerSection = "files" | "sessions" | "skills" | "agents" | "tools" | "computer";
 
 const SECTIONS: { key: ExplorerSection; label: string; route: string; icon: React.ReactNode }[] = [
-  { key: "files", label: "Files", route: "/files", icon: <FolderTree className="h-4 w-4 text-chart-4" /> },
+  { key: "files", label: "VFS", route: "/files", icon: <FolderTree className="h-4 w-4 text-chart-4" /> },
   { key: "skills", label: "Skills", route: "/skills", icon: <GraduationCap className="h-4 w-4 text-chart-4" /> },
   { key: "sessions", label: "Sessions", route: "/sessions", icon: <MessagesSquare className="h-4 w-4 text-chart-4" /> },
   { key: "tools", label: "Tools", route: "/tools", icon: <Plug className="h-4 w-4 text-chart-4" /> },
   { key: "computer", label: "VM", route: "/agents", icon: <Monitor className="h-4 w-4 text-chart-4" /> },
 ];
-const LABEL: Record<ExplorerSection, string> = { files: "Files", skills: "Skills", sessions: "Sessions", tools: "Tools", agents: "Agents", computer: "VM" };
+const LABEL: Record<ExplorerSection, string> = { files: "VFS", skills: "Skills", sessions: "Sessions", tools: "Tools", agents: "Agents", computer: "VM" };
 
 // Shared kinds the Files explorer indexes. Session folders are excluded: the
 // Sessions tree already merges those into its own root.
