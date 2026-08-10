@@ -15,6 +15,7 @@ import CuratorLog from "@/components/memory/CuratorLog";
 import WikiGraph from "@/components/memory/WikiGraph";
 import {
   getEmbeddingProjection,
+  getMe,
   getMemoryGraph,
   listFileActivity,
   type ActivityEvent,
@@ -47,6 +48,11 @@ export default function BrainDashboard() {
   const [graph, setGraph] = useState<WikiGraphData | null>(null);
   const [projectionLoaded, setProjectionLoaded] = useState(false);
   const [graphLoaded, setGraphLoaded] = useState(false);
+  const [firstName, setFirstName] = useState<string | null>(null);
+
+  useEffect(() => {
+    getMe().then((me) => setFirstName(me.display_name.split(" ")[0])).catch(() => {});
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -132,7 +138,7 @@ export default function BrainDashboard() {
     <div className="h-full min-h-0 overflow-y-auto">
       <div className="mx-auto max-w-[1360px] px-8 pb-10 pt-7">
         <h1 className="font-display text-[22px] font-semibold tracking-tight text-foreground">
-          Home
+          Welcome back{firstName ? `, ${firstName}` : ""}
         </h1>
 
         {/* Dashboard grid: wiki graph with the curator log beneath it on

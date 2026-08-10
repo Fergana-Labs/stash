@@ -14,18 +14,18 @@ type RailItem = { key: RailSection; label: string; icon: typeof Bot; match: (p: 
 // Primary sections — each opens its own explorer panel (see workspace-shell).
 const PRIMARY: RailItem[] = [
   { key: "home", label: "Home", icon: Home, match: (p) => p === "/" },
-  { key: "agents", label: "Agents", icon: Bot, match: (p) => p.startsWith("/agents") },
   { key: "files", label: "VFS", icon: FolderTree, match: (p) => p === "/files" || p.startsWith("/f/") || p.startsWith("/p/") || p.startsWith("/folders/") || p.startsWith("/tables/") },
   { key: "sessions", label: "Sessions", icon: MessagesSquare, match: (p) => p.startsWith("/sessions") || p.startsWith("/session-folders") },
   { key: "skills", label: "Skills", icon: GraduationCap, match: (p) => p.startsWith("/skills") },
   { key: "tools", label: "Tools", icon: Wrench, match: (p) => p.startsWith("/tools") || p.startsWith("/integrations") },
+  { key: "agents", label: "Chat", icon: Bot, match: (p) => p.startsWith("/agents") },
 ];
 
-// Home is the memory dashboard, and Agents is a lens over the stash rather
-// than a place in it — the divider falls after them, above the VFS sections.
+// Home is the memory dashboard — the divider separates it from the VFS
+// sections. Chat sits last: it's a lens over the stash, not a place in it.
 // Apps and the VM aren't rail-worthy: Apps lives at /apps, the VM under the
 // explorer's Home root.
-const DIVIDER_AFTER_INDEX = 1;
+const DIVIDER_AFTER_INDEX = 0;
 
 function RailButton({
   item,

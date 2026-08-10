@@ -66,8 +66,30 @@ export function SkillIcon(props: IconProps) {
   return <LowResOctopusIcon {...props} />;
 }
 
-export function StashIcon(props: IconProps) {
-  return <LowResOctopusIcon {...props} />;
+/** The brand mark — the same octopus as the favicon and the landing page
+ *  (public/octopus.svg), inlined so it sizes with text like every icon here.
+ *  Full-color on purpose: this is the logo, not a themed glyph. */
+export function StashIcon({ className }: IconProps) {
+  return (
+    <svg
+      aria-hidden="true"
+      className={iconClass(className)}
+      width="1em"
+      height="1em"
+      viewBox="0 0 64 72"
+    >
+      <ellipse cx="32" cy="24" rx="22" ry="18" fill="#F97316" />
+      <circle cx="25" cy="22" r="4" fill="#fff" />
+      <circle cx="39" cy="22" r="4" fill="#fff" />
+      <circle cx="26" cy="22" r="2" fill="#0F172A" />
+      <circle cx="40" cy="22" r="2" fill="#0F172A" />
+      <path d="M12 38 Q8 52 4 60" stroke="#F97316" strokeWidth="4" strokeLinecap="round" fill="none" />
+      <path d="M20 40 Q18 54 14 62" stroke="#F97316" strokeWidth="4" strokeLinecap="round" fill="none" />
+      <path d="M32 42 Q32 56 32 64" stroke="#F97316" strokeWidth="4" strokeLinecap="round" fill="none" />
+      <path d="M44 40 Q46 54 50 62" stroke="#F97316" strokeWidth="4" strokeLinecap="round" fill="none" />
+      <path d="M52 38 Q56 52 60 60" stroke="#F97316" strokeWidth="4" strokeLinecap="round" fill="none" />
+    </svg>
+  );
 }
 
 export function SessionsIcon(props: IconProps) {
