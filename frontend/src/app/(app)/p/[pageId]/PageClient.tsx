@@ -53,6 +53,7 @@ import { findInSkillContents } from "@/lib/localSkill";
 import { getScope, getScopeUserId, setScope } from "@/lib/scope-store";
 import type { CommentThread, Page, Scope, Workspace } from "@/lib/types";
 import { subscribePageEvents } from "@/lib/pageEvents";
+import { useTabTitle } from "@/lib/workspace-store";
 
 function wrapHtml(title: string, body: string): string {
   // HTML pages can be stored as a full document (when imported from .html
@@ -105,6 +106,7 @@ export default function SkillPageView({ pageId }: { pageId: string }) {
   const skillSlug = searchParams.get("skill");
 
   const [page, setPage] = useState<Page | null>(null);
+  useTabTitle("page", pageId, page?.name.replace(/\.md$/, ""));
   // The scope is the current user. Empty until auth resolves — every
   // consumer below renders or fires only after that.
   const scopeId = user?.id ?? "";
