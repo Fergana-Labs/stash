@@ -126,12 +126,15 @@ export function buildFilesNodes(
   return { files: childrenOf(null), memory: childrenOf(memoryFolderId) };
 }
 
+// Session and skill hrefs carry ?section=files: these nodes are only rendered
+// by VFS surfaces (the /files lens and the docked tree), and the stamp keeps
+// the VFS docked when one opens instead of teleporting to another section.
 export function buildSessionNodes(sessions: SidebarSession[]): VNode[] {
   return sessions.map((s) => ({
     key: s.session_id,
     kind: "session",
     name: s.title || s.agent_name || "session",
-    href: `/sessions/${s.session_id}`,
+    href: `/sessions/${s.session_id}?section=files`,
     annotation: [s.agent_name, timeAgo(s.last_at)].filter(Boolean).join(", "),
   }));
 }
@@ -141,7 +144,7 @@ export function buildSkillNodes(skills: Skill[]): VNode[] {
     key: s.folder_id,
     kind: "skill",
     name: s.name,
-    href: `/skills/folder/${s.folder_id}`,
+    href: `/skills/folder/${s.folder_id}?section=files`,
     annotation: [
       `${s.file_count} file${s.file_count === 1 ? "" : "s"}`,
       s.published ? "published" : null,

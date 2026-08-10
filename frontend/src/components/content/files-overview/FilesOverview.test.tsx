@@ -131,10 +131,11 @@ describe("FilesOverview", () => {
     await waitFor(() => expect(screen.getByText("/sources")).toBeTruthy());
 
     // A provider is a real Stash object — its row is a link to the
-    // integration page, not a click-swallowing toggle button.
+    // integration page, not a click-swallowing toggle button. The section
+    // stamp keeps the VFS docked instead of teleporting to Tools.
     hover("/sources");
     const github = screen.getByRole("link", { name: /github/ });
-    expect(github.getAttribute("href")).toBe("/integrations/github");
+    expect(github.getAttribute("href")).toBe("/integrations/github?section=files");
 
     // Folders under /files link to their explorer page the same way.
     hover("/files");

@@ -8,7 +8,7 @@ const KEY = "moltchat_workspace";
 /** The layout slice we persist — references + pane arrangement only, no content. */
 type Persisted = Pick<
   WorkspaceState,
-  "tabs" | "paneOf" | "activeTabId" | "activeTab1" | "split" | "focusedPane" | "railSection" | "explorerFolderId"
+  "tabs" | "paneOf" | "activeTabId" | "activeTab1" | "split" | "focusedPane" | "railSection" | "explorerFolderId" | "lastVfsUrl"
 >;
 
 function readPersisted(): Partial<Persisted> | null {
@@ -42,6 +42,7 @@ export default function Persistence() {
         focusedPane: s.focusedPane,
         railSection: s.railSection,
         explorerFolderId: s.explorerFolderId,
+        lastVfsUrl: s.lastVfsUrl,
       };
       localStorage.setItem(KEY, JSON.stringify(slice));
     };

@@ -12,6 +12,7 @@ import { CONNECTORS, connectorIcon, providerForSourceType } from "@/components/i
 import { INTEGRATIONS_CHANGED_EVENT, listIntegrations } from "@/lib/integrations";
 import { opensNewTab } from "@/lib/tab-nav";
 import FilesExplorer, { type Item } from "./files-explorer";
+import VfsTree from "./vfs-tree";
 
 export type ExplorerSection = "files" | "sessions" | "skills" | "agents" | "tools" | "computer";
 
@@ -23,16 +24,6 @@ const SECTIONS: { key: ExplorerSection; label: string; route: string; icon: Reac
   { key: "computer", label: "VM", route: "/agents", icon: <Monitor className="h-4 w-4 text-chart-4" /> },
 ];
 const LABEL: Record<ExplorerSection, string> = { files: "Files", skills: "Skills", sessions: "Sessions", tools: "Tools", agents: "Agents", computer: "VM" };
-
-// Shared kinds the Files explorer indexes. Session folders are excluded: the
-// Sessions tree already merges those into its own root.
-const SHARED_FILE_KINDS = new Set(["folder", "page", "file", "table"]);
-const SHARED_ITEM_KIND: Record<string, "folder" | "page" | "file" | "table"> = {
-  folder: "folder",
-  page: "page",
-  file: "file",
-  table: "table",
-};
 
 /** Open any item as a workbench tab and sync the URL. A plain click navigates
  *  the current tab; cmd/ctrl-click (or an explicit newTab) opens a new one. */
@@ -188,6 +179,11 @@ function RootSection() {
   const setRailSection = useWorkspace((s) => s.setRailSection);
 
   function selectSection(section: ExplorerSection) {
+    // Skills/Sessions/Tools have no explorer panel — go to their pages instead.
+    if (section === "skills" || section === "sessions" || section === "tools") {
+      router.push(SECTIONS.find((s) => s.key === section)!.route);
+      return;
+    }
     const params = new URLSearchParams(searchParams);
     params.set("section", section);
     setRailSection(section);
@@ -298,21 +294,6 @@ export default function Explorer({ section }: { section: ExplorerSection }) {
     }));
   }, []);
 
-  // Everything else shared with you. Skill folders are filtered out because
-  // Files and Skills are MECE everywhere else in the app, and a shared skill
-  // belongs under Skills.
-  const sharedFiles = useCallback(async (): Promise<Item[]> => {
-    const [shared, skills] = await Promise.all([listSharedWithMe(), listSkillsSharedWithMe()]);
-    const skillFolderIds = new Set(skills.map((s) => s.folder_id));
-    return shared
-      .filter((s) => SHARED_FILE_KINDS.has(s.object_type) && !skillFolderIds.has(s.object_id))
-      .map((s) => ({
-        kind: SHARED_ITEM_KIND[s.object_type],
-        id: s.object_id,
-        name: `${s.name} (${s.owner_name})`,
-        readOnly: true,
-      }));
-  }, []);
   // A skill needs a name + agent-trigger description, so creation happens in
   // the Skills page's inline composer — this action just takes you there.
   const createSkill = useCallback(async (): Promise<Item | void> => {
@@ -364,8 +345,11 @@ export default function Explorer({ section }: { section: ExplorerSection }) {
 
   if (section === "agents") return <AgentsExplorer />;
 
-  // Files, Skills & Sessions are all file managers (own breadcrumb/toolbar).
-  if ((section === "files" || section === "skills" || section === "sessions") && !atRoot) {
+  // The VFS section docks the same tree the /files lens shows full-screen.
+  if (section === "files") return <VfsTree />;
+
+  // Skills & Sessions are file managers (own breadcrumb/toolbar).
+  if ((section === "skills" || section === "sessions") && !atRoot) {
     const isSessions = section === "sessions";
     return (
       <div className="flex h-full flex-col bg-sidebar">
@@ -382,9 +366,7 @@ export default function Explorer({ section }: { section: ExplorerSection }) {
           loadFolder={isSessions ? sessionsFolder : undefined}
           // Sessions already merges shared folders into its root — it doesn't
           // get a second shared surface.
-          loadShared={
-            section === "skills" ? sharedSkills : section === "files" ? sharedFiles : undefined
-          }
+          loadShared={section === "skills" ? sharedSkills : undefined}
           newRootItem={
             section === "skills" ? { label: "New skill", run: createSkill } :
             isSessions ? { label: "New folder", run: createSessionFolderItem } : undefined
