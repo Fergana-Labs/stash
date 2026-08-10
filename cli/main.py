@@ -485,22 +485,6 @@ def _upsert_agents_md(path: Path, body: str) -> None:
     path.write_text(new)
 
 
-def _ask_codex_network_access() -> bool:
-    """Prompt the user to enable top-level `network_access` for codex's
-    workspace-write sandbox."""
-    console.print(
-        "For stash to work on codex specifically, we need to let bash "
-        "commands make network requests so that we can upload session "
-        "transcripts to the remote server."
-    )
-    answer = questionary.confirm(
-        "Allow codex bash commands to make outbound network requests?",
-        default=True,
-    ).ask()
-    # Dismissing the prompt (Esc/Ctrl-C) must not grant network access.
-    return bool(answer)
-
-
 def _merge_snippet_into_toml(existing: str, snippet: str) -> tuple[str, str]:
     """Merge snippet sections into existing TOML without creating duplicates.
 
@@ -592,23 +576,6 @@ def _merge_snippet_into_toml(existing: str, snippet: str) -> tuple[str, str]:
     return merged_existing, cleaned_snippet
 
 
-def _strip_top_level_sandbox(snippet: str) -> str:
-    """Call this when the user opts not to grant outbound network
-    request access. It removes the toml that grants codex outbound
-    network request access."""
-    start = snippet.find("[sandbox_workspace_write]")
-    if start == -1:
-        return snippet
-    prev_blank = snippet.rfind("\n\n", 0, start)
-    block_start = prev_blank + 2 if prev_blank != -1 else start
-    end = snippet.find("[profiles.stash]", start)
-    if end == -1:
-        return snippet[:block_start].rstrip() + "\n"
-    prev_blank_end = snippet.rfind("\n\n", start, end)
-    block_end = prev_blank_end + 2 if prev_blank_end != -1 else end
-    return snippet[:block_start] + snippet[block_end:]
-
-
 def _install_codex(force: bool) -> tuple[str, str]:
     root = _assets_dir("codex")
     hooks_dest = Path.home() / ".codex" / "hooks.json"
@@ -640,15 +607,22 @@ def _install_codex(force: bool) -> tuple[str, str]:
         PLUGIN_ROOT=str(root)
     )
 
-    if _CODEX_MARKER not in existing:
-        if not _ask_codex_network_access():
-            snippet = _strip_top_level_sandbox(snippet)
-
     cfg_path.parent.mkdir(parents=True, exist_ok=True)
     if _CODEX_MARKER not in existing:
         existing, snippet = _merge_snippet_into_toml(existing, snippet)
         sep = "\n" if existing and not existing.endswith("\n") else ""
         cfg_path.write_text(f"{existing}{sep}\n{_CODEX_MARKER}\n{snippet}\n")
+        # Codex's workspace-write sandbox blocks outbound network, which
+        # silently kills our hook uploads — recording Codex is impossible
+        # without lifting it. The user chose to record Codex a question ago,
+        # so state the consequence rather than asking a second, scarier
+        # version of the same question.
+        console.print(
+            f"  [dim]Lifted the outbound-network block in Codex's workspace-write "
+            f"sandbox ({cfg_path}) — its hooks can't upload without it. Delete that "
+            f"block to keep the sandbox tight and launch `codex --profile stash` "
+            f"instead.[/dim]"
+        )
 
     agents_src = root / "AGENTS.md"
     agents_dest = Path.home() / ".codex" / "AGENTS.md"
@@ -5669,7 +5643,8 @@ def _setup_complete_intro(
     importing: dict | None,
     recorded_paths: list[str] | None = None,
 ) -> str:
-    memory_url = f"{frontend_url}/memory"
+    # Home *is* the memory dashboard — there is no /memory route.
+    memory_url = frontend_url
     # Empty = everywhere, the contract `recorded_paths` carries everywhere else
     # (cli/config.py, the plugin's gate). The splash has to say which one the
     # user just chose — promising machine-wide capture to someone who scoped
