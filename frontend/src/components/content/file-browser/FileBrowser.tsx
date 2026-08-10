@@ -601,7 +601,7 @@ export default function FileBrowser({ folderId, folderHrefBase }: Props) {
                 />
               </h1>
             ) : (
-              // Root: the breadcrumb + sidebar already say "VFS"; no redundant title.
+              // Root: the breadcrumb + sidebar already say "Files"; no redundant title.
               <div />
             )}
             <div className="flex flex-wrap items-center gap-2">

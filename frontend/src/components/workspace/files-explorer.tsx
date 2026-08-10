@@ -74,7 +74,7 @@ const DND = "application/x-fx-item";
  *  menu, and drag-to-move into folders. Backed by the VFS. */
 export default function FilesExplorer({
   onRoot,
-  rootLabel = "VFS",
+  rootLabel = "Files",
   rootFolderId = null,
   loadRoot,
   loadFolder,
