@@ -6,24 +6,12 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Header from "../../components/Header";
 import { useAuth } from "../../hooks/useAuth";
 import { track } from "../../lib/analytics";
-import {
-  createMyKey,
-  createPage,
-  getAgentApiKey,
-  updateMe,
-  updatePage,
-  type ApiKeyCreated,
-} from "../../lib/api";
-import { generateCollabIntroMarkdown } from "../../lib/onboarding/collabIntro";
-import { routes } from "../../lib/workspace-routes";
-import SourceConnectorList from "../../components/integrations/SourceConnectorList";
+import { updateMe } from "../../lib/api";
 
-import MemoryAskStep from "./paths/memory/MemoryAskStep";
-
-// The linear flow: a few questions about the user, explain Stash, then try
-// one of five entry points. The ask step only exists off the Connect path —
-// asking the agent needs a connected source to ask about.
-const STEP_NAMES = ["about", "intro", "try", "ask"] as const;
+// The whole flow: a few questions about the user, then one instruction —
+// connect your agent. Everything else Stash does grows out of the
+// transcripts that starts, so onboarding refuses to offer detours.
+const STEP_NAMES = ["about", "connect"] as const;
 
 const CLI_INSTALL_COMMAND = `bash -c "$(curl -fsSL https://joinstash.ai/install)"`;
 
@@ -62,7 +50,6 @@ function OnboardingInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user, loading, logout } = useAuth();
-  const [answered, setAnswered] = useState(false);
   const [role, setRole] = useState("");
   const [roleOther, setRoleOther] = useState("");
   const [referralSource, setReferralSource] = useState("");
@@ -112,54 +99,24 @@ function OnboardingInner() {
     exitToHome();
   }, [exitToHome, stepIdx]);
 
-  // The "I just want to write with my agent" path: skip connecting sources,
-  // seed a starter page, and drop the user straight into the
-  // editor. This is the Google-Docs-for-agents wedge, so it bypasses the ask step.
-  const finishToCollabDoc = useCallback(async () => {
-    track("onboarding.collab_path_chosen", {});
-    // The starter page embeds its own id in a copy-paste agent prompt, so we
-    // create it empty and fill it in after. Self-hosted browsers hold a key
-    // to embed; under managed Auth0 the prompt says `stash signin` instead.
-    const apiKey = getAgentApiKey();
-    const page = await createPage("Welcome to your Drive");
-    const content = generateCollabIntroMarkdown({
-      displayName: user?.display_name || user?.name || "",
-      pageId: page.id,
-      apiKey,
-    });
-    await updatePage(page.id, { content });
-    router.push(`/p/${page.id}`);
-  }, [user, router]);
-
   if (loading || !user) {
     return (
       <div className="min-h-screen flex items-center justify-center text-muted-foreground">Loading…</div>
     );
   }
 
-  // 0 = about, 1 = intro, 2 = try it out, 3 = ask.
+  // 0 = about, 1 = connect your agent.
   const isAbout = stepIdx <= 0;
-  const isIntro = stepIdx === 1;
-  const isTryItOut = stepIdx === 2;
-  const isAsk = stepIdx >= 3;
 
-  const continueLabel = isIntro
-    ? "Get started"
-    : isTryItOut
-      ? "Finish"
-      : isAsk
-        ? "Launch"
-        : "Continue";
+  const continueLabel = isAbout ? "Continue" : "Finish";
   const roleAnswer = role === "Other" ? roleOther.trim() && `Other: ${roleOther.trim()}` : role;
   const referralAnswer =
     referralSource === "Other"
       ? referralOther.trim() && `Other: ${referralOther.trim()}`
       : referralSource;
   // About: role + referral are required, and "Other" needs to be spelled out
-  // (use-case is optional). Try it out: Finish ends onboarding from any option;
-  // the Connect option additionally offers the ask step once a source is
-  // connected. Ask: only let them launch once the agent has actually replied.
-  const canContinue = isAbout ? Boolean(roleAnswer && referralAnswer) : !isAsk || answered;
+  // (use-case is optional).
+  const canContinue = isAbout ? Boolean(roleAnswer && referralAnswer) : true;
   const onContinue = async () => {
     if (isAbout) {
       try {
@@ -177,8 +134,7 @@ function OnboardingInner() {
       });
       return goToStep(stepIdx + 1);
     }
-    if (isTryItOut || isAsk) return void finishAndExit();
-    goToStep(stepIdx + 1);
+    finishAndExit();
   };
 
   return (
@@ -201,14 +157,7 @@ function OnboardingInner() {
               onUseCase={setUseCase}
             />
           )}
-          {isIntro && <IntroStep />}
-          {isTryItOut && (
-            <TryItOutStep
-              onCollabDoc={finishToCollabDoc}
-              onAsk={() => goToStep(stepIdx + 1)}
-            />
-          )}
-          {isAsk && <AskStep onAnswered={() => setAnswered(true)} />}
+          {!isAbout && <ConnectAgentStep />}
           <StepControls
             onContinue={onContinue}
             onSkip={skip}
@@ -359,223 +308,22 @@ function OtherInput({
   );
 }
 
-function IntroStep() {
+/** The whole second step: one instruction. The installer signs you in and
+ *  runs the setup wizard, so this screen never needs a second command. */
+function ConnectAgentStep() {
   return (
     <div className="space-y-5">
       <div className="space-y-2">
         <h1 className="font-display text-[28px] leading-[1.1] font-bold tracking-tight text-foreground">
-          Welcome to Stash
+          Now connect your agent
         </h1>
         <p className="text-sm text-dim max-w-lg">
-          Stash gives your agents one place to reach everything they need — in the
-          format they&rsquo;re fluent in.
+          Run this in your terminal — the installer signs you in and sets up session
+          recording. Transcripts are private to you, and you choose which folders they
+          come from.
         </p>
       </div>
-      <ul className="space-y-3">
-        <IntroPoint title="Connect any data source">
-          GitHub, Drive, Gmail, Notion, Slack and more — one connection per source,
-          and every agent you run can read all of them.
-        </IntroPoint>
-        <IntroPoint title="Capture every agent session">
-          Transcripts stream in automatically — prompts, tool calls, artifacts — so
-          your knowledge base accumulates with every run instead of evaporating when
-          the session closes.
-        </IntroPoint>
-        <IntroPoint title="An agent-native Drive">
-          HTML docs, Markdown, dashboards, decks — your agents&rsquo; work lands as
-          real files. Edit visually, and share any folder or file as a link.
-        </IntroPoint>
-        <IntroPoint title="A curated context graph">
-          While you sleep, curator agents dream over everything you saved and
-          distill it into a living memory wiki every agent you run can read.
-        </IntroPoint>
-      </ul>
-    </div>
-  );
-}
-
-function IntroPoint({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <li className="flex gap-3">
-      <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-brand" />
-      <div>
-        <div className="text-[14px] font-medium text-foreground">{title}</div>
-        <div className="text-[13px] text-dim">{children}</div>
-      </div>
-    </li>
-  );
-}
-
-function TryItOutStep({
-  onCollabDoc,
-  onAsk,
-}: {
-  onCollabDoc: () => void;
-  onAsk: () => void;
-}) {
-  const [sourceConnected, setSourceConnected] = useState(false);
-  return (
-    <div className="space-y-4">
-      <div className="space-y-2">
-        <h1 className="font-display text-[28px] leading-[1.1] font-bold tracking-tight text-foreground">
-          Try it out
-        </h1>
-        <p className="text-sm text-dim max-w-md">
-          Five ways to start — open whichever fits.
-        </p>
-      </div>
-      <TryOption
-        badge="Build"
-        lead="Use Stash as the memory store for your agent, over a plain API."
-      >
-        <BuildOption />
-      </TryOption>
-      <TryOption badge="Create" lead="A place to write with your agent — two cursors, one doc.">
-        <button
-          type="button"
-          onClick={onCollabDoc}
-          className="group flex w-full cursor-pointer items-center justify-between gap-3 rounded-lg border border-dashed border-border bg-surface px-4 py-3 text-left transition-colors hover:border-brand"
-        >
-          <div>
-            <div className="text-[13.5px] font-medium text-foreground">
-              Start a doc
-            </div>
-            <div className="text-[12px] text-muted-foreground">
-              You and your agent edit the same page — two cursors at once.
-            </div>
-          </div>
-          <span className="text-muted-foreground transition-colors group-hover:text-brand">&rarr;</span>
-        </button>
-      </TryOption>
-      <TryOption
-        badge="Connect"
-        lead="Connect a data source your agent can navigate like a file system."
-      >
-        <div className="space-y-3">
-          <SourceConnectorList
-            returnTo="/onboarding?step=3"
-            onConnectedChange={setSourceConnected}
-          />
-          {sourceConnected && (
-            <div className="flex items-center justify-end">
-              <button
-                type="button"
-                onClick={onAsk}
-                className="cursor-pointer rounded-md bg-brand px-4 py-2 text-[12px] font-medium text-white hover:bg-brand-hover transition-colors"
-              >
-                Ask your agent about it &rarr;
-              </button>
-            </div>
-          )}
-        </div>
-      </TryOption>
-      <TryOption
-        badge="Capture"
-        lead="Stream every Claude Code / Codex session into Stash automatically."
-      >
-        <div className="space-y-2">
-          <p className="text-[12px] text-dim">
-            Run this in your terminal — the installer signs you in and sets up recording:
-          </p>
-          {/* One command on purpose: install.sh ends by exec'ing `stash signin`. */}
-          <CommandBlock command={CLI_INSTALL_COMMAND} />
-        </div>
-      </TryOption>
-      <TryOption badge="Clip" lead="Save anything you read, straight from your browser.">
-        <a
-          href={routes.extension}
-          target="_blank"
-          rel="noopener"
-          className="group flex w-full cursor-pointer items-center justify-between gap-3 rounded-lg border border-dashed border-border bg-surface px-4 py-3 text-left transition-colors hover:border-brand"
-        >
-          <div>
-            <div className="text-[13.5px] font-medium text-foreground">
-              Get the browser extension
-            </div>
-            <div className="text-[12px] text-muted-foreground">
-              Import bookmarks, save tabs, and sync Claude or ChatGPT chats into Stash.
-            </div>
-          </div>
-          <span className="text-muted-foreground transition-colors group-hover:text-brand">&rarr;</span>
-        </a>
-      </TryOption>
-    </div>
-  );
-}
-
-// Each way to start is a collapsed accordion: badge + one-line description
-// up front, the actual steps revealed on open.
-function TryOption({
-  badge,
-  lead,
-  children,
-}: {
-  badge: string;
-  lead: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <details className="group rounded-lg border border-border bg-surface">
-      <summary className="flex cursor-pointer list-none items-center gap-2.5 px-4 py-3 [&::-webkit-details-marker]:hidden">
-        <span className="rounded bg-brand/10 px-2 py-0.5 font-mono text-[10px] font-medium uppercase tracking-[0.1em] text-brand">
-          {badge}
-        </span>
-        <span className="flex-1 text-[13px] text-dim">{lead}</span>
-        <span className="text-muted-foreground transition-transform group-open:rotate-90">
-          &rsaquo;
-        </span>
-      </summary>
-      <div className="border-t border-border px-4 py-3">{children}</div>
-    </details>
-  );
-}
-
-function BuildOption() {
-  const [minted, setMinted] = useState<ApiKeyCreated | null>(null);
-  const [creating, setCreating] = useState(false);
-  const [error, setError] = useState("");
-
-  async function handleCreate() {
-    setCreating(true);
-    setError("");
-    try {
-      setMinted(await createMyKey("onboarding", "full"));
-      track("onboarding.api_key_minted", {});
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not create key");
-    } finally {
-      setCreating(false);
-    }
-  }
-
-  if (!minted) {
-    return (
-      <div className="space-y-2">
-        <button
-          type="button"
-          onClick={handleCreate}
-          disabled={creating}
-          className="cursor-pointer rounded-md bg-brand px-4 py-2 text-[12px] font-medium text-white hover:bg-brand-hover disabled:opacity-60 transition-colors"
-        >
-          {creating ? "Creating…" : "Create API key"}
-        </button>
-        {error && <p className="text-[12px] text-error">{error}</p>}
-      </div>
-    );
-  }
-  return (
-    <div className="space-y-2">
-      <p className="text-[12px] text-dim">
-        Copy it now — this is the only time the full key will be shown. Manage keys in
-        Settings.
-      </p>
-      <CommandBlock command={minted.api_key} />
-      <p className="text-[12px] text-dim">Write your agent&rsquo;s first memory:</p>
-      <CommandBlock
-        command={`curl -X POST https://api.joinstash.ai/api/v1/me/sessions/events \\
-  -H "Authorization: Bearer ${minted.api_key}" -H "Content-Type: application/json" \\
-  -d '{"agent_name":"my-agent","session_id":"run-1","event_type":"learning","content":"hello memory"}'`}
-      />
+      <CommandBlock command={CLI_INSTALL_COMMAND} />
     </div>
   );
 }
@@ -602,26 +350,8 @@ function CommandBlock({ command }: { command: string }) {
   );
 }
 
-function AskStep({ onAnswered }: { onAnswered: () => void }) {
-  return (
-    <div className="space-y-4">
-      <div className="space-y-2">
-        <h1 className="font-display text-[28px] leading-[1.1] font-bold tracking-tight text-foreground">
-          Ask your agent
-        </h1>
-        <p className="text-sm text-dim max-w-md">
-          Ask it something about your knowledge base.
-        </p>
-      </div>
-      <MemoryAskStep onAnswered={onAnswered} />
-    </div>
-  );
-}
-
-// "Ask" is deliberately absent — that step only exists off the Connect path,
-// so it doesn't belong in the always-visible progress trail.
 function ProgressBar({ stepIdx }: { stepIdx: number }) {
-  const labels = ["About you", "Welcome", "Try it out"];
+  const labels = ["About you", "Connect your agent"];
   return (
     <div className="flex items-center gap-2">
       {labels.map((label, i) => {

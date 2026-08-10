@@ -203,6 +203,18 @@ def start_streaming() -> None:
     _write_to(USER_CONFIG_FILE, {"stopped_streaming": False})
 
 
+# --- Recording folder scope ---
+#
+# Empty = record everywhere (the default). Non-empty = only sessions whose
+# working directory is under one of these folders stream; the plugin's scope
+# gate (stashai/plugin/scope.py) enforces it. `excluded_paths` still carves
+# folders out either way.
+
+
+def save_recorded_paths(paths: list[str]) -> None:
+    _write_to(USER_CONFIG_FILE, {"recorded_paths": paths})
+
+
 def stop_streaming() -> None:
     _write_to(USER_CONFIG_FILE, {"stopped_streaming": True})
 

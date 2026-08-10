@@ -35,6 +35,7 @@ from .config import (
     load_manifest,
     save_config,
     save_enabled_agents,
+    save_recorded_paths,
     save_scope,
     session_link_enabled,
     set_codex_auto_update,
@@ -4888,48 +4889,56 @@ def _run_setup_wizard() -> None:
     import. Re-runnable anytime via `stash setup` — no answer here is final."""
     cfg = load_config()
 
-    # --- Session recording ---
+    # --- Session recording: always on — the question is WHERE, not whether.
+    # (`stash stop` remains the pause switch.) ---
     console.print(
         "\nStash records your coding agent sessions to your private Stash so you\n"
         "and your agents can search them later. Transcripts are visible only to\n"
-        "you unless you share them."
+        "you unless you share them, and you can pause anytime with `stash stop`."
     )
-    _reserve_bottom_padding(4)
-    record = questionary.confirm(
-        "Record your agent sessions? (pause anytime with `stash stop`)",
-        default=True,
+    cwd = Path.cwd()
+    everywhere = "Everywhere on this machine"
+    here = f"Only this folder ({cwd.name})"
+    custom = "Only a folder I pick…"
+    _reserve_bottom_padding(6)
+    where = questionary.select(
+        "Where should Stash record agent sessions?",
+        choices=[everywhere, here, custom],
+        default=everywhere,
     ).ask()
-    if record is None:
+    if where is None:
         raise typer.Exit(1)
+    if where == here:
+        save_recorded_paths([str(cwd)])
+    elif where == custom:
+        picked = questionary.path("Which folder?", only_directories=True).ask()
+        if picked is None:
+            raise typer.Exit(1)
+        save_recorded_paths([str(Path(picked).expanduser().resolve())])
+    else:
+        save_recorded_paths([])
+    start_streaming()
 
     detected = _detected_agents()
-    if record:
-        start_streaming()
-        if detected:
-            enabled = load_enabled_agents()
-            default_enabled = enabled if enabled is not None else detected
+    if detected:
+        enabled = load_enabled_agents()
+        default_enabled = enabled if enabled is not None else detected
 
-            _reserve_bottom_padding(len(detected) + 6)
-            selected = _pick_agents(
-                "Which coding agents should Stash record?", detected, default_enabled
-            )
-            if selected is None:
-                raise typer.Exit(1)
+        _reserve_bottom_padding(len(detected) + 6)
+        selected = _pick_agents(
+            "Which coding agents should Stash record?", detected, default_enabled
+        )
+        if selected is None:
+            raise typer.Exit(1)
 
-            save_enabled_agents(selected)
-            _install_all_hooks(selected)
-        else:
-            save_enabled_agents([])
-            console.print(
-                "  [yellow]No coding agents found on this machine, so nothing will be\n"
-                "  recorded yet. Re-run [bold]stash setup[/bold] after installing one\n"
-                "  (Claude Code, Codex, Cursor, opencode, Gemini CLI…).[/yellow]"
-            )
+        save_enabled_agents(selected)
+        _install_all_hooks(selected)
     else:
-        stop_streaming()
+        save_enabled_agents([])
         console.print(
-            "  Recording is off. Turn it on later with [cyan]stash setup[/cyan] "
-            "or [cyan]stash start[/cyan]."
+            "  [yellow]No coding agents found on this machine, so nothing will be\n"
+            "  recorded yet. Re-run [bold]stash setup[/bold] after installing one\n"
+            "  (Claude Code, Codex, Cursor, opencode, Gemini CLI…).[/yellow]"
         )
 
     # --- Folder context (any folder works — git repo not required) ---
@@ -4948,8 +4957,7 @@ def _run_setup_wizard() -> None:
         console.print("  [dim]Run stash connect from any project folder later.[/dim]")
 
     # --- Import historical conversations ---
-    if record:
-        _onboarding_import_history(detected)
+    _onboarding_import_history(detected)
 
     _show_setup_complete_splash()
 
