@@ -718,9 +718,9 @@ function SkillListRow({
         <span className="min-w-0 truncate font-medium text-foreground">{skill.name}</span>
       </div>
       <span className="truncate text-[12px] text-muted-foreground">
-        {skill.description && `${skill.description} · `}
+        {skill.description && `${skill.description}, `}
         {skill.file_count} file{skill.file_count === 1 ? "" : "s"}
-        {skill.updated_at && ` · ${relativeTime(skill.updated_at)}`}
+        {skill.updated_at && `, ${relativeTime(skill.updated_at)}`}
       </span>
       <PublishBadge published={skillPublishBadge(skill)} />
       <RunSkillButton onRun={() => onRun(skill)} />

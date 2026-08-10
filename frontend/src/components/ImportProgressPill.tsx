@@ -59,8 +59,8 @@ export default function ImportProgressPill() {
                 {b.filename ?? (b.kind === "tabs" ? "Open tabs" : "Bookmarks import")}
               </div>
               <div className="mt-1 text-[12px] text-muted-foreground">
-                {b.done} saved · {b.link_only} link-only · {b.pending} pending
-                {b.needs_client > 0 && ` · ${b.needs_client} waiting for your browser extension`}
+                {b.done} saved, {b.link_only} link-only, {b.pending} pending
+                {b.needs_client > 0 && `, ${b.needs_client} waiting for your browser extension`}
               </div>
               {b.link_only > 0 && (
                 <button
@@ -97,7 +97,7 @@ export default function ImportProgressPill() {
         className="flex cursor-pointer items-center gap-2 rounded-full border border-border bg-base px-3.5 py-2 text-[12.5px] font-medium text-foreground shadow-lg hover:bg-raised"
       >
         <Loader2 className="h-3.5 w-3.5 animate-spin text-brand" />
-        Importing · {totals.done.toLocaleString()}/{totals.total.toLocaleString()}
+        Importing {totals.done.toLocaleString()}/{totals.total.toLocaleString()}
         <ChevronUp className={"h-3.5 w-3.5 text-muted-foreground transition-transform " + (open ? "rotate-180" : "")} />
       </button>
     </div>

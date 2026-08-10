@@ -548,7 +548,7 @@ function folderContentsToItems(contents: FolderContents): GridItem[] {
         kind: isCsvLinked ? "table" : "file",
         id: f.id,
         name: f.name,
-        subtitle: `${f.content_type || "file"} · ${formatBytes(f.size_bytes)}`,
+        subtitle: `${f.content_type || "file"}, ${formatBytes(f.size_bytes)}`,
         sizeBytes: f.size_bytes,
         contentType: f.content_type,
         tableId: f.linked_table_id ?? undefined,
@@ -560,7 +560,7 @@ function folderContentsToItems(contents: FolderContents): GridItem[] {
       kind: "datatable",
       id: t.id,
       name: t.name,
-      subtitle: `table · ${t.row_count} row${t.row_count === 1 ? "" : "s"}`,
+      subtitle: `table, ${t.row_count} row${t.row_count === 1 ? "" : "s"}`,
       updatedAt: t.created_at,
     })),
   ];
@@ -574,7 +574,7 @@ function kindLabel(item: GridItem): string {
   if (item.contentType?.includes("pdf")) return "PDF";
   if (item.contentType?.includes("csv")) return "CSV";
   if (item.contentType?.startsWith("image/")) {
-    return `Image · ${item.contentType.replace("image/", "").toUpperCase()}`;
+    return `Image, ${item.contentType.replace("image/", "").toUpperCase()}`;
   }
   return item.contentType || "File";
 }

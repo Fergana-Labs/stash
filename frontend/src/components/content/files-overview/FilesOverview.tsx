@@ -62,6 +62,7 @@ interface Mount {
 
 interface CoreData {
   filesNodes: VNode[];
+  memoryFolderId: string;
   memoryNodes: VNode[];
   sessionNodes: VNode[];
   skillNodes: VNode[];
@@ -97,6 +98,7 @@ export default function FilesOverview() {
         const { files, memory } = buildFilesNodes(sidebar.files, memoryFolder.id);
         setCore({
           filesNodes: files,
+          memoryFolderId: memoryFolder.id,
           memoryNodes: memory,
           sessionNodes: buildSessionNodes(sidebar.sessions.slice(0, RECENT_SESSIONS)),
           skillNodes: buildSkillNodes(skills),
@@ -137,7 +139,7 @@ export default function FilesOverview() {
         path: "/memory",
         icon: <Brain className="h-4 w-4 text-chart-2" />,
         nodes: core.memoryNodes,
-        href: "/memory",
+        href: `/folders/${core.memoryFolderId}`,
         emptyLabel: "nothing remembered yet",
       },
       {

@@ -977,7 +977,7 @@ def browse(
             owner = skill.get("owner_display_name") or skill.get("owner_name") or "unknown"
             console.print(
                 f"[bold]{skill['title']}[/bold]  [dim]by {owner}[/dim]  "
-                f"{skill['item_count']} items · {skill['view_count']} views"
+                f"{skill['item_count']} items, {skill['view_count']} views"
             )
             if skill.get("description"):
                 console.print(f"  [dim]{skill['description']}[/dim]")
@@ -1005,7 +1005,7 @@ def browse(
                 (summary + "\n\n", ""),
                 (f"by {picked.get('owner_display_name') or picked['owner_name']}  ", "dim"),
                 (
-                    f"{picked['item_count']} items · {picked['view_count']} views",
+                    f"{picked['item_count']} items, {picked['view_count']} views",
                     "dim",
                 ),
             ),
@@ -3030,7 +3030,7 @@ def _stream_turn(events) -> str | None:
         if kind == "session":
             session_id = event["session_id"]
         elif kind == "status":
-            console.print(f"[dim]· {event.get('stage', 'working')}…[/dim]")
+            console.print(f"[dim]{event.get('stage', 'working')}…[/dim]")
         elif kind == "text":
             print(event.get("delta", ""), end="", flush=True)
         elif kind == "tool":
@@ -5435,7 +5435,7 @@ def _setup_complete_intro(
     recording_section = (
         "[bold]You're recording[/bold]\n"
         "This machine's agent sessions upload to your private Stash.\n"
-        "[dim]Pause with stash stop · exclude folders in stash settings[/dim]"
+        "[dim]Pause with stash stop, exclude folders in stash settings[/dim]"
         if recording
         else "[bold]Recording is off[/bold]\n"
         "Turn it on anytime with [cyan]stash start[/cyan] or [cyan]stash setup[/cyan]."

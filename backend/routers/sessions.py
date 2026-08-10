@@ -479,14 +479,14 @@ def _format_session_markdown(events: list[dict]) -> str:
         return "_No events in this session._"
     parts: list[str] = []
     started_at = events[0]["created_at"]
-    parts.append(f"_Started {started_at.isoformat()} · {len(events)} events_\n")
+    parts.append(f"_Started {started_at.isoformat()}, {len(events)} events_\n")
     for ev in events:
         agent = ev["agent_name"] or "agent"
         etype = ev["event_type"] or "event"
         tool = ev["tool_name"]
-        header = f"### {agent} · {etype}"
+        header = f"### {agent} - {etype}"
         if tool:
-            header += f" · `{tool}`"
+            header += f" - `{tool}`"
         parts.append(header)
         content = (ev["content"] or "").strip()
         if content:
@@ -528,7 +528,7 @@ async def materialize_session(
     started = events[0]["created_at"]
     date_str = started.strftime("%Y-%m-%d %H:%M")
     short_id = session_id.removeprefix("session-").removeprefix("session_")[:6] or session_id[:6]
-    page_name = f"{agent} · {date_str} · {short_id}"
+    page_name = f"{agent} - {date_str} - {short_id}"
     content = _format_session_markdown([dict(e) for e in events])
 
     # Idempotency by metadata.session_id, not by name — that way we can change

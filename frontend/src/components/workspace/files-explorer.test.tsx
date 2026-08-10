@@ -79,51 +79,10 @@ afterEach(() => {
 // Memory is the curator agent's knowledge base: a human writing into it is
 // legitimate but unusual, so the explorer must confirm the intent and offer
 // Files (the normal destination) as a one-click redirect.
-describe("FilesExplorer memory write confirmation", () => {
+describe("FilesExplorer uploads", () => {
   const file = new File(["hi"], "heavi.md", { type: "text/markdown" });
 
-  function renderMemoryExplorer() {
-    return render(
-      <FilesExplorer
-        onRoot={() => {}}
-        rootLabel="Memory"
-        rootFolderId={MEMORY_FOLDER}
-        confirmMemoryWrites
-      />
-    );
-  }
-
-  it("asks before uploading into Memory instead of writing silently", async () => {
-    const { container } = renderMemoryExplorer();
-    await screen.findByText("Empty folder.");
-
-    uploadInto(container, file);
-
-    await screen.findByText("Add to Memory?");
-    expect(uploadFileOrPage).not.toHaveBeenCalled();
-  });
-
-  it("uploads into the browsed Memory folder on 'Add to Memory anyway'", async () => {
-    const { container } = renderMemoryExplorer();
-    await screen.findByText("Empty folder.");
-
-    uploadInto(container, file);
-    fireEvent.click(await screen.findByRole("button", { name: "Add to Memory anyway" }));
-
-    await waitFor(() => expect(uploadFileOrPage).toHaveBeenCalledWith(file, MEMORY_FOLDER));
-  });
-
-  it("redirects the upload to the Files root on 'Add to Files instead'", async () => {
-    const { container } = renderMemoryExplorer();
-    await screen.findByText("Empty folder.");
-
-    uploadInto(container, file);
-    fireEvent.click(await screen.findByRole("button", { name: "Add to Files instead" }));
-
-    await waitFor(() => expect(uploadFileOrPage).toHaveBeenCalledWith(file, undefined));
-  });
-
-  it("uploads immediately when the explorer is not in Memory", async () => {
+  it("uploads into the browsed folder immediately", async () => {
     const { container } = render(
       <FilesExplorer onRoot={() => {}} rootLabel="Files" rootFolderId={MEMORY_FOLDER} />
     );
@@ -132,7 +91,6 @@ describe("FilesExplorer memory write confirmation", () => {
     uploadInto(container, file);
 
     await waitFor(() => expect(uploadFileOrPage).toHaveBeenCalledWith(file, MEMORY_FOLDER));
-    expect(screen.queryByText("Add to Memory?")).not.toBeInTheDocument();
   });
 });
 

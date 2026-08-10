@@ -874,7 +874,7 @@ function fileToGridItem(file: {
     kind: isCsvLinked ? "table" : "file",
     id: file.id,
     name: file.name,
-    subtitle: `${file.content_type || "file"} · ${formatBytes(file.size_bytes)}`,
+    subtitle: `${file.content_type || "file"}, ${formatBytes(file.size_bytes)}`,
     sizeBytes: file.size_bytes,
     linkedTableId: file.linked_table_id ?? undefined,
     contentType: file.content_type,
@@ -888,7 +888,7 @@ function tableToGridItem(table: { id: string; name: string; row_count: number | 
     kind: "datatable",
     id: table.id,
     name: table.name,
-    subtitle: `table · ${rows} row${rows === 1 ? "" : "s"}`,
+    subtitle: `table, ${rows} row${rows === 1 ? "" : "s"}`,
   };
 }
 
@@ -916,7 +916,7 @@ function subtitleForFolder(pages: number, files: number): string {
   const parts: string[] = [];
   if (pages) parts.push(`${pages} page${pages === 1 ? "" : "s"}`);
   if (files) parts.push(`${files} file${files === 1 ? "" : "s"}`);
-  return parts.join(" · ") || "Empty";
+  return parts.join(", ") || "Empty";
 }
 
 function formatBytes(b: number): string {
