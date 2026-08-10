@@ -84,10 +84,10 @@ async def test_rename_session_truncates_overlong_title(client: AsyncClient, pool
 
 
 @pytest.mark.asyncio
-async def test_rename_session_strips_quotes(client: AsyncClient):
-    """Titles become VFS directory names, so quotes and backticks must never
-    be stored — they don't survive the shell parsing agents reach paths
-    through."""
+async def test_rename_session_stores_title_verbatim(client: AsyncClient):
+    """Quotes and backticks are the user's spelling — store the title
+    untouched. The VFS sanitizes shell-hostile characters at display time
+    (stashvfs safe_name), so the original is never lost."""
     api_key, _user = await _register(client)
     _scope, _session = await _make_scope_with_session(client, api_key, "sess-rename-7")
 
@@ -97,7 +97,7 @@ async def test_rename_session_strips_quotes(client: AsyncClient):
         headers=_auth(api_key),
     )
     assert resp.status_code == 200
-    assert resp.json() == {"title": "Ship the fast path for Bobs deals"}
+    assert resp.json() == {"title": 'Ship the "fast" path for Bob\'s `deals`'}
 
 
 @pytest.mark.asyncio

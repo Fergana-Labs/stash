@@ -102,19 +102,20 @@ def test_clean_generated_title_strips_markdown_heading_prefixes():
     )
 
 
-def test_clean_generated_title_strips_quotes():
-    # Titles become VFS directory names — quotes and backticks don't survive
-    # the shell parsing agents reach those paths through.
-    assert clean_generated_title('Fix the "flaky" auth test') == "Fix the flaky auth test"
+def test_clean_generated_title_keeps_quotes():
+    # Stored titles keep their quotes — the VFS sanitizes shell-hostile
+    # characters at display time (stashvfs safe_name). Backticks still go:
+    # that's markdown cleanup of LLM output, not shell sanitization.
+    assert clean_generated_title('Fix the "flaky" auth test') == 'Fix the "flaky" auth test'
     assert (
-        clean_generated_title("Debug Bob's `stash vfs` wrapper") == "Debug Bobs stash vfs wrapper"
+        clean_generated_title("Debug Bob's `stash vfs` wrapper") == "Debug Bob's stash vfs wrapper"
     )
 
 
-def test_title_from_text_strips_quotes():
+def test_title_from_text_keeps_quotes():
     title = title_from_text('please fix the "best" deploy script', "session-1")
 
-    assert title == "Fix the best deploy script"
+    assert title == 'Fix the "best" deploy script'
 
 
 @pytest.mark.asyncio

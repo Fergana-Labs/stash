@@ -107,7 +107,7 @@ async def set_user_title(owner_user_id: UUID, session_id: str, title: str) -> st
 
     Returns the cleaned title that was stored.
     """
-    cleaned = _truncate(_strip_quotes(title).strip())
+    cleaned = _truncate(title.strip())
     if not cleaned:
         raise ValueError("Title cannot be empty")
     pool = get_pool()
@@ -168,7 +168,7 @@ async def titles_for_session_ids(owner_user_id: UUID, session_ids: list[str]) ->
 def title_from_text(text: str | None, session_id: str) -> str:
     title = _title_from_content(text)
     if title:
-        return _truncate(_strip_quotes(title))
+        return _truncate(title)
     return session_id
 
 
@@ -176,7 +176,7 @@ def title_from_events(events: list[dict], session_id: str) -> str:
     for event_type in (_USER_EVENT_TYPES, _ASSISTANT_EVENT_TYPES):
         title = _title_from_first_matching_event(events, event_type)
         if title:
-            return _truncate(_strip_quotes(title))
+            return _truncate(title)
     return session_id
 
 
@@ -184,11 +184,9 @@ def clean_generated_title(text: str) -> str:
     title = re.sub(r"\s+", " ", text).strip("`\"' ")
     title = re.sub(r"^\s*title:\s*", "", title, flags=re.IGNORECASE)
     title = _strip_markdown(title)
-    # Reply detection needs the apostrophes ("I'll …", "you're …") — strip
-    # quotes only after the title passes it.
     if not title or _REPLY_SHAPED.match(title):
         return ""
-    return _truncate(_strip_quotes(_first_clause(title)))
+    return _truncate(_first_clause(title))
 
 
 def _title_from_first_matching_event(events: list[dict], event_types: tuple[str, ...]) -> str:
@@ -262,13 +260,6 @@ def _strip_lead_in(text: str) -> str:
         if lower.startswith(phrase):
             return _capitalize_first(text[len(phrase) :].strip())
     return text
-
-
-def _strip_quotes(text: str) -> str:
-    # Titles become VFS directory names and search-hit names, and agents reach
-    # those through `stash vfs "<script>"` — quotes and backticks in a title
-    # don't survive that shell parsing, so no stored title may contain them.
-    return re.sub(r"['\"`]", "", text)
 
 
 def _truncate(title: str) -> str:
