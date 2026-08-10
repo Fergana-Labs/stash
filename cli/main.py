@@ -3117,11 +3117,7 @@ def _print_search(
             )
             continue
         name = hit.get("name") or hit.get("ref") or ""
-        # Session hits are named by title; the raw session id is not a usable
-        # handle here (paths go through the VFS name), so don't print it.
-        ref = hit.get("ref") if hit.get("source") != "sessions" else None
-        detail = f"{label}: {ref}" if ref else label
-        console.print(f"  [bold]{name}[/bold]  [dim]({detail})[/dim]")
+        console.print(f"  [bold]{name}[/bold]  [dim]({label}: {hit.get('ref')})[/dim]")
         # The server sends a ~300-char window centered on the first query
         # match, edges already marked with "…" — printable as-is.
         snippet = (hit.get("snippet") or "").replace("\n", " ").strip()
