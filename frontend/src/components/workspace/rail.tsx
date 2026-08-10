@@ -115,25 +115,16 @@ export default function Rail({ user, onLogout }: { user: User; onLogout: () => v
       router.replace(alreadyInVfs ? "/files" : useWorkspace.getState().lastVfsUrl ?? "/files");
       return;
     }
-    // Every other section with a landing page navigates there. Only Agents
-    // swaps its explorer panel beside whatever's open — Sessions/Skills/Tools
-    // have no panel anymore, so a param swap would do nothing visible.
-    const LANDING: Partial<Record<RailSection, string>> = {
+    // Every other section is a page; the rail is pure navigation.
+    const LANDING: Record<Exclude<RailSection, "files" | "computer">, string> = {
       home: "/",
+      agents: "/agents",
       sessions: "/sessions",
       skills: "/skills",
       tools: "/tools",
     };
-    const landing = LANDING[section];
-    if (landing) {
-      setRailSection(section);
-      router.replace(landing);
-      return;
-    }
-    const params = new URLSearchParams(searchParams);
-    params.set("section", section);
     setRailSection(section);
-    router.replace(`${pathname}?${params.toString()}`);
+    router.replace(LANDING[section as keyof typeof LANDING]);
   }
 
   return (

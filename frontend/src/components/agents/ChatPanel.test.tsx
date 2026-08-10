@@ -24,15 +24,17 @@ describe("ChatPanel", () => {
     vi.clearAllMocks();
   });
 
-  it("shows setup guidance inside the empty chat state", () => {
+  // The empty state is chat-only: setup/onboarding for local agents lives in
+  // Settings, not in the conversation (it made the chat read as a docs page).
+  it("shows a plain ask-your-agent empty state with no setup guidance", () => {
     render(<ChatPanel sessionId={null} onSessionId={vi.fn()} />);
 
-    expect(screen.getByText("Chat with your agent")).toBeInTheDocument();
-    expect(screen.getByText("Connect your local agent")).toBeInTheDocument();
+    expect(screen.getByText("Ask your agent")).toBeInTheDocument();
+    expect(screen.queryByText("Connect your local agent")).not.toBeInTheDocument();
     expect(screen.getByPlaceholderText("Ask your agent anything...")).toBeInTheDocument();
   });
 
-  it("hides setup guidance after the first message starts a chat", async () => {
+  it("replaces the empty state once the first message starts a chat", async () => {
     const onSessionId = vi.fn();
     render(<ChatPanel sessionId={null} onSessionId={onSessionId} />);
 
@@ -49,7 +51,7 @@ describe("ChatPanel", () => {
       );
     });
     expect(await screen.findByText("Here is what I found.")).toBeInTheDocument();
-    expect(screen.queryByText("Connect your local agent")).not.toBeInTheDocument();
+    expect(screen.queryByText("Ask your agent")).not.toBeInTheDocument();
     expect(onSessionId).toHaveBeenCalledWith("agent-session-1");
   });
 

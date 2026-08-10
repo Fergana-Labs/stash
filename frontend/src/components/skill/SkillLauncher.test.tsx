@@ -6,17 +6,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import SkillLauncher from "./SkillLauncher";
 import { takeSkillRun } from "@/lib/skill-launch";
-import { useWorkspace, type WorkspaceState } from "@/lib/workspace-store";
 
 const router = vi.hoisted(() => ({ push: vi.fn() }));
 
 vi.mock("next/navigation", () => ({ useRouter: () => router }));
-
-const openTab = vi.fn();
-
-vi.mock("@/lib/workspace-store", () => ({
-  useWorkspace: vi.fn(),
-}));
 
 const skill = {
   name: "resurface",
@@ -24,22 +17,15 @@ const skill = {
   when_to_use: "When the user asks what they have forgotten.",
 };
 
-beforeEach(() => {
-  // The launcher reads exactly one slice of the store, so a stub with just
-  // that member is enough to drive it.
-  vi.mocked(useWorkspace).mockImplementation((selector) =>
-    selector({ openTab } as unknown as WorkspaceState),
-  );
-});
-
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
 });
 
-/** The refId the launcher opened its chat tab with. */
-function openedTabRef(): string {
-  return openTab.mock.calls[0][1];
+/** The chat ref the launcher navigated to (/agents?chat=<ref>). */
+function launchedRef(): string {
+  const url = router.push.mock.calls[0][0] as string;
+  return new URLSearchParams(url.split("?")[1]).get("chat")!;
 }
 
 describe("SkillLauncher", () => {
@@ -66,23 +52,19 @@ describe("SkillLauncher", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: /Run/ }));
 
-    await waitFor(() => expect(openTab).toHaveBeenCalled());
-    expect(takeSkillRun(openedTabRef())).toBe(
+    await waitFor(() => expect(router.push).toHaveBeenCalled());
+    expect(takeSkillRun(launchedRef())).toBe(
       "Use the resurface skill.\n\nWhat should I revisit?",
     );
-    expect(router.push).toHaveBeenCalledWith("/agents");
   });
 
-  it("opens its own chat per run", async () => {
+  it("opens its own chat per run on the chat page", async () => {
     render(<SkillLauncher skill={skill} onClose={vi.fn()} />);
 
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "Go" } });
     fireEvent.click(screen.getByRole("button", { name: /Run/ }));
 
-    await waitFor(() => expect(openTab).toHaveBeenCalled());
-    const [kind, refId, title] = openTab.mock.calls[0];
-    expect(kind).toBe("agent");
-    expect(refId).toMatch(/^new-run-/);
-    expect(title).toBe("Run: resurface");
+    await waitFor(() => expect(router.push).toHaveBeenCalled());
+    expect(router.push.mock.calls[0][0]).toMatch(/^\/agents\?chat=new-run-/);
   });
 });

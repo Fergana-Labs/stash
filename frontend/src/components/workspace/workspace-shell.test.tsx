@@ -19,9 +19,12 @@ describe("rendersRouteContent", () => {
   });
 
   it("workbench sections do not render route content", () => {
-    expect(rendersRouteContent("/agents", null, null)).toBe(false);
     // An opened skill is a tab, not the launcher.
     expect(rendersRouteContent("/skills/folder/abc", null, null)).toBe(false);
+  });
+
+  it("the chat page owns /agents — no workbench there", () => {
+    expect(rendersRouteContent("/agents", null, null)).toBe(true);
   });
 
   it("an explicit explorer section always wins", () => {
