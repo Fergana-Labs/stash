@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useConfirm } from "@/components/ConfirmDialog";
 import CopyableCommandBlock from "@/components/CopyableCommandBlock";
 import {
@@ -118,12 +118,26 @@ export default function SkillsPage() {
   }, [load]);
 
   const [composerOpen, setComposerOpen] = useState(false);
+  const composerRef = useRef<HTMLDivElement | null>(null);
   // The sidebar's "New skill" action lands here with ?new=1 — creation lives
   // in this page's inline composer, not a modal.
   const searchParams = useSearchParams();
   useEffect(() => {
     if (searchParams.get("new") === "1") setComposerOpen(true);
   }, [searchParams]);
+
+  // The button must visibly respond even when the composer is already open —
+  // an inert press reads as a broken button, not an already-open form.
+  function showComposer() {
+    if (!composerOpen) {
+      setComposerOpen(true);
+      return;
+    }
+    const box = composerRef.current;
+    if (!box) return;
+    box.scrollIntoView({ behavior: "smooth", block: "center" });
+    box.querySelector<HTMLElement>("input, textarea")?.focus();
+  }
 
   async function newSkill({ name, description }: { name: string; description: string }) {
     const created = await createSkill(name, description);
@@ -188,7 +202,7 @@ export default function SkillsPage() {
           </h1>
           <button
             type="button"
-            onClick={() => setComposerOpen(true)}
+            onClick={showComposer}
             className="inline-flex cursor-pointer items-center gap-1.5 rounded-md bg-[var(--color-brand-600)] px-2.5 py-1.5 text-[12.5px] font-medium text-white hover:bg-[var(--color-brand-700)]"
           >
             <PlusGlyph /> New Skill
@@ -196,7 +210,7 @@ export default function SkillsPage() {
         </div>
 
         {composerOpen && (
-          <div className="mt-4">
+          <div ref={composerRef} className="mt-4">
             <SkillComposer onSubmit={newSkill} onCancel={() => setComposerOpen(false)} />
           </div>
         )}
