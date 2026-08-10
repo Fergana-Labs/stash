@@ -36,7 +36,7 @@ export default function SkillLauncher({
     if (!request.trim()) return;
     const ref = newRunTabRef();
     stageSkillRun(ref, runPrompt(skill.name, request));
-    openTab("agent", ref, `Run: ${skill.name}`);
+    openTab("agent", ref, { title: `Run: ${skill.name}` });
     router.push("/agents");
   }
 

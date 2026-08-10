@@ -30,6 +30,7 @@ import FileContentRenderer, {
 } from "@/components/content/FileContentRenderer";
 import FileViewerHeader from "@/components/content/FileViewerHeader";
 import { sectionCrumbs, useMemoryFolderId } from "@/lib/memory-folder";
+import { useTabTitle } from "@/lib/workspace-store";
 import ResourceShareButton from "@/components/share/ResourceShareButton";
 
 function isCsv(ct: string) {
@@ -67,6 +68,7 @@ function FileViewerPageInner({ fileId }: { fileId: string }) {
   void _logout;
 
   const [file, setFile] = useState<FileInfo | null>(null);
+  useTabTitle("file", fileId, file?.name);
   const [folderChain, setFolderChain] = useState<FolderBreadcrumb[]>([]);
   const [error, setError] = useState("");
   const [skillTitle, setSkillTitle] = useState<string | null>(null);

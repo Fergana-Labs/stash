@@ -80,9 +80,9 @@ describe("SkillLauncher", () => {
     fireEvent.click(screen.getByRole("button", { name: /Run/ }));
 
     await waitFor(() => expect(openTab).toHaveBeenCalled());
-    const [kind, refId, title] = openTab.mock.calls[0];
+    const [kind, refId, opts] = openTab.mock.calls[0];
     expect(kind).toBe("agent");
     expect(refId).toMatch(/^new-run-/);
-    expect(title).toBe("Run: resurface");
+    expect(opts).toMatchObject({ title: "Run: resurface" });
   });
 });

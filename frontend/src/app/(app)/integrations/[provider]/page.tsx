@@ -49,6 +49,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import type { User } from "@/lib/types";
 import { routes } from "@/lib/workspace-routes";
+import { useTabTitle } from "@/lib/workspace-store";
 
 // How often a row re-checks a source that is mid-sync, and how many times before
 // it gives up. A sync that hasn't settled in ~5 minutes is wedged; polling it for
@@ -82,6 +83,7 @@ export function IntegrationDetail({ provider }: { provider: string }) {
   const confirm = useConfirm();
 
   const connector = connectorForProvider(provider);
+  useTabTitle("tool", provider, connector?.label);
 
   const [status, setStatus] = useState<IntegrationStatus | null>(null);
   // null until the server list loads; false when the server omitted this

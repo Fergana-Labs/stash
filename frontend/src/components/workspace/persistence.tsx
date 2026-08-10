@@ -1,14 +1,16 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { useWorkspace, type WorkspaceState } from "@/lib/workspace-store";
+import { useWorkspace, titleKey, type WorkspaceState } from "@/lib/workspace-store";
 
 const KEY = "moltchat_workspace";
 
-/** The layout slice we persist — references + pane arrangement only, no content. */
+/** The layout slice we persist — references + pane arrangement only, no content.
+ *  `titles` rides along because only the active tab's body mounts: without the
+ *  cache, background tabs would have no name after a reload until visited. */
 type Persisted = Pick<
   WorkspaceState,
-  "tabs" | "paneOf" | "activeTabId" | "activeTab1" | "split" | "focusedPane" | "railSection" | "explorerFolderId"
+  "tabs" | "paneOf" | "activeTabId" | "activeTab1" | "split" | "focusedPane" | "railSection" | "explorerFolderId" | "titles"
 >;
 
 function readPersisted(): Partial<Persisted> | null {
@@ -33,6 +35,9 @@ export default function Persistence() {
     const write = () => {
       timer = null;
       const s = useWorkspace.getState();
+      // Titles for closed tabs are dropped here, so the cache can't grow
+      // without bound across sessions.
+      const openKeys = new Set(s.tabs.map((t) => titleKey(t.kind, t.refId)));
       const slice: Persisted = {
         tabs: s.tabs,
         paneOf: s.paneOf,
@@ -42,6 +47,7 @@ export default function Persistence() {
         focusedPane: s.focusedPane,
         railSection: s.railSection,
         explorerFolderId: s.explorerFolderId,
+        titles: Object.fromEntries(Object.entries(s.titles).filter(([k]) => openKeys.has(k))),
       };
       localStorage.setItem(KEY, JSON.stringify(slice));
     };

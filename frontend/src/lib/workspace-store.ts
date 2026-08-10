@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { create } from "zustand";
 import { nanoid } from "nanoid";
 
@@ -20,7 +21,13 @@ export interface WorkbenchTab {
   kind: TabKind;
   /** The content id this tab shows: pageId / fileId / tableId / sessionId / skill slug. */
   refId: string;
-  title: string;
+}
+
+/** Cache key for a tab title. Titles belong to the content, not the tab, so two
+ *  tabs on the same content share one entry and in-place navigation picks up
+ *  the new target's title automatically. */
+export function titleKey(kind: TabKind, refId: string): string {
+  return `${kind}:${refId}`;
 }
 
 export interface WorkspaceState {
@@ -39,13 +46,19 @@ export interface WorkspaceState {
   /** VFS folder the Files explorer is showing (null = root). */
   explorerFolderId: string | null;
 
-  openTab: (kind: TabKind, refId: string, title: string, opts?: { newTab?: boolean }) => void;
+  /** Display titles keyed by titleKey(kind, refId). The content body is the
+   *  source of truth — it publishes its loaded name via useTabTitle. openTab
+   *  callers that already know the name seed the cache so the strip doesn't
+   *  flash a placeholder while the body loads. */
+  titles: Record<string, string>;
+
+  openTab: (kind: TabKind, refId: string, opts?: { newTab?: boolean; title?: string }) => void;
   closeTab: (id: string) => void;
   setActiveTab: (id: string) => void;
   splitTab: (id: string) => void;
   moveTabToPane: (id: string, pane: 0 | 1) => void;
   setFocusedPane: (pane: 0 | 1) => void;
-  renameTab: (id: string, title: string) => void;
+  setTitle: (kind: TabKind, refId: string, title: string) => void;
   setRailSection: (s: RailSection) => void;
   setExplorerFolderId: (id: string | null) => void;
   hydrate: (data: Partial<WorkspaceState>) => void;
@@ -76,12 +89,14 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   focusedPane: 0,
   railSection: "files",
   explorerFolderId: null,
+  titles: {},
 
-  openTab: (kind, refId, title, opts) => {
+  openTab: (kind, refId, opts) => {
     const s = get();
+    const titles = opts?.title ? { ...s.titles, [titleKey(kind, refId)]: opts.title } : s.titles;
     const existing = s.tabs.find((t) => t.kind === kind && t.refId === refId);
     if (existing) {
-      set(focusTab(s, existing.id));
+      set({ ...focusTab(s, existing.id), titles });
       return;
     }
     // Default is a new tab (deep-links, "new chat", etc. rely on it). Navigation
@@ -91,10 +106,10 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     const activeId = s.focusedPane === 0 ? s.activeTabId : s.activeTab1;
     if (newTab || !activeId) {
       const id = `${kind}-${nanoid(5)}`;
-      set(placeTab(s, { id, kind, refId, title }));
+      set({ ...placeTab(s, { id, kind, refId }), titles });
       return;
     }
-    set({ tabs: s.tabs.map((t) => (t.id === activeId ? { ...t, kind, refId, title } : t)) });
+    set({ tabs: s.tabs.map((t) => (t.id === activeId ? { ...t, kind, refId } : t)), titles });
   },
 
   closeTab: (id) => {
@@ -151,7 +166,11 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
   setFocusedPane: (pane) => set({ focusedPane: pane }),
 
-  renameTab: (id, title) => set({ tabs: get().tabs.map((t) => (t.id === id ? { ...t, title } : t)) }),
+  setTitle: (kind, refId, title) => {
+    const key = titleKey(kind, refId);
+    if (get().titles[key] === title) return;
+    set({ titles: { ...get().titles, [key]: title } });
+  },
 
   setRailSection: (s) => set({ railSection: s }),
 
@@ -159,3 +178,14 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
   hydrate: (data) => set({ ...data }),
 }));
+
+/** Declare the hosting tab's title from inside a content body. Call with the
+ *  content's current display name (null/undefined while loading): the strip
+ *  shows the live name, so deep-linked tabs get real titles once loaded and
+ *  renames propagate to every tab showing that content. */
+export function useTabTitle(kind: TabKind, refId: string, title: string | null | undefined) {
+  const setTitle = useWorkspace((s) => s.setTitle);
+  useEffect(() => {
+    if (title) setTitle(kind, refId, title);
+  }, [kind, refId, title, setTitle]);
+}

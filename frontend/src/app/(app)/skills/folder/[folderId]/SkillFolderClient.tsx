@@ -18,6 +18,7 @@ import {
   type SkillPublishInfo,
 } from "@/lib/api";
 import { refreshSidebar } from "@/lib/skillNavigationCache";
+import { useTabTitle } from "@/lib/workspace-store";
 
 // Browse a skill folder (or a subfolder inside one). Same file browser as
 // the Files routes, but folder links stay on the skill browse route and the
@@ -30,6 +31,7 @@ export default function SkillFolderClient({ folderId }: { folderId: string }) {
   const [contents, setContents] = useState<FolderContents | null>(null);
   const [publish, setPublish] = useState<SkillPublishInfo | null>(null);
   const [error, setError] = useState("");
+  useTabTitle("skill", folderId, contents?.folder.name);
 
   useEffect(() => {
     if (!loading && !user) router.push("/login");
