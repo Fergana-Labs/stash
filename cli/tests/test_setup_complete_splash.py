@@ -24,7 +24,9 @@ def test_setup_complete_intro_always_links_memory() -> None:
     for connected in (False, True):
         intro = _intro(connected=connected)
         assert "Your knowledge base" in intro
-        assert f"{FRONTEND_URL}/memory" in intro
+        # Home is the memory dashboard; /memory is not a route.
+        assert FRONTEND_URL in intro
+        assert f"{FRONTEND_URL}/memory" not in intro
 
 
 def test_setup_complete_intro_states_recording_on() -> None:

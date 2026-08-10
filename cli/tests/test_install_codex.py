@@ -7,15 +7,16 @@ import json
 import tomllib
 from pathlib import Path
 
+import pytest
+
 from cli.main import _install_codex
 
 _CODEX_EVENTS = ("on_session_start", "on_prompt", "on_tool_use", "on_stop")
 
 
-def _run_install(monkeypatch, tmp_path: Path, allow_network: bool = True) -> Path:
+def _run_install(monkeypatch, tmp_path: Path) -> Path:
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
-    monkeypatch.setattr("cli.main._ask_codex_network_access", lambda: allow_network)
     _install_codex(False)
     return tmp_path / ".codex" / "config.toml"
 
@@ -190,3 +191,20 @@ def test_preexisting_unmarked_skill_sections_do_not_duplicate(monkeypatch, tmp_p
         parsed = tomllib.load(f)
     assert parsed["features"]["hooks"] is True
     assert parsed["features"]["suppress_unstable_features_warning"] is True
+
+
+def test_install_grants_network_without_prompting(monkeypatch, tmp_path: Path) -> None:
+    """Recording Codex is impossible while its sandbox blocks outbound network,
+    and the user already chose to record Codex when they picked their agents.
+    Asking again — in scarier words, about *their* sandbox — belongs nowhere in
+    onboarding, so the install states the change instead of gating on it."""
+    monkeypatch.setattr(
+        "questionary.confirm",
+        lambda *a, **k: pytest.fail("codex install must not prompt"),
+    )
+
+    cfg = _run_install(monkeypatch, tmp_path)
+
+    with cfg.open("rb") as f:
+        parsed = tomllib.load(f)
+    assert parsed["sandbox_workspace_write"]["network_access"] is True
