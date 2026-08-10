@@ -1114,14 +1114,15 @@ def _current_session_id() -> str | None:
     return None
 
 
-def _resolve_session_handle(handle: str) -> str:
-    """Resolve a session handle — a raw session id or a session title — to the
-    session id. Ids are recognized by their local transcript; anything else is
-    matched against titles, in both the stored spelling and the VFS's safe_name
-    spelling (which is what `stash search` and `stash vfs ls` print)."""
-    if _find_session_jsonl(handle):
-        return handle
+def _resolve_session(handle: str, field: str = "session_id") -> str:
+    """Session titles are aliases for session ids across the CLI.
 
+    A handle matching a session title — in the stored spelling or the VFS
+    safe_name spelling that `stash search` and `stash vfs ls` print — resolves
+    to that session's `field`: "session_id" (the transcript stream id) or "id"
+    (the row id `rm`/`restore`/`mv`/`shares` take). Anything else is already
+    an id and passes through untouched; the server rejects unknown ids loudly.
+    A title matching several sessions errors, listing their ids."""
     from stashvfs import safe_name
 
     with _client() as c:
@@ -1129,23 +1130,19 @@ def _resolve_session_handle(handle: str) -> str:
             sessions = c.get_overview().get("sessions", [])
         except StashError as e:
             _err(e)
-    matches = sorted(
-        {
-            str(s["session_id"])
-            for s in sessions
-            if s.get("title") and handle in (s["title"], safe_name(s["title"]))
-        }
-    )
+    matches = [
+        s for s in sessions if s.get("title") and handle in (s["title"], safe_name(s["title"]))
+    ]
     if not matches:
-        console.print(f"[red]No session with id or title '{handle}'.[/red]")
-        raise typer.Exit(1)
-    if len(matches) > 1:
+        return handle
+    ids = sorted({str(s[field]) for s in matches})
+    if len(ids) > 1:
         console.print(
-            f"[red]Title '{handle}' matches {len(matches)} sessions: "
-            f"{', '.join(matches)}. Pass a session id.[/red]"
+            f"[red]Title '{handle}' matches {len(ids)} sessions: "
+            f"{', '.join(ids)}. Pass a session id.[/red]"
         )
         raise typer.Exit(1)
-    return matches[0]
+    return ids[0]
 
 
 def _extract_session_bookends(raw_jsonl: str) -> tuple[str, str, str]:
@@ -1218,13 +1215,12 @@ def share_session(
     telemetry.record("share")
 
     # Resolve session ID
-    handle = session_id or _current_session_id()
-    if not handle:
+    sid = _resolve_session(session_id) if session_id else _current_session_id()
+    if not sid:
         console.print(
             "[red]Could not detect session. Pass --session <id or title> explicitly.[/red]"
         )
         raise typer.Exit(1)
-    sid = _resolve_session_handle(handle)
 
     # Find and read the JSONL transcript
     jsonl_path = _find_session_jsonl(sid)
@@ -3005,7 +3001,9 @@ def agent_list(as_json: bool = typer.Option(False, "--json")):
 @agent_app.command("chat")
 def agent_chat(
     message: str = typer.Argument(..., help="The message to send."),
-    session: str = typer.Option(None, "--session", "-s", help="Continue an existing chat session."),
+    session: str = typer.Option(
+        None, "--session", "-s", help="Continue an existing chat session (id or title)."
+    ),
     agent: str = typer.Option(
         None, "--agent", "-a", help="Agent name or id. Default agent if omitted."
     ),
@@ -3013,6 +3011,7 @@ def agent_chat(
     """Start (or continue) a cloud agent chat and stream the turn live.
 
     Ctrl-C disconnects the stream, which stops the turn on the box."""
+    session = _resolve_session(session) if session else None
     with _client() as c:
         try:
             agent_id = _resolve_agent_id(c, agent) if agent else None
@@ -3043,10 +3042,11 @@ def agent_run(
 
 @agent_app.command("status")
 def agent_status(
-    session_id: str = typer.Argument(..., help="The chat session to check."),
+    session_id: str = typer.Argument(..., help="The chat session (id or title) to check."),
     as_json: bool = typer.Option(False, "--json"),
 ):
     """Whether a turn is currently running in a chat session."""
+    session_id = _resolve_session(session_id)
     with _client() as c:
         try:
             data = c.agent_turn_status(session_id)
@@ -3061,11 +3061,12 @@ def agent_status(
 
 @agent_app.command("watch")
 def agent_watch(
-    session_id: str = typer.Argument(..., help="The chat session to follow."),
+    session_id: str = typer.Argument(..., help="The chat session (id or title) to follow."),
     poll_seconds: float = typer.Option(2.0, "--poll", help="Poll interval in seconds."),
 ):
     """Follow a chat session live — works for turns started anywhere
     (web, Slack, a schedule, or another terminal). Exits when the turn ends."""
+    session_id = _resolve_session(session_id)
     role_style = {"user": "[bold]you:[/bold] ", "assistant": "", "tool": "[dim]", "": ""}
     with _client() as c:
         seen = 0
@@ -3090,9 +3091,12 @@ def agent_watch(
 
 @agent_app.command("stop")
 def agent_stop(
-    session_id: str = typer.Argument(..., help="The chat session whose turn to stop."),
+    session_id: str = typer.Argument(
+        ..., help="The chat session (id or title) whose turn to stop."
+    ),
 ):
     """Stop the turn running in a chat session (kills the run on the box)."""
+    session_id = _resolve_session(session_id)
     with _client() as c:
         try:
             c.stop_agent_turn(session_id)
@@ -3634,9 +3638,18 @@ def _parse_refs(refs: list[str]) -> list[tuple[str, str]]:
     return parsed
 
 
+def _resolve_session_refs(items: list[tuple[str, str]]) -> list[tuple[str, str]]:
+    """Session refs may carry a title instead of an id — resolve each to the
+    session row id the rm/restore/mv endpoints take."""
+    return [(t, _resolve_session(i, field="id") if t == "session" else i) for t, i in items]
+
+
 @app.command("rm")
 def rm_cmd(
-    refs: list[str] = typer.Argument(..., help="Items as type:id. Types: page | file | session"),
+    refs: list[str] = typer.Argument(
+        ...,
+        help="Items as type:id (session refs also accept a title). Types: page | file | session",
+    ),
     permanent: bool = typer.Option(
         False, "--permanent", help="Skip the trash window — delete immediately."
     ),
@@ -3650,7 +3663,7 @@ def rm_cmd(
         "file": (lambda c, i: c.delete_file(i), lambda c, i: c.purge_file(i)),
         "session": (lambda c, i: c.delete_session(i), lambda c, i: c.purge_session(i)),
     }
-    items = _parse_refs(refs)
+    items = _resolve_session_refs(_parse_refs(refs))
     with _client() as c:
         for object_type, object_id in items:
             if object_type not in trash:
@@ -3671,7 +3684,10 @@ def rm_cmd(
 
 @app.command("restore")
 def restore_cmd(
-    refs: list[str] = typer.Argument(..., help="Items as type:id. Types: page | file | session"),
+    refs: list[str] = typer.Argument(
+        ...,
+        help="Items as type:id (session refs also accept a title). Types: page | file | session",
+    ),
 ):
     """Restore pages, files, or sessions from trash.
 
@@ -3682,7 +3698,7 @@ def restore_cmd(
         "file": lambda c, i: c.restore_file(i),
         "session": lambda c, i: c.restore_session(i),
     }
-    items = _parse_refs(refs)
+    items = _resolve_session_refs(_parse_refs(refs))
     with _client() as c:
         for object_type, object_id in items:
             if object_type not in restore:
@@ -3699,7 +3715,10 @@ def restore_cmd(
 
 @app.command("mv")
 def mv_cmd(
-    refs: list[str] = typer.Argument(..., help=f"Items as type:id. Types: {_OBJECT_TYPES}"),
+    refs: list[str] = typer.Argument(
+        ...,
+        help=f"Items as type:id (session refs also accept a title). Types: {_OBJECT_TYPES}",
+    ),
     to_folder: str = typer.Option(None, "--to-folder", help="Target folder id."),
     to_root: bool = typer.Option(False, "--to-root", help="Move to the root."),
 ):
@@ -3710,7 +3729,7 @@ def mv_cmd(
     if not to_folder and not to_root:
         console.print("[red]Pass --to-folder <id> or --to-root.[/red]")
         raise typer.Exit(1)
-    items = _parse_refs(refs)
+    items = _resolve_session_refs(_parse_refs(refs))
     sessions = [i for t, i in items if t == "session"]
     others = [{"object_type": t, "object_id": i} for t, i in items if t != "session"]
     with _client() as c:
@@ -3795,6 +3814,8 @@ def shares_add(
     as_json: bool = typer.Option(False, "--json"),
 ):
     """Share an object with a person by email."""
+    if object_type == "session":
+        object_id = _resolve_session(object_id, field="id")
     with _client() as c:
         try:
             data = c.share_object(
@@ -3819,6 +3840,8 @@ def shares_rm(
     principal_type: str = typer.Option("user", "--principal-type"),
 ):
     """Revoke a person's access to an object."""
+    if object_type == "session":
+        object_id = _resolve_session(object_id, field="id")
     with _client() as c:
         try:
             c.unshare_object(object_type, object_id, principal_type, principal_id)

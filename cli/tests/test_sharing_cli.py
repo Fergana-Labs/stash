@@ -16,6 +16,11 @@ class _FakeClient:
     def __exit__(self, *_args):
         return None
 
+    # Session handles resolve titles against the overview; no titled
+    # sessions here, so every handle passes through as an id.
+    def get_overview(self):
+        return {"sessions": []}
+
     # object sharing
     def share_object(self, object_type, object_id, email, permission="read", expires_at=None):
         self._calls.append(("share", object_type, object_id, email, permission))
