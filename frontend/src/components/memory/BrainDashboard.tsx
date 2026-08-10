@@ -13,12 +13,16 @@ import { FileIcon, PageIcon } from "@/components/SkillIcons";
 import EmbeddingSpaceExplorer from "@/components/viz/EmbeddingSpaceExplorer";
 import CuratorLog from "@/components/memory/CuratorLog";
 import WikiGraph from "@/components/memory/WikiGraph";
+import CopyableCommandBlock from "@/components/CopyableCommandBlock";
+import { StashIcon } from "@/components/SkillIcons";
 import {
   getEmbeddingProjection,
   getMe,
+  getMeOverview,
   getMemoryGraph,
   listFileActivity,
   type ActivityEvent,
+  type MeOverview,
   type WikiGraph as WikiGraphData,
 } from "@/lib/api";
 import type { EmbeddingProjection } from "@/lib/types";
@@ -49,9 +53,15 @@ export default function BrainDashboard() {
   const [projectionLoaded, setProjectionLoaded] = useState(false);
   const [graphLoaded, setGraphLoaded] = useState(false);
   const [firstName, setFirstName] = useState<string | null>(null);
+  const [vitals, setVitals] = useState<MeOverview | null>(null);
+  const [vitalsLoaded, setVitalsLoaded] = useState(false);
 
   useEffect(() => {
     getMe().then((me) => setFirstName(me.display_name.split(" ")[0])).catch(() => {});
+    getMeOverview()
+      .then(setVitals)
+      .catch(() => {})
+      .finally(() => setVitalsLoaded(true));
   }, []);
 
   useEffect(() => {
@@ -126,7 +136,13 @@ export default function BrainDashboard() {
     };
   }, []);
 
-  if (fetching) {
+  // A brand-new stash has nothing to dashboard. Until the first transcripts
+  // arrive, Home is a single instruction: upload your agent transcripts.
+  if (vitalsLoaded && vitals && vitals.pages === 0 && vitals.files === 0 && vitals.sessions === 0) {
+    return <EmptyStashSetup />;
+  }
+
+  if (fetching || !vitalsLoaded) {
     return (
       <div className="h-full min-h-0 overflow-y-auto">
         <ActivitySkeleton />
@@ -304,4 +320,33 @@ function EventGlyph({ kind }: { kind: string }) {
       </span>
     );
   return null;
+}
+
+/** Full-screen first-run state: one instruction, upload your agent
+ *  transcripts. Everything else Home shows grows out of those. */
+function EmptyStashSetup() {
+  return (
+    <div className="flex h-full min-h-0 items-center justify-center overflow-y-auto">
+      <div className="w-full max-w-xl px-8 py-10 text-center">
+        <StashIcon className="mx-auto text-[44px]" />
+        <h1 className="mt-5 font-display text-[26px] font-semibold tracking-tight text-foreground">
+          Let&apos;s get you started
+        </h1>
+        <p className="mx-auto mt-2 max-w-md text-[14px] leading-6 text-dim">
+          Upload your session transcripts to get started. Transcripts are private to you,
+          and you can choose which folders transcripts are uploaded from.
+        </p>
+        <div className="mx-auto mt-6 max-w-md text-left">
+          {/* One command on purpose: the installer ends by exec'ing
+              `stash signin`, which runs the whole setup wizard. */}
+          <CopyableCommandBlock commands={`bash -c "$(curl -fsSL https://joinstash.ai/install)"`} />
+        </div>
+        <p className="mt-4 text-[12.5px] text-muted-foreground">
+          The installer signs you in and sets up session recording. Then use your coding
+          agent like you always do — this page becomes your agents&apos; shared memory as
+          transcripts arrive.
+        </p>
+      </div>
+    </div>
+  );
 }
