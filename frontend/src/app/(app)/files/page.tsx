@@ -11,7 +11,7 @@ export default function FilesPage() {
   const router = useRouter();
   const { user, loading } = useAuth();
 
-  useBreadcrumbs([{ label: "Files" }], "files");
+  useBreadcrumbs([{ label: "VFS" }], "files");
 
   useEffect(() => {
     if (!loading && !user) router.push("/login");
