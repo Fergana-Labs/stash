@@ -2050,9 +2050,9 @@ def _capped_flat_tree(entries: list[dict], per_dir: int) -> list[dict]:
     return nodes
 
 
-def _session_title(session: dict) -> str:
-    """A human-readable session label: the first user message, one line."""
-    title = " ".join((session.get("title_source") or "").split())
+def _session_title(session: dict, titles: dict[str, str]) -> str:
+    """A human-readable session label, from the stored title."""
+    title = " ".join((titles.get(session["session_id"]) or "").split())
     if len(title) > 80:
         title = title[:77] + "…"
     return title or session.get("agent_name") or "session"
@@ -2084,17 +2084,21 @@ async def _provider_tree_node(provider: str, members: list[dict], depth: int, pe
         node["last_synced_at"] = members[0]["last_synced_at"]
         return node
 
-    children = []
-    for member in members:
-        children.append(
-            {
-                "name": member["display_name"],
-                "kind": "folder",
-                "source": member["id"],
-                "sync_status": member["sync_status"],
-                "children": await _member_tree(member, max(1, depth - 1), per_dir),
-            }
-        )
+    # Each member is an independent query; walking them in sequence made a
+    # provider cost the sum of its connections.
+    member_trees = await asyncio.gather(
+        *(_member_tree(member, max(1, depth - 1), per_dir) for member in members)
+    )
+    children = [
+        {
+            "name": member["display_name"],
+            "kind": "folder",
+            "source": member["id"],
+            "sync_status": member["sync_status"],
+            "children": tree,
+        }
+        for member, tree in zip(members, member_trees)
+    ]
     node["tree"] = _capped_flat_tree(children, per_dir)
     return node
 
@@ -2106,10 +2110,16 @@ async def sources_tree(
     renders the whole scope as a filesystem (`stash ls`)."""
     from .files_tree_service import list_scope_pages
     from .memory_service import list_scope_sessions
+    from .session_title_service import titles_for_sessions
 
     depth = max(1, min(depth, 10))
-    pages = await list_scope_pages(owner_user_id, user_id)
-    sessions = await list_scope_sessions(owner_user_id, user_id)
+    pages, sessions = await asyncio.gather(
+        list_scope_pages(owner_user_id, user_id),
+        list_scope_sessions(owner_user_id, user_id),
+    )
+    # Stored titles, not the first message of every event stream: naming these
+    # rows is a lookup, not a reason to read the transcript table.
+    session_titles = await titles_for_sessions(owner_user_id, sessions, enqueue_missing=False)
     out = [
         {
             "source": NATIVE_FILES,
@@ -2127,7 +2137,7 @@ async def sources_tree(
             "tree": _capped_flat_tree(
                 [
                     {
-                        "name": _session_title(s),
+                        "name": _session_title(s, session_titles),
                         "kind": "session",
                         "ref": s["session_id"],
                     }
@@ -2146,8 +2156,18 @@ async def sources_tree(
         provider = SOURCE_TYPE_PROVIDER[source["source_type"]]
         by_provider.setdefault(provider, []).append(source)
 
-    for provider in sorted(by_provider):
-        out.append(await _provider_tree_node(provider, by_provider[provider], depth, per_dir))
+    # Providers are independent too: this used to cost the sum of every
+    # connected provider's walk, so a well-connected scope waited ~20s for a
+    # tree that is 44KB on the wire.
+    provider_names = sorted(by_provider)
+    out.extend(
+        await asyncio.gather(
+            *(
+                _provider_tree_node(provider, by_provider[provider], depth, per_dir)
+                for provider in provider_names
+            )
+        )
+    )
 
     await _audit_source_read(
         action="source.tree_listed",

@@ -59,7 +59,7 @@ def test_build_entry_tree_marks_truncation_instead_of_silently_dropping():
 
 
 async def test_sources_tree_includes_every_visible_source(monkeypatch):
-    from backend.services import files_tree_service, memory_service
+    from backend.services import files_tree_service, memory_service, session_title_service
 
     github = {
         "id": "11111111-1111-1111-1111-111111111111",
@@ -100,6 +100,14 @@ async def test_sources_tree_includes_every_visible_source(monkeypatch):
 
     monkeypatch.setattr(files_tree_service, "list_scope_pages", fake_pages)
     monkeypatch.setattr(memory_service, "list_scope_sessions", fake_sessions)
+
+    # Session labels are looked up, not derived from transcript content: the
+    # tree must never be a reason to read the event table.
+    async def fake_titles(owner_user_id, sessions, *, enqueue_missing=True):
+        assert enqueue_missing is False
+        return {"s1": "  Fix the onboarding\nwizard  ", "s2": ""}
+
+    monkeypatch.setattr(session_title_service, "titles_for_sessions", fake_titles)
     monkeypatch.setattr(source_service, "list_connected_sources", fake_connected)
     monkeypatch.setattr(source_service, "list_documents", fake_documents)
     monkeypatch.setattr(source_service, "_audit_source_read", fake_audit)

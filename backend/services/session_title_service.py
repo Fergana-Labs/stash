@@ -43,6 +43,32 @@ def source_hash(session: dict) -> str:
     return hashlib.sha256(raw.encode()).hexdigest()
 
 
+async def _title_sources_for(owner_user_id: UUID, session_ids: list[str]) -> dict[str, str]:
+    """First meaningful message per session, for sessions with no stored title.
+
+    Restricted to the named sessions so it rides
+    idx_history_events_workspace_session_created instead of scanning every
+    event this user owns — the same shape the callers used to inline as a
+    CTE over the whole table.
+    """
+    if not session_ids:
+        return {}
+    rows = await get_pool().fetch(
+        "SELECT DISTINCT ON (ht.session_id) ht.session_id, LEFT(ht.content, 240) AS title_source "
+        "FROM history_events ht "
+        "WHERE ht.owner_user_id = $1 AND ht.session_id = ANY($2::text[]) "
+        "  AND NULLIF(BTRIM(ht.content), '') IS NOT NULL "
+        "ORDER BY ht.session_id, CASE "
+        "  WHEN ht.event_type IN ('user_message', 'user_prompt', 'prompt', 'message', 'user') THEN 0 "
+        "  WHEN ht.event_type IN ('assistant_message', 'assistant') THEN 1 "
+        "  ELSE 2 "
+        "END, ht.created_at, ht.id",
+        owner_user_id,
+        session_ids,
+    )
+    return {r["session_id"]: r["title_source"] for r in rows}
+
+
 async def titles_for_sessions(
     owner_user_id: UUID,
     sessions: list[dict],
@@ -62,6 +88,14 @@ async def titles_for_sessions(
     )
     cached = {r["session_id"]: dict(r) for r in rows}
 
+    # The first message of a session is only needed to name the few sessions
+    # the generator hasn't titled yet, so it is fetched for exactly those.
+    # Callers used to carry it for every session, which meant every session
+    # listing scanned the content of every event this user owns.
+    fallback_sources = await _title_sources_for(
+        owner_user_id, [sid for sid in session_ids if sid not in cached]
+    )
+
     titles: dict[str, str] = {}
     stale_session_ids: list[str] = []
     for session in sessions:
@@ -71,7 +105,7 @@ async def titles_for_sessions(
         if title_row:
             titles[session_id] = title_row["title"]
         else:
-            titles[session_id] = title_from_text(session.get("title_source"), session_id)
+            titles[session_id] = title_from_text(fallback_sources.get(session_id), session_id)
 
         if title_row and title_row.get("user_set"):
             continue

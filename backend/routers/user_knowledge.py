@@ -244,7 +244,10 @@ async def memory_demo(
         return _FALLBACK_DEMO
 
     newest = max(sessions, key=lambda s: s.get("last_at") or "")
-    title = session_title_service.title_from_text(newest.get("title_source"), newest["session_id"])
+    titles = await session_title_service.titles_for_sessions(
+        owner_user_id, [newest], enqueue_missing=False
+    )
+    title = titles[newest["session_id"]]
     agent = newest.get("agent_name") or "your agent"
 
     snippet = ""

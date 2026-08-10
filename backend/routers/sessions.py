@@ -115,13 +115,6 @@ async def list_my_sessions(
     pool = get_pool()
     args: list = [current_user["id"]]
     accessible_ws = permission_service.accessible_scope_ids_sql(1)
-    title_where = [
-        "he_title.session_id IS NOT NULL",
-        f"(he_title.owner_user_id IN {accessible_ws} "
-        "OR (he_title.owner_user_id IS NULL AND he_title.created_by = $1))",
-        f"(he_title.owner_user_id IS NULL OR {memory_service.readable_session_event_condition('he_title', 1)})",
-        "NULLIF(BTRIM(he_title.content), '') IS NOT NULL",
-    ]
     where = [
         "he.session_id IS NOT NULL",
         f"(he.owner_user_id IN {accessible_ws} "
@@ -131,7 +124,6 @@ async def list_my_sessions(
     if owner_user_id is not None:
         args.append(owner_user_id)
         where.append(f"he.owner_user_id = ${len(args)}")
-        title_where.append(f"he_title.owner_user_id = ${len(args)}")
     if session_folder_id is not None:
         args.append(session_folder_id)
         where.append(f"s.session_folder_id = ${len(args)}")
@@ -140,28 +132,9 @@ async def list_my_sessions(
         # starts_with, not LIKE: the prefix is caller-supplied and LIKE would
         # read '%' and '_' in it as wildcards.
         where.append(f"starts_with(he.session_id, ${len(args)})")
-        title_where.append(f"starts_with(he_title.session_id, ${len(args)})")
 
     rows = await pool.fetch(
         f"""
-        WITH title_sources AS (
-          SELECT DISTINCT ON (he_title.owner_user_id, he_title.session_id)
-            he_title.owner_user_id,
-            he_title.session_id,
-            LEFT(he_title.content, 240) AS title_source
-          FROM history_events he_title
-          WHERE {" AND ".join(title_where)}
-          ORDER BY
-            he_title.owner_user_id,
-            he_title.session_id,
-            CASE
-              WHEN he_title.event_type IN ('user_message', 'user_prompt', 'prompt', 'message', 'user') THEN 0
-              WHEN he_title.event_type IN ('assistant_message', 'assistant') THEN 1
-              ELSE 2
-            END,
-            he_title.created_at,
-            he_title.id
-        )
         SELECT
           he.session_id,
           s.id AS id,
@@ -173,13 +146,10 @@ async def list_my_sessions(
           (ARRAY_AGG(NULLIF(u.display_name, '') ORDER BY he.created_at)
            FILTER (WHERE NULLIF(u.display_name, '') IS NOT NULL))[1] AS user_name,
           MAX(he.agent_name) AS agent_name,
-          title_sources.title_source,
           COUNT(*)::INT AS event_count,
           MIN(he.created_at) AS started_at,
           MAX(he.created_at) AS last_event_at
         FROM history_events he
-        LEFT JOIN title_sources ON title_sources.session_id = he.session_id
-          AND title_sources.owner_user_id IS NOT DISTINCT FROM he.owner_user_id
         LEFT JOIN users owner ON owner.id = he.owner_user_id
         LEFT JOIN users u ON u.id = he.created_by
         LEFT JOIN sessions s ON s.owner_user_id IS NOT DISTINCT FROM he.owner_user_id
@@ -188,7 +158,7 @@ async def list_my_sessions(
         LEFT JOIN session_folders sf ON sf.id = s.session_folder_id
         WHERE {" AND ".join(where)}
         GROUP BY he.session_id, he.owner_user_id, owner.display_name, s.id, s.session_folder_id,
-          sf.name, title_sources.title_source
+          sf.name
         ORDER BY last_event_at DESC, user_name ASC, session_id ASC
         LIMIT {int(limit)} OFFSET {int(offset)}
         """,

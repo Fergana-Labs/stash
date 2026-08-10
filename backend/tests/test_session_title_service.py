@@ -134,18 +134,28 @@ async def test_titles_for_sessions_prefers_generated_cache(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_titles_for_sessions_falls_back_while_title_is_missing(monkeypatch):
-    class Pool:
-        async def fetch(self, *args):
-            return []
+    """An untitled session is named from its first message, which the service
+    fetches itself. Callers used to carry that text for every session, which
+    meant every session listing scanned the content of every event they own."""
 
-    monkeypatch.setattr(session_title_service, "get_pool", lambda: Pool())
+    class Pool:
+        def __init__(self):
+            self.queries = []
+
+        async def fetch(self, sql, *args):
+            self.queries.append(sql)
+            if "FROM session_titles" in sql:
+                return []
+            return [{"session_id": "s1", "title_source": "can you fix auth?"}]
+
+    pool = Pool()
+    monkeypatch.setattr(session_title_service, "get_pool", lambda: pool)
 
     titles = await session_title_service.titles_for_sessions(
         UUID("00000000-0000-0000-0000-000000000001"),
         [
             {
                 "session_id": "s1",
-                "title_source": "can you fix auth?",
                 "event_count": 2,
                 "last_at": "2026-05-20T00:00:00Z",
             }
@@ -154,3 +164,34 @@ async def test_titles_for_sessions_falls_back_while_title_is_missing(monkeypatch
     )
 
     assert titles == {"s1": "Fix auth"}
+    # The fallback is scoped to the sessions that need it, so it can ride the
+    # (owner_user_id, session_id, created_at) index.
+    fallback = [q for q in pool.queries if "history_events" in q]
+    assert len(fallback) == 1
+    assert "session_id = ANY(" in fallback[0]
+
+
+@pytest.mark.asyncio
+async def test_cached_titles_never_touch_history_events(monkeypatch):
+    """The hot path: every session already has a stored title, so listing them
+    must not read the event table at all."""
+
+    class Pool:
+        def __init__(self):
+            self.queries = []
+
+        async def fetch(self, sql, *args):
+            self.queries.append(sql)
+            return [{"session_id": "s1", "title": "Fix Authentication Flow", "source_hash": "x"}]
+
+    pool = Pool()
+    monkeypatch.setattr(session_title_service, "get_pool", lambda: pool)
+
+    titles = await session_title_service.titles_for_sessions(
+        UUID("00000000-0000-0000-0000-000000000001"),
+        [{"session_id": "s1", "event_count": 2, "last_at": "2026-05-20T00:00:00Z"}],
+        enqueue_missing=False,
+    )
+
+    assert titles == {"s1": "Fix Authentication Flow"}
+    assert not any("history_events" in q for q in pool.queries)
