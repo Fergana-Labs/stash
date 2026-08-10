@@ -350,13 +350,13 @@ async def test_granola_index_logs_only_source_metadata(monkeypatch):
 
     async def call_tool_data(session, name, arguments):
         if "list" in name:
-            return [
-                {
-                    "id": "meeting-webflow-secret",
-                    "title": "Webflow board meeting",
-                    "participants": "ceo@webflow.com",
-                }
-            ]
+            return (
+                '<meetings_data count="1">'
+                '<meeting id="meeting-webflow-secret" title="Webflow board meeting" '
+                'date="Jun 5, 2026">'
+                "<known_participants>ceo@webflow.com</known_participants>"
+                "</meeting></meetings_data>"
+            )
         raise RuntimeError("token=secret-token customer transcript")
 
     monkeypatch.setattr(granola_indexer, "get_valid_access_token", _token)
@@ -374,8 +374,8 @@ async def test_granola_index_logs_only_source_metadata(monkeypatch):
             {},
         ),
         (
-            "granola source %s: listed %d meeting(s)",
-            (UUID(source["id"]), 1),
+            "granola source %s: parsed %d meeting(s) (declared %s)",
+            (UUID(source["id"]), 1, 1),
             {},
         ),
         (

@@ -6,15 +6,17 @@ number ships the wrong part. `transcribe_pdf` sends both in one request:
 structure from the page images, characters from the embedded text layer. A
 scanned PDF simply has no layer to attach and degrades to pure OCR.
 
-These tests pin that contract: the layer rides along as grounding, pages past
-the vision cap keep their raw text layer (the cap bounds API spend, it must not
-discard free text), failures surface loudly, and the upload path never pays for
-a vision call when plain extraction already worked.
+These tests pin that contract: the layer rides along as grounding, the prompt
+demands markdown tables and figure descriptions (diagram content must survive
+into text), pages past the vision cap keep their raw text layer (the cap
+bounds API spend, it must not discard free text), failures surface loudly,
+and every PDF — digital or scanned — takes the vision path, because the
+pypdf-only path stores scrambled tables that read fine while crossing the
+wrong part numbers.
 """
 
 import io
 import uuid
-from types import SimpleNamespace
 
 import asyncpg
 import pypdf
@@ -36,17 +38,48 @@ def _blank_pdf(pages: int) -> bytes:
     return buf.getvalue()
 
 
+class _FakeResponse:
+    def __init__(self, payload):
+        self._payload = payload
+
+    def raise_for_status(self):
+        pass
+
+    def json(self):
+        return self._payload
+
+
+class _FakeGeminiClient:
+    def __init__(self, payload):
+        self._payload = payload
+        self.captured = {}
+
+    async def post(self, url, json):
+        self.captured["url"] = url
+        self.captured["json"] = json
+        return _FakeResponse(self._payload)
+
+
+def _payload(text: str, finish_reason: str = "STOP") -> dict:
+    return {"candidates": [{"content": {"parts": [{"text": text}]}, "finishReason": finish_reason}]}
+
+
+def _prompt_of(client: _FakeGeminiClient) -> str:
+    parts = client.captured["json"]["contents"][0]["parts"]
+    return "".join(p.get("text", "") for p in parts if "text" in p)
+
+
 @pytest.mark.asyncio
 async def test_transcribe_pdf_fails_loud_without_api_key(monkeypatch):
-    monkeypatch.setattr(settings, "ANTHROPIC_API_KEY", None)
+    monkeypatch.setattr(settings, "GEMINI_API_KEY", None)
 
-    with pytest.raises(RuntimeError, match="ANTHROPIC_API_KEY"):
+    with pytest.raises(RuntimeError, match="GEMINI_API_KEY"):
         await pdf_ocr.transcribe_pdf(_blank_pdf(1))
 
 
 @pytest.mark.asyncio
 async def test_transcribe_pdf_chunks_pages_and_joins_transcriptions(monkeypatch):
-    monkeypatch.setattr(settings, "ANTHROPIC_API_KEY", "test-key")
+    monkeypatch.setattr(settings, "GEMINI_API_KEY", "test-key")
 
     async def fake_chunk(client, chunk):
         pages = len(pypdf.PdfReader(io.BytesIO(chunk)).pages)
@@ -64,25 +97,13 @@ async def test_the_text_layer_rides_along_as_grounding(monkeypatch):
     """The whole point of reconciliation: the request must carry the embedded
     text layer so the model takes characters from it, not from its own read
     of the page image."""
-    captured = {}
-
-    class FakeMessages:
-        async def create(self, **kwargs):
-            captured.update(kwargs)
-            return SimpleNamespace(
-                content=[SimpleNamespace(type="text", text="reconciled")],
-                stop_reason="end_turn",
-            )
-
-    client = SimpleNamespace(messages=FakeMessages())
+    client = _FakeGeminiClient(_payload("reconciled"))
     monkeypatch.setattr(pdf_ocr, "extract_text", lambda content, ct: "288241R\tOR288241\t106113")
 
     result = await pdf_ocr._transcribe_chunk(client, _blank_pdf(1))
 
     assert result == "reconciled"
-    prompt = "".join(
-        block["text"] for block in captured["messages"][0]["content"] if block["type"] == "text"
-    )
+    prompt = _prompt_of(client)
     assert "288241R\tOR288241\t106113" in prompt
     assert "<text_layer>" in prompt
     # A page can render a token cut off (page edge, cropped scan) while the
@@ -92,27 +113,182 @@ async def test_the_text_layer_rides_along_as_grounding(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_a_scan_sends_no_grounding_block(monkeypatch):
-    """A scan has no text layer. The prompt must not carry an empty
-    <text_layer> block that invites the model to treat 'nothing' as truth."""
-    captured = {}
-
-    class FakeMessages:
-        async def create(self, **kwargs):
-            captured.update(kwargs)
-            return SimpleNamespace(
-                content=[SimpleNamespace(type="text", text="ocr")], stop_reason="end_turn"
-            )
-
-    client = SimpleNamespace(messages=FakeMessages())
+async def test_the_prompt_demands_markdown_tables_and_figure_descriptions(monkeypatch):
+    """The two output requirements the knowledge base depends on: tables must
+    come back as markdown tables (a flattened parts table crosses the wrong
+    part numbers), and figures must be described in place (a diagram's
+    identifying details — the only way to tell a 4515 shoe from a 4707 —
+    otherwise never enter the searchable text)."""
+    client = _FakeGeminiClient(_payload("out"))
     monkeypatch.setattr(pdf_ocr, "extract_text", lambda content, ct: None)
 
     await pdf_ocr._transcribe_chunk(client, _blank_pdf(1))
 
-    prompt = "".join(
-        block["text"] for block in captured["messages"][0]["content"] if block["type"] == "text"
+    prompt = _prompt_of(client)
+    assert "markdown table" in prompt
+    assert "[Figure:" in prompt
+
+
+@pytest.mark.asyncio
+async def test_a_scan_sends_no_grounding_block(monkeypatch):
+    """A scan has no text layer. The prompt must not carry an empty
+    <text_layer> block that invites the model to treat 'nothing' as truth."""
+    client = _FakeGeminiClient(_payload("ocr"))
+    monkeypatch.setattr(pdf_ocr, "extract_text", lambda content, ct: None)
+
+    await pdf_ocr._transcribe_chunk(client, _blank_pdf(1))
+
+    assert "<text_layer>" not in _prompt_of(client)
+
+
+@pytest.mark.asyncio
+async def test_a_truncated_transcription_is_marked_not_silent(monkeypatch):
+    client = _FakeGeminiClient(_payload("partial", finish_reason="MAX_TOKENS"))
+    monkeypatch.setattr(pdf_ocr, "extract_text", lambda content, ct: None)
+
+    result = await pdf_ocr._transcribe_chunk(client, _blank_pdf(1))
+
+    assert result == "partial\n\n[transcription truncated]"
+
+
+@pytest.mark.asyncio
+async def test_an_empty_candidate_list_raises(monkeypatch):
+    """No candidates means the API refused or filtered the request. That must
+    surface as a retryable failure, never be stored as a blank document."""
+    client = _FakeGeminiClient({"candidates": []})
+    monkeypatch.setattr(pdf_ocr, "extract_text", lambda content, ct: None)
+
+    with pytest.raises(RuntimeError, match="no candidates"):
+        await pdf_ocr._transcribe_chunk(client, _blank_pdf(1))
+
+
+def _annotated_pdf(pages: int = 1) -> bytes:
+    """A PDF carrying the three annotation types an expert reaches for:
+    a sticky note, a highlight with popup text, and a visible text box."""
+    from pypdf.annotations import FreeText, Highlight, Text
+    from pypdf.generic import ArrayObject, NumberObject
+
+    writer = pypdf.PdfWriter()
+    for _ in range(pages):
+        writer.add_blank_page(*PAGE_SIZE)
+    rect = (72, 700, 200, 720)
+    quad = ArrayObject(NumberObject(v) for v in (72, 720, 200, 720, 72, 700, 200, 700))
+    writer.add_annotation(0, Text(text="the 4707 row is deprecated", rect=rect, open=False))
+    writer.add_annotation(0, Highlight(rect=rect, quad_points=quad, highlight_color="ff0000"))
+    writer.add_annotation(
+        0,
+        FreeText(text="fitment matrix on page 40 is authoritative", rect=(72, 600, 400, 640)),
     )
-    assert "<text_layer>" not in prompt
+    # Give the highlight popup text after the fact — pypdf's Highlight builder
+    # takes no text, but real ones (Preview, Acrobat) carry /Contents.
+    from pypdf.generic import NameObject, TextStringObject
+
+    annots = writer.pages[0]["/Annots"]
+    annots[1].get_object()[NameObject("/Contents")] = TextStringObject(
+        "crossref only valid for 21K axles"
+    )
+    buf = io.BytesIO()
+    writer.write(buf)
+    return buf.getvalue()
+
+
+@pytest.mark.asyncio
+async def test_annotations_ride_along_in_the_prompt(monkeypatch):
+    """Sticky notes and highlight popups render as bare icons, so vision alone
+    loses the expert's commentary. The annotation layer must ride along with
+    page numbers and an instruction to transcribe each note in place."""
+    client = _FakeGeminiClient(_payload("out"))
+    monkeypatch.setattr(pdf_ocr, "extract_text", lambda content, ct: None)
+
+    await pdf_ocr._transcribe_chunk(client, _annotated_pdf())
+
+    prompt = _prompt_of(client)
+    assert "<annotations>" in prompt
+    assert "Page 1: the 4707 row is deprecated" in prompt
+    assert "Page 1: crossref only valid for 21K axles" in prompt
+    assert "Page 1: fitment matrix on page 40 is authoritative" in prompt
+    assert "[Annotation:" in prompt
+
+
+@pytest.mark.asyncio
+async def test_a_pdf_without_annotations_sends_no_annotations_block(monkeypatch):
+    """Same rule as the empty text layer: no empty <annotations> block that
+    invites the model to invent notes."""
+    client = _FakeGeminiClient(_payload("out"))
+    monkeypatch.setattr(pdf_ocr, "extract_text", lambda content, ct: None)
+
+    await pdf_ocr._transcribe_chunk(client, _blank_pdf(1))
+
+    assert "<annotations>" not in _prompt_of(client)
+
+
+def test_annotations_survive_chunk_slicing():
+    """_slice_pdf rebuilds pages with pypdf; if the writer dropped /Annots the
+    prompt block would silently vanish for every multi-chunk document."""
+    reader = pypdf.PdfReader(io.BytesIO(_annotated_pdf(pages=3)))
+    chunk = pdf_ocr._slice_pdf(reader, 0, 2)
+
+    assert "the 4707 row is deprecated" in pdf_ocr._annotations_block(chunk)
+
+
+def test_broken_annotations_never_fail_a_document_that_read_fine_before():
+    """Wild PDFs carry broken /Annots — null arrays, null entries, dangling
+    refs. Those documents extracted fine before annotations were read at all;
+    reading the annotation layer must not turn them into extraction failures."""
+    from pypdf.generic import ArrayObject, NameObject, NullObject
+
+    for annots in (NullObject(), ArrayObject([NullObject()])):
+        writer = pypdf.PdfWriter()
+        writer.add_blank_page(*PAGE_SIZE)
+        writer.pages[0][NameObject("/Annots")] = annots
+        buf = io.BytesIO()
+        writer.write(buf)
+
+        assert pdf_ocr._annotations_block(buf.getvalue()) == ""
+
+
+def test_a_broken_page_does_not_eat_other_pages_notes():
+    """Per-page isolation: one malformed page loses only its own annotations,
+    not the expert's notes elsewhere in the document."""
+    from pypdf.generic import ArrayObject, NameObject, NullObject
+
+    writer = pypdf.PdfWriter()
+    reader = pypdf.PdfReader(io.BytesIO(_annotated_pdf()))
+    writer.add_blank_page(*PAGE_SIZE)
+    writer.pages[0][NameObject("/Annots")] = ArrayObject([NullObject()])
+    writer.append(reader)
+    buf = io.BytesIO()
+    writer.write(buf)
+
+    block = pdf_ocr._annotations_block(buf.getvalue())
+
+    assert "Page 2: the 4707 row is deprecated" in block
+
+
+def test_annotations_past_the_vision_cap_land_in_the_tail():
+    """The vision cap bounds API spend; an expert note on page 120 of a giant
+    catalog must still reach the stored text."""
+    reader = pypdf.PdfReader(io.BytesIO(_annotated_pdf(pages=2)))
+
+    tail = pdf_ocr._text_layer_tail(reader, 0)
+
+    assert "[Annotation, page 1] the 4707 row is deprecated" in tail
+
+
+def test_a_broken_text_layer_does_not_eat_the_pages_notes_in_the_tail(monkeypatch):
+    """A page can have a corrupt content stream and perfectly readable
+    annotations. A text-layer failure must lose only the text, not the
+    expert's notes."""
+    reader = pypdf.PdfReader(io.BytesIO(_annotated_pdf()))
+
+    def boom(self, *args, **kwargs):
+        raise RuntimeError("corrupt content stream")
+
+    monkeypatch.setattr(pypdf.PageObject, "extract_text", boom)
+
+    tail = pdf_ocr._text_layer_tail(reader, 0)
+
+    assert "[Annotation, page 1] the 4707 row is deprecated" in tail
 
 
 @pytest.mark.asyncio
@@ -120,7 +296,7 @@ async def test_pages_past_the_vision_cap_keep_their_text_layer(monkeypatch):
     """The cap bounds vision spend on giant catalogs. It must not discard text
     pypdf reads for free — the tail is appended raw, under a marker that says
     exactly where reconciliation stopped."""
-    monkeypatch.setattr(settings, "ANTHROPIC_API_KEY", "test-key")
+    monkeypatch.setattr(settings, "GEMINI_API_KEY", "test-key")
     monkeypatch.setattr(pdf_ocr, "MAX_VISION_PAGES", 4)
     monkeypatch.setattr(pdf_ocr, "PAGES_PER_REQUEST", 2)
 
@@ -141,7 +317,7 @@ async def test_the_vision_cap_is_marked_not_silent(monkeypatch):
     """A scan past the cap has no text layer to fall back on. Bounding API
     spend is fine; pretending we read the whole document is not — the stored
     text must say where transcription stopped."""
-    monkeypatch.setattr(settings, "ANTHROPIC_API_KEY", "test-key")
+    monkeypatch.setattr(settings, "GEMINI_API_KEY", "test-key")
     monkeypatch.setattr(pdf_ocr, "MAX_VISION_PAGES", 4)
     monkeypatch.setattr(pdf_ocr, "PAGES_PER_REQUEST", 2)
 
@@ -165,7 +341,7 @@ async def test_ocr_holds_at_most_the_concurrency_limit_in_memory(monkeypatch):
     API call have to sit behind the semaphore."""
     import asyncio
 
-    monkeypatch.setattr(settings, "ANTHROPIC_API_KEY", "test-key")
+    monkeypatch.setattr(settings, "GEMINI_API_KEY", "test-key")
     monkeypatch.setattr(pdf_ocr, "MAX_VISION_PAGES", 12)
     monkeypatch.setattr(pdf_ocr, "PAGES_PER_REQUEST", 1)
 
@@ -239,23 +415,25 @@ def _wire_extract_one(monkeypatch, conn, content):
 
 
 @pytest.mark.asyncio
-async def test_textless_pdf_is_transcribed_and_stored(monkeypatch):
+async def test_every_uploaded_pdf_is_transcribed_and_stored(monkeypatch):
+    """Digital PDFs included: the pypdf-only path stores a scrambled table
+    that reads fine while crossing the wrong part numbers, so a text layer
+    must not divert a PDF away from vision — it rides along as grounding."""
     conn = _FakeConnection(uuid.uuid4(), "application/pdf")
     _wire_extract_one(monkeypatch, conn, _blank_pdf(2))
 
     async def fake_transcribe(content):
-        return "transcribed scan"
+        return "vision transcription"
 
     monkeypatch.setattr(pdf_ocr, "transcribe_pdf", fake_transcribe)
 
     assert await extract_one._run(conn.file_id) == 0
-    assert conn.persisted_text == "transcribed scan"
+    assert conn.persisted_text == "vision transcription"
 
 
 @pytest.mark.asyncio
-async def test_upload_with_text_layer_skips_vision(monkeypatch):
-    """Vision costs an API call per chunk — an upload the embedded-text path
-    already handled must never hit the API."""
+async def test_non_pdf_upload_never_transcribes(monkeypatch):
+    """Vision costs an API call per chunk — only PDFs take that path."""
     conn = _FakeConnection(uuid.uuid4(), "text/plain")
     _wire_extract_one(monkeypatch, conn, b"plain text body")
 
@@ -303,3 +481,36 @@ async def test_transcription_failure_marks_row_for_retry(monkeypatch):
 
     assert await extract_one._run(file_id) == 1
     assert persisted_errors == ["Extraction failed: RuntimeError"]
+
+
+@pytest.mark.asyncio
+async def test_a_rate_limit_hands_the_attempt_back(monkeypatch):
+    """HTTP 429 means "later", not "broken". Counting it against the attempt
+    budget let one quota blip march 20 real customer documents to permanent
+    failure in seconds — the row must go back to pending with its attempt
+    returned, so the next dispatch retries it as if this one never happened."""
+    import httpx
+
+    file_id = uuid.uuid4()
+    executed_queries = []
+
+    class RateLimitedConnection(_FakeConnection):
+        async def execute(self, query, *args):
+            executed_queries.append(query)
+
+    conn = RateLimitedConnection(file_id, "application/pdf")
+    _wire_extract_one(monkeypatch, conn, _blank_pdf(1))
+
+    async def rate_limited_transcribe(content):
+        request = httpx.Request("POST", "https://generativelanguage.googleapis.com")
+        raise httpx.HTTPStatusError(
+            "429", request=request, response=httpx.Response(429, request=request)
+        )
+
+    monkeypatch.setattr(pdf_ocr, "transcribe_pdf", rate_limited_transcribe)
+
+    assert await extract_one._run(file_id) == 1
+    (query,) = executed_queries
+    assert "extraction_status = 'pending'" in query
+    assert "extraction_attempts = greatest(extraction_attempts - 1, 0)" in query
+    assert "failed" not in query

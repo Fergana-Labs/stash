@@ -6,45 +6,22 @@ import SiteHeader from "../_components/SiteHeader";
 import Texture from "../_components/Texture";
 
 export const metadata: Metadata = {
-  title: "Everything you've read, in one place your agent can use · Stash",
+  title: "AI-native bookmarks · Stash",
   description:
-    "Stash captures what you read — articles, bookmarks, X threads, PDFs, AI chats — and what you saved and never got to. So your agent can find it, remember it, and act on it.",
+    "Give your agents a personal internet filled with all the best things you've opened, or never got around to, on the inter-webs. Clip anything, keep it in a private library, and let your existing agents use it right away.",
 };
 
-// The three things having your reading in one place actually buys you. This is
-// the spine of the page: capture is the mechanism, not the pitch.
-const VERBS = [
-  [
-    "Find it",
-    "“Which article had the bit about migration locks?” You read it, you can't name it, and search engines only know the open web. Stash answers from the thing you actually read, and links back to it.",
-  ],
-  [
-    "Remember it",
-    "You shouldn't have to remember that you read something in order to use it. Ask a question and what you read eight months ago comes back at the moment it's relevant — not when you happen to think of it.",
-  ],
-  [
-    "Act on it",
-    "Draft the reply, compare the two vendors, plan the trip — grounded in your own reading instead of a generic answer scraped off the web this morning.",
-  ],
-];
+// Kept in sync by hand with the same constant in the app's /extension page —
+// www and frontend are separate deployables and share no module.
+const CHROME_WEB_STORE_URL =
+  "https://chromewebstore.google.com/detail/stash-sync/cggimcbkomkpielefiannhmenmoehbea";
 
-const SAVES = [
-  [
-    "Clip any page",
-    "One click saves the page you're reading — or every open tab — as a clean, readable copy. PDFs included.",
-  ],
-  [
-    "Import your bookmarks",
-    "Bring your whole bookmarks file. Stash fetches each page's content in the background, so a dead link still has the article behind it.",
-  ],
-  [
-    "Twitter bookmarks",
-    "Your X bookmarks sync automatically — text, images, and threads archived so they outlive the post.",
-  ],
-  [
-    "AI chats",
-    "ChatGPT and Claude conversations stream in as transcripts, searchable next to everything else you've saved.",
-  ],
+// Verbatim from the in-app /extension page, so the two surfaces say the same thing.
+const CLIPS = [
+  ["Clip any page", "Articles, PDFs, and every open tab. Saved clean and readable."],
+  ["Bring your bookmarks", "Import the whole file. We fetch what's behind every link."],
+  ["Twitter bookmarks", "Your X bookmarks, synced. Text, images, and threads kept."],
+  ["AI chats", "ChatGPT and Claude, streamed in. Searchable like everything else."],
 ];
 
 export default function BookmarksPage() {
@@ -63,16 +40,14 @@ export default function BookmarksPage() {
           }}
         />
         <div className="relative z-10 mx-auto max-w-[1200px] px-7">
-          <p className="kicker rise-in mb-6">Everything.you.read</p>
           <h1 className="max-w-[920px] text-balance font-display text-[clamp(40px,5.4vw,72px)] font-bold leading-[1.02] tracking-[-0.035em] text-ink">
-            Your agent should know{" "}
-            <span className="text-brand">everything you&apos;ve read.</span>
+            Give your agents a{" "}
+            <span className="text-brand">personal internet.</span>
           </h1>
           <p className="mt-7 max-w-[640px] text-[18px] leading-[1.55] text-foreground">
-            You&apos;ve read thousands of articles, threads, and PDFs this year.
-            Your AI has read none of them. Stash captures what you read — and
-            the pile you saved and never got to — so your agent can find it,
-            remember it, and act on it.
+            Filled with all the best things you&apos;ve opened, or never got
+            around to, on the inter-webs. Relax knowing that even if you
+            don&apos;t get to something, your agent will.
           </p>
           <div className="mt-9">
             <CtaPair />
@@ -83,22 +58,35 @@ export default function BookmarksPage() {
       <section className="border-b border-border-subtle bg-surface py-20 md:py-28">
         <div className="mx-auto max-w-[1200px] px-7">
           <h2 className="max-w-[760px] text-balance font-display text-[clamp(28px,3.4vw,44px)] font-bold leading-[1.1] tracking-[-0.02em] text-ink">
-            Saving was never the point.
+            Save anything from the web.
           </h2>
-          <p className="mt-5 max-w-[620px] text-[16px] leading-[1.6] text-dim">
-            Every bookmark manager ends the story at &ldquo;saved.&rdquo; That&apos;s
-            where this one starts.
-          </p>
-          <div className="mt-12 grid grid-cols-1 gap-4 md:grid-cols-3">
-            {VERBS.map(([name, blurb]) => (
+
+          <a
+            href={CHROME_WEB_STORE_URL}
+            target="_blank"
+            rel="noopener"
+            className="mt-7 inline-flex h-11 items-center rounded-lg border border-ink bg-background px-5 text-[14px] font-semibold text-ink transition hover:bg-raised"
+          >
+            Add to Chrome — it&apos;s free
+          </a>
+
+          <div className="mt-12 max-w-[980px]">
+            <Shot
+              src="/screens/save-page.jpg"
+              alt="The Stash Sync extension popup open on a Wikipedia article, offering Save this tab and Save all open tabs."
+            />
+          </div>
+
+          <div className="mt-12 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {CLIPS.map(([name, blurb]) => (
               <div
                 key={name}
-                className="rounded-[12px] border border-border bg-background p-6 transition-colors hover:border-brand"
+                className="rounded-[12px] border border-border bg-background p-5 transition-colors hover:border-brand"
               >
-                <div className="font-display text-[19px] font-bold tracking-[-0.01em] text-ink">
+                <div className="font-display text-[16px] font-bold tracking-[-0.01em] text-ink">
                   {name}
                 </div>
-                <p className="mt-2 text-[14.5px] leading-[1.55] text-dim">{blurb}</p>
+                <p className="mt-1.5 text-[14px] leading-[1.55] text-dim">{blurb}</p>
               </div>
             ))}
           </div>
@@ -107,23 +95,14 @@ export default function BookmarksPage() {
 
       <section className="border-b border-border-subtle py-20 md:py-28">
         <div className="mx-auto max-w-[1200px] px-7">
-          <div className="grid grid-cols-1 gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:gap-16">
-            <div>
-              <p className="kicker">The.unread.pile</p>
-              <h2 className="mt-5 text-balance font-display text-[clamp(28px,3.4vw,44px)] font-bold leading-[1.1] tracking-[-0.02em] text-ink">
-                And the things you haven&apos;t read.
-              </h2>
-              <p className="mt-5 text-[16px] leading-[1.6] text-foreground">
-                The 200 links you saved and never opened are read on the way in
-                anyway — the whole page, not the title. So the pile stops being
-                a guilt trip and starts being a corpus: ask which of the forty
-                things you saved this month actually answer your question, and
-                skip the thirty-seven that don&apos;t.
-              </p>
-            </div>
+          <h2 className="max-w-[860px] text-balance font-display text-[clamp(28px,3.4vw,44px)] font-bold leading-[1.1] tracking-[-0.02em] text-ink">
+            We maintain a private library and build an LLM wiki of key topics.
+          </h2>
+
+          <div className="mt-12">
             <Shot
-              src="/screens/bookmarks-library.jpg"
-              caption="Everything you've saved in one library — filterable, sortable, kept in full."
+              src="/screens/bookmarks-table.jpg"
+              alt="The Stash bookmarks table: title, URL, type, saved date, and site for each clip, with a detail panel showing one bookmark's summary and topics."
             />
           </div>
         </div>
@@ -131,55 +110,31 @@ export default function BookmarksPage() {
 
       <section className="border-b border-border-subtle bg-surface py-20 md:py-28">
         <div className="mx-auto max-w-[1200px] px-7">
-          <h2 className="max-w-[760px] text-balance font-display text-[clamp(28px,3.4vw,44px)] font-bold leading-[1.1] tracking-[-0.02em] text-ink">
-            Getting it in takes one click. Usually zero.
+          <h2 className="max-w-[860px] text-balance font-display text-[clamp(28px,3.4vw,44px)] font-bold leading-[1.1] tracking-[-0.02em] text-ink">
+            Your existing agents use Stash to get context right away.
           </h2>
-          <p className="mt-5 max-w-[620px] text-[16px] leading-[1.6] text-dim">
-            A library only works if filling it is free. Nothing here asks you to
-            file, tag, or tidy.
-          </p>
-          <div className="mt-12 grid grid-cols-1 gap-4 sm:grid-cols-2">
-            {SAVES.map(([name, blurb]) => (
-              <div
-                key={name}
-                className="rounded-[12px] border border-border bg-background p-5 transition-colors hover:border-brand"
-              >
-                <div className="font-display text-[17px] font-bold tracking-[-0.01em] text-ink">
-                  {name}
-                </div>
-                <p className="mt-1.5 text-[14px] leading-[1.55] text-dim">{blurb}</p>
-              </div>
-            ))}
-          </div>
-          <div className="mt-12 max-w-[900px]">
+
+          <div className="mt-12">
             <Shot
-              src="/screens/save-page.jpg"
-              caption="One click from the browser extension, on any page you're reading."
+              src="/screens/agent-context.jpg"
+              alt="A coding agent answering a question about continual learning from saved papers, citing specific arXiv IDs and results."
             />
           </div>
-        </div>
-      </section>
 
-      <section className="border-b border-border-subtle py-20 md:py-28">
-        <div className="mx-auto max-w-[1200px] px-7">
-          <p className="kicker">Not.a.notebook</p>
-          <h2 className="mt-5 max-w-[820px] text-balance font-display text-[clamp(28px,3.4vw,44px)] font-bold leading-[1.1] tracking-[-0.02em] text-ink">
-            A library that fills itself, not a notebook you fill by hand.
-          </h2>
-          <p className="mt-6 max-w-[680px] text-[16px] leading-[1.6] text-foreground">
-            Gemini Notebook — the tool formerly called NotebookLM — is grounded
-            in sources you hand it, one notebook at a time, capped at 50 sources
-            per notebook on the free plan, with no way to ask across notebooks.
-            That&apos;s a good way to study a stack of documents you&apos;ve
-            already gathered. It isn&apos;t a way to know everything you read
-            this year.
-          </p>
-          <p className="mt-4 max-w-[680px] text-[16px] leading-[1.6] text-foreground">
-            Stash collects in the background instead: one library with no
-            notebook walls around it, and a CLI, MCP server, and API so any
-            agent you already use — Claude, ChatGPT, Cursor — can read the whole
-            thing.
-          </p>
+          <div className="mt-9 flex flex-wrap gap-3">
+            <Link
+              href="/docs/quickstart"
+              className="inline-flex h-10 items-center rounded-lg border border-border bg-background px-4 text-[13.5px] font-medium text-ink transition hover:border-ink"
+            >
+              Quickstart →
+            </Link>
+            <Link
+              href="/docs/cli"
+              className="inline-flex h-10 items-center rounded-lg border border-border bg-background px-4 text-[13.5px] font-medium text-ink transition hover:border-ink"
+            >
+              CLI reference
+            </Link>
+          </div>
         </div>
       </section>
 
@@ -204,15 +159,12 @@ export default function BookmarksPage() {
   );
 }
 
-function Shot({ src, caption }: { src: string; caption: string }) {
+function Shot({ src, alt }: { src: string; alt: string }) {
   return (
-    <figure>
-      <img
-        src={src}
-        alt={caption}
-        className="w-full rounded-xl border border-border shadow-[var(--shadow-card)]"
-      />
-      <figcaption className="mt-3 text-[13.5px] leading-[1.55] text-dim">{caption}</figcaption>
-    </figure>
+    <img
+      src={src}
+      alt={alt}
+      className="w-full rounded-xl border border-border shadow-[var(--shadow-card)]"
+    />
   );
 }

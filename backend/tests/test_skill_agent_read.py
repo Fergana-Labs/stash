@@ -110,6 +110,7 @@ async def test_public_skill_item_text_strips_html_page_content(client: AsyncClie
         json={
             "owner_user_id": scope["id"],
             "title": "HTML strategy memo",
+            "description": "Use for strategy questions.",
             "content_type": "html",
             "content": "<main><h1>Hello Agent</h1><p>Read this first.</p></main>",
         },

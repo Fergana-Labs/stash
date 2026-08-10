@@ -58,6 +58,26 @@ class SourceSetupRequired(Exception):
     SourceSyncUserError — the message is shown verbatim."""
 
 
+def expect_items(payload: object, key: str, *, provider: str) -> list:
+    """Return the list a provider nests under `key`, or fail loud.
+
+    This is the one gate between a sync and the delete-to-mirror sweep. A list
+    that is present but empty is a real empty result and is believed. A payload
+    that is not a dict, is missing `key`, or holds a non-list there is a response
+    we could not read — never "the account is empty" — so it raises instead of
+    letting a malformed or truncated page drive a deletion. Providers that omit
+    the container when empty (Gmail) must not use this; they check their own
+    empty signal.
+    """
+    if isinstance(payload, dict) and isinstance(payload.get(key), list):
+        return payload[key]
+    raise SourceSyncUserError(
+        f"{provider} returned a response we could not read, so syncing is paused for "
+        "this source to protect your saved data. This is a bug on our side, not your "
+        "account — nothing was deleted."
+    )
+
+
 # A Linear issue identifier (FER-199). Any such ref is readable live from the
 # API, so reads work even before a sync has indexed the issue.
 LINEAR_IDENTIFIER_RE = re.compile(r"^[A-Za-z][A-Za-z0-9]*-\d+$")
@@ -896,11 +916,18 @@ async def upsert_drive_document(
 
 
 async def remove_missing_documents(table: str, source_id: UUID, present_paths: list[str]) -> int:
-    """Remove live docs whose path was absent from the latest crawl.
+    """Mirror the provider: remove live docs whose path was absent from the crawl.
 
     Copied-content tables hold customer text and embeddings, so missing rows are
     physically deleted. Index-only tables hold provider refs with no copied body,
     so soft-delete keeps navigation state cheap to resurrect on the next sync.
+
+    This is a dumb mirror: an empty `present_paths` deletes everything, because it
+    means the provider reported an empty account. The decision that an empty (or
+    short) listing is *real* and not a broken response lives in each indexer,
+    which fails loud on a malformed response before it ever reaches this sweep
+    (see `expect_items`). A single source of truth: the provider, believed only
+    once the indexer has confirmed it understood the response.
     """
     if table in CONTENT_TABLES:
         result = await get_pool().execute(
@@ -1610,6 +1637,8 @@ async def search_documents(
     source: dict | None = None,
     providers: frozenset[str] | None = None,
     limit: int = 20,
+    modified_after: datetime | None = None,
+    modified_before: datetime | None = None,
 ) -> list[dict]:
     """FTS over copied-content sources the user can read — their own or shared
     with them (github/slack/granola), UNIONed across their tables. Pass `source`
@@ -1659,9 +1688,14 @@ async def search_documents(
             )
         return ""
 
+    date_clause, date_args = _modified_range_clause(
+        "d.external_updated_at", 4, modified_after, modified_before
+    )
     # Each arm ranks on the stored vector and keeps only its own top `limit`
     # BEFORE the snippet expression runs: the 20KB substr detoasts the full
     # document, so it must touch the few returned rows, never every match.
+    # The date bound lives inside each arm too — outside it, the per-arm top-N
+    # would discard in-range rows in favor of out-of-range higher-ranked ones.
     parts = [
         f"""
         SELECT sub.source_id, sub.path, sub.name, sub.external_updated_at,
@@ -1678,7 +1712,7 @@ async def search_documents(
             JOIN user_sources s ON s.id = d.source_id
             WHERE d.source_id = ANY($1) AND d.deleted_at IS NULL
               AND d.content_tsv @@ websearch_to_tsquery('english', $2)
-              {visibility_clause(t)}
+              {visibility_clause(t)}{date_clause}
             ORDER BY rank DESC
             LIMIT $3
         ) sub
@@ -1694,6 +1728,7 @@ async def search_documents(
         readable_ids,
         query,
         limit,
+        *date_args,
     )
     return [
         {
@@ -2165,6 +2200,68 @@ async def source_document(
     return True, doc
 
 
+# Source types whose documents have original bytes we can serve verbatim.
+# Everything else is provider API objects (messages, tickets, threads) with no
+# underlying file — raw download is a category error there, not a missing case.
+RAW_DOWNLOAD_TYPES = ("google_drive", "google_drive_folder")
+
+
+async def source_document_raw(
+    owner_user_id: UUID, user_id: UUID, source: str, ref: str
+) -> tuple[bool, dict | None]:
+    """One connected-source document's original bytes (the PDF itself, not its
+    extracted text), for vision-capable agents that read documents with their
+    own eyes. Same return contract as `source_document`: `(source_ok, doc)`,
+    with unreadable documents reported as `{"error", "http_status"}` dicts."""
+    connected = await _resolve_connected(source, owner_user_id, user_id)
+    if connected is None:
+        return False, None
+    source_type = connected["source_type"]
+    if source_type not in RAW_DOWNLOAD_TYPES:
+        return True, {
+            "error": f"raw download is not available for {source_type} documents; read as text",
+            "http_status": 415,
+        }
+
+    table = _table_for(source_type)
+    row = await get_pool().fetchrow(
+        f"SELECT external_ref, name FROM {table} "
+        f"WHERE source_id = $1 AND path = $2 AND deleted_at IS NULL",
+        UUID(connected["id"]),
+        ref,
+    )
+    if row is None or not row["external_ref"]:
+        return True, None
+
+    from ..integrations.google.indexer import (
+        MAX_NATIVE_DOWNLOAD_BYTES,
+        DriveFileTooLarge,
+        DriveFileUnsupported,
+        download_drive_file,
+    )
+
+    try:
+        content, mime, name = await download_drive_file(
+            UUID(connected["owner_user_id"]),
+            row["external_ref"],
+            max_bytes=MAX_NATIVE_DOWNLOAD_BYTES,
+        )
+    except DriveFileUnsupported as exc:
+        return True, {"error": str(exc), "http_status": 415}
+    except DriveFileTooLarge as exc:
+        return True, {"error": str(exc), "http_status": 413}
+
+    await _audit_source_read(
+        action="source.document_download",
+        owner_user_id=owner_user_id,
+        user_id=user_id,
+        source=source,
+        connected=connected,
+        metadata={"ref_hash": security_audit_service.hash_value(ref)},
+    )
+    return True, {"content": content, "content_type": mime, "name": name}
+
+
 async def _deep_link(source: dict, doc: dict) -> str | None:
     """The provider URL for one read document. Jira needs a network lookup for the
     site URL; everything else derives from stored refs (see source_document_url).
@@ -2214,6 +2311,46 @@ def _parse_dt(value: str | None):
         return None
     dt = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
     return dt.replace(tzinfo=UTC) if dt.tzinfo is None else dt
+
+
+def _normalize_ts(dt: datetime | None) -> datetime | None:
+    """Naive datetimes are treated as UTC (the columns are timestamptz)."""
+    if dt is None:
+        return None
+    return dt.replace(tzinfo=UTC) if dt.tzinfo is None else dt
+
+
+def _modified_range_clause(
+    column: str, first_index: int, modified_after: datetime | None, modified_before: datetime | None
+) -> tuple[str, list[datetime]]:
+    """SQL predicate bounding `column` to the range, with args numbered from
+    $first_index. NULL timestamps never satisfy a bound, so rows without a
+    modification time drop whenever a bound is set — by design."""
+    clause = ""
+    args: list[datetime] = []
+    if modified_after:
+        args.append(modified_after)
+        clause += f" AND {column} > ${first_index + len(args) - 1}"
+    if modified_before:
+        args.append(modified_before)
+        clause += f" AND {column} < ${first_index + len(args) - 1}"
+    return clause, args
+
+
+def _within_modified_range(
+    hit: dict, modified_after: datetime | None, modified_before: datetime | None
+) -> bool:
+    """Whether a federated hit's date_modified falls inside the bounds. Hits
+    with no timestamp are excluded whenever a bound is set (PostHog never
+    supplies one, so any bound excludes all PostHog hits)."""
+    if modified_after is None and modified_before is None:
+        return True
+    ts = _normalize_ts(hit.get("date_modified"))
+    if ts is None:
+        return False
+    if modified_after is not None and ts <= modified_after:
+        return False
+    return modified_before is None or ts < modified_before
 
 
 async def fetch_history(
@@ -2273,23 +2410,36 @@ async def fetch_history(
     return result
 
 
-async def _external_ref_matches(sources: list[dict], query: str, limit: int) -> list[dict]:
+async def _external_ref_matches(
+    sources: list[dict],
+    query: str,
+    limit: int,
+    modified_after: datetime | None = None,
+    modified_before: datetime | None = None,
+) -> list[dict]:
     """Documents whose provider id (`external_ref`) contains the query as a
     substring, across the given sources' document tables. These hits carry
     `exact_ref` so search_all pins them above everything else — an id match is
-    a lookup, not a relevance guess."""
+    a lookup, not a relevance guess. A modified bound excludes even exact-ref
+    hits whose external_updated_at is NULL: no timestamp means no proof the
+    document is in range."""
     query = query.strip()
     if not query:
         return []
+    date_clause, date_args = _modified_range_clause(
+        "external_updated_at", 4, modified_after, modified_before
+    )
 
     async def one_source(s: dict, table: str) -> list[dict]:
         rows = await get_pool().fetch(
             f"SELECT path, name, external_updated_at FROM {table} "
-            f"WHERE source_id = $1 AND strpos(external_ref, $2) > 0 AND deleted_at IS NULL "
+            f"WHERE source_id = $1 AND strpos(external_ref, $2) > 0 AND deleted_at IS NULL"
+            f"{date_clause} "
             f"LIMIT $3",
             UUID(s["id"]),
             query,
             limit,
+            *date_args,
         )
         return [
             {
@@ -2382,6 +2532,8 @@ async def _gather_search_candidates(
     source: str | None,
     allowed: frozenset[str],
     fetch_limit: int,
+    modified_after: datetime | None = None,
+    modified_before: datetime | None = None,
 ) -> tuple[list[dict], list[dict], dict | None] | None:
     """Collect unranked hits from every sub-search: native sessions + pages,
     exact provider-id matches, copied-content FTS, and federated provider
@@ -2390,7 +2542,12 @@ async def _gather_search_candidates(
     docs 500, providers SEARCH_LIMIT) — asking for more than those yields
     has_more = False, not deeper results. The sub-searches are independent, so
     they run concurrently; a search's latency is its slowest sub-search, not
-    the sum of all of them."""
+    the sum of all of them.
+
+    A modified_after/modified_before bound is pushed into SQL for the stored
+    paths, but federated providers have no uniform date pushdown, so their live
+    hits are filtered here after the fact — their truncation markers may then
+    over-report, and hits without a timestamp (all of PostHog's) are excluded."""
     # Resolve a named connected source first: an unknown handle must return
     # None before any sub-search runs.
     connected: dict | None = None
@@ -2405,7 +2562,14 @@ async def _gather_search_candidates(
         from . import session_title_service
         from .memory_service import search_scope_events
 
-        events = await search_scope_events(owner_user_id, user_id, query, limit=fetch_limit)
+        events = await search_scope_events(
+            owner_user_id,
+            user_id,
+            query,
+            limit=fetch_limit,
+            modified_after=modified_after,
+            modified_before=modified_before,
+        )
         # Session hits carry `name` — the session's display title in the VFS's
         # spelling, so a hit can be followed straight into /sessions/<name>/.
         # `ref` stays the raw session id; the web search page links with it.
@@ -2425,7 +2589,14 @@ async def _gather_search_candidates(
     async def page_hits() -> tuple[list[dict], list[dict]]:
         from .files_tree_service import search_pages_fts
 
-        pages = await search_pages_fts(owner_user_id, query, limit=fetch_limit, user_id=user_id)
+        pages = await search_pages_fts(
+            owner_user_id,
+            query,
+            limit=fetch_limit,
+            user_id=user_id,
+            modified_after=modified_after,
+            modified_before=modified_before,
+        )
         return [
             {
                 "source": NATIVE_FILES,
@@ -2471,7 +2642,9 @@ async def _gather_search_candidates(
         # reads sources shared directly with the user, which searched_sources
         # never enumerates.
         ref_hits, docs, federated_results = await asyncio.gather(
-            _external_ref_matches(searched_sources, query, fetch_limit),
+            _external_ref_matches(
+                searched_sources, query, fetch_limit, modified_after, modified_before
+            ),
             search_documents(
                 user_id=user_id,
                 query=query,
@@ -2480,6 +2653,8 @@ async def _gather_search_candidates(
                 if connected is not None
                 else allowed - {NATIVE_FILES, NATIVE_SESSIONS},
                 limit=fetch_limit,
+                modified_after=modified_after,
+                modified_before=modified_before,
             ),
             asyncio.gather(
                 *(
@@ -2503,7 +2678,9 @@ async def _gather_search_candidates(
         ]
         markers: list[dict] = []
         for fed_hits, fed_markers in federated_results:
-            hits += fed_hits
+            hits += [
+                h for h in fed_hits if _within_modified_range(h, modified_after, modified_before)
+            ]
             markers += fed_markers
         return hits, markers
 
@@ -2531,6 +2708,8 @@ async def search_all(
     include_sources: list[str] | None = None,
     exclude_sources: list[str] | None = None,
     limit: int = 20,
+    modified_after: datetime | None = None,
+    modified_before: datetime | None = None,
 ) -> dict | None:
     """Search across sources. Omit `source` to search everything the user can
     see (native files + sessions + their connected sources), or pass a handle to
@@ -2541,6 +2720,12 @@ async def search_all(
     handles + provider names): searched = (include or everything) - exclude, so
     disjoint lists yield empty results. Unknown tokens, or combining either
     with `source`, raise ValueError.
+
+    modified_after/modified_before restrict hits to those last modified inside
+    the range (strict bounds, naive datetimes read as UTC); hits with no known
+    modification time are excluded whenever a bound is set. An inverted range
+    raises ValueError. Markers are never date-filtered, so federated truncation
+    markers and has_more may over-report when the bound drops live hits.
 
     Every candidate is re-scored on one uniform ts_rank scale over its display
     text, then the merged list is sorted and sliced to the first `limit` hits —
@@ -2562,10 +2747,21 @@ async def search_all(
     if source is not None and (include_sources or exclude_sources):
         raise ValueError("Pass either source or include_sources/exclude_sources, not both")
     allowed = resolve_search_source_filter(include_sources, exclude_sources)
+    modified_after = _normalize_ts(modified_after)
+    modified_before = _normalize_ts(modified_before)
+    if modified_after and modified_before and modified_after > modified_before:
+        raise ValueError("modified_after must be earlier than modified_before")
 
     # +1 sentinel: gathering exactly `limit` hits could never prove more exist.
     gathered = await _gather_search_candidates(
-        owner_user_id, user_id, query, source, allowed, fetch_limit=limit + 1
+        owner_user_id,
+        user_id,
+        query,
+        source,
+        allowed,
+        fetch_limit=limit + 1,
+        modified_after=modified_after,
+        modified_before=modified_before,
     )
     if gathered is None:
         return None

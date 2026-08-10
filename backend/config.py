@@ -340,6 +340,10 @@ class Settings:
     ANTHROPIC_MODEL: str = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6")
     ANTHROPIC_FAST_MODEL: str = os.getenv("ANTHROPIC_FAST_MODEL", "claude-haiku-4-5")
 
+    # --- LLM (Gemini) — PDF vision transcription (services/pdf_ocr.py) ---
+    GEMINI_API_KEY: str | None = os.getenv("GEMINI_API_KEY")
+    GEMINI_EXTRACTION_MODEL: str = os.getenv("GEMINI_EXTRACTION_MODEL", "gemini-3-flash-preview")
+
     # --- Managed model keys (server-owned, for the cloud agent on paid tiers) ---
     # Each harness's default provider reads its key from here. A run on a paid
     # account is billed to us via these keys; free accounts are gated (until

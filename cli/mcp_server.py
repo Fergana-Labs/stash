@@ -29,6 +29,8 @@ def stash_search(
     include_sources: str = "",
     exclude_sources: str = "",
     limit: int = 20,
+    modified_after: str = "",
+    modified_before: str = "",
 ) -> str:
     """Search across all your sources — native files + session transcripts +
     connected sources (GitHub/Drive/Gmail/Notion/Slack/Granola) — merged onto
@@ -39,6 +41,9 @@ def stash_search(
     'sessions', or a connected-source id); omit it to search everything.
     Or filter with comma-separated `include_sources`/`exclude_sources` (native
     handles + provider names, e.g. "files,gmail"); not combinable with `source`.
+    Pass `modified_after`/`modified_before` (ISO-8601) to restrict to a
+    last-modified window; results with no known modification time are excluded
+    whenever a bound is set.
     """
     return _json(
         _client().search_sources(
@@ -47,6 +52,8 @@ def stash_search(
             include_sources=split_source_tokens(include_sources),
             exclude_sources=split_source_tokens(exclude_sources),
             limit=limit,
+            modified_after=modified_after or None,
+            modified_before=modified_before or None,
         )
     )
 
@@ -272,10 +279,17 @@ def stash_create_page(
 def stash_edit_page(
     page_id: str,
     content: str,
+    expected_content_hash: str,
     name: str = "",
 ) -> str:
-    """Update an existing page's content (and optionally rename)."""
-    kwargs: dict = {"content": content}
+    """Update an existing page's content (and optionally rename).
+
+    expected_content_hash is the content_hash from the stash_read_page call
+    this edit is based on. If the page changed since that read — for example
+    a human typing in the web editor — the edit is refused with a 409: read
+    the page again and reapply your edit on top of the latest content.
+    """
+    kwargs: dict = {"content": content, "expected_content_hash": expected_content_hash}
     if name:
         kwargs["name"] = name
     return _json(_client().update_page(page_id, **kwargs))
@@ -508,16 +522,17 @@ def stash_delete_file(file_id: str) -> str:
 @mcp.tool()
 def stash_create_skill(
     name: str,
-    skill_md: str = "",
+    skill_md: str,
 ) -> str:
-    """Create a skill: a folder with a SKILL.md. Pass skill_md as the full
-    SKILL.md content (frontmatter + body); a template is used when omitted."""
+    """Create a skill from full SKILL.md content (frontmatter + body)."""
     client = _client()
     folder = client.create_folder(name)
-    content = skill_md or f"---\nname: {name}\ndescription: \n---\n\n# {name}\n"
     client.create_page(
-        name="SKILL.md", content=content, folder_id=folder["id"], content_type="markdown"
+        name="SKILL.md", content=skill_md, folder_id=folder["id"], content_type="markdown"
     )
+    # Membership is a stored flag server-side: writing SKILL.md is the skill's
+    # instructions, the convert verb is what makes the folder a skill.
+    client.convert_folder_to_skill(folder["id"])
     return _json({"folder_id": folder["id"], "name": name})
 
 
@@ -586,6 +601,7 @@ def stash_whoami() -> str:
 @mcp.tool()
 def stash_publish_html(
     title: str,
+    description: str,
     html: str,
     audience: str = "public",
     folder_id: str = "",
@@ -597,6 +613,7 @@ def stash_publish_html(
     return _json(
         _client().publish(
             title=title,
+            description=description,
             content=html,
             content_type="html",
             audience=audience,
@@ -608,6 +625,7 @@ def stash_publish_html(
 @mcp.tool()
 def stash_publish_markdown(
     title: str,
+    description: str,
     markdown: str,
     audience: str = "public",
     folder_id: str = "",
@@ -617,6 +635,7 @@ def stash_publish_markdown(
     return _json(
         _client().publish(
             title=title,
+            description=description,
             content=markdown,
             content_type="markdown",
             audience=audience,

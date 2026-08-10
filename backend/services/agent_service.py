@@ -18,7 +18,7 @@ from ..database import get_pool
 _COLUMNS = (
     "id, user_id, name, model_provider, system_prompt, run_mode, "
     "schedule_cron, schedule_prompt, is_default, is_curator, slack_bound, "
-    "telegram_bound, last_run_at, last_run_error, curated_through, "
+    "telegram_bound, last_run_at, last_run_error, last_run_outcome, curated_through, "
     "month_run_count, month_run_anchor, created_at"
 )
 
@@ -262,13 +262,14 @@ async def mark_run(agent_id: UUID) -> int:
     Returns the run count within the current month (including this one) —
     the free-tier curator credit gate reads it.
 
-    Also clears last_run_error, so after last_run_at advances the error state
-    is unambiguous: non-null means THIS run failed (clients poll on that)."""
+    Also clears last_run_error and stamps the outcome as started. Every path
+    after this call must resolve the outcome as ran, failed, or skipped."""
     return await get_pool().fetchval(
         """
         UPDATE agents SET
             last_run_at = now(),
             last_run_error = NULL,
+            last_run_outcome = 'started',
             month_run_count = CASE
                 WHEN month_run_anchor = date_trunc('month', now())::date
                 THEN month_run_count + 1 ELSE 1 END,
@@ -288,11 +289,29 @@ async def mark_run_failed(agent_id: UUID, error: str) -> None:
         """
         UPDATE agents SET
             last_run_error = left($2, 500),
+            last_run_outcome = 'failed',
             month_run_count = greatest(month_run_count - 1, 0)
         WHERE id = $1
         """,
         agent_id,
         error,
+    )
+
+
+async def mark_run_skipped(agent_id: UUID, reason: str) -> None:
+    """Resolve a consumed tick that stopped at a designed scheduler gate."""
+    await get_pool().execute(
+        "UPDATE agents SET last_run_outcome = $2 WHERE id = $1",
+        agent_id,
+        f"skipped_{reason}",
+    )
+
+
+async def mark_run_succeeded(agent_id: UUID) -> None:
+    """Resolve a run after execution and all post-run bookkeeping complete."""
+    await get_pool().execute(
+        "UPDATE agents SET last_run_outcome = 'ran' WHERE id = $1",
+        agent_id,
     )
 
 

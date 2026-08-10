@@ -117,25 +117,45 @@ def agent_install_pitch(stash_url: str) -> str:
     )
 
 
-def skill_md_template(name: str, description: str = "") -> str:
-    return f"---\nname: {name}\ndescription: {description}\n---\n\n# {name}\n"
-
-
-async def _ensure_skill_md(owner_user_id: UUID, folder_id: UUID, user_id: UUID, title: str) -> None:
-    pool = get_pool()
-    existing = await pool.fetchval(
-        "SELECT 1 FROM pages WHERE folder_id = $1 AND name = 'SKILL.md' "
-        "AND deleted_at IS NULL LIMIT 1",
-        folder_id,
+def skill_md_template(name: str, description: str) -> str:
+    return (
+        f"---\nname: {json.dumps(name)}\ndescription: {json.dumps(description)}\n---\n\n# {name}\n"
     )
-    if existing:
+
+
+async def folder_has_skill_md(folder_id: UUID) -> bool:
+    pool = get_pool()
+    return bool(
+        await pool.fetchval(
+            "SELECT 1 FROM pages WHERE folder_id = $1 AND name = 'SKILL.md' "
+            "AND deleted_at IS NULL LIMIT 1",
+            folder_id,
+        )
+    )
+
+
+async def ensure_skill_md(
+    owner_user_id: UUID, folder_id: UUID, user_id: UUID, title: str, description: str
+) -> None:
+    """Give the folder instructions if it has none, and mark it a skill.
+
+    Publishing/forking/installing a skill is an explicit "this is a skill"
+    act by the caller, so it sets membership — unlike a user editing files
+    inside a folder, which never reclassifies anything."""
+    if await folder_has_skill_md(folder_id):
+        await files_tree_service.set_folder_is_skill(folder_id, owner_user_id, True)
         return
+    if not description.strip():
+        raise ValueError("description is required when publishing a folder as a skill")
+    skill_md = skill_md_template(title, description)
+    skill_service.validate_skill_md(skill_md)
+    await files_tree_service.set_folder_is_skill(folder_id, owner_user_id, True)
     await files_tree_service.create_page(
         owner_user_id,
         "SKILL.md",
         user_id,
         folder_id=folder_id,
-        content=skill_md_template(title),
+        content=skill_md,
         content_type="markdown",
     )
 
@@ -181,7 +201,7 @@ async def publish_folder(
         title = meta.get("name") or folder["name"]
         description = description or meta.get("description", "")
 
-    await _ensure_skill_md(owner_user_id, folder_id, owner_id, title)
+    await ensure_skill_md(owner_user_id, folder_id, owner_id, title, description)
     try:
         inserted = await pool.fetchrow(
             "INSERT INTO skills (owner_user_id, folder_id, slug, title, description, owner_id, "
@@ -377,8 +397,8 @@ async def list_skills_shared_with_user(user_id: UUID) -> list[dict]:
                p.content_markdown AS skill_md,
                v.slug
         FROM shares sh
-        JOIN folders f ON f.id = sh.object_id AND sh.object_type = 'folder'
-        JOIN pages p ON p.folder_id = f.id AND p.name = 'SKILL.md' AND p.deleted_at IS NULL
+        JOIN folders f ON f.id = sh.object_id AND sh.object_type = 'folder' AND f.is_skill
+        LEFT JOIN pages p ON p.folder_id = f.id AND p.name = 'SKILL.md' AND p.deleted_at IS NULL
         JOIN users ow ON ow.id = sh.owner_user_id
         LEFT JOIN users u ON u.id = sh.created_by
         LEFT JOIN skills v ON v.folder_id = f.id
@@ -670,17 +690,22 @@ async def _fork_folder(
     user_id: UUID,
     name_override: str | None = None,
 ) -> UUID:
-    folder = await conn.fetchrow("SELECT name FROM folders WHERE id = $1", source_folder_id)
+    folder = await conn.fetchrow(
+        "SELECT name, is_skill FROM folders WHERE id = $1", source_folder_id
+    )
     if not folder:
         raise ValueError("Skill folder not found")
 
+    # Forking a skill is an explicit "give me this skill" — membership travels
+    # with the copy, exactly like its files do.
     new_folder = await conn.fetchrow(
-        "INSERT INTO folders (owner_user_id, parent_folder_id, name, created_by) "
-        "VALUES ($1, $2, $3, $4) RETURNING id",
+        "INSERT INTO folders (owner_user_id, parent_folder_id, name, created_by, is_skill) "
+        "VALUES ($1, $2, $3, $4, $5) RETURNING id",
         owner_user_id,
         parent_folder_id,
         name_override or folder["name"],
         user_id,
+        folder["is_skill"],
     )
 
     child_folders = await conn.fetch(

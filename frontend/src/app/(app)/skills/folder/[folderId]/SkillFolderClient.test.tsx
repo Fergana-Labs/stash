@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import SkillFolderClient from "./SkillFolderClient";
 import { getFolderContents, listSkills } from "@/lib/api";
 import { useBreadcrumbs } from "@/components/BreadcrumbContext";
+import { useShareAction } from "@/components/ShellChromeContext";
 import { ConfirmDialogProvider } from "@/components/ConfirmDialog";
 
 function render(ui: ReactNode) {
@@ -43,7 +44,9 @@ vi.mock("@/components/ShellChromeContext", () => ({
 }));
 
 vi.mock("@/components/share/ResourceShareButton", () => ({
-  default: () => <button>Share resource</button>,
+  default: ({ resourceUrlPath }: { resourceUrlPath?: string }) => (
+    <button data-share-url={resourceUrlPath}>Share resource</button>
+  ),
 }));
 
 vi.mock("@/components/skill/SkillShareButton", () => ({
@@ -100,9 +103,11 @@ describe("SkillFolderClient", () => {
     await screen.findByTestId("file-browser");
 
     const crumbs = vi.mocked(useBreadcrumbs).mock.calls.at(-1)?.[0];
+    // Crumbs point at /skills/folder/<id>, not /skills/<id> — the latter is
+    // the published-slug route and renders "Skill not found" for a folder id.
     expect(crumbs).toEqual([
       { label: "Skills", href: "/skills" },
-      { label: "Launch Plan", href: "/skills/folder-root" },
+      { label: "Launch Plan", href: "/skills/folder/folder-root" },
       { label: "research" },
     ]);
     // Ancestors above the skill root (plain folders) stay out of the trail.
@@ -113,7 +118,9 @@ describe("SkillFolderClient", () => {
     render(<SkillFolderClient folderId="folder-sub" />);
 
     const browser = await screen.findByTestId("file-browser");
-    expect(browser).toHaveAttribute("data-href-base", "/skills");
+    // FileBrowser builds `${folderHrefBase}/${id}`, so a subfolder inside a
+    // skill must resolve to /skills/folder/<id>.
+    expect(browser).toHaveAttribute("data-href-base", "/skills/folder");
   });
 
   it("bounces non-skill folders back to the Files route", async () => {
@@ -135,6 +142,35 @@ describe("SkillFolderClient", () => {
 
     await waitFor(() =>
       expect(router.replace).toHaveBeenCalledWith("/folders/folder-sub"),
+    );
+  });
+
+  // The Share dialog turns this path into the link the user copies. Pointing
+  // it at /skills/<folderId> hands the recipient a "Skill not found" page.
+  it("shares the skill with a link the recipient can open", async () => {
+    vi.mocked(getFolderContents).mockResolvedValue({
+      folder: {
+        id: "folder-root",
+        name: "Launch Plan",
+        parent_folder_id: null,
+        is_skill: true,
+      },
+      breadcrumbs: [{ id: "folder-root", name: "Launch Plan", is_skill: true }],
+      subfolders: [],
+      pages: [],
+      files: [],
+      tables: [],
+    });
+
+    render(<SkillFolderClient folderId="folder-root" />);
+    await screen.findByTestId("file-browser");
+
+    const action = vi.mocked(useShareAction).mock.calls.at(-1)?.[0];
+    render(<>{action}</>);
+
+    expect(screen.getByText("Share resource")).toHaveAttribute(
+      "data-share-url",
+      "/skills/folder/folder-root",
     );
   });
 });

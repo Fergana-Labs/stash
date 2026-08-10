@@ -39,6 +39,7 @@ async def test_publish_falls_back_to_primary_scope(client: AsyncClient):
         "/api/v1/publish",
         json={
             "title": "Untitled HTML",
+            "description": "Use for reviewing this HTML page.",
             "content_type": "html",
             "content": "<h1>hi</h1>",
         },
@@ -64,6 +65,7 @@ async def test_publish_with_explicit_scope(client: AsyncClient):
         json={
             "owner_user_id": owner_user_id,
             "title": "Explicit-WS publish",
+            "description": "Use for explicit-scope publish tests.",
             "content_type": "markdown",
             "content": "# hello",
         },
@@ -87,6 +89,7 @@ async def test_publish_rejects_non_owner_scope(client: AsyncClient):
         json={
             "owner_user_id": foreign_owner,
             "title": "Foreign publish",
+            "description": "Use for foreign-scope publish tests.",
             "content_type": "markdown",
             "content": "# nope",
         },
@@ -128,6 +131,7 @@ async def test_publish_by_non_owner_creates_no_page(client: AsyncClient, pool):
         json={
             "owner_user_id": owner_user_id,
             "title": "Sharee draft",
+            "description": "Use for shared-scope publish tests.",
             "content": "# should not persist",
         },
         headers=_auth(sharee_key),

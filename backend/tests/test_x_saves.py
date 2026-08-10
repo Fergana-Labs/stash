@@ -600,6 +600,87 @@ async def test_bookmark_probe_is_small_and_history_walk_runs_once(client, pool, 
     assert [c for c in _FakeApi.bookmarks_calls if c[0] == "b2"] == deep_fetches
 
 
+@pytest.mark.asyncio
+async def test_full_page_without_next_token_is_not_the_end(client, pool, fake_sync) -> None:
+    # X's pagination bug drops next_token on a FULL page with thousands of
+    # bookmarks still below. Believing it once stranded a user at 109 of
+    # 2,895 — a full page without a token must leave the walk incomplete so
+    # the next daily check retries the page.
+    full_page = [{"id": str(9000 + i)} for i in range(x_indexer.BOOKMARK_PAGE_SIZE)]
+    _FakeApi.bookmarks_pages = {None: {"data": full_page, "meta": {}}}
+    headers, owner_id = await _register(client)
+    source = await _x_source(pool, owner_id, x_user_id="999")
+
+    await x_indexer.index_x_saves(source)
+
+    settings_ = await pool.fetchval(
+        "SELECT settings FROM user_sources WHERE id = $1", UUID(source["id"])
+    )
+    assert "x_bookmarks_complete" not in settings_
+
+    # Next day X paginates properly: the walk picks up the page below and a
+    # short final page marks the true end.
+    _FakeApi.bookmarks_pages = {
+        None: {"data": full_page, "meta": {"next_token": "b2"}},
+        "b2": {"data": [{"id": "9999"}], "meta": {}},
+    }
+    await _age_bookmark_check(pool, source["id"])
+    source = await source_service.get_source_for_sync(UUID(source["id"]))
+    await x_indexer.index_x_saves(source)
+
+    count = await pool.fetchval(
+        "SELECT count(*) FROM x_save_docs WHERE source_id = $1 AND path = 'Bookmarks/9999'",
+        UUID(source["id"]),
+    )
+    assert count == 1
+    settings_ = await pool.fetchval(
+        "SELECT settings FROM user_sources WHERE id = $1", UUID(source["id"])
+    )
+    assert settings_["x_bookmarks_complete"] is True
+
+
+@pytest.mark.asyncio
+async def test_bookmark_walk_pages_small_and_resumes_across_checks(
+    client, pool, fake_sync, monkeypatch
+) -> None:
+    # Deep archives outrun one check's page budget: the walk must park its
+    # cursor after every page and resume there next check — never refetching
+    # (re-billing) pages it already walked, and never at the 100-item page
+    # size whose pagination X silently truncates.
+    monkeypatch.setattr(x_indexer, "MAX_BOOKMARK_WALK_PAGES", 1)
+    _FakeApi.bookmarks_pages = {
+        None: {"data": [{"id": "910"}], "meta": {"next_token": "b2"}},
+        "b2": {"data": [{"id": "911"}], "meta": {}},
+    }
+    headers, owner_id = await _register(client)
+    source = await _x_source(pool, owner_id, x_user_id="999")
+    # 910 is already known so the probe stops at the top; only the walk digs.
+    await _insert_pending(pool, owner_id, source["id"], "Bookmarks/910", "Bookmark")
+
+    await x_indexer.index_x_saves(source)
+
+    settings_ = await pool.fetchval(
+        "SELECT settings FROM user_sources WHERE id = $1", UUID(source["id"])
+    )
+    assert settings_["x_bookmarks_cursor"] == "b2"
+    assert "x_bookmarks_complete" not in settings_
+
+    await _age_bookmark_check(pool, source["id"])
+    source = await source_service.get_source_for_sync(UUID(source["id"]))
+    await x_indexer.index_x_saves(source)
+
+    settings_ = await pool.fetchval(
+        "SELECT settings FROM user_sources WHERE id = $1", UUID(source["id"])
+    )
+    assert settings_["x_bookmarks_complete"] is True
+    walk_sizes = {size for token, size in _FakeApi.bookmarks_calls if token is not None}
+    assert walk_sizes == {x_indexer.BOOKMARK_PAGE_SIZE}
+    # The deep page was fetched exactly once across both checks.
+    assert [c for c in _FakeApi.bookmarks_calls if c[0] == "b2"] == [
+        ("b2", x_indexer.BOOKMARK_PAGE_SIZE)
+    ]
+
+
 async def _age_bookmark_check(pool, source_id: str) -> None:
     """Backdate x_bookmarks_checked_at so the daily gate lets the next
     check through."""

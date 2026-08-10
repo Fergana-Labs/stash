@@ -118,10 +118,15 @@ async def test_skill_tools_create_publish_update_and_unpublish(scope: UUID, _db_
         agent_runtime._scope_ctx.reset(scope_token)
 
     assert created["name"] == "Launch bundle"
+    # The tool hands the model the real page URL — models compose plausible
+    # wrong ones (/skills/{folder_id} is the published-slug route) when made
+    # to guess.
+    assert created["app_url"].endswith(f"/skills/folder/{created['folder_id']}")
     [skill] = [s for s in listed if s["folder_id"] == created["folder_id"]]
     assert skill["name"] == "Launch bundle"
     assert skill["files"] == 2  # SKILL.md + checklist.md
     assert skill["published"] is None  # creating a skill does not share it
+    assert skill["app_url"] == created["app_url"]
 
     # Publishing alone makes the skill public but not Discover-listed.
     assert published["discoverable"] is False
@@ -138,6 +143,52 @@ async def test_skill_tools_create_publish_update_and_unpublish(scope: UUID, _db_
         UUID(created["folder_id"]),
     )
     assert skill_md == 1
+
+
+@pytest.mark.asyncio
+async def test_agent_cannot_list_skill_on_discover(scope: UUID, _db_pool):
+    """Discover listing is human-only (the settings toggle). An agent that
+    passes discoverable=true anyway — schemas don't stop a determined model —
+    must be silently ignored, on publish and on update."""
+    user_id = scope  # the scope id is the user id
+
+    scope_token = agent_runtime._scope_ctx.set(scope)
+    user_token = agent_runtime._user_ctx.set(user_id)
+    try:
+        created = json.loads(
+            (
+                await agent_runtime._create_skill.handler(
+                    {
+                        "name": "Sneaky bundle",
+                        "skill_md": "---\nname: Sneaky bundle\ndescription: x\n---\n\n# S\n",
+                    }
+                )
+            )["content"][0]["text"]
+        )
+        published = json.loads(
+            (
+                await agent_runtime._publish_skill.handler(
+                    {"folder_id": created["folder_id"], "discoverable": True}
+                )
+            )["content"][0]["text"]
+        )
+        updated = json.loads(
+            (
+                await agent_runtime._update_skill.handler(
+                    {"skill_id": published["id"], "discoverable": True}
+                )
+            )["content"][0]["text"]
+        )
+    finally:
+        agent_runtime._user_ctx.reset(user_token)
+        agent_runtime._scope_ctx.reset(scope_token)
+
+    assert published["discoverable"] is False
+    assert updated["discoverable"] is False
+    in_db = await _db_pool.fetchval(
+        "SELECT discoverable FROM skills WHERE id = $1", UUID(published["id"])
+    )
+    assert in_db is False
 
 
 def test_page_tools_withheld_from_ask_surface():
@@ -495,6 +546,7 @@ async def test_fork_skill_deep_copies_folder_without_publish_record(scope: UUID,
         owner_id,
         folder_id,
         title="Fork source Stash",
+        description="Use for fork tests.",
     )
 
     attached = await shared_skill_service.fork_skill(
@@ -538,3 +590,47 @@ async def test_fork_skill_deep_copies_folder_without_publish_record(scope: UUID,
         fork_page["id"],
     )
     assert fork_content == "External Stash source"
+
+
+@pytest.mark.asyncio
+async def test_agent_create_skill_refuses_a_taken_name_with_the_holder(scope: UUID, _db_pool):
+    """The model chose the name and later loads resolve by it — silently
+    creating 'Fitment (2)' would leave load_skill('Fitment') returning the
+    WRONG skill while the model believes it created it. A collision returns a
+    structured refusal naming the existing holder, so the model can update it
+    or pick a new name deliberately."""
+    user_id = scope
+
+    scope_token = agent_runtime._scope_ctx.set(scope)
+    user_token = agent_runtime._user_ctx.set(user_id)
+    try:
+        first = json.loads(
+            (await agent_runtime._create_skill.handler({"name": "Fitment", "skill_md": "# one"}))[
+                "content"
+            ][0]["text"]
+        )
+        second = json.loads(
+            (await agent_runtime._create_skill.handler({"name": "Fitment", "skill_md": "# two"}))[
+                "content"
+            ][0]["text"]
+        )
+    finally:
+        agent_runtime._user_ctx.reset(user_token)
+        agent_runtime._scope_ctx.reset(scope_token)
+
+    assert first["name"] == "Fitment"
+    assert second["error"] == "name_taken"
+    assert second["held_by"] == "skill"
+    assert second["existing_folder_id"] == first["folder_id"]
+    assert second["existing_url"] == first["app_url"]
+    # Nothing was created by the refused call: one Fitment, holding the
+    # first call's content.
+    md = await _db_pool.fetchval(
+        "SELECT content_markdown FROM pages WHERE folder_id = $1 AND name = 'SKILL.md'",
+        UUID(first["folder_id"]),
+    )
+    assert md == "# one"
+    count = await _db_pool.fetchval(
+        "SELECT count(*) FROM folders WHERE owner_user_id = $1 AND name LIKE 'Fitment%'", scope
+    )
+    assert count == 1

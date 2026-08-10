@@ -4,7 +4,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile
 from fastapi.responses import PlainTextResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from ..auth import get_current_user, get_current_user_optional, get_scope
 from ..config import settings
@@ -31,6 +31,97 @@ me_router = APIRouter(prefix="/api/v1/me", tags=["skills"])
 public_router = APIRouter(prefix="/api/v1/skills", tags=["skills"])
 
 _PUBLIC_ITEM_TYPES = {"page", "file", "table", "folder"}
+
+
+class SkillCreateRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=skill_service.MAX_SKILL_NAME_LENGTH)
+    description: str = Field(
+        ..., min_length=1, max_length=skill_service.MAX_SKILL_DESCRIPTION_LENGTH
+    )
+
+
+class SkillDescriptionRequest(BaseModel):
+    description: str = Field(
+        ..., min_length=1, max_length=skill_service.MAX_SKILL_DESCRIPTION_LENGTH
+    )
+
+
+@me_router.post("/skills/new", status_code=201)
+async def create_skill(
+    req: SkillCreateRequest,
+    current_user: dict = Depends(get_current_user),
+    owner_user_id: UUID = Depends(get_scope),
+):
+    """Create a skill (root folder + SKILL.md) in one server-side call. The
+    name is uniquified against existing root folders, so this never 409s."""
+    name = req.name.strip()
+    description = req.description.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="name must not be blank")
+    if not description:
+        raise HTTPException(status_code=400, detail="description must not be blank")
+    folder = await files_tree_service.create_skill(
+        owner_user_id, current_user["id"], name, description
+    )
+    return {"folder_id": str(folder["id"]), "name": folder["name"]}
+
+
+@me_router.post("/folders/{folder_id}/convert-to-skill", status_code=200)
+async def convert_folder_to_skill(
+    folder_id: UUID,
+    req: SkillDescriptionRequest | None = None,
+    current_user: dict = Depends(get_current_user),
+    owner_user_id: UUID = Depends(get_scope),
+):
+    """Promote a plain folder to a skill. Membership is explicit — this verb
+    and skill creation are the only ways in; a SKILL.md appearing inside a
+    folder no longer promotes it.
+
+    A folder that already has a SKILL.md needs no description (the CLI writes
+    the file first, then converts). A folder without one gets a starter
+    SKILL.md, which requires a description."""
+    description = req.description.strip() if req is not None else ""
+    if not description and not await shared_skill_service.folder_has_skill_md(folder_id):
+        raise HTTPException(
+            status_code=400,
+            detail="description is required to convert a folder with no SKILL.md",
+        )
+    result = await _set_is_skill(folder_id, owner_user_id, current_user["id"], True)
+    await shared_skill_service.ensure_skill_md(
+        owner_user_id,
+        folder_id,
+        current_user["id"],
+        result["name"],
+        description,
+    )
+    return result
+
+
+@me_router.post("/folders/{folder_id}/convert-to-folder", status_code=200)
+async def convert_skill_to_folder(
+    folder_id: UUID,
+    current_user: dict = Depends(get_current_user),
+    owner_user_id: UUID = Depends(get_scope),
+):
+    """Demote a skill back to a plain folder. Contents are untouched — the
+    folder simply stops appearing under Skills and stops loading for agents."""
+    return await _set_is_skill(folder_id, owner_user_id, current_user["id"], False)
+
+
+async def _set_is_skill(
+    folder_id: UUID, owner_user_id: UUID, user_id: UUID, is_skill: bool
+) -> dict:
+    if not await permission_service.check_access(
+        "folder", folder_id, user_id, owner_user_id=owner_user_id, require="write"
+    ):
+        raise HTTPException(status_code=403, detail="Not allowed to write this folder")
+    try:
+        folder = await files_tree_service.set_folder_is_skill(folder_id, owner_user_id, is_skill)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if folder is None:
+        raise HTTPException(status_code=404, detail="Folder not found")
+    return {"folder_id": str(folder["id"]), "name": folder["name"], "is_skill": folder["is_skill"]}
 
 
 @me_router.post("/skills", response_model=SkillResponse, status_code=201)
@@ -190,7 +281,10 @@ async def replace_skill_contents(
     if not any(path == "SKILL.md" for path, _blob in payload):
         raise HTTPException(status_code=400, detail="A skill must include a SKILL.md")
 
-    await files_tree_service.clear_folder_contents(folder_id)
+    try:
+        await files_tree_service.clear_folder_contents(folder_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     written = await files_tree_service.write_folder_files(
         owner_user_id, current_user["id"], folder_id, payload
     )
@@ -284,7 +378,7 @@ async def snapshot_source(
             "skill_id": str(skill_id),
         },
     )
-    return PageResponse(**page)
+    return PageResponse(**{**page, "can_write": True})
 
 
 class MaterializeSessionRequest(BaseModel):
@@ -311,7 +405,7 @@ async def materialize_session(
     )
     if page is None:
         raise HTTPException(status_code=404, detail="Session not found")
-    return PageResponse(**page)
+    return PageResponse(**{**page, "can_write": True})
 
 
 @public_router.patch("/{skill_id}", response_model=SkillResponse)

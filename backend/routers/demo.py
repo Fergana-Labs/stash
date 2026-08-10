@@ -85,7 +85,7 @@ class DemoSkillItem(BaseModel):
 
 class DemoSkillCreate(BaseModel):
     title: str = Field(..., min_length=1, max_length=160)
-    description: str = Field("", max_length=2000)
+    description: str = Field(..., min_length=1, max_length=1024)
     items: list[DemoSkillItem] = Field(..., min_length=1)
 
 

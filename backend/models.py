@@ -105,7 +105,7 @@ SkillGeneralPermission = str  # 'none' | 'read' | 'write'
 class SkillPublishRequest(BaseModel):
     folder_id: UUID
     title: str | None = Field(None, min_length=1, max_length=160)
-    description: str = Field("", max_length=2000)
+    description: str = Field("", max_length=1024)
     discoverable: bool = False
     cover_image_url: str | None = None
     icon_url: str | None = None
@@ -196,7 +196,10 @@ class PageUpdateRequest(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=255)
     folder_id: UUID | None = None
     content: str | None = None
-    collab_projection: bool = False
+    # The content_hash the client loaded before editing. Given, a content
+    # save lands only if the page still has that hash — otherwise 409, so a
+    # stale tab reloads instead of silently overwriting someone's newer save.
+    expected_content_hash: str | None = None
     content_type: str | None = Field(None, pattern=r"^(markdown|html)$")
     content_html: str | None = None
     html_layout: str | None = Field(None, pattern=r"^(responsive|fixed-aspect|full-width)$")
@@ -235,6 +238,9 @@ class PageResponse(BaseModel):
     content_html: str = ""
     html_layout: str = "responsive"
     content_hash: str | None = None
+    # Whether the requesting viewer may write this page — the editor uses
+    # this to open read-only instead of discovering a 403 on first save.
+    can_write: bool = False
     metadata: dict = {}
     last_edit_session_id: str | None = None
     last_edit_agent_name: str | None = None
@@ -544,6 +550,7 @@ class PublishRequest(BaseModel):
 
     owner_user_id: UUID | None = None
     title: str = Field(..., min_length=1, max_length=255)
+    description: str = Field(..., min_length=1, max_length=1024)
     content: str = ""
     content_type: str = Field("markdown", pattern=r"^(markdown|html)$")
     html_layout: str = Field("responsive", pattern=r"^(responsive|fixed-aspect|full-width)$")

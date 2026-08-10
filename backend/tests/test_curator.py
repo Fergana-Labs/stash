@@ -386,20 +386,24 @@ async def test_idle_curator_skipped_by_beat(client: AsyncClient, sprite_exec, _d
     await _run_due()
 
     row = await _db_pool.fetchrow(
-        "SELECT last_run_at, curated_through FROM agents WHERE id = $1", UUID(curator["id"])
+        "SELECT last_run_at, curated_through, last_run_outcome FROM agents WHERE id = $1",
+        UUID(curator["id"]),
     )
     assert sprite_exec.calls == []  # no sprite wake
     assert row["curated_through"] == future  # watermark preserved
     # Tick consumed — the next beat won't re-check until the next cron tick.
     assert row["last_run_at"] > datetime.now(UTC) - timedelta(minutes=1)
+    assert row["last_run_outcome"] == "skipped_no_changes"
 
 
 @pytest.mark.asyncio
-async def test_curator_run_does_not_echo_loop(client: AsyncClient, sprite_exec, _db_pool):
+async def test_curator_run_does_not_echo_loop(
+    client: AsyncClient, sprite_exec, _db_pool, monkeypatch
+):
     """A curator run writes its own transcript into history_events; that must
     not count as new changes, or the daily gate would fire forever."""
     from backend.services import curation_service
-    from backend.tasks.agent_schedules import _run_due
+    from backend.tasks.agent_schedules import _run_due, _run_scheduled_agent, run_scheduled_agent
 
     key, uid = await _register(client)
     curator = await agent_service.get_or_create_curator(uid)
@@ -408,24 +412,29 @@ async def test_curator_run_does_not_echo_loop(client: AsyncClient, sprite_exec, 
     )
     await _make_due(_db_pool, curator["id"], datetime.now(UTC) - timedelta(minutes=2))
 
-    ran = await _run_due()
-    assert ran == 1
+    dispatched = []
+    monkeypatch.setattr(run_scheduled_agent, "delay", lambda *args: dispatched.append(args))
+    assert await _run_due() == 1
+    await _run_scheduled_agent(UUID(dispatched[0][0]), dispatched[0][1])
 
-    after = await _db_pool.fetchval(
-        "SELECT curated_through FROM agents WHERE id = $1", UUID(curator["id"])
+    row = await _db_pool.fetchrow(
+        "SELECT curated_through, last_run_outcome FROM agents WHERE id = $1", UUID(curator["id"])
     )
     # Watermark advanced past the page change, and the run's own transcript
     # doesn't re-trigger the gate or appear in the feed.
-    assert await curation_service.has_changes_since(uid, uid, after) is False
-    feed = await curation_service.changes_since(uid, uid, after)
+    assert row["last_run_outcome"] == "ran"
+    assert await curation_service.has_changes_since(uid, uid, row["curated_through"]) is False
+    feed = await curation_service.changes_since(uid, uid, row["curated_through"])
     assert all(not str(e["session_id"] or "").startswith("agent-curate-") for e in feed["history"])
 
 
 @pytest.mark.asyncio
-async def test_curator_run_keeps_full_toolset(client: AsyncClient, sprite_exec, _db_pool):
+async def test_curator_run_keeps_full_toolset(
+    client: AsyncClient, sprite_exec, _db_pool, monkeypatch
+):
     """The curator is a trusted headless run — it must NOT inherit the
     untrusted-channel tool restrictions (it needs to write the wiki)."""
-    from backend.tasks.agent_schedules import _run_due
+    from backend.tasks.agent_schedules import _run_due, _run_scheduled_agent, run_scheduled_agent
 
     key, uid = await _register(client)
     curator = await agent_service.get_or_create_curator(uid)
@@ -434,7 +443,10 @@ async def test_curator_run_keeps_full_toolset(client: AsyncClient, sprite_exec, 
     )
     await _make_due(_db_pool, curator["id"], datetime.now(UTC) - timedelta(minutes=2))
 
+    dispatched = []
+    monkeypatch.setattr(run_scheduled_agent, "delay", lambda *args: dispatched.append(args))
     await _run_due()
+    await _run_scheduled_agent(UUID(dispatched[0][0]), dispatched[0][1])
 
     curator_argv = [a for a in sprite_exec.calls if "Memory Wiki Curation" in " ".join(a)]
     assert curator_argv and "--disallowedTools" not in curator_argv[0]
@@ -447,7 +459,7 @@ async def test_failed_curator_run_preserves_watermark(
     """A failed run consumes the cron tick but must not advance the watermark —
     the un-curated delta is re-covered on the next successful run."""
     from backend.services import sprite_agent_service
-    from backend.tasks.agent_schedules import _run_due
+    from backend.tasks.agent_schedules import _run_due, _run_scheduled_agent, run_scheduled_agent
 
     key, uid = await _register(client)
     curator = await agent_service.get_or_create_curator(uid)
@@ -461,8 +473,10 @@ async def test_failed_curator_run_preserves_watermark(
         raise RuntimeError("sprite exploded")
 
     monkeypatch.setattr(sprite_agent_service, "run_scheduled", boom)
-    ran = await _run_due()
-    assert ran == 0
+    dispatched = []
+    monkeypatch.setattr(run_scheduled_agent, "delay", lambda *args: dispatched.append(args))
+    assert await _run_due() == 1
+    await _run_scheduled_agent(UUID(dispatched[0][0]), dispatched[0][1])
 
     after = await _db_pool.fetchval(
         "SELECT curated_through FROM agents WHERE id = $1", UUID(curator["id"])
@@ -478,7 +492,7 @@ async def test_failed_run_records_error_and_refunds_credit(
     free monthly allowance — an infra outage would otherwise silently burn
     all credits."""
     from backend.services import sprite_agent_service
-    from backend.tasks.agent_schedules import _run_due
+    from backend.tasks.agent_schedules import _run_due, _run_scheduled_agent, run_scheduled_agent
 
     key, uid = await _register(client)
     curator = await agent_service.get_or_create_curator(uid)
@@ -492,7 +506,10 @@ async def test_failed_run_records_error_and_refunds_credit(
 
     real_run_scheduled = sprite_agent_service.run_scheduled
     monkeypatch.setattr(sprite_agent_service, "run_scheduled", boom)
+    dispatched = []
+    monkeypatch.setattr(run_scheduled_agent, "delay", lambda *args: dispatched.append(args))
     await _run_due()
+    await _run_scheduled_agent(UUID(dispatched[0][0]), dispatched[0][1])
 
     row = await _db_pool.fetchrow(
         "SELECT last_run_error, month_run_count FROM agents WHERE id = $1",
@@ -507,8 +524,8 @@ async def test_failed_run_records_error_and_refunds_credit(
     # would exec a real `claude` binary (passes on a dev machine, dies in CI).
     monkeypatch.setattr(sprite_agent_service, "run_scheduled", real_run_scheduled)
     await _make_due(_db_pool, curator["id"], datetime.now(UTC) - timedelta(minutes=2))
-    ran = await _run_due()
-    assert ran == 1
+    assert await _run_due() == 1
+    await _run_scheduled_agent(UUID(dispatched[1][0]), dispatched[1][1])
     row = await _db_pool.fetchrow(
         "SELECT last_run_error, month_run_count FROM agents WHERE id = $1",
         UUID(curator["id"]),
@@ -548,10 +565,12 @@ async def test_recompute_runs_curator_now(client: AsyncClient, sprite_exec, _db_
     before = datetime.now(UTC)
     await _run_curator_now(UUID(curator["id"]))
     row = await _db_pool.fetchrow(
-        "SELECT curated_through, last_run_at FROM agents WHERE id = $1", UUID(curator["id"])
+        "SELECT curated_through, last_run_at, last_run_outcome FROM agents WHERE id = $1",
+        UUID(curator["id"]),
     )
     assert sprite_exec.calls  # the run actually woke the sprite
     assert row["curated_through"] >= before - timedelta(seconds=5)
+    assert row["last_run_outcome"] == "ran"
 
     # The run's events carry the curator's own name, so its sessions are
     # attributable in the Agents/Sessions lists (not generic "Stash Agent").
@@ -591,6 +610,33 @@ async def test_failed_manual_recompute_records_error(
     r = await client.get("/api/v1/me/agents", headers=_auth(key))
     fetched = next(a for a in r.json()["agents"] if a["is_curator"])
     assert fetched["last_run_error"] == "harness missing"
+
+
+@pytest.mark.asyncio
+async def test_manual_recompute_bookkeeping_failure_records_failed_outcome(
+    client: AsyncClient, sprite_exec, _db_pool, monkeypatch
+):
+    """A successful turn is not a successful curator run until its watermark
+    advances. The outcome must cover that post-turn work too."""
+    from backend.services import curation_service
+    from backend.tasks.agent_schedules import _run_curator_now
+
+    _key, uid = await _register(client)
+    curator = await agent_service.get_or_create_curator(uid)
+
+    async def boom(user_id, curated_through, now):
+        raise RuntimeError("watermark write failed")
+
+    monkeypatch.setattr(curation_service, "complete_through", boom)
+    with pytest.raises(RuntimeError):
+        await _run_curator_now(UUID(curator["id"]))
+
+    row = await _db_pool.fetchrow(
+        "SELECT last_run_error, last_run_outcome FROM agents WHERE id = $1",
+        UUID(curator["id"]),
+    )
+    assert "watermark write failed" in row["last_run_error"]
+    assert row["last_run_outcome"] == "failed"
 
 
 @pytest.mark.asyncio

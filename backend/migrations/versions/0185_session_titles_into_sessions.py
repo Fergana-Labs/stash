@@ -8,14 +8,14 @@ session with everything about it, and one codepath for reads and writes.
 
 Carries existing titles forward in one shot, then drops the side table.
 
-Revision ID: 0179
-Revises: 0178
+Revision ID: 0185
+Revises: 0184
 """
 
 from alembic import op
 
-revision = "0179"
-down_revision = "0178"
+revision = "0185"
+down_revision = "0184"
 branch_labels = None
 depends_on = None
 

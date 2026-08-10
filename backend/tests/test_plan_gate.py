@@ -100,7 +100,7 @@ async def test_free_curator_credits_exhausted_skips_run(
 ):
     """Free accounts get a monthly curator allowance; past it the beat must not
     wake the sprite. Enterprise is unlimited — same state runs after the grant."""
-    from backend.tasks.agent_schedules import _run_due
+    from backend.tasks.agent_schedules import _run_due, _run_scheduled_agent, run_scheduled_agent
 
     key, uid = await _register(client)
     curator = await agent_service.get_or_create_curator(uid)
@@ -122,18 +122,20 @@ async def test_free_curator_credits_exhausted_skips_run(
 
     assert ran == 0
     assert sprite_exec.calls == []  # no sprite wake
-    after = await _db_pool.fetchval(
-        "SELECT curated_through FROM agents WHERE id = $1", UUID(curator["id"])
+    after = await _db_pool.fetchrow(
+        "SELECT curated_through, last_run_outcome FROM agents WHERE id = $1", UUID(curator["id"])
     )
-    assert after == watermark  # skipped run never discards un-curated changes
+    assert after["curated_through"] == watermark  # skipped run never discards un-curated changes
+    assert after["last_run_outcome"] == "skipped_credits"
 
     # Enterprise grant → the same overdue curator runs on the next beat.
     await _db_pool.execute("UPDATE users SET plan = 'enterprise' WHERE id = $1", uid)
     await _make_due(_db_pool, curator["id"], watermark)
 
-    ran = await _run_due()
-
-    assert ran == 1
+    dispatched = []
+    monkeypatch.setattr(run_scheduled_agent, "delay", lambda *args: dispatched.append(args))
+    assert await _run_due() == 1
+    await _run_scheduled_agent(UUID(dispatched[0][0]), dispatched[0][1])
     assert sprite_exec.calls != []
 
 

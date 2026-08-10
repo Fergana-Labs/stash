@@ -15,9 +15,10 @@ import json
 import re
 from datetime import UTC, datetime
 from typing import Literal
+from urllib.parse import quote
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel
 
 from ..auth import get_current_user, get_scope
@@ -155,6 +156,8 @@ async def search_sources(
     include_sources: list[str] | None = Query(None),
     exclude_sources: list[str] | None = Query(None),
     limit: int = Query(20, ge=1, le=500),
+    modified_after: datetime | None = Query(None),
+    modified_before: datetime | None = Query(None),
     current_user: dict = Depends(get_current_user),
     scope_user_id: UUID = Depends(get_scope),
 ):
@@ -164,7 +167,10 @@ async def search_sources(
     (files + sessions + its connected sources), or pass a handle to scope.
     Repeatable include_sources/exclude_sources params (native handles +
     provider names) filter which sources are searched:
-    (include or everything) - exclude."""
+    (include or everything) - exclude.
+    modified_after/modified_before (ISO-8601) restrict hits to those last
+    modified inside the range; hits with no known modification time are
+    excluded whenever a bound is set."""
     owner_user_id = scope_user_id
     await _require_member(owner_user_id, current_user["id"])
     try:
@@ -176,6 +182,8 @@ async def search_sources(
             include_sources=include_sources,
             exclude_sources=exclude_sources,
             limit=limit,
+            modified_after=modified_after,
+            modified_before=modified_before,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -247,6 +255,35 @@ async def read_source_doc(
     if "http_status" in doc:
         raise HTTPException(status_code=doc["http_status"], detail=doc["error"])
     return doc
+
+
+@router.get("/{source}/doc/raw")
+async def read_source_doc_raw(
+    source: str,
+    ref: str,
+    current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
+):
+    """One connected-source document's original bytes — the PDF itself, not its
+    extracted text — so vision-capable agents can read it with their own eyes.
+    `ref` is the document path, exactly as `/doc` takes it."""
+    owner_user_id = scope_user_id
+    await _require_member(owner_user_id, current_user["id"])
+    source_ok, doc = await source_service.source_document_raw(
+        owner_user_id, current_user["id"], source, ref
+    )
+    if not source_ok:
+        raise HTTPException(status_code=404, detail="Source not found")
+    if doc is None:
+        raise HTTPException(status_code=404, detail="Document not found")
+    if "http_status" in doc:
+        raise HTTPException(status_code=doc["http_status"], detail=doc["error"])
+    filename = quote(doc["name"])
+    return Response(
+        content=doc["content"],
+        media_type=doc["content_type"] or "application/octet-stream",
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{filename}"},
+    )
 
 
 @router.get("/{source_id}/status")
