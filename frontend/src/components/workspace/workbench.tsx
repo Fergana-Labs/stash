@@ -2,7 +2,6 @@
 
 import { useEffect } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { nanoid } from "nanoid";
 import { X, SplitSquareHorizontal, PanelRightClose, Plus, Bot, Plug, FileText } from "lucide-react";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
@@ -38,10 +37,9 @@ function NewTabMenu() {
     openTab("page", page.id, { title: page.name || "Untitled" });
     router.replace(urlForTab({ kind: "page", refId: page.id }));
   }
+  // Chat is not a tab — it lives on the ChatGPT-style /agents page.
   function newChat() {
-    const id = `new-${nanoid(5)}`;
-    openTab("agent", id, { title: "New Chat" });
-    router.replace(urlForTab({ kind: "agent", refId: id }));
+    router.push("/agents");
   }
 
   return (
@@ -215,18 +213,14 @@ export default function Workbench() {
   // URL → tab: opening/focusing happens off the pathname only (never off `tabs`),
   // so this can't loop with the imperative router.replace on tab clicks.
   useEffect(() => {
-    // `/agents?resume=<sessionId>` is the "Resume in chat" deep link from a
-    // stored web-chat session.
-    const resume = pathname === "/agents" ? searchParams.get("resume") : null;
-    const match = resume
-      ? { kind: "agent" as const, refId: resume }
-      : pathname === "/sessions" && searchParams.get("workspace") === "1"
+    const match =
+      pathname === "/sessions" && searchParams.get("workspace") === "1"
         ? { kind: "sessions-home" as const, refId: "sessions" }
         : tabFromPath(pathname);
     if (!match) return;
     // Content tabs get no title here — their body publishes the real name via
-    // useTabTitle. Only the two app surfaces without a content body are named.
-    const title = match.kind === "agent" ? "Chat" : match.kind === "sessions-home" ? "Sessions" : undefined;
+    // useTabTitle. Only sessions-home has no content body to name it.
+    const title = match.kind === "sessions-home" ? "Sessions" : undefined;
     const existing = useWorkspace.getState().tabs.find((t) => t.kind === match.kind && t.refId === match.refId);
     if (existing) setActiveTab(existing.id);
     // Deep links navigate the current tab — only cmd/ctrl-click and the

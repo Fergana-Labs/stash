@@ -26,10 +26,10 @@ from .routers import (
     billing,
     bulk_export,
     clips,
+    curator_log,
     demo,
     discover,
     exports,
-    feed,
     files,
     files_tree,
     machine,
@@ -46,6 +46,7 @@ from .routers import (
     shares,
     skills,
     sources,
+    sql,
     tables,
     tasks,
     telegram,
@@ -117,7 +118,6 @@ app.add_middleware(
 app.include_router(users.router)
 app.include_router(user_knowledge.router)
 app.include_router(discover.router)
-app.include_router(feed.router)
 app.include_router(skills.me_router)
 app.include_router(skills.public_router)
 app.include_router(files_tree.router)
@@ -125,10 +125,12 @@ app.include_router(files_tree.canonical_router)
 app.include_router(memory.me_router)
 app.include_router(tables.me_router)
 app.include_router(tables.router)
+app.include_router(sql.router)
 app.include_router(files.me_router)
 app.include_router(files.canonical_router)
 app.include_router(clips.router)
 app.include_router(clips.imports_router)
+app.include_router(curator_log.router)
 app.include_router(mini_programs.router)
 app.include_router(batch.router)
 app.include_router(transcripts.router)

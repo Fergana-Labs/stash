@@ -36,6 +36,13 @@ vi.mock("@/lib/api", () => ({
   listMcpServers: vi.fn(),
   createMcpServer: vi.fn(),
   deleteMcpServer: vi.fn(),
+  // The integrations grid above the MCP registry loads these on mount.
+  listSources: vi.fn().mockResolvedValue([]),
+}));
+
+vi.mock("@/lib/integrations", () => ({
+  INTEGRATIONS_CHANGED_EVENT: "integrations-changed",
+  listIntegrations: vi.fn().mockResolvedValue({ providers: [] }),
 }));
 
 const SERVERS: McpServer[] = [

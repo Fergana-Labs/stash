@@ -4,48 +4,44 @@ import Link from "next/link";
 import {
   useCallback,
   useEffect,
-  useMemo,
   useRef,
   useState,
   type ReactNode,
 } from "react";
 import { ActivitySkeleton, SkeletonBlock } from "@/components/SkeletonStates";
-import {
-  FileIcon,
-  PageIcon,
-  SessionsIcon,
-  SkillIcon,
-} from "@/components/SkillIcons";
+import { FileIcon, PageIcon } from "@/components/SkillIcons";
 import EmbeddingSpaceExplorer from "@/components/viz/EmbeddingSpaceExplorer";
+import CuratorLog from "@/components/memory/CuratorLog";
 import WikiGraph from "@/components/memory/WikiGraph";
-import WikiFileTree from "@/components/memory/WikiFileTree";
+import CopyableCommandBlock from "@/components/CopyableCommandBlock";
+import { StashIcon } from "@/components/SkillIcons";
 import {
   getEmbeddingProjection,
+  getMe,
+  getMeOverview,
   getMemoryGraph,
-  getMemoryTree,
-  listActivity,
+  listFileActivity,
   type ActivityEvent,
+  type MeOverview,
   type WikiGraph as WikiGraphData,
 } from "@/lib/api";
-import type { EmbeddingProjection, Tree } from "@/lib/types";
+import type { EmbeddingProjection } from "@/lib/types";
 
 const PAGE_SIZE = 50;
 
-function relativeTime(iso: string): string {
-  const ms = Date.now() - new Date(iso).getTime();
-  if (ms < 60_000) return "just now";
-  const m = Math.floor(ms / 60_000);
-  if (m < 60) return `${m} min ago`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h} h ago`;
-  const d = Math.floor(h / 24);
-  if (d < 30) return `${d} d ago`;
-  return new Date(iso).toLocaleDateString();
+function editTimestamp(iso: string): string {
+  return new Date(iso).toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }
 
-/** The brain dashboard — knowledge map, vitals, commit timeline, and the
- *  recent-learnings feed. Renders as the Memory section's landing content;
- *  the shell guarantees a signed-in user. Scrolls itself (h-full). */
+/** The home dashboard — the wiki graph, the curator log, the knowledge map,
+ *  and the file-activity feed. Renders full-page as the app's home route; the
+ *  shell guarantees a signed-in user. Scrolls itself (h-full). Browsing the
+ *  Memory folder itself happens in Files. */
 export default function BrainDashboard() {
   const [events, setEvents] = useState<ActivityEvent[]>([]);
   const [fetching, setFetching] = useState(true);
@@ -54,16 +50,23 @@ export default function BrainDashboard() {
   const sentinelRef = useRef<HTMLDivElement>(null);
   const [projection, setProjection] = useState<EmbeddingProjection | null>(null);
   const [graph, setGraph] = useState<WikiGraphData | null>(null);
-  const [wikiTree, setWikiTree] = useState<Tree | null>(null);
   const [projectionLoaded, setProjectionLoaded] = useState(false);
   const [graphLoaded, setGraphLoaded] = useState(false);
-  const [treeLoaded, setTreeLoaded] = useState(false);
-  // Captured once so the "last 24h" window doesn't drift across re-renders.
-  const [nowMs] = useState(() => Date.now());
+  const [firstName, setFirstName] = useState<string | null>(null);
+  const [vitals, setVitals] = useState<MeOverview | null>(null);
+  const [vitalsLoaded, setVitalsLoaded] = useState(false);
+
+  useEffect(() => {
+    getMe().then((me) => setFirstName(me.display_name.split(" ")[0])).catch(() => {});
+    getMeOverview()
+      .then(setVitals)
+      .catch(() => {})
+      .finally(() => setVitalsLoaded(true));
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
-    listActivity({ limit: PAGE_SIZE })
+    listFileActivity({ limit: PAGE_SIZE })
       .then((feed) => {
         if (cancelled) return;
         setEvents(feed.events);
@@ -82,7 +85,7 @@ export default function BrainDashboard() {
     if (loadingMore || !hasMore || events.length === 0) return;
     setLoadingMore(true);
     try {
-      const feed = await listActivity({
+      const feed = await listFileActivity({
         limit: PAGE_SIZE,
         before: events[events.length - 1].ts,
       });
@@ -128,27 +131,18 @@ export default function BrainDashboard() {
       .finally(() => {
         if (!cancelled) setGraphLoaded(true);
       });
-    getMemoryTree()
-      .then((t) => {
-        if (!cancelled) setWikiTree(t);
-      })
-      .catch(() => {})
-      .finally(() => {
-        if (!cancelled) setTreeLoaded(true);
-      });
     return () => {
       cancelled = true;
     };
   }, []);
 
-  const recent24h = useMemo(() => {
-    const since = nowMs - 24 * 60 * 60 * 1000;
-    return events.filter((e) => new Date(e.ts).getTime() >= since).length;
-  }, [events, nowMs]);
+  // A brand-new stash has nothing to dashboard. Until the first transcripts
+  // arrive, Home is a single instruction: upload your agent transcripts.
+  if (vitalsLoaded && vitals && vitals.pages === 0 && vitals.files === 0 && vitals.sessions === 0) {
+    return <EmptyStashSetup />;
+  }
 
-  const knowledgePoints = projection?.stats.total_embeddings ?? 0;
-
-  if (fetching) {
+  if (fetching || !vitalsLoaded) {
     return (
       <div className="h-full min-h-0 overflow-y-auto">
         <ActivitySkeleton />
@@ -159,65 +153,32 @@ export default function BrainDashboard() {
   return (
     <div className="h-full min-h-0 overflow-y-auto">
       <div className="mx-auto max-w-[1360px] px-8 pb-10 pt-7">
-        {/* Header — what this brain holds and how fresh it is. */}
         <h1 className="font-display text-[22px] font-semibold tracking-tight text-foreground">
-          Your brain
+          Welcome back{firstName ? `, ${firstName}` : ""}
         </h1>
-        <p className="mt-1 text-[13.5px] text-muted-foreground">
-          {`${knowledgePoints.toLocaleString()} things learned across your own and shared knowledge · ${recent24h} new in the last 24 hours.`}
-        </p>
 
-        {/* Dashboard grid: wiki graph + map/vitals/timeline on the left,
-            learnings feed as its own scrolling panel on the right. */}
+        {/* Dashboard grid: wiki graph with the curator log beneath it on
+            the left, knowledge map + file activity on the right. */}
         <div className="mt-5 grid grid-cols-1 gap-4 lg:grid-cols-3">
           <div className="flex min-w-0 flex-col gap-4 lg:col-span-2">
             {/* Wiki graph — the curated context graph of linked pages, obsidian
                 style. The centerpiece: click a node to open its page. */}
-            <VizCard
-              label={
-                graph
-                  ? `Memory wiki · ${graph.nodes.length} pages · ${graph.edges.length} links`
-                  : "Memory wiki"
-              }
-            >
+            <VizCard label="Memory wiki">
               {!graphLoaded ? (
                 <SkeletonBlock className="h-[560px] w-full" />
               ) : graph && graph.nodes.length > 0 ? (
                 <WikiGraph data={graph} />
               ) : (
                 <div className="flex h-[560px] items-center justify-center px-2 text-center text-[12.5px] text-muted-foreground">
-                  No wiki pages yet. Hit &quot;Curate wiki&quot; in the explorer and the
-                  agent will compile your history into a context graph of linked pages.
+                  No wiki pages yet. The Memory curator&apos;s nightly run compiles
+                  your history into a context graph of linked pages.
                 </div>
               )}
             </VizCard>
 
-            {/* Wiki file system — the same pages, laid out as browsable
-                folders. Links to the full-page view at /memory/wiki. */}
-            <section>
-              <div className="mb-1.5 flex items-baseline justify-between">
-                <span className="sys-label">Wiki file system</span>
-                <Link
-                  href="/memory/wiki"
-                  className="text-[12px] text-dim hover:text-foreground"
-                >
-                  Open full view →
-                </Link>
-              </div>
-              <div className="card-soft max-h-[420px] overflow-y-auto p-3">
-                {!treeLoaded ? (
-                  <SkeletonBlock className="h-[180px] w-full" />
-                ) : wikiTree &&
-                  (wikiTree.folders.length > 0 || wikiTree.pages.length > 0) ? (
-                  <WikiFileTree tree={wikiTree} />
-                ) : (
-                  <div className="flex h-[180px] items-center justify-center px-2 text-center text-[12.5px] text-muted-foreground">
-                    Nothing filed yet. Wiki pages show up here as folders and
-                    pages once the curator runs.
-                  </div>
-                )}
-              </div>
-            </section>
+            {/* The curator log — the curator's own account of each run,
+                beneath the structure it maintains. */}
+            <CuratorLog />
           </div>
 
           <div className="flex min-h-0 min-w-0 flex-col gap-4">
@@ -237,17 +198,19 @@ export default function BrainDashboard() {
               )}
             </VizCard>
 
-            {/* Newsfeed — what the brain has been learning lately. Scrolls in
-                place (hard cap — inside a grid, flex-1 can't bound it) so the
-                panel row stays a dashboard, not a page. */}
+            {/* File activity — what's landing in the filesystem, live. The
+                Memory subtree is excluded server-side, so the curator's own
+                writes never echo here. Scrolls in place (hard cap — inside a
+                grid, flex-1 can't bound it) so the panel stays a dashboard,
+                not a page. */}
             <section className="flex flex-col">
-              <div className="sys-label mb-1.5">Recent edits</div>
+              <div className="sys-label mb-1.5">File activity</div>
               <div className="card-soft max-h-[480px] overflow-y-auto p-3">
                 <div className="flex flex-col gap-2.5">
                   {events.length === 0 ? (
                     <div className="rounded-[10px] border border-border bg-base px-4 py-6 text-center text-[13px] text-muted-foreground">
-                      Nothing learned yet. Push a transcript, edit a page, or
-                      upload a file.
+                      Nothing here yet. Upload a file or edit a page and it
+                      shows up here.
                     </div>
                   ) : (
                     events.map((event, i) => (
@@ -308,7 +271,7 @@ function FeedCard({ event }: { event: ActivityEvent }) {
           {verb}
         </span>
         <span className="sys-label" style={{ fontSize: 10.5 }}>
-          {relativeTime(event.ts)}
+          {editTimestamp(event.ts)}
         </span>
       </div>
       <h3 className="my-1.5 font-display text-[16px] font-bold leading-tight tracking-[-0.01em]">
@@ -332,30 +295,18 @@ function FeedCard({ event }: { event: ActivityEvent }) {
 }
 
 function verbFor(kind: string): string {
-  if (kind === "session.uploaded") return "pushed a session";
   if (kind === "page.updated") return "edited a page";
   if (kind === "file.uploaded") return "uploaded a file";
-  if (kind === "skill.published") return "published a Skill";
   return kind;
 }
 
 function hrefFor(event: ActivityEvent): string | null {
-  if (event.kind === "session.uploaded")
-    return `/sessions/${encodeURIComponent(event.target_id)}`;
-  if (event.kind === "page.updated")
-    return `/p/${event.target_id}`;
-  if (event.kind === "file.uploaded")
-    return `/f/${event.target_id}`;
+  if (event.kind === "page.updated") return `/p/${event.target_id}`;
+  if (event.kind === "file.uploaded") return `/f/${event.target_id}`;
   return null;
 }
 
 function EventGlyph({ kind }: { kind: string }) {
-  if (kind === "session.uploaded")
-    return (
-      <span style={{ color: "var(--color-agent)" }}>
-        <SessionsIcon />
-      </span>
-    );
   if (kind === "page.updated")
     return (
       <span className="text-muted-foreground">
@@ -368,11 +319,34 @@ function EventGlyph({ kind }: { kind: string }) {
         <FileIcon />
       </span>
     );
-  if (kind === "skill.published")
-    return (
-      <span style={{ color: "var(--color-brand-600)" }}>
-        <SkillIcon />
-      </span>
-    );
   return null;
+}
+
+/** Full-screen first-run state: one instruction, upload your agent
+ *  transcripts. Everything else Home shows grows out of those. */
+function EmptyStashSetup() {
+  return (
+    <div className="flex h-full min-h-0 items-center justify-center overflow-y-auto">
+      <div className="w-full max-w-xl px-8 py-10 text-center">
+        <StashIcon className="mx-auto text-[44px]" />
+        <h1 className="mt-5 font-display text-[26px] font-semibold tracking-tight text-foreground">
+          Let&apos;s get you started
+        </h1>
+        <p className="mx-auto mt-2 max-w-md text-[14px] leading-6 text-dim">
+          Upload your session transcripts to get started. Transcripts are private to you,
+          and you can choose which folders transcripts are uploaded from.
+        </p>
+        <div className="mx-auto mt-6 max-w-md text-left">
+          {/* One command on purpose: the installer ends by exec'ing
+              `stash signin`, which runs the whole setup wizard. */}
+          <CopyableCommandBlock commands={`bash -c "$(curl -fsSL https://joinstash.ai/install)"`} />
+        </div>
+        <p className="mt-4 text-[12.5px] text-muted-foreground">
+          The installer signs you in and sets up session recording. Then use your coding
+          agent like you always do — this page becomes your agents&apos; shared memory as
+          transcripts arrive.
+        </p>
+      </div>
+    </div>
+  );
 }

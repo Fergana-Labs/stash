@@ -95,7 +95,6 @@ export default function AppCard({
               {subtitle}
             </span>
           )}
-          {subtitle && timestamp && <span aria-hidden>·</span>}
           {timestamp && <span className="shrink-0">{timestamp}</span>}
         </div>
       </button>

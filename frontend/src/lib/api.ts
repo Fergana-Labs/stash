@@ -333,6 +333,38 @@ export async function listSources(): Promise<Source[]> {
   return data.sources.filter((s) => !NATIVE_SOURCE_TYPES.has(s.type));
 }
 
+// One node in a source's entry tree (GET /me/sources/tree). Directories carry
+// `children`; a capped directory ends with a {kind: "truncated", hidden: N}
+// marker so renderers can say "+N more" honestly.
+export interface SourceTreeEntry {
+  name: string;
+  kind: string; // 'folder' | 'file' | 'page' | 'session' | 'truncated' | ...
+  path?: string;
+  ref?: string;
+  hidden?: number;
+  source?: string; // connection handle, on multi-connection member folders
+  sync_status?: string | null;
+  children?: SourceTreeEntry[];
+}
+
+export interface SourceTreeRoot {
+  source: string; // provider key ("github") or native handle
+  type: string; // 'provider' | 'native_files' | 'native_sessions'
+  provider?: string;
+  display_name: string;
+  members?: { handle: string; display_name: string }[];
+  sync_status?: string | null;
+  last_synced_at?: string | null;
+  tree: SourceTreeEntry[];
+}
+
+export async function getSourcesTree(depth = 4): Promise<SourceTreeRoot[]> {
+  const data = await apiFetch<{ sources: SourceTreeRoot[] }>(`${ME}/sources/tree?depth=${depth}`);
+  // Files and sessions render from their own richer endpoints; this call is
+  // for the connected-source trees.
+  return data.sources.filter((s) => s.type === "provider");
+}
+
 export async function addSource(body: {
   source_type: string;
   external_ref?: string;
@@ -495,42 +527,6 @@ export function githubOwner(sourceGithubUrl: string): string {
   return sourceGithubUrl.replace("https://github.com/", "").split("/")[0];
 }
 
-// --- Home feed ---
-
-// An item from the caller's own stash the feed resurfaces: an old doc, file,
-// memory page, or clip (opens in-app via app_url) or an X/Instagram save
-// (opens the original via external_url; the archived text is the preview).
-export interface ResurfaceCardData {
-  source: "x" | "instagram" | "clip" | "doc" | "file" | "memory";
-  title: string;
-  preview: string;
-  saved_at: string;
-  app_url: string | null;
-  external_url: string | null;
-  image_url: string | null;
-}
-
-export type FeedItem =
-  | { kind: "skill"; data: PublicSkillCard }
-  | { kind: "public_page"; data: PublicPageCard }
-  | { kind: "resurface"; data: ResurfaceCardData };
-
-export interface HomeFeedPage {
-  items: FeedItem[];
-  next_cursor: number | null;
-}
-
-// Public for signed-out visitors (community stream only); a bearer token adds
-// resurfaced items from the caller's own stash.
-export async function getHomeFeed(cursor: number): Promise<HomeFeedPage> {
-  const token = await getAuthToken();
-  const res = await fetch(`${API_BASE}/api/v1/feed?cursor=${cursor}`, {
-    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-  });
-  if (!res.ok) throw new Error(`Feed failed: ${res.status}`);
-  return res.json();
-}
-
 // --- Files: folders (nested) and pages ---
 
 export async function getTree(): Promise<Tree> {
@@ -562,9 +558,20 @@ export async function getMemoryGraph(): Promise<WikiGraph> {
   return apiFetch(`${ME}/memory-graph`);
 }
 
-// The Memory wiki as a nested file-system tree, rooted at the Memory folder.
-export async function getMemoryTree(): Promise<Tree> {
-  return apiFetch(`${ME}/memory-tree`);
+// --- Curator log ---
+
+// One curator run: what the night's curation learned — the run's stored
+// final message, one sentence by prompt contract.
+export interface CuratorLogEntry {
+  session_id: string;
+  started_at: string;
+  status: "completed" | "failed" | "stopped" | "interrupted";
+  summary: string | null;
+  error: string | null;
+}
+
+export async function getCuratorLog(): Promise<{ entries: CuratorLogEntry[] }> {
+  return apiFetch(`${ME}/curator-log`);
 }
 
 export async function createFolder(
@@ -1722,8 +1729,10 @@ export async function listAgentNames(): Promise<string[]> {
   return data.agent_names;
 }
 
-// --- Activity feed ---
+// --- File activity feed ---
 
+// A page edit or file upload in the filesystem (the Memory subtree is
+// excluded server-side — curation output is the curator log's story).
 export interface ActivityEvent {
   kind: string;
   ts: string;
@@ -1740,12 +1749,12 @@ export interface ActivityFeed {
   has_more: boolean;
 }
 
-export async function listActivity(
+export async function listFileActivity(
   opts: { limit?: number; before?: string } = {}
 ): Promise<ActivityFeed> {
   const qs = new URLSearchParams({ limit: String(opts.limit ?? 50) });
   if (opts.before) qs.set("before", opts.before);
-  return apiFetch(`${ME}/activity?${qs}`);
+  return apiFetch(`${ME}/file-activity?${qs}`);
 }
 
 // --- Session transcripts ---

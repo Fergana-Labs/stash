@@ -194,7 +194,7 @@ function contentRows(contents: PublicSkillContents, slug: string): ContentRow[] 
       key: `table-${table.id}`,
       href: `/tables/${table.id}?skill=${skillParam}`,
       name: table.name,
-      sub: `table · ${table.rows.length} row${table.rows.length === 1 ? "" : "s"}`,
+      sub: `table, ${table.rows.length} row${table.rows.length === 1 ? "" : "s"}`,
       kind: "table",
       folderPath: table.folder_path,
     });
@@ -258,19 +258,16 @@ function SkillPageBody({
               </h1>
               <div className="mt-1 flex flex-wrap items-center gap-2 text-[12px] text-muted-foreground">
                 <span>by {author}</span>
-                <span className="text-muted-foreground/60">·</span>
                 <span>
                   {rows.length} file{rows.length === 1 ? "" : "s"}
                 </span>
                 {skill.updated_at && (
                   <>
-                    <span className="text-muted-foreground/60">·</span>
                     <span>updated {relativeTime(skill.updated_at)}</span>
                   </>
                 )}
                 {skill.source_github_url && (
                   <>
-                    <span className="text-muted-foreground/60">·</span>
                     <a
                       href={skill.source_github_url}
                       target="_blank"

@@ -330,7 +330,7 @@ describe("SkillPageView access fallback", () => {
     render(<SkillPageView pageId="page-1" />);
 
     expect(await screen.findByText("Skill page body")).toBeInTheDocument();
-    expect(screen.getByText("page · read-only via Skill")).toBeInTheDocument();
+    expect(screen.getByText("page, read-only via Skill")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Launch Skill/ })).toHaveAttribute(
       "href",
       "/skills/private-skill",

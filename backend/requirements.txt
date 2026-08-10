@@ -20,6 +20,7 @@ nh3>=0.2
 claude-agent-sdk>=0.1.50
 mcp>=1.23.0
 celery[redis]>=5.4
+duckdb>=1.1
 redis>=5.0
 cryptography>=42.0
 google-auth>=2.30

@@ -79,7 +79,7 @@ export default function FileBrowser({ folderId, folderHrefBase }: Props) {
   const [rootFiles, setRootFiles] = useState<GridItem[]>([]);
   const [rootTables, setRootTables] = useState<GridItem[]>([]);
   const [allFiles, setAllFiles] = useState<GridItem[]>([]);
-  const [view, setView] = useState<View>("grid");
+  const [view, setView] = useState<View>("list");
   const [scope, setScope] = useState<Scope>("mine");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const pins = useFilePins();
@@ -931,7 +931,7 @@ function fileToGridItem(file: {
     kind: isCsvLinked ? "table" : "file",
     id: file.id,
     name: file.name,
-    subtitle: `${file.content_type || "file"} · ${formatBytes(file.size_bytes)}`,
+    subtitle: `${file.content_type || "file"}, ${formatBytes(file.size_bytes)}`,
     sizeBytes: file.size_bytes,
     linkedTableId: file.linked_table_id ?? undefined,
     contentType: file.content_type,
@@ -945,7 +945,7 @@ function tableToGridItem(table: { id: string; name: string; row_count: number | 
     kind: "datatable",
     id: table.id,
     name: table.name,
-    subtitle: `table · ${rows} row${rows === 1 ? "" : "s"}`,
+    subtitle: `table, ${rows} row${rows === 1 ? "" : "s"}`,
   };
 }
 
@@ -973,7 +973,7 @@ function subtitleForFolder(pages: number, files: number): string {
   const parts: string[] = [];
   if (pages) parts.push(`${pages} page${pages === 1 ? "" : "s"}`);
   if (files) parts.push(`${files} file${files === 1 ? "" : "s"}`);
-  return parts.join(" · ") || "Empty";
+  return parts.join(", ") || "Empty";
 }
 
 function formatBytes(b: number): string {

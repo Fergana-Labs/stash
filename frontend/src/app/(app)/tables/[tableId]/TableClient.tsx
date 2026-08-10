@@ -1313,7 +1313,7 @@ function TableEditorPageInner({
               : undefined
           }
           readOnly={readOnly}
-          readOnlyLabel="read-only · via Skill"
+          readOnlyLabel="read-only via Skill"
           backLink={
             readOnly && skillSlug
               ? { label: skillTitle ?? "Skill", href: `/skills/${skillSlug}` }

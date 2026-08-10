@@ -3,7 +3,6 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Play, X } from "lucide-react";
-import { useWorkspace } from "@/lib/workspace-store";
 import { newRunTabRef, runPrompt, stageSkillRun } from "@/lib/skill-launch";
 import type { LaunchableSkill } from "@/lib/types";
 
@@ -21,7 +20,6 @@ export default function SkillLauncher({
   onClose: () => void;
 }) {
   const router = useRouter();
-  const openTab = useWorkspace((s) => s.openTab);
   const [request, setRequest] = useState("");
 
   useEffect(() => {
@@ -36,8 +34,8 @@ export default function SkillLauncher({
     if (!request.trim()) return;
     const ref = newRunTabRef();
     stageSkillRun(ref, runPrompt(skill.name, request));
-    openTab("agent", ref, { title: `Run: ${skill.name}` });
-    router.push("/agents");
+    // The chat page picks the staged run up off the ?chat= ref and sends it.
+    router.push(`/agents?chat=${encodeURIComponent(ref)}`);
   }
 
   return (

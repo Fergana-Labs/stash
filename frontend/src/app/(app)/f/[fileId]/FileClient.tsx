@@ -29,7 +29,7 @@ import FileContentRenderer, {
   isText,
 } from "@/components/content/FileContentRenderer";
 import FileViewerHeader from "@/components/content/FileViewerHeader";
-import { sectionCrumbs, useMemoryFolderId } from "@/lib/memory-folder";
+import { sectionCrumbs } from "@/lib/memory-folder";
 import { useTabTitle } from "@/lib/workspace-store";
 import ResourceShareButton from "@/components/share/ResourceShareButton";
 
@@ -77,7 +77,6 @@ function FileViewerPageInner({ fileId }: { fileId: string }) {
   // via ?skill= still gets full edit affordances.
   const [readOnly, setReadOnly] = useState(false);
 
-  const memoryFolderId = useMemoryFolderId();
   const ancestorCrumbs = useMemo(
     () =>
       readOnly
@@ -85,8 +84,8 @@ function FileViewerPageInner({ fileId }: { fileId: string }) {
             { label: "Skills", href: "/skills" },
             { label: skillTitle ?? "Skill", href: skillSlug ? `/skills/${skillSlug}` : "/skills" },
           ]
-        : sectionCrumbs(folderChain, memoryFolderId),
-    [readOnly, skillTitle, skillSlug, folderChain, memoryFolderId],
+        : sectionCrumbs(folderChain),
+    [readOnly, skillTitle, skillSlug, folderChain],
   );
 
   useBreadcrumbs(
@@ -259,7 +258,7 @@ function FileViewerPageInner({ fileId }: { fileId: string }) {
               : undefined
           }
           readOnly={readOnly}
-          readOnlyLabel="read-only · via Skill"
+          readOnlyLabel="read-only via Skill"
           backLink={readOnly && skillSlug ? { label: skillTitle ?? "Skill", href: `/skills/${skillSlug}` } : undefined}
           tags={tags}
           meta={meta}

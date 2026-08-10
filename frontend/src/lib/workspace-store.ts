@@ -12,7 +12,7 @@ import { nanoid } from "nanoid";
  * components/workspace/persistence.tsx (localStorage).
  */
 
-export type RailSection = "files" | "agents" | "sessions" | "skills" | "memory" | "apps" | "tools" | "computer";
+export type RailSection = "home" | "files" | "agents" | "sessions" | "skills" | "tools" | "computer";
 
 export type TabKind = "page" | "file" | "table" | "session" | "sessions-home" | "skill" | "folder" | "agent" | "agent-config" | "tool" | "machine-file" | "terminal";
 
@@ -45,6 +45,9 @@ export interface WorkspaceState {
   railSection: RailSection;
   /** VFS folder the Files explorer is showing (null = root). */
   explorerFolderId: string | null;
+  /** Last URL visited inside the VFS section — the rail's VFS button returns
+   *  here, so tabbing away and back doesn't restart you at the bare lens. */
+  lastVfsUrl: string | null;
 
   /** Display titles keyed by titleKey(kind, refId). The content body is the
    *  source of truth — it publishes its loaded name via useTabTitle. openTab
@@ -61,6 +64,7 @@ export interface WorkspaceState {
   setTitle: (kind: TabKind, refId: string, title: string) => void;
   setRailSection: (s: RailSection) => void;
   setExplorerFolderId: (id: string | null) => void;
+  setLastVfsUrl: (url: string) => void;
   hydrate: (data: Partial<WorkspaceState>) => void;
 }
 
@@ -89,6 +93,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   focusedPane: 0,
   railSection: "files",
   explorerFolderId: null,
+  lastVfsUrl: null,
   titles: {},
 
   openTab: (kind, refId, opts) => {
@@ -175,6 +180,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   setRailSection: (s) => set({ railSection: s }),
 
   setExplorerFolderId: (id) => set({ explorerFolderId: id }),
+
+  setLastVfsUrl: (url) => set({ lastVfsUrl: url }),
 
   hydrate: (data) => set({ ...data }),
 }));

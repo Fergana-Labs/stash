@@ -10,7 +10,7 @@ const KEY = "moltchat_workspace";
  *  cache, background tabs would have no name after a reload until visited. */
 type Persisted = Pick<
   WorkspaceState,
-  "tabs" | "paneOf" | "activeTabId" | "activeTab1" | "split" | "focusedPane" | "railSection" | "explorerFolderId" | "titles"
+  "tabs" | "paneOf" | "activeTabId" | "activeTab1" | "split" | "focusedPane" | "railSection" | "explorerFolderId" | "lastVfsUrl" | "titles"
 >;
 
 function readPersisted(): Partial<Persisted> | null {
@@ -47,6 +47,7 @@ export default function Persistence() {
         focusedPane: s.focusedPane,
         railSection: s.railSection,
         explorerFolderId: s.explorerFolderId,
+        lastVfsUrl: s.lastVfsUrl,
         titles: Object.fromEntries(Object.entries(s.titles).filter(([k]) => openKeys.has(k))),
       };
       localStorage.setItem(KEY, JSON.stringify(slice));

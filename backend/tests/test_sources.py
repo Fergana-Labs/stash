@@ -4235,3 +4235,80 @@ async def test_source_recipient_cannot_reshare_or_share_write(client: AsyncClien
             permission="write",
             owner_id=owner_id,
         )
+
+
+@pytest.mark.asyncio
+async def test_listing_sources_kicks_stale_syncs(client: AsyncClient, monkeypatch):
+    """GET /me/sources is the freshness trigger: a stale source gets claimed
+    and enqueued as a side effect of looking, exactly once per window — the
+    integration pages and the VFS both read through this endpoint."""
+    from backend.database import get_pool
+
+    key, owner_id = await _register(client, "kick")
+    src = await source_service.create_source(
+        owner_user_id=owner_id,
+        source_type="github_repo",
+        external_ref="acme/kick-repo",
+        display_name="Kick Repo",
+    )
+    sent: list[dict] = []
+    monkeypatch.setattr(
+        "backend.routers.sources.celery.send_task",
+        lambda *args, **kwargs: sent.append(kwargs.get("kwargs", {})),
+    )
+
+    # Freshly created: inside the window, listing must not re-kick.
+    resp = await client.get("/api/v1/me/sources", headers=_auth(key))
+    assert resp.status_code == 200
+    assert sent == []
+
+    # Age the row past the access-kick window.
+    await get_pool().execute(
+        "UPDATE user_sources SET updated_at = now() - interval '1 hour', "
+        "last_synced_at = now() - interval '1 hour', sync_status = 'idle' WHERE id = $1",
+        UUID(src["id"]),
+    )
+
+    resp = await client.get("/api/v1/me/sources", headers=_auth(key))
+    assert resp.status_code == 200
+    assert [t["source_id"] for t in sent] == [src["id"]]
+    # The claim happened before the listing was built: the response already
+    # shows the sync in flight.
+    listed = next(s for s in resp.json()["sources"] if s.get("source") == src["id"])
+    assert listed["sync_status"] == "syncing"
+
+    # Immediately listing again must not double-enqueue.
+    sent.clear()
+    resp = await client.get("/api/v1/me/sources", headers=_auth(key))
+    assert resp.status_code == 200
+    assert sent == []
+
+
+@pytest.mark.asyncio
+async def test_needs_setup_sources_are_not_kicked_by_access(client: AsyncClient, monkeypatch):
+    """needs_setup means the user must act; re-syncing on read cannot fix it,
+    so access must not churn those sources."""
+    from backend.database import get_pool
+
+    key, owner_id = await _register(client, "kick2")
+    src = await source_service.create_source(
+        owner_user_id=owner_id,
+        source_type="github_repo",
+        external_ref="acme/setup-repo",
+        display_name="Setup Repo",
+    )
+    await get_pool().execute(
+        "UPDATE user_sources SET updated_at = now() - interval '1 hour', "
+        "sync_status = 'needs_setup' WHERE id = $1",
+        UUID(src["id"]),
+    )
+    sent: list[dict] = []
+    monkeypatch.setattr(
+        "backend.routers.sources.celery.send_task",
+        lambda *args, **kwargs: sent.append(kwargs),
+    )
+
+    resp = await client.get("/api/v1/me/sources", headers=_auth(key))
+
+    assert resp.status_code == 200
+    assert sent == []

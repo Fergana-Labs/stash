@@ -279,7 +279,7 @@ function RecentCard({ item, dropHandlers }: { item: SharedWithMeItem; dropHandle
         </span>
         <span className="block truncate text-[10.5px] text-muted-foreground">
           {LABEL[item.object_type]}
-          {item.shared_by ? ` · from ${item.shared_by}` : ""}
+          {item.shared_by ? `, from ${item.shared_by}` : ""}
         </span>
       </span>
     </Link>

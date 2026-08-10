@@ -2,6 +2,7 @@
 
 import { ReactNode, useEffect, useState } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
+import { useWorkspace } from "@/lib/workspace-store";
 import type { User } from "@/lib/types";
 import { Toaster } from "@/components/ui/sonner";
 import Persistence from "./persistence";
@@ -13,7 +14,14 @@ import Workbench from "./workbench";
 const WIDTH_KEY = "moltchat_explorer_width";
 const MIN_W = 220;
 const MAX_W = 600;
-const EXPLORER_SECTIONS: ExplorerSection[] = ["files", "sessions", "skills", "agents", "memory", "tools", "computer"];
+const EXPLORER_SECTIONS: ExplorerSection[] = ["files", "sessions", "skills", "agents", "tools", "computer"];
+
+// Experiment (2026-08-10): only the VFS keeps the tree sidebar. Sessions,
+// Skills, Tools, and Agents render full-width — the explorers were a second
+// nav axis over the same content as the rail, and the two looked independent.
+// Agents brings its own ChatGPT-style chat list; the VM (browser) keeps its
+// panel because that content lives nowhere else.
+const PANELLED_SECTIONS: ExplorerSection[] = ["files", "computer"];
 
 /** Resizable explorer panel — drag the right edge to set width (persisted). */
 function ExplorerPanel({ section }: { section: ExplorerSection }) {
@@ -59,15 +67,14 @@ function ExplorerPanel({ section }: { section: ExplorerSection }) {
 }
 
 /** Which workspace section a path belongs to (null = full-page route: Home,
- *  Index, Discover, Settings, published skill pages, …). Most sections render
- *  the tab workbench; `/sessions` keeps its full management page beside the
- *  Sessions explorer. */
+ *  the wiki, Discover, Settings, published skill pages, …). Most sections
+ *  render the tab workbench; `/sessions` keeps its full management page
+ *  beside the Sessions explorer. */
 function sectionForPath(pathname: string): ExplorerSection | null {
   if (pathname === "/files" || /^\/(p|f|folders|tables)\//.test(pathname)) return "files";
   if (pathname === "/sessions" || pathname.startsWith("/sessions/") || pathname.startsWith("/session-folders")) return "sessions";
   if (pathname === "/skills" || pathname.startsWith("/skills/folder")) return "skills";
   if (pathname === "/agents") return "agents";
-  if (pathname === "/memory" || pathname.startsWith("/memory/")) return "memory";
   if (pathname === "/tools" || pathname.startsWith("/integrations")) return "tools";
   return null;
 }
@@ -81,15 +88,17 @@ export function rendersRouteContent(
   workspaceParam: string | null,
 ): boolean {
   if (selectedSection) return false;
+  // The Files home is the bird's-eye view of the whole stash; opening any
+  // item navigates to its own route, which returns to the workbench.
+  if (pathname === "/files") return true;
   if (pathname === "/sessions") return workspaceParam !== "1";
-  // Memory routes (brain dashboard, wiki file system) render as pages
-  // beside the explorer; opening an item switches to the workbench.
-  if (pathname.startsWith("/memory")) return true;
   // The Skills home is the launcher — pick a skill, run it. Only the bare
   // path: /skills/folder/<id> is a skill you opened, which belongs in a tab.
   if (pathname === "/skills") return true;
   // The MCP-server registry is a management page like /sessions.
-  return pathname === "/tools";
+  if (pathname === "/tools") return true;
+  // /agents is the ChatGPT-style chat page — its own sidebar, no workbench.
+  return pathname === "/agents";
 }
 
 
@@ -119,6 +128,19 @@ export default function WorkspaceShell({
     selectedSection,
     searchParams.get("workspace"),
   );
+  // Remember where the user is inside the VFS, so the rail's VFS button can
+  // bring them back instead of restarting at the bare lens.
+  const setLastVfsUrl = useWorkspace((s) => s.setLastVfsUrl);
+  useEffect(() => {
+    if (section !== "files") return;
+    const query = searchParams.toString();
+    setLastVfsUrl(query ? `${pathname}?${query}` : pathname);
+  }, [section, pathname, searchParams, setLastVfsUrl]);
+
+  // /files IS a file tree — showing the explorer's tree beside it would be
+  // the same thing twice. An explicit ?section= still summons the panel.
+  const isFilesHome = pathname === "/files" && !selectedSection;
+  const showExplorer = section !== null && PANELLED_SECTIONS.includes(section) && !isFilesHome;
 
   return (
     // Chrome surface — the content panel floats on top of it.
@@ -128,9 +150,9 @@ export default function WorkspaceShell({
       <div className="flex min-h-0 flex-1">
         <Rail user={user} onLogout={onLogout} />
         <div className="min-w-0 flex-1 pb-0">
-          {section ? (
+          {section && !isFilesHome ? (
             <div className="flex h-full">
-              <ExplorerPanel section={section} />
+              {showExplorer && <ExplorerPanel section={section} />}
               {/* Floating content panel: clean white paper, subtly elevated. */}
               <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-tl-2xl border-l border-t border-border bg-base shadow-[-10px_-6px_28px_-16px_rgba(30,25,15,0.10)]">
                 {renderRouteContent ? (

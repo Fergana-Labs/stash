@@ -35,6 +35,7 @@ from .config import (
     load_manifest,
     save_config,
     save_enabled_agents,
+    save_recorded_paths,
     save_scope,
     session_link_enabled,
     set_codex_auto_update,
@@ -289,10 +290,40 @@ def _codex_present() -> bool:
     return False
 
 
+def _claude_binary() -> str | None:
+    """Resolve the `claude` executable, PATH first then the known install
+    locations.
+
+    PATH alone misses real installs: the local/migrate install parks the
+    binary at ~/.claude/local/claude behind a *shell alias* (never on PATH,
+    so `which` can never see it), and ~/.local/bin is on PATH only if a shell
+    rc put it there — which a non-interactive process may not inherit.
+    """
+    import os
+
+    found = shutil.which(_AGENT_BINARY["claude"])
+    if found:
+        return found
+    home = Path.home()
+    for candidate in (
+        home / ".local" / "bin" / "claude",
+        home / ".claude" / "local" / "claude",
+    ):
+        if candidate.is_file() and os.access(candidate, os.X_OK):
+            return str(candidate)
+    return None
+
+
 def _agent_present(agent: str) -> bool:
     """True if the agent is usable on this machine (binary on PATH or config dir exists)."""
     import shutil
 
+    if agent == "claude":
+        # ~/.claude is where Claude Code keeps the transcripts we record, so
+        # it — not PATH — is the honest signal that this machine runs Claude
+        # Code. Requiring the binary hid the flagship agent from users whose
+        # install isn't on PATH, and took their history import down with it.
+        return _claude_binary() is not None or (Path.home() / ".claude").is_dir()
     if shutil.which(_AGENT_BINARY[agent]):
         return True
     if agent == "codex":
@@ -393,6 +424,8 @@ def _install_claude(force: bool) -> tuple[str, str]:
     ok = _install_claude_plugin()
     if ok:
         return ("installed", "claude plugin installed via marketplace")
+    if _claude_binary() is None:
+        return ("failed", "no `claude` executable found — see above")
     return ("failed", "claude plugin install; see inline output")
 
 
@@ -977,7 +1010,7 @@ def browse(
             owner = skill.get("owner_display_name") or skill.get("owner_name") or "unknown"
             console.print(
                 f"[bold]{skill['title']}[/bold]  [dim]by {owner}[/dim]  "
-                f"{skill['item_count']} items · {skill['view_count']} views"
+                f"{skill['item_count']} items, {skill['view_count']} views"
             )
             if skill.get("description"):
                 console.print(f"  [dim]{skill['description']}[/dim]")
@@ -1005,7 +1038,7 @@ def browse(
                 (summary + "\n\n", ""),
                 (f"by {picked.get('owner_display_name') or picked['owner_name']}  ", "dim"),
                 (
-                    f"{picked['item_count']} items · {picked['view_count']} views",
+                    f"{picked['item_count']} items, {picked['view_count']} views",
                     "dim",
                 ),
             ),
@@ -3030,7 +3063,7 @@ def _stream_turn(events) -> str | None:
         if kind == "session":
             session_id = event["session_id"]
         elif kind == "status":
-            console.print(f"[dim]· {event.get('stage', 'working')}…[/dim]")
+            console.print(f"[dim]{event.get('stage', 'working')}…[/dim]")
         elif kind == "text":
             print(event.get("delta", ""), end="", flush=True)
         elif kind == "tool":
@@ -4632,6 +4665,7 @@ Use `stash vfs` when you want to browse Stash like a filesystem without mounting
 Common reads:
 - `stash search "<query>" --json` — full-text search across files, sessions, and connected sources
 - `stash vfs "ls /"` — browse your files, sessions, tables, skills, and connected sources
+- `stash sql "SELECT ..."` — query your tables with SQL (tables live in the folder tree; bare name when unique, '"files/<folder>".<name>' otherwise)
 - `stash vfs "cat '/sessions/_index.jsonl'"` — recent sessions
 - `stash sessions agents` — who's been active
 
@@ -4882,53 +4916,186 @@ def signin(
     _run_setup_wizard()
 
 
+def _agent_folder_candidates(limit: int = 6) -> list[tuple[Path, int]]:
+    """Folders the user actually runs agents in, ranked by session count —
+    mined from the same transcript history the importer reads, so the folder
+    question can offer real answers instead of a blank path prompt. Only
+    folders that still exist qualify."""
+    from .import_history import discover_conversations
+
+    counts: dict[str, int] = {}
+    for conv in discover_conversations():
+        if conv.cwd:
+            counts[conv.cwd] = counts.get(conv.cwd, 0) + 1
+    ranked = sorted(counts.items(), key=lambda kv: -kv[1])
+    result: list[tuple[Path, int]] = []
+    for raw, count in ranked:
+        path = Path(raw)
+        if path.is_dir():
+            result.append((path, count))
+        if len(result) == limit:
+            break
+    return result
+
+
+def _pretty_path(path: Path) -> str:
+    home = str(Path.home())
+    raw = str(path)
+    return "~" + raw[len(home) :] if raw.startswith(home) else raw
+
+
+def _choose_folder_finder(start: Path) -> Path | None:
+    """Pop the native macOS Finder folder chooser. None means the user hit
+    Cancel; any other failure (e.g. an SSH session with no GUI) raises so the
+    user re-runs and picks "Type a path" instead of silently losing the answer."""
+    import subprocess
+
+    script = (
+        "POSIX path of (choose folder with prompt "
+        '"Where should Stash record agent sessions?" '
+        f'default location POSIX file "{start}")'
+    )
+    result = subprocess.run(["osascript", "-e", script], capture_output=True, text=True)
+    if result.returncode != 0:
+        if "-128" in result.stderr:  # AppleScript's "User canceled."
+            return None
+        raise RuntimeError(f"Finder dialog failed: {result.stderr.strip()}")
+    raw = result.stdout.strip()
+    return Path(raw) if raw else None
+
+
+def _browse_folders(start: Path) -> Path | None:
+    """Arrow-key folder browser: 'record this folder' pinned on top, '..' to
+    go up, subfolders to drill into. No typing required."""
+    cur = start.resolve()
+    while True:
+        try:
+            subdirs = sorted(
+                (d for d in cur.iterdir() if d.is_dir() and not d.name.startswith(".")),
+                key=lambda d: d.name.lower(),
+            )
+        except PermissionError:
+            subdirs = []
+        use = f"✓ Record {_pretty_path(cur)}"
+        up = ".. (up one level)"
+        choices: list[str] = [use]
+        if cur.parent != cur:
+            choices.append(up)
+        choices.extend(f"{d.name}/" for d in subdirs)
+        _reserve_bottom_padding(min(len(choices), 15) + 2)
+        picked = questionary.select(f"Browsing {_pretty_path(cur)}", choices=choices).ask()
+        if picked is None:
+            return None
+        if picked == use:
+            return cur
+        if picked == up:
+            cur = cur.parent
+            continue
+        cur = cur / picked.rstrip("/")
+
+
+def _pick_record_folder(start: Path) -> Path | None:
+    """The ergonomic folder choice: your agents' actual working folders first,
+    a browser second, a typed path as the escape hatch."""
+    candidates = _agent_folder_candidates()
+    native = sys.platform == "darwin"
+    browse = "Choose in Finder…" if native else "Browse folders…"
+    type_it = "Type a path"
+    choices: list[questionary.Choice] = [
+        questionary.Choice(f"{_pretty_path(p)}  ({n} session{'s' if n != 1 else ''})", value=str(p))
+        for p, n in candidates
+    ]
+    choices.append(questionary.Choice(browse, value=browse))
+    choices.append(questionary.Choice(type_it, value=type_it))
+    _reserve_bottom_padding(len(choices) + 3)
+    picked = questionary.select(
+        "Which folder? (these are where your agents already run)"
+        if candidates
+        else "Which folder?",
+        choices=choices,
+    ).ask()
+    if picked is None:
+        return None
+    if picked == browse:
+        return _choose_folder_finder(start) if native else _browse_folders(start)
+    if picked == type_it:
+        typed = questionary.path("Folder path:", only_directories=True).ask()
+        if typed is None:
+            return None
+        return Path(typed).expanduser().resolve()
+    return Path(picked)
+
+
 def _run_setup_wizard() -> None:
     """First-run setup: session recording, agent hooks, folder context, history
     import. Re-runnable anytime via `stash setup` — no answer here is final."""
     cfg = load_config()
 
-    # --- Session recording ---
+    # --- Session recording: always on — the question is WHERE, not whether.
+    # (`stash stop` remains the pause switch.) ---
     console.print(
         "\nStash records your coding agent sessions to your private Stash so you\n"
         "and your agents can search them later. Transcripts are visible only to\n"
-        "you unless you share them."
+        "you unless you share them, and you can pause anytime with `stash stop`."
     )
-    _reserve_bottom_padding(4)
-    record = questionary.confirm(
-        "Record your agent sessions? (pause anytime with `stash stop`)",
-        default=True,
+    cwd = Path.cwd()
+    everywhere = "Everywhere on this machine"
+    here = f"Only this folder ({cwd.name})"
+    custom = "Only a folder I pick…"
+    # The folders this user's agents already run in go straight into the
+    # question — most people should recognize their answer, not produce it.
+    inline = [(p, n) for p, n in _agent_folder_candidates(limit=3) if p.resolve() != cwd.resolve()]
+    choices: list[questionary.Choice] = [
+        questionary.Choice(everywhere, value=everywhere),
+        questionary.Choice(here, value=str(cwd)),
+        *(
+            questionary.Choice(
+                f"Only {_pretty_path(p)}  ({n} session{'s' if n != 1 else ''})",
+                value=str(p),
+            )
+            for p, n in inline
+        ),
+        questionary.Choice(custom, value=custom),
+    ]
+    _reserve_bottom_padding(len(choices) + 3)
+    where = questionary.select(
+        "Where should Stash record agent sessions?",
+        choices=choices,
+        default=everywhere,
     ).ask()
-    if record is None:
+    if where is None:
         raise typer.Exit(1)
+    if where == everywhere:
+        save_recorded_paths([])
+    elif where == custom:
+        picked = _pick_record_folder(cwd)
+        if picked is None:
+            raise typer.Exit(1)
+        save_recorded_paths([str(picked)])
+    else:
+        save_recorded_paths([where])
+    start_streaming()
 
     detected = _detected_agents()
-    if record:
-        start_streaming()
-        if detected:
-            enabled = load_enabled_agents()
-            default_enabled = enabled if enabled is not None else detected
+    if detected:
+        enabled = load_enabled_agents()
+        default_enabled = enabled if enabled is not None else detected
 
-            _reserve_bottom_padding(len(detected) + 6)
-            selected = _pick_agents(
-                "Which coding agents should Stash record?", detected, default_enabled
-            )
-            if selected is None:
-                raise typer.Exit(1)
+        _reserve_bottom_padding(len(detected) + 6)
+        selected = _pick_agents(
+            "Which coding agents should Stash record?", detected, default_enabled
+        )
+        if selected is None:
+            raise typer.Exit(1)
 
-            save_enabled_agents(selected)
-            _install_all_hooks(selected)
-        else:
-            save_enabled_agents([])
-            console.print(
-                "  [yellow]No coding agents found on this machine, so nothing will be\n"
-                "  recorded yet. Re-run [bold]stash setup[/bold] after installing one\n"
-                "  (Claude Code, Codex, Cursor, opencode, Gemini CLI…).[/yellow]"
-            )
+        save_enabled_agents(selected)
+        _install_all_hooks(selected)
     else:
-        stop_streaming()
+        save_enabled_agents([])
         console.print(
-            "  Recording is off. Turn it on later with [cyan]stash setup[/cyan] "
-            "or [cyan]stash start[/cyan]."
+            "  [yellow]No coding agents found on this machine, so nothing will be\n"
+            "  recorded yet. Re-run [bold]stash setup[/bold] after installing one\n"
+            "  (Claude Code, Codex, Cursor, opencode, Gemini CLI…).[/yellow]"
         )
 
     # --- Folder context (any folder works — git repo not required) ---
@@ -4947,8 +5114,7 @@ def _run_setup_wizard() -> None:
         console.print("  [dim]Run stash connect from any project folder later.[/dim]")
 
     # --- Import historical conversations ---
-    if record:
-        _onboarding_import_history(detected)
+    _onboarding_import_history(detected)
 
     _show_setup_complete_splash()
 
@@ -5171,9 +5337,19 @@ def _install_claude_plugin() -> bool:
     """
     import subprocess as _sp
 
+    binary = _claude_binary()
+    if binary is None:
+        console.print(
+            "  [yellow]Found your Claude Code folder, but no `claude` executable to "
+            "install the live-recording plugin with. Past sessions still import; new "
+            "ones won't stream until you re-run [bold]stash setup[/bold] from a shell "
+            "where `claude --version` works.[/yellow]"
+        )
+        return False
+
     for cmd in (
-        ["claude", "plugin", "marketplace", "add", "Fergana-Labs/stash"],
-        ["claude", "plugin", "install", "stash@stash-plugins"],
+        [binary, "plugin", "marketplace", "add", "Fergana-Labs/stash"],
+        [binary, "plugin", "install", "stash@stash-plugins"],
     ):
         try:
             result = _sp.run(cmd, check=True, capture_output=True, text=True, timeout=60)
@@ -5435,7 +5611,7 @@ def _setup_complete_intro(
     recording_section = (
         "[bold]You're recording[/bold]\n"
         "This machine's agent sessions upload to your private Stash.\n"
-        "[dim]Pause with stash stop · exclude folders in stash settings[/dim]"
+        "[dim]Pause with stash stop, exclude folders in stash settings[/dim]"
         if recording
         else "[bold]Recording is off[/bold]\n"
         "Turn it on anytime with [cyan]stash start[/cyan] or [cyan]stash setup[/cyan]."
@@ -5917,6 +6093,40 @@ def vfs_command(
         raise typer.Exit(1)
     finally:
         client.close()
+
+
+@app.command("sql")
+def sql_command(
+    query: str = typer.Argument(..., help='e.g. "SELECT * FROM jobs WHERE salary > 90000"'),
+    as_json: bool = typer.Option(False, "--json"),
+):
+    """Query your tables with read-only SQL (DuckDB's Postgres-flavored dialect).
+
+    A table is addressable by bare name when unique ("SELECT * FROM jobs") and
+    always by its folder path as the schema ('SELECT * FROM "files/Hiring".jobs').
+    Explore with information_schema.tables / information_schema.columns.
+    """
+    with _client() as c:
+        try:
+            result = c.run_sql(query)
+        except StashError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(result)
+        return
+    names = [col["name"] for col in result["columns"]]
+    rendered = [["" if v is None else str(v) for v in row] for row in result["rows"]]
+    widths = [
+        max(len(name), *(len(row[i]) for row in rendered)) if rendered else len(name)
+        for i, name in enumerate(names)
+    ]
+    print(" | ".join(name.ljust(w) for name, w in zip(names, widths)))
+    print("-+-".join("-" * w for w in widths))
+    for row in rendered:
+        print(" | ".join(value.ljust(w) for value, w in zip(row, widths)))
+    print(f"({result['row_count']} rows)")
+    if result["truncated"]:
+        console.print("[yellow]Result truncated — add a LIMIT or tighter WHERE.[/yellow]")
 
 
 def _read_vfs_raw(path: str) -> bytes:

@@ -76,7 +76,6 @@ export default function FilesExplorer({
   onRoot,
   rootLabel = "Files",
   rootFolderId = null,
-  hideFolderId = null,
   loadRoot,
   loadFolder,
   loadShared,
@@ -85,16 +84,12 @@ export default function FilesExplorer({
   showImport = true,
   importIntent = "files",
   vfsWritable = true,
-  headerAction,
-  confirmMemoryWrites = false,
   tabSection,
 }: {
   onRoot: () => void;
   rootLabel?: string;
   /** Folder this explorer is rooted at (null = the VFS root). */
   rootFolderId?: string | null;
-  /** A root-level folder to hide from the listing (e.g. Memory hidden from Files). */
-  hideFolderId?: string | null;
   /** Workspace section stamped on opened tab URLs (?section=) — without it the
    *  shell derives the section from the path, which lands Memory items in
    *  Files (all folder/page routes are files-shaped). */
@@ -127,10 +122,8 @@ export default function FilesExplorer({
    *  Memory's "Curate wiki"). The toolbar row itself can't fit a labeled
    *  button — its action cluster doesn't shrink, so it would overflow the
    *  sidebar. */
-  headerAction?: { icon: React.ReactNode; label: string; run: () => void };
   /** Memory is the curator agent's knowledge base, so a manual write there is
    *  unusual: confirm it first and offer to send the item to Files instead. */
-  confirmMemoryWrites?: boolean;
 }) {
   const router = useRouter();
   const { user } = useAuth();
@@ -161,7 +154,6 @@ export default function FilesExplorer({
   const [repoFilter, setRepoFilter] = useState("");
   // A write action waiting on the "Add to Memory?" confirmation. `run` receives
   // the destination folder: the browsed Memory folder, or null for Files root.
-  const [pendingWrite, setPendingWrite] = useState<{ run: (folder: string | null) => Promise<void> } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const clickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -188,7 +180,7 @@ export default function FilesExplorer({
         const tree = await getTree();
         setCrumbs([]);
         setItems([
-          ...tree.folders.filter((f) => f.id !== hideFolderId).map((f) => ({ kind: "folder" as const, id: f.id, name: f.name, ts: f.updated_at, readOnly: f.is_protected })),
+          ...tree.folders.map((f) => ({ kind: "folder" as const, id: f.id, name: f.name, ts: f.updated_at, readOnly: f.is_protected })),
           ...tree.pages.map((p) => ({ kind: "page" as const, id: p.id, name: p.name || "Untitled", ts: p.updated_at })),
           ...(await sharedNode()),
         ]);
@@ -209,7 +201,7 @@ export default function FilesExplorer({
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load");
     }
-  }, [folderId, hideFolderId, loadRoot, loadFolder, loadShared, sharedNode]);
+  }, [folderId, loadRoot, loadFolder, loadShared, sharedNode]);
 
   useEffect(() => { setItems(null); load(); }, [load]);
   useEffect(() => {
@@ -297,12 +289,6 @@ export default function FilesExplorer({
     await load();
   }
 
-  // In Memory, every create/upload goes through the "Add to Memory?" dialog;
-  // everywhere else the action runs immediately in the browsed folder.
-  function guardWrite(run: (folder: string | null) => Promise<void>) {
-    if (confirmMemoryWrites) setPendingWrite({ run });
-    else void run(folderId);
-  }
   async function newDoc(contentType: "markdown" | "html", folder: string | null) {
     const p = await createPage("Untitled", folder, "", { content_type: contentType });
     await load();
@@ -353,7 +339,7 @@ export default function FilesExplorer({
     const files = Array.from(e.target.files ?? []);
     if (fileRef.current) fileRef.current.value = "";
     if (files.length === 0) return;
-    guardWrite((folder) => uploadFiles(files, folder));
+    void uploadFiles(files, folderId);
   }
   async function doImport(url?: string) {
     const target = (url ?? repoUrl).trim();
@@ -452,12 +438,12 @@ export default function FilesExplorer({
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={() => guardWrite((f) => newDoc("markdown", f))}><FileText className="h-4 w-4" /> Markdown page</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => guardWrite((f) => newDoc("html", f))}><Code2 className="h-4 w-4" /> HTML page</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => guardWrite(newTableItem)}><Table2 className="h-4 w-4" /> Table</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => void newDoc("markdown", folderId)}><FileText className="h-4 w-4" /> Markdown page</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => void newDoc("html", folderId)}><Code2 className="h-4 w-4" /> HTML page</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => void newTableItem(folderId)}><Table2 className="h-4 w-4" /> Table</DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
-              <ToolBtn icon={<FolderPlus className="h-4 w-4" />} label="New folder" onClick={() => guardWrite(newFolder)} />
+              <ToolBtn icon={<FolderPlus className="h-4 w-4" />} label="New folder" onClick={() => void newFolder(folderId)} />
               <ToolBtn icon={<Upload className="h-4 w-4" />} label="Upload" onClick={() => fileRef.current?.click()} />
             </>
           ) : null}
@@ -476,15 +462,6 @@ export default function FilesExplorer({
           <input ref={fileRef} type="file" multiple className="hidden" onChange={onUpload} />
         </div>
       </div>
-
-      {headerAction && (
-        <div className="shrink-0 border-b border-[var(--divider-color)] px-2 py-1.5">
-          <button onClick={headerAction.run} className="flex h-7 w-full items-center justify-center gap-1.5 rounded border border-sidebar-border text-[12px] text-sidebar-foreground hover:bg-sidebar-accent">
-            {headerAction.icon}
-            {headerAction.label}
-          </button>
-        </div>
-      )}
 
       {/* List — root is also a drop target (move to root) */}
       <div
@@ -568,29 +545,6 @@ export default function FilesExplorer({
           </div>
         </div>
       )}
-
-      <Dialog open={!!pendingWrite} onOpenChange={(open) => { if (!open) setPendingWrite(null); }}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Add to Memory?</DialogTitle></DialogHeader>
-          <p className="text-[13px] text-muted-foreground">
-            Memory is your curator agent&apos;s knowledge base — it&apos;s usually maintained
-            automatically, not by hand. Most files belong in Files.
-          </p>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => { const w = pendingWrite!; setPendingWrite(null); void w.run(folderId); }}
-            >
-              Add to Memory anyway
-            </Button>
-            <Button
-              onClick={async () => { const w = pendingWrite!; setPendingWrite(null); await w.run(null); toast.success("Added to Files"); }}
-            >
-              Add to Files instead
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       <Dialog open={importOpen} onOpenChange={setImportOpen}>
         <DialogContent>
