@@ -290,10 +290,40 @@ def _codex_present() -> bool:
     return False
 
 
+def _claude_binary() -> str | None:
+    """Resolve the `claude` executable, PATH first then the known install
+    locations.
+
+    PATH alone misses real installs: the local/migrate install parks the
+    binary at ~/.claude/local/claude behind a *shell alias* (never on PATH,
+    so `which` can never see it), and ~/.local/bin is on PATH only if a shell
+    rc put it there — which a non-interactive process may not inherit.
+    """
+    import os
+
+    found = shutil.which(_AGENT_BINARY["claude"])
+    if found:
+        return found
+    home = Path.home()
+    for candidate in (
+        home / ".local" / "bin" / "claude",
+        home / ".claude" / "local" / "claude",
+    ):
+        if candidate.is_file() and os.access(candidate, os.X_OK):
+            return str(candidate)
+    return None
+
+
 def _agent_present(agent: str) -> bool:
     """True if the agent is usable on this machine (binary on PATH or config dir exists)."""
     import shutil
 
+    if agent == "claude":
+        # ~/.claude is where Claude Code keeps the transcripts we record, so
+        # it — not PATH — is the honest signal that this machine runs Claude
+        # Code. Requiring the binary hid the flagship agent from users whose
+        # install isn't on PATH, and took their history import down with it.
+        return _claude_binary() is not None or (Path.home() / ".claude").is_dir()
     if shutil.which(_AGENT_BINARY[agent]):
         return True
     if agent == "codex":
@@ -394,6 +424,8 @@ def _install_claude(force: bool) -> tuple[str, str]:
     ok = _install_claude_plugin()
     if ok:
         return ("installed", "claude plugin installed via marketplace")
+    if _claude_binary() is None:
+        return ("failed", "no `claude` executable found — see above")
     return ("failed", "claude plugin install; see inline output")
 
 
@@ -5305,9 +5337,19 @@ def _install_claude_plugin() -> bool:
     """
     import subprocess as _sp
 
+    binary = _claude_binary()
+    if binary is None:
+        console.print(
+            "  [yellow]Found your Claude Code folder, but no `claude` executable to "
+            "install the live-recording plugin with. Past sessions still import; new "
+            "ones won't stream until you re-run [bold]stash setup[/bold] from a shell "
+            "where `claude --version` works.[/yellow]"
+        )
+        return False
+
     for cmd in (
-        ["claude", "plugin", "marketplace", "add", "Fergana-Labs/stash"],
-        ["claude", "plugin", "install", "stash@stash-plugins"],
+        [binary, "plugin", "marketplace", "add", "Fergana-Labs/stash"],
+        [binary, "plugin", "install", "stash@stash-plugins"],
     ):
         try:
             result = _sp.run(cmd, check=True, capture_output=True, text=True, timeout=60)
