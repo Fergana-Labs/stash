@@ -217,3 +217,50 @@ describe("FileBrowser table creation", () => {
   });
 });
 
+
+describe("FileBrowser OS-file drop upload", () => {
+  function dropEvent(types: string[], files: File[] = []) {
+    return {
+      dataTransfer: { types, files, dropEffect: "none" },
+    };
+  }
+
+  it("uploads files dropped from the OS into the current view", async () => {
+    const { uploadFileOrPage } = await import("../../../lib/api");
+    vi.mocked(uploadFileOrPage).mockResolvedValue({
+      kind: "file",
+      file: { id: "file-1" },
+    } as never);
+
+    const { container } = render(<FileBrowser folderId={null} />);
+    await screen.findByText("+ Upload");
+    const root = container.firstElementChild as HTMLElement;
+
+    const pdf = new File(["%PDF-1.7"], "catalog.pdf", { type: "application/pdf" });
+    fireEvent.dragEnter(root, dropEvent(["Files"], [pdf]));
+    expect(screen.getByText(/Drop to upload/)).toBeTruthy();
+    fireEvent.drop(root, dropEvent(["Files"], [pdf]));
+
+    await waitFor(() =>
+      expect(uploadFileOrPage).toHaveBeenCalledWith(pdf, undefined)
+    );
+    expect(screen.queryByText(/Drop to upload/)).toBeNull();
+  });
+
+  it("ignores intra-app reparent drags", async () => {
+    const { uploadFileOrPage } = await import("../../../lib/api");
+
+    const { container } = render(<FileBrowser folderId={null} />);
+    await screen.findByText("+ Upload");
+    const root = container.firstElementChild as HTMLElement;
+
+    // Browsers set "Files" alongside custom types on some drags; our marker
+    // mime must win so a reparent never triggers an upload.
+    const drag = dropEvent(["application/x-skill-fb-item", "Files"]);
+    fireEvent.dragEnter(root, drag);
+    expect(screen.queryByText(/Drop to upload/)).toBeNull();
+    fireEvent.drop(root, drag);
+
+    expect(uploadFileOrPage).not.toHaveBeenCalled();
+  });
+});
