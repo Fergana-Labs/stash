@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Bot, FolderTree, MessagesSquare, GraduationCap, Home, LayoutGrid, Monitor, Wrench, Settings } from "lucide-react";
+import { Bot, FolderTree, MessagesSquare, GraduationCap, Home, Wrench, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
 import { useWorkspace, type RailSection } from "@/lib/workspace-store";
@@ -15,18 +15,17 @@ type RailItem = { key: RailSection; label: string; icon: typeof Bot; match: (p: 
 const PRIMARY: RailItem[] = [
   { key: "home", label: "Home", icon: Home, match: (p) => p === "/" },
   { key: "agents", label: "Agents", icon: Bot, match: (p) => p.startsWith("/agents") },
-  { key: "apps", label: "Apps", icon: LayoutGrid, match: (p) => p.startsWith("/apps") },
   { key: "files", label: "VFS", icon: FolderTree, match: (p) => p === "/files" || p.startsWith("/f/") || p.startsWith("/p/") || p.startsWith("/folders/") || p.startsWith("/tables/") },
   { key: "sessions", label: "Sessions", icon: MessagesSquare, match: (p) => p.startsWith("/sessions") || p.startsWith("/session-folders") },
   { key: "skills", label: "Skills", icon: GraduationCap, match: (p) => p.startsWith("/skills") },
   { key: "tools", label: "Tools", icon: Wrench, match: (p) => p.startsWith("/tools") || p.startsWith("/integrations") },
-  { key: "computer", label: "VM", icon: Monitor, match: () => false },
 ];
 
-// Home is the memory dashboard, and Agents and Apps are lenses over the stash
-// rather than places in it — the divider falls after them, above the VFS
-// sections.
-const DIVIDER_AFTER_INDEX = 2;
+// Home is the memory dashboard, and Agents is a lens over the stash rather
+// than a place in it — the divider falls after them, above the VFS sections.
+// Apps and the VM aren't rail-worthy: Apps lives at /apps, the VM under the
+// explorer's Home root.
+const DIVIDER_AFTER_INDEX = 1;
 
 function RailButton({
   item,
@@ -107,10 +106,10 @@ export default function Rail({ user, onLogout }: { user: User; onLogout: () => v
   const requestedSection = searchParams.get("section");
 
   function selectSection(section: RailSection) {
-    // Home (the memory dashboard), Apps, and Files have their own landing
-    // pages, so they navigate; other sections just swap the explorer beside
-    // whatever's open.
-    const LANDING: Partial<Record<RailSection, string>> = { home: "/", apps: "/apps", files: "/files" };
+    // Home (the memory dashboard) and Files have their own landing pages, so
+    // they navigate; other sections just swap the explorer beside whatever's
+    // open.
+    const LANDING: Partial<Record<RailSection, string>> = { home: "/", files: "/files" };
     const landing = LANDING[section];
     if (landing) {
       setRailSection(section);
