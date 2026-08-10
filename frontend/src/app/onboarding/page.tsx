@@ -50,7 +50,8 @@ function OnboardingInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user, loading, logout } = useAuth();
-  const [role, setRole] = useState("");
+  // Roles are multi-answer: plenty of people are a founder *and* an engineer.
+  const [roles, setRoles] = useState<string[]>([]);
   const [roleOther, setRoleOther] = useState("");
   const [referralSource, setReferralSource] = useState("");
   const [referralOther, setReferralOther] = useState("");
@@ -109,7 +110,13 @@ function OnboardingInner() {
   const isAbout = stepIdx <= 0;
 
   const continueLabel = isAbout ? "Continue" : "Finish";
-  const roleAnswer = role === "Other" ? roleOther.trim() && `Other: ${roleOther.trim()}` : role;
+  // "Other" only counts once it's spelled out, so picking it without typing
+  // leaves the question unanswered rather than sending a bare "Other".
+  const otherSpelledOut = !roles.includes("Other") || Boolean(roleOther.trim());
+  const roleAnswer =
+    roles.length > 0 && otherSpelledOut
+      ? roles.map((r) => (r === "Other" ? `Other: ${roleOther.trim()}` : r)).join(", ")
+      : "";
   const referralAnswer =
     referralSource === "Other"
       ? referralOther.trim() && `Other: ${referralOther.trim()}`
@@ -145,12 +152,14 @@ function OnboardingInner() {
           <ProgressBar stepIdx={stepIdx} />
           {isAbout && (
             <AboutStep
-              role={role}
+              roles={roles}
               roleOther={roleOther}
               referralSource={referralSource}
               referralOther={referralOther}
               useCase={useCase}
-              onRole={setRole}
+              onToggleRole={(r) =>
+                setRoles((prev) => (prev.includes(r) ? prev.filter((x) => x !== r) : [...prev, r]))
+              }
               onRoleOther={setRoleOther}
               onReferral={setReferralSource}
               onReferralOther={setReferralOther}
@@ -171,23 +180,23 @@ function OnboardingInner() {
 }
 
 function AboutStep({
-  role,
+  roles,
   roleOther,
   referralSource,
   referralOther,
   useCase,
-  onRole,
+  onToggleRole,
   onRoleOther,
   onReferral,
   onReferralOther,
   onUseCase,
 }: {
-  role: string;
+  roles: string[];
   roleOther: string;
   referralSource: string;
   referralOther: string;
   useCase: string;
-  onRole: (v: string) => void;
+  onToggleRole: (v: string) => void;
   onRoleOther: (v: string) => void;
   onReferral: (v: string) => void;
   onReferralOther: (v: string) => void;
@@ -203,14 +212,18 @@ function AboutStep({
           A few quick questions so we can tailor Stash to how you&rsquo;ll use it.
         </p>
       </div>
-      <Field label="What's your role?">
-        <PillGroup options={ROLE_OPTIONS} value={role} onChange={onRole} />
-        {role === "Other" && (
+      <Field label="What's your role? Pick as many as fit.">
+        <PillGroup options={ROLE_OPTIONS} selected={roles} onToggle={onToggleRole} />
+        {roles.includes("Other") && (
           <OtherInput value={roleOther} onChange={onRoleOther} placeholder="What's your role?" />
         )}
       </Field>
       <Field label="How did you hear about us?">
-        <PillGroup options={REFERRAL_OPTIONS} value={referralSource} onChange={onReferral} />
+        <PillGroup
+          options={REFERRAL_OPTIONS}
+          selected={referralSource ? [referralSource] : []}
+          onToggle={(v) => onReferral(referralSource === v ? "" : v)}
+        />
         {referralSource === "Other" && (
           <OtherInput
             value={referralOther}
@@ -253,27 +266,30 @@ function Field({
   );
 }
 
+/** Pills for one question. `selected` carries every chosen answer, so the same
+ *  component serves the multi-answer role question and the single-answer
+ *  referral one — the caller's onToggle decides which. */
 function PillGroup({
   options,
-  value,
-  onChange,
+  selected,
+  onToggle,
 }: {
   options: string[];
-  value: string;
-  onChange: (v: string) => void;
+  selected: string[];
+  onToggle: (v: string) => void;
 }) {
   return (
     <div className="flex flex-wrap gap-2">
       {options.map((option) => {
-        const selected = value === option;
+        const isSelected = selected.includes(option);
         return (
           <button
             key={option}
             type="button"
-            aria-pressed={selected}
-            onClick={() => onChange(selected ? "" : option)}
+            aria-pressed={isSelected}
+            onClick={() => onToggle(option)}
             className={`cursor-pointer rounded-full border px-3 py-1.5 text-[12.5px] transition-colors ${
-              selected
+              isSelected
                 ? "border-brand bg-brand text-white"
                 : "border-border bg-surface text-dim hover:border-foreground/40 hover:text-foreground"
             }`}
