@@ -5036,7 +5036,9 @@ def _run_setup_wizard() -> None:
     console.print(
         "\nStash records your coding agent sessions to your private Stash so you\n"
         "and your agents can search them later. Transcripts are visible only to\n"
-        "you unless you share them, and you can pause anytime with `stash stop`."
+        "you unless you share them, and you can pause anytime with `stash stop`.\n"
+        "[dim]Stash reads only the transcript files your agents already write\n"
+        "(like ~/.claude/projects) — never your code or documents.[/dim]"
     )
     cwd = Path.cwd()
     everywhere = "Everywhere on this machine"
@@ -5102,8 +5104,9 @@ def _run_setup_wizard() -> None:
     repo_root = _git_toplevel() or Path.cwd()
     _reserve_bottom_padding(4)
     connect = questionary.confirm(
-        f"Add Stash instructions to CLAUDE.md in {repo_root.name}, so agents "
-        "working there know how to use Stash?",
+        f"Write a note into {repo_root.name}/CLAUDE.md so agents working there "
+        "know how to use Stash? (This writes one file — it doesn't give Stash "
+        "access to the repo.)",
         default=True,
     ).ask()
     if connect is None:

@@ -2,6 +2,7 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { Check, X } from "lucide-react";
 import Header from "../../components/Header";
 import { AuthPageSkeleton, SkeletonBlock } from "../../components/SkeletonStates";
 import { useAuth } from "../../hooks/useAuth";
@@ -202,10 +203,7 @@ function LoginPageInner() {
     return (
       <CliShell user={user} logout={logout} cliSession={cliSession}>
         <FormCard>{formBody}</FormCard>
-        <p className="text-center text-[11px] text-muted-foreground leading-relaxed max-w-[340px] mx-auto">
-          By authorizing, you grant this terminal session a personal API key on your behalf.
-          You can revoke it any time from your account settings.
-        </p>
+        <CliConsentCard />
       </CliShell>
     );
   }
@@ -230,6 +228,39 @@ function signInTitle(): string {
 }
 
 // --- Authorize CLI (already signed-in) ---------------------------------------
+
+/** What authorizing actually grants — shown wherever a terminal asks to
+ *  connect. The ✗ line matters most: the CLI reads agent transcript files,
+ *  never your code, and consent is staged — scope choices (which agents,
+ *  which folders) happen visibly in the terminal after this click. */
+function CliConsentCard() {
+  const row = "flex items-start gap-2.5 text-left text-[12.5px] leading-5";
+  return (
+    <div className="space-y-2.5 rounded-xl border border-border bg-surface px-4 py-3.5">
+      <div className={row}>
+        <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--color-success)]" />
+        <span className="text-foreground">
+          Upload agent session transcripts — only from the agents and folders you pick in
+          the next step
+        </span>
+      </div>
+      <div className={row}>
+        <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--color-success)]" />
+        <span className="text-foreground">
+          Read and write your Stash as you (files, pages, memory)
+        </span>
+      </div>
+      <div className={row}>
+        <X className="mt-0.5 h-3.5 w-3.5 shrink-0 text-error" />
+        <span className="text-dim">
+          It does <span className="font-semibold text-foreground">not</span> read your code
+          or documents — transcripts only, and nothing uploads until you finish setup in
+          the terminal
+        </span>
+      </div>
+    </div>
+  );
+}
 
 function AuthorizeCliPanel({
   username,
@@ -274,10 +305,13 @@ function AuthorizeCliPanel({
     <FormCard>
       <div className="space-y-3 text-center">
         <p className="text-sm text-foreground">
-          Authorize CLI as <span className="font-semibold">{username}</span>?
+          This terminal wants to connect to your Stash as{" "}
+          <span className="font-semibold">{username}</span>
         </p>
+        <CliConsentCard />
         <p className="text-[11px] text-muted-foreground">
-          A new API key scoped to this terminal will be created. You can revoke it anytime from account settings.
+          A new API key scoped to this terminal will be created. You can revoke it anytime
+          from account settings.
         </p>
         {error && <ErrorLine message={error} />}
         <button
