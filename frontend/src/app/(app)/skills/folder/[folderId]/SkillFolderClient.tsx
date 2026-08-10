@@ -11,13 +11,12 @@ import SkillShareButton from "@/components/skill/SkillShareButton";
 import FileBrowser from "@/components/content/file-browser/FileBrowser";
 import { useAuth } from "@/hooks/useAuth";
 import {
+  convertSkillToFolder,
   getFolderContents,
   listSkills,
-  trashItem,
   type FolderContents,
   type SkillPublishInfo,
 } from "@/lib/api";
-import { SKILL_MD } from "@/lib/localSkill";
 import { refreshSidebar } from "@/lib/skillNavigationCache";
 
 // Browse a skill folder (or a subfolder inside one). Same file browser as
@@ -86,7 +85,7 @@ export default function SkillFolderClient({ folderId }: { folderId: string }) {
       .slice(firstSkillIndex === -1 ? 0 : firstSkillIndex, -1)
       .map((cr) => ({
         label: cr.name,
-        href: `/skills/${cr.id}`,
+        href: `/skills/folder/${cr.id}`,
       }));
     return [
       { label: "Skills", href: `/skills` },
@@ -103,21 +102,19 @@ export default function SkillFolderClient({ folderId }: { folderId: string }) {
   const convertToFolder = useCallback(async () => {
     if (!contents || !user) return;
     const publishedWarning = publish
-      ? " Its share link will stop working."
+      ? " It's published, so you'll need to unpublish it first — the convert will be refused until you do."
       : "";
     const yes = await confirm({
       title: `Convert "${contents.folder.name}" back to a plain folder?`,
-      body: `This deletes its SKILL.md.${publishedWarning}`,
+      body: `It stops appearing under Skills and agents stop loading it. Its files, including SKILL.md, are kept.${publishedWarning}`,
       confirmLabel: "Convert",
     });
     if (!yes) return;
-    const skillMd = contents.pages.find((p) => p.name === SKILL_MD);
-    if (!skillMd) {
-      setError("SKILL.md not found in this folder.");
-      return;
-    }
     try {
-      await trashItem("page", skillMd.id);
+      // Demotion is the explicit verb. It used to delete SKILL.md — which
+      // no longer demotes anything (membership is a stored flag) and is now
+      // refused outright, so this button errored on itself.
+      await convertSkillToFolder(folderId);
       await refreshSidebar().catch(() => {});
       router.push(`/folders/${folderId}`);
     } catch (e) {
@@ -144,7 +141,7 @@ export default function SkillFolderClient({ folderId }: { folderId: string }) {
           objectType="folder"
           objectId={folderId}
           resourceName={folderName}
-          resourceUrlPath={`/skills/${folderId}`}
+          resourceUrlPath={`/skills/folder/${folderId}`}
           currentUser={user}
         />
         <SkillShareButton
@@ -172,7 +169,7 @@ export default function SkillFolderClient({ folderId }: { folderId: string }) {
   return (
     <FileBrowser
       folderId={folderId}
-      folderHrefBase={`/skills`}
+      folderHrefBase={`/skills/folder`}
     />
   );
 }

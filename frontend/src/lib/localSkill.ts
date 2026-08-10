@@ -10,8 +10,8 @@ import type {
 // converts a plain folder into a skill.
 export const SKILL_MD = "SKILL.md";
 
-export function skillMdTemplate(name: string): string {
-  return `---\nname: ${name}\ndescription: \n---\n\n# ${name}\n`;
+export function skillMdTemplate(name: string, description: string): string {
+  return `---\nname: ${JSON.stringify(name)}\ndescription: ${JSON.stringify(description)}\n---\n\n# ${name}\n`;
 }
 
 // Strip YAML frontmatter from a SKILL.md body for rendering.

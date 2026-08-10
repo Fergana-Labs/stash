@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import posixpath
 import re
 import shutil
 import sys
@@ -1552,7 +1553,8 @@ def upload(
             result["public_link"] = True
 
         if create_skill:
-            # A skill is a folder with a SKILL.md; publishing makes it public.
+            # Skill membership is a stored flag: writing a SKILL.md does not
+            # make a folder a skill, the convert verb does.
             try:
                 c.create_page(
                     name="SKILL.md",
@@ -1563,6 +1565,7 @@ def upload(
             except StashError as e:
                 if e.status_code != 409:
                     raise
+            c.convert_folder_to_skill(root_folder["id"])
             if public:
                 skill_row = c.publish_skill_folder(
                     root_folder["id"],
@@ -1676,7 +1679,8 @@ def skills_add(
     folder_name = src.name
     with _client() as c:
         try:
-            # Skills are represented as folders containing markdown pages.
+            # A skill is a folder marked as one; its markdown pages (SKILL.md
+            # plus siblings) are its content.
             new_folder = c.create_folder(folder_name)
             folder_id = new_folder["id"]
             for md_file in sorted(src.glob("*.md")):
@@ -1686,6 +1690,7 @@ def skills_add(
                     folder_id=folder_id,
                     content_type="markdown",
                 )
+            c.convert_folder_to_skill(folder_id)
         except StashError as e:
             _err(e)
     console.print(f"[green]Added skill '{folder_name}' to your Files.[/green]")
@@ -1694,7 +1699,7 @@ def skills_add(
 @skills_app.command("create")
 def skills_create(
     name: str = typer.Argument(..., help="Skill name (becomes the folder name)."),
-    description: str = typer.Option("", "--description"),
+    description: str = typer.Option(..., "--description"),
     public: bool = typer.Option(False, "--public", help="Publish immediately."),
     discover: bool = typer.Option(False, "--discover", help="List the public Skill in Discover."),
     as_json: bool = typer.Option(False, "--json"),
@@ -1703,7 +1708,17 @@ def skills_create(
     if discover and not public:
         console.print("[red]--discover requires --public.[/red]")
         raise typer.Exit(1)
-    skill_md = f"---\nname: {name}\ndescription: {description}\n---\n\n# {name}\n"
+    name = name.strip()
+    description = description.strip()
+    if not name or len(name) > 64:
+        console.print("[red]Error:[/red] skill name must contain 1-64 characters.")
+        raise typer.Exit(1)
+    if not description or len(description) > 1024:
+        console.print("[red]Error:[/red] skill description must contain 1-1024 characters.")
+        raise typer.Exit(1)
+    skill_md = (
+        f"---\nname: {json.dumps(name)}\ndescription: {json.dumps(description)}\n---\n\n# {name}\n"
+    )
     with _client() as c:
         try:
             folder = c.create_folder(name)
@@ -1713,6 +1728,9 @@ def skills_create(
                 folder_id=folder["id"],
                 content_type="markdown",
             )
+            # Membership is a stored flag; the SKILL.md above is the skill's
+            # instructions, not what makes the folder a skill.
+            c.convert_folder_to_skill(folder["id"])
             skill = None
             if public:
                 skill = c.publish_skill_folder(
@@ -1806,6 +1824,37 @@ def _safe_skill_dirname(name: str) -> str:
     return cleaned or "skill"
 
 
+def _validate_skill_markdown(markdown: str) -> None:
+    if not markdown.startswith("---\n") or "\n---" not in markdown[4:]:
+        raise ValueError("SKILL.md must start with YAML frontmatter")
+    raw = markdown[4 : markdown.find("\n---", 4)]
+    metadata = {}
+    for line in raw.splitlines():
+        key, separator, value = line.partition(":")
+        if separator:
+            value = value.strip()
+            metadata[key.strip()] = json.loads(value) if value.startswith('"') else value
+    name = metadata.get("name", "")
+    description = metadata.get("description", "")
+    if not name:
+        raise ValueError("SKILL.md frontmatter requires a nonblank name")
+    if len(name) > 64:
+        raise ValueError("SKILL.md name must be at most 64 characters")
+    if not description:
+        raise ValueError("SKILL.md frontmatter requires a nonblank description")
+    if len(description) > 1024:
+        raise ValueError("SKILL.md description must be at most 1024 characters")
+
+
+def _validate_skill_contents(contents: dict) -> None:
+    skill_pages = [
+        page for page in contents["pages"] if page["name"] == "SKILL.md" and not page["folder_path"]
+    ]
+    if len(skill_pages) != 1:
+        raise ValueError("skill must contain one root SKILL.md")
+    _validate_skill_markdown(skill_pages[0]["content_markdown"] or "")
+
+
 def _materialize_skill(detail: dict, skills_root: Path, fetch_bytes) -> tuple[Path, int]:
     """Write a public-skill payload to skills_root/<folder_name>.
 
@@ -1814,6 +1863,7 @@ def _materialize_skill(detail: dict, skills_root: Path, fetch_bytes) -> tuple[Pa
     is allowed only when the target already looks like a skill (has a
     SKILL.md) — never delete an arbitrary directory on a name collision."""
     contents = detail["contents"]
+    _validate_skill_contents(contents)
     target = skills_root / _safe_skill_dirname(detail["folder_name"])
     if target.exists():
         if not (target / "SKILL.md").exists():
@@ -1918,10 +1968,12 @@ def skills_install(
     with _client() as c:
         try:
             detail = c.get_public_skill(slug)
+            target, written = _materialize_skill(detail, root, _fetch_bytes)
         except StashError as e:
             _err(e)
-
-        target, written = _materialize_skill(detail, root, _fetch_bytes)
+        except ValueError as e:
+            console.print(f"[red]Invalid skill:[/red] {e}")
+            raise typer.Exit(1) from e
         # Adoption ping — best-effort: a metrics hiccup must not fail an
         # install that already succeeded on disk.
         try:
@@ -2169,6 +2221,7 @@ def _sync_skills(
         summary["pulled"].append(name)
 
     def push(name: str, folder_id: str) -> None:
+        _validate_skill_markdown((local[name] / "SKILL.md").read_text())
         c.replace_skill_contents(folder_id, _collect_local_files(local[name]))
         record(name, c.get_skill_contents(folder_id))
         summary["pushed"].append(name)
@@ -2207,8 +2260,9 @@ def _sync_skills(
                 else:
                     new_state[name] = rec
                     summary["unchanged"].append(name)
-        except StashError as e:
-            summary["conflicts"].append(f"{name} (sync failed: {e.detail})")
+        except (StashError, ValueError) as e:
+            detail = e.detail if isinstance(e, StashError) else str(e)
+            summary["conflicts"].append(f"{name} (sync failed: {detail})")
             if rec:
                 new_state[name] = rec
     return summary, new_state
@@ -2232,7 +2286,11 @@ def _sync_installed(c, root: Path, entry: dict, fetch_bytes) -> tuple[list[str],
             if name in skills or (root / name).exists():
                 notes.append(f"{name} (new shared skill collides with an existing dir; skipped)")
                 continue
-            target, _written = _materialize_skill(detail, root, fetch_bytes)
+            try:
+                target, _written = _materialize_skill(detail, root, fetch_bytes)
+            except ValueError as e:
+                notes.append(f"{name} (invalid skill: {e})")
+                continue
             skills[target.name] = {
                 "shared_folder_id": shared["folder_id"],
                 "remote_hash": _hash_remote_contents(detail["contents"]),
@@ -2251,7 +2309,11 @@ def _sync_installed(c, root: Path, entry: dict, fetch_bytes) -> tuple[list[str],
         remote_hash = _hash_remote_contents(detail["contents"])
         if remote_hash == rec.get("remote_hash") and (root / name).is_dir():
             continue
-        target, _written = _materialize_skill(detail, root, fetch_bytes)
+        try:
+            target, _written = _materialize_skill(detail, root, fetch_bytes)
+        except ValueError as e:
+            notes.append(f"{name} (invalid skill: {e})")
+            continue
         if target.name != name:
             # Renamed in the cloud: the old dir is superseded by the new one.
             old = root / name
@@ -2522,10 +2584,30 @@ def files_add_page(
         )
 
 
+@files_app.command("read-page")
+def files_read_page(page_id: str = typer.Argument(...)):
+    """Print a page as JSON. Its content_hash is what a later edit-page
+    --expected-content-hash must carry."""
+    with _client() as c:
+        try:
+            data = c.get_page(page_id)
+        except StashError as e:
+            _err(e)
+    output_json(data)
+
+
 @files_app.command("edit-page")
 def files_edit_page(
     page_id: str = typer.Argument(...),
     content: str = typer.Option(None, "--content"),
+    expected_content_hash: str = typer.Option(
+        None,
+        "--expected-content-hash",
+        help="The content_hash from the read this edit is based on "
+        "(`stash files read-page`). Required with --content: if the page "
+        "changed since that read, the edit is refused instead of "
+        "overwriting the newer version.",
+    ),
     name: str = typer.Option(None, "--name"),
     page_type: str = typer.Option(
         None, "--type", help="Switch the page to this type: markdown or html.", case_sensitive=False
@@ -2553,7 +2635,9 @@ def files_edit_page(
             raise typer.Exit(1)
         html_body = Path(html_file).read_text()
     if content is None and not sys.stdin.isatty():
-        content = sys.stdin.read()
+        # Empty stdin means "no content given", not "clear the page" — a
+        # scripted rename must not slurp a blank pipe as the new content.
+        content = sys.stdin.read() or None
     if page_type:
         page_type = page_type.lower()
         if page_type not in ("markdown", "html"):
@@ -2580,17 +2664,29 @@ def files_edit_page(
                     console.print(f"[red]Not a file: {p}[/red]")
                     raise typer.Exit(1)
             if attach and page_type != "html":
-                base = (
-                    content
-                    if content is not None
-                    else c.get_page(page_id).get("content_markdown", "")
-                )
+                if content is None:
+                    # This flow reads the page itself, so that read is the
+                    # version the edit is based on.
+                    current = c.get_page(page_id)
+                    base = current.get("content_markdown", "")
+                    if expected_content_hash is None:
+                        expected_content_hash = current.get("content_hash")
+                else:
+                    base = content
                 content = _prepend_attachments(c, base, attach)
             elif attach:
                 console.print("[yellow]--attach is ignored for html pages[/yellow]")
+            if content is not None and expected_content_hash is None:
+                console.print(
+                    "[red]--content requires --expected-content-hash: pass the "
+                    "content_hash from `stash files read-page` so a concurrent "
+                    "edit is refused instead of overwritten.[/red]"
+                )
+                raise typer.Exit(1)
             kwargs: dict = {}
             if content is not None:
                 kwargs["content"] = content
+                kwargs["expected_content_hash"] = expected_content_hash
             if name is not None:
                 kwargs["name"] = name
             if page_type is not None:
@@ -3123,6 +3219,8 @@ def _print_search(
     exclude_sources: str,
     limit: int,
     as_json: bool,
+    modified_after: str = "",
+    modified_before: str = "",
 ) -> None:
     """Shared body for `stash search`."""
     telemetry.record("sources.search")
@@ -3134,6 +3232,8 @@ def _print_search(
                 include_sources=split_source_tokens(include_sources),
                 exclude_sources=split_source_tokens(exclude_sources),
                 limit=limit,
+                modified_after=modified_after or None,
+                modified_before=modified_before or None,
             )
         except StashError as e:
             _err(e)
@@ -3185,11 +3285,32 @@ def search(
         "--exclude-sources",
         help="Comma-separated sources to skip. Not combinable with --source.",
     ),
+    modified_after: str = typer.Option(
+        "",
+        "--modified-after",
+        help="Only results last modified after this ISO timestamp (e.g. 2026-01-01). "
+        "Results with no known modification time are excluded.",
+    ),
+    modified_before: str = typer.Option(
+        "",
+        "--modified-before",
+        help="Only results last modified before this ISO timestamp. "
+        "Results with no known modification time are excluded.",
+    ),
     limit: int = typer.Option(20, "-n", "--limit"),
     as_json: bool = typer.Option(False, "--json"),
 ):
     """Search everything you can see — files, sessions, and connected sources."""
-    _print_search(query, source, include_sources, exclude_sources, limit, as_json)
+    _print_search(
+        query,
+        source,
+        include_sources,
+        exclude_sources,
+        limit,
+        as_json,
+        modified_after=modified_after,
+        modified_before=modified_before,
+    )
 
 
 def _poll_recompute_outcome(
@@ -5856,6 +5977,53 @@ def vfs_command(
         raise typer.Exit(1)
     finally:
         client.close()
+
+
+def _read_vfs_raw(path: str) -> bytes:
+    """The original bytes behind a VFS path — a connected-source document comes
+    back verbatim from the provider (the PDF itself, not its extracted text)."""
+    from stashvfs import MountError, StashVfsModel, VfsClientError
+
+    client = _client()
+    try:
+        model = StashVfsModel(client, include_computer=True)
+        model.refresh()
+        return model.read_raw(path)
+    except FileNotFoundError:
+        console.print(f"[red]No such file: {path}[/red]")
+        raise typer.Exit(1) from None
+    except IsADirectoryError:
+        console.print(f"[red]Is a directory: {path}[/red]")
+        raise typer.Exit(1) from None
+    except (MountError, VfsClientError) as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1) from None
+    finally:
+        client.close()
+
+
+@app.command("download")
+def download_command(
+    path: str = typer.Argument(
+        ..., help="VFS path (e.g. '/sources/google/Part Catalogs/bendix.pdf')."
+    ),
+    output: str = typer.Option(
+        None, "--output", "-o", help="Destination path. Defaults to the file's name in cwd."
+    ),
+):
+    """Download the original bytes behind a VFS path.
+
+    `stash vfs cat` shows a document's extracted text; this fetches the file
+    itself. Use it when your harness can read PDFs and images directly —
+    download the document, then read it with your own file tools to see
+    figures, diagrams, scans, and table layout with your own eyes.
+    """
+    data = _read_vfs_raw(path)
+    dest = Path(output) if output else Path(posixpath.basename(path.rstrip("/")))
+    dest.write_bytes(data)
+    console.print(
+        f"[green]Downloaded[/green] {path} → {dest.resolve()} [dim]{len(data)} bytes[/dim]"
+    )
 
 
 # ===========================================================================

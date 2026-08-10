@@ -37,7 +37,6 @@ function trackEvent(
   if (typeof window === "undefined") return;
   void import("./analytics").then((m) => m.track(event, properties, opts));
 }
-const DEFAULT_LOCAL_COLLAB_URL = "ws://localhost:3458";
 
 // --- Token management (for CLI API key fallback) ---
 
@@ -99,17 +98,6 @@ export function getAgentApiKey(): string | null {
 
 export async function getAuthToken(): Promise<string | null> {
   return getToken() ?? (await getAuth0AccessToken());
-}
-
-export function getCollabUrl(): string {
-  const configured = process.env.NEXT_PUBLIC_COLLAB_URL?.trim();
-  if (configured) return configured.replace(/\/$/, "");
-  if (typeof window === "undefined") return DEFAULT_LOCAL_COLLAB_URL;
-  if (["localhost", "127.0.0.1"].includes(window.location.hostname)) {
-    return DEFAULT_LOCAL_COLLAB_URL;
-  }
-  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-  return `${protocol}//${window.location.host}/collab`;
 }
 
 export class ApiError extends Error {
@@ -437,13 +425,21 @@ export interface SourceSearchResponse {
 
 export async function searchSource(
   query: string,
-  opts: { source?: string; includeSources?: string[]; limit?: number } = {},
+  opts: {
+    source?: string;
+    includeSources?: string[];
+    limit?: number;
+    modifiedAfter?: string;
+    modifiedBefore?: string;
+  } = {},
 ): Promise<SourceSearchResponse> {
   const params = new URLSearchParams({ q: query });
   if (opts.source) params.set("source", opts.source);
   // Repeated params — the endpoint declares include_sources as a list.
   for (const token of opts.includeSources ?? []) params.append("include_sources", token);
   if (opts.limit !== undefined) params.set("limit", String(opts.limit));
+  if (opts.modifiedAfter) params.set("modified_after", opts.modifiedAfter);
+  if (opts.modifiedBefore) params.set("modified_before", opts.modifiedBefore);
   return apiFetch<SourceSearchResponse>(`${ME}/sources/search?${params.toString()}`);
 }
 
@@ -584,6 +580,39 @@ export async function createFolder(
   });
 }
 
+// Create a skill (folder + SKILL.md) server-side. The name is uniquified
+// against existing root folders, so this never fails on a name collision.
+export async function createSkill(
+  name: string,
+  description: string,
+): Promise<{ folder_id: string; name: string }> {
+  return apiFetch(`${ME}/skills/new`, {
+    method: "POST",
+    body: JSON.stringify({ name, description }),
+  });
+}
+
+// Promote a plain folder to a skill (and give it starter instructions if it
+// has none). Membership is a stored flag now — writing a SKILL.md into a
+// folder no longer promotes it.
+export async function convertFolderToSkill(
+  folderId: string,
+  description: string,
+): Promise<{ folder_id: string; name: string; is_skill: boolean }> {
+  return apiFetch(`${ME}/folders/${folderId}/convert-to-skill`, {
+    method: "POST",
+    body: JSON.stringify({ description }),
+  });
+}
+
+// Demote a skill back to a plain folder. Contents are untouched — it simply
+// stops appearing under Skills and stops loading for agents.
+export async function convertSkillToFolder(
+  folderId: string
+): Promise<{ folder_id: string; name: string; is_skill: boolean }> {
+  return apiFetch(`${ME}/folders/${folderId}/convert-to-folder`, { method: "POST" });
+}
+
 export async function updateFolder(
   folderId: string,
   data: { name?: string; parent_folder_id?: string | null; move_to_root?: boolean }
@@ -633,7 +662,6 @@ export async function updatePage(
     name?: string;
     folder_id?: string | null;
     content?: string;
-    collab_projection?: boolean;
     content_type?: "markdown" | "html";
     content_html?: string;
     html_layout?: "responsive" | "fixed-aspect" | "full-width";
@@ -645,7 +673,7 @@ export async function updatePage(
     body: JSON.stringify(data),
   });
   // Only count actual content/title changes as "edits." Folder moves,
-  // collab_projection passes, and pure layout flips are uninteresting.
+  // conflict-refused saves, and pure layout flips are uninteresting.
   const isContentEdit =
     data.content !== undefined ||
     data.content_html !== undefined ||
@@ -1089,6 +1117,9 @@ export async function uploadFileOrPage(
       content_markdown: result.content_markdown ?? "",
       content_html: result.content_html ?? "",
       html_layout: "responsive",
+      content_hash: null,
+      // The uploader owns what they just uploaded.
+      can_write: true,
       created_by: result.created_by ?? "",
       updated_by: null,
       created_at: result.created_at,
@@ -2168,6 +2199,14 @@ export type Agent = {
   telegram_bound: boolean;
   last_run_at: string | null;
   last_run_error: string | null;
+  last_run_outcome:
+    | "started"
+    | "ran"
+    | "failed"
+    | "skipped_credits"
+    | "skipped_no_credential"
+    | "skipped_no_changes"
+    | null;
   curated_through: string | null;
 };
 

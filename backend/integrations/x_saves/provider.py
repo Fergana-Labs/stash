@@ -32,6 +32,12 @@ class XIntegration(Integration):
     scopes = ["tweet.read", "users.read", "bookmark.read", "offline.access"]
     supports_refresh = True
     uses_pkce = True
+    # X rotates refresh tokens single-use and revokes grants it dislikes; every
+    # grant death we've autopsied (Jul 29, Aug 4, Aug 6) was a refresh token
+    # first presented 2h+ after minting, once its access token had fully
+    # expired. A margin wider than the 30-min keep-fresh tick makes the beat
+    # rotate every grant on a calm ~90-min cadence, always before expiry.
+    refresh_margin = timedelta(minutes=45)
 
     def _client_id(self) -> str:
         if not settings.TWITTER_OAUTH_CLIENT_ID:

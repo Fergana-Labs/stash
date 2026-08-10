@@ -522,7 +522,8 @@ async def test_member_sessions_and_events_land_in_workspace_scope(client: AsyncC
 async def _workspace_skill_folder(pool, scope_user_id, name="team-skill") -> uuid.UUID:
     scope_id = uuid.UUID(scope_user_id)
     folder = await pool.fetchrow(
-        "INSERT INTO folders (owner_user_id, name, created_by) VALUES ($1, $2, $1) RETURNING id",
+        "INSERT INTO folders (owner_user_id, name, created_by, is_skill) "
+        "VALUES ($1, $2, $1, true) RETURNING id",
         scope_id,
         name,
     )
@@ -569,7 +570,9 @@ async def test_member_publishes_workspace_skill_and_teammate_manages_it(client: 
 
     scoped_a = {**_auth(a_key), "X-Stash-Scope": ws["scope_user_id"]}
     published = await client.post(
-        "/api/v1/me/skills", json={"folder_id": str(folder_id)}, headers=scoped_a
+        "/api/v1/me/skills",
+        json={"folder_id": str(folder_id), "description": "Workspace deploy runbook"},
+        headers=scoped_a,
     )
     assert published.status_code == 201, published.text
     skill = published.json()
@@ -609,7 +612,11 @@ async def test_member_forks_public_skill_into_workspace(client: AsyncClient, poo
     )
     published = await client.post(
         "/api/v1/me/skills",
-        json={"folder_id": str(author_folder["id"]), "title": "public-howto"},
+        json={
+            "folder_id": str(author_folder["id"]),
+            "title": "public-howto",
+            "description": "How-to guide",
+        },
         headers=_auth(author_key),
     )
     assert published.status_code == 201, published.text

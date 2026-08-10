@@ -105,6 +105,18 @@ def test_app_vfs_supports_common_agent_listing_patterns():
     assert client.lazy_loads == 0
 
 
+def test_tree_dirs_only_hides_files():
+    shell, _client = _shell()
+
+    page_path = _page_path(shell)
+    folder_path, page_name = page_path.rsplit("/", 1)
+
+    output = shell.run("tree /files -d").stdout
+
+    assert folder_path.rsplit("/", 1)[1] in output
+    assert page_name not in output
+
+
 def test_app_vfs_surfaces_backend_timestamps_and_marks_unknown():
     """A node's modified time comes from the backend payload and flows through
     to `ls -l` and `stat`. A node the backend gave no timestamp for shows `-`,
@@ -344,6 +356,17 @@ def test_app_vfs_reports_unsupported_commands():
 
     assert result.exit_code == 1
     assert "unsupported command: python" in result.stderr
+
+
+def test_app_vfs_points_download_at_the_cli_verb():
+    """`download` inside the shell is the mistake everyone makes first — the
+    error must teach the correct invocation, not shrug."""
+    shell, _client = _shell()
+
+    result = shell.run("download '/files/catalog.pdf'")
+
+    assert result.exit_code == 1
+    assert "stash download /files/catalog.pdf" in result.stderr
 
 
 def test_app_vfs_cd_updates_virtual_working_directory():

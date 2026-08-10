@@ -864,16 +864,17 @@ async def test_missing_index_only_rows_are_soft_deleted(client: AsyncClient, poo
         display_name="Drive",
     )
     sid = UUID(src["id"])
-    await source_service.upsert_index_row(
-        table="drive_index",
-        source_id=sid,
-        owner_user_id=ws,
-        path="old-doc",
-        name="Old Doc",
-        external_ref="provider-doc",
-    )
+    for path, name in [("old-doc", "Old Doc"), ("kept-doc", "Kept Doc")]:
+        await source_service.upsert_index_row(
+            table="drive_index",
+            source_id=sid,
+            owner_user_id=ws,
+            path=path,
+            name=name,
+            external_ref=f"provider-{path}",
+        )
 
-    removed = await source_service.remove_missing_documents("drive_index", sid, [])
+    removed = await source_service.remove_missing_documents("drive_index", sid, ["kept-doc"])
 
     assert removed == 1
     assert (
@@ -891,7 +892,8 @@ async def test_missing_index_only_rows_are_soft_deleted(client: AsyncClient, poo
         )
         == 1
     )
-    assert await source_service.list_documents(src) == []
+    live = await source_service.list_documents(src)
+    assert {d["path"] for d in live} == {"kept-doc"}
 
 
 @pytest.mark.asyncio
@@ -2771,6 +2773,233 @@ async def test_search_excluded_provider_is_never_called(client: AsyncClient, mon
     assert not any(r.get("error") for r in results["results"])
 
 
+async def _github_doc(ws: UUID, src: dict, path: str, content: str, **kwargs) -> None:
+    await source_service.upsert_content_document(
+        table="github_documents",
+        source_id=UUID(src["id"]),
+        owner_user_id=ws,
+        path=path,
+        name=path,
+        content=content,
+        **kwargs,
+    )
+
+
+@pytest.mark.asyncio
+async def test_search_modified_range_filters_docs_and_pages(client: AsyncClient):
+    """modified_after/modified_before bound every stored path — the
+    copied-content FTS and native pages both honor the range."""
+    from backend.database import get_pool
+
+    api_key, owner_id = await _register(client)
+    ws = await _user_scope(client, api_key)
+    src = await _github_source_with_docs(ws, owner_id, {})
+    await _github_doc(
+        ws, src, "old.md", "kumquat pruning", external_updated_at=datetime(2026, 1, 15, tzinfo=UTC)
+    )
+    await _github_doc(
+        ws, src, "new.md", "kumquat harvest", external_updated_at=datetime(2026, 3, 15, tzinfo=UTC)
+    )
+    page = await client.post(
+        "/api/v1/me/pages/new",
+        json={"name": "Kumquat runbook", "content": "kumquat watering notes"},
+        headers=_auth(api_key),
+    )
+    assert page.status_code == 201
+    page_id = page.json()["id"]
+    await get_pool().execute(
+        "UPDATE pages SET updated_at = $1 WHERE id = $2",
+        datetime(2026, 1, 10, tzinfo=UTC),
+        UUID(page_id),
+    )
+
+    recent = await source_service.search_all(
+        ws, owner_id, "kumquat", modified_after=datetime(2026, 2, 1, tzinfo=UTC)
+    )
+    assert [r["ref"] for r in recent["results"]] == ["new.md"]
+
+    older = await source_service.search_all(
+        ws, owner_id, "kumquat", modified_before=datetime(2026, 2, 1, tzinfo=UTC)
+    )
+    assert sorted(r["ref"] for r in older["results"]) == sorted(["old.md", page_id])
+
+    window = await source_service.search_all(
+        ws,
+        owner_id,
+        "kumquat",
+        modified_after=datetime(2026, 1, 12, tzinfo=UTC),
+        modified_before=datetime(2026, 2, 1, tzinfo=UTC),
+    )
+    assert [r["ref"] for r in window["results"]] == ["old.md"]
+
+
+@pytest.mark.asyncio
+async def test_search_modified_range_excludes_null_timestamps(client: AsyncClient):
+    """A doc with no provider modification time can't prove it's inside the
+    range, so any bound excludes it — a hit filtered by recency must never
+    smuggle in undated content."""
+    api_key, owner_id = await _register(client)
+    ws = await _user_scope(client, api_key)
+    await _github_source_with_docs(ws, owner_id, {"a.md": "kumquat pruning notes"})
+
+    unbounded = await source_service.search_all(ws, owner_id, "kumquat")
+    assert [r["ref"] for r in unbounded["results"]] == ["a.md"]
+
+    for bound in (
+        {"modified_after": datetime(2020, 1, 1, tzinfo=UTC)},
+        {"modified_before": datetime(2030, 1, 1, tzinfo=UTC)},
+    ):
+        results = await source_service.search_all(ws, owner_id, "kumquat", **bound)
+        assert results["results"] == []
+
+
+@pytest.mark.asyncio
+async def test_search_exact_ref_null_timestamp_excluded_when_bounded(client: AsyncClient):
+    """exact_ref hits pin above everything, but a bound still excludes them
+    when their external_updated_at is NULL — no timestamp, no range proof."""
+    api_key, owner_id = await _register(client)
+    ws = await _user_scope(client, api_key)
+    src = await _github_source_with_docs(ws, owner_id, {})
+    await _github_doc(ws, src, "doc.md", "release checklist", external_ref="DRV-12345")
+
+    unbounded = await source_service.search_all(ws, owner_id, "DRV-12345")
+    assert [r.get("exact_ref") for r in unbounded["results"]] == [True]
+
+    bounded = await source_service.search_all(
+        ws, owner_id, "DRV-12345", modified_after=datetime(2020, 1, 1, tzinfo=UTC)
+    )
+    assert bounded["results"] == []
+
+
+@pytest.mark.asyncio
+async def test_search_modified_range_filters_session_hits(client: AsyncClient):
+    """Session hits filter on their event's created_at — the only modification
+    time an event has."""
+    api_key, owner_id = await _register(client)
+    ws = await _user_scope(client, api_key)
+    for month, session_id in ((1, "sess-jan"), (3, "sess-mar")):
+        resp = await client.post(
+            "/api/v1/me/sessions/events",
+            json={
+                "agent_name": "tester",
+                "event_type": "note",
+                "content": "kumquat espalier techniques",
+                "session_id": session_id,
+                "created_at": f"2026-0{month}-01T00:00:00Z",
+            },
+            headers=_auth(api_key),
+        )
+        assert resp.status_code == 201
+
+    results = await source_service.search_all(
+        ws, owner_id, "kumquat espalier", modified_after=datetime(2026, 2, 1, tzinfo=UTC)
+    )
+
+    assert [r["ref"] for r in results["results"]] == ["sess-mar"]
+
+
+@pytest.mark.asyncio
+async def test_search_modified_range_filters_federated_hits_and_keeps_markers(
+    client: AsyncClient, monkeypatch
+):
+    """Federated providers have no date pushdown, so their live hits are
+    filtered after the fact: out-of-range and undated hits drop, while the
+    provider's truncation marker still trails the response."""
+    from backend.integrations.gmail import indexer
+
+    api_key, owner_id = await _register(client)
+    ws = await _user_scope(client, api_key)
+    await source_service.create_source(
+        owner_user_id=owner_id,
+        source_type="gmail",
+        external_ref="henry@ferganalabs.com",
+        display_name="Gmail (henry@ferganalabs.com)",
+    )
+
+    async def dated_search(source, query, limit):
+        return {
+            "hits": [
+                {
+                    "ref": "m-recent",
+                    "name": "recent",
+                    "snippet": "",
+                    "date_modified": datetime(2026, 3, 1, tzinfo=UTC),
+                },
+                {
+                    "ref": "m-old",
+                    "name": "old",
+                    "snippet": "",
+                    "date_modified": datetime(2026, 1, 1, tzinfo=UTC),
+                },
+                {"ref": "m-undated", "name": "undated", "snippet": ""},
+            ],
+            "truncated": True,
+            "estimated_total": 7,
+        }
+
+    monkeypatch.setattr(indexer, "search_gmail", dated_search)
+
+    results = await source_service.search_all(
+        ws, owner_id, "anything", modified_after=datetime(2026, 2, 1, tzinfo=UTC)
+    )
+
+    hits = [r for r in results["results"] if r.get("ref")]
+    assert [h["ref"] for h in hits] == ["m-recent"]
+    assert results["results"][-1]["truncated"] is True
+
+
+@pytest.mark.asyncio
+async def test_search_modified_after_later_than_before_is_400(client: AsyncClient):
+    api_key, _ = await _register(client)
+
+    resp = await client.get(
+        "/api/v1/me/sources/search",
+        params={
+            "q": "anything",
+            "modified_after": "2026-02-01T00:00:00Z",
+            "modified_before": "2026-01-01T00:00:00Z",
+        },
+        headers=_auth(api_key),
+    )
+
+    assert resp.status_code == 400
+    assert "modified_after" in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_search_modified_garbage_is_422(client: AsyncClient):
+    api_key, _ = await _register(client)
+
+    for param in ("modified_after", "modified_before"):
+        resp = await client.get(
+            "/api/v1/me/sources/search",
+            params={"q": "anything", param: "notadate"},
+            headers=_auth(api_key),
+        )
+        assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_search_modified_naive_datetime_is_treated_as_utc(client: AsyncClient):
+    """A bound without a timezone must mean UTC, not crash asyncpg — clients
+    (the CLI) send plain ISO strings like 2026-02-01."""
+    api_key, owner_id = await _register(client)
+    ws = await _user_scope(client, api_key)
+    src = await _github_source_with_docs(ws, owner_id, {})
+    await _github_doc(
+        ws, src, "a.md", "kumquat harvest", external_updated_at=datetime(2026, 3, 15, tzinfo=UTC)
+    )
+
+    resp = await client.get(
+        "/api/v1/me/sources/search",
+        params={"q": "kumquat", "modified_after": "2026-02-01T00:00:00"},
+        headers=_auth(api_key),
+    )
+
+    assert resp.status_code == 200
+    assert [r["ref"] for r in resp.json()["results"]] == ["a.md"]
+
+
 @pytest.mark.asyncio
 async def test_search_gmail_reports_truncation_from_next_page_token(monkeypatch):
     """search_gmail maps Gmail's nextPageToken to truncated and surfaces the
@@ -3285,7 +3514,11 @@ async def test_snapshot_source_into_skill_copies_lazy_content(client: AsyncClien
     assert folder.status_code == 201
     skill = await client.post(
         "/api/v1/me/skills",
-        json={"folder_id": folder.json()["id"], "title": "Bundle"},
+        json={
+            "folder_id": folder.json()["id"],
+            "title": "Bundle",
+            "description": "Snapshot bundle",
+        },
         headers=_auth(api_key),
     )
     assert skill.status_code == 201
@@ -3349,7 +3582,11 @@ async def test_snapshot_source_into_skill_fails_when_provider_fetch_fails(
     assert folder.status_code == 201
     skill = await client.post(
         "/api/v1/me/skills",
-        json={"folder_id": folder.json()["id"], "title": "Bundle"},
+        json={
+            "folder_id": folder.json()["id"],
+            "title": "Bundle",
+            "description": "Snapshot bundle",
+        },
         headers=_auth(api_key),
     )
     assert skill.status_code == 201
@@ -3408,7 +3645,11 @@ async def test_snapshot_source_into_skill_requires_same_owner(client: AsyncClien
     folder_id = folder.json()["id"]
     skill = await client.post(
         "/api/v1/me/skills",
-        json={"folder_id": folder_id, "title": "Bundle"},
+        json={
+            "folder_id": folder_id,
+            "title": "Bundle",
+            "description": "Snapshot bundle",
+        },
         headers=_auth(other_key),
     )
     assert skill.status_code == 201

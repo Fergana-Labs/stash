@@ -357,7 +357,9 @@ async def test_published_skill_grants_read_only(pool):
     scope = await _make_scope(pool, owner)
     folder = await _make_folder(pool, scope, owner, name="public-skill")
     page = await _make_page(pool, scope, owner, folder_id=folder)
-    await shared_skill_service.publish_folder(scope, owner, folder, title="Public Skill")
+    await shared_skill_service.publish_folder(
+        scope, owner, folder, title="Public Skill", description="Use for permission tests."
+    )
     assert await permission_service.check_access("page", page, stranger)
     assert await permission_service.check_access("page", page, None)
     assert not await permission_service.check_access("page", page, stranger, require="write")
@@ -697,7 +699,11 @@ async def test_skill_owner_can_edit_published_skill_metadata(client: AsyncClient
     skill_id = (
         await client.post(
             "/api/v1/me/skills",
-            json={"folder_id": folder_id, "title": "Handbook"},
+            json={
+                "folder_id": folder_id,
+                "title": "Handbook",
+                "description": "Use for handbook questions.",
+            },
             headers=_auth(owner_key),
         )
     ).json()["id"]
@@ -1307,7 +1313,9 @@ async def test_predicate_and_check_access_agree(pool):
     # into the one predicate, so it gets an explicit equivalence check.
     pub_folder = await _make_folder(pool, scope, owner, name="pub-skill")
     pub_page = await _make_page(pool, scope, owner, folder_id=pub_folder)
-    await shared_skill_service.publish_folder(scope, owner, pub_folder, title="Pub")
+    await shared_skill_service.publish_folder(
+        scope, owner, pub_folder, title="Pub", description="Use for permission tests."
+    )
     for viewer in (stranger, None):
         for require in ("read", "write"):
             boolean = await permission_service.check_access(

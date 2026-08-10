@@ -20,7 +20,10 @@ def _detail() -> dict:
                 {
                     "name": "SKILL.md",
                     "content_type": "markdown",
-                    "content_markdown": "---\nname: hivemind-memory\n---\nBody.",
+                    "content_markdown": (
+                        "---\nname: hivemind-memory\n"
+                        "description: Recall shared team knowledge.\n---\nBody."
+                    ),
                     "content_html": "",
                     "folder_path": [],
                 },

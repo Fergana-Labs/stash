@@ -66,7 +66,7 @@ def _all_tree_folder_ids(node: dict) -> set[str]:
 
 
 @pytest.mark.asyncio
-async def test_skill_folder_is_hidden_from_files_surfaces_until_skill_md_deleted(
+async def test_skill_folder_is_hidden_from_files_surfaces_until_converted_back(
     client: AsyncClient,
 ):
     api_key, _ = await _register(client)
@@ -76,6 +76,13 @@ async def test_skill_folder_is_hidden_from_files_surfaces_until_skill_md_deleted
     skill_folder = await _folder(client, api_key, scope, "my-skill", parent_folder_id=docs)
     nested = await _folder(client, api_key, scope, "refs", parent_folder_id=skill_folder)
     skill_md = await _page(client, api_key, scope, "SKILL.md", folder_id=skill_folder)
+    # Membership is explicit now: writing SKILL.md no longer promotes.
+    promoted = await client.post(
+        f"/api/v1/me/folders/{skill_folder}/convert-to-skill",
+        json={"description": "Use this skill to manage the test folder."},
+        headers=_auth(api_key),
+    )
+    assert promoted.status_code == 200
     nested_page = await _page(client, api_key, scope, "notes", folder_id=nested)
 
     # /tree hides the whole skill subtree (the SKILL.md folder + descendants).
@@ -114,9 +121,18 @@ async def test_skill_folder_is_hidden_from_files_surfaces_until_skill_md_deleted
     assert "SKILL.md" in [p["name"] for p in body["pages"]]
     assert nested in [f["id"] for f in body["subfolders"]]
 
-    # Deleting SKILL.md ends skill-ness: the folder rejoins the Files tree.
-    deleted = await client.delete(f"/api/v1/me/pages/{skill_md}", headers=_auth(api_key))
-    assert deleted.status_code == 204
+    # SKILL.md can't be deleted out from under a skill — that used to demote
+    # the folder silently and cost a customer their skill three times.
+    refused = await client.delete(f"/api/v1/me/pages/{skill_md}", headers=_auth(api_key))
+    assert refused.status_code == 400
+    assert "can't be deleted" in refused.json()["detail"]
+
+    # Converting back to a folder is the explicit way out, and it returns the
+    # folder to the Files tree.
+    demoted = await client.post(
+        f"/api/v1/me/folders/{skill_folder}/convert-to-folder", headers=_auth(api_key)
+    )
+    assert demoted.status_code == 200
     tree_after = (await client.get("/api/v1/me/tree", headers=_auth(api_key))).json()
     assert skill_folder in _all_tree_folder_ids(tree_after)
 
@@ -170,7 +186,13 @@ async def test_published_skill_grants_subtree_read_never_write(pool):
     # Unpublished: a skill folder on its own grants nothing to outsiders.
     assert not await permission_service.check_access("page", page, stranger)
 
-    await shared_skill_service.publish_folder(scope, owner, root, title="Subtree skill")
+    await shared_skill_service.publish_folder(
+        scope,
+        owner,
+        root,
+        title="Subtree skill",
+        description="Use for subtree permission tests.",
+    )
 
     # The publish record grants READ on the whole subtree — anonymous included.
     assert await permission_service.check_access("page", page, stranger)
@@ -256,7 +278,11 @@ async def test_publish_creates_skill_md_when_missing_and_rejects_double_publish(
 
     published = await client.post(
         "/api/v1/me/skills",
-        json={"folder_id": folder, "title": "Minted skill"},
+        json={
+            "folder_id": folder,
+            "title": "Minted skill",
+            "description": "Use for testing skill publication.",
+        },
         headers=_auth(api_key),
     )
     assert published.status_code == 201, published.text
@@ -429,3 +455,71 @@ async def test_install_ping_counts_adoption_separately_from_views(client: AsyncC
     assert detail.json()["skill"]["install_count"] == 2
 
     assert (await client.post("/api/v1/skills/not-a-real-slug/installs")).status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_create_skill_makes_a_folder_with_a_skill_md(client: AsyncClient):
+    key, _ = await _register(client)
+
+    resp = await client.post(
+        "/api/v1/me/skills/new",
+        json={"name": "New skill", "description": "Use for a new workflow."},
+        headers=_auth(key),
+    )
+
+    assert resp.status_code == 201
+    assert resp.json()["name"] == "New skill"
+    held = await client.get("/api/v1/me/skills", headers=_auth(key))
+    assert [s["folder_id"] for s in held.json()["skills"]] == [resp.json()["folder_id"]]
+
+
+@pytest.mark.asyncio
+async def test_create_skill_never_collides_with_a_name_squatting_folder(client: AsyncClient):
+    """A plain root folder can hold the wanted name while being invisible on
+    the Skills surface (e.g. a skill whose SKILL.md was deleted). Creation must
+    pick the next free name instead of 409ing on something the user can't see."""
+    key, _ = await _register(client)
+    scope = await _scope(client, key)
+    await _folder(client, key, scope, "New skill")
+
+    payload = {"name": "New skill", "description": "Use for a new workflow."}
+    first = await client.post("/api/v1/me/skills/new", json=payload, headers=_auth(key))
+    second = await client.post("/api/v1/me/skills/new", json=payload, headers=_auth(key))
+
+    assert first.status_code == 201
+    assert second.status_code == 201
+    assert first.json()["name"] == "New skill (2)"
+    assert second.json()["name"] == "New skill (3)"
+
+
+@pytest.mark.asyncio
+async def test_create_skill_rejects_a_blank_name(client: AsyncClient):
+    key, _ = await _register(client)
+    resp = await client.post(
+        "/api/v1/me/skills/new",
+        json={"name": "  ", "description": "Use for a new workflow."},
+        headers=_auth(key),
+    )
+    assert resp.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_create_skill_rejects_a_blank_description(client: AsyncClient):
+    key, _ = await _register(client)
+    resp = await client.post(
+        "/api/v1/me/skills/new",
+        json={"name": "Deploy", "description": "  "},
+        headers=_auth(key),
+    )
+    assert resp.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_create_skill_rejects_a_name_codex_cannot_load(client: AsyncClient):
+    key, _ = await _register(client)
+    resp = await client.post(
+        "/api/v1/me/skills/new",
+        json={"name": "x" * 65, "description": "Use for deploys."},
+        headers=_auth(key),
+    )
+    assert resp.status_code == 422

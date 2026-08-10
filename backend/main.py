@@ -26,7 +26,6 @@ from .routers import (
     billing,
     bulk_export,
     clips,
-    collab,
     demo,
     discover,
     exports,
@@ -116,7 +115,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.include_router(users.router)
-app.include_router(collab.router)
 app.include_router(user_knowledge.router)
 app.include_router(discover.router)
 app.include_router(feed.router)

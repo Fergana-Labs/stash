@@ -81,6 +81,72 @@ async def test_concurrent_reads_of_expired_token_refresh_exactly_once(client, mo
     assert tokens == ["at-new"] * 4
 
 
+class _WideMarginProvider:
+    """Rotating-refresh provider (like X) that asks for pre-expiry rotation."""
+
+    refresh_margin = timedelta(minutes=45)
+
+    def __init__(self):
+        self.refreshes = 0
+
+    async def refresh(self, refresh_token: str) -> TokenSet:
+        self.refreshes += 1
+        return TokenSet(
+            access_token="at-new",
+            refresh_token="rt-new",
+            expires_at=datetime.now(UTC) + timedelta(hours=2),
+            scopes=["tweet.read"],
+        )
+
+
+@pytest.mark.asyncio
+async def test_refresh_margin_rotates_before_expiry(client, monkeypatch):
+    # X kills grants whose rotating refresh token is first presented long
+    # after its access token expired (all three prod grant deaths). A provider
+    # refresh_margin wider than the keep-fresh tick means a token with 30
+    # minutes left rotates NOW, on the calm heartbeat — never at the moment of
+    # use after full expiry. Default-margin providers must be unaffected: 30
+    # minutes left is nowhere near the 60s window.
+    user_id = await _register(client)
+    await storage.store_token(
+        user_id,
+        "linear",
+        TokenSet(
+            access_token="at-old",
+            refresh_token="rt-old",
+            expires_at=datetime.now(UTC) + timedelta(minutes=30),
+            scopes=["tweet.read"],
+        ),
+        AccountInfo(email=None, display_name="@stash"),
+    )
+
+    wide = _WideMarginProvider()
+    monkeypatch.setattr(storage, "get_provider", lambda name: wide)
+    assert await storage.get_valid_token(user_id, "linear") == "at-new"
+    assert wide.refreshes == 1
+
+    # Same 30-minutes-left shape under the default margin: no rotation.
+    class _DefaultMarginProvider(_WideMarginProvider):
+        refresh_margin = timedelta(seconds=60)
+
+    default_user = await _register(client)
+    await storage.store_token(
+        default_user,
+        "linear",
+        TokenSet(
+            access_token="at-old",
+            refresh_token="rt-old",
+            expires_at=datetime.now(UTC) + timedelta(minutes=30),
+            scopes=["tweet.read"],
+        ),
+        AccountInfo(email=None, display_name="@stash"),
+    )
+    default = _DefaultMarginProvider()
+    monkeypatch.setattr(storage, "get_provider", lambda name: default)
+    assert await storage.get_valid_token(default_user, "linear") == "at-old"
+    assert default.refreshes == 0
+
+
 class _MixedRefreshProvider:
     """One live grant, one dead one — like prod after X kills an idle grant."""
 

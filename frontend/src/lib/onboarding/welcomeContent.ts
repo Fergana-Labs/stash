@@ -44,7 +44,7 @@ export function generateWelcomeHtml(inputs: WelcomeInputs): string {
   parts.push(`<h2>What this product does</h2>`);
   parts.push(
     `<ul>
-      <li><strong>Real-time collaborative editing</strong> on every markdown page (two cursors at once).</li>
+      <li><strong>Safe concurrent editing</strong> on every markdown page — you and your agents never overwrite each other.</li>
       <li>Remember everything, not just the pretty docs — automatically <strong>store and index your agent sessions</strong>.</li>
       <li><strong>Built for agents.</strong> Use what they&rsquo;re natively fluent in: markdown, HTML, and virtual filesystems.</li>
       <li><strong>Search and ask about everything</strong> you&rsquo;ve added — your agent is grounded on your stuff.</li>

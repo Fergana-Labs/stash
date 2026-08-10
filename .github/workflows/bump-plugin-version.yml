@@ -14,7 +14,6 @@ on:
       # docker-compose.prod.yml, so server changes must also cut a release.
       - 'backend/**'
       - 'frontend/**'
-      - 'collab/**'
 
 jobs:
   bump:

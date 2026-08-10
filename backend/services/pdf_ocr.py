@@ -1,24 +1,35 @@
-"""PDF transcription via Claude vision, grounded by the embedded text layer.
+"""PDF transcription via Gemini vision, grounded by the embedded text layer.
 
 pypdf reads a PDF's embedded text layer: exact characters, unreliable
 layout — a three-column parts table comes out as one undifferentiated
-stream. Claude vision reads the page images: reliable layout, but a
+stream. Vision reads the page images: reliable layout, but a
 transcribed character can be wrong, and a misread digit in a part
 number ships the wrong part. So each request carries both. The model
 is instructed to take structure from the images and characters from
 the text layer; a scanned PDF simply has no layer to attach and the
 same call degrades to pure OCR.
 
-Pages go up in chunks of PAGES_PER_REQUEST to the configured fast-tier
-model (`ANTHROPIC_FAST_MODEL`), at most OCR_CONCURRENCY chunks in
-flight at once, with vision capped at MAX_VISION_PAGES so one giant
-catalog can't burn unbounded API spend. Pages past the cap contribute
-their raw text layer under an explicit marker — the cap bounds spend,
-it must not discard text that pypdf reads for free.
+The model is `GEMINI_EXTRACTION_MODEL` (Gemini 3 Flash), picked by the
+Jul 2026 extraction benchmark on real truck-parts catalogs: it tied the
+frontier Claude models at 37/47 gold table rows with perfect digit
+fidelity, at fast-tier cost. Output is markdown — tables as markdown
+tables, figures described in place — so table structure and diagram
+content survive into the knowledge base.
+
+Pages go up in chunks of PAGES_PER_REQUEST, at most OCR_CONCURRENCY
+chunks in flight at once, with vision capped at MAX_VISION_PAGES so one
+giant catalog can't burn unbounded API spend. Pages past the cap
+contribute their raw text layer under an explicit marker — the cap
+bounds spend, it must not discard text that pypdf reads for free.
 
 Chunk slices are built lazily, one per in-flight request: the whole
 document held simultaneously as slices plus their base64 copies is what
 used to breach the extraction child's RLIMIT_AS on scanned catalogs.
+
+Reader annotations (sticky notes, highlight popups, text boxes) carry
+expert commentary but mostly render as bare icons, so vision alone
+loses them. Each request therefore also carries the annotation layer,
+read via pypdf, with instructions to transcribe every note in place.
 
 Unlike `file_extraction.extract_text`, this module raises on failure
 (missing API key, API errors) so the extraction pipeline's retry
@@ -32,8 +43,8 @@ import asyncio
 import base64
 import io
 
+import httpx
 import pypdf
-from anthropic import AsyncAnthropic
 
 from ..config import settings
 from .file_extraction import extract_text
@@ -47,11 +58,18 @@ MAX_OUTPUT_TOKENS = 16000
 # attempts on real customer catalogs.
 REQUEST_TIMEOUT_SECONDS = 300.0
 
+_GENERATE_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+
 _PROMPT = (
-    "Transcribe all text in this document exactly as it appears, in reading order. "
-    "Output only the transcribed text - no commentary, no code fences. "
-    "Preserve paragraph breaks. Render table rows as lines with cells separated by tabs. "
-    "If a page contains no text, output nothing for it."
+    "Transcribe this document as markdown, in reading order. "
+    "Output only the document's content - no commentary, no surrounding code fence. "
+    "Render every table as a markdown table, one printed row per row, every cell exactly "
+    "as printed - part numbers, codes, and digits must survive character-for-character. "
+    "Where a page shows a figure, photo, or diagram, add a bracketed description in place - "
+    "[Figure: ...] - stating what it shows and every identifying detail it conveys "
+    "(shapes, dimensions, labels, colors, callouts), so someone who cannot see the image "
+    "still gets its information. "
+    "If a page contains no content, output nothing for it."
 )
 
 _LAYER_PROMPT = (
@@ -65,6 +83,51 @@ _LAYER_PROMPT = (
 )
 
 
+_ANNOTATIONS_PROMPT = (
+    "\n\nThe document carries reader annotations (comments, sticky notes, highlight notes), "
+    "listed below by page. Most render only as icons, so the page images do not show their "
+    "text. Transcribe every one of them: include each at the point in the page's content it "
+    "refers to, formatted as [Annotation: <its text, reproduced word-for-word, never "
+    "shortened or relabeled>]. If an annotation's text is also visible on the page itself "
+    "(a text box), output it once, as an [Annotation: ...]. Do not describe the annotation "
+    "icons themselves (note symbols, highlight marks) as figures.\n\n"
+    "<annotations>\n{annotations}\n</annotations>"
+)
+
+
+def _page_annotations(page: pypdf.PageObject) -> list[str]:
+    """Text content of a page's reader annotations. Popup annotations mirror
+    their parent markup annotation's text, so they are skipped to avoid
+    emitting every note twice.
+
+    Wild PDFs routinely carry broken /Annots — a null array, null entries,
+    dangling references. Those pages extracted fine before annotations were
+    read at all, so a page whose annotations can't be parsed contributes none
+    rather than failing the whole document (same stance as _text_layer_tail)."""
+    notes = []
+    try:
+        for ref in page.get("/Annots") or []:
+            annot = ref.get_object()
+            if not isinstance(annot, pypdf.generic.DictionaryObject):
+                continue
+            if annot.get("/Subtype") == "/Popup":
+                continue
+            content = str(annot.get("/Contents") or "").strip()
+            if content:
+                notes.append(content)
+    except Exception:
+        return []
+    return notes
+
+
+def _annotations_block(content: bytes) -> str:
+    reader = pypdf.PdfReader(io.BytesIO(content))
+    lines = []
+    for number, page in enumerate(reader.pages, start=1):
+        lines.extend(f"Page {number}: {note}" for note in _page_annotations(page))
+    return "\n".join(lines)
+
+
 def _slice_pdf(reader: pypdf.PdfReader, start: int, end: int) -> bytes:
     writer = pypdf.PdfWriter()
     for page in reader.pages[start:end]:
@@ -74,31 +137,40 @@ def _slice_pdf(reader: pypdf.PdfReader, start: int, end: int) -> bytes:
     return buf.getvalue()
 
 
-async def _transcribe_chunk(client: AsyncAnthropic, chunk: bytes) -> str:
+async def _transcribe_chunk(client: httpx.AsyncClient, chunk: bytes) -> str:
     layer = extract_text(chunk, "application/pdf")
-    prompt = _PROMPT + (_LAYER_PROMPT.format(layer=layer) if layer else "")
-    response = await client.messages.create(
-        model=settings.ANTHROPIC_FAST_MODEL,
-        max_tokens=MAX_OUTPUT_TOKENS,
-        messages=[
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "document",
-                        "source": {
-                            "type": "base64",
-                            "media_type": "application/pdf",
-                            "data": base64.standard_b64encode(chunk).decode("ascii"),
-                        },
-                    },
-                    {"type": "text", "text": prompt},
-                ],
-            }
-        ],
+    annotations = _annotations_block(chunk)
+    prompt = (
+        _PROMPT
+        + (_LAYER_PROMPT.format(layer=layer) if layer else "")
+        + (_ANNOTATIONS_PROMPT.format(annotations=annotations) if annotations else "")
     )
-    text = "".join(block.text for block in response.content if block.type == "text").strip()
-    if response.stop_reason == "max_tokens":
+    response = await client.post(
+        _GENERATE_URL.format(model=settings.GEMINI_EXTRACTION_MODEL),
+        json={
+            "contents": [
+                {
+                    "parts": [
+                        {
+                            "inline_data": {
+                                "mime_type": "application/pdf",
+                                "data": base64.standard_b64encode(chunk).decode("ascii"),
+                            }
+                        },
+                        {"text": prompt},
+                    ]
+                }
+            ],
+            "generationConfig": {"maxOutputTokens": MAX_OUTPUT_TOKENS, "temperature": 0},
+        },
+    )
+    response.raise_for_status()
+    candidates = response.json().get("candidates")
+    if not candidates:
+        raise RuntimeError("Gemini returned no candidates")
+    parts = candidates[0].get("content", {}).get("parts", [])
+    text = "".join(p.get("text", "") for p in parts if not p.get("thought")).strip()
+    if candidates[0].get("finishReason") == "MAX_TOKENS":
         text += "\n\n[transcription truncated]"
     return text
 
@@ -108,17 +180,19 @@ def _text_layer_tail(reader: pypdf.PdfReader, start: int) -> str:
     building a sliced copy of a several-hundred-page tail is itself enough
     to breach the extraction child's memory cap."""
     parts: list[str] = []
-    for page in reader.pages[start:]:
+    for number, page in enumerate(reader.pages[start:], start=start + 1):
+        notes = "\n".join(f"[Annotation, page {number}] {note}" for note in _page_annotations(page))
         try:
-            parts.append(page.extract_text() or "")
+            text = page.extract_text() or ""
         except Exception:
-            continue
+            text = ""
+        parts.append("\n\n".join(p for p in (text, notes) if p))
     return "\n\n".join(p for p in parts if p).strip()
 
 
 async def transcribe_pdf(content: bytes) -> str:
-    if not settings.ANTHROPIC_API_KEY:
-        raise RuntimeError("ANTHROPIC_API_KEY is required to transcribe PDFs")
+    if not settings.GEMINI_API_KEY:
+        raise RuntimeError("GEMINI_API_KEY is required to transcribe PDFs")
 
     reader = pypdf.PdfReader(io.BytesIO(content))
     total_pages = len(reader.pages)
@@ -134,13 +208,16 @@ async def transcribe_pdf(content: bytes) -> str:
             chunk = _slice_pdf(reader, start, min(start + PAGES_PER_REQUEST, vision_pages))
             return await _transcribe_chunk(client, chunk)
 
-    client = AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY, timeout=REQUEST_TIMEOUT_SECONDS)
+    client = httpx.AsyncClient(
+        headers={"x-goog-api-key": settings.GEMINI_API_KEY},
+        timeout=REQUEST_TIMEOUT_SECONDS,
+    )
     try:
         texts = await asyncio.gather(
             *(transcribe_from(start) for start in range(0, vision_pages, PAGES_PER_REQUEST))
         )
     finally:
-        await client.close()
+        await client.aclose()
 
     parts = [t for t in texts if t]
     if total_pages > vision_pages:

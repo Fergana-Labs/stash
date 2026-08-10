@@ -235,7 +235,7 @@ async def index_jira(source: dict) -> str | None:
             resp = await client.get(f"{base}/search/jql", params=params)
             resp.raise_for_status()
             payload = resp.json()
-            for issue in payload.get("issues", []):
+            for issue in source_service.expect_items(payload, "issues", provider="Jira"):
                 key = issue.get("key")
                 if not key:
                     continue
