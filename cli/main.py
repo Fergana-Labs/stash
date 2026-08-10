@@ -4912,6 +4912,26 @@ def _pretty_path(path: Path) -> str:
     return "~" + raw[len(home) :] if raw.startswith(home) else raw
 
 
+def _choose_folder_finder(start: Path) -> Path | None:
+    """Pop the native macOS Finder folder chooser. None means the user hit
+    Cancel; any other failure (e.g. an SSH session with no GUI) raises so the
+    user re-runs and picks "Type a path" instead of silently losing the answer."""
+    import subprocess
+
+    script = (
+        "POSIX path of (choose folder with prompt "
+        '"Where should Stash record agent sessions?" '
+        f'default location POSIX file "{start}")'
+    )
+    result = subprocess.run(["osascript", "-e", script], capture_output=True, text=True)
+    if result.returncode != 0:
+        if "-128" in result.stderr:  # AppleScript's "User canceled."
+            return None
+        raise RuntimeError(f"Finder dialog failed: {result.stderr.strip()}")
+    raw = result.stdout.strip()
+    return Path(raw) if raw else None
+
+
 def _browse_folders(start: Path) -> Path | None:
     """Arrow-key folder browser: 'record this folder' pinned on top, '..' to
     go up, subfolders to drill into. No typing required."""
@@ -4946,7 +4966,8 @@ def _pick_record_folder(start: Path) -> Path | None:
     """The ergonomic folder choice: your agents' actual working folders first,
     a browser second, a typed path as the escape hatch."""
     candidates = _agent_folder_candidates()
-    browse = "Browse folders…"
+    native = sys.platform == "darwin"
+    browse = "Choose in Finder…" if native else "Browse folders…"
     type_it = "Type a path"
     choices: list[questionary.Choice] = [
         questionary.Choice(f"{_pretty_path(p)}  ({n} session{'s' if n != 1 else ''})", value=str(p))
@@ -4964,7 +4985,7 @@ def _pick_record_folder(start: Path) -> Path | None:
     if picked is None:
         return None
     if picked == browse:
-        return _browse_folders(start)
+        return _choose_folder_finder(start) if native else _browse_folders(start)
     if picked == type_it:
         typed = questionary.path("Folder path:", only_directories=True).ask()
         if typed is None:
