@@ -2,6 +2,7 @@
 
 import { ReactNode, useEffect, useState } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
+import { useWorkspace } from "@/lib/workspace-store";
 import type { User } from "@/lib/types";
 import { Toaster } from "@/components/ui/sonner";
 import Persistence from "./persistence";
@@ -14,6 +15,12 @@ const WIDTH_KEY = "moltchat_explorer_width";
 const MIN_W = 220;
 const MAX_W = 600;
 const EXPLORER_SECTIONS: ExplorerSection[] = ["files", "sessions", "skills", "agents", "tools", "computer"];
+
+// Experiment (2026-08-10): only the VFS keeps the tree sidebar. Sessions,
+// Skills, and Tools render full-width — their explorer was a second nav axis
+// over the same content as the rail, and the two looked independent. Agents
+// (chat list) and the VM (browser) keep panels: that content lives nowhere else.
+const PANELLED_SECTIONS: ExplorerSection[] = ["files", "agents", "computer"];
 
 /** Resizable explorer panel — drag the right edge to set width (persisted). */
 function ExplorerPanel({ section }: { section: ExplorerSection }) {
@@ -118,9 +125,19 @@ export default function WorkspaceShell({
     selectedSection,
     searchParams.get("workspace"),
   );
+  // Remember where the user is inside the VFS, so the rail's VFS button can
+  // bring them back instead of restarting at the bare lens.
+  const setLastVfsUrl = useWorkspace((s) => s.setLastVfsUrl);
+  useEffect(() => {
+    if (section !== "files") return;
+    const query = searchParams.toString();
+    setLastVfsUrl(query ? `${pathname}?${query}` : pathname);
+  }, [section, pathname, searchParams, setLastVfsUrl]);
+
   // /files IS a file tree — showing the explorer's tree beside it would be
   // the same thing twice. An explicit ?section= still summons the panel.
-  const showExplorer = section !== null && !(pathname === "/files" && !selectedSection);
+  const isFilesHome = pathname === "/files" && !selectedSection;
+  const showExplorer = section !== null && PANELLED_SECTIONS.includes(section) && !isFilesHome;
 
   return (
     // Chrome surface — the content panel floats on top of it.
@@ -130,9 +147,9 @@ export default function WorkspaceShell({
       <div className="flex min-h-0 flex-1">
         <Rail user={user} onLogout={onLogout} />
         <div className="min-w-0 flex-1 pb-0">
-          {section && showExplorer ? (
+          {section && !isFilesHome ? (
             <div className="flex h-full">
-              <ExplorerPanel section={section} />
+              {showExplorer && <ExplorerPanel section={section} />}
               {/* Floating content panel: clean white paper, subtly elevated. */}
               <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-tl-2xl border-l border-t border-border bg-base shadow-[-10px_-6px_28px_-16px_rgba(30,25,15,0.10)]">
                 {renderRouteContent ? (

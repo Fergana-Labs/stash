@@ -106,10 +106,24 @@ export default function Rail({ user, onLogout }: { user: User; onLogout: () => v
   const requestedSection = searchParams.get("section");
 
   function selectSection(section: RailSection) {
-    // Home (the memory dashboard) and Files have their own landing pages, so
-    // they navigate; other sections just swap the explorer beside whatever's
-    // open.
-    const LANDING: Partial<Record<RailSection, string>> = { home: "/", files: "/files" };
+    // VFS resumes where the user left off; clicking it while already in the
+    // VFS zooms out to the full-screen lens.
+    if (section === "files") {
+      const filesItem = PRIMARY.find((i) => i.key === "files")!;
+      const alreadyInVfs = requestedSection === "files" || (!requestedSection && filesItem.match(pathname));
+      setRailSection(section);
+      router.replace(alreadyInVfs ? "/files" : useWorkspace.getState().lastVfsUrl ?? "/files");
+      return;
+    }
+    // Every other section with a landing page navigates there. Only Agents
+    // swaps its explorer panel beside whatever's open — Sessions/Skills/Tools
+    // have no panel anymore, so a param swap would do nothing visible.
+    const LANDING: Partial<Record<RailSection, string>> = {
+      home: "/",
+      sessions: "/sessions",
+      skills: "/skills",
+      tools: "/tools",
+    };
     const landing = LANDING[section];
     if (landing) {
       setRailSection(section);

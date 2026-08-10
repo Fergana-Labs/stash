@@ -10,32 +10,14 @@
 // real time, and leaving it snaps the tree back flat — a peek, not a mode.
 
 import Link from "next/link";
-import { ReactNode, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowUpRight, Brain, Cable, ChevronRight, FolderTree, GraduationCap, MessagesSquare } from "lucide-react";
-import {
-  getMemoryFolder,
-  getMeOverview,
-  getSidebar,
-  getSourcesTree,
-  listSkills,
-  listTables,
-  type MeOverview,
-  type SourceTreeRoot,
-} from "@/lib/api";
-import { FileIcon, FolderIcon, PageIcon, TableIcon } from "@/components/SkillIcons";
-import { connectorIcon } from "@/components/integrations/connectors";
+import { useRef, useState } from "react";
+import { ArrowUpRight, ChevronRight } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
-import {
-  buildFilesNodes,
-  buildSessionNodes,
-  buildSkillNodes,
-  buildSourceNodes,
-  type VNode,
-} from "./build";
+import type { VNode } from "./build";
+import { NodeIcon, useVfsMounts, type Mount } from "./useVfsMounts";
 
 const SHOW_PER_DIR = 10;
-const RECENT_SESSIONS = 8;
 const UNFOCUS_DELAY_MS = 250;
 
 /** Cursor position across the gauge bars → depth floor 0-3. */
@@ -46,33 +28,8 @@ function gaugeDepth(e: React.MouseEvent<HTMLDivElement>): number {
   return Math.max(0, Math.min(3, Math.floor(frac * 4)));
 }
 
-interface Mount {
-  path: string;
-  icon: ReactNode;
-  nodes: VNode[];
-  href?: string;
-  /** Rows the API cut off before we ever saw them (sources per-dir cap). */
-  apiHidden?: number;
-  /** Where "+N more" rows we can't expand locally should take the user. */
-  moreHref?: string;
-  footer?: { label: string; href: string };
-  emptyLabel: string;
-}
-
-interface CoreData {
-  filesNodes: VNode[];
-  memoryFolderId: string;
-  memoryNodes: VNode[];
-  sessionNodes: VNode[];
-  skillNodes: VNode[];
-  vitals: MeOverview;
-}
-
 export default function FilesOverview() {
-  const [core, setCore] = useState<CoreData | null>(null);
-  const [coreError, setCoreError] = useState<string | null>(null);
-  const [sources, setSources] = useState<SourceTreeRoot[] | null>(null);
-  const [sourcesError, setSourcesError] = useState<string | null>(null);
+  const { mounts, coreLoaded, coreError, sourcesPending, sourcesError } = useVfsMounts();
 
   // The lens: which mount is bloomed open, and which of its folders the
   // cursor has opened. Hover opens; a chevron click closes; changing mounts
@@ -87,106 +44,6 @@ export default function FilesOverview() {
   const [pinnedDepth, setPinnedDepth] = useState<number | null>(null);
 
   const unfocusTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    Promise.all([getSidebar(), listTables(), listSkills(), getMeOverview(), getMemoryFolder()])
-      .then(([sidebar, tables, skills, vitals, memoryFolder]) => {
-        if (cancelled) return;
-        const { files, memory } = buildFilesNodes(sidebar.files, memoryFolder.id, tables.tables);
-        setCore({
-          filesNodes: files,
-          memoryFolderId: memoryFolder.id,
-          memoryNodes: memory,
-          sessionNodes: buildSessionNodes(sidebar.sessions.slice(0, RECENT_SESSIONS)),
-          skillNodes: buildSkillNodes(skills),
-          vitals,
-        });
-      })
-      .catch((e) => { if (!cancelled) setCoreError(e instanceof Error ? e.message : String(e)); });
-    // The sources tree walks every connected source, so it loads on its own
-    // clock — the native mounts render without waiting for it.
-    getSourcesTree()
-      .then((s) => { if (!cancelled) setSources(s); })
-      .catch((e) => { if (!cancelled) setSourcesError(e instanceof Error ? e.message : String(e)); });
-    return () => { cancelled = true; };
-  }, []);
-
-  const mounts = useMemo<Mount[]>(() => {
-    if (!core) return [];
-    const native: Mount[] = [
-      {
-        path: "/files",
-        icon: <FolderTree className="h-4 w-4 text-chart-4" />,
-        nodes: core.filesNodes,
-        emptyLabel: "empty",
-      },
-      {
-        path: "/sessions",
-        icon: <MessagesSquare className="h-4 w-4 text-chart-1" />,
-        nodes: core.sessionNodes,
-        href: "/sessions",
-        footer:
-          core.vitals.sessions > core.sessionNodes.length
-            ? { label: `all ${core.vitals.sessions} sessions`, href: "/sessions" }
-            : undefined,
-        emptyLabel: "no sessions yet",
-      },
-      {
-        path: "/memory",
-        icon: <Brain className="h-4 w-4 text-chart-2" />,
-        nodes: core.memoryNodes,
-        href: `/folders/${core.memoryFolderId}`,
-        emptyLabel: "nothing remembered yet",
-      },
-      {
-        path: "/skills",
-        icon: <GraduationCap className="h-4 w-4 text-chart-3" />,
-        nodes: core.skillNodes,
-        href: "/skills",
-        emptyLabel: "no skills yet",
-      },
-    ];
-    if (sources === null) return native;
-    // One faithful /sources mount, exactly like the VFS: providers are
-    // directories inside it, wearing their brand marks.
-    const providerNodes = sources
-      .map<VNode>((root) => {
-        const provider = root.provider ?? root.source;
-        const { nodes, hiddenCount } = buildSourceNodes(root.tree, `/sources/${provider}`);
-        return {
-          key: `/sources/${provider}`,
-          kind: "folder",
-          name: provider,
-          icon: connectorIcon(provider),
-          href: `/integrations/${provider}`,
-          children: nodes,
-          hiddenCount: hiddenCount || undefined,
-          moreHref: `/integrations/${provider}`,
-        };
-      })
-      // Providers with synced content are what the VFS really materializes,
-      // so they sort ahead of the empty (greyed) ones; alphabetical within
-      // each group.
-      .sort((a, b) => {
-        const aEmpty = a.children!.length === 0 && !a.hiddenCount ? 1 : 0;
-        const bEmpty = b.children!.length === 0 && !b.hiddenCount ? 1 : 0;
-        return aEmpty - bEmpty || a.name.localeCompare(b.name);
-      });
-    return [
-      ...native,
-      {
-        path: "/sources",
-        icon: <Cable className="h-4 w-4 text-chart-1" />,
-        nodes: providerNodes,
-        footer:
-          providerNodes.length === 0
-            ? { label: "connect a source", href: "/settings/integrations" }
-            : undefined,
-        emptyLabel: "no sources connected",
-      },
-    ];
-  }, [core, sources]);
 
   function focusMount(path: string) {
     if (unfocusTimer.current) clearTimeout(unfocusTimer.current);
@@ -232,7 +89,7 @@ export default function FilesOverview() {
   return (
     <div className="h-full overflow-y-auto bg-base">
       <div className="mx-auto max-w-[680px] px-8 pb-16 pt-10" onMouseLeave={onLensLeave}>
-        {core && (
+        {coreLoaded && (
           <div className="mb-8 flex items-start justify-between gap-2.5">
             <div>
               <h1 className="text-[26px] font-semibold tracking-tight text-foreground">Virtual Filesystem</h1>
@@ -273,7 +130,7 @@ export default function FilesOverview() {
             </div>
           </div>
         )}
-        {!core && (
+        {!coreLoaded && (
           <div className="space-y-3 py-1">
             {Array.from({ length: 6 }, (_, i) => (
               <Skeleton key={i} className="h-4" style={{ width: `${90 + (i % 3) * 30}px` }} />
@@ -294,7 +151,7 @@ export default function FilesOverview() {
             onRevealAll={revealAll}
           />
         ))}
-        {core && sources === null && !sourcesError && (
+        {coreLoaded && sourcesPending && (
           <div className="space-y-3 py-2">
             <Skeleton className="h-4 w-32" />
             <Skeleton className="h-4 w-24" />
@@ -395,23 +252,6 @@ function MountBlock({
       )}
     </div>
   );
-}
-
-function NodeIcon({ node, open }: { node: VNode; open: boolean }) {
-  if (node.icon) {
-    return (
-      <span className="flex w-[15px] shrink-0 items-center justify-center [&_svg]:h-[15px] [&_svg]:w-[15px] [&_img]:h-[15px] [&_img]:w-[15px]">
-        {node.icon}
-      </span>
-    );
-  }
-  const cls = cn("shrink-0", open ? "text-brand-600" : "text-muted-foreground");
-  if (node.kind === "folder") return <span className={cls}><FolderIcon /></span>;
-  if (node.kind === "page") return <span className="shrink-0 text-muted-foreground"><PageIcon /></span>;
-  if (node.kind === "table") return <span className="shrink-0 text-muted-foreground"><TableIcon /></span>;
-  if (node.kind === "session") return <MessagesSquare className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />;
-  if (node.kind === "skill") return <GraduationCap className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />;
-  return <span className="shrink-0 text-muted-foreground"><FileIcon /></span>;
 }
 
 /** One directory level, tree(1)-style: `├─`/`└─` glyphs with `│` continuation
