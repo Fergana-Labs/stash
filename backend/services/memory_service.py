@@ -162,6 +162,7 @@ async def push_event(
             created_by=created_by,
             session_folder_id=session_folder_id,
         )
+        await session_service.record_event_stats(owner_user_id, session_id, [event["id"]])
         if linear_ticket_service.has_ticket_hint([content]):
             await linear_ticket_service.sync_session_labels(
                 owner_user_id, session["id"], session_id
@@ -228,7 +229,7 @@ async def push_events_batch(
         timestamps,
     )
     results = [dict(r) for r in rows]
-    await _upsert_sessions_for_events(owner_user_id, created_by, events)
+    await _upsert_sessions_for_events(owner_user_id, created_by, events, results)
     if embedding_service.is_configured() and results:
         ids = [r["id"] for r in results]
         contents_for_embed = [r["content"] for r in results]
@@ -240,9 +241,17 @@ async def _upsert_sessions_for_events(
     owner_user_id: UUID | None,
     created_by: UUID,
     events: list[dict],
+    written: list[dict],
 ) -> None:
     if owner_user_id is None:
         return
+
+    # Event ids per session, so each session's roll-up moves by exactly what
+    # this batch wrote.
+    written_ids: dict[str, list[UUID]] = {}
+    for row in written:
+        if row.get("session_id"):
+            written_ids.setdefault(row["session_id"], []).append(row["id"])
 
     sessions: dict[str, dict] = {}
     for event in events:
@@ -266,6 +275,9 @@ async def _upsert_sessions_for_events(
             cwd=session["cwd"],
             created_by=created_by,
             session_folder_id=session["session_folder_id"],
+        )
+        await session_service.record_event_stats(
+            owner_user_id, session_id, written_ids.get(session_id, [])
         )
         contents = [
             event.get("content") or "" for event in events if event.get("session_id") == session_id
@@ -374,41 +386,34 @@ async def read_session_events_page(
 
 
 async def list_scope_sessions(owner_user_id: UUID, user_id: UUID) -> list[dict]:
-    """One row per session_id in this scope. Powers the spine sessions
-    list — replaces a SELECT against session_transcripts.
+    """One row per session in this scope, newest activity first.
 
-    Readability is decided once per SESSION (the readable_sessions CTE), not
-    once per event: the permission predicate is a function of the session row,
-    so evaluating it inside the per-event scan only multiplied its cost by the
-    event count. size_bytes is the stored (TOAST-compressed) size — summing
-    pg_column_size reads only value headers, where LENGTH would decompress
-    every transcript event on every sidebar load."""
+    Reads the session rows themselves. The three facts this list needs about a
+    session's events — how many, how big, when the last one landed — are
+    maintained on write (session_service.record_event_stats), so listing a
+    scope no longer aggregates history_events: that scan read every event the
+    user owned, on every sidebar load, and grew with the account forever.
+    """
     pool = get_pool()
     readable_session = permission_service.readable_content_condition("session", "s", 2)
     rows = await pool.fetch(
-        "WITH readable_sessions AS ( "
-        "  SELECT s.id, s.owner_user_id, s.session_id "
-        "  FROM sessions s "
-        "  WHERE s.owner_user_id = $1 AND s.deleted_at IS NULL "
-        f"    AND {readable_session} "
-        ") "
-        "SELECT h.session_id, "
-        "       rs.id::text AS id, "
-        f"       {linear_ticket_service.sql_json_agg('rs')} AS linear_tickets, "
-        "       MAX(h.agent_name) AS agent_name, "
-        "       (ARRAY_AGG(NULLIF(u.display_name, '') ORDER BY h.created_at) "
-        "        FILTER (WHERE NULLIF(u.display_name, '') IS NOT NULL))[1] AS user_name, "
-        "       COUNT(*)::INT AS event_count, "
-        "       SUM(pg_column_size(h.content))::BIGINT AS size_bytes, "
-        "       MIN(h.created_at) AS started_at, "
-        "       MAX(h.created_at) AS last_at "
-        "FROM history_events h "
-        "JOIN readable_sessions rs ON rs.owner_user_id = h.owner_user_id "
-        "  AND rs.session_id = h.session_id "
-        "LEFT JOIN users u ON u.id = h.created_by "
-        "WHERE h.owner_user_id = $1 AND h.session_id IS NOT NULL "
-        "GROUP BY h.session_id, rs.id "
-        "ORDER BY last_at DESC, user_name ASC, session_id ASC",
+        "SELECT s.session_id, "
+        "       s.id::text AS id, "
+        f"       {linear_ticket_service.sql_json_agg('s')} AS linear_tickets, "
+        "       s.agent_name, "
+        "       NULLIF(u.display_name, '') AS user_name, "
+        "       s.event_count, "
+        "       s.size_bytes, "
+        "       s.started_at, "
+        "       s.last_event_at AS last_at "
+        "FROM sessions s "
+        "LEFT JOIN users u ON u.id = s.created_by "
+        # A session row with no events is a shell (created by session-start,
+        # or by a client that opened one and never pushed): the listings were
+        # event-driven, so those never showed. event_count keeps that true.
+        f"WHERE s.owner_user_id = $1 AND s.deleted_at IS NULL AND s.event_count > 0 "
+        f"  AND {readable_session} "
+        "ORDER BY s.last_event_at DESC NULLS LAST, user_name ASC, s.session_id ASC",
         owner_user_id,
         user_id,
     )

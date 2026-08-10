@@ -134,7 +134,9 @@ async def _make_history_event(
     content="hello",
     event_type="message",
 ):
-    return await pool.fetchval(
+    from backend.services import session_service
+
+    event_id = await pool.fetchval(
         "INSERT INTO history_events "
         "(owner_user_id, created_by, agent_name, event_type, content, session_id) "
         "VALUES ($1, $2, 'agent', $3, $4, $5) RETURNING id",
@@ -144,6 +146,12 @@ async def _make_history_event(
         content,
         session_id,
     )
+    # Writing an event moves the session's roll-up, which is what the listings
+    # read. Inserting behind the service's back would build a session the app
+    # could never produce.
+    if session_id:
+        await session_service.record_event_stats(owner_user_id, session_id, [event_id])
+    return event_id
 
 
 # --- New model: private by default; owner + shares + publish record ---

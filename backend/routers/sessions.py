@@ -116,14 +116,16 @@ async def list_my_sessions(
     args: list = [current_user["id"]]
     accessible_ws = permission_service.accessible_scope_ids_sql(1)
     where = [
-        "he.session_id IS NOT NULL",
-        f"(he.owner_user_id IN {accessible_ws} "
-        "OR (he.owner_user_id IS NULL AND he.created_by = $1))",
-        f"(he.owner_user_id IS NULL OR {memory_service.readable_session_event_condition('he', 1)})",
+        "s.deleted_at IS NULL",
+        # An event-less session row is a shell; the listing has always been
+        # about sessions that actually happened.
+        "s.event_count > 0",
+        f"s.owner_user_id IN {accessible_ws}",
+        permission_service.readable_content_condition("session", "s", 1),
     ]
     if owner_user_id is not None:
         args.append(owner_user_id)
-        where.append(f"he.owner_user_id = ${len(args)}")
+        where.append(f"s.owner_user_id = ${len(args)}")
     if session_folder_id is not None:
         args.append(session_folder_id)
         where.append(f"s.session_folder_id = ${len(args)}")
@@ -131,35 +133,32 @@ async def list_my_sessions(
         args.append(session_id_prefix)
         # starts_with, not LIKE: the prefix is caller-supplied and LIKE would
         # read '%' and '_' in it as wildcards.
-        where.append(f"starts_with(he.session_id, ${len(args)})")
+        where.append(f"starts_with(s.session_id, ${len(args)})")
 
+    # The session row is the source of truth: its event roll-up is maintained
+    # on write, so a listing is an indexed read of `sessions` rather than an
+    # aggregate over every event in the scope.
     rows = await pool.fetch(
         f"""
         SELECT
-          he.session_id,
+          s.session_id,
           s.id AS id,
           s.session_folder_id,
           sf.name AS session_folder_name,
-          he.owner_user_id,
+          s.owner_user_id,
           owner.display_name AS owner_name,
           {linear_ticket_service.sql_json_agg("s")} AS linear_tickets,
-          (ARRAY_AGG(NULLIF(u.display_name, '') ORDER BY he.created_at)
-           FILTER (WHERE NULLIF(u.display_name, '') IS NOT NULL))[1] AS user_name,
-          MAX(he.agent_name) AS agent_name,
-          COUNT(*)::INT AS event_count,
-          MIN(he.created_at) AS started_at,
-          MAX(he.created_at) AS last_event_at
-        FROM history_events he
-        LEFT JOIN users owner ON owner.id = he.owner_user_id
-        LEFT JOIN users u ON u.id = he.created_by
-        LEFT JOIN sessions s ON s.owner_user_id IS NOT DISTINCT FROM he.owner_user_id
-          AND s.session_id = he.session_id
-          AND s.deleted_at IS NULL
+          NULLIF(u.display_name, '') AS user_name,
+          s.agent_name,
+          s.event_count,
+          s.started_at,
+          s.last_event_at
+        FROM sessions s
+        LEFT JOIN users owner ON owner.id = s.owner_user_id
+        LEFT JOIN users u ON u.id = s.created_by
         LEFT JOIN session_folders sf ON sf.id = s.session_folder_id
         WHERE {" AND ".join(where)}
-        GROUP BY he.session_id, he.owner_user_id, owner.display_name, s.id, s.session_folder_id,
-          sf.name
-        ORDER BY last_event_at DESC, user_name ASC, session_id ASC
+        ORDER BY s.last_event_at DESC NULLS LAST, user_name ASC, s.session_id ASC
         LIMIT {int(limit)} OFFSET {int(offset)}
         """,
         *args,

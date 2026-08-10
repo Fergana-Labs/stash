@@ -72,6 +72,40 @@ async def upsert_session(
     return dict(row)
 
 
+async def record_event_stats(owner_user_id: UUID, session_id: str, event_ids: list[UUID]) -> None:
+    """Fold freshly written events into the session's roll-up.
+
+    Listing sessions reads these three columns instead of aggregating
+    history_events, so they have to be maintained wherever events are
+    written. The size is measured with pg_column_size — the stored, compressed
+    size — because that is what the old read-time aggregate reported.
+
+    `last_event_at` takes the greatest timestamp, never simply the newest
+    write: importing an old transcript must not restamp a session as recent.
+    """
+    if not event_ids:
+        return
+    await get_pool().execute(
+        """
+        UPDATE sessions s
+        SET event_count = s.event_count + d.event_count,
+            size_bytes = s.size_bytes + d.size_bytes,
+            last_event_at = GREATEST(s.last_event_at, d.last_event_at)
+        FROM (
+            SELECT COUNT(*)::INT AS event_count,
+                   COALESCE(SUM(pg_column_size(content)), 0)::BIGINT AS size_bytes,
+                   MAX(created_at) AS last_event_at
+            FROM history_events
+            WHERE id = ANY($3::uuid[])
+        ) d
+        WHERE s.owner_user_id = $1 AND s.session_id = $2
+        """,
+        owner_user_id,
+        session_id,
+        event_ids,
+    )
+
+
 async def get_session(owner_user_id: UUID, session_id: str) -> dict | None:
     pool = get_pool()
     row = await pool.fetchrow(
