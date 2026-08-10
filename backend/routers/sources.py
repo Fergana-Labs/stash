@@ -143,9 +143,19 @@ async def list_sources(
     scope_user_id: UUID = Depends(get_scope),
 ):
     """Sources in the active scope's view: native files + sessions, plus the
-    scope's connected sources."""
+    scope's connected sources.
+
+    Listing doubles as the freshness trigger: any stale source in the scope is
+    claimed and enqueued for sync before the listing is built, so the response
+    already shows it as syncing. Both the integration pages and the VFS read
+    through here — accessing your sources is what keeps them fresh."""
     owner_user_id = scope_user_id
     await _require_member(owner_user_id, current_user["id"])
+    for source_id in await source_service.kick_stale_sources(owner_user_id):
+        celery.send_task(
+            "backend.tasks.sources.sync_source",
+            kwargs={"source_id": source_id},
+        )
     return {"sources": await source_service.list_sources(owner_user_id, current_user["id"])}
 
 

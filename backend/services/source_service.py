@@ -577,6 +577,39 @@ async def mark_sync_started(source_id: UUID) -> None:
     )
 
 
+# How stale a source may get before merely looking at it triggers a sync.
+# Listing sources IS the access path — integration pages and every VFS read go
+# through GET /me/sources — so freshness rides on usage instead of only the
+# 30-minute schedule.
+ACCESS_KICK_STALE_S = 300
+
+
+async def kick_stale_sources(owner_user_id: UUID) -> list[str]:
+    """Claim the scope's stale, sync-enabled sources for an access-triggered
+    sync; the caller enqueues one sync task per returned id.
+
+    The claim applies mark_sync_started's mutation atomically, so concurrent
+    listings enqueue each source at most once. The updated_at guard is the
+    debounce: every sync start/finish/failure touches updated_at, so a source
+    is kicked at most once per window even when it fails every time.
+    'needs_setup' is excluded — it means the user must act, and re-syncing on
+    read cannot fix it."""
+    rows = await get_pool().fetch(
+        "UPDATE user_sources SET sync_status = 'syncing', sync_error = NULL, "
+        "next_sync_at = now() + (sync_interval_s || ' seconds')::interval, updated_at = now() "
+        "WHERE id IN ("
+        "  SELECT id FROM user_sources "
+        "  WHERE owner_user_id = $1 AND sync_enabled "
+        "  AND sync_status NOT IN ('syncing', 'needs_setup') "
+        "  AND updated_at < now() - ($2 || ' seconds')::interval "
+        "  FOR UPDATE SKIP LOCKED"
+        ") RETURNING id",
+        owner_user_id,
+        str(ACCESS_KICK_STALE_S),
+    )
+    return [str(r["id"]) for r in rows]
+
+
 async def mark_sync_done(source_id: UUID, cursor: str | None) -> None:
     await get_pool().execute(
         "UPDATE user_sources SET sync_status = 'idle', sync_cursor = COALESCE($2, sync_cursor), "
