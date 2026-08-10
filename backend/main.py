@@ -46,6 +46,7 @@ from .routers import (
     shares,
     skills,
     sources,
+    sql,
     tables,
     tasks,
     telegram,
@@ -124,6 +125,7 @@ app.include_router(files_tree.canonical_router)
 app.include_router(memory.me_router)
 app.include_router(tables.me_router)
 app.include_router(tables.router)
+app.include_router(sql.router)
 app.include_router(files.me_router)
 app.include_router(files.canonical_router)
 app.include_router(clips.router)

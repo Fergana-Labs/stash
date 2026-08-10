@@ -31,7 +31,6 @@ import {
   buildSessionNodes,
   buildSkillNodes,
   buildSourceNodes,
-  buildTableNodes,
   type VNode,
 } from "./build";
 
@@ -66,7 +65,6 @@ interface CoreData {
   memoryNodes: VNode[];
   sessionNodes: VNode[];
   skillNodes: VNode[];
-  tableNodes: VNode[];
   vitals: MeOverview;
 }
 
@@ -95,14 +93,13 @@ export default function FilesOverview() {
     Promise.all([getSidebar(), listTables(), listSkills(), getMeOverview(), getMemoryFolder()])
       .then(([sidebar, tables, skills, vitals, memoryFolder]) => {
         if (cancelled) return;
-        const { files, memory } = buildFilesNodes(sidebar.files, memoryFolder.id);
+        const { files, memory } = buildFilesNodes(sidebar.files, memoryFolder.id, tables.tables);
         setCore({
           filesNodes: files,
           memoryFolderId: memoryFolder.id,
           memoryNodes: memory,
           sessionNodes: buildSessionNodes(sidebar.sessions.slice(0, RECENT_SESSIONS)),
           skillNodes: buildSkillNodes(skills),
-          tableNodes: buildTableNodes(tables.tables),
           vitals,
         });
       })
@@ -148,12 +145,6 @@ export default function FilesOverview() {
         nodes: core.skillNodes,
         href: "/skills",
         emptyLabel: "no skills yet",
-      },
-      {
-        path: "/tables",
-        icon: <span className="text-chart-5"><TableIcon /></span>,
-        nodes: core.tableNodes,
-        emptyLabel: "no tables yet",
       },
     ];
     if (sources === null) return native;

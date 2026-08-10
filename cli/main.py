@@ -4632,6 +4632,7 @@ Use `stash vfs` when you want to browse Stash like a filesystem without mounting
 Common reads:
 - `stash search "<query>" --json` — full-text search across files, sessions, and connected sources
 - `stash vfs "ls /"` — browse your files, sessions, tables, skills, and connected sources
+- `stash sql "SELECT ..."` — query your tables with SQL (tables live in the folder tree; bare name when unique, '"files/<folder>".<name>' otherwise)
 - `stash vfs "cat '/sessions/_index.jsonl'"` — recent sessions
 - `stash sessions agents` — who's been active
 
@@ -5917,6 +5918,40 @@ def vfs_command(
         raise typer.Exit(1)
     finally:
         client.close()
+
+
+@app.command("sql")
+def sql_command(
+    query: str = typer.Argument(..., help='e.g. "SELECT * FROM jobs WHERE salary > 90000"'),
+    as_json: bool = typer.Option(False, "--json"),
+):
+    """Query your tables with read-only SQL (DuckDB's Postgres-flavored dialect).
+
+    A table is addressable by bare name when unique ("SELECT * FROM jobs") and
+    always by its folder path as the schema ('SELECT * FROM "files/Hiring".jobs').
+    Explore with information_schema.tables / information_schema.columns.
+    """
+    with _client() as c:
+        try:
+            result = c.run_sql(query)
+        except StashError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(result)
+        return
+    names = [col["name"] for col in result["columns"]]
+    rendered = [["" if v is None else str(v) for v in row] for row in result["rows"]]
+    widths = [
+        max(len(name), *(len(row[i]) for row in rendered)) if rendered else len(name)
+        for i, name in enumerate(names)
+    ]
+    print(" | ".join(name.ljust(w) for name, w in zip(names, widths)))
+    print("-+-".join("-" * w for w in widths))
+    for row in rendered:
+        print(" | ".join(value.ljust(w) for value, w in zip(row, widths)))
+    print(f"({result['row_count']} rows)")
+    if result["truncated"]:
+        console.print("[yellow]Result truncated — add a LIMIT or tighter WHERE.[/yellow]")
 
 
 def _read_vfs_raw(path: str) -> bytes:
