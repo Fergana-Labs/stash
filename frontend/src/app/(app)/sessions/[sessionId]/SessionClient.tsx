@@ -26,6 +26,7 @@ import {
   type Skill,
 } from "@/lib/api";
 import EditableTitle from "@/components/content/EditableTitle";
+import { useTabTitle } from "@/lib/workspace-store";
 
 // One transcript page. The viewer loads this many turns at a time and fetches
 // more on scroll, so long sessions don't load every event up front.
@@ -126,6 +127,7 @@ export default function SessionViewerPage({ sessionId }: { sessionId: string }) 
 
   const [agentName, setAgentName] = useState("");
   const [sessionDetail, setSessionDetail] = useState<SessionDetail | null>(null);
+  useTabTitle("session", sessionId, sessionDetail && sessionHeading(sessionDetail, sessionId));
   const [turns, setTurns] = useState<MessageTurn[]>([]);
   const [totalTurns, setTotalTurns] = useState(0);
   const [hasMore, setHasMore] = useState(false);

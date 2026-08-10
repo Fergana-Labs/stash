@@ -220,7 +220,7 @@ export default function FilesExplorer({
     const kind = item.kind === "folder" ? "folder" : item.kind === "skill" ? "skill" : item.kind === "session" ? "session" : item.kind === "table" ? "table" : item.kind === "page" ? "page" : "file";
     // Plain click navigates the current tab; cmd/ctrl-click (or the explicit
     // "Open in new tab" menu item) opens a new one.
-    openTab(kind, item.id, item.name, { newTab: opts?.forceNewTab || opensNewTab() });
+    openTab(kind, item.id, { title: item.name, newTab: opts?.forceNewTab || opensNewTab() });
     const suffix = tabSection ? `?section=${tabSection}` : "";
     router.replace(urlForTab({ kind, refId: item.id }) + suffix);
   }

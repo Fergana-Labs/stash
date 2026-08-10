@@ -31,7 +31,7 @@ function useOpenTab() {
   const router = useRouter();
   const openTab = useWorkspace((s) => s.openTab);
   return (kind: TabKind, refId: string, title: string, opts?: { newTab?: boolean }) => {
-    openTab(kind, refId, title, { newTab: opts?.newTab ?? opensNewTab() });
+    openTab(kind, refId, { title, newTab: opts?.newTab ?? opensNewTab() });
     router.replace(urlForTab({ kind, refId }));
   };
 }

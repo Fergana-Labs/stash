@@ -23,6 +23,7 @@ import { findInSkillContents } from "@/lib/localSkill";
 import { loginPathWithNext } from "@/lib/loginRedirect";
 import { sectionCrumbs } from "@/lib/memory-folder";
 import { refreshSidebar } from "@/lib/skillNavigationCache";
+import { useTabTitle } from "@/lib/workspace-store";
 
 export default function FolderDetailPage({ folderId: folderIdProp }: { folderId?: string }) {
   const params = useParams();
@@ -49,6 +50,7 @@ export default function FolderDetailPage({ folderId: folderIdProp }: { folderId?
     ];
   }, [chain]);
   const [folderName, setFolderName] = useState<string | null>(null);
+  useTabTitle("folder", folderId, folderName);
   const [skillFallback, setSkillFallback] = useState<{
     skillSlug: string;
     skillTitle: string;

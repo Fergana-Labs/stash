@@ -1044,9 +1044,16 @@ async function uploadAny(
   const formData = new FormData();
   formData.append("file", file);
   if (folderId) formData.append("folder_id", folderId);
+  // Hand-rolled fetch (FormData must set its own Content-Type), so the scope
+  // header has to be attached here too — without it the server resolves the
+  // upload to the personal scope and rejects any workspace-scoped folder_id.
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const scopeUserId = getScopeUserId();
+  if (scopeUserId) headers[SCOPE_HEADER] = scopeUserId;
   const resp = await fetch(`${API_BASE}${ME}/files`, {
     method: "POST",
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    headers,
     body: formData,
   });
   if (!resp.ok) {
@@ -1828,9 +1835,15 @@ export async function uploadTranscript(
   formData.append("agent_name", agentName);
   if (cwd) formData.append("cwd", cwd);
 
+  // Hand-rolled fetch (FormData); the scope header must ride along or the
+  // server files the transcript under the personal scope.
+  const transcriptHeaders: Record<string, string> = {};
+  if (token) transcriptHeaders["Authorization"] = `Bearer ${token}`;
+  const transcriptScope = getScopeUserId();
+  if (transcriptScope) transcriptHeaders[SCOPE_HEADER] = transcriptScope;
   const resp = await fetch(`${API_BASE}${ME}/transcripts`, {
     method: "POST",
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    headers: transcriptHeaders,
     body: formData,
   });
   if (!resp.ok) {
@@ -1915,6 +1928,8 @@ export async function getSidebar(): Promise<Sidebar> {
   const token = await getAuthToken();
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (token) headers["Authorization"] = `Bearer ${token}`;
+  const sidebarScope = getScopeUserId();
+  if (sidebarScope) headers[SCOPE_HEADER] = sidebarScope;
   if (_sidebarEtag) headers["If-None-Match"] = _sidebarEtag;
 
   const res = await fetch(`${API_BASE}${ME}/sidebar`, {
@@ -2208,6 +2223,14 @@ export type Agent = {
   telegram_bound: boolean;
   last_run_at: string | null;
   last_run_error: string | null;
+  last_run_outcome:
+    | "started"
+    | "ran"
+    | "failed"
+    | "skipped_credits"
+    | "skipped_no_credential"
+    | "skipped_no_changes"
+    | null;
   curated_through: string | null;
 };
 

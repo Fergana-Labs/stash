@@ -25,14 +25,24 @@ export function SkillComposer({
   const [description, setDescription] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Per-field messages shown on a failed submit. The button stays clickable —
+  // a disabled submit gives no clue why the form is ignoring you.
+  const [fieldErrors, setFieldErrors] = useState<{ name?: string; description?: string }>({});
 
   const converting = convertFolderName !== undefined;
-  const canSubmit =
-    (converting || name.trim().length > 0) && description.trim().length > 0 && !submitting;
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!canSubmit) return;
+    if (submitting) return;
+    const errors: { name?: string; description?: string } = {};
+    if (!converting && name.trim().length === 0) errors.name = "Give the skill a name.";
+    if (description.trim().length === 0)
+      errors.description = "Describe when an agent should use it — this is required.";
+    if (errors.name || errors.description) {
+      setFieldErrors(errors);
+      return;
+    }
+    setFieldErrors({});
     setSubmitting(true);
     setError(null);
     try {
@@ -65,11 +75,17 @@ export function SkillComposer({
             <Input
               autoFocus
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(e) => {
+                setName(e.target.value);
+                setFieldErrors((f) => ({ ...f, name: undefined }));
+              }}
               maxLength={MAX_NAME_LENGTH}
-              placeholder="Release notes drafting"
+              placeholder="e.g. Release notes drafting"
             />
           </label>
+        )}
+        {fieldErrors.name && (
+          <p className="text-[12.5px] text-destructive">{fieldErrors.name}</p>
         )}
         <label className="block space-y-1.5">
           <span className="text-[12.5px] font-medium text-foreground">
@@ -78,12 +94,18 @@ export function SkillComposer({
           <Textarea
             autoFocus={converting}
             value={description}
-            onChange={(e) => setDescription(e.target.value)}
+            onChange={(e) => {
+              setDescription(e.target.value);
+              setFieldErrors((f) => ({ ...f, description: undefined }));
+            }}
             maxLength={MAX_DESCRIPTION_LENGTH}
             rows={2}
-            placeholder="Use when drafting release notes from merged PRs and changelog entries."
+            placeholder="e.g. Use when drafting release notes from merged PRs and changelog entries."
           />
         </label>
+        {fieldErrors.description && (
+          <p className="text-[12.5px] text-destructive">{fieldErrors.description}</p>
+        )}
         <p className="text-[12px] text-muted-foreground">
           Agents read this to decide when to load the skill — name the tasks it covers.
         </p>
@@ -93,7 +115,7 @@ export function SkillComposer({
         <Button type="button" variant="outline" size="sm" onClick={onCancel}>
           Cancel
         </Button>
-        <Button type="submit" size="sm" disabled={!canSubmit}>
+        <Button type="submit" size="sm" disabled={submitting}>
           {submitting ? "Creating…" : converting ? "Convert to skill" : "Create skill"}
         </Button>
       </div>
