@@ -330,12 +330,11 @@ function EmptyStashSetup() {
       <div className="w-full max-w-xl px-8 py-10 text-center">
         <StashIcon className="mx-auto text-[44px]" />
         <h1 className="mt-5 font-display text-[26px] font-semibold tracking-tight text-foreground">
-          Upload your agent transcripts
+          Let&apos;s get you started
         </h1>
         <p className="mx-auto mt-2 max-w-md text-[14px] leading-6 text-dim">
-          Stash is memory for you and your agents, and it starts with your coding sessions.
-          Install the CLI and sign in — after that, sessions from Claude Code, Codex, and
-          friends stream in on their own.
+          Upload your session transcripts to get started. Transcripts are private to you,
+          and you can choose which folders transcripts are uploaded from.
         </p>
         <div className="mx-auto mt-6 max-w-md text-left">
           <CopyableCommandBlock
