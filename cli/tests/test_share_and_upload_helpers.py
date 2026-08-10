@@ -1,6 +1,9 @@
 from pathlib import Path
 from uuid import uuid4
 
+import pytest
+import typer
+
 from backend.config import settings
 from backend.routers.files import _file_app_url
 from cli import main
@@ -11,6 +14,60 @@ def test_upload_text_file_detection() -> None:
     assert _is_upload_text_file(Path("notes.md"))
     assert _is_upload_text_file(Path("script.py"))
     assert not _is_upload_text_file(Path("diagram.png"))
+
+
+def _overview_client(sessions):
+    class FakeClient:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def get_overview(self):
+            return {"sessions": sessions}
+
+    return FakeClient
+
+
+def test_resolve_session_handle_passes_ids_through(monkeypatch) -> None:
+    # A handle with a local transcript is a session id — no network needed.
+    monkeypatch.setattr(main, "_find_session_jsonl", lambda sid: Path("/tmp/sess.jsonl"))
+
+    assert main._resolve_session_handle("sess-1") == "sess-1"
+
+
+def test_resolve_session_handle_matches_titles_in_both_spellings(monkeypatch) -> None:
+    monkeypatch.setattr(main, "_find_session_jsonl", lambda sid: None)
+    monkeypatch.setattr(
+        main,
+        "_client",
+        _overview_client([{"session_id": "sess-1", "title": 'Ship the "fast" path'}]),
+    )
+
+    assert main._resolve_session_handle('Ship the "fast" path') == "sess-1"
+    # `stash search` and `stash vfs ls` print the VFS spelling (quotes
+    # stripped), so that spelling must resolve too.
+    assert main._resolve_session_handle("Ship the fast path") == "sess-1"
+
+
+def test_resolve_session_handle_fails_loudly(monkeypatch) -> None:
+    monkeypatch.setattr(main, "_find_session_jsonl", lambda sid: None)
+    monkeypatch.setattr(
+        main,
+        "_client",
+        _overview_client(
+            [
+                {"session_id": "sess-1", "title": "Same title"},
+                {"session_id": "sess-2", "title": "Same title"},
+            ]
+        ),
+    )
+
+    with pytest.raises(typer.Exit):
+        main._resolve_session_handle("Same title")
+    with pytest.raises(typer.Exit):
+        main._resolve_session_handle("matches-nothing")
 
 
 def test_parse_file_ref_accepts_id_and_embed_link() -> None:

@@ -1114,6 +1114,40 @@ def _current_session_id() -> str | None:
     return None
 
 
+def _resolve_session_handle(handle: str) -> str:
+    """Resolve a session handle — a raw session id or a session title — to the
+    session id. Ids are recognized by their local transcript; anything else is
+    matched against titles, in both the stored spelling and the VFS's safe_name
+    spelling (which is what `stash search` and `stash vfs ls` print)."""
+    if _find_session_jsonl(handle):
+        return handle
+
+    from stashvfs import safe_name
+
+    with _client() as c:
+        try:
+            sessions = c.get_overview().get("sessions", [])
+        except StashError as e:
+            _err(e)
+    matches = sorted(
+        {
+            str(s["session_id"])
+            for s in sessions
+            if s.get("title") and handle in (s["title"], safe_name(s["title"]))
+        }
+    )
+    if not matches:
+        console.print(f"[red]No session with id or title '{handle}'.[/red]")
+        raise typer.Exit(1)
+    if len(matches) > 1:
+        console.print(
+            f"[red]Title '{handle}' matches {len(matches)} sessions: "
+            f"{', '.join(matches)}. Pass a session id.[/red]"
+        )
+        raise typer.Exit(1)
+    return matches[0]
+
+
 def _extract_session_bookends(raw_jsonl: str) -> tuple[str, str, str]:
     """Extract (title, first_user_prompt, last_assistant_message) from a transcript.
 
@@ -1171,7 +1205,7 @@ def _extract_session_bookends(raw_jsonl: str) -> tuple[str, str, str]:
 def share_session(
     title: str = typer.Option("", "--title", "-t", help="Title for the shared Skill."),
     session_id: str = typer.Option(
-        "", "--session", "-s", help="Session ID. Auto-detected if omitted."
+        "", "--session", "-s", help="Session ID or title. Auto-detected if omitted."
     ),
     files: list[str] = typer.Option([], "--file", "-f", help="Files to attach (repeatable)."),
 ):
@@ -1184,10 +1218,13 @@ def share_session(
     telemetry.record("share")
 
     # Resolve session ID
-    sid = session_id or _current_session_id()
-    if not sid:
-        console.print("[red]Could not detect session. Pass --session <id> explicitly.[/red]")
+    handle = session_id or _current_session_id()
+    if not handle:
+        console.print(
+            "[red]Could not detect session. Pass --session <id or title> explicitly.[/red]"
+        )
         raise typer.Exit(1)
+    sid = _resolve_session_handle(handle)
 
     # Find and read the JSONL transcript
     jsonl_path = _find_session_jsonl(sid)
