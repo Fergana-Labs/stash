@@ -297,7 +297,7 @@ function ActiveSessions() {
                 </div>
                 <div className="text-[11px] text-muted-foreground font-mono">
                   created {formatDate(k.created_at)}
-                  {k.last_used_at ? ` · last used ${formatRelative(k.last_used_at)}` : " · never used"}
+                  {k.last_used_at ? `, last used ${formatRelative(k.last_used_at)}` : ", never used"}
                 </div>
               </div>
               <button

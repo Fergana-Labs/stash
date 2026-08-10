@@ -361,60 +361,51 @@ async def test_activity_timeline_normalizes_claude_code_agent_names(client: Asyn
 
 
 @pytest.mark.asyncio
-async def test_user_activity_is_scoped_to_accessible_scopes(client: AsyncClient):
+async def test_file_activity_is_scoped_and_excludes_memory(client: AsyncClient):
     owner_key = await _register(client, "activity_owner")
     other_key = await _register(client, "activity_other")
-    owner_scope = await _scope(client, owner_key)
-    other_scope = await _scope(client, other_key)
 
-    await _event(client, owner_key, owner_scope["id"], "visible-session")
-    await _event(client, other_key, other_scope["id"], "hidden-session")
-
-    resp = await client.get(
-        "/api/v1/me/activity",
-        params={"limit": 200},
+    page = await client.post(
+        "/api/v1/me/pages/new",
+        json={"name": "Visible page", "content": "hello"},
         headers=_auth(owner_key),
     )
+    assert page.status_code == 201
+    await client.post(
+        "/api/v1/me/pages/new",
+        json={"name": "Hidden page", "content": "other scope"},
+        headers=_auth(other_key),
+    )
+    # A page in the Memory subtree is curation output, not file activity.
+    mem = (await client.get("/api/v1/me/memory-folder", headers=_auth(owner_key))).json()
+    await client.post(
+        "/api/v1/me/pages/new",
+        json={"name": "Wiki page", "content": "curated", "folder_id": mem["id"]},
+        headers=_auth(owner_key),
+    )
+
+    resp = await client.get(
+        "/api/v1/me/file-activity", params={"limit": 200}, headers=_auth(owner_key)
+    )
     assert resp.status_code == 200
-
-    events = resp.json()["events"]
-    visible = [
-        event
-        for event in events
-        if event["kind"] == "session.uploaded" and event["target_id"] == "visible-session"
-    ]
-    hidden = [
-        event
-        for event in events
-        if event["kind"] == "session.uploaded" and event["target_id"] == "hidden-session"
-    ]
-
-    assert len(visible) == 1
-    assert visible[0]["owner_user_id"] == owner_scope["id"]
-    assert visible[0]["owner_name"] == owner_scope["name"]
-    assert "skill_id" not in visible[0]
-    assert "stash_name" not in visible[0]
-    assert visible[0]["target_label"] == "tester: visible-session"
-    assert hidden == []
+    labels = [e["target_label"] for e in resp.json()["events"]]
+    assert "Visible page" in labels
+    assert "Hidden page" not in labels
+    assert "Wiki page" not in labels
 
 
 @pytest.mark.asyncio
-async def test_user_activity_paginates_with_before_cursor(client: AsyncClient):
+async def test_file_activity_paginates_with_before_cursor(client: AsyncClient):
     api_key = await _register(client, "activity_paged")
-    scope = await _scope(client, api_key)
-
-    for hour in (1, 2, 3):
-        await _event(
-            client,
-            api_key,
-            scope["id"],
-            f"paged-session-{hour}",
-            created_at=f"2026-01-02T0{hour}:00:00Z",
+    for n in (1, 2, 3):
+        r = await client.post(
+            "/api/v1/me/pages/new",
+            json={"name": f"paged-{n}", "content": "x"},
+            headers=_auth(api_key),
         )
+        assert r.status_code == 201
 
     # Page through one event at a time using the last event's ts as the cursor.
-    # The feed may also contain page/file events, so only the session events
-    # have a known count and order.
     seen: list[tuple[str, str, str]] = []
     before: str | None = None
     has_more = True
@@ -422,15 +413,14 @@ async def test_user_activity_paginates_with_before_cursor(client: AsyncClient):
         params: dict = {"limit": 1}
         if before:
             params["before"] = before
-        resp = await client.get("/api/v1/me/activity", params=params, headers=_auth(api_key))
+        resp = await client.get("/api/v1/me/file-activity", params=params, headers=_auth(api_key))
         assert resp.status_code == 200
         body = resp.json()
         assert len(body["events"]) == 1
-        seen.extend((event["kind"], event["target_id"], event["ts"]) for event in body["events"])
+        seen.extend((e["kind"], e["target_id"], e["ts"]) for e in body["events"])
         before = body["events"][-1]["ts"]
         has_more = body["has_more"]
         assert len(seen) <= 10, "cursor failed to advance"
 
     assert len(seen) == len(set(seen)), "an event repeated across pages"
-    session_ids = [target for kind, target, _ in seen if kind == "session.uploaded"]
-    assert session_ids == ["paged-session-3", "paged-session-2", "paged-session-1"]
+    assert len(seen) == 3

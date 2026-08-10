@@ -535,7 +535,7 @@ async def test_article_hydrates_full_body_with_title_name(client, pool, fake_syn
     assert "For years, tech went one way." in row["content"]
     assert "# The shift" in row["content"]  # heading blocks render as markdown
     assert "- copy the crowd" in row["content"]
-    assert "— @me · 2026-07-18" in row["content"]
+    assert "— @me, 2026-07-18" in row["content"]
     # The cover image is archived like tweet media.
     assert row["media"] == [{"storage_key": "store/x-203-0.jpg", "content_type": "image/jpeg"}]
 

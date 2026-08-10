@@ -10,10 +10,12 @@ describe("rendersRouteContent", () => {
   it("renders management pages beside the explorer", () => {
     expect(rendersRouteContent("/tools", null, null)).toBe(true);
     expect(rendersRouteContent("/sessions", null, null)).toBe(true);
-    expect(rendersRouteContent("/memory", null, null)).toBe(true);
-    expect(rendersRouteContent("/memory/wiki", null, null)).toBe(true);
     expect(rendersRouteContent("/skills", null, null)).toBe(true);
     expect(rendersRouteContent("/files", null, null)).toBe(true);
+  });
+
+  it("home is a full-page route, not a management page", () => {
+    expect(rendersRouteContent("/", null, null)).toBe(false);
   });
 
   it("workbench sections do not render route content", () => {

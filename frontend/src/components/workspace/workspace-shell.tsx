@@ -13,7 +13,7 @@ import Workbench from "./workbench";
 const WIDTH_KEY = "moltchat_explorer_width";
 const MIN_W = 220;
 const MAX_W = 600;
-const EXPLORER_SECTIONS: ExplorerSection[] = ["files", "sessions", "skills", "agents", "memory", "tools", "computer"];
+const EXPLORER_SECTIONS: ExplorerSection[] = ["files", "sessions", "skills", "agents", "tools", "computer"];
 
 /** Resizable explorer panel — drag the right edge to set width (persisted). */
 function ExplorerPanel({ section }: { section: ExplorerSection }) {
@@ -59,15 +59,14 @@ function ExplorerPanel({ section }: { section: ExplorerSection }) {
 }
 
 /** Which workspace section a path belongs to (null = full-page route: Home,
- *  Index, Discover, Settings, published skill pages, …). Most sections render
- *  the tab workbench; `/sessions` keeps its full management page beside the
- *  Sessions explorer. */
+ *  the wiki, Discover, Settings, published skill pages, …). Most sections
+ *  render the tab workbench; `/sessions` keeps its full management page
+ *  beside the Sessions explorer. */
 function sectionForPath(pathname: string): ExplorerSection | null {
   if (pathname === "/files" || /^\/(p|f|folders|tables)\//.test(pathname)) return "files";
   if (pathname === "/sessions" || pathname.startsWith("/sessions/") || pathname.startsWith("/session-folders")) return "sessions";
   if (pathname === "/skills" || pathname.startsWith("/skills/folder")) return "skills";
   if (pathname === "/agents") return "agents";
-  if (pathname === "/memory" || pathname.startsWith("/memory/")) return "memory";
   if (pathname === "/tools" || pathname.startsWith("/integrations")) return "tools";
   return null;
 }
@@ -85,9 +84,6 @@ export function rendersRouteContent(
   // item navigates to its own route, which returns to the workbench.
   if (pathname === "/files") return true;
   if (pathname === "/sessions") return workspaceParam !== "1";
-  // Memory routes (brain dashboard, wiki file system) render as pages
-  // beside the explorer; opening an item switches to the workbench.
-  if (pathname.startsWith("/memory")) return true;
   // The Skills home is the launcher — pick a skill, run it. Only the bare
   // path: /skills/folder/<id> is a skill you opened, which belongs in a tab.
   if (pathname === "/skills") return true;

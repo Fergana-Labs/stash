@@ -373,14 +373,14 @@ export default function WikiGraph({ data }: { data: WikiGraphData }) {
           const { wx, wy } = toWorld(e.clientX - rect.left, e.clientY - rect.top);
           const i = findNode(wx, wy);
           const sim = simRef.current;
-          if (i >= 0 && sim) router.push(`/p/${sim.nodes[i].id}?section=memory`);
+          if (i >= 0 && sim) router.push(`/p/${sim.nodes[i].id}`);
         }}
         onDoubleClick={() => {
           userAdjustedRef.current = false;
         }}
       />
       <div className="absolute bottom-2 left-2 rounded-md border border-border bg-base/85 px-2.5 py-1.5 font-mono text-[10.5px] text-muted-foreground backdrop-blur">
-        ⌘ scroll to zoom · drag to pan · double-click to fit
+        ⌘ scroll to zoom, drag to pan, double-click to fit
       </div>
     </div>
   );

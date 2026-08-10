@@ -341,6 +341,15 @@ async def test_changes_endpoint(client: AsyncClient):
     assert "counts" in body and "history" in body and "pages" in body
 
 
+def test_curator_prompt_demands_a_curator_log():
+    """The run's final message is the home page's log entry — the prompt must
+    demand it in log form, with the quiet-night escape hatch so empty deltas
+    never get padded into fake activity."""
+    prompt = prompts.render_curator_prompt("folder-123", "2026-08-01T00:00:00")
+    assert "Curator log" in prompt
+    assert "A quiet night is reported as quiet" in prompt
+
+
 def test_curator_prompt_embeds_folder_and_window():
     boot = prompts.render_curator_prompt("folder-123", None)
     assert "folder-123" in boot and "bootstrap" in boot.lower()

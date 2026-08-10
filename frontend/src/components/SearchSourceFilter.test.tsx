@@ -34,7 +34,7 @@ describe("SearchSourceFilter", () => {
 
   it("shows the selected count when narrowed", () => {
     render(<Harness initialDeselected={["gmail"]} />);
-    expect(screen.getByRole("button", { name: "Sources" })).toHaveTextContent("Sources · 4/5");
+    expect(screen.getByRole("button", { name: "Sources" })).toHaveTextContent("Sources: 4/5");
   });
 
   it("renders every token checked by default and keeps the menu open on toggle", () => {

@@ -298,13 +298,11 @@ export default function SessionViewerPage({ sessionId }: { sessionId: string }) 
             {(sessionDate || totalTurns > 0 || agentName) && (
               <div className="mt-1.5 flex flex-wrap items-center gap-2.5 text-[12px] text-muted-foreground">
                 {sessionDate && <span>{sessionDate}</span>}
-                {sessionDate && totalTurns > 0 && <span>·</span>}
                 {totalTurns > 0 && (
                   <span>
                     {totalTurns} message{totalTurns === 1 ? "" : "s"}
                   </span>
                 )}
-                {agentName && (sessionDate || totalTurns > 0) && <span>·</span>}
                 {agentName && <span>{agentName}</span>}
               </div>
             )}
@@ -549,7 +547,7 @@ function ticketMetadata(ticket: NonNullable<SessionDetail["linear_tickets"][numb
     ticket.ticket_project_name,
   ]
     .filter(Boolean)
-    .join(" · ");
+    .join(", ");
 }
 
 function LinearTicketPill({

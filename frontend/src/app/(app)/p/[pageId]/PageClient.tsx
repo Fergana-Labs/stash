@@ -23,7 +23,7 @@ import HtmlPageView, {
 import ExportDeckButton from "@/components/export/ExportDeckButton";
 import ResourceShareButton from "@/components/share/ResourceShareButton";
 import FileViewerHeader from "@/components/content/FileViewerHeader";
-import { sectionCrumbs, useMemoryFolderId } from "@/lib/memory-folder";
+import { sectionCrumbs } from "@/lib/memory-folder";
 import MarkdownEditor, {
   extractCommentIdsFromMarkdown,
   type SaveStatus,
@@ -217,11 +217,7 @@ export default function SkillPageView({ pageId }: { pageId: string }) {
     });
   }, [scopeId, pageId, user, skillSlug]);
 
-  const memoryFolderId = useMemoryFolderId();
-  const ancestorCrumbs = useMemo(
-    () => sectionCrumbs(folderChain, memoryFolderId),
-    [folderChain, memoryFolderId],
-  );
+  const ancestorCrumbs = useMemo(() => sectionCrumbs(folderChain), [folderChain]);
 
   useBreadcrumbs(
     [
@@ -1058,7 +1054,7 @@ function SkillFallbackPageView({
           {page.name || "(untitled)"}
         </h1>
         <div className="mt-1 text-[11.5px] uppercase tracking-wide text-muted-foreground">
-          page · read-only via Skill
+          page, read-only via Skill
         </div>
         <div className="mt-6">
           <PageBody page={page} />

@@ -485,7 +485,7 @@ async def _hydrate_article(
 
     byline = f"— @{author}"
     if posted:
-        byline += f" · {posted.date().isoformat()}"
+        byline += f", {posted.date().isoformat()}"
     content = "\n".join(
         [
             article["title"],
@@ -658,7 +658,7 @@ def _render(tweet: dict, thread: list[dict], parent: dict | None) -> str:
     parts: list[str] = [tweet["text"] or "", ""]
     byline = f"— @{tweet['author']}"
     if tweet["created_at"]:
-        byline += f" · {tweet['created_at'].date().isoformat()}"
+        byline += f", {tweet['created_at'].date().isoformat()}"
     parts.append(byline)
     if parent is not None:
         parts.append(f"In reply to @{parent['author']}: {parent['text']}")

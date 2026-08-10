@@ -154,7 +154,7 @@ function ServerRow({ server, onRemoved }: { server: McpServer; onRemoved: () => 
         <div className="text-sm font-medium">{server.name}</div>
         <div className="truncate text-xs text-muted-foreground">
           {server.transport === "stdio" ? server.command : server.url}
-          {headerKeys.length > 0 && ` · headers: ${headerKeys.join(", ")}`}
+          {headerKeys.length > 0 && `, headers: ${headerKeys.join(", ")}`}
         </div>
       </div>
       <Button variant="ghost" size="sm" onClick={() => void remove()} disabled={removing}>
