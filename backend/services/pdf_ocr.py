@@ -98,15 +98,25 @@ _ANNOTATIONS_PROMPT = (
 def _page_annotations(page: pypdf.PageObject) -> list[str]:
     """Text content of a page's reader annotations. Popup annotations mirror
     their parent markup annotation's text, so they are skipped to avoid
-    emitting every note twice."""
+    emitting every note twice.
+
+    Wild PDFs routinely carry broken /Annots — a null array, null entries,
+    dangling references. Those pages extracted fine before annotations were
+    read at all, so a page whose annotations can't be parsed contributes none
+    rather than failing the whole document (same stance as _text_layer_tail)."""
     notes = []
-    for ref in page.get("/Annots") or []:
-        annot = ref.get_object()
-        if annot.get("/Subtype") == "/Popup":
-            continue
-        content = str(annot.get("/Contents") or "").strip()
-        if content:
-            notes.append(content)
+    try:
+        for ref in page.get("/Annots") or []:
+            annot = ref.get_object()
+            if not isinstance(annot, pypdf.generic.DictionaryObject):
+                continue
+            if annot.get("/Subtype") == "/Popup":
+                continue
+            content = str(annot.get("/Contents") or "").strip()
+            if content:
+                notes.append(content)
+    except Exception:
+        return []
     return notes
 
 

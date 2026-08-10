@@ -231,6 +231,40 @@ def test_annotations_survive_chunk_slicing():
     assert "the 4707 row is deprecated" in pdf_ocr._annotations_block(chunk)
 
 
+def test_broken_annotations_never_fail_a_document_that_read_fine_before():
+    """Wild PDFs carry broken /Annots — null arrays, null entries, dangling
+    refs. Those documents extracted fine before annotations were read at all;
+    reading the annotation layer must not turn them into extraction failures."""
+    from pypdf.generic import ArrayObject, NameObject, NullObject
+
+    for annots in (NullObject(), ArrayObject([NullObject()])):
+        writer = pypdf.PdfWriter()
+        writer.add_blank_page(*PAGE_SIZE)
+        writer.pages[0][NameObject("/Annots")] = annots
+        buf = io.BytesIO()
+        writer.write(buf)
+
+        assert pdf_ocr._annotations_block(buf.getvalue()) == ""
+
+
+def test_a_broken_page_does_not_eat_other_pages_notes():
+    """Per-page isolation: one malformed page loses only its own annotations,
+    not the expert's notes elsewhere in the document."""
+    from pypdf.generic import ArrayObject, NameObject, NullObject
+
+    writer = pypdf.PdfWriter()
+    reader = pypdf.PdfReader(io.BytesIO(_annotated_pdf()))
+    writer.add_blank_page(*PAGE_SIZE)
+    writer.pages[0][NameObject("/Annots")] = ArrayObject([NullObject()])
+    writer.append(reader)
+    buf = io.BytesIO()
+    writer.write(buf)
+
+    block = pdf_ocr._annotations_block(buf.getvalue())
+
+    assert "Page 2: the 4707 row is deprecated" in block
+
+
 def test_annotations_past_the_vision_cap_land_in_the_tail():
     """The vision cap bounds API spend; an expert note on page 120 of a giant
     catalog must still reach the stored text."""
