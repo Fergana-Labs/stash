@@ -482,6 +482,22 @@ class RowListResponse(BaseModel):
     has_more: bool
 
 
+class SqlQueryRequest(BaseModel):
+    query: str = Field(..., min_length=1, max_length=100_000)
+
+
+class SqlColumn(BaseModel):
+    name: str
+    type: str
+
+
+class SqlQueryResponse(BaseModel):
+    columns: list[SqlColumn]
+    rows: list[list]
+    row_count: int
+    truncated: bool
+
+
 # --- History ---
 
 

@@ -70,6 +70,7 @@ function folderAnnotation(folder: TreeFolder): string | undefined {
 export function buildFilesNodes(
   tree: FilesTree,
   memoryFolderId: string,
+  tables: Table[],
 ): { files: VNode[]; memory: VNode[] } {
   const childFolders = new Map<string | null, TreeFolder[]>();
   for (const folder of tree.folders) {
@@ -108,7 +109,18 @@ export function buildFilesNodes(
         href: `/f/${f.id}`,
         annotation: humanSize(f.size_bytes),
       }));
-    return [...folders, ...pages, ...files];
+    // Tables live in the folder tree like anything else — same as the VFS.
+    const tableNodes = tables
+      .filter((t) => t.folder_id === folderId)
+      .sort(byName)
+      .map<VNode>((t) => ({
+        key: t.id,
+        kind: "table",
+        name: t.name,
+        href: `/tables/${t.id}`,
+        annotation: `${t.row_count ?? 0} row${t.row_count === 1 ? "" : "s"}`,
+      }));
+    return [...folders, ...pages, ...files, ...tableNodes];
   }
 
   return { files: childrenOf(null), memory: childrenOf(memoryFolderId) };
@@ -136,16 +148,6 @@ export function buildSkillNodes(skills: Skill[]): VNode[] {
     ]
       .filter(Boolean)
       .join(", "),
-  }));
-}
-
-export function buildTableNodes(tables: Table[]): VNode[] {
-  return [...tables].sort(byName).map((t) => ({
-    key: t.id,
-    kind: "table",
-    name: t.name,
-    href: `/tables/${t.id}`,
-    annotation: `${t.row_count ?? 0} row${t.row_count === 1 ? "" : "s"}`,
   }));
 }
 

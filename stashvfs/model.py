@@ -115,7 +115,11 @@ class StashVfsModel:
                     "",
                     "- `files` exposes folders, pages, and uploaded files.",
                     "- `memory` is the agent-curated Memory wiki (stored separately from `files`).",
-                    "- Sessions, skills, and tables are read-only projections.",
+                    "- Sessions and skills are read-only projections.",
+                    "- Tables live in the folder tree like any other item: a "
+                    "table is a `<name>/` directory holding `schema.json`, "
+                    "`rows.json`, and `rows.jsonl`. Query tables with SQL via "
+                    "`stash sql`.",
                     "- `sources` exposes connected integrations (Gmail, "
                     "GitHub, Slack, Jira, …) as read-only documents.",
                     *computer_lines,
@@ -235,10 +239,9 @@ class StashVfsModel:
         overview = self.client.get_overview()
         memory_folder_id = str(self.client.get_memory_folder()["id"])
 
-        self._add_files_tree(overview.get("files", {}), memory_folder_id)
+        self._add_files_tree(overview.get("files", {}), memory_folder_id, self.client.list_tables())
         self._add_skills(overview.get("skills", []))
         self._add_sessions(overview.get("sessions", []))
-        self._add_tables()
         self._add_sources()
         # /computer appears only for users whose cloud computer actually
         # exists — the overview flag is a DB lookup, so deciding this never
@@ -276,7 +279,7 @@ class StashVfsModel:
                     size_hint=entry.get("size"),
                 )
 
-    def _add_files_tree(self, tree: dict, memory_folder_id: str) -> None:
+    def _add_files_tree(self, tree: dict, memory_folder_id: str, tables: list[dict]) -> None:
         root_path = "/files"
         self._add_dir(root_path)
         # The Memory wiki is stored as a reserved folder in the files tree but
@@ -289,7 +292,7 @@ class StashVfsModel:
         # entries — the overview omits them. The page's markdown links them by
         # download URL and `stash files download` fetches the bytes.
         files = tree.get("files", [])
-        ambiguous = _files_ambiguity(folders.values(), pages, files)
+        ambiguous = _files_ambiguity(folders.values(), pages, files, tables)
         folder_paths: dict[str, str] = {}
 
         def siblings(parent_id) -> set[str]:
@@ -360,6 +363,46 @@ class StashVfsModel:
                 app_url=f"/f/{file_id}",
             )
 
+        # Tables live in the same folder tree as pages and files — a table
+        # about jobs belongs in the jobs folder. Each projects as a directory
+        # holding its schema and row dumps; `stash sql` queries them directly.
+        for table in tables:
+            table_id = str(table["id"])
+            parent_id = table.get("folder_id")
+            parent_path = folder_path(str(parent_id)) if parent_id else root_path
+            created_at = table.get("created_at")
+            updated_at = table.get("updated_at")
+            name = _dir_display_name(table.get("name") or "table", table_id, siblings(parent_id))
+            table_path = self._add_dir_child(
+                parent_path,
+                name,
+                created_at=created_at,
+                updated_at=updated_at,
+            )
+            self._add_file(
+                f"{table_path}/schema.json",
+                loader=lambda tid=table_id: _json_bytes(self.client.get_table(tid)),
+                created_at=created_at,
+                updated_at=updated_at,
+                app_url=f"/tables/{table_id}",
+            )
+            self._add_file(
+                f"{table_path}/rows.json",
+                loader=lambda tid=table_id: _json_bytes(self._load_all_table_rows(tid)),
+                created_at=created_at,
+                updated_at=updated_at,
+                app_url=f"/tables/{table_id}",
+            )
+            self._add_file(
+                f"{table_path}/rows.jsonl",
+                loader=lambda tid=table_id: _jsonl_bytes(
+                    self._load_all_table_rows(tid).get("rows", [])
+                ),
+                created_at=created_at,
+                updated_at=updated_at,
+                app_url=f"/tables/{table_id}",
+            )
+
     def _add_skills(self, skills: list[dict]) -> None:
         skills_path = "/skills"
         self._add_dir(skills_path)
@@ -415,49 +458,6 @@ class StashVfsModel:
                 ),
                 updated_at=updated_at,
                 app_url=f"/sessions/{session_id}",
-            )
-
-    def _add_tables(self) -> None:
-        tables_path = "/tables"
-        self._add_dir(tables_path)
-        tables = self.client.list_tables()
-        self._add_jsonl_file(f"{tables_path}/_index.jsonl", tables)
-        ambiguous = _ambiguous_basenames(
-            [_safe_name(table.get("name") or "table") for table in tables]
-        )
-        for table in tables:
-            table_id = str(table["id"])
-            created_at = table.get("created_at")
-            updated_at = table.get("updated_at")
-            name = _dir_display_name(table.get("name") or "table", table_id, ambiguous)
-            table_path = self._add_dir_child(
-                tables_path,
-                name,
-                created_at=created_at,
-                updated_at=updated_at,
-            )
-            self._add_file(
-                f"{table_path}/schema.json",
-                loader=lambda tid=table_id: _json_bytes(self.client.get_table(tid)),
-                created_at=created_at,
-                updated_at=updated_at,
-                app_url=f"/tables/{table_id}",
-            )
-            self._add_file(
-                f"{table_path}/rows.json",
-                loader=lambda tid=table_id: _json_bytes(self._load_all_table_rows(tid)),
-                created_at=created_at,
-                updated_at=updated_at,
-                app_url=f"/tables/{table_id}",
-            )
-            self._add_file(
-                f"{table_path}/rows.jsonl",
-                loader=lambda tid=table_id: _jsonl_bytes(
-                    self._load_all_table_rows(tid).get("rows", [])
-                ),
-                created_at=created_at,
-                updated_at=updated_at,
-                app_url=f"/tables/{table_id}",
             )
 
     def _add_sources(self) -> None:
@@ -826,10 +826,12 @@ def _page_extension(page: dict) -> str:
     return ".html" if (page.get("content_type") or "markdown") == "html" else ".md"
 
 
-def _files_ambiguity(folders, pages: list[dict], files: list[dict]) -> dict[str, set[str]]:
+def _files_ambiguity(
+    folders, pages: list[dict], files: list[dict], tables: list[dict]
+) -> dict[str, set[str]]:
     """Map each parent folder (keyed by id, "" for root) to the set of colliding
-    display names among its folders, pages, and uploaded files combined — paths
-    in one directory must be unique across all three kinds."""
+    display names among its folders, pages, uploaded files, and tables combined —
+    paths in one directory must be unique across all four kinds."""
     by_parent: dict[str, list[str]] = {}
 
     def record(parent_id, base: str) -> None:
@@ -843,6 +845,8 @@ def _files_ambiguity(folders, pages: list[dict], files: list[dict]) -> dict[str,
     for file in files:
         stem, extension = _split_filename(file.get("name") or "file", "")
         record(file.get("folder_id"), f"{stem}{extension}")
+    for table in tables:
+        record(table.get("folder_id"), _safe_name(table.get("name") or "table"))
     return {parent: _ambiguous_basenames(names) for parent, names in by_parent.items()}
 
 

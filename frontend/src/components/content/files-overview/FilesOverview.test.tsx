@@ -96,7 +96,7 @@ describe("FilesOverview", () => {
   it("rests as bare ls output: every mount name, no tree", async () => {
     render(<FilesOverview />);
     await waitFor(() => expect(screen.getByText("/sources")).toBeTruthy());
-    for (const path of ["/files", "/sessions", "/memory", "/skills", "/tables", "/sources"]) {
+    for (const path of ["/files", "/sessions", "/memory", "/skills", "/sources"]) {
       expect(screen.getByText(path)).toBeTruthy();
     }
     expect(screen.queryByText("Research")).toBeNull();

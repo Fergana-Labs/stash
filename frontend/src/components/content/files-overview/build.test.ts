@@ -4,8 +4,18 @@
 import { describe, expect, it } from "vitest";
 import { buildFilesNodes, buildSourceNodes } from "./build";
 import type { FilesTree, SourceTreeEntry } from "@/lib/api";
+import type { Table } from "@/lib/types";
 
 const MEMORY_ID = "mem-folder";
+
+function tableIn(folderId: string | null, id: string, name: string): Table {
+  return {
+    id, name, folder_id: folderId, owner_user_id: "u1", description: "",
+    columns: [], views: [], created_by: "u1", updated_by: null,
+    created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z",
+    row_count: 3,
+  };
+}
 
 const tree: FilesTree = {
   folders: [
@@ -28,11 +38,16 @@ const tree: FilesTree = {
 
 describe("buildFilesNodes", () => {
   it("nests by parent id and splits Memory into its own mount", () => {
-    const { files, memory } = buildFilesNodes(tree, MEMORY_ID);
+    const { files, memory } = buildFilesNodes(tree, MEMORY_ID, [tableIn("a", "t1", "Benchmarks")]);
 
     expect(files.map((n) => n.name)).toEqual(["Research", "Root page"]);
     const research = files[0];
-    expect(research.children!.map((n) => n.name)).toEqual(["Papers", "Notes"]);
+    expect(research.children!.map((n) => n.name)).toEqual(["Papers", "Notes", "Benchmarks"]);
+    expect(research.children![2]).toMatchObject({
+      kind: "table",
+      href: "/tables/t1",
+      annotation: "3 rows",
+    });
     expect(research.children![0].children![0]).toMatchObject({
       name: "spec.pdf",
       href: "/f/f1",

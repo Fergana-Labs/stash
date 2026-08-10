@@ -177,7 +177,15 @@ class FakeClient:
 
     def list_tables(self):
         self.internal_at_call["list_tables"] = self.internal
-        return [{"id": "table-12345678", "name": "Ideas", "columns": [], "row_count": 1}]
+        return [
+            {
+                "id": "table-12345678",
+                "name": "Ideas",
+                "folder_id": "folder-12345678",
+                "columns": [],
+                "row_count": 1,
+            }
+        ]
 
     def get_table(self, table_id):
         assert table_id == "table-12345678"
@@ -237,12 +245,13 @@ def test_vfs_exposes_user_sections():
         "memory",
         "sessions",
         "skills",
-        "tables",
         "sources",
     }
     assert model.read_file("/skills/Demo Skill.md") == b"# Demo Stash\n"
     assert b"hello" in model.read_file("/sessions/Fix login/transcript.md")
-    assert b'"Name": "Mount"' in model.read_file("/tables/Ideas/rows.json")
+    # Tables are not a segregated section — they live in their folder like
+    # everything else.
+    assert b'"Name": "Mount"' in model.read_file("/files/Notes/Ideas/rows.json")
 
     # Connected sources are mounted read-only under their provider folder;
     # native sources are skipped (files/sessions already appear above). A sole
@@ -413,8 +422,9 @@ def test_read_raw_of_a_directory_raises():
 
 
 class DuplicateNameClient(FakeClient):
-    """Two tables share a name — the backend allows it. Only the colliding pair
-    should carry an id suffix; the uniquely-named table stays clean."""
+    """Two root tables share a name — the backend allows that across folders.
+    Only the colliding pair should carry an id suffix; the uniquely-named
+    table stays clean."""
 
     def list_tables(self):
         return [
@@ -428,7 +438,7 @@ def test_vfs_suffixes_only_colliding_names():
     model = StashVfsModel(DuplicateNameClient(), include_computer=True)
     model.refresh()
 
-    entries = set(model.list_dir("/tables"))
+    entries = set(model.list_dir("/files"))
 
     # The unique name is clean; both members of the collision are suffixed with
     # their own id (not just the second one), so neither path depends on order.
