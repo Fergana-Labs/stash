@@ -474,7 +474,27 @@ function TreeRows({
             <span className="whitespace-pre font-mono text-[12px] leading-none text-muted-foreground/40">
               {glyph}
             </span>
-            {isDir ? (
+            {isDir && node.href ? (
+              // Inside a navigating row the chevron keeps toggle duty: label
+              // clicks follow the href, chevron clicks expand/collapse.
+              <span
+                role="button"
+                aria-label={open ? "collapse" : "expand"}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onToggle(node.key);
+                }}
+                className="flex shrink-0 items-center"
+              >
+                <ChevronRight
+                  className={cn(
+                    "h-3 w-3 shrink-0 text-muted-foreground transition-transform",
+                    open && "rotate-90",
+                  )}
+                />
+              </span>
+            ) : isDir ? (
               <ChevronRight
                 className={cn(
                   "h-3 w-3 shrink-0 text-muted-foreground transition-transform",
@@ -504,15 +524,29 @@ function TreeRows({
         return (
           <div key={node.key}>
             {isDir ? (
-              <button
-                type="button"
-                onMouseEnter={() => onHoverDir(node.key)}
-                onClick={() => onToggle(node.key)}
-                aria-expanded={open}
-                className={rowClass}
-              >
-                {inner}
-              </button>
+              node.href ? (
+                // A dir that is also a Stash object (provider → its
+                // integration page, folder → its explorer page): the row
+                // navigates, hover still opens it in place.
+                <Link
+                  href={node.href}
+                  onMouseEnter={() => onHoverDir(node.key)}
+                  aria-expanded={open}
+                  className={rowClass}
+                >
+                  {inner}
+                </Link>
+              ) : (
+                <button
+                  type="button"
+                  onMouseEnter={() => onHoverDir(node.key)}
+                  onClick={() => onToggle(node.key)}
+                  aria-expanded={open}
+                  className={rowClass}
+                >
+                  {inner}
+                </button>
+              )
             ) : node.href ? (
               <Link href={node.href} className={rowClass}>{inner}</Link>
             ) : (

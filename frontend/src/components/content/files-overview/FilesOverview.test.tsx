@@ -126,6 +126,28 @@ describe("FilesOverview", () => {
     expect(screen.queryByText("Page 00")).toBeNull();
   });
 
+  it("dir rows with an href navigate; their chevron still toggles", async () => {
+    render(<FilesOverview />);
+    await waitFor(() => expect(screen.getByText("/sources")).toBeTruthy());
+
+    // A provider is a real Stash object — its row is a link to the
+    // integration page, not a click-swallowing toggle button.
+    hover("/sources");
+    const github = screen.getByRole("link", { name: /github/ });
+    expect(github.getAttribute("href")).toBe("/integrations/github");
+
+    // Folders under /files link to their explorer page the same way.
+    hover("/files");
+    const research = screen.getByRole("link", { name: /Research/ });
+    expect(research.getAttribute("href")).toBe("/folders/root-1");
+
+    // The chevron keeps expand/collapse duty without following the link.
+    hover("Research");
+    expect(screen.getByText("Page 00")).toBeTruthy();
+    fireEvent.click(research.querySelector('[aria-label="collapse"]')!);
+    expect(screen.queryByText("Page 00")).toBeNull();
+  });
+
   it("depth gauge peeks every mount open, and springs back flat on leave", async () => {
     render(<FilesOverview />);
     await waitFor(() => expect(screen.getByText("/files")).toBeTruthy());
