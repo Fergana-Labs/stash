@@ -5,8 +5,7 @@ import os
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
-# Disable rate limiting when running under the test suite (TEST_DATABASE_URL is
-# set by conftest.py before any backend module is imported).
-_rate_limit_enabled = not bool(os.getenv("TEST_DATABASE_URL"))
+# Disable rate limiting only when explicitly requested via DISABLE_RATE_LIMITING.
+_rate_limit_enabled = os.getenv("DISABLE_RATE_LIMITING", "").lower() not in ("1", "true")
 
 limiter = Limiter(key_func=get_remote_address, enabled=_rate_limit_enabled)
