@@ -6,10 +6,10 @@ everything before it is captured in git history (`git log`), not here.
 ## Unreleased
 
 - New **Hopper** tab: drop anything in and it lands in your Stash, readable by
-  your agents. Drag files onto the page, paste a link or a screenshot from the
-  clipboard, or type a note — each goes down the pipeline that can read it
-  (file extraction, webpage import, or a page) and arrives in your VFS as an
-  ordinary item.
+  your agents. Drag files onto the page, paste a link, or paste a screenshot
+  straight from the clipboard — each goes down the pipeline that can read it
+  (file extraction or webpage import) and arrives in your VFS as an ordinary
+  item.
 
 - CLI onboarding redesigned (#940). `stash signin` walks a first-run wizard
   that can be re-run anytime with the new `stash setup` — no answer is final.
