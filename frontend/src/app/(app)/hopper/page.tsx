@@ -123,9 +123,7 @@ export default function HopperRoute() {
       <div className="mx-auto flex w-full max-w-[1100px] flex-1 flex-col px-10 py-10">
         <header className="mb-7 shrink-0">
           <h1 className="font-display text-[clamp(34px,4.2vw,52px)] font-semibold leading-[1.02] tracking-[-0.025em] text-foreground">
-            Drop anything.
-            <br />
-            <span className="text-dim">Your agents can read it.</span>
+            Drop anything into your Stash
           </h1>
         </header>
 
