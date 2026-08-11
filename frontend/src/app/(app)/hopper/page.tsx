@@ -110,7 +110,7 @@ export default function HopperRoute() {
     // min-h-full, not h-full + overflow: the shell's <main> is the scroll
     // container. The height still spans the pane so a drop anywhere counts.
     <div
-      className="min-h-full"
+      className="flex min-h-full flex-col"
       onDragOver={(e) => {
         e.preventDefault();
         setDragging(true);
@@ -120,12 +120,9 @@ export default function HopperRoute() {
       }}
       onDrop={onDrop}
     >
-      <div className="mx-auto flex min-h-full max-w-[560px] flex-col justify-center px-8 py-12">
-        <header className="mb-8">
-          <p className="font-mono text-[10px] uppercase tracking-[0.28em] text-muted-foreground">
-            Intake
-          </p>
-          <h1 className="mt-2.5 font-display text-[34px] font-semibold leading-[1.05] tracking-[-0.02em] text-foreground">
+      <div className="mx-auto flex w-full max-w-[1100px] flex-1 flex-col px-10 py-10">
+        <header className="mb-7 shrink-0">
+          <h1 className="font-display text-[clamp(34px,4.2vw,52px)] font-semibold leading-[1.02] tracking-[-0.025em] text-foreground">
             Drop anything.
             <br />
             <span className="text-dim">Your agents can read it.</span>
@@ -143,12 +140,12 @@ export default function HopperRoute() {
             if (e.key === "Enter" || e.key === " ") fileInput.current?.click();
           }}
           aria-label="Drop files here, or click to browse"
-          className="hopper-well relative isolate flex h-[220px] cursor-pointer flex-col items-center justify-center gap-5 overflow-hidden rounded-[20px] outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
+          className="hopper-well relative isolate flex min-h-[300px] flex-1 cursor-pointer flex-col items-center justify-center gap-8 overflow-hidden rounded-[26px] outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
         >
           <span className="hopper-grain" aria-hidden />
 
           {/* The mouth of the port: rings draw inward while a drop is in flight. */}
-          <span className="relative flex h-[74px] w-[74px] items-center justify-center" aria-hidden>
+          <span className="relative flex h-[150px] w-[150px] items-center justify-center" aria-hidden>
             {live &&
               [0, 1, 2].map((i) => (
                 <span
@@ -156,9 +153,9 @@ export default function HopperRoute() {
                   className="hopper-ring absolute inset-0 rounded-full border border-brand-400/70"
                 />
               ))}
-            <span className="absolute inset-[18px] rounded-full border border-[var(--divider-color)]" />
+            <span className="absolute inset-[40px] rounded-full border border-[var(--divider-color)]" />
             <ArrowDown
-              className={`${live ? "" : "hopper-arrow"} relative h-[18px] w-[18px] ${
+              className={`${live ? "" : "hopper-arrow"} relative h-[30px] w-[30px] ${
                 live ? "text-brand-600" : "text-dim"
               }`}
               strokeWidth={1.5}
@@ -166,14 +163,14 @@ export default function HopperRoute() {
           </span>
 
           <div className="relative text-center">
-            <p className="font-display text-[15px] font-medium tracking-[-0.01em] text-foreground">
+            <p className="font-display text-[21px] font-medium tracking-[-0.015em] text-foreground">
               {adding > 0
                 ? `Taking in ${adding} ${adding === 1 ? "item" : "items"}…`
                 : dragging
                   ? "Let go"
                   : "Drag in, paste, or click"}
             </p>
-            <p className="mt-2 font-mono text-[9.5px] uppercase tracking-[0.18em] text-muted-foreground">
+            <p className="mt-2.5 font-mono text-[10.5px] uppercase tracking-[0.2em] text-muted-foreground">
               {ACCEPTS}
             </p>
           </div>
@@ -192,7 +189,7 @@ export default function HopperRoute() {
 
         {/* A hairline, not a box: the link field is the well's understudy. */}
         <form
-          className="mt-7 flex items-center gap-3 border-b border-[var(--divider-color)] pb-2.5 transition-colors focus-within:border-brand-400"
+          className="mt-6 shrink-0 flex items-center gap-3 border-b border-[var(--divider-color)] pb-2.5 transition-colors focus-within:border-brand-400"
           onSubmit={(e) => {
             e.preventDefault();
             addLink(link);
