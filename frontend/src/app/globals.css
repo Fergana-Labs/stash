@@ -882,3 +882,78 @@ details > summary::-webkit-details-marker {
 .proseish code { font-family: var(--font-mono), monospace; color: #C2410C; background: var(--bg-raised); padding: 1px 5px; border-radius: 4px; font-size: 0.88em; }
 .proseish a { color: #F97316; text-decoration: underline; text-underline-offset: 2px; }
 .proseish blockquote { border-left: 3px solid var(--border-color); padding-left: 12px; color: var(--text-muted); margin: 10px 0; }
+
+/* === Hopper: the intake aperture ===
+   The page is a machined port on warm paper. Depth comes from a real inset
+   shadow rather than a border, so the well reads as cut into the surface;
+   the ring only lights up under the cursor or a dragged file. */
+
+.hopper-well {
+  background:
+    radial-gradient(120% 90% at 50% 0%, var(--bg-raised) 0%, var(--bg-surface) 55%, var(--bg-surface) 100%);
+  box-shadow:
+    inset 0 6px 18px -6px rgb(50 47 41 / 0.28),
+    inset 0 -1px 0 0 rgb(255 255 255 / 0.55),
+    inset 0 0 0 1px var(--border-color),
+    0 1px 0 0 rgb(255 255 255 / 0.8);
+  transition: box-shadow 260ms cubic-bezier(0.22, 1, 0.36, 1), transform 260ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* The cursor drags a soft warm light across the well's surface. */
+.hopper-well::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 260ms ease;
+  background: radial-gradient(
+    260px circle at var(--hopper-x, 50%) var(--hopper-y, 50%),
+    color-mix(in oklab, var(--color-brand-400) 22%, transparent),
+    transparent 70%
+  );
+}
+.hopper-well:hover::before { opacity: 1; }
+
+.hopper-well[data-live="true"] {
+  transform: translateY(-2px);
+  box-shadow:
+    inset 0 3px 22px -4px rgb(50 47 41 / 0.22),
+    inset 0 0 0 1px color-mix(in oklab, var(--color-brand-500) 55%, transparent),
+    0 10px 30px -18px rgb(50 47 41 / 0.5);
+}
+.hopper-well[data-live="true"]::before { opacity: 1; }
+
+/* Grain: the surface has tooth, so it does not read as a flat CSS fill. */
+.hopper-grain {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0.5;
+  mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='0.28'/%3E%3C/svg%3E");
+}
+
+/* Concentric rings mark the mouth of the port; they draw inward while a
+   drop is in flight, so waiting reads as intake rather than a spinner. */
+@keyframes hopper-intake {
+  0%   { transform: scale(1);    opacity: 0.55; }
+  100% { transform: scale(0.55); opacity: 0;    }
+}
+.hopper-ring { animation: hopper-intake 1.9s cubic-bezier(0.4, 0, 0.2, 1) infinite; }
+.hopper-ring:nth-child(2) { animation-delay: 0.63s; }
+.hopper-ring:nth-child(3) { animation-delay: 1.26s; }
+
+@keyframes hopper-fall {
+  0%   { transform: translateY(-6px); opacity: 0.35; }
+  55%  { transform: translateY(2px);  opacity: 1;    }
+  100% { transform: translateY(-6px); opacity: 0.35; }
+}
+.hopper-arrow { animation: hopper-fall 2.6s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .hopper-ring, .hopper-arrow { animation: none; }
+  .hopper-well { transition: none; }
+}
