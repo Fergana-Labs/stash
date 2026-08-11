@@ -177,7 +177,15 @@ class FakeClient:
 
     def list_tables(self):
         self.internal_at_call["list_tables"] = self.internal
-        return [{"id": "table-12345678", "name": "Ideas", "columns": [], "row_count": 1}]
+        return [
+            {
+                "id": "table-12345678",
+                "name": "Ideas",
+                "folder_id": "folder-12345678",
+                "columns": [],
+                "row_count": 1,
+            }
+        ]
 
     def get_table(self, table_id):
         assert table_id == "table-12345678"
@@ -237,12 +245,13 @@ def test_vfs_exposes_user_sections():
         "memory",
         "sessions",
         "skills",
-        "tables",
         "sources",
     }
     assert model.read_file("/skills/Demo Skill.md") == b"# Demo Stash\n"
     assert b"hello" in model.read_file("/sessions/Fix login/transcript.md")
-    assert b'"Name": "Mount"' in model.read_file("/tables/Ideas/rows.json")
+    # Tables are not a segregated section — they live in their folder like
+    # everything else.
+    assert b'"Name": "Mount"' in model.read_file("/files/Notes/Ideas/rows.json")
 
     # Connected sources are mounted read-only under their provider folder;
     # native sources are skipped (files/sessions already appear above). A sole
@@ -413,8 +422,9 @@ def test_read_raw_of_a_directory_raises():
 
 
 class DuplicateNameClient(FakeClient):
-    """Two tables share a name — the backend allows it. Only the colliding pair
-    should carry an id suffix; the uniquely-named table stays clean."""
+    """Two root tables share a name — the backend allows that across folders.
+    Only the colliding pair should carry an id suffix; the uniquely-named
+    table stays clean."""
 
     def list_tables(self):
         return [
@@ -428,7 +438,7 @@ def test_vfs_suffixes_only_colliding_names():
     model = StashVfsModel(DuplicateNameClient(), include_computer=True)
     model.refresh()
 
-    entries = set(model.list_dir("/tables"))
+    entries = set(model.list_dir("/files"))
 
     # The unique name is clean; both members of the collision are suffixed with
     # their own id (not just the second one), so neither path depends on order.
@@ -462,6 +472,32 @@ def test_vfs_strips_shell_hostile_chars_from_names():
 
     (name,) = [n for n in model.list_dir("/sessions") if n != "_index.jsonl"]
     assert name == "Buy the best product from Bobs 5 deals"
+
+
+class SkillFolderTableClient(FakeClient):
+    """A table filed inside a skill folder, alongside a normal one. Tables come
+    from their own listing, which does not hide skill subtrees the way the
+    overview's file tree does — so this table names a folder the files tree
+    never mentions."""
+
+    def list_tables(self):
+        return [
+            {"id": "skilltable-99999999", "name": "Rubrics", "folder_id": "skillfolder-12345678"},
+            *super().list_tables(),
+        ]
+
+
+def test_a_table_inside_a_skill_folder_does_not_break_the_mount():
+    """A skill's folder subtree is deliberately absent from /files, so a table
+    filed there has no path to mount at. It has to be left out rather than take
+    the whole tree down: every VFS command rebuilds this model, so one such
+    table turned every `stash vfs` call into a crash."""
+    model = StashVfsModel(SkillFolderTableClient(), include_computer=True)
+    model.refresh()
+
+    assert "Rubrics" not in model.list_dir("/files")
+    # The tables that do have a home are unaffected — the skip is surgical.
+    assert b'"Name": "Mount"' in model.read_file("/files/Notes/Ideas/rows.json")
 
 
 class CountingLoaderClient(FakeClient):

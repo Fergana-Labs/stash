@@ -151,7 +151,7 @@ async def test_title_text_does_not_leak_into_body(scope, _db_pool):
     scope_id, user_id = scope
     doc = (
         "<!doctype html><html><head>"
-        "<title>Gong Analysis · Acme Corp</title>"
+        "<title>Gong Analysis - Acme Corp</title>"
         "<style>h1{font-family:Fraunces}</style>"
         "</head><body><h1>Report</h1></body></html>"
     )

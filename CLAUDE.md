@@ -27,7 +27,7 @@ If you are about to ask the user to do something for you, think about whether yo
 
 ### PR hygiene
 
-When opening or updating a PR that includes GUI changes, always add product screenshots to the PR description or PR thread. Capture the changed user-facing screens yourself, and include admin/configuration screens too when they are part of the workflow.
+PR screenshots are optional (requirement waived 2026-08-10). Include them when they genuinely help review; skip the live-stack dance when they don't.
 Never commit screenshots, recordings, or other assets that exist only to support a PR description or review thread. Keep those files outside the repo or delete them before staging, then attach/upload them directly to the PR instead.
 
 <!-- stash-context -->

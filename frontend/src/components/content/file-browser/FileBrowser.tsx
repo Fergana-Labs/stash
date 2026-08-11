@@ -79,7 +79,7 @@ export default function FileBrowser({ folderId, folderHrefBase }: Props) {
   const [rootFiles, setRootFiles] = useState<GridItem[]>([]);
   const [rootTables, setRootTables] = useState<GridItem[]>([]);
   const [allFiles, setAllFiles] = useState<GridItem[]>([]);
-  const [view, setView] = useState<View>("grid");
+  const [view, setView] = useState<View>("list");
   const [scope, setScope] = useState<Scope>("mine");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const pins = useFilePins();
@@ -120,6 +120,10 @@ export default function FileBrowser({ folderId, folderHrefBase }: Props) {
     }
   }
   const [error, setError] = useState("");
+  // Drag-enter/leave fire for every child crossed, so a depth counter keeps
+  // the drop overlay steady until the pointer truly leaves the browser.
+  const dropDepth = useRef(0);
+  const [dropActive, setDropActive] = useState(false);
   const [undo, setUndo] = useState<{ kind: "page" | "file"; id: string; name: string } | null>(
     null,
   );
@@ -400,24 +404,44 @@ export default function FileBrowser({ folderId, folderHrefBase }: Props) {
     router.push(href);
   }
 
+  async function uploadFiles(files: File[]) {
+    let uploadedPageId: string | null = null;
+    try {
+      for (const file of files) {
+        const result = await uploadFileOrPage(file, folderId ?? undefined);
+        if (files.length === 1 && result.kind === "page") {
+          uploadedPageId = result.page.id;
+        }
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Upload failed");
+    }
+    if (uploadedPageId) {
+      router.push(`/p/${uploadedPageId}`);
+      return;
+    }
+    await refreshAll();
+  }
+
   async function handleUploadFile() {
     const input = document.createElement("input");
     input.type = "file";
-    input.onchange = async () => {
-      const file = input.files?.[0];
-      if (!file) return;
-      try {
-        const result = await uploadFileOrPage(file, folderId ?? undefined);
-        if (result.kind === "page") {
-          router.push(`/p/${result.page.id}`);
-          return;
-        }
-        await refreshAll();
-      } catch (e) {
-        setError(e instanceof Error ? e.message : "Upload failed");
-      }
+    input.multiple = true;
+    input.onchange = () => {
+      if (input.files?.length) void uploadFiles(Array.from(input.files));
     };
     input.click();
+  }
+
+  // An OS file drag sets "Files" on the data transfer; our intra-app reparent
+  // drags set FB_DRAG_MIME instead, so the two never collide.
+  function isOsFileDrag(e: React.DragEvent) {
+    const types = Array.from(e.dataTransfer.types);
+    return (
+      types.includes("Files") &&
+      !types.includes(FB_DRAG_MIME) &&
+      !types.includes(FB_DRAG_MULTI_MIME)
+    );
   }
 
   async function handleNewPage() {
@@ -585,7 +609,40 @@ export default function FileBrowser({ folderId, folderHrefBase }: Props) {
   const showShared = !folderId && scope === "shared";
 
   return (
-    <div className="scroll-thin flex-1 overflow-y-auto">
+    <div
+      className="scroll-thin relative flex-1 overflow-y-auto"
+      onDragEnter={(e) => {
+        if (showShared || !isOsFileDrag(e)) return;
+        dropDepth.current += 1;
+        setDropActive(true);
+      }}
+      onDragOver={(e) => {
+        if (showShared || !isOsFileDrag(e)) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "copy";
+      }}
+      onDragLeave={(e) => {
+        if (showShared || !isOsFileDrag(e)) return;
+        dropDepth.current = Math.max(0, dropDepth.current - 1);
+        if (dropDepth.current === 0) setDropActive(false);
+      }}
+      onDrop={(e) => {
+        if (showShared || !isOsFileDrag(e)) return;
+        e.preventDefault();
+        dropDepth.current = 0;
+        setDropActive(false);
+        const files = Array.from(e.dataTransfer.files);
+        if (files.length) void uploadFiles(files);
+      }}
+    >
+      {dropActive && (
+        <div className="pointer-events-none absolute inset-0 z-50 flex items-center justify-center rounded-lg border-2 border-dashed border-foreground/40 bg-base/80">
+          <div className="rounded-lg border border-border bg-raised px-4 py-2 text-[13px] font-medium text-foreground shadow-lg">
+            Drop to upload
+            {contents?.folder ? ` into “${contents.folder.name}”` : ""}
+          </div>
+        </div>
+      )}
       <div className="mx-auto max-w-5xl px-8 py-7">
         {!folderId && <ScopeTabs scope={scope} onChange={setScope} />}
         {/* Header: the page path lives in AppShell's top-bar breadcrumb, so we
@@ -874,7 +931,7 @@ function fileToGridItem(file: {
     kind: isCsvLinked ? "table" : "file",
     id: file.id,
     name: file.name,
-    subtitle: `${file.content_type || "file"} · ${formatBytes(file.size_bytes)}`,
+    subtitle: `${file.content_type || "file"}, ${formatBytes(file.size_bytes)}`,
     sizeBytes: file.size_bytes,
     linkedTableId: file.linked_table_id ?? undefined,
     contentType: file.content_type,
@@ -888,7 +945,7 @@ function tableToGridItem(table: { id: string; name: string; row_count: number | 
     kind: "datatable",
     id: table.id,
     name: table.name,
-    subtitle: `table · ${rows} row${rows === 1 ? "" : "s"}`,
+    subtitle: `table, ${rows} row${rows === 1 ? "" : "s"}`,
   };
 }
 
@@ -916,7 +973,7 @@ function subtitleForFolder(pages: number, files: number): string {
   const parts: string[] = [];
   if (pages) parts.push(`${pages} page${pages === 1 ? "" : "s"}`);
   if (files) parts.push(`${files} file${files === 1 ? "" : "s"}`);
-  return parts.join(" · ") || "Empty";
+  return parts.join(", ") || "Empty";
 }
 
 function formatBytes(b: number): string {

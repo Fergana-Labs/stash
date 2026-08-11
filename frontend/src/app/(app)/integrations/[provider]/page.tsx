@@ -49,6 +49,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import type { User } from "@/lib/types";
 import { routes } from "@/lib/workspace-routes";
+import { useTabTitle } from "@/lib/workspace-store";
 
 // How often a row re-checks a source that is mid-sync, and how many times before
 // it gives up. A sync that hasn't settled in ~5 minutes is wedged; polling it for
@@ -82,6 +83,7 @@ export function IntegrationDetail({ provider }: { provider: string }) {
   const confirm = useConfirm();
 
   const connector = connectorForProvider(provider);
+  useTabTitle("tool", provider, connector?.label);
 
   const [status, setStatus] = useState<IntegrationStatus | null>(null);
   // null until the server list loads; false when the server omitted this
@@ -381,7 +383,7 @@ export function IntegrationDetail({ provider }: { provider: string }) {
 
         {/* Subtitle: what this integration does + a quiet Settings link. */}
         <div className="mb-6 ml-[42px] mt-0.5 text-[12.5px] text-muted-foreground">
-          {connector.blurb}{" "}·{" "}
+          {connector.blurb}{" "}
           <Link href="/settings" className="font-semibold text-brand hover:underline">
             Manage in Settings
           </Link>
@@ -571,10 +573,10 @@ export function IntegrationDetail({ provider }: { provider: string }) {
           )}
         </section>
 
-        {/* Browse · <name> */}
+        {/* Browse: <name> */}
         {openSource && (
           <section className="mt-7">
-            <SectionLabel>Browse · {openSource.display_name}</SectionLabel>
+            <SectionLabel>Browse: {openSource.display_name}</SectionLabel>
             <BrowsePanel
               source={openSource}
               providerLabel={connector.label}
@@ -688,7 +690,7 @@ function SourceRow({
   // The row owns a live status so the item count and sync badge update as the
   // background sync runs — the parent's source list is only re-fetched on user
   // actions, so a source that finishes syncing (or gets its first documents)
-  // would otherwise stay frozen at "syncing · 0 items". While syncing we poll
+  // would otherwise stay frozen at "syncing, 0 items". While syncing we poll
   // until it settles, then stop. Seeded from the parent's row so this is the
   // only thing the render reads; item_count is unknown until the first poll.
   const [status, setStatus] = useState<SourceStatus>({ ...source, item_count: null });
@@ -768,7 +770,7 @@ function SourceRow({
                 {status.sync_status === "needs_setup"
                   ? "not syncing yet"
                   : relativeTime(status.last_synced_at)}
-                {status.item_count !== null && ` · ${status.item_count} items`}
+                {status.item_count !== null && `, ${status.item_count} items`}
               </>
             ) : searchedLive ? (
               "Searched live"
@@ -801,18 +803,9 @@ function SourceRow({
         )}
       </button>
       <div className="flex shrink-0 items-center gap-1.5">
-        <div className="flex items-center gap-1.5 opacity-55 transition-opacity group-hover:opacity-100">
-          <button type="button" onClick={onOpen} className={rowButton()}>
-            {open ? "Close" : "Browse"}
-          </button>
-          {syncs && (
-            <button type="button" disabled={busySync} onClick={onSync} className={rowButton()}>
-              {busySync ? "Syncing..." : "Sync"}
-            </button>
-          )}
-        </div>
-        {/* The menu and share dialog live outside the hover-dim group: an open
-            dialog must not inherit the row's hover-dimming. */}
+        {/* Browsing is the row itself (and the VFS); syncing is automatic —
+            scheduled, plus kicked by access when stale. The old Browse/Sync
+            buttons duplicated those, so the escape hatches live in ⋯ now. */}
         <div ref={menuBoundaryRef} className="relative">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -825,6 +818,11 @@ function SourceRow({
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-max min-w-28">
+              {syncs && (
+                <DropdownMenuItem disabled={busySync} onClick={onSync}>
+                  {busySync ? "Syncing..." : "Sync now"}
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem onClick={() => setShareOpen(true)}>Share</DropdownMenuItem>
               <DropdownMenuItem
                 variant="destructive"
@@ -850,11 +848,6 @@ function SourceRow({
       </div>
     </div>
   );
-}
-
-// The quiet bordered row action (Browse/Sync).
-function rowButton(): string {
-  return "cursor-pointer rounded-lg border border-[var(--color-border)] bg-base px-3 py-1.5 text-[12px] font-semibold text-foreground hover:bg-raised disabled:opacity-60";
 }
 
 function BrowsePanel({

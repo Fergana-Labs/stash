@@ -2,40 +2,28 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Bot, ChevronRight, File, Folder, Loader2, MessagesSquare, GraduationCap, Monitor, Plus, Settings, FolderTree, Brain, Plug, Sparkles, SquareTerminal } from "lucide-react";
-import { toast } from "sonner";
+import { Bot, ChevronRight, File, Folder, Loader2, MessagesSquare, GraduationCap, Monitor, Plus, Settings, FolderTree, Plug, SquareTerminal } from "lucide-react";
 import { ApiError, listMySessions, listSessionFolders, listSharedWithMe, listSkillsSharedWithMe, listSharedSessionFolderSessions, createSessionFolder, listSkills, listSources, machineFsList, listAgents, createAgent, type Agent as AgentRow, type MachineEntry, type SessionSummary, type Source } from "@/lib/api";
-import { useMemoryFolderId } from "@/lib/memory-folder";
-import { requestAgentConfigView, requestCuratorRun } from "@/lib/agent-tab-view";
+import { requestAgentConfigView } from "@/lib/agent-tab-view";
 import { cn } from "@/lib/utils";
 import { useWorkspace, type TabKind } from "@/lib/workspace-store";
-import { urlForTab } from "@/lib/workspace-routes";
+import { urlForTab, hasPermanentUrl } from "@/lib/workspace-routes";
 import { CONNECTORS, connectorIcon, providerForSourceType } from "@/components/integrations/connectors";
 import { INTEGRATIONS_CHANGED_EVENT, listIntegrations } from "@/lib/integrations";
 import { opensNewTab } from "@/lib/tab-nav";
 import FilesExplorer, { type Item } from "./files-explorer";
+import VfsTree from "./vfs-tree";
 
-export type ExplorerSection = "files" | "sessions" | "skills" | "agents" | "memory" | "tools" | "computer";
+export type ExplorerSection = "files" | "sessions" | "skills" | "agents" | "tools" | "computer";
 
 const SECTIONS: { key: ExplorerSection; label: string; route: string; icon: React.ReactNode }[] = [
   { key: "files", label: "Files", route: "/files", icon: <FolderTree className="h-4 w-4 text-chart-4" /> },
   { key: "skills", label: "Skills", route: "/skills", icon: <GraduationCap className="h-4 w-4 text-chart-4" /> },
   { key: "sessions", label: "Sessions", route: "/sessions", icon: <MessagesSquare className="h-4 w-4 text-chart-4" /> },
-  { key: "memory", label: "Memory", route: "/memory", icon: <Brain className="h-4 w-4 text-chart-4" /> },
   { key: "tools", label: "Tools", route: "/tools", icon: <Plug className="h-4 w-4 text-chart-4" /> },
   { key: "computer", label: "VM", route: "/agents", icon: <Monitor className="h-4 w-4 text-chart-4" /> },
 ];
-const LABEL: Record<ExplorerSection, string> = { files: "Files", skills: "Skills", sessions: "Sessions", memory: "Memory", tools: "Tools", agents: "Agents", computer: "VM" };
-
-// Shared kinds the Files explorer indexes. Session folders are excluded: the
-// Sessions tree already merges those into its own root.
-const SHARED_FILE_KINDS = new Set(["folder", "page", "file", "table"]);
-const SHARED_ITEM_KIND: Record<string, "folder" | "page" | "file" | "table"> = {
-  folder: "folder",
-  page: "page",
-  file: "file",
-  table: "table",
-};
+const LABEL: Record<ExplorerSection, string> = { files: "Files", skills: "Skills", sessions: "Sessions", tools: "Tools", agents: "Agents", computer: "VM" };
 
 /** Open any item as a workbench tab and sync the URL. A plain click navigates
  *  the current tab; cmd/ctrl-click (or an explicit newTab) opens a new one. */
@@ -43,8 +31,8 @@ function useOpenTab() {
   const router = useRouter();
   const openTab = useWorkspace((s) => s.openTab);
   return (kind: TabKind, refId: string, title: string, opts?: { newTab?: boolean }) => {
-    openTab(kind, refId, title, { newTab: opts?.newTab ?? opensNewTab() });
-    router.replace(urlForTab({ kind, refId }));
+    openTab(kind, refId, { title, newTab: opts?.newTab ?? opensNewTab() });
+    if (hasPermanentUrl(kind)) router.replace(urlForTab({ kind, refId }));
   };
 }
 
@@ -191,6 +179,11 @@ function RootSection() {
   const setRailSection = useWorkspace((s) => s.setRailSection);
 
   function selectSection(section: ExplorerSection) {
+    // Skills/Sessions/Tools have no explorer panel — go to their pages instead.
+    if (section === "skills" || section === "sessions" || section === "tools") {
+      router.push(SECTIONS.find((s) => s.key === section)!.route);
+      return;
+    }
     const params = new URLSearchParams(searchParams);
     params.set("section", section);
     setRailSection(section);
@@ -272,13 +265,12 @@ function AgentsExplorer() {
 
 /** The left panel. Agents is a chat list. Every other section is shown fully
  *  (no accordion) with a breadcrumb up to Home, which lists the sections. Files
- *  and Memory are VFS file managers (breadcrumbs, context menu, drag, upload);
- *  Memory is a dedicated reserved folder, hidden from Files. */
+ *  is a VFS file manager (breadcrumbs, context menu, drag, upload); the
+ *  reserved Memory folder lives in it like any other folder. */
 export default function Explorer({ section }: { section: ExplorerSection }) {
   const router = useRouter();
   const open = useOpenTab();
   const [atRoot, setAtRoot] = useState(false);
-  const memoryFolderId = useMemoryFolderId();
   // A rail-section change means we're back to viewing that section, not Home.
   useEffect(() => { setAtRoot(false); }, [section]);
 
@@ -302,21 +294,6 @@ export default function Explorer({ section }: { section: ExplorerSection }) {
     }));
   }, []);
 
-  // Everything else shared with you. Skill folders are filtered out because
-  // Files and Skills are MECE everywhere else in the app, and a shared skill
-  // belongs under Skills.
-  const sharedFiles = useCallback(async (): Promise<Item[]> => {
-    const [shared, skills] = await Promise.all([listSharedWithMe(), listSkillsSharedWithMe()]);
-    const skillFolderIds = new Set(skills.map((s) => s.folder_id));
-    return shared
-      .filter((s) => SHARED_FILE_KINDS.has(s.object_type) && !skillFolderIds.has(s.object_id))
-      .map((s) => ({
-        kind: SHARED_ITEM_KIND[s.object_type],
-        id: s.object_id,
-        name: `${s.name} (${s.owner_name})`,
-        readOnly: true,
-      }));
-  }, []);
   // A skill needs a name + agent-trigger description, so creation happens in
   // the Skills page's inline composer — this action just takes you there.
   const createSkill = useCallback(async (): Promise<Item | void> => {
@@ -368,23 +345,11 @@ export default function Explorer({ section }: { section: ExplorerSection }) {
 
   if (section === "agents") return <AgentsExplorer />;
 
-  // "Curate wiki": open the Memory curator's tab and start a pass immediately,
-  // so the wiki can be refreshed from Memory without hunting through Agents.
-  async function curateWiki() {
-    const curator = (await listAgents()).find((a) => a.is_curator);
-    if (!curator) {
-      toast.error("No Memory curator agent found on this account.");
-      return;
-    }
-    requestCuratorRun();
-    open("agent-config", curator.id, curator.name);
-  }
+  // The VFS section docks the same tree the /files lens shows full-screen.
+  if (section === "files") return <VfsTree />;
 
-  // Files, Memory, Skills & Sessions are all file managers (own breadcrumb/toolbar).
-  if ((section === "files" || section === "memory" || section === "skills" || section === "sessions") && !atRoot) {
-    if (section === "memory" && !memoryFolderId) {
-      return <div className="flex h-full flex-col bg-sidebar"><div className="flex h-9 items-center border-b border-sidebar-border px-3 text-[12px] text-muted-foreground">Home / Memory</div><LoadingRow /></div>;
-    }
+  // Skills & Sessions are file managers (own breadcrumb/toolbar).
+  if ((section === "skills" || section === "sessions") && !atRoot) {
     const isSessions = section === "sessions";
     return (
       <div className="flex h-full flex-col bg-sidebar">
@@ -392,19 +357,16 @@ export default function Explorer({ section }: { section: ExplorerSection }) {
           key={section}
           onRoot={() => setAtRoot(true)}
           rootLabel={LABEL[section]}
-          rootFolderId={section === "memory" ? memoryFolderId : null}
-          hideFolderId={section === "files" ? memoryFolderId : null}
+          rootFolderId={null}
           // Stamp the section on opened tabs so the shell keeps you where you
           // are. Without it every folder/page route reads as Files, and opening
           // a file inside a skill teleported you to the Files tab.
-          tabSection={section === "memory" || section === "skills" ? section : undefined}
+          tabSection={section === "skills" ? section : undefined}
           loadRoot={section === "skills" ? skillsRoot : isSessions ? sessionsRoot : undefined}
           loadFolder={isSessions ? sessionsFolder : undefined}
-          // Sessions already merges shared folders into its root, and Memory is
-          // the curator's own scope — neither gets a second shared surface.
-          loadShared={
-            section === "skills" ? sharedSkills : section === "files" ? sharedFiles : undefined
-          }
+          // Sessions already merges shared folders into its root — it doesn't
+          // get a second shared surface.
+          loadShared={section === "skills" ? sharedSkills : undefined}
           newRootItem={
             section === "skills" ? { label: "New skill", run: createSkill } :
             isSessions ? { label: "New folder", run: createSessionFolderItem } : undefined
@@ -413,12 +375,6 @@ export default function Explorer({ section }: { section: ExplorerSection }) {
           showImport={!isSessions}
           importIntent={section === "skills" ? "skills" : "files"}
           vfsWritable={!isSessions}
-          headerAction={
-            section === "memory"
-              ? { icon: <Sparkles className="h-4 w-4" />, label: "Curate wiki", run: () => void curateWiki() }
-              : undefined
-          }
-          confirmMemoryWrites={section === "memory"}
         />
       </div>
     );

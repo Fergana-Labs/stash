@@ -41,7 +41,7 @@ export default function MachineFileView({ path }: { path: string }) {
         <div className="min-w-0">
           <div className="truncate font-mono text-[13px] text-foreground">~/{path}</div>
           <div className="text-[11.5px] text-muted-foreground">
-            On your computer{file ? ` · ${file.size.toLocaleString()} bytes` : ""} · read-only
+            On your computer{file ? `, ${file.size.toLocaleString()} bytes` : ""}, read-only
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">

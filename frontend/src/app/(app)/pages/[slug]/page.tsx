@@ -46,7 +46,7 @@ export default async function CommunityPage({ params }: PageProps) {
         {paste.title || "Untitled"}
       </h1>
       <p className="mt-1.5 text-[12.5px] text-muted-foreground">
-        Community page · {paste.view_count} view{paste.view_count === 1 ? "" : "s"}
+        Community page, {paste.view_count} view{paste.view_count === 1 ? "" : "s"}
       </p>
       <div className="mt-8">
         <PageBody

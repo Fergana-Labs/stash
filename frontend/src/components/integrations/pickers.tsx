@@ -395,7 +395,7 @@ export function SlackChannelPicker({
                 {channel.name}
               </span>
               <span className="block truncate text-[11.5px] text-muted-foreground">
-                {channel.is_private ? "Private" : "Channel"} · {channel.id}
+                {channel.is_private ? "Private" : "Channel"}, {channel.id}
               </span>
             </span>
           </label>
@@ -499,7 +499,7 @@ export function GitHubAccessControls({
         <AccessChoice
           checked={view === "all"}
           onClick={() => setView("all")}
-          title={<>All repositories{count !== null && <span className="font-medium text-dim"> · {count}</span>}</>}
+          title={<>All repositories{count !== null && <span className="font-medium text-dim"> ({count})</span>}</>}
           description="Everything you can see — your own repos, collaborations, and org repos. Repos you gain access to later sync automatically."
         />
         <AccessChoice
@@ -515,7 +515,7 @@ export function GitHubAccessControls({
           <div className="flex items-center gap-2 rounded-md bg-surface px-3 py-2.5 text-[12.5px] text-dim">
             <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-success" aria-hidden />
             <span>
-              {syncResult?.created != null && `${syncResult.created} added · `}
+              {syncResult?.created != null && `${syncResult.created} added, `}
               All repositories sync automatically — new repos you gain access to are added within
               an hour.
             </span>

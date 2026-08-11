@@ -50,7 +50,7 @@ export default function PublicSessionFolderPage({
       </h1>
       <p className="mt-1 text-[12.5px] text-muted-foreground">
         {sessions.length} session{sessions.length === 1 ? "" : "s"}
-        {folder.owner_display_name ? ` · by ${folder.owner_display_name}` : ""}
+        {folder.owner_display_name ? `, by ${folder.owner_display_name}` : ""}
       </p>
 
       {sessions.length === 0 ? (
@@ -70,8 +70,8 @@ export default function PublicSessionFolderPage({
                   {s.session_id}
                 </span>
                 <span className="mt-0.5 block truncate text-[11.5px] text-muted-foreground">
-                  {s.user_name ? `${s.user_name} · ` : ""}
-                  {s.agent_name || "agent"} · {s.event_count} event{s.event_count === 1 ? "" : "s"}
+                  {s.user_name ? `${s.user_name}, ` : ""}
+                  {s.agent_name || "agent"}, {s.event_count} event{s.event_count === 1 ? "" : "s"}
                 </span>
               </span>
               <span className="shrink-0 text-[11.5px] text-muted-foreground">{relativeTime(s.last_event_at)}</span>

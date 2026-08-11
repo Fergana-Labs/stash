@@ -135,7 +135,7 @@ export default function SkillCard({
         </p>
         {metaParts.length > 0 && (
           <div className="sys-label mt-2.5" style={{ fontSize: 10.5 }}>
-            {metaParts.join(" · ")}
+            {metaParts.join(", ")}
           </div>
         )}
         <div className="flex-1" />

@@ -21,8 +21,9 @@ import {
 } from "@/lib/api";
 import { findInSkillContents } from "@/lib/localSkill";
 import { loginPathWithNext } from "@/lib/loginRedirect";
-import { sectionCrumbs, useMemoryFolderId } from "@/lib/memory-folder";
+import { sectionCrumbs } from "@/lib/memory-folder";
 import { refreshSidebar } from "@/lib/skillNavigationCache";
+import { useTabTitle } from "@/lib/workspace-store";
 
 export default function FolderDetailPage({ folderId: folderIdProp }: { folderId?: string }) {
   const params = useParams();
@@ -41,16 +42,15 @@ export default function FolderDetailPage({ folderId: folderIdProp }: { folderId?
     name: string;
     id: string;
   } | null>(null);
-  const memoryFolderId = useMemoryFolderId();
   const crumbs = useMemo(() => {
     if (!chain) return [{ label: "Folder" }];
-    if (chain.id === memoryFolderId) return [{ label: "Memory" }];
     return [
-      ...sectionCrumbs(chain.breadcrumbs.slice(0, -1), memoryFolderId),
+      ...sectionCrumbs(chain.breadcrumbs.slice(0, -1)),
       { label: chain.name },
     ];
-  }, [chain, memoryFolderId]);
+  }, [chain]);
   const [folderName, setFolderName] = useState<string | null>(null);
+  useTabTitle("folder", folderId, folderName);
   const [skillFallback, setSkillFallback] = useState<{
     skillSlug: string;
     skillTitle: string;
@@ -235,7 +235,7 @@ function SkillFallbackFolderView({
           {folder.name || "(untitled folder)"}
         </h1>
         <div className="mt-1 text-[11.5px] uppercase tracking-wide text-muted-foreground">
-          folder · read-only via Skill
+          folder, read-only via Skill
         </div>
         <div className="mt-6 flex flex-col gap-1">
           {pages.map((p) => (

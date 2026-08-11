@@ -1,7 +1,9 @@
 "use client";
 
+import { useEffect } from "react";
 import { create } from "zustand";
 import { nanoid } from "nanoid";
+import { WORKBENCH_TAB_KINDS } from "@/lib/workspace-routes";
 
 /**
  * Workspace shell state — the tab strip, split view, rail section, and explorer
@@ -11,7 +13,7 @@ import { nanoid } from "nanoid";
  * components/workspace/persistence.tsx (localStorage).
  */
 
-export type RailSection = "files" | "agents" | "sessions" | "skills" | "memory" | "apps" | "tools" | "computer";
+export type RailSection = "home" | "files" | "agents" | "sessions" | "skills" | "tools" | "computer";
 
 export type TabKind = "page" | "file" | "table" | "session" | "sessions-home" | "skill" | "folder" | "agent" | "agent-config" | "tool" | "machine-file" | "terminal";
 
@@ -20,7 +22,13 @@ export interface WorkbenchTab {
   kind: TabKind;
   /** The content id this tab shows: pageId / fileId / tableId / sessionId / skill slug. */
   refId: string;
-  title: string;
+}
+
+/** Cache key for a tab title. Titles belong to the content, not the tab, so two
+ *  tabs on the same content share one entry and in-place navigation picks up
+ *  the new target's title automatically. */
+export function titleKey(kind: TabKind, refId: string): string {
+  return `${kind}:${refId}`;
 }
 
 export interface WorkspaceState {
@@ -38,16 +46,26 @@ export interface WorkspaceState {
   railSection: RailSection;
   /** VFS folder the Files explorer is showing (null = root). */
   explorerFolderId: string | null;
+  /** Last URL visited inside the VFS section — the rail's VFS button returns
+   *  here, so tabbing away and back doesn't restart you at the bare lens. */
+  lastVfsUrl: string | null;
 
-  openTab: (kind: TabKind, refId: string, title: string, opts?: { newTab?: boolean }) => void;
+  /** Display titles keyed by titleKey(kind, refId). The content body is the
+   *  source of truth — it publishes its loaded name via useTabTitle. openTab
+   *  callers that already know the name seed the cache so the strip doesn't
+   *  flash a placeholder while the body loads. */
+  titles: Record<string, string>;
+
+  openTab: (kind: TabKind, refId: string, opts?: { newTab?: boolean; title?: string }) => void;
   closeTab: (id: string) => void;
   setActiveTab: (id: string) => void;
   splitTab: (id: string) => void;
   moveTabToPane: (id: string, pane: 0 | 1) => void;
   setFocusedPane: (pane: 0 | 1) => void;
-  renameTab: (id: string, title: string) => void;
+  setTitle: (kind: TabKind, refId: string, title: string) => void;
   setRailSection: (s: RailSection) => void;
   setExplorerFolderId: (id: string | null) => void;
+  setLastVfsUrl: (url: string) => void;
   hydrate: (data: Partial<WorkspaceState>) => void;
 }
 
@@ -59,6 +77,32 @@ function placeTab(s: WorkspaceState, tab: WorkbenchTab): Partial<WorkspaceState>
     paneOf: { ...s.paneOf, [tab.id]: pane },
     ...(pane === 0 ? { activeTabId: tab.id } : { activeTab1: tab.id, split: true }),
   };
+}
+
+/** Pre-revamp state holds tabs the workbench can no longer host: chat became a
+ *  page of its own, so focusing one of its tabs navigates out of the strip
+ *  instead of into it, and the whole workbench disappears. Carry the layout
+ *  forward once, on hydrate, minus those tabs — the conversations themselves
+ *  are not lost, they are listed on /agents. */
+function dropUnhostableTabs(data: Partial<WorkspaceState>): Partial<WorkspaceState> {
+  if (!data.tabs) return data;
+  const tabs = data.tabs.filter((t) => WORKBENCH_TAB_KINDS.includes(t.kind));
+  if (tabs.length === data.tabs.length) return data;
+
+  const live = new Set(tabs.map((t) => t.id));
+  const paneOf = Object.fromEntries(
+    Object.entries(data.paneOf ?? {}).filter(([id]) => live.has(id)),
+  );
+  const lastInPane = (pane: 0 | 1) => {
+    const inPane = tabs.filter((t) => (paneOf[t.id] ?? 0) === pane);
+    return inPane[inPane.length - 1]?.id ?? null;
+  };
+  const activeTabId = data.activeTabId && live.has(data.activeTabId) ? data.activeTabId : lastInPane(0);
+  const activeTab1 = data.activeTab1 && live.has(data.activeTab1) ? data.activeTab1 : lastInPane(1);
+  const split = activeTab1 !== null;
+  const migrated = { ...data, tabs, paneOf, activeTabId, activeTab1, split };
+  // The right pane can't stay focused once the drop emptied it.
+  return split ? migrated : { ...migrated, focusedPane: 0 as const };
 }
 
 /** Focus an existing tab in whichever pane holds it. */
@@ -76,12 +120,15 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   focusedPane: 0,
   railSection: "files",
   explorerFolderId: null,
+  lastVfsUrl: null,
+  titles: {},
 
-  openTab: (kind, refId, title, opts) => {
+  openTab: (kind, refId, opts) => {
     const s = get();
+    const titles = opts?.title ? { ...s.titles, [titleKey(kind, refId)]: opts.title } : s.titles;
     const existing = s.tabs.find((t) => t.kind === kind && t.refId === refId);
     if (existing) {
-      set(focusTab(s, existing.id));
+      set({ ...focusTab(s, existing.id), titles });
       return;
     }
     // Default is a new tab (deep-links, "new chat", etc. rely on it). Navigation
@@ -91,10 +138,10 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     const activeId = s.focusedPane === 0 ? s.activeTabId : s.activeTab1;
     if (newTab || !activeId) {
       const id = `${kind}-${nanoid(5)}`;
-      set(placeTab(s, { id, kind, refId, title }));
+      set({ ...placeTab(s, { id, kind, refId }), titles });
       return;
     }
-    set({ tabs: s.tabs.map((t) => (t.id === activeId ? { ...t, kind, refId, title } : t)) });
+    set({ tabs: s.tabs.map((t) => (t.id === activeId ? { ...t, kind, refId } : t)), titles });
   },
 
   closeTab: (id) => {
@@ -151,11 +198,28 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
   setFocusedPane: (pane) => set({ focusedPane: pane }),
 
-  renameTab: (id, title) => set({ tabs: get().tabs.map((t) => (t.id === id ? { ...t, title } : t)) }),
+  setTitle: (kind, refId, title) => {
+    const key = titleKey(kind, refId);
+    if (get().titles[key] === title) return;
+    set({ titles: { ...get().titles, [key]: title } });
+  },
 
   setRailSection: (s) => set({ railSection: s }),
 
   setExplorerFolderId: (id) => set({ explorerFolderId: id }),
 
-  hydrate: (data) => set({ ...data }),
+  setLastVfsUrl: (url) => set({ lastVfsUrl: url }),
+
+  hydrate: (data) => set(dropUnhostableTabs(data)),
 }));
+
+/** Declare the hosting tab's title from inside a content body. Call with the
+ *  content's current display name (null/undefined while loading): the strip
+ *  shows the live name, so deep-linked tabs get real titles once loaded and
+ *  renames propagate to every tab showing that content. */
+export function useTabTitle(kind: TabKind, refId: string, title: string | null | undefined) {
+  const setTitle = useWorkspace((s) => s.setTitle);
+  useEffect(() => {
+    if (title) setTitle(kind, refId, title);
+  }, [kind, refId, title, setTitle]);
+}

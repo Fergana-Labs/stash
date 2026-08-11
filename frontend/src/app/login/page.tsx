@@ -213,11 +213,7 @@ function LoginPageInner() {
   return (
     <AuthShell
       title={mode === "login" ? signInTitle() : "Create your stash"}
-      subtitle={
-        mode === "login"
-          ? "Sign in to the stash you share with your agents."
-          : "One account for you and your agents."
-      }
+      subtitle={mode === "login" ? undefined : "One account for you and your agents."}
     >
       <FormCard>{formBody}</FormCard>
       <p className="text-center text-[11px] text-muted-foreground">
@@ -361,10 +357,7 @@ function Auth0LoginPanel({ user, logout, cliSession, onCliApproved }: Auth0Panel
   }
 
   return (
-    <AuthShell
-      title={signInTitle()}
-      subtitle="Sign in to the stash you share with your agents."
-    >
+    <AuthShell title={signInTitle()}>
       <FormCard>{body}</FormCard>
     </AuthShell>
   );
@@ -402,7 +395,7 @@ function AuthShell({
   children,
 }: {
   title: string;
-  subtitle: string;
+  subtitle?: string;
   children: React.ReactNode;
 }) {
   return (
@@ -415,7 +408,7 @@ function AuthShell({
             <h1 className="font-display text-[32px] leading-[1.05] font-bold tracking-tight text-foreground">
               {title}
             </h1>
-            <p className="text-sm text-dim">{subtitle}</p>
+            {subtitle && <p className="text-sm text-dim">{subtitle}</p>}
           </div>
           {children}
         </div>

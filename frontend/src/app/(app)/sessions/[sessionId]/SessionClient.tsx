@@ -26,6 +26,7 @@ import {
   type Skill,
 } from "@/lib/api";
 import EditableTitle from "@/components/content/EditableTitle";
+import { useTabTitle } from "@/lib/workspace-store";
 
 // One transcript page. The viewer loads this many turns at a time and fetches
 // more on scroll, so long sessions don't load every event up front.
@@ -137,6 +138,7 @@ export default function SessionViewerPage({ sessionId }: { sessionId: string }) 
 
   const [agentName, setAgentName] = useState("");
   const [sessionDetail, setSessionDetail] = useState<SessionDetail | null>(null);
+  useTabTitle("session", sessionId, sessionDetail && sessionHeading(sessionDetail, sessionId));
   const [turns, setTurns] = useState<MessageTurn[]>([]);
   const [totalTurns, setTotalTurns] = useState(0);
   const [hasMore, setHasMore] = useState(false);
@@ -309,13 +311,11 @@ export default function SessionViewerPage({ sessionId }: { sessionId: string }) 
             {(sessionDate || totalTurns > 0 || agentName) && (
               <div className="mt-1.5 flex flex-wrap items-center gap-2.5 text-[12px] text-muted-foreground">
                 {sessionDate && <span>{sessionDate}</span>}
-                {sessionDate && totalTurns > 0 && <span>·</span>}
                 {totalTurns > 0 && (
                   <span>
                     {totalTurns} message{totalTurns === 1 ? "" : "s"}
                   </span>
                 )}
-                {agentName && (sessionDate || totalTurns > 0) && <span>·</span>}
                 {agentName && <span>{agentName}</span>}
               </div>
             )}
@@ -560,7 +560,7 @@ function ticketMetadata(ticket: NonNullable<SessionDetail["linear_tickets"][numb
     ticket.ticket_project_name,
   ]
     .filter(Boolean)
-    .join(" · ");
+    .join(", ");
 }
 
 function LinearTicketPill({

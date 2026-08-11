@@ -124,3 +124,51 @@ def test_gate_on_allows_live_events(monkeypatch):
         HookEvent(kind="prompt", cwd="/anywhere"),
     )
     assert len(c.calls) == 1
+
+
+# --- Folder-scoped recording: `recorded_paths` is the include side of the
+# gate. Empty/absent = record everywhere; non-empty = only sessions whose cwd
+# is under an entry stream. Boundary-safe like exclusions (/repo must not
+# capture /repo2), and an unprovable location (no cwd) fails closed rather
+# than leaking a session the user chose not to record. ---
+
+
+def test_recorded_paths_absent_streams_everywhere(tmp_path, monkeypatch):
+    cfg = _write_config(tmp_path, {"api_key": "k"})
+    monkeypatch.setattr(scope_mod, "_CONFIG_FILE", cfg)
+    assert scope_mod.cwd_in_scope("/some/deep/path")
+
+
+def test_recorded_paths_scopes_recording_to_the_folder(tmp_path, monkeypatch):
+    cfg = _write_config(tmp_path, {"api_key": "k", "recorded_paths": ["/work/repo"]})
+    monkeypatch.setattr(scope_mod, "_CONFIG_FILE", cfg)
+    assert scope_mod.cwd_in_scope("/work/repo")
+    assert scope_mod.cwd_in_scope("/work/repo/sub/dir")
+    assert not scope_mod.cwd_in_scope("/elsewhere")
+
+
+def test_recorded_paths_is_path_boundary_safe(tmp_path, monkeypatch):
+    cfg = _write_config(tmp_path, {"api_key": "k", "recorded_paths": ["/work/repo"]})
+    monkeypatch.setattr(scope_mod, "_CONFIG_FILE", cfg)
+    assert not scope_mod.cwd_in_scope("/work/repo2")
+
+
+def test_recorded_paths_with_no_cwd_fails_closed(tmp_path, monkeypatch):
+    cfg = _write_config(tmp_path, {"api_key": "k", "recorded_paths": ["/work/repo"]})
+    monkeypatch.setattr(scope_mod, "_CONFIG_FILE", cfg)
+    assert not scope_mod.cwd_in_scope("")
+    assert not scope_mod.cwd_in_scope(None)
+
+
+def test_exclusions_still_carve_out_of_recorded_paths(tmp_path, monkeypatch):
+    cfg = _write_config(
+        tmp_path,
+        {
+            "api_key": "k",
+            "recorded_paths": ["/work"],
+            "excluded_paths": ["/work/secret"],
+        },
+    )
+    monkeypatch.setattr(scope_mod, "_CONFIG_FILE", cfg)
+    assert scope_mod.cwd_in_scope("/work/repo")
+    assert not scope_mod.cwd_in_scope("/work/secret/project")

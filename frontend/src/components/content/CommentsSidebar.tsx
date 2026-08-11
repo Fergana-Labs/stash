@@ -386,7 +386,6 @@ function ThreadCard({
                 <span className="font-medium text-foreground">
                   {own ? "You" : m.author_name || "Someone"}
                 </span>
-                <span className="text-muted-foreground">·</span>
                 <span className="text-muted-foreground text-[11px]">{relTime(m.created_at)}</span>
                 {own && (
                   <button

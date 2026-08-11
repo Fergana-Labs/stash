@@ -2,9 +2,10 @@
 
 A session streams iff the plugin is configured (an api_key is present in the
 user CLI config), streaming has not been globally stopped (`stopped_streaming`
-in the user config), and the session's working directory is not under any
-entry in `excluded_paths` — the per-folder opt-out that Stash Desktop's
-"Session uploads" card manages.
+in the user config), the working directory is inside `recorded_paths` when the
+user scoped recording to specific folders (empty/absent = everywhere), and it
+is not under any entry in `excluded_paths` — the per-folder opt-out that Stash
+Desktop's "Session uploads" card manages.
 """
 
 from __future__ import annotations
@@ -39,14 +40,24 @@ def _under(cwd: Path, excluded: Path) -> bool:
 def cwd_in_scope(cwd: str | None = None) -> bool:
     """True if a session in `cwd` should stream.
 
-    Globally enabled AND cwd is not inside an excluded folder. An empty cwd
-    (some per-turn events carry none) can't match an exclusion and streams.
+    Globally enabled, inside the recorded folders when recording is
+    folder-scoped, and not inside an excluded folder. An empty cwd (some
+    per-turn events carry none) can't match an exclusion and streams —
+    except under folder-scoped recording, where an unprovable location
+    fails closed rather than leaking a session the user chose not to record.
     """
     if not streaming_enabled():
         return False
+    cfg = _read_user_config()
+    recorded = [e for e in (cfg.get("recorded_paths") or []) if isinstance(e, str) and e]
+    if recorded:
+        if not cwd:
+            return False
+        cwd_path = Path(cwd).resolve()
+        if not any(_under(cwd_path, Path(e).resolve()) for e in recorded):
+            return False
     if not cwd:
         return True
-    cfg = _read_user_config()
     cwd_path = Path(cwd).resolve()
     for entry in cfg.get("excluded_paths") or []:
         if isinstance(entry, str) and entry and _under(cwd_path, Path(entry).resolve()):

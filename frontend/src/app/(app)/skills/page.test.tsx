@@ -159,16 +159,22 @@ describe("SkillsPage", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: /New Skill/ }));
 
-    // Both fields are required: Create stays disabled until each is filled,
-    // so a skill can never be created without the agent-trigger description.
+    // Both fields are required: a skill can never be created without the
+    // agent-trigger description. Submitting incomplete shows why instead of
+    // silently ignoring the click (a disabled button reads as broken).
     const create = await screen.findByRole("button", { name: "Create skill" });
-    expect(create).toBeDisabled();
+    fireEvent.click(create);
+    expect(createSkill).not.toHaveBeenCalled();
+    expect(screen.getByText("Give the skill a name.")).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "My Skill" } });
-    expect(create).toBeDisabled();
+    fireEvent.click(create);
+    expect(createSkill).not.toHaveBeenCalled();
+    expect(
+      screen.getByText("Describe when an agent should use it — this is required."),
+    ).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("When should an agent use it?"), {
       target: { value: "Use for release planning." },
     });
-    expect(create).toBeEnabled();
     fireEvent.click(create);
 
     await waitFor(() =>

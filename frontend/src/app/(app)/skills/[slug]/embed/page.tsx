@@ -75,7 +75,7 @@ export default async function SkillEmbed({
           >
             <span className="block truncate font-medium">{file.name}</span>
             <span className="mt-0.5 block text-muted-foreground">
-              {file.content_type} · {formatSize(file.size_bytes ?? 0)}
+              {file.content_type}, {formatSize(file.size_bytes ?? 0)}
             </span>
           </a>
         ))}

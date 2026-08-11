@@ -2,15 +2,14 @@
 
 import { useEffect } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { nanoid } from "nanoid";
 import { X, SplitSquareHorizontal, PanelRightClose, Plus, Bot, Plug, FileText } from "lucide-react";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { createPage } from "@/lib/api";
-import { useWorkspace, type WorkbenchTab } from "@/lib/workspace-store";
+import { useWorkspace, titleKey, type WorkbenchTab } from "@/lib/workspace-store";
 import { ShellChromeScope, useShellChromeValue } from "@/components/ShellChromeContext";
-import { urlForTab, tabFromPath } from "@/lib/workspace-routes";
+import { urlForTab, tabFromPath, hasPermanentUrl } from "@/lib/workspace-routes";
 import { PageIcon, FileIcon, TableIcon, SessionsIcon, SkillIcon, FolderIcon } from "@/components/SkillIcons";
 import TabBody from "./tab-body";
 
@@ -35,13 +34,12 @@ function NewTabMenu() {
 
   async function newPage() {
     const page = await createPage("Untitled", null, "");
-    openTab("page", page.id, page.name || "Untitled");
+    openTab("page", page.id, { title: page.name || "Untitled" });
     router.replace(urlForTab({ kind: "page", refId: page.id }));
   }
+  // Chat is not a tab — it lives on the ChatGPT-style /agents page.
   function newChat() {
-    const id = `new-${nanoid(5)}`;
-    openTab("agent", id, "New Chat");
-    router.replace(urlForTab({ kind: "agent", refId: id }));
+    router.push("/agents");
   }
 
   return (
@@ -69,6 +67,7 @@ function TabPane({ pane }: { pane: 0 | 1 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const tabs = useWorkspace((s) => s.tabs);
+  const titles = useWorkspace((s) => s.titles);
   const paneOf = useWorkspace((s) => s.paneOf);
   const activeTabId = useWorkspace((s) => s.activeTabId);
   const activeTab1 = useWorkspace((s) => s.activeTab1);
@@ -87,6 +86,9 @@ function TabPane({ pane }: { pane: 0 | 1 }) {
   // derived from the URL, and switching tabs must never move the sidebar.
   function focus(tab: WorkbenchTab) {
     setActiveTab(tab.id);
+    // A workbench-only tab (the box's terminal and its files) has no address;
+    // refocusing one leaves the URL pointing at whatever it was.
+    if (!hasPermanentUrl(tab.kind)) return;
     const section = searchParams.get("section");
     router.replace(urlForTab(tab) + (section ? `?section=${section}` : ""));
   }
@@ -107,6 +109,9 @@ function TabPane({ pane }: { pane: 0 | 1 }) {
         <div className="flex min-w-0 flex-1 items-stretch overflow-x-auto">
           {paneTabs.map((tab) => {
             const active = tab.id === activeId;
+            // The content body publishes the title once loaded; until then the
+            // tab shows a quiet placeholder rather than a raw content id.
+            const title = titles[titleKey(tab.kind, tab.refId)] ?? "…";
             return (
               <div
                 key={tab.id}
@@ -117,10 +122,10 @@ function TabPane({ pane }: { pane: 0 | 1 }) {
                   "group flex max-w-[200px] shrink-0 cursor-pointer items-center gap-1.5 border-r border-border px-3 text-[13px]",
                   active ? "bg-base text-foreground" : "text-muted-foreground hover:bg-base/60",
                 )}
-                title={tab.title}
+                title={title}
               >
                 <TabIcon kind={tab.kind} />
-                <span className="min-w-0 flex-1 truncate">{tab.title}</span>
+                <span className="min-w-0 flex-1 truncate">{title}</span>
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -211,21 +216,19 @@ export default function Workbench() {
   // URL → tab: opening/focusing happens off the pathname only (never off `tabs`),
   // so this can't loop with the imperative router.replace on tab clicks.
   useEffect(() => {
-    // `/agents?resume=<sessionId>` is the "Resume in chat" deep link from a
-    // stored web-chat session.
-    const resume = pathname === "/agents" ? searchParams.get("resume") : null;
-    const match = resume
-      ? { kind: "agent" as const, refId: resume }
-      : pathname === "/sessions" && searchParams.get("workspace") === "1"
+    const match =
+      pathname === "/sessions" && searchParams.get("workspace") === "1"
         ? { kind: "sessions-home" as const, refId: "sessions" }
         : tabFromPath(pathname);
     if (!match) return;
-    const title = match.kind === "agent" ? "Chat" : match.kind === "sessions-home" ? "Sessions" : match.refId;
+    // Content tabs get no title here — their body publishes the real name via
+    // useTabTitle. Only sessions-home has no content body to name it.
+    const title = match.kind === "sessions-home" ? "Sessions" : undefined;
     const existing = useWorkspace.getState().tabs.find((t) => t.kind === match.kind && t.refId === match.refId);
     if (existing) setActiveTab(existing.id);
     // Deep links navigate the current tab — only cmd/ctrl-click and the
     // explicit new-tab affordances ever add tabs.
-    else openTab(match.kind, match.refId, title, { newTab: false });
+    else openTab(match.kind, match.refId, { newTab: false, title });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname, searchParams]);
 

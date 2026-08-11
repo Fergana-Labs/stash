@@ -72,62 +72,42 @@ async def list_my_recents(current_user: dict = Depends(get_current_user)):
     ]
 
 
-@router.get("/activity")
-async def list_activity(
+@router.get("/file-activity")
+async def list_file_activity(
     limit: int = Query(50, ge=1, le=200),
     before: datetime | None = Query(None),
     owner_user_id: UUID | None = Query(None),
     current_user: dict = Depends(get_current_user),
 ):
-    """Recent product activity across accessible scopes, cursor-paginated by ts."""
+    """New and edited files and pages across accessible scopes, cursor-paginated
+    by ts. Memory subtrees are excluded: curation output is the curator log's
+    story, not file activity. Every scope's Memory is excluded, not just the
+    caller's — a workspace scope's nightly curation churn would otherwise flood
+    the feed of every member who can read it."""
     pool = get_pool()
     events = await pool.fetch(
         """
-        WITH member_scopes AS (
-          SELECT u.id, u.name
-          FROM users u
-          WHERE u.id = $1
-          AND ($3::uuid IS NULL OR u.id = $3)
-        ),
-        -- The user's own scope plus any scope that has shared content with the
-        -- user. Page/file rows still pass readable_content_condition, so a share
-        -- only surfaces the specific shared rows — never the whole scope.
-        accessible_scopes AS (
+        WITH RECURSIVE accessible_scopes AS (
+          -- The user's own scope plus any scope that has shared content with
+          -- the user. Page/file rows still pass readable_content_condition, so
+          -- a share only surfaces the specific shared rows — never the whole
+          -- scope.
           SELECT u.id, u.name
           FROM users u
           WHERE u.id IN """
         + permission_service.accessible_scope_ids_sql(1)
         + """
           AND ($3::uuid IS NULL OR u.id = $3)
+        ),
+        memory_folders AS (
+          SELECT mf.id FROM folders mf
+          JOIN accessible_scopes aw ON aw.id = mf.owner_user_id
+          WHERE mf.is_memory
+          UNION
+          SELECT mf.id FROM folders mf
+          JOIN memory_folders m ON m.id = mf.parent_folder_id
         )
         SELECT * FROM (
-        (
-          SELECT 'session.uploaded' AS kind,
-                 MAX(he.created_at) AS ts,
-                 (
-                   ARRAY_AGG(he.created_by ORDER BY he.created_at DESC)
-                   FILTER (WHERE he.created_by IS NOT NULL)
-                 )[1] AS actor_id,
-                 he.session_id AS target_id,
-                 (
-                   ARRAY_AGG(he.agent_name ORDER BY he.created_at DESC)
-                   FILTER (WHERE he.agent_name IS NOT NULL)
-                 )[1] || ': ' || he.session_id AS target_label,
-                 (
-                   ARRAY_AGG(he.agent_name ORDER BY he.created_at DESC)
-                   FILTER (WHERE he.agent_name IS NOT NULL)
-                 )[1] AS agent_name,
-                 aw.id AS owner_user_id,
-                 aw.name AS owner_name
-          FROM history_events he
-          JOIN member_scopes aw ON aw.id = he.owner_user_id
-          WHERE he.session_id IS NOT NULL
-            AND """
-        + memory_service.readable_session_event_condition("he", 1)
-        + """
-          GROUP BY aw.id, aw.name, he.session_id
-        )
-        UNION ALL
         (
           SELECT 'page.updated' AS kind,
                  p.updated_at AS ts,
@@ -140,6 +120,7 @@ async def list_activity(
           FROM pages p
           JOIN accessible_scopes aw ON aw.id = p.owner_user_id
           WHERE p.deleted_at IS NULL
+            AND NOT EXISTS (SELECT 1 FROM memory_folders m WHERE m.id = p.folder_id)
             AND """
         + permission_service.readable_content_condition("page", "p", 1)
         + """
@@ -157,6 +138,7 @@ async def list_activity(
           FROM files f
           JOIN accessible_scopes aw ON aw.id = f.owner_user_id
           WHERE f.deleted_at IS NULL
+            AND NOT EXISTS (SELECT 1 FROM memory_folders m WHERE m.id = f.folder_id)
             AND """
         + permission_service.readable_content_condition("file", "f", 1)
         + """

@@ -77,7 +77,41 @@ async def test_ls_root_lists_the_mounts(client: AsyncClient):
     body = resp.json()
     assert body["exit_code"] == 0
     listed = body["stdout"].split()
-    assert {"files", "sessions", "skills", "tables"} <= set(listed)
+    assert {"files", "sessions", "skills"} <= set(listed)
+    # Tables are not a segregated section — they live inside /files (and
+    # /memory) at their folder path.
+    assert "tables" not in listed
+
+
+async def test_tables_mount_inside_their_folder(client: AsyncClient):
+    """A table about jobs belongs in the jobs folder: the VFS projects each
+    table as a directory at its folder path, not under a /tables silo."""
+    api_key, _ = await _register(client)
+    folder = await client.post("/api/v1/me/folders", json={"name": "Jobs"}, headers=_auth(api_key))
+    assert folder.status_code == 201
+    table = await client.post(
+        "/api/v1/me/tables",
+        json={
+            "name": "Applications",
+            "folder_id": folder.json()["id"],
+            "columns": [{"name": "Company", "type": "text"}],
+        },
+        headers=_auth(api_key),
+    )
+    assert table.status_code == 201
+    row = await client.post(
+        f"/api/v1/me/tables/{table.json()['id']}/rows",
+        json={"data": {table.json()["columns"][0]["id"]: "Acme"}},
+        headers=_auth(api_key),
+    )
+    assert row.status_code == 201
+
+    listing = await _vfs(client, api_key, "ls '/files/Jobs/Applications'")
+    assert listing.json()["exit_code"] == 0
+    assert set(listing.json()["stdout"].split()) == {"rows.json", "rows.jsonl", "schema.json"}
+
+    rows = await _vfs(client, api_key, "cat '/files/Jobs/Applications/rows.jsonl'")
+    assert "Acme" in rows.json()["stdout"]
 
 
 async def test_computer_is_not_mounted_server_side(client: AsyncClient):

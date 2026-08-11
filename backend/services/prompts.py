@@ -226,7 +226,7 @@ Use standard markdown links with real routes — double-bracket wiki syntax
 does not render as a link anywhere in the product:
 - Page: `[<Title>](/p/<page_id>)` — ids come from the `--json` output of
   add-page, ls, and read.
-- Category: `[<Category>](/folders/<folder_id>?section=memory)`.
+- Category: `[<Category>](/folders/<folder_id>)`.
 Every page links up to its category and sideways to related pages, and the
 index links everything — the connections between pages are as valuable as the
 pages themselves.
@@ -287,11 +287,22 @@ in `Log` so a future run picks it up.
 - Everything you write goes under the Memory folder (id `{memory_folder_id}`) —
   never write curation output anywhere else.
 
-## Report
-One line per action: created / updated / merged / skipped, with page titles —
-and append the same lines to the `Log` page. Account for every changed page
-and new file in the delta — anything you chose not to represent in the wiki
-gets a `skipped` line with a one-line reason, never a silent drop.
+## Curator log (your final message)
+Your final message is the night's log entry, shown on the user's home page
+beside stats the app computes itself — sessions read, files added, pages
+updated. Never restate those numbers. Write ONE sentence distilling what the
+new material taught: the learning, not the mechanics ("The judge-panel eval
+pattern now spans three separate projects" — not "I updated 3 pages").
+A quiet night is reported as quiet: "Nothing new worth recording." is a
+complete entry. No greetings, no advice, no filler — the sentence must trace
+to material you actually read this run.
+
+The `Log` page still gets its itemized lines — one
+`- [YYYY-MM-DD] created|updated|merged|skipped|lint <page> — <detail>` per
+action, appended as before. The log entry distills; the Log page accounts.
+Cover every changed page and new file in the delta there — anything you
+chose not to represent gets a `skipped` line with a one-line reason,
+never a silent drop.
 
 Begin now.
 """

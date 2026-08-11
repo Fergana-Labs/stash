@@ -23,7 +23,7 @@ import HtmlPageView, {
 import ExportDeckButton from "@/components/export/ExportDeckButton";
 import ResourceShareButton from "@/components/share/ResourceShareButton";
 import FileViewerHeader from "@/components/content/FileViewerHeader";
-import { sectionCrumbs, useMemoryFolderId } from "@/lib/memory-folder";
+import { sectionCrumbs } from "@/lib/memory-folder";
 import MarkdownEditor, {
   extractCommentIdsFromMarkdown,
   type SaveStatus,
@@ -53,6 +53,7 @@ import { findInSkillContents } from "@/lib/localSkill";
 import { getScope, getScopeUserId, setScope } from "@/lib/scope-store";
 import type { CommentThread, Page, Scope, Workspace } from "@/lib/types";
 import { subscribePageEvents } from "@/lib/pageEvents";
+import { useTabTitle } from "@/lib/workspace-store";
 
 function wrapHtml(title: string, body: string): string {
   // HTML pages can be stored as a full document (when imported from .html
@@ -105,6 +106,7 @@ export default function SkillPageView({ pageId }: { pageId: string }) {
   const skillSlug = searchParams.get("skill");
 
   const [page, setPage] = useState<Page | null>(null);
+  useTabTitle("page", pageId, page?.name.replace(/\.md$/, ""));
   // The scope is the current user. Empty until auth resolves — every
   // consumer below renders or fires only after that.
   const scopeId = user?.id ?? "";
@@ -217,11 +219,7 @@ export default function SkillPageView({ pageId }: { pageId: string }) {
     });
   }, [scopeId, pageId, user, skillSlug]);
 
-  const memoryFolderId = useMemoryFolderId();
-  const ancestorCrumbs = useMemo(
-    () => sectionCrumbs(folderChain, memoryFolderId),
-    [folderChain, memoryFolderId],
-  );
+  const ancestorCrumbs = useMemo(() => sectionCrumbs(folderChain), [folderChain]);
 
   useBreadcrumbs(
     [
@@ -1058,7 +1056,7 @@ function SkillFallbackPageView({
           {page.name || "(untitled)"}
         </h1>
         <div className="mt-1 text-[11.5px] uppercase tracking-wide text-muted-foreground">
-          page · read-only via Skill
+          page, read-only via Skill
         </div>
         <div className="mt-6">
           <PageBody page={page} />

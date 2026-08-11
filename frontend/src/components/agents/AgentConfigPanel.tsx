@@ -223,7 +223,7 @@ export default function AgentConfigPanel({
         >
           <div className="flex items-center justify-between rounded-md border border-border bg-base px-3 py-2">
             <span className="text-[13px] text-foreground">
-              {agent.run_mode === "scheduled" ? "On · daily, automatic" : "Off"}
+              {agent.run_mode === "scheduled" ? "On (daily, automatic)" : "Off"}
             </span>
             <button
               type="button"

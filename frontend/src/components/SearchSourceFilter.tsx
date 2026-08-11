@@ -41,7 +41,7 @@ export default function SearchSourceFilter({
 }) {
   const selectedCount = tokens.filter((t) => !deselected.has(t)).length;
   const label =
-    selectedCount === tokens.length ? "All sources" : `Sources · ${selectedCount}/${tokens.length}`;
+    selectedCount === tokens.length ? "All sources" : `Sources: ${selectedCount}/${tokens.length}`;
   return (
     <DropdownMenu>
       <DropdownMenuTrigger

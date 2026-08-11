@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Bot, FolderTree, MessagesSquare, GraduationCap, Brain, LayoutGrid, Monitor, Wrench, Settings } from "lucide-react";
+import { Bot, FolderTree, MessagesSquare, GraduationCap, Home, Wrench, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
 import { useWorkspace, type RailSection } from "@/lib/workspace-store";
@@ -13,19 +13,20 @@ type RailItem = { key: RailSection; label: string; icon: typeof Bot; match: (p: 
 
 // Primary sections — each opens its own explorer panel (see workspace-shell).
 const PRIMARY: RailItem[] = [
-  { key: "agents", label: "Agents", icon: Bot, match: (p) => p.startsWith("/agents") },
-  { key: "apps", label: "Apps", icon: LayoutGrid, match: (p) => p.startsWith("/apps") },
-  { key: "files", label: "Files", icon: FolderTree, match: (p) => p === "/files" || p.startsWith("/f/") || p.startsWith("/p/") || p.startsWith("/folders/") || p.startsWith("/tables/") },
+  { key: "home", label: "Home", icon: Home, match: (p) => p === "/" },
+  { key: "files", label: "VFS", icon: FolderTree, match: (p) => p === "/files" || p.startsWith("/f/") || p.startsWith("/p/") || p.startsWith("/folders/") || p.startsWith("/tables/") },
   { key: "sessions", label: "Sessions", icon: MessagesSquare, match: (p) => p.startsWith("/sessions") || p.startsWith("/session-folders") },
   { key: "skills", label: "Skills", icon: GraduationCap, match: (p) => p.startsWith("/skills") },
-  { key: "memory", label: "Memory", icon: Brain, match: (p) => p.startsWith("/memory") },
   { key: "tools", label: "Tools", icon: Wrench, match: (p) => p.startsWith("/tools") || p.startsWith("/integrations") },
-  { key: "computer", label: "VM", icon: Monitor, match: () => false },
+  { key: "agents", label: "Chat", icon: Bot, match: (p) => p.startsWith("/agents") },
 ];
 
-// Agents and Apps are lenses over the stash rather than places in it, so the
-// divider falls after them, above the VFS sections.
-const DIVIDER_AFTER_INDEX = 1;
+// Home is the memory dashboard — the divider separates it from the VFS
+// sections. Chat sits last: it's a lens over the stash, not a place in it.
+// Apps lives at /apps. The VM has NO entry point since it left this rail: the
+// explorer's Home root is the only thing that lists it, and that root only
+// renders once you are already inside the VM section (?section=computer).
+const DIVIDER_AFTER_INDEX = 0;
 
 function RailButton({
   item,
@@ -106,17 +107,25 @@ export default function Rail({ user, onLogout }: { user: User; onLogout: () => v
   const requestedSection = searchParams.get("section");
 
   function selectSection(section: RailSection) {
-    // Memory and Apps have their own landing pages, so they navigate; other
-    // sections just swap the explorer beside whatever's open.
-    if (section === "memory" || section === "apps") {
+    // VFS resumes where the user left off; clicking it while already in the
+    // VFS zooms out to the full-screen lens.
+    if (section === "files") {
+      const filesItem = PRIMARY.find((i) => i.key === "files")!;
+      const alreadyInVfs = requestedSection === "files" || (!requestedSection && filesItem.match(pathname));
       setRailSection(section);
-      router.replace(section === "memory" ? "/memory" : "/apps");
+      router.replace(alreadyInVfs ? "/files" : useWorkspace.getState().lastVfsUrl ?? "/files");
       return;
     }
-    const params = new URLSearchParams(searchParams);
-    params.set("section", section);
+    // Every other section is a page; the rail is pure navigation.
+    const LANDING: Record<Exclude<RailSection, "files" | "computer">, string> = {
+      home: "/",
+      agents: "/agents",
+      sessions: "/sessions",
+      skills: "/skills",
+      tools: "/tools",
+    };
     setRailSection(section);
-    router.replace(`${pathname}?${params.toString()}`);
+    router.replace(LANDING[section as keyof typeof LANDING]);
   }
 
   return (

@@ -130,11 +130,11 @@ function RunSeparator({ run }: { run: AgentRun }) {
     <div className="flex items-center gap-3 pt-6 pb-1">
       <div className="h-px flex-1 bg-border" />
       <span className="text-[11px] whitespace-nowrap text-muted-foreground">
-        {runDate(run)} · fresh context
+        {runDate(run)}, fresh context
         {run.status !== "completed" && (
           <span className={run.status === "failed" ? "text-error" : undefined}>
             {" "}
-            · {run.status}
+            ({run.status})
           </span>
         )}
       </span>

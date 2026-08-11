@@ -131,7 +131,7 @@ export default function CommandPalette({
             kind: "folder",
             label: f.name,
             href: `/folders/${f.id}`,
-            detail: `${f.page_count} pages · ${f.file_count} files`,
+            detail: `${f.page_count} pages, ${f.file_count} files`,
           });
       });
       filesTree.files.forEach((f) => {
@@ -258,7 +258,7 @@ export default function CommandPalette({
                 }
               >
                 <span className="w-5 text-center text-[14px] text-muted-foreground">
-                  {kindIcon[r.kind] || "·"}
+                  {kindIcon[r.kind] || "-"}
                 </span>
                 <div className="min-w-0 flex-1">
                   <div className="truncate font-medium">{r.label}</div>
@@ -317,5 +317,5 @@ function tableDetail(table: TableWithOwner): string {
   if (typeof table.row_count === "number") {
     parts.push(`${table.row_count} row${table.row_count === 1 ? "" : "s"}`);
   }
-  return parts.join(" · ");
+  return parts.join(", ");
 }
