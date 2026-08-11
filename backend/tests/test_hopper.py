@@ -1,9 +1,9 @@
-"""The hopper: drop anything, and the feed says whether an agent can read it.
+"""The hopper: an intake into the VFS, not a place things sit.
 
-The whole promise of the tab is that "legible" means legible. So the feed must
-never claim it for something an agent cannot actually read — a file still in
-extraction, a file that yielded no text, a link the site refused us — and must
-flip to it, unprompted, the moment the underlying pipeline lands the content.
+A drop must become an ordinary VFS item — a page or a file at the top of the
+user's stash, indistinguishable from one created any other way. Nothing is
+parked in a holding folder, and no ledger records the drop: the item itself is
+the record.
 """
 
 from uuid import UUID
@@ -11,7 +11,7 @@ from uuid import UUID
 import pytest
 from httpx import AsyncClient
 
-from backend.services import files_tree_service, storage_service, url_import_service
+from backend.services import storage_service
 from backend.tasks import clips as clips_tasks
 from backend.tasks import extraction
 
@@ -38,23 +38,12 @@ def _mock_storage(monkeypatch) -> None:
     monkeypatch.setattr(storage_service, "is_configured", lambda: True)
     monkeypatch.setattr(storage_service, "upload_file", _upload)
     monkeypatch.setattr(storage_service, "get_file_url", _url)
-    # Extraction runs in a Celery worker; these tests drive its outcome by hand.
     monkeypatch.setattr(extraction.extract_file_text, "delay", lambda *a, **k: None)
 
 
-def _mock_import_dispatch(monkeypatch) -> None:
-    monkeypatch.setattr(clips_tasks.process_url_imports, "delay", lambda *a, **k: None)
-
-
-async def _feed(client: AsyncClient, headers: dict) -> list[dict]:
-    resp = await client.get("/api/v1/me/hopper", headers=headers)
-    assert resp.status_code == 200
-    return resp.json()["items"]
-
-
 @pytest.mark.asyncio
-async def test_note_is_legible_the_moment_it_is_dropped(client: AsyncClient) -> None:
-    headers, _ = await _register(client)
+async def test_note_becomes_a_page_in_the_vfs(client: AsyncClient, pool) -> None:
+    headers, owner_id = await _register(client)
 
     resp = await client.post(
         "/api/v1/me/hopper/note",
@@ -62,16 +51,20 @@ async def test_note_is_legible_the_moment_it_is_dropped(client: AsyncClient) -> 
         headers=headers,
     )
     assert resp.status_code == 201
-    item = resp.json()
-    # A note IS its text — there is no pipeline to wait on.
-    assert item["status"] == "legible"
-    assert item["target"]["kind"] == "page"
-    assert item["label"].startswith("Pricing call notes")
-    assert "annual billing" in item["preview"]
+    drop = resp.json()
+    assert drop["kind"] == "page"
+    # The page name is the note's first line, not the whole note run together.
+    assert drop["name"] == "Pricing call notes"
+
+    row = await pool.fetchrow(
+        "SELECT folder_id, content_markdown FROM pages WHERE id = $1", UUID(drop["id"])
+    )
+    assert row["folder_id"] is None
+    assert "annual billing" in row["content_markdown"]
 
 
 @pytest.mark.asyncio
-async def test_file_reads_first_and_only_then_claims_legible(
+async def test_file_lands_in_the_vfs_and_starts_extraction(
     client: AsyncClient, pool, monkeypatch
 ) -> None:
     headers, _ = await _register(client)
@@ -83,74 +76,25 @@ async def test_file_reads_first_and_only_then_claims_legible(
         headers=headers,
     )
     assert resp.status_code == 201
-    item = resp.json()
-    # The bytes are stored, but nothing has read them yet.
-    assert item["status"] == "reading"
-    assert item["target"]["kind"] == "file"
+    drop = resp.json()
+    assert drop["kind"] == "file"
+    assert drop["name"] == "contract.pdf"
 
-    await pool.execute(
-        "UPDATE files SET extraction_status = 'done', extracted_text = $2 WHERE id = $1",
-        UUID(item["target"]["id"]),
-        "Master services agreement, term of 24 months.",
+    row = await pool.fetchrow(
+        "SELECT folder_id, extraction_status FROM files WHERE id = $1", UUID(drop["id"])
     )
-    (fresh,) = await _feed(client, headers)
-    assert fresh["status"] == "legible"
-    assert "24 months" in fresh["preview"]
+    assert row["folder_id"] is None
+    # Queued for text extraction the moment it lands — that is what makes it
+    # readable by an agent.
+    assert row["extraction_status"] == "pending"
 
 
 @pytest.mark.asyncio
-async def test_file_that_yielded_no_text_is_never_called_legible(
-    client: AsyncClient, pool, monkeypatch
-) -> None:
-    headers, _ = await _register(client)
-    _mock_storage(monkeypatch)
-
-    resp = await client.post(
-        "/api/v1/me/hopper/file",
-        files={"file": ("logo.svg", b"<svg/>", "image/svg+xml")},
-        headers=headers,
-    )
-    file_id = UUID(resp.json()["target"]["id"])
-    # Extraction finished and found nothing an agent can read.
-    await pool.execute(
-        "UPDATE files SET extraction_status = 'done', extracted_text = NULL WHERE id = $1",
-        file_id,
-    )
-
-    (item,) = await _feed(client, headers)
-    assert item["status"] == "no_text"
-    assert item["detail"]
-
-
-@pytest.mark.asyncio
-async def test_failed_extraction_surfaces_the_failure(
-    client: AsyncClient, pool, monkeypatch
-) -> None:
-    headers, _ = await _register(client)
-    _mock_storage(monkeypatch)
-
-    resp = await client.post(
-        "/api/v1/me/hopper/file",
-        files={"file": ("deck.pptx", b"junk", "application/octet-stream")},
-        headers=headers,
-    )
-    await pool.execute(
-        "UPDATE files SET extraction_status = 'failed', extraction_error = $2 WHERE id = $1",
-        UUID(resp.json()["target"]["id"]),
-        "ValueError",
-    )
-
-    (item,) = await _feed(client, headers)
-    assert item["status"] == "failed"
-    assert item["detail"] == "ValueError"
-
-
-@pytest.mark.asyncio
-async def test_link_waits_on_its_import_then_points_at_what_landed(
+async def test_link_queues_an_import_that_files_itself(
     client: AsyncClient, pool, monkeypatch
 ) -> None:
     headers, owner_id = await _register(client)
-    _mock_import_dispatch(monkeypatch)
+    monkeypatch.setattr(clips_tasks.process_url_imports, "delay", lambda *a, **k: None)
 
     resp = await client.post(
         "/api/v1/me/hopper/link",
@@ -158,51 +102,19 @@ async def test_link_waits_on_its_import_then_points_at_what_landed(
         headers=headers,
     )
     assert resp.status_code == 201
-    assert resp.json()["status"] == "reading"
+    assert resp.json()["kind"] == "link"
 
-    import_id = await pool.fetchval(
-        "SELECT id FROM url_imports WHERE owner_user_id = $1", UUID(owner_id)
+    row = await pool.fetchrow(
+        "SELECT url, folder_id, status FROM url_imports WHERE owner_user_id = $1", UUID(owner_id)
     )
-    page = await files_tree_service.create_page(
-        UUID(owner_id), "The post", UUID(owner_id), content="The body of the post."
-    )
-    await url_import_service.mark_done(import_id, page_id=page["id"])
-
-    # The feed reads the import's own result — nothing wrote status twice.
-    (item,) = await _feed(client, headers)
-    assert item["status"] == "legible"
-    assert item["target"]["name"] == "The post"
-    assert "body of the post" in item["preview"]
+    assert row["url"] == "https://example.com/post"
+    assert row["folder_id"] is None
+    assert row["status"] == "pending"
 
 
 @pytest.mark.asyncio
-async def test_link_the_site_blocked_asks_for_the_extension(
-    client: AsyncClient, pool, monkeypatch
-) -> None:
-    headers, owner_id = await _register(client)
-    _mock_import_dispatch(monkeypatch)
-
-    await client.post(
-        "/api/v1/me/hopper/link",
-        json={"url": "https://paywalled.example/article"},
-        headers=headers,
-    )
-    import_id = await pool.fetchval(
-        "SELECT id FROM url_imports WHERE owner_user_id = $1", UUID(owner_id)
-    )
-    await url_import_service.mark_needs_client(import_id, "HTTP 403")
-
-    (item,) = await _feed(client, headers)
-    # Telling the user the browser extension can reach it is the only honest
-    # next step; a spinner here would never resolve.
-    assert item["status"] == "needs_extension"
-    assert "extension" in item["detail"]
-
-
-@pytest.mark.asyncio
-async def test_every_drop_lands_in_the_one_hopper_folder(
-    client: AsyncClient, pool, monkeypatch
-) -> None:
+async def test_hopper_creates_no_folder_of_its_own(client: AsyncClient, pool, monkeypatch) -> None:
+    """The hopper sorts things INTO the VFS. A holding folder would defeat it."""
     headers, owner_id = await _register(client)
     _mock_storage(monkeypatch)
 
@@ -213,10 +125,12 @@ async def test_every_drop_lands_in_the_one_hopper_folder(
         headers=headers,
     )
 
-    folders = await pool.fetch(
-        "SELECT id FROM folders WHERE owner_user_id = $1 AND name = 'Hopper'", UUID(owner_id)
-    )
-    assert len(folders) == 1
-    folder_id = folders[0]["id"]
-    assert await pool.fetchval("SELECT count(*) FROM pages WHERE folder_id = $1", folder_id) == 1
-    assert await pool.fetchval("SELECT count(*) FROM files WHERE folder_id = $1", folder_id) == 1
+    folders = await pool.fetch("SELECT name FROM folders WHERE owner_user_id = $1", UUID(owner_id))
+    assert [f["name"] for f in folders] == []
+
+
+@pytest.mark.asyncio
+async def test_empty_note_is_refused(client: AsyncClient) -> None:
+    headers, _ = await _register(client)
+    resp = await client.post("/api/v1/me/hopper/note", json={"text": "   \n  "}, headers=headers)
+    assert resp.status_code == 400
