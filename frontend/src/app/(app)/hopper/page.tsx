@@ -32,15 +32,14 @@ export default function HopperRoute() {
           const landed = await drop();
           if (landed.kind === "link") {
             // The page is fetched by a worker and filed under Clips when it
-            // arrives, so there is nothing to open yet.
-            toast.success("Fetching that page", {
-              description: "It'll land in Files › Clips › raw",
-            });
+            // arrives, so there is nothing to go to yet.
+            toast.success("Fetching that page", { description: "It'll land in Clips" });
           } else {
+            // One line and one way out. Naming the path as well was a third
+            // thing to read on the way to the only thing you'd click.
             toast.success(`${landed.name} is in your Stash`, {
-              description: "Files › top level",
               action: {
-                label: "Open",
+                label: landed.kind === "page" ? "Go to page" : "Go to file",
                 onClick: () => router.push(`/${landed.kind === "page" ? "p" : "f"}/${landed.id}`),
               },
             });
