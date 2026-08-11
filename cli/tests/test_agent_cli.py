@@ -29,10 +29,10 @@ class _FakeClient:
         self._calls.append(("list_agents",))
         return _AGENTS
 
-    # Session handles resolve titles against the overview; no titled
-    # sessions here, so every handle passes through as an id.
-    def get_overview(self):
-        return {"sessions": []}
+    # Session handles resolve server-side; no titled sessions here, so every
+    # handle passes through as the id it already is.
+    def resolve_session(self, ref, trashed=False):
+        return {"matched": False, "session_id": ref, "id": ref, "name": None}
 
     def agent_chat_events(self, message, session_id=None, agent_id=None):
         self._calls.append(("chat", message, session_id, agent_id))

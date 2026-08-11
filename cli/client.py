@@ -860,6 +860,14 @@ class StashClient:
 
     # --- Sessions ---
 
+    def resolve_session(self, ref: str, trashed: bool = False) -> dict:
+        """What session a handle names — a title, a VFS name, or an id.
+
+        `matched` is false when the handle names no title; `session_id` and
+        `id` then echo the handle, so callers need no branch.
+        """
+        return self._get("/api/v1/me/sessions/resolve", ref=ref, trashed=trashed)
+
     def delete_session(self, session_row_id: str) -> None:
         self._delete(f"/api/v1/me/sessions/{session_row_id}")
 

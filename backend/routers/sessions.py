@@ -23,6 +23,7 @@ from ..services import (
     permission_service,
     security_audit_service,
     session_folder_service,
+    session_ref_service,
     session_service,
     session_title_service,
     storage_service,
@@ -274,6 +275,32 @@ async def _session_detail_payload(
     payload["linear_tickets"] = await linear_ticket_service.list_session_labels(session["id"])
     payload["artifacts"] = await _session_artifacts(session["id"])
     return payload
+
+
+@router.get("/me/sessions/resolve")
+async def resolve_my_session(
+    ref: str = Query(..., min_length=1, max_length=256),
+    trashed: bool = Query(
+        False, description="Resolve against the trash instead (`stash restore`)."
+    ),
+    current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
+):
+    """What session a handle names — a title, the VFS's spelling of one, a
+    `/sessions/<name>` directory name, a session_id, or a row id.
+
+    `matched` is false for a handle that names no title: `session_id` and `id`
+    then echo the handle, since it is already an id and the endpoint that uses
+    it will reject it if it is not. Callers need no branch either way.
+
+    Declared above `/me/sessions/{session_id}` so the literal path wins.
+    """
+    try:
+        if trashed:
+            return await session_ref_service.resolve_trashed(scope_user_id, ref)
+        return await session_ref_service.resolve(scope_user_id, current_user["id"], ref)
+    except session_ref_service.SessionRefAmbiguous as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
 
 
 @router.get("/sessions/{session_id}")

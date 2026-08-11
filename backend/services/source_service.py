@@ -2220,13 +2220,17 @@ async def source_document(
             else None
         )
     elif source == NATIVE_SESSIONS:
+        from . import session_ref_service
         from .memory_service import read_session_events
 
-        events = await read_session_events(owner_user_id, ref, user_id)
+        # Search names session hits by title and the VFS lists them by title,
+        # so a ref arriving here is as likely to be a title as an id.
+        session_id = (await session_ref_service.resolve(owner_user_id, user_id, ref))["session_id"]
+        events = await read_session_events(owner_user_id, session_id, user_id)
         transcript = "\n".join(
             f"[{e.get('event_type')}] {(e.get('content') or '')[:2000]}" for e in events
         )
-        doc = {"session": ref, "transcript": transcript[:8000]}
+        doc = {"session": session_id, "transcript": transcript[:8000]}
     else:
         connected = await _resolve_connected(source, owner_user_id, user_id)
         if connected is None:

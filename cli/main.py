@@ -1125,51 +1125,32 @@ def _current_session_id() -> str | None:
 def _resolve_session(handle: str, field: str = "session_id") -> str:
     """Session titles are aliases for session ids across the CLI.
 
-    A handle matching a session title — in the stored spelling or the VFS
-    safe_name spelling that `stash search` and `stash vfs ls` print — resolves
-    to that session's `field`: "session_id" (the transcript stream id) or "id"
-    (the row id `rm`/`restore`/`mv`/`shares` take). Anything else is already
-    an id and passes through untouched; the server rejects unknown ids loudly.
-    A title matching several sessions errors, listing their ids."""
-    with _client() as c:
-        try:
-            sessions = c.get_overview().get("sessions", [])
-        except StashError as e:
-            _err(e)
-    return _match_session_title(handle, sessions, field)
+    A handle matching a session title — the stored spelling, the VFS
+    safe_name spelling that `stash search` prints, or the `/sessions/<name>`
+    directory name that `stash vfs ls` prints — resolves to that session's
+    `field`: "session_id" (the transcript stream id) or "id" (the row id
+    `rm`/`restore`/`mv`/`shares` take). Anything else is already an id and
+    passes through untouched; the server rejects unknown ids loudly.
+
+    The matching itself is server-side, so the CLI, the MCP tools, and the VFS
+    cannot disagree about what a name means."""
+    return _resolved_session_field(handle, field, trashed=False)
 
 
 def _resolve_trashed_session(handle: str) -> str:
     """The row id of a trashed session named by title, for `stash restore`.
 
-    A trashed session is gone from the overview, so its title only resolves
-    against the trash — the same listing `stash trash list` prints, which
-    names a session by its title."""
+    A trashed session is gone from the scope listing, so its title resolves
+    against the trash — the same set `stash trash list` prints."""
+    return _resolved_session_field(handle, "id", trashed=True)
+
+
+def _resolved_session_field(handle: str, field: str, *, trashed: bool) -> str:
     with _client() as c:
         try:
-            trashed = c.get_trash().get("sessions", [])
+            return c.resolve_session(handle, trashed=trashed)[field]
         except StashError as e:
             _err(e)
-    named = [{"title": s["name"], "id": s["id"]} for s in trashed]
-    return _match_session_title(handle, named, "id")
-
-
-def _match_session_title(handle: str, sessions: list[dict], field: str) -> str:
-    from stashvfs import safe_name
-
-    matches = [
-        s for s in sessions if s.get("title") and handle in (s["title"], safe_name(s["title"]))
-    ]
-    if not matches:
-        return handle
-    ids = sorted({str(s[field]) for s in matches})
-    if len(ids) > 1:
-        console.print(
-            f"[red]Title '{handle}' matches {len(ids)} sessions: "
-            f"{', '.join(ids)}. Pass a session id.[/red]"
-        )
-        raise typer.Exit(1)
-    return ids[0]
 
 
 def _extract_session_bookends(raw_jsonl: str) -> tuple[str, str, str]:

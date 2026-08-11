@@ -3,7 +3,7 @@ contract that backs them. Shared by the `stash vfs` CLI command and the
 `/api/v1/me/vfs` endpoint."""
 
 from .client import MachineVfsClient, VfsClient, VfsClientError, VfsScanBudget
-from .model import MountError, StashVfsModel, safe_name
+from .model import MountError, StashVfsModel, safe_name, session_dir_names
 from .shell import SkillAppVfsShell, VfsCommandResult
 
 __all__ = [
@@ -16,4 +16,5 @@ __all__ = [
     "VfsCommandResult",
     "VfsScanBudget",
     "safe_name",
+    "session_dir_names",
 ]

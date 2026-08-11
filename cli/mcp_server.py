@@ -126,8 +126,8 @@ def stash_browse_source(source: str, path: str = "") -> str:
 
 @mcp.tool()
 def stash_read_source(source: str, ref: str) -> str:
-    """Read one document from a source. `ref` is a page id (files), a session id
-    (sessions), or a document path (connected sources)."""
+    """Read one document from a source. `ref` is a page id (files), a session
+    title or id (sessions), or a document path (connected sources)."""
     return _json(_client().read_source_doc(source, ref))
 
 
@@ -669,20 +669,33 @@ def stash_read_public_skill(slug: str) -> str:
 # ── Sessions: full surface (transcript + soft-delete) ─────────────
 
 
+def _session(handle: str, field: str = "session_id", *, trashed: bool = False) -> str:
+    """The id behind a session handle. Every session tool takes a title —
+    that is all `stash_search` and the /sessions VFS listing ever show — and
+    a handle naming no title passes through as the id it already is."""
+    return _client().resolve_session(handle, trashed=trashed)[field]
+
+
 @mcp.tool()
-def stash_session_transcript(session_id: str) -> str:
+def stash_session_transcript(session: str) -> str:
     """Fetch a full session transcript as JSONL text. Each line is one
-    event from the session in chronological order."""
-    return _client().export_transcript_jsonl(session_id)
+    event from the session in chronological order.
+
+    `session` is a session title (as stash_search and the /sessions listing
+    show it) or a session id."""
+    return _client().export_transcript_jsonl(_session(session))
 
 
 @mcp.tool()
-def stash_delete_session(session_row_id: str) -> str:
+def stash_delete_session(session: str) -> str:
     """Soft-delete a session. Use stash_restore(kind='session', id=...) to
-    bring it back, or stash_purge(kind='session', ...) to delete forever."""
+    bring it back, or stash_purge(kind='session', ...) to delete forever.
+
+    `session` is a session title or a session id."""
     client = _client()
-    client.delete_session(session_row_id)
-    return _json({"deleted": session_row_id})
+    row_id = _session(session, "id")
+    client.delete_session(row_id)
+    return _json({"deleted": row_id})
 
 
 # ── Tables: rename + export ───────────────────────────────────────
@@ -723,7 +736,9 @@ def stash_list_trash() -> str:
 
 @mcp.tool()
 def stash_restore(kind: str, id: str) -> str:
-    """Restore a trashed page/file/session. `kind` is one of: page, file, session."""
+    """Restore a trashed page/file/session. `kind` is one of: page, file, session.
+
+    For a session, `id` may be the title stash_trash lists it under."""
     if kind not in _TRASH_KINDS:
         raise ValueError(f"kind must be one of {sorted(_TRASH_KINDS)}")
     client = _client()
@@ -732,13 +747,16 @@ def stash_restore(kind: str, id: str) -> str:
     elif kind == "file":
         client.restore_file(id)
     else:
+        id = _session(id, "id", trashed=True)
         client.restore_session(id)
     return _json({"ok": True, "kind": kind, "id": id})
 
 
 @mcp.tool()
 def stash_purge(kind: str, id: str) -> str:
-    """Permanently delete a trashed page/file/session. Not reversible."""
+    """Permanently delete a trashed page/file/session. Not reversible.
+
+    For a session, `id` may be the title stash_trash lists it under."""
     if kind not in _TRASH_KINDS:
         raise ValueError(f"kind must be one of {sorted(_TRASH_KINDS)}")
     client = _client()
@@ -747,6 +765,7 @@ def stash_purge(kind: str, id: str) -> str:
     elif kind == "file":
         client.purge_file(id)
     else:
+        id = _session(id, "id", trashed=True)
         client.purge_session(id)
     return _json({"ok": True, "kind": kind, "id": id})
 
@@ -814,10 +833,14 @@ def stash_create_session_folder(name: str) -> str:
 
 
 @mcp.tool()
-def stash_assign_session(session_row_id: str, folder_id: str = "") -> str:
+def stash_assign_session(session: str, folder_id: str = "") -> str:
     """Move a session into a session folder, or pass an empty folder_id to move
-    it back to the ungrouped root."""
-    return _json(_client().assign_session_folder(session_row_id, folder_id=folder_id or None))
+    it back to the ungrouped root.
+
+    `session` is a session title or a session id."""
+    return _json(
+        _client().assign_session_folder(_session(session, "id"), folder_id=folder_id or None)
+    )
 
 
 # ── Entry point ───────────────────────────────────────────────────

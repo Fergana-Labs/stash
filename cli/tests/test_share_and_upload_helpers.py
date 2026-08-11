@@ -1,9 +1,6 @@
 from pathlib import Path
 from uuid import uuid4
 
-import pytest
-import typer
-
 from backend.config import settings
 from backend.routers.files import _file_app_url
 from cli import main
@@ -16,7 +13,13 @@ def test_upload_text_file_detection() -> None:
     assert not _is_upload_text_file(Path("diagram.png"))
 
 
-def _overview_client(sessions):
+def _resolver_client(resolved, calls=None):
+    """A client whose resolve_session answers with a canned payload.
+
+    Matching a handle to a session is the server's job now, so what the CLI
+    owes is narrower: ask once, and use the field the caller needs.
+    """
+
     class FakeClient:
         def __enter__(self):
             return self
@@ -24,99 +27,73 @@ def _overview_client(sessions):
         def __exit__(self, *_args):
             return None
 
-        def get_overview(self):
-            return {"sessions": sessions}
+        def resolve_session(self, ref, trashed=False):
+            if calls is not None:
+                calls.append((ref, trashed))
+            return resolved
 
     return FakeClient
 
 
-def test_resolve_session_passes_unmatched_handles_through(monkeypatch) -> None:
-    # Anything that isn't a known title is already an id — the server is the
-    # one to reject it if it's wrong.
+def test_resolve_session_takes_the_id_the_caller_needs(monkeypatch) -> None:
+    # share follows the transcript stream id; rm/restore/mv/shares take the
+    # row id. One lookup answers both.
     monkeypatch.setattr(
         main,
         "_client",
-        _overview_client([{"id": "row-1", "session_id": "sess-1", "title": "Some title"}]),
-    )
-
-    assert main._resolve_session("sess-1") == "sess-1"
-
-
-def test_resolve_session_matches_titles_in_both_spellings(monkeypatch) -> None:
-    monkeypatch.setattr(
-        main,
-        "_client",
-        _overview_client(
-            [{"id": "row-1", "session_id": "sess-1", "title": 'Ship the "fast" path'}]
+        _resolver_client(
+            {"matched": True, "session_id": "sess-1", "id": "row-1", "name": "Ship the fast path"}
         ),
     )
 
-    assert main._resolve_session('Ship the "fast" path') == "sess-1"
-    # `stash search` and `stash vfs ls` print the VFS spelling (quotes
-    # stripped), so that spelling must resolve too.
     assert main._resolve_session("Ship the fast path") == "sess-1"
-    # rm/restore/mv/shares take the session row id, not the stream id.
     assert main._resolve_session("Ship the fast path", field="id") == "row-1"
 
 
-def test_resolve_session_ambiguous_title_fails_loudly(monkeypatch) -> None:
+def test_resolve_session_passes_unmatched_handles_through(monkeypatch) -> None:
+    # A handle naming no title is already an id: the server echoes it back, so
+    # the CLI needs no branch and the endpoint that uses it rejects it if wrong.
     monkeypatch.setattr(
         main,
         "_client",
-        _overview_client(
-            [
-                {"id": "row-1", "session_id": "sess-1", "title": "Same title"},
-                {"id": "row-2", "session_id": "sess-2", "title": "Same title"},
-            ]
+        _resolver_client(
+            {"matched": False, "session_id": "sess-unknown", "id": "sess-unknown", "name": None}
         ),
     )
 
-    with pytest.raises(typer.Exit):
-        main._resolve_session("Same title")
+    assert main._resolve_session("sess-unknown") == "sess-unknown"
 
 
-def _trash_client(sessions):
-    class FakeClient:
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *_args):
-            return None
-
-        def get_trash(self):
-            return {"sessions": sessions}
-
-    return FakeClient
-
-
-def test_restore_resolves_titles_against_the_trash(monkeypatch) -> None:
-    # A trashed session is gone from the overview, so `stash restore` matches
-    # its title against the trash — the listing `stash trash list` prints.
+def test_restore_asks_the_trash_and_other_commands_do_not(monkeypatch) -> None:
+    # A trashed session is out of the scope listing, so restore has to say so;
+    # every other command must not, or it would resolve against the wrong set.
+    calls: list = []
     monkeypatch.setattr(
         main,
         "_client",
-        _trash_client([{"id": "row-9", "name": 'Abandoned "big" refactor'}]),
+        _resolver_client({"matched": True, "session_id": "sess-9", "id": "row-9"}, calls),
     )
 
-    assert main._resolve_trashed_session('Abandoned "big" refactor') == "row-9"
-    assert main._resolve_trashed_session("Abandoned big refactor") == "row-9"
-    assert main._resolve_trashed_session("row-9") == "row-9"
-    assert main._resolve_session_refs([("session", "Abandoned big refactor")], trashed=True) == [
+    assert main._resolve_session_refs([("session", "Abandoned refactor")], trashed=True) == [
         ("session", "row-9")
     ]
+    assert calls == [("Abandoned refactor", True)]
+
+    calls.clear()
+    assert main._resolve_session_refs([("session", "Live one")]) == [("session", "row-9")]
+    assert calls == [("Live one", False)]
 
 
-def test_live_session_refs_never_consult_the_trash(monkeypatch) -> None:
-    # rm/mv name sessions that are still live, so they resolve against the
-    # overview. This fake has no get_trash at all: reaching for it is the bug.
+def test_non_session_refs_are_never_resolved(monkeypatch) -> None:
+    calls: list = []
     monkeypatch.setattr(
         main,
         "_client",
-        _overview_client([{"id": "row-1", "session_id": "sess-1", "title": "Live one"}]),
+        _resolver_client({"matched": True, "session_id": "sess-9", "id": "row-9"}, calls),
     )
 
-    assert main._resolve_session_refs([("session", "Live one")]) == [("session", "row-1")]
-    assert main._resolve_session_refs([("page", "Live one")]) == [("page", "Live one")]
+    assert main._resolve_session_refs([("page", "Some page")]) == [("page", "Some page")]
+    assert calls == []
 
 
 def test_parse_file_ref_accepts_id_and_embed_link() -> None:
