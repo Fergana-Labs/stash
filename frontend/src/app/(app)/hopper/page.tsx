@@ -5,7 +5,7 @@ import { Loader2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { useBreadcrumbs } from "@/components/BreadcrumbContext";
 import { Button } from "@/components/ui/button";
-import { dropHopperFile, dropHopperLink, dropHopperNote, type HopperDrop } from "@/lib/api";
+import { dropHopperFile, dropHopperLink, type HopperDrop } from "@/lib/api";
 import { isLinkDrop } from "@/lib/hopper";
 
 /** The hopper is an intake, not a place: a drop lands in the VFS and the
@@ -41,11 +41,16 @@ export default function HopperRoute() {
     [runDrops],
   );
 
-  const addText = useCallback(
+  // The hopper takes things that already exist, so text is only ever a link.
+  const addLink = useCallback(
     (value: string) => {
       const trimmed = value.trim();
       if (!trimmed) return;
-      void runDrops([() => (isLinkDrop(trimmed) ? dropHopperLink(trimmed) : dropHopperNote(trimmed))]);
+      if (!isLinkDrop(trimmed)) {
+        toast.error("That isn't a link", { description: "Drop a file, or paste a URL" });
+        return;
+      }
+      void runDrops([() => dropHopperLink(trimmed)]);
     },
     [runDrops],
   );
@@ -65,12 +70,12 @@ export default function HopperRoute() {
       const pasted = e.clipboardData?.getData("text/plain") ?? "";
       if (pasted.trim()) {
         e.preventDefault();
-        addText(pasted);
+        addLink(pasted);
       }
     }
     window.addEventListener("paste", onPaste);
     return () => window.removeEventListener("paste", onPaste);
-  }, [addFiles, addText]);
+  }, [addFiles, addLink]);
 
   function onDrop(e: React.DragEvent) {
     e.preventDefault();
@@ -82,7 +87,7 @@ export default function HopperRoute() {
     }
     // Dragging a link out of a browser tab hands over its URL, not a file.
     const url = e.dataTransfer.getData("text/uri-list") || e.dataTransfer.getData("text/plain");
-    if (url) addText(url);
+    if (url) addLink(url);
   }
 
   return (
@@ -104,7 +109,7 @@ export default function HopperRoute() {
           <h1 className="text-[20px] font-semibold text-foreground">Hopper</h1>
           <p className="mt-1 text-[13.5px] text-muted-foreground">
             Drop anything in. It lands in your Stash and your agents can read it — files,
-            screenshots, links, half-formed notes.
+            screenshots, PDFs, web pages.
           </p>
         </header>
 
@@ -146,7 +151,7 @@ export default function HopperRoute() {
           className="flex items-start gap-2"
           onSubmit={(e) => {
             e.preventDefault();
-            addText(text);
+            addLink(text);
             setText("");
           }}
         >
@@ -156,12 +161,12 @@ export default function HopperRoute() {
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
-                addText(text);
+                addLink(text);
                 setText("");
               }
             }}
             rows={2}
-            placeholder="Paste a link, or type a note…"
+            placeholder="Paste a link…"
             className="min-h-[52px] flex-1 resize-y rounded-lg border border-border bg-surface px-3 py-2 text-[13.5px] text-foreground outline-none placeholder:text-muted-foreground focus:border-brand-400"
           />
           <Button type="submit" disabled={!text.trim()} className="h-[52px]">

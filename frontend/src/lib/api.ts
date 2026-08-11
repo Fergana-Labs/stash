@@ -2479,10 +2479,3 @@ export async function dropHopperLink(url: string): Promise<HopperDrop> {
     body: JSON.stringify({ url }),
   });
 }
-
-export async function dropHopperNote(text: string): Promise<HopperDrop> {
-  return apiFetch(`${ME}/hopper/note`, {
-    method: "POST",
-    body: JSON.stringify({ text }),
-  });
-}

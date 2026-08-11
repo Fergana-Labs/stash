@@ -1,9 +1,11 @@
 """The hopper: an intake into the VFS, not a place things sit.
 
-A drop must become an ordinary VFS item — a page or a file at the top of the
-user's stash, indistinguishable from one created any other way. Nothing is
-parked in a holding folder, and no ledger records the drop: the item itself is
-the record.
+A drop must become an ordinary VFS item at the top of the user's stash,
+indistinguishable from one created any other way. Nothing is parked in a
+holding folder, and no ledger records the drop: the item itself is the record.
+
+The hopper takes things that already exist — a file or a link. There is no
+compose-a-note path; that is what pages are for.
 """
 
 from uuid import UUID
@@ -39,28 +41,6 @@ def _mock_storage(monkeypatch) -> None:
     monkeypatch.setattr(storage_service, "upload_file", _upload)
     monkeypatch.setattr(storage_service, "get_file_url", _url)
     monkeypatch.setattr(extraction.extract_file_text, "delay", lambda *a, **k: None)
-
-
-@pytest.mark.asyncio
-async def test_note_becomes_a_page_in_the_vfs(client: AsyncClient, pool) -> None:
-    headers, owner_id = await _register(client)
-
-    resp = await client.post(
-        "/api/v1/me/hopper/note",
-        json={"text": "Pricing call notes\nThey want annual billing."},
-        headers=headers,
-    )
-    assert resp.status_code == 201
-    drop = resp.json()
-    assert drop["kind"] == "page"
-    # The page name is the note's first line, not the whole note run together.
-    assert drop["name"] == "Pricing call notes"
-
-    row = await pool.fetchrow(
-        "SELECT folder_id, content_markdown FROM pages WHERE id = $1", UUID(drop["id"])
-    )
-    assert row["folder_id"] is None
-    assert "annual billing" in row["content_markdown"]
 
 
 @pytest.mark.asyncio
@@ -118,7 +98,6 @@ async def test_hopper_creates_no_folder_of_its_own(client: AsyncClient, pool, mo
     headers, owner_id = await _register(client)
     _mock_storage(monkeypatch)
 
-    await client.post("/api/v1/me/hopper/note", json={"text": "first"}, headers=headers)
     await client.post(
         "/api/v1/me/hopper/file",
         files={"file": ("notes.txt", b"hello", "text/plain")},
@@ -130,7 +109,9 @@ async def test_hopper_creates_no_folder_of_its_own(client: AsyncClient, pool, mo
 
 
 @pytest.mark.asyncio
-async def test_empty_note_is_refused(client: AsyncClient) -> None:
+async def test_there_is_no_compose_a_note_endpoint(client: AsyncClient) -> None:
+    """Typing prose into the hopper cheapens it: it is an intake for things
+    that already exist, not a scratchpad."""
     headers, _ = await _register(client)
-    resp = await client.post("/api/v1/me/hopper/note", json={"text": "   \n  "}, headers=headers)
-    assert resp.status_code == 400
+    resp = await client.post("/api/v1/me/hopper/note", json={"text": "a thought"}, headers=headers)
+    assert resp.status_code == 404

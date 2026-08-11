@@ -1,35 +1,26 @@
 """Hopper router: one front door into the VFS.
 
-Three drop shapes — a file, a link, a note — each handed to the pipeline that
-already knows how to read it: bytes through the files/pages ingest, a URL
-through url_imports, typed text straight into a page. Nothing is recorded
-here and nothing is parked: a drop becomes an ordinary VFS item the moment it
-lands, which is the whole point of the hopper.
+Two drop shapes — a file and a link — each handed to the pipeline that already
+knows how to read it: bytes through the files/pages ingest, a URL through
+url_imports. The hopper takes things that already exist; composing content is
+what pages are for. Nothing is recorded here and nothing is parked: a drop
+becomes an ordinary VFS item the moment it lands.
 """
 
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile
-from pydantic import BaseModel, Field, HttpUrl
+from pydantic import BaseModel, HttpUrl
 
 from ..auth import get_current_user, get_scope
-from ..services import files_tree_service, url_import_service, user_scope_service
-from .files import MAX_FILE_SIZE, _page_app_url, ingest_bytes
+from ..services import url_import_service, user_scope_service
+from .files import MAX_FILE_SIZE, ingest_bytes
 
 router = APIRouter(prefix="/api/v1/me/hopper", tags=["hopper"])
-
-# A note is a page, and pages are markdown; the title is its first line so the
-# VFS shows something recognizable.
-NOTE_MAX_CHARS = 512_000
-TITLE_MAX_CHARS = 80
 
 
 class LinkDropRequest(BaseModel):
     url: HttpUrl
-
-
-class NoteDropRequest(BaseModel):
-    text: str = Field(..., min_length=1, max_length=NOTE_MAX_CHARS)
 
 
 async def _writable_scope(current_user: dict, scope_user_id: UUID) -> UUID:
@@ -86,35 +77,3 @@ async def drop_link(
     )
     await dispatch_url_imports(import_ids)
     return {"kind": "link", "id": str(import_ids[0]), "name": url, "app_url": None}
-
-
-@router.post("/note", status_code=201)
-async def drop_note(
-    body: NoteDropRequest,
-    current_user: dict = Depends(get_current_user),
-    scope_user_id: UUID = Depends(get_scope),
-) -> dict:
-    owner_user_id = await _writable_scope(current_user, scope_user_id)
-    if not body.text.strip():
-        raise HTTPException(status_code=400, detail="Note is empty")
-    page = await files_tree_service.create_page_unique(
-        owner_user_id,
-        _title_from(body.text),
-        current_user["id"],
-        None,
-        content=body.text,
-        content_type="markdown",
-    )
-    return {
-        "kind": "page",
-        "id": str(page["id"]),
-        "name": page["name"],
-        "app_url": _page_app_url(page["id"]),
-    }
-
-
-def _title_from(text: str) -> str:
-    """A note's page name: its first non-blank line. The endpoint rejects
-    all-whitespace notes, so there is always one."""
-    first_line = next(line for line in text.splitlines() if line.strip())
-    return " ".join(first_line.split())[:TITLE_MAX_CHARS]
