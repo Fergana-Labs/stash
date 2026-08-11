@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { useBreadcrumbs } from "@/components/BreadcrumbContext";
 import { dropHopperFile, dropHopperLink, type HopperDrop } from "@/lib/api";
@@ -14,29 +15,45 @@ const ACCEPTS = "PDF · DOCX · XLSX · PPTX · CSV · MD · PNG · JPG · URL";
  *  confirmation points there. Nothing accumulates on this page. */
 export default function HopperRoute() {
   useBreadcrumbs([{ label: "Hopper" }], "hopper");
+  const router = useRouter();
 
   const [dragging, setDragging] = useState(false);
   const [adding, setAdding] = useState(0);
   const [link, setLink] = useState("");
   const fileInput = useRef<HTMLInputElement>(null);
 
-  const runDrops = useCallback(async (drops: Array<() => Promise<HopperDrop>>) => {
-    setAdding((n) => n + drops.length);
-    for (const drop of drops) {
-      try {
-        const landed = await drop();
-        if (landed.kind === "link") {
-          toast.success(`Reading ${landed.name}`, { description: "It'll appear in your VFS" });
-        } else {
-          toast.success(`${landed.name} is in your VFS`);
+  // A drop that vanishes without saying where it went is worse than no drop
+  // at all, so every confirmation names the destination and opens it.
+  const runDrops = useCallback(
+    async (drops: Array<() => Promise<HopperDrop>>) => {
+      setAdding((n) => n + drops.length);
+      for (const drop of drops) {
+        try {
+          const landed = await drop();
+          if (landed.kind === "link") {
+            // The page is fetched by a worker and filed under Clips when it
+            // arrives, so there is nothing to open yet.
+            toast.success("Fetching that page", {
+              description: "It'll land in Files › Clips › raw",
+            });
+          } else {
+            toast.success(`${landed.name} is in your Stash`, {
+              description: "Files › top level",
+              action: {
+                label: "Open",
+                onClick: () => router.push(`/${landed.kind === "page" ? "p" : "f"}/${landed.id}`),
+              },
+            });
+          }
+        } catch (e) {
+          toast.error(e instanceof Error ? e.message : "Couldn't add that to your Stash");
+        } finally {
+          setAdding((n) => n - 1);
         }
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Couldn't add that to your Stash");
-      } finally {
-        setAdding((n) => n - 1);
       }
-    }
-  }, []);
+    },
+    [router],
+  );
 
   const addFiles = useCallback(
     (files: File[]) => void runDrops(files.map((f) => () => dropHopperFile(f))),
