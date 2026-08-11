@@ -32,6 +32,7 @@ from .routers import (
     exports,
     files,
     files_tree,
+    hopper,
     machine,
     marketing,
     mcp_servers,
@@ -130,6 +131,7 @@ app.include_router(files.me_router)
 app.include_router(files.canonical_router)
 app.include_router(clips.router)
 app.include_router(clips.imports_router)
+app.include_router(hopper.router)
 app.include_router(curator_log.router)
 app.include_router(mini_programs.router)
 app.include_router(batch.router)

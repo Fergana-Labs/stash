@@ -2436,3 +2436,76 @@ export async function bulkEditRows(
     body: JSON.stringify(body),
   });
 }
+
+// --- Hopper ---
+
+// Where a drop is on its way to being readable by an agent. `reading` is the
+// only status that changes on its own, so it's what the feed polls for.
+export type HopperStatus =
+  | "reading"
+  | "legible"
+  | "no_text"
+  | "link_only"
+  | "needs_extension"
+  | "failed";
+
+export interface HopperItem {
+  id: string;
+  kind: "file" | "link" | "note";
+  label: string;
+  status: HopperStatus;
+  detail: string;
+  // The opening of the text the agent reads — the proof the drop landed.
+  preview: string;
+  target: { kind: "page" | "file"; id: string; name: string } | null;
+  created_at: string;
+}
+
+export interface HopperFeed {
+  items: HopperItem[];
+  // The VFS folder every drop lands in — null until the first drop creates it.
+  folder_id: string | null;
+}
+
+export async function listHopper(): Promise<HopperFeed> {
+  return apiFetch(`${ME}/hopper`);
+}
+
+export async function dropHopperFile(file: File): Promise<HopperItem> {
+  if (file.size > MAX_UPLOAD_BYTES) {
+    throw new Error(`${file.name} is too large (max 100 MB)`);
+  }
+  const token = await getAuthToken();
+  const formData = new FormData();
+  formData.append("file", file);
+  // Hand-rolled fetch (FormData sets its own Content-Type), so the auth and
+  // scope headers have to be attached here rather than by apiFetch.
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const scopeUserId = getScopeUserId();
+  if (scopeUserId) headers[SCOPE_HEADER] = scopeUserId;
+  const resp = await fetch(`${API_BASE}${ME}/hopper/file`, {
+    method: "POST",
+    headers,
+    body: formData,
+  });
+  if (!resp.ok) {
+    const detail = await resp.json().then((d) => d.detail).catch(() => resp.statusText);
+    throw new Error(typeof detail === "string" ? detail : `Upload failed (${resp.status})`);
+  }
+  return resp.json();
+}
+
+export async function dropHopperLink(url: string): Promise<HopperItem> {
+  return apiFetch(`${ME}/hopper/link`, {
+    method: "POST",
+    body: JSON.stringify({ url }),
+  });
+}
+
+export async function dropHopperNote(text: string): Promise<HopperItem> {
+  return apiFetch(`${ME}/hopper/note`, {
+    method: "POST",
+    body: JSON.stringify({ text }),
+  });
+}
