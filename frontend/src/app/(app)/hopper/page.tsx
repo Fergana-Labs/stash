@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowDown } from "lucide-react";
 import { toast } from "sonner";
 import { useBreadcrumbs } from "@/components/BreadcrumbContext";
 import { dropHopperFile, dropHopperLink, type HopperDrop } from "@/lib/api";
@@ -125,26 +124,8 @@ export default function HopperRoute() {
             if (e.key === "Enter" || e.key === " ") fileInput.current?.click();
           }}
           aria-label="Drop files here, or click to browse"
-          className="hopper-well relative isolate flex min-h-[300px] flex-1 cursor-pointer flex-col items-center justify-center gap-8 overflow-hidden rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
+          className="hopper-well relative isolate flex min-h-[300px] flex-1 cursor-pointer flex-col items-center justify-center overflow-hidden rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
         >
-          {/* The mouth of the port: rings draw inward while a drop is in flight. */}
-          <span className="relative flex h-[150px] w-[150px] items-center justify-center" aria-hidden>
-            {live &&
-              [0, 1, 2].map((i) => (
-                <span
-                  key={i}
-                  className="hopper-ring absolute inset-0 rounded-full border border-brand-400/70"
-                />
-              ))}
-            <span className="absolute inset-[40px] rounded-full border border-[var(--divider-color)]" />
-            <ArrowDown
-              className={`relative h-[30px] w-[30px] ${
-                live ? "text-brand-600" : "text-dim"
-              }`}
-              strokeWidth={1.5}
-            />
-          </span>
-
           <div className="relative text-center">
             <p className="font-display text-[21px] font-medium tracking-[-0.015em] text-foreground">
               {adding > 0

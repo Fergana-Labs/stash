@@ -895,7 +895,12 @@ details > summary::-webkit-details-marker {
   background-color: var(--bg-surface);
   background-image: radial-gradient(rgb(50 47 41 / 0.05) 1px, transparent 1.4px);
   background-size: 22px 22px;
-  box-shadow: inset 0 0 0 1px var(--border-color);
+  /* A hairline plus the faintest top shading — just enough that the surface
+     sits below the page rather than floating on it. Anything heavier reads as
+     the gradient the kit rules out. */
+  box-shadow:
+    inset 0 0 0 1px var(--border-color),
+    inset 0 2px 4px -3px rgb(50 47 41 / 0.10);
   transition: box-shadow 150ms ease-out, background-color 150ms ease-out;
 }
 
@@ -904,17 +909,6 @@ details > summary::-webkit-details-marker {
   box-shadow: inset 0 0 0 1px var(--color-brand-500);
 }
 
-/* Rings draw inward toward the mouth while a drop is in flight — the one
-   piece of motion here, and it reports state rather than decorating. */
-@keyframes hopper-intake {
-  0%   { transform: scale(1);    opacity: 0.5; }
-  100% { transform: scale(0.55); opacity: 0;   }
-}
-.hopper-ring { animation: hopper-intake 1.6s cubic-bezier(0.4, 0, 0.2, 1) infinite; }
-.hopper-ring:nth-child(2) { animation-delay: 0.53s; }
-.hopper-ring:nth-child(3) { animation-delay: 1.06s; }
-
 @media (prefers-reduced-motion: reduce) {
-  .hopper-ring { animation: none; }
   .hopper-well { transition: none; }
 }
