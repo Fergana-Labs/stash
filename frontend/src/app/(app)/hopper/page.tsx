@@ -20,7 +20,6 @@ export default function HopperRoute() {
   const [adding, setAdding] = useState(0);
   const [link, setLink] = useState("");
   const fileInput = useRef<HTMLInputElement>(null);
-  const well = useRef<HTMLDivElement>(null);
 
   const runDrops = useCallback(async (drops: Array<() => Promise<HopperDrop>>) => {
     setAdding((n) => n + drops.length);
@@ -94,16 +93,6 @@ export default function HopperRoute() {
     if (url) addLink(url);
   }
 
-  // The warm light under the cursor is written straight to CSS vars: this
-  // fires on every mouse move and must not re-render React.
-  function trackCursor(e: React.MouseEvent) {
-    const node = well.current;
-    if (!node) return;
-    const box = node.getBoundingClientRect();
-    node.style.setProperty("--hopper-x", `${e.clientX - box.left}px`);
-    node.style.setProperty("--hopper-y", `${e.clientY - box.top}px`);
-  }
-
   const live = dragging || adding > 0;
 
   return (
@@ -122,14 +111,12 @@ export default function HopperRoute() {
     >
       <div className="mx-auto flex w-full max-w-[1100px] flex-1 flex-col px-10 py-10">
         <header className="mb-7 shrink-0">
-          <h1 className="font-display text-[clamp(28px,3.2vw,40px)] font-normal leading-[1.05] tracking-[-0.008em] text-foreground">
+          <h1 className="font-display text-[32px] font-bold leading-[1.1] tracking-[-0.02em] text-foreground">
             Drop anything into your Stash
           </h1>
         </header>
 
         <div
-          ref={well}
-          onMouseMove={trackCursor}
           onClick={() => fileInput.current?.click()}
           data-live={live}
           role="button"
@@ -138,10 +125,8 @@ export default function HopperRoute() {
             if (e.key === "Enter" || e.key === " ") fileInput.current?.click();
           }}
           aria-label="Drop files here, or click to browse"
-          className="hopper-well relative isolate flex min-h-[300px] flex-1 cursor-pointer flex-col items-center justify-center gap-8 overflow-hidden rounded-[26px] outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
+          className="hopper-well relative isolate flex min-h-[300px] flex-1 cursor-pointer flex-col items-center justify-center gap-8 overflow-hidden rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
         >
-          <span className="hopper-grain" aria-hidden />
-
           {/* The mouth of the port: rings draw inward while a drop is in flight. */}
           <span className="relative flex h-[150px] w-[150px] items-center justify-center" aria-hidden>
             {live &&
@@ -153,7 +138,7 @@ export default function HopperRoute() {
               ))}
             <span className="absolute inset-[40px] rounded-full border border-[var(--divider-color)]" />
             <ArrowDown
-              className={`${live ? "" : "hopper-arrow"} relative h-[30px] w-[30px] ${
+              className={`relative h-[30px] w-[30px] ${
                 live ? "text-brand-600" : "text-dim"
               }`}
               strokeWidth={1.5}
@@ -168,7 +153,7 @@ export default function HopperRoute() {
                   ? "Let go"
                   : "Drag in, paste, or click"}
             </p>
-            <p className="mt-2.5 font-mono text-[10.5px] uppercase tracking-[0.2em] text-muted-foreground">
+            <p className="mt-2.5 font-mono text-[11px] uppercase tracking-[0.05em] text-muted-foreground">
               {ACCEPTS}
             </p>
           </div>
@@ -194,7 +179,7 @@ export default function HopperRoute() {
             setLink("");
           }}
         >
-          <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
+          <span className="font-mono text-[11px] uppercase tracking-[0.05em] text-muted-foreground">
             URL
           </span>
           <input
@@ -206,7 +191,7 @@ export default function HopperRoute() {
           <button
             type="submit"
             disabled={!link.trim()}
-            className="font-mono text-[10px] uppercase tracking-[0.22em] text-brand-600 transition-opacity disabled:pointer-events-none disabled:opacity-0"
+            className="font-mono text-[11px] uppercase tracking-[0.05em] text-brand-600 transition-opacity disabled:pointer-events-none disabled:opacity-0"
           >
             Take it
           </button>

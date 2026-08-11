@@ -883,77 +883,38 @@ details > summary::-webkit-details-marker {
 .proseish a { color: #F97316; text-decoration: underline; text-underline-offset: 2px; }
 .proseish blockquote { border-left: 3px solid var(--border-color); padding-left: 12px; color: var(--text-muted); margin: 10px 0; }
 
-/* === Hopper: the intake aperture ===
-   The page is a machined port on warm paper. Depth comes from a real inset
-   shadow rather than a border, so the well reads as cut into the surface;
-   the ring only lights up under the cursor or a dragged file. */
+/* === Hopper: the intake well ===
+   Per docs/design-system.md the app is industrial/utilitarian: typography and
+   colour do the work, no gradients or glow, and motion is minimal-functional.
+   So the well is a flat surface with a border, brand orange marks the active
+   state, and the only animation runs while a drop is actually in flight.
+   The texture is the landing page's warm dot-field (www/DESIGN.md), the
+   reusable brand motif — sparse and faded, not a grain overlay. */
 
 .hopper-well {
-  background:
-    radial-gradient(120% 90% at 50% 0%, var(--bg-raised) 0%, var(--bg-surface) 55%, var(--bg-surface) 100%);
-  box-shadow:
-    inset 0 6px 18px -6px rgb(50 47 41 / 0.28),
-    inset 0 -1px 0 0 rgb(255 255 255 / 0.55),
-    inset 0 0 0 1px var(--border-color),
-    0 1px 0 0 rgb(255 255 255 / 0.8);
-  transition: box-shadow 260ms cubic-bezier(0.22, 1, 0.36, 1), transform 260ms cubic-bezier(0.22, 1, 0.36, 1);
+  background-color: var(--bg-surface);
+  background-image: radial-gradient(rgb(50 47 41 / 0.05) 1px, transparent 1.4px);
+  background-size: 22px 22px;
+  box-shadow: inset 0 0 0 1px var(--border-color);
+  transition: box-shadow 150ms ease-out, background-color 150ms ease-out;
 }
-
-/* The cursor drags a soft warm light across the well's surface. */
-.hopper-well::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity 260ms ease;
-  background: radial-gradient(
-    260px circle at var(--hopper-x, 50%) var(--hopper-y, 50%),
-    color-mix(in oklab, var(--color-brand-400) 22%, transparent),
-    transparent 70%
-  );
-}
-.hopper-well:hover::before { opacity: 1; }
 
 .hopper-well[data-live="true"] {
-  transform: translateY(-2px);
-  box-shadow:
-    inset 0 3px 22px -4px rgb(50 47 41 / 0.22),
-    inset 0 0 0 1px color-mix(in oklab, var(--color-brand-500) 55%, transparent),
-    0 10px 30px -18px rgb(50 47 41 / 0.5);
-}
-.hopper-well[data-live="true"]::before { opacity: 1; }
-
-/* Grain: the surface has tooth, so it does not read as a flat CSS fill. */
-.hopper-grain {
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  pointer-events: none;
-  opacity: 0.5;
-  mix-blend-mode: multiply;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='0.28'/%3E%3C/svg%3E");
+  background-color: color-mix(in oklab, var(--color-brand-500) 6%, var(--bg-surface));
+  box-shadow: inset 0 0 0 1px var(--color-brand-500);
 }
 
-/* Concentric rings mark the mouth of the port; they draw inward while a
-   drop is in flight, so waiting reads as intake rather than a spinner. */
+/* Rings draw inward toward the mouth while a drop is in flight — the one
+   piece of motion here, and it reports state rather than decorating. */
 @keyframes hopper-intake {
-  0%   { transform: scale(1);    opacity: 0.55; }
-  100% { transform: scale(0.55); opacity: 0;    }
+  0%   { transform: scale(1);    opacity: 0.5; }
+  100% { transform: scale(0.55); opacity: 0;   }
 }
-.hopper-ring { animation: hopper-intake 1.9s cubic-bezier(0.4, 0, 0.2, 1) infinite; }
-.hopper-ring:nth-child(2) { animation-delay: 0.63s; }
-.hopper-ring:nth-child(3) { animation-delay: 1.26s; }
-
-@keyframes hopper-fall {
-  0%   { transform: translateY(-6px); opacity: 0.35; }
-  55%  { transform: translateY(2px);  opacity: 1;    }
-  100% { transform: translateY(-6px); opacity: 0.35; }
-}
-.hopper-arrow { animation: hopper-fall 2.6s ease-in-out infinite; }
+.hopper-ring { animation: hopper-intake 1.6s cubic-bezier(0.4, 0, 0.2, 1) infinite; }
+.hopper-ring:nth-child(2) { animation-delay: 0.53s; }
+.hopper-ring:nth-child(3) { animation-delay: 1.06s; }
 
 @media (prefers-reduced-motion: reduce) {
-  .hopper-ring, .hopper-arrow { animation: none; }
+  .hopper-ring { animation: none; }
   .hopper-well { transition: none; }
 }
