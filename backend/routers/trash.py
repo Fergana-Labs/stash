@@ -10,6 +10,7 @@ from ..services import (
     files_service,
     files_tree_service,
     session_service,
+    session_title_service,
 )
 
 router = APIRouter(prefix="/api/v1/me", tags=["trash"])
@@ -29,6 +30,14 @@ async def list_trash(
     pages = await files_tree_service.list_trashed_pages(owner_user_id)
     files = await files_service.list_trashed_files(owner_user_id)
     sessions = await session_service.list_trashed_sessions(owner_user_id)
+    # A session is named by its title everywhere else it is listed, and
+    # `stash restore session:"<title>"` takes that title — printing the raw
+    # session_id here would name it something no other surface uses.
+    session_titles = await session_title_service.titles_for_sessions(
+        owner_user_id, sessions, enqueue_missing=False
+    )
+    for session in sessions:
+        session["title"] = session_titles[session["session_id"]]
 
     actor_ids = {row["deleted_by"] for row in pages + files + sessions if row.get("deleted_by")}
     actors: dict[UUID, dict] = {}
@@ -55,5 +64,5 @@ async def list_trash(
     return {
         "pages": [_render(p, "name") for p in pages],
         "files": [_render(f, "name") for f in files],
-        "sessions": [_render(s, "session_id") for s in sessions],
+        "sessions": [_render(s, "title") for s in sessions],
     }

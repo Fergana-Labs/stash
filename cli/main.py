@@ -1124,13 +1124,32 @@ def _resolve_session(handle: str, field: str = "session_id") -> str:
     (the row id `rm`/`restore`/`mv`/`shares` take). Anything else is already
     an id and passes through untouched; the server rejects unknown ids loudly.
     A title matching several sessions errors, listing their ids."""
-    from stashvfs import safe_name
-
     with _client() as c:
         try:
             sessions = c.get_overview().get("sessions", [])
         except StashError as e:
             _err(e)
+    return _match_session_title(handle, sessions, field)
+
+
+def _resolve_trashed_session(handle: str) -> str:
+    """The row id of a trashed session named by title, for `stash restore`.
+
+    A trashed session is gone from the overview, so its title only resolves
+    against the trash — the same listing `stash trash list` prints, which
+    names a session by its title."""
+    with _client() as c:
+        try:
+            trashed = c.get_trash().get("sessions", [])
+        except StashError as e:
+            _err(e)
+    named = [{"title": s["name"], "id": s["id"]} for s in trashed]
+    return _match_session_title(handle, named, "id")
+
+
+def _match_session_title(handle: str, sessions: list[dict], field: str) -> str:
+    from stashvfs import safe_name
+
     matches = [
         s for s in sessions if s.get("title") and handle in (s["title"], safe_name(s["title"]))
     ]
@@ -3759,10 +3778,23 @@ def _parse_refs(refs: list[str]) -> list[tuple[str, str]]:
     return parsed
 
 
-def _resolve_session_refs(items: list[tuple[str, str]]) -> list[tuple[str, str]]:
+def _resolve_session_refs(
+    items: list[tuple[str, str]], *, trashed: bool = False
+) -> list[tuple[str, str]]:
     """Session refs may carry a title instead of an id — resolve each to the
-    session row id the rm/restore/mv endpoints take."""
-    return [(t, _resolve_session(i, field="id") if t == "session" else i) for t, i in items]
+    session row id the rm/restore/mv endpoints take.
+
+    `trashed` picks which listing the title is matched against: `restore`
+    names sessions the overview has already dropped."""
+    resolved = []
+    for object_type, ref in items:
+        if object_type != "session":
+            resolved.append((object_type, ref))
+        elif trashed:
+            resolved.append((object_type, _resolve_trashed_session(ref)))
+        else:
+            resolved.append((object_type, _resolve_session(ref, field="id")))
+    return resolved
 
 
 @app.command("rm")
@@ -3812,14 +3844,15 @@ def restore_cmd(
 ):
     """Restore pages, files, or sessions from trash.
 
-    Example: stash restore page:<id> session:<id>
+    A session may be named by its title, as `stash trash list` prints it:
+    stash restore page:<id> session:"<title>"
     """
     restore = {
         "page": lambda c, i: c.restore_page(i),
         "file": lambda c, i: c.restore_file(i),
         "session": lambda c, i: c.restore_session(i),
     }
-    items = _resolve_session_refs(_parse_refs(refs))
+    items = _resolve_session_refs(_parse_refs(refs), trashed=True)
     with _client() as c:
         for object_type, object_id in items:
             if object_type not in restore:
@@ -4677,7 +4710,7 @@ clutter Discover and defeat the model. Pick the right tool:
 - Share a single file or a folder/project → `stash upload <path> --json`, hand over `app_url` (no Skill).
 - Publishing a curated bundle → `stash upload <path> --skill "<title>" --json`.
 - Creating a fresh skill → `stash skills create "<name>" --public --json`.
-- Share a coding session → `stash share <session_id>`.
+- Share a coding session → `stash share` (this one), or `stash share --session "<title>"` for another.
 
 Run `stash prompts agent-guidance` to reprint this rule mid-session.
 
@@ -6077,8 +6110,9 @@ Commands to reach for
   folder (with a SKILL.md template) and publish it. Add content with the
   normal files/pages commands; `stash skills publish <folder_id>` shares
   an existing skill folder.
-- `stash share <session_id>` — freeze a coding session (transcript + the
-  files it touched) into a Skill folder. Sessions are inherently a
+- `stash share` — freeze this coding session (transcript + the files it
+  touched) into a Skill folder; `--session "<title>"` picks another one
+  by the title search and the VFS show. Sessions are inherently a
   collection, so this is the right unit.
 - `stash skills install <slug>` — install a public Skill (e.g. from
   Discover) into ~/.claude/skills so the local agent loads it next

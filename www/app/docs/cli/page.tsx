@@ -229,15 +229,11 @@ stash vfs --cwd "/me/sources" "rg 'incident' ."`}</CodeBlock>
         params={[]}
       />
 
-      <CommandRef
-        command="stash sessions transcript"
-        args="<session_id> [--save PATH]"
-        description="Fetch a full session transcript and print or save it. Transcripts are stored gzipped on the server and decompressed automatically."
-        params={[
-          { name: "<session_id>", type: "string", desc: "ID of the session.", required: true },
-          { name: "--save", type: "path", desc: "Save the transcript to a file instead of printing." },
-        ]}
-      />
+      <Callout type="tip">
+        Transcripts are read through the VFS, by title:{" "}
+        <Code>{`stash vfs "cat '/sessions/<title>/transcript.md'"`}</Code>. List the titles with{" "}
+        <Code>{`stash vfs "ls /sessions"`}</Code>.
+      </Callout>
 
       <H2>Memory</H2>
       <P>
@@ -534,7 +530,7 @@ stash vfs --cwd "/me/sources" "rg 'incident' ."`}</CodeBlock>
         args="<type:id>... [--permanent]"
         description="Move pages, files, or sessions to trash. Pass --permanent to skip the trash window and delete immediately."
         params={[
-          { name: "<type:id>", type: "string", desc: "Items to delete, e.g. page:<id> session:<id>.", required: true },
+          { name: "<type:id>", type: "string", desc: 'Items to delete, e.g. page:<id> session:"<title>". A session may be named by its title as well as its id.', required: true },
           { name: "--permanent", type: "flag", desc: "Delete immediately instead of trashing." },
         ]}
       />
@@ -544,7 +540,7 @@ stash vfs --cwd "/me/sources" "rg 'incident' ."`}</CodeBlock>
         args="<type:id>..."
         description="Restore pages, files, or sessions from trash."
         params={[
-          { name: "<type:id>", type: "string", desc: "Items to restore, e.g. page:<id> file:<id>.", required: true },
+          { name: "<type:id>", type: "string", desc: 'Items to restore, e.g. page:<id> session:"<title>", naming a session as `stash trash list` prints it.', required: true },
         ]}
       />
 
@@ -553,7 +549,7 @@ stash vfs --cwd "/me/sources" "rg 'incident' ."`}</CodeBlock>
         args="<type:id>... (--to-folder ID | --to-root)"
         description="Move pages, files, folders, tables, or sessions into a folder, or to the root."
         params={[
-          { name: "<type:id>", type: "string", desc: "Items to move.", required: true },
+          { name: "<type:id>", type: "string", desc: 'Items to move. A session may be named by its title as well as its id.', required: true },
           { name: "--to-folder", type: "string", desc: "Target folder id." },
           { name: "--to-root", type: "flag", desc: "Move to the root." },
         ]}
@@ -744,7 +740,7 @@ stash vfs --cwd "/me/sources" "rg 'incident' ."`}</CodeBlock>
         description="List who an object is shared with."
         params={[
           { name: "<object_type>", type: "string", desc: "folder | page | file | session | table.", required: true },
-          { name: "<object_id>", type: "string", desc: "ID of the object.", required: true },
+          { name: "<object_id>", type: "string", desc: "ID of the object, or a session's title.", required: true },
         ]}
       />
 
@@ -754,7 +750,7 @@ stash vfs --cwd "/me/sources" "rg 'incident' ."`}</CodeBlock>
         description="Share an object with a person by email."
         params={[
           { name: "<object_type>", type: "string", desc: "folder | page | file | session | table.", required: true },
-          { name: "<object_id>", type: "string", desc: "ID of the object.", required: true },
+          { name: "<object_id>", type: "string", desc: "ID of the object, or a session's title.", required: true },
           { name: "<email>", type: "string", desc: "Recipient email (pending until they sign up).", required: true },
           { name: "--permission", type: "string", desc: "read | write | admin. Defaults to read." },
         ]}
@@ -766,7 +762,7 @@ stash vfs --cwd "/me/sources" "rg 'incident' ."`}</CodeBlock>
         description="Revoke a person's access to an object."
         params={[
           { name: "<object_type>", type: "string", desc: "folder | page | file | session | table.", required: true },
-          { name: "<object_id>", type: "string", desc: "ID of the object.", required: true },
+          { name: "<object_id>", type: "string", desc: "ID of the object, or a session's title.", required: true },
           { name: "<principal_id>", type: "string", desc: "The user id to revoke (from stash shares ls).", required: true },
           { name: "--principal-type", type: "string", desc: 'Principal kind. Defaults to "user".' },
         ]}

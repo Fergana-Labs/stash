@@ -75,6 +75,50 @@ def test_resolve_session_ambiguous_title_fails_loudly(monkeypatch) -> None:
         main._resolve_session("Same title")
 
 
+def _trash_client(sessions):
+    class FakeClient:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def get_trash(self):
+            return {"sessions": sessions}
+
+    return FakeClient
+
+
+def test_restore_resolves_titles_against_the_trash(monkeypatch) -> None:
+    # A trashed session is gone from the overview, so `stash restore` matches
+    # its title against the trash — the listing `stash trash list` prints.
+    monkeypatch.setattr(
+        main,
+        "_client",
+        _trash_client([{"id": "row-9", "name": 'Abandoned "big" refactor'}]),
+    )
+
+    assert main._resolve_trashed_session('Abandoned "big" refactor') == "row-9"
+    assert main._resolve_trashed_session("Abandoned big refactor") == "row-9"
+    assert main._resolve_trashed_session("row-9") == "row-9"
+    assert main._resolve_session_refs([("session", "Abandoned big refactor")], trashed=True) == [
+        ("session", "row-9")
+    ]
+
+
+def test_live_session_refs_never_consult_the_trash(monkeypatch) -> None:
+    # rm/mv name sessions that are still live, so they resolve against the
+    # overview. This fake has no get_trash at all: reaching for it is the bug.
+    monkeypatch.setattr(
+        main,
+        "_client",
+        _overview_client([{"id": "row-1", "session_id": "sess-1", "title": "Live one"}]),
+    )
+
+    assert main._resolve_session_refs([("session", "Live one")]) == [("session", "row-1")]
+    assert main._resolve_session_refs([("page", "Live one")]) == [("page", "Live one")]
+
+
 def test_parse_file_ref_accepts_id_and_embed_link() -> None:
     # Pages embed attachments as /api/v1/me/files/<id>/download; agents can
     # paste that link straight into `stash files download`.

@@ -45,7 +45,7 @@ A Skill is **not** a wrapper to slap on every single file you happen to share. O
 - Share a single file or a folder/project → `stash upload <path> --json`, hand over `app_url` (no Skill).
 - Publishing a curated bundle → `stash upload <path> --skill "<title>" --json`.
 - Creating a fresh skill → `stash skills create "<name>" --public --json`.
-- Share a coding session → `stash share <session_id>`.
+- Share a coding session → `stash share` (this one), or `stash share --session "<title>"` for another.
 
 Run `stash prompts agent-guidance` to reprint this guidance mid-session.
 

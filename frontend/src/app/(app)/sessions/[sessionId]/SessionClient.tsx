@@ -73,6 +73,17 @@ function sessionHeading(detail: SessionDetail | null, sessionId: string): string
   return cleanSessionTitle(raw) || sessionId.replace(/^acme-/, "");
 }
 
+// A session is named by its title everywhere a person sees it, so the file
+// they end up with on disk is named that way too.
+function transcriptFilename(detail: SessionDetail, sessionId: string): string {
+  const name = sessionHeading(detail, sessionId)
+    .replace(/[/\\:*?"<>|]/g, "-")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 80);
+  return `${name}.jsonl`;
+}
+
 function eventToTurn(ev: SessionEvent): MessageTurn {
   const createdAt = ev.created_at ? new Date(ev.created_at) : null;
 
@@ -135,7 +146,7 @@ export default function SessionViewerPage({ sessionId }: { sessionId: string }) 
   useBreadcrumbs(
     [
       { label: "Sessions" },
-      { label: sessionDetail ? sessionHeading(sessionDetail, sessionId) : `#${sessionId}` },
+      { label: sessionDetail ? sessionHeading(sessionDetail, sessionId) : "Session" },
     ],
     `session/${sessionId}`
   );
@@ -182,7 +193,7 @@ export default function SessionViewerPage({ sessionId }: { sessionId: string }) 
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement("a");
                 a.href = url;
-                a.download = `session-${sessionId}.jsonl`;
+                a.download = transcriptFilename(sessionDetail, sessionId);
                 document.body.appendChild(a);
                 a.click();
                 a.remove();
@@ -194,7 +205,7 @@ export default function SessionViewerPage({ sessionId }: { sessionId: string }) 
               destructive: true,
               onSelect: async () => {
                 const ok = await confirm({
-                  title: `Move session "${sessionId}" to trash?`,
+                  title: `Move session "${sessionHeading(sessionDetail, sessionId)}" to trash?`,
                   confirmLabel: "Delete",
                 });
                 if (!ok) return;

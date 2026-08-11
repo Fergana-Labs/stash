@@ -28,7 +28,7 @@ def render_ask_system(stash_name: str, sources: list[dict] | None = None) -> str
         "SKILL.md). Call list_skills / read_skill to use them, create_skill to "
         "make one, and publish_skill when the user asks to share or publish it. "
         "Reference what you found by name (e.g., the page "
-        "name, session id, skill title, or table). Be concise."
+        "name, session title, skill title, or table). Be concise."
     )
 
 
