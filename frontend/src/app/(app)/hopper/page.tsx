@@ -7,9 +7,10 @@ import { useBreadcrumbs } from "@/components/BreadcrumbContext";
 import { dropHopperFile, dropHopperLink, type HopperDrop } from "@/lib/api";
 import { isLinkDrop } from "@/lib/hopper";
 
-// Machine-facing facts, set in mono: what the port accepts. Deliberately terse
-// — the well says "drop", this says "of what".
-const ACCEPTS = "PDF · DOCX · XLSX · PPTX · CSV · MD · PNG · JPG · URL";
+// Machine-facing facts, set in mono: what the well accepts. Space does the
+// separating — middots between caps is the house style of every AI landing
+// page this year.
+const ACCEPTS = ["PDF", "DOCX", "XLSX", "PPTX", "CSV", "MD", "PNG", "JPG", "URL"];
 
 /** The hopper is an intake, not a place: a drop lands in the VFS and the
  *  confirmation points there. Nothing accumulates on this page. */
@@ -150,8 +151,10 @@ export default function HopperRoute() {
                   ? "Let go"
                   : "Drag in, paste, or click"}
             </p>
-            <p className="mt-2.5 font-mono text-[11px] uppercase tracking-[0.05em] text-muted-foreground">
-              {ACCEPTS}
+            <p className="mt-3 flex flex-wrap justify-center gap-x-5 gap-y-1 font-mono text-[11px] uppercase tracking-[0.05em] text-muted-foreground">
+              {ACCEPTS.map((format) => (
+                <span key={format}>{format}</span>
+              ))}
             </p>
           </div>
         </div>
