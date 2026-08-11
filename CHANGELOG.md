@@ -5,6 +5,14 @@ everything before it is captured in git history (`git log`), not here.
 
 ## Unreleased
 
+- Uploaded images are transcribed by vision, so agents can read them.
+  `file_extraction.extract_text` has no branch for images, so every uploaded
+  screenshot, photo, and diagram stored an empty knowledge-base entry and was
+  invisible to search, ask-the-stash, and the VFS. Images now take the same
+  path scanned PDFs take: text transcribed character-for-character, and
+  everything non-textual described in place. Formats Gemini cannot read
+  inline (SVG, TIFF) still store no text rather than pretending.
+
 - CLI onboarding redesigned (#940). `stash signin` walks a first-run wizard
   that can be re-run anytime with the new `stash setup` — no answer is final.
   Session recording is framed as private-by-default and on by default
