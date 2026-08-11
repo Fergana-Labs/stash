@@ -122,7 +122,7 @@ export default function HopperRoute() {
     >
       <div className="mx-auto flex w-full max-w-[1100px] flex-1 flex-col px-10 py-10">
         <header className="mb-7 shrink-0">
-          <h1 className="font-display text-[clamp(34px,4.2vw,52px)] font-semibold leading-[1.02] tracking-[-0.025em] text-foreground">
+          <h1 className="font-display text-[clamp(28px,3.2vw,40px)] font-normal leading-[1.05] tracking-[-0.008em] text-foreground">
             Drop anything into your Stash
           </h1>
         </header>
