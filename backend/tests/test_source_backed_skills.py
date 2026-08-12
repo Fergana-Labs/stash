@@ -60,6 +60,7 @@ async def _doc(
     path: str,
     content: str | None,
     status: str = "done",
+    external_ref: str | None = None,
 ) -> UUID:
     return await pool.fetchval(
         "INSERT INTO drive_documents "
@@ -69,7 +70,7 @@ async def _doc(
         source_id,
         path,
         path.rpartition("/")[2],
-        f"drive-{path}",
+        external_ref or f"drive-{path}",
         content,
         status,
     )
@@ -235,7 +236,7 @@ async def test_reading_a_skill_returns_the_document_without_its_frontmatter(
     instructions alone — the same split a folder skill gets."""
     _key, owner_id = await _register(client)
     source_id = await _skill_shelf(pool, owner_id)
-    doc_id = await _doc(
+    await _doc(
         pool,
         owner_id,
         source_id,
@@ -243,7 +244,7 @@ async def test_reading_a_skill_returns_the_document_without_its_frontmatter(
         content=_declared("Turbochargers", "Boost loss.", "Check the wastegate first."),
     )
 
-    skill = await skill_service.read_source_skill(owner_id, doc_id, owner_id)
+    skill = await skill_service.read_source_skill(owner_id, "drive-Turbochargers.md", owner_id)
 
     assert skill is not None
     assert skill["name"] == "Turbochargers"
@@ -257,9 +258,9 @@ async def test_reading_an_undeclared_document_is_not_found(client: AsyncClient, 
     so there is no skill page for it to open."""
     _key, owner_id = await _register(client)
     source_id = await _skill_shelf(pool, owner_id)
-    doc_id = await _doc(pool, owner_id, source_id, path="Scratch.md", content="weeeeee\n")
+    await _doc(pool, owner_id, source_id, path="Scratch.md", content="weeeeee\n")
 
-    assert await skill_service.read_source_skill(owner_id, doc_id, owner_id) is None
+    assert await skill_service.read_source_skill(owner_id, "drive-Scratch.md", owner_id) is None
 
 
 @pytest.mark.asyncio
@@ -270,7 +271,7 @@ async def test_a_declaration_with_nothing_under_it_is_a_draft(client: AsyncClien
     trigger. Declaring yourself a skill is not the same as being one."""
     _key, owner_id = await _register(client)
     source_id = await _skill_shelf(pool, owner_id)
-    doc_id = await _doc(
+    await _doc(
         pool,
         owner_id,
         source_id,
@@ -282,7 +283,7 @@ async def test_a_declaration_with_nothing_under_it_is_a_draft(client: AsyncClien
     assert [s["name"] for s in listed] == ["Turbochargers"]
     assert listed[0]["has_instructions"] is False
 
-    skill = await skill_service.read_source_skill(owner_id, doc_id, owner_id)
+    skill = await skill_service.read_source_skill(owner_id, "drive-Turbochargers.md", owner_id)
     assert skill is not None
     assert skill["has_instructions"] is False
     assert skill["combined"] == ""
@@ -296,7 +297,7 @@ async def test_listing_and_reading_agree_on_a_long_frontmatter_block(client: Asy
     catalogue — visible on its own page, invisible to every agent."""
     _key, owner_id = await _register(client)
     source_id = await _skill_shelf(pool, owner_id)
-    doc_id = await _doc(
+    await _doc(
         pool,
         owner_id,
         source_id,
@@ -308,7 +309,7 @@ async def test_listing_and_reading_agree_on_a_long_frontmatter_block(client: Asy
     )
 
     listed = await skill_service.list_skills(owner_id, owner_id)
-    read = await skill_service.read_source_skill(owner_id, doc_id, owner_id)
+    read = await skill_service.read_source_skill(owner_id, "drive-Turbochargers.md", owner_id)
 
     assert [s["name"] for s in listed] == ["Turbochargers"]
     assert read is not None
@@ -349,3 +350,38 @@ async def test_an_owned_shelf_with_nothing_in_it_still_reports_itself(client: As
     counts = await skill_service.count_shelf_skills(owner_id, [str(source_id)])
 
     assert counts == {str(source_id): {"skills": 0, "documents": 0, "not_skills": []}}
+
+
+@pytest.mark.asyncio
+async def test_a_rename_in_drive_does_not_change_a_skill_s_address(client: AsyncClient, pool):
+    """Our row is keyed on the document's path, so renaming it upstream deletes
+    one row and inserts another. A skill addressed by that row would lose its
+    url, its pin, and any link an agent had been handed — for a rename. The
+    upstream file id survives, so that is what a skill is addressed by."""
+    _key, owner_id = await _register(client)
+    source_id = await _skill_shelf(pool, owner_id)
+    await _doc(
+        pool,
+        owner_id,
+        source_id,
+        path="Turbos.md",
+        content=_declared("Turbochargers", "Boost loss."),
+        external_ref="drive-file-stable",
+    )
+    before = (await skill_service.list_skills(owner_id, owner_id))[0]["source_ref"]
+
+    # The walk after the author renames the file: same Drive id, new path, and
+    # the row at the old path swept away.
+    await pool.execute("DELETE FROM drive_documents WHERE source_id = $1", source_id)
+    await _doc(
+        pool,
+        owner_id,
+        source_id,
+        path="Turbochargers.md",
+        content=_declared("Turbochargers", "Boost loss."),
+        external_ref="drive-file-stable",
+    )
+
+    after = (await skill_service.list_skills(owner_id, owner_id))[0]["source_ref"]
+    assert after == before
+    assert await skill_service.read_source_skill(owner_id, before, owner_id) is not None

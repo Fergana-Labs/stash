@@ -54,7 +54,7 @@ vi.mock("@/lib/api", () => ({
   listSkills: vi.fn(),
   // Real behaviour, not a stub: the page keys pins, selection, and React
   // children off this, so a mock returning undefined collapses the render.
-  skillKey: (s: Skill) => (s.backing === "folder" ? s.folder_id : s.source_doc_id),
+  skillKey: (s: Skill) => (s.backing === "folder" ? s.folder_id : s.source_ref),
   // useAuth (mounted by the page) short-circuits to a signed-out state when
   // there's no token, so these never hit the network.
   getToken: vi.fn(() => null),
@@ -78,7 +78,7 @@ vi.mock("@/lib/skillNavigationCache", () => ({
 function skill(overrides: Partial<FolderBackedSkill> = {}): Skill {
   return {
     backing: "folder",
-    source_doc_id: null,
+    source_ref: null,
     source_name: null,
     folder_id: "folder-1",
     name: "Launch Plan",
@@ -97,7 +97,7 @@ function sourceSkill(overrides: Partial<Skill> = {}): Skill {
   return {
     backing: "source",
     folder_id: null,
-    source_doc_id: "doc-1",
+    source_ref: "drive-file-1",
     source_name: "skillz",
     name: "Turbochargers",
     description: "Use when a customer reports boost loss.",
@@ -215,8 +215,8 @@ describe("SkillsPage", () => {
     // This is why the page keys off skillKey and not the folder.
     const warn = vi.spyOn(console, "error").mockImplementation(() => {});
     vi.mocked(listSkills).mockResolvedValue([
-      sourceSkill({ source_doc_id: "doc-1", name: "Turbochargers" }),
-      sourceSkill({ source_doc_id: "doc-2", name: "Brake Shoes" }),
+      sourceSkill({ source_ref: "drive-file-1", name: "Turbochargers" }),
+      sourceSkill({ source_ref: "drive-file-2", name: "Brake Shoes" }),
     ]);
 
     render(<SkillsPage />);
@@ -234,14 +234,14 @@ describe("SkillsPage", () => {
     // Read-only is about editing, not about visibility: you must always be
     // able to open a skill and read exactly what an agent will be handed.
     // It goes to the document view, not a folder page it hasn't got.
-    vi.mocked(listSkills).mockResolvedValue([sourceSkill({ source_doc_id: "doc-1" })]);
+    vi.mocked(listSkills).mockResolvedValue([sourceSkill({ source_ref: "drive-file-1" })]);
 
     render(<SkillsPage />);
 
     const links = (await screen.findAllByText("Turbochargers")).map((el) => el.closest("a"));
     expect(links.length).toBeGreaterThan(0);
     for (const link of links) {
-      expect(link).toHaveAttribute("href", "/skills/source/doc-1");
+      expect(link).toHaveAttribute("href", "/skills/source/drive-file-1");
     }
     // The badge names the shelf, not the provider: two shelves can hold
     // skills with the same name and the card is where you tell them apart.

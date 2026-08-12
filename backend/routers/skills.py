@@ -225,16 +225,17 @@ async def get_local_skill(
     return skill
 
 
-@me_router.get("/source-skills/{doc_id}")
+@me_router.get("/source-skills/{source_ref}")
 async def read_source_skill(
-    doc_id: UUID,
+    source_ref: str,
     current_user: dict = Depends(get_current_user),
     owner_user_id: UUID = Depends(get_scope),
 ):
-    """Read one source-backed skill by the document that backs it. Addressed by
-    document rather than name because a shelf can hold two docs with the same
-    title, and the page has to open the one that was clicked."""
-    skill = await skill_service.read_source_skill(owner_user_id, doc_id, current_user["id"])
+    """Read one source-backed skill by the upstream file that backs it.
+    Addressed by file rather than name because a shelf can hold two documents
+    with the same title, and by the upstream id rather than ours because a
+    rename in Drive replaces our row."""
+    skill = await skill_service.read_source_skill(owner_user_id, source_ref, current_user["id"])
     if not skill:
         raise HTTPException(status_code=404, detail="Skill not found")
     return skill

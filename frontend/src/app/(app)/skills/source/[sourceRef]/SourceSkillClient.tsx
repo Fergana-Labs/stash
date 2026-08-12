@@ -9,19 +9,19 @@ import { useBreadcrumbs } from "@/components/BreadcrumbContext";
 import { FileBrowserSkeleton } from "@/components/SkeletonStates";
 import { readSourceSkill, type SourceSkillRead } from "@/lib/api";
 
-export default function SourceSkillClient({ docId }: { docId: string }) {
+export default function SourceSkillClient({ sourceRef }: { sourceRef: string }) {
   const [skill, setSkill] = useState<SourceSkillRead | null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
-    readSourceSkill(docId)
+    readSourceSkill(sourceRef)
       .then(setSkill)
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load this skill"));
-  }, [docId]);
+  }, [sourceRef]);
 
   useBreadcrumbs(
     [{ label: "Skills" }, { label: skill?.name ?? "Skill" }],
-    `source-skill/${docId}`
+    `source-skill/${sourceRef}`
   );
 
   if (error) {
