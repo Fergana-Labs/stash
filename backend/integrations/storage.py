@@ -57,6 +57,11 @@ def _account_row(row) -> dict:
         "scopes": list(row["scopes"] or []),
         "expires_at": row["expires_at"].isoformat() if row["expires_at"] else None,
         "connected_at": row["created_at"].isoformat() if row["created_at"] else None,
+        # Every store_token rewrites this, so a re-authorization of an account
+        # that already exists moves it. `stash sources connect` polls on it to
+        # tell "the browser consent finished" from "nothing happened yet" —
+        # account_key alone can't, since a repair reuses the same key.
+        "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None,
     }
 
 
@@ -311,7 +316,7 @@ async def status(user_id: UUID, provider: str) -> dict:
     rows = await pool.fetch(
         """
         SELECT account_key, scopes, expires_at, account_email, account_display_name,
-               created_at, access_token_encrypted IS NULL AS disconnected
+               created_at, updated_at, access_token_encrypted IS NULL AS disconnected
         FROM user_integrations WHERE user_id = $1 AND provider = $2
         ORDER BY account_email NULLS LAST, account_display_name NULLS LAST, account_key
         """,
@@ -377,7 +382,7 @@ async def list_connections(user_id: UUID) -> list[dict]:
     rows = await pool.fetch(
         """
         SELECT provider, account_key, scopes, expires_at,
-               account_email, account_display_name, created_at,
+               account_email, account_display_name, created_at, updated_at,
                access_token_encrypted IS NULL AS disconnected
         FROM user_integrations WHERE user_id = $1
         ORDER BY provider, account_email NULLS LAST, account_display_name NULLS LAST, account_key

@@ -83,9 +83,16 @@ async def _resolve_gmail_source(user_id, account_key: str | None) -> tuple[str, 
     if not accounts:
         raise HTTPException(status_code=401, detail="not connected to gmail")
 
+    # Both misses below name the authorized mailboxes: the caller's next move
+    # differs entirely depending on whether the one they asked for is merely
+    # unindexed (add it) or unauthorized (authorize it first), and a bare
+    # "not connected" leaves them unable to tell which.
+    connected = ", ".join(a.get("account_email") or a["account_key"] for a in accounts)
     if not account_key:
         if len(accounts) != 1:
-            raise HTTPException(status_code=400, detail="Choose a Gmail account to add.")
+            raise HTTPException(
+                status_code=400, detail=f"Choose a Gmail account to add: {connected}."
+            )
         account = accounts[0]
     else:
         key = account_key.strip().lower()
@@ -98,7 +105,13 @@ async def _resolve_gmail_source(user_id, account_key: str | None) -> tuple[str, 
             None,
         )
         if account is None:
-            raise HTTPException(status_code=400, detail="Gmail account is not connected.")
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"No authorized Gmail account for {account_key}. "
+                    f"Authorized: {connected}. Authorize that mailbox first, then add it."
+                ),
+            )
 
     email = account.get("account_email") or account["account_key"]
     await integration_storage.get_valid_token(user_id, "gmail", account["account_key"])

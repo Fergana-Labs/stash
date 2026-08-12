@@ -699,6 +699,16 @@ class StashClient:
             return data["text"].encode()
         return base64.b64decode(data["content_base64"])
 
+    # --- Integrations (the OAuth grant a connected source is built on) ---
+
+    def integration_status(self, provider: str) -> dict:
+        return self._get(f"/api/v1/integrations/{provider}/status")
+
+    def integration_authorize_url(self, provider: str) -> str:
+        """The provider's OAuth consent URL. Bearer-authed, so only the caller
+        who requested it can complete the grant it encodes."""
+        return self._get(f"/api/v1/integrations/{provider}/connect")["authorize_url"]
+
     # --- Sources (unified VFS: native files/sessions + connected sources) ---
 
     def list_sources(self) -> list:

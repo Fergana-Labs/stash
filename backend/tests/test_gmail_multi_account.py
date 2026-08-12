@@ -133,7 +133,12 @@ async def test_gmail_sources_target_specific_mailboxes(client: AsyncClient):
         headers=_auth(api_key),
     )
     assert ambiguous.status_code == 400
-    assert ambiguous.json()["detail"] == "Choose a Gmail account to add."
+    # The caller has to pick, so the error has to say what there is to pick
+    # from — an unqualified "choose an account" leaves them guessing at the
+    # exact ref this endpoint will accept.
+    detail = ambiguous.json()["detail"]
+    assert "htdowling@gmail.com" in detail
+    assert "henry@joinstash.ai" in detail
 
     for email in ("htdowling@gmail.com", "henry@joinstash.ai"):
         added = await client.post(
@@ -152,6 +157,30 @@ async def test_gmail_sources_target_specific_mailboxes(client: AsyncClient):
         "htdowling@gmail.com",
         "henry@joinstash.ai",
     }
+
+
+@pytest.mark.asyncio
+async def test_adding_an_unauthorized_mailbox_says_which_ones_are_authorized(
+    client: AsyncClient,
+):
+    """Indexing a mailbox needs a prior OAuth grant, and the two failures look
+    identical from the caller's side: the mailbox exists but was never
+    authorized, versus a typo in the address. Listing the authorized accounts
+    is what separates "go authorize that one" from "you misspelled it" —
+    without it the caller retries the same doomed command."""
+    api_key, user_id = await _register(client)
+    await _store_gmail(user_id, "henry@joinstash.ai", "token-work")
+
+    resp = await client.post(
+        "/api/v1/me/sources",
+        json={"source_type": "gmail", "external_ref": "htdowling@gmail.com"},
+        headers=_auth(api_key),
+    )
+
+    assert resp.status_code == 400
+    detail = resp.json()["detail"]
+    assert "htdowling@gmail.com" in detail
+    assert "henry@joinstash.ai" in detail
 
 
 class _StubResponse:

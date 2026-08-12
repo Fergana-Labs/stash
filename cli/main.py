@@ -141,6 +141,14 @@ def _default_signin_page(api: str) -> str:
     return api + "/connect-token"
 
 
+def _is_ssh() -> bool:
+    """Over SSH the browser would open on the wrong machine, so callers print
+    the URL for the user to open locally instead."""
+    import os
+
+    return any(os.environ.get(v) for v in ("SSH_CONNECTION", "SSH_CLIENT", "SSH_TTY"))
+
+
 def _refocus_terminal() -> None:
     """Bring the user's terminal app back to the foreground after browser auth.
 
@@ -174,7 +182,6 @@ def _browser_auth_flow(
     API key back. Raises typer.Exit on failure or timeout. Caller is
     responsible for persisting the returned credentials.
     """
-    import os
     import socket
     import time
     import webbrowser
@@ -196,8 +203,7 @@ def _browser_auth_flow(
     sep = "&" if "?" in page else "?"
     url = f"{page}{sep}session={session_id}"
 
-    ssh = any(os.environ.get(v) for v in ("SSH_CONNECTION", "SSH_CLIENT", "SSH_TTY"))
-    opened = False if ssh else webbrowser.open(url)
+    opened = False if _is_ssh() else webbrowser.open(url)
 
     if opened:
         console.print(f"  [green]✓[/green] Opened [bold]{page}[/bold] in your browser.")
@@ -3497,6 +3503,95 @@ def changes(
     )
 
 
+def _live_account_fingerprints(status: dict) -> set[tuple[str, str | None]]:
+    """One entry per usable grant on a provider. Fingerprinted on updated_at as
+    well as account_key because re-authorizing an account reuses its key — on
+    key alone, `connect` could not tell a finished repair from a no-op."""
+    return {
+        (a["account_key"], a.get("updated_at"))
+        for a in status.get("accounts", [])
+        if not a.get("disconnected")
+    }
+
+
+@sources_app.command("connect")
+def sources_connect(
+    provider: str = typer.Argument(
+        ..., help="gmail | google | github | notion | slack | linear | jira | asana | gong | x"
+    ),
+    timeout: int = typer.Option(180, "--timeout", help="Seconds to wait for the browser consent."),
+    as_json: bool = typer.Option(False, "--json"),
+):
+    """Authorize a provider account in the browser — the step before `add`.
+
+    `sources add` indexes a mailbox or repo you have already authorized; this
+    mints the grant it needs. Providers that hold several accounts (Gmail)
+    authorize one more per run, so re-running adds a second mailbox rather
+    than replacing the first.
+    """
+    import time
+    import webbrowser
+
+    json_out = _use_json(as_json)
+    with _client() as c:
+        try:
+            before = _live_account_fingerprints(c.integration_status(provider))
+            url = c.integration_authorize_url(provider)
+        except StashError as e:
+            _err(e)
+
+        # The consent screen wants a password and 2FA, so this half belongs to
+        # the user alone — all we can do is hand off the URL and watch for the
+        # grant to land. On stderr under --json so it can't corrupt stdout.
+        opened = False if _is_ssh() else webbrowser.open(url)
+        if json_out:
+            print(f"Authorize at: {url}", file=sys.stderr)
+        elif opened:
+            console.print(
+                f"  [green]✓[/green] Opened the {provider} consent screen in your browser."
+            )
+        else:
+            console.print(f"  Open this URL to authorize:\n    [bold]{url}[/bold]")
+        if not json_out:
+            console.print(f"  Waiting for you to finish (timeout {timeout}s)…")
+
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            time.sleep(2)
+            try:
+                status = c.integration_status(provider)
+            except StashError as e:
+                _err(e)
+            granted = _live_account_fingerprints(status) - before
+            if granted:
+                break
+        else:
+            console.print(
+                f"[red]Timed out waiting for the {provider} authorization.[/red] "
+                "Nothing was connected — re-run once you can finish the browser step."
+            )
+            raise typer.Exit(1)
+
+    _refocus_terminal()
+    keys = {key for key, _ in granted}
+    accounts = [a for a in status["accounts"] if a["account_key"] in keys]
+    if json_out:
+        output_json({"provider": provider, "accounts": accounts})
+        return
+    for account in accounts:
+        label = (
+            account.get("account_email")
+            or account.get("account_display_name")
+            or account["account_key"]
+        )
+        console.print(f"[green]Authorized[/green] {provider}  [dim]→ {label}[/dim]")
+    refs = " ".join(a["account_key"] for a in accounts)
+    console.print(
+        f"\nNow index it:  [cyan]stash sources add <type> --ref {refs}[/cyan]"
+        "  [dim](types: stash sources add --help)[/dim]"
+    )
+
+
 @sources_app.command("add")
 def sources_add(
     source_type: str = typer.Argument(
@@ -3508,7 +3603,10 @@ def sources_add(
     name: str = typer.Option("", "--name", help="Display name."),
     as_json: bool = typer.Option(False, "--json"),
 ):
-    """Connect a source. Slack/Granola resolve their ref from your token."""
+    """Index a source on an account you have already authorized.
+
+    Authorize first with `stash sources connect <provider>`. Slack/Granola
+    resolve their ref from your token."""
     with _client() as c:
         try:
             data = c.add_source(source_type, external_ref=ref or None, display_name=name or None)
