@@ -409,6 +409,34 @@ async def test_a_named_image_still_goes_where_it_belongs(
 
 
 @pytest.mark.asyncio
+async def test_an_untyped_video_still_finds_its_kind(
+    client: AsyncClient, pool, monkeypatch
+) -> None:
+    """Browsers hand over application/octet-stream for anything they do not
+    recognise, so an iPhone clip arrives untyped — the extension is the only
+    thing that says what it is."""
+    headers, _ = await _register(client)
+    _mock_storage(monkeypatch)
+    landed = await _drop(client, headers, "IMG_3503.MOV", b"\x00\x00", "application/octet-stream")
+
+    async def declines(**kwargs):
+        return {"folder": None}
+
+    monkeypatch.setattr(llm, "complete_json", declines)
+    resp = await client.post(
+        "/api/v1/me/hopper/classify",
+        json={"kind": "file", "id": landed["id"]},
+        headers=headers,
+    )
+    assert resp.json()["filed_in"] == "Videos"
+    folder = await pool.fetchval(
+        "SELECT f.name FROM files fi JOIN folders f ON f.id = fi.folder_id WHERE fi.id = $1",
+        UUID(landed["id"]),
+    )
+    assert folder == "Videos"
+
+
+@pytest.mark.asyncio
 async def test_an_unfilable_document_is_left_alone(client: AsyncClient, pool, monkeypatch) -> None:
     """Only images get a kind-based home; a document with no obvious folder
     stays where the person can see it."""

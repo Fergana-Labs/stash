@@ -183,8 +183,9 @@ export default function HopperRoute() {
         void fileAway(landed).then(([filed]) => {
           toast.success(`${only.name} uploaded successfully`, {
             id,
-            // Say so either way: no second line reads as "filing never ran".
-            // Naming a folder without a way to open it is a tease.
+            // Only when there is something to say: "kept at the top level"
+            // announces a non-event. Naming a folder without a way to open it
+            // would be a tease, so the line is a link.
             description: filed ? (
               <button
                 type="button"
@@ -193,9 +194,7 @@ export default function HopperRoute() {
               >
                 Filed in {filed.path}
               </button>
-            ) : (
-              "Kept at the top level"
-            ),
+            ) : undefined,
             action: goTo,
           });
         });
@@ -220,8 +219,7 @@ export default function HopperRoute() {
         live.filed = filed.filter(Boolean).length;
         toast.success(summarise(live), {
           id,
-          description:
-            failedNames || (live.filed ? undefined : "All kept at the top level"),
+          description: failedNames || undefined,
           action: goToVfs,
         });
       });

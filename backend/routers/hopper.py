@@ -24,11 +24,29 @@ from .files import MAX_FILE_SIZE, _strip_ext, ingest_bytes
 
 router = APIRouter(prefix="/api/v1/me/hopper", tags=["hopper"])
 
-# An image with a meaningless name (IMG_0917, CleanShot 2026-08-12) has no
-# semantic home, but it does have an obvious kind. Without this they pile up at
-# the top level, which is exactly the junk drawer a filesystem is meant to
-# prevent.
-IMAGES_FOLDER = "Images"
+# A photo, clip or recording with a meaningless name (IMG_0917, IMG_3503.MOV)
+# has no semantic home, but it does have an obvious kind. Without this they
+# pile up at the top level, which is exactly the junk drawer a filesystem is
+# meant to prevent.
+#
+# Keyed by extension as well as content type because browsers routinely hand
+# over application/octet-stream for anything they do not recognise — a .MOV
+# from an iPhone arrives untyped.
+_MEDIA_FOLDERS = (
+    ("Images", "image/", (".jpg", ".jpeg", ".png", ".gif", ".webp", ".heic", ".heif", ".bmp")),
+    ("Videos", "video/", (".mov", ".mp4", ".m4v", ".avi", ".mkv", ".webm")),
+    ("Audio", "audio/", (".mp3", ".m4a", ".wav", ".aac", ".flac", ".ogg")),
+)
+
+
+def _media_folder(filename: str, content_type: str) -> str | None:
+    """The kind-based home for a file, or None for anything that is not media."""
+    name = filename.lower()
+    for folder, prefix, extensions in _MEDIA_FOLDERS:
+        if content_type.startswith(prefix) or name.endswith(extensions):
+            return folder
+    return None
+
 
 # Dropping a directory mirrors its structure, so the depth cap is the only
 # guard against someone dragging in their home folder.
@@ -216,11 +234,13 @@ async def classify_drop(
     folder_id, path = await file_classifier.suggest_folder(
         owner_user_id, row["name"], row["content_type"]
     )
-    if folder_id is None and row["content_type"].startswith("image/"):
-        # No folder fits, but an image still has somewhere to be. This is a
-        # rule, not a guess: the kind is known, only the meaning is not.
-        folder_id = await _folder_for_path(owner_user_id, current_user["id"], IMAGES_FOLDER)
-        path = IMAGES_FOLDER
+    if folder_id is None:
+        # No folder fits, but a photo or clip still has somewhere to be. This
+        # is a rule, not a guess: the kind is known, only the meaning is not.
+        media = _media_folder(row["name"], row["content_type"])
+        if media:
+            folder_id = await _folder_for_path(owner_user_id, current_user["id"], media)
+            path = media
     if folder_id is None:
         return {"filed_in": None, "folder_id": None}
     await pool.execute(
