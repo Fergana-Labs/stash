@@ -115,9 +115,11 @@ async def list_file_activity(
                  p.id::text AS target_id,
                  p.name AS target_label,
                  p.last_edit_agent_name AS agent_name,
+                 pf.name AS folder,
                  aw.id AS owner_user_id,
                  aw.name AS owner_name
           FROM pages p
+          LEFT JOIN folders pf ON pf.id = p.folder_id
           JOIN accessible_scopes aw ON aw.id = p.owner_user_id
           WHERE p.deleted_at IS NULL
             AND NOT EXISTS (SELECT 1 FROM memory_folders m WHERE m.id = p.folder_id)
@@ -133,9 +135,11 @@ async def list_file_activity(
                  f.id::text AS target_id,
                  f.name AS target_label,
                  NULL::text AS agent_name,
+                 ff.name AS folder,
                  aw.id AS owner_user_id,
                  aw.name AS owner_name
           FROM files f
+          LEFT JOIN folders ff ON ff.id = f.folder_id
           JOIN accessible_scopes aw ON aw.id = f.owner_user_id
           WHERE f.deleted_at IS NULL
             AND NOT EXISTS (SELECT 1 FROM memory_folders m WHERE m.id = f.folder_id)
@@ -173,6 +177,9 @@ async def list_file_activity(
                 "target_id": r["target_id"],
                 "target_label": r["target_label"],
                 "agent_name": r["agent_name"],
+                # The folder it sits in, so a caller can say where something
+                # went without walking the tree. Null means the top level.
+                "folder": r["folder"],
                 "owner_user_id": r["owner_user_id"],
                 "owner_name": r["owner_name"],
             }

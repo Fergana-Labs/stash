@@ -24,6 +24,12 @@ from .files import MAX_FILE_SIZE, _strip_ext, ingest_bytes
 
 router = APIRouter(prefix="/api/v1/me/hopper", tags=["hopper"])
 
+# An image with a meaningless name (IMG_0917, CleanShot 2026-08-12) has no
+# semantic home, but it does have an obvious kind. Without this they pile up at
+# the top level, which is exactly the junk drawer a filesystem is meant to
+# prevent.
+IMAGES_FOLDER = "Images"
+
 # Dropping a directory mirrors its structure, so the depth cap is the only
 # guard against someone dragging in their home folder.
 MAX_PATH_DEPTH = 10
@@ -193,8 +199,9 @@ async def classify_drop(
     owner_user_id = await _writable_scope(current_user, scope_user_id)
     table = "files" if body.kind == "file" else "pages"
     pool = get_pool()
+    content_type = "content_type" if body.kind == "file" else "'text/markdown' AS content_type"
     row = await pool.fetchrow(
-        f"SELECT name, folder_id FROM {table} "  # noqa: S608 — table is pattern-checked
+        f"SELECT name, folder_id, {content_type} FROM {table} "  # noqa: S608 — pattern-checked
         "WHERE id = $1 AND owner_user_id = $2 AND deleted_at IS NULL",
         body.id,
         owner_user_id,
@@ -207,8 +214,13 @@ async def classify_drop(
         return {"filed_in": None}
 
     folder_id, path = await file_classifier.suggest_folder(
-        owner_user_id, row["name"], "application/octet-stream"
+        owner_user_id, row["name"], row["content_type"]
     )
+    if folder_id is None and row["content_type"].startswith("image/"):
+        # No folder fits, but an image still has somewhere to be. This is a
+        # rule, not a guess: the kind is known, only the meaning is not.
+        folder_id = await _folder_for_path(owner_user_id, current_user["id"], IMAGES_FOLDER)
+        path = IMAGES_FOLDER
     if folder_id is None:
         return {"filed_in": None}
     await pool.execute(

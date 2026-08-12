@@ -299,32 +299,6 @@ async def test_classify_files_a_loose_item(client: AsyncClient, pool, monkeypatc
 
 
 @pytest.mark.asyncio
-async def test_classify_leaves_an_unfilable_item_alone(
-    client: AsyncClient, pool, monkeypatch
-) -> None:
-    """Filing wrongly is worse than not filing: a person finds what is at the
-    top level, but will not think to look in the wrong folder."""
-    headers, _ = await _register(client)
-    _mock_storage(monkeypatch)
-    await client.post("/api/v1/me/folders", json={"name": "Invoices"}, headers=headers)
-    landed = await _drop(client, headers, "IMG_4432.png", b"\x89PNG", "image/png")
-
-    async def fake_json(**kwargs):
-        return {"folder": None}
-
-    monkeypatch.setattr(llm, "complete_json", fake_json)
-    resp = await client.post(
-        "/api/v1/me/hopper/classify",
-        json={"kind": "file", "id": landed["id"]},
-        headers=headers,
-    )
-    assert resp.json()["filed_in"] is None
-    assert (
-        await pool.fetchval("SELECT folder_id FROM files WHERE id = $1", UUID(landed["id"])) is None
-    )
-
-
-@pytest.mark.asyncio
 async def test_classify_never_invents_a_folder(client: AsyncClient, pool, monkeypatch) -> None:
     """Inventing a folder per file is how a stash ends up with forty folders
     holding one item each."""
@@ -381,3 +355,77 @@ async def test_classify_will_not_move_something_already_filed(
         UUID(landed["id"]),
     )
     assert folder == "catalogs"
+
+
+@pytest.mark.asyncio
+async def test_an_unfilable_image_gets_a_home_rather_than_littering_the_root(
+    client: AsyncClient, pool, monkeypatch
+) -> None:
+    """IMG_0917.jpg has no semantic home, but it has an obvious kind. Leaving
+    it loose turns the top level into the junk drawer a filesystem exists to
+    prevent."""
+    headers, _ = await _register(client)
+    _mock_storage(monkeypatch)
+    landed = await _drop(client, headers, "IMG_0917.jpg", b"\xff\xd8\xff", "image/jpeg")
+
+    async def declines(**kwargs):
+        return {"folder": None}
+
+    monkeypatch.setattr(llm, "complete_json", declines)
+    resp = await client.post(
+        "/api/v1/me/hopper/classify",
+        json={"kind": "file", "id": landed["id"]},
+        headers=headers,
+    )
+    assert resp.json()["filed_in"] == "Images"
+    folder = await pool.fetchval(
+        "SELECT f.name FROM files fi JOIN folders f ON f.id = fi.folder_id WHERE fi.id = $1",
+        UUID(landed["id"]),
+    )
+    assert folder == "Images"
+
+
+@pytest.mark.asyncio
+async def test_a_named_image_still_goes_where_it_belongs(
+    client: AsyncClient, pool, monkeypatch
+) -> None:
+    """The Images folder is the last resort, not the destination for anything
+    that happens to be an image."""
+    headers, _ = await _register(client)
+    _mock_storage(monkeypatch)
+    await client.post("/api/v1/me/folders", json={"name": "Diagrams"}, headers=headers)
+    landed = await _drop(client, headers, "brake-assembly-diagram.png", b"\x89PNG", "image/png")
+
+    async def picks(**kwargs):
+        return {"folder": "Diagrams"}
+
+    monkeypatch.setattr(llm, "complete_json", picks)
+    resp = await client.post(
+        "/api/v1/me/hopper/classify",
+        json={"kind": "file", "id": landed["id"]},
+        headers=headers,
+    )
+    assert resp.json()["filed_in"] == "Diagrams"
+
+
+@pytest.mark.asyncio
+async def test_an_unfilable_document_is_left_alone(client: AsyncClient, pool, monkeypatch) -> None:
+    """Only images get a kind-based home; a document with no obvious folder
+    stays where the person can see it."""
+    headers, _ = await _register(client)
+    _mock_storage(monkeypatch)
+    landed = await _drop(client, headers, "untitled.pdf", b"%PDF-1.4 x", "application/pdf")
+
+    async def declines(**kwargs):
+        return {"folder": None}
+
+    monkeypatch.setattr(llm, "complete_json", declines)
+    resp = await client.post(
+        "/api/v1/me/hopper/classify",
+        json={"kind": "file", "id": landed["id"]},
+        headers=headers,
+    )
+    assert resp.json()["filed_in"] is None
+    assert (
+        await pool.fetchval("SELECT folder_id FROM files WHERE id = $1", UUID(landed["id"])) is None
+    )

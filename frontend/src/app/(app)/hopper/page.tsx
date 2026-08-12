@@ -178,13 +178,12 @@ export default function HopperRoute() {
         // Filing takes a model call, so it lands after the confirmation. If
         // the toast is still up, it grows a line saying where the file went.
         void fileAway(landed).then(([filed]) => {
-          if (filed) {
-            toast.success(`${only.name} uploaded successfully`, {
-              id,
-              description: `Filed in ${filed}`,
-              action: goTo,
-            });
-          }
+          toast.success(`${only.name} uploaded successfully`, {
+            id,
+            // Say so either way: no second line reads as "filing never ran".
+            description: filed ? `Filed in ${filed}` : "Kept at the top level",
+            action: goTo,
+          });
         });
         return;
       }
@@ -204,10 +203,13 @@ export default function HopperRoute() {
         return;
       }
       void fileAway(landed).then((filed) => {
-        const count = filed.filter(Boolean).length;
-        if (!count) return;
-        live.filed = count;
-        toast.success(summarise(live), { id, description: failedNames || undefined, action: goToVfs });
+        live.filed = filed.filter(Boolean).length;
+        toast.success(summarise(live), {
+          id,
+          description:
+            failedNames || (live.filed ? undefined : "All kept at the top level"),
+          action: goToVfs,
+        });
       });
     },
     [router, refreshRecent, fileAway],
@@ -395,10 +397,16 @@ export default function HopperRoute() {
                 <li key={`${event.target_id}-${event.ts}`}>
                   <Link
                     href={hrefFor(event)}
-                    className="flex items-baseline justify-between gap-4 rounded-md py-1.5 text-[13px] text-dim transition-colors hover:text-foreground"
+                    className="flex items-baseline gap-3 rounded-md py-1.5 text-[13px] text-dim transition-colors hover:text-foreground"
                   >
                     <span className="truncate">{event.target_label}</span>
-                    <span className="shrink-0 font-mono text-[11px] text-muted-foreground">
+                    {/* Where it ended up, so the answer outlives the toast. */}
+                    {event.folder && (
+                      <span className="shrink-0 font-mono text-[11px] text-brand-700">
+                        {event.folder}
+                      </span>
+                    )}
+                    <span className="ml-auto shrink-0 font-mono text-[11px] text-muted-foreground">
                       {landedAt(event.ts)}
                     </span>
                   </Link>
