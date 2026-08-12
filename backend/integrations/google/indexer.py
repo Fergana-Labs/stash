@@ -99,6 +99,42 @@ async def _target_modified_time(client: httpx.AsyncClient, file_id: str) -> str 
     return resp.json().get("modifiedTime")
 
 
+async def _require_readable_folder(client: httpx.AsyncClient, folder_id: str) -> None:
+    """Fail the sync unless the folder is still ours to list.
+
+    Drive answers an emptied folder and an unreadable one identically — 200
+    with no files — and the walk's result drives a *physical* delete of every
+    document it didn't see (`drive_documents` is a content table). So the
+    folder is asked about directly before its listing is believed: gone,
+    trashed, or no longer listable stops the sync here rather than arriving
+    later disguised as an empty account.
+
+    This is the same bargain `expect_items` strikes one level down. It believes
+    an empty list once it knows it understood the response; this establishes
+    that there was anything to understand.
+    """
+    resp = await client.get(
+        DRIVE_FILE_URL.format(file_id=folder_id),
+        params={**ALL_DRIVES, "fields": "trashed,capabilities(canListChildren)"},
+    )
+    if resp.status_code in (403, 404):
+        raise source_service.SourceSyncUserError(
+            "That Drive folder is no longer readable with this Google account, so "
+            "syncing is paused for this source to protect your saved data. Nothing "
+            "was deleted. Check the folder still exists and is shared with this "
+            "account, then sync again."
+        )
+    resp.raise_for_status()
+    folder = resp.json()
+    if folder.get("trashed") or not folder.get("capabilities", {}).get("canListChildren"):
+        raise source_service.SourceSyncUserError(
+            "That Drive folder is in the trash, or can no longer be listed by this "
+            "Google account, so syncing is paused for this source to protect your "
+            "saved data. Nothing was deleted. Restore the folder or its access, then "
+            "sync again."
+        )
+
+
 async def fetch_drive_folder_name(owner_user_id: UUID, folder_id: str) -> str:
     """What Drive calls this folder, for naming the source after it.
 
@@ -282,6 +318,7 @@ async def index_google_drive_folder(source: dict) -> str | None:
                 if row_id is not None:
                     stale.append(row_id)
 
+        await _require_readable_folder(client, folder_id)
         await _walk(folder_id, "", 0)
 
     await source_service.remove_missing_documents("drive_documents", source_id, present)

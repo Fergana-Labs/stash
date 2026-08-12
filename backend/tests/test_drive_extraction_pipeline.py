@@ -28,6 +28,12 @@ pytestmark = pytest.mark.asyncio
 MODIFIED = datetime(2026, 7, 9, 12, 0, tzinfo=UTC)
 
 
+async def _folder_reads_fine(_client, _folder_id) -> None:
+    """The health check the walk runs first; healthy in every test that is
+    about the walk itself. Its own failure modes are covered separately."""
+    return None
+
+
 async def _owner(client: AsyncClient) -> UUID:
     resp = await client.post(
         "/api/v1/users/register",
@@ -58,6 +64,7 @@ def _stub_drive(monkeypatch, files: list[dict]) -> list[str]:
     enqueued: list[str] = []
     monkeypatch.setattr(indexer, "get_valid_token", fake_token)
     monkeypatch.setattr(indexer, "_list", fake_list)
+    monkeypatch.setattr(indexer, "_require_readable_folder", _folder_reads_fine)
     monkeypatch.setattr(
         drive_extraction.extract_drive_document, "delay", lambda row_id: enqueued.append(row_id)
     )
@@ -84,6 +91,7 @@ def _stub_drive_listings(monkeypatch, listings: dict[str, list[dict]]) -> list[s
     monkeypatch.setattr(indexer, "get_valid_token", fake_token)
     monkeypatch.setattr(indexer, "_list", fake_list)
     monkeypatch.setattr(indexer, "_target_modified_time", fake_target_time)
+    monkeypatch.setattr(indexer, "_require_readable_folder", _folder_reads_fine)
     monkeypatch.setattr(
         drive_extraction.extract_drive_document, "delay", lambda row_id: enqueued.append(row_id)
     )
@@ -515,3 +523,90 @@ async def test_a_whole_drive_pdf_never_pays_for_vision(monkeypatch):
     )
 
     assert text == "raw text layer"
+
+
+class _FakeDriveResponse:
+    def __init__(self, status_code: int, payload: dict):
+        self.status_code = status_code
+        self._payload = payload
+
+    def json(self) -> dict:
+        return self._payload
+
+    def raise_for_status(self) -> None:
+        if self.status_code >= 400:
+            raise AssertionError("the guard must classify error statuses before this")
+
+
+class _FakeDriveClient:
+    def __init__(self, response: _FakeDriveResponse):
+        self._response = response
+
+    async def get(self, *_args, **_kwargs) -> _FakeDriveResponse:
+        return self._response
+
+
+HEALTHY = _FakeDriveResponse(200, {"trashed": False, "capabilities": {"canListChildren": True}})
+TRASHED = _FakeDriveResponse(200, {"trashed": True, "capabilities": {"canListChildren": True}})
+UNLISTABLE = _FakeDriveResponse(200, {"trashed": False, "capabilities": {"canListChildren": False}})
+GONE = _FakeDriveResponse(404, {"error": {"message": "File not found"}})
+
+
+@pytest.mark.parametrize(
+    "response,label",
+    [(GONE, "gone or access revoked"), (TRASHED, "trashed"), (UNLISTABLE, "not listable")],
+)
+async def test_an_unreadable_folder_stops_the_sync_instead_of_reading_as_empty(response, label):
+    """Drive reports a folder you cannot see as a folder with no files in it.
+    Believed, that empties the shelf — so each unreadable shape has to be
+    caught here, where the sync can still be stopped."""
+    with pytest.raises(source_service.SourceSyncUserError) as caught:
+        await indexer._require_readable_folder(_FakeDriveClient(response), "folder-1")
+    assert "Nothing was deleted" in str(caught.value), label
+
+
+async def test_a_healthy_folder_passes_the_check():
+    """The guard must not stand between a working folder and its sync."""
+    assert await indexer._require_readable_folder(_FakeDriveClient(HEALTHY), "folder-1") is None
+
+
+async def test_an_unreadable_folder_leaves_its_documents_in_place(client: AsyncClient, monkeypatch):
+    """The point of the guard: the delete-to-mirror sweep never runs, so a
+    revoked folder costs you nothing. These bodies were expensive — a scanned
+    catalog is an OCR pass — and drive_documents deletes physically."""
+    owner_id = await _owner(client)
+    src = await _folder_source(owner_id)
+    _stub_drive(monkeypatch, [_entry("Bendix.pdf")])
+    await indexer.index_google_drive_folder(src)
+
+    async def folder_is_gone(_client, _folder_id):
+        raise source_service.SourceSyncUserError("gone")
+
+    monkeypatch.setattr(indexer, "_require_readable_folder", folder_is_gone)
+
+    with pytest.raises(source_service.SourceSyncUserError):
+        await indexer.index_google_drive_folder(src)
+
+    surviving = await get_pool().fetchval(
+        "SELECT count(*) FROM drive_documents WHERE source_id = $1 AND deleted_at IS NULL",
+        UUID(src["id"]),
+    )
+    assert surviving == 1
+
+
+async def test_a_folder_that_really_was_emptied_still_mirrors(client: AsyncClient, monkeypatch):
+    """The guard must not turn into a refusal to ever delete. A readable folder
+    reporting no files means the documents are genuinely gone."""
+    owner_id = await _owner(client)
+    src = await _folder_source(owner_id)
+    _stub_drive(monkeypatch, [_entry("Bendix.pdf")])
+    await indexer.index_google_drive_folder(src)
+
+    _stub_drive(monkeypatch, [])
+    await indexer.index_google_drive_folder(src)
+
+    surviving = await get_pool().fetchval(
+        "SELECT count(*) FROM drive_documents WHERE source_id = $1 AND deleted_at IS NULL",
+        UUID(src["id"]),
+    )
+    assert surviving == 0
