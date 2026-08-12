@@ -790,11 +790,6 @@ function SourceRow({
         <div className="flex items-center gap-2 truncate text-[13.5px] font-semibold text-foreground">
           {source.display_name}
           {ref && <span className="font-mono text-[12px] font-normal text-muted-foreground">{ref}</span>}
-          {source.binds_skills && (
-            <span className="rounded border border-border px-1.5 py-px text-[10.5px] font-medium text-muted-foreground">
-              Skills
-            </span>
-          )}
         </div>
         <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[12px] text-muted-foreground">
           {syncs && <SyncStatusMark syncStatus={status.sync_status} />}
@@ -840,6 +835,18 @@ function SourceRow({
         )}
       </button>
       <div className="flex shrink-0 items-center gap-1.5">
+        {/* Both the state and the way out of it: this folder's documents are
+            skills, and they are read over there. It sits out here rather than
+            beside the name because the name is inside the row's button, and a
+            link cannot live in a button. */}
+        {source.binds_skills && (
+          <Link
+            href="/skills"
+            className="rounded border border-border px-1.5 py-px text-[10.5px] font-medium text-muted-foreground transition hover:border-[var(--color-brand-300)] hover:text-foreground"
+          >
+            Skills →
+          </Link>
+        )}
         {/* Browsing is the row itself (and the VFS); syncing is automatic —
             scheduled, plus kicked by access when stale. The old Browse/Sync
             buttons duplicated those, so the escape hatches live in ⋯ now. */}
