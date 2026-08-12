@@ -8,7 +8,7 @@ import {
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import SkillsPage from "./page";
-import { createSkill, listSkills, type Skill } from "@/lib/api";
+import { createSkill, listSkills, type FolderBackedSkill, type Skill } from "@/lib/api";
 import { ConfirmDialogProvider } from "@/components/ConfirmDialog";
 
 function render(ui: ReactNode) {
@@ -52,6 +52,9 @@ vi.mock("@/lib/api", () => ({
   deleteFolder: vi.fn(),
   forkSkill: vi.fn(),
   listSkills: vi.fn(),
+  // Real behaviour, not a stub: the page keys pins, selection, and React
+  // children off this, so a mock returning undefined collapses the render.
+  skillKey: (s: Skill) => (s.backing === "folder" ? s.folder_id : s.source_doc_id),
   // useAuth (mounted by the page) short-circuits to a signed-out state when
   // there's no token, so these never hit the network.
   getToken: vi.fn(() => null),
@@ -72,8 +75,10 @@ vi.mock("@/lib/skillNavigationCache", () => ({
   refreshSidebar: vi.fn(() => Promise.resolve()),
 }));
 
-function skill(overrides: Partial<Skill> = {}): Skill {
+function skill(overrides: Partial<FolderBackedSkill> = {}): Skill {
   return {
+    backing: "folder",
+    source_doc_id: null,
     folder_id: "folder-1",
     name: "Launch Plan",
     description: "How we launch",
@@ -183,5 +188,38 @@ describe("SkillsPage", () => {
     await waitFor(() =>
       expect(router.push).toHaveBeenCalledWith("/skills/folder/folder-9"),
     );
+  });
+
+  it("shows a source-backed skill as read-only, with nowhere to click through to", async () => {
+    // A skill read from a bound Drive folder has no folder page here, and no
+    // checkbox: it is edited upstream, so every folder verb — open, select,
+    // bulk delete — has to be absent rather than lead somewhere broken.
+    vi.mocked(listSkills).mockResolvedValue([
+      {
+        backing: "source",
+        folder_id: null,
+        source_doc_id: "doc-1",
+        name: "Turbochargers",
+        description: "Use when a customer reports boost loss.",
+        when_to_use: "",
+        version: "",
+        mcp_exposed: false,
+        file_count: 1,
+        updated_at: "2026-08-11T00:00:00Z",
+        published: null,
+      },
+    ]);
+
+    render(<SkillsPage />);
+
+    const titles = await screen.findAllByText("Turbochargers");
+    expect(titles.length).toBeGreaterThan(0);
+    for (const title of titles) {
+      expect(title.closest("a")).toBeNull();
+    }
+    expect(screen.getAllByText("Drive").length).toBeGreaterThan(0);
+    expect(
+      screen.getByText("Use when a customer reports boost loss."),
+    ).toBeInTheDocument();
   });
 });

@@ -105,9 +105,7 @@ async def test_a_document_still_extracting_is_a_draft_not_an_invented_descriptio
     shape a folder skill with no SKILL.md takes."""
     _key, owner_id = await _register(client)
     source_id = await _skill_shelf(pool, owner_id)
-    await _doc(
-        pool, owner_id, source_id, path="Brake Shoes.md", content=None, status="pending"
-    )
+    await _doc(pool, owner_id, source_id, path="Brake Shoes.md", content=None, status="pending")
 
     skills = await skill_service.list_skills(owner_id, owner_id)
 
@@ -117,9 +115,7 @@ async def test_a_document_still_extracting_is_a_draft_not_an_invented_descriptio
 
 
 @pytest.mark.asyncio
-async def test_only_documents_sitting_directly_in_the_shelf_are_skills(
-    client: AsyncClient, pool
-):
+async def test_only_documents_sitting_directly_in_the_shelf_are_skills(client: AsyncClient, pool):
     """A nested document is reference material belonging to a shelf, not a
     shelf of its own — otherwise every attachment becomes a skill the agent
     has to route past."""
@@ -152,9 +148,7 @@ async def test_an_unbound_drive_folder_contributes_no_skills(client: AsyncClient
 
 
 @pytest.mark.asyncio
-async def test_a_document_vanishing_upstream_cannot_demote_the_shelf(
-    client: AsyncClient, pool
-):
+async def test_a_document_vanishing_upstream_cannot_demote_the_shelf(client: AsyncClient, pool):
     """The failure 0181 was written to stop, reached through a new door: a
     document removed in Drive drops that one skill and leaves the binding and
     its siblings untouched. Tidying a Drive folder can never empty the shelf."""
@@ -168,9 +162,7 @@ async def test_a_document_vanishing_upstream_cannot_demote_the_shelf(
     skills = await skill_service.list_skills(owner_id, owner_id)
 
     assert [s["name"] for s in skills] == ["Turbochargers"]
-    assert await pool.fetchval(
-        "SELECT binds_skills FROM user_sources WHERE id = $1", source_id
-    )
+    assert await pool.fetchval("SELECT binds_skills FROM user_sources WHERE id = $1", source_id)
 
 
 @pytest.mark.asyncio

@@ -305,6 +305,9 @@ export interface Source {
   last_synced_at?: string | null;
   search_hint?: string | null;
   settings?: Record<string, unknown> | null;
+  // True when this picked Drive folder is a shelf of skills: the documents
+  // sitting directly in it are read as skills, live from the source.
+  binds_skills?: boolean;
 }
 
 export interface SourceStatus extends Source {
@@ -379,6 +382,17 @@ export async function addSource(body: {
 
 export async function syncSource(sourceId: string): Promise<{ task_id: string }> {
   return apiFetch(`${ME}/sources/${sourceId}/sync`, {
+    method: "POST",
+  });
+}
+
+// Treat a picked Drive folder as a shelf of skills, or stop. Only the binding
+// changes — the documents stay indexed either way.
+export async function setSourceBindsSkills(
+  sourceId: string,
+  bindsSkills: boolean
+): Promise<Source> {
+  return apiFetch(`${ME}/sources/${sourceId}/${bindsSkills ? "bind" : "unbind"}-skills`, {
     method: "POST",
   });
 }
@@ -1448,9 +1462,7 @@ export interface SkillPublishInfo {
   view_count: number;
 }
 
-// A skill folder: SKILL.md frontmatter + folder stats + publish info.
-export interface Skill {
-  folder_id: string;
+interface SkillCommon {
   name: string;
   description: string;
   when_to_use: string;
@@ -1459,6 +1471,26 @@ export interface Skill {
   file_count: number;
   updated_at: string;
   published: SkillPublishInfo | null;
+}
+
+// A skill: SKILL.md frontmatter + stats + publish info.
+//
+// `backing` says where it lives, and the two cases carry different ids so the
+// compiler refuses folder verbs on a source-backed skill. A folder-backed
+// skill is the editable kind. A source-backed one is a document in a connected
+// source bound as a skill shelf: it has no folder, and it is managed upstream
+// in Drive rather than here.
+export type Skill =
+  | (SkillCommon & { backing: "folder"; folder_id: string; source_doc_id: null })
+  | (SkillCommon & { backing: "source"; folder_id: null; source_doc_id: string });
+
+// The editable kind, for the verbs that only apply to a real folder.
+export type FolderBackedSkill = Extract<Skill, { backing: "folder" }>;
+
+// A skill's identity across surfaces that only need to tell skills apart —
+// pins, selection, React keys.
+export function skillKey(skill: Skill): string {
+  return skill.backing === "folder" ? skill.folder_id : skill.source_doc_id;
 }
 
 export async function listSkills(): Promise<Skill[]> {

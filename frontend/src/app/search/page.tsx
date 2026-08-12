@@ -712,7 +712,10 @@ function searchSingleSession(
 }
 
 function searchSkills(skills: Skill[], query: string, sourceName: string): SearchResult[] {
+  // Every result here navigates to a skill's folder page, which a source-backed
+  // skill does not have. Agents still find those through list_skills.
   return skills
+    .filter((skill) => skill.backing === "folder")
     .map((skill) => {
       const relevance = scoreValues(query, [
         { value: skill.name, weight: 8 },

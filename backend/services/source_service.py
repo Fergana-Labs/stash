@@ -275,6 +275,7 @@ def _source_row(row) -> dict:
         "sync_warning": row["sync_warning"],
         "last_synced_at": row["last_synced_at"].isoformat() if row["last_synced_at"] else None,
         "settings": row["settings"] or {},
+        "binds_skills": row["binds_skills"],
     }
 
 
@@ -566,6 +567,26 @@ async def due_sources(limit: int = 50) -> list[dict]:
         }
         for r in rows
     ]
+
+
+SKILL_BINDABLE_SOURCE_TYPES = ("google_drive_folder",)
+
+
+async def set_source_binds_skills(source_id: UUID, owner_user_id: UUID, binds_skills: bool) -> dict:
+    """Mark a picked Drive folder as a shelf of skills, or stop.
+
+    Only a picked folder can be bound: its documents are crawled into
+    `drive_documents` with a path relative to the folder, which is what makes
+    "the documents sitting directly in it" a meaningful set. Binding a whole
+    Drive or a search-driven source would have no such boundary."""
+    row = await get_pool().fetchrow(
+        "UPDATE user_sources SET binds_skills = $3, updated_at = now() "
+        "WHERE id = $1 AND owner_user_id = $2 RETURNING *",
+        source_id,
+        owner_user_id,
+        binds_skills,
+    )
+    return _source_row(row)
 
 
 async def mark_sync_started(source_id: UUID) -> None:

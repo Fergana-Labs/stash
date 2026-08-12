@@ -25,6 +25,8 @@ import {
   createSkill,
   deleteFolder,
   listSkills,
+  skillKey,
+  type FolderBackedSkill,
   type Skill,
   type PublicSkillCard,
 } from "@/lib/api";
@@ -153,19 +155,23 @@ export default function SkillsPage() {
   }, [skills]);
 
   const pinnedSkills = useMemo(
-    () => (skills ?? []).filter((s) => pins.pinnedSet.has(s.folder_id)),
+    () => (skills ?? []).filter((s) => pins.pinnedSet.has(skillKey(s))),
     [skills, pins.pinnedSet]
   );
   const recentSkills = useMemo(
     () =>
       (skills ?? [])
-        .filter((s) => !pins.pinnedSet.has(s.folder_id))
+        .filter((s) => !pins.pinnedSet.has(skillKey(s)))
         .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
         .slice(0, 6),
     [skills, pins.pinnedSet]
   );
 
-  const selectedSkills = (skills ?? []).filter((s) => selectedIds.has(s.folder_id));
+  // Only folder-backed skills are selectable, so bulk delete can never be
+  // pointed at a skill whose content lives in Drive.
+  const selectedSkills = (skills ?? []).filter(
+    (s): s is FolderBackedSkill => s.backing === "folder" && selectedIds.has(s.folder_id)
+  );
 
   async function bulkDeleteSkills() {
     if (selectedSkills.length === 0) return;
@@ -191,7 +197,7 @@ export default function SkillsPage() {
     return <SkillsGridSkeleton />;
   }
 
-  const isPinned = (s: Skill) => pins.pinnedSet.has(s.folder_id);
+  const isPinned = (s: Skill) => pins.pinnedSet.has(skillKey(s));
 
   return (
     <div className="scroll-thin flex-1 overflow-y-auto">
@@ -232,7 +238,7 @@ export default function SkillsPage() {
             pinned={pinnedSkills}
             recent={recentSkills}
             isPinned={isPinned}
-            onTogglePin={(s) => pins.toggle(s.folder_id)}
+            onTogglePin={(s) => pins.toggle(skillKey(s))}
           />
         )}
 
@@ -249,7 +255,7 @@ export default function SkillsPage() {
                 skills={visible}
                 view={view}
                 isPinned={isPinned}
-                onTogglePin={(s) => pins.toggle(s.folder_id)}
+                onTogglePin={(s) => pins.toggle(skillKey(s))}
                 selectedIds={selectedIds}
                 onToggleSelect={toggleSelect}
                 onRun={(s) => setLaunching(launchableFromSkill(s))}
@@ -581,8 +587,20 @@ function SearchGlyph() {
 }
 
 
-function skillHref(skill: Skill): string {
-  return `/skills/folder/${skill.folder_id}`;
+// Null for a source-backed skill: there is no folder page to open, because
+// the content is edited in Drive rather than here.
+function skillHref(skill: Skill): string | null {
+  return skill.backing === "folder" ? `/skills/folder/${skill.folder_id}` : null;
+}
+
+// Says where a skill's content is edited, on the skills that aren't edited
+// here. Folder-backed skills get no badge — that's the unremarkable case.
+function DriveBadge() {
+  return (
+    <span className="inline-flex flex-shrink-0 items-center rounded border border-border px-1.5 py-px text-[10.5px] font-medium text-muted-foreground">
+      Drive
+    </span>
+  );
 }
 
 // Publish badge state: null = Private, otherwise Published (+ Discover dot).
@@ -639,11 +657,11 @@ function SkillCollection({
       <div className="overflow-hidden rounded-xl border border-border bg-surface">
         {skills.map((skill) => (
           <SkillListRow
-            key={skill.folder_id}
+            key={skillKey(skill)}
             skill={skill}
             pinned={isPinned(skill)}
             onTogglePin={onTogglePin}
-            selected={selectedIds.has(skill.folder_id)}
+            selected={selectedIds.has(skillKey(skill))}
             onToggleSelect={onToggleSelect}
             onRun={onRun}
           />
@@ -657,7 +675,7 @@ function SkillCollection({
       {skills.map((skill, i) => {
         return (
           <SkillCard
-            key={skill.folder_id}
+            key={skillKey(skill)}
             href={skillHref(skill)}
             skill={{
               title: skill.name,
@@ -669,13 +687,17 @@ function SkillCollection({
               file_count: skill.file_count,
             }}
             cover={COVERS[i % COVERS.length]}
-            selected={selectedIds.has(skill.folder_id)}
+            selected={selectedIds.has(skillKey(skill))}
             badge={
               <span className="absolute left-2.5 top-2.5 z-10">
-                <SelectBox
-                  selected={selectedIds.has(skill.folder_id)}
-                  onToggle={() => onToggleSelect(skill.folder_id)}
-                />
+                {skill.backing === "folder" ? (
+                  <SelectBox
+                    selected={selectedIds.has(skill.folder_id)}
+                    onToggle={() => onToggleSelect(skill.folder_id)}
+                  />
+                ) : (
+                  <DriveBadge />
+                )}
               </span>
             }
             cornerAction={
@@ -715,16 +737,19 @@ function SkillListRow({
   onToggleSelect: (id: string) => void;
   onRun: (skill: Skill) => void;
 }) {
-  return (
-    <Link
-      href={skillHref(skill)}
-      className={
-        "group grid items-center gap-3 border-b border-border-subtle px-4 py-2 text-[13px] last:border-b-0 " +
-        (selected ? "bg-[var(--color-brand-50)]" : "hover:bg-[var(--color-brand-50)]/50")
-      }
-      style={{ gridTemplateColumns: "auto minmax(0,2fr) minmax(0,1fr) auto auto auto" }}
-    >
-      <SelectBox selected={selected} onToggle={() => onToggleSelect(skill.folder_id)} />
+  const href = skillHref(skill);
+  const className =
+    "group grid items-center gap-3 border-b border-border-subtle px-4 py-2 text-[13px] last:border-b-0 " +
+    (selected ? "bg-[var(--color-brand-50)]" : "hover:bg-[var(--color-brand-50)]/50");
+  const style = { gridTemplateColumns: "auto minmax(0,2fr) minmax(0,1fr) auto auto auto" };
+
+  const row = (
+    <>
+      {skill.backing === "folder" ? (
+        <SelectBox selected={selected} onToggle={() => onToggleSelect(skill.folder_id)} />
+      ) : (
+        <DriveBadge />
+      )}
       <div className="flex min-w-0 items-center gap-2.5">
         <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center text-[var(--color-brand-600)]">
           <SkillIcon />
@@ -747,6 +772,21 @@ function SkillListRow({
       >
         <SkillPinButton pinned={pinned} onToggle={() => onTogglePin(skill)} />
       </span>
+    </>
+  );
+
+  // A skill managed upstream has no page here to open, so its row is a plain
+  // box rather than a link that goes nowhere.
+  if (href === null) {
+    return (
+      <div className={className} style={style}>
+        {row}
+      </div>
+    );
+  }
+  return (
+    <Link href={href} className={className} style={style}>
+      {row}
     </Link>
   );
 }
@@ -852,11 +892,12 @@ function SkillQuickCard({
   onTogglePin: (skill: Skill) => void;
 }) {
   const dotColor = skill.published ? PUBLISH_COLOR.published : PUBLISH_COLOR.private;
-  return (
-    <Link
-      href={skillHref(skill)}
-      className="group/qa relative flex w-[200px] items-center gap-2.5 rounded-lg border border-border bg-surface px-3 py-2.5 transition hover:border-[var(--color-brand-300)] hover:bg-raised"
-    >
+  const href = skillHref(skill);
+  const className =
+    "group/qa relative flex w-[200px] items-center gap-2.5 rounded-lg border border-border bg-surface px-3 py-2.5 transition hover:border-[var(--color-brand-300)] hover:bg-raised";
+
+  const tile = (
+    <>
       <span className="relative flex h-5 w-5 shrink-0 items-center justify-center text-[var(--color-brand-600)]">
         <SkillIcon className="text-[18px]" />
         {dotColor && (
@@ -877,6 +918,13 @@ function SkillQuickCard({
       <span className="shrink-0">
         <SkillPinButton pinned={pinned} onToggle={() => onTogglePin(skill)} />
       </span>
+    </>
+  );
+
+  if (href === null) return <div className={className}>{tile}</div>;
+  return (
+    <Link href={href} className={className}>
+      {tile}
     </Link>
   );
 }

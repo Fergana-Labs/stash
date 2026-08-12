@@ -18,6 +18,7 @@ import {
   listSources,
   readSourceDoc,
   searchSource,
+  setSourceBindsSkills,
   syncSource as syncSourceApi,
   type Source,
   type SourceEntry,
@@ -255,6 +256,28 @@ export function IntegrationDetail({ provider }: { provider: string }) {
       await refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not start sync");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function toggleSkills(source: Source) {
+    const binding = !source.binds_skills;
+    if (binding) {
+      const ok = await confirm({
+        title: `Use ${source.display_name} as Skills?`,
+        body: "Each document sitting directly in this folder becomes a skill your agents can load. They stay editable in Drive, and read-only here.",
+        confirmLabel: "Use as Skills",
+      });
+      if (!ok) return;
+    }
+    setBusy(`skills:${source.source}`);
+    setError("");
+    try {
+      await setSourceBindsSkills(source.source, binding);
+      await refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not change the skills binding");
     } finally {
       setBusy(null);
     }
@@ -564,8 +587,10 @@ export function IntegrationDetail({ provider }: { provider: string }) {
                   open={source.source === openSourceId}
                   busySync={busy === `sync:${source.source}`}
                   busyDelete={busy === `delete:${source.source}`}
+                  busySkills={busy === `skills:${source.source}`}
                   onOpen={() => setOpenSourceId((v) => (v === source.source ? null : source.source))}
                   onSync={() => void syncSource(source)}
+                  onToggleSkills={() => void toggleSkills(source)}
                   onRemove={() => void removeSource(source)}
                 />
               ))}
@@ -673,8 +698,10 @@ function SourceRow({
   open,
   busySync,
   busyDelete,
+  busySkills,
   onOpen,
   onSync,
+  onToggleSkills,
   onRemove,
 }: {
   source: Source;
@@ -683,8 +710,10 @@ function SourceRow({
   open: boolean;
   busySync: boolean;
   busyDelete: boolean;
+  busySkills: boolean;
   onOpen: () => void;
   onSync: () => void;
+  onToggleSkills: () => void;
   onRemove: () => void;
 }) {
   // The row owns a live status so the item count and sync badge update as the
@@ -758,6 +787,11 @@ function SourceRow({
         <div className="flex items-center gap-2 truncate text-[13.5px] font-semibold text-foreground">
           {source.display_name}
           {ref && <span className="font-mono text-[12px] font-normal text-muted-foreground">{ref}</span>}
+          {source.binds_skills && (
+            <span className="rounded border border-border px-1.5 py-px text-[10.5px] font-medium text-muted-foreground">
+              Skills
+            </span>
+          )}
         </div>
         <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[12px] text-muted-foreground">
           {syncs && <SyncStatusMark syncStatus={status.sync_status} />}
@@ -821,6 +855,11 @@ function SourceRow({
               {syncs && (
                 <DropdownMenuItem disabled={busySync} onClick={onSync}>
                   {busySync ? "Syncing..." : "Sync now"}
+                </DropdownMenuItem>
+              )}
+              {source.type === "google_drive_folder" && (
+                <DropdownMenuItem disabled={busySkills} onClick={onToggleSkills}>
+                  {source.binds_skills ? "Stop using as Skills" : "Use as Skills"}
                 </DropdownMenuItem>
               )}
               <DropdownMenuItem onClick={() => setShareOpen(true)}>Share</DropdownMenuItem>

@@ -20,7 +20,9 @@ export interface SkillCardData {
 
 interface SkillCardProps {
   skill: SkillCardData;
-  href: string;
+  // Null when the skill has no page here to open — a source-backed skill is
+  // read and edited upstream.
+  href: string | null;
   cover: string;
   /** Optional badge in the upper-left of the cover (e.g. trending). */
   badge?: ReactNode;
@@ -84,16 +86,12 @@ export default function SkillCard({
     skill.updated_at && `updated ${relativeTime(skill.updated_at)}`,
   ].filter(Boolean) as string[];
 
-  return (
-    <Link
-      href={href}
-      className={
-        "card group flex min-h-[200px] flex-col overflow-hidden transition " +
-        (selected
-          ? "ring-2 ring-[var(--color-brand-400)]"
-          : "hover:border-[var(--color-brand-300)]")
-      }
-    >
+  const className =
+    "card group flex min-h-[200px] flex-col overflow-hidden transition " +
+    (selected ? "ring-2 ring-[var(--color-brand-400)]" : "hover:border-[var(--color-brand-300)]");
+
+  const card = (
+    <>
       <div
         className={`${cover} relative h-[84px]`}
         style={
@@ -145,6 +143,15 @@ export default function SkillCard({
           </div>
         )}
       </div>
+    </>
+  );
+
+  // A card with nowhere to go renders as a plain box: a skill managed upstream
+  // has no page here to open.
+  if (href === null) return <div className={className}>{card}</div>;
+  return (
+    <Link href={href} className={className}>
+      {card}
     </Link>
   );
 }
