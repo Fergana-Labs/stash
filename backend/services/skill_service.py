@@ -97,6 +97,72 @@ def validate_skill_md(md: str) -> None:
         )
 
 
+_SKILL_DOC_EXTENSIONS = (".md", ".txt", ".pdf", ".docx")
+
+
+def drive_skill_name(doc_name: str) -> str:
+    """Google Docs arrive already titled; uploads arrive with a filename."""
+    for ext in _SKILL_DOC_EXTENSIONS:
+        if doc_name.lower().endswith(ext):
+            return doc_name[: -len(ext)]
+    return doc_name
+
+
+def drive_skill_description(content: str | None) -> str:
+    """The document's first prose line, which is its routing description.
+
+    A source-backed skill has no SKILL.md to carry frontmatter, so the two
+    required fields come from the document itself. Headings are skipped: a
+    Google Doc written with a Title style exports as an `# ...` line, which
+    repeats the name instead of saying when to use the skill. Blank while the
+    body is still extracting — that lists the skill as a draft rather than
+    inventing a description for it.
+    """
+    for line in (content or "").splitlines():
+        stripped = line.strip()
+        if stripped and not stripped.startswith("#"):
+            return stripped
+    return ""
+
+
+async def list_source_skills(owner_user_id: UUID, user_id: UUID) -> list[dict]:
+    """Every document sitting directly in a skill-binding source, as a skill.
+
+    Immediate children only: a document nested inside a subfolder is material
+    belonging to the shelf, not a shelf of its own.
+    """
+    readable = permission_service.readable_content_condition("source", "src", 2)
+    rows = await get_pool().fetch(
+        "SELECT d.id, d.name, d.content, d.updated_at, d.extraction_status "
+        "FROM drive_documents d "
+        "JOIN user_sources src ON src.id = d.source_id "
+        "WHERE d.owner_user_id = $1 AND d.deleted_at IS NULL AND src.binds_skills "
+        f"  AND position('/' in d.path) = 0 AND {readable} "
+        "ORDER BY d.name",
+        owner_user_id,
+        user_id,
+    )
+    return [
+        {
+            "folder_id": None,
+            "source_doc_id": str(r["id"]),
+            "backing": "source",
+            "name": drive_skill_name(r["name"]),
+            "description": drive_skill_description(r["content"]),
+            "when_to_use": "",
+            "version": "",
+            "mcp_exposed": False,
+            "file_count": 1,
+            "updated_at": r["updated_at"],
+            "has_instructions": r["extraction_status"] == "done" and bool(r["content"]),
+            # Publishing attaches a `skills` row to a folder id, which a
+            # source-backed skill does not have. Shared upstream, not from here.
+            "published": None,
+        }
+        for r in rows
+    ]
+
+
 async def list_skills(owner_user_id: UUID, user_id: UUID) -> list[dict]:
     """List every skill folder in the scope: folder + SKILL.md frontmatter,
     plus the publish record when the skill has been shared.
@@ -137,6 +203,8 @@ async def list_skills(owner_user_id: UUID, user_id: UUID) -> list[dict]:
         out.append(
             {
                 "folder_id": str(r["folder_id"]),
+                "source_doc_id": None,
+                "backing": "folder",
                 "name": meta.get("name") or r["folder_name"],
                 "description": meta.get("description", ""),
                 "when_to_use": meta.get("when_to_use", ""),
@@ -150,7 +218,43 @@ async def list_skills(owner_user_id: UUID, user_id: UUID) -> list[dict]:
                 "published": published,
             }
         )
+    out.extend(await list_source_skills(owner_user_id, user_id))
+    out.sort(key=lambda s: s["name"].lower())
     return out
+
+
+async def _read_source_skill(match: dict) -> dict:
+    """Read a source-backed skill: the upstream document is the instructions.
+
+    `drive_documents.content` is NULL until extraction settles, so a skill read
+    mid-ingest is a draft — the same shape a folder skill with no SKILL.md
+    takes — and the callers that need instructions refuse on that flag.
+    """
+    row = await get_pool().fetchrow(
+        "SELECT content, updated_at, extraction_status FROM drive_documents WHERE id = $1",
+        UUID(match["source_doc_id"]),
+    )
+    body = row["content"] or ""
+    has_instructions = row["extraction_status"] == "done" and bool(body)
+    return {
+        "folder_id": None,
+        "source_doc_id": match["source_doc_id"],
+        "backing": "source",
+        "name": match["name"],
+        "description": match["description"],
+        "when_to_use": match["when_to_use"],
+        "has_instructions": has_instructions,
+        "body": body,
+        "files": [
+            {
+                "id": match["source_doc_id"],
+                "name": match["name"],
+                "updated_at": row["updated_at"],
+                "content": body,
+            }
+        ],
+        "combined": f"# {match['name']}\n\n{body}" if has_instructions else "",
+    }
 
 
 async def read_skill(owner_user_id: UUID, name: str, user_id: UUID) -> dict | None:
@@ -171,6 +275,9 @@ async def read_skill(owner_user_id: UUID, name: str, user_id: UUID) -> dict | No
         )
     if not match:
         return None
+
+    if match["backing"] == "source":
+        return await _read_source_skill(match)
 
     folder_id = match["folder_id"]
     pages = await pool.fetch(
@@ -203,6 +310,8 @@ async def read_skill(owner_user_id: UUID, name: str, user_id: UUID) -> dict | No
 
     return {
         "folder_id": folder_id,
+        "source_doc_id": None,
+        "backing": "folder",
         "name": match["name"],
         "description": match["description"],
         "when_to_use": match["when_to_use"],
