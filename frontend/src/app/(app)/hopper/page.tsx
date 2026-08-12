@@ -39,6 +39,7 @@ function hrefFor(event: ActivityEvent): string {
 type Batch = {
   total: number;
   done: number;
+  filed: number;
   skipped: number;
   failed: Array<{ name: string; reason: string }>;
   cancel: AbortController;
@@ -46,6 +47,7 @@ type Batch = {
 
 function summarise(batch: Batch): string {
   const parts = [`${batch.done} added`];
+  if (batch.filed) parts.push(`${batch.filed} filed`);
   if (batch.skipped) parts.push(`${batch.skipped} already there`);
   if (batch.failed.length) parts.push(`${batch.failed.length} failed`);
   return parts.join(" · ");
@@ -94,7 +96,14 @@ export default function HopperRoute() {
       }
       batchRunning.current = true;
       const cancel = new AbortController();
-      const live: Batch = { total: dropped.length, done: 0, skipped: 0, failed: [], cancel };
+      const live: Batch = {
+        total: dropped.length,
+        done: 0,
+        filed: 0,
+        skipped: 0,
+        failed: [],
+        cancel,
+      };
       setBatch(live);
 
       const results = await runPool(
@@ -103,7 +112,10 @@ export default function HopperRoute() {
         async ({ file, path }) => {
           const landed = await dropHopperFile(file, { path, signal: cancel.signal });
           if (landed.duplicate) live.skipped += 1;
-          else live.done += 1;
+          else {
+            live.done += 1;
+            if (landed.filed_in) live.filed += 1;
+          }
           setBatch({ ...live });
           return landed;
         },
@@ -138,6 +150,8 @@ export default function HopperRoute() {
             ? `${only.name} was already uploaded`
             : `${only.name} uploaded successfully`,
           {
+            // Where it was filed, when that was not the obvious top level.
+            description: only.filed_in ? `Filed in ${only.filed_in}` : undefined,
             action: {
               label: only.kind === "page" ? "Go to page" : "Go to file",
               onClick: () => router.push(`/${only.kind === "page" ? "p" : "f"}/${only.id}`),

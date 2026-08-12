@@ -2449,6 +2449,8 @@ export interface HopperDrop {
   // True when the item was already there — a re-dropped folder skips rather
   // than doubling its contents.
   duplicate: boolean;
+  // The folder a loose file was filed into, or null for the top level.
+  filed_in: string | null;
 }
 
 export async function dropHopperFile(

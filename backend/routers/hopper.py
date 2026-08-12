@@ -14,7 +14,12 @@ from pydantic import BaseModel, HttpUrl
 
 from ..auth import get_current_user, get_scope
 from ..database import get_pool
-from ..services import files_tree_service, url_import_service, user_scope_service
+from ..services import (
+    file_classifier,
+    files_tree_service,
+    url_import_service,
+    user_scope_service,
+)
 from .files import MAX_FILE_SIZE, _strip_ext, ingest_bytes
 
 router = APIRouter(prefix="/api/v1/me/hopper", tags=["hopper"])
@@ -51,14 +56,22 @@ async def drop_file(
 
     filename = file.filename or "upload"
     content_type = file.content_type or "application/octet-stream"
-    folder_id = await _folder_for_path(owner_user_id, current_user["id"], path)
+    # A dropped folder already carries the user's own filing, which beats any
+    # classifier. Only a loose file gets a suggestion.
+    if path.strip():
+        folder_id = await _folder_for_path(owner_user_id, current_user["id"], path)
+        filed_in = None
+    else:
+        folder_id, filed_in = await file_classifier.suggest_folder(
+            owner_user_id, filename, content_type
+        )
 
     # Re-dropping a directory must not double its contents. Same name, same
     # size, same folder is the same file for a person's purposes — and for a
     # page, whose name is unique in a folder anyway.
     existing = await _existing_item(owner_user_id, folder_id, filename, content_type, len(content))
     if existing:
-        return {**existing, "duplicate": True}
+        return {**existing, "duplicate": True, "filed_in": filed_in}
 
     # Markdown and HTML become pages, everything else an S3-backed file whose
     # text extraction starts on insert — the ingest path decides, not us.
@@ -76,6 +89,9 @@ async def drop_file(
         "name": uploaded.name,
         "app_url": uploaded.app_url,
         "duplicate": False,
+        # The folder a classifier chose, so the confirmation can say where it
+        # went — null means the top level, which needs no explaining.
+        "filed_in": filed_in,
     }
 
 
@@ -187,4 +203,5 @@ async def drop_link(
         "name": url,
         "app_url": None,
         "duplicate": False,
+        "filed_in": None,
     }

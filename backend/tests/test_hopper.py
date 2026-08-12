@@ -17,7 +17,7 @@ from uuid import UUID
 import pytest
 from httpx import AsyncClient
 
-from backend.services import storage_service
+from backend.services import llm, storage_service
 from backend.tasks import clips as clips_tasks
 from backend.tasks import extraction
 
@@ -244,3 +244,111 @@ async def test_a_folder_named_memory_cannot_hijack_the_reserved_one(
         UUID(owner_id),
     )
     assert landed == 0
+
+
+# --- filing a loose file -------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_a_loose_file_is_filed_into_an_existing_folder(
+    client: AsyncClient, pool, monkeypatch
+) -> None:
+    """Landing everything at the root throws away what a filesystem is for."""
+    headers, owner_id = await _register(client)
+    _mock_storage(monkeypatch)
+
+    await client.post("/api/v1/me/folders", json={"name": "Invoices"}, headers=headers)
+
+    async def fake_json(**kwargs):
+        assert "Invoices" in kwargs["prompt"]
+        return {"folder": "Invoices"}
+
+    monkeypatch.setattr(llm, "complete_json", fake_json)
+
+    resp = await client.post(
+        "/api/v1/me/hopper/file",
+        files={"file": ("acme-invoice-q3.pdf", b"%PDF-1.4 x", "application/pdf")},
+        headers=headers,
+    )
+    assert resp.json()["filed_in"] == "Invoices"
+    folder_name = await pool.fetchval(
+        "SELECT f.name FROM files fi JOIN folders f ON f.id = fi.folder_id WHERE fi.id = $1",
+        UUID(resp.json()["id"]),
+    )
+    assert folder_name == "Invoices"
+
+
+@pytest.mark.asyncio
+async def test_an_unfilable_file_stays_at_the_top_level(
+    client: AsyncClient, pool, monkeypatch
+) -> None:
+    """Filing wrongly is worse than not filing: a person finds what is at the
+    top level, but will not think to look in the wrong folder."""
+    headers, _ = await _register(client)
+    _mock_storage(monkeypatch)
+    await client.post("/api/v1/me/folders", json={"name": "Invoices"}, headers=headers)
+
+    async def fake_json(**kwargs):
+        return {"folder": None}
+
+    monkeypatch.setattr(llm, "complete_json", fake_json)
+
+    resp = await client.post(
+        "/api/v1/me/hopper/file",
+        files={"file": ("screenshot.png", b"\x89PNG", "image/png")},
+        headers=headers,
+    )
+    assert resp.json()["filed_in"] is None
+    assert (
+        await pool.fetchval("SELECT folder_id FROM files WHERE id = $1", UUID(resp.json()["id"]))
+        is None
+    )
+
+
+@pytest.mark.asyncio
+async def test_an_invented_folder_is_refused(client: AsyncClient, pool, monkeypatch) -> None:
+    """Inventing a folder per file is how a stash ends up with forty folders
+    holding one item each."""
+    headers, owner_id = await _register(client)
+    _mock_storage(monkeypatch)
+    await client.post("/api/v1/me/folders", json={"name": "Invoices"}, headers=headers)
+
+    async def fake_json(**kwargs):
+        return {"folder": "Receipts/2026"}
+
+    monkeypatch.setattr(llm, "complete_json", fake_json)
+
+    resp = await client.post(
+        "/api/v1/me/hopper/file",
+        files={"file": ("receipt.pdf", b"%PDF-1.4 x", "application/pdf")},
+        headers=headers,
+    )
+    assert resp.json()["filed_in"] is None
+    folders = await pool.fetchval(
+        "SELECT count(*) FROM folders WHERE owner_user_id = $1", UUID(owner_id)
+    )
+    assert folders == 1
+
+
+@pytest.mark.asyncio
+async def test_a_dropped_folder_is_never_second_guessed(
+    client: AsyncClient, pool, monkeypatch
+) -> None:
+    """The user's own directory structure beats any classifier, so a folder
+    drop must not even ask."""
+    headers, _ = await _register(client)
+    _mock_storage(monkeypatch)
+
+    async def never(**kwargs):
+        raise AssertionError("a folder drop must not be classified")
+
+    monkeypatch.setattr(llm, "complete_json", never)
+
+    resp = await client.post(
+        "/api/v1/me/hopper/file",
+        files={"file": ("brakes.pdf", b"%PDF-1.4 x", "application/pdf")},
+        data={"path": "catalogs"},
+        headers=headers,
+    )
+    assert resp.status_code == 201
+    assert resp.json()["filed_in"] is None
