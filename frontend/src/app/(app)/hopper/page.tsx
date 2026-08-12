@@ -43,6 +43,9 @@ function hrefFor(event: ActivityEvent): string {
   return event.kind.startsWith("page") ? `/p/${event.target_id}` : `/f/${event.target_id}`;
 }
 
+/** Where a drop was filed, when it was. */
+type Filing = { path: string; folderId: string } | null;
+
 type Batch = {
   total: number;
   done: number;
@@ -95,11 +98,11 @@ export default function HopperRoute() {
   // Filing runs after the uploads are confirmed, at the same concurrency.
   // Nothing here can fail the drop: an item that cannot be filed stays where
   // it already is, which is a fine place for it.
-  const fileAway = useCallback(async (landed: HopperDrop[]): Promise<Array<string | null>> => {
+  const fileAway = useCallback(async (landed: HopperDrop[]): Promise<Filing[]> => {
     const results = await runPool(landed, UPLOAD_CONCURRENCY, async (drop) => {
       if (!drop.classifiable || drop.kind === "link") return null;
-      const { filed_in } = await classifyDrop(drop.kind, drop.id);
-      return filed_in;
+      const { filed_in, folder_id } = await classifyDrop(drop.kind, drop.id);
+      return filed_in && folder_id ? { path: filed_in, folderId: folder_id } : null;
     });
     return results.map((r) => (r.ok === true ? r.value : null));
   }, []);
@@ -181,7 +184,18 @@ export default function HopperRoute() {
           toast.success(`${only.name} uploaded successfully`, {
             id,
             // Say so either way: no second line reads as "filing never ran".
-            description: filed ? `Filed in ${filed}` : "Kept at the top level",
+            // Naming a folder without a way to open it is a tease.
+            description: filed ? (
+              <button
+                type="button"
+                onClick={() => router.push(`/folders/${filed.folderId}`)}
+                className="underline-offset-2 hover:underline"
+              >
+                Filed in {filed.path}
+              </button>
+            ) : (
+              "Kept at the top level"
+            ),
             action: goTo,
           });
         });

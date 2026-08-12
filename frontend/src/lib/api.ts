@@ -2490,7 +2490,7 @@ export async function dropHopperFile(
 export async function classifyDrop(
   kind: "file" | "page",
   id: string,
-): Promise<{ filed_in: string | null }> {
+): Promise<{ filed_in: string | null; folder_id: string | null }> {
   return apiFetch(`${ME}/hopper/classify`, {
     method: "POST",
     body: JSON.stringify({ kind, id }),

@@ -211,7 +211,7 @@ async def classify_drop(
     # Only ever files something loose: a folder drop, or filing that already
     # happened, is not for a classifier to revisit.
     if row["folder_id"] is not None:
-        return {"filed_in": None}
+        return {"filed_in": None, "folder_id": None}
 
     folder_id, path = await file_classifier.suggest_folder(
         owner_user_id, row["name"], row["content_type"]
@@ -222,7 +222,7 @@ async def classify_drop(
         folder_id = await _folder_for_path(owner_user_id, current_user["id"], IMAGES_FOLDER)
         path = IMAGES_FOLDER
     if folder_id is None:
-        return {"filed_in": None}
+        return {"filed_in": None, "folder_id": None}
     await pool.execute(
         f"UPDATE {table} SET folder_id = $1 WHERE id = $2 AND owner_user_id = $3 "  # noqa: S608
         "AND folder_id IS NULL",
@@ -230,7 +230,9 @@ async def classify_drop(
         body.id,
         owner_user_id,
     )
-    return {"filed_in": path}
+    # The id as well as the path: a person told where something went will
+    # want to go there, and only the id can open the folder.
+    return {"filed_in": path, "folder_id": str(folder_id)}
 
 
 @router.post("/link", status_code=201)
