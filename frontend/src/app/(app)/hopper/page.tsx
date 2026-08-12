@@ -5,7 +5,14 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
 import { useBreadcrumbs } from "@/components/BreadcrumbContext";
-import { dropHopperFile, dropHopperLink, listFileActivity, type ActivityEvent } from "@/lib/api";
+import {
+  classifyDrop,
+  dropHopperFile,
+  dropHopperLink,
+  listFileActivity,
+  type ActivityEvent,
+  type HopperDrop,
+} from "@/lib/api";
 import { firstUrlFromDrag, isLinkDrop } from "@/lib/hopper";
 import {
   filesFromDrop,
@@ -85,6 +92,18 @@ export default function HopperRoute() {
     void refreshRecent();
   }, [refreshRecent]);
 
+  // Filing runs after the uploads are confirmed, at the same concurrency.
+  // Nothing here can fail the drop: an item that cannot be filed stays where
+  // it already is, which is a fine place for it.
+  const fileAway = useCallback(async (landed: HopperDrop[]): Promise<Array<string | null>> => {
+    const results = await runPool(landed, UPLOAD_CONCURRENCY, async (drop) => {
+      if (!drop.classifiable || drop.kind === "link") return null;
+      const { filed_in } = await classifyDrop(drop.kind, drop.id);
+      return filed_in;
+    });
+    return results.map((r) => (r.ok === true ? r.value : null));
+  }, []);
+
   // A single drop confirms itself; a batch reports once at the end. Eighty
   // toasts for eighty files is not a confirmation, it is a denial of service.
   const addFiles = useCallback(
@@ -112,10 +131,7 @@ export default function HopperRoute() {
         async ({ file, path }) => {
           const landed = await dropHopperFile(file, { path, signal: cancel.signal });
           if (landed.duplicate) live.skipped += 1;
-          else {
-            live.done += 1;
-            if (landed.filed_in) live.filed += 1;
-          }
+          else live.done += 1;
           setBatch({ ...live });
           return landed;
         },
@@ -143,36 +159,58 @@ export default function HopperRoute() {
       }
       // One file keeps its own confirmation: naming it and offering the way to
       // it is more useful than a count of one.
+      const landed = results
+        .map((r) => (r.ok === true ? r.value : null))
+        .filter((d): d is HopperDrop => d !== null);
+
       const only = results.length === 1 && results[0].ok === true ? results[0].value : null;
       if (only) {
-        toast.success(
+        const goTo = {
+          label: only.kind === "page" ? "Go to page" : "Go to file",
+          onClick: () => router.push(`/${only.kind === "page" ? "p" : "f"}/${only.id}`),
+        };
+        const id = toast.success(
           only.duplicate
             ? `${only.name} was already uploaded`
             : `${only.name} uploaded successfully`,
-          {
-            // Where it was filed, when that was not the obvious top level.
-            description: only.filed_in ? `Filed in ${only.filed_in}` : undefined,
-            action: {
-              label: only.kind === "page" ? "Go to page" : "Go to file",
-              onClick: () => router.push(`/${only.kind === "page" ? "p" : "f"}/${only.id}`),
-            },
-          },
+          { action: goTo },
         );
+        // Filing takes a model call, so it lands after the confirmation. If
+        // the toast is still up, it grows a line saying where the file went.
+        void fileAway(landed).then(([filed]) => {
+          if (filed) {
+            toast.success(`${only.name} uploaded successfully`, {
+              id,
+              description: `Filed in ${filed}`,
+              action: goTo,
+            });
+          }
+        });
         return;
       }
       // "0 added · 3 failed" is not good news, and must not look like it.
       const report = live.done + live.skipped === 0 ? toast.error : toast.success;
-      report(summarise(live), {
-        description: live.failed.length
-          ? live.failed
-              .slice(0, 3)
-              .map((f) => f.name)
-              .join(", ")
-          : "They'll be readable as your agent finishes reading them",
-        action: { label: "Go to VFS", onClick: () => router.push("/files") },
+      const goToVfs = { label: "Go to VFS", onClick: () => router.push("/files") };
+      const failedNames = live.failed
+        .slice(0, 3)
+        .map((f) => f.name)
+        .join(", ");
+      const id = toast.success(summarise(live), {
+        description: failedNames || "They'll be readable as your agent finishes reading them",
+        action: goToVfs,
+      });
+      if (live.done + live.skipped === 0) {
+        report(summarise(live), { id, description: failedNames, action: goToVfs });
+        return;
+      }
+      void fileAway(landed).then((filed) => {
+        const count = filed.filter(Boolean).length;
+        if (!count) return;
+        live.filed = count;
+        toast.success(summarise(live), { id, description: failedNames || undefined, action: goToVfs });
       });
     },
-    [router, refreshRecent],
+    [router, refreshRecent, fileAway],
   );
 
   // The hopper takes things that already exist, so text is only ever a link.

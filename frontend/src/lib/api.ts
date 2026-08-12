@@ -2449,8 +2449,8 @@ export interface HopperDrop {
   // True when the item was already there — a re-dropped folder skips rather
   // than doubling its contents.
   duplicate: boolean;
-  // The folder a loose file was filed into, or null for the top level.
-  filed_in: string | null;
+  // True when it landed loose and is worth asking classifyDrop about.
+  classifiable: boolean;
 }
 
 export async function dropHopperFile(
@@ -2482,6 +2482,19 @@ export async function dropHopperFile(
     throw new Error(typeof detail === "string" ? detail : `Upload failed (${resp.status})`);
   }
   return resp.json();
+}
+
+/** Decide where a loose item belongs and move it. Asked for after the upload
+ *  has already been confirmed, so the model never sits between a person and
+ *  the news that their file arrived. */
+export async function classifyDrop(
+  kind: "file" | "page",
+  id: string,
+): Promise<{ filed_in: string | null }> {
+  return apiFetch(`${ME}/hopper/classify`, {
+    method: "POST",
+    body: JSON.stringify({ kind, id }),
+  });
 }
 
 export async function dropHopperLink(url: string): Promise<HopperDrop> {

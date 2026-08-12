@@ -246,40 +246,60 @@ async def test_a_folder_named_memory_cannot_hijack_the_reserved_one(
     assert landed == 0
 
 
-# --- filing a loose file -------------------------------------------------
+# --- filing a loose file, after it has already landed --------------------
+
+
+async def _drop(client: AsyncClient, headers: dict, name: str, body: bytes, ctype: str) -> dict:
+    resp = await client.post(
+        "/api/v1/me/hopper/file", files={"file": (name, body, ctype)}, headers=headers
+    )
+    assert resp.status_code == 201
+    return resp.json()
 
 
 @pytest.mark.asyncio
-async def test_a_loose_file_is_filed_into_an_existing_folder(
-    client: AsyncClient, pool, monkeypatch
-) -> None:
-    """Landing everything at the root throws away what a filesystem is for."""
-    headers, owner_id = await _register(client)
+async def test_upload_does_not_wait_on_the_classifier(client: AsyncClient, monkeypatch) -> None:
+    """A model call has no business between dropping a file and being told it
+    arrived."""
+    headers, _ = await _register(client)
     _mock_storage(monkeypatch)
-
     await client.post("/api/v1/me/folders", json={"name": "Invoices"}, headers=headers)
 
+    async def never(**kwargs):
+        raise AssertionError("the upload path must not call the model")
+
+    monkeypatch.setattr(llm, "complete_json", never)
+
+    landed = await _drop(client, headers, "acme-invoice.pdf", b"%PDF-1.4 x", "application/pdf")
+    assert landed["classifiable"] is True
+
+
+@pytest.mark.asyncio
+async def test_classify_files_a_loose_item(client: AsyncClient, pool, monkeypatch) -> None:
+    headers, _ = await _register(client)
+    _mock_storage(monkeypatch)
+    await client.post("/api/v1/me/folders", json={"name": "Invoices"}, headers=headers)
+    landed = await _drop(client, headers, "acme-invoice.pdf", b"%PDF-1.4 x", "application/pdf")
+
     async def fake_json(**kwargs):
-        assert "Invoices" in kwargs["prompt"]
         return {"folder": "Invoices"}
 
     monkeypatch.setattr(llm, "complete_json", fake_json)
-
     resp = await client.post(
-        "/api/v1/me/hopper/file",
-        files={"file": ("acme-invoice-q3.pdf", b"%PDF-1.4 x", "application/pdf")},
+        "/api/v1/me/hopper/classify",
+        json={"kind": landed["kind"], "id": landed["id"]},
         headers=headers,
     )
     assert resp.json()["filed_in"] == "Invoices"
-    folder_name = await pool.fetchval(
+    folder = await pool.fetchval(
         "SELECT f.name FROM files fi JOIN folders f ON f.id = fi.folder_id WHERE fi.id = $1",
-        UUID(resp.json()["id"]),
+        UUID(landed["id"]),
     )
-    assert folder_name == "Invoices"
+    assert folder == "Invoices"
 
 
 @pytest.mark.asyncio
-async def test_an_unfilable_file_stays_at_the_top_level(
+async def test_classify_leaves_an_unfilable_item_alone(
     client: AsyncClient, pool, monkeypatch
 ) -> None:
     """Filing wrongly is worse than not filing: a person finds what is at the
@@ -287,68 +307,77 @@ async def test_an_unfilable_file_stays_at_the_top_level(
     headers, _ = await _register(client)
     _mock_storage(monkeypatch)
     await client.post("/api/v1/me/folders", json={"name": "Invoices"}, headers=headers)
+    landed = await _drop(client, headers, "IMG_4432.png", b"\x89PNG", "image/png")
 
     async def fake_json(**kwargs):
         return {"folder": None}
 
     monkeypatch.setattr(llm, "complete_json", fake_json)
-
     resp = await client.post(
-        "/api/v1/me/hopper/file",
-        files={"file": ("screenshot.png", b"\x89PNG", "image/png")},
+        "/api/v1/me/hopper/classify",
+        json={"kind": "file", "id": landed["id"]},
         headers=headers,
     )
     assert resp.json()["filed_in"] is None
     assert (
-        await pool.fetchval("SELECT folder_id FROM files WHERE id = $1", UUID(resp.json()["id"]))
-        is None
+        await pool.fetchval("SELECT folder_id FROM files WHERE id = $1", UUID(landed["id"])) is None
     )
 
 
 @pytest.mark.asyncio
-async def test_an_invented_folder_is_refused(client: AsyncClient, pool, monkeypatch) -> None:
+async def test_classify_never_invents_a_folder(client: AsyncClient, pool, monkeypatch) -> None:
     """Inventing a folder per file is how a stash ends up with forty folders
     holding one item each."""
     headers, owner_id = await _register(client)
     _mock_storage(monkeypatch)
     await client.post("/api/v1/me/folders", json={"name": "Invoices"}, headers=headers)
+    landed = await _drop(client, headers, "receipt.pdf", b"%PDF-1.4 x", "application/pdf")
 
     async def fake_json(**kwargs):
         return {"folder": "Receipts/2026"}
 
     monkeypatch.setattr(llm, "complete_json", fake_json)
-
     resp = await client.post(
-        "/api/v1/me/hopper/file",
-        files={"file": ("receipt.pdf", b"%PDF-1.4 x", "application/pdf")},
+        "/api/v1/me/hopper/classify",
+        json={"kind": "file", "id": landed["id"]},
         headers=headers,
     )
     assert resp.json()["filed_in"] is None
-    folders = await pool.fetchval(
-        "SELECT count(*) FROM folders WHERE owner_user_id = $1", UUID(owner_id)
+    assert (
+        await pool.fetchval("SELECT count(*) FROM folders WHERE owner_user_id = $1", UUID(owner_id))
+        == 1
     )
-    assert folders == 1
 
 
 @pytest.mark.asyncio
-async def test_a_dropped_folder_is_never_second_guessed(
+async def test_classify_will_not_move_something_already_filed(
     client: AsyncClient, pool, monkeypatch
 ) -> None:
-    """The user's own directory structure beats any classifier, so a folder
-    drop must not even ask."""
+    """A dropped folder is the user's own filing; re-deciding it would be the
+    classifier overruling a person."""
     headers, _ = await _register(client)
     _mock_storage(monkeypatch)
-
-    async def never(**kwargs):
-        raise AssertionError("a folder drop must not be classified")
-
-    monkeypatch.setattr(llm, "complete_json", never)
-
     resp = await client.post(
         "/api/v1/me/hopper/file",
         files={"file": ("brakes.pdf", b"%PDF-1.4 x", "application/pdf")},
         data={"path": "catalogs"},
         headers=headers,
     )
-    assert resp.status_code == 201
-    assert resp.json()["filed_in"] is None
+    landed = resp.json()
+    assert landed["classifiable"] is False
+
+    async def never(**kwargs):
+        raise AssertionError("an already-filed item must not be classified")
+
+    monkeypatch.setattr(llm, "complete_json", never)
+    filed = await client.post(
+        "/api/v1/me/hopper/classify",
+        json={"kind": "file", "id": landed["id"]},
+        headers=headers,
+    )
+    assert filed.json()["filed_in"] is None
+    folder = await pool.fetchval(
+        "SELECT f.name FROM files fi JOIN folders f ON f.id = fi.folder_id WHERE fi.id = $1",
+        UUID(landed["id"]),
+    )
+    assert folder == "catalogs"

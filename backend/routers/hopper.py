@@ -10,7 +10,7 @@ becomes an ordinary VFS item the moment it lands.
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile
-from pydantic import BaseModel, HttpUrl
+from pydantic import BaseModel, Field, HttpUrl
 
 from ..auth import get_current_user, get_scope
 from ..database import get_pool
@@ -56,22 +56,16 @@ async def drop_file(
 
     filename = file.filename or "upload"
     content_type = file.content_type or "application/octet-stream"
-    # A dropped folder already carries the user's own filing, which beats any
-    # classifier. Only a loose file gets a suggestion.
-    if path.strip():
-        folder_id = await _folder_for_path(owner_user_id, current_user["id"], path)
-        filed_in = None
-    else:
-        folder_id, filed_in = await file_classifier.suggest_folder(
-            owner_user_id, filename, content_type
-        )
+    # Filing is a second, separate step: a model call has no business between
+    # a person dropping a file and being told it arrived.
+    folder_id = await _folder_for_path(owner_user_id, current_user["id"], path)
 
     # Re-dropping a directory must not double its contents. Same name, same
     # size, same folder is the same file for a person's purposes — and for a
     # page, whose name is unique in a folder anyway.
     existing = await _existing_item(owner_user_id, folder_id, filename, content_type, len(content))
     if existing:
-        return {**existing, "duplicate": True, "filed_in": filed_in}
+        return {**existing, "duplicate": True}
 
     # Markdown and HTML become pages, everything else an S3-backed file whose
     # text extraction starts on insert — the ingest path decides, not us.
@@ -89,9 +83,8 @@ async def drop_file(
         "name": uploaded.name,
         "app_url": uploaded.app_url,
         "duplicate": False,
-        # The folder a classifier chose, so the confirmation can say where it
-        # went — null means the top level, which needs no explaining.
-        "filed_in": filed_in,
+        # True when this landed loose and is worth asking /classify about.
+        "classifiable": folder_id is None,
     }
 
 
@@ -179,6 +172,55 @@ async def _existing_item(
     )
 
 
+class ClassifyRequest(BaseModel):
+    kind: str = Field(..., pattern=r"^(file|page)$")
+    id: UUID
+
+
+@router.post("/classify")
+async def classify_drop(
+    body: ClassifyRequest,
+    current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
+) -> dict:
+    """Decide where a loose item belongs and move it there.
+
+    Deliberately its own request: the upload confirms immediately, and the
+    caller asks for this afterwards. The work is server-side, so a person who
+    navigates away still gets their file filed — they just don't watch it
+    happen.
+    """
+    owner_user_id = await _writable_scope(current_user, scope_user_id)
+    table = "files" if body.kind == "file" else "pages"
+    pool = get_pool()
+    row = await pool.fetchrow(
+        f"SELECT name, folder_id FROM {table} "  # noqa: S608 — table is pattern-checked
+        "WHERE id = $1 AND owner_user_id = $2 AND deleted_at IS NULL",
+        body.id,
+        owner_user_id,
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail="Not found")
+    # Only ever files something loose: a folder drop, or filing that already
+    # happened, is not for a classifier to revisit.
+    if row["folder_id"] is not None:
+        return {"filed_in": None}
+
+    folder_id, path = await file_classifier.suggest_folder(
+        owner_user_id, row["name"], "application/octet-stream"
+    )
+    if folder_id is None:
+        return {"filed_in": None}
+    await pool.execute(
+        f"UPDATE {table} SET folder_id = $1 WHERE id = $2 AND owner_user_id = $3 "  # noqa: S608
+        "AND folder_id IS NULL",
+        folder_id,
+        body.id,
+        owner_user_id,
+    )
+    return {"filed_in": path}
+
+
 @router.post("/link", status_code=201)
 async def drop_link(
     body: LinkDropRequest,
@@ -203,5 +245,5 @@ async def drop_link(
         "name": url,
         "app_url": None,
         "duplicate": False,
-        "filed_in": None,
+        "classifiable": False,
     }
