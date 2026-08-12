@@ -2446,15 +2446,25 @@ export interface HopperDrop {
   id: string;
   name: string;
   app_url: string | null;
+  // True when the item was already there — a re-dropped folder skips rather
+  // than doubling its contents.
+  duplicate: boolean;
+  // True when it landed loose and is worth asking classifyDrop about.
+  classifiable: boolean;
 }
 
-export async function dropHopperFile(file: File): Promise<HopperDrop> {
+export async function dropHopperFile(
+  file: File,
+  options: { path?: string[]; signal?: AbortSignal } = {},
+): Promise<HopperDrop> {
   if (file.size > MAX_UPLOAD_BYTES) {
     throw new Error(`${file.name} is too large (max 100 MB)`);
   }
   const token = await getAuthToken();
   const formData = new FormData();
   formData.append("file", file);
+  // A dropped folder mirrors its structure; the server resolves the chain.
+  if (options.path?.length) formData.append("path", options.path.join("/"));
   // Hand-rolled fetch (FormData sets its own Content-Type), so the auth and
   // scope headers have to be attached here rather than by apiFetch.
   const headers: Record<string, string> = {};
@@ -2465,12 +2475,26 @@ export async function dropHopperFile(file: File): Promise<HopperDrop> {
     method: "POST",
     headers,
     body: formData,
+    signal: options.signal,
   });
   if (!resp.ok) {
     const detail = await resp.json().then((d) => d.detail).catch(() => resp.statusText);
     throw new Error(typeof detail === "string" ? detail : `Upload failed (${resp.status})`);
   }
   return resp.json();
+}
+
+/** Decide where a loose item belongs and move it. Asked for after the upload
+ *  has already been confirmed, so the model never sits between a person and
+ *  the news that their file arrived. */
+export async function classifyDrop(
+  kind: "file" | "page",
+  id: string,
+): Promise<{ filed_in: string | null }> {
+  return apiFetch(`${ME}/hopper/classify`, {
+    method: "POST",
+    body: JSON.stringify({ kind, id }),
+  });
 }
 
 export async function dropHopperLink(url: string): Promise<HopperDrop> {

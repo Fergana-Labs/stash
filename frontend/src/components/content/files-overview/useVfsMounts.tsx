@@ -74,11 +74,15 @@ export function useVfsMounts(): {
   coreError: string | null;
   sourcesPending: boolean;
   sourcesError: string | null;
+  /** Re-read the tree — after creating a folder, the sidebar is stale. */
+  reload: () => void;
 } {
   const [core, setCore] = useState<CoreData | null>(null);
   const [coreError, setCoreError] = useState<string | null>(null);
   const [sources, setSources] = useState<SourceTreeRoot[] | null>(null);
   const [sourcesError, setSourcesError] = useState<string | null>(null);
+
+  const [reloadNonce, setReloadNonce] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -102,7 +106,7 @@ export function useVfsMounts(): {
       .then((s) => { if (!cancelled) setSources(s); })
       .catch((e) => { if (!cancelled) setSourcesError(e instanceof Error ? e.message : String(e)); });
     return () => { cancelled = true; };
-  }, []);
+  }, [reloadNonce]);
 
   const mounts = useMemo<Mount[]>(() => {
     if (!core) return [];
@@ -188,5 +192,6 @@ export function useVfsMounts(): {
     coreError,
     sourcesPending: sources === null && !sourcesError,
     sourcesError,
+    reload: () => setReloadNonce((n) => n + 1),
   };
 }

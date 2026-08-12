@@ -10,9 +10,11 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
-import { ArrowUpRight, ChevronRight } from "lucide-react";
+import { ArrowUpRight, ChevronRight, FolderPlus } from "lucide-react";
 import { create } from "zustand";
 import { Skeleton } from "@/components/ui/skeleton";
+import { createFolder } from "@/lib/api";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import type { VNode } from "@/components/content/files-overview/build";
 import { NodeIcon, useVfsMounts, type Mount } from "@/components/content/files-overview/useVfsMounts";
@@ -74,6 +76,26 @@ function ancestorsOf(nodes: VNode[], pathname: string, trail: string[]): string[
   return null;
 }
 
+// Each directory renders only its first SHOW_PER_DIR children, so an item can
+// be revealed — ancestors expanded, row marked active — and still not be on
+// screen because it fell past the "+N more" cut. This is the key of the
+// directory holding the match, whose list then has to be shown in full.
+function truncatedParentOf(
+  nodes: VNode[],
+  pathname: string,
+  parentKey: string,
+): string | null {
+  const index = nodes.findIndex((node) => pathOf(node.href) === pathname);
+  if (index >= SHOW_PER_DIR) return parentKey;
+  if (index !== -1) return null;
+  for (const node of nodes) {
+    if (!node.children) continue;
+    const found = truncatedParentOf(node.children, pathname, node.key);
+    if (found) return found;
+  }
+  return null;
+}
+
 function Row({
   depth,
   icon,
@@ -86,6 +108,7 @@ function Row({
   href,
   mono,
   onToggle,
+  onAddFolder,
 }: {
   depth: number;
   icon: React.ReactNode;
@@ -98,6 +121,8 @@ function Row({
   href?: string;
   mono?: boolean;
   onToggle?: () => void;
+  /** Present on rows that can hold folders; shown on hover. */
+  onAddFolder?: () => void;
 }) {
   const pad = { paddingLeft: 6 + depth * INDENT_PX };
   const inner = (
@@ -138,6 +163,21 @@ function Row({
       {annotation && (
         <span className="shrink-0 pl-1.5 font-mono text-[10.5px] text-muted-foreground">{annotation}</span>
       )}
+      {onAddFolder && (
+        <span
+          role="button"
+          aria-label="New folder"
+          title="New folder"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onAddFolder();
+          }}
+          className="ml-0.5 hidden shrink-0 rounded p-0.5 text-muted-foreground hover:bg-raised hover:text-brand-700 group-hover:block"
+        >
+          <FolderPlus className="h-3.5 w-3.5" />
+        </span>
+      )}
     </>
   );
   const cls = cn(
@@ -147,19 +187,78 @@ function Row({
   if (href) {
     return (
       // Navigating into a closed folder also opens it, like VS Code.
-      <Link href={href} style={pad} className={cls} onClick={() => { if (isDir && !open) onToggle?.(); }}>
+      <Link
+        href={href}
+        style={pad}
+        className={cls}
+        data-vfs-active={active || undefined}
+        onClick={() => { if (isDir && !open) onToggle?.(); }}
+      >
         {inner}
       </Link>
     );
   }
   if (isDir) {
     return (
-      <button type="button" onClick={onToggle} style={pad} className={cls}>
+      <button type="button" onClick={onToggle} style={pad} className={cls} data-vfs-active={active || undefined}>
         {inner}
       </button>
     );
   }
   return <div style={pad} className={cn(cls, "hover:bg-transparent")}>{inner}</div>;
+}
+
+/** The row that appears when you click +: type a name, Enter creates it,
+ *  Escape gives up. No dialog for something this small. */
+function NewFolderRow({
+  depth,
+  parentId,
+  onDone,
+}: {
+  depth: number;
+  parentId: string | null;
+  onDone: (created: boolean) => void;
+}) {
+  const [name, setName] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  async function create() {
+    const trimmed = name.trim();
+    if (!trimmed || saving) return;
+    setSaving(true);
+    try {
+      await createFolder(trimmed, parentId);
+      onDone(true);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Couldn't create that folder");
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div
+      style={{ paddingLeft: 6 + depth * INDENT_PX }}
+      className="flex w-full items-center gap-1.5 py-[3px] pr-1.5"
+    >
+      <span className="w-4 shrink-0" />
+      <span className="flex w-[15px] shrink-0 items-center justify-center text-brand-600">
+        <FolderPlus className="h-3.5 w-3.5" />
+      </span>
+      <input
+        autoFocus
+        value={name}
+        disabled={saving}
+        onChange={(e) => setName(e.target.value)}
+        onBlur={() => onDone(false)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") void create();
+          if (e.key === "Escape") onDone(false);
+        }}
+        placeholder="folder name"
+        className="min-w-0 flex-1 rounded-sm bg-transparent text-[13px] text-foreground outline-none ring-1 ring-brand-400 placeholder:text-muted-foreground"
+      />
+    </div>
+  );
 }
 
 function Nodes({
@@ -171,6 +270,10 @@ function Nodes({
   pathname,
   showAll,
   onRevealAll,
+  addingIn,
+  onAddFolder,
+  onAddDone,
+  foldable,
 }: {
   nodes: VNode[];
   depth: number;
@@ -180,6 +283,10 @@ function Nodes({
   pathname: string;
   showAll: Set<string>;
   onRevealAll: (key: string) => void;
+  addingIn: string | null;
+  onAddFolder: (parentId: string | null) => void;
+  onAddDone: (created: boolean) => void;
+  foldable: boolean;
 }) {
   const expanded = useVfsTreeStore((s) => s.expanded);
   const toggleNode = useVfsTreeStore((s) => s.toggleNode);
@@ -206,7 +313,13 @@ function Nodes({
               active={pathOf(node.href) === pathname}
               href={node.href}
               onToggle={() => toggleNode(node.key)}
+              onAddFolder={
+                foldable && node.kind === "folder" ? () => onAddFolder(node.key) : undefined
+              }
             />
+            {addingIn === node.key && (
+              <NewFolderRow depth={depth + 1} parentId={node.key} onDone={onAddDone} />
+            )}
             {open && (
               <Nodes
                 nodes={node.children!}
@@ -217,6 +330,10 @@ function Nodes({
                 pathname={pathname}
                 showAll={showAll}
                 onRevealAll={onRevealAll}
+                addingIn={addingIn}
+                onAddFolder={onAddFolder}
+                onAddDone={onAddDone}
+                foldable={foldable}
               />
             )}
           </div>
@@ -256,11 +373,17 @@ function MountBlock({
   pathname,
   showAll,
   onRevealAll,
+  addingIn,
+  onAddFolder,
+  onAddDone,
 }: {
   mount: Mount;
   pathname: string;
   showAll: Set<string>;
   onRevealAll: (key: string) => void;
+  addingIn: string | null;
+  onAddFolder: (parentId: string | null) => void;
+  onAddDone: (created: boolean) => void;
 }) {
   const collapsedMounts = useVfsTreeStore((s) => s.collapsedMounts);
   const toggleMount = useVfsTreeStore((s) => s.toggleMount);
@@ -268,6 +391,7 @@ function MountBlock({
   // In the lens /files is where you already are; docked, its row is the way
   // back to the full-screen view.
   const href = mount.path === "/files" ? "/files" : mount.href;
+  const foldable = mount.path === "/files";
   const pad = { paddingLeft: 6 + INDENT_PX };
 
   return (
@@ -282,7 +406,11 @@ function MountBlock({
         href={href}
         mono
         onToggle={() => toggleMount(mount.path)}
+        onAddFolder={foldable ? () => onAddFolder(null) : undefined}
       />
+      {foldable && addingIn === ROOT_KEY && (
+        <NewFolderRow depth={1} parentId={null} onDone={onAddDone} />
+      )}
       {open && (
         <>
           {mount.nodes.length === 0 && !mount.footer ? (
@@ -291,6 +419,10 @@ function MountBlock({
             </div>
           ) : (
             <Nodes
+              addingIn={addingIn}
+              onAddFolder={onAddFolder}
+              onAddDone={onAddDone}
+              foldable={foldable}
               nodes={mount.nodes}
               depth={1}
               parentKey={mount.path}
@@ -317,10 +449,16 @@ function MountBlock({
   );
 }
 
+// The sentinel for "creating at the top level of /files", where there is no
+// parent folder id to key off.
+const ROOT_KEY = "__root__";
+
 export default function VfsTree() {
   const pathname = usePathname();
-  const { mounts, coreLoaded, coreError, sourcesPending, sourcesError } = useVfsMounts();
+  const { mounts, coreLoaded, coreError, sourcesPending, sourcesError, reload } = useVfsMounts();
+  const [addingIn, setAddingIn] = useState<string | null>(null);
   const reveal = useVfsTreeStore((s) => s.reveal);
+  const expanded = useVfsTreeStore((s) => s.expanded);
   const [showAll, setShowAll] = useState<Set<string>>(new Set());
 
   // Whatever the workbench has open gets its ancestor chain expanded, so the
@@ -328,12 +466,20 @@ export default function VfsTree() {
   useEffect(() => {
     for (const mount of mounts) {
       const trail = ancestorsOf(mount.nodes, pathname, []);
-      if (trail) {
-        reveal(mount.path, trail);
-        return;
-      }
+      if (!trail) continue;
+      reveal(mount.path, trail);
+      const truncated = truncatedParentOf(mount.nodes, pathname, mount.path);
+      if (truncated) setShowAll((prev) => new Set(prev).add(truncated));
+      return;
     }
   }, [pathname, mounts, reveal]);
+
+  // Orientation needs the highlight on screen, and the row only exists once
+  // its ancestors are expanded and its directory un-truncated — so this runs
+  // after those, not with them. "nearest" leaves an already-visible row alone.
+  useEffect(() => {
+    document.querySelector("[data-vfs-active]")?.scrollIntoView({ block: "nearest" });
+  }, [pathname, expanded, showAll]);
 
   if (coreError) {
     return <div className="p-3 font-mono text-[12px] text-error">✗ couldn&apos;t read the stash: {coreError}</div>;
@@ -355,6 +501,16 @@ export default function VfsTree() {
           pathname={pathname}
           showAll={showAll}
           onRevealAll={(key) => setShowAll((prev) => new Set(prev).add(key))}
+          addingIn={addingIn}
+          onAddFolder={(parentId) => {
+            // Creating inside a folder only makes sense with it open.
+            if (parentId) reveal("/files", [parentId]);
+            setAddingIn(parentId ?? ROOT_KEY);
+          }}
+          onAddDone={(created) => {
+            setAddingIn(null);
+            if (created) reload();
+          }}
         />
       ))}
       {coreLoaded && sourcesPending && (
