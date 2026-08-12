@@ -833,6 +833,14 @@ function SourceRow({
         {pollStopped && (
           <div className="mt-1 truncate text-[11.5px] text-muted-foreground">{pollStopped}</div>
         )}
+        {/* A count alone ("1 of 2") says something is wrong and leaves you
+            hunting. These are the documents to go add a frontmatter block to. */}
+        {source.binds_skills && (source.not_skills?.length ?? 0) > 0 && (
+          <div className="mt-1 truncate text-[11.5px] text-muted-foreground">
+            Not skills yet: {source.not_skills!.slice(0, 3).join(", ")}
+            {source.not_skills!.length > 3 && ` +${source.not_skills!.length - 3} more`}
+          </div>
+        )}
       </button>
       <div className="flex shrink-0 items-center gap-1.5">
         {/* Both the state and the way out of it: this folder's documents are

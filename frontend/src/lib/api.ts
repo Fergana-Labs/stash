@@ -312,6 +312,8 @@ export interface Source {
   binds_skills?: boolean;
   skills?: number;
   documents?: number;
+  // Named so a shelf that is short of skills says which documents to go fix.
+  not_skills?: string[];
 }
 
 export interface SourceStatus extends Source {
@@ -1485,8 +1487,20 @@ interface SkillCommon {
 // source bound as a skill shelf: it has no folder, and it is managed upstream
 // in Drive rather than here.
 export type Skill =
-  | (SkillCommon & { backing: "folder"; folder_id: string; source_doc_id: null })
-  | (SkillCommon & { backing: "source"; folder_id: null; source_doc_id: string });
+  | (SkillCommon & {
+      backing: "folder";
+      folder_id: string;
+      source_doc_id: null;
+      source_name: null;
+    })
+  | (SkillCommon & {
+      backing: "source";
+      folder_id: null;
+      source_doc_id: string;
+      // The shelf it was read from — two shelves can hold skills with the
+      // same name, and the card is where you tell them apart.
+      source_name: string;
+    });
 
 // The editable kind, for the verbs that only apply to a real folder.
 export type FolderBackedSkill = Extract<Skill, { backing: "folder" }>;

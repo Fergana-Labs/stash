@@ -79,6 +79,7 @@ function skill(overrides: Partial<FolderBackedSkill> = {}): Skill {
   return {
     backing: "folder",
     source_doc_id: null,
+    source_name: null,
     folder_id: "folder-1",
     name: "Launch Plan",
     description: "How we launch",
@@ -97,6 +98,7 @@ function sourceSkill(overrides: Partial<Skill> = {}): Skill {
     backing: "source",
     folder_id: null,
     source_doc_id: "doc-1",
+    source_name: "skillz",
     name: "Turbochargers",
     description: "Use when a customer reports boost loss.",
     when_to_use: "",
@@ -241,7 +243,9 @@ describe("SkillsPage", () => {
     for (const link of links) {
       expect(link).toHaveAttribute("href", "/skills/source/doc-1");
     }
-    expect(screen.getAllByText("Drive").length).toBeGreaterThan(0);
+    // The badge names the shelf, not the provider: two shelves can hold
+    // skills with the same name and the card is where you tell them apart.
+    expect(screen.getAllByText("skillz").length).toBeGreaterThan(0);
     expect(
       screen.getByText("Use when a customer reports boost loss."),
     ).toBeInTheDocument();

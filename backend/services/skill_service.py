@@ -129,19 +129,26 @@ async def count_shelf_skills(owner_user_id: UUID) -> dict[str, dict]:
     counting query.
     """
     rows = await get_pool().fetch(
-        "SELECT d.source_id, left(d.content, 4096) AS head "
+        "SELECT d.source_id, d.name, left(d.content, 4096) AS head "
         "FROM drive_documents d "
         "JOIN user_sources src ON src.id = d.source_id "
         "WHERE d.owner_user_id = $1 AND d.deleted_at IS NULL AND src.binds_skills "
-        "  AND position('/' in d.path) = 0",
+        "  AND position('/' in d.path) = 0 "
+        "ORDER BY d.name",
         owner_user_id,
     )
     counts: dict[str, dict] = {}
     for row in rows:
-        tally = counts.setdefault(str(row["source_id"]), {"skills": 0, "documents": 0})
+        tally = counts.setdefault(
+            str(row["source_id"]), {"skills": 0, "documents": 0, "not_skills": []}
+        )
         tally["documents"] += 1
         if declared_skill(row["head"]) is not None:
             tally["skills"] += 1
+        else:
+            # Named, not just counted: "1 of 2" tells you something is wrong
+            # and leaves you hunting for which document to go fix.
+            tally["not_skills"].append(row["name"])
     return counts
 
 
@@ -153,7 +160,7 @@ async def list_source_skills(owner_user_id: UUID, user_id: UUID) -> list[dict]:
     """
     readable = permission_service.readable_content_condition("source", "src", 2)
     rows = await get_pool().fetch(
-        "SELECT d.id, d.name, d.content, d.updated_at "
+        "SELECT d.id, d.name, d.content, d.updated_at, src.display_name AS source_name "
         "FROM drive_documents d "
         "JOIN user_sources src ON src.id = d.source_id "
         "WHERE d.owner_user_id = $1 AND d.deleted_at IS NULL AND src.binds_skills "
@@ -168,6 +175,7 @@ async def list_source_skills(owner_user_id: UUID, user_id: UUID) -> list[dict]:
             "folder_id": None,
             "source_doc_id": str(r["id"]),
             "backing": "source",
+            "source_name": r["source_name"],
             "name": meta["name"],
             "description": meta["description"],
             "when_to_use": meta.get("when_to_use", ""),
@@ -229,6 +237,7 @@ async def list_skills(owner_user_id: UUID, user_id: UUID) -> list[dict]:
                 "folder_id": str(r["folder_id"]),
                 "source_doc_id": None,
                 "backing": "folder",
+                "source_name": None,
                 "name": meta.get("name") or r["folder_name"],
                 "description": meta.get("description", ""),
                 "when_to_use": meta.get("when_to_use", ""),

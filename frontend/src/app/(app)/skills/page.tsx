@@ -596,12 +596,17 @@ function skillHref(skill: Skill): string {
     : `/skills/source/${skill.source_doc_id}`;
 }
 
-// Says where a skill's content is edited, on the skills that aren't edited
-// here. Folder-backed skills get no badge — that's the unremarkable case.
-function DriveBadge() {
+// Names the shelf a skill was read from. Two shelves can hold skills with the
+// same name, so "Drive" alone leaves two identical cards on the page; the shelf
+// is also where you go to change it. Folder-backed skills get no badge — that's
+// the unremarkable case.
+function ShelfBadge({ shelf }: { shelf: string }) {
   return (
-    <span className="inline-flex flex-shrink-0 items-center rounded border border-border px-1.5 py-px text-[10.5px] font-medium text-muted-foreground">
-      Drive
+    <span
+      title={`Read from ${shelf} in Google Drive`}
+      className="inline-flex max-w-[120px] flex-shrink-0 items-center truncate rounded border border-border bg-surface/80 px-1.5 py-px text-[10.5px] font-medium text-muted-foreground"
+    >
+      {shelf}
     </span>
   );
 }
@@ -699,7 +704,7 @@ function SkillCollection({
                     onToggle={() => onToggleSelect(skill.folder_id)}
                   />
                 ) : (
-                  <DriveBadge />
+                  <ShelfBadge shelf={skill.source_name} />
                 )}
               </span>
             }
@@ -751,7 +756,7 @@ function SkillListRow({
       {skill.backing === "folder" ? (
         <SelectBox selected={selected} onToggle={() => onToggleSelect(skill.folder_id)} />
       ) : (
-        <DriveBadge />
+        <ShelfBadge shelf={skill.source_name} />
       )}
       <div className="flex min-w-0 items-center gap-2.5">
         <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center text-[var(--color-brand-600)]">
