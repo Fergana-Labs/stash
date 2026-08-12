@@ -5,6 +5,11 @@ everything before it is captured in git history (`git log`), not here.
 
 ## Unreleased
 
+- New **Hopper** tab: drop anything in and it lands in your Stash, readable by
+  your agents. Drag files onto the page, paste a link, or paste a screenshot
+  straight from the clipboard — each goes down the pipeline that can read it
+  (file extraction or webpage import) and arrives in your VFS as an ordinary
+  item.
 - Uploaded images are transcribed by vision, so agents can read them.
   `file_extraction.extract_text` has no branch for images, so every uploaded
   screenshot, photo, and diagram stored an empty knowledge-base entry and was

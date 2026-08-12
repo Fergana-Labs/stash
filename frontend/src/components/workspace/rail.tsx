@@ -1,19 +1,26 @@
 "use client";
 
-import { Fragment, useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState, type ComponentType } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Bot, FolderTree, MessagesSquare, GraduationCap, Home, Wrench, Settings } from "lucide-react";
+import HopperIcon from "@/components/HopperIcon";
 import { cn } from "@/lib/utils";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
 import { useWorkspace, type RailSection } from "@/lib/workspace-store";
 import type { User } from "@/lib/types";
 
-type RailItem = { key: RailSection; label: string; icon: typeof Bot; match: (p: string) => boolean };
+type RailItem = {
+  key: RailSection;
+  label: string;
+  icon: ComponentType<{ className?: string }>;
+  match: (p: string) => boolean;
+};
 
 // Primary sections — each opens its own explorer panel (see workspace-shell).
 const PRIMARY: RailItem[] = [
   { key: "home", label: "Home", icon: Home, match: (p) => p === "/" },
+  { key: "hopper", label: "Hopper", icon: HopperIcon, match: (p) => p.startsWith("/hopper") },
   { key: "files", label: "VFS", icon: FolderTree, match: (p) => p === "/files" || p.startsWith("/f/") || p.startsWith("/p/") || p.startsWith("/folders/") || p.startsWith("/tables/") },
   { key: "sessions", label: "Sessions", icon: MessagesSquare, match: (p) => p.startsWith("/sessions") || p.startsWith("/session-folders") },
   { key: "skills", label: "Skills", icon: GraduationCap, match: (p) => p.startsWith("/skills") },
@@ -22,7 +29,9 @@ const PRIMARY: RailItem[] = [
 ];
 
 // Home is the memory dashboard — the divider separates it from the VFS
-// sections. Chat sits last: it's a lens over the stash, not a place in it.
+// sections. Hopper opens that group because it is the way in: everything
+// dropped there lands in the VFS. Chat sits last: it's a lens over the stash,
+// not a place in it.
 // Apps lives at /apps. The VM has NO entry point since it left this rail: the
 // explorer's Home root is the only thing that lists it, and that root only
 // renders once you are already inside the VM section (?section=computer).
@@ -119,6 +128,7 @@ export default function Rail({ user, onLogout }: { user: User; onLogout: () => v
     // Every other section is a page; the rail is pure navigation.
     const LANDING: Record<Exclude<RailSection, "files" | "computer">, string> = {
       home: "/",
+      hopper: "/hopper",
       agents: "/agents",
       sessions: "/sessions",
       skills: "/skills",

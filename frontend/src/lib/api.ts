@@ -2436,3 +2436,46 @@ export async function bulkEditRows(
     body: JSON.stringify(body),
   });
 }
+
+// --- Hopper ---
+
+// What a drop became in the VFS. A link has no target yet — a worker fetches
+// the page — so its id is the import job and app_url is null.
+export interface HopperDrop {
+  kind: "file" | "page" | "link";
+  id: string;
+  name: string;
+  app_url: string | null;
+}
+
+export async function dropHopperFile(file: File): Promise<HopperDrop> {
+  if (file.size > MAX_UPLOAD_BYTES) {
+    throw new Error(`${file.name} is too large (max 100 MB)`);
+  }
+  const token = await getAuthToken();
+  const formData = new FormData();
+  formData.append("file", file);
+  // Hand-rolled fetch (FormData sets its own Content-Type), so the auth and
+  // scope headers have to be attached here rather than by apiFetch.
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const scopeUserId = getScopeUserId();
+  if (scopeUserId) headers[SCOPE_HEADER] = scopeUserId;
+  const resp = await fetch(`${API_BASE}${ME}/hopper/file`, {
+    method: "POST",
+    headers,
+    body: formData,
+  });
+  if (!resp.ok) {
+    const detail = await resp.json().then((d) => d.detail).catch(() => resp.statusText);
+    throw new Error(typeof detail === "string" ? detail : `Upload failed (${resp.status})`);
+  }
+  return resp.json();
+}
+
+export async function dropHopperLink(url: string): Promise<HopperDrop> {
+  return apiFetch(`${ME}/hopper/link`, {
+    method: "POST",
+    body: JSON.stringify({ url }),
+  });
+}

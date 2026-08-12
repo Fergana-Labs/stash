@@ -882,3 +882,33 @@ details > summary::-webkit-details-marker {
 .proseish code { font-family: var(--font-mono), monospace; color: #C2410C; background: var(--bg-raised); padding: 1px 5px; border-radius: 4px; font-size: 0.88em; }
 .proseish a { color: #F97316; text-decoration: underline; text-underline-offset: 2px; }
 .proseish blockquote { border-left: 3px solid var(--border-color); padding-left: 12px; color: var(--text-muted); margin: 10px 0; }
+
+/* === Hopper: the intake well ===
+   Per docs/design-system.md the app is industrial/utilitarian: typography and
+   colour do the work, no gradients or glow, and motion is minimal-functional.
+   So the well is a flat surface with a border, brand orange marks the active
+   state, and the only animation runs while a drop is actually in flight.
+   The texture is the landing page's warm dot-field (www/DESIGN.md), the
+   reusable brand motif — sparse and faded, not a grain overlay. */
+
+.hopper-well {
+  background-color: var(--bg-surface);
+  background-image: radial-gradient(rgb(50 47 41 / 0.05) 1px, transparent 1.4px);
+  background-size: 22px 22px;
+  /* A hairline plus the faintest top shading — just enough that the surface
+     sits below the page rather than floating on it. Anything heavier reads as
+     the gradient the kit rules out. */
+  box-shadow:
+    inset 0 0 0 1px var(--border-color),
+    inset 0 2px 4px -3px rgb(50 47 41 / 0.10);
+  transition: box-shadow 150ms ease-out, background-color 150ms ease-out;
+}
+
+.hopper-well[data-live="true"] {
+  background-color: color-mix(in oklab, var(--color-brand-500) 6%, var(--bg-surface));
+  box-shadow: inset 0 0 0 1px var(--color-brand-500);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hopper-well { transition: none; }
+}
