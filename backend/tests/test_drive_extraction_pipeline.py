@@ -17,7 +17,7 @@ from httpx import AsyncClient
 
 from backend.database import get_pool
 from backend.integrations.google import indexer
-from backend.services import file_extraction, pdf_ocr, source_service
+from backend.services import file_extraction, pdf_ocr, skill_service, source_service
 from backend.tasks import drive_extraction
 from backend.workers import extract_drive_one
 
@@ -610,3 +610,27 @@ async def test_a_folder_that_really_was_emptied_still_mirrors(client: AsyncClien
         UUID(src["id"]),
     )
     assert surviving == 0
+
+
+def test_a_frontmatter_block_written_in_a_doc_survives_google_s_export():
+    """The end of a long chase: a Doc author types `---`, Google exports it as
+    `\\---` with hard-break spaces, and the block stops being frontmatter — so a
+    skill authored in Docs could never declare itself. Repaired at extraction,
+    because the escaping is the exporter's, not the author's."""
+    exported = (
+        '\\---  \nname: "Turbochargers"  \n'
+        'description: "Use when a customer reports boost loss."  \n\\---  \n\nCheck the wastegate.\n'
+    )
+
+    repaired = indexer.unescape_exported_rules(exported)
+
+    meta = skill_service.declared_skill(repaired)
+    assert meta is not None
+    assert meta["name"] == "Turbochargers"
+    assert meta["description"] == "Use when a customer reports boost loss."
+
+
+def test_dashes_inside_a_document_are_left_alone():
+    """Only a line that is nothing but an escaped rule is repaired; an escaped
+    dash inside a sentence is the author's own text."""
+    assert indexer.unescape_exported_rules("a \\--- b\n") == "a \\--- b\n"

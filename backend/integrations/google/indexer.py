@@ -20,6 +20,7 @@ API silently drops Shared Drive items.
 from __future__ import annotations
 
 import logging
+import re
 from datetime import datetime
 from uuid import UUID
 
@@ -97,6 +98,24 @@ async def _target_modified_time(client: httpx.AsyncClient, file_id: str) -> str 
     )
     resp.raise_for_status()
     return resp.json().get("modifiedTime")
+
+
+_ESCAPED_RULE_RE = re.compile(r"^\\(-{3,})[ \t]*$", re.MULTILINE)
+
+
+def unescape_exported_rules(markdown: str) -> str:
+    r"""Undo the escaping Google's markdown export applies to a line of dashes.
+
+    A Doc whose author typed `---` exports as `\---`, because bare dashes would
+    otherwise be a horizontal rule. That escaping is invisible to the author and
+    fatal to a frontmatter block: the delimiters stop being delimiters, so a
+    skill written in a Doc could never declare itself. The line was dashes when
+    it was written, so it is dashes again here.
+
+    Trailing spaces are left alone — Google marks every line with them as a hard
+    break, and the frontmatter parser already ignores them.
+    """
+    return _ESCAPED_RULE_RE.sub(r"\1", markdown)
 
 
 async def _require_readable_folder(client: httpx.AsyncClient, folder_id: str) -> None:
@@ -474,7 +493,7 @@ async def extract_drive_text(
         from ...services.file_extraction import extract_text, is_pdf
 
         if mime == MIME_GOOGLE_DOC:
-            text = await _export(client, file_id, "text/markdown")
+            text = unescape_exported_rules(await _export(client, file_id, "text/markdown"))
         elif mime == MIME_GOOGLE_SHEET:
             # XLSX export keeps every visible sheet (Drive's CSV export drops
             # everything except the first).
