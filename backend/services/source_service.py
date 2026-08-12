@@ -1836,12 +1836,12 @@ async def list_sources(owner_user_id: UUID, user_id: UUID) -> list[dict]:
     from . import skill_service
 
     connected = await list_connected_sources(owner_user_id)
-    # Counted once for the whole listing, and only when something is bound.
-    shelf_counts = (
-        await skill_service.count_shelf_skills(owner_user_id)
-        if any(s["binds_skills"] for s in connected)
-        else {}
-    )
+    # Counted once for the whole listing, and only for bound shelves this scope
+    # owns — a source shared with the scope belongs to someone else's documents.
+    owned_shelves = [
+        s["id"] for s in connected if s["binds_skills"] and s["owner_user_id"] == str(owner_user_id)
+    ]
+    shelf_counts = await skill_service.count_shelf_skills(owner_user_id, owned_shelves)
     for s in connected:
         item = {
             "source": s["id"],
@@ -1859,11 +1859,9 @@ async def list_sources(owner_user_id: UUID, user_id: UUID) -> list[dict]:
             "last_synced_at": s["last_synced_at"],
             "settings": s["settings"],
             "binds_skills": s["binds_skills"],
-            **(
-                shelf_counts.get(s["id"], {"skills": 0, "documents": 0})
-                if s["binds_skills"]
-                else {}
-            ),
+            # Absent for a bound source owned by someone else: the UI shows no
+            # count rather than a zero it cannot stand behind.
+            **shelf_counts.get(s["id"], {}),
         }
         hint = _source_search_hint(s)
         if hint:

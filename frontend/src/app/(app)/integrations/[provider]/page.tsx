@@ -850,13 +850,17 @@ function SourceRow({
             skills, and they are read over there. It sits out here rather than
             beside the name because the name is inside the row's button, and a
             link cannot live in a button. */}
+        {/* No counts for a bound shelf someone else owns — its documents are
+            not ours to count, so it says only that it is one. */}
         {source.binds_skills && (
           <Link
             href="/skills"
             title="Only documents with SKILL.md frontmatter are read as skills"
             className="rounded border border-border px-1.5 py-px text-[10.5px] font-medium text-muted-foreground transition hover:border-[var(--color-brand-300)] hover:text-foreground"
           >
-            {source.skills} of {source.documents} are skills →
+            {source.skills === undefined
+              ? "Skills →"
+              : `${source.skills} of ${source.documents} are skills →`}
           </Link>
         )}
         {/* Browsing is the row itself (and the VFS); syncing is automatic —

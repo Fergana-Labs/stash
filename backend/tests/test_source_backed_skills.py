@@ -313,3 +313,39 @@ async def test_listing_and_reading_agree_on_a_long_frontmatter_block(client: Asy
     assert [s["name"] for s in listed] == ["Turbochargers"]
     assert read is not None
     assert read["body"].strip() == "Check the wastegate."
+
+
+@pytest.mark.asyncio
+async def test_a_shelf_shared_with_you_reports_no_count_rather_than_zero(client: AsyncClient, pool):
+    """Sources can be shared, and a shared one keeps its real owner — so its
+    documents are not the reader's to count. Reporting zero for it would be a
+    confident lie about someone else's shelf, on a shelf that may be full."""
+    _key, owner_id = await _register(client, "shelf_owner")
+    _key2, reader_id = await _register(client, "shelf_reader")
+    source_id = await _skill_shelf(pool, owner_id)
+    await _doc(
+        pool,
+        owner_id,
+        source_id,
+        path="Turbochargers.md",
+        content=_declared("Turbochargers", "Boost loss."),
+    )
+
+    owner_counts = await skill_service.count_shelf_skills(owner_id, [str(source_id)])
+    assert owner_counts[str(source_id)]["skills"] == 1
+
+    # The reader owns no shelves, so nothing is counted on their behalf.
+    assert await skill_service.count_shelf_skills(reader_id, []) == {}
+
+
+@pytest.mark.asyncio
+async def test_an_owned_shelf_with_nothing_in_it_still_reports_itself(client: AsyncClient, pool):
+    """Distinct from the shared case: a shelf you own and haven't filled says
+    "0 of 0", which is true and actionable. Silence there would read as a
+    feature that isn't working."""
+    _key, owner_id = await _register(client)
+    source_id = await _skill_shelf(pool, owner_id)
+
+    counts = await skill_service.count_shelf_skills(owner_id, [str(source_id)])
+
+    assert counts == {str(source_id): {"skills": 0, "documents": 0, "not_skills": []}}

@@ -126,9 +126,15 @@ def declared_skill(content: str | None) -> dict | None:
     return meta
 
 
-async def count_shelf_skills(owner_user_id: UUID) -> dict[str, dict]:
+async def count_shelf_skills(owner_user_id: UUID, source_ids: list[str]) -> dict[str, dict]:
     """Per bound source: how many of its documents are skills, and how many
     documents it holds.
+
+    Counted only for the shelves named in `source_ids` — the ones this scope
+    owns. A source shared with the scope keeps its real owner, so its documents
+    are not ours to count, and reporting zero for it would be a confident lie
+    about someone else's shelf. Seeded at zero so a shelf this scope owns but
+    has not filled still reports itself.
 
     Both numbers, because only the pair is legible. A shelf reporting "3
     skills" when it holds 7 documents is the difference between a working bind
@@ -139,6 +145,11 @@ async def count_shelf_skills(owner_user_id: UUID) -> dict[str, dict]:
     top, and a shelf of scanned catalogues is a lot of bytes to pull for a
     counting query.
     """
+    counts: dict[str, dict] = {
+        source_id: {"skills": 0, "documents": 0, "not_skills": []} for source_id in source_ids
+    }
+    if not source_ids:
+        return counts
     rows = await get_pool().fetch(
         # The head is materialised only for documents that could possibly be
         # skills. A shelf is mostly ordinary material, and pulling a prefix of
@@ -148,15 +159,13 @@ async def count_shelf_skills(owner_user_id: UUID) -> dict[str, dict]:
         "FROM drive_documents d "
         "JOIN user_sources src ON src.id = d.source_id "
         "WHERE d.owner_user_id = $1 AND d.deleted_at IS NULL AND src.binds_skills "
-        "  AND position('/' in d.path) = 0 "
+        "  AND d.source_id = ANY($2::uuid[]) AND position('/' in d.path) = 0 "
         "ORDER BY d.name",
         owner_user_id,
+        source_ids,
     )
-    counts: dict[str, dict] = {}
     for row in rows:
-        tally = counts.setdefault(
-            str(row["source_id"]), {"skills": 0, "documents": 0, "not_skills": []}
-        )
+        tally = counts[str(row["source_id"])]
         tally["documents"] += 1
         if row["head"] is not None and declared_skill(row["head"]) is not None:
             tally["skills"] += 1
