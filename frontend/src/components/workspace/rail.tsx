@@ -1,20 +1,26 @@
 "use client";
 
-import { Fragment, useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState, type ComponentType } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Bot, FolderTree, Inbox, MessagesSquare, GraduationCap, Home, Wrench, Settings } from "lucide-react";
+import { Bot, FolderTree, MessagesSquare, GraduationCap, Home, Wrench, Settings } from "lucide-react";
+import HopperIcon from "@/components/HopperIcon";
 import { cn } from "@/lib/utils";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
 import { useWorkspace, type RailSection } from "@/lib/workspace-store";
 import type { User } from "@/lib/types";
 
-type RailItem = { key: RailSection; label: string; icon: typeof Bot; match: (p: string) => boolean };
+type RailItem = {
+  key: RailSection;
+  label: string;
+  icon: ComponentType<{ className?: string }>;
+  match: (p: string) => boolean;
+};
 
 // Primary sections — each opens its own explorer panel (see workspace-shell).
 const PRIMARY: RailItem[] = [
   { key: "home", label: "Home", icon: Home, match: (p) => p === "/" },
-  { key: "hopper", label: "Hopper", icon: Inbox, match: (p) => p.startsWith("/hopper") },
+  { key: "hopper", label: "Hopper", icon: HopperIcon, match: (p) => p.startsWith("/hopper") },
   { key: "files", label: "VFS", icon: FolderTree, match: (p) => p === "/files" || p.startsWith("/f/") || p.startsWith("/p/") || p.startsWith("/folders/") || p.startsWith("/tables/") },
   { key: "sessions", label: "Sessions", icon: MessagesSquare, match: (p) => p.startsWith("/sessions") || p.startsWith("/session-folders") },
   { key: "skills", label: "Skills", icon: GraduationCap, match: (p) => p.startsWith("/skills") },
