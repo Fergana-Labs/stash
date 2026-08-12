@@ -228,32 +228,18 @@ describe("SkillsPage", () => {
     warn.mockRestore();
   });
 
-  it("shows a source-backed skill as read-only, with nowhere to click through to", async () => {
-    // A skill read from a bound Drive folder has no folder page here, and no
-    // checkbox: it is edited upstream, so every folder verb — open, select,
-    // bulk delete — has to be absent rather than lead somewhere broken.
-    vi.mocked(listSkills).mockResolvedValue([
-      {
-        backing: "source",
-        folder_id: null,
-        source_doc_id: "doc-1",
-        name: "Turbochargers",
-        description: "Use when a customer reports boost loss.",
-        when_to_use: "",
-        version: "",
-        mcp_exposed: false,
-        file_count: 1,
-        updated_at: "2026-08-11T00:00:00Z",
-        published: null,
-      },
-    ]);
+  it("opens a source-backed skill on its own read-only page", async () => {
+    // Read-only is about editing, not about visibility: you must always be
+    // able to open a skill and read exactly what an agent will be handed.
+    // It goes to the document view, not a folder page it hasn't got.
+    vi.mocked(listSkills).mockResolvedValue([sourceSkill({ source_doc_id: "doc-1" })]);
 
     render(<SkillsPage />);
 
-    const titles = await screen.findAllByText("Turbochargers");
-    expect(titles.length).toBeGreaterThan(0);
-    for (const title of titles) {
-      expect(title.closest("a")).toBeNull();
+    const links = (await screen.findAllByText("Turbochargers")).map((el) => el.closest("a"));
+    expect(links.length).toBeGreaterThan(0);
+    for (const link of links) {
+      expect(link).toHaveAttribute("href", "/skills/source/doc-1");
     }
     expect(screen.getAllByText("Drive").length).toBeGreaterThan(0);
     expect(

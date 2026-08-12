@@ -1,0 +1,76 @@
+"use client";
+
+import Link from "next/link";
+import { useEffect, useState } from "react";
+import Markdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+
+import { useBreadcrumbs } from "@/components/BreadcrumbContext";
+import { FileBrowserSkeleton } from "@/components/SkeletonStates";
+import { readSourceSkill, type SourceSkillRead } from "@/lib/api";
+
+export default function SourceSkillClient({ docId }: { docId: string }) {
+  const [skill, setSkill] = useState<SourceSkillRead | null>(null);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    readSourceSkill(docId)
+      .then(setSkill)
+      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load this skill"));
+  }, [docId]);
+
+  useBreadcrumbs(
+    [{ label: "Skills" }, { label: skill?.name ?? "Skill" }],
+    `source-skill/${docId}`
+  );
+
+  if (error) {
+    return (
+      <div className="mx-auto max-w-[820px] px-12 pt-8">
+        <div className="rounded-lg border border-red-300/40 bg-red-500/10 px-4 py-2 text-[13px] text-red-500">
+          {error}
+        </div>
+      </div>
+    );
+  }
+
+  if (!skill) return <FileBrowserSkeleton />;
+
+  return (
+    <div className="scroll-thin flex-1 overflow-y-auto">
+      <div className="mx-auto max-w-[820px] px-12 pb-20 pt-8">
+        <Link href="/skills" className="text-[12.5px] text-muted-foreground hover:text-foreground">
+          ← Skills
+        </Link>
+
+        <h1 className="m-0 mt-3 font-display text-[21px] font-bold tracking-tight text-foreground">
+          {skill.name}
+        </h1>
+        {skill.description && (
+          <p className="mt-1.5 text-[13px] leading-[1.55] text-dim">{skill.description}</p>
+        )}
+
+        <div className="mt-3 flex items-center gap-2 text-[11.5px] text-muted-foreground">
+          <span className="rounded border border-border px-1.5 py-px font-medium">Drive</span>
+          <span>
+            Read from <span className="text-foreground">{skill.source_name}</span>. Edit it in
+            Google Drive — changes sync back here.
+          </span>
+        </div>
+
+        {skill.has_instructions ? (
+          <article className="prose prose-sm markdown-content mt-6 text-foreground">
+            <Markdown remarkPlugins={[remarkGfm]}>{skill.body}</Markdown>
+          </article>
+        ) : (
+          // Not an error: the sync records the document before its body is
+          // extracted, so a skill can exist for minutes with nothing to read.
+          <div className="mt-6 rounded-lg border border-border bg-surface px-4 py-3 text-[13px] text-muted-foreground">
+            This document hasn&apos;t finished ingesting yet, so there are no instructions to show.
+            It&apos;ll fill in after the next sync.
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

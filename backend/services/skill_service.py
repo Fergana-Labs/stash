@@ -223,37 +223,49 @@ async def list_skills(owner_user_id: UUID, user_id: UUID) -> list[dict]:
     return out
 
 
-async def _read_source_skill(match: dict) -> dict:
+async def read_source_skill(owner_user_id: UUID, doc_id: UUID, user_id: UUID) -> dict | None:
     """Read a source-backed skill: the upstream document is the instructions.
 
     `drive_documents.content` is NULL until extraction settles, so a skill read
     mid-ingest is a draft — the same shape a folder skill with no SKILL.md
     takes — and the callers that need instructions refuse on that flag.
     """
+    readable = permission_service.readable_content_condition("source", "src", 3)
     row = await get_pool().fetchrow(
-        "SELECT content, updated_at, extraction_status FROM drive_documents WHERE id = $1",
-        UUID(match["source_doc_id"]),
+        "SELECT d.id, d.name, d.content, d.updated_at, d.extraction_status, "
+        "  src.display_name AS source_name "
+        "FROM drive_documents d "
+        "JOIN user_sources src ON src.id = d.source_id "
+        "WHERE d.owner_user_id = $1 AND d.id = $2 AND d.deleted_at IS NULL "
+        f"  AND src.binds_skills AND position('/' in d.path) = 0 AND {readable}",
+        owner_user_id,
+        doc_id,
+        user_id,
     )
+    if row is None:
+        return None
     body = row["content"] or ""
     has_instructions = row["extraction_status"] == "done" and bool(body)
+    name = drive_skill_name(row["name"])
     return {
         "folder_id": None,
-        "source_doc_id": match["source_doc_id"],
+        "source_doc_id": str(row["id"]),
         "backing": "source",
-        "name": match["name"],
-        "description": match["description"],
-        "when_to_use": match["when_to_use"],
+        "source_name": row["source_name"],
+        "name": name,
+        "description": drive_skill_description(row["content"]),
+        "when_to_use": "",
         "has_instructions": has_instructions,
         "body": body,
         "files": [
             {
-                "id": match["source_doc_id"],
-                "name": match["name"],
+                "id": str(row["id"]),
+                "name": row["name"],
                 "updated_at": row["updated_at"],
                 "content": body,
             }
         ],
-        "combined": f"# {match['name']}\n\n{body}" if has_instructions else "",
+        "combined": f"# {name}\n\n{body}" if has_instructions else "",
     }
 
 
@@ -277,7 +289,7 @@ async def read_skill(owner_user_id: UUID, name: str, user_id: UUID) -> dict | No
         return None
 
     if match["backing"] == "source":
-        return await _read_source_skill(match)
+        return await read_source_skill(owner_user_id, UUID(match["source_doc_id"]), user_id)
 
     folder_id = match["folder_id"]
     pages = await pool.fetch(

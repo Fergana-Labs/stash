@@ -587,10 +587,13 @@ function SearchGlyph() {
 }
 
 
-// Null for a source-backed skill: there is no folder page to open, because
-// the content is edited in Drive rather than here.
-function skillHref(skill: Skill): string | null {
-  return skill.backing === "folder" ? `/skills/folder/${skill.folder_id}` : null;
+// Both kinds open — a folder skill into its browsable folder, a source-backed
+// one into a read-only view of the document behind it. Read-only is about
+// editing, never about whether you can see what an agent will be told.
+function skillHref(skill: Skill): string {
+  return skill.backing === "folder"
+    ? `/skills/folder/${skill.folder_id}`
+    : `/skills/source/${skill.source_doc_id}`;
 }
 
 // Says where a skill's content is edited, on the skills that aren't edited
@@ -775,15 +778,6 @@ function SkillListRow({
     </>
   );
 
-  // A skill managed upstream has no page here to open, so its row is a plain
-  // box rather than a link that goes nowhere.
-  if (href === null) {
-    return (
-      <div className={className} style={style}>
-        {row}
-      </div>
-    );
-  }
   return (
     <Link href={href} className={className} style={style}>
       {row}
@@ -921,7 +915,6 @@ function SkillQuickCard({
     </>
   );
 
-  if (href === null) return <div className={className}>{tile}</div>;
   return (
     <Link href={href} className={className}>
       {tile}

@@ -1487,6 +1487,21 @@ export type Skill =
 // The editable kind, for the verbs that only apply to a real folder.
 export type FolderBackedSkill = Extract<Skill, { backing: "folder" }>;
 
+// One source-backed skill, read: its document IS the instructions.
+export interface SourceSkillRead {
+  source_doc_id: string;
+  name: string;
+  description: string;
+  source_name: string;
+  has_instructions: boolean;
+  body: string;
+  files: { id: string; name: string; updated_at: string; content: string }[];
+}
+
+export async function readSourceSkill(docId: string): Promise<SourceSkillRead> {
+  return apiFetch(`${ME}/source-skills/${docId}`);
+}
+
 // A skill's identity across surfaces that only need to tell skills apart —
 // pins, selection, React keys.
 export function skillKey(skill: Skill): string {
