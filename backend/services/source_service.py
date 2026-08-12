@@ -1833,7 +1833,16 @@ async def list_sources(owner_user_id: UUID, user_id: UUID) -> list[dict]:
             "display_name": "Session transcripts",
         },
     ]
-    for s in await list_connected_sources(owner_user_id):
+    from . import skill_service
+
+    connected = await list_connected_sources(owner_user_id)
+    # Counted once for the whole listing, and only when something is bound.
+    shelf_counts = (
+        await skill_service.count_shelf_skills(owner_user_id)
+        if any(s["binds_skills"] for s in connected)
+        else {}
+    )
+    for s in connected:
         item = {
             "source": s["id"],
             "provider": SOURCE_TYPE_PROVIDER[s["source_type"]],
@@ -1850,6 +1859,11 @@ async def list_sources(owner_user_id: UUID, user_id: UUID) -> list[dict]:
             "last_synced_at": s["last_synced_at"],
             "settings": s["settings"],
             "binds_skills": s["binds_skills"],
+            **(
+                shelf_counts.get(s["id"], {"skills": 0, "documents": 0})
+                if s["binds_skills"]
+                else {}
+            ),
         }
         hint = _source_search_hint(s)
         if hint:

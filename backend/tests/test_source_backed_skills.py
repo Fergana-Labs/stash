@@ -1,10 +1,14 @@
 """Skills that live in a connected source instead of the files tree.
 
-A Drive folder marked `binds_skills` is a shelf: each document sitting directly
-in it is one skill, read straight from `drive_documents`. These tests encode the
-two properties that made us choose this over copying documents into the files
-tree — the upstream stays the single source of truth, and membership stays
-explicit the way 0181 requires.
+A Drive folder marked `binds_skills` is a shelf. What makes a document on that
+shelf a skill is the same thing that makes any other file a skill: it carries a
+valid SKILL.md frontmatter block. Nothing is inferred from titles or first
+lines — the folder holds reference material and half-written notes too, and a
+rule that always succeeds cannot tell those from a skill.
+
+These tests also pin the two properties that made binding beat copying: the
+upstream stays the single source of truth, and membership stays explicit the
+way 0181 requires.
 """
 
 from uuid import UUID
@@ -15,6 +19,10 @@ from httpx import AsyncClient
 from backend.services import skill_service, source_service
 
 from .conftest import unique_name
+
+
+def _declared(name: str, description: str, body: str = "Do the thing.") -> str:
+    return f'---\nname: "{name}"\ndescription: "{description}"\n---\n\n{body}\n'
 
 
 async def _register(client: AsyncClient, prefix: str = "srcskill") -> tuple[str, UUID]:
@@ -68,15 +76,12 @@ async def _doc(
 
 
 @pytest.mark.asyncio
-async def test_document_title_and_first_prose_line_become_the_skill_metadata(
+async def test_a_document_declares_itself_a_skill_through_its_frontmatter(
     client: AsyncClient, pool
 ):
-    """The authoring contract we ask a Drive-authoring team to follow.
-
-    A Google Doc has no frontmatter, so the skill's two required fields have to
-    come out of the document: its title names the skill, and its first prose
-    line says when to reach for it. The exported Title style lands as an `#`
-    heading that merely repeats the name, so it cannot be the description."""
+    """The name and description an agent routes on come from the document's own
+    frontmatter — the same block, and the same validator, as every other skill
+    in Stash. One definition of 'skill', not one per backing."""
     _key, owner_id = await _register(client)
     source_id = await _skill_shelf(pool, owner_id)
     await _doc(
@@ -84,7 +89,11 @@ async def test_document_title_and_first_prose_line_become_the_skill_metadata(
         owner_id,
         source_id,
         path="Turbochargers.md",
-        content="# Turbochargers\n\nUse when a customer reports boost loss.\n\nSteps: ...",
+        content=_declared(
+            "Turbochargers",
+            "Use when a customer reports boost loss.",
+            "Check the wastegate first.",
+        ),
     )
 
     skills = await skill_service.list_skills(owner_id, owner_id)
@@ -96,38 +105,77 @@ async def test_document_title_and_first_prose_line_become_the_skill_metadata(
 
 
 @pytest.mark.asyncio
-async def test_a_document_still_extracting_is_a_draft_not_an_invented_description(
+async def test_an_ordinary_document_on_the_shelf_is_not_a_skill(client: AsyncClient, pool):
+    """The failure this rule exists to stop. A shelf holds reference material,
+    meeting notes and drafts beside its skills, and an earlier version derived a
+    name and description from whatever it found — so a document containing the
+    word 'weeeeee' told an agent when to reach for it."""
+    _key, owner_id = await _register(client)
+    source_id = await _skill_shelf(pool, owner_id)
+    await _doc(pool, owner_id, source_id, path="Scratch notes.md", content="weeeeee\n")
+    await _doc(
+        pool,
+        owner_id,
+        source_id,
+        path="Turbochargers.md",
+        content=_declared("Turbochargers", "Use when a customer reports boost loss."),
+    )
+
+    skills = await skill_service.list_skills(owner_id, owner_id)
+
+    assert [s["name"] for s in skills] == ["Turbochargers"]
+
+
+@pytest.mark.asyncio
+async def test_frontmatter_that_would_be_rejected_anywhere_else_is_rejected_here(
     client: AsyncClient, pool
 ):
-    """Extraction lands minutes after the sync walk records the row. Until it
-    does there is no honest description to show, and guessing one would be a
-    routing instruction we made up. It lists as a draft instead — the same
-    shape a folder skill with no SKILL.md takes."""
+    """A blank description fails `validate_skill_md` on a folder skill, so it
+    has to fail here too — otherwise the backing decides how strict we are."""
+    _key, owner_id = await _register(client)
+    source_id = await _skill_shelf(pool, owner_id)
+    await _doc(
+        pool,
+        owner_id,
+        source_id,
+        path="Half written.md",
+        content='---\nname: "Half written"\ndescription: ""\n---\n\nTBD\n',
+    )
+
+    assert await skill_service.list_skills(owner_id, owner_id) == []
+
+
+@pytest.mark.asyncio
+async def test_a_document_still_extracting_is_not_yet_a_skill(client: AsyncClient, pool):
+    """Extraction lands minutes after the sync walk records the row. Until there
+    is a document to read, nothing has declared itself a skill — it appears once
+    its body arrives, rather than as an empty placeholder."""
     _key, owner_id = await _register(client)
     source_id = await _skill_shelf(pool, owner_id)
     await _doc(pool, owner_id, source_id, path="Brake Shoes.md", content=None, status="pending")
 
-    skills = await skill_service.list_skills(owner_id, owner_id)
-
-    assert skills[0]["name"] == "Brake Shoes"
-    assert skills[0]["description"] == ""
-    assert skills[0]["has_instructions"] is False
+    assert await skill_service.list_skills(owner_id, owner_id) == []
 
 
 @pytest.mark.asyncio
 async def test_only_documents_sitting_directly_in_the_shelf_are_skills(client: AsyncClient, pool):
-    """A nested document is reference material belonging to a shelf, not a
-    shelf of its own — otherwise every attachment becomes a skill the agent
-    has to route past."""
+    """A nested document is reference material belonging to a shelf, not a shelf
+    of its own — even when it declares itself."""
     _key, owner_id = await _register(client)
     source_id = await _skill_shelf(pool, owner_id)
-    await _doc(pool, owner_id, source_id, path="Turbochargers.md", content="Boost loss.")
+    await _doc(
+        pool,
+        owner_id,
+        source_id,
+        path="Turbochargers.md",
+        content=_declared("Turbochargers", "Boost loss."),
+    )
     await _doc(
         pool,
         owner_id,
         source_id,
         path="Turbochargers/torque-specs.md",
-        content="Torque specs.",
+        content=_declared("Torque specs", "Torque values."),
     )
 
     skills = await skill_service.list_skills(owner_id, owner_id)
@@ -138,11 +186,16 @@ async def test_only_documents_sitting_directly_in_the_shelf_are_skills(client: A
 @pytest.mark.asyncio
 async def test_an_unbound_drive_folder_contributes_no_skills(client: AsyncClient, pool):
     """Membership is a deliberate flag on the binding, not a consequence of
-    having documents. Connecting a Drive folder must never quietly fill an
-    agent's skill catalogue with whatever is in it."""
+    holding documents that happen to carry frontmatter."""
     _key, owner_id = await _register(client)
     source_id = await _skill_shelf(pool, owner_id, binds_skills=False)
-    await _doc(pool, owner_id, source_id, path="Notes.md", content="Some notes.")
+    await _doc(
+        pool,
+        owner_id,
+        source_id,
+        path="Notes.md",
+        content=_declared("Notes", "Use for notes."),
+    )
 
     assert await skill_service.list_skills(owner_id, owner_id) == []
 
@@ -151,11 +204,19 @@ async def test_an_unbound_drive_folder_contributes_no_skills(client: AsyncClient
 async def test_a_document_vanishing_upstream_cannot_demote_the_shelf(client: AsyncClient, pool):
     """The failure 0181 was written to stop, reached through a new door: a
     document removed in Drive drops that one skill and leaves the binding and
-    its siblings untouched. Tidying a Drive folder can never empty the shelf."""
+    its siblings untouched."""
     _key, owner_id = await _register(client)
     source_id = await _skill_shelf(pool, owner_id)
-    gone = await _doc(pool, owner_id, source_id, path="Retired.md", content="Retired.")
-    await _doc(pool, owner_id, source_id, path="Turbochargers.md", content="Boost loss.")
+    gone = await _doc(
+        pool, owner_id, source_id, path="Retired.md", content=_declared("Retired", "Old.")
+    )
+    await _doc(
+        pool,
+        owner_id,
+        source_id,
+        path="Turbochargers.md",
+        content=_declared("Turbochargers", "Boost loss."),
+    )
 
     await pool.execute("UPDATE drive_documents SET deleted_at = now() WHERE id = $1", gone)
 
@@ -166,24 +227,36 @@ async def test_a_document_vanishing_upstream_cannot_demote_the_shelf(client: Asy
 
 
 @pytest.mark.asyncio
-async def test_reading_a_source_backed_skill_returns_the_upstream_document(
+async def test_reading_a_skill_returns_the_document_without_its_frontmatter(
     client: AsyncClient, pool
 ):
     """The point of binding rather than copying: the agent loads what Drive
-    holds right now, with no snapshot in between to drift."""
+    holds right now. Frontmatter is metadata, so the body it reads is the
+    instructions alone — the same split a folder skill gets."""
     _key, owner_id = await _register(client)
     source_id = await _skill_shelf(pool, owner_id)
-    await _doc(
+    doc_id = await _doc(
         pool,
         owner_id,
         source_id,
         path="Turbochargers.md",
-        content="Use on boost loss.\n\nCheck the wastegate first.",
+        content=_declared("Turbochargers", "Boost loss.", "Check the wastegate first."),
     )
 
-    skill = await skill_service.read_skill(owner_id, "Turbochargers", owner_id)
+    skill = await skill_service.read_source_skill(owner_id, doc_id, owner_id)
 
     assert skill is not None
-    assert skill["backing"] == "source"
-    assert "Check the wastegate first." in skill["body"]
-    assert skill["has_instructions"] is True
+    assert skill["name"] == "Turbochargers"
+    assert skill["body"].strip() == "Check the wastegate first."
+    assert "description:" not in skill["body"]
+
+
+@pytest.mark.asyncio
+async def test_reading_an_undeclared_document_is_not_found(client: AsyncClient, pool):
+    """It is not a broken skill; it is a file that happens to sit on the shelf,
+    so there is no skill page for it to open."""
+    _key, owner_id = await _register(client)
+    source_id = await _skill_shelf(pool, owner_id)
+    doc_id = await _doc(pool, owner_id, source_id, path="Scratch.md", content="weeeeee\n")
+
+    assert await skill_service.read_source_skill(owner_id, doc_id, owner_id) is None

@@ -97,43 +97,63 @@ def validate_skill_md(md: str) -> None:
         )
 
 
-_SKILL_DOC_EXTENSIONS = (".md", ".txt", ".pdf", ".docx")
+def declared_skill(content: str | None) -> dict | None:
+    """The frontmatter of a document that declares itself a skill, or None.
 
-
-def drive_skill_name(doc_name: str) -> str:
-    """Google Docs arrive already titled; uploads arrive with a filename."""
-    for ext in _SKILL_DOC_EXTENSIONS:
-        if doc_name.lower().endswith(ext):
-            return doc_name[: -len(ext)]
-    return doc_name
-
-
-def drive_skill_description(content: str | None) -> str:
-    """The document's first prose line, which is its routing description.
-
-    A source-backed skill has no SKILL.md to carry frontmatter, so the two
-    required fields come from the document itself. Headings are skipped: a
-    Google Doc written with a Title style exports as an `# ...` line, which
-    repeats the name instead of saying when to use the skill. Blank while the
-    body is still extracting — that lists the skill as a draft rather than
-    inventing a description for it.
+    A document in a bound folder is a skill only if it carries the same
+    frontmatter block every other SKILL.md carries, and passes the same
+    validator. Nothing is derived from its title or its first line: a rule that
+    always succeeds cannot tell a skill from a shopping list, and the folder
+    holds both. Everything else in there stays ordinary source material —
+    indexed, readable, searchable, and out of the agent's catalogue.
     """
-    for line in (content or "").splitlines():
-        stripped = line.strip()
-        if stripped and not stripped.startswith("#"):
-            return stripped
-    return ""
+    try:
+        validate_skill_md(content or "")
+    except ValueError:
+        return None
+    meta, _body = parse_frontmatter(content or "")
+    return meta
+
+
+async def count_shelf_skills(owner_user_id: UUID) -> dict[str, dict]:
+    """Per bound source: how many of its documents are skills, and how many
+    documents it holds.
+
+    Both numbers, because only the pair is legible. A shelf reporting "3
+    skills" when it holds 7 documents is the difference between a working bind
+    and four documents whose authors forgot the frontmatter block — and
+    without it, a document that isn't a skill just silently isn't there.
+
+    Reads a prefix of each document rather than its body: frontmatter is at the
+    top, and a shelf of scanned catalogues is a lot of bytes to pull for a
+    counting query.
+    """
+    rows = await get_pool().fetch(
+        "SELECT d.source_id, left(d.content, 4096) AS head "
+        "FROM drive_documents d "
+        "JOIN user_sources src ON src.id = d.source_id "
+        "WHERE d.owner_user_id = $1 AND d.deleted_at IS NULL AND src.binds_skills "
+        "  AND position('/' in d.path) = 0",
+        owner_user_id,
+    )
+    counts: dict[str, dict] = {}
+    for row in rows:
+        tally = counts.setdefault(str(row["source_id"]), {"skills": 0, "documents": 0})
+        tally["documents"] += 1
+        if declared_skill(row["head"]) is not None:
+            tally["skills"] += 1
+    return counts
 
 
 async def list_source_skills(owner_user_id: UUID, user_id: UUID) -> list[dict]:
-    """Every document sitting directly in a skill-binding source, as a skill.
+    """Every document in a skill-binding source that declares itself a skill.
 
     Immediate children only: a document nested inside a subfolder is material
     belonging to the shelf, not a shelf of its own.
     """
     readable = permission_service.readable_content_condition("source", "src", 2)
     rows = await get_pool().fetch(
-        "SELECT d.id, d.name, d.content, d.updated_at, d.extraction_status "
+        "SELECT d.id, d.name, d.content, d.updated_at "
         "FROM drive_documents d "
         "JOIN user_sources src ON src.id = d.source_id "
         "WHERE d.owner_user_id = $1 AND d.deleted_at IS NULL AND src.binds_skills "
@@ -142,24 +162,28 @@ async def list_source_skills(owner_user_id: UUID, user_id: UUID) -> list[dict]:
         owner_user_id,
         user_id,
     )
+    declared = [(r, declared_skill(r["content"])) for r in rows]
     return [
         {
             "folder_id": None,
             "source_doc_id": str(r["id"]),
             "backing": "source",
-            "name": drive_skill_name(r["name"]),
-            "description": drive_skill_description(r["content"]),
-            "when_to_use": "",
-            "version": "",
-            "mcp_exposed": False,
+            "name": meta["name"],
+            "description": meta["description"],
+            "when_to_use": meta.get("when_to_use", ""),
+            "version": meta.get("version", ""),
+            "mcp_exposed": bool(meta.get("mcp_exposed", False)),
             "file_count": 1,
             "updated_at": r["updated_at"],
-            "has_instructions": r["extraction_status"] == "done" and bool(r["content"]),
+            # A declared skill always has its instructions: the same document
+            # carries the frontmatter and the body.
+            "has_instructions": True,
             # Publishing attaches a `skills` row to a folder id, which a
             # source-backed skill does not have. Shared upstream, not from here.
             "published": None,
         }
-        for r in rows
+        for r, meta in declared
+        if meta is not None
     ]
 
 
@@ -226,14 +250,13 @@ async def list_skills(owner_user_id: UUID, user_id: UUID) -> list[dict]:
 async def read_source_skill(owner_user_id: UUID, doc_id: UUID, user_id: UUID) -> dict | None:
     """Read a source-backed skill: the upstream document is the instructions.
 
-    `drive_documents.content` is NULL until extraction settles, so a skill read
-    mid-ingest is a draft — the same shape a folder skill with no SKILL.md
-    takes — and the callers that need instructions refuse on that flag.
+    A document that does not declare itself a skill reads as None — it is not
+    a broken skill, it is a file that happens to live on the shelf, and the
+    caller 404s rather than dressing it up as one.
     """
     readable = permission_service.readable_content_condition("source", "src", 3)
     row = await get_pool().fetchrow(
-        "SELECT d.id, d.name, d.content, d.updated_at, d.extraction_status, "
-        "  src.display_name AS source_name "
+        "SELECT d.id, d.name, d.content, d.updated_at, src.display_name AS source_name "
         "FROM drive_documents d "
         "JOIN user_sources src ON src.id = d.source_id "
         "WHERE d.owner_user_id = $1 AND d.id = $2 AND d.deleted_at IS NULL "
@@ -244,18 +267,19 @@ async def read_source_skill(owner_user_id: UUID, doc_id: UUID, user_id: UUID) ->
     )
     if row is None:
         return None
-    body = row["content"] or ""
-    has_instructions = row["extraction_status"] == "done" and bool(body)
-    name = drive_skill_name(row["name"])
+    meta = declared_skill(row["content"])
+    if meta is None:
+        return None
+    _meta, body = parse_frontmatter(row["content"] or "")
     return {
         "folder_id": None,
         "source_doc_id": str(row["id"]),
         "backing": "source",
         "source_name": row["source_name"],
-        "name": name,
-        "description": drive_skill_description(row["content"]),
-        "when_to_use": "",
-        "has_instructions": has_instructions,
+        "name": meta["name"],
+        "description": meta["description"],
+        "when_to_use": meta.get("when_to_use", ""),
+        "has_instructions": True,
         "body": body,
         "files": [
             {
@@ -265,7 +289,7 @@ async def read_source_skill(owner_user_id: UUID, doc_id: UUID, user_id: UUID) ->
                 "content": body,
             }
         ],
-        "combined": f"# {name}\n\n{body}" if has_instructions else "",
+        "combined": f"# {meta['name']}\n\n{body}",
     }
 
 

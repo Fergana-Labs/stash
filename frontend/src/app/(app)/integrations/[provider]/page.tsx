@@ -842,9 +842,10 @@ function SourceRow({
         {source.binds_skills && (
           <Link
             href="/skills"
+            title="Only documents with SKILL.md frontmatter are read as skills"
             className="rounded border border-border px-1.5 py-px text-[10.5px] font-medium text-muted-foreground transition hover:border-[var(--color-brand-300)] hover:text-foreground"
           >
-            Skills →
+            {source.skills} of {source.documents} are skills →
           </Link>
         )}
         {/* Browsing is the row itself (and the VFS); syncing is automatic —

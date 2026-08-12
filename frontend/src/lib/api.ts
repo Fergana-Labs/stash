@@ -306,8 +306,12 @@ export interface Source {
   search_hint?: string | null;
   settings?: Record<string, unknown> | null;
   // True when this picked Drive folder is a shelf of skills: the documents
-  // sitting directly in it are read as skills, live from the source.
+  // sitting directly in it that declare themselves skills are read as such,
+  // live from the source. `skills` and `documents` count the pair, so a
+  // document missing its frontmatter shows up as a gap rather than vanishing.
   binds_skills?: boolean;
+  skills?: number;
+  documents?: number;
 }
 
 export interface SourceStatus extends Source {
