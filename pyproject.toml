@@ -21,7 +21,11 @@ dependencies = [
     "httpx>=0.27.0",
     "rich>=13.0.0",
     "questionary>=2.0.0",
-    "mcp>=1.23.0",
+    # mcp 2.0 moved FastMCP to mcp.server.mcpserver and dropped
+    # streamablehttp_client, which cli/mcp_server.py and the backend's
+    # Granola/PostHog clients both import. Unpinned, a fresh install resolved
+    # to 2.0.0 and stash-mcp died on import. Held at 1.x until both are ported.
+    "mcp>=1.23.0,<2",
     "filelock>=3.12",
 ]
 

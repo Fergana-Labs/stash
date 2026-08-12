@@ -18,7 +18,10 @@ pypdf>=4.0
 anthropic>=0.40.0
 nh3>=0.2
 claude-agent-sdk>=0.1.50
-mcp>=1.23.0
+# Held at 1.x: mcp 2.0 dropped streamablehttp_client, which the Granola and
+# PostHog clients import. Prod already runs 1.x — this stops the next fresh
+# resolve from silently upgrading and breaking those syncs at import time.
+mcp>=1.23.0,<2
 celery[redis]>=5.4
 duckdb>=1.1
 redis>=5.0
