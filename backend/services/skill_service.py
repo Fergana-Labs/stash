@@ -196,9 +196,10 @@ async def list_source_skills(owner_user_id: UUID, user_id: UUID) -> list[dict]:
             "mcp_exposed": bool(meta.get("mcp_exposed", False)),
             "file_count": 1,
             "updated_at": r["updated_at"],
-            # A declared skill always has its instructions: the same document
-            # carries the frontmatter and the body.
-            "has_instructions": True,
+            # A document can declare itself and then say nothing. Handing an
+            # agent an empty skill is the failure the draft flag exists to
+            # stop, so a frontmatter block with no body below it is a draft.
+            "has_instructions": bool(parse_frontmatter(r["head"])[1].strip()),
             # Publishing attaches a `skills` row to a folder id, which a
             # source-backed skill does not have. Shared upstream, not from here.
             "published": None,
@@ -301,7 +302,7 @@ async def read_source_skill(owner_user_id: UUID, doc_id: UUID, user_id: UUID) ->
         "name": meta["name"],
         "description": meta["description"],
         "when_to_use": meta.get("when_to_use", ""),
-        "has_instructions": True,
+        "has_instructions": bool(body.strip()),
         "body": body,
         "files": [
             {
@@ -311,7 +312,7 @@ async def read_source_skill(owner_user_id: UUID, doc_id: UUID, user_id: UUID) ->
                 "content": body,
             }
         ],
-        "combined": f"# {meta['name']}\n\n{body}",
+        "combined": f"# {meta['name']}\n\n{body}" if body.strip() else "",
     }
 
 

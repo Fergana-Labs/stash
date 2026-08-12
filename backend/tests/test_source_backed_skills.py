@@ -260,3 +260,29 @@ async def test_reading_an_undeclared_document_is_not_found(client: AsyncClient, 
     doc_id = await _doc(pool, owner_id, source_id, path="Scratch.md", content="weeeeee\n")
 
     assert await skill_service.read_source_skill(owner_id, doc_id, owner_id) is None
+
+
+@pytest.mark.asyncio
+async def test_a_declaration_with_nothing_under_it_is_a_draft(client: AsyncClient, pool):
+    """Found by running the agent's own tools: a Doc holding only a frontmatter
+    block declared a skill with no instructions in it, and `read_skill` handed
+    the agent an empty document instead of the refusal the draft flag exists to
+    trigger. Declaring yourself a skill is not the same as being one."""
+    _key, owner_id = await _register(client)
+    source_id = await _skill_shelf(pool, owner_id)
+    doc_id = await _doc(
+        pool,
+        owner_id,
+        source_id,
+        path="Turbochargers.md",
+        content='---\nname: "Turbochargers"\ndescription: "Boost loss."\n---\n',
+    )
+
+    listed = await skill_service.list_skills(owner_id, owner_id)
+    assert [s["name"] for s in listed] == ["Turbochargers"]
+    assert listed[0]["has_instructions"] is False
+
+    skill = await skill_service.read_source_skill(owner_id, doc_id, owner_id)
+    assert skill is not None
+    assert skill["has_instructions"] is False
+    assert skill["combined"] == ""

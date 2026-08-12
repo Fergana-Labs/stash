@@ -338,6 +338,13 @@ def _skill_app_url(folder_id: object) -> str:
     return f"{settings.PUBLIC_URL.rstrip('/')}/skills/folder/{folder_id}"
 
 
+def _source_skill_app_url(doc_id: object) -> str:
+    """A source-backed skill has no folder, so it has its own read-only page.
+    Without this the model hands out /skills/folder/None — the exact wrong-URL
+    failure `_skill_app_url` exists to prevent."""
+    return f"{settings.PUBLIC_URL.rstrip('/')}/skills/source/{doc_id}"
+
+
 @tool(
     "list_skills",
     "List skills (folders with SKILL.md) in this Stash account, with their "
@@ -358,7 +365,14 @@ async def _list_skills(args: dict) -> dict:
             "folder_id": s["folder_id"],
             "files": s["file_count"],
             "published": s["published"],
-            "app_url": _skill_app_url(s["folder_id"]),
+            # Named so the model can say where a skill comes from, and so two
+            # shelves holding a same-named skill are distinguishable to it.
+            "shelf": s["source_name"],
+            "app_url": (
+                _skill_app_url(s["folder_id"])
+                if s["backing"] == "folder"
+                else _source_skill_app_url(s["source_doc_id"])
+            ),
         }
         for s in skills
     ]
@@ -377,19 +391,55 @@ async def _list_skills(args: dict) -> dict:
 async def _read_skill(args: dict) -> dict:
     owner_user_id = _current_scope()
     user_id = _current_user()
-    skill = await skill_service.read_skill(owner_user_id, args.get("name", ""), user_id)
+    name = args.get("name", "")
+
+    # Two shelves can hold a skill of the same name. Picking one silently is a
+    # wrong answer that looks like a right one, so the ambiguity comes back to
+    # the model with the shelves to choose between.
+    matches = [
+        s for s in await skill_service.list_skills(owner_user_id, user_id) if s["name"] == name
+    ]
+    if len(matches) > 1:
+        return _text_result(
+            json.dumps(
+                {
+                    "error": "ambiguous",
+                    "name": name,
+                    "hint": "More than one skill has this name. Read one by its url.",
+                    "candidates": [
+                        {
+                            "shelf": m["source_name"] or "your files",
+                            "description": m["description"],
+                            "url": (
+                                _skill_app_url(m["folder_id"])
+                                if m["backing"] == "folder"
+                                else _source_skill_app_url(m["source_doc_id"])
+                            ),
+                        }
+                        for m in matches
+                    ],
+                }
+            )
+        )
+
+    skill = await skill_service.read_skill(owner_user_id, name, user_id)
     if not skill:
         return _text_result(json.dumps({"error": "not found"}))
     if not skill["has_instructions"]:
-        # A draft skill exists and is named but has no SKILL.md. Handing back
-        # an empty document would let the model act as if it had guidance.
+        # A draft skill exists and is named but has nothing to follow. Handing
+        # back an empty document would let the model act as if it had guidance.
         return _text_result(
             json.dumps(
                 {
                     "error": "no_instructions",
                     "name": skill["name"],
                     "folder_id": skill["folder_id"],
-                    "hint": "This skill has no SKILL.md yet, so there is nothing to follow.",
+                    "hint": (
+                        "This document declares itself a skill but has nothing below its "
+                        "frontmatter, so there is nothing to follow."
+                        if skill["backing"] == "source"
+                        else "This skill has no SKILL.md yet, so there is nothing to follow."
+                    ),
                 }
             )
         )
