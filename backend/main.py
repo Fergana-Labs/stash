@@ -170,6 +170,12 @@ if settings.AUTH0_ENABLED:
 
     app.include_router(auth0_router)
 
+# Remote MCP endpoint. Mounted last: its tools call back into the routes above
+# through an in-process transport, so they all have to be registered first.
+from backend import mcp_remote  # noqa: E402
+
+mcp_remote.attach(app)
+
 
 @app.middleware("http")
 async def add_security_headers(request: Request, call_next):

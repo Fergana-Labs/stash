@@ -29,8 +29,25 @@ async def _fetch_jwks() -> dict:
 
 
 async def validate_auth0_token(token: str) -> dict:
-    """Validate an Auth0 access token. Returns the decoded claims."""
-    if not settings.AUTH0_DOMAIN or not settings.AUTH0_AUDIENCE:
+    """Validate an Auth0 access token minted for the web app's API."""
+    if not settings.AUTH0_AUDIENCE:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Auth0 not configured",
+        )
+    return await validate_auth0_token_for_audience(token, settings.AUTH0_AUDIENCE)
+
+
+async def validate_auth0_token_for_audience(token: str, audience: str) -> dict:
+    """Validate an Auth0 access token against an explicit audience.
+
+    The remote MCP endpoint needs its own audience: with Auth0's
+    resource-parameter compatibility profile enabled, Claude's tokens carry the
+    MCP server's own URL in `aud`, not the web app's API identifier. Keeping the
+    two audiences distinct is deliberate — a token minted for one surface is
+    rejected by the other.
+    """
+    if not settings.AUTH0_DOMAIN:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Auth0 not configured",
@@ -60,7 +77,7 @@ async def validate_auth0_token(token: str) -> dict:
             token,
             signing_key,
             algorithms=["RS256"],
-            audience=settings.AUTH0_AUDIENCE,
+            audience=audience,
             issuer=f"https://{settings.AUTH0_DOMAIN}/",
         )
     except JWTError:

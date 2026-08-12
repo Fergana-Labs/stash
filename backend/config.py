@@ -164,6 +164,15 @@ class Settings:
         AUTH0_ENABLED,
     )
 
+    # --- Remote MCP endpoint ---
+    # The canonical URL Claude connects to, e.g. https://api.joinstash.ai/mcp.
+    # It is also the OAuth audience: Claude sends this URL as the `resource`
+    # parameter, and Auth0 stamps it into the token's `aud`. It must match what
+    # the user types into Claude exactly, so it cannot be derived — an
+    # almost-right URL fails discovery with an unhelpful error. Unset means the
+    # endpoint is not mounted at all.
+    MCP_PUBLIC_URL: str = os.getenv("MCP_PUBLIC_URL", "")
+
     # --- Embeddings ---
     # Provider: "openai", "huggingface", "local", or "auto" (default).
     # Auto-detect: OPENAI_API_KEY → openai, HF_TOKEN → huggingface, else → local.
