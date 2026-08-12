@@ -9,12 +9,12 @@ export const metadata: Metadata = { title: "Skill - Stash" };
 export default async function SourceSkillRoute({
   params,
 }: {
-  params: Promise<{ docId: string }>;
+  params: Promise<{ sourceRef: string }>;
 }) {
-  const { docId } = await params;
+  const { sourceRef } = await params;
   return (
     <Suspense fallback={<FileBrowserSkeleton />}>
-      <SourceSkillClient docId={docId} />
+      <SourceSkillClient sourceRef={decodeURIComponent(sourceRef)} />
     </Suspense>
   );
 }

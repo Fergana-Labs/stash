@@ -593,7 +593,7 @@ function SearchGlyph() {
 function skillHref(skill: Skill): string {
   return skill.backing === "folder"
     ? `/skills/folder/${skill.folder_id}`
-    : `/skills/source/${skill.source_doc_id}`;
+    : `/skills/source/${encodeURIComponent(skill.source_ref)}`;
 }
 
 // Names the shelf a skill was read from. Two shelves can hold skills with the

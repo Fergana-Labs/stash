@@ -419,22 +419,22 @@ class StashVfsModel:
         # filter on folder_id alone silently dropped every source-backed skill
         # out of the tree agents browse.
         addressable = [
-            skill for skill in skills if skill.get("folder_id") or skill.get("source_doc_id")
+            skill for skill in skills if skill.get("folder_id") or skill.get("source_ref")
         ]
         ambiguous = _ambiguous_basenames(
             [_safe_name(skill.get("name") or "skill") for skill in addressable]
         )
         for skill in addressable:
-            key = str(skill.get("folder_id") or skill["source_doc_id"])
+            key = str(skill.get("folder_id") or skill["source_ref"])
             basename = _dir_display_name(skill.get("name") or "skill", key, ambiguous)
             self._add_json_file(f"{skills_path}/{basename}.json", skill)
-            if skill.get("source_doc_id"):
+            if skill.get("source_ref"):
                 # Only when there is something to read. A document that
                 # declares itself a skill and says nothing gets no .md, the way
                 # a folder skill with no instructions gets none — an empty file
                 # reads as an empty skill rather than an unwritten one.
                 if skill.get("has_instructions"):
-                    doc_id = str(skill["source_doc_id"])
+                    doc_id = str(skill["source_ref"])
                     self._add_file(
                         f"{skills_path}/{basename}.md",
                         loader=lambda d=doc_id: _text_bytes(self.client.get_source_skill_text(d)),

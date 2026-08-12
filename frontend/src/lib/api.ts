@@ -1492,13 +1492,13 @@ export type Skill =
   | (SkillCommon & {
       backing: "folder";
       folder_id: string;
-      source_doc_id: null;
+      source_ref: null;
       source_name: null;
     })
   | (SkillCommon & {
       backing: "source";
       folder_id: null;
-      source_doc_id: string;
+      source_ref: string;
       // The shelf it was read from — two shelves can hold skills with the
       // same name, and the card is where you tell them apart.
       source_name: string;
@@ -1509,7 +1509,7 @@ export type FolderBackedSkill = Extract<Skill, { backing: "folder" }>;
 
 // One source-backed skill, read: its document IS the instructions.
 export interface SourceSkillRead {
-  source_doc_id: string;
+  source_ref: string;
   name: string;
   description: string;
   source_name: string;
@@ -1518,14 +1518,15 @@ export interface SourceSkillRead {
   files: { id: string; name: string; updated_at: string; content: string }[];
 }
 
-export async function readSourceSkill(docId: string): Promise<SourceSkillRead> {
-  return apiFetch(`${ME}/source-skills/${docId}`);
+// Addressed by the upstream file id, so the link survives a rename in Drive.
+export async function readSourceSkill(sourceRef: string): Promise<SourceSkillRead> {
+  return apiFetch(`${ME}/source-skills/${encodeURIComponent(sourceRef)}`);
 }
 
 // A skill's identity across surfaces that only need to tell skills apart —
 // pins, selection, React keys.
 export function skillKey(skill: Skill): string {
-  return skill.backing === "folder" ? skill.folder_id : skill.source_doc_id;
+  return skill.backing === "folder" ? skill.folder_id : skill.source_ref;
 }
 
 export async function listSkills(): Promise<Skill[]> {

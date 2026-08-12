@@ -338,11 +338,12 @@ def _skill_app_url(folder_id: object) -> str:
     return f"{settings.PUBLIC_URL.rstrip('/')}/skills/folder/{folder_id}"
 
 
-def _source_skill_app_url(doc_id: object) -> str:
-    """A source-backed skill has no folder, so it has its own read-only page.
+def _source_skill_app_url(source_ref: object) -> str:
+    """A source-backed skill has no folder, so it has its own read-only page,
+    addressed by the upstream file id so the link survives a rename in Drive.
     Without this the model hands out /skills/folder/None — the exact wrong-URL
     failure `_skill_app_url` exists to prevent."""
-    return f"{settings.PUBLIC_URL.rstrip('/')}/skills/source/{doc_id}"
+    return f"{settings.PUBLIC_URL.rstrip('/')}/skills/source/{source_ref}"
 
 
 @tool(
@@ -371,7 +372,7 @@ async def _list_skills(args: dict) -> dict:
             "app_url": (
                 _skill_app_url(s["folder_id"])
                 if s["backing"] == "folder"
-                else _source_skill_app_url(s["source_doc_id"])
+                else _source_skill_app_url(s["source_ref"])
             ),
         }
         for s in skills
@@ -413,7 +414,7 @@ async def _read_skill(args: dict) -> dict:
                             "url": (
                                 _skill_app_url(m["folder_id"])
                                 if m["backing"] == "folder"
-                                else _source_skill_app_url(m["source_doc_id"])
+                                else _source_skill_app_url(m["source_ref"])
                             ),
                         }
                         for m in matches

@@ -221,12 +221,15 @@ async def list_source_skills(owner_user_id: UUID, user_id: UUID) -> list[dict]:
         # Only the frontmatter is needed to list a skill, and only a document
         # that starts with a delimiter can carry any — so the shelf's bodies
         # stay in the database instead of crossing the wire to be discarded.
-        f"SELECT d.id, d.name, left(d.content, {FRONTMATTER_SCAN_BYTES}) AS head, d.updated_at, "
-        "  src.display_name AS source_name "
+        f"SELECT d.external_ref, d.name, left(d.content, {FRONTMATTER_SCAN_BYTES}) AS head, "
+        "  d.updated_at, src.display_name AS source_name "
         "FROM drive_documents d "
         "JOIN user_sources src ON src.id = d.source_id "
         "WHERE d.owner_user_id = $1 AND d.deleted_at IS NULL AND src.binds_skills "
         f"  AND d.content LIKE '---%' AND {readable} "
+        # A document with no upstream id has no stable address, so it cannot be
+        # offered as a skill. The Drive walk always records one.
+        "  AND d.external_ref IS NOT NULL "
         "ORDER BY d.name",
         owner_user_id,
         user_id,
@@ -235,7 +238,7 @@ async def list_source_skills(owner_user_id: UUID, user_id: UUID) -> list[dict]:
     return [
         {
             "folder_id": None,
-            "source_doc_id": str(r["id"]),
+            "source_ref": r["external_ref"],
             "backing": "source",
             "source_name": r["source_name"],
             "name": meta["name"],
@@ -298,7 +301,7 @@ async def list_skills(owner_user_id: UUID, user_id: UUID) -> list[dict]:
         out.append(
             {
                 "folder_id": str(r["folder_id"]),
-                "source_doc_id": None,
+                "source_ref": None,
                 "backing": "folder",
                 "source_name": None,
                 "name": meta.get("name") or r["folder_name"],
@@ -319,8 +322,13 @@ async def list_skills(owner_user_id: UUID, user_id: UUID) -> list[dict]:
     return out
 
 
-async def read_source_skill(owner_user_id: UUID, doc_id: UUID, user_id: UUID) -> dict | None:
+async def read_source_skill(owner_user_id: UUID, source_ref: str, user_id: UUID) -> dict | None:
     """Read a source-backed skill: the upstream document is the instructions.
+
+    Addressed by `source_ref` — the upstream file's own id — because our row is
+    keyed on the document's path and is therefore destroyed and recreated when
+    its author renames it in Drive. The file id survives that; a row id does
+    not, and a skill's address must outlive a rename.
 
     A document that does not declare itself a skill reads as None — it is not
     a broken skill, it is a file that happens to live on the shelf, and the
@@ -328,13 +336,19 @@ async def read_source_skill(owner_user_id: UUID, doc_id: UUID, user_id: UUID) ->
     """
     readable = permission_service.readable_content_condition("source", "src", 3)
     row = await get_pool().fetchrow(
-        "SELECT d.id, d.name, d.content, d.updated_at, src.display_name AS source_name "
+        "SELECT d.external_ref, d.name, d.content, d.updated_at, "
+        "  src.display_name AS source_name "
         "FROM drive_documents d "
         "JOIN user_sources src ON src.id = d.source_id "
-        "WHERE d.owner_user_id = $1 AND d.id = $2 AND d.deleted_at IS NULL "
-        f"  AND src.binds_skills AND {readable}",
+        "WHERE d.owner_user_id = $1 AND d.external_ref = $2 AND d.deleted_at IS NULL "
+        f"  AND src.binds_skills AND {readable} "
+        # A Drive shortcut resolves to its target's file id, so a shortcut
+        # sitting near its target puts that id on two rows. They are the same
+        # upstream document, so either answers the read — ordered so the answer
+        # is at least the same one every time.
+        "ORDER BY d.path LIMIT 1",
         owner_user_id,
-        doc_id,
+        source_ref,
         user_id,
     )
     if row is None:
@@ -347,7 +361,7 @@ async def read_source_skill(owner_user_id: UUID, doc_id: UUID, user_id: UUID) ->
     _meta, body = parse_frontmatter(row["content"] or "")
     return {
         "folder_id": None,
-        "source_doc_id": str(row["id"]),
+        "source_ref": row["external_ref"],
         "backing": "source",
         "source_name": row["source_name"],
         "name": meta["name"],
@@ -357,7 +371,7 @@ async def read_source_skill(owner_user_id: UUID, doc_id: UUID, user_id: UUID) ->
         "body": body,
         "files": [
             {
-                "id": str(row["id"]),
+                "id": row["external_ref"],
                 "name": row["name"],
                 "updated_at": row["updated_at"],
                 "content": body,
@@ -387,7 +401,7 @@ async def read_skill(owner_user_id: UUID, name: str, user_id: UUID) -> dict | No
         return None
 
     if match["backing"] == "source":
-        return await read_source_skill(owner_user_id, UUID(match["source_doc_id"]), user_id)
+        return await read_source_skill(owner_user_id, match["source_ref"], user_id)
 
     folder_id = match["folder_id"]
     pages = await pool.fetch(
@@ -420,7 +434,7 @@ async def read_skill(owner_user_id: UUID, name: str, user_id: UUID) -> dict | No
 
     return {
         "folder_id": folder_id,
-        "source_doc_id": None,
+        "source_ref": None,
         "backing": "folder",
         "name": match["name"],
         "description": match["description"],
