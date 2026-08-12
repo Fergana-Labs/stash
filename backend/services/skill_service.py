@@ -24,6 +24,9 @@ SKILL_MD_NAME = "SKILL.md"
 MAX_SKILL_NAME_LENGTH = 64
 MAX_SKILL_DESCRIPTION_LENGTH = 1024
 
+# How many not-yet-skill documents a shelf names before the rest are just a count.
+NOT_SKILLS_NAMED = 5
+
 
 def skill_md_template(name: str, description: str) -> str:
     return (
@@ -129,7 +132,11 @@ async def count_shelf_skills(owner_user_id: UUID) -> dict[str, dict]:
     counting query.
     """
     rows = await get_pool().fetch(
-        "SELECT d.source_id, d.name, left(d.content, 4096) AS head "
+        # The head is materialised only for documents that could possibly be
+        # skills. A shelf is mostly ordinary material, and pulling a prefix of
+        # every scanned catalogue to discover it isn't one is pure waste.
+        "SELECT d.source_id, d.name, "
+        "  CASE WHEN d.content LIKE '---%' THEN left(d.content, 2048) END AS head "
         "FROM drive_documents d "
         "JOIN user_sources src ON src.id = d.source_id "
         "WHERE d.owner_user_id = $1 AND d.deleted_at IS NULL AND src.binds_skills "
@@ -143,11 +150,13 @@ async def count_shelf_skills(owner_user_id: UUID) -> dict[str, dict]:
             str(row["source_id"]), {"skills": 0, "documents": 0, "not_skills": []}
         )
         tally["documents"] += 1
-        if declared_skill(row["head"]) is not None:
+        if row["head"] is not None and declared_skill(row["head"]) is not None:
             tally["skills"] += 1
-        else:
+        elif len(tally["not_skills"]) < NOT_SKILLS_NAMED:
             # Named, not just counted: "1 of 2" tells you something is wrong
-            # and leaves you hunting for which document to go fix.
+            # and leaves you hunting for which document to go fix. Only the
+            # first few — the rest are a number, not a list, and a shelf of
+            # thousands would otherwise put every filename on the wire.
             tally["not_skills"].append(row["name"])
     return counts
 
@@ -160,16 +169,20 @@ async def list_source_skills(owner_user_id: UUID, user_id: UUID) -> list[dict]:
     """
     readable = permission_service.readable_content_condition("source", "src", 2)
     rows = await get_pool().fetch(
-        "SELECT d.id, d.name, d.content, d.updated_at, src.display_name AS source_name "
+        # Only the frontmatter is needed to list a skill, and only a document
+        # that starts with a delimiter can carry any — so the shelf's bodies
+        # stay in the database instead of crossing the wire to be discarded.
+        "SELECT d.id, d.name, left(d.content, 2048) AS head, d.updated_at, "
+        "  src.display_name AS source_name "
         "FROM drive_documents d "
         "JOIN user_sources src ON src.id = d.source_id "
         "WHERE d.owner_user_id = $1 AND d.deleted_at IS NULL AND src.binds_skills "
-        f"  AND position('/' in d.path) = 0 AND {readable} "
+        f"  AND position('/' in d.path) = 0 AND d.content LIKE '---%' AND {readable} "
         "ORDER BY d.name",
         owner_user_id,
         user_id,
     )
-    declared = [(r, declared_skill(r["content"])) for r in rows]
+    declared = [(r, declared_skill(r["head"])) for r in rows]
     return [
         {
             "folder_id": None,

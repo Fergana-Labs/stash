@@ -837,8 +837,11 @@ function SourceRow({
             hunting. These are the documents to go add a frontmatter block to. */}
         {source.binds_skills && (source.not_skills?.length ?? 0) > 0 && (
           <div className="mt-1 truncate text-[11.5px] text-muted-foreground">
-            Not skills yet: {source.not_skills!.slice(0, 3).join(", ")}
-            {source.not_skills!.length > 3 && ` +${source.not_skills!.length - 3} more`}
+            {/* The server names only the first few; the remainder is the
+                gap between the two counts, not the length of that list. */}
+            Not skills yet: {source.not_skills!.join(", ")}
+            {(source.documents ?? 0) - (source.skills ?? 0) > source.not_skills!.length &&
+              ` +${(source.documents ?? 0) - (source.skills ?? 0) - source.not_skills!.length} more`}
           </div>
         )}
       </button>

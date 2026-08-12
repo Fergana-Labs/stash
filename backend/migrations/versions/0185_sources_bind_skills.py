@@ -6,9 +6,12 @@ whose truth lives upstream, and the copy has to be guarded against edits that
 would silently diverge from Drive.
 
 A source-backed skill removes the copy: `user_sources.binds_skills` marks a
-picked Drive folder as a shelf of skills, and each of its immediate documents
-is read as one skill straight out of `drive_documents`. Sources are read-only
-in Stash, so the divergence is unrepresentable rather than merely guarded.
+picked Drive folder as a shelf, and every document sitting directly in it that
+declares itself a skill — the same frontmatter block, checked by the same
+validator, as any other SKILL.md — is read as one straight out of
+`drive_documents`. Everything else on the shelf stays ordinary source material.
+Sources are read-only in Stash, so divergence from Drive is unrepresentable
+rather than merely guarded.
 
 Membership stays explicit, the way 0181 made it: the flag is on the binding,
 not on the presence of a file. A document disappearing upstream drops it from
