@@ -400,12 +400,16 @@ export default function HopperRoute() {
                     className="flex items-baseline gap-3 rounded-md py-1.5 text-[13px] text-dim transition-colors hover:text-foreground"
                   >
                     <span className="truncate">{event.target_label}</span>
-                    {/* Where it ended up, so the answer outlives the toast. */}
-                    {event.folder && (
-                      <span className="shrink-0 font-mono text-[11px] text-brand-700">
-                        {event.folder}
-                      </span>
-                    )}
+                    {/* Where it ended up, so the answer outlives the toast.
+                        Blank would read as missing rather than as the top
+                        level, which is a real destination. */}
+                    <span
+                      className={`shrink-0 font-mono text-[11px] ${
+                        event.folder ? "text-brand-700" : "text-muted-foreground"
+                      }`}
+                    >
+                      {event.folder ?? "top level"}
+                    </span>
                     <span className="ml-auto shrink-0 font-mono text-[11px] text-muted-foreground">
                       {landedAt(event.ts)}
                     </span>

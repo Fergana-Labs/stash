@@ -106,6 +106,19 @@ async def list_file_activity(
           UNION
           SELECT mf.id FROM folders mf
           JOIN memory_folders m ON m.id = mf.parent_folder_id
+        ),
+        -- Full paths, not leaf names: "catalogs/meritor" tells you where a
+        -- thing is, "meritor" only tells you what the folder is called.
+        folder_paths AS (
+          SELECT f.id, f.name::text AS path
+          FROM folders f
+          JOIN accessible_scopes aw ON aw.id = f.owner_user_id
+          WHERE f.parent_folder_id IS NULL
+          UNION ALL
+          SELECT f.id, fp.path || '/' || f.name
+          FROM folders f
+          JOIN folder_paths fp ON fp.id = f.parent_folder_id
+          JOIN accessible_scopes aw ON aw.id = f.owner_user_id
         )
         SELECT * FROM (
         (
@@ -115,11 +128,11 @@ async def list_file_activity(
                  p.id::text AS target_id,
                  p.name AS target_label,
                  p.last_edit_agent_name AS agent_name,
-                 pf.name AS folder,
+                 pf.path AS folder,
                  aw.id AS owner_user_id,
                  aw.name AS owner_name
           FROM pages p
-          LEFT JOIN folders pf ON pf.id = p.folder_id
+          LEFT JOIN folder_paths pf ON pf.id = p.folder_id
           JOIN accessible_scopes aw ON aw.id = p.owner_user_id
           WHERE p.deleted_at IS NULL
             AND NOT EXISTS (SELECT 1 FROM memory_folders m WHERE m.id = p.folder_id)
@@ -135,11 +148,11 @@ async def list_file_activity(
                  f.id::text AS target_id,
                  f.name AS target_label,
                  NULL::text AS agent_name,
-                 ff.name AS folder,
+                 ff.path AS folder,
                  aw.id AS owner_user_id,
                  aw.name AS owner_name
           FROM files f
-          LEFT JOIN folders ff ON ff.id = f.folder_id
+          LEFT JOIN folder_paths ff ON ff.id = f.folder_id
           JOIN accessible_scopes aw ON aw.id = f.owner_user_id
           WHERE f.deleted_at IS NULL
             AND NOT EXISTS (SELECT 1 FROM memory_folders m WHERE m.id = f.folder_id)
