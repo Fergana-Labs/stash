@@ -89,12 +89,35 @@ async def _folder_for_path(owner_user_id: UUID, user_id: UUID, path: str) -> UUI
         raise HTTPException(
             status_code=400, detail=f"Folder nesting deeper than {MAX_PATH_DEPTH} levels"
         )
+
+    pool = get_pool()
+    select = (
+        "SELECT id, is_memory, is_protected FROM folders "
+        "WHERE owner_user_id = $1 AND parent_folder_id IS NOT DISTINCT FROM $2 AND name = $3"
+    )
     parent_id: UUID | None = None
     for segment in segments:
-        folder = await files_tree_service.get_or_create_folder(
-            owner_user_id, segment[:MAX_SEGMENT_CHARS], user_id, parent_id
-        )
-        parent_id = folder["id"]
+        name = segment[:MAX_SEGMENT_CHARS]
+        row = await pool.fetchrow(select, owner_user_id, parent_id, name)
+        if row is None:
+            try:
+                created = await files_tree_service.create_folder(
+                    owner_user_id, name, user_id, parent_folder_id=parent_id
+                )
+                parent_id = created["id"]
+                continue
+            except files_tree_service.DuplicateFolderName:
+                # Lost a race with a sibling upload in the same batch.
+                row = await pool.fetchrow(select, owner_user_id, parent_id, name)
+        # Memory and other protected folders are the product's, not the user's:
+        # a dropped directory that happens to share a name must not pour its
+        # contents into the wiki space, where Files would never show them again.
+        if row["is_memory"] or row["is_protected"]:
+            raise HTTPException(
+                status_code=400,
+                detail=f'"{name}" is reserved in your Stash — rename that folder and drop it again',
+            )
+        parent_id = row["id"]
     return parent_id
 
 

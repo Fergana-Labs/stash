@@ -216,3 +216,31 @@ async def test_absurd_nesting_is_refused(client: AsyncClient, monkeypatch) -> No
         headers=headers,
     )
     assert resp.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_a_folder_named_memory_cannot_hijack_the_reserved_one(
+    client: AsyncClient, pool, monkeypatch
+) -> None:
+    """Memory is the product's space, not a folder name to be claimed. A drop
+    that landed there would vanish: Files hides the Memory subtree."""
+    headers, owner_id = await _register(client)
+    _mock_storage(monkeypatch)
+
+    # Touching the memory tree is what creates the reserved folder.
+    assert (await client.get("/api/v1/me/memory-tree", headers=headers)).status_code == 200
+
+    resp = await client.post(
+        "/api/v1/me/hopper/file",
+        files={"file": ("notes.pdf", b"%PDF-1.4 x", "application/pdf")},
+        data={"path": "Memory"},
+        headers=headers,
+    )
+    assert resp.status_code == 400
+    assert "reserved" in resp.json()["detail"]
+
+    landed = await pool.fetchval(
+        "SELECT count(*) FROM files WHERE owner_user_id = $1 AND deleted_at IS NULL",
+        UUID(owner_id),
+    )
+    assert landed == 0

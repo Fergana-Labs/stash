@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isLinkDrop } from "./hopper";
+import { firstUrlFromDrag, isLinkDrop } from "./hopper";
 
 // One box takes both links and notes, so this classification decides which
 // pipeline a drop enters. Getting it wrong either fetches a webpage the user
@@ -14,5 +14,21 @@ describe("isLinkDrop", () => {
     expect(isLinkDrop("read https://example.com later")).toBe(false);
     expect(isLinkDrop("Pricing call notes")).toBe(false);
     expect(isLinkDrop("")).toBe(false);
+  });
+});
+
+describe("firstUrlFromDrag", () => {
+  it("takes the first real URL out of a uri-list", () => {
+    expect(firstUrlFromDrag("https://example.com/a\r\nhttps://example.com/b\r\n")).toBe(
+      "https://example.com/a",
+    );
+  });
+
+  it("ignores the comment lines the format allows", () => {
+    expect(firstUrlFromDrag("# a comment\r\nhttps://example.com/a")).toBe("https://example.com/a");
+  });
+
+  it("has nothing to offer for an empty list", () => {
+    expect(firstUrlFromDrag("\r\n")).toBe("");
   });
 });

@@ -6,7 +6,7 @@ import Link from "next/link";
 import { toast } from "sonner";
 import { useBreadcrumbs } from "@/components/BreadcrumbContext";
 import { dropHopperFile, dropHopperLink, listFileActivity, type ActivityEvent } from "@/lib/api";
-import { isLinkDrop } from "@/lib/hopper";
+import { firstUrlFromDrag, isLinkDrop } from "@/lib/hopper";
 import {
   filesFromDrop,
   filesFromPicker,
@@ -62,13 +62,18 @@ export default function HopperRoute() {
   const [link, setLink] = useState("");
   const [recent, setRecent] = useState<ActivityEvent[]>([]);
   const fileInput = useRef<HTMLInputElement>(null);
+  // A ref, not the state: drop and paste handlers close over stale state, and
+  // a second batch starting mid-flight would steal the first one's Stop.
+  const batchRunning = useRef(false);
 
   // Sourced from file activity, not from a hopper ledger: what is recently in
   // the VFS is the truth, whether it arrived through this tab or the CLI.
   const refreshRecent = useCallback(async () => {
     try {
       const feed = await listFileActivity({ limit: 30 });
-      setRecent(feed.events.filter((e) => e.kind === "file.uploaded").slice(0, RECENT_LIMIT));
+      // Markdown and HTML drops become pages, so a file-only filter would
+      // hide half of what this page just took in.
+      setRecent(feed.events.slice(0, RECENT_LIMIT));
     } catch {
       // A strip of recent names is not worth an error state on this page.
     }
@@ -83,6 +88,11 @@ export default function HopperRoute() {
   const addFiles = useCallback(
     async (dropped: DroppedFile[]) => {
       if (dropped.length === 0) return;
+      if (batchRunning.current) {
+        toast.info("Still taking in the last drop", { description: "One batch at a time" });
+        return;
+      }
+      batchRunning.current = true;
       const cancel = new AbortController();
       const live: Batch = { total: dropped.length, done: 0, skipped: 0, failed: [], cancel };
       setBatch(live);
@@ -101,14 +111,17 @@ export default function HopperRoute() {
       );
 
       results.forEach((result, i) => {
-        if (result.ok === false) {
-          const error = result.error;
-          live.failed.push({
-            name: dropped[i].file.name,
-            reason: error instanceof Error ? error.message : "Upload failed",
-          });
-        }
+        if (result.ok !== false) return;
+        const error = result.error;
+        // Stopping aborts the in-flight fetches; those rejections are the
+        // cancellation working, not files that failed to land.
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        live.failed.push({
+          name: dropped[i].file.name,
+          reason: error instanceof Error ? error.message : "Upload failed",
+        });
       });
+      batchRunning.current = false;
       setBatch(null);
       void refreshRecent();
 
@@ -133,7 +146,9 @@ export default function HopperRoute() {
         );
         return;
       }
-      toast.success(summarise(live), {
+      // "0 added · 3 failed" is not good news, and must not look like it.
+      const report = live.done + live.skipped === 0 ? toast.error : toast.success;
+      report(summarise(live), {
         description: live.failed.length
           ? live.failed
               .slice(0, 3)
@@ -148,20 +163,22 @@ export default function HopperRoute() {
 
   // The hopper takes things that already exist, so text is only ever a link.
   const addLink = useCallback(
-    async (value: string) => {
+    async (value: string): Promise<boolean> => {
       const trimmed = value.trim();
-      if (!trimmed) return;
+      if (!trimmed) return false;
       if (!isLinkDrop(trimmed)) {
         toast.error("That isn't a link", { description: "Drop a file, or paste a URL" });
-        return;
+        return false;
       }
       try {
         await dropHopperLink(trimmed);
         // The page is fetched by a worker and filed under Clips when it
         // arrives, so there is nothing to go to yet.
         toast.success("Fetching that page", { description: "It'll land in Clips" });
+        return true;
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Couldn't add that to your Stash");
+        return false;
       }
     },
     [],
@@ -200,7 +217,9 @@ export default function HopperRoute() {
       return;
     }
     // Dragging a link out of a browser tab hands over its URL, not a file.
-    const url = e.dataTransfer.getData("text/uri-list") || e.dataTransfer.getData("text/plain");
+    const url =
+      firstUrlFromDrag(e.dataTransfer.getData("text/uri-list")) ||
+      e.dataTransfer.getData("text/plain");
     if (url) void addLink(url);
   }
 
@@ -233,7 +252,11 @@ export default function HopperRoute() {
           role="button"
           tabIndex={0}
           onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") fileInput.current?.click();
+            if (e.key !== "Enter" && e.key !== " ") return;
+            // Space scrolls the page by default, which it should not do while
+            // the well has focus.
+            e.preventDefault();
+            fileInput.current?.click();
           }}
           aria-label="Drop files here, or click to browse"
           className="hopper-well relative isolate flex min-h-[300px] flex-1 cursor-pointer flex-col items-center justify-center overflow-hidden rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
@@ -283,10 +306,10 @@ export default function HopperRoute() {
         {/* A hairline, not a box: the link field is the well's understudy. */}
         <form
           className="mt-6 flex shrink-0 items-center gap-3 border-b border-[var(--divider-color)] pb-2.5 transition-colors focus-within:border-brand-400"
-          onSubmit={(e) => {
+          onSubmit={async (e) => {
             e.preventDefault();
-            void addLink(link);
-            setLink("");
+            // Clear only once it is accepted, so a typo stays there to fix.
+            if (await addLink(link)) setLink("");
           }}
         >
           <span className="font-mono text-[11px] uppercase tracking-[0.05em] text-muted-foreground">
@@ -313,7 +336,7 @@ export default function HopperRoute() {
         {recent.length > 0 && (
           <section className="mt-8 shrink-0">
             <h2 className="font-mono text-[11px] uppercase tracking-[0.05em] text-muted-foreground">
-              Recently added
+              Recently in your Stash
             </h2>
             <ul className="mt-3 flex flex-col">
               {recent.map((event) => (
