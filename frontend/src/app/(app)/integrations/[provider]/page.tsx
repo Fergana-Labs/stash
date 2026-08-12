@@ -268,6 +268,9 @@ export function IntegrationDetail({ provider }: { provider: string }) {
         title: `Use ${source.display_name} as Skills?`,
         body: "Each document sitting directly in this folder becomes a skill your agents can load. They stay editable in Drive, and read-only here.",
         confirmLabel: "Use as Skills",
+        // Nothing is deleted or overwritten — this only starts reading the
+        // folder as skills, and the menu item undoes it.
+        destructive: false,
       });
       if (!ok) return;
     }

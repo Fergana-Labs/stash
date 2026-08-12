@@ -1849,6 +1849,7 @@ async def list_sources(owner_user_id: UUID, user_id: UUID) -> list[dict]:
             "sync_warning": s["sync_warning"],
             "last_synced_at": s["last_synced_at"],
             "settings": s["settings"],
+            "binds_skills": s["binds_skills"],
         }
         hint = _source_search_hint(s)
         if hint:
