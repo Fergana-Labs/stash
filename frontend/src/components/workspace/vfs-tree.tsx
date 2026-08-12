@@ -74,6 +74,26 @@ function ancestorsOf(nodes: VNode[], pathname: string, trail: string[]): string[
   return null;
 }
 
+// Each directory renders only its first SHOW_PER_DIR children, so an item can
+// be revealed — ancestors expanded, row marked active — and still not be on
+// screen because it fell past the "+N more" cut. This is the key of the
+// directory holding the match, whose list then has to be shown in full.
+function truncatedParentOf(
+  nodes: VNode[],
+  pathname: string,
+  parentKey: string,
+): string | null {
+  const index = nodes.findIndex((node) => pathOf(node.href) === pathname);
+  if (index >= SHOW_PER_DIR) return parentKey;
+  if (index !== -1) return null;
+  for (const node of nodes) {
+    if (!node.children) continue;
+    const found = truncatedParentOf(node.children, pathname, node.key);
+    if (found) return found;
+  }
+  return null;
+}
+
 function Row({
   depth,
   icon,
@@ -147,14 +167,20 @@ function Row({
   if (href) {
     return (
       // Navigating into a closed folder also opens it, like VS Code.
-      <Link href={href} style={pad} className={cls} onClick={() => { if (isDir && !open) onToggle?.(); }}>
+      <Link
+        href={href}
+        style={pad}
+        className={cls}
+        data-vfs-active={active || undefined}
+        onClick={() => { if (isDir && !open) onToggle?.(); }}
+      >
         {inner}
       </Link>
     );
   }
   if (isDir) {
     return (
-      <button type="button" onClick={onToggle} style={pad} className={cls}>
+      <button type="button" onClick={onToggle} style={pad} className={cls} data-vfs-active={active || undefined}>
         {inner}
       </button>
     );
@@ -321,6 +347,7 @@ export default function VfsTree() {
   const pathname = usePathname();
   const { mounts, coreLoaded, coreError, sourcesPending, sourcesError } = useVfsMounts();
   const reveal = useVfsTreeStore((s) => s.reveal);
+  const expanded = useVfsTreeStore((s) => s.expanded);
   const [showAll, setShowAll] = useState<Set<string>>(new Set());
 
   // Whatever the workbench has open gets its ancestor chain expanded, so the
@@ -328,12 +355,20 @@ export default function VfsTree() {
   useEffect(() => {
     for (const mount of mounts) {
       const trail = ancestorsOf(mount.nodes, pathname, []);
-      if (trail) {
-        reveal(mount.path, trail);
-        return;
-      }
+      if (!trail) continue;
+      reveal(mount.path, trail);
+      const truncated = truncatedParentOf(mount.nodes, pathname, mount.path);
+      if (truncated) setShowAll((prev) => new Set(prev).add(truncated));
+      return;
     }
   }, [pathname, mounts, reveal]);
+
+  // Orientation needs the highlight on screen, and the row only exists once
+  // its ancestors are expanded and its directory un-truncated — so this runs
+  // after those, not with them. "nearest" leaves an already-visible row alone.
+  useEffect(() => {
+    document.querySelector("[data-vfs-active]")?.scrollIntoView({ block: "nearest" });
+  }, [pathname, expanded, showAll]);
 
   if (coreError) {
     return <div className="p-3 font-mono text-[12px] text-error">✗ couldn&apos;t read the stash: {coreError}</div>;
