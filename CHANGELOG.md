@@ -10,6 +10,13 @@ everything before it is captured in git history (`git log`), not here.
   straight from the clipboard — each goes down the pipeline that can read it
   (file extraction or webpage import) and arrives in your VFS as an ordinary
   item.
+- Local embeddings run on the CPU (fixes a crash on Apple Silicon).
+  sentence-transformers 5.x selects Apple's Metal (`mps`) device when it can,
+  and a Metal context cannot survive `fork()` — so every Celery prefork child
+  that embedded died on SIGABRT, crashlooping the embed-reconcile task and
+  taking down any process that had touched the model. Affects local dev and
+  self-hosters using `EMBEDDING_PROVIDER=local`; hosted prod embeds with
+  OpenAI and was never affected.
 
 - CLI onboarding redesigned (#940). `stash signin` walks a first-run wizard
   that can be re-run anytime with the new `stash setup` — no answer is final.

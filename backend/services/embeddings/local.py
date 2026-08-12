@@ -46,7 +46,13 @@ class LocalEmbedder(BaseEmbedder):
                 "Install it with: pip install sentence-transformers"
             )
         logger.info("Loading local embedding model: %s", self.model_name)
-        self._model = SentenceTransformer(self.model_name)
+        # CPU, explicitly: sentence-transformers picks Apple's Metal backend
+        # (mps) when it can, and a Metal context cannot survive fork(). Celery
+        # runs a prefork pool, so every child that embedded died on SIGABRT
+        # ("Unable to get MPS kernel ... XPC_ERROR_CONNECTION_INVALID"), taking
+        # the reconcile task — and any process that had touched the model —
+        # down with it. This model is 22M params; CPU is fast enough.
+        self._model = SentenceTransformer(self.model_name, device="cpu")
 
     async def embed_batch(self, texts: list[str]) -> list[np.ndarray] | None:
         if not texts:

@@ -1,3 +1,4 @@
+import sys
 from uuid import uuid4
 
 import numpy as np
@@ -110,3 +111,28 @@ async def test_openai_embedder_clips_inputs_before_http_request():
 
     assert vectors is not None
     assert len(client.payload["input"][0]) == embedding_service.MAX_TEXT_CHARS
+
+
+def test_local_embedder_loads_on_cpu(monkeypatch):
+    """The local model must never land on Apple's Metal (mps) device.
+
+    A Metal context cannot survive fork(), and Celery runs a prefork pool, so
+    an mps-backed model aborts (SIGABRT) in every worker child that embeds —
+    crashlooping the reconcile task. CI runs on Linux where mps does not
+    exist, so no behavioural test can catch a regression here; pinning the
+    device at construction is the only guard.
+    """
+    from backend.services.embeddings.local import LocalEmbedder
+
+    captured = {}
+
+    class FakeSentenceTransformer:
+        def __init__(self, model_name, device=None):
+            captured["device"] = device
+
+    fake_module = type("m", (), {"SentenceTransformer": FakeSentenceTransformer})
+    monkeypatch.setitem(sys.modules, "sentence_transformers", fake_module)
+
+    LocalEmbedder()._load()
+
+    assert captured["device"] == "cpu"
