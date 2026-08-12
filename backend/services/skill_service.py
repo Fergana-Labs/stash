@@ -27,6 +27,14 @@ MAX_SKILL_DESCRIPTION_LENGTH = 1024
 # How many not-yet-skill documents a shelf names before the rest are just a count.
 NOT_SKILLS_NAMED = 5
 
+# How much of a document is read to decide whether it declares itself a skill.
+# Listing and counting work from a prefix so a shelf of scanned catalogues does
+# not cross the wire; reading applies the same bound so all three agree on what
+# a skill is. `name` and `description` are capped, but `when_to_use` and
+# `version` are not, so this has to be roomy — past it, a frontmatter block is
+# not frontmatter.
+FRONTMATTER_SCAN_BYTES = 8192
+
 
 def skill_md_template(name: str, description: str) -> str:
     return (
@@ -136,7 +144,7 @@ async def count_shelf_skills(owner_user_id: UUID) -> dict[str, dict]:
         # skills. A shelf is mostly ordinary material, and pulling a prefix of
         # every scanned catalogue to discover it isn't one is pure waste.
         "SELECT d.source_id, d.name, "
-        "  CASE WHEN d.content LIKE '---%' THEN left(d.content, 2048) END AS head "
+        f"  CASE WHEN d.content LIKE '---%' THEN left(d.content, {FRONTMATTER_SCAN_BYTES}) END AS head "
         "FROM drive_documents d "
         "JOIN user_sources src ON src.id = d.source_id "
         "WHERE d.owner_user_id = $1 AND d.deleted_at IS NULL AND src.binds_skills "
@@ -172,7 +180,7 @@ async def list_source_skills(owner_user_id: UUID, user_id: UUID) -> list[dict]:
         # Only the frontmatter is needed to list a skill, and only a document
         # that starts with a delimiter can carry any — so the shelf's bodies
         # stay in the database instead of crossing the wire to be discarded.
-        "SELECT d.id, d.name, left(d.content, 2048) AS head, d.updated_at, "
+        f"SELECT d.id, d.name, left(d.content, {FRONTMATTER_SCAN_BYTES}) AS head, d.updated_at, "
         "  src.display_name AS source_name "
         "FROM drive_documents d "
         "JOIN user_sources src ON src.id = d.source_id "
@@ -290,7 +298,9 @@ async def read_source_skill(owner_user_id: UUID, doc_id: UUID, user_id: UUID) ->
     )
     if row is None:
         return None
-    meta = declared_skill(row["content"])
+    # The same bound the listing works from: a block that only resolves in the
+    # full document would make a skill that reads but never lists.
+    meta = declared_skill((row["content"] or "")[:FRONTMATTER_SCAN_BYTES])
     if meta is None:
         return None
     _meta, body = parse_frontmatter(row["content"] or "")

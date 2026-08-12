@@ -63,11 +63,12 @@ export default function SourceSkillClient({ docId }: { docId: string }) {
             <Markdown remarkPlugins={[remarkGfm]}>{skill.body}</Markdown>
           </article>
         ) : (
-          // Not an error: the sync records the document before its body is
-          // extracted, so a skill can exist for minutes with nothing to read.
+          // A document only reaches this page by declaring itself a skill, so
+          // the empty case is always the same one: a frontmatter block with
+          // nothing written under it.
           <div className="mt-6 rounded-lg border border-border bg-surface px-4 py-3 text-[13px] text-muted-foreground">
-            This document hasn&apos;t finished ingesting yet, so there are no instructions to show.
-            It&apos;ll fill in after the next sync.
+            This document declares itself a skill but has nothing below its frontmatter, so there
+            are no instructions for an agent to follow. Add them in Google Drive.
           </div>
         )}
       </div>

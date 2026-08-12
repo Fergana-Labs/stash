@@ -286,3 +286,30 @@ async def test_a_declaration_with_nothing_under_it_is_a_draft(client: AsyncClien
     assert skill is not None
     assert skill["has_instructions"] is False
     assert skill["combined"] == ""
+
+
+@pytest.mark.asyncio
+async def test_listing_and_reading_agree_on_a_long_frontmatter_block(client: AsyncClient, pool):
+    """`when_to_use` and `version` have no length cap, so a valid block can run
+    long. Listing works from a prefix and reading has the whole document, and
+    when those two disagreed a skill read fine while never appearing in the
+    catalogue — visible on its own page, invisible to every agent."""
+    _key, owner_id = await _register(client)
+    source_id = await _skill_shelf(pool, owner_id)
+    doc_id = await _doc(
+        pool,
+        owner_id,
+        source_id,
+        path="Turbochargers.md",
+        content=(
+            '---\nname: "Turbochargers"\ndescription: "Boost loss."\n'
+            f'when_to_use: "{"x" * 3000}"\n---\n\nCheck the wastegate.\n'
+        ),
+    )
+
+    listed = await skill_service.list_skills(owner_id, owner_id)
+    read = await skill_service.read_source_skill(owner_id, doc_id, owner_id)
+
+    assert [s["name"] for s in listed] == ["Turbochargers"]
+    assert read is not None
+    assert read["body"].strip() == "Check the wastegate."
