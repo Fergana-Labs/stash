@@ -2,8 +2,8 @@
 
 Two flavors:
 - User-facing (`import_repo_for_user`): straight copy of a whole repo into
-  the caller's scope as one root folder. Folders containing SKILL.md derive
-  as skills automatically. Uses the caller's GitHub connection when present,
+  the caller's scope as one root folder. Folders receiving a SKILL.md are
+  promoted to skills. Uses the caller's GitHub connection when present,
   so private repos work too.
 - Curator (`import_repo`, via scripts/import_github_skills.py): every
   directory whose immediate children include a SKILL.md becomes one
@@ -304,9 +304,9 @@ async def user_github_token(user_id: UUID) -> str | None:
 async def import_repo_for_user(owner_user_id: UUID, user_id: UUID, repo_url: str) -> dict:
     """Copy a whole repo into the active scope (the user's own, or a workspace
     they belong to) as one new root folder — a straight copy preserving
-    structure. Any folder containing a SKILL.md derives as a skill
-    automatically (skill-ness is never stored). Private repos work when the
-    user's GitHub connection can read them."""
+    structure. Any folder receiving a SKILL.md is promoted to a skill by
+    `write_folder_files`. Private repos work when the user's GitHub
+    connection can read them."""
     token = await user_github_token(user_id)
     repo_name, files = await fetch_repo_files(repo_url, token)
     if not files:
