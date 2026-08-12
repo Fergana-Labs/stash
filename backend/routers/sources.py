@@ -19,6 +19,7 @@ from typing import Literal
 from urllib.parse import quote
 from uuid import UUID, uuid4
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel
 
@@ -26,6 +27,7 @@ from ..auth import get_current_user, get_scope
 from ..celery_app import celery
 from ..database import get_pool
 from ..integrations import storage as integration_storage
+from ..integrations.google import indexer as google_indexer
 from ..integrations.registry import get_provider
 from ..services import (
     security_audit_service,
@@ -126,6 +128,24 @@ async def _resolve_heavi_source(user_id) -> tuple[str, str]:
     if not connected)."""
     token = await integration_storage.get_valid_token(user_id, "heavi")
     return json.loads(token)["base_url"], "Heavi — Rules of the Road"
+
+
+async def _resolve_drive_folder_name(user_id, folder_id: str) -> str:
+    """Name a picked folder after what it is called in Drive.
+
+    "root" is My Drive itself, which has no folder metadata to fetch."""
+    if folder_id == "root":
+        return "Google Drive"
+    try:
+        return await google_indexer.fetch_drive_folder_name(user_id, folder_id)
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Could not read that Drive folder. Check the link, and that this "
+                "Google account has access to it."
+            ),
+        ) from exc
 
 
 async def _resolve_posthog_source(user_id) -> tuple[str, str]:
@@ -391,6 +411,8 @@ async def add_source(
     elif body.source_type == "heavi_learnings":
         external_ref, resolved_name = await _resolve_heavi_source(current_user["id"])
         display_name = display_name or resolved_name
+    elif body.source_type == "google_drive_folder" and external_ref and not display_name:
+        display_name = await _resolve_drive_folder_name(current_user["id"], external_ref)
 
     if not external_ref:
         raise HTTPException(status_code=400, detail="external_ref is required")

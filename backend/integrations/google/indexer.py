@@ -99,6 +99,26 @@ async def _target_modified_time(client: httpx.AsyncClient, file_id: str) -> str 
     return resp.json().get("modifiedTime")
 
 
+async def fetch_drive_folder_name(owner_user_id: UUID, folder_id: str) -> str:
+    """What Drive calls this folder, for naming the source after it.
+
+    Raises when the folder can't be read. That is the right outcome rather than
+    a placeholder name: a folder we cannot fetch metadata for is one we cannot
+    crawl either, so the source would be born broken and named "Google Drive
+    folder" while looking fine.
+    """
+    token = await get_valid_token(owner_user_id, "google")
+    async with httpx.AsyncClient(timeout=30.0, headers={"Authorization": f"Bearer {token}"}) as (
+        client
+    ):
+        resp = await client.get(
+            DRIVE_FILE_URL.format(file_id=folder_id),
+            params={**ALL_DRIVES, "fields": "name"},
+        )
+        resp.raise_for_status()
+        return resp.json()["name"]
+
+
 async def _resolve_shortcut(client: httpx.AsyncClient, entry: dict) -> dict:
     """A shortcut's target as a plain entry, under the shortcut's display name.
 
