@@ -847,7 +847,7 @@ function SkillQuickAccess({
         <QuickAccessRow title="Pinned">
           {pinned.map((skill) => (
             <SkillQuickCard
-              key={`pin-${skill.folder_id}`}
+              key={`pin-${skillKey(skill)}`}
               skill={skill}
               pinned
               onTogglePin={onTogglePin}
@@ -859,7 +859,7 @@ function SkillQuickAccess({
         <QuickAccessRow title="Recent">
           {recent.map((skill) => (
             <SkillQuickCard
-              key={`recent-${skill.folder_id}`}
+              key={`recent-${skillKey(skill)}`}
               skill={skill}
               pinned={isPinned(skill)}
               onTogglePin={onTogglePin}

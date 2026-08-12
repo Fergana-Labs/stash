@@ -92,6 +92,23 @@ function skill(overrides: Partial<FolderBackedSkill> = {}): Skill {
   };
 }
 
+function sourceSkill(overrides: Partial<Skill> = {}): Skill {
+  return {
+    backing: "source",
+    folder_id: null,
+    source_doc_id: "doc-1",
+    name: "Turbochargers",
+    description: "Use when a customer reports boost loss.",
+    when_to_use: "",
+    version: "",
+    mcp_exposed: false,
+    file_count: 1,
+    updated_at: "2026-08-11T00:00:00Z",
+    published: null,
+    ...overrides,
+  } as Skill;
+}
+
 describe("SkillsPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -188,6 +205,27 @@ describe("SkillsPage", () => {
     await waitFor(() =>
       expect(router.push).toHaveBeenCalledWith("/skills/folder/folder-9"),
     );
+  });
+
+  it("keeps source-backed skills distinct from each other in every list", async () => {
+    // They all have folder_id null, so anything still keying off it collapses
+    // them onto one React key — which silently drops rows rather than throwing.
+    // This is why the page keys off skillKey and not the folder.
+    const warn = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.mocked(listSkills).mockResolvedValue([
+      sourceSkill({ source_doc_id: "doc-1", name: "Turbochargers" }),
+      sourceSkill({ source_doc_id: "doc-2", name: "Brake Shoes" }),
+    ]);
+
+    render(<SkillsPage />);
+    await screen.findAllByText("Turbochargers");
+
+    expect(screen.getAllByText("Brake Shoes").length).toBeGreaterThan(0);
+    const duplicateKeyWarnings = warn.mock.calls
+      .map((args) => String(args[0]))
+      .filter((message) => message.includes("same key"));
+    expect(duplicateKeyWarnings).toEqual([]);
+    warn.mockRestore();
   });
 
   it("shows a source-backed skill as read-only, with nowhere to click through to", async () => {
