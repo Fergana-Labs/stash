@@ -336,7 +336,7 @@ export default function HopperRoute() {
         {recent.length > 0 && (
           <section className="mt-8 shrink-0">
             <h2 className="font-mono text-[11px] uppercase tracking-[0.05em] text-muted-foreground">
-              Recently in your Stash
+              Recently added
             </h2>
             <ul className="mt-3 flex flex-col">
               {recent.map((event) => (
