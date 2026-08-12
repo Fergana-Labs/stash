@@ -68,35 +68,36 @@ describe("ItemsList type filter", () => {
     );
   }
 
-  it("hides non-document types by default so uploads don't clutter the view", () => {
+  it("shows every type by default, uploads included", () => {
     renderMixedList();
 
-    // HTML/Markdown/folders are the default doc set; the PNG stays hidden until
-    // it's explicitly chosen from the Type menu.
-    expect(screen.getByText(item.name)).toBeDefined();
-    expect(screen.queryByText(png.name)).toBeNull();
-  });
-
-  it("reveals every type via All types", () => {
-    renderMixedList();
-
-    fireEvent.click(screen.getByRole("button", { name: /^Type$/i }));
-    fireEvent.click(screen.getByRole("button", { name: "All types" }));
-
+    // This used to open on documents only, which meant a folder of
+    // screenshots read as "Empty folder" while the tree beside it counted
+    // six. A file browser that hides files is the wrong kind of tidy.
     expect(screen.getByText(item.name)).toBeDefined();
     expect(screen.getByText(png.name)).toBeDefined();
   });
 
-  it("returns to the document set via Documents only", () => {
+  it("narrows to the document set via Documents only", () => {
     renderMixedList();
 
     fireEvent.click(screen.getByRole("button", { name: /^Type$/i }));
-    fireEvent.click(screen.getByRole("button", { name: "All types" }));
-    fireEvent.click(screen.getByRole("button", { name: /^Type: All$/i }));
     fireEvent.click(screen.getByRole("button", { name: "Documents only" }));
 
     expect(screen.getByText(item.name)).toBeDefined();
     expect(screen.queryByText(png.name)).toBeNull();
+  });
+
+  it("returns to everything via All types", () => {
+    renderMixedList();
+
+    fireEvent.click(screen.getByRole("button", { name: /^Type$/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Documents only" }));
+    fireEvent.click(screen.getByRole("button", { name: /^Type: Documents$/i }));
+    fireEvent.click(screen.getByRole("button", { name: "All types" }));
+
+    expect(screen.getByText(item.name)).toBeDefined();
+    expect(screen.getByText(png.name)).toBeDefined();
   });
 
   it("narrows the list to the chosen type", () => {
