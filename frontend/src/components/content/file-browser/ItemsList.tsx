@@ -94,14 +94,16 @@ const SORT_STORAGE_KEY = "stash_files_sort";
 
 const DEFAULT_SORT: Sort = { key: "modified", dir: "desc" };
 
-// The List view opens on documents only — folders plus the page types people
-// author (HTML, Markdown). Other file types (PDFs, images, tables) stay hidden
-// until chosen from the Type menu, so uploads don't clutter the default view.
-// `typeFilter === null` means this doc set; ALL_TYPES means show everything.
-// Tables are first-class residents of the folder tree, so they show by
-// default like documents do.
-const DEFAULT_TYPES = new Set(["Folder", "HTML", "Markdown", "Table"]);
-const ALL_TYPES = "__all__";
+// The List view shows everything a folder holds. It used to open on documents
+// only — folders, HTML, Markdown, Table — so uploads would not "clutter" it,
+// but that predates a product whose front door is uploads: a folder of
+// screenshots read as "Empty folder" while the tree beside it counted six.
+// A file browser that hides files is the wrong kind of tidy.
+//
+// `typeFilter === null` now means everything; DOC_TYPES stays as the explicit
+// "Documents only" choice in the Type menu.
+const DOC_TYPES = new Set(["Folder", "HTML", "Markdown", "Table"]);
+const DOCS_ONLY = "__docs__";
 
 function readSort(): Sort {
   if (typeof window === "undefined") return null;
@@ -165,20 +167,16 @@ export default function ItemsList({
     applySort(next);
   }
 
-  // Only the non-default types are pickable here; folders/HTML/Markdown already
-  // show by default, so the menu is purely for revealing the other types.
+  // Every type present, so the menu can narrow to any one of them.
   const typeOptions = useMemo(
-    () =>
-      Array.from(new Set(items.map(typeFor)))
-        .filter((type) => !DEFAULT_TYPES.has(type))
-        .sort(),
+    () => Array.from(new Set(items.map(typeFor))).sort(),
     [items],
   );
 
   const sortedItems = useMemo(() => {
     const visible = items.filter((item) => {
-      if (typeFilter === null) return DEFAULT_TYPES.has(typeFor(item));
-      if (typeFilter === ALL_TYPES) return true;
+      if (typeFilter === null) return true;
+      if (typeFilter === DOCS_ONLY) return DOC_TYPES.has(typeFor(item));
       return typeFor(item) === typeFilter;
     });
     if (!sort) return visible;
@@ -224,7 +222,7 @@ export default function ItemsList({
         ))}
         {sortedItems.length === 0 && (
           <div className="px-4 py-10 text-center text-[12.5px] text-muted-foreground">
-            {typeFilter && typeFilter !== ALL_TYPES
+            {typeFilter && typeFilter !== DOCS_ONLY
               ? `No ${typeFilter} items here.`
               : "Empty folder."}
           </div>
@@ -314,8 +312,8 @@ function TypeHeader({
       >
         {filter === null
           ? "Type"
-          : filter === ALL_TYPES
-            ? "Type: All"
+          : filter === DOCS_ONLY
+            ? "Type: Documents"
             : `Type: ${filter}`}
         {sortActive && <span className="text-[9px]">{sort?.dir === "desc" ? "▼" : "▲"}</span>}
         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -327,8 +325,8 @@ function TypeHeader({
           <MenuItem label="Sort A → Z" checked={sortActive && sort?.dir === "asc"} onSelect={() => choose(() => onSort("asc"))} />
           <MenuItem label="Sort Z → A" checked={sortActive && sort?.dir === "desc"} onSelect={() => choose(() => onSort("desc"))} />
           <div className="my-1 border-t border-border" />
-          <MenuItem label="Documents only" checked={filter === null} onSelect={() => choose(() => onFilter(null))} />
-          <MenuItem label="All types" checked={filter === ALL_TYPES} onSelect={() => choose(() => onFilter(ALL_TYPES))} />
+          <MenuItem label="All types" checked={filter === null} onSelect={() => choose(() => onFilter(null))} />
+          <MenuItem label="Documents only" checked={filter === DOCS_ONLY} onSelect={() => choose(() => onFilter(DOCS_ONLY))} />
           {options.map((type) => (
             <MenuItem key={type} label={type} checked={filter === type} onSelect={() => choose(() => onFilter(type))} />
           ))}
