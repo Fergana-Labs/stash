@@ -5,6 +5,13 @@ everything before it is captured in git history (`git log`), not here.
 
 ## Unreleased
 
+- Uploaded images are transcribed by vision, so agents can read them.
+  `file_extraction.extract_text` has no branch for images, so every uploaded
+  screenshot, photo, and diagram stored an empty knowledge-base entry and was
+  invisible to search, ask-the-stash, and the VFS. Images now take the same
+  path scanned PDFs take: text transcribed character-for-character, and
+  everything non-textual described in place. Formats Gemini cannot read
+  inline (SVG, TIFF) still store no text rather than pretending.
 - Local embeddings run on the CPU (fixes a crash on Apple Silicon).
   sentence-transformers 5.x selects Apple's Metal (`mps`) device when it can,
   and a Metal context cannot survive `fork()` — so every Celery prefork child
