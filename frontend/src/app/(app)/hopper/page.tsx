@@ -87,7 +87,9 @@ export default function HopperRoute() {
       const only = results.length === 1 && results[0].ok === true ? results[0].value : null;
       if (only) {
         toast.success(
-          only.duplicate ? `${only.name} was already in your Stash` : `${only.name} is in your Stash`,
+          only.duplicate
+            ? `${only.name} was already uploaded`
+            : `${only.name} uploaded successfully`,
           {
             action: {
               label: only.kind === "page" ? "Go to page" : "Go to file",
