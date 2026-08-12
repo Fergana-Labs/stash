@@ -317,12 +317,11 @@ export default function SkillSessionsPage() {
           </section>
         )}
 
-        {/* Folder-first: the landing is the set of folders (Default catches
-            chat + un-targeted sessions); the chronological/filter views live
-            inside a folder once you drill in. */}
-        {openFolder ? (
-          <FolderDrill
-            folder={openFolder}
+        {/* Sessions-first: the landing is every session, flat, because the tab
+            exists to let you look at your sessions. Folders organise them and
+            sit below; the VFS view is where sessions nest into directories. */}
+        <FolderDrill
+            folder={openFolder ?? ALL_SESSIONS}
             refreshKey={drillRefresh}
             folders={folders}
             view={view}
@@ -340,15 +339,17 @@ export default function SkillSessionsPage() {
             dragActive={dragActive}
             onDropSessions={moveRowsToFolder}
           />
-        ) : (
-          <FoldersSection
-            ownFolders={folders}
-            sharedFolders={sharedFolders}
-            onOpen={setOpenFolder}
-            onNewFolder={newFolder}
-            onShare={(f) => setShareFolder(f)}
-            onDropSessions={moveRowsToFolder}
-          />
+        {!openFolder && (
+          <div className="mt-8 border-t border-border pt-5">
+            <FoldersSection
+              ownFolders={folders}
+              sharedFolders={sharedFolders}
+              onOpen={setOpenFolder}
+              onNewFolder={newFolder}
+              onShare={(f) => setShareFolder(f)}
+              onDropSessions={moveRowsToFolder}
+            />
+          </div>
         )}
       </div>
 
@@ -923,11 +924,16 @@ function formatDate(iso: string | null): string {
 // `folder` is the full record for own folders (enables Share/Delete + access
 // badge); shared-with-me folders only carry the id/name.
 type OpenFolder = {
-  id: string;
+  /** null = every session in the scope: the tab's flat landing view. Folders
+   *  are a way to organise sessions, not a wall you must click through to see
+   *  them. */
+  id: string | null;
   name: string;
   shared: boolean;
   folder?: SessionFolder;
 };
+
+const ALL_SESSIONS: OpenFolder = { id: null, name: "All sessions", shared: false };
 
 const VIS_DOT: Record<DisplayVisibility, string> = {
   public: "#22C55E",
@@ -1152,9 +1158,10 @@ function FolderDrill({
   useEffect(() => {
     setFolderSessions(null);
     setHasMore(false);
-    const request = folder.shared
-      ? listSharedSessionFolderSessions(folder.id)
-      : listMySessions(SESSIONS_PAGE_SIZE, folder.id, 0);
+    const request =
+      folder.shared && folder.id
+        ? listSharedSessionFolderSessions(folder.id)
+        : listMySessions(SESSIONS_PAGE_SIZE, folder.id ?? undefined, 0);
     request
       .then((rows) => {
         setFolderSessions(rows);
@@ -1169,7 +1176,7 @@ function FolderDrill({
     try {
       const rows = await listMySessions(
         SESSIONS_PAGE_SIZE,
-        folder.id,
+        folder.id ?? undefined,
         folderSessions.length
       );
       setFolderSessions((prev) => [...(prev ?? []), ...rows]);
@@ -1206,18 +1213,24 @@ function FolderDrill({
   // without selection (no move/delete on sessions you don't own).
   const drillSessions = sortSessions(folderSessions ?? [], sort);
 
+  const isAll = folder.id === null;
+
   return (
     <div>
-      <button
-        type="button"
-        onClick={onBack}
-        className="mb-3 inline-flex cursor-pointer items-center gap-1 text-[12.5px] text-muted-foreground hover:text-foreground"
-      >
-        ← All folders
-      </button>
+      {!isAll && (
+        <button
+          type="button"
+          onClick={onBack}
+          className="mb-3 inline-flex cursor-pointer items-center gap-1 text-[12.5px] text-muted-foreground hover:text-foreground"
+        >
+          ← All folders
+        </button>
+      )}
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
         <h2 className="m-0 flex items-center gap-2 font-display text-[18px] font-semibold text-foreground">
-          <span aria-hidden>{folder.shared ? "🗂️" : ownFolder?.is_default ? "🗃️" : "📁"}</span>
+          {!isAll && (
+            <span aria-hidden>{folder.shared ? "🗂️" : ownFolder?.is_default ? "🗃️" : "📁"}</span>
+          )}
           {folder.name}
           {ownFolder && <FolderAccessBadge folder={ownFolder} />}
         </h2>
