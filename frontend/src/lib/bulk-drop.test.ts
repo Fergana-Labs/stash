@@ -35,16 +35,28 @@ describe("filesFromPicker", () => {
 
 describe("runPool", () => {
   it("runs at most `limit` workers at once", async () => {
+    // Each worker parks on a promise this test resolves by hand, so the
+    // assertion is about the pool rather than about timer scheduling.
+    const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+    const parked: Array<() => void> = [];
     let running = 0;
     let peak = 0;
-    const items = Array.from({ length: 20 }, (_, i) => i);
 
-    await runPool(items, 5, async () => {
+    const pool = runPool(Array.from({ length: 20 }, (_, i) => i), 5, async () => {
       running += 1;
       peak = Math.max(peak, running);
-      await new Promise((r) => setTimeout(r, 1));
+      await new Promise<void>((resolve) => parked.push(resolve));
       running -= 1;
     });
+
+    await flush();
+    expect(parked).toHaveLength(5);
+
+    while (parked.length) {
+      parked.shift()!();
+      await flush();
+    }
+    await pool;
 
     expect(peak).toBe(5);
   });
