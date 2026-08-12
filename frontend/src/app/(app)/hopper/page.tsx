@@ -2,9 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { toast } from "sonner";
 import { useBreadcrumbs } from "@/components/BreadcrumbContext";
-import { dropHopperFile, dropHopperLink } from "@/lib/api";
+import { dropHopperFile, dropHopperLink, listFileActivity, type ActivityEvent } from "@/lib/api";
 import { isLinkDrop } from "@/lib/hopper";
 import {
   filesFromDrop,
@@ -18,6 +19,22 @@ import {
 // separating — middots between caps is the house style of every AI landing
 // page this year.
 const ACCEPTS = ["PDF", "DOCX", "XLSX", "PPTX", "CSV", "MD", "PNG", "JPG", "URL"];
+
+// Enough to answer "did that land?" without becoming a place things live.
+const RECENT_LIMIT = 6;
+
+function landedAt(iso: string): string {
+  const minutes = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.round(hours / 24)}d ago`;
+}
+
+function hrefFor(event: ActivityEvent): string {
+  return event.kind.startsWith("page") ? `/p/${event.target_id}` : `/f/${event.target_id}`;
+}
 
 type Batch = {
   total: number;
@@ -43,7 +60,23 @@ export default function HopperRoute() {
   const [dragging, setDragging] = useState(false);
   const [batch, setBatch] = useState<Batch | null>(null);
   const [link, setLink] = useState("");
+  const [recent, setRecent] = useState<ActivityEvent[]>([]);
   const fileInput = useRef<HTMLInputElement>(null);
+
+  // Sourced from file activity, not from a hopper ledger: what is recently in
+  // the VFS is the truth, whether it arrived through this tab or the CLI.
+  const refreshRecent = useCallback(async () => {
+    try {
+      const feed = await listFileActivity({ limit: 30 });
+      setRecent(feed.events.filter((e) => e.kind === "file.uploaded").slice(0, RECENT_LIMIT));
+    } catch {
+      // A strip of recent names is not worth an error state on this page.
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshRecent();
+  }, [refreshRecent]);
 
   // A single drop confirms itself; a batch reports once at the end. Eighty
   // toasts for eighty files is not a confirmation, it is a denial of service.
@@ -77,6 +110,7 @@ export default function HopperRoute() {
         }
       });
       setBatch(null);
+      void refreshRecent();
 
       if (cancel.signal.aborted) {
         toast.info(`Stopped — ${summarise(live)}`);
@@ -109,7 +143,7 @@ export default function HopperRoute() {
         action: { label: "Go to VFS", onClick: () => router.push("/files") },
       });
     },
-    [router],
+    [router, refreshRecent],
   );
 
   // The hopper takes things that already exist, so text is only ever a link.
@@ -272,6 +306,32 @@ export default function HopperRoute() {
             Take it
           </button>
         </form>
+
+        {/* Not the status feed we deleted — no ledger, no states, no polling.
+            Just the last few things that landed, so a drop can be seen to have
+            worked without leaving the page. */}
+        {recent.length > 0 && (
+          <section className="mt-8 shrink-0">
+            <h2 className="font-mono text-[11px] uppercase tracking-[0.05em] text-muted-foreground">
+              Recently added
+            </h2>
+            <ul className="mt-3 flex flex-col">
+              {recent.map((event) => (
+                <li key={`${event.target_id}-${event.ts}`}>
+                  <Link
+                    href={hrefFor(event)}
+                    className="flex items-baseline justify-between gap-4 rounded-md py-1.5 text-[13px] text-dim transition-colors hover:text-foreground"
+                  >
+                    <span className="truncate">{event.target_label}</span>
+                    <span className="shrink-0 font-mono text-[11px] text-muted-foreground">
+                      {landedAt(event.ts)}
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
       </div>
     </div>
   );
