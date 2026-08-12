@@ -5,9 +5,11 @@ Adding is always the user's explicit act — nothing runs a skill you did not
 add — but it has to be idempotent, because Add is a button people press twice.
 """
 
+from uuid import UUID
+
 from httpx import AsyncClient
 
-from backend.services import shared_skill_service
+from backend.services import shared_skill_service, source_service
 
 from .conftest import unique_name
 
@@ -141,3 +143,42 @@ async def test_curated_lookup_ignores_skills_outside_the_service_account(client:
     found = await shared_skill_service.curated_skills_by_name(["resurface"])
 
     assert found == []
+
+
+async def test_a_drive_document_of_the_same_name_does_not_count_as_holding_it(
+    client: AsyncClient, pool
+):
+    """Held-ness is by name, which was safe while every skill was a folder in
+    the scope. A skill read from a bound Drive folder is a document someone
+    wrote upstream that happens to share a title — counting it as held refuses
+    the install and hands back a folder id that does not exist."""
+    _author, author_headers = await _register(client)
+    slug = await _publish_skill(client, author_headers, LIBRARY_SKILL_MD)
+
+    runner, runner_headers = await _register(client)
+    source = await source_service.create_source(
+        owner_user_id=UUID(runner["id"]),
+        source_type="google_drive_folder",
+        external_ref="drive-same-name",
+        display_name="Their Drive",
+        settings={},
+    )
+    await pool.execute(
+        "UPDATE user_sources SET binds_skills = true WHERE id = $1", UUID(source["id"])
+    )
+    await pool.execute(
+        "INSERT INTO drive_documents "
+        "  (owner_user_id, source_id, path, name, external_ref, content, extraction_status) "
+        "VALUES ($1, $2, 'resurface.md', 'resurface.md', 'ref-same-name', $3, 'done')",
+        UUID(runner["id"]),
+        UUID(source["id"]),
+        '---\nname: "resurface"\ndescription: "A different thing entirely."\n---\n\nMine.\n',
+    )
+
+    response = await client.post(
+        "/api/v1/me/skills/install", json={"slug": slug}, headers=runner_headers
+    )
+
+    assert response.status_code == 200
+    assert response.json()["installed"] is True
+    assert response.json()["folder_id"] is not None
