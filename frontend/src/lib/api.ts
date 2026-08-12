@@ -574,6 +574,25 @@ export async function getCuratorLog(): Promise<{ entries: CuratorLogEntry[] }> {
   return apiFetch(`${ME}/curator-log`);
 }
 
+// One of the reserved slots the nightly curator maintains. `description` is
+// the only text an agent matches on, so it's what the user reads to judge it.
+// Not `CuratedSkill` — that name already means a skill recommended for an app.
+export interface CuratorSkill {
+  folder_id: string;
+  name: string;
+  description: string;
+  body: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export async function getCuratorSkills(): Promise<{
+  max_slots: number;
+  skills: CuratorSkill[];
+}> {
+  return apiFetch(`${ME}/curated-skills`);
+}
+
 export async function createFolder(
   name: string,
   parentFolderId?: string | null

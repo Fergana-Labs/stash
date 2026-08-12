@@ -1635,6 +1635,65 @@ skills_app = typer.Typer(
 )
 app.add_typer(skills_app, name="skills")
 
+curated_app = typer.Typer(
+    help=(
+        "The three slots the nightly curator owns. Curated skills sync into "
+        "your agents' skills dir like any other; editing one adopts it out of "
+        "the curator's hands and frees the slot."
+    )
+)
+skills_app.add_typer(curated_app, name="curated")
+
+
+@curated_app.command("ls")
+def curated_ls(as_json: bool = typer.Option(False, "--json")):
+    """The occupied slots — read this before writing, to see what a new
+    candidate would have to beat."""
+    with _client() as c:
+        try:
+            data = c.list_curated_skills()
+        except StashError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(data)
+        return
+    console.print(f"[dim]{len(data['skills'])}/{data['max_slots']} slots used[/dim]")
+    for s in data["skills"]:
+        console.print(f"[cyan]{s['name']}[/cyan]  [dim]{s['folder_id']}[/dim]")
+        console.print(f"  {s['description']}")
+
+
+@curated_app.command("write")
+def curated_write(
+    name: str = typer.Argument(..., help="Skill name. Writing an existing one updates it."),
+    description: str = typer.Option(
+        ...,
+        "--description",
+        help="When this skill should fire. The only text an agent matches on.",
+    ),
+    body: str = typer.Option(None, "--body", help="SKILL.md body. Reads stdin if omitted."),
+    replaces: str = typer.Option(
+        None, "--replaces", help="Name of the curated skill this evicts, when the slots are full."
+    ),
+    as_json: bool = typer.Option(False, "--json"),
+):
+    """Create or update a curated skill. Fails when the slots are full and
+    --replaces names nothing: the cap is the design, not a suggestion."""
+    if body is None and not sys.stdin.isatty():
+        body = sys.stdin.read()
+    if body is None:
+        console.print("[red]No body: pass --body or pipe it on stdin.[/red]")
+        raise typer.Exit(1)
+    with _client() as c:
+        try:
+            data = c.write_curated_skill(name, description, body, replaces)
+        except StashError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(data)
+    else:
+        console.print(f"[green]Curated skill '{data['name']}' {data['action']}.[/green]")
+
 
 @skills_app.command("add")
 def skills_add(
@@ -2106,6 +2165,17 @@ def _local_skill_dirs(root: Path) -> dict[str, Path]:
     return {p.name: p for p in sorted(root.iterdir()) if p.is_dir() and (p / "SKILL.md").exists()}
 
 
+def _local_skill_is_curated(skill_dir: Path) -> bool:
+    """Curated skills carry `curated: true` in their frontmatter, so a local
+    copy says what it is without asking the cloud — which is exactly what sync
+    can't do in the case that needs this: the skill is gone from the cloud."""
+    md = (skill_dir / "SKILL.md").read_text()
+    if not md.startswith("---\n"):
+        return False
+    end = md.find("\n---", 4)
+    return end != -1 and "curated: true" in md[4:end]
+
+
 def _collect_local_files(skill_dir: Path) -> list[tuple[str, bytes]]:
     out = []
     for path in sorted(skill_dir.rglob("*")):
@@ -2162,10 +2232,17 @@ def _sync_skills(
     remote: dict[str, dict] = {}
     for s in c.list_skills():
         detail = c.get_skill_contents(s["folder_id"])
-        remote[detail["folder_name"]] = detail
+        remote[detail["folder_name"]] = {**detail, "curated": s["curated"]}
 
     local = _local_skill_dirs(root)
-    summary: dict = {"pulled": [], "pushed": [], "conflicts": [], "ignored": [], "unchanged": []}
+    summary: dict = {
+        "pulled": [],
+        "pushed": [],
+        "conflicts": [],
+        "ignored": [],
+        "unchanged": [],
+        "retired": [],
+    }
     new_state: dict = {}
 
     for name in sorted(set(remote) & set(skip)):
@@ -2209,7 +2286,15 @@ def _sync_skills(
                 # local deletion gets re-pulled; remove skills in Stash.
                 pull(name, detail)
             elif name in local and not detail:
-                if rec:
+                if rec and _local_skill_is_curated(local[name]):
+                    # The curator gave this slot to a better candidate. Its
+                    # cloud copy is the whole truth, so the local dir goes too
+                    # — a retired skill that keeps loading is worse than none.
+                    # Only ever a dir sync itself pulled (rec): frontmatter is
+                    # copyable, so it can't be the sole license to delete.
+                    shutil.rmtree(local[name])
+                    summary["retired"].append(name)
+                elif rec:
                     summary["ignored"].append(f"{name} (deleted in Stash; kept local copy)")
                 elif push_new:
                     folder = c.create_folder(name)
@@ -2224,7 +2309,10 @@ def _sync_skills(
             else:
                 local_changed = _hash_local_skill(local[name]) != rec["local_hash"]
                 remote_changed = _hash_remote_contents(detail["contents"]) != rec["remote_hash"]
-                if local_changed and remote_changed:
+                # A curated skill can't conflict: the human's edit always wins,
+                # and pushing it adopts the skill away from the curator, so
+                # there's no second author left to disagree with.
+                if local_changed and remote_changed and not detail["curated"]:
                     new_state[name] = rec
                     summary["conflicts"].append(f"{name} (changed locally AND in Stash)")
                 elif local_changed:
@@ -2364,6 +2452,8 @@ def skills_sync(
         console.print(f"[green]pushed[/green]  {name}")
     for name in summary["updated"]:
         console.print(f"[green]updated[/green] {name}")
+    for name in summary["retired"]:
+        console.print(f"[green]retired[/green] {name} (curated slot reassigned)")
     for note in summary["ignored"]:
         console.print(f"[dim]ignored[/dim]  {note}")
     for note in summary["conflicts"]:

@@ -1329,7 +1329,10 @@ async def set_folder_is_skill(folder_id: UUID, owner_user_id: UUID, is_skill: bo
                 "then convert it back to a folder."
             )
     updated = await pool.fetchrow(
-        "UPDATE folders SET is_skill = $3, updated_at = now() "
+        # Demoting a curated skill un-curates it: a plain folder can't hold a
+        # curator slot (the folders_curated_is_a_skill check says so), and
+        # turning one back into a folder is a human deciding it isn't a skill.
+        "UPDATE folders SET is_skill = $3, is_curated = (is_curated AND $3), updated_at = now() "
         "WHERE id = $1 AND owner_user_id = $2 "
         "RETURNING id, owner_user_id, parent_folder_id, name, is_skill, created_by, "
         "  created_at, updated_at",

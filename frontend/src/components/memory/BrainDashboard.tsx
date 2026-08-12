@@ -11,6 +11,7 @@ import {
 import { ActivitySkeleton, SkeletonBlock } from "@/components/SkeletonStates";
 import { FileIcon, PageIcon } from "@/components/SkillIcons";
 import EmbeddingSpaceExplorer from "@/components/viz/EmbeddingSpaceExplorer";
+import CuratedSkills from "@/components/memory/CuratedSkills";
 import CuratorLog from "@/components/memory/CuratorLog";
 import WikiGraph from "@/components/memory/WikiGraph";
 import CopyableCommandBlock from "@/components/CopyableCommandBlock";
@@ -211,6 +212,11 @@ export default function BrainDashboard() {
           </div>
 
           <div className="flex min-h-0 min-w-0 flex-col gap-4">
+            {/* The curator's other output. It sits above the decorative panels
+                because it's the one thing here the user is asked to judge:
+                these three load into every agent session. */}
+            <CuratedSkills />
+
             {/* Brain map — the knowledge the brain holds, laid out in space. (Decorative.) */}
             <VizCard label="Knowledge map">
               {!projectionLoaded ? (

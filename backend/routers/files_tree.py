@@ -31,6 +31,7 @@ from ..models import (
 )
 from ..services import (
     comment_service,
+    curated_skill_service,
     files_tree_service,
     page_events,
     permission_service,
@@ -815,6 +816,11 @@ async def update_page(
         )
     if not page:
         raise HTTPException(status_code=404, detail="Page not found")
+    if page["folder_id"]:
+        # Editing inside a curated skill adopts it: the curator wrote a first
+        # draft, the human made it theirs, and the slot frees for a new
+        # candidate. No-op for every other folder.
+        await curated_skill_service.adopt(owner_user_id, page["folder_id"])
     # Write access was checked above; a save response must not flip the
     # editor read-only by omitting the flag.
     return PageResponse(**{**page, "can_write": True})

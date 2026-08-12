@@ -11,7 +11,7 @@ without waking a sprite.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from ..database import get_pool
@@ -27,6 +27,24 @@ _MAX_FILES = 100
 _MAX_SAVES = 100
 _MAX_SOURCE_DOCS = 100
 _SNIPPET = 280
+
+# Corrections are a rolling window, not part of the delta. Two reasons they
+# can't ride the history feed: the feed drains oldest-first, so a backlogged
+# account spends weeks of runs on old tool traffic before reaching this
+# month's words; and tool events outnumber user messages by ~50:1, so user
+# messages lose nearly every cap they compete for. (Measured on a real
+# account, 2026-08: 500 feed events held 295 tool events and 6 user messages.)
+# A single night also can't show recurrence, which is the whole test for a
+# skill — so this window deliberately overlaps run to run.
+_CORRECTION_WINDOW_DAYS = 30
+# Sampled per session, not newest-first overall: a skill earns its slot on how
+# many DISTINCT sessions show the pattern, so the input has to maximize
+# sessions rather than messages. Measured on a real account (2026-08): the
+# newest 200 messages covered 33 sessions over 1.4 days, while 4-per-session
+# across 120 sessions covered 8 days for 279 messages.
+_MAX_CORRECTION_SESSIONS = 120
+_MAX_PER_SESSION = 4
+_CORRECTION_SNIPPET = 600
 
 
 async def has_changes_since(owner_user_id: UUID, user_id: UUID, since: datetime | None) -> bool:
@@ -213,8 +231,11 @@ async def changes_since(owner_user_id: UUID, user_id: UUID, since: datetime | No
         if not str(s.get("type", "")).startswith("native_")
     ]
 
+    corrections = await recent_user_messages(owner_user_id, datetime.now(UTC))
+
     return {
         "since": _iso(since),
+        "correction_window_days": _CORRECTION_WINDOW_DAYS,
         "counts": {
             "history": len(history),
             "pages": len(pages),
@@ -222,9 +243,11 @@ async def changes_since(owner_user_id: UUID, user_id: UUID, since: datetime | No
             "source_docs": len(source_docs),
             "saves": len(saves),
             "sources": len(sources),
+            "corrections": len(corrections),
         },
         "history": history,
         "history_has_more": history_has_more,
+        "corrections": corrections,
         "pages": pages,
         "files": files,
         "source_docs": source_docs,
@@ -271,6 +294,62 @@ async def _feed_events(
     )
     has_more = len(rows) > limit
     return [dict(r) for r in rows[:limit]], has_more
+
+
+async def recent_user_messages(owner_user_id: UUID, now: datetime) -> list[dict]:
+    """The user's own words from the last `_CORRECTION_WINDOW_DAYS` — the
+    curator's evidence for what a skill should say. Up to `_MAX_PER_SESSION`
+    messages from each of the `_MAX_CORRECTION_SESSIONS` most recent sessions,
+    newest session first.
+
+    Deliberately outside the watermark: this is a window, not a delta, so it
+    never advances `complete_through` and re-presents the same messages night
+    after night. That repetition is the point — a skill earns its slot on
+    recurrence across sessions, which one night's delta cannot show."""
+    pool = get_pool()
+    rows = await pool.fetch(
+        """
+        WITH ranked AS (
+          SELECT he.session_id, he.agent_name, he.created_at,
+                 left(coalesce(he.content, ''), $4) AS content,
+                 row_number() OVER (PARTITION BY he.session_id
+                                    ORDER BY he.created_at DESC) AS rn,
+                 max(he.created_at) OVER (PARTITION BY he.session_id) AS session_last
+          FROM history_events he
+          WHERE he.owner_user_id = $1
+            AND he.event_type = 'user_message'
+            AND (he.session_id IS NULL OR he.session_id NOT LIKE 'agent-curate-%')
+            AND he.created_at > $2
+            AND coalesce(he.content, '') <> ''
+        ),
+        top_sessions AS (
+          SELECT DISTINCT session_id, session_last FROM ranked
+          ORDER BY session_last DESC LIMIT $3
+        )
+        SELECT r.session_id, r.agent_name, r.created_at, r.content, sf.name AS folder
+        FROM ranked r
+        JOIN top_sessions t ON t.session_id IS NOT DISTINCT FROM r.session_id
+        LEFT JOIN sessions s ON s.owner_user_id = $1 AND s.session_id = r.session_id
+        LEFT JOIN session_folders sf ON sf.id = s.session_folder_id
+        WHERE r.rn <= $5
+        ORDER BY t.session_last DESC, r.created_at
+        """,
+        owner_user_id,
+        now - timedelta(days=_CORRECTION_WINDOW_DAYS),
+        _MAX_CORRECTION_SESSIONS,
+        _CORRECTION_SNIPPET,
+        _MAX_PER_SESSION,
+    )
+    return [
+        {
+            "session_id": r["session_id"],
+            "agent_name": r["agent_name"],
+            "folder": r["folder"],
+            "created_at": _iso(r["created_at"]),
+            "content": r["content"],
+        }
+        for r in rows
+    ]
 
 
 async def complete_through(

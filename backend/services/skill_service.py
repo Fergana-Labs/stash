@@ -108,6 +108,7 @@ async def list_skills(owner_user_id: UUID, user_id: UUID) -> list[dict]:
     readable = permission_service.readable_content_condition("folder", "f", 2)
     rows = await pool.fetch(
         "SELECT f.id AS folder_id, f.name AS folder_name, f.updated_at AS folder_updated_at, "
+        "  f.is_curated, "
         "  p.id AS skill_md_id, p.content_markdown AS skill_md, p.updated_at, "
         "  (SELECT COUNT(*) FROM pages p2 WHERE p2.folder_id = f.id "
         "   AND p2.deleted_at IS NULL) AS file_count, "
@@ -142,6 +143,9 @@ async def list_skills(owner_user_id: UUID, user_id: UUID) -> list[dict]:
                 "when_to_use": meta.get("when_to_use", ""),
                 "version": meta.get("version", ""),
                 "mcp_exposed": bool(meta.get("mcp_exposed", False)),
+                # True while the nightly curator owns this skill: it holds one
+                # of the reserved slots and a human edit adopts it out of them.
+                "curated": bool(r["is_curated"]),
                 "file_count": int(r["file_count"]),
                 "updated_at": r["updated_at"] or r["folder_updated_at"],
                 # False = a draft skill: it exists and is named, but has no

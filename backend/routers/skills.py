@@ -17,6 +17,7 @@ from ..models import (
     SkillUpdateRequest,
 )
 from ..services import (
+    curated_skill_service,
     files_tree_service,
     github_skill_import,
     permission_service,
@@ -124,6 +125,65 @@ async def _set_is_skill(
     return {"folder_id": str(folder["id"]), "name": folder["name"], "is_skill": folder["is_skill"]}
 
 
+class CuratedSkillWriteRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=skill_service.MAX_SKILL_NAME_LENGTH)
+    description: str = Field(
+        ..., min_length=1, max_length=skill_service.MAX_SKILL_DESCRIPTION_LENGTH
+    )
+    body: str = Field(..., min_length=1)
+    replaces: str | None = Field(
+        None, description="Name or folder id of the curated skill this one evicts."
+    )
+
+
+@me_router.get("/curated-skills")
+async def list_curated_skills(owner_user_id: UUID = Depends(get_scope)):
+    """The curator's occupied slots. Read by the curator before it decides
+    whether tonight's candidate beats an incumbent, and by Home to show them."""
+    return {
+        "max_slots": curated_skill_service.MAX_CURATED_SKILLS,
+        "skills": await curated_skill_service.list_curated(owner_user_id),
+    }
+
+
+@me_router.post("/curated-skills", status_code=200)
+async def write_curated_skill(
+    req: CuratedSkillWriteRequest,
+    current_user: dict = Depends(get_current_user),
+    owner_user_id: UUID = Depends(get_scope),
+):
+    """Create or update one of the curated slots. 400s rather than evicting
+    anything by itself when the slots are full and `replaces` is missing."""
+    try:
+        return await curated_skill_service.write(
+            owner_user_id,
+            current_user["id"],
+            req.name,
+            req.description,
+            req.body,
+            req.replaces,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@me_router.post("/folders/{folder_id}/adopt-curated-skill", status_code=200)
+async def adopt_curated_skill(
+    folder_id: UUID,
+    current_user: dict = Depends(get_current_user),
+    owner_user_id: UUID = Depends(get_scope),
+):
+    """Take a curated skill out of the curator's hands. Called by
+    `stash skills sync` the moment it sees a local edit, and by the UI when
+    someone edits or publishes one."""
+    if not await permission_service.check_access(
+        "folder", folder_id, current_user["id"], owner_user_id=owner_user_id, require="write"
+    ):
+        raise HTTPException(status_code=403, detail="Not allowed to write this folder")
+    adopted = await curated_skill_service.adopt(owner_user_id, folder_id)
+    return {"adopted": adopted is not None}
+
+
 @me_router.post("/skills", response_model=SkillResponse, status_code=201)
 async def publish_skill(
     req: SkillPublishRequest,
@@ -146,6 +206,8 @@ async def publish_skill(
         raise HTTPException(status_code=403, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    # Publishing is standing behind it, so it stops being the curator's.
+    await curated_skill_service.adopt(owner_user_id, req.folder_id)
     return SkillResponse(**skill)
 
 
@@ -288,6 +350,9 @@ async def replace_skill_contents(
     written = await files_tree_service.write_folder_files(
         owner_user_id, current_user["id"], folder_id, payload
     )
+    # Only a human pushes contents — the curator writes through
+    # /curated-skills — so a push to a curated skill is the edit that adopts it.
+    await curated_skill_service.adopt(owner_user_id, folder_id)
     return {"folder_id": str(folder_id), "items": written}
 
 

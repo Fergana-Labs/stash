@@ -18,13 +18,17 @@ class _FakeSyncClient:
         self.skills: dict[str, dict] = {}
         self._next = 0
 
-    def add_remote_skill(self, name: str, files: dict[str, bytes]) -> str:
+    def add_remote_skill(self, name: str, files: dict[str, bytes], curated: bool = False) -> str:
         folder_id = self.create_folder(name)["id"]
         self.skills[folder_id]["files"] = dict(files)
+        self.skills[folder_id]["curated"] = curated
         return folder_id
 
     def list_skills(self):
-        return [{"folder_id": fid, "name": s["folder_name"]} for fid, s in self.skills.items()]
+        return [
+            {"folder_id": fid, "name": s["folder_name"], "curated": s["curated"]}
+            for fid, s in self.skills.items()
+        ]
 
     def get_skill_contents(self, folder_id):
         s = self.skills[folder_id]
@@ -64,7 +68,7 @@ class _FakeSyncClient:
     def create_folder(self, name):
         folder_id = f"folder-{self._next}"
         self._next += 1
-        self.skills[folder_id] = {"folder_name": name, "files": {}}
+        self.skills[folder_id] = {"folder_name": name, "files": {}, "curated": False}
         return {"id": folder_id}
 
     def fetch_bytes(self, url: str) -> bytes:
@@ -131,6 +135,77 @@ def test_both_sides_changed_conflicts_without_clobbering(tmp_path):
     # The conflict stays pending — the next run reports it again.
     summary, _state = _sync(c, tmp_path, state)
     assert len(summary["conflicts"]) == 1
+
+
+def _curated_skill_md(body: str) -> bytes:
+    return (
+        f'---\nname: "deploy"\ndescription: "Deploy the service."\ncurated: true\n---\n{body}'
+    ).encode()
+
+
+def test_curated_skill_never_conflicts_because_the_human_wins(tmp_path):
+    """The curator rewrites its slots nightly, so a user who edits one would
+    hit a conflict on almost every run and their edit would sit unsynced. For
+    curated skills the local edit pushes instead — which adopts the skill
+    server-side, leaving one author and nothing left to conflict over."""
+    c = _FakeSyncClient()
+    fid = c.add_remote_skill("deploy", {"SKILL.md": _curated_skill_md("# v1")}, curated=True)
+    _summary, state = _sync(c, tmp_path, {})
+
+    (tmp_path / "deploy" / "SKILL.md").write_bytes(_curated_skill_md("# local edit"))
+    c.skills[fid]["files"]["SKILL.md"] = _curated_skill_md("# tonight's rewrite")
+
+    summary, _state = _sync(c, tmp_path, state)
+
+    assert summary["conflicts"] == []
+    assert summary["pushed"] == ["deploy"]
+    assert c.skills[fid]["files"]["SKILL.md"] == _curated_skill_md("# local edit")
+
+
+def test_retired_curated_skill_is_deleted_locally(tmp_path):
+    """When the curator gives a slot to a better candidate it deletes the old
+    skill. An ordinary skill missing from the cloud keeps its local copy, but
+    a retired curated skill must not: the whole point of the three-slot cap is
+    that exactly three curated skills load into an agent session, and a stale
+    dir would keep firing forever with nothing left to retire it."""
+    c = _FakeSyncClient()
+    fid = c.add_remote_skill("deploy", {"SKILL.md": _curated_skill_md("# v1")}, curated=True)
+    _summary, state = _sync(c, tmp_path, {})
+    assert (tmp_path / "deploy" / "SKILL.md").exists()
+
+    del c.skills[fid]
+    summary, _state = _sync(c, tmp_path, state)
+
+    assert summary["retired"] == ["deploy"]
+    assert not (tmp_path / "deploy").exists()
+
+
+def test_local_only_skill_is_never_deleted_for_claiming_to_be_curated(tmp_path):
+    """Frontmatter is copyable — a user can paste a curated skill's SKILL.md
+    into a directory of their own. Sync deletes only what sync itself pulled,
+    so an untracked local dir survives no matter what it claims to be."""
+    c = _FakeSyncClient()
+    (tmp_path / "mine").mkdir()
+    (tmp_path / "mine" / "SKILL.md").write_bytes(_curated_skill_md("# my own copy"))
+
+    summary, _state = _sync(c, tmp_path, {})
+
+    assert summary["retired"] == []
+    assert (tmp_path / "mine" / "SKILL.md").exists()
+
+
+def test_hand_authored_skill_missing_from_the_cloud_is_kept(tmp_path):
+    """The retire path keys off the curated frontmatter, not off absence from
+    the cloud — a user's own skill deleted in Stash still keeps its local copy."""
+    c = _FakeSyncClient()
+    fid = c.add_remote_skill("deploy", {"SKILL.md": _skill_md("# v1")})
+    _summary, state = _sync(c, tmp_path, {})
+
+    del c.skills[fid]
+    summary, _state = _sync(c, tmp_path, state)
+
+    assert summary["retired"] == []
+    assert (tmp_path / "deploy" / "SKILL.md").exists()
 
 
 def test_new_local_skill_pushes_only_in_project_mode(tmp_path):

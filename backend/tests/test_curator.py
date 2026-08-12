@@ -761,3 +761,166 @@ async def test_memory_tree_nests_folders_and_scopes_to_memory(client: AsyncClien
     files_tree = (await client.get("/api/v1/me/tree", headers=_auth(key))).json()
     assert [p["name"] for p in files_tree["pages"]] == ["Outside"]
     assert all(f["id"] != mem["id"] for f in files_tree["folders"])
+
+
+@pytest.mark.asyncio
+async def test_corrections_survive_a_delta_flooded_with_tool_traffic(
+    client: AsyncClient, _db_pool, monkeypatch
+):
+    """The reason this input exists. Measured on a real account: 500 feed
+    events held 295 tool events and 6 user messages, because tool traffic
+    outnumbers user messages ~50:1 and the feed drains oldest-first. Skills
+    are mined from the user's words, so those words cannot be left to compete
+    for delta slots they will always lose."""
+    monkeypatch.setattr(curation_service, "_MAX_EVENTS", 3)
+    key, uid = await _register(client)
+    now = datetime.now(UTC)
+
+    await _push_events(
+        client,
+        key,
+        [
+            {
+                "agent_name": "claude",
+                "event_type": "tool_use",
+                "content": f"ran a command {i}",
+                "session_id": "s-noise",
+                "created_at": (now - timedelta(days=3, minutes=i)).isoformat(),
+            }
+            for i in range(10)
+        ]
+        + [
+            {
+                "agent_name": "claude",
+                "event_type": "user_message",
+                "content": "no, never pkill by pattern",
+                "session_id": "s-real",
+                "created_at": (now - timedelta(days=1)).isoformat(),
+            }
+        ],
+    )
+
+    feed = await curation_service.changes_since(uid, uid, now - timedelta(days=10))
+    assert feed["history_has_more"] is True
+    assert all(h["event_type"] == "tool_use" for h in feed["history"])
+    assert [c["content"] for c in feed["corrections"]] == ["no, never pkill by pattern"]
+    assert feed["counts"]["corrections"] == 1
+
+
+@pytest.mark.asyncio
+async def test_corrections_ignore_the_watermark_so_recurrence_is_visible(
+    client: AsyncClient, _db_pool
+):
+    """A skill earns its slot on recurrence across sessions, which one night's
+    delta can never show. The window re-presents the same messages every run
+    on purpose — if it respected the watermark, every message would be seen
+    exactly once and no candidate could ever reach three sessions."""
+    key, uid = await _register(client)
+    now = datetime.now(UTC)
+    await _push_events(
+        client,
+        key,
+        [
+            {
+                "agent_name": "claude",
+                "event_type": "user_message",
+                "content": f"correction in session {i}",
+                "session_id": f"s-{i}",
+                "created_at": (now - timedelta(days=i + 1)).isoformat(),
+            }
+            for i in range(3)
+        ],
+    )
+
+    # A watermark past every one of those events: the delta is empty, and the
+    # corrections window still shows all three.
+    feed = await curation_service.changes_since(uid, uid, now)
+    assert feed["history"] == []
+    assert len(feed["corrections"]) == 3
+    assert len({c["session_id"] for c in feed["corrections"]}) == 3
+
+
+@pytest.mark.asyncio
+async def test_corrections_exclude_stale_messages_and_the_curators_own(
+    client: AsyncClient, _db_pool
+):
+    """The window is recent-and-real: material older than the window is not
+    evidence about how the user works now, and the curator's own transcripts
+    would let it learn from behavior it caused."""
+    key, uid = await _register(client)
+    now = datetime.now(UTC)
+    await _push_events(
+        client,
+        key,
+        [
+            {
+                "agent_name": "claude",
+                "event_type": "user_message",
+                "content": "ancient history",
+                "session_id": "s-old",
+                "created_at": (now - timedelta(days=400)).isoformat(),
+            },
+            {
+                "agent_name": "Memory curator",
+                "event_type": "user_message",
+                "content": "the curator talking to itself",
+                "session_id": "agent-curate-123",
+                "created_at": (now - timedelta(hours=2)).isoformat(),
+            },
+            {
+                "agent_name": "claude",
+                "event_type": "user_message",
+                "content": "this one counts",
+                "session_id": "s-live",
+                "created_at": (now - timedelta(hours=1)).isoformat(),
+            },
+        ],
+    )
+
+    feed = await curation_service.changes_since(uid, uid, now - timedelta(days=500))
+    assert [c["content"] for c in feed["corrections"]] == ["this one counts"]
+
+
+@pytest.mark.asyncio
+async def test_one_chatty_session_cannot_crowd_out_the_others(
+    client: AsyncClient, _db_pool, monkeypatch
+):
+    """Recurrence is counted in distinct sessions, so the sample maximizes
+    sessions rather than messages. Newest-first-overall would have handed a
+    single talkative session the whole window — measured on a real account,
+    the newest 200 messages covered just 33 sessions over 1.4 days."""
+    monkeypatch.setattr(curation_service, "_MAX_PER_SESSION", 2)
+    key, uid = await _register(client)
+    now = datetime.now(UTC)
+
+    chatty = [
+        {
+            "agent_name": "claude",
+            "event_type": "user_message",
+            "content": f"chatty {i}",
+            "session_id": "s-chatty",
+            "created_at": (now - timedelta(minutes=i)).isoformat(),
+        }
+        for i in range(20)
+    ]
+    others = [
+        {
+            "agent_name": "claude",
+            "event_type": "user_message",
+            "content": f"quiet session {i}",
+            "session_id": f"s-quiet-{i}",
+            "created_at": (now - timedelta(days=i + 1)).isoformat(),
+        }
+        for i in range(3)
+    ]
+    await _push_events(client, key, chatty + others)
+
+    corrections = await curation_service.recent_user_messages(uid, now)
+
+    per_session: dict[str, int] = {}
+    for c in corrections:
+        per_session[c["session_id"]] = per_session.get(c["session_id"], 0) + 1
+    assert per_session["s-chatty"] == 2
+    assert {f"s-quiet-{i}" for i in range(3)} <= set(per_session)
+    # Newest session first, so the curator reads current context before older.
+    assert corrections[0]["session_id"] == "s-chatty"

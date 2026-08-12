@@ -228,6 +228,19 @@ class StashClient:
     def get_skill_contents(self, folder_id: str) -> dict:
         return self._get(f"/api/v1/me/skills/{folder_id}/contents")
 
+    # --- Curated skills (the nightly curator's reserved slots) ---
+
+    def list_curated_skills(self) -> dict:
+        return self._get("/api/v1/me/curated-skills")
+
+    def write_curated_skill(
+        self, name: str, description: str, body: str, replaces: str | None = None
+    ) -> dict:
+        payload = {"name": name, "description": description, "body": body}
+        if replaces:
+            payload["replaces"] = replaces
+        return self._post("/api/v1/me/curated-skills", json=payload)
+
     def list_shared_skills(self) -> list:
         return self._list("/api/v1/me/shared-skills", "skills")
 

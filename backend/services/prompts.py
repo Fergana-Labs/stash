@@ -193,6 +193,13 @@ Use the `stash` CLI for everything — every subcommand supports `--json`.
   edited in a connected Drive folder), new saves (clips and X/Instagram
   saves), and connected sources. This IS your work set; do not re-scan the
   whole corpus.
+- `corrections` — the user's own messages from the last
+  `correction_window_days`, sampled a few per session across their most recent
+  sessions and grouped newest session first. This is NOT part of the delta: it
+  is a rolling window that re-presents the same messages every run, because a
+  skill earns its slot on recurrence across sessions and one night can't show
+  that. Use it for the curated skills below; the wiki still works from the
+  delta.
 - `history_has_more: true` means the history overflowed this run's cap. The
   remainder is already queued for your next run (the watermark only advances
   through what you were shown) — curate what's present, don't try to page.
@@ -273,6 +280,59 @@ pages themselves.
 - Every page: a one-sentence summary; a markdown link up to its category;
   sideways links to related pages; confidence tags; date new content
   `<!-- added YYYY-MM-DD -->`.
+
+## Curated skills (at most three)
+
+The wiki is pull: it helps only when an agent thinks to search it. A skill is
+push — every agent session loads each skill's description at startup, so a
+curated skill fires without the agent knowing to look. You maintain at most
+three of them. The cap is enforced by the server, not by your restraint.
+
+Start by reading the slots: `stash skills curated ls --json`.
+
+Work from `corrections` — the user's own messages. That is where a human told
+an agent it was wrong, which is the exact gap between what a model assumes and
+what is true here. Write only that gap, never what a competent agent already
+does. The delta's history is tool traffic and is nearly useless for this.
+
+A candidate earns a slot only when BOTH are true:
+- **It recurs** — the same situation shows up in >=3 DISTINCT sessions of the
+  corrections window. Count the distinct `session_id`s before you write; one
+  session complaining four times is one session, not four.
+- **Getting it wrong is expensive** — the user corrected the agent, the agent
+  backtracked, or work was lost. Anything an agent discovers in one command
+  ("tests run with pytest") costs nothing and never earns a slot.
+
+A candidate that clears one bar and not the other does not get a slot. If
+merging two near-identical candidates is what gets them over the recurrence
+bar, merge them — but count the sessions again after merging, don't assume.
+
+**Incumbents hold their slots.** Replace one only for a clearly stronger
+candidate — and never because an incumbent stopped generating evidence. A
+skill that works stops producing the mistakes that justified it; evicting it
+for going quiet brings the mistake back.
+
+Write a slot with:
+```
+stash skills curated write "<Name>" --description "<when this fires>" \\
+  --replaces "<incumbent name>" --body "<markdown>"
+```
+- Writing a name that already holds a slot updates it in place.
+- `--description` is the ONLY text an agent matches on. Write the trigger,
+  not a summary: name the situation, the tools, and the words that signal it.
+  An over-broad description is worse than no skill at all — it fires in
+  unrelated sessions and wastes the context it takes.
+- The body is imperative and short: at most ten rules, each a thing to do or
+  not do, each traceable to material you actually read this run. Link the
+  wiki pages holding the detail (`[<Title>](/p/<page_id>)`) instead of
+  restating them — the skill is the index, the wiki is the knowledge.
+- `--replaces` is required once all three slots are full. The command fails
+  rather than guessing, and leaving the set untouched is a correct outcome —
+  most nights it is the right one.
+- A write refused because the name belongs to the user's own skill means they
+  adopted it. It is theirs now: don't recreate it under another name.
+
+Record every slot change as a `curated` line in `Log`.
 
 ## Lint (end of every run)
 Check the pages you touched plus the index for: contradictions between pages,
