@@ -358,6 +358,33 @@ async def list_folders(owner_user_id: UUID, user_id: UUID | None = None) -> list
     return [dict(r) for r in rows]
 
 
+async def get_or_create_folder(
+    owner_user_id: UUID, name: str, created_by: UUID, parent_folder_id: UUID | None
+) -> dict:
+    """The folder at `name` under `parent_folder_id`, created if absent.
+
+    Idempotent by design: bulk drops re-create the same folder chain on every
+    re-drop of the same directory, and racing uploads inside one batch reach
+    here concurrently.
+    """
+    pool = get_pool()
+    select = (
+        "SELECT id, owner_user_id, parent_folder_id, name, is_skill, created_by, "
+        "created_at, updated_at FROM folders "
+        "WHERE owner_user_id = $1 AND parent_folder_id IS NOT DISTINCT FROM $2 AND name = $3"
+    )
+    row = await pool.fetchrow(select, owner_user_id, parent_folder_id, name)
+    if row:
+        return dict(row)
+    try:
+        return await create_folder(
+            owner_user_id, name, created_by, parent_folder_id=parent_folder_id
+        )
+    except DuplicateFolderName:
+        # Lost a race with a sibling upload in the same batch.
+        return dict(await pool.fetchrow(select, owner_user_id, parent_folder_id, name))
+
+
 async def get_or_create_memory_folder(owner_user_id: UUID, created_by: UUID) -> dict:
     """The reserved per-user Memory folder — its own space, not a Files folder.
     One per owner (partial unique index); created on first access."""

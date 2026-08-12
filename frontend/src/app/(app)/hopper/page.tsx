@@ -4,13 +4,35 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { useBreadcrumbs } from "@/components/BreadcrumbContext";
-import { dropHopperFile, dropHopperLink, type HopperDrop } from "@/lib/api";
+import { dropHopperFile, dropHopperLink } from "@/lib/api";
 import { isLinkDrop } from "@/lib/hopper";
+import {
+  filesFromDrop,
+  filesFromPicker,
+  runPool,
+  UPLOAD_CONCURRENCY,
+  type DroppedFile,
+} from "@/lib/bulk-drop";
 
 // Machine-facing facts, set in mono: what the well accepts. Space does the
 // separating — middots between caps is the house style of every AI landing
 // page this year.
 const ACCEPTS = ["PDF", "DOCX", "XLSX", "PPTX", "CSV", "MD", "PNG", "JPG", "URL"];
+
+type Batch = {
+  total: number;
+  done: number;
+  skipped: number;
+  failed: Array<{ name: string; reason: string }>;
+  cancel: AbortController;
+};
+
+function summarise(batch: Batch): string {
+  const parts = [`${batch.done} added`];
+  if (batch.skipped) parts.push(`${batch.skipped} already there`);
+  if (batch.failed.length) parts.push(`${batch.failed.length} failed`);
+  return parts.join(" · ");
+}
 
 /** The hopper is an intake, not a place: a drop lands in the VFS and the
  *  confirmation points there. Nothing accumulates on this page. */
@@ -19,59 +41,94 @@ export default function HopperRoute() {
   const router = useRouter();
 
   const [dragging, setDragging] = useState(false);
-  const [adding, setAdding] = useState(0);
+  const [batch, setBatch] = useState<Batch | null>(null);
   const [link, setLink] = useState("");
   const fileInput = useRef<HTMLInputElement>(null);
 
-  // A drop that vanishes without saying where it went is worse than no drop
-  // at all, so every confirmation names the destination and opens it.
-  const runDrops = useCallback(
-    async (drops: Array<() => Promise<HopperDrop>>) => {
-      setAdding((n) => n + drops.length);
-      for (const drop of drops) {
-        try {
-          const landed = await drop();
-          if (landed.kind === "link") {
-            // The page is fetched by a worker and filed under Clips when it
-            // arrives, so there is nothing to go to yet.
-            toast.success("Fetching that page", { description: "It'll land in Clips" });
-          } else {
-            // One line and one way out. Naming the path as well was a third
-            // thing to read on the way to the only thing you'd click.
-            toast.success(`${landed.name} is in your Stash`, {
-              action: {
-                label: landed.kind === "page" ? "Go to page" : "Go to file",
-                onClick: () => router.push(`/${landed.kind === "page" ? "p" : "f"}/${landed.id}`),
-              },
-            });
-          }
-        } catch (e) {
-          toast.error(e instanceof Error ? e.message : "Couldn't add that to your Stash");
-        } finally {
-          setAdding((n) => n - 1);
+  // A single drop confirms itself; a batch reports once at the end. Eighty
+  // toasts for eighty files is not a confirmation, it is a denial of service.
+  const addFiles = useCallback(
+    async (dropped: DroppedFile[]) => {
+      if (dropped.length === 0) return;
+      const cancel = new AbortController();
+      const live: Batch = { total: dropped.length, done: 0, skipped: 0, failed: [], cancel };
+      setBatch(live);
+
+      const results = await runPool(
+        dropped,
+        UPLOAD_CONCURRENCY,
+        async ({ file, path }) => {
+          const landed = await dropHopperFile(file, { path, signal: cancel.signal });
+          if (landed.duplicate) live.skipped += 1;
+          else live.done += 1;
+          setBatch({ ...live });
+          return landed;
+        },
+        { signal: cancel.signal },
+      );
+
+      results.forEach((result, i) => {
+        if (result.ok === false) {
+          const error = result.error;
+          live.failed.push({
+            name: dropped[i].file.name,
+            reason: error instanceof Error ? error.message : "Upload failed",
+          });
         }
+      });
+      setBatch(null);
+
+      if (cancel.signal.aborted) {
+        toast.info(`Stopped — ${summarise(live)}`);
+        return;
       }
+      // One file keeps its own confirmation: naming it and offering the way to
+      // it is more useful than a count of one.
+      const only = results.length === 1 && results[0].ok === true ? results[0].value : null;
+      if (only) {
+        toast.success(
+          only.duplicate ? `${only.name} was already in your Stash` : `${only.name} is in your Stash`,
+          {
+            action: {
+              label: only.kind === "page" ? "Go to page" : "Go to file",
+              onClick: () => router.push(`/${only.kind === "page" ? "p" : "f"}/${only.id}`),
+            },
+          },
+        );
+        return;
+      }
+      toast.success(summarise(live), {
+        description: live.failed.length
+          ? live.failed
+              .slice(0, 3)
+              .map((f) => f.name)
+              .join(", ")
+          : "They'll be readable as your agent finishes reading them",
+        action: { label: "Go to VFS", onClick: () => router.push("/files") },
+      });
     },
     [router],
   );
 
-  const addFiles = useCallback(
-    (files: File[]) => void runDrops(files.map((f) => () => dropHopperFile(f))),
-    [runDrops],
-  );
-
   // The hopper takes things that already exist, so text is only ever a link.
   const addLink = useCallback(
-    (value: string) => {
+    async (value: string) => {
       const trimmed = value.trim();
       if (!trimmed) return;
       if (!isLinkDrop(trimmed)) {
         toast.error("That isn't a link", { description: "Drop a file, or paste a URL" });
         return;
       }
-      void runDrops([() => dropHopperLink(trimmed)]);
+      try {
+        await dropHopperLink(trimmed);
+        // The page is fetched by a worker and filed under Clips when it
+        // arrives, so there is nothing to go to yet.
+        toast.success("Fetching that page", { description: "It'll land in Clips" });
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Couldn't add that to your Stash");
+      }
     },
-    [runDrops],
+    [],
   );
 
   // Paste works anywhere on the page — a screenshot from the clipboard or a
@@ -83,33 +140,35 @@ export default function HopperRoute() {
       const files = Array.from(e.clipboardData?.files ?? []);
       if (files.length > 0) {
         e.preventDefault();
-        addFiles(files);
+        void addFiles(files.map((file) => ({ file, path: [] })));
         return;
       }
       const pasted = e.clipboardData?.getData("text/plain") ?? "";
       if (pasted.trim()) {
         e.preventDefault();
-        addLink(pasted);
+        void addLink(pasted);
       }
     }
     window.addEventListener("paste", onPaste);
     return () => window.removeEventListener("paste", onPaste);
   }, [addFiles, addLink]);
 
-  function onDrop(e: React.DragEvent) {
+  async function onDrop(e: React.DragEvent) {
     e.preventDefault();
     setDragging(false);
-    const files = Array.from(e.dataTransfer.files);
-    if (files.length > 0) {
-      addFiles(files);
+    // Read the drop before awaiting anything: the DataTransfer is emptied by
+    // the browser as soon as the event handler yields.
+    const dropped = await filesFromDrop(e.dataTransfer);
+    if (dropped.length > 0) {
+      void addFiles(dropped);
       return;
     }
     // Dragging a link out of a browser tab hands over its URL, not a file.
     const url = e.dataTransfer.getData("text/uri-list") || e.dataTransfer.getData("text/plain");
-    if (url) addLink(url);
+    if (url) void addLink(url);
   }
 
-  const live = dragging || adding > 0;
+  const live = dragging || batch !== null;
 
   return (
     // min-h-full, not h-full + overflow: the shell's <main> is the scroll
@@ -145,17 +204,32 @@ export default function HopperRoute() {
         >
           <div className="relative text-center">
             <p className="font-display text-[21px] font-medium tracking-[-0.015em] text-foreground">
-              {adding > 0
-                ? `Taking in ${adding} ${adding === 1 ? "item" : "items"}…`
+              {batch
+                ? `Taking in ${batch.done + batch.skipped} of ${batch.total}…`
                 : dragging
                   ? "Let go"
                   : "Drag in, paste, or click"}
             </p>
-            <p className="mt-3 flex flex-wrap justify-center gap-x-5 gap-y-1 font-mono text-[11px] uppercase tracking-[0.05em] text-muted-foreground">
-              {ACCEPTS.map((format) => (
-                <span key={format}>{format}</span>
-              ))}
-            </p>
+            {batch ? (
+              // Progress is a live count and a way out, and it exists only
+              // while the batch does — this page keeps no history.
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  batch.cancel.abort();
+                }}
+                className="mt-3 font-mono text-[11px] uppercase tracking-[0.05em] text-brand-600 hover:underline"
+              >
+                Stop
+              </button>
+            ) : (
+              <p className="mt-3 flex flex-wrap justify-center gap-x-5 gap-y-1 font-mono text-[11px] uppercase tracking-[0.05em] text-muted-foreground">
+                {ACCEPTS.map((format) => (
+                  <span key={format}>{format}</span>
+                ))}
+              </p>
+            )}
           </div>
         </div>
 
@@ -165,17 +239,17 @@ export default function HopperRoute() {
           multiple
           className="hidden"
           onChange={(e) => {
-            addFiles(Array.from(e.target.files ?? []));
+            void addFiles(filesFromPicker(Array.from(e.target.files ?? [])));
             e.target.value = "";
           }}
         />
 
         {/* A hairline, not a box: the link field is the well's understudy. */}
         <form
-          className="mt-6 shrink-0 flex items-center gap-3 border-b border-[var(--divider-color)] pb-2.5 transition-colors focus-within:border-brand-400"
+          className="mt-6 flex shrink-0 items-center gap-3 border-b border-[var(--divider-color)] pb-2.5 transition-colors focus-within:border-brand-400"
           onSubmit={(e) => {
             e.preventDefault();
-            addLink(link);
+            void addLink(link);
             setLink("");
           }}
         >

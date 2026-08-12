@@ -6,6 +6,10 @@ holding folder, and no ledger records the drop: the item itself is the record.
 
 The hopper takes things that already exist — a file or a link. There is no
 compose-a-note path; that is what pages are for.
+
+A dropped directory keeps its shape: the user's own filing is the one
+destination we never have to guess at, and re-dropping it must not double
+what is already there.
 """
 
 from uuid import UUID
@@ -115,3 +119,100 @@ async def test_there_is_no_compose_a_note_endpoint(client: AsyncClient) -> None:
     headers, _ = await _register(client)
     resp = await client.post("/api/v1/me/hopper/note", json={"text": "a thought"}, headers=headers)
     assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_a_dropped_folder_keeps_its_shape(client: AsyncClient, pool, monkeypatch) -> None:
+    """Mirroring the directory is filing without guessing — it is the user's
+    own structure, not a classifier's opinion."""
+    headers, owner_id = await _register(client)
+    _mock_storage(monkeypatch)
+
+    resp = await client.post(
+        "/api/v1/me/hopper/file",
+        files={"file": ("brakes.pdf", b"%PDF-1.4 x", "application/pdf")},
+        data={"path": "catalogs/meritor"},
+        headers=headers,
+    )
+    assert resp.status_code == 201
+
+    row = await pool.fetchrow(
+        "SELECT f.name AS folder, p.name AS parent FROM files fi "
+        "JOIN folders f ON f.id = fi.folder_id "
+        "JOIN folders p ON p.id = f.parent_folder_id "
+        "WHERE fi.id = $1",
+        UUID(resp.json()["id"]),
+    )
+    assert row["folder"] == "meritor"
+    assert row["parent"] == "catalogs"
+
+
+@pytest.mark.asyncio
+async def test_redropping_a_folder_skips_what_is_already_there(
+    client: AsyncClient, pool, monkeypatch
+) -> None:
+    """A backlog gets dropped twice — once to try it, once for real. The
+    second pass must not leave two of everything."""
+    headers, owner_id = await _register(client)
+    _mock_storage(monkeypatch)
+
+    async def drop():
+        return await client.post(
+            "/api/v1/me/hopper/file",
+            files={"file": ("brakes.pdf", b"%PDF-1.4 x", "application/pdf")},
+            data={"path": "catalogs"},
+            headers=headers,
+        )
+
+    first = await drop()
+    second = await drop()
+
+    assert first.json()["duplicate"] is False
+    assert second.json()["duplicate"] is True
+    assert second.json()["id"] == first.json()["id"]
+    count = await pool.fetchval(
+        "SELECT count(*) FROM files WHERE owner_user_id = $1 AND deleted_at IS NULL",
+        UUID(owner_id),
+    )
+    assert count == 1
+    # One folder, not two: the mirror is idempotent too.
+    folders = await pool.fetchval(
+        "SELECT count(*) FROM folders WHERE owner_user_id = $1", UUID(owner_id)
+    )
+    assert folders == 1
+
+
+@pytest.mark.asyncio
+async def test_a_re_dropped_markdown_file_is_skipped_not_a_conflict(
+    client: AsyncClient, monkeypatch
+) -> None:
+    """Pages are unique by name in a folder, so the second drop of the same
+    note used to 409 and fail the whole batch."""
+    headers, _ = await _register(client)
+    _mock_storage(monkeypatch)
+
+    async def drop():
+        return await client.post(
+            "/api/v1/me/hopper/file",
+            files={"file": ("readme.md", b"# hello", "text/markdown")},
+            headers=headers,
+        )
+
+    assert (await drop()).json()["duplicate"] is False
+    second = await drop()
+    assert second.status_code == 201
+    assert second.json()["duplicate"] is True
+
+
+@pytest.mark.asyncio
+async def test_absurd_nesting_is_refused(client: AsyncClient, monkeypatch) -> None:
+    headers, _ = await _register(client)
+    _mock_storage(monkeypatch)
+
+    resp = await client.post(
+        "/api/v1/me/hopper/file",
+        files={"file": ("deep.pdf", b"%PDF-1.4 x", "application/pdf")},
+        data={"path": "/".join(f"level{i}" for i in range(12))},
+        headers=headers,
+    )
+    assert resp.status_code == 400
