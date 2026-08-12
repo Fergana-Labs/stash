@@ -21,7 +21,7 @@ type RailItem = {
 const PRIMARY: RailItem[] = [
   { key: "home", label: "Home", icon: Home, match: (p) => p === "/" },
   { key: "hopper", label: "Hopper", icon: HopperIcon, match: (p) => p.startsWith("/hopper") },
-  { key: "files", label: "VFS", icon: FolderTree, match: (p) => p === "/files" || p.startsWith("/f/") || p.startsWith("/p/") || p.startsWith("/folders/") || p.startsWith("/tables/") },
+  { key: "files", label: "VFS", icon: FolderTree, match: (p) => p === "/files" || p.startsWith("/vfs") || p.startsWith("/f/") || p.startsWith("/p/") || p.startsWith("/folders/") || p.startsWith("/tables/") },
   { key: "sessions", label: "Sessions", icon: MessagesSquare, match: (p) => p.startsWith("/sessions") || p.startsWith("/session-folders") },
   { key: "skills", label: "Skills", icon: GraduationCap, match: (p) => p.startsWith("/skills") },
   { key: "tools", label: "Tools", icon: Wrench, match: (p) => p.startsWith("/tools") || p.startsWith("/integrations") },

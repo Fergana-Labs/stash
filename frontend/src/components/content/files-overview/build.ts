@@ -36,6 +36,10 @@ export interface VNode {
   icon?: ReactNode;
   /** Where this subtree's "+N more" rows should take the user. */
   moreHref?: string;
+  /** ISO timestamp, when the entry has one — the browse view sorts on it. */
+  updatedAt?: string;
+  /** The one secondary fact the browse view gives a column to. */
+  detail?: string;
 }
 
 function byName<T extends { name: string }>(a: T, b: T): number {
@@ -129,14 +133,36 @@ export function buildFilesNodes(
 // Session and skill hrefs carry ?section=files: these nodes are only rendered
 // by VFS surfaces (the /files lens and the docked tree), and the stamp keeps
 // the VFS docked when one opens instead of teleporting to another section.
+// The four files stashvfs materializes inside every session directory
+// (stashvfs/model.py::_add_sessions). They all open the session itself: the
+// point of the drill-down is seeing what an agent can read, not four
+// destinations.
+const SESSION_FILES = ["metadata.json", "events.json", "transcript.jsonl", "transcript.md"];
+
 export function buildSessionNodes(sessions: SidebarSession[]): VNode[] {
-  return sessions.map((s) => ({
-    key: s.session_id,
-    kind: "session",
-    name: s.title || s.agent_name || "session",
-    href: `/sessions/${s.session_id}?section=files`,
-    annotation: [s.agent_name, timeAgo(s.last_at)].filter(Boolean).join(", "),
-  }));
+  return sessions.map((s) => {
+    const href = `/sessions/${s.session_id}?section=files`;
+    return {
+      key: s.session_id,
+      kind: "session",
+      name: s.title || s.agent_name || "session",
+      href,
+      annotation: [s.agent_name, timeAgo(s.last_at)].filter(Boolean).join(", "),
+      updatedAt: s.last_at,
+      // "Henry's codex", not "codex": in a shared scope the same agent runs for
+      // several people, and whose run it was is the thing you scan for.
+      detail: s.user_name ? `${s.user_name}’s ${s.agent_name}` : s.agent_name,
+      // A session is a directory in the VFS, so it is one here too — that
+      // nesting is what the browse view has that a flat list does not.
+      children: SESSION_FILES.map((name) => ({
+        key: `${s.session_id}/${name}`,
+        kind: "file" as const,
+        name,
+        href,
+        updatedAt: s.last_at,
+      })),
+    };
+  });
 }
 
 export function buildSkillNodes(skills: Skill[]): VNode[] {
@@ -145,6 +171,13 @@ export function buildSkillNodes(skills: Skill[]): VNode[] {
     kind: "skill",
     name: s.name,
     href: `/skills/folder/${s.folder_id}?section=files`,
+    updatedAt: s.updated_at,
+    detail: [
+      `${s.file_count} file${s.file_count === 1 ? "" : "s"}`,
+      s.published ? "published" : null,
+    ]
+      .filter(Boolean)
+      .join(", "),
     annotation: [
       `${s.file_count} file${s.file_count === 1 ? "" : "s"}`,
       s.published ? "published" : null,

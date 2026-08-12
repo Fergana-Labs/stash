@@ -71,7 +71,10 @@ function ExplorerPanel({ section }: { section: ExplorerSection }) {
  *  render the tab workbench; `/sessions` keeps its full management page
  *  beside the Sessions explorer. */
 function sectionForPath(pathname: string): ExplorerSection | null {
-  if (pathname === "/files" || /^\/(p|f|folders|tables)\//.test(pathname)) return "files";
+  // /vfs/<mount>/... browses a mount as a filesystem, so it belongs to the
+  // Files section however deep it goes — including into /sessions or /skills,
+  // whose management pages are a different section entirely.
+  if (pathname === "/files" || pathname.startsWith("/vfs") || /^\/(p|f|folders|tables)\//.test(pathname)) return "files";
   if (pathname === "/sessions" || pathname.startsWith("/sessions/") || pathname.startsWith("/session-folders")) return "sessions";
   if (pathname === "/skills" || pathname.startsWith("/skills/folder")) return "skills";
   if (pathname === "/agents") return "agents";
@@ -91,6 +94,9 @@ export function rendersRouteContent(
   // The Files home is the bird's-eye view of the whole stash; opening any
   // item navigates to its own route, which returns to the workbench.
   if (pathname === "/files") return true;
+  // The VFS browse view is a page in its own right, beside the docked tree —
+  // it is what the tree is a miniature of, not something to open in a tab.
+  if (pathname.startsWith("/vfs")) return true;
   if (pathname === "/sessions") return workspaceParam !== "1";
   // The Skills home is the launcher — pick a skill, run it. Only the bare
   // path: /skills/folder/<id> is a skill you opened, which belongs in a tab.

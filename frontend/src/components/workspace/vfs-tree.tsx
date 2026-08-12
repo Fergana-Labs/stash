@@ -388,9 +388,10 @@ function MountBlock({
   const collapsedMounts = useVfsTreeStore((s) => s.collapsedMounts);
   const toggleMount = useVfsTreeStore((s) => s.toggleMount);
   const open = !collapsedMounts.has(mount.path);
-  // In the lens /files is where you already are; docked, its row is the way
-  // back to the full-screen view.
-  const href = mount.path === "/files" ? "/files" : mount.href;
+  // Every mount row opens its own browse view, /files included. Zooming back
+  // out to the lens is the rail's VFS button, not a row that behaves unlike
+  // its neighbours.
+  const href = mount.href;
   const foldable = mount.path === "/files";
   const pad = { paddingLeft: 6 + INDENT_PX };
 
