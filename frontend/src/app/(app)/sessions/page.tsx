@@ -6,9 +6,10 @@ import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } fro
 import { useBreadcrumbs } from "@/components/BreadcrumbContext";
 import { useConfirm } from "@/components/ConfirmDialog";
 import CopyableCommandBlock from "@/components/CopyableCommandBlock";
+import CustomSelect from "@/components/CustomSelect";
 import SessionUpload from "@/components/SessionUpload";
 import { SessionsListSkeleton } from "@/components/SkeletonStates";
-import { PinIcon } from "@/components/SkillIcons";
+import { FolderIcon, PinIcon } from "@/components/SkillIcons";
 import { SelectBox } from "@/components/content/file-browser/ItemsList";
 import { useAuth } from "@/hooks/useAuth";
 import {
@@ -40,7 +41,17 @@ import {
 } from "@/lib/sessionGrouping";
 
 type ViewKey = "list" | "day" | "user" | "agent" | "ticket" | "folder";
-type SortKey = "recent" | "oldest" | "events" | "name";
+type SortColumn = "updated" | "events" | "name" | "agent";
+type SortKey = { column: SortColumn; dir: "asc" | "desc" };
+
+// Each column's first click picks the order you almost always want first:
+// newest, busiest, A-Z. Clicking the active column flips it.
+const FIRST_DIR: Record<SortColumn, "asc" | "desc"> = {
+  updated: "desc",
+  events: "desc",
+  name: "asc",
+  agent: "asc",
+};
 
 const VIEW_STORAGE_KEY = "stash_sessions_view";
 
@@ -55,13 +66,6 @@ const VIEWS: { key: ViewKey; label: string }[] = [
   { key: "agent", label: "By agent" },
   { key: "ticket", label: "By ticket" },
   { key: "folder", label: "By folder" },
-];
-
-const SORTS: { key: SortKey; label: string }[] = [
-  { key: "recent", label: "Recent" },
-  { key: "oldest", label: "Oldest" },
-  { key: "events", label: "Most events" },
-  { key: "name", label: "Name" },
 ];
 
 // Drag payload: the DB row ids (sessions.id) of the dragged sessions. Dragging
@@ -110,7 +114,7 @@ export default function SkillSessionsPage() {
   const [shareFolder, setShareFolder] = useState<SessionFolder | null>(null);
   const [error, setError] = useState("");
   const [view, setView] = useState<ViewKey>("list");
-  const [sort, setSort] = useState<SortKey>("recent");
+  const [sort, setSort] = useState<SortKey>({ column: "updated", dir: "desc" });
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [dragActive, setDragActive] = useState(false);
 
@@ -159,12 +163,7 @@ export default function SkillSessionsPage() {
 
   const sorted = useMemo(() => {
     if (!sessions) return null;
-    const copy = [...sessions];
-    if (sort === "recent") copy.sort((a, b) => sessionTime(b) - sessionTime(a));
-    else if (sort === "oldest") copy.sort((a, b) => sessionTime(a) - sessionTime(b));
-    else if (sort === "events") copy.sort((a, b) => b.event_count - a.event_count);
-    else copy.sort((a, b) => sessionTitle(a).localeCompare(sessionTitle(b)));
-    return copy;
+    return sortSessions(sessions, sort);
   }, [sessions, sort]);
 
   if (loading) return <SessionsListSkeleton />;
@@ -296,9 +295,6 @@ export default function SkillSessionsPage() {
           </div>
         )}
 
-        <div className="mt-5 mb-4">
-          <SessionUpload onUploaded={load} />
-        </div>
 
         {pinnedSessions.length > 0 && (
           <section className="mb-5">
@@ -308,6 +304,8 @@ export default function SkillSessionsPage() {
             </h2>
             <SessionsTable
               sessions={pinnedSessions}
+              sort={sort}
+              onSort={setSort}
               isPinned={pins.isPinned}
               onTogglePin={pins.toggle}
               selectedIds={selectedIds}
@@ -338,6 +336,7 @@ export default function SkillSessionsPage() {
             drag={drag}
             dragActive={dragActive}
             onDropSessions={moveRowsToFolder}
+            onUploaded={load}
           />
         {!openFolder && (
           <div className="mt-8 border-t border-border pt-5">
@@ -439,10 +438,14 @@ function SessionsView({
   onToggleSelect,
   drag,
   withInstallCta,
+  sort,
+  onSort,
 }: {
   view: ViewKey;
   sessions: SessionSummary[];
   folders: SessionFolder[];
+  sort: SortKey;
+  onSort: (s: SortKey) => void;
   isPinned: (sessionId: string) => boolean;
   onTogglePin: (sessionId: string) => void;
   selectedIds: Set<string>;
@@ -458,6 +461,8 @@ function SessionsView({
     return (
       <SessionsTable
         sessions={sessions}
+        sort={sort}
+        onSort={onSort}
         isPinned={isPinned}
         onTogglePin={onTogglePin}
         selectedIds={selectedIds}
@@ -475,6 +480,8 @@ function SessionsView({
           <DayGroup
             key={group.key}
             group={group}
+            sort={sort}
+            onSort={onSort}
             initialOpen={i === 0}
             isPinned={isPinned}
             onTogglePin={onTogglePin}
@@ -501,6 +508,9 @@ function SessionsView({
         <FlatGroup
           key={group.key}
           group={group}
+          sort={sort}
+          onSort={onSort}
+          soleGroup={groups.length === 1}
           initialOpen={i === 0}
           isPinned={isPinned}
           onTogglePin={onTogglePin}
@@ -515,6 +525,8 @@ function SessionsView({
 
 function DayGroup({
   group,
+  sort,
+  onSort,
   initialOpen,
   isPinned,
   onTogglePin,
@@ -523,6 +535,8 @@ function DayGroup({
   drag,
 }: {
   group: SessionDayGroup;
+  sort: SortKey;
+  onSort: (s: SortKey) => void;
   initialOpen: boolean;
   isPinned: (sessionId: string) => boolean;
   onTogglePin: (sessionId: string) => void;
@@ -534,16 +548,16 @@ function DayGroup({
   return (
     <section>
       <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="flex w-full cursor-pointer items-center gap-2 rounded-md px-1 py-1 text-left hover:bg-raised"
-      >
-        <Chev open={open} />
-        <h2 className="m-0 font-display text-[15px] font-semibold">{group.label}</h2>
-        <span className="sys-label" style={{ fontSize: 10.5 }}>
-          {group.count}
-        </span>
-      </button>
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          className="flex w-full cursor-pointer items-center gap-2 rounded-md px-1 py-1 text-left hover:bg-raised"
+        >
+          <Chev open={open} />
+          <h2 className="m-0 font-display text-[15px] font-semibold">{group.label}</h2>
+          <span className="sys-label" style={{ fontSize: 10.5 }}>
+            {group.count}
+          </span>
+        </button>
       {open && (
         <div className="mt-1.5 flex flex-col gap-4">
           {group.users.map((bucket) => (
@@ -551,6 +565,8 @@ function DayGroup({
               <div className="mb-1 px-2 text-[11px] font-medium text-muted-foreground">{bucket.user}</div>
               <SessionsTable
                 sessions={bucket.sessions}
+                sort={sort}
+                onSort={onSort}
                 isPinned={isPinned}
                 onTogglePin={onTogglePin}
                 selectedIds={selectedIds}
@@ -567,6 +583,9 @@ function DayGroup({
 
 function FlatGroup({
   group,
+  sort,
+  onSort,
+  soleGroup,
   initialOpen,
   isPinned,
   onTogglePin,
@@ -575,6 +594,9 @@ function FlatGroup({
   drag,
 }: {
   group: SessionFlatGroup;
+  sort: SortKey;
+  onSort: (s: SortKey) => void;
+  soleGroup: boolean;
   initialOpen: boolean;
   isPinned: (sessionId: string) => boolean;
   onTogglePin: (sessionId: string) => void;
@@ -585,21 +607,27 @@ function FlatGroup({
   const [open, setOpen] = useState(initialOpen);
   return (
     <section>
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="flex w-full cursor-pointer items-center gap-2 rounded-md px-1 py-1 text-left hover:bg-raised"
-      >
-        <Chev open={open} />
-        <h2 className="m-0 font-display text-[15px] font-semibold">{group.label}</h2>
-        <span className="sys-label" style={{ fontSize: 10.5 }}>
-          {group.count}
-        </span>
-      </button>
-      {open && (
+      {/* Grouping that yields one group is not grouping — drawing "Unlabeled 7"
+          over the whole list only adds a lid to it. */}
+      {!soleGroup && (
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          className="flex w-full cursor-pointer items-center gap-2 rounded-md px-1 py-1 text-left hover:bg-raised"
+        >
+          <Chev open={open} />
+          <h2 className="m-0 font-display text-[15px] font-semibold">{group.label}</h2>
+          <span className="sys-label" style={{ fontSize: 10.5 }}>
+            {group.count}
+          </span>
+        </button>
+      )}
+      {(open || soleGroup) && (
         <div className="mt-1.5">
           <SessionsTable
             sessions={group.sessions}
+            sort={sort}
+            onSort={onSort}
             isPinned={isPinned}
             onTogglePin={onTogglePin}
             selectedIds={selectedIds}
@@ -612,43 +640,28 @@ function FlatGroup({
   );
 }
 
-function SegmentedControl<T extends string>({
-  label,
+function GroupBySelect({
   value,
-  options,
   onChange,
 }: {
-  label: string;
-  value: T;
-  options: { key: T; label: string }[];
-  onChange: (next: T) => void;
+  value: ViewKey;
+  onChange: (v: ViewKey) => void;
 }) {
   return (
-    <div className="inline-flex items-center gap-1.5 text-[12px]">
-      <span className="sys-label" style={{ fontSize: 10 }}>
-        {label}
-      </span>
-      <div className="inline-flex gap-1 rounded-full border border-border bg-surface/60 p-1 shadow-sm">
-        {options.map((opt) => {
-          const active = value === opt.key;
-          return (
-            <button
-              key={opt.key}
-              type="button"
-              onClick={() => onChange(opt.key)}
-              className={
-                "cursor-pointer rounded-full px-2.5 py-1 text-[12px] leading-none transition-colors " +
-                (active
-                  ? "bg-base font-semibold text-foreground shadow-sm"
-                  : "text-muted-foreground hover:bg-raised/70 hover:text-foreground")
-              }
-            >
-              {opt.label}
-            </button>
-          );
-        })}
-      </div>
-    </div>
+    <span className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
+      Group
+      <CustomSelect
+        value={value}
+        onChange={(v) => onChange(v as ViewKey)}
+        ariaLabel="Group sessions by"
+        align="right"
+        options={VIEWS.map((v) => ({
+          value: v.key,
+          label: v.key === "list" ? "None" : v.label.slice(3, 4).toUpperCase() + v.label.slice(4),
+        }))}
+        className="cursor-pointer rounded-md border border-border bg-transparent px-2 py-1 text-[12.5px] text-foreground hover:bg-raised"
+      />
+    </span>
   );
 }
 
@@ -670,6 +683,8 @@ function Chev({ open }: { open: boolean }) {
 
 function SessionsTable({
   sessions,
+  sort,
+  onSort,
   isPinned,
   onTogglePin,
   selectedIds,
@@ -677,6 +692,8 @@ function SessionsTable({
   drag = NO_DRAG,
 }: {
   sessions: SessionSummary[];
+  sort: SortKey;
+  onSort: (s: SortKey) => void;
   isPinned: (sessionId: string) => boolean;
   onTogglePin: (sessionId: string) => void;
   selectedIds: Set<string>;
@@ -687,22 +704,34 @@ function SessionsTable({
     return <SessionsEmptyState withInstallCta />;
   }
 
+  // A column that never varies is not a column, it is a watermark: User is the
+  // same name on every row in a personal stash, and Ticket is empty until
+  // something links one. Both earn their place per listing, not globally.
+  const showUser = new Set(sessions.map((s) => s.user_name)).size > 1;
+  const showTicket = sessions.some((s) => primaryTicket(s) !== null);
+  const cols = gridColumns(showUser, showTicket);
+
   return (
-    <div className="overflow-hidden rounded-lg border border-border bg-surface">
-      <div className="hidden grid-cols-[minmax(128px,0.68fr)_minmax(240px,1.7fr)_86px_58px_minmax(104px,0.62fr)_94px_88px_28px] gap-3 border-b border-border bg-base/70 px-3 py-2 text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground md:grid">
-        <span>User</span>
-        <span>Session</span>
-        <span>Ticket</span>
-        <span>Events</span>
-        <span>Agent</span>
-        <span>Date</span>
-        <span>Updated</span>
+    <div>
+      <div
+        className="hidden gap-3 border-b border-border px-3 pb-1.5 text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground md:grid"
+        style={{ gridTemplateColumns: cols }}
+      >
+        {showUser && <span>User</span>}
+        <SessionSortHeader label="Session" column="name" sort={sort} onSort={onSort} />
+        {showTicket && <span>Ticket</span>}
+        <SessionSortHeader label="Events" column="events" sort={sort} onSort={onSort} />
+        <SessionSortHeader label="Agent" column="agent" sort={sort} onSort={onSort} />
+        <SessionSortHeader label="Updated" column="updated" sort={sort} onSort={onSort} />
         <span />
       </div>
       {sessions.map((session) => (
         <SessionTableRow
           key={session.session_id}
           session={session}
+          cols={cols}
+          showUser={showUser}
+          showTicket={showTicket}
           pinned={isPinned(session.session_id)}
           onTogglePin={onTogglePin}
           selected={selectedIds.has(session.session_id)}
@@ -714,8 +743,61 @@ function SessionsTable({
   );
 }
 
+/** Columns collapse out of the template entirely when they carry nothing, so
+ *  the remaining ones take the space instead of leaving a gap. */
+function gridColumns(showUser: boolean, showTicket: boolean): string {
+  return [
+    showUser ? "minmax(120px,0.6fr)" : null,
+    "minmax(240px,2fr)",
+    showTicket ? "86px" : null,
+    "58px",
+    "minmax(96px,0.55fr)",
+    "88px",
+    "28px",
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+// Sorting lives in the column headers, where a table keeps it. Updated toggles
+// between newest and oldest; the others are one-way orders.
+function SessionSortHeader({
+  label,
+  column,
+  sort,
+  onSort,
+}: {
+  label: string;
+  column: SortColumn;
+  sort: SortKey;
+  onSort: (s: SortKey) => void;
+}) {
+  const active = sort.column === column;
+  return (
+    <button
+      type="button"
+      onClick={() =>
+        onSort({
+          column,
+          dir: active ? (sort.dir === "asc" ? "desc" : "asc") : FIRST_DIR[column],
+        })
+      }
+      className={
+        "flex cursor-pointer items-center gap-1 text-left text-[11px] font-medium uppercase tracking-[0.08em] hover:text-foreground " +
+        (active ? "text-foreground" : "text-muted-foreground")
+      }
+    >
+      {label}
+      {active && <span aria-hidden>{sort.dir === "asc" ? "\u25B2" : "\u25BC"}</span>}
+    </button>
+  );
+}
+
 function SessionTableRow({
   session,
+  cols,
+  showUser,
+  showTicket,
   pinned,
   onTogglePin,
   selected,
@@ -723,6 +805,9 @@ function SessionTableRow({
   drag,
 }: {
   session: SessionSummary;
+  cols: string;
+  showUser: boolean;
+  showTicket: boolean;
   pinned: boolean;
   onTogglePin: (sessionId: string) => void;
   selected: boolean;
@@ -750,15 +835,12 @@ function SessionTableRow({
       }}
       onDragEnd={() => drag.onActiveChange(false)}
       className={
-        "group/srow grid min-h-12 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-border px-3 py-2 text-[13px] last:border-b-0 md:grid-cols-[minmax(128px,0.68fr)_minmax(240px,1.7fr)_86px_58px_minmax(104px,0.62fr)_94px_88px_28px] " +
-        (selected ? "bg-[var(--color-brand-50)]" : "hover:bg-[var(--color-brand-50)]")
+        "group/srow grid min-h-10 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-border-subtle px-3 py-1.5 text-[13px] last:border-b-0 md:grid " +
+        (selected ? "bg-[var(--color-brand-50)]" : "hover:bg-[var(--color-brand-50)]/60")
       }
+      style={{ gridTemplateColumns: cols }}
     >
-      <div className="hidden min-w-0 items-center gap-2 md:flex">
-        <SelectBox
-          selected={selected}
-          onToggle={() => onToggleSelect(session.session_id)}
-        />
+      <div className={"min-w-0 items-center gap-2 " + (showUser ? "hidden md:flex" : "hidden")}>
         <span
           className={
             "inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[9px] font-semibold " +
@@ -773,7 +855,11 @@ function SessionTableRow({
       </div>
       <div className="min-w-0">
         <div className="flex min-w-0 items-center gap-2">
-          <div className="min-w-0 flex-1 truncate font-medium text-foreground">{sessionTitle(session)}</div>
+          <SelectBox
+            selected={selected}
+            onToggle={() => onToggleSelect(session.session_id)}
+          />
+          <div className="min-w-0 flex-1 truncate text-[13.5px] font-medium text-foreground">{sessionTitle(session)}</div>
           {ticket && (
             <span className="md:hidden">
               <LinearTicketPill ticket={ticket} compact />
@@ -786,18 +872,24 @@ function SessionTableRow({
             .join(", ")}
         </div>
       </div>
-      <span className="hidden min-w-0 md:block">
-        {ticket ? <LinearTicketPill ticket={ticket} /> : <span className="text-[11px] text-muted-foreground">None</span>}
-      </span>
+      {showTicket && (
+        <span className="hidden min-w-0 md:block">
+          {ticket ? (
+            <LinearTicketPill ticket={ticket} />
+          ) : (
+            <span className="text-[12px] text-muted-foreground/40">—</span>
+          )}
+        </span>
+      )}
       <span className="hidden items-center gap-1 text-[12px] text-muted-foreground md:flex">
         <MessageIcon />
         {session.event_count}
       </span>
-      <span className="hidden truncate text-muted-foreground md:block">{agent}</span>
-      <span className="hidden whitespace-nowrap text-[12px] text-muted-foreground md:block">
-        {formatDate(session.last_event_at || session.started_at)}
-      </span>
-      <span className="justify-self-end whitespace-nowrap text-[12px] text-muted-foreground">
+      <span className="hidden truncate text-[12px] text-muted-foreground md:block">{agent}</span>
+      <span
+        className="justify-self-end whitespace-nowrap text-[12px] text-muted-foreground"
+        title={formatDate(session.last_event_at || session.started_at)}
+      >
         {formatRelative(session.last_event_at)}
       </span>
       <span
@@ -906,7 +998,9 @@ function formatRelative(iso: string | null): string {
   if (diffH < 24) return `${diffH}h ago`;
   const diffD = Math.round(diffH / 24);
   if (diffD < 7) return `${diffD}d ago`;
-  return new Date(iso).toLocaleDateString();
+  // "Aug 4", not "8/4/2026": one column should not switch numbering systems
+  // partway down. The exact timestamp is on the row's title attribute.
+  return formatDate(iso);
 }
 
 function formatDate(iso: string | null): string {
@@ -1043,8 +1137,8 @@ function FolderCard({
         (over ? "border-[var(--color-brand-300)] ring-1 ring-inset ring-[var(--color-brand-300)]" : "border-border")
       }
     >
-      <span aria-hidden className="mt-0.5 text-[18px]">
-        {folder.is_default ? "🗃️" : "📁"}
+      <span aria-hidden className="mt-0.5 text-muted-foreground">
+        <FolderIcon />
       </span>
       <span className="min-w-0 flex-1">
         <span className="flex items-center gap-1.5">
@@ -1097,8 +1191,8 @@ function SharedFolderCard({
       onClick={onClick}
       className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-border bg-surface/50 px-3 py-3 text-left transition hover:border-[var(--color-brand-300)] hover:bg-raised/50"
     >
-      <span aria-hidden className="mt-0.5 text-[18px]">
-        🗂️
+      <span aria-hidden className="mt-0.5 text-muted-foreground">
+        <FolderIcon />
       </span>
       <span className="min-w-0">
         <span className="block truncate text-[13.5px] font-semibold text-foreground">{name}</span>
@@ -1126,6 +1220,7 @@ function FolderDrill({
   drag,
   dragActive,
   onDropSessions,
+  onUploaded,
 }: {
   folder: OpenFolder;
   refreshKey: number;
@@ -1144,6 +1239,7 @@ function FolderDrill({
   drag: SessionDrag;
   dragActive: boolean;
   onDropSessions: (rowIds: string[], folderId: string) => void;
+  onUploaded: () => void;
 }) {
   const [folderSessions, setFolderSessions] = useState<SessionSummary[] | null>(null);
   const [hasMore, setHasMore] = useState(false);
@@ -1197,7 +1293,10 @@ function FolderDrill({
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     const el = sentinelRef.current;
-    if (!el || !hasMore || sort !== "recent") return;
+    // Newest-first is the server's own paging order, so appended pages land
+    // below the sentinel. Any other order would place them above it and
+    // cascade-load the whole folder.
+    if (!el || !hasMore || sort.column !== "updated" || sort.dir !== "desc") return;
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0]?.isIntersecting) loadMore();
@@ -1227,11 +1326,18 @@ function FolderDrill({
         </button>
       )}
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-        <h2 className="m-0 flex items-center gap-2 font-display text-[18px] font-semibold text-foreground">
+        <h2 className="m-0 flex items-baseline gap-2 font-display text-[18px] font-semibold text-foreground">
           {!isAll && (
-            <span aria-hidden>{folder.shared ? "🗂️" : ownFolder?.is_default ? "🗃️" : "📁"}</span>
+            <span aria-hidden className="text-muted-foreground">
+              <FolderIcon />
+            </span>
           )}
-          {folder.name}
+          {isAll ? "Sessions" : folder.name}
+          {folderSessions !== null && (
+            <span className="text-[13px] font-normal text-muted-foreground">
+              {folderSessions.length}
+            </span>
+          )}
           {ownFolder && <FolderAccessBadge folder={ownFolder} />}
         </h2>
         {ownFolder && (
@@ -1274,19 +1380,12 @@ function FolderDrill({
             ))}
         </div>
       )}
-      <div className="mb-3 flex flex-wrap items-center gap-3 border-b border-border pb-2.5">
-        <SegmentedControl
-          label="View"
-          value={view}
-          options={VIEWS}
-          onChange={(v) => onChangeView(v as ViewKey)}
-        />
-        <SegmentedControl
-          label="Sort"
-          value={sort}
-          options={SORTS}
-          onChange={(v) => onChangeSort(v as SortKey)}
-        />
+      {/* Sorting moved into the column headers, where a table keeps it. What
+          is left is a group-by, and one quiet control says that better than
+          ten pills that outweighed the rows beneath them. */}
+      <div className="mb-2 flex flex-wrap items-center justify-end gap-2">
+        <GroupBySelect value={view} onChange={onChangeView} />
+        {!folder.shared && <SessionUpload onUploaded={onUploaded} bare />}
       </div>
       {folderSessions === null ? (
         <p className="text-[12.5px] text-muted-foreground">Loading…</p>
@@ -1296,6 +1395,8 @@ function FolderDrill({
             view={view}
             sessions={drillSessions}
             folders={folders}
+            sort={sort}
+            onSort={onChangeSort}
             isPinned={isPinned}
             onTogglePin={onTogglePin}
             selectedIds={folder.shared ? EMPTY_SELECTION : selectedIds}
@@ -1353,7 +1454,9 @@ function FolderDropChip({
           : "border-border bg-base text-dim")
       }
     >
-      <span aria-hidden>{folder.is_default ? "🗃️" : "📁"}</span>
+      <span aria-hidden>
+        <FolderIcon />
+      </span>
       {folder.name}
     </span>
   );
@@ -1362,11 +1465,19 @@ function FolderDropChip({
 const EMPTY_SELECTION: Set<string> = new Set();
 function noop() {}
 
+// Ascending comparators; descending reverses. Ties fall back to the title so
+// equal values keep a stable, readable order instead of shuffling per render.
 function sortSessions(list: SessionSummary[], sort: SortKey): SessionSummary[] {
-  const copy = [...list];
-  if (sort === "recent") copy.sort((a, b) => sessionTime(b) - sessionTime(a));
-  else if (sort === "oldest") copy.sort((a, b) => sessionTime(a) - sessionTime(b));
-  else if (sort === "events") copy.sort((a, b) => b.event_count - a.event_count);
-  else copy.sort((a, b) => sessionTitle(a).localeCompare(sessionTitle(b)));
-  return copy;
+  const byColumn = {
+    updated: (a: SessionSummary, b: SessionSummary) => sessionTime(a) - sessionTime(b),
+    events: (a: SessionSummary, b: SessionSummary) => a.event_count - b.event_count,
+    name: (a: SessionSummary, b: SessionSummary) =>
+      sessionTitle(a).localeCompare(sessionTitle(b)),
+    agent: (a: SessionSummary, b: SessionSummary) =>
+      (a.agent_name || "").localeCompare(b.agent_name || ""),
+  }[sort.column];
+  const copy = [...list].sort(
+    (a, b) => byColumn(a, b) || sessionTitle(a).localeCompare(sessionTitle(b)),
+  );
+  return sort.dir === "desc" ? copy.reverse() : copy;
 }
