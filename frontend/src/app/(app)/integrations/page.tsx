@@ -25,35 +25,53 @@ import {
 } from "@/components/integrations/connectors";
 import CodingAgents, { CODING_AGENTS } from "@/components/integrations/CodingAgents";
 import McpServers from "@/components/integrations/McpServers";
+import OutputSurfaces from "@/components/integrations/OutputSurfaces";
 import PaywallModal from "@/components/PaywallModal";
 import { cn } from "@/lib/utils";
 
-// The four ways anything reaches Stash. This page exists to make that list
-// legible in one screen: before this, connectors and MCP servers were on it
-// and the other two lived in onboarding, so "what can I connect?" had no
-// single answer.
-type Category = "sources" | "agents" | "mcp" | "browser";
+// Direction is the page's first distinction: what puts content INTO the stash,
+// and what reads it back OUT. "MCP" means opposite things on the two sides —
+// servers Stash calls (in) versus Stash as a server agents call (out) — so
+// neither section is allowed to be called just "MCP".
+type Direction = "in" | "out";
 
-const CATEGORIES: { key: Category; label: string; blurb: string }[] = [
+type Category = "sources" | "browser" | "tools" | "access" | "agents";
+
+const CATEGORIES: {
+  key: Category;
+  direction: Direction | "both";
+  label: string;
+  blurb: string;
+}[] = [
   {
     key: "sources",
+    direction: "in",
     label: "Sources",
     blurb: "Connect an account and everything in it becomes searchable by every agent you point at Stash.",
   },
   {
-    key: "agents",
-    label: "Coding agents",
-    blurb: "Their sessions land in your stash, and they can read the rest of it while they work.",
-  },
-  {
-    key: "mcp",
-    label: "MCP servers",
-    blurb: "Tools your cloud agent can call, on top of everything Stash gives it natively.",
-  },
-  {
     key: "browser",
+    direction: "in",
     label: "Browser",
     blurb: "Clip any page, import your bookmarks, and sync what you save on X and Instagram.",
+  },
+  {
+    key: "tools",
+    direction: "in",
+    label: "Tools your agent can call",
+    blurb: "MCP servers you register here are handed to your cloud agent, on top of everything Stash gives it natively.",
+  },
+  {
+    key: "access",
+    direction: "out",
+    label: "Connect an agent",
+    blurb: "MCP, the CLI, and the HTTP API — how an agent or a script reads what you've collected.",
+  },
+  {
+    key: "agents",
+    direction: "both",
+    label: "Coding agents",
+    blurb: "The one surface that runs both ways: their transcripts land in your stash, and they read the rest of it while they work.",
   },
 ];
 
@@ -165,26 +183,52 @@ function SourcesGrid({
   );
 }
 
+/** A direction badge — the same mark on the segmented control, the section
+ *  headings, and the one category that carries both. */
+function DirectionBadge({ direction }: { direction: Direction | "both" }) {
+  const label = direction === "in" ? "→ IN" : direction === "out" ? "OUT →" : "⇄ BOTH";
+  return (
+    <span
+      className={cn(
+        "rounded-full px-2 py-0.5 font-mono text-[10.5px] font-semibold leading-normal",
+        direction === "in" && "bg-human/10 text-human",
+        direction === "out" && "bg-chart-5/15 text-warning",
+        direction === "both" && "bg-brand-500/10 text-brand-600",
+      )}
+    >
+      {label}
+    </span>
+  );
+}
+
 function Section({
   category,
   count,
   children,
 }: {
   category: (typeof CATEGORIES)[number];
-  count: number;
+  count: number | null;
   children: React.ReactNode;
 }) {
   return (
     <section id={category.key}>
-      <div className="flex items-baseline gap-2">
+      <div className="flex items-center gap-2">
         <h2 className="font-display text-[16px] font-semibold text-foreground">{category.label}</h2>
-        <span className="font-mono text-[12px] text-muted-foreground">{count}</span>
+        {count !== null && (
+          <span className="font-mono text-[12px] text-muted-foreground">{count}</span>
+        )}
+        <DirectionBadge direction={category.direction} />
       </div>
       <p className="mt-0.5 max-w-2xl text-[13px] text-muted-foreground">{category.blurb}</p>
       <div className="mt-4">{children}</div>
     </section>
   );
 }
+
+// How many ways out of the stash OutputSurfaces renders: MCP, CLI, API.
+const OUTPUT_SURFACES = 3;
+
+const cat = (key: Category) => CATEGORIES.find((c) => c.key === key)!;
 
 export default function IntegrationsPage() {
   const router = useRouter();
@@ -194,6 +238,7 @@ export default function IntegrationsPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [agentNames, setAgentNames] = useState<string[]>([]);
   const [mcpCount, setMcpCount] = useState(0);
+  const [direction, setDirection] = useState<Direction>("in");
   const [filter, setFilter] = useState<Category | "all">("all");
 
   useBreadcrumbs([{ label: "Integrations" }], "integrations");
@@ -250,12 +295,27 @@ export default function IntegrationsPage() {
 
   const counts: Record<Category, number> = {
     sources: available.length,
-    agents: CODING_AGENTS.length,
-    mcp: mcpCount,
     browser: 1,
+    tools: mcpCount,
+    access: OUTPUT_SURFACES,
+    agents: CODING_AGENTS.length,
   };
 
-  const shows = (c: Category) => filter === "all" || filter === c;
+  // A category belongs to the open direction if it points that way, or if it
+  // runs both ways — coding agents genuinely do, so they appear under each.
+  const inDirection = CATEGORIES.filter(
+    (c) => c.direction === direction || c.direction === "both",
+  );
+
+  // The sub-filter is scoped to the open direction, so switching direction
+  // resets it rather than leaving a filter selected that no longer exists.
+  const shows = (c: Category) =>
+    inDirection.some((cat) => cat.key === c) && (filter === "all" || filter === c);
+
+  function openDirection(next: Direction) {
+    setDirection(next);
+    setFilter("all");
+  }
 
   return (
     <div className="h-full overflow-y-auto">
@@ -265,8 +325,8 @@ export default function IntegrationsPage() {
             Integrations
           </h1>
           <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-            The one place to connect everything to Stash — the accounts your agents read from, the
-            coding agents that read them, the tools they can call, and the browser you save from.
+            The one place to connect everything to Stash. Everything that flows in, and every way
+            it flows back out to an agent.
           </p>
           {statuses && (
             <p className="mt-2.5 font-mono text-[12px] text-muted-foreground">
@@ -278,32 +338,67 @@ export default function IntegrationsPage() {
           )}
         </header>
 
-        <div className="flex flex-wrap gap-1.5">
-          {(["all", ...CATEGORIES.map((c) => c.key)] as const).map((key) => {
-            const label =
-              key === "all" ? "All" : CATEGORIES.find((c) => c.key === key)!.label;
-            const count =
-              key === "all"
-                ? Object.values(counts).reduce((a, b) => a + b, 0)
-                : counts[key as Category];
-            return (
+        <div className="flex flex-col gap-3">
+          {/* Direction is the primary choice; categories nest under whichever
+              half is open. */}
+          <div className="flex w-full max-w-md overflow-hidden rounded-xl border border-border" role="tablist">
+            {(["in", "out"] as const).map((d) => (
               <button
-                key={key}
+                key={d}
                 type="button"
-                aria-pressed={filter === key}
-                onClick={() => setFilter(key as Category | "all")}
+                role="tab"
+                aria-selected={direction === d}
+                onClick={() => openDirection(d)}
                 className={cn(
-                  "flex items-center gap-1.5 rounded-full border px-3 py-1 text-[12.5px] font-medium transition-colors",
-                  filter === key
-                    ? "border-brand-500 bg-brand-500/10 text-brand-600"
-                    : "border-border bg-surface text-muted-foreground hover:text-foreground",
+                  "flex flex-1 items-center justify-center gap-2 px-4 py-2.5 text-[13px] font-semibold transition-colors",
+                  d === "out" && "border-l border-border",
+                  direction === d
+                    ? d === "in"
+                      ? "bg-human/10 text-human"
+                      : "bg-chart-5/15 text-warning"
+                    : "bg-surface text-muted-foreground hover:text-foreground",
                 )}
               >
-                {label}
-                <span className="font-mono text-[11px] opacity-70">{count}</span>
+                <span className="font-mono text-[12px]">{d === "in" ? "→" : ""}</span>
+                {d === "in" ? "Flowing in" : "Flowing out"}
+                <span className="font-mono text-[12px]">{d === "out" ? "→" : ""}</span>
               </button>
-            );
-          })}
+            ))}
+          </div>
+
+          <p className="text-[12.5px] text-muted-foreground">
+            {direction === "in"
+              ? "What puts content into your stash."
+              : "How agents and scripts read what's in it."}
+          </p>
+
+          <div className="flex flex-wrap gap-1.5">
+            {(["all", ...inDirection.map((c) => c.key)] as (Category | "all")[]).map((key) => {
+              const label =
+                key === "all" ? "All" : CATEGORIES.find((c) => c.key === key)!.label;
+              const count =
+                key === "all"
+                  ? inDirection.reduce((sum, c) => sum + counts[c.key], 0)
+                  : counts[key as Category];
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  aria-pressed={filter === key}
+                  onClick={() => setFilter(key)}
+                  className={cn(
+                    "flex items-center gap-1.5 rounded-full border px-3 py-1 text-[12.5px] font-medium transition-colors",
+                    filter === key
+                      ? "border-brand-500 bg-brand-500/10 text-brand-600"
+                      : "border-border bg-surface text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  {label}
+                  <span className="font-mono text-[11px] opacity-70">{count}</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         {loadError && (
@@ -313,7 +408,7 @@ export default function IntegrationsPage() {
         )}
 
         {shows("sources") && !loadError && (
-          <Section category={CATEGORIES[0]} count={counts.sources}>
+          <Section category={cat("sources")} count={counts.sources}>
             {statuses === null ? (
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {Array.from({ length: 6 }, (_, i) => (
@@ -330,20 +425,8 @@ export default function IntegrationsPage() {
           </Section>
         )}
 
-        {shows("agents") && (
-          <Section category={CATEGORIES[1]} count={counts.agents}>
-            <CodingAgents agentNames={agentNames} />
-          </Section>
-        )}
-
-        {shows("mcp") && (
-          <Section category={CATEGORIES[2]} count={counts.mcp}>
-            <McpServers onCountChange={setMcpCount} />
-          </Section>
-        )}
-
         {shows("browser") && (
-          <Section category={CATEGORIES[3]} count={counts.browser}>
+          <Section category={cat("browser")} count={counts.browser}>
             <Link
               href="/extension"
               className="flex items-start gap-3 rounded-xl border border-border bg-surface p-4 transition-colors hover:bg-raised sm:max-w-md"
@@ -359,6 +442,25 @@ export default function IntegrationsPage() {
             </Link>
           </Section>
         )}
+
+        {shows("tools") && (
+          <Section category={cat("tools")} count={counts.tools}>
+            <McpServers onCountChange={setMcpCount} />
+          </Section>
+        )}
+
+        {shows("access") && (
+          <Section category={cat("access")} count={counts.access}>
+            <OutputSurfaces />
+          </Section>
+        )}
+
+        {shows("agents") && (
+          <Section category={cat("agents")} count={counts.agents}>
+            <CodingAgents agentNames={agentNames} />
+          </Section>
+        )}
+
       </div>
     </div>
   );
