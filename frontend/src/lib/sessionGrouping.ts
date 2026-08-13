@@ -112,7 +112,7 @@ export function groupSessionsByFolder(
 ): SessionFlatGroup[] {
   const byFolder = new Map<string, SessionSummary[]>();
   const unfiled: SessionSummary[] = [];
-  for (const s of sortedSessions(sessions)) {
+  for (const s of sessions) {
     if (s.session_folder_id) {
       byFolder.set(s.session_folder_id, [...(byFolder.get(s.session_folder_id) ?? []), s]);
     } else {
@@ -133,13 +133,16 @@ export function groupSessionsByFolder(
   return groups;
 }
 
-// Groups + sorts: largest groups first, sessions inside groups reverse-chronological.
+// Groups only: largest groups first, and sessions keep the order they arrived
+// in. Re-sorting here used to silently override the caller's chosen sort, so
+// picking "most events" while grouped by ticket did nothing at all. Callers
+// sort before grouping; the sort control is the one source of row order.
 function groupBy(
   sessions: SessionSummary[],
   keyFn: (s: SessionSummary) => string
 ): SessionFlatGroup[] {
   const buckets = new Map<string, SessionSummary[]>();
-  for (const s of sortedSessions(sessions)) {
+  for (const s of sessions) {
     const k = keyFn(s);
     buckets.set(k, [...(buckets.get(k) ?? []), s]);
   }

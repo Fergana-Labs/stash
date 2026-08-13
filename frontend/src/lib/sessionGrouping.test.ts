@@ -61,14 +61,25 @@ describe("groupSessionsByDayAndUser", () => {
 });
 
 describe("groupSessionsByUser", () => {
-  it("groups by user_name, largest-bucket-first, reverse-chronological inside", () => {
+  it("groups by user_name, largest-bucket-first", () => {
     const grouped = groupSessionsByUser([
-      session({ session_id: "ada-old", user_name: "Ada", last_event_at: "2026-05-13T12:00:00Z" }),
       session({ session_id: "ada-new", user_name: "Ada", last_event_at: "2026-05-14T13:00:00Z" }),
+      session({ session_id: "ada-old", user_name: "Ada", last_event_at: "2026-05-13T12:00:00Z" }),
       session({ session_id: "ben", user_name: "Ben", last_event_at: "2026-05-14T12:00:00Z" }),
     ]);
     expect(grouped.map((g) => g.key)).toEqual(["Ada", "Ben"]);
     expect(grouped[0].sessions.map((s) => s.session_id)).toEqual(["ada-new", "ada-old"]);
+  });
+
+  // Grouping must not impose its own row order: it used to re-sort every
+  // bucket reverse-chronologically, so choosing "most events" while grouped
+  // by ticket silently did nothing. The caller's sort is the row order.
+  it("keeps the order the caller sorted the sessions into", () => {
+    const grouped = groupSessionsByUser([
+      session({ session_id: "ada-old", user_name: "Ada", last_event_at: "2026-05-13T12:00:00Z" }),
+      session({ session_id: "ada-new", user_name: "Ada", last_event_at: "2026-05-14T13:00:00Z" }),
+    ]);
+    expect(grouped[0].sessions.map((s) => s.session_id)).toEqual(["ada-old", "ada-new"]);
   });
 
   it("fails when a session is missing the author's display name", () => {
