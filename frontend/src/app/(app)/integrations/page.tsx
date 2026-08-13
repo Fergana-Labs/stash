@@ -35,11 +35,17 @@ import { cn } from "@/lib/utils";
 // neither section is allowed to be called just "MCP".
 type Direction = "in" | "out";
 
-type Category = "sources" | "browser" | "tools" | "access" | "agents";
+type Category =
+  | "sources"
+  | "browser"
+  | "tools"
+  | "agent-sessions"
+  | "access"
+  | "agent-access";
 
 const CATEGORIES: {
   key: Category;
-  direction: Direction | "both";
+  direction: Direction;
   label: string;
   blurb: string;
 }[] = [
@@ -68,10 +74,16 @@ const CATEGORIES: {
     blurb: "MCP, the CLI, and the HTTP API — how an agent or a script reads what you've collected.",
   },
   {
-    key: "agents",
-    direction: "both",
+    key: "agent-sessions",
+    direction: "in",
     label: "Coding agents",
-    blurb: "The one surface that runs both ways: their transcripts land in your stash, and they read the rest of it while they work.",
+    blurb: "Every session they run lands in your stash as a transcript, searchable like anything else.",
+  },
+  {
+    key: "agent-access",
+    direction: "out",
+    label: "Coding agents",
+    blurb: "Point them at your stash and they read it while they work — your notes, sources, and past sessions.",
   },
 ];
 
@@ -184,16 +196,14 @@ function SourcesGrid({
 }
 
 /** A direction badge — the same mark on the segmented control, the section
- *  headings, and the one category that carries both. */
-function DirectionBadge({ direction }: { direction: Direction | "both" }) {
-  const label = direction === "in" ? "→ IN" : direction === "out" ? "OUT →" : "⇄ BOTH";
+ *  headings. */
+function DirectionBadge({ direction }: { direction: Direction }) {
+  const label = direction === "in" ? "→ IN" : "OUT →";
   return (
     <span
       className={cn(
         "rounded-full px-2 py-0.5 font-mono text-[10.5px] font-semibold leading-normal",
-        direction === "in" && "bg-human/10 text-human",
-        direction === "out" && "bg-chart-5/15 text-warning",
-        direction === "both" && "bg-brand-500/10 text-brand-600",
+        direction === "in" ? "bg-human/10 text-human" : "bg-chart-5/15 text-warning",
       )}
     >
       {label}
@@ -294,15 +304,12 @@ export default function IntegrationsPage() {
     sources: available.length,
     browser: 1,
     tools: mcpCount,
+    "agent-sessions": CODING_AGENTS.length,
     access: OUTPUT_SURFACES.length,
-    agents: CODING_AGENTS.length,
+    "agent-access": CODING_AGENTS.length,
   };
 
-  // A category belongs to the open direction if it points that way, or if it
-  // runs both ways — coding agents genuinely do, so they appear under each.
-  const inDirection = CATEGORIES.filter(
-    (c) => c.direction === direction || c.direction === "both",
-  );
+  const inDirection = CATEGORIES.filter((c) => c.direction === direction);
 
   // The sub-filter is scoped to the open direction, so switching direction
   // resets it rather than leaving a filter selected that no longer exists.
@@ -452,9 +459,15 @@ export default function IntegrationsPage() {
           </Section>
         )}
 
-        {shows("agents") && (
-          <Section category={cat("agents")} count={counts.agents}>
-            <CodingAgents agentNames={agentNames} />
+        {shows("agent-sessions") && (
+          <Section category={cat("agent-sessions")} count={counts["agent-sessions"]}>
+            <CodingAgents direction="in" agentNames={agentNames} />
+          </Section>
+        )}
+
+        {shows("agent-access") && (
+          <Section category={cat("agent-access")} count={counts["agent-access"]}>
+            <CodingAgents direction="out" />
           </Section>
         )}
 

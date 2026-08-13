@@ -28,19 +28,63 @@ export const CODING_AGENTS = [
 
 const INSTALL_COMMAND = `bash -c "$(curl -fsSL https://joinstash.ai/install)"`;
 
+const MCP_CLIENT_CONFIG = `{
+  "mcpServers": {
+    "stash": { "command": "stash-mcp" }
+  }
+}`;
+
 type Agent = (typeof CODING_AGENTS)[number];
 
-/** Coding agents connect by running one command, which finds every agent on
- *  the machine and wires its hooks. There is deliberately no per-agent
- *  connected/disconnected state: the uploaded `agent_name` is whatever the
- *  user named their agent, not which harness produced it, so claiming
- *  "Claude Code: connected" would be a guess dressed as a fact. */
-export default function CodingAgents({ agentNames }: { agentNames: string[] }) {
+// A coding agent is two integrations wearing one name — it writes transcripts
+// in and reads the stash back out — so it's listed under each direction with
+// the half that applies. One install command serves both, which is why the
+// dialogs differ in what they explain rather than what they run.
+const COPY = {
+  in: {
+    blurb: "Its sessions land in your stash as transcripts, searchable like anything else.",
+    dialogTitle: (name: string) => `Record ${name} sessions`,
+    dialogDescription: "One command turns on session recording for every coding agent on your machine, this one included.",
+    note: (binary: string) => (
+      <>
+        The installer signs you in, looks for <code className="font-mono text-[11.5px] text-foreground">{binary}</code>{" "}
+        on your PATH, and hooks it so every session it runs is uploaded when it ends.
+      </>
+    ),
+  },
+  out: {
+    blurb: "Give it read access to everything in your stash while it works.",
+    dialogTitle: (name: string) => `Give ${name} access`,
+    dialogDescription: "Two ways in, depending on what the agent speaks.",
+    note: (binary: string) => (
+      <>
+        The installer adds Stash&apos;s commands to{" "}
+        <code className="font-mono text-[11.5px] text-foreground">{binary}</code>&apos;s context, so
+        it can search and read your stash mid-session.
+      </>
+    ),
+  },
+} as const;
+
+/** The coding agents Stash can wire up, one card each. Rendered once per
+ *  direction: under Inputs they're where transcripts come from, under Outputs
+ *  they're something you hand the stash to. There is deliberately no per-agent
+ *  connected state — the uploaded `agent_name` is whatever the user named
+ *  their agent, not which harness produced it, so "Claude Code: connected"
+ *  would be a guess dressed as a fact. */
+export default function CodingAgents({
+  direction,
+  agentNames = [],
+}: {
+  direction: "in" | "out";
+  agentNames?: string[];
+}) {
   const [open, setOpen] = useState<Agent | null>(null);
+  const copy = COPY[direction];
 
   return (
     <div className="flex flex-col gap-3">
-      {agentNames.length > 0 && (
+      {direction === "in" && agentNames.length > 0 && (
         <p className="text-[12.5px] text-muted-foreground">
           Sending sessions now: <span className="text-foreground">{agentNames.join(", ")}</span>
         </p>
@@ -66,8 +110,7 @@ export default function CodingAgents({ agentNames }: { agentNames: string[] }) {
             </div>
 
             <p className="min-h-[34px] text-[12.5px] leading-snug text-muted-foreground">
-              Its transcripts land in your stash, and it reads everything else in there while it
-              works.
+              {copy.blurb}
             </p>
 
             <Button
@@ -85,19 +128,20 @@ export default function CodingAgents({ agentNames }: { agentNames: string[] }) {
       <Dialog open={open !== null} onOpenChange={(v) => !v && setOpen(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Connect {open?.name}</DialogTitle>
-            <DialogDescription>
-              One command wires up every coding agent on your machine, this one included.
-            </DialogDescription>
+            <DialogTitle>{open && copy.dialogTitle(open.name)}</DialogTitle>
+            <DialogDescription>{copy.dialogDescription}</DialogDescription>
           </DialogHeader>
           <div className="flex min-w-0 flex-col gap-3">
             <CopyableCommandBlock commands={INSTALL_COMMAND} />
-            <p className="text-[12.5px] text-muted-foreground">
-              The installer signs you in, looks for{" "}
-              <code className="font-mono text-[11.5px] text-foreground">{open?.binary}</code> on your
-              PATH, and turns on session recording for it. Run it again any time you add another
-              agent.
-            </p>
+            <p className="text-[12.5px] text-muted-foreground">{open && copy.note(open.binary)}</p>
+            {direction === "out" && (
+              <>
+                <div className="text-[12px] font-medium text-dim">
+                  Or, if it speaks MCP, point it at the Stash server
+                </div>
+                <CopyableCommandBlock commands={MCP_CLIENT_CONFIG} />
+              </>
+            )}
           </div>
         </DialogContent>
       </Dialog>
