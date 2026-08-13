@@ -25,7 +25,7 @@ import {
 } from "@/components/integrations/connectors";
 import CodingAgents, { CODING_AGENTS } from "@/components/integrations/CodingAgents";
 import McpServers from "@/components/integrations/McpServers";
-import OutputSurfaces from "@/components/integrations/OutputSurfaces";
+import OutputSurfaces, { OUTPUT_SURFACES } from "@/components/integrations/OutputSurfaces";
 import PaywallModal from "@/components/PaywallModal";
 import { cn } from "@/lib/utils";
 
@@ -225,9 +225,6 @@ function Section({
   );
 }
 
-// How many ways out of the stash OutputSurfaces renders: MCP, CLI, API.
-const OUTPUT_SURFACES = 3;
-
 const cat = (key: Category) => CATEGORIES.find((c) => c.key === key)!;
 
 export default function IntegrationsPage() {
@@ -297,7 +294,7 @@ export default function IntegrationsPage() {
     sources: available.length,
     browser: 1,
     tools: mcpCount,
-    access: OUTPUT_SURFACES,
+    access: OUTPUT_SURFACES.length,
     agents: CODING_AGENTS.length,
   };
 

@@ -16,8 +16,11 @@ export default function CopyableCommandBlock({ commands }: { commands: string })
   }
 
   return (
-    <div className="relative inline-block text-left">
-      <pre className="overflow-x-auto rounded-md border border-border bg-surface px-3 py-2 pr-16 font-mono text-[11.5px] leading-relaxed text-foreground">
+    <div className="relative inline-block max-w-full text-left">
+      {/* Wrap rather than scroll: a scrolling line slides underneath the
+          absolutely-positioned copy button, which reads as broken in a narrow
+          container like a dialog. */}
+      <pre className="whitespace-pre-wrap break-all rounded-md border border-border bg-surface px-3 py-2 pr-16 font-mono text-[11.5px] leading-relaxed text-foreground">
         {commands}
       </pre>
       <button
