@@ -152,7 +152,7 @@ export function useVfsMounts(): {
           name: provider,
           icon: connectorIcon(provider),
           // ?section=files keeps the VFS docked when a provider opens from
-          // either VFS surface, instead of teleporting to the Tools section.
+          // either VFS surface, instead of teleporting to the Integrations section.
           href: `/integrations/${provider}?section=files`,
           children: nodes,
           hiddenCount: hiddenCount || undefined,

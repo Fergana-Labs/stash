@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Bot, FolderTree, MessagesSquare, GraduationCap, Home, Wrench, Settings } from "lucide-react";
+import { Bot, FolderTree, Home, Network, Plug, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
 import { useWorkspace, type RailSection } from "@/lib/workspace-store";
@@ -11,21 +11,22 @@ import type { User } from "@/lib/types";
 
 type RailItem = { key: RailSection; label: string; icon: typeof Bot; match: (p: string) => boolean };
 
-// Primary sections — each opens its own explorer panel (see workspace-shell).
+// The five sections. Sessions and Skills are not among them: they are mounts
+// in the VFS, which is where you browse everything the database holds.
 const PRIMARY: RailItem[] = [
+  { key: "integrations", label: "Integrations", icon: Plug, match: (p) => p.startsWith("/integrations") },
   { key: "home", label: "Home", icon: Home, match: (p) => p === "/" },
-  { key: "files", label: "VFS", icon: FolderTree, match: (p) => p === "/files" || p.startsWith("/f/") || p.startsWith("/p/") || p.startsWith("/folders/") || p.startsWith("/tables/") },
-  { key: "sessions", label: "Sessions", icon: MessagesSquare, match: (p) => p.startsWith("/sessions") || p.startsWith("/session-folders") },
-  { key: "skills", label: "Skills", icon: GraduationCap, match: (p) => p.startsWith("/skills") },
-  { key: "tools", label: "Tools", icon: Wrench, match: (p) => p.startsWith("/tools") || p.startsWith("/integrations") },
+  { key: "viz", label: "Viz", icon: Network, match: (p) => p.startsWith("/viz") },
+  { key: "files", label: "VFS", icon: FolderTree, match: (p) => p === "/files" || p.startsWith("/f/") || p.startsWith("/p/") || p.startsWith("/folders/") || p.startsWith("/tables/") || p.startsWith("/sessions") || p.startsWith("/session-folders") || p.startsWith("/skills") },
   { key: "agents", label: "Chat", icon: Bot, match: (p) => p.startsWith("/agents") },
 ];
 
-// Home is the memory dashboard — the divider separates it from the VFS
-// sections. Chat sits last: it's a lens over the stash, not a place in it.
-// Apps lives at /apps. The VM has NO entry point since it left this rail: the
-// explorer's Home root is the only thing that lists it, and that root only
-// renders once you are already inside the VM section (?section=computer).
+// Integrations is where content enters the stash; everything below the divider
+// is what you do with it once it's in. Chat sits last: it's a lens over the
+// stash, not a place in it. Apps lives at /apps. The VM has NO entry point
+// since it left this rail: the explorer's Home root is the only thing that
+// lists it, and that root only renders once you are already inside the VM
+// section (?section=computer).
 const DIVIDER_AFTER_INDEX = 0;
 
 function RailButton({
@@ -43,6 +44,7 @@ function RailButton({
       type="button"
       onClick={onClick}
       aria-label={item.label}
+      aria-current={active ? "page" : undefined}
       className={cn(
         "flex w-full flex-col items-center gap-1 rounded-lg py-2 transition-colors",
         active
@@ -120,9 +122,8 @@ export default function Rail({ user, onLogout }: { user: User; onLogout: () => v
     const LANDING: Record<Exclude<RailSection, "files" | "computer">, string> = {
       home: "/",
       agents: "/agents",
-      sessions: "/sessions",
-      skills: "/skills",
-      tools: "/tools",
+      integrations: "/integrations",
+      viz: "/viz",
     };
     setRailSection(section);
     router.replace(LANDING[section as keyof typeof LANDING]);

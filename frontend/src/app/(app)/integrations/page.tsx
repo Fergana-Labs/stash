@@ -99,13 +99,13 @@ function IntegrationsGrid() {
   const [busy, setBusy] = useState<string | null>(null);
   const [paywalled, setPaywalled] = useState(false);
 
-  // Straight to the consent screen; the OAuth flow returns to /tools, where
-  // the row reads Connected. No successful-return path resets `busy` — the
-  // whole page navigates away.
+  // Straight to the consent screen; the OAuth flow returns to /integrations,
+  // where the row reads Connected. No successful-return path resets `busy` —
+  // the whole page navigates away.
   async function connectNow(connector: Connector) {
     setBusy(connector.provider);
     try {
-      await startConnect(connector.provider, "/tools");
+      await startConnect(connector.provider, "/integrations");
     } catch (e) {
       if (e instanceof ApiError && e.status === 402) setPaywalled(true);
       else toast.error(e instanceof Error ? e.message : "Could not start connection");
@@ -325,12 +325,12 @@ function ServerRow({ server, onRemoved }: { server: McpServer; onRemoved: () => 
   );
 }
 
-export default function ToolsPage() {
+export default function IntegrationsPage() {
   const router = useRouter();
   const { user, loading } = useAuth();
   const [servers, setServers] = useState<McpServer[] | null>(null);
 
-  useBreadcrumbs([{ label: "Tools" }], "tools");
+  useBreadcrumbs([{ label: "Integrations" }], "integrations");
 
   const refresh = useCallback(async () => {
     try {
@@ -355,7 +355,7 @@ export default function ToolsPage() {
       <div className="mx-auto flex max-w-5xl flex-col gap-8 px-8 py-7">
         <div>
           <h1 className="font-display text-[22px] font-semibold tracking-tight text-foreground">
-            Tools
+            Integrations
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Everything your agent can reach — connected sources and MCP servers.
@@ -363,7 +363,7 @@ export default function ToolsPage() {
         </div>
 
         <section>
-          <h2 className="text-[15px] font-semibold text-foreground">Integrations</h2>
+          <h2 className="text-[15px] font-semibold text-foreground">Connected sources</h2>
           <p className="mt-0.5 text-[13px] text-muted-foreground">
             Connect accounts and choose what your agent can read. Click one to connect or manage
             it.

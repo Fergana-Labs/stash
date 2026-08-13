@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import ToolsPage from "./page";
+import IntegrationsPage from "./page";
 import { createMcpServer, deleteMcpServer, listMcpServers, type McpServer } from "@/lib/api";
 import { listIntegrations } from "@/lib/integrations";
 
@@ -78,9 +78,9 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-describe("ToolsPage", () => {
+describe("IntegrationsPage", () => {
   it("lists registered MCP servers with their targets", async () => {
-    render(<ToolsPage />);
+    render(<IntegrationsPage />);
 
     expect(await screen.findByText("linear")).toBeTruthy();
     expect(screen.getByText("notion")).toBeTruthy();
@@ -92,7 +92,7 @@ describe("ToolsPage", () => {
 
   it("adds an http server with parsed headers and refreshes", async () => {
     vi.mocked(createMcpServer).mockResolvedValue(SERVERS[1]);
-    render(<ToolsPage />);
+    render(<IntegrationsPage />);
     await screen.findByText("linear");
 
     fireEvent.change(screen.getByLabelText("Server name"), { target: { value: "notion2" } });
@@ -118,7 +118,7 @@ describe("ToolsPage", () => {
 
   it("adds a stdio server with a command", async () => {
     vi.mocked(createMcpServer).mockResolvedValue(SERVERS[0]);
-    render(<ToolsPage />);
+    render(<IntegrationsPage />);
     await screen.findByText("linear");
 
     fireEvent.change(screen.getByLabelText("Server name"), { target: { value: "fs" } });
@@ -141,14 +141,14 @@ describe("ToolsPage", () => {
   // so the user could never tell that "not connected" was really "unknown".
   it("surfaces a failed integrations load instead of skeletons", async () => {
     vi.mocked(listIntegrations).mockRejectedValueOnce(new Error("integrations are down"));
-    render(<ToolsPage />);
+    render(<IntegrationsPage />);
 
     expect(await screen.findByText(/integrations are down/)).toBeTruthy();
   });
 
   it("removes a server", async () => {
     vi.mocked(deleteMcpServer).mockResolvedValue(undefined);
-    render(<ToolsPage />);
+    render(<IntegrationsPage />);
     await screen.findByText("linear");
 
     fireEvent.click(screen.getAllByRole("button", { name: /remove/i })[0]);
