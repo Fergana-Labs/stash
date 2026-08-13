@@ -135,7 +135,7 @@ export default function IntegrationsPage() {
   const [agentNames, setAgentNames] = useState<string[]>([]);
   const [servers, setServers] = useState<McpServer[]>([]);
   const [query, setQuery] = useState("");
-  const [direction, setDirection] = useState<Direction | null>(null);
+  const [direction, setDirection] = useState<Direction>("in");
   const [open, setOpen] = useState<Box | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [paywalled, setPaywalled] = useState(false);
@@ -372,18 +372,31 @@ export default function IntegrationsPage() {
     );
   }, [statuses, servers, busy, isConnected, connectNow, removeServer]);
 
-  const visible = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return boxes.filter(
-      (b) =>
-        (direction === null || b.direction === direction) &&
-        (q === "" || b.search.toLowerCase().includes(q)),
-    );
-  }, [boxes, query, direction]);
+  const matchesQuery = useCallback(
+    (b: Box) => {
+      const q = query.trim().toLowerCase();
+      return q === "" || b.search.toLowerCase().includes(q);
+    },
+    [query],
+  );
+
+  const visible = useMemo(
+    () => boxes.filter((b) => b.direction === direction && matchesQuery(b)),
+    [boxes, direction, matchesQuery],
+  );
+
+  // Only one direction is on screen, so a search that matches nothing here but
+  // something in the other half would otherwise read as "no results" when
+  // there are results one click away.
+  const elsewhere = useMemo(
+    () => boxes.filter((b) => b.direction !== direction && matchesQuery(b)).length,
+    [boxes, direction, matchesQuery],
+  );
 
   if (loading || !user) return null;
 
-  const connectedCount = boxes.filter((b) => b.active).length;
+  const inDirection = boxes.filter((b) => b.direction === direction);
+  const connectedCount = inDirection.filter((b) => b.active).length;
 
   return (
     <div className="h-full overflow-y-auto">
@@ -413,7 +426,7 @@ export default function IntegrationsPage() {
               key={d}
               type="button"
               aria-pressed={direction === d}
-              onClick={() => setDirection(direction === d ? null : d)}
+              onClick={() => setDirection(d)}
               className={cn(
                 "rounded-full border px-3 py-1.5 text-[12.5px] font-medium transition-colors",
                 direction === d
@@ -427,7 +440,8 @@ export default function IntegrationsPage() {
             </button>
           ))}
           <span className="ml-auto font-mono text-[11.5px] text-muted-foreground">
-            {visible.length} of {boxes.length} · {connectedCount} connected
+            {visible.length} of {inDirection.length}
+            {connectedCount > 0 && ` · ${connectedCount} connected`}
           </span>
         </div>
 
@@ -457,7 +471,20 @@ export default function IntegrationsPage() {
 
         {statuses !== null && visible.length === 0 && (
           <p className="py-8 text-center text-[13px] text-muted-foreground">
-            Nothing matches “{query}”.
+            Nothing matches “{query}” here.
+            {elsewhere > 0 && (
+              <>
+                {" "}
+                <button
+                  type="button"
+                  onClick={() => setDirection(direction === "in" ? "out" : "in")}
+                  className="font-medium text-brand-600 hover:underline"
+                >
+                  {elsewhere} {elsewhere === 1 ? "match" : "matches"} in{" "}
+                  {direction === "in" ? "Flowing out" : "Flowing in"} →
+                </button>
+              </>
+            )}
           </p>
         )}
       </div>
