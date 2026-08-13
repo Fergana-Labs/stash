@@ -1,12 +1,19 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Globe, Plus, Terminal } from "lucide-react";
+import { Globe, Plus, SquareTerminal } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   ApiError,
   createMcpServer,
@@ -45,10 +52,6 @@ function AddServerForm({ onAdded }: { onAdded: () => void }) {
         transport,
         ...(transport === "stdio" ? { command: command.trim() } : { url: url.trim(), headers }),
       });
-      setName("");
-      setCommand("");
-      setUrl("");
-      setHeaderLines("");
       onAdded();
     } catch (e) {
       toast.error(e instanceof ApiError || e instanceof Error ? e.message : "Failed to add server");
@@ -61,73 +64,71 @@ function AddServerForm({ onAdded }: { onAdded: () => void }) {
 
   return (
     <form
-      className="rounded-lg border border-border bg-surface p-4"
+      className="flex min-w-0 flex-col gap-3"
       onSubmit={(e) => {
         e.preventDefault();
         void submit();
       }}
     >
-      <h2 className="text-sm font-semibold">Add an MCP server</h2>
-      <div className="mt-3 flex flex-col gap-3">
-        <Input
-          aria-label="Server name"
-          placeholder="Name (e.g. linear)"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-        />
-        <div className="flex gap-1 rounded-md bg-muted p-1 self-start" role="radiogroup">
-          {(["http", "stdio"] as const).map((t) => (
-            <button
-              key={t}
-              type="button"
-              role="radio"
-              aria-checked={transport === t}
-              onClick={() => setTransport(t)}
-              className={`rounded px-3 py-1 text-xs font-medium ${
-                transport === t
-                  ? "bg-surface text-foreground shadow-sm"
-                  : "text-muted-foreground"
-              }`}
-            >
-              {t === "http" ? "Remote (HTTP)" : "Local (stdio)"}
-            </button>
-          ))}
-        </div>
-        {transport === "stdio" ? (
-          <Input
-            aria-label="Command"
-            placeholder="Command (e.g. npx -y linear-mcp)"
-            value={command}
-            onChange={(e) => setCommand(e.target.value)}
-          />
-        ) : (
-          <>
-            <Input
-              aria-label="URL"
-              placeholder="URL (e.g. https://mcp.example.com/mcp)"
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-            />
-            <Textarea
-              aria-label="Headers"
-              placeholder={"Optional headers, one per line:\nAuthorization=Bearer …"}
-              rows={2}
-              value={headerLines}
-              onChange={(e) => setHeaderLines(e.target.value)}
-            />
-          </>
-        )}
-        <Button type="submit" disabled={saving || !name.trim() || targetMissing} className="self-start">
-          <Plus className="h-4 w-4" />
-          Add server
-        </Button>
+      <Input
+        aria-label="Server name"
+        placeholder="Name (e.g. linear)"
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+      />
+      <div className="flex gap-1 self-start rounded-md bg-muted p-1" role="radiogroup">
+        {(["http", "stdio"] as const).map((t) => (
+          <button
+            key={t}
+            type="button"
+            role="radio"
+            aria-checked={transport === t}
+            onClick={() => setTransport(t)}
+            className={`rounded px-3 py-1 text-xs font-medium ${
+              transport === t ? "bg-surface text-foreground shadow-sm" : "text-muted-foreground"
+            }`}
+          >
+            {t === "http" ? "Remote (HTTP)" : "Local (stdio)"}
+          </button>
+        ))}
       </div>
+      {transport === "stdio" ? (
+        <Input
+          aria-label="Command"
+          placeholder="Command (e.g. npx -y linear-mcp)"
+          value={command}
+          onChange={(e) => setCommand(e.target.value)}
+        />
+      ) : (
+        <>
+          <Input
+            aria-label="URL"
+            placeholder="URL (e.g. https://mcp.example.com/mcp)"
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+          />
+          <Textarea
+            aria-label="Headers"
+            placeholder={"Optional headers, one per line:\nAuthorization=Bearer …"}
+            rows={2}
+            value={headerLines}
+            onChange={(e) => setHeaderLines(e.target.value)}
+          />
+        </>
+      )}
+      <Button type="submit" disabled={saving || !name.trim() || targetMissing} className="self-start">
+        <Plus className="h-4 w-4" />
+        Add server
+      </Button>
     </form>
   );
 }
 
-function ServerRow({ server, onRemoved }: { server: McpServer; onRemoved: () => void }) {
+/** A registered server, in the same card shape as every other integration. */
+function ServerCard({ server, onRemoved }: { server: McpServer; onRemoved: () => void }) {
   const [removing, setRemoving] = useState(false);
+  const Icon = server.transport === "stdio" ? SquareTerminal : Globe;
+  const headerKeys = Object.keys(server.headers);
 
   async function remove() {
     setRemoving(true);
@@ -140,33 +141,39 @@ function ServerRow({ server, onRemoved }: { server: McpServer; onRemoved: () => 
     }
   }
 
-  const headerKeys = Object.keys(server.headers);
   return (
-    <li className="flex items-center gap-3 rounded-lg border border-border bg-surface px-4 py-3">
-      {server.transport === "stdio" ? (
-        <Terminal className="h-4 w-4 shrink-0 text-muted-foreground" />
-      ) : (
-        <Globe className="h-4 w-4 shrink-0 text-muted-foreground" />
-      )}
-      <div className="min-w-0 flex-1">
-        <div className="text-sm font-medium">{server.name}</div>
-        <div className="truncate text-xs text-muted-foreground">
-          {server.transport === "stdio" ? server.command : server.url}
-          {headerKeys.length > 0 && `, headers: ${headerKeys.join(", ")}`}
-        </div>
+    <div className="flex flex-col gap-2.5 rounded-xl border border-border bg-surface p-4">
+      <div className="flex items-center gap-2.5">
+        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-raised">
+          <Icon className="h-4 w-4 text-dim" />
+        </span>
+        <span className="truncate text-[14px] font-medium text-foreground">{server.name}</span>
       </div>
-      <Button variant="ghost" size="sm" onClick={() => void remove()} disabled={removing}>
-        Remove
+
+      <p className="min-h-[34px] break-all font-mono text-[11.5px] leading-snug text-muted-foreground">
+        {server.transport === "stdio" ? server.command : server.url}
+        {headerKeys.length > 0 && ` · headers: ${headerKeys.join(", ")}`}
+      </p>
+
+      <Button
+        variant="ghost"
+        size="sm"
+        className="self-start px-2"
+        onClick={() => void remove()}
+        disabled={removing}
+      >
+        {removing ? "Removing…" : "Remove"}
       </Button>
-    </li>
+    </div>
   );
 }
 
-/** The MCP-server registry: servers your cloud agent can call, and the form
- *  that adds one. Owns its own loading so the Integrations page doesn't have
- *  to thread the list through. */
+/** The MCP-server registry: servers your cloud agent can call. Cards like
+ *  everything else on the page, including the one that adds a new one — the
+ *  form lives in its dialog rather than sitting open at the bottom of a grid. */
 export default function McpServers({ onCountChange }: { onCountChange: (n: number) => void }) {
   const [servers, setServers] = useState<McpServer[] | null>(null);
+  const [adding, setAdding] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -183,20 +190,39 @@ export default function McpServers({ onCountChange }: { onCountChange: (n: numbe
   }, [refresh]);
 
   return (
-    <div className="flex flex-col gap-3">
-      {servers !== null && servers.length === 0 && (
-        <p className="text-[13px] text-muted-foreground">
-          No MCP servers yet — add one below.
-        </p>
-      )}
-      {servers !== null && servers.length > 0 && (
-        <ul className="flex flex-col gap-2">
-          {servers.map((s) => (
-            <ServerRow key={s.id} server={s} onRemoved={() => void refresh()} />
-          ))}
-        </ul>
-      )}
-      <AddServerForm onAdded={() => void refresh()} />
-    </div>
+    <>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {servers?.map((s) => (
+          <ServerCard key={s.id} server={s} onRemoved={() => void refresh()} />
+        ))}
+
+        <button
+          type="button"
+          onClick={() => setAdding(true)}
+          className="flex min-h-[124px] flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border bg-surface/50 p-4 text-muted-foreground transition-colors hover:border-brand-300 hover:text-foreground"
+        >
+          <Plus className="h-5 w-5" />
+          <span className="text-[13px] font-medium">Add a custom server</span>
+        </button>
+      </div>
+
+      <Dialog open={adding} onOpenChange={setAdding}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add an MCP server</DialogTitle>
+            <DialogDescription>
+              Your cloud agent gets it before every turn, alongside the tools Stash gives it
+              natively.
+            </DialogDescription>
+          </DialogHeader>
+          <AddServerForm
+            onAdded={() => {
+              setAdding(false);
+              void refresh();
+            }}
+          />
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
