@@ -39,6 +39,8 @@ vi.mock("@/lib/api", () => ({
   deleteMcpServer: vi.fn(),
   // The integrations grid above the MCP registry loads these on mount.
   listSources: vi.fn().mockResolvedValue([]),
+  // The coding-agents section shows which agents are already sending sessions.
+  listAgentNames: vi.fn().mockResolvedValue([]),
 }));
 
 vi.mock("@/lib/integrations", () => ({
