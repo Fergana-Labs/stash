@@ -97,7 +97,7 @@ describe("IntegrationsPage", () => {
     render(<IntegrationsPage />);
     await screen.findByText("linear");
 
-    fireEvent.click(screen.getByRole("button", { name: /add a custom server/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^add$/i }));
     fireEvent.change(await screen.findByLabelText("Server name"), { target: { value: "notion2" } });
     fireEvent.change(screen.getByLabelText("URL"), {
       target: { value: "https://mcp.example.com/mcp" },
@@ -124,7 +124,7 @@ describe("IntegrationsPage", () => {
     render(<IntegrationsPage />);
     await screen.findByText("linear");
 
-    fireEvent.click(screen.getByRole("button", { name: /add a custom server/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^add$/i }));
     fireEvent.change(await screen.findByLabelText("Server name"), { target: { value: "fs" } });
     fireEvent.click(screen.getByRole("radio", { name: /local \(stdio\)/i }));
     fireEvent.change(screen.getByLabelText("Command"), {

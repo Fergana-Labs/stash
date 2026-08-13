@@ -1,16 +1,32 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { Globe } from "lucide-react";
+import { Bot, Globe, Plus, SquareTerminal } from "lucide-react";
 import { toast } from "sonner";
 
 import { useBreadcrumbs } from "@/components/BreadcrumbContext";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ApiError, listAgentNames, listSources, type Source } from "@/lib/api";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  ApiError,
+  deleteMcpServer,
+  listAgentNames,
+  listMcpServers,
+  listSources,
+  type McpServer,
+  type Source,
+} from "@/lib/api";
 import {
   INTEGRATIONS_CHANGED_EVENT,
   listIntegrations,
@@ -23,219 +39,92 @@ import {
   providerForSourceType,
   type Connector,
 } from "@/components/integrations/connectors";
-import CodingAgents, { CODING_AGENTS } from "@/components/integrations/CodingAgents";
-import McpServers from "@/components/integrations/McpServers";
-import OutputSurfaces, { OUTPUT_SURFACES } from "@/components/integrations/OutputSurfaces";
+import {
+  AGENT_COPY,
+  CODING_AGENTS,
+  agentDialogBody,
+} from "@/components/integrations/CodingAgents";
+import { OUTPUT_SURFACES } from "@/components/integrations/OutputSurfaces";
+import AddServerForm from "@/components/integrations/McpServers";
 import PaywallModal from "@/components/PaywallModal";
 import { cn } from "@/lib/utils";
 
-// Direction is the page's first distinction: what puts content INTO the stash,
-// and what reads it back OUT. "MCP" means opposite things on the two sides —
-// servers Stash calls (in) versus Stash as a server agents call (out) — so
-// neither section is allowed to be called just "MCP".
+// One flat grid. Every way anything reaches Stash, or reads it back, is a box
+// with the same shape — the only structure is a direction badge and a search
+// field. Sections used to group these, but the groupings were a second
+// vocabulary to learn on top of the boxes themselves.
 type Direction = "in" | "out";
 
-type Category =
-  | "sources"
-  | "browser"
-  | "tools"
-  | "agent-sessions"
-  | "access"
-  | "agent-access";
-
-const CATEGORIES: {
-  key: Category;
+type Box = {
+  key: string;
+  name: string;
   direction: Direction;
-  label: string;
   blurb: string;
-}[] = [
-  {
-    key: "sources",
-    direction: "in",
-    label: "Sources",
-    blurb: "Connect an account and everything in it becomes searchable by every agent you point at Stash.",
-  },
-  {
-    key: "browser",
-    direction: "in",
-    label: "Browser",
-    blurb: "Clip any page, import your bookmarks, and sync what you save on X and Instagram.",
-  },
-  {
-    key: "tools",
-    direction: "in",
-    label: "Tools your agent can call",
-    blurb: "MCP servers you register here are handed to your cloud agent, on top of everything Stash gives it natively.",
-  },
-  {
-    key: "access",
-    direction: "out",
-    label: "Connect an agent",
-    blurb: "MCP, the CLI, and the HTTP API — how an agent or a script reads what you've collected.",
-  },
-  {
-    key: "agent-sessions",
-    direction: "in",
-    label: "Coding agents",
-    blurb: "Every session they run lands in your stash as a transcript, searchable like anything else.",
-  },
-  {
-    key: "agent-access",
-    direction: "out",
-    label: "Coding agents",
-    blurb: "Point them at your stash and they read it while they work — your notes, sources, and past sessions.",
-  },
-];
+  icon: ReactNode;
+  /** Connected boxes sort to the front — what you have before what you could add. */
+  active: boolean;
+  /** Everything the search field matches against. */
+  search: string;
+  /** Setup instructions, for boxes whose action is "Set up". */
+  dialog?: { title: string; description: string; body: ReactNode };
+  action: ReactNode;
+};
 
-/** One connector, as a card: what it is, what connecting gets you, and the
- *  action. OAuth providers connect in place; the rest route to their page,
- *  which holds the credential form or the extension install. */
-function ConnectorCard({
-  connector,
-  connected,
-  busy,
-  onOauthConnect,
-}: {
-  connector: Connector;
-  connected: boolean;
-  busy: boolean;
-  onOauthConnect: (() => void) | null;
-}) {
-  return (
-    <div className="flex flex-col gap-2.5 rounded-xl border border-border bg-surface p-4">
-      <div className="flex items-center gap-2.5">
-        <span className="flex h-7 w-7 shrink-0 items-center justify-center [&_img]:h-6 [&_img]:w-6 [&_svg]:h-6 [&_svg]:w-6">
-          {connectorIcon(connector.provider)}
-        </span>
-        <Link
-          href={`/integrations/${connector.provider}`}
-          className="truncate text-[14px] font-medium text-foreground hover:underline"
-        >
-          {connector.label}
-        </Link>
-        {connected && (
-          <span className="ml-auto flex items-center gap-1.5 rounded-full border border-border bg-base px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
-            <span className="h-1.5 w-1.5 rounded-full bg-success" />
-            Connected
-          </span>
-        )}
-      </div>
-
-      <p className="min-h-[34px] text-[12.5px] leading-snug text-muted-foreground">
-        {connector.blurb}
-      </p>
-
-      {connected ? (
-        <Button asChild variant="ghost" size="sm" className="self-start px-2">
-          <Link href={`/integrations/${connector.provider}`}>Manage</Link>
-        </Button>
-      ) : onOauthConnect ? (
-        <Button size="sm" variant="secondary" className="self-start" disabled={busy} onClick={onOauthConnect}>
-          {busy ? "Connecting…" : "Connect"}
-        </Button>
-      ) : (
-        <Button asChild size="sm" variant="secondary" className="self-start">
-          <Link href={`/integrations/${connector.provider}`}>Connect</Link>
-        </Button>
-      )}
-    </div>
-  );
-}
-
-/** Every source connector, connected ones first so the page answers "what do
- *  I already have?" before "what could I add?". */
-function SourcesGrid({
-  connectors,
-  statuses,
-  onConnected,
-}: {
-  connectors: Connector[];
-  statuses: Record<string, IntegrationStatus>;
-  onConnected: (c: Connector) => boolean;
-}) {
-  const [busy, setBusy] = useState<string | null>(null);
-  const [paywalled, setPaywalled] = useState(false);
-
-  // Straight to the consent screen; the OAuth flow returns to /integrations,
-  // where the card reads Connected. No successful-return path resets `busy` —
-  // the whole page navigates away.
-  async function connectNow(connector: Connector) {
-    setBusy(connector.provider);
-    try {
-      await startConnect(connector.provider, "/integrations");
-    } catch (e) {
-      if (e instanceof ApiError && e.status === 402) setPaywalled(true);
-      else toast.error(e instanceof Error ? e.message : "Could not start connection");
-      setBusy(null);
-    }
-  }
-
-  const sorted = [...connectors].sort(
-    (a, b) => Number(onConnected(b)) - Number(onConnected(a)) || a.label.localeCompare(b.label),
-  );
-
-  return (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-      {sorted.map((c) => {
-        const status = statuses[c.provider];
-        const oauth =
-          c.kind !== "extension" && status?.auth_kind !== "api_key" && !status?.disabled_reason;
-        return (
-          <ConnectorCard
-            key={c.provider}
-            connector={c}
-            connected={onConnected(c)}
-            busy={busy === c.provider}
-            onOauthConnect={oauth ? () => void connectNow(c) : null}
-          />
-        );
-      })}
-      {paywalled && <PaywallModal onClose={() => setPaywalled(false)} />}
-    </div>
-  );
-}
-
-/** A direction badge — the same mark on the segmented control, the section
- *  headings. */
 function DirectionBadge({ direction }: { direction: Direction }) {
-  const label = direction === "in" ? "→ IN" : "OUT →";
   return (
     <span
       className={cn(
-        "rounded-full px-2 py-0.5 font-mono text-[10.5px] font-semibold leading-normal",
+        "shrink-0 rounded-full px-1.5 py-0.5 font-mono text-[10px] font-semibold leading-normal",
         direction === "in" ? "bg-human/10 text-human" : "bg-chart-5/15 text-warning",
       )}
+      title={direction === "in" ? "Flows into your stash" : "Reads your stash"}
     >
-      {label}
+      {direction === "in" ? "→ IN" : "OUT →"}
     </span>
   );
 }
 
-function Section({
-  category,
-  count,
-  children,
-}: {
-  category: (typeof CATEGORIES)[number];
-  count: number | null;
-  children: React.ReactNode;
-}) {
+function IntegrationBox({ box, onOpen }: { box: Box; onOpen?: () => void }) {
   return (
-    <section id={category.key}>
-      <div className="flex items-center gap-2">
-        <h2 className="font-display text-[16px] font-semibold text-foreground">{category.label}</h2>
-        {count !== null && (
-          <span className="font-mono text-[12px] text-muted-foreground">{count}</span>
+    <div className="flex flex-col gap-2.5 rounded-xl border border-border bg-surface p-4">
+      <div className="flex items-center gap-2.5">
+        <span className="flex h-7 w-7 shrink-0 items-center justify-center [&_img]:h-6 [&_img]:w-6 [&_svg]:h-6 [&_svg]:w-6">
+          {box.icon}
+        </span>
+        {onOpen ? (
+          <button
+            type="button"
+            onClick={onOpen}
+            className="min-w-0 flex-1 truncate text-left text-[14px] font-medium text-foreground hover:underline"
+          >
+            {box.name}
+          </button>
+        ) : (
+          <span className="min-w-0 flex-1 truncate text-[14px] font-medium text-foreground">
+            {box.name}
+          </span>
         )}
-        <DirectionBadge direction={category.direction} />
+        <DirectionBadge direction={box.direction} />
       </div>
-      <p className="mt-0.5 max-w-2xl text-[13px] text-muted-foreground">{category.blurb}</p>
-      <div className="mt-4">{children}</div>
-    </section>
+
+      <p className="min-h-[34px] break-words text-[12.5px] leading-snug text-muted-foreground">
+        {box.blurb}
+      </p>
+
+      {box.action}
+    </div>
   );
 }
 
-const cat = (key: Category) => CATEGORIES.find((c) => c.key === key)!;
+/** A lucide glyph in the same tile the brand marks sit in, so a box with no
+ *  logo still lines up with one that has. */
+function TileIcon({ icon: Icon }: { icon: typeof Bot }) {
+  return (
+    <span className="flex h-7 w-7 items-center justify-center rounded-md bg-raised">
+      <Icon className="h-4 w-4 text-dim" />
+    </span>
+  );
+}
 
 export default function IntegrationsPage() {
   const router = useRouter();
@@ -244,9 +133,13 @@ export default function IntegrationsPage() {
   const [statuses, setStatuses] = useState<Record<string, IntegrationStatus> | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [agentNames, setAgentNames] = useState<string[]>([]);
-  const [mcpCount, setMcpCount] = useState(0);
-  const [direction, setDirection] = useState<Direction>("in");
-  const [filter, setFilter] = useState<Category | "all">("all");
+  const [servers, setServers] = useState<McpServer[]>([]);
+  const [query, setQuery] = useState("");
+  const [direction, setDirection] = useState<Direction | null>(null);
+  const [open, setOpen] = useState<Box | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [paywalled, setPaywalled] = useState(false);
+  const [addingServer, setAddingServer] = useState(false);
 
   useBreadcrumbs([{ label: "Integrations" }], "integrations");
 
@@ -254,8 +147,8 @@ export default function IntegrationsPage() {
     if (!loading && !user) router.push("/login");
   }, [user, loading, router]);
 
-  // Both calls decide what a card says — statuses which cards exist, sources
-  // whether an extension card reads Connected — so either one failing makes
+  // Both calls decide what a box says — statuses which boxes exist, sources
+  // whether an extension box reads Connected — so either one failing makes
   // the whole grid wrong. Fail together, loudly, instead of showing a grid
   // that lies or skeletons that never resolve.
   useEffect(() => {
@@ -277,6 +170,18 @@ export default function IntegrationsPage() {
     return () => window.removeEventListener(INTEGRATIONS_CHANGED_EVENT, load);
   }, []);
 
+  const refreshServers = useCallback(async () => {
+    try {
+      setServers(await listMcpServers());
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.message : "Failed to load MCP servers");
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshServers();
+  }, [refreshServers]);
+
   // The agent roster is a nice-to-have line, not a gate: it says what is
   // already sending sessions, and the page is complete without it.
   useEffect(() => {
@@ -291,118 +196,239 @@ export default function IntegrationsPage() {
     [sourceProviders, statuses],
   );
 
+  // Straight to the consent screen; the OAuth flow returns to /integrations,
+  // where the box reads Connected. No successful-return path resets `busy` —
+  // the whole page navigates away.
+  const connectNow = useCallback(async (connector: Connector) => {
+    setBusy(connector.provider);
+    try {
+      await startConnect(connector.provider, "/integrations");
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 402) setPaywalled(true);
+      else toast.error(e instanceof Error ? e.message : "Could not start connection");
+      setBusy(null);
+    }
+  }, []);
+
+  const removeServer = useCallback(
+    async (id: string) => {
+      try {
+        await deleteMcpServer(id);
+        await refreshServers();
+      } catch (e) {
+        toast.error(e instanceof ApiError ? e.message : "Failed to remove server");
+      }
+    },
+    [refreshServers],
+  );
+
+  const boxes = useMemo<Box[]>(() => {
+    if (!statuses) return [];
+
+    // The server omits providers this user may not use (customer-specific
+    // integrations like Heavi) — extension connectors are always available.
+    const connectors = CONNECTORS.filter((c) => c.kind === "extension" || c.provider in statuses);
+
+    const sourceBoxes: Box[] = connectors.map((c) => {
+      const connected = isConnected(c);
+      const status = statuses[c.provider];
+      const oauth =
+        c.kind !== "extension" && status?.auth_kind !== "api_key" && !status?.disabled_reason;
+      return {
+        key: `source:${c.provider}`,
+        name: c.label,
+        direction: "in" as const,
+        blurb: c.blurb,
+        icon: connectorIcon(c.provider),
+        active: connected,
+        search: `${c.label} ${c.blurb} ${c.provider} source`,
+        action: connected ? (
+          <Button asChild variant="ghost" size="sm" className="self-start px-2">
+            <Link href={`/integrations/${c.provider}`}>Manage</Link>
+          </Button>
+        ) : oauth ? (
+          <Button
+            size="sm"
+            variant="secondary"
+            className="self-start"
+            disabled={busy === c.provider}
+            onClick={() => void connectNow(c)}
+          >
+            {busy === c.provider ? "Connecting…" : "Connect"}
+          </Button>
+        ) : (
+          <Button asChild size="sm" variant="secondary" className="self-start">
+            <Link href={`/integrations/${c.provider}`}>Connect</Link>
+          </Button>
+        ),
+      };
+    });
+
+    const browserBox: Box = {
+      key: "browser",
+      name: "Stash for Chrome",
+      direction: "in",
+      blurb: "Clip any page or every open tab, import your bookmarks, keep your saves in sync.",
+      icon: <TileIcon icon={Globe} />,
+      active: false,
+      search: "browser chrome extension clip bookmarks tabs",
+      action: (
+        <Button asChild size="sm" variant="secondary" className="self-start">
+          <Link href="/extension">Install</Link>
+        </Button>
+      ),
+    };
+
+    const serverBoxes: Box[] = servers.map((s) => ({
+      key: `mcp:${s.id}`,
+      name: s.name,
+      direction: "in",
+      blurb:
+        (s.transport === "stdio" ? s.command : s.url) +
+        (Object.keys(s.headers).length > 0
+          ? ` · headers: ${Object.keys(s.headers).join(", ")}`
+          : ""),
+      icon: <TileIcon icon={s.transport === "stdio" ? SquareTerminal : Globe} />,
+      active: true,
+      search: `${s.name} mcp server tool ${s.url ?? ""} ${s.command ?? ""}`,
+      action: (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="self-start px-2"
+          onClick={() => void removeServer(s.id)}
+        >
+          Remove
+        </Button>
+      ),
+    }));
+
+    const addServerBox: Box = {
+      key: "mcp:add",
+      name: "Custom MCP server",
+      direction: "in",
+      blurb: "Register any MCP server and your cloud agent gets it before every turn.",
+      icon: <TileIcon icon={Plus} />,
+      active: false,
+      search: "custom mcp server add tool",
+      action: (
+        <Button
+          size="sm"
+          variant="secondary"
+          className="self-start"
+          onClick={() => setAddingServer(true)}
+        >
+          Add
+        </Button>
+      ),
+    };
+
+    // A coding agent is two integrations wearing one name, so it gets a box
+    // per direction with the half that applies.
+    const agentBoxes = (["in", "out"] as const).flatMap((d) =>
+      CODING_AGENTS.map((agent) => ({
+        key: `agent:${d}:${agent.binary}`,
+        name: agent.name,
+        direction: d,
+        blurb: AGENT_COPY[d].blurb,
+        icon: <TileIcon icon={Bot} />,
+        active: false,
+        search: `${agent.name} ${agent.binary} coding agent`,
+        dialog: {
+          title: AGENT_COPY[d].title(agent.name),
+          description: AGENT_COPY[d].description,
+          body: agentDialogBody(agent, d),
+        },
+      })),
+    );
+
+    const outputBoxes = OUTPUT_SURFACES.map((s) => ({
+      key: `out:${s.key}`,
+      name: s.name,
+      direction: "out" as const,
+      blurb: s.blurb,
+      icon: <TileIcon icon={s.icon} />,
+      active: false,
+      search: `${s.name} ${s.blurb} ${s.keywords}`,
+      dialog: { title: s.name, description: s.blurb, body: s.body },
+    }));
+
+    // Every box whose action is a dialog gets the same button, so the grid
+    // doesn't sprout a different verb per box type.
+    const withSetup: Box[] = [...agentBoxes, ...outputBoxes].map((b) => ({
+      ...b,
+      action: (
+        <Button size="sm" variant="secondary" className="self-start" onClick={() => setOpen(b as Box)}>
+          Set up
+        </Button>
+      ),
+    }));
+
+    return [...sourceBoxes, browserBox, ...serverBoxes, addServerBox, ...withSetup].sort(
+      (a, b) =>
+        Number(b.active) - Number(a.active) ||
+        a.direction.localeCompare(b.direction) ||
+        a.name.localeCompare(b.name),
+    );
+  }, [statuses, servers, busy, isConnected, connectNow, removeServer]);
+
+  const visible = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return boxes.filter(
+      (b) =>
+        (direction === null || b.direction === direction) &&
+        (q === "" || b.search.toLowerCase().includes(q)),
+    );
+  }, [boxes, query, direction]);
+
   if (loading || !user) return null;
 
-  // The server omits providers this user may not use (customer-specific
-  // integrations like Heavi) — extension connectors are always available.
-  const available = statuses
-    ? CONNECTORS.filter((c) => c.kind === "extension" || c.provider in statuses)
-    : [];
-  const connectedCount = available.filter(isConnected).length;
-
-  const counts: Record<Category, number> = {
-    sources: available.length,
-    browser: 1,
-    tools: mcpCount,
-    "agent-sessions": CODING_AGENTS.length,
-    access: OUTPUT_SURFACES.length,
-    "agent-access": CODING_AGENTS.length,
-  };
-
-  const inDirection = CATEGORIES.filter((c) => c.direction === direction);
-
-  // The sub-filter is scoped to the open direction, so switching direction
-  // resets it rather than leaving a filter selected that no longer exists.
-  const shows = (c: Category) =>
-    inDirection.some((cat) => cat.key === c) && (filter === "all" || filter === c);
-
-  function openDirection(next: Direction) {
-    setDirection(next);
-    setFilter("all");
-  }
+  const connectedCount = boxes.filter((b) => b.active).length;
 
   return (
     <div className="h-full overflow-y-auto">
-      <div className="mx-auto flex max-w-5xl flex-col gap-8 px-8 py-7">
+      <div className="mx-auto flex max-w-5xl flex-col gap-5 px-8 py-7">
         <header>
           <h1 className="font-display text-[22px] font-semibold tracking-tight text-foreground">
             Integrations
           </h1>
           <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-            The one place to connect everything to Stash. Everything that flows in, and every way
-            it flows back out to an agent.
+            Everything that flows into Stash, and every way it flows back out to an agent.
+            {agentNames.length > 0 && (
+              <> {agentNames.length} agent{agentNames.length === 1 ? " is" : "s are"} sending sessions now.</>
+            )}
           </p>
-          {statuses && (
-            <p className="mt-2.5 font-mono text-[12px] text-muted-foreground">
-              {connectedCount} of {available.length} sources connected
-              {mcpCount > 0 && ` · ${mcpCount} MCP server${mcpCount === 1 ? "" : "s"}`}
-              {agentNames.length > 0 &&
-                ` · ${agentNames.length} agent${agentNames.length === 1 ? "" : "s"} sending sessions`}
-            </p>
-          )}
         </header>
 
-        <div className="flex flex-col gap-3">
-          {/* Direction is the primary choice; categories nest under whichever
-              half is open. */}
-          <div className="flex w-full max-w-md overflow-hidden rounded-xl border border-border" role="tablist">
-            {(["in", "out"] as const).map((d) => (
-              <button
-                key={d}
-                type="button"
-                role="tab"
-                aria-selected={direction === d}
-                onClick={() => openDirection(d)}
-                className={cn(
-                  "flex flex-1 items-center justify-center gap-2 px-4 py-2.5 text-[13px] font-semibold transition-colors",
-                  d === "out" && "border-l border-border",
-                  direction === d
-                    ? d === "in"
-                      ? "bg-human/10 text-human"
-                      : "bg-chart-5/15 text-warning"
-                    : "bg-surface text-muted-foreground hover:text-foreground",
-                )}
-              >
-                <span className="font-mono text-[12px]">{d === "in" ? "→" : ""}</span>
-                {d === "in" ? "Flowing in" : "Flowing out"}
-                <span className="font-mono text-[12px]">{d === "out" ? "→" : ""}</span>
-              </button>
-            ))}
-          </div>
-
-          <p className="text-[12.5px] text-muted-foreground">
-            {direction === "in"
-              ? "What puts content into your stash."
-              : "How agents and scripts read what's in it."}
-          </p>
-
-          <div className="flex flex-wrap gap-1.5">
-            {(["all", ...inDirection.map((c) => c.key)] as (Category | "all")[]).map((key) => {
-              const label =
-                key === "all" ? "All" : CATEGORIES.find((c) => c.key === key)!.label;
-              const count =
-                key === "all"
-                  ? inDirection.reduce((sum, c) => sum + counts[c.key], 0)
-                  : counts[key as Category];
-              return (
-                <button
-                  key={key}
-                  type="button"
-                  aria-pressed={filter === key}
-                  onClick={() => setFilter(key)}
-                  className={cn(
-                    "flex items-center gap-1.5 rounded-full border px-3 py-1 text-[12.5px] font-medium transition-colors",
-                    filter === key
-                      ? "border-brand-500 bg-brand-500/10 text-brand-600"
-                      : "border-border bg-surface text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  {label}
-                  <span className="font-mono text-[11px] opacity-70">{count}</span>
-                </button>
-              );
-            })}
-          </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search integrations…"
+            aria-label="Search integrations"
+            className="h-9 max-w-xs"
+          />
+          {(["in", "out"] as const).map((d) => (
+            <button
+              key={d}
+              type="button"
+              aria-pressed={direction === d}
+              onClick={() => setDirection(direction === d ? null : d)}
+              className={cn(
+                "rounded-full border px-3 py-1.5 text-[12.5px] font-medium transition-colors",
+                direction === d
+                  ? d === "in"
+                    ? "border-human/40 bg-human/10 text-human"
+                    : "border-warning/40 bg-chart-5/15 text-warning"
+                  : "border-border bg-surface text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {d === "in" ? "→ Flowing in" : "Flowing out →"}
+            </button>
+          ))}
+          <span className="ml-auto font-mono text-[11.5px] text-muted-foreground">
+            {visible.length} of {boxes.length} · {connectedCount} connected
+          </span>
         </div>
 
         {loadError && (
@@ -411,67 +437,60 @@ export default function IntegrationsPage() {
           </div>
         )}
 
-        {shows("sources") && !loadError && (
-          <Section category={cat("sources")} count={counts.sources}>
-            {statuses === null ? (
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {Array.from({ length: 6 }, (_, i) => (
-                  <Skeleton key={i} className="h-[124px] rounded-xl" />
-                ))}
-              </div>
-            ) : (
-              <SourcesGrid
-                connectors={available}
-                statuses={statuses}
-                onConnected={isConnected}
+        {statuses === null && !loadError ? (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {Array.from({ length: 9 }, (_, i) => (
+              <Skeleton key={i} className="h-[124px] rounded-xl" />
+            ))}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {visible.map((box) => (
+              <IntegrationBox
+                key={box.key}
+                box={box}
+                onOpen={box.dialog ? () => setOpen(box) : undefined}
               />
-            )}
-          </Section>
+            ))}
+          </div>
         )}
 
-        {shows("browser") && (
-          <Section category={cat("browser")} count={counts.browser}>
-            <Link
-              href="/extension"
-              className="flex items-start gap-3 rounded-xl border border-border bg-surface p-4 transition-colors hover:bg-raised sm:max-w-md"
-            >
-              <Globe className="mt-0.5 h-6 w-6 shrink-0 text-muted-foreground" />
-              <span className="flex flex-col gap-1">
-                <span className="text-[14px] font-medium text-foreground">Stash for Chrome</span>
-                <span className="text-[12.5px] leading-snug text-muted-foreground">
-                  Clip any page or every open tab, import your bookmarks, and keep your X and
-                  Instagram saves in sync.
-                </span>
-              </span>
-            </Link>
-          </Section>
+        {statuses !== null && visible.length === 0 && (
+          <p className="py-8 text-center text-[13px] text-muted-foreground">
+            Nothing matches “{query}”.
+          </p>
         )}
-
-        {shows("tools") && (
-          <Section category={cat("tools")} count={counts.tools}>
-            <McpServers onCountChange={setMcpCount} />
-          </Section>
-        )}
-
-        {shows("access") && (
-          <Section category={cat("access")} count={counts.access}>
-            <OutputSurfaces />
-          </Section>
-        )}
-
-        {shows("agent-sessions") && (
-          <Section category={cat("agent-sessions")} count={counts["agent-sessions"]}>
-            <CodingAgents direction="in" agentNames={agentNames} />
-          </Section>
-        )}
-
-        {shows("agent-access") && (
-          <Section category={cat("agent-access")} count={counts["agent-access"]}>
-            <CodingAgents direction="out" />
-          </Section>
-        )}
-
       </div>
+
+      <Dialog open={open !== null} onOpenChange={(v) => !v && setOpen(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{open?.dialog?.title}</DialogTitle>
+            <DialogDescription>{open?.dialog?.description}</DialogDescription>
+          </DialogHeader>
+          {open?.dialog?.body}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={addingServer} onOpenChange={setAddingServer}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add an MCP server</DialogTitle>
+            <DialogDescription>
+              Your cloud agent gets it before every turn, alongside the tools Stash gives it
+              natively.
+            </DialogDescription>
+          </DialogHeader>
+          <AddServerForm
+            onAdded={() => {
+              setAddingServer(false);
+              void refreshServers();
+            }}
+          />
+        </DialogContent>
+      </Dialog>
+
+      {paywalled && <PaywallModal onClose={() => setPaywalled(false)} />}
     </div>
   );
 }
