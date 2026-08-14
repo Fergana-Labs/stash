@@ -5,6 +5,26 @@ everything before it is captured in git history (`git log`), not here.
 
 ## Unreleased
 
+- New **Hopper** tab: drop anything in and it lands in your Stash, readable by
+  your agents. Drag files onto the page, paste a link, or paste a screenshot
+  straight from the clipboard — each goes down the pipeline that can read it
+  (file extraction or webpage import) and arrives in your VFS as an ordinary
+  item.
+- Uploaded images are transcribed by vision, so agents can read them.
+  `file_extraction.extract_text` has no branch for images, so every uploaded
+  screenshot, photo, and diagram stored an empty knowledge-base entry and was
+  invisible to search, ask-the-stash, and the VFS. Images now take the same
+  path scanned PDFs take: text transcribed character-for-character, and
+  everything non-textual described in place. Formats Gemini cannot read
+  inline (SVG, TIFF) still store no text rather than pretending.
+- Local embeddings run on the CPU (fixes a crash on Apple Silicon).
+  sentence-transformers 5.x selects Apple's Metal (`mps`) device when it can,
+  and a Metal context cannot survive `fork()` — so every Celery prefork child
+  that embedded died on SIGABRT, crashlooping the embed-reconcile task and
+  taking down any process that had touched the model. Affects local dev and
+  self-hosters using `EMBEDDING_PROVIDER=local`; hosted prod embeds with
+  OpenAI and was never affected.
+
 - CLI onboarding redesigned (#940). `stash signin` walks a first-run wizard
   that can be re-run anytime with the new `stash setup` — no answer is final.
   Session recording is framed as private-by-default and on by default

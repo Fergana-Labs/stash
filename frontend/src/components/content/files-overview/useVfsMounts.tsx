@@ -34,6 +34,10 @@ export interface Mount {
   icon: ReactNode;
   nodes: VNode[];
   href?: string;
+  /** Header for the browse view's secondary column, when this mount has one
+   *  fact worth scanning down. Type earns nothing there — every row in
+   *  /sessions is a Session. */
+  detailLabel?: string;
   /** Rows the API cut off before we ever saw them (sources per-dir cap). */
   apiHidden?: number;
   /** Where "+N more" rows we can't expand locally should take the user. */
@@ -74,11 +78,15 @@ export function useVfsMounts(): {
   coreError: string | null;
   sourcesPending: boolean;
   sourcesError: string | null;
+  /** Re-read the tree — after creating a folder, the sidebar is stale. */
+  reload: () => void;
 } {
   const [core, setCore] = useState<CoreData | null>(null);
   const [coreError, setCoreError] = useState<string | null>(null);
   const [sources, setSources] = useState<SourceTreeRoot[] | null>(null);
   const [sourcesError, setSourcesError] = useState<string | null>(null);
+
+  const [reloadNonce, setReloadNonce] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -102,7 +110,7 @@ export function useVfsMounts(): {
       .then((s) => { if (!cancelled) setSources(s); })
       .catch((e) => { if (!cancelled) setSourcesError(e instanceof Error ? e.message : String(e)); });
     return () => { cancelled = true; };
-  }, []);
+  }, [reloadNonce]);
 
   const mounts = useMemo<Mount[]>(() => {
     if (!core) return [];
@@ -111,13 +119,15 @@ export function useVfsMounts(): {
         path: "/files",
         icon: <FolderTree className="h-4 w-4 text-chart-4" />,
         nodes: core.filesNodes,
+        href: "/vfs/files",
         emptyLabel: "empty",
       },
       {
         path: "/sessions",
         icon: <MessagesSquare className="h-4 w-4 text-chart-1" />,
         nodes: core.sessionNodes,
-        href: "/sessions",
+        href: "/vfs/sessions",
+        detailLabel: "Agent",
         footer:
           core.vitals.sessions > core.sessionNodes.length
             ? { label: `all ${core.vitals.sessions} sessions`, href: "/sessions" }
@@ -135,7 +145,8 @@ export function useVfsMounts(): {
         path: "/skills",
         icon: <GraduationCap className="h-4 w-4 text-chart-3" />,
         nodes: core.skillNodes,
-        href: "/skills",
+        href: "/vfs/skills",
+        detailLabel: "Contents",
         emptyLabel: "no skills yet",
       },
     ];
@@ -173,6 +184,7 @@ export function useVfsMounts(): {
         path: "/sources",
         icon: <Cable className="h-4 w-4 text-chart-1" />,
         nodes: providerNodes,
+        href: "/vfs/sources",
         footer:
           providerNodes.length === 0
             ? { label: "connect a source", href: "/settings/integrations" }
@@ -188,5 +200,6 @@ export function useVfsMounts(): {
     coreError,
     sourcesPending: sources === null && !sourcesError,
     sourcesError,
+    reload: () => setReloadNonce((n) => n + 1),
   };
 }

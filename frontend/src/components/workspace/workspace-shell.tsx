@@ -70,8 +70,8 @@ function ExplorerPanel({ section }: { section: ExplorerSection }) {
  *  render the tab workbench; `/sessions` keeps its full management page
  *  beside the Sessions explorer. */
 export function sectionForPath(pathname: string): ExplorerSection | null {
-  // Sessions and Skills are VFS mounts, not sections of their own: they open
-  // beside the same tree that lists them.
+  // Sessions and Skills are rows in the flat Files list, not sections of
+  // their own: their routes belong to the Files section.
   if (pathname === "/files" || /^\/(p|f|folders|tables)\//.test(pathname)) return "files";
   if (pathname === "/sessions" || pathname.startsWith("/sessions/") || pathname.startsWith("/session-folders")) return "files";
   if (pathname === "/skills" || pathname.startsWith("/skills/folder")) return "files";
