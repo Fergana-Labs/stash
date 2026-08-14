@@ -12,6 +12,8 @@ import threading
 
 import httpx
 
+from stashai import self_upgrade
+
 from .config import load_config
 
 
@@ -30,7 +32,13 @@ def _post(base_url: str, api_key: str, command: str) -> None:
                         {
                             "surface": "cli",
                             "event_name": "cli.command_invoked",
-                            "properties": {"command": command},
+                            # The version makes fleet staleness a query instead
+                            # of an investigation: without it, "how many users
+                            # are running months-old code?" is unanswerable.
+                            "properties": {
+                                "command": command,
+                                "version": self_upgrade.current_version(),
+                            },
                         }
                     ]
                 },

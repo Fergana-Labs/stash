@@ -38,11 +38,16 @@ version_below() {
   }'
 }
 
-# Hooks run with a minimal PATH, so PATH alone is not enough to find uv.
-# install.sh puts it in ~/.local/bin.
+# Hooks run with a minimal PATH, so PATH alone is not enough to find uv. Checking
+# only ~/.local/bin (where install.sh puts it) missed every user who had already
+# installed uv another way — a Homebrew uv meant this script silently upgraded
+# nothing, forever, with no output to say so.
 find_uv() {
   command -v uv 2>/dev/null && return 0
-  [ -x "$HOME/.local/bin/uv" ] && echo "$HOME/.local/bin/uv" && return 0
+  for candidate in "$HOME/.local/bin/uv" "$HOME/.cargo/bin/uv" \
+                   /opt/homebrew/bin/uv /usr/local/bin/uv; do
+    [ -x "$candidate" ] && echo "$candidate" && return 0
+  done
   return 1
 }
 

@@ -44,6 +44,9 @@ class _Recorder:
             status_code = status
             is_success = status < 400
             text = "<!DOCTYPE html><title>Blocked</title>" if edge_blocked else "simulated error"
+            # Real responses carry the release header the client reads on
+            # every request (stashai/self_upgrade.py).
+            headers: dict[str, str] = {}
 
             def json(self_inner):
                 if edge_blocked:

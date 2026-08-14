@@ -30,11 +30,11 @@ then.
 
 ## Auto-update
 
-On session start, if no preference is recorded, the plugin asks (via a
-`systemMessage` to the agent) whether Stash may update itself automatically.
-Record the choice with `stash hook auto-update on|off`; it is stored as
-`codex_auto_update` in `~/.stash/config.json`. Manual upgrades stay available
-via `stash upgrade`.
+The CLI keeps itself current: every API response names the release the backend
+expects, and an older install upgrades itself in the background (never mid-run —
+the upgrade is detached, so the running command finishes on the version it
+started with). Nothing to configure, here or anywhere else. `stash upgrade`
+still forces it immediately.
 
 ## Commands
 

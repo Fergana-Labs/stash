@@ -12,6 +12,7 @@ from pathlib import Path
 
 import httpx
 
+from stashai import self_upgrade
 from stashvfs import VfsClientError
 
 
@@ -101,6 +102,7 @@ class StashClient:
         headers = kwargs.pop("headers", {})
         headers.update(self._headers())
         resp = self._http.request(method, path, headers=headers, **kwargs)
+        self_upgrade.note_latest(resp.headers.get(self_upgrade.LATEST_VERSION_HEADER, ""))
         if not resp.is_success:
             detail = ""
             try:

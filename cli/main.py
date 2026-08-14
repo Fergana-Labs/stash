@@ -38,7 +38,6 @@ from .config import (
     save_recorded_paths,
     save_scope,
     session_link_enabled,
-    set_codex_auto_update,
     set_session_link,
     start_streaming,
     stop_streaming,
@@ -857,16 +856,6 @@ def hook_run(agent: str = typer.Argument(...), event: str = typer.Argument(...))
     script = _assets_dir(agent) / "scripts" / f"{event}.py"
     sys.path.insert(0, str(script.parent))
     runpy.run_path(str(script), run_name="__main__")
-
-
-@hook_app.command("auto-update")
-def hook_auto_update(choice: str = typer.Argument(..., help="'on' or 'off'")) -> None:
-    """Record whether Stash may auto-update at Codex session start."""
-    if choice not in ("on", "off"):
-        typer.echo("Pass 'on' or 'off'.", err=True)
-        raise typer.Exit(1)
-    set_codex_auto_update(choice == "on")
-    console.print(f"Codex auto-update {choice}.")
 
 
 def _plugin_installed(agent: str) -> bool:

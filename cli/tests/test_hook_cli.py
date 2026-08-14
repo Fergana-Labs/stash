@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import sys
 from pathlib import Path
 
@@ -36,19 +35,6 @@ def test_hook_events_table_matches_script_files() -> None:
         scripts_dir = REPO_ROOT / "stashai" / "plugin" / "assets" / agent / "scripts"
         on_disk = {p.stem for p in scripts_dir.glob("on_*.py")}
         assert set(events) == on_disk, f"{agent}: table {sorted(events)} vs files {sorted(on_disk)}"
-
-
-def test_hook_auto_update_writes_preference(monkeypatch, tmp_path: Path) -> None:
-    cfg_file = tmp_path / "config.json"
-    monkeypatch.setattr("cli.config.USER_CONFIG_FILE", cfg_file)
-
-    assert runner.invoke(app, ["hook", "auto-update", "on"]).exit_code == 0
-    assert json.loads(cfg_file.read_text())["codex_auto_update"] is True
-
-    assert runner.invoke(app, ["hook", "auto-update", "off"]).exit_code == 0
-    assert json.loads(cfg_file.read_text())["codex_auto_update"] is False
-
-    assert runner.invoke(app, ["hook", "auto-update", "maybe"]).exit_code == 1
 
 
 def test_hook_run_codex_on_stop_executes(monkeypatch, tmp_path: Path) -> None:

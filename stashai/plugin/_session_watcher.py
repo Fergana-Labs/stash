@@ -56,6 +56,13 @@ def _state_transcript_path(data_dir: str) -> str:
 
 
 def main() -> None:
+    # This process outlives the agent session it watches, so it must never
+    # swap the package out from under itself; short-lived commands and hooks
+    # carry the upgrade instead.
+    from stashai import self_upgrade
+
+    self_upgrade.disable()
+
     (
         _,
         agent_pid_str,

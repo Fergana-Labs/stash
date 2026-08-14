@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -55,23 +54,6 @@ def spawn_skills_sync(cfg: dict) -> None:
         )
     except Exception:
         pass
-
-
-def spawn_self_upgrade() -> None:
-    """Background-upgrade the stashai install at session start. The hook
-    scripts ship inside the package (`stash hook run` executes them), so
-    upgrading the package keeps library and scripts current in lockstep.
-    Detached and silent — an upgrade must never block or break a session."""
-    if not shutil.which("uv"):
-        return
-    subprocess.Popen(
-        ["uv", "tool", "install", "--quiet", "stashai@latest"],
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        start_new_session=True,
-        close_fds=True,
-    )
 
 
 def spawn_session_watcher(
