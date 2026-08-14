@@ -127,6 +127,20 @@ function TileIcon({ icon: Icon }: { icon: typeof Globe }) {
   );
 }
 
+/** What a registered server points at, in words: a remote host, or a local
+ *  process named by the binary it runs. */
+function mcpServerTarget(server: McpServer): string {
+  if (server.transport === "stdio") {
+    const binary = (server.command ?? "").trim().split(/\s+/)[0];
+    return binary ? `a local ${binary} process` : "a local process";
+  }
+  try {
+    return new URL(server.url!).hostname;
+  } catch {
+    return "a remote server";
+  }
+}
+
 function mcpServerIcon(server: McpServer) {
   if (server.url && new URL(server.url).hostname === "mcp.linear.app") {
     return connectorIcon("linear");
@@ -294,11 +308,10 @@ export default function IntegrationsPage() {
       key: `mcp:${s.id}`,
       name: s.name,
       direction: "in",
-      blurb:
-        (s.transport === "stdio" ? s.command : s.url) +
-        (Object.keys(s.headers).length > 0
-          ? ` · headers: ${Object.keys(s.headers).join(", ")}`
-          : ""),
+      // Every other box describes itself in a sentence; a bare URL here read
+      // as a missing description. The exact target and header names are one
+      // click away in Manage.
+      blurb: `Tools from ${mcpServerTarget(s)}, handed to your cloud agent before every turn.`,
       icon: mcpServerIcon(s),
       active: true,
       tier: TIER.work,

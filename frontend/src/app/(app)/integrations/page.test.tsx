@@ -81,14 +81,27 @@ afterEach(() => {
 });
 
 describe("IntegrationsPage", () => {
-  it("lists registered MCP servers with their targets", async () => {
+  it("lists registered MCP servers", async () => {
     render(<IntegrationsPage />);
 
     expect(await screen.findByText("linear")).toBeTruthy();
     expect(screen.getByText("notion")).toBeTruthy();
-    expect(screen.getByText(/npx -y linear-mcp/)).toBeTruthy();
+    // The card describes the server in words; the raw target belongs to the
+    // manage dialog, not the grid.
+    expect(screen.getByText(/a local npx process/)).toBeTruthy();
+    expect(screen.getByText(/mcp\.notion\.com/)).toBeTruthy();
+  });
+
+  it("shows a server's target and header names in manage, never header values", async () => {
+    render(<IntegrationsPage />);
+    await screen.findByText("notion");
+
+    // The http server is the one carrying headers.
+    fireEvent.click(screen.getAllByRole("button", { name: /^manage$/i })[1]);
+
+    expect(await screen.findByText("https://mcp.notion.com/mcp")).toBeTruthy();
     // Header values are secrets — only key names appear.
-    expect(screen.getByText(/headers: Authorization/)).toBeTruthy();
+    expect(screen.getByText("Authorization")).toBeTruthy();
     expect(screen.queryByText(/Bearer tok/)).toBeNull();
   });
 
