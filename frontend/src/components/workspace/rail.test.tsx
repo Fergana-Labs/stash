@@ -56,7 +56,7 @@ describe("Rail", () => {
     const labels = Array.from(document.querySelectorAll("[aria-label]")).map((el) =>
       el.getAttribute("aria-label"),
     );
-    expect(labels).toEqual(["Connect", "Hopper", "Home", "Viz", "Files", "Chat", "Settings"]);
+    expect(labels).toEqual(["Home", "Connect", "Files", "Viz", "Hopper", "Chat", "Settings"]);
   });
 
   it("shows sessions as part of Files, not a section of their own", () => {
