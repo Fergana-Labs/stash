@@ -243,10 +243,10 @@ async def get_scope(
     """The effective content scope for this request.
 
     The frontend's scope switcher sends `X-Stash-Scope: <scope_user_id>` when
-    the user is working in a workspace; content routes own/list/create under
-    that scope instead of the caller's personal one. Absent header → personal
-    scope. A header naming a workspace the caller isn't a member of is a hard
-    403 — never a silent fallback to personal.
+    the user is working in a workspace or one of their stashes; content routes
+    own/list/create under that scope instead of the caller's personal one.
+    Absent header → personal scope. A header naming a scope the caller isn't a
+    member of is a hard 403 — never a silent fallback to personal.
     """
     if x_stash_scope is None:
         return current_user["id"]
@@ -259,8 +259,8 @@ async def get_scope(
 
     from .services import permission_service
 
-    if not await permission_service.is_workspace_member(scope_user_id, current_user["id"]):
-        raise HTTPException(status_code=403, detail="Not a member of that workspace")
+    if not await permission_service.is_scope_member(scope_user_id, current_user["id"]):
+        raise HTTPException(status_code=403, detail="Not a member of that scope")
     return scope_user_id
 
 

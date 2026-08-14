@@ -48,6 +48,7 @@ from .routers import (
     skills,
     sources,
     sql,
+    stashes,
     tables,
     tasks,
     telegram,
@@ -117,6 +118,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.include_router(users.router)
+app.include_router(stashes.router)
 app.include_router(user_knowledge.router)
 app.include_router(discover.router)
 app.include_router(skills.me_router)

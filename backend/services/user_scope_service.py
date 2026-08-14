@@ -5,7 +5,9 @@ Each user IS their own scope. Everything a user owns is keyed by
 login-less user; its members can read and write that scope's content like
 their own — including publishing the scope's skills. Owner-only powers
 (sharing, sources, per-object public links) stay with the scope user itself —
-`is_owner` never matches a member.
+`is_owner` never matches a workspace member. A stash (see stash_service) is
+also a login-less scope, but its human owner IS the owner: `is_owner` matches,
+so sharing, sources, and publishing work in your own stashes.
 """
 
 import logging
@@ -19,7 +21,11 @@ def _is_owner(owner_user_id: UUID | None, user_id: UUID | None) -> bool:
 
 
 async def is_owner(owner_user_id: UUID | None, user_id: UUID | None) -> bool:
-    return _is_owner(owner_user_id, user_id)
+    from . import permission_service
+
+    if _is_owner(owner_user_id, user_id):
+        return True
+    return await permission_service.is_stash_owner(owner_user_id, user_id)
 
 
 async def can_read(owner_user_id: UUID | None, user_id: UUID | None) -> bool:
@@ -27,7 +33,7 @@ async def can_read(owner_user_id: UUID | None, user_id: UUID | None) -> bool:
 
     if _is_owner(owner_user_id, user_id):
         return True
-    return await permission_service.is_workspace_member(owner_user_id, user_id)
+    return await permission_service.is_scope_member(owner_user_id, user_id)
 
 
 async def can_write(owner_user_id: UUID | None, user_id: UUID | None) -> bool:
@@ -35,7 +41,7 @@ async def can_write(owner_user_id: UUID | None, user_id: UUID | None) -> bool:
 
     if _is_owner(owner_user_id, user_id):
         return True
-    return await permission_service.is_workspace_member(owner_user_id, user_id)
+    return await permission_service.is_scope_member(owner_user_id, user_id)
 
 
 async def seed_user_scope(user_id: UUID) -> None:

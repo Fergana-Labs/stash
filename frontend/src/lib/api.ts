@@ -16,6 +16,7 @@ import {
   KnowledgeDensity,
   EmbeddingProjection,
   Workspace,
+  UserStash,
   MiniProgramApp,
   MiniProgramResolved,
   CuratedSkill,
@@ -204,6 +205,17 @@ export async function getMe(): Promise<User> {
 export async function listMyWorkspaces(): Promise<Workspace[]> {
   const data = await apiFetch<{ workspaces: Workspace[] }>(`${ME}/workspaces`);
   return data.workspaces;
+}
+
+// The caller's extra stashes (personal is not listed — it's the absence of a
+// scope header). Owned only; there is no stash membership beyond ownership.
+export async function listMyStashes(): Promise<UserStash[]> {
+  const data = await apiFetch<{ stashes: UserStash[] }>(`${ME}/stashes`);
+  return data.stashes;
+}
+
+export async function createStash(name: string): Promise<UserStash> {
+  return apiFetch(`${ME}/stashes`, { method: "POST", body: JSON.stringify({ name }) });
 }
 
 export async function updateMe(data: {

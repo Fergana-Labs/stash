@@ -337,8 +337,20 @@ export interface Workspace {
   scope_user_id: string;
 }
 
-/** The selected scope — the slice of a workspace we persist and send. */
+/** The selected scope — the slice of a workspace or stash we persist and send. */
 export type Scope = Pick<Workspace, "scope_user_id" | "name">;
+
+// An extra isolated stash the signed-in user owns. `scope_user_id` is the
+// synthetic user that owns the stash's content; requests carrying it as
+// X-Stash-Scope read and write that stash instead of the personal one.
+export interface UserStash {
+  id: string;
+  name: string;
+  scope_user_id: string;
+  created_at: string;
+  item_count: number;
+  last_activity_at: string | null;
+}
 
 /** Filter-chip counts, computed over the whole table rather than a loaded
  *  page — a chip whose count reflects page one is worse than no chip. */
