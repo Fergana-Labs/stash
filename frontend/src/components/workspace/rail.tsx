@@ -31,7 +31,7 @@ const PRIMARY: RailItem[] = [
 
 const OVERFLOW: RailItem[] = [
   { key: "integrations", label: "Connect", icon: Plug, match: (p) => p.startsWith("/integrations") },
-  { key: "hopper", label: "Hopper", icon: HopperIcon, match: (p) => p.startsWith("/hopper") },
+  { key: "hopper", label: "Upload", icon: HopperIcon, match: (p) => p.startsWith("/hopper") },
 ];
 
 // Home leads; everything under the divider is the stash itself. Apps lives at

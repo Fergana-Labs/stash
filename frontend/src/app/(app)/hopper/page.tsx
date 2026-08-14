@@ -66,7 +66,7 @@ function summarise(batch: Batch): string {
 /** The hopper is an intake, not a place: a drop lands in the VFS and the
  *  confirmation points there. Nothing accumulates on this page. */
 export default function HopperRoute() {
-  useBreadcrumbs([{ label: "Hopper" }], "hopper");
+  useBreadcrumbs([{ label: "Upload" }], "hopper");
   const router = useRouter();
 
   const [dragging, setDragging] = useState(false);
