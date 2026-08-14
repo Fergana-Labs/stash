@@ -215,24 +215,16 @@ async def test_user_write_share_grants_write(pool):
 
 
 @pytest.mark.asyncio
-async def test_comment_tier_sits_between_read_and_write(pool):
-    """read < comment < write: a read share can't comment; a comment share can
-    comment but not write; a write share can do everything."""
+async def test_read_share_cannot_write(pool):
+    """Two tiers only: a read share reads and nothing more."""
     owner = await _make_user(pool)
     reader = await _make_user(pool)
-    commenter = await _make_user(pool)
     scope = await _make_scope(pool, owner)
     page = await _make_page(pool, scope, owner)
     await _share(pool, scope, "page", page, reader, "read", by=owner)
-    await _share(pool, scope, "page", page, commenter, "comment", by=owner)
 
-    # read share: can read, cannot comment, cannot write.
     assert await permission_service.check_access("page", page, reader)
-    assert not await permission_service.check_access("page", page, reader, require="comment")
     assert not await permission_service.check_access("page", page, reader, require="write")
-    # comment share: can read + comment, not write.
-    assert await permission_service.check_access("page", page, commenter, require="comment")
-    assert not await permission_service.check_access("page", page, commenter, require="write")
 
 
 @pytest.mark.asyncio
@@ -1216,17 +1208,14 @@ async def test_session_list_does_not_leak_unshared_sessions(pool):
 
 
 @pytest.mark.asyncio
-async def test_overview_counts_span_shared_not_unshared(pool):
-    """The "Your brain" vitals (analytics_service.get_overview_counts) span the
-    user's own content plus content shared with them — but a share only surfaces
-    the specific shared rows, never the whole sharing scope, and an unrelated
-    user sees nothing. Guards the widened owned∪shared prefilter against leaks."""
+async def test_overview_counts_are_scope_only(pool):
+    """The "Your brain" vitals count one scope's content and nothing else —
+    a stash's home never counts another scope, shared or not."""
     from backend.services import analytics_service
 
     owner = await _make_user(pool)
-    friend = await _make_user(pool)  # gets one folder shared
-    stranger = await _make_user(pool)  # gets nothing
-    scope = await _make_scope(pool, owner)  # friend/stranger don't own this scope
+    friend = await _make_user(pool)  # gets a folder shared — still counts zero
+    scope = await _make_scope(pool, owner)
     folder = await _make_folder(pool, scope, owner)
     await _make_page(pool, scope, owner, folder_id=folder, name="shared-page")
     await _make_page(pool, scope, owner, name="private-root-page")
@@ -1234,13 +1223,9 @@ async def test_overview_counts_span_shared_not_unshared(pool):
 
     owner_counts = await analytics_service.get_overview_counts(owner)
     friend_counts = await analytics_service.get_overview_counts(friend)
-    stranger_counts = await analytics_service.get_overview_counts(stranger)
 
-    # Owner sees both of its pages; friend sees only the page in the shared
-    # folder (not the un-shared root page); stranger sees neither.
     assert owner_counts["pages"] >= 2
-    assert friend_counts["pages"] == 1
-    assert stranger_counts["pages"] == 0
+    assert friend_counts["pages"] == 0
 
 
 _PREDICATE_TABLE = {
@@ -1298,7 +1283,7 @@ async def test_predicate_and_check_access_agree(pool):
     ]
     for object_type, object_id in objects:
         for viewer in (owner, friend, stranger, None):
-            for require in ("read", "comment", "write"):
+            for require in ("read", "write"):
                 boolean = await permission_service.check_access(
                     object_type, object_id, viewer, require=require
                 )
@@ -1381,19 +1366,7 @@ async def test_public_read_link_grants_stranger_and_anonymous(pool):
     assert await permission_service.check_access("page", page, stranger)
     assert await permission_service.check_access("page", page, None)
     assert not await permission_service.check_access("page", page, stranger, require="write")
-    assert not await permission_service.check_access("page", page, None, require="comment")
-
-
-@pytest.mark.asyncio
-async def test_public_comment_link_grants_comment_not_write(pool):
-    owner = await _make_user(pool)
-    stranger = await _make_user(pool)
-    page = await _make_page(pool, owner, owner)
-    await _set_public(pool, "pages", page, "comment")
-
-    assert await permission_service.check_access("page", page, stranger, require="read")
-    assert await permission_service.check_access("page", page, stranger, require="comment")
-    assert not await permission_service.check_access("page", page, stranger, require="write")
+    assert not await permission_service.check_access("page", page, None, require="write")
 
 
 @pytest.mark.asyncio
@@ -1403,7 +1376,7 @@ async def test_public_write_link_grants_every_level(pool):
     page = await _make_page(pool, owner, owner)
     await _set_public(pool, "pages", page, "write")
 
-    for require in ("read", "comment", "write"):
+    for require in ("read", "write"):
         assert await permission_service.check_access("page", page, stranger, require=require)
 
 
@@ -1451,11 +1424,11 @@ async def test_public_link_visibility_and_predicate_agree(pool):
     page = await _make_page(pool, owner, owner)
     assert await permission_service.get_visibility("page", page) == "private"
 
-    await _set_public(pool, "pages", page, "comment")
+    await _set_public(pool, "pages", page, "read")
     assert await permission_service.get_visibility("page", page) == "public"
     # check_access and the SQL predicate answer identically for every viewer/level.
     for viewer in (owner, stranger, None):
-        for require in ("read", "comment", "write"):
+        for require in ("read", "write"):
             boolean = await permission_service.check_access("page", page, viewer, require=require)
             predicate = await _predicate_says(pool, "page", page, viewer, require)
             assert boolean == predicate

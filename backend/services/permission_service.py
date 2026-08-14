@@ -35,8 +35,8 @@ _OWNER_LOOKUP = {
 _CONTENT_TYPES = {"folder", "page", "session", "table", "file"}
 
 # Share permission levels, ordered. A grant satisfies a requirement when its
-# level is >= the required level: read < comment < write.
-_LEVELS = {"read": 0, "comment": 1, "write": 2}
+# level is >= the required level: read < write.
+_LEVELS = {"read": 0, "write": 1}
 
 
 def _folder_chain_sql(folder_id_expr: str) -> str:
@@ -117,19 +117,17 @@ def _skill_grant_condition(object_type: str, object_alias: str, user_arg: int) -
     """
 
 
-# A share satisfies a required level when its own level is >= it (read < comment
-# < write). `require` is a trusted internal enum, never user input.
+# A share satisfies a required level when its own level is >= it (read <
+# write). `require` is a trusted internal enum, never user input.
 _LEVEL_SHARE_FILTER = {
     "read": "",
-    "comment": " AND content_share.permission IN ('comment', 'write')",
     "write": " AND content_share.permission = 'write'",
 }
 
 # public_permission ("anyone with the link") values that satisfy each required
-# level. A 'write' link grants read+comment+write; 'comment' grants read+comment.
+# level. A 'write' link grants read+write.
 _PUBLIC_LEVELS_FOR = {
-    "read": ("read", "comment", "write"),
-    "comment": ("comment", "write"),
+    "read": ("read", "write"),
     "write": ("write",),
 }
 
