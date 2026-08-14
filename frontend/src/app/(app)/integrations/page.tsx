@@ -445,7 +445,7 @@ export default function IntegrationsPage() {
         dialog: {
           title: AGENT_COPY[d].title(agent.name),
           description: AGENT_COPY[d].description,
-          body: agentDialogBody(d),
+          body: agentDialogBody(),
         },
       })),
     );

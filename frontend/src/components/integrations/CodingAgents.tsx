@@ -1,7 +1,6 @@
 "use client";
 
 import CopyableCommandBlock from "@/components/CopyableCommandBlock";
-import { MCP_CLIENT_CONFIG } from "@/components/integrations/OutputSurfaces";
 import {
   ClaudeCodeIcon,
   CodexIcon,
@@ -48,22 +47,18 @@ export const AGENT_COPY = {
     label: (name: string) => `${name} access`,
     blurb: (name: string) => `Give ${name} read access to your Stash.`,
     title: (name: string) => `Give ${name} access`,
-    description: "Two ways in, depending on what the agent speaks.",
+    description:
+      "One command gives every coding agent on your machine read access, this one included.",
   },
 } as const;
 
-export function agentDialogBody(direction: "in" | "out") {
+/** One command, both directions. The MCP route to a stash is its own box
+ *  under Outputs — repeating it inside every agent dialog turned one answer
+ *  into a choice the user has no basis to make. */
+export function agentDialogBody() {
   return (
     <div className="flex min-w-0 flex-col gap-3">
       <CopyableCommandBlock commands={INSTALL_COMMAND} />
-      {direction === "out" && (
-        <>
-          <div className="text-[12px] font-medium text-dim">
-            Or, if it speaks MCP, point it at the Stash server
-          </div>
-          <CopyableCommandBlock commands={MCP_CLIENT_CONFIG} />
-        </>
-      )}
     </div>
   );
 }
