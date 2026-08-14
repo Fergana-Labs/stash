@@ -22,7 +22,6 @@ import {
 import {
   ApiError,
   deleteMcpServer,
-  listAgentNames,
   listMcpServers,
   listSources,
   type McpServer,
@@ -91,7 +90,14 @@ type Box = {
 
 function IntegrationBox({ box, onOpen }: { box: Box; onOpen?: () => void }) {
   return (
-    <div className="flex flex-col gap-2.5 rounded-xl border border-border bg-surface p-4">
+    <div
+      className={cn(
+        "flex flex-col gap-2.5 rounded-xl border p-4",
+        box.active
+          ? "border-success/30 bg-success/[0.06]"
+          : "border-border bg-surface",
+      )}
+    >
       <div className="flex items-center gap-2.5">
         <span className="flex h-7 w-7 shrink-0 items-center justify-center [&_img]:h-6 [&_img]:w-6 [&_svg]:h-6 [&_svg]:w-6">
           {box.icon}
@@ -202,7 +208,6 @@ export default function IntegrationsPage() {
   const [sourceProviders, setSourceProviders] = useState<Set<string>>(new Set());
   const [statuses, setStatuses] = useState<Record<string, IntegrationStatus> | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [agentNames, setAgentNames] = useState<string[]>([]);
   const [servers, setServers] = useState<McpServer[]>([]);
   const [query, setQuery] = useState("");
   const [direction, setDirection] = useState<Direction>("in");
@@ -251,12 +256,6 @@ export default function IntegrationsPage() {
   useEffect(() => {
     void refreshServers();
   }, [refreshServers]);
-
-  // The agent roster is a nice-to-have line, not a gate: it says what is
-  // already sending sessions, and the page is complete without it.
-  useEffect(() => {
-    listAgentNames().then(setAgentNames).catch(() => setAgentNames([]));
-  }, []);
 
   const isConnected = useCallback(
     (c: Connector) =>
@@ -489,9 +488,9 @@ export default function IntegrationsPage() {
 
     return [...withDialogs].sort(
       (a, b) =>
+        Number(b.active) - Number(a.active) ||
         a.tier - b.tier ||
         Number(!!a.sortLast) - Number(!!b.sortLast) ||
-        Number(b.active) - Number(a.active) ||
         a.name.localeCompare(b.name),
     );
   }, [statuses, servers, busy, isConnected, connectNow, removeServer]);
@@ -529,10 +528,7 @@ export default function IntegrationsPage() {
             Integrations
           </h1>
           <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-            Everything that flows into Stash, and every way it flows back out to an agent.
-            {agentNames.length > 0 && (
-              <> {agentNames.length} agent{agentNames.length === 1 ? " is" : "s are"} sending sessions now.</>
-            )}
+            Choose what to add to your Stash, and who can read it.
           </p>
         </header>
 
@@ -560,6 +556,9 @@ export default function IntegrationsPage() {
               )}
             >
               {d === "in" ? "Inputs" : "Outputs"}
+              <span className="ml-1.5 text-[11px] opacity-60">
+                {boxes.filter((b) => b.direction === d).length}
+              </span>
             </button>
           ))}
           {connectedCount > 0 && (
