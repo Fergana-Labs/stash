@@ -2,18 +2,27 @@
 
 import CopyableCommandBlock from "@/components/CopyableCommandBlock";
 import { MCP_CLIENT_CONFIG } from "@/components/integrations/OutputSurfaces";
+import {
+  ClaudeCodeIcon,
+  CodexIcon,
+  CursorIcon,
+  GeminiCliIcon,
+  HermesIcon,
+  OpenClawIcon,
+  OpenCodeIcon,
+} from "@/components/integrations/BrandIcons";
 
 // The agents `stash install` wires up — the same list the CLI walks
 // (_SUPPORTED_AGENTS in cli/main.py). Keep the two in step: an agent listed
 // here that the CLI can't wire is a promise the product doesn't keep.
 export const CODING_AGENTS = [
-  { name: "Claude Code", binary: "claude" },
-  { name: "Codex", binary: "codex" },
-  { name: "Cursor", binary: "cursor-agent" },
-  { name: "OpenCode", binary: "opencode" },
-  { name: "Gemini CLI", binary: "gemini" },
-  { name: "OpenClaw", binary: "openclaw" },
-  { name: "Hermes", binary: "hermes" },
+  { name: "Claude Code", binary: "claude", icon: <ClaudeCodeIcon /> },
+  { name: "Codex", binary: "codex", icon: <CodexIcon /> },
+  { name: "Cursor", binary: "cursor-agent", icon: <CursorIcon /> },
+  { name: "OpenCode", binary: "opencode", icon: <OpenCodeIcon /> },
+  { name: "Gemini CLI", binary: "gemini", icon: <GeminiCliIcon /> },
+  { name: "OpenClaw", binary: "openclaw", icon: <OpenClawIcon /> },
+  { name: "Hermes", binary: "hermes", icon: <HermesIcon /> },
 ];
 
 export type CodingAgent = (typeof CODING_AGENTS)[number];

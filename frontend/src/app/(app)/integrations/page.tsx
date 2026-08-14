@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { Bot, Globe, Plus, SquareTerminal } from "lucide-react";
+import { Globe, Server, SquareTerminal } from "lucide-react";
 import { toast } from "sonner";
 
 import { useBreadcrumbs } from "@/components/BreadcrumbContext";
@@ -47,6 +47,7 @@ import {
 import { OUTPUT_SURFACES } from "@/components/integrations/OutputSurfaces";
 import AddServerForm from "@/components/integrations/McpServers";
 import PaywallModal from "@/components/PaywallModal";
+import { ChromeIcon } from "@/components/integrations/BrandIcons";
 import { cn } from "@/lib/utils";
 
 // One flat grid. Every way anything reaches Stash, or reads it back, is a box
@@ -116,12 +117,20 @@ function IntegrationBox({ box, onOpen }: { box: Box; onOpen?: () => void }) {
 
 /** A lucide glyph in the same tile the brand marks sit in, so a box with no
  *  logo still lines up with one that has. */
-function TileIcon({ icon: Icon }: { icon: typeof Bot }) {
+function TileIcon({ icon: Icon }: { icon: typeof Globe }) {
   return (
     <span className="flex h-7 w-7 items-center justify-center rounded-md bg-raised">
       <Icon className="h-4 w-4 text-dim" />
     </span>
   );
+}
+
+function mcpServerIcon(server: McpServer) {
+  if (server.url && new URL(server.url).hostname === "mcp.linear.app") {
+    return connectorIcon("linear");
+  }
+
+  return <TileIcon icon={server.transport === "stdio" ? SquareTerminal : Globe} />;
 }
 
 export default function IntegrationsPage() {
@@ -268,7 +277,7 @@ export default function IntegrationsPage() {
       name: "Stash for Chrome",
       direction: "in",
       blurb: "Clip any page or every open tab, import your bookmarks, keep your saves in sync.",
-      icon: <TileIcon icon={Globe} />,
+      icon: <ChromeIcon />,
       active: false,
       tier: TIER.personal,
       search: "browser chrome extension clip bookmarks tabs",
@@ -288,7 +297,7 @@ export default function IntegrationsPage() {
         (Object.keys(s.headers).length > 0
           ? ` · headers: ${Object.keys(s.headers).join(", ")}`
           : ""),
-      icon: <TileIcon icon={s.transport === "stdio" ? SquareTerminal : Globe} />,
+      icon: mcpServerIcon(s),
       active: true,
       tier: TIER.work,
       search: `${s.name} mcp server tool ${s.url ?? ""} ${s.command ?? ""}`,
@@ -309,7 +318,7 @@ export default function IntegrationsPage() {
       name: "Custom MCP server",
       direction: "in",
       blurb: "Register any MCP server and your cloud agent gets it before every turn.",
-      icon: <TileIcon icon={Plus} />,
+      icon: <TileIcon icon={Server} />,
       active: false,
       tier: TIER.work,
       sortLast: true,
@@ -334,7 +343,7 @@ export default function IntegrationsPage() {
         name: agent.name,
         direction: d,
         blurb: AGENT_COPY[d].blurb,
-        icon: <TileIcon icon={Bot} />,
+        icon: agent.icon,
         active: false,
         tier: TIER.agents,
         search: `${agent.name} ${agent.binary} coding agent`,
