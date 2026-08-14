@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useRef, useState, type ComponentType } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Bot, Files, Home, Network, Plug, Settings } from "lucide-react";
+import { Bot, Files, Home, MoreHorizontal, Network, Plug, Settings } from "lucide-react";
 import HopperIcon from "@/components/HopperIcon";
 import { cn } from "@/lib/utils";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
@@ -17,23 +17,27 @@ type RailItem = {
   match: (p: string) => boolean;
 };
 
-// The six sections. Sessions and Skills are not among them: they are rows in
-// Files, which is where you find everything the database holds.
+// The rail carries what the product is about — agent transcripts and what
+// they become (Files, Viz, Chat). Setup plumbing (Connect, Hopper) lives
+// behind the "…" overflow: how content gets in matters on day one, not every
+// day. Sessions and Skills are rows in Files, which is where you find
+// everything the database holds.
 const PRIMARY: RailItem[] = [
   { key: "home", label: "Home", icon: Home, match: (p) => p === "/" },
-  { key: "integrations", label: "Connect", icon: Plug, match: (p) => p.startsWith("/integrations") },
   { key: "files", label: "Files", icon: Files, match: (p) => p === "/files" || p.startsWith("/f/") || p.startsWith("/p/") || p.startsWith("/folders/") || p.startsWith("/tables/") || p.startsWith("/sessions") || p.startsWith("/session-folders") || p.startsWith("/skills") },
   { key: "viz", label: "Viz", icon: Network, match: (p) => p.startsWith("/viz") },
-  { key: "hopper", label: "Hopper", icon: HopperIcon, match: (p) => p.startsWith("/hopper") },
   { key: "agents", label: "Chat", icon: Bot, match: (p) => p.startsWith("/agents") },
 ];
 
-// Home leads; everything under the divider is the stash itself — how content
-// gets in (Connect, Hopper), where it's found (Files), and lenses over it
-// (Viz, Chat last). Apps lives at /apps. The VM has NO entry point since it
-// left this rail: the explorer's Home root is the only thing that lists it,
-// and that root only renders once you are already inside the VM section
-// (?section=computer).
+const OVERFLOW: RailItem[] = [
+  { key: "integrations", label: "Connect", icon: Plug, match: (p) => p.startsWith("/integrations") },
+  { key: "hopper", label: "Hopper", icon: HopperIcon, match: (p) => p.startsWith("/hopper") },
+];
+
+// Home leads; everything under the divider is the stash itself. Apps lives at
+// /apps. The VM has NO entry point since it left this rail: the explorer's
+// Home root is the only thing that lists it, and that root only renders once
+// you are already inside the VM section (?section=computer).
 const DIVIDER_AFTER_INDEX = 0;
 
 function RailButton({
@@ -105,6 +109,75 @@ function AccountMenu({ user, onLogout }: { user: User; onLogout: () => void }) {
   );
 }
 
+/** The "…" overflow — setup plumbing (Connect, Hopper) tucked out of the
+ *  daily rail. The button lights up when a hidden section is the active one,
+ *  so those routes never feel orphaned. */
+function OverflowMenu({
+  pathname,
+  requestedSection,
+  onSelect,
+}: {
+  pathname: string;
+  requestedSection: string | null;
+  onSelect: (section: RailSection) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEscapeKey(open, () => setOpen(false));
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [open]);
+
+  const activeItem = OVERFLOW.find(
+    (i) => requestedSection === i.key || (!requestedSection && i.match(pathname)),
+  );
+
+  return (
+    <div ref={ref} className="relative w-full">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-label={activeItem?.label ?? "More"}
+        aria-current={activeItem ? "page" : undefined}
+        className={cn(
+          "flex w-full flex-col items-center gap-1 rounded-lg py-2 transition-colors",
+          activeItem
+            ? "bg-brand-500/12 text-brand-600"
+            : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground",
+        )}
+      >
+        <MoreHorizontal className="h-[18px] w-[18px]" />
+        <span className="text-[10px] font-medium leading-none">{activeItem?.label ?? "More"}</span>
+      </button>
+      {open && (
+        <div role="menu" className="absolute left-full top-0 z-40 ml-2 w-44 overflow-hidden rounded-md border border-border bg-surface py-1 text-[13px] shadow-lg">
+          {OVERFLOW.map((item) => {
+            const Icon = item.icon;
+            return (
+              <button
+                key={item.key}
+                onClick={() => {
+                  setOpen(false);
+                  onSelect(item.key);
+                }}
+                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-foreground hover:bg-raised"
+              >
+                <Icon className="h-4 w-4 text-muted-foreground" />
+                {item.label}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** The icon rail — the workspace's primary nav. Icon + label per section; each
  *  primary section shows its own explorer. Search lives in the top bar; account
  *  actions live on the bottom-left avatar. */
@@ -151,6 +224,11 @@ export default function Rail({ user, onLogout }: { user: User; onLogout: () => v
           )}
         </Fragment>
       ))}
+      <OverflowMenu
+        pathname={pathname}
+        requestedSection={requestedSection}
+        onSelect={selectSection}
+      />
       <div className="mt-auto flex w-full flex-col items-center gap-1">
         <Link
           href="/settings"
