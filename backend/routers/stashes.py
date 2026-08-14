@@ -20,6 +20,10 @@ class Stash(BaseModel):
     name: str
     scope_user_id: UUID
     created_at: datetime
+    # Sidebar activity facts; absent on create/rename responses, which return
+    # the bare row.
+    item_count: int = 0
+    last_activity_at: datetime | None = None
 
 
 class StashListResponse(BaseModel):

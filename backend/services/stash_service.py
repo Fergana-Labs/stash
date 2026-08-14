@@ -67,10 +67,25 @@ async def create_stash(owner_user_id: UUID, name: str) -> dict:
 
 
 async def list_for_user(owner_user_id: UUID) -> list[dict]:
+    """Owned stashes with the activity facts the channel-style sidebar shows:
+    how much lives in each, and when anything last changed."""
     pool = get_pool()
     rows = await pool.fetch(
-        "SELECT id, name, owner_user_id, scope_user_id, created_at "
-        "FROM stashes WHERE owner_user_id = $1 ORDER BY created_at",
+        """
+        SELECT s.id, s.name, s.owner_user_id, s.scope_user_id, s.created_at,
+               (SELECT count(*) FROM pages p
+                WHERE p.owner_user_id = s.scope_user_id AND p.deleted_at IS NULL)
+               + (SELECT count(*) FROM files f
+                  WHERE f.owner_user_id = s.scope_user_id AND f.deleted_at IS NULL)
+               AS item_count,
+               GREATEST(
+                   (SELECT max(p.updated_at) FROM pages p
+                    WHERE p.owner_user_id = s.scope_user_id AND p.deleted_at IS NULL),
+                   (SELECT max(se.started_at) FROM sessions se
+                    WHERE se.owner_user_id = s.scope_user_id AND se.deleted_at IS NULL)
+               ) AS last_activity_at
+        FROM stashes s WHERE s.owner_user_id = $1 ORDER BY s.created_at
+        """,
         owner_user_id,
     )
     return [dict(row) for row in rows]

@@ -6,7 +6,6 @@ import { usePathname } from "next/navigation";
 import { Search } from "lucide-react";
 import CommandPalette from "@/components/CommandPalette";
 import { StashIcon } from "@/components/SkillIcons";
-import ScopeSwitcher from "./scope-switcher";
 
 /** Full-width top bar: octopus logo + breadcrumb (left), ⌘K search (center),
  *  share action (right). Account actions live on the rail's bottom avatar. */
@@ -34,7 +33,6 @@ export default function Topbar() {
           <StashIcon className="text-[22px]" />
           <span className="text-[15px] font-semibold tracking-tight text-foreground">Stash</span>
         </Link>
-        <ScopeSwitcher />
       </div>
       <div className="flex min-w-0 flex-1 justify-center">
         <div ref={searchBarRef} className="w-full max-w-2xl">

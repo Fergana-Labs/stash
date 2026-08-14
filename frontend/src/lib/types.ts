@@ -348,6 +348,8 @@ export interface UserStash {
   name: string;
   scope_user_id: string;
   created_at: string;
+  item_count: number;
+  last_activity_at: string | null;
 }
 
 /** Filter-chip counts, computed over the whole table rather than a loaded
