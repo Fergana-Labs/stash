@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import IntegrationsPage from "./page";
 import { createMcpServer, deleteMcpServer, listMcpServers, type McpServer } from "@/lib/api";
@@ -39,6 +39,8 @@ vi.mock("@/lib/api", () => ({
   deleteMcpServer: vi.fn(),
   // The integrations grid above the MCP registry loads these on mount.
   listSources: vi.fn().mockResolvedValue([]),
+  // The coding-agents section shows which agents are already sending sessions.
+  listAgentNames: vi.fn().mockResolvedValue([]),
 }));
 
 vi.mock("@/lib/integrations", () => ({
@@ -79,14 +81,27 @@ afterEach(() => {
 });
 
 describe("IntegrationsPage", () => {
-  it("lists registered MCP servers with their targets", async () => {
+  it("lists registered MCP servers", async () => {
     render(<IntegrationsPage />);
 
     expect(await screen.findByText("linear")).toBeTruthy();
     expect(screen.getByText("notion")).toBeTruthy();
-    expect(screen.getByText(/npx -y linear-mcp/)).toBeTruthy();
+    // The card describes the server in words; the raw target belongs to the
+    // manage dialog, not the grid.
+    expect(screen.getByText(/a local npx process/)).toBeTruthy();
+    expect(screen.getByText(/mcp\.notion\.com/)).toBeTruthy();
+  });
+
+  it("shows a server's target and header names in manage, never header values", async () => {
+    render(<IntegrationsPage />);
+    await screen.findByText("notion");
+
+    // The http server is the one carrying headers.
+    fireEvent.click(screen.getAllByRole("button", { name: /^manage$/i })[1]);
+
+    expect(await screen.findByText("https://mcp.notion.com/mcp")).toBeTruthy();
     // Header values are secrets — only key names appear.
-    expect(screen.getByText(/headers: Authorization/)).toBeTruthy();
+    expect(screen.getByText("Authorization")).toBeTruthy();
     expect(screen.queryByText(/Bearer tok/)).toBeNull();
   });
 
@@ -95,14 +110,16 @@ describe("IntegrationsPage", () => {
     render(<IntegrationsPage />);
     await screen.findByText("linear");
 
-    fireEvent.change(screen.getByLabelText("Server name"), { target: { value: "notion2" } });
+    const addCard = screen.getByText("Custom MCP server").closest("div.rounded-xl")!;
+    fireEvent.click(within(addCard as HTMLElement).getByRole("button", { name: /^connect$/i }));
+    fireEvent.change(await screen.findByLabelText("Server name"), { target: { value: "notion2" } });
     fireEvent.change(screen.getByLabelText("URL"), {
       target: { value: "https://mcp.example.com/mcp" },
     });
     fireEvent.change(screen.getByLabelText("Headers"), {
       target: { value: "Authorization=Bearer abc" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /add server/i }));
+    fireEvent.click(screen.getByRole("button", { name: /connect server/i }));
 
     await waitFor(() =>
       expect(createMcpServer).toHaveBeenCalledWith({
@@ -121,12 +138,14 @@ describe("IntegrationsPage", () => {
     render(<IntegrationsPage />);
     await screen.findByText("linear");
 
-    fireEvent.change(screen.getByLabelText("Server name"), { target: { value: "fs" } });
+    const addCard = screen.getByText("Custom MCP server").closest("div.rounded-xl")!;
+    fireEvent.click(within(addCard as HTMLElement).getByRole("button", { name: /^connect$/i }));
+    fireEvent.change(await screen.findByLabelText("Server name"), { target: { value: "fs" } });
     fireEvent.click(screen.getByRole("radio", { name: /local \(stdio\)/i }));
     fireEvent.change(screen.getByLabelText("Command"), {
       target: { value: "npx -y fs-mcp" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /add server/i }));
+    fireEvent.click(screen.getByRole("button", { name: /connect server/i }));
 
     await waitFor(() =>
       expect(createMcpServer).toHaveBeenCalledWith({
@@ -146,12 +165,18 @@ describe("IntegrationsPage", () => {
     expect(await screen.findByText(/integrations are down/)).toBeTruthy();
   });
 
-  it("removes a server", async () => {
+  // Removing is deliberately behind Manage: the grid's action must never
+  // delete a server in one click, since it sits where every other box has a
+  // harmless navigation.
+  it("removes a server from its manage dialog", async () => {
     vi.mocked(deleteMcpServer).mockResolvedValue(undefined);
     render(<IntegrationsPage />);
     await screen.findByText("linear");
 
-    fireEvent.click(screen.getAllByRole("button", { name: /remove/i })[0]);
+    expect(screen.queryByRole("button", { name: /^remove/i })).toBeNull();
+
+    fireEvent.click(screen.getAllByRole("button", { name: /^manage$/i })[0]);
+    fireEvent.click(await screen.findByRole("button", { name: /remove server/i }));
 
     await waitFor(() => expect(deleteMcpServer).toHaveBeenCalledWith("s1"));
     await waitFor(() => expect(listMcpServers).toHaveBeenCalledTimes(2));
