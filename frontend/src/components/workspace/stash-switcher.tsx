@@ -7,11 +7,12 @@
 // channel-sidebar branch, so only the presentation differs.
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { Building2, Check, ChevronDown, CircleUser, Plus } from "lucide-react";
 import { createStash, listMyStashes, listMyWorkspaces } from "@/lib/api";
 import { getScope, setScope, useScope } from "@/lib/scope-store";
 import type { Scope, UserStash, Workspace } from "@/lib/types";
+import { scopeSwitchLanding } from "@/lib/workspace-routes";
 import { cn } from "@/lib/utils";
 import {
   DropdownMenu,
@@ -67,6 +68,7 @@ function Mono({ name, color }: { name: string; color: string }) {
 
 export default function StashSwitcher() {
   const router = useRouter();
+  const pathname = usePathname();
   const scope = useScope();
   const [stashes, setStashes] = useState<UserStash[]>([]);
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
@@ -100,8 +102,8 @@ export default function StashSwitcher() {
     setSeen(lastViewed());
     if ((next?.scope_user_id ?? null) === (scope?.scope_user_id ?? null)) return;
     setScope(next);
-    // Entering a world lands on its front door.
-    router.push("/");
+    // Keep your place: switching stashes stays in the section you were in.
+    router.push(scopeSwitchLanding(pathname));
   }
 
   async function newStash() {
