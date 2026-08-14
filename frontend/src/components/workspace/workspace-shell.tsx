@@ -8,7 +8,6 @@ import type { User } from "@/lib/types";
 import { Toaster } from "@/components/ui/sonner";
 import Persistence from "./persistence";
 import Rail from "./rail";
-import StashSidebar from "./stash-sidebar";
 import Topbar from "./topbar";
 import Explorer, { type ExplorerSection } from "./explorer";
 import Workbench from "./workbench";
@@ -151,7 +150,6 @@ export default function WorkspaceShell({
       <Persistence />
       <Topbar />
       <div className="flex min-h-0 flex-1">
-        <StashSidebar />
         {/* Everything right of the stash list is scope-dependent and fetches
             on mount, so switching stashes remounts it via this key — a
             channel-style instant switch instead of a page reload. */}
