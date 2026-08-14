@@ -536,31 +536,22 @@ async def _get_source_counts(user_id: UUID, owner_user_id: UUID | None = None) -
     return {"pages": row["pages"], "rows": row["rows"], "events": row["events"]}
 
 
-async def get_overview_counts(user_id: UUID) -> dict:
-    """Counts for the 'Your brain' vitals, spanning the user's own content plus
-    everything shared with them. Pages/files run through readable_content_condition
-    so a share only surfaces the specific shared rows. Sessions stay owner-scoped —
-    session sharing isn't reflected in these counts yet."""
+async def get_overview_counts(owner_user_id: UUID) -> dict:
+    """Counts for the 'Your brain' vitals — one scope only, so a stash's home
+    never counts another stash's content. The caller resolves and authorizes
+    the scope (auth.get_scope)."""
     pool = get_pool()
-    accessible_scopes = permission_service.accessible_scope_ids_sql(1)
-    readable_pages = permission_service.readable_content_condition("page", "p", 1)
-    readable_files = permission_service.readable_content_condition("file", "f", 1)
     row = await pool.fetchrow(
-        f"""
+        """
         SELECT
             (SELECT COUNT(*) FROM pages p
-             WHERE p.owner_user_id IN {accessible_scopes}
-               AND p.deleted_at IS NULL
-               AND {readable_pages}) AS pages,
+             WHERE p.owner_user_id = $1 AND p.deleted_at IS NULL) AS pages,
             (SELECT COUNT(*) FROM files f
-             WHERE f.owner_user_id IN {accessible_scopes}
-               AND f.deleted_at IS NULL
-               AND {readable_files}) AS files,
+             WHERE f.owner_user_id = $1 AND f.deleted_at IS NULL) AS files,
             (SELECT COUNT(*) FROM sessions s
-             WHERE s.owner_user_id = $1
-               AND s.deleted_at IS NULL) AS sessions
+             WHERE s.owner_user_id = $1 AND s.deleted_at IS NULL) AS sessions
         """,
-        user_id,
+        owner_user_id,
     )
     return {"pages": row["pages"], "files": row["files"], "sessions": row["sessions"]}
 

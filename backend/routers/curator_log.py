@@ -5,9 +5,11 @@ curation prompt constrains to a one-sentence learning. File activity lives
 in its own feed; this log is only the synthesis.
 """
 
+from uuid import UUID
+
 from fastapi import APIRouter, Depends, Query
 
-from ..auth import get_current_user
+from ..auth import get_scope
 from ..database import get_pool
 from ..services import agent_service
 from ..services.sprite_agent_service import (
@@ -23,9 +25,11 @@ router = APIRouter(prefix="/api/v1/me", tags=["curator-log"])
 @router.get("/curator-log")
 async def curator_log(
     limit: int = Query(14, ge=1, le=50),
-    current_user: dict = Depends(get_current_user),
+    scope: UUID = Depends(get_scope),
 ) -> dict:
-    user_id = current_user["id"]
+    # Each scope has its own curator, so a stash's home shows that stash's
+    # curation story — never another stash's.
+    user_id = scope
     curator = await agent_service.get_or_create_curator(user_id)
     prefix = scheduled_session_prefix(curator)
     pool = get_pool()

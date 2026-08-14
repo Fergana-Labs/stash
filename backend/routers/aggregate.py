@@ -5,7 +5,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
 
-from ..auth import get_current_user
+from ..auth import get_current_user, get_scope
 from ..database import get_pool
 from ..models import UserPageEntry, UserPageListResponse
 from ..services import (
@@ -76,8 +76,8 @@ async def list_my_recents(current_user: dict = Depends(get_current_user)):
 async def list_file_activity(
     limit: int = Query(50, ge=1, le=200),
     before: datetime | None = Query(None),
-    owner_user_id: UUID | None = Query(None),
     current_user: dict = Depends(get_current_user),
+    scope: UUID = Depends(get_scope),
 ):
     """New and edited files and pages across accessible scopes, cursor-paginated
     by ts. Memory subtrees are excluded: curation output is the curator log's
@@ -149,7 +149,7 @@ async def list_file_activity(
         """,
         current_user["id"],
         limit + 1,
-        owner_user_id,
+        scope,
         before,
     )
     has_more = len(events) > limit
@@ -190,55 +190,42 @@ async def list_all_tables(current_user: dict = Depends(get_current_user)):
 
 
 @router.get("/vitals")
-async def overview_counts(current_user: dict = Depends(get_current_user)):
-    """Page / file / session counts for the 'Your brain' vitals, spanning the
-    user's own content plus everything shared with them. Distinct from the scope
-    `/overview` payload in user_knowledge (same prefix — the paths must not
-    collide, or whichever registers first shadows the other)."""
-    return await analytics_service.get_overview_counts(current_user["id"])
-
-
-async def _verify_scope_access(owner_user_id: UUID, user_id: UUID) -> None:
-    """Raise 403 if the user doesn't own the scope."""
-    from fastapi import HTTPException
-
-    from ..services import user_scope_service
-
-    if not await user_scope_service.is_owner(owner_user_id, user_id):
-        raise HTTPException(status_code=403, detail="Not the owner of this scope")
+async def overview_counts(scope: UUID = Depends(get_scope)):
+    """Page / file / session counts for the 'Your brain' vitals — the active
+    scope only, so a stash's home page never counts another stash's content.
+    Distinct from the scope `/overview` payload in user_knowledge (same prefix
+    — the paths must not collide, or whichever registers first shadows the
+    other)."""
+    return await analytics_service.get_overview_counts(scope)
 
 
 @router.get("/activity-timeline")
 async def activity_timeline(
     days: int = Query(30, ge=1, le=365),
     bucket: str = Query("day"),
-    owner_user_id: UUID | None = Query(None),
     current_user: dict = Depends(get_current_user),
+    scope: UUID = Depends(get_scope),
 ):
     """Human + coding-agent session commits bucketed by time for the dashboard timeline."""
-    if owner_user_id is not None:
-        await _verify_scope_access(owner_user_id, current_user["id"])
     return await analytics_service.get_activity_timeline(
         current_user["id"],
         days=days,
         bucket=bucket,
-        owner_user_id=owner_user_id,
+        owner_user_id=scope,
     )
 
 
 @router.get("/knowledge-density")
 async def knowledge_density(
     max_clusters: int = Query(20, ge=1, le=50),
-    owner_user_id: UUID | None = Query(None),
     current_user: dict = Depends(get_current_user),
+    scope: UUID = Depends(get_scope),
 ):
     """Topic clusters for the knowledge density heatmap."""
-    if owner_user_id is not None:
-        await _verify_scope_access(owner_user_id, current_user["id"])
     return await analytics_service.get_knowledge_density(
         current_user["id"],
         max_clusters=max_clusters,
-        owner_user_id=owner_user_id,
+        owner_user_id=scope,
     )
 
 
@@ -246,15 +233,13 @@ async def knowledge_density(
 async def embedding_projection(
     max_points: int = Query(500, ge=1, le=2000),
     source: str | None = Query(None),
-    owner_user_id: UUID | None = Query(None),
     current_user: dict = Depends(get_current_user),
+    scope: UUID = Depends(get_scope),
 ):
     """3D UMAP projection of embeddings for the space explorer."""
-    if owner_user_id is not None:
-        await _verify_scope_access(owner_user_id, current_user["id"])
     return await analytics_service.get_embedding_projection(
         current_user["id"],
         max_points=max_points,
         source=source,
-        owner_user_id=owner_user_id,
+        owner_user_id=scope,
     )
