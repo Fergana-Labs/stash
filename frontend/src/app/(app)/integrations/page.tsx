@@ -216,7 +216,7 @@ export default function IntegrationsPage() {
   const [paywalled, setPaywalled] = useState(false);
   const [addingServer, setAddingServer] = useState(false);
 
-  useBreadcrumbs([{ label: "Integrations" }], "integrations");
+  useBreadcrumbs([{ label: "Connect" }], "integrations");
 
   useEffect(() => {
     if (!loading && !user) router.push("/login");
@@ -524,7 +524,7 @@ export default function IntegrationsPage() {
       <div className="mx-auto flex max-w-5xl flex-col gap-5 px-8 py-7">
         <header>
           <h1 className="font-display text-[22px] font-semibold tracking-tight text-foreground">
-            Integrations
+            Connect
           </h1>
           <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
             Choose what to add to your Stash, and what can read it.

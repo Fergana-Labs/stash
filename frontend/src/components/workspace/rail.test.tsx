@@ -51,12 +51,12 @@ afterEach(() => {
 });
 
 describe("Rail", () => {
-  it("offers exactly the five sections", () => {
+  it("offers exactly the six sections", () => {
     renderAt("/");
     const labels = Array.from(document.querySelectorAll("[aria-label]")).map((el) =>
       el.getAttribute("aria-label"),
     );
-    expect(labels).toEqual(["Integrations", "Home", "Viz", "Files", "Chat", "Settings"]);
+    expect(labels).toEqual(["Home", "Connect", "Files", "Viz", "Hopper", "Chat", "Settings"]);
   });
 
   it("shows sessions as part of Files, not a section of their own", () => {
@@ -71,9 +71,9 @@ describe("Rail", () => {
     expect(screen.queryByLabelText("Skills")).toBeNull();
   });
 
-  it("lights up Integrations on a provider page", () => {
+  it("lights up Connect on a provider page", () => {
     renderAt("/integrations/slack");
-    expect(currentSection()).toBe("Integrations");
+    expect(currentSection()).toBe("Connect");
   });
 
   it("lights up Viz on the visualizations page", () => {

@@ -19,10 +19,10 @@ const SECTIONS: { key: ExplorerSection; label: string; route: string; icon: Reac
   { key: "files", label: "Files", route: "/files", icon: <FolderTree className="h-4 w-4 text-chart-4" /> },
   { key: "skills", label: "Skills", route: "/skills", icon: <GraduationCap className="h-4 w-4 text-chart-4" /> },
   { key: "sessions", label: "Sessions", route: "/sessions", icon: <MessagesSquare className="h-4 w-4 text-chart-4" /> },
-  { key: "integrations", label: "Integrations", route: "/integrations", icon: <Plug className="h-4 w-4 text-chart-4" /> },
+  { key: "integrations", label: "Connect", route: "/integrations", icon: <Plug className="h-4 w-4 text-chart-4" /> },
   { key: "computer", label: "VM", route: "/agents", icon: <Monitor className="h-4 w-4 text-chart-4" /> },
 ];
-const LABEL: Record<ExplorerSection, string> = { files: "Files", skills: "Skills", sessions: "Sessions", integrations: "Integrations", agents: "Agents", computer: "VM" };
+const LABEL: Record<ExplorerSection, string> = { files: "Files", skills: "Skills", sessions: "Sessions", integrations: "Connect", agents: "Agents", computer: "VM" };
 
 /** Open any item as a workbench tab and sync the URL. A plain click navigates
  *  the current tab; cmd/ctrl-click (or an explicit newTab) opens a new one. */

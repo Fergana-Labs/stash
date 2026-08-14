@@ -1,0 +1,283 @@
+"""Hopper router: one front door into the VFS.
+
+Two drop shapes — a file and a link — each handed to the pipeline that already
+knows how to read it: bytes through the files/pages ingest, a URL through
+url_imports. The hopper takes things that already exist; composing content is
+what pages are for. Nothing is recorded here and nothing is parked: a drop
+becomes an ordinary VFS item the moment it lands.
+"""
+
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile
+from pydantic import BaseModel, Field, HttpUrl
+
+from ..auth import get_current_user, get_scope
+from ..database import get_pool
+from ..services import (
+    file_classifier,
+    files_tree_service,
+    url_import_service,
+    user_scope_service,
+)
+from .files import MAX_FILE_SIZE, _strip_ext, ingest_bytes
+
+router = APIRouter(prefix="/api/v1/me/hopper", tags=["hopper"])
+
+# A photo, clip or recording with a meaningless name (IMG_0917, IMG_3503.MOV)
+# has no semantic home, but it does have an obvious kind. Without this they
+# pile up at the top level, which is exactly the junk drawer a filesystem is
+# meant to prevent.
+#
+# Keyed by extension as well as content type because browsers routinely hand
+# over application/octet-stream for anything they do not recognise — a .MOV
+# from an iPhone arrives untyped.
+_MEDIA_FOLDERS = (
+    ("Images", "image/", (".jpg", ".jpeg", ".png", ".gif", ".webp", ".heic", ".heif", ".bmp")),
+    ("Videos", "video/", (".mov", ".mp4", ".m4v", ".avi", ".mkv", ".webm")),
+    ("Audio", "audio/", (".mp3", ".m4a", ".wav", ".aac", ".flac", ".ogg")),
+)
+
+
+def _media_folder(filename: str, content_type: str) -> str | None:
+    """The kind-based home for a file, or None for anything that is not media."""
+    name = filename.lower()
+    for folder, prefix, extensions in _MEDIA_FOLDERS:
+        if content_type.startswith(prefix) or name.endswith(extensions):
+            return folder
+    return None
+
+
+# Dropping a directory mirrors its structure, so the depth cap is the only
+# guard against someone dragging in their home folder.
+MAX_PATH_DEPTH = 10
+MAX_SEGMENT_CHARS = 80
+
+
+class LinkDropRequest(BaseModel):
+    url: HttpUrl
+
+
+async def _writable_scope(current_user: dict, scope_user_id: UUID) -> UUID:
+    if not await user_scope_service.can_write(scope_user_id, current_user["id"]):
+        raise HTTPException(status_code=403, detail="Only the owner can add to this stash")
+    return scope_user_id
+
+
+@router.post("/file", status_code=201)
+async def drop_file(
+    file: UploadFile,
+    # Relative folder path from a dropped directory ("catalogs/meritor"). The
+    # user's own filing is the one destination we never have to guess at.
+    path: str = Form(""),
+    current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
+) -> dict:
+    owner_user_id = await _writable_scope(current_user, scope_user_id)
+    content = await file.read()
+    if len(content) > MAX_FILE_SIZE:
+        raise HTTPException(status_code=413, detail="File too large (max 100 MB)")
+
+    filename = file.filename or "upload"
+    content_type = file.content_type or "application/octet-stream"
+    # Filing is a second, separate step: a model call has no business between
+    # a person dropping a file and being told it arrived.
+    folder_id = await _folder_for_path(owner_user_id, current_user["id"], path)
+
+    # Re-dropping a directory must not double its contents. Same name, same
+    # size, same folder is the same file for a person's purposes — and for a
+    # page, whose name is unique in a folder anyway.
+    existing = await _existing_item(owner_user_id, folder_id, filename, content_type, len(content))
+    if existing:
+        return {**existing, "duplicate": True}
+
+    # Markdown and HTML become pages, everything else an S3-backed file whose
+    # text extraction starts on insert — the ingest path decides, not us.
+    uploaded = await ingest_bytes(
+        owner_user_id=owner_user_id,
+        user_id=current_user["id"],
+        filename=filename,
+        content=content,
+        content_type=content_type,
+        folder_id=folder_id,
+    )
+    return {
+        "kind": uploaded.kind,
+        "id": str(uploaded.id),
+        "name": uploaded.name,
+        "app_url": uploaded.app_url,
+        "duplicate": False,
+        # True when this landed loose and is worth asking /classify about.
+        "classifiable": folder_id is None,
+    }
+
+
+async def _folder_for_path(owner_user_id: UUID, user_id: UUID, path: str) -> UUID | None:
+    """Mirror a dropped directory's structure, creating folders as needed.
+    An empty path means the top level, which is where single files land."""
+    segments = [s.strip() for s in path.split("/") if s.strip() not in ("", ".", "..")]
+    if not segments:
+        return None
+    if len(segments) > MAX_PATH_DEPTH:
+        raise HTTPException(
+            status_code=400, detail=f"Folder nesting deeper than {MAX_PATH_DEPTH} levels"
+        )
+
+    pool = get_pool()
+    select = (
+        "SELECT id, is_memory, is_protected FROM folders "
+        "WHERE owner_user_id = $1 AND parent_folder_id IS NOT DISTINCT FROM $2 AND name = $3"
+    )
+    parent_id: UUID | None = None
+    for segment in segments:
+        name = segment[:MAX_SEGMENT_CHARS]
+        row = await pool.fetchrow(select, owner_user_id, parent_id, name)
+        if row is None:
+            try:
+                created = await files_tree_service.create_folder(
+                    owner_user_id, name, user_id, parent_folder_id=parent_id
+                )
+                parent_id = created["id"]
+                continue
+            except files_tree_service.DuplicateFolderName:
+                # Lost a race with a sibling upload in the same batch.
+                row = await pool.fetchrow(select, owner_user_id, parent_id, name)
+        # Memory and other protected folders are the product's, not the user's:
+        # a dropped directory that happens to share a name must not pour its
+        # contents into the wiki space, where Files would never show them again.
+        if row["is_memory"] or row["is_protected"]:
+            raise HTTPException(
+                status_code=400,
+                detail=f'"{name}" is reserved in your Stash — rename that folder and drop it again',
+            )
+        parent_id = row["id"]
+    return parent_id
+
+
+async def _existing_item(
+    owner_user_id: UUID,
+    folder_id: UUID | None,
+    filename: str,
+    content_type: str,
+    size: int,
+) -> dict | None:
+    """The item this drop would duplicate, if there is one."""
+    pool = get_pool()
+    page_kind = files_tree_service.detect_page_kind(filename, content_type)
+    if page_kind is not None:
+        exts = (
+            files_tree_service.MD_EXTS if page_kind == "markdown" else files_tree_service.HTML_EXTS
+        )
+        row = await pool.fetchrow(
+            "SELECT id, name FROM pages WHERE owner_user_id = $1 "
+            "AND folder_id IS NOT DISTINCT FROM $2 AND name = $3 AND deleted_at IS NULL",
+            owner_user_id,
+            folder_id,
+            _strip_ext(filename, exts),
+        )
+        return (
+            {"kind": "page", "id": str(row["id"]), "name": row["name"], "app_url": None}
+            if row
+            else None
+        )
+    row = await pool.fetchrow(
+        "SELECT id, name FROM files WHERE owner_user_id = $1 "
+        "AND folder_id IS NOT DISTINCT FROM $2 AND name = $3 AND size_bytes = $4 "
+        "AND deleted_at IS NULL",
+        owner_user_id,
+        folder_id,
+        filename,
+        size,
+    )
+    return (
+        {"kind": "file", "id": str(row["id"]), "name": row["name"], "app_url": None}
+        if row
+        else None
+    )
+
+
+class ClassifyRequest(BaseModel):
+    kind: str = Field(..., pattern=r"^(file|page)$")
+    id: UUID
+
+
+@router.post("/classify")
+async def classify_drop(
+    body: ClassifyRequest,
+    current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
+) -> dict:
+    """Decide where a loose item belongs and move it there.
+
+    Deliberately its own request: the upload confirms immediately, and the
+    caller asks for this afterwards. The work is server-side, so a person who
+    navigates away still gets their file filed — they just don't watch it
+    happen.
+    """
+    owner_user_id = await _writable_scope(current_user, scope_user_id)
+    table = "files" if body.kind == "file" else "pages"
+    pool = get_pool()
+    content_type = "content_type" if body.kind == "file" else "'text/markdown' AS content_type"
+    row = await pool.fetchrow(
+        f"SELECT name, folder_id, {content_type} FROM {table} "  # noqa: S608 — pattern-checked
+        "WHERE id = $1 AND owner_user_id = $2 AND deleted_at IS NULL",
+        body.id,
+        owner_user_id,
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail="Not found")
+    # Only ever files something loose: a folder drop, or filing that already
+    # happened, is not for a classifier to revisit.
+    if row["folder_id"] is not None:
+        return {"filed_in": None, "folder_id": None}
+
+    folder_id, path = await file_classifier.suggest_folder(
+        owner_user_id, row["name"], row["content_type"]
+    )
+    if folder_id is None:
+        # No folder fits, but a photo or clip still has somewhere to be. This
+        # is a rule, not a guess: the kind is known, only the meaning is not.
+        media = _media_folder(row["name"], row["content_type"])
+        if media:
+            folder_id = await _folder_for_path(owner_user_id, current_user["id"], media)
+            path = media
+    if folder_id is None:
+        return {"filed_in": None, "folder_id": None}
+    await pool.execute(
+        f"UPDATE {table} SET folder_id = $1 WHERE id = $2 AND owner_user_id = $3 "  # noqa: S608
+        "AND folder_id IS NULL",
+        folder_id,
+        body.id,
+        owner_user_id,
+    )
+    # The id as well as the path: a person told where something went will
+    # want to go there, and only the id can open the folder.
+    return {"filed_in": path, "folder_id": str(folder_id)}
+
+
+@router.post("/link", status_code=201)
+async def drop_link(
+    body: LinkDropRequest,
+    current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
+) -> dict:
+    from ..tasks.clips import dispatch_url_imports
+
+    owner_user_id = await _writable_scope(current_user, scope_user_id)
+    url = str(body.url)
+    # The page behind the URL is fetched by a worker, so this returns as soon
+    # as the job is queued; the clip lands in the VFS when it arrives.
+    import_ids = await url_import_service.create_url_imports(
+        owner_user_id=owner_user_id,
+        created_by=current_user["id"],
+        items=[{"url": url}],
+    )
+    await dispatch_url_imports(import_ids)
+    return {
+        "kind": "link",
+        "id": str(import_ids[0]),
+        "name": url,
+        "app_url": None,
+        "duplicate": False,
+        "classifiable": False,
+    }

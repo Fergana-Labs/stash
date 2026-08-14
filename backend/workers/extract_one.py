@@ -58,6 +58,7 @@ async def _run(file_id: UUID) -> int:
     from ..config import settings
     from ..services import storage_service
     from ..services.file_extraction import extract_text, is_pdf
+    from ..services.image_ocr import transcribe_image
     from ..services.pdf_ocr import transcribe_pdf
 
     # A document that extracts to more than this is stored truncated rather
@@ -85,6 +86,11 @@ async def _run(file_id: UUID) -> int:
             # propagate to the except below so the row records the failure and
             # the retry machinery re-runs it.
             text = await transcribe_pdf(content) or None
+        elif row["content_type"].startswith("image/"):
+            # An image carries its meaning in pixels, so vision is the only
+            # reader it has. Without this a dropped screenshot stores nothing
+            # and every agent surface is blind to it.
+            text = await transcribe_image(content, row["content_type"]) or None
         else:
             text = extract_text(content, row["content_type"])
         if text and len(text) > MAX_EXTRACTED_TEXT:
