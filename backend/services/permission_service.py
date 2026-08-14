@@ -214,6 +214,10 @@ def readable_content_condition(
         f"EXISTS (SELECT 1 FROM workspaces member_ws "
         f"WHERE member_ws.scope_user_id = {object_alias}.owner_user_id "
         f"AND {workspace_member_condition('member_ws', user_arg)})",
+        # A stash's owner has full access to its scope at every require level.
+        f"EXISTS (SELECT 1 FROM stashes owner_stash "
+        f"WHERE owner_stash.scope_user_id = {object_alias}.owner_user_id "
+        f"AND owner_stash.owner_user_id = ${user_arg})",
     ]
     # The per-object public link grants read/comment/write to everyone, so it
     # applies at every require level — unlike publishing, which is read-only.
@@ -240,6 +244,9 @@ def accessible_scope_ids_sql(user_arg: int) -> str:
         UNION
         SELECT member_ws.scope_user_id AS id FROM workspaces member_ws
         WHERE {workspace_member_condition("member_ws", user_arg)}
+        UNION
+        SELECT owner_stash.scope_user_id AS id FROM stashes owner_stash
+        WHERE owner_stash.owner_user_id = ${user_arg}
     )"""
 
 
@@ -390,6 +397,29 @@ async def is_workspace_member(scope_user_id: UUID | None, user_id: UUID | None) 
     )
 
 
+async def is_stash_owner(scope_user_id: UUID | None, user_id: UUID | None) -> bool:
+    """Does `user_id` own the stash whose scope is `scope_user_id`?"""
+    if scope_user_id is None or user_id is None:
+        return False
+    pool = get_pool()
+    return bool(
+        await pool.fetchval(
+            "SELECT EXISTS (SELECT 1 FROM stashes s "
+            "WHERE s.scope_user_id = $1 AND s.owner_user_id = $2)",
+            scope_user_id,
+            user_id,
+        )
+    )
+
+
+async def is_scope_member(scope_user_id: UUID | None, user_id: UUID | None) -> bool:
+    """May `user_id` act inside the scope `scope_user_id` — as a workspace
+    member or as the owner of that stash?"""
+    if await is_stash_owner(scope_user_id, user_id):
+        return True
+    return await is_workspace_member(scope_user_id, user_id)
+
+
 async def _session_folder_open(
     folder: dict, folder_id: UUID, user_id: UUID | None, require: str
 ) -> bool:
@@ -402,7 +432,7 @@ async def _session_folder_open(
         return False
     if folder["owner_user_id"] == user_id:
         return True
-    if await is_workspace_member(folder["owner_user_id"], user_id):
+    if await is_scope_member(folder["owner_user_id"], user_id):
         return True
     return await _user_share_grants("session_folder", folder_id, user_id, require)
 

@@ -3,10 +3,12 @@
 import { ReactNode, useEffect, useState } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useWorkspace } from "@/lib/workspace-store";
+import { useScope } from "@/lib/scope-store";
 import type { User } from "@/lib/types";
 import { Toaster } from "@/components/ui/sonner";
 import Persistence from "./persistence";
 import Rail from "./rail";
+import StashSidebar from "./stash-sidebar";
 import Topbar from "./topbar";
 import Explorer, { type ExplorerSection } from "./explorer";
 import Workbench from "./workbench";
@@ -120,6 +122,7 @@ export default function WorkspaceShell({
 }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const scope = useScope();
   const routeSection = sectionForPath(pathname);
   const requestedSection = searchParams.get("section");
   const selectedSection = EXPLORER_SECTIONS.find((s) => s === requestedSection) ?? null;
@@ -149,8 +152,12 @@ export default function WorkspaceShell({
       <Persistence />
       <Topbar />
       <div className="flex min-h-0 flex-1">
-        <Rail user={user} onLogout={onLogout} />
-        <div className="min-w-0 flex-1 pb-0">
+        <StashSidebar />
+        {/* Everything right of the stash list is scope-dependent and fetches
+            on mount, so switching stashes remounts it via this key — a
+            channel-style instant switch instead of a page reload. */}
+        <Rail key={`rail:${scope?.scope_user_id ?? "personal"}`} user={user} onLogout={onLogout} />
+        <div key={scope?.scope_user_id ?? "personal"} className="min-w-0 flex-1 pb-0">
           {section && !isFilesHome ? (
             <div className="flex h-full">
               {showExplorer && <ExplorerPanel section={section} />}

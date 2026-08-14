@@ -7,7 +7,6 @@ import { ArrowLeft, ArrowRight, Search } from "lucide-react";
 import CommandPalette from "@/components/CommandPalette";
 import { StashIcon } from "@/components/SkillIcons";
 import { useFilesSearch } from "@/components/content/flat-files/search-store";
-import ScopeSwitcher from "./scope-switcher";
 
 /** Full-width top bar: octopus logo + breadcrumb (left), ⌘K search (center),
  *  share action (right). Account actions live on the rail's bottom avatar.
@@ -43,7 +42,6 @@ export default function Topbar() {
           <StashIcon className="text-[22px]" />
           <span className="text-[15px] font-semibold tracking-tight text-foreground">Stash</span>
         </Link>
-        <ScopeSwitcher />
         {/* IDE-style history nav: back is "wherever I just was", not "up a
             level" — the same arrows VS Code keeps beside its command center. */}
         <div className="flex items-center">

@@ -5,7 +5,7 @@ by URL segment. To add a new provider you only need to register it; this
 router stays the same.
 
 State handling: the `state` parameter passed to the provider is a Fernet
-token carrying `{user_id, provider, nonce}`. The callback decrypts it to
+token carrying `{user_id, scope_user_id, provider, nonce}`. The callback decrypts it to
 both (a) recover the user identity (the callback URL is hit by the
 browser without auth headers) and (b) verify the request originated
 here. Fernet's HMAC gives us CSRF protection for free.
@@ -26,7 +26,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 
-from ..auth import get_current_user
+from ..auth import get_current_user, get_scope
 from ..config import settings
 from ..services import billing_service, security_audit_service, source_service
 from . import storage
@@ -45,6 +45,7 @@ STATE_TTL = timedelta(minutes=10)
 
 def _encode_state(
     user_id: UUID,
+    scope_user_id: UUID,
     provider: str,
     return_to: str | None = None,
     *,
@@ -53,6 +54,7 @@ def _encode_state(
     payload = json.dumps(
         {
             "u": str(user_id),
+            "s": str(scope_user_id),
             "p": provider,
             "n": secrets.token_urlsafe(16),
             "t": datetime.now(UTC).isoformat(),
@@ -233,10 +235,11 @@ async def _user_may_use_provider(p, user_id: UUID) -> bool:
 
 
 @router.get("", response_model=IntegrationsListResponse)
-async def list_integrations(current_user: dict = Depends(get_current_user)):
-    user_connections = {
-        c["provider"]: c for c in await storage.list_connections(current_user["id"])
-    }
+async def list_integrations(
+    current_user: dict = Depends(get_current_user),
+    scope: UUID = Depends(get_scope),
+):
+    user_connections = {c["provider"]: c for c in await storage.list_connections(scope)}
     items = []
     for p in list_providers():
         if not await _user_may_use_provider(p, current_user["id"]):
@@ -279,9 +282,10 @@ async def list_integrations(current_user: dict = Depends(get_current_user)):
 async def integration_status(
     provider: str,
     current_user: dict = Depends(get_current_user),
+    scope: UUID = Depends(get_scope),
 ):
     get_provider(provider)  # 404 if unknown
-    return await storage.status(current_user["id"], provider)
+    return await storage.status(scope, provider)
 
 
 class ConnectStartResponse(BaseModel):
@@ -293,6 +297,7 @@ async def integration_connect(
     provider: str,
     return_to: str | None = Query(None),
     current_user: dict = Depends(get_current_user),
+    scope: UUID = Depends(get_scope),
 ):
     """Return the provider's OAuth authorize URL.
 
@@ -315,7 +320,7 @@ async def integration_connect(
     # MCP OAuth providers (Granola) register a client + carry PKCE through their
     # own state, so they own the connect step end-to-end.
     if getattr(p, "auth_kind", "oauth") == "mcp_oauth":
-        url = await p.start_authorization(current_user["id"], _safe_return_to(return_to))
+        url = await p.start_authorization(scope, _safe_return_to(return_to))
         return ConnectStartResponse(authorize_url=url)
     return_path = _safe_return_to(return_to)
     # PKCE providers (X) carry a per-connect code verifier through the encrypted
@@ -323,11 +328,11 @@ async def integration_connect(
     if getattr(p, "uses_pkce", False):
         code_verifier = p.new_code_verifier()
         state = _encode_state(
-            current_user["id"], provider, return_path, extra={"code_verifier": code_verifier}
+            current_user["id"], scope, provider, return_path, extra={"code_verifier": code_verifier}
         )
         return ConnectStartResponse(authorize_url=p.authorize_url(state, code_verifier))
 
-    state = _encode_state(current_user["id"], provider, return_path)
+    state = _encode_state(current_user["id"], scope, provider, return_path)
     return ConnectStartResponse(authorize_url=p.authorize_url(state))
 
 
@@ -349,6 +354,7 @@ async def integration_callback(
         else:
             payload = _decode_state_payload(state, expected_provider=provider)
             user_id = UUID(payload["u"])
+            scope_id = UUID(payload["s"])
             return_to = payload.get("r")
             if getattr(p, "uses_pkce", False):
                 code_verifier = (payload.get("x") or {}).get("code_verifier")
@@ -367,7 +373,7 @@ async def integration_callback(
             # account while the previous account's connection (and possibly
             # its kept data) exists. The identity comes from the provider's
             # own answer to the new token — never from the client.
-            mismatched = await storage.account_mismatch(user_id, provider, account)
+            mismatched = await storage.account_mismatch(scope_id, provider, account)
             if mismatched:
                 logger.warning(
                     "OAuth callback account mismatch for %s: stored account differs", provider
@@ -377,7 +383,7 @@ async def integration_callback(
                 return RedirectResponse(
                     url=f"{base}/integrations/{provider}?{urlencode(query)}", status_code=302
                 )
-            await storage.store_token(user_id, provider, token, account)
+            await storage.store_token(scope_id, provider, token, account)
             await security_audit_service.record_user_event(
                 action="integration.connected",
                 actor_user_id=user_id,
@@ -415,7 +421,7 @@ async def integration_callback(
                 try:
                     me = await fetch_me(token.access_token)
                     source = await source_service.create_source(
-                        owner_user_id=user_id,
+                        owner_user_id=scope_id,
                         source_type="x_saves",
                         external_ref=me["id"],
                         display_name=f"X (@{me.get('username')})" if me.get("username") else "X",
@@ -452,15 +458,17 @@ class DisconnectRequest(BaseModel):
     delete_data: bool = False
 
 
-async def _purge_provider_data(user_id: UUID, provider: str, reason: str) -> list[dict]:
+async def _purge_provider_data(scope_user_id: UUID, provider: str, reason: str) -> list[dict]:
     """Delete a provider's data (sources, documents, media blobs, shares) and
-    forget the stored account entirely, so a different account may connect."""
-    purged = await source_service.purge_sources_for_provider(user_id, provider)
-    await storage.revoke_stored(user_id, provider)
+    forget the stored account entirely, so a different account may connect.
+    `scope_user_id` is the scope holding the connection — the active stash or
+    workspace, not necessarily the human who clicked."""
+    purged = await source_service.purge_sources_for_provider(scope_user_id, provider)
+    await storage.revoke_stored(scope_user_id, provider)
     for source in purged:
         await security_audit_service.record_event(
             action="source.purged",
-            actor_user_id=user_id,
+            actor_user_id=scope_user_id,
             owner_user_id=UUID(source["owner_user_id"]),
             target_type="source",
             target_id=source["id"],
@@ -476,18 +484,17 @@ async def integration_disconnect(
     provider: str,
     body: DisconnectRequest | None = None,
     current_user: dict = Depends(get_current_user),
+    scope: UUID = Depends(get_scope),
 ):
     """Disconnect stops syncing and revokes credentials; it deletes data ONLY
     when the user explicitly chose that in the disconnect dialog."""
     get_provider(provider)  # 404 if unknown
     delete_data = bool(body and body.delete_data)
     if delete_data:
-        removed = await _purge_provider_data(
-            current_user["id"], provider, reason="integration_disconnect"
-        )
+        removed = await _purge_provider_data(scope, provider, reason="integration_disconnect")
     else:
-        removed = await source_service.disable_sources_for_provider(current_user["id"], provider)
-        await storage.disconnect_stored(current_user["id"], provider)
+        removed = await source_service.disable_sources_for_provider(scope, provider)
+        await storage.disconnect_stored(scope, provider)
     await security_audit_service.record_user_event(
         action="integration.disconnected",
         actor_user_id=current_user["id"],
@@ -503,6 +510,7 @@ async def integration_disconnect(
 async def integration_purge(
     provider: str,
     current_user: dict = Depends(get_current_user),
+    scope: UUID = Depends(get_scope),
 ):
     """Delete the kept data of a disconnected (or connected) provider. The
     explicit, destructive counterpart to disconnect-keeps-data. Gated on the
@@ -510,7 +518,7 @@ async def integration_purge(
     (Instagram) have data to purge but no OAuth provider."""
     if provider not in source_service.PROVIDER_SOURCE_TYPES:
         raise HTTPException(status_code=404, detail=f"unknown provider: {provider}")
-    purged = await _purge_provider_data(current_user["id"], provider, reason="purge")
+    purged = await _purge_provider_data(scope, provider, reason="purge")
     return {"ok": True, "sources": len(purged)}
 
 
@@ -525,6 +533,7 @@ async def integration_connect_with_credentials(
     provider: str,
     values: dict[str, str],
     current_user: dict = Depends(get_current_user),
+    scope: UUID = Depends(get_scope),
 ):
     """Connect an api_key provider from pasted credentials.
     The provider validates them against the upstream and returns the bundle as
@@ -562,7 +571,7 @@ async def integration_connect_with_credentials(
             status_code=502,
             detail=f"Could not connect {p.display_name}; upstream unavailable",
         )
-    await storage.store_token(current_user["id"], provider, token, account)
+    await storage.store_token(scope, provider, token, account)
     await security_audit_service.record_user_event(
         action="integration.connected",
         actor_user_id=current_user["id"],
@@ -585,13 +594,16 @@ class GooglePickerTokenResponse(BaseModel):
 
 
 @router.get("/google/picker-token", response_model=GooglePickerTokenResponse)
-async def google_picker_token(current_user: dict = Depends(get_current_user)):
+async def google_picker_token(
+    current_user: dict = Depends(get_current_user),
+    scope: UUID = Depends(get_scope),
+):
     """Hand the frontend a fresh Google access token plus the picker's
     `api_key` and `app_id` so the user's browser can open the Drive
     Picker without exposing our OAuth client secret. Throws 401 if the
     user hasn't connected Google yet — the frontend should send them to
     /settings/integrations first."""
-    access_token = await storage.get_valid_token(current_user["id"], "google")
+    access_token = await storage.get_valid_token(scope, "google")
     return GooglePickerTokenResponse(
         access_token=access_token,
         api_key=settings.GOOGLE_PICKER_API_KEY,
@@ -600,8 +612,11 @@ async def google_picker_token(current_user: dict = Depends(get_current_user)):
 
 
 @router.get("/slack/channels", response_model=list[SlackChannelSummary])
-async def slack_list_channels(current_user: dict = Depends(get_current_user)):
-    access_token = await storage.get_valid_token(current_user["id"], "slack")
+async def slack_list_channels(
+    current_user: dict = Depends(get_current_user),
+    scope: UUID = Depends(get_scope),
+):
+    access_token = await storage.get_valid_token(scope, "slack")
     headers = {"Authorization": f"Bearer {access_token}"}
     async with httpx.AsyncClient(timeout=30.0, headers=headers) as client:
         try:
@@ -642,11 +657,12 @@ class GitHubRepoSummary(BaseModel):
 @router.get("/github/repos", response_model=list[GitHubRepoSummary])
 async def github_list_repos(
     current_user: dict = Depends(get_current_user),
+    scope: UUID = Depends(get_scope),
     q: str = Query("", description="Substring filter on repo full_name"),
 ):
     """List every GitHub repo the user can see (most-recently-updated first)
     so the frontend can render a picker instead of asking for a URL."""
-    access_token = await storage.get_valid_token(current_user["id"], "github")
+    access_token = await storage.get_valid_token(scope, "github")
     repos = await github_account_sync.list_visible_repos(access_token)
 
     q_lower = q.lower().strip()
@@ -680,20 +696,24 @@ class GitHubRepoAccessUpdate(BaseModel):
 
 
 @router.get("/github/repo-access", response_model=GitHubRepoAccess)
-async def github_get_repo_access(current_user: dict = Depends(get_current_user)):
-    return GitHubRepoAccess(all_repos=await storage.get_sync_all(current_user["id"], "github"))
+async def github_get_repo_access(
+    current_user: dict = Depends(get_current_user),
+    scope: UUID = Depends(get_scope),
+):
+    return GitHubRepoAccess(all_repos=await storage.get_sync_all(scope, "github"))
 
 
 @router.put("/github/repo-access", response_model=GitHubRepoAccess)
 async def github_set_repo_access(
     body: GitHubRepoAccessUpdate,
     current_user: dict = Depends(get_current_user),
+    scope: UUID = Depends(get_scope),
 ):
     """Switch between all-repos and select-repos mode. Enabling registers a
     source for every visible repo right away; the hourly reconcile keeps the
     set current after that. Disabling stops auto-registration but keeps the
     sources already created."""
-    updated = await storage.set_sync_all(current_user["id"], "github", body.all_repos)
+    updated = await storage.set_sync_all(scope, "github", body.all_repos)
     if not updated:
         raise HTTPException(status_code=404, detail="GitHub is not connected")
     await security_audit_service.record_user_event(
@@ -706,7 +726,7 @@ async def github_set_repo_access(
     )
     if not body.all_repos:
         return GitHubRepoAccess(all_repos=False)
-    result = await github_account_sync.sync_all_repos(current_user["id"])
+    result = await github_account_sync.sync_all_repos(scope)
     return GitHubRepoAccess(all_repos=True, total=result["total"], created=result["created"])
 
 
@@ -721,6 +741,7 @@ class NotionPageSummary(BaseModel):
 @router.get("/notion/pages", response_model=list[NotionPageSummary])
 async def notion_list_pages(
     current_user: dict = Depends(get_current_user),
+    scope: UUID = Depends(get_scope),
     q: str = Query("", description="Substring search across page titles"),
 ):
     """Search Notion pages the integration has access to. Notion only
@@ -728,7 +749,7 @@ async def notion_list_pages(
     this matches Notion's own behavior."""
     import httpx
 
-    access_token = await storage.get_valid_token(current_user["id"], "notion")
+    access_token = await storage.get_valid_token(scope, "notion")
     headers = {
         "Authorization": f"Bearer {access_token}",
         "Notion-Version": "2022-06-28",
@@ -781,13 +802,16 @@ class JiraProjectSummary(BaseModel):
 
 
 @router.get("/jira/projects", response_model=list[JiraProjectSummary])
-async def jira_list_projects(current_user: dict = Depends(get_current_user)):
+async def jira_list_projects(
+    current_user: dict = Depends(get_current_user),
+    scope: UUID = Depends(get_scope),
+):
     """List projects across every Atlassian site the user granted us, so the
     frontend can render a picker. Jira REST calls are per-cloudId, so we first
     resolve the accessible sites, then page each site's projects."""
     import httpx
 
-    access_token = await storage.get_valid_token(current_user["id"], "jira")
+    access_token = await storage.get_valid_token(scope, "jira")
     headers = {"Authorization": f"Bearer {access_token}", "Accept": "application/json"}
     out: list[JiraProjectSummary] = []
     async with httpx.AsyncClient(timeout=30.0, headers=headers) as client:
@@ -826,12 +850,15 @@ class AsanaProjectSummary(BaseModel):
 
 
 @router.get("/asana/projects", response_model=list[AsanaProjectSummary])
-async def asana_list_projects(current_user: dict = Depends(get_current_user)):
+async def asana_list_projects(
+    current_user: dict = Depends(get_current_user),
+    scope: UUID = Depends(get_scope),
+):
     """List the user's Asana projects across all their workspaces for the picker.
     external_ref is the project gid."""
     import httpx
 
-    access_token = await storage.get_valid_token(current_user["id"], "asana")
+    access_token = await storage.get_valid_token(scope, "asana")
     headers = {"Authorization": f"Bearer {access_token}"}
     out: list[AsanaProjectSummary] = []
     async with httpx.AsyncClient(timeout=30.0, headers=headers) as client:
