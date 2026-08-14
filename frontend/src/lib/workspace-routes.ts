@@ -85,3 +85,16 @@ export function tabFromPath(pathname: string): { kind: TabKind; refId: string } 
   if (integration) return { kind: "tool", refId: decodeURIComponent(integration[1]) };
   return null;
 }
+
+/** Where a stash switch lands: the same section you were in, at its root.
+ *  Content routes collapse to /files — the item you were viewing belongs to
+ *  the previous stash. Settings is scope-independent and keeps its place. */
+export function scopeSwitchLanding(pathname: string): string {
+  if (pathname === "/") return "/";
+  if (pathname.startsWith("/viz")) return "/viz";
+  if (pathname.startsWith("/hopper")) return "/hopper";
+  if (pathname.startsWith("/integrations")) return "/integrations";
+  if (pathname.startsWith("/agents")) return "/agents";
+  if (pathname.startsWith("/settings")) return pathname;
+  return "/files";
+}
