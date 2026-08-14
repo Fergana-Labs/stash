@@ -1,14 +1,13 @@
 "use client";
 
 // Experimental full-screen VFS: no tree, no folders — one reverse-chron table
-// of everything in the stash. The search input is the topbar's search bar
-// (topbar.tsx renders it on /files and writes to the shared store); this page
-// renders the filtered results. Arrows move, Enter opens.
+// of everything in the stash with its search on top. Arrows move, Enter
+// opens; ⌘K focuses the search from anywhere on the page.
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowUpRight } from "lucide-react";
+import { ArrowUpRight, Search } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { timeAgo } from "@/components/content/files-overview/build";
@@ -110,6 +109,7 @@ export default function FlatFilesPage() {
   // Only keyboard moves scroll the active row into view; mouse and initial
   // renders must not yank the page around.
   const keyed = useRef(false);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const ofKind = useMemo(
     () => (kind === "all" ? items : items.filter((i) => i.kind === kind)),
@@ -136,8 +136,8 @@ export default function FlatFilesPage() {
     );
   }
 
-  // The topbar owns the input; leaving the page clears the shared query so a
-  // return visit starts with the full list.
+  // Leaving the page clears the shared query so a return visit starts with
+  // the full list.
   useEffect(() => () => useFilesSearch.getState().setQuery(""), []);
 
   useEffect(() => {
@@ -145,10 +145,15 @@ export default function FlatFilesPage() {
     setLimit(PAGE_SIZE);
   }, [query]);
 
-  // Keyboard driving happens at window level: focus sits in the topbar input
-  // while the results live here.
+  // Keyboard driving happens at window level so arrows/Enter work even when
+  // focus has wandered off the input; ⌘K brings it back.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault();
+        inputRef.current?.focus();
+        return;
+      }
       if (!searching || e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.key === "ArrowDown") {
         e.preventDefault();
@@ -173,6 +178,18 @@ export default function FlatFilesPage() {
   return (
     <div className="h-full overflow-y-auto bg-base">
       <div className="mx-auto w-full max-w-5xl px-6 py-8">
+        <div className="relative mb-4">
+          <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <input
+            ref={inputRef}
+            autoFocus
+            value={query}
+            onChange={(e) => useFilesSearch.getState().setQuery(e.target.value)}
+            placeholder="Search everything in your stash…"
+            className="w-full rounded-xl border border-border bg-surface py-2.5 pl-10 pr-14 text-[14px] text-foreground shadow-sm outline-none placeholder:text-muted-foreground focus:border-brand-300 focus:bg-base"
+          />
+          <span className="absolute right-3 top-1/2 -translate-y-1/2 rounded bg-base px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground ring-1 ring-border">⌘K</span>
+        </div>
         <div className="flex flex-wrap items-center gap-1.5">
           <Chip
             active={kind === "all"}
