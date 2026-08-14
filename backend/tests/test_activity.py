@@ -5,8 +5,6 @@ from uuid import UUID
 import pytest
 from httpx import AsyncClient
 
-from backend.services import analytics_service
-
 from .conftest import unique_name
 
 
@@ -191,13 +189,14 @@ async def test_user_wide_embedding_projection_ignores_stale_cache_without_curren
 
 
 @pytest.mark.asyncio
-async def test_user_wide_embedding_projection_serves_cache_while_access_unchanged(
+async def test_scoped_embedding_projection_serves_cache(
     client: AsyncClient,
     pool,
 ):
     """The memory page's embeddings map must come from the cache, not an
     inline UMAP fit — recomputing per load is the minute-long-render bug.
-    The row is only trusted while its scope signature still matches."""
+    Cache rows are scope-keyed: (user, user) is the personal scope every
+    home load requests."""
     resp = await client.post(
         "/api/v1/users/register",
         json={"name": unique_name("cached_projection"), "password": "securepassword1"},
@@ -218,10 +217,9 @@ async def test_user_wide_embedding_projection_serves_cache_while_access_unchange
     await pool.execute(
         "INSERT INTO embedding_projections "
         "(user_id, source_type, owner_user_id, points, embedding_count, scope_signature, computed_at) "
-        "VALUES ($1, '_all', NULL, $2, 0, $3, now())",
+        "VALUES ($1, '_all', $1, $2, 0, NULL, now())",
         user_id,
         [point],
-        await analytics_service.scope_signature(user_id),
     )
 
     projection = await client.get(
@@ -437,10 +435,10 @@ async def test_file_activity_excludes_files_inside_the_memory_subtree(client: As
 
 
 @pytest.mark.asyncio
-async def test_file_activity_excludes_memory_shared_from_another_scope(client: AsyncClient, pool):
-    """Memory belongs to the curator log whoever's Memory it is. The feed spans
-    every scope the caller can read, so excluding only the caller's Memory lets
-    a teammate's nightly curation churn land in the caller's Home."""
+async def test_file_activity_is_scope_only(client: AsyncClient, pool):
+    """Home's feed shows the active scope and nothing else — content another
+    scope shared with the caller belongs to the shared surfaces, not to this
+    scope's home. A stash's home page must never show another stash's pages."""
     owner_key = await _register(client, "activity_mem_owner")
     friend_key = await _register(client, "activity_mem_friend")
     owner = UUID((await _scope(client, owner_key))["id"])
@@ -475,10 +473,17 @@ async def test_file_activity_excludes_memory_shared_from_another_scope(client: A
     )
     assert resp.status_code == 200
     labels = [e["target_label"] for e in resp.json()["events"]]
-    # The plain share proves the feed does surface another scope's content —
-    # so the wiki page's absence is the Memory rule, not a missing share.
-    assert "Their shared page" in labels
+    # Even a real share doesn't put another scope's content on this home feed.
+    assert "Their shared page" not in labels
     assert "Their wiki page" not in labels
+
+    # In the owner's own scope the plain page shows and the Memory rule holds.
+    own = await client.get(
+        "/api/v1/me/file-activity", params={"limit": 200}, headers=_auth(owner_key)
+    )
+    own_labels = [e["target_label"] for e in own.json()["events"]]
+    assert "Their shared page" in own_labels
+    assert "Their wiki page" not in own_labels
 
 
 @pytest.mark.asyncio
