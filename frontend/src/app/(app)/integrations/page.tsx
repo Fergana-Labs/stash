@@ -427,7 +427,6 @@ export default function IntegrationsPage() {
       tier: TIER.work,
       sortLast: true,
       search: "custom mcp server add tool",
-      actionLabel: "Add",
       onAction: () => setAddingServer(true),
     };
 
@@ -528,7 +527,7 @@ export default function IntegrationsPage() {
             Integrations
           </h1>
           <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-            Choose what to add to your Stash, and who can read it.
+            Choose what to add to your Stash, and what can read it.
           </p>
         </header>
 
@@ -637,7 +636,7 @@ export default function IntegrationsPage() {
       <Dialog open={addingServer} onOpenChange={setAddingServer}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Add an MCP server</DialogTitle>
+            <DialogTitle>Connect an MCP server</DialogTitle>
             <DialogDescription>
               Your cloud agent gets it before every turn, alongside the tools Stash gives it
               natively.

@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import IntegrationsPage from "./page";
 import { createMcpServer, deleteMcpServer, listMcpServers, type McpServer } from "@/lib/api";
@@ -110,7 +110,8 @@ describe("IntegrationsPage", () => {
     render(<IntegrationsPage />);
     await screen.findByText("linear");
 
-    fireEvent.click(screen.getByRole("button", { name: /^add$/i }));
+    const addCard = screen.getByText("Custom MCP server").closest("div.rounded-xl")!;
+    fireEvent.click(within(addCard as HTMLElement).getByRole("button", { name: /^connect$/i }));
     fireEvent.change(await screen.findByLabelText("Server name"), { target: { value: "notion2" } });
     fireEvent.change(screen.getByLabelText("URL"), {
       target: { value: "https://mcp.example.com/mcp" },
@@ -118,7 +119,7 @@ describe("IntegrationsPage", () => {
     fireEvent.change(screen.getByLabelText("Headers"), {
       target: { value: "Authorization=Bearer abc" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /add server/i }));
+    fireEvent.click(screen.getByRole("button", { name: /connect server/i }));
 
     await waitFor(() =>
       expect(createMcpServer).toHaveBeenCalledWith({
@@ -137,13 +138,14 @@ describe("IntegrationsPage", () => {
     render(<IntegrationsPage />);
     await screen.findByText("linear");
 
-    fireEvent.click(screen.getByRole("button", { name: /^add$/i }));
+    const addCard = screen.getByText("Custom MCP server").closest("div.rounded-xl")!;
+    fireEvent.click(within(addCard as HTMLElement).getByRole("button", { name: /^connect$/i }));
     fireEvent.change(await screen.findByLabelText("Server name"), { target: { value: "fs" } });
     fireEvent.click(screen.getByRole("radio", { name: /local \(stdio\)/i }));
     fireEvent.change(screen.getByLabelText("Command"), {
       target: { value: "npx -y fs-mcp" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /add server/i }));
+    fireEvent.click(screen.getByRole("button", { name: /connect server/i }));
 
     await waitFor(() =>
       expect(createMcpServer).toHaveBeenCalledWith({

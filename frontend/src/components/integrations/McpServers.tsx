@@ -43,7 +43,7 @@ export default function AddServerForm({ onAdded }: { onAdded: () => void }) {
       });
       onAdded();
     } catch (e) {
-      toast.error(e instanceof ApiError || e instanceof Error ? e.message : "Failed to add server");
+      toast.error(e instanceof ApiError || e instanceof Error ? e.message : "Failed to connect the server");
     } finally {
       setSaving(false);
     }
@@ -107,7 +107,7 @@ export default function AddServerForm({ onAdded }: { onAdded: () => void }) {
       )}
       <Button type="submit" disabled={saving || !name.trim() || targetMissing} className="self-start">
         <Plus className="h-4 w-4" />
-        Add server
+        Connect server
       </Button>
     </form>
   );
