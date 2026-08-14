@@ -147,7 +147,7 @@ describe("ResourceShareButton", () => {
     await screen.findByText("Ada Lovelace");
 
     fireEvent.change(screen.getByLabelText("Change permission"), {
-      target: { value: "comment" },
+      target: { value: "write" },
     });
 
     await waitFor(() =>
@@ -155,14 +155,14 @@ describe("ResourceShareButton", () => {
         "page",
         "page-1",
         "ada@example.com",
-        "comment",
+        "write",
       ),
     );
     expect(await screen.findByText("Access updated.")).toBeInTheDocument();
   });
 
   it("shares a source read-only: no permission choices, invites at read", async () => {
-    // The backend rejects comment/write for sources, so the dialog must not
+    // The backend rejects write for sources, so the dialog must not
     // offer a level to pick and must send read — otherwise the POST 400s.
     render(
       <ResourceShareButton

@@ -918,11 +918,9 @@ async def create_comment_thread(
     scope_user_id: UUID = Depends(get_scope),
 ):
     owner_user_id = scope_user_id
-    # Commenting needs at least the 'comment' share level (the scope owner
+    # Commenting needs write access (the scope owner
     # always qualifies); a plain read-only share can view but not comment.
-    await _check_content_access(
-        "page", page_id, owner_user_id, current_user["id"], require="comment"
-    )
+    await _check_content_access("page", page_id, owner_user_id, current_user["id"], require="write")
     await _check_page_in_scope(owner_user_id, page_id)
     thread = await comment_service.create_thread(
         page_id,
@@ -948,9 +946,7 @@ async def reply_to_thread(
     scope_user_id: UUID = Depends(get_scope),
 ):
     owner_user_id = scope_user_id
-    await _check_content_access(
-        "page", page_id, owner_user_id, current_user["id"], require="comment"
-    )
+    await _check_content_access("page", page_id, owner_user_id, current_user["id"], require="write")
     await _check_page_in_scope(owner_user_id, page_id)
     thread = await comment_service.add_reply(thread_id, body=req.body, author_id=current_user["id"])
     if thread is None:

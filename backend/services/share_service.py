@@ -20,12 +20,12 @@ from ..database import get_pool
 from . import email_service, permission_service, security_audit_service, user_scope_service
 
 _SHAREABLE = {"file", "page", "folder", "session", "session_folder", "table", "source"}
-_PERMISSIONS = {"read", "comment", "write"}
+_PERMISSIONS = {"read", "write"}
 
 # Objects that carry a per-object public link ("anyone with the link"). Session
 # folders keep their own public-link flow; these are the content types.
 _GENERAL_ACCESS_TABLE = {"page": "pages", "file": "files", "folder": "folders", "table": "tables"}
-_PUBLIC_PERMISSIONS = {"none", "read", "comment", "write"}
+_PUBLIC_PERMISSIONS = {"none", "read", "write"}
 
 
 async def _require_owner(object_type: str, object_id: UUID, user_id: UUID) -> UUID:

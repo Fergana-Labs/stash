@@ -22,18 +22,16 @@ import {
 } from "../../lib/api";
 import type { User } from "../../lib/types";
 
-type SharePermission = Extract<GeneralPermission, "read" | "comment" | "write">;
+type SharePermission = Extract<GeneralPermission, "read" | "write">;
 
 const PERMISSIONS: { value: SharePermission; label: string }[] = [
   { value: "read", label: "Can view" },
-  { value: "comment", label: "Can comment" },
   { value: "write", label: "Can edit" },
 ];
 
 // "Anyone with the link" role labels, mirroring Google Docs.
 const LINK_ROLES: { value: SharePermission; label: string }[] = [
   { value: "read", label: "Viewer" },
-  { value: "comment", label: "Commenter" },
   { value: "write", label: "Editor" },
 ];
 

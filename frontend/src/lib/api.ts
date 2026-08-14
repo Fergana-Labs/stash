@@ -1223,7 +1223,7 @@ export interface SessionSummary {
   session_folder_name: string | null;
 }
 
-export type GeneralPermission = "none" | "read" | "comment" | "write";
+export type GeneralPermission = "none" | "read" | "write";
 // Stored visibility is two-state. "shared" is a derived display state.
 export type SessionFolderVisibility = "private" | "public";
 export type DisplayVisibility = "private" | "shared" | "public";
