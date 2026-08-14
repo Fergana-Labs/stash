@@ -395,8 +395,7 @@ export default function IntegrationsPage() {
 
   if (loading || !user) return null;
 
-  const inDirection = boxes.filter((b) => b.direction === direction);
-  const connectedCount = inDirection.filter((b) => b.active).length;
+  const connectedCount = boxes.filter((b) => b.direction === direction && b.active).length;
 
   return (
     <div className="h-full overflow-y-auto">
@@ -439,10 +438,11 @@ export default function IntegrationsPage() {
               {d === "in" ? "Inputs" : "Outputs"}
             </button>
           ))}
-          <span className="ml-auto font-mono text-[11.5px] text-muted-foreground">
-            {visible.length} of {inDirection.length}
-            {connectedCount > 0 && ` · ${connectedCount} connected`}
-          </span>
+          {connectedCount > 0 && (
+            <span className="ml-auto font-mono text-[11.5px] text-muted-foreground">
+              {connectedCount} connected
+            </span>
+          )}
         </div>
 
         {loadError && (
