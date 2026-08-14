@@ -15,6 +15,7 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -423,7 +424,7 @@ export default function IntegrationsPage() {
       ...b,
       action: (
         <Button size="sm" variant="secondary" className="self-start" onClick={() => setOpen({ ...b, action: null })}>
-          {b.actionLabel ?? "Set up"}
+          {b.actionLabel ?? "Connect"}
         </Button>
       ),
     }));
@@ -557,10 +558,22 @@ export default function IntegrationsPage() {
       <Dialog open={open !== null} onOpenChange={(v) => !v && setOpen(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{open?.dialog?.title}</DialogTitle>
-            <DialogDescription>{open?.dialog?.description}</DialogDescription>
+            <div className="flex items-start gap-3">
+              <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center [&_img]:h-7 [&_img]:w-7 [&_svg]:h-7 [&_svg]:w-7">
+                {open?.icon}
+              </span>
+              <div className="flex min-w-0 flex-col gap-1">
+                <DialogTitle>{open?.dialog?.title}</DialogTitle>
+                <DialogDescription>{open?.dialog?.description}</DialogDescription>
+              </div>
+            </div>
           </DialogHeader>
           {open?.dialog?.body}
+          <DialogFooter>
+            <Button size="sm" onClick={() => setOpen(null)}>
+              Done
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
