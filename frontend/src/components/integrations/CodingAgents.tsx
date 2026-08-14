@@ -39,36 +39,25 @@ const INSTALL_COMMAND = `bash -c "$(curl -fsSL https://joinstash.ai/install)"`;
 export const AGENT_COPY = {
   in: {
     label: (name: string) => `${name} transcripts`,
-    blurb: "Its sessions land in your stash as transcripts, searchable like anything else.",
+    blurb: (name: string) => `Add ${name} transcripts to your Stash.`,
     title: (name: string) => `Record ${name} sessions`,
     description:
       "One command turns on session recording for every coding agent on your machine, this one included.",
   },
   out: {
     label: (name: string) => `${name} access`,
-    blurb: "Give it read access to everything in your stash while it works.",
+    blurb: (name: string) => `Give ${name} read access to your Stash.`,
     title: (name: string) => `Give ${name} access`,
     description: "Two ways in, depending on what the agent speaks.",
   },
 } as const;
 
-export function agentDialogBody(agent: CodingAgent, direction: "in" | "out") {
+export function agentDialogBody(direction: "in" | "out") {
   return (
     <div className="flex min-w-0 flex-col gap-3">
       <CopyableCommandBlock commands={INSTALL_COMMAND} />
-      {direction === "in" ? (
-        <p className="text-[12.5px] text-muted-foreground">
-          The installer signs you in, looks for{" "}
-          <code className="font-mono text-[11.5px] text-foreground">{agent.binary}</code> on your
-          PATH, and hooks it so every session it runs is uploaded when it ends.
-        </p>
-      ) : (
+      {direction === "out" && (
         <>
-          <p className="text-[12.5px] text-muted-foreground">
-            The installer adds Stash&apos;s commands to{" "}
-            <code className="font-mono text-[11.5px] text-foreground">{agent.binary}</code>&apos;s
-            context, so it can search and read your stash mid-session.
-          </p>
           <div className="text-[12px] font-medium text-dim">
             Or, if it speaks MCP, point it at the Stash server
           </div>

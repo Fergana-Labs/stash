@@ -84,6 +84,8 @@ type Box = {
   dialog?: { title: string; description: string; body: ReactNode };
   /** Verb on the button that opens the dialog. */
   actionLabel?: string;
+  /** For the one box that isn't a detail view: opens the add-server form. */
+  onAction?: () => void;
   action: ReactNode;
 };
 
@@ -114,6 +116,50 @@ function IntegrationBox({ box, onOpen }: { box: Box; onOpen?: () => void }) {
       </p>
 
       {box.action}
+    </div>
+  );
+}
+
+/** A source connector's detail view. Also the only place `disabled_reason`
+ *  is ever shown: a server without INTEGRATIONS_ENCRYPTION_KEY offers a
+ *  Connect button that can only 503, and until now said nothing about why. */
+function ConnectorDialogBody({
+  connector,
+  status,
+  connected,
+  busy,
+  onConnect,
+}: {
+  connector: Connector;
+  status: IntegrationStatus | undefined;
+  connected: boolean;
+  busy: boolean;
+  onConnect: (() => void) | null;
+}) {
+  return (
+    <div className="flex min-w-0 flex-col gap-3">
+      {status?.disabled_reason && (
+        <p className="rounded-lg border border-warning/30 bg-chart-5/10 px-3 py-2 text-[12.5px] text-warning">
+          {status.disabled_reason}
+        </p>
+      )}
+      <p className="text-[12.5px] text-muted-foreground">
+        {connected
+          ? "Connected. Choose what syncs, check sync status, or disconnect on its settings page."
+          : "Connecting opens the provider's consent screen. Nothing syncs until you pick what to include."}
+      </p>
+      <div className="flex flex-wrap items-center gap-2">
+        {!connected && onConnect && (
+          <Button size="sm" disabled={busy} onClick={onConnect}>
+            {busy ? "Connecting…" : `Connect ${connector.label}`}
+          </Button>
+        )}
+        <Button asChild size="sm" variant={connected || !onConnect ? "secondary" : "ghost"}>
+          <Link href={`/integrations/${connector.provider}`}>
+            {connected ? "Manage sources" : `Open ${connector.label} settings`}
+          </Link>
+        </Button>
+      </div>
     </div>
   );
 }
@@ -253,7 +299,7 @@ export default function IntegrationsPage() {
     // integrations like Heavi) — extension connectors are always available.
     const connectors = CONNECTORS.filter((c) => c.kind === "extension" || c.provider in statuses);
 
-    const sourceBoxes: Box[] = connectors.map((c) => {
+    const sourceBoxes: Omit<Box, "action">[] = connectors.map((c) => {
       const connected = isConnected(c);
       const status = statuses[c.provider];
       const oauth =
@@ -267,29 +313,24 @@ export default function IntegrationsPage() {
         active: connected,
         tier: PERSONAL_PROVIDERS.has(c.provider) ? TIER.personal : TIER.work,
         search: `${c.label} ${c.blurb} ${c.provider} source`,
-        action: connected ? (
-          <Button asChild variant="ghost" size="sm" className="self-start px-2">
-            <Link href={`/integrations/${c.provider}`}>Manage</Link>
-          </Button>
-        ) : oauth ? (
-          <Button
-            size="sm"
-            variant="secondary"
-            className="self-start"
-            disabled={busy === c.provider}
-            onClick={() => void connectNow(c)}
-          >
-            {busy === c.provider ? "Connecting…" : "Connect"}
-          </Button>
-        ) : (
-          <Button asChild size="sm" variant="secondary" className="self-start">
-            <Link href={`/integrations/${c.provider}`}>Connect</Link>
-          </Button>
-        ),
+        actionLabel: connected ? "Manage" : "Connect",
+        dialog: {
+          title: c.label,
+          description: c.blurb,
+          body: (
+            <ConnectorDialogBody
+              connector={c}
+              status={status}
+              connected={connected}
+              busy={busy === c.provider}
+              onConnect={oauth ? () => void connectNow(c) : null}
+            />
+          ),
+        },
       };
     });
 
-    const browserBox: Box = {
+    const browserBox: Omit<Box, "action"> = {
       key: "browser",
       name: "Stash for Chrome",
       direction: "in",
@@ -298,11 +339,24 @@ export default function IntegrationsPage() {
       active: false,
       tier: TIER.personal,
       search: "browser chrome extension clip bookmarks tabs",
-      action: (
-        <Button asChild size="sm" variant="secondary" className="self-start">
-          <Link href="/extension">Install</Link>
-        </Button>
-      ),
+      actionLabel: "Connect",
+      dialog: {
+        title: "Stash for Chrome",
+        description: "Save from the browser without leaving the page.",
+        body: (
+          <div className="flex min-w-0 flex-col gap-3">
+            <ul className="flex list-disc flex-col gap-1 pl-4 text-[12.5px] text-muted-foreground">
+              <li>Clip any page, or every open tab at once.</li>
+              <li>Import your bookmarks — Stash fetches what&apos;s behind each link.</li>
+              <li>Keep your X and Instagram saves in sync.</li>
+              <li>Stream your ChatGPT and Claude chats in.</li>
+            </ul>
+            <Button asChild size="sm" className="self-start">
+              <Link href="/extension">Get the extension</Link>
+            </Button>
+          </div>
+        ),
+      },
     };
 
     const serverBoxes: Omit<Box, "action">[] = servers.map((s) => ({
@@ -364,7 +418,7 @@ export default function IntegrationsPage() {
       },
     }));
 
-    const addServerBox: Box = {
+    const addServerBox: Omit<Box, "action"> = {
       key: "mcp:add",
       name: "Custom MCP server",
       direction: "in",
@@ -374,16 +428,8 @@ export default function IntegrationsPage() {
       tier: TIER.work,
       sortLast: true,
       search: "custom mcp server add tool",
-      action: (
-        <Button
-          size="sm"
-          variant="secondary"
-          className="self-start"
-          onClick={() => setAddingServer(true)}
-        >
-          Add
-        </Button>
-      ),
+      actionLabel: "Add",
+      onAction: () => setAddingServer(true),
     };
 
     // A coding agent is two integrations wearing one name, so it gets a box
@@ -393,7 +439,7 @@ export default function IntegrationsPage() {
         key: `agent:${d}:${agent.binary}`,
         name: AGENT_COPY[d].label(agent.name),
         direction: d,
-        blurb: AGENT_COPY[d].blurb,
+        blurb: AGENT_COPY[d].blurb(agent.name),
         icon: agent.icon,
         active: false,
         tier: TIER.agents,
@@ -401,7 +447,7 @@ export default function IntegrationsPage() {
         dialog: {
           title: AGENT_COPY[d].title(agent.name),
           description: AGENT_COPY[d].description,
-          body: agentDialogBody(agent, d),
+          body: agentDialogBody(d),
         },
       })),
     );
@@ -420,16 +466,28 @@ export default function IntegrationsPage() {
 
     // Every box that opens a dialog gets its button built here, so the grid
     // can't sprout a different shape of action per box type.
-    const withDialogs: Box[] = [...serverBoxes, ...agentBoxes, ...outputBoxes].map((b) => ({
+    const withDialogs: Box[] = [
+      ...sourceBoxes,
+      browserBox,
+      addServerBox,
+      ...serverBoxes,
+      ...agentBoxes,
+      ...outputBoxes,
+    ].map((b) => ({
       ...b,
       action: (
-        <Button size="sm" variant="secondary" className="self-start" onClick={() => setOpen({ ...b, action: null })}>
+        <Button
+          size="sm"
+          variant="secondary"
+          className="self-start"
+          onClick={() => (b.onAction ? b.onAction() : setOpen({ ...b, action: null }))}
+        >
           {b.actionLabel ?? "Connect"}
         </Button>
       ),
     }));
 
-    return [...sourceBoxes, browserBox, addServerBox, ...withDialogs].sort(
+    return [...withDialogs].sort(
       (a, b) =>
         a.tier - b.tier ||
         Number(!!a.sortLast) - Number(!!b.sortLast) ||
