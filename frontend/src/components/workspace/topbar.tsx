@@ -2,8 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { Search } from "lucide-react";
+import { usePathname, useRouter } from "next/navigation";
+import { ArrowLeft, ArrowRight, Search } from "lucide-react";
 import CommandPalette from "@/components/CommandPalette";
 import { StashIcon } from "@/components/SkillIcons";
 import { useFilesSearch } from "@/components/content/flat-files/search-store";
@@ -15,6 +15,7 @@ import ScopeSwitcher from "./scope-switcher";
  *  live instead of opening the palette. */
 export default function Topbar() {
   const pathname = usePathname();
+  const router = useRouter();
   const [cmdkOpen, setCmdkOpen] = useState(false);
   const searchBarRef = useRef<HTMLDivElement>(null);
   const filesInputRef = useRef<HTMLInputElement>(null);
@@ -43,6 +44,28 @@ export default function Topbar() {
           <span className="text-[15px] font-semibold tracking-tight text-foreground">Stash</span>
         </Link>
         <ScopeSwitcher />
+        {/* IDE-style history nav: back is "wherever I just was", not "up a
+            level" — the same arrows VS Code keeps beside its command center. */}
+        <div className="flex items-center">
+          <button
+            type="button"
+            onClick={() => router.back()}
+            aria-label="Go back"
+            title="Go back"
+            className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-raised hover:text-foreground"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => router.forward()}
+            aria-label="Go forward"
+            title="Go forward"
+            className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-raised hover:text-foreground"
+          >
+            <ArrowRight className="h-4 w-4" />
+          </button>
+        </div>
       </div>
       <div className="flex min-w-0 flex-1 justify-center">
         <div ref={searchBarRef} className="w-full max-w-2xl">

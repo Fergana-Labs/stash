@@ -1,9 +1,8 @@
 "use client";
 
 import { useEffect } from "react";
-import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, X, SplitSquareHorizontal, PanelRightClose, Plus, Bot, Plug, FileText } from "lucide-react";
+import { X, SplitSquareHorizontal, PanelRightClose, Plus, Bot, Plug, FileText } from "lucide-react";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
@@ -15,19 +14,6 @@ import { PageIcon, FileIcon, TableIcon, SessionsIcon, SkillIcon, FolderIcon } fr
 import TabBody from "./tab-body";
 
 const TAB_DND = "application/x-wb-tab";
-
-// Tab kinds opened from the flat Files list — every one gets the "← Files"
-// back button in the action bar (there are no breadcrumbs; the list is the
-// only way things are found). Tool and agent tabs belong to other sections.
-const FILES_BACK_KINDS: WorkbenchTab["kind"][] = [
-  "page",
-  "file",
-  "table",
-  "session",
-  "sessions-home",
-  "skill",
-  "folder",
-];
 
 function TabIcon({ kind }: { kind: WorkbenchTab["kind"] }) {
   const cls = "text-[13px]";
@@ -95,8 +81,6 @@ function TabPane({ pane }: { pane: 0 | 1 }) {
   const paneTabs = tabs.filter((t) => (paneOf[t.id] ?? 0) === pane);
   const activeId = pane === 0 ? activeTabId : activeTab1;
   const { shareAction } = useShellChromeValue(activeId ?? undefined);
-  const activePaneTab = paneTabs.find((t) => t.id === activeId);
-  const showFilesBack = pane === 0 && !!activePaneTab && FILES_BACK_KINDS.includes(activePaneTab.kind);
 
   // Keep ?section= when refocusing a tab — the explorer sidebar's section is
   // derived from the URL, and switching tabs must never move the sidebar.
@@ -178,21 +162,9 @@ function TabPane({ pane }: { pane: 0 | 1 }) {
           )}
         </div>
       </div>
-      {(shareAction || showFilesBack) && (
-        <div className="flex h-10 shrink-0 items-center justify-between gap-2 border-b border-border bg-base px-3">
-          {showFilesBack ? (
-            <Link
-              href="/files"
-              className="flex items-center gap-1.5 rounded-md px-1.5 py-1 text-[13px] text-muted-foreground hover:bg-raised hover:text-foreground"
-              title="Back to all files"
-            >
-              <ArrowLeft className="h-3.5 w-3.5" />
-              Files
-            </Link>
-          ) : (
-            <span />
-          )}
-          <div className="flex items-center gap-2">{shareAction}</div>
+      {shareAction && (
+        <div className="flex h-10 shrink-0 items-center justify-end gap-2 border-b border-border bg-base px-3">
+          {shareAction}
         </div>
       )}
       <div className="min-h-0 flex-1 overflow-hidden">
