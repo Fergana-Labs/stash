@@ -56,18 +56,18 @@ describe("Rail", () => {
     const labels = Array.from(document.querySelectorAll("[aria-label]")).map((el) =>
       el.getAttribute("aria-label"),
     );
-    expect(labels).toEqual(["Integrations", "Home", "Viz", "VFS", "Chat", "Settings"]);
+    expect(labels).toEqual(["Integrations", "Home", "Viz", "Files", "Chat", "Settings"]);
   });
 
-  it("shows sessions as part of the VFS, not a section of their own", () => {
+  it("shows sessions as part of Files, not a section of their own", () => {
     renderAt("/sessions/abc");
-    expect(currentSection()).toBe("VFS");
+    expect(currentSection()).toBe("Files");
     expect(screen.queryByLabelText("Sessions")).toBeNull();
   });
 
-  it("shows an opened skill as part of the VFS", () => {
+  it("shows an opened skill as part of Files", () => {
     renderAt("/skills/folder/abc");
-    expect(currentSection()).toBe("VFS");
+    expect(currentSection()).toBe("Files");
     expect(screen.queryByLabelText("Skills")).toBeNull();
   });
 

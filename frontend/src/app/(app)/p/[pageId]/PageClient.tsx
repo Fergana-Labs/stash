@@ -622,7 +622,6 @@ export default function SkillPageView({ pageId }: { pageId: string }) {
       <FileViewerHeader
         icon={isHtml ? <HtmlGlyph /> : <PageGlyph />}
         iconColor={isHtml ? "var(--color-brand-600)" : "var(--text-muted)"}
-        breadcrumbs={ancestorCrumbs}
         title={baseName}
         onRenameTitle={
           page

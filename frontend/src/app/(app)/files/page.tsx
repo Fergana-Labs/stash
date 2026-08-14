@@ -4,14 +4,14 @@ import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { useBreadcrumbs } from "@/components/BreadcrumbContext";
 import { FileBrowserSkeleton } from "@/components/SkeletonStates";
-import FilesOverview from "@/components/content/files-overview/FilesOverview";
+import FlatFilesPage from "@/components/content/flat-files/FlatFilesPage";
 import { useAuth } from "@/hooks/useAuth";
 
 export default function FilesPage() {
   const router = useRouter();
   const { user, loading } = useAuth();
 
-  useBreadcrumbs([{ label: "VFS" }], "files");
+  useBreadcrumbs([{ label: "Files" }], "files");
 
   useEffect(() => {
     if (!loading && !user) router.push("/login");
@@ -20,5 +20,5 @@ export default function FilesPage() {
   if (loading) return <FileBrowserSkeleton />;
   if (!user) return null;
 
-  return <FilesOverview />;
+  return <FlatFilesPage />;
 }

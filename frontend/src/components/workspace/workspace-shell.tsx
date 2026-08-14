@@ -16,12 +16,11 @@ const MIN_W = 220;
 const MAX_W = 600;
 const EXPLORER_SECTIONS: ExplorerSection[] = ["files", "agents", "integrations", "computer"];
 
-// Only the VFS keeps the tree sidebar. Integrations and Agents render
-// full-width — the explorers were a second nav axis over the same content as
-// the rail, and the two looked independent. Agents brings its own
-// ChatGPT-style chat list; the VM (browser) keeps its panel because that
-// content lives nowhere else.
-const PANELLED_SECTIONS: ExplorerSection[] = ["files", "computer"];
+// Only the VM (browser) keeps a docked panel — that content lives nowhere
+// else. Files is a flat searchable list at /files with full-width detail
+// views; Integrations and Agents render full-width for the same reason the
+// explorers were dropped: a second nav axis over the rail's content.
+const PANELLED_SECTIONS: ExplorerSection[] = ["computer"];
 
 /** Resizable explorer panel — drag the right edge to set width (persisted). */
 function ExplorerPanel({ section }: { section: ExplorerSection }) {
@@ -139,10 +138,10 @@ export default function WorkspaceShell({
     setLastVfsUrl(query ? `${pathname}?${query}` : pathname);
   }, [section, pathname, searchParams, setLastVfsUrl]);
 
-  // /files IS a file tree — showing the explorer's tree beside it would be
-  // the same thing twice. An explicit ?section= still summons the panel.
+  // /files is the flat list itself; it renders as a plain full page, not
+  // inside the workbench chrome.
   const isFilesHome = pathname === "/files" && !selectedSection;
-  const showExplorer = section !== null && PANELLED_SECTIONS.includes(section) && !isFilesHome;
+  const showExplorer = section !== null && PANELLED_SECTIONS.includes(section);
 
   return (
     // Chrome surface — the content panel floats on top of it.

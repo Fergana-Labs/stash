@@ -29,7 +29,7 @@ from ..services import (
 
 router = APIRouter(prefix="/api/v1/me", tags=["me"])
 
-SIDEBAR_ETAG_VERSION = "sidebar-skill-folders-v4"
+SIDEBAR_ETAG_VERSION = "sidebar-page-agent-v5"
 
 
 # ---------------------------------------------------------------------------
@@ -84,7 +84,8 @@ async def _files_tree(owner_user_id: UUID, user_id: UUID) -> dict:
             user_id,
         ),
         pool.fetch(
-            "SELECT p.id, p.name, p.content_type, p.folder_id, p.created_at, p.updated_at "
+            "SELECT p.id, p.name, p.content_type, p.folder_id, p.created_at, p.updated_at, "
+            "       p.last_edit_agent_name "
             "FROM pages p "
             f"WHERE p.owner_user_id = $1 AND p.deleted_at IS NULL AND {readable_page} "
             "ORDER BY p.name",
@@ -129,6 +130,7 @@ async def _files_tree(owner_user_id: UUID, user_id: UUID) -> dict:
                 "folder_id": str(r["folder_id"]) if r["folder_id"] else None,
                 "created_at": r["created_at"],
                 "updated_at": r["updated_at"],
+                "last_edit_agent_name": r["last_edit_agent_name"],
             }
             for r in page_rows
         ],

@@ -246,7 +246,6 @@ function FileViewerPageInner({ fileId }: { fileId: string }) {
         <FileViewerHeader
           icon={<KindGlyph contentType={file?.content_type ?? ""} name={file?.name ?? ""} />}
           iconColor={kindIconColor(file?.content_type ?? "")}
-          breadcrumbs={ancestorCrumbs}
           title={file?.name ?? "File"}
           onRenameTitle={
             file
