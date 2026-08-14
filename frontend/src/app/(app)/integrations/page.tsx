@@ -55,14 +55,27 @@ import { cn } from "@/lib/utils";
 // vocabulary to learn on top of the boxes themselves.
 type Direction = "in" | "out";
 
+// The list reads in the order a team adopts Stash: the agents they already
+// run, then the tools their work lives in, then the personal accounts they
+// save to.
+const TIER = { agents: 0, work: 1, personal: 2 };
+
+// Consumer accounts — the "save your own stuff" end of the list rather than
+// the ones a team wires up first.
+const PERSONAL_PROVIDERS = new Set(["x", "instagram"]);
+
 type Box = {
   key: string;
   name: string;
   direction: Direction;
   blurb: string;
   icon: ReactNode;
-  /** Connected boxes sort to the front — what you have before what you could add. */
+  /** Connected boxes sort to the front of their tier. */
   active: boolean;
+  /** Which band of the list this belongs to; see TIER. */
+  tier: number;
+  /** Sorts to the end of its tier — for the "add one" affordance. */
+  sortLast?: boolean;
   /** Everything the search field matches against. */
   search: string;
   /** Setup instructions, for boxes whose action is "Set up". */
@@ -241,6 +254,7 @@ export default function IntegrationsPage() {
         blurb: c.blurb,
         icon: connectorIcon(c.provider),
         active: connected,
+        tier: PERSONAL_PROVIDERS.has(c.provider) ? TIER.personal : TIER.work,
         search: `${c.label} ${c.blurb} ${c.provider} source`,
         action: connected ? (
           <Button asChild variant="ghost" size="sm" className="self-start px-2">
@@ -271,6 +285,7 @@ export default function IntegrationsPage() {
       blurb: "Clip any page or every open tab, import your bookmarks, keep your saves in sync.",
       icon: <TileIcon icon={Globe} />,
       active: false,
+      tier: TIER.personal,
       search: "browser chrome extension clip bookmarks tabs",
       action: (
         <Button asChild size="sm" variant="secondary" className="self-start">
@@ -290,6 +305,7 @@ export default function IntegrationsPage() {
           : ""),
       icon: <TileIcon icon={s.transport === "stdio" ? SquareTerminal : Globe} />,
       active: true,
+      tier: TIER.work,
       search: `${s.name} mcp server tool ${s.url ?? ""} ${s.command ?? ""}`,
       action: (
         <Button
@@ -310,6 +326,8 @@ export default function IntegrationsPage() {
       blurb: "Register any MCP server and your cloud agent gets it before every turn.",
       icon: <TileIcon icon={Plus} />,
       active: false,
+      tier: TIER.work,
+      sortLast: true,
       search: "custom mcp server add tool",
       action: (
         <Button
@@ -333,6 +351,7 @@ export default function IntegrationsPage() {
         blurb: AGENT_COPY[d].blurb,
         icon: <TileIcon icon={Bot} />,
         active: false,
+        tier: TIER.agents,
         search: `${agent.name} ${agent.binary} coding agent`,
         dialog: {
           title: AGENT_COPY[d].title(agent.name),
@@ -349,6 +368,7 @@ export default function IntegrationsPage() {
       blurb: s.blurb,
       icon: <TileIcon icon={s.icon} />,
       active: false,
+      tier: TIER.work,
       search: `${s.name} ${s.blurb} ${s.keywords}`,
       dialog: { title: s.name, description: s.blurb, body: s.body },
     }));
@@ -366,8 +386,9 @@ export default function IntegrationsPage() {
 
     return [...sourceBoxes, browserBox, ...serverBoxes, addServerBox, ...withSetup].sort(
       (a, b) =>
+        a.tier - b.tier ||
+        Number(!!a.sortLast) - Number(!!b.sortLast) ||
         Number(b.active) - Number(a.active) ||
-        a.direction.localeCompare(b.direction) ||
         a.name.localeCompare(b.name),
     );
   }, [statuses, servers, busy, isConnected, connectNow, removeServer]);
