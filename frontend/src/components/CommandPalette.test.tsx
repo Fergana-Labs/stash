@@ -57,6 +57,8 @@ const sidebar = {
         name: "Launch Roadmap.md",
         content_type: "markdown" as const,
         folder_id: null,
+        updated_at: "2026-01-01T00:00:00Z",
+        last_edit_agent_name: null,
       },
     ],
     files: [],

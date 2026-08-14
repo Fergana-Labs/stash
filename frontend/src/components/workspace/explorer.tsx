@@ -12,7 +12,6 @@ import { CONNECTORS, connectorIcon, providerForSourceType } from "@/components/i
 import { INTEGRATIONS_CHANGED_EVENT, listIntegrations } from "@/lib/integrations";
 import { opensNewTab } from "@/lib/tab-nav";
 import FilesExplorer, { type Item } from "./files-explorer";
-import VfsTree from "./vfs-tree";
 
 export type ExplorerSection = "files" | "sessions" | "skills" | "agents" | "integrations" | "computer";
 
@@ -344,9 +343,6 @@ export default function Explorer({ section }: { section: ExplorerSection }) {
   const createSessionFolderItem = useCallback(async () => { await createSessionFolder("New folder"); }, []);
 
   if (section === "agents") return <AgentsExplorer />;
-
-  // The VFS section docks the same tree the /files lens shows full-screen.
-  if (section === "files") return <VfsTree />;
 
   // Skills & Sessions are file managers (own breadcrumb/toolbar).
   if ((section === "skills" || section === "sessions") && !atRoot) {

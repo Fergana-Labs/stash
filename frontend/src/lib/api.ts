@@ -1883,6 +1883,9 @@ export interface TreePage {
   name: string;
   content_type: "markdown" | "html";
   folder_id: string | null;
+  updated_at: string;
+  /** Agent that made the last edit; null when a human edited last. */
+  last_edit_agent_name: string | null;
 }
 export interface TreeFile {
   id: string;
