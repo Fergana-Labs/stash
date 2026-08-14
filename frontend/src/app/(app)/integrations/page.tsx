@@ -436,7 +436,7 @@ export default function IntegrationsPage() {
                   : "border-border bg-surface text-muted-foreground hover:text-foreground",
               )}
             >
-              {d === "in" ? "→ Flowing in" : "Flowing out →"}
+              {d === "in" ? "Inputs" : "Outputs"}
             </button>
           ))}
           <span className="ml-auto font-mono text-[11.5px] text-muted-foreground">
@@ -481,7 +481,7 @@ export default function IntegrationsPage() {
                   className="font-medium text-brand-600 hover:underline"
                 >
                   {elsewhere} {elsewhere === 1 ? "match" : "matches"} in{" "}
-                  {direction === "in" ? "Flowing out" : "Flowing in"} →
+                  {direction === "in" ? "Outputs" : "Inputs"} →
                 </button>
               </>
             )}
