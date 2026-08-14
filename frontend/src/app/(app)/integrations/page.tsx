@@ -79,8 +79,10 @@ type Box = {
   sortLast?: boolean;
   /** Everything the search field matches against. */
   search: string;
-  /** Setup instructions, for boxes whose action is "Set up". */
+  /** What the dialog holds: setup steps, or an integration's own settings. */
   dialog?: { title: string; description: string; body: ReactNode };
+  /** Verb on the button that opens the dialog. */
+  actionLabel?: string;
   action: ReactNode;
 };
 
@@ -288,7 +290,7 @@ export default function IntegrationsPage() {
       ),
     };
 
-    const serverBoxes: Box[] = servers.map((s) => ({
+    const serverBoxes: Omit<Box, "action">[] = servers.map((s) => ({
       key: `mcp:${s.id}`,
       name: s.name,
       direction: "in",
@@ -301,16 +303,51 @@ export default function IntegrationsPage() {
       active: true,
       tier: TIER.work,
       search: `${s.name} mcp server tool ${s.url ?? ""} ${s.command ?? ""}`,
-      action: (
-        <Button
-          variant="ghost"
-          size="sm"
-          className="self-start px-2"
-          onClick={() => void removeServer(s.id)}
-        >
-          Remove
-        </Button>
-      ),
+      actionLabel: "Manage",
+      dialog: {
+        title: s.name,
+        description: "An MCP server your cloud agent can call before every turn.",
+        body: (
+          <div className="flex min-w-0 flex-col gap-3">
+            <dl className="flex flex-col gap-2 text-[12.5px]">
+              <div className="flex gap-2">
+                <dt className="w-20 shrink-0 text-muted-foreground">Transport</dt>
+                <dd className="font-mono">
+                  {s.transport === "stdio" ? "Local (stdio)" : "Remote (HTTP)"}
+                </dd>
+              </div>
+              <div className="flex gap-2">
+                <dt className="w-20 shrink-0 text-muted-foreground">
+                  {s.transport === "stdio" ? "Command" : "URL"}
+                </dt>
+                <dd className="min-w-0 break-all font-mono">
+                  {s.transport === "stdio" ? s.command : s.url}
+                </dd>
+              </div>
+              {Object.keys(s.headers).length > 0 && (
+                <div className="flex gap-2">
+                  <dt className="w-20 shrink-0 text-muted-foreground">Headers</dt>
+                  {/* Values are secrets — the registry only ever shows key names. */}
+                  <dd className="min-w-0 break-all font-mono">
+                    {Object.keys(s.headers).join(", ")}
+                  </dd>
+                </div>
+              )}
+            </dl>
+            <Button
+              variant="destructive"
+              size="sm"
+              className="self-start"
+              onClick={async () => {
+                await removeServer(s.id);
+                setOpen(null);
+              }}
+            >
+              Remove server
+            </Button>
+          </div>
+        ),
+      },
     }));
 
     const addServerBox: Box = {
@@ -337,7 +374,7 @@ export default function IntegrationsPage() {
 
     // A coding agent is two integrations wearing one name, so it gets a box
     // per direction with the half that applies.
-    const agentBoxes = (["in", "out"] as const).flatMap((d) =>
+    const agentBoxes: Omit<Box, "action">[] = (["in", "out"] as const).flatMap((d) =>
       CODING_AGENTS.map((agent) => ({
         key: `agent:${d}:${agent.binary}`,
         name: agent.name,
@@ -355,7 +392,7 @@ export default function IntegrationsPage() {
       })),
     );
 
-    const outputBoxes = OUTPUT_SURFACES.map((s) => ({
+    const outputBoxes: Omit<Box, "action">[] = OUTPUT_SURFACES.map((s) => ({
       key: `out:${s.key}`,
       name: s.name,
       direction: "out" as const,
@@ -367,18 +404,18 @@ export default function IntegrationsPage() {
       dialog: { title: s.name, description: s.blurb, body: s.body },
     }));
 
-    // Every box whose action is a dialog gets the same button, so the grid
-    // doesn't sprout a different verb per box type.
-    const withSetup: Box[] = [...agentBoxes, ...outputBoxes].map((b) => ({
+    // Every box that opens a dialog gets its button built here, so the grid
+    // can't sprout a different shape of action per box type.
+    const withDialogs: Box[] = [...serverBoxes, ...agentBoxes, ...outputBoxes].map((b) => ({
       ...b,
       action: (
-        <Button size="sm" variant="secondary" className="self-start" onClick={() => setOpen(b as Box)}>
-          Set up
+        <Button size="sm" variant="secondary" className="self-start" onClick={() => setOpen({ ...b, action: null })}>
+          {b.actionLabel ?? "Set up"}
         </Button>
       ),
     }));
 
-    return [...sourceBoxes, browserBox, ...serverBoxes, addServerBox, ...withSetup].sort(
+    return [...sourceBoxes, browserBox, addServerBox, ...withDialogs].sort(
       (a, b) =>
         a.tier - b.tier ||
         Number(!!a.sortLast) - Number(!!b.sortLast) ||

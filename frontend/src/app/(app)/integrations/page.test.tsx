@@ -150,12 +150,18 @@ describe("IntegrationsPage", () => {
     expect(await screen.findByText(/integrations are down/)).toBeTruthy();
   });
 
-  it("removes a server", async () => {
+  // Removing is deliberately behind Manage: the grid's action must never
+  // delete a server in one click, since it sits where every other box has a
+  // harmless navigation.
+  it("removes a server from its manage dialog", async () => {
     vi.mocked(deleteMcpServer).mockResolvedValue(undefined);
     render(<IntegrationsPage />);
     await screen.findByText("linear");
 
-    fireEvent.click(screen.getAllByRole("button", { name: /remove/i })[0]);
+    expect(screen.queryByRole("button", { name: /^remove/i })).toBeNull();
+
+    fireEvent.click(screen.getAllByRole("button", { name: /^manage$/i })[0]);
+    fireEvent.click(await screen.findByRole("button", { name: /remove server/i }));
 
     await waitFor(() => expect(deleteMcpServer).toHaveBeenCalledWith("s1"));
     await waitFor(() => expect(listMcpServers).toHaveBeenCalledTimes(2));
