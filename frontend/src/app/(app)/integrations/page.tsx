@@ -83,20 +83,6 @@ type Box = {
   action: ReactNode;
 };
 
-function DirectionBadge({ direction }: { direction: Direction }) {
-  return (
-    <span
-      className={cn(
-        "shrink-0 rounded-full px-1.5 py-0.5 font-mono text-[10px] font-semibold leading-normal",
-        direction === "in" ? "bg-human/10 text-human" : "bg-chart-5/15 text-warning",
-      )}
-      title={direction === "in" ? "Flows into your stash" : "Reads your stash"}
-    >
-      {direction === "in" ? "→ IN" : "OUT →"}
-    </span>
-  );
-}
-
 function IntegrationBox({ box, onOpen }: { box: Box; onOpen?: () => void }) {
   return (
     <div className="flex flex-col gap-2.5 rounded-xl border border-border bg-surface p-4">
@@ -117,7 +103,6 @@ function IntegrationBox({ box, onOpen }: { box: Box; onOpen?: () => void }) {
             {box.name}
           </span>
         )}
-        <DirectionBadge direction={box.direction} />
       </div>
 
       <p className="min-h-[34px] break-words text-[12.5px] leading-snug text-muted-foreground">
