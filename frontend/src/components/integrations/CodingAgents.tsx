@@ -38,12 +38,14 @@ const INSTALL_COMMAND = `bash -c "$(curl -fsSL https://joinstash.ai/install)"`;
 // "Claude Code: connected" would be a guess dressed as a fact.
 export const AGENT_COPY = {
   in: {
+    label: (name: string) => `${name} transcripts`,
     blurb: "Its sessions land in your stash as transcripts, searchable like anything else.",
     title: (name: string) => `Record ${name} sessions`,
     description:
       "One command turns on session recording for every coding agent on your machine, this one included.",
   },
   out: {
+    label: (name: string) => `${name} access`,
     blurb: "Give it read access to everything in your stash while it works.",
     title: (name: string) => `Give ${name} access`,
     description: "Two ways in, depending on what the agent speaks.",

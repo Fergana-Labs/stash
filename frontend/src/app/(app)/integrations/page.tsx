@@ -377,7 +377,7 @@ export default function IntegrationsPage() {
     const agentBoxes: Omit<Box, "action">[] = (["in", "out"] as const).flatMap((d) =>
       CODING_AGENTS.map((agent) => ({
         key: `agent:${d}:${agent.binary}`,
-        name: agent.name,
+        name: AGENT_COPY[d].label(agent.name),
         direction: d,
         blurb: AGENT_COPY[d].blurb,
         icon: agent.icon,
@@ -491,7 +491,7 @@ export default function IntegrationsPage() {
             </button>
           ))}
           {connectedCount > 0 && (
-            <span className="ml-auto font-mono text-[11.5px] text-muted-foreground">
+            <span className="ml-auto text-[12.5px] text-muted-foreground">
               {connectedCount} connected
             </span>
           )}
