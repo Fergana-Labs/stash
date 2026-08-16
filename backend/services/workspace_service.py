@@ -58,6 +58,12 @@ async def create_workspace(name: str, domain: str) -> dict:
         scope_user["id"],
     )
     await user_scope_service.seed_user_scope(scope_user["id"])
+
+    # The team's Memory wiki: the workspace scope gets its own nightly curator,
+    # which learns from the scope's content plus members' team-visible sessions.
+    from . import agent_service
+
+    await agent_service.get_or_create_curator(scope_user["id"])
     return dict(workspace)
 
 

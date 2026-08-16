@@ -20,6 +20,7 @@ import {
   listSkills,
   materializeSession,
   renameSession,
+  setSessionTeamMemory,
   trashItem,
   type SessionDetail,
   type SessionEvent,
@@ -162,6 +163,38 @@ export default function SessionViewerPage({ sessionId }: { sessionId: string }) 
           >
             Resume in chat →
           </Link>
+        )}
+        {sessionDetail.owner_user_id === user.id && (
+          // Owner-only: excluding a session from team learning is personal
+          // consent, flipped here (or the command center) and nowhere else.
+          <button
+            type="button"
+            onClick={async () => {
+              const next = !sessionDetail.team_memory_excluded;
+              try {
+                await setSessionTeamMemory(sessionId, next);
+                setSessionDetail((prev) =>
+                  prev ? { ...prev, team_memory_excluded: next } : prev
+                );
+              } catch (e) {
+                setError(e instanceof Error ? e.message : "Update failed");
+              }
+            }}
+            className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-[12.5px] font-medium ${
+              sessionDetail.team_memory_excluded
+                ? "bg-amber-600 text-white hover:bg-amber-700"
+                : "border border-border text-foreground hover:bg-surface-hover"
+            }`}
+            title={
+              sessionDetail.team_memory_excluded
+                ? "Excluded — your team's wiki and skills never learn from this session"
+                : "This session feeds your team's distilled memory — click to exclude it"
+            }
+          >
+            {sessionDetail.team_memory_excluded
+              ? "Excluded from team memory"
+              : "In team memory"}
+          </button>
         )}
         <ResourceShareButton
           objectType="session"

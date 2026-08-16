@@ -20,6 +20,7 @@ from ..services import (
     files_tree_service,
     linear_ticket_service,
     memory_service,
+    page_provenance_service,
     permission_service,
     security_audit_service,
     session_folder_service,
@@ -68,6 +69,7 @@ def _session_response(row: dict, title: str | None = None) -> dict:
         "started_at": row.get("started_at"),
         "finished_at": row.get("finished_at"),
         "created_by": str(row["created_by"]) if row.get("created_by") else None,
+        "team_memory_excluded": bool(row.get("team_memory_excluded")),
     }
 
 
@@ -166,6 +168,7 @@ async def list_my_sessions(
           he.session_id,
           s.id AS id,
           s.session_folder_id,
+          s.team_memory_excluded,
           sf.name AS session_folder_name,
           he.owner_user_id,
           owner.display_name AS owner_name,
@@ -188,7 +191,7 @@ async def list_my_sessions(
         LEFT JOIN session_folders sf ON sf.id = s.session_folder_id
         WHERE {" AND ".join(where)}
         GROUP BY he.session_id, he.owner_user_id, owner.display_name, s.id, s.session_folder_id,
-          sf.name, title_sources.title_source
+          s.team_memory_excluded, sf.name, title_sources.title_source
         ORDER BY last_event_at DESC, user_name ASC, session_id ASC
         LIMIT {int(limit)} OFFSET {int(offset)}
         """,
@@ -341,6 +344,40 @@ async def rename_my_session(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
     return {"title": title}
+
+
+class SessionTeamMemoryRequest(BaseModel):
+    excluded: bool
+
+
+@router.patch("/me/sessions/{session_id}/team-memory")
+async def set_my_session_team_memory(
+    session_id: str,
+    body: SessionTeamMemoryRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """Exclude one session from (or return it to) the team's collective
+    learning. Sessions participate by default; exclusion is the per-session
+    escape hatch. Consent is personal: only the owner may flip this, so the
+    lookup is pinned to the caller's personal scope."""
+    session = await session_service.get_session(current_user["id"], session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    pool = get_pool()
+    await pool.execute(
+        "UPDATE sessions SET team_memory_excluded = $1 WHERE id = $2",
+        body.excluded,
+        session["id"],
+    )
+    # Opt-out reaches the past: pages already built from this session get
+    # flagged, and the curator's next run rebuilds them without it. The count
+    # comes back so the consent surface can show the flip's consequences.
+    pages_flagged = 0
+    if body.excluded:
+        pages_flagged = await page_provenance_service.flag_pages_for_session(
+            current_user["id"], session_id
+        )
+    return {"team_memory_excluded": body.excluded, "pages_flagged": pages_flagged}
 
 
 async def _check_session_write(

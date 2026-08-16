@@ -413,6 +413,7 @@ class StashClient:
         content_type: str = "markdown",
         content_html: str = "",
         html_layout: str | None = None,
+        source_sessions: list[dict] | None = None,
     ) -> dict:
         body: dict = {
             "name": name,
@@ -424,6 +425,8 @@ class StashClient:
             body["folder_id"] = folder_id
         if html_layout:
             body["html_layout"] = html_layout
+        if source_sessions is not None:
+            body["source_sessions"] = source_sessions
         return self._post("/api/v1/me/pages/new", json=body)
 
     def list_pages(self) -> list:

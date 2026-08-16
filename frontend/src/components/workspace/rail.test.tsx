@@ -1,7 +1,8 @@
-// The rail is the app's whole navigation surface, and its five sections are a
+// The rail is the app's whole navigation surface, and its six sections are a
 // claim about where content lives: Sessions and Skills are VFS mounts, not
-// destinations of their own. If a session route stopped lighting up the VFS
-// button, the user would be inside a section the rail says they aren't in.
+// destinations of their own (Team covers the shared brain + command center).
+// If a session route stopped lighting up the VFS button, the user would be
+// inside a section the rail says they aren't in.
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
@@ -51,12 +52,12 @@ afterEach(() => {
 });
 
 describe("Rail", () => {
-  it("offers exactly the five sections", () => {
+  it("offers exactly the six sections", () => {
     renderAt("/");
     const labels = Array.from(document.querySelectorAll("[aria-label]")).map((el) =>
       el.getAttribute("aria-label"),
     );
-    expect(labels).toEqual(["Integrations", "Home", "Viz", "VFS", "Chat", "Settings"]);
+    expect(labels).toEqual(["Integrations", "Home", "Team", "Viz", "VFS", "Chat", "Settings"]);
   });
 
   it("shows sessions as part of the VFS, not a section of their own", () => {

@@ -8,6 +8,7 @@ import IntegrationsSettings from "../../components/integrations/IntegrationsSett
 import SubscriptionSection from "../../components/settings/SubscriptionSection";
 import AgentModelSection from "../../components/settings/AgentModelSection";
 import ExportSection from "../../components/settings/ExportSection";
+import SessionUploadsSection from "../../components/settings/SessionUploadsSection";
 import { AccountSettingsSkeleton, ApiKeysSkeleton } from "../../components/SkeletonStates";
 import { useAuth } from "../../hooks/useAuth";
 import {
@@ -54,6 +55,7 @@ export default function SettingsPage() {
             </p>
           </div>
           <Profile user={user} onUpdated={refresh} />
+          <SessionUploadsSection user={user} onUpdated={refresh} />
           <SubscriptionSection />
           <AgentModelSection />
           <IntegrationsSettings embedded />

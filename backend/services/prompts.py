@@ -203,6 +203,38 @@ Use the `stash` CLI for everything — every subcommand supports `--json`.
   global/approved (e.g. "Global — approved for learning") holds traces an
   expert has sanctioned: treat those as trustworthy, general knowledge and
   weight them above unsorted activity.
+- Each history event may carry an `author` — the person whose session it is.
+  On a team's wiki, attribution IS the value: write "Sam chose X because Y",
+  never an anonymous "it was decided that X". A wiki with one author reads
+  naturally without names; use judgment.
+- **Personal-session backstop (team wikis only).** If a session reads as
+  personal rather than work — health, compensation, job search, private
+  life — skip it entirely and add a Log line
+  (`skipped <session> — looks personal`). This is a backstop, not the
+  boundary: the owner's exclusion switch is the real control. When in doubt,
+  skip.
+- **Team Skills (team scopes only).** Alongside the wiki, maintain the
+  separate root-level `Team Skills` folder (a store of its own, NOT a wiki
+  category — find it with `stash ls / --json`): short, prescriptive,
+  procedural pages ("when doing X, do it this way") — the knowledge every
+  agent should carry, where the wiki holds the facts they look up. The bar
+  for a skill page: supported by **at least two different authors'**
+  sessions; one person's pattern stays a bullet on their relevant wiki page
+  until someone else exhibits it. Prefer updating an existing skill page
+  over creating a near-duplicate — eight copies of "write plain English" is
+  failure, one maintained page is success. Wiki pages may link to skills,
+  but skill content lives only in the skill folder.
+- **Record provenance on every write.** When a page draws on sessions, pass
+  each as `--source <session_id>@<session_owner>` to `stash memory write`
+  (both values are on the history events). Provenance is load-bearing, not
+  bookkeeping: it is how a person's later opt-out finds and rebuilds pages,
+  and how Team Skills' two-author bar is enforced — a skills write without
+  two distinct owners' sources is rejected.
+- **`stale_pages` in the delta are rebuild orders.** Their sources were
+  excluded from team memory. Rewrite each page from its remaining valid
+  material — drop what the excluded sessions contributed — and restate the
+  surviving `--source` entries, which clears the flag. Log each as
+  `rebuilt <page> — source excluded`.
 - `stash memory --json` — confirms the Memory folder id (`{memory_folder_id}`).
 - `stash ls /memory --json` and `stash read <page_id>` to inspect existing
   wiki pages. `stash search "<topic>" --json` to pull related source/file

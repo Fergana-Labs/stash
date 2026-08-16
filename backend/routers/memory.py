@@ -9,7 +9,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from ..auth import get_current_user, get_scope
+from ..auth import get_current_user, get_scope, require_session_uploads
 from ..config import settings
 from ..models import (
     HistoryEventBatchRequest,
@@ -44,7 +44,7 @@ async def _check_write(owner_user_id: UUID, user_id: UUID) -> None:
 @me_router.post("/events", response_model=HistoryEventResponse, status_code=201)
 async def push_event(
     req: HistoryEventCreateRequest,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_session_uploads),
     scope_user_id: UUID = Depends(get_scope),
 ):
     # Events land in the active scope, same as session rows: personal by
@@ -73,7 +73,7 @@ async def push_event(
 @me_router.post("/events/batch", response_model=list[HistoryEventResponse], status_code=201)
 async def push_events_batch(
     req: HistoryEventBatchRequest,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_session_uploads),
     scope_user_id: UUID = Depends(get_scope),
 ):
     owner_user_id = scope_user_id

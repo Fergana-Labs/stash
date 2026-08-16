@@ -33,6 +33,7 @@ from ..services import (
     comment_service,
     files_tree_service,
     page_events,
+    page_provenance_service,
     permission_service,
     prompts,
     security_audit_service,
@@ -243,15 +244,11 @@ async def recompute_memory(
     from ..services import agent_auth, agent_service, curation_service
     from ..tasks.agent_schedules import run_curator_now
 
-    # A workspace's curator runs on the workspace's own credentials and
-    # schedule; a member's recompute button must not silently rebuild their
-    # personal memory instead.
-    if scope_user_id != current_user["id"]:
-        raise HTTPException(
-            status_code=403,
-            detail="Workspace memory recomputes on the workspace's own schedule.",
-        )
-    user_id = current_user["id"]
+    # In a workspace scope this targets the TEAM's curator (get_scope has
+    # already verified membership); the personal scope targets your own. The
+    # workspace curator runs on the workspace's credentials, so a member's
+    # recompute never rebuilds their personal memory by accident.
+    user_id = scope_user_id
     curator = await agent_service.get_or_create_curator(user_id)
     if not await curation_service.has_changes_since(user_id, user_id, curator["curated_through"]):
         raise HTTPException(status_code=409, detail="Nothing new to curate since the last run.")
@@ -601,6 +598,11 @@ async def create_page(
             current_user["id"],
             require="write",
         )
+    sources = [(s.owner_user_id, s.session_id) for s in req.source_sessions or []]
+    try:
+        await page_provenance_service.enforce_team_skills_bar(req.folder_id, sources)
+    except page_provenance_service.SkillsBarNotMet as e:
+        raise HTTPException(status_code=422, detail=str(e))
     page = await files_tree_service.create_page_unique(
         owner_user_id,
         req.name,
@@ -611,6 +613,8 @@ async def create_page(
         content_html=req.content_html,
         html_layout=req.html_layout,
     )
+    if sources:
+        await page_provenance_service.set_sources(page["id"], sources)
     # The creator just wrote it; the response must not demote the editor.
     return PageResponse(**{**page, "can_write": True})
 
@@ -790,6 +794,29 @@ async def update_page(
             require="write",
         )
 
+    # The skills bar applies when a write moves a page into the Team Skills
+    # folder or restates its sources — not on content-only edits, whose
+    # provenance (and bar) were settled when the page got there.
+    if req.folder_id is not None or req.source_sessions is not None:
+        effective_folder = req.folder_id
+        if effective_folder is None and not req.move_to_root:
+            effective_folder = await get_pool().fetchval(
+                "SELECT folder_id FROM pages WHERE id = $1", page_id
+            )
+        if req.source_sessions is not None:
+            sources = [(s.owner_user_id, s.session_id) for s in req.source_sessions]
+        else:
+            # A move without restated sources is judged on what's recorded.
+            rows = await get_pool().fetch(
+                "SELECT session_owner_user_id, session_id FROM page_sources WHERE page_id = $1",
+                page_id,
+            )
+            sources = [(r["session_owner_user_id"], r["session_id"]) for r in rows]
+        try:
+            await page_provenance_service.enforce_team_skills_bar(effective_folder, sources)
+        except page_provenance_service.SkillsBarNotMet as e:
+            raise HTTPException(status_code=422, detail=str(e))
+
     try:
         page = await files_tree_service.update_page(
             page_id,
@@ -815,6 +842,10 @@ async def update_page(
         )
     if not page:
         raise HTTPException(status_code=404, detail="Page not found")
+    if req.source_sessions is not None:
+        await page_provenance_service.set_sources(
+            page_id, [(s.owner_user_id, s.session_id) for s in req.source_sessions]
+        )
     # Write access was checked above; a save response must not flip the
     # editor read-only by omitting the flag.
     return PageResponse(**{**page, "can_write": True})

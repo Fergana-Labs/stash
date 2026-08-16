@@ -135,8 +135,10 @@ export async function apiFetch<T>(
   if (token) {
     headers["Authorization"] = `Bearer ${token}`;
   }
+  // The switcher's scope is the default; a caller that names a scope in its
+  // own headers (e.g. the Team page reading the team wiki) wins.
   const scopeUserId = getScopeUserId();
-  if (scopeUserId) {
+  if (scopeUserId && !headers[SCOPE_HEADER]) {
     headers[SCOPE_HEADER] = scopeUserId;
   }
 
@@ -215,6 +217,7 @@ export async function updateMe(data: {
   referral_source?: string;
   use_case?: string;
   plan_intent?: string;
+  session_uploads_enabled?: boolean;
 }): Promise<User> {
   return apiFetch("/api/v1/users/me", {
     method: "PATCH",
@@ -1209,6 +1212,7 @@ export interface SessionSummary {
   last_event_at: string;
   session_folder_id: string | null;
   session_folder_name: string | null;
+  team_memory_excluded: boolean | null;
 }
 
 export type GeneralPermission = "none" | "read" | "comment" | "write";
@@ -1355,6 +1359,7 @@ export interface SessionDetail {
   started_at: string | null;
   finished_at: string | null;
   created_by: string | null;
+  team_memory_excluded: boolean;
   artifacts: SessionArtifact[];
 }
 
@@ -1374,6 +1379,133 @@ export async function renameSession(
       body: JSON.stringify({ title }),
     }
   );
+}
+
+// Exclude one of your own sessions from (or return it to) team learning.
+// Sessions feed the team's distilled memory by default; this is the opt-out.
+export async function setSessionTeamMemory(
+  sessionId: string,
+  excluded: boolean
+): Promise<{ team_memory_excluded: boolean; pages_flagged: number }> {
+  return apiFetch(
+    `${ME}/sessions/${encodeURIComponent(sessionId)}/team-memory`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ excluded }),
+    }
+  );
+}
+
+export interface TeamMember {
+  id: string;
+  name: string;
+  display_name: string;
+  email: string | null;
+}
+
+export interface Team {
+  id: string;
+  name: string;
+  domain: string;
+  scope_user_id: string;
+  members: TeamMember[];
+}
+
+// null = the user is not in a workspace (the Team page shows its empty state).
+export async function getMyTeam(): Promise<Team | null> {
+  try {
+    return await apiFetch<Team>(`${ME}/team`);
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 404) return null;
+    throw err;
+  }
+}
+
+export interface TeamWikiFolder {
+  id: string;
+  name: string;
+  folders: TeamWikiFolder[];
+  pages: { id: string; name: string }[];
+}
+
+export interface TeamWikiTree {
+  folders: TeamWikiFolder[];
+  pages: { id: string; name: string }[];
+}
+
+// The team's Memory wiki, read in the workspace's scope. The explicit scope
+// header makes this independent of whatever scope the switcher has active;
+// membership is enforced server-side.
+export async function getTeamMemoryTree(scopeUserId: string): Promise<TeamWikiTree> {
+  return apiFetch(`${ME}/memory-tree`, {
+    headers: { [SCOPE_HEADER]: scopeUserId },
+  });
+}
+
+export interface TeamSkill {
+  id: string;
+  name: string;
+  updated_at: string;
+}
+
+// The team's skill library — separate store from the wiki (experiment):
+// procedural how-tos every agent should carry vs. facts to look up.
+export async function getTeamSkills(): Promise<{ folder_id: string; skills: TeamSkill[] }> {
+  return apiFetch(`${ME}/team/skills`);
+}
+
+// Ask a scope's brain one question, streaming text deltas as they arrive.
+// Used by the Team page with the workspace's scope — "ask the team brain".
+export async function askScopeStream(
+  scopeUserId: string,
+  prompt: string,
+  onDelta: (text: string) => void
+): Promise<void> {
+  const token = await getAuthToken();
+  const res = await fetch(`${API_BASE}${ME}/ask`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      [SCOPE_HEADER]: scopeUserId,
+    },
+    body: JSON.stringify({ messages: [{ role: "user", content: prompt }] }),
+  });
+  if (!res.ok || !res.body) {
+    const body = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new ApiError(res.status, body.detail ?? `API error ${res.status}`);
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const frames = buffer.split("\n\n");
+    buffer = frames.pop() ?? "";
+    for (const frame of frames) {
+      if (!frame.startsWith("data: ")) continue;
+      const event = JSON.parse(frame.slice(6));
+      if (event.type === "text" && event.delta) onDelta(event.delta);
+    }
+  }
+}
+
+export interface TeamMemberStats {
+  id: string;
+  name: string;
+  display_name: string;
+  sessions_total: number;
+  sessions_7d: number;
+  sessions_30d: number;
+  est_tokens_30d: number;
+  last_session_at: string | null;
+}
+
+export async function getTeamAnalytics(): Promise<{ members: TeamMemberStats[] }> {
+  return apiFetch(`${ME}/team/analytics`);
 }
 
 export async function deleteSession(sessionRowId: string): Promise<void> {

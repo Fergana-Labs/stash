@@ -29,6 +29,24 @@ _MAX_SOURCE_DOCS = 100
 _SNIPPET = 280
 
 
+def _team_shared_event_condition(event_alias: str, scope_arg: int) -> str:
+    """Events of members' sessions that feed team learning, when the scope
+    ${scope_arg} is a workspace. Consent is input-side and opt-out: every
+    member session participates unless its owner excluded it. For a personal
+    scope the workspaces join matches nothing and the branch is inert."""
+    from .permission_service import _workspace_member_condition_expr
+
+    owner_is_member = _workspace_member_condition_expr("team_ws", "team_s.owner_user_id")
+    return (
+        f"EXISTS (SELECT 1 FROM sessions team_s "
+        f"JOIN workspaces team_ws ON team_ws.scope_user_id = ${scope_arg} "
+        f"WHERE team_s.owner_user_id = {event_alias}.owner_user_id "
+        f"AND team_s.session_id = {event_alias}.session_id "
+        f"AND NOT team_s.team_memory_excluded AND team_s.deleted_at IS NULL "
+        f"AND {owner_is_member})"
+    )
+
+
 async def has_changes_since(owner_user_id: UUID, user_id: UUID, since: datetime | None) -> bool:
     """True if anything the curator cares about changed after `since`. A cheap
     gate — the beat task skips a curator run (and the sprite wake) when False."""
@@ -36,12 +54,14 @@ async def has_changes_since(owner_user_id: UUID, user_id: UUID, since: datetime 
         return True  # never curated → bootstrap.
     pool = get_pool()
     memory_ids = await files_tree_service.memory_subtree_folder_ids(owner_user_id)
+    team_shared = _team_shared_event_condition("he", 1)
     exists = await pool.fetchval(
-        """
+        f"""
         SELECT
-          EXISTS (SELECT 1 FROM history_events
-                  WHERE owner_user_id = $1 AND created_at > $2
-                    AND (session_id IS NULL OR session_id NOT LIKE 'agent-curate-%'))
+          EXISTS (SELECT 1 FROM history_events he
+                  WHERE (he.owner_user_id = $1 OR {team_shared})
+                    AND he.created_at > $2
+                    AND (he.session_id IS NULL OR he.session_id NOT LIKE 'agent-curate-%'))
           OR EXISTS (SELECT 1 FROM pages
                      WHERE owner_user_id = $1 AND updated_at > $2
                        AND ($3::uuid[] IS NULL OR folder_id IS NULL
@@ -57,6 +77,9 @@ async def has_changes_since(owner_user_id: UUID, user_id: UUID, since: datetime 
           OR EXISTS (SELECT 1 FROM instagram_save_docs
                      WHERE owner_user_id = $1 AND updated_at > $2
                        AND hydration_status = 'done' AND deleted_at IS NULL)
+          OR EXISTS (SELECT 1 FROM pages
+                     WHERE owner_user_id = $1 AND needs_recuration
+                       AND deleted_at IS NULL)
         """,
         owner_user_id,
         since,
@@ -83,6 +106,10 @@ async def changes_since(owner_user_id: UUID, user_id: UUID, since: datetime | No
             "content": (e.get("content") or "")[:_SNIPPET],
             "created_at": _iso(e.get("created_at")),
             "folder": e.get("folder"),
+            "author": e.get("author"),
+            # For provenance: `--source <session_id>@<session_owner>` when
+            # writing pages built from this event's session.
+            "session_owner": str(e["session_owner"]) if e.get("session_owner") else None,
         }
         for e in events
     ]
@@ -206,6 +233,24 @@ async def changes_since(owner_user_id: UUID, user_id: UUID, since: datetime | No
         for r in save_rows
     ]
 
+    # Pages whose recorded sources were excluded from team memory: the
+    # curator must rebuild each from its remaining material. A page write
+    # that restates sources clears the flag.
+    stale_rows = await pool.fetch(
+        "SELECT id, name, folder_id FROM pages "
+        "WHERE owner_user_id = $1 AND needs_recuration AND deleted_at IS NULL "
+        "ORDER BY updated_at",
+        owner_user_id,
+    )
+    stale_pages = [
+        {
+            "id": str(r["id"]),
+            "name": r["name"],
+            "folder_id": str(r["folder_id"]) if r["folder_id"] else None,
+        }
+        for r in stale_rows
+    ]
+
     all_sources = await source_service.list_sources(owner_user_id, user_id)
     sources = [
         {"source": s.get("source"), "type": s.get("type"), "display_name": s.get("display_name")}
@@ -222,6 +267,7 @@ async def changes_since(owner_user_id: UUID, user_id: UUID, since: datetime | No
             "source_docs": len(source_docs),
             "saves": len(saves),
             "sources": len(sources),
+            "stale_pages": len(stale_pages),
         },
         "history": history,
         "history_has_more": history_has_more,
@@ -230,6 +276,7 @@ async def changes_since(owner_user_id: UUID, user_id: UUID, since: datetime | No
         "source_docs": source_docs,
         "saves": saves,
         "sources": sources,
+        "stale_pages": stale_pages,
     }
 
 
@@ -251,7 +298,13 @@ async def _feed_events(
     folder of expert-sanctioned traces), so the curator must see it."""
     pool = get_pool()
     args: list = [owner_user_id]
-    where = "he.owner_user_id = $1 AND (he.session_id IS NULL OR he.session_id NOT LIKE 'agent-curate-%')"
+    # Own-scope events, plus — when $1 is a workspace scope — events of
+    # member sessions not excluded from team memory. The team wiki learns
+    # from everything members left in.
+    where = (
+        f"(he.owner_user_id = $1 OR {_team_shared_event_condition('he', 1)}) "
+        "AND (he.session_id IS NULL OR he.session_id NOT LIKE 'agent-curate-%')"
+    )
     if since is not None:
         args.append(since)
         where += f" AND he.created_at > ${len(args)}"
@@ -260,11 +313,13 @@ async def _feed_events(
         where += f" AND he.created_at <= ${len(args)}"
     rows = await pool.fetch(
         f"SELECT he.session_id, he.agent_name, he.event_type, he.content, he.created_at, "
-        f"sf.name AS folder "
+        f"he.owner_user_id AS session_owner, "
+        f"sf.name AS folder, author.display_name AS author "
         f"FROM history_events he "
         f"LEFT JOIN sessions s ON s.owner_user_id = he.owner_user_id "
         f"  AND s.session_id = he.session_id "
         f"LEFT JOIN session_folders sf ON sf.id = s.session_folder_id "
+        f"LEFT JOIN users author ON author.id = he.created_by "
         f"WHERE {where} "
         f"ORDER BY he.created_at, he.id LIMIT {limit + 1}",
         *args,

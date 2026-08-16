@@ -3418,6 +3418,12 @@ def memory_write(
         "Missing subfolders are created; a trailing .md is stripped.",
     ),
     content: str = typer.Option(None, "--content", help="Page body. Reads stdin if omitted."),
+    sources: list[str] = typer.Option(
+        None,
+        "--source",
+        help="A session this page draws on, as <session_id>@<owner_uuid>. "
+        "Repeatable. Provenance drives opt-out cleanup and the team-skills bar.",
+    ),
     as_json: bool = typer.Option(False, "--json"),
 ):
     """Create or update a Memory wiki page at a path — the direct write
@@ -3427,6 +3433,17 @@ def memory_write(
     if content is None:
         console.print("[red]No content: pass --content or pipe the body on stdin.[/red]")
         raise typer.Exit(1)
+    source_sessions = None
+    if sources:
+        source_sessions = []
+        for token in sources:
+            session_id, sep, owner = token.partition("@")
+            if not sep or not session_id or not owner:
+                console.print(
+                    f"[red]--source must be <session_id>@<owner_uuid>, got '{token}'[/red]"
+                )
+                raise typer.Exit(1)
+            source_sessions.append({"session_id": session_id, "owner_user_id": owner})
     with _client() as c:
         try:
             page, folder_id, page_name = _resolve_memory_target(c, path)
@@ -3437,10 +3454,19 @@ def memory_write(
             _err(e)
         try:
             if page is None:
-                data = c.create_page(page_name, content=content, folder_id=folder_id)
+                data = c.create_page(
+                    page_name,
+                    content=content,
+                    folder_id=folder_id,
+                    source_sessions=source_sessions,
+                )
                 action = "created"
             else:
-                data = c.update_page(page["id"], content=content)
+                data = c.update_page(
+                    page["id"],
+                    content=content,
+                    **({"source_sessions": source_sessions} if source_sessions is not None else {}),
+                )
                 action = "updated"
         except StashError as e:
             _err(e)

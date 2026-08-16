@@ -18,7 +18,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile
 from fastapi.responses import PlainTextResponse
 
-from ..auth import get_current_user, get_scope
+from ..auth import get_current_user, get_scope, require_session_uploads
 from ..database import get_pool
 from ..services import (
     memory_service,
@@ -54,7 +54,7 @@ async def upload_transcript(
     cwd: str | None = Form(None),
     session_folder_id: UUID | None = Form(None),
     replace: bool = Form(False),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_session_uploads),
     scope_user_id: UUID = Depends(get_scope),
 ):
     """Parse the uploaded JSONL into history_events rows.

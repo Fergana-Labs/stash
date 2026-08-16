@@ -158,6 +158,7 @@ async def update_me(req: UserUpdateRequest, current_user: dict = Depends(get_cur
             referral_source=req.referral_source,
             use_case=req.use_case,
             plan_intent=req.plan_intent,
+            session_uploads_enabled=req.session_uploads_enabled,
         )
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))

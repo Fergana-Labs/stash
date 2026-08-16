@@ -139,9 +139,19 @@ export default function BrainDashboard() {
   return (
     <div className="h-full min-h-0 overflow-y-auto">
       <div className="mx-auto max-w-[1360px] px-8 pb-10 pt-7">
-        <h1 className="font-display text-[22px] font-semibold tracking-tight text-foreground">
-          Welcome back{firstName ? `, ${firstName}` : ""}
-        </h1>
+        <div className="flex items-baseline justify-between gap-4">
+          <h1 className="font-display text-[22px] font-semibold tracking-tight text-foreground">
+            Welcome back{firstName ? `, ${firstName}` : ""}
+          </h1>
+          <div className="flex shrink-0 gap-3 text-[12.5px] text-muted-foreground">
+            <Link href="/activity" className="hover:text-foreground hover:underline">
+              Command center
+            </Link>
+            <Link href="/team" className="hover:text-foreground hover:underline">
+              Team
+            </Link>
+          </div>
+        </div>
 
         {vitals && (
           <div className="mt-4 grid max-w-lg grid-cols-3 gap-3">

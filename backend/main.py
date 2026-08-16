@@ -49,6 +49,7 @@ from .routers import (
     sql,
     tables,
     tasks,
+    team,
     telegram,
     transcripts,
     trash,
@@ -141,6 +142,7 @@ app.include_router(analytics.router)
 app.include_router(marketing.router)
 app.include_router(pastes.router)
 app.include_router(sessions.router)
+app.include_router(team.router)
 app.include_router(trash.router)
 app.include_router(pins.router)
 app.include_router(mcp_servers.router)

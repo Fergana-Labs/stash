@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Bot, FolderTree, Home, Network, Plug, Settings } from "lucide-react";
+import { Bot, FolderTree, Home, Network, Plug, Settings, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
 import { useWorkspace, type RailSection } from "@/lib/workspace-store";
@@ -16,6 +16,7 @@ type RailItem = { key: RailSection; label: string; icon: typeof Bot; match: (p: 
 const PRIMARY: RailItem[] = [
   { key: "integrations", label: "Integrations", icon: Plug, match: (p) => p.startsWith("/integrations") },
   { key: "home", label: "Home", icon: Home, match: (p) => p === "/" },
+  { key: "team", label: "Team", icon: Users, match: (p) => p.startsWith("/team") || p.startsWith("/activity") },
   { key: "viz", label: "Viz", icon: Network, match: (p) => p.startsWith("/viz") },
   { key: "files", label: "VFS", icon: FolderTree, match: (p) => p === "/files" || p.startsWith("/f/") || p.startsWith("/p/") || p.startsWith("/folders/") || p.startsWith("/tables/") || p.startsWith("/sessions") || p.startsWith("/session-folders") || p.startsWith("/skills") },
   { key: "agents", label: "Chat", icon: Bot, match: (p) => p.startsWith("/agents") },
@@ -121,6 +122,7 @@ export default function Rail({ user, onLogout }: { user: User; onLogout: () => v
     // Every other section is a page; the rail is pure navigation.
     const LANDING: Record<Exclude<RailSection, "files" | "computer">, string> = {
       home: "/",
+      team: "/team",
       agents: "/agents",
       integrations: "/integrations",
       viz: "/viz",

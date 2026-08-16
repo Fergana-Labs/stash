@@ -109,7 +109,7 @@ async def _get_user_from_api_key(token: str, *, managed_auth_enabled: bool) -> d
     row = await pool.fetchrow(
         "SELECT u.id, u.name, u.display_name, u.email, u.description, "
         "       u.created_at, u.last_seen, u.role, u.referral_source, u.use_case, "
-        "       u.plan, u.plan_intent, "
+        "       u.plan, u.plan_intent, u.session_uploads_enabled, "
         "       k.id AS key_id, k.key_type, k.access AS key_access "
         "FROM user_api_keys k JOIN users u ON u.id = k.user_id "
         "WHERE k.key_hash = $1 AND k.revoked_at IS NULL",
@@ -142,7 +142,7 @@ async def _get_user_from_jwt(token: str) -> dict:
     pool = get_pool()
     row = await pool.fetchrow(
         "SELECT id, name, display_name, email, description, created_at, last_seen, "
-        "       role, referral_source, use_case, plan, plan_intent "
+        "       role, referral_source, use_case, plan, plan_intent, session_uploads_enabled "
         "FROM users WHERE auth0_sub = $1",
         claims["sub"],
     )
@@ -234,6 +234,18 @@ async def get_current_user(
     _enforce_key_access(user, request)
     _set_request_via(request, user)
     return user
+
+
+async def require_session_uploads(current_user: dict = Depends(get_current_user)) -> dict:
+    """`get_current_user`, but 403s when the caller's master upload switch is
+    off. Session-upload endpoints use this so a disabled account rejects
+    loudly instead of silently dropping events."""
+    if not current_user["session_uploads_enabled"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Session uploads are disabled for this account (Settings → Session uploads)",
+        )
+    return current_user
 
 
 async def get_scope(

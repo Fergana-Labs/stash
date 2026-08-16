@@ -6,6 +6,7 @@ export interface User {
   description: string;
   created_at: string;
   last_seen: string;
+  session_uploads_enabled?: boolean;
 }
 
 export interface RegisterResponse {

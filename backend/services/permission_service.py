@@ -176,20 +176,25 @@ def _public_read_container_condition(
     return None
 
 
-def workspace_member_condition(workspace_alias: str, user_arg: int) -> str:
-    """SQL predicate: is user ${user_arg} a member of the workspace row at
-    `workspace_alias`? The single definition of membership: derived for
-    on-domain users (verified email on the workspace's domain — nothing to
-    enroll or revoke) plus stored `workspace_members` rows (explicit admin
-    adds, off-domain only)."""
+def _workspace_member_condition_expr(workspace_alias: str, user_expr: str) -> str:
+    """SQL predicate: is the user identified by `user_expr` (any SQL uuid
+    expression) a member of the workspace row at `workspace_alias`? The single
+    definition of membership: derived for on-domain users (verified email on
+    the workspace's domain — nothing to enroll or revoke) plus stored
+    `workspace_members` rows (explicit admin adds, off-domain only)."""
     return (
         f"(EXISTS (SELECT 1 FROM workspace_members member_row "
         f"WHERE member_row.workspace_id = {workspace_alias}.id "
-        f"AND member_row.user_id = ${user_arg}) "
+        f"AND member_row.user_id = {user_expr}) "
         f"OR EXISTS (SELECT 1 FROM users member_u "
-        f"WHERE member_u.id = ${user_arg} AND member_u.email_verified "
+        f"WHERE member_u.id = {user_expr} AND member_u.email_verified "
         f"AND lower(split_part(member_u.email, '@', 2)) = {workspace_alias}.domain))"
     )
+
+
+def workspace_member_condition(workspace_alias: str, user_arg: int) -> str:
+    """`_workspace_member_condition_expr` with the user as query arg ${user_arg}."""
+    return _workspace_member_condition_expr(workspace_alias, f"${user_arg}")
 
 
 def readable_content_condition(

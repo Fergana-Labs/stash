@@ -10,7 +10,7 @@ from . import security_audit_service, session_folder_service
 
 _SELECT_COLS = (
     "id, owner_user_id, session_id, agent_name, cwd, files_touched, "
-    "started_at, finished_at, created_by"
+    "started_at, finished_at, created_by, team_memory_excluded"
 )
 
 

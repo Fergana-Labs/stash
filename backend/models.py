@@ -45,6 +45,7 @@ class UserProfile(BaseModel):
     use_case: str | None = None
     plan: str = "free"
     plan_intent: str | None = None
+    session_uploads_enabled: bool = True
 
 
 class UserUpdateRequest(BaseModel):
@@ -61,6 +62,8 @@ class UserUpdateRequest(BaseModel):
     # The plan the user picked during onboarding — a sales signal, not the
     # billing entitlement (that's `users.plan`, set by admins).
     plan_intent: str | None = Field(None, max_length=64)
+    # Master consent switch: off means upload endpoints reject new sessions.
+    session_uploads_enabled: bool | None = None
 
 
 class LoginRequest(BaseModel):
@@ -183,6 +186,13 @@ class FolderListResponse(BaseModel):
     folders: list[FolderResponse]
 
 
+class SourceSessionRef(BaseModel):
+    """A session a page was built from — provenance for curated pages."""
+
+    owner_user_id: UUID
+    session_id: str = Field(..., min_length=1, max_length=64)
+
+
 class PageCreateRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
     folder_id: UUID | None = None
@@ -190,6 +200,7 @@ class PageCreateRequest(BaseModel):
     content_type: str = Field("markdown", pattern=r"^(markdown|html)$")
     content_html: str = ""
     html_layout: str = Field("responsive", pattern=r"^(responsive|fixed-aspect|full-width)$")
+    source_sessions: list[SourceSessionRef] | None = None
 
 
 class PageUpdateRequest(BaseModel):
@@ -204,6 +215,9 @@ class PageUpdateRequest(BaseModel):
     content_html: str | None = None
     html_layout: str | None = Field(None, pattern=r"^(responsive|fixed-aspect|full-width)$")
     move_to_root: bool = False
+    # Given, replaces the page's recorded provenance and clears its
+    # recuration flag — stating fresh sources IS the rebuild.
+    source_sessions: list[SourceSessionRef] | None = None
 
 
 class CopyRequest(BaseModel):
