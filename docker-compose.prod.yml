@@ -60,7 +60,7 @@ services:
       retries: 5
 
   backend:
-    image: ghcr.io/fergana-labs/stash-backend:0.1.364
+    image: ghcr.io/fergana-labs/stash-backend:0.1.365
     restart: always
     expose:
       - "3456"
@@ -83,7 +83,7 @@ services:
       start_period: 30s
 
   worker:
-    image: ghcr.io/fergana-labs/stash-backend:0.1.364
+    image: ghcr.io/fergana-labs/stash-backend:0.1.365
     restart: always
     depends_on:
       postgres:
@@ -105,7 +105,7 @@ services:
   # a 30-min task. Concurrency 2 keeps 2 children x 800MB (see
   # worker_max_memory_per_child) plus the parent inside a 2GB box.
   heavy-worker:
-    image: ghcr.io/fergana-labs/stash-backend:0.1.362
+    image: ghcr.io/fergana-labs/stash-backend:0.1.365
     restart: always
     depends_on:
       postgres:
@@ -123,7 +123,7 @@ services:
     command: ["celery", "-A", "backend.celery_app", "worker", "--loglevel=info", "--concurrency=2", "-Q", "heavy"]
 
   beat:
-    image: ghcr.io/fergana-labs/stash-backend:0.1.364
+    image: ghcr.io/fergana-labs/stash-backend:0.1.365
     restart: always
     depends_on:
       redis:
@@ -139,7 +139,7 @@ services:
     command: ["celery", "-A", "backend.celery_app", "beat", "--loglevel=info"]
 
   frontend:
-    image: ghcr.io/fergana-labs/stash-frontend:0.1.364
+    image: ghcr.io/fergana-labs/stash-frontend:0.1.365
     restart: always
     expose:
       - "3457"
