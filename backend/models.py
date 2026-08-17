@@ -498,6 +498,22 @@ class SqlQueryResponse(BaseModel):
     truncated: bool
 
 
+class PgMountCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=32)
+    dsn: str = Field(..., min_length=1, max_length=2000)
+    remote_schema: str = Field("public", min_length=1, max_length=63)
+
+
+class PgMountInfo(BaseModel):
+    id: str
+    name: str
+    host: str
+    database: str
+    remote_schema: str
+    created_at: str
+    table_count: int | None = None
+
+
 # --- History ---
 
 

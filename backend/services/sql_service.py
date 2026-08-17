@@ -10,6 +10,12 @@ Addressing mirrors the VFS: every table exists as `"<folder path>"."<name>"`
 Memory wiki), plus a bare-name view in `main` when the name is unique across
 the scope, so `SELECT * FROM jobs` just works. Because it is real DuckDB,
 `information_schema` reflects all of this truthfully.
+
+External Postgres mounts (pg_mount_service) join the same instance: each
+mount's remote tables materialize under a schema named after the mount, so a
+customer's own database is queryable — and joinable against native tables —
+through the identical read-only surface. Rows are fetched server-side; the
+user's SQL still runs with no network access.
 """
 
 import base64
@@ -24,7 +30,7 @@ import anyio.to_thread
 import duckdb
 
 from ..database import get_pool
-from . import table_service
+from . import pg_mount_service, table_service
 
 # One query materializes every table in the scope (that is what makes
 # information_schema truthful and cross-table joins work), so the cap is on
@@ -82,8 +88,15 @@ async def run_query(owner_user_id: UUID, user_id: UUID, query: str) -> dict:
 
     schema_by_folder = await _folder_schema_names(owner_user_id)
 
+    try:
+        external_tables = await pg_mount_service.fetch_mounted_tables(
+            owner_user_id, MAX_MATERIALIZED_ROWS - total_rows
+        )
+    except pg_mount_service.PgMountError as exc:
+        raise SqlError(str(exc)) from None
+
     return await anyio.to_thread.run_sync(
-        _run_in_duckdb, tables, rows_by_table, schema_by_folder, query
+        _run_in_duckdb, tables, rows_by_table, schema_by_folder, external_tables, query
     )
 
 
@@ -118,6 +131,7 @@ def _run_in_duckdb(
     tables: list[dict],
     rows_by_table: dict[UUID, list[dict]],
     schema_by_folder: dict[UUID, str],
+    external_tables: list[dict],
     query: str,
 ) -> dict:
     # Parsing is where a syntax error lands, and it is the user's mistake.
@@ -145,8 +159,16 @@ def _run_in_duckdb(
     # the whole budget on INSERTs before the user's query ever starts.
     timer = threading.Timer(QUERY_TIMEOUT_SECONDS, con.interrupt)
     timer.start()
+    # Bare-name views span native and mounted tables alike, so a name is only
+    # "unique" when nothing else in the scope claims it.
+    name_counts: dict[str, int] = {}
+    for table in [*tables, *external_tables]:
+        key = table["name"].lower()
+        name_counts[key] = name_counts.get(key, 0) + 1
+
     try:
-        _materialize(con, tables, rows_by_table, schema_by_folder)
+        _materialize(con, tables, rows_by_table, schema_by_folder, name_counts)
+        _materialize_external(con, external_tables, name_counts)
         cursor = con.execute(query)
         columns = [{"name": d[0], "type": str(d[1])} for d in (cursor.description or [])]
         fetched = cursor.fetchmany(MAX_RESULT_ROWS + 1)
@@ -176,12 +198,8 @@ def _materialize(
     tables: list[dict],
     rows_by_table: dict[UUID, list[dict]],
     schema_by_folder: dict[UUID, str],
+    name_counts: dict[str, int],
 ) -> None:
-    name_counts: dict[str, int] = {}
-    for table in tables:
-        key = table["name"].lower()
-        name_counts[key] = name_counts.get(key, 0) + 1
-
     seen_qualified: set[tuple[str, str]] = set()
     for table in tables:
         table_name = table["name"]
@@ -219,6 +237,34 @@ def _materialize(
             # the rows were written) would otherwise break `stash sql` for the
             # entire scope with an opaque 500.
             raise SqlError(f"table {table['name']!r} could not be loaded: {exc}") from None
+
+
+def _materialize_external(
+    con: duckdb.DuckDBPyConnection,
+    external_tables: list[dict],
+    name_counts: dict[str, int],
+) -> None:
+    for table in external_tables:
+        qualified = f"{_ident(table['schema'])}.{_ident(table['name'])}"
+        column_sql = ", ".join(
+            f"{_ident(name)} {duck_type}" for name, duck_type in table["columns"]
+        )
+        try:
+            con.execute(f"CREATE SCHEMA IF NOT EXISTS {_ident(table['schema'])}")
+            con.execute(f"CREATE TABLE {qualified} ({column_sql})")
+            if table["rows"]:
+                placeholders = ", ".join("?" for _ in table["columns"])
+                con.executemany(f"INSERT INTO {qualified} VALUES ({placeholders})", table["rows"])
+            if name_counts[table["name"].lower()] == 1:
+                con.execute(
+                    f"CREATE VIEW main.{_ident(table['name'])} AS SELECT * FROM {qualified}"
+                )
+        except duckdb.InterruptException:
+            raise
+        except duckdb.Error as exc:
+            raise SqlError(
+                f"mounted table {table['schema']}.{table['name']} could not be loaded: {exc}"
+            ) from None
 
 
 def _column_defs(columns: list[dict]) -> list[tuple[str, str, str | None]]:

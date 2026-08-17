@@ -1,13 +1,15 @@
-"""SQL router: read-only queries over the scope's tables via stash sql."""
+"""SQL router: read-only queries over the scope's tables via stash sql,
+plus the scope's external Postgres mounts."""
 
 from uuid import UUID
 
+import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from ..auth import get_current_user, get_scope
 from ..middleware import limiter
-from ..models import SqlQueryRequest, SqlQueryResponse
-from ..services import security_audit_service, sql_service, user_scope_service
+from ..models import PgMountCreate, PgMountInfo, SqlQueryRequest, SqlQueryResponse
+from ..services import pg_mount_service, security_audit_service, sql_service, user_scope_service
 
 router = APIRouter(prefix="/api/v1/me", tags=["sql"])
 
@@ -39,3 +41,43 @@ async def run_sql(
         metadata={"via": "sql", "result_rows": result["row_count"]},
     )
     return SqlQueryResponse(**result)
+
+
+@router.get("/sql/mounts", response_model=list[PgMountInfo])
+async def list_pg_mounts(
+    current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
+):
+    if not await user_scope_service.can_read(scope_user_id, current_user["id"]):
+        raise HTTPException(status_code=403, detail="Not the scope owner")
+    return await pg_mount_service.list_mounts(scope_user_id)
+
+
+@router.post("/sql/mounts", response_model=PgMountInfo, status_code=201)
+async def create_pg_mount(
+    req: PgMountCreate,
+    current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
+):
+    if not await user_scope_service.can_write(scope_user_id, current_user["id"]):
+        raise HTTPException(status_code=403, detail="Not the scope owner")
+    try:
+        return await pg_mount_service.create_mount(
+            scope_user_id, req.name, req.dsn, req.remote_schema
+        )
+    except pg_mount_service.PgMountError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    except asyncpg.UniqueViolationError:
+        raise HTTPException(status_code=409, detail=f"mount {req.name!r} already exists") from None
+
+
+@router.delete("/sql/mounts/{name}", status_code=204)
+async def delete_pg_mount(
+    name: str,
+    current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
+):
+    if not await user_scope_service.can_write(scope_user_id, current_user["id"]):
+        raise HTTPException(status_code=403, detail="Not the scope owner")
+    if not await pg_mount_service.delete_mount(scope_user_id, name):
+        raise HTTPException(status_code=404, detail=f"no mount named {name!r}")

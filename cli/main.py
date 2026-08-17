@@ -6153,6 +6153,8 @@ def sql_command(
 
     A table is addressable by bare name when unique ("SELECT * FROM jobs") and
     always by its folder path as the schema ('SELECT * FROM "files/Hiring".jobs').
+    Mounted external databases (`stash mounts`) appear under the mount's name
+    ('SELECT * FROM supabase.world_observations') and join against your tables.
     Explore with information_schema.tables / information_schema.columns.
     """
     with _client() as c:
@@ -6176,6 +6178,68 @@ def sql_command(
     print(f"({result['row_count']} rows)")
     if result["truncated"]:
         console.print("[yellow]Result truncated — add a LIMIT or tighter WHERE.[/yellow]")
+
+
+mounts_app = typer.Typer(help="External read-only Postgres databases queryable via stash sql.")
+app.add_typer(mounts_app, name="mounts")
+
+
+@mounts_app.command("add")
+def mounts_add(
+    name: str = typer.Argument(..., help="Schema name the tables appear under, e.g. 'supabase'."),
+    dsn: str = typer.Argument(..., help="postgresql:// DSN of a read-only role."),
+    remote_schema: str = typer.Option(
+        "public", "--schema", help="Remote schema whose tables are exposed."
+    ),
+    as_json: bool = typer.Option(False, "--json"),
+):
+    """Mount an external Postgres. Its tables become queryable as
+    '<name>.<table>' in `stash sql`, joinable against your Stash tables."""
+    with _client() as c:
+        try:
+            mount = c.create_pg_mount(name, dsn, remote_schema)
+        except StashError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(mount)
+        return
+    console.print(
+        f"Mounted [bold]{mount['name']}[/bold] "
+        f"({mount['host']}/{mount['database']}, schema {mount['remote_schema']}, "
+        f"{mount['table_count']} tables)."
+    )
+
+
+@mounts_app.command("list")
+def mounts_list(as_json: bool = typer.Option(False, "--json")):
+    """List mounted databases. DSNs are never shown."""
+    with _client() as c:
+        try:
+            mounts = c.list_pg_mounts()
+        except StashError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(mounts)
+        return
+    if not mounts:
+        console.print("No mounts. Add one with `stash mounts add <name> <dsn>`.")
+        return
+    for mount in mounts:
+        console.print(
+            f"[bold]{mount['name']}[/bold]  {mount['host']}/{mount['database']}  "
+            f"schema {mount['remote_schema']}"
+        )
+
+
+@mounts_app.command("remove")
+def mounts_remove(name: str = typer.Argument(...)):
+    """Remove a mount. The remote database is untouched."""
+    with _client() as c:
+        try:
+            c.delete_pg_mount(name)
+        except StashError as e:
+            _err(e)
+    console.print(f"Removed mount [bold]{name}[/bold].")
 
 
 def _read_vfs_raw(path: str) -> bytes:

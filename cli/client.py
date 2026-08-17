@@ -794,6 +794,18 @@ class StashClient:
     def run_sql(self, query: str) -> dict:
         return self._post("/api/v1/me/sql", json={"query": query})
 
+    def list_pg_mounts(self) -> list:
+        return self._get("/api/v1/me/sql/mounts")
+
+    def create_pg_mount(self, name: str, dsn: str, remote_schema: str) -> dict:
+        return self._post(
+            "/api/v1/me/sql/mounts",
+            json={"name": name, "dsn": dsn, "remote_schema": remote_schema},
+        )
+
+    def delete_pg_mount(self, name: str) -> None:
+        self._delete(f"/api/v1/me/sql/mounts/{name}")
+
     def get_table(self, table_id: str) -> dict:
         return self._get(f"/api/v1/me/tables/{table_id}")
 
