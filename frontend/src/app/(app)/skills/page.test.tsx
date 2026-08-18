@@ -253,7 +253,7 @@ describe("SkillsPage", () => {
     // The next poll finds the folder's first extracted skill.
     vi.mocked(listSkills).mockResolvedValue([sourceSkill()]);
     expect(
-      await screen.findByText('"skillz" is connected: 1 skill added.', undefined, {
+      await screen.findByText('"skillz" is connected: 1 skill available from this folder.', undefined, {
         timeout: 4000,
       }),
     ).toBeInTheDocument();

@@ -351,10 +351,12 @@ function ExternalSkillLinkForm({ onAdded }: { onAdded: () => void }) {
             (s) => s.backing === "source" && s.source_name === created.display_name
           );
           if (arrived.length > 0) {
+            // "available", not "added": re-pasting an already-connected folder
+            // lands here too, and its skills existed before this submit.
             setMessage(
               `"${created.display_name}" is connected: ${arrived.length} ${
                 arrived.length === 1 ? "skill" : "skills"
-              } added.`
+              } available from this folder.`
             );
             onAdded();
             return;
