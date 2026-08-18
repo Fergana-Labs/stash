@@ -331,6 +331,9 @@ export interface SourceEntry {
   // Archive state for save-type sources: 'done' | 'pending' | 'failed'.
   // Null/absent for sources without an archive pipeline.
   status?: string | null;
+  // Present for documents inside a Drive folder used for Skills.
+  skill_status?: "skill" | "draft" | "not_skill" | "checking" | "reference";
+  skill_status_reason?: string;
 }
 
 const NATIVE_SOURCE_TYPES = new Set(["native_files", "native_sessions"]);

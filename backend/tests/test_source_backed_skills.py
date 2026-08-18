@@ -25,6 +25,31 @@ def _declared(name: str, description: str, body: str = "Do the thing.") -> str:
     return f'---\nname: "{name}"\ndescription: "{description}"\n---\n\n{body}\n'
 
 
+def test_skill_shelf_explains_each_document_status():
+    classify = skill_service.source_document_skill_status
+
+    assert classify("instructions.md", _declared("Instructions", "Do this"), "done") == {
+        "skill_status": "skill",
+        "skill_status_reason": "Agents can load this file as a Skill.",
+    }
+    assert classify("draft.md", _declared("Draft", "Not ready", body=""), "done") == {
+        "skill_status": "draft",
+        "skill_status_reason": "Add instructions below the closing --- line.",
+    }
+    assert classify("notes.md", "Meeting notes", "done") == {
+        "skill_status": "not_skill",
+        "skill_status_reason": "At the top, add a name and description between --- lines.",
+    }
+    assert classify("pending.pdf", None, "processing") == {
+        "skill_status": "checking",
+        "skill_status_reason": "Stash is still reading this file.",
+    }
+    assert classify("references/manual.md", _declared("Manual", "Nested"), "done") == {
+        "skill_status": "not_skill",
+        "skill_status_reason": ("Only files directly inside the connected folder can be Skills."),
+    }
+
+
 async def _register(client: AsyncClient, prefix: str = "srcskill") -> tuple[str, UUID]:
     resp = await client.post(
         "/api/v1/users/register",

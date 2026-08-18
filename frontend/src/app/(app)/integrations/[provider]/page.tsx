@@ -265,9 +265,9 @@ export function IntegrationDetail({ provider }: { provider: string }) {
     const binding = !source.binds_skills;
     if (binding) {
       const ok = await confirm({
-        title: `Use ${source.display_name} as Skills?`,
-        body: "Each document sitting directly in this folder becomes a skill your agents can load. They stay editable in Drive, and read-only here.",
-        confirmLabel: "Use as Skills",
+        title: `Use ${source.display_name} for Skills?`,
+        body: "A file directly inside this folder becomes a Skill when it starts with a name and description between --- lines. Other files remain regular source material.",
+        confirmLabel: "Use for Skills",
         // Nothing is deleted or overwritten — this only starts reading the
         // folder as skills, and the menu item undoes it.
         destructive: false,
@@ -786,7 +786,12 @@ function SourceRow({
         (highlighted ? "-mx-2 rounded-lg bg-[var(--color-brand-50)] px-3" : "")
       }
     >
-      <button type="button" onClick={onOpen} className="min-w-0 flex-1 cursor-pointer text-left">
+      <button
+        type="button"
+        onClick={onOpen}
+        aria-expanded={open}
+        className="min-w-0 flex-1 cursor-pointer text-left"
+      >
         <div className="flex items-center gap-2 truncate text-[13.5px] font-semibold text-foreground">
           {source.display_name}
           {ref && <span className="font-mono text-[12px] font-normal text-muted-foreground">{ref}</span>}
@@ -833,35 +838,22 @@ function SourceRow({
         {pollStopped && (
           <div className="mt-1 truncate text-[11.5px] text-muted-foreground">{pollStopped}</div>
         )}
-        {/* A count alone ("1 of 2") says something is wrong and leaves you
-            hunting. These are the documents to go add a frontmatter block to. */}
-        {source.binds_skills && (source.not_skills?.length ?? 0) > 0 && (
-          <div className="mt-1 truncate text-[11.5px] text-muted-foreground">
-            {/* The server names only the first few; the remainder is the
-                gap between the two counts, not the length of that list. */}
-            Not skills yet: {source.not_skills!.join(", ")}
-            {(source.documents ?? 0) - (source.skills ?? 0) > source.not_skills!.length &&
-              ` +${(source.documents ?? 0) - (source.skills ?? 0) - source.not_skills!.length} more`}
-          </div>
-        )}
       </button>
       <div className="flex shrink-0 items-center gap-1.5">
-        {/* Both the state and the way out of it: this folder's documents are
-            skills, and they are read over there. It sits out here rather than
-            beside the name because the name is inside the row's button, and a
-            link cannot live in a button. */}
-        {/* No counts for a bound shelf someone else owns — its documents are
-            not ours to count, so it says only that it is one. */}
-        {source.binds_skills && (
+        {source.type === "google_drive_folder" && source.binds_skills && (
           <Link
             href="/skills"
-            title="Only documents with SKILL.md frontmatter are read as skills"
-            className="rounded border border-border px-1.5 py-px text-[10.5px] font-medium text-muted-foreground transition hover:border-[var(--color-brand-300)] hover:text-foreground"
+            className="rounded-full border border-[var(--color-brand-300)] bg-[var(--color-brand-50)] px-2 py-0.5 text-[10.5px] font-semibold text-brand transition hover:border-brand"
           >
             {source.skills === undefined
-              ? "Skills →"
-              : `${source.skills} of ${source.documents} are skills →`}
+              ? "Used for Skills →"
+              : `Used for Skills · ${source.skills} of ${source.documents} →`}
           </Link>
+        )}
+        {source.type === "google_drive_folder" && !source.binds_skills && (
+          <span className="rounded-full border border-border px-2 py-0.5 text-[10.5px] font-semibold text-muted-foreground">
+            Not used for Skills
+          </span>
         )}
         {/* Browsing is the row itself (and the VFS); syncing is automatic —
             scheduled, plus kicked by access when stale. The old Browse/Sync
@@ -885,7 +877,7 @@ function SourceRow({
               )}
               {source.type === "google_drive_folder" && (
                 <DropdownMenuItem disabled={busySkills} onClick={onToggleSkills}>
-                  {source.binds_skills ? "Stop using as Skills" : "Use as Skills"}
+                  {source.binds_skills ? "Stop using for Skills" : "Use for Skills"}
                 </DropdownMenuItem>
               )}
               <DropdownMenuItem onClick={() => setShareOpen(true)}>Share</DropdownMenuItem>
@@ -1277,6 +1269,42 @@ function HitRow({
   );
 }
 
+const skillDocumentLabels: Record<NonNullable<SourceEntry["skill_status"]>, string> = {
+  skill: "Skill",
+  draft: "Draft Skill",
+  not_skill: "Not a Skill",
+  checking: "Checking",
+  reference: "Regular subfolder",
+};
+
+const skillDocumentStyles: Record<NonNullable<SourceEntry["skill_status"]>, string> = {
+  skill: "border-[var(--color-brand-300)] bg-[var(--color-brand-50)] text-brand",
+  draft: "border-warning/40 bg-warning/10 text-warning",
+  not_skill: "border-border text-muted-foreground",
+  checking: "border-border text-muted-foreground",
+  reference: "border-border text-muted-foreground",
+};
+
+export function SkillDocumentStatus({ entry }: { entry: SourceEntry }) {
+  if (!entry.skill_status || !entry.skill_status_reason) return null;
+
+  return (
+    <span className="mt-0.5 block">
+      <span
+        className={
+          "inline-flex rounded-full border px-1.5 py-px text-[10px] font-semibold " +
+          skillDocumentStyles[entry.skill_status]
+        }
+      >
+        {skillDocumentLabels[entry.skill_status]}
+      </span>
+      <span className="ml-1.5 text-[11px] text-muted-foreground">
+        {entry.skill_status_reason}
+      </span>
+    </span>
+  );
+}
+
 function NavigablePanel({
   source,
   providerLabel,
@@ -1353,10 +1381,21 @@ function NavigablePanel({
       const segment = rel.slice(0, slash);
       if (seenFolders.has(segment)) continue;
       seenFolders.add(segment);
-      rows.push({ name: segment, kind: "dir", path: `${dirPrefix}${segment}` });
+      rows.push({
+        name: segment,
+        kind: "dir",
+        path: `${dirPrefix}${segment}`,
+        ...(source.binds_skills
+          ? {
+              skill_status: "reference" as const,
+              skill_status_reason:
+                "Files inside subfolders are source material, not Skills.",
+            }
+          : {}),
+      });
     }
     return rows;
-  }, [entries, path]);
+  }, [entries, path, source.binds_skills]);
 
   // Folder-like entries (have a `path` and are a container) drill in; leaves open a doc.
   function isFolder(entry: SourceEntry): boolean {
@@ -1383,6 +1422,31 @@ function NavigablePanel({
 
   return (
     <div>
+      {source.type === "google_drive_folder" && (
+        <div className="mb-3 rounded-lg border border-border bg-raised px-3 py-2.5 text-[12px]">
+          {source.binds_skills ? (
+            <>
+              <div className="font-semibold text-foreground">
+                This folder is used for Skills.
+              </div>
+              <div className="mt-0.5 text-muted-foreground">
+                Only files directly inside this folder can be Skills. At the top, each file
+                needs a name and description between --- lines. “Draft Skill” means those
+                fields are present but no instructions follow them yet.
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="font-semibold text-foreground">
+                This folder is not used for Skills.
+              </div>
+              <div className="mt-0.5 text-muted-foreground">
+                Agents can search and read these files, but none of them are Skills.
+              </div>
+            </>
+          )}
+        </div>
+      )}
       <div className="mb-2 flex flex-wrap items-center gap-1 text-[12px] text-muted-foreground">
         {crumbs.map((c, i) => (
           <span key={c.path + i} className="flex items-center gap-1">
@@ -1442,7 +1506,8 @@ function NavigablePanel({
                     ) : (
                       <span className="block truncate text-[12.5px] text-foreground">{entry.name}</span>
                     )}
-                    {entry.snippet && !pending && !failed && (
+                    <SkillDocumentStatus entry={entry} />
+                    {entry.snippet && !entry.skill_status && !pending && !failed && (
                       <span className="mt-0.5 block truncate text-[11.5px] text-muted-foreground">
                         {entry.snippet}
                       </span>

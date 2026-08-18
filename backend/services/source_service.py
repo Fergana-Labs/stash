@@ -1106,6 +1106,9 @@ async def list_documents(
     # Saves carry their archive status so listings can mark a save that failed
     # to archive (or is still archiving) instead of rendering it like the rest.
     status_column = "hydration_status" if table in SAVE_TABLES else "NULL::text"
+    shows_skill_status = table == "drive_documents" and source["binds_skills"]
+    skill_content_column = "left(content, 8192)" if shows_skill_status else "NULL::text"
+    extraction_status_column = "extraction_status" if shows_skill_status else "NULL::text"
     # X saves list newest-first — a bookmark list you can only read oldest-first
     # buries the thing you saved five minutes ago. The path's tweet id grows
     # over time but varies in digit count, so numeric order is (length, value).
@@ -1119,7 +1122,9 @@ async def list_documents(
         cursor_predicate = "path > $4"
     rows = await get_pool().fetch(
         f"SELECT path, name, kind, external_ref, external_updated_at, "
-        f"{size_column} AS size, {snippet_column} AS snippet, {status_column} AS status "
+        f"{size_column} AS size, {snippet_column} AS snippet, {status_column} AS status, "
+        f"{skill_content_column} AS skill_content, "
+        f"{extraction_status_column} AS extraction_status "
         f"FROM {table} "
         f"WHERE source_id = $1 AND deleted_at IS NULL AND path LIKE $2 AND {cursor_predicate} "
         f"ORDER BY {order_by} LIMIT $3",
@@ -1128,7 +1133,19 @@ async def list_documents(
         limit,
         after,
     )
-    return [_entry_row(r) for r in rows]
+    entries = [_entry_row(r) for r in rows]
+    if not shows_skill_status:
+        return entries
+
+    from .skill_service import source_document_skill_status
+
+    for entry, row in zip(entries, rows, strict=True):
+        entry.update(
+            source_document_skill_status(
+                row["path"], row["skill_content"], row["extraction_status"]
+            )
+        )
+    return entries
 
 
 def _entry_row(r) -> dict:

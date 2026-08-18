@@ -126,6 +126,55 @@ def declared_skill(content: str | None) -> dict | None:
     return meta
 
 
+def source_document_skill_status(
+    path: str, content: str | None, extraction_status: str
+) -> dict[str, str]:
+    """Explain whether one document in a bound Drive folder is a Skill."""
+    if "/" in path:
+        return {
+            "skill_status": "not_skill",
+            "skill_status_reason": (
+                "Only files directly inside the connected folder can be Skills."
+            ),
+        }
+
+    if extraction_status in ("pending", "processing"):
+        return {
+            "skill_status": "checking",
+            "skill_status_reason": "Stash is still reading this file.",
+        }
+
+    if extraction_status == "failed":
+        return {
+            "skill_status": "not_skill",
+            "skill_status_reason": "Stash could not read this file.",
+        }
+
+    if extraction_status == "unsupported":
+        return {
+            "skill_status": "not_skill",
+            "skill_status_reason": "Stash cannot read this file type.",
+        }
+
+    head = (content or "")[:FRONTMATTER_SCAN_BYTES]
+    if declared_skill(head) is None:
+        return {
+            "skill_status": "not_skill",
+            "skill_status_reason": "At the top, add a name and description between --- lines.",
+        }
+
+    if not parse_frontmatter(head)[1].strip():
+        return {
+            "skill_status": "draft",
+            "skill_status_reason": "Add instructions below the closing --- line.",
+        }
+
+    return {
+        "skill_status": "skill",
+        "skill_status_reason": "Agents can load this file as a Skill.",
+    }
+
+
 async def count_shelf_skills(owner_user_id: UUID, source_ids: list[str]) -> dict[str, dict]:
     """Per bound source: how many of its documents are skills, and how many
     documents it holds.
