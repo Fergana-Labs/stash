@@ -73,35 +73,48 @@ export function isFbDrag(e: DragEvent<HTMLElement>): boolean {
 // inline style. Keeps the four-column Drive-style layout: name takes 2fr,
 // modified + type each take 1fr, action button is fixed 36px.
 const LIST_GRID_COLS = "minmax(0,2fr) minmax(0,1fr) minmax(0,1fr) 64px";
+// With a detail column ("Agent" on /sessions), Name yields the width for it.
+const LIST_GRID_COLS_DETAIL =
+  "minmax(0,2fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) 64px";
 
 interface Props {
   items: GridItem[];
   onNavigate: (item: GridItem, options?: NavigateOptions) => void;
-  onReparent: (payload: FBDragPayload, targetFolderId: string | null) => Promise<void>;
-  onReparentMany: (payloads: FBDragPayload[], targetFolderId: string | null) => Promise<void>;
-  onDelete: (item: GridItem) => Promise<void>;
-  isPinned: (item: GridItem) => boolean;
-  onTogglePin: (item: GridItem) => void;
-  selectedIds: Set<string>;
-  onToggleSelect: (item: GridItem) => void;
-  selectedDragPayloads: FBDragPayload[];
+  /** Header for the optional secondary column. A listing where every row has
+   *  the same Type ("Session") wastes that column; the mount says what the
+   *  useful fact is instead — the agent that ran it, the skill's contents. */
+  detailColumn?: string;
+  // Everything below is a capability, not a callback the caller may stub: the
+  // VFS mounts that are not files (sessions, skills, source documents) have no
+  // reparent, pin, or delete, so they pass nothing and the row renders without
+  // those controls rather than offering one that does nothing.
+  onReparent?: (payload: FBDragPayload, targetFolderId: string | null) => Promise<void>;
+  onReparentMany?: (payloads: FBDragPayload[], targetFolderId: string | null) => Promise<void>;
+  onDelete?: (item: GridItem) => Promise<void>;
+  isPinned?: (item: GridItem) => boolean;
+  onTogglePin?: (item: GridItem) => void;
+  selectedIds?: Set<string>;
+  onToggleSelect?: (item: GridItem) => void;
+  selectedDragPayloads?: FBDragPayload[];
 }
 
-type SortKey = "name" | "modified" | "type";
+type SortKey = "name" | "modified" | "type" | "detail";
 type Sort = { key: SortKey; dir: "asc" | "desc" } | null;
 
 const SORT_STORAGE_KEY = "stash_files_sort";
 
 const DEFAULT_SORT: Sort = { key: "modified", dir: "desc" };
 
-// The List view opens on documents only — folders plus the page types people
-// author (HTML, Markdown). Other file types (PDFs, images, tables) stay hidden
-// until chosen from the Type menu, so uploads don't clutter the default view.
-// `typeFilter === null` means this doc set; ALL_TYPES means show everything.
-// Tables are first-class residents of the folder tree, so they show by
-// default like documents do.
-const DEFAULT_TYPES = new Set(["Folder", "HTML", "Markdown", "Table"]);
-const ALL_TYPES = "__all__";
+// The List view shows everything a folder holds. It used to open on documents
+// only — folders, HTML, Markdown, Table — so uploads would not "clutter" it,
+// but that predates a product whose front door is uploads: a folder of
+// screenshots read as "Empty folder" while the tree beside it counted six.
+// A file browser that hides files is the wrong kind of tidy.
+//
+// `typeFilter === null` now means everything; DOC_TYPES stays as the explicit
+// "Documents only" choice in the Type menu.
+const DOC_TYPES = new Set(["Folder", "HTML", "Markdown", "Table"]);
+const DOCS_ONLY = "__docs__";
 
 function readSort(): Sort {
   if (typeof window === "undefined") return null;
@@ -125,6 +138,9 @@ function timeOf(item: GridItem): number {
 function compareItems(a: GridItem, b: GridItem, key: SortKey): number {
   if (key === "modified") return timeOf(a) - timeOf(b) || a.name.localeCompare(b.name);
   if (key === "type") return typeFor(a).localeCompare(typeFor(b)) || a.name.localeCompare(b.name);
+  if (key === "detail") {
+    return (a.detail ?? "").localeCompare(b.detail ?? "") || a.name.localeCompare(b.name);
+  }
   return a.name.localeCompare(b.name);
 }
 
@@ -135,6 +151,7 @@ function compareItems(a: GridItem, b: GridItem, key: SortKey): number {
 export default function ItemsList({
   items,
   onNavigate,
+  detailColumn,
   onReparent,
   onReparentMany,
   onDelete,
@@ -148,10 +165,15 @@ export default function ItemsList({
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
 
   function applySort(next: NonNullable<Sort>) {
-    try {
-      window.localStorage.setItem(SORT_STORAGE_KEY, `${next.key}:${next.dir}`);
-    } catch {
-      /* ignore */
+    // The detail column belongs to one listing, but the sort preference is
+    // shared across every file browser — persisting "detail" would silently
+    // reset the user's Files sort to the default on the next load.
+    if (next.key !== "detail") {
+      try {
+        window.localStorage.setItem(SORT_STORAGE_KEY, `${next.key}:${next.dir}`);
+      } catch {
+        /* ignore */
+      }
     }
     setSort(next);
   }
@@ -165,20 +187,16 @@ export default function ItemsList({
     applySort(next);
   }
 
-  // Only the non-default types are pickable here; folders/HTML/Markdown already
-  // show by default, so the menu is purely for revealing the other types.
+  // Every type present, so the menu can narrow to any one of them.
   const typeOptions = useMemo(
-    () =>
-      Array.from(new Set(items.map(typeFor)))
-        .filter((type) => !DEFAULT_TYPES.has(type))
-        .sort(),
+    () => Array.from(new Set(items.map(typeFor))).sort(),
     [items],
   );
 
   const sortedItems = useMemo(() => {
     const visible = items.filter((item) => {
-      if (typeFilter === null) return DEFAULT_TYPES.has(typeFor(item));
-      if (typeFilter === ALL_TYPES) return true;
+      if (typeFilter === null) return true;
+      if (typeFilter === DOCS_ONLY) return DOC_TYPES.has(typeFor(item));
       return typeFor(item) === typeFilter;
     });
     if (!sort) return visible;
@@ -193,9 +211,12 @@ export default function ItemsList({
     <div className="rounded-xl border border-border bg-surface">
       <div
         className="grid items-center gap-3 rounded-t-xl border-b border-border bg-base/60 px-4 py-2.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground"
-        style={{ gridTemplateColumns: LIST_GRID_COLS }}
+        style={{ gridTemplateColumns: detailColumn ? LIST_GRID_COLS_DETAIL : LIST_GRID_COLS }}
       >
         <SortHeader label="Name" sortKey="name" sort={sort} onSort={toggleSort} />
+        {detailColumn && (
+          <SortHeader label={detailColumn} sortKey="detail" sort={sort} onSort={toggleSort} />
+        )}
         <SortHeader label="Modified" sortKey="modified" sort={sort} onSort={toggleSort} />
         <TypeHeader
           sort={sort}
@@ -212,19 +233,20 @@ export default function ItemsList({
             key={`${item.kind}-${item.id}`}
             item={item}
             onNavigate={onNavigate}
+            hasDetail={detailColumn !== undefined}
             onReparent={onReparent}
             onReparentMany={onReparentMany}
             onDelete={onDelete}
-            pinned={isPinned(item)}
+            pinned={isPinned ? isPinned(item) : false}
             onTogglePin={onTogglePin}
-            selected={selectedIds.has(item.id)}
+            selected={selectedIds ? selectedIds.has(item.id) : false}
             onToggleSelect={onToggleSelect}
             selectedDragPayloads={selectedDragPayloads}
           />
         ))}
         {sortedItems.length === 0 && (
           <div className="px-4 py-10 text-center text-[12.5px] text-muted-foreground">
-            {typeFilter && typeFilter !== ALL_TYPES
+            {typeFilter && typeFilter !== DOCS_ONLY
               ? `No ${typeFilter} items here.`
               : "Empty folder."}
           </div>
@@ -314,8 +336,8 @@ function TypeHeader({
       >
         {filter === null
           ? "Type"
-          : filter === ALL_TYPES
-            ? "Type: All"
+          : filter === DOCS_ONLY
+            ? "Type: Documents"
             : `Type: ${filter}`}
         {sortActive && <span className="text-[9px]">{sort?.dir === "desc" ? "▼" : "▲"}</span>}
         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -327,8 +349,8 @@ function TypeHeader({
           <MenuItem label="Sort A → Z" checked={sortActive && sort?.dir === "asc"} onSelect={() => choose(() => onSort("asc"))} />
           <MenuItem label="Sort Z → A" checked={sortActive && sort?.dir === "desc"} onSelect={() => choose(() => onSort("desc"))} />
           <div className="my-1 border-t border-border" />
-          <MenuItem label="Documents only" checked={filter === null} onSelect={() => choose(() => onFilter(null))} />
-          <MenuItem label="All types" checked={filter === ALL_TYPES} onSelect={() => choose(() => onFilter(ALL_TYPES))} />
+          <MenuItem label="All types" checked={filter === null} onSelect={() => choose(() => onFilter(null))} />
+          <MenuItem label="Documents only" checked={filter === DOCS_ONLY} onSelect={() => choose(() => onFilter(DOCS_ONLY))} />
           {options.map((type) => (
             <MenuItem key={type} label={type} checked={filter === type} onSelect={() => choose(() => onFilter(type))} />
           ))}
@@ -366,6 +388,7 @@ function MenuItem({
 function Row({
   item,
   onNavigate,
+  hasDetail,
   onReparent,
   onReparentMany,
   onDelete,
@@ -377,14 +400,15 @@ function Row({
 }: {
   item: GridItem;
   onNavigate: (item: GridItem, options?: NavigateOptions) => void;
-  onReparent: (payload: FBDragPayload, targetFolderId: string | null) => Promise<void>;
-  onReparentMany: (payloads: FBDragPayload[], targetFolderId: string | null) => Promise<void>;
-  onDelete: (item: GridItem) => Promise<void>;
+  hasDetail: boolean;
+  onReparent?: (payload: FBDragPayload, targetFolderId: string | null) => Promise<void>;
+  onReparentMany?: (payloads: FBDragPayload[], targetFolderId: string | null) => Promise<void>;
+  onDelete?: (item: GridItem) => Promise<void>;
   pinned: boolean;
-  onTogglePin: (item: GridItem) => void;
+  onTogglePin?: (item: GridItem) => void;
   selected: boolean;
-  onToggleSelect: (item: GridItem) => void;
-  selectedDragPayloads: FBDragPayload[];
+  onToggleSelect?: (item: GridItem) => void;
+  selectedDragPayloads?: FBDragPayload[];
 }) {
   const [over, setOver] = useState(false);
   const isFolder = item.kind === "folder";
@@ -400,12 +424,12 @@ function Row({
       onKeyDown={(e) => {
         if (e.key === "Enter") onNavigate(item);
       }}
-      draggable={item.movable !== false}
+      draggable={onReparent !== undefined && item.movable !== false}
       onDragStart={(e: DragEvent<HTMLDivElement>) =>
-        startItemDrag(e, item, selected, selectedDragPayloads)
+        startItemDrag(e, item, selected, selectedDragPayloads ?? [])
       }
       onDragOver={(e) => {
-        if (!isFolder) return;
+        if (!isFolder || !onReparent) return;
         if (!isFbDrag(e)) return;
         e.preventDefault();
         e.dataTransfer.dropEffect = "move";
@@ -413,7 +437,7 @@ function Row({
       }}
       onDragLeave={() => setOver(false)}
       onDrop={(e) => {
-        if (!isFolder) return;
+        if (!isFolder || !onReparent || !onReparentMany) return;
         setOver(false);
         e.preventDefault();
         handleFolderDrop(e, item.id, onReparent, onReparentMany);
@@ -425,21 +449,32 @@ function Row({
           : "hover:bg-[var(--color-brand-50)]/50 ") +
         (over ? "ring-1 ring-inset ring-[var(--color-brand-300)]" : "")
       }
-      style={{ gridTemplateColumns: LIST_GRID_COLS }}
+      style={{ gridTemplateColumns: hasDetail ? LIST_GRID_COLS_DETAIL : LIST_GRID_COLS }}
     >
       <div className="flex min-w-0 items-center gap-2.5">
-        <SelectBox
-          selected={selected}
-          onToggle={() => onToggleSelect(item)}
-        />
-        <span className={"flex h-4 w-4 flex-shrink-0 items-center justify-center " + tintFor(item)}>
-          <KindIcon kind={item.kind} />
+        {onToggleSelect && (
+          <SelectBox
+            selected={selected}
+            onToggle={() => onToggleSelect(item)}
+          />
+        )}
+        <span
+          className={
+            "flex h-4 w-4 flex-shrink-0 items-center justify-center [&_svg]:h-[15px] [&_svg]:w-[15px] [&_img]:h-[15px] [&_img]:w-[15px] " +
+            tintFor(item)
+          }
+        >
+          {item.icon ?? <KindIcon kind={item.kind} />}
         </span>
         <span className="min-w-0 truncate font-medium text-foreground">{item.name}</span>
       </div>
+      {hasDetail && (
+        <span className="truncate text-[12px] text-muted-foreground">{item.detail ?? "—"}</span>
+      )}
       <span className="truncate text-[12px] text-muted-foreground">{formatRelative(item.updatedAt)}</span>
       <span className="truncate text-[12px] text-muted-foreground">{typeFor(item)}</span>
       <div className="flex items-center justify-end gap-0.5">
+        {onTogglePin && (
         <button
           type="button"
           onClick={(e) => {
@@ -458,6 +493,8 @@ function Row({
         >
           <PinIcon className="text-[15px]" />
         </button>
+        )}
+        {onDelete && (
         <button
           type="button"
           onClick={(e) => {
@@ -476,6 +513,7 @@ function Row({
             <path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2" />
           </svg>
         </button>
+        )}
       </div>
     </div>
   );

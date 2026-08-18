@@ -23,7 +23,7 @@ import pypdf
 import pytest
 
 from backend.config import settings
-from backend.services import pdf_ocr, storage_service
+from backend.services import image_ocr, pdf_ocr, storage_service
 from backend.workers import extract_one
 
 PAGE_SIZE = (612, 792)
@@ -432,32 +432,40 @@ async def test_every_uploaded_pdf_is_transcribed_and_stored(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_non_pdf_upload_never_transcribes(monkeypatch):
-    """Vision costs an API call per chunk — only PDFs take that path."""
+async def test_parsable_upload_never_transcribes(monkeypatch):
+    """Vision costs an API call — a format a parser can read never takes it."""
     conn = _FakeConnection(uuid.uuid4(), "text/plain")
     _wire_extract_one(monkeypatch, conn, b"plain text body")
 
     async def fail_transcribe(content):
         raise AssertionError("transcribe_pdf must not be called")
 
+    async def fail_image(content, content_type):
+        raise AssertionError("transcribe_image must not be called")
+
     monkeypatch.setattr(pdf_ocr, "transcribe_pdf", fail_transcribe)
+    monkeypatch.setattr(image_ocr, "transcribe_image", fail_image)
 
     assert await extract_one._run(conn.file_id) == 0
     assert conn.persisted_text == "plain text body"
 
 
 @pytest.mark.asyncio
-async def test_non_pdf_without_text_never_transcribes(monkeypatch):
+async def test_image_upload_is_transcribed_by_vision(monkeypatch):
+    """An image carries its meaning in pixels: no parser can read it, so
+    without vision a dropped screenshot stores nothing and every agent
+    surface is blind to it."""
     conn = _FakeConnection(uuid.uuid4(), "image/png")
     _wire_extract_one(monkeypatch, conn, b"\x89PNG....")
 
-    async def fail_transcribe(content):
-        raise AssertionError("transcribe_pdf must not be called")
+    async def fake_image(content, content_type):
+        assert content_type == "image/png"
+        return "a screenshot of the pricing page"
 
-    monkeypatch.setattr(pdf_ocr, "transcribe_pdf", fail_transcribe)
+    monkeypatch.setattr(image_ocr, "transcribe_image", fake_image)
 
     assert await extract_one._run(conn.file_id) == 0
-    assert conn.persisted_text is None
+    assert conn.persisted_text == "a screenshot of the pricing page"
 
 
 @pytest.mark.asyncio

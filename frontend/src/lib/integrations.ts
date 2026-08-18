@@ -99,7 +99,7 @@ export async function startConnect(
   window.location.href = authorize_url;
 }
 
-// Open surfaces that show connection status (e.g. the sidebar Tools list)
+// Open surfaces that show connection status (e.g. the Integrations list)
 // listen for this to refresh immediately after a connect or disconnect.
 export const INTEGRATIONS_CHANGED_EVENT = "integrations-changed";
 

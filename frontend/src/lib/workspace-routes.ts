@@ -51,8 +51,9 @@ export function urlForTab(tab: Pick<WorkbenchTab, "kind" | "refId">): string {
       // page's ?chat= ref, the same one the skill launcher pushes.
       return `/agents?chat=${encodeURIComponent(tab.refId)}`;
     case "tool":
-      // A provider slug deep-links to its manager; the legacy list stays /tools.
-      return tab.refId === "integrations" ? `/tools` : `/integrations/${tab.refId}`;
+      // A provider slug deep-links to its manager; the list itself is the
+      // Integrations page.
+      return tab.refId === "integrations" ? `/integrations` : `/integrations/${tab.refId}`;
     case "machine-file":
     case "terminal":
     case "agent-config":

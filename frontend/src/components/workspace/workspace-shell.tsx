@@ -14,14 +14,13 @@ import Workbench from "./workbench";
 const WIDTH_KEY = "moltchat_explorer_width";
 const MIN_W = 220;
 const MAX_W = 600;
-const EXPLORER_SECTIONS: ExplorerSection[] = ["files", "sessions", "skills", "agents", "tools", "computer"];
+const EXPLORER_SECTIONS: ExplorerSection[] = ["files", "agents", "integrations", "computer"];
 
-// Experiment (2026-08-10): only the VFS keeps the tree sidebar. Sessions,
-// Skills, Tools, and Agents render full-width — the explorers were a second
-// nav axis over the same content as the rail, and the two looked independent.
-// Agents brings its own ChatGPT-style chat list; the VM (browser) keeps its
-// panel because that content lives nowhere else.
-const PANELLED_SECTIONS: ExplorerSection[] = ["files", "computer"];
+// Only the VM (browser) keeps a docked panel — that content lives nowhere
+// else. Files is a flat searchable list at /files with full-width detail
+// views; Integrations and Agents render full-width for the same reason the
+// explorers were dropped: a second nav axis over the rail's content.
+const PANELLED_SECTIONS: ExplorerSection[] = ["computer"];
 
 /** Resizable explorer panel — drag the right edge to set width (persisted). */
 function ExplorerPanel({ section }: { section: ExplorerSection }) {
@@ -70,12 +69,14 @@ function ExplorerPanel({ section }: { section: ExplorerSection }) {
  *  the wiki, Discover, Settings, published skill pages, …). Most sections
  *  render the tab workbench; `/sessions` keeps its full management page
  *  beside the Sessions explorer. */
-function sectionForPath(pathname: string): ExplorerSection | null {
+export function sectionForPath(pathname: string): ExplorerSection | null {
+  // Sessions and Skills are rows in the flat Files list, not sections of
+  // their own: their routes belong to the Files section.
   if (pathname === "/files" || /^\/(p|f|folders|tables)\//.test(pathname)) return "files";
-  if (pathname === "/sessions" || pathname.startsWith("/sessions/") || pathname.startsWith("/session-folders")) return "sessions";
-  if (pathname === "/skills" || pathname.startsWith("/skills/folder")) return "skills";
+  if (pathname === "/sessions" || pathname.startsWith("/sessions/") || pathname.startsWith("/session-folders")) return "files";
+  if (pathname === "/skills" || pathname.startsWith("/skills/folder")) return "files";
   if (pathname === "/agents") return "agents";
-  if (pathname === "/tools" || pathname.startsWith("/integrations")) return "tools";
+  if (pathname.startsWith("/integrations")) return "integrations";
   return null;
 }
 
@@ -95,18 +96,18 @@ export function rendersRouteContent(
   // The Skills home is the launcher — pick a skill, run it. Only the bare
   // path: /skills/folder/<id> is a skill you opened, which belongs in a tab.
   if (pathname === "/skills") return true;
-  // The MCP-server registry is a management page like /sessions.
-  if (pathname === "/tools") return true;
+  // The connector + MCP-server registry is a management page like /sessions.
+  if (pathname === "/integrations") return true;
   // /agents is the ChatGPT-style chat page — its own sidebar, no workbench.
   return pathname === "/agents";
 }
 
 
 /**
- * The app shell — icon rail + top bar + main area. Each primary rail section
- * (Files/Sessions/Skills/Agents/Tools) shows its own explorer panel. The Files
- * section drives the tab workbench; other sections render their route content
- * beside the explorer. Secondary routes (Index/Discover/Settings) render full.
+ * The app shell — icon rail + top bar + main area. The VFS section shows the
+ * tree panel and drives the tab workbench; other sections render their route
+ * content in its place. Full-page routes (Home/Visualizations/Discover/
+ * Settings) render without either.
  */
 export default function WorkspaceShell({
   user,
@@ -137,10 +138,10 @@ export default function WorkspaceShell({
     setLastVfsUrl(query ? `${pathname}?${query}` : pathname);
   }, [section, pathname, searchParams, setLastVfsUrl]);
 
-  // /files IS a file tree — showing the explorer's tree beside it would be
-  // the same thing twice. An explicit ?section= still summons the panel.
+  // /files is the flat list itself; it renders as a plain full page, not
+  // inside the workbench chrome.
   const isFilesHome = pathname === "/files" && !selectedSection;
-  const showExplorer = section !== null && PANELLED_SECTIONS.includes(section) && !isFilesHome;
+  const showExplorer = section !== null && PANELLED_SECTIONS.includes(section);
 
   return (
     // Chrome surface — the content panel floats on top of it.

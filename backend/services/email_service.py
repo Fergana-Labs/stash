@@ -113,7 +113,7 @@ your data &mdash; and a Drive they can read and write natively.</p>
 <p><strong>Start here. Any one of these is a real first win:</strong></p>
 
 <ol>
-  <li><a href="{app_url}"><strong>Connect a source</strong></a> (Tools, in the sidebar) &mdash; GitHub, Google Drive, Gmail, Slack, Notion, Linear, Jira, Asana, Granola, PostHog, or X. Whatever you connect becomes searchable by every agent you point at Stash.</li>
+  <li><a href="{app_url}"><strong>Connect a source</strong></a> (Integrations, in the sidebar) &mdash; GitHub, Google Drive, Gmail, Slack, Notion, Linear, Jira, Asana, Granola, PostHog, or X. Whatever you connect becomes searchable by every agent you point at Stash.</li>
   <li><a href="{app_url}"><strong>Give your coding agent memory</strong></a> &mdash; run <code>uv tool install stashai</code> then <code>stash signin</code>. It finds the agents on your machine, wires them up, and from then on your sessions land in Stash automatically. Then ask one something only Stash would know.</li>
   <li><a href="{app_url}/agents"><strong>Chat with the agent in the app</strong></a> &mdash; it already has everything above, and it's a real coding agent on its own cloud box, so it can read, write, and run things rather than just answer. Connect your Claude, Codex, or OpenRouter key in settings to point it at your own account.</li>
 </ol>

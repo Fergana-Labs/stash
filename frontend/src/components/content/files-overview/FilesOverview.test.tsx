@@ -42,7 +42,7 @@ function sidebar() {
       // 12 pages inside Research: enough to trip the per-directory cap.
       pages: Array.from({ length: 12 }, (_, i) => ({
         id: `p${i}`, name: `Page ${String(i).padStart(2, "0")}`,
-        content_type: "markdown" as const, folder_id: "root-1",
+        content_type: "markdown" as const, folder_id: "root-1", updated_at: "2026-01-01T00:00:00Z", last_edit_agent_name: null,
       })),
       files: [],
     },

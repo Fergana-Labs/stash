@@ -66,7 +66,7 @@ export default function IntegrationRoute() {
 
 // The integration manager for one provider. Rendered both as the
 // /integrations/[provider] route and inside a workbench "tool" tab (clicking
-// a connector in the Tools sidebar), so the provider comes in as a prop.
+// a connector in the Integrations list), so the provider comes in as a prop.
 export function IntegrationDetail({ provider }: { provider: string }) {
   const router = useRouter();
   const pathname = usePathname();

@@ -1,16 +1,16 @@
 // A section route whose page.tsx isn't in rendersRouteContent silently shows
-// the workbench instead of the page — the Tools/MCP page shipped dead this way
+// the workbench instead of the page — the Integrations/MCP page shipped dead this way
 // (tests rendered the component directly, the shell never did). This locks the
 // route → content mapping so a new management page failing to register fails a
 // test instead of failing in prod.
 import { beforeEach, describe, expect, it } from "vitest";
-import { rendersRouteContent } from "./workspace-shell";
+import { rendersRouteContent, sectionForPath } from "./workspace-shell";
 import { WORKBENCH_TAB_KINDS, urlForTab, hasPermanentUrl } from "@/lib/workspace-routes";
 import { useWorkspace } from "@/lib/workspace-store";
 
 describe("rendersRouteContent", () => {
   it("renders management pages beside the explorer", () => {
-    expect(rendersRouteContent("/tools", null, null)).toBe(true);
+    expect(rendersRouteContent("/integrations", null, null)).toBe(true);
     expect(rendersRouteContent("/sessions", null, null)).toBe(true);
     expect(rendersRouteContent("/skills", null, null)).toBe(true);
     expect(rendersRouteContent("/files", null, null)).toBe(true);
@@ -30,12 +30,39 @@ describe("rendersRouteContent", () => {
   });
 
   it("an explicit explorer section always wins", () => {
-    expect(rendersRouteContent("/tools", "files", null)).toBe(false);
-    expect(rendersRouteContent("/sessions", "skills", null)).toBe(false);
+    expect(rendersRouteContent("/integrations", "files", null)).toBe(false);
+    expect(rendersRouteContent("/sessions", "files", null)).toBe(false);
   });
 
   it("sessions workspace view keeps the workbench", () => {
     expect(rendersRouteContent("/sessions", null, "1")).toBe(false);
+  });
+});
+
+// Sessions and Skills are VFS mounts, so their routes belong to the VFS
+// section: that is what docks the tree beside them and keeps the rail's VFS
+// button lit. Mapping them anywhere else strands the user in a section with
+// no panel and no rail entry.
+describe("sectionForPath", () => {
+  it("puts sessions and skills in the VFS", () => {
+    expect(sectionForPath("/sessions")).toBe("files");
+    expect(sectionForPath("/sessions/abc")).toBe("files");
+    expect(sectionForPath("/session-folders/team")).toBe("files");
+    expect(sectionForPath("/skills")).toBe("files");
+    expect(sectionForPath("/skills/folder/abc")).toBe("files");
+    expect(sectionForPath("/files")).toBe("files");
+  });
+
+  it("keeps integrations and chat in their own sections", () => {
+    expect(sectionForPath("/integrations")).toBe("integrations");
+    expect(sectionForPath("/integrations/slack")).toBe("integrations");
+    expect(sectionForPath("/agents")).toBe("agents");
+  });
+
+  it("leaves the full-page routes sectionless", () => {
+    expect(sectionForPath("/")).toBeNull();
+    expect(sectionForPath("/viz")).toBeNull();
+    expect(sectionForPath("/settings")).toBeNull();
   });
 });
 
@@ -48,7 +75,7 @@ describe("rendersRouteContent", () => {
 describe("tabs the workbench can host", () => {
   it("every hostable kind's URL still lands on the workbench", () => {
     for (const kind of WORKBENCH_TAB_KINDS) {
-      // `tool` with the legacy "integrations" refId routes to the /tools
+      // `tool` with the "integrations" refId routes to the /integrations
       // management page, so give every kind a content-shaped refId.
       const [path, query] = urlForTab({ kind, refId: "abc" }).split("?");
       const workspaceParam = new URLSearchParams(query).get("workspace");

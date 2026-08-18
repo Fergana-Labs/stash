@@ -25,8 +25,8 @@ const tree: FilesTree = {
     { id: "m1", name: "People", parent_folder_id: MEMORY_ID, page_count: 2, file_count: 0 },
   ],
   pages: [
-    { id: "p1", name: "Notes", content_type: "markdown", folder_id: "a" },
-    { id: "p2", name: "Root page", content_type: "markdown", folder_id: null },
+    { id: "p1", name: "Notes", content_type: "markdown", folder_id: "a", updated_at: "2026-01-01T00:00:00Z", last_edit_agent_name: null },
+    { id: "p2", name: "Root page", content_type: "markdown", folder_id: null, updated_at: "2026-01-01T00:00:00Z", last_edit_agent_name: null },
   ],
   files: [
     {

@@ -12,18 +12,17 @@ import { CONNECTORS, connectorIcon, providerForSourceType } from "@/components/i
 import { INTEGRATIONS_CHANGED_EVENT, listIntegrations } from "@/lib/integrations";
 import { opensNewTab } from "@/lib/tab-nav";
 import FilesExplorer, { type Item } from "./files-explorer";
-import VfsTree from "./vfs-tree";
 
-export type ExplorerSection = "files" | "sessions" | "skills" | "agents" | "tools" | "computer";
+export type ExplorerSection = "files" | "sessions" | "skills" | "agents" | "integrations" | "computer";
 
 const SECTIONS: { key: ExplorerSection; label: string; route: string; icon: React.ReactNode }[] = [
   { key: "files", label: "Files", route: "/files", icon: <FolderTree className="h-4 w-4 text-chart-4" /> },
   { key: "skills", label: "Skills", route: "/skills", icon: <GraduationCap className="h-4 w-4 text-chart-4" /> },
   { key: "sessions", label: "Sessions", route: "/sessions", icon: <MessagesSquare className="h-4 w-4 text-chart-4" /> },
-  { key: "tools", label: "Tools", route: "/tools", icon: <Plug className="h-4 w-4 text-chart-4" /> },
+  { key: "integrations", label: "Connect", route: "/integrations", icon: <Plug className="h-4 w-4 text-chart-4" /> },
   { key: "computer", label: "VM", route: "/agents", icon: <Monitor className="h-4 w-4 text-chart-4" /> },
 ];
-const LABEL: Record<ExplorerSection, string> = { files: "Files", skills: "Skills", sessions: "Sessions", tools: "Tools", agents: "Agents", computer: "VM" };
+const LABEL: Record<ExplorerSection, string> = { files: "Files", skills: "Skills", sessions: "Sessions", integrations: "Connect", agents: "Agents", computer: "VM" };
 
 /** Open any item as a workbench tab and sync the URL. A plain click navigates
  *  the current tab; cmd/ctrl-click (or an explicit newTab) opens a new one. */
@@ -53,9 +52,9 @@ function LoadingRow() {
   return <div className="flex items-center gap-2 px-3 py-2 text-[12px] text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading…</div>;
 }
 
-// Tools = every integration/connector (Slack, Granola, GitHub, …), connected or
-// not. Clicking opens the integrations manager to connect/configure.
-function ToolsSection() {
+// Every integration/connector (Slack, Granola, GitHub, …), connected or not.
+// Clicking opens the integrations manager to connect/configure.
+function IntegrationsSection() {
   const open = useOpenTab();
   // Extension connectors have no token — source presence is their "connected".
   // OAuth/api-key connectors use the integration status, so a provider that
@@ -179,8 +178,8 @@ function RootSection() {
   const setRailSection = useWorkspace((s) => s.setRailSection);
 
   function selectSection(section: ExplorerSection) {
-    // Skills/Sessions/Tools have no explorer panel — go to their pages instead.
-    if (section === "skills" || section === "sessions" || section === "tools") {
+    // Skills/Sessions/Integrations have no explorer panel — go to their pages instead.
+    if (section === "skills" || section === "sessions" || section === "integrations") {
       router.push(SECTIONS.find((s) => s.key === section)!.route);
       return;
     }
@@ -345,9 +344,6 @@ export default function Explorer({ section }: { section: ExplorerSection }) {
 
   if (section === "agents") return <AgentsExplorer />;
 
-  // The VFS section docks the same tree the /files lens shows full-screen.
-  if (section === "files") return <VfsTree />;
-
   // Skills & Sessions are file managers (own breadcrumb/toolbar).
   if ((section === "skills" || section === "sessions") && !atRoot) {
     const isSessions = section === "sessions";
@@ -398,7 +394,7 @@ export default function Explorer({ section }: { section: ExplorerSection }) {
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {atRoot ? <RootSection /> : section === "computer" ? <ComputerSection /> : <ToolsSection />}
+        {atRoot ? <RootSection /> : section === "computer" ? <ComputerSection /> : <IntegrationsSection />}
       </div>
     </div>
   );

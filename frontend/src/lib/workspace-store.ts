@@ -13,7 +13,7 @@ import { WORKBENCH_TAB_KINDS } from "@/lib/workspace-routes";
  * components/workspace/persistence.tsx (localStorage).
  */
 
-export type RailSection = "home" | "files" | "agents" | "sessions" | "skills" | "tools" | "computer";
+export type RailSection = "home" | "hopper" | "files" | "agents" | "integrations" | "viz" | "computer";
 
 export type TabKind = "page" | "file" | "table" | "session" | "sessions-home" | "skill" | "folder" | "agent" | "agent-config" | "tool" | "machine-file" | "terminal";
 
