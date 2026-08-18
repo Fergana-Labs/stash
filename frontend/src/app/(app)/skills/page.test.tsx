@@ -99,6 +99,7 @@ function skill(overrides: Partial<FolderBackedSkill> = {}): Skill {
     mcp_exposed: false,
     file_count: 3,
     updated_at: "2026-06-01T00:00:00Z",
+    has_instructions: true,
     published: null,
     ...overrides,
   };
@@ -117,6 +118,7 @@ function sourceSkill(overrides: Partial<Skill> = {}): Skill {
     mcp_exposed: false,
     file_count: 1,
     updated_at: "2026-08-11T00:00:00Z",
+    has_instructions: true,
     published: null,
     ...overrides,
   } as Skill;
@@ -255,6 +257,28 @@ describe("SkillsPage", () => {
         timeout: 4000,
       }),
     ).toBeInTheDocument();
+  });
+
+  it("shows a draft skill as a draft with a way to finish it, not a Run button", async () => {
+    // A skill with frontmatter but no instructions errors when an agent runs
+    // it. Offering Run on such a card is a silent failure; the card must say
+    // Draft and point at where the instructions get written (the Drive doc).
+    vi.mocked(listSkills).mockResolvedValue([sourceSkill({ has_instructions: false })]);
+    const open = vi.fn();
+    vi.stubGlobal("open", open);
+
+    render(<SkillsPage />);
+
+    expect(await screen.findByText("Draft")).toBeInTheDocument();
+    expect(screen.getByText("Draft — no instructions for an agent yet.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Run" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Add instructions in Drive" }));
+    expect(open).toHaveBeenCalledWith(
+      "https://drive.google.com/open?id=drive-file-1",
+      "_blank",
+      "noopener",
+    );
   });
 
   it("keeps source-backed skills distinct from each other in every list", async () => {

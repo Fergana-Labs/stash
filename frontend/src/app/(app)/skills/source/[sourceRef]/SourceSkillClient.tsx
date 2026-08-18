@@ -68,7 +68,16 @@ export default function SourceSkillClient({ sourceRef }: { sourceRef: string }) 
           // nothing written under it.
           <div className="mt-6 rounded-lg border border-border bg-surface px-4 py-3 text-[13px] text-muted-foreground">
             This document declares itself a skill but has nothing below its frontmatter, so there
-            are no instructions for an agent to follow. Add them in Google Drive.
+            are no instructions for an agent to follow.{" "}
+            <a
+              href={`https://drive.google.com/open?id=${skill.source_ref}`}
+              target="_blank"
+              rel="noreferrer"
+              className="font-medium text-[var(--color-brand-700)] underline"
+            >
+              Add them in Google Drive
+            </a>
+            .
           </div>
         )}
       </div>

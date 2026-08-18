@@ -11,6 +11,7 @@ import {
 } from "@/components/SkeletonStates";
 import { PinIcon, SkillIcon } from "@/components/SkillIcons";
 import SkillCard, {
+  DraftBadge,
   PUBLISH_COLOR,
   PublishBadge,
 } from "@/components/skill/SkillCard";
@@ -670,6 +671,38 @@ function skillPublishBadge(skill: Skill): { discoverable: boolean } | null {
 
 // The primary action on a Skill anywhere it's listed: hand it to an agent.
 // Lives inside card/row links, so it stops the click from following them.
+// The completion path for a draft. A Drive-backed skill is edited in Google
+// Drive, never here, so its call-to-action opens the document itself; a
+// folder-backed skill's editor is the card's own link target, so a label is
+// enough. Cards and rows are wrapped in a Link, hence the button + window.open
+// instead of a nested anchor.
+function DraftCta({ skill }: { skill: Skill }) {
+  if (skill.backing === "source") {
+    return (
+      <button
+        type="button"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          window.open(
+            `https://drive.google.com/open?id=${skill.source_ref}`,
+            "_blank",
+            "noopener"
+          );
+        }}
+        className="cursor-pointer whitespace-nowrap rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-[11.5px] font-medium text-amber-800 hover:bg-amber-100"
+      >
+        Add instructions in Drive
+      </button>
+    );
+  }
+  return (
+    <span className="whitespace-nowrap text-[11.5px] font-medium text-amber-800">
+      Add instructions →
+    </span>
+  );
+}
+
 function RunSkillButton({ onRun }: { onRun: () => void }) {
   return (
     <button
@@ -744,6 +777,7 @@ function SkillCollection({
               published: skillPublishBadge(skill),
               updated_at: skill.updated_at,
               file_count: skill.file_count,
+              draft: !skill.has_instructions,
             }}
             cover={COVERS[i % COVERS.length]}
             selected={selectedIds.has(skillKey(skill))}
@@ -767,12 +801,21 @@ function SkillCollection({
               />
             }
             footer={
-              <>
-                <span className="min-w-0 truncate">
-                  {skill.when_to_use || "Hand this to an agent"}
-                </span>
-                <RunSkillButton onRun={() => onRun(skill)} />
-              </>
+              skill.has_instructions ? (
+                <>
+                  <span className="min-w-0 truncate">
+                    {skill.when_to_use || "Hand this to an agent"}
+                  </span>
+                  <RunSkillButton onRun={() => onRun(skill)} />
+                </>
+              ) : (
+                <>
+                  <span className="min-w-0 truncate">
+                    Draft — no instructions for an agent yet.
+                  </span>
+                  <DraftCta skill={skill} />
+                </>
+              )
             }
           />
         );
@@ -820,8 +863,15 @@ function SkillListRow({
         {skill.file_count} file{skill.file_count === 1 ? "" : "s"}
         {skill.updated_at && `, ${relativeTime(skill.updated_at)}`}
       </span>
-      <PublishBadge published={skillPublishBadge(skill)} />
-      <RunSkillButton onRun={() => onRun(skill)} />
+      <span className="inline-flex items-center gap-1.5">
+        <PublishBadge published={skillPublishBadge(skill)} />
+        {!skill.has_instructions && <DraftBadge />}
+      </span>
+      {skill.has_instructions ? (
+        <RunSkillButton onRun={() => onRun(skill)} />
+      ) : (
+        <DraftCta skill={skill} />
+      )}
       <span
         className={
           pinned

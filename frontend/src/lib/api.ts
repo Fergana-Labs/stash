@@ -1478,6 +1478,9 @@ interface SkillCommon {
   mcp_exposed: boolean;
   file_count: number;
   updated_at: string;
+  // False = a draft: named and declared, but with no instructions for an
+  // agent to load. Agents refuse to run one, so every surface must say so.
+  has_instructions: boolean;
   published: SkillPublishInfo | null;
 }
 

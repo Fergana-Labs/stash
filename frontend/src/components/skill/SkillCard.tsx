@@ -16,6 +16,8 @@ export interface SkillCardData {
   published?: { discoverable: boolean } | null;
   updated_at?: string;
   file_count?: number;
+  /** A named skill with no instructions yet — agents refuse to run it. */
+  draft?: boolean;
 }
 
 interface SkillCardProps {
@@ -67,6 +69,17 @@ export function PublishBadge({
   );
 }
 
+// A draft is a skill an agent will refuse to load (no instructions), so the
+// card must say so wherever the skill is offered — otherwise the gap between
+// "looks runnable" and "errors when run" reads as a broken product.
+export function DraftBadge() {
+  return (
+    <span className="inline-flex items-center rounded-full border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[10.5px] font-medium text-amber-800">
+      Draft
+    </span>
+  );
+}
+
 export default function SkillCard({
   skill,
   href,
@@ -107,8 +120,9 @@ export default function SkillCard({
           <div className="absolute right-2.5 top-2 z-10">{cornerAction}</div>
         )}
         {skill.published !== undefined && (
-          <span className="absolute bottom-2 left-2.5">
+          <span className="absolute bottom-2 left-2.5 inline-flex items-center gap-1.5">
             <PublishBadge published={skill.published} />
+            {skill.draft && <DraftBadge />}
           </span>
         )}
       </div>
