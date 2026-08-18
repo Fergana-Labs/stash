@@ -2049,8 +2049,7 @@ export type SharedObjectType =
   | "page"
   | "file"
   | "table"
-  | "session"
-  | "source";
+  | "session";
 
 export interface SharedWithMeItem {
   object_type: SharedObjectType;

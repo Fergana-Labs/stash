@@ -3,10 +3,8 @@
 A *source* is anything the agent can read. Two are native — the **file system**
 and **session transcripts** — readable by the owner and anyone they're shared
 with. The rest are **connected sources** (GitHub / Drive / Gmail / Notion /
-Slack / Granola) — rows in `user_sources`, owned by the connecting user and
-read-shareable: a recipient reads the source's content through Stash using the
-OWNER's token (delegated), but never sees the token, and management/sync stay
-owner-only.
+Slack / Granola) — rows in `user_sources`, readable by the connecting user or
+members of the workspace that owns the connection.
 
 This module owns:
 - the `user_sources` registry (CRUD + sync bookkeeping),
@@ -21,7 +19,7 @@ This module also owns the unified VFS surface (`source_entries`, `source_documen
 `search_all`) over BOTH native and connected sources — the single codepath the
 agent tools and the REST endpoints both call. Native reads delegate to
 files_tree_service / memory_service (imported lazily to avoid an import cycle).
-Connected-source reads resolve through get_readable_source (owner or a share).
+Connected-source reads resolve through get_readable_source (owner or workspace member).
 """
 
 from __future__ import annotations
@@ -379,13 +377,9 @@ async def purge_disallowed_copied_documents(source: dict) -> int:
 
 
 async def list_connected_sources(user_id: UUID) -> list[dict]:
-    """Connected sources `user_id` can read: the ones they own, plus any shared
-    with them. Each row keeps its real owner_user_id, so reads of a shared source
-    delegate to the source owner's token."""
-    predicate = permission_service.readable_content_condition("source", "obj", 1)
+    """Connected sources owned by `user_id`."""
     rows = await get_pool().fetch(
-        f"SELECT obj.* FROM user_sources obj WHERE {predicate} "
-        "ORDER BY obj.source_type, obj.display_name",
+        "SELECT * FROM user_sources WHERE owner_user_id = $1 ORDER BY source_type, display_name",
         user_id,
     )
     return [_source_row(r) for r in rows]
@@ -393,8 +387,7 @@ async def list_connected_sources(user_id: UUID) -> list[dict]:
 
 async def get_owned_source(source_id: UUID, user_id: UUID) -> dict | None:
     """Fetch a connected source only if `user_id` OWNS it — the gate for
-    management and sync (reconfigure, delete, trigger re-index). Reads go through
-    get_readable_source, which also honours shares."""
+    management and sync (reconfigure, delete, trigger re-index)."""
     row = await get_pool().fetchrow(
         "SELECT * FROM user_sources WHERE id = $1 AND owner_user_id = $2",
         source_id,
@@ -416,10 +409,7 @@ async def get_source_by_type(owner_user_id: UUID, source_type: str) -> dict | No
 
 
 async def get_readable_source(source_id: UUID, user_id: UUID) -> dict | None:
-    """Fetch a connected source `user_id` may READ — they own it, or it was
-    shared with them. The row keeps its real owner_user_id, so downstream reads
-    fetch content with the OWNER's token (delegated access — the sharee never
-    sees the token). Management/sync stay owner-only via get_owned_source."""
+    """Fetch a connected source owned by the user or their workspace."""
     predicate = permission_service.readable_content_condition("source", "obj", 2)
     row = await get_pool().fetchrow(
         f"SELECT obj.* FROM user_sources obj WHERE obj.id = $1 AND {predicate}",
@@ -430,8 +420,8 @@ async def get_readable_source(source_id: UUID, user_id: UUID) -> dict | None:
 
 
 async def delete_source(source_id: UUID, user_id: UUID) -> bool:
-    """Remove a connected source the user owns: archived media blobs, share
-    grants, then the row (documents cascade). Same cleanup as the provider
+    """Remove a connected source the user owns: archived media blobs, then the
+    row (documents cascade). Same cleanup as the provider
     purge — one deletion codepath, nothing orphaned."""
     owned = await get_pool().fetchval(
         "SELECT 1 FROM user_sources WHERE id = $1 AND owner_user_id = $2",
@@ -446,8 +436,7 @@ async def delete_source(source_id: UUID, user_id: UUID) -> bool:
 
 
 async def _cleanup_source_data(source_ids: list[UUID]) -> None:
-    """What the FK cascade can't reach when source rows are deleted: media
-    archives in object storage (X/Instagram saves) and share grants."""
+    """Media archives the database cascade cannot remove from object storage."""
     from . import storage_service
 
     pool = get_pool()
@@ -469,10 +458,6 @@ async def _cleanup_source_data(source_ids: list[UUID]) -> None:
         # the array or it orphans every slide but the first.
         for item in row["media"]:
             await storage_service.delete_file(item["storage_key"])
-    await pool.execute(
-        "DELETE FROM shares WHERE object_type = 'source' AND object_id = ANY($1::uuid[])",
-        source_ids,
-    )
 
 
 def _provider_source_types(provider: str) -> list[str]:
@@ -1721,12 +1706,11 @@ async def search_documents(
     modified_after: datetime | None = None,
     modified_before: datetime | None = None,
 ) -> list[dict]:
-    """FTS over copied-content sources the user can read — their own or shared
-    with them (github/slack/granola), UNIONed across their tables. Pass `source`
+    """FTS over copied-content sources the user or their workspace owns,
+    UNIONed across their tables. Pass `source`
     to scope to one; an index-only source has nothing to FTS, so it returns [].
     Pass `providers` to restrict to those providers' tables — this must happen
-    at the table level, because readability includes sources shared directly
-    with the user that no connected-source listing enumerates.
+    at the table level so unrelated providers are never queried.
 
     Readable sources are resolved first and the FTS runs only over their rows
     (and only in their tables) — see _readable_source_ids."""
@@ -1849,11 +1833,8 @@ async def list_sources(owner_user_id: UUID, user_id: UUID) -> list[dict]:
     from . import skill_service
 
     connected = await list_connected_sources(owner_user_id)
-    # Counted once for the whole listing, and only for bound shelves this scope
-    # owns — a source shared with the scope belongs to someone else's documents.
-    owned_shelves = [
-        s["id"] for s in connected if s["binds_skills"] and s["owner_user_id"] == str(owner_user_id)
-    ]
+    # Counted once for the whole listing and only for folders used for Skills.
+    owned_shelves = [s["id"] for s in connected if s["binds_skills"]]
     shelf_counts = await skill_service.count_shelf_skills(owner_user_id, owned_shelves)
     for s in connected:
         item = {
@@ -1872,8 +1853,6 @@ async def list_sources(owner_user_id: UUID, user_id: UUID) -> list[dict]:
             "last_synced_at": s["last_synced_at"],
             "settings": s["settings"],
             "binds_skills": s["binds_skills"],
-            # Absent for a bound source owned by someone else: the UI shows no
-            # count rather than a zero it cannot stand behind.
             **shelf_counts.get(s["id"], {}),
         }
         hint = _source_search_hint(s)
@@ -1958,11 +1937,6 @@ async def _audit_source_read(
         target_id = connected["id"]
         source_type = connected["source_type"]
         provider = SOURCE_TYPE_PROVIDER.get(source_type)
-        # Delegated read: a recipient reads a shared source through Stash, but the
-        # data belongs to the source owner. Attribute the trail to the owner so it
-        # lands in the OWNER's audit log — that's how they see who read what they
-        # shared. The reader is still recorded as the actor.
-        owner_user_id = UUID(connected["owner_user_id"])
 
     await security_audit_service.record_event(
         action=action,
@@ -2723,9 +2697,7 @@ async def _gather_search_candidates(
         #
         # Copied-content sources go through our FTS (returns [] for index-only /
         # federated sources, which have no stored content to match). Unscoped
-        # search filters at the table level, not via searched_sources — FTS also
-        # reads sources shared directly with the user, which searched_sources
-        # never enumerates.
+        # search filters at the table level, not via searched_sources.
         ref_hits, docs, federated_results = await asyncio.gather(
             _external_ref_matches(
                 searched_sources, query, fetch_limit, modified_after, modified_before

@@ -41,14 +41,12 @@ import {
   secondaryButton,
 } from "@/components/integrations/pickers";
 import PaywallModal from "@/components/PaywallModal";
-import { ResourceShareDialog } from "@/components/share/ResourceShareButton";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import type { User } from "@/lib/types";
 import { routes } from "@/lib/workspace-routes";
 import { useTabTitle } from "@/lib/workspace-store";
 
@@ -585,7 +583,6 @@ export function IntegrationDetail({ provider }: { provider: string }) {
                 <SourceRow
                   key={source.source}
                   source={source}
-                  currentUser={user}
                   highlighted={source.source === highlightSourceId}
                   open={source.source === openSourceId}
                   busySync={busy === `sync:${source.source}`}
@@ -696,7 +693,6 @@ function shortRef(source: Source): string | null {
 
 function SourceRow({
   source,
-  currentUser,
   highlighted,
   open,
   busySync,
@@ -708,7 +704,6 @@ function SourceRow({
   onRemove,
 }: {
   source: Source;
-  currentUser: User;
   highlighted: boolean;
   open: boolean;
   busySync: boolean;
@@ -729,10 +724,6 @@ function SourceRow({
   // Why this row stopped tracking the sync. Distinct from `status.sync_error`,
   // which is the sync itself failing — this is us failing to observe it.
   const [pollStopped, setPollStopped] = useState<string | null>(null);
-  const [shareOpen, setShareOpen] = useState(false);
-  // Outside-click boundary for the share dialog: covers the "..." trigger so
-  // opening the menu doesn't immediately close the dialog.
-  const menuBoundaryRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -858,7 +849,7 @@ function SourceRow({
         {/* Browsing is the row itself (and the VFS); syncing is automatic —
             scheduled, plus kicked by access when stale. The old Browse/Sync
             buttons duplicated those, so the escape hatches live in ⋯ now. */}
-        <div ref={menuBoundaryRef} className="relative">
+        <div className="relative">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
@@ -880,7 +871,6 @@ function SourceRow({
                   {source.binds_skills ? "Stop using for Skills" : "Use for Skills"}
                 </DropdownMenuItem>
               )}
-              <DropdownMenuItem onClick={() => setShareOpen(true)}>Share</DropdownMenuItem>
               <DropdownMenuItem
                 variant="destructive"
                 disabled={busyDelete}
@@ -890,17 +880,6 @@ function SourceRow({
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          {shareOpen && (
-            <ResourceShareDialog
-              objectType="source"
-              objectId={source.source}
-              resourceName={source.display_name}
-              resourceUrlPath={`/integrations/${providerForSourceType[source.type]}?source=${source.source}`}
-              currentUser={currentUser}
-              boundaryRef={menuBoundaryRef}
-              onClose={() => setShareOpen(false)}
-            />
-          )}
         </div>
       </div>
     </div>

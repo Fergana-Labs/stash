@@ -169,11 +169,8 @@ async def count_shelf_skills(owner_user_id: UUID, source_ids: list[str]) -> dict
     """Per bound source: how many of its documents are skills, and how many
     documents it holds.
 
-    Counted only for the shelves named in `source_ids` — the ones this scope
-    owns. A source shared with the scope keeps its real owner, so its documents
-    are not ours to count, and reporting zero for it would be a confident lie
-    about someone else's shelf. Seeded at zero so a shelf this scope owns but
-    has not filled still reports itself.
+    Counted only for the folders named in `source_ids`. Seeded at zero so a
+    folder that has not been filled still reports itself.
 
     Both numbers, because only the pair is legible. A shelf reporting "3
     skills" when it holds 7 documents is the difference between a working bind
@@ -253,7 +250,7 @@ async def list_source_skills(owner_user_id: UUID, user_id: UUID) -> list[dict]:
             # stop, so a frontmatter block with no body below it is a draft.
             "has_instructions": bool(parse_frontmatter(r["head"])[1].strip()),
             # Publishing attaches a `skills` row to a folder id, which a
-            # source-backed skill does not have. Shared upstream, not from here.
+            # source-backed skill does not have. It is managed upstream.
             "published": None,
         }
         for r, meta in declared
