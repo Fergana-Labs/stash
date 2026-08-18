@@ -1,9 +1,12 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import ConnectTokenClient from "./ConnectTokenClient";
 
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = { robots: { index: false, follow: false } };
 
 // Trailing slashes in the env var produce //api/v1/... URLs, which FastAPI
 // 404s without redirecting — strip them so a config typo can't break auth.

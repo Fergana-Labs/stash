@@ -1,15 +1,24 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
+import { POSTS, blogPostingJsonLd } from "../_lib/posts";
+
 export const metadata: Metadata = {
+  alternates: { canonical: "/blog/why-no-great-consumer-ai" },
   title: "Why hasn't there been any great consumer AI (still) · Stash",
   description:
     "When models stop getting smarter, context engineering becomes the battleground. A case for the inevitable AI memory infrastructure buildout.",
 };
 
 export default function WhyNoGreatConsumerAiPage() {
+  const post = POSTS["why-no-great-consumer-ai"];
+
   return (
     <main className="min-h-screen bg-background text-foreground">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(blogPostingJsonLd(post)) }}
+      />
       <Header />
 
       <article className="mx-auto max-w-[720px] px-7 pb-24 pt-16">
@@ -20,7 +29,10 @@ export default function WhyNoGreatConsumerAiPage() {
         <h1 className="mt-5 text-balance font-display text-[clamp(32px,4.4vw,52px)] font-black leading-[1.04] tracking-[-0.035em] text-ink">
           Why hasn&rsquo;t there been any great consumer AI (still)
         </h1>
-        <p className="mt-5 text-[14px] text-muted">By Henry Dowling · August 2025</p>
+        <p className="mt-5 text-[14px] text-muted">
+          By {post.author.name} ·{" "}
+          <time dateTime={post.datePublished}>{post.byline}</time>
+        </p>
 
         <div className="prose prose-lg mt-10">
           <p className="text-[15px] italic text-dim">

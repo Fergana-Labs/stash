@@ -8,6 +8,7 @@ import { fetchFeed } from "./actions";
 const APP_URL = process.env.MANAGED_APP_URL || "https://app.joinstash.ai";
 
 export const metadata: Metadata = {
+  alternates: { canonical: "/pages" },
   title: "Pages · Stash",
   description:
     "Shareable docs for your agents — publish a markdown doc or a mini HTML site and get a public view link and a private edit link. No signup.",

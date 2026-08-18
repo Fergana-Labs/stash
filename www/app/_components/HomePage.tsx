@@ -116,7 +116,7 @@ export function HeroFunnel() {
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src="/hero-funnel.png"
+          src="/hero-funnel.webp"
           alt="A blurred fan of customer-feedback sources funnelling into a single, crisp Stash article that synthesizes the recurring asks."
           width={1086}
           height={1676}
@@ -203,6 +203,8 @@ export function Logos() {
               <img
                 src={t.src}
                 alt={t.name}
+                width={24}
+                height={24}
                 className="h-6 w-6 shrink-0 object-contain"
               />
               <span>{t.name}</span>
@@ -350,27 +352,58 @@ export function Comparisons() {
             </span>
           </h2>
         </div>
-        <div className="mt-14 grid grid-cols-1 gap-px overflow-hidden rounded-[14px] border border-border bg-border sm:grid-cols-2 lg:grid-cols-3">
-          {COMPARISONS.map((c) => (
-            <div key={c.tool} className="flex flex-col gap-3 bg-background p-6">
-              <div className="flex items-center justify-between">
-                <span className="font-display text-[16px] font-bold tracking-[-0.01em] text-ink">
-                  {c.tool}
-                </span>
-                <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-muted">
-                  vs stash
-                </span>
-              </div>
-              <p className="text-[13.5px] leading-[1.55] text-dim">{c.theyDo}</p>
-              <p className="mt-auto border-t border-border-subtle pt-3 text-[13.5px] leading-[1.55] text-ink">
-                <span className="mr-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-brand">
-                  Stash adds
-                </span>
-                {c.stashAdds}
-              </p>
-            </div>
-          ))}
-        </div>
+        {/* Real table markup, laid out as cards. This is the most quotable
+            content on the page, and comparative data in <table> is what search
+            engines and AI answer engines extract cleanly — a div grid is just
+            prose to them. Overriding `display` on table elements drops their
+            implicit ARIA roles in most browsers, so the roles are restored
+            explicitly; without them the grid classes would cost screen readers
+            the row/column relationships this markup exists to provide. */}
+        <table role="table" className="mt-14 block">
+          <caption className="sr-only">
+            How Stash compares to tools teams already use
+          </caption>
+          <thead role="rowgroup" className="sr-only">
+            <tr role="row">
+              <th role="columnheader" scope="col">Tool</th>
+              <th role="columnheader" scope="col">What it does today</th>
+              <th role="columnheader" scope="col">What Stash adds</th>
+            </tr>
+          </thead>
+          <tbody
+            role="rowgroup"
+            className="grid grid-cols-1 gap-px overflow-hidden rounded-[14px] border border-border bg-border sm:grid-cols-2 lg:grid-cols-3"
+          >
+            {COMPARISONS.map((c) => (
+              <tr key={c.tool} role="row" className="flex flex-col gap-3 bg-background p-6">
+                <th
+                  role="rowheader"
+                  scope="row"
+                  className="flex items-center justify-between text-left font-normal"
+                >
+                  <span className="font-display text-[16px] font-bold tracking-[-0.01em] text-ink">
+                    {c.tool}
+                  </span>
+                  <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-muted">
+                    vs stash
+                  </span>
+                </th>
+                <td role="cell" className="text-[13.5px] leading-[1.55] text-dim">
+                  {c.theyDo}
+                </td>
+                <td
+                  role="cell"
+                  className="mt-auto border-t border-border-subtle pt-3 text-[13.5px] leading-[1.55] text-ink"
+                >
+                  <span className="mr-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-brand">
+                    Stash adds
+                  </span>
+                  {c.stashAdds}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </section>
   );
@@ -1199,9 +1232,9 @@ export function Footer() {
         </div>
         {columns.map((col) => (
           <div key={col.h}>
-            <h4 className="mb-3.5 font-mono text-[11px] font-medium uppercase tracking-[0.14em] text-muted">
+            <h3 className="mb-3.5 font-mono text-[11px] font-medium uppercase tracking-[0.14em] text-muted">
               {col.h}
-            </h4>
+            </h3>
             {col.links.map(([label, href]) =>
               href.startsWith("#") ? (
                 <ScrollLink

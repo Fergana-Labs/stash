@@ -1,5 +1,14 @@
+import type { Metadata } from "next";
+
 import Link from "next/link";
 import { Callout, Code, H3, P, Title, Subtitle } from "./components";
+
+export const metadata: Metadata = {
+  title: "Docs · Stash Overview",
+  description:
+    "Stash is the one place your agents connect to all your data — GitHub, Drive, Gmail, Notion, Slack — plus an agent-native Drive where their sessions and pages land.",
+  alternates: { canonical: "/docs" },
+};
 
 export default function DocsOverview() {
   return (

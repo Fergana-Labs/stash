@@ -4,6 +4,7 @@ import Link from "next/link";
 import ContactSalesForm from "./ContactSalesForm";
 
 export const metadata: Metadata = {
+  alternates: { canonical: "/contact-sales" },
   title: "Contact sales · Stash",
   description:
     "Book a demo of Stash for your team. We'll show you how shared agent memory compounds across your engineers.",

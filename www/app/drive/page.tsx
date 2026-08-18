@@ -6,6 +6,7 @@ import SiteHeader from "../_components/SiteHeader";
 import Texture from "../_components/Texture";
 
 export const metadata: Metadata = {
+  alternates: { canonical: "/drive" },
   title: "An AI-native Google Drive · Stash",
   description:
     "Your files and folders, in a Drive your AI can actually read. Real Markdown, HTML, CSV, and PDF, mounted as a filesystem any agent can ls, find, and rg.",
@@ -73,7 +74,10 @@ export default function DrivePage() {
         <div className="mx-auto max-w-[1000px] px-7">
           <figure>
             <img
-              src="/screens/drive.jpg"
+              src="/screens/drive.webp"
+              width={1440}
+              height={540}
+              loading="lazy"
               alt="The Stash Drive: folders in the explorer on the left, a Markdown note open and rendered on the right."
               className="w-full rounded-xl border border-border shadow-[var(--shadow-card)]"
             />

@@ -17,6 +17,11 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
   return {
     title: `${paste.title} · Stash Pages`,
     description: `A ${paste.content_type === "html" ? "mini site" : "page"} published on Stash Pages.`,
+    // Pages are published anonymously with no moderation, and the public feed
+    // is already carrying payment-fraud spam. Letting search engines index
+    // third-party content on our domain is how a site earns a site-reputation-
+    // abuse penalty, so no paste is indexable regardless of visibility.
+    robots: { index: false, follow: false },
   };
 }
 

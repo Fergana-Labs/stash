@@ -1,7 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
+import { POSTS, blogPostingJsonLd } from "../_lib/posts";
+
 export const metadata: Metadata = {
+  alternates: { canonical: "/blog/open-questions-in-memory" },
   title: "Open Questions in Memory, and Our Predictions · Stash",
   description:
     "The questions we argue about most with others building AI memory — labs vs startups, weight vs token space, retrieval vs blast radius, benchmarks, context windows — and where we think each one lands.",
@@ -10,8 +13,14 @@ export const metadata: Metadata = {
 const X_POST = "https://x.com/samzliu/status/2075737137341940098";
 
 export default function OpenQuestionsInMemoryPage() {
+  const post = POSTS["open-questions-in-memory"];
+
   return (
     <main className="min-h-screen bg-background text-foreground">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(blogPostingJsonLd(post)) }}
+      />
       <Header />
 
       <article className="mx-auto max-w-[720px] px-7 pb-24 pt-16">
@@ -22,7 +31,10 @@ export default function OpenQuestionsInMemoryPage() {
         <h1 className="mt-5 text-balance font-display text-[clamp(32px,4.4vw,52px)] font-black leading-[1.04] tracking-[-0.035em] text-ink">
           Open Questions in Memory, and Our Predictions
         </h1>
-        <p className="mt-5 text-[14px] text-muted">By Sam Liu</p>
+        <p className="mt-5 text-[14px] text-muted">
+          By {post.author.name} ·{" "}
+          <time dateTime={post.datePublished}>{post.byline}</time>
+        </p>
         <p className="mt-2 text-[14px] text-muted">
           Cross-posted from <Lnk href={X_POST}>X</Lnk>. We&rsquo;d love to hear
           your predictions and disagreements &mdash; reply there.

@@ -1,3 +1,5 @@
+import type { Metadata } from "next";
+
 import { Code, P, Title, Subtitle } from "../components";
 
 const CONCEPTS: { name: string; badge: string; badgeColor: string; desc: React.ReactNode }[] = [
@@ -69,6 +71,13 @@ const CONCEPTS: { name: string; badge: string; badgeColor: string; desc: React.R
     desc: "Unified search across every source. Scope to one source or search everything — native files and sessions plus your connected sources — in a single query.",
   },
 ];
+
+export const metadata: Metadata = {
+  title: "Concepts · Stash Docs",
+  description:
+    "Every resource in Stash clearly defined — files, sessions, skills, tables, sources, and the virtual filesystem your agents read.",
+  alternates: { canonical: "/docs/concepts" },
+};
 
 export default function ConceptsPage() {
   return (

@@ -6,6 +6,7 @@ import SiteHeader from "../_components/SiteHeader";
 import Texture from "../_components/Texture";
 
 export const metadata: Metadata = {
+  alternates: { canonical: "/bookmarks" },
   title: "AI-native bookmarks · Stash",
   description:
     "Give your agents a personal internet filled with all the best things you've opened, or never got around to, on the inter-webs. Clip anything, keep it in a private library, and let your existing agents use it right away.",
@@ -72,7 +73,9 @@ export default function BookmarksPage() {
 
           <div className="mt-12 max-w-[980px]">
             <Shot
-              src="/screens/save-page.jpg"
+              src="/screens/save-page.webp"
+              width={1440}
+              height={620}
               alt="The Stash Sync extension popup open on a Wikipedia article, offering Save this tab and Save all open tabs."
             />
           </div>
@@ -101,7 +104,9 @@ export default function BookmarksPage() {
 
           <div className="mt-12">
             <Shot
-              src="/screens/bookmarks-table.jpg"
+              src="/screens/bookmarks-table.webp"
+              width={1600}
+              height={732}
               alt="The Stash bookmarks table: title, URL, type, saved date, and site for each clip, with a detail panel showing one bookmark's summary and topics."
             />
           </div>
@@ -116,7 +121,9 @@ export default function BookmarksPage() {
 
           <div className="mt-12">
             <Shot
-              src="/screens/agent-context.jpg"
+              src="/screens/agent-context.webp"
+              width={1600}
+              height={1318}
               alt="A coding agent answering a question about continual learning from saved papers, citing specific arXiv IDs and results."
             />
           </div>
@@ -159,11 +166,24 @@ export default function BookmarksPage() {
   );
 }
 
-function Shot({ src, alt }: { src: string; alt: string }) {
+function Shot({
+  src,
+  alt,
+  width,
+  height,
+}: {
+  src: string;
+  alt: string;
+  width: number;
+  height: number;
+}) {
   return (
     <img
       src={src}
       alt={alt}
+      width={width}
+      height={height}
+      loading="lazy"
       className="w-full rounded-xl border border-border shadow-[var(--shadow-card)]"
     />
   );

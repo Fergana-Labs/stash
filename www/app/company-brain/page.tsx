@@ -7,6 +7,7 @@ import SiteHeader from "../_components/SiteHeader";
 import Texture from "../_components/Texture";
 
 export const metadata: Metadata = {
+  alternates: { canonical: "/company-brain" },
   title: "Company Brain · Stash",
   description:
     "All your company's context in one place every agent can read. Stash connects your tools into a permission-aware source of truth, mounted as an agent-native Drive — Markdown, HTML, and Skills your agents ls, find, and rg.",
