@@ -27,6 +27,7 @@ import {
   createSkill,
   deleteFolder,
   listSkills,
+  listSources,
   setSourceBindsSkills,
   skillKey,
   syncSource,
@@ -331,6 +332,26 @@ function ExternalSkillLinkForm({ onAdded }: { onAdded: () => void }) {
     setMessage("");
     try {
       if (folderId) {
+        // Pasting a folder that already provides Skills is a no-op, and the
+        // message must say so — reporting its existing skills as a fresh
+        // success reads like something happened.
+        const existing = (await listSources()).find(
+          (s) => s.type === "google_drive_folder" && s.external_ref === folderId
+        );
+        if (existing?.binds_skills) {
+          setInput("");
+          const available = (await listSkills()).filter(
+            (s) => s.backing === "source" && s.source_name === existing.display_name
+          ).length;
+          setMessage(
+            `"${existing.display_name}" is already connected for Skills — nothing new to add. ` +
+              `${available} ${available === 1 ? "skill" : "skills"} available from it.`
+          );
+          onAdded();
+          return;
+        }
+        // A connected-but-unbound folder falls through: addSource is
+        // idempotent, and binding is exactly what this paste asks for.
         const created = await addSource({
           source_type: "google_drive_folder",
           external_ref: folderId,

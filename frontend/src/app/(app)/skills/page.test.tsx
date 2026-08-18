@@ -12,6 +12,7 @@ import {
   addSource,
   createSkill,
   listSkills,
+  listSources,
   setSourceBindsSkills,
   syncSource,
   type FolderBackedSkill,
@@ -61,6 +62,7 @@ vi.mock("@/lib/api", () => ({
   deleteFolder: vi.fn(),
   forkSkill: vi.fn(),
   listSkills: vi.fn(),
+  listSources: vi.fn(),
   setSourceBindsSkills: vi.fn(),
   syncSource: vi.fn(),
   // Real behaviour, not a stub: the page keys pins, selection, and React
@@ -128,6 +130,7 @@ describe("SkillsPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     router.push.mockReset();
+    vi.mocked(listSources).mockResolvedValue([]);
     vi.mocked(listSkills).mockResolvedValue([
       skill(),
       skill({
@@ -257,6 +260,38 @@ describe("SkillsPage", () => {
         timeout: 4000,
       }),
     ).toBeInTheDocument();
+  });
+
+  it("says so when a pasted folder is already connected, instead of faking a success", async () => {
+    // Re-pasting a folder that already provides Skills changes nothing, so
+    // the message must say "already connected" — not re-run the connect and
+    // report the folder's pre-existing skills as a fresh win.
+    vi.mocked(listSources).mockResolvedValue([
+      {
+        source: "src-1",
+        type: "google_drive_folder",
+        capability: "navigable",
+        display_name: "skillz",
+        external_ref: "1bHglufVmdfzMPhX9W6HRfSkJkox8dOBE",
+        binds_skills: true,
+      },
+    ]);
+    vi.mocked(listSkills).mockResolvedValue([sourceSkill()]);
+
+    render(<SkillsPage />);
+
+    fireEvent.change(await screen.findByLabelText("Add external skill by link"), {
+      target: { value: "https://drive.google.com/drive/u/0/folders/1bHglufVmdfzMPhX9W6HRfSkJkox8dOBE" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Add Skill" }));
+
+    expect(
+      await screen.findByText(
+        '"skillz" is already connected for Skills — nothing new to add. 1 skill available from it.',
+      ),
+    ).toBeInTheDocument();
+    expect(addSource).not.toHaveBeenCalled();
+    expect(syncSource).not.toHaveBeenCalled();
   });
 
   it("shows a draft skill as a draft with a way to finish it, not a Run button", async () => {
