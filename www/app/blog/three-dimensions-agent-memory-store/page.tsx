@@ -38,30 +38,30 @@ export default function ThreeDimensionsPage() {
           <p>
             There are a lot of different approaches to building memory for coding
             agents (see{" "}
-            <Lnk href="https://x.com/ashpreetbedi/status/2049180168200106150">here</Lnk>,{" "}
-            <Lnk href="https://www.engram.fyi/">here</Lnk>,{" "}
-            <Lnk href="https://x.com/HilaShmuel/status/2049909354803962328">here</Lnk>,{" "}
-            <Lnk href="https://x.com/JadHindy/status/2050280016387199245">here</Lnk>,{" "}
-            <Lnk href="https://x.com/elementdsj/status/2049892715098169620">here</Lnk>,{" "}
-            <Lnk href="https://x.com/Beever_AI/status/2050051528157778399">here</Lnk>,{" "}
-            <Lnk href="https://x.com/pauliusztin_/status/2049466230663262212">here</Lnk>,{" "}
-            <Lnk href="https://x.com/driaforall/status/1966544319516402105">here</Lnk>,{" "}
-            <Lnk href="https://x.com/appliedcompute/status/2050296179330863329">here</Lnk>,{" "}
-            <Lnk href="https://x.com/msukkarieh1/status/2046279157496057987">here</Lnk>,{" "}
-            <Lnk href="https://x.com/mernit/status/2050309641209290887">here</Lnk>,{" "}
-            <Lnk href="https://x.com/BeauJohnson89/status/2050593791938105439">here</Lnk>,{" "}
-            <Lnk href="https://github.com/poteto/brainmaxxing">here</Lnk>,{" "}
-            <Lnk href="https://x.com/theblessnetwork/status/2047410540012556788">here</Lnk>,{" "}
-            <Lnk href="https://mnemosyne.site/">here</Lnk>,{" "}
-            <Lnk href="https://x.com/bokiko/status/2051354191738597472">here</Lnk>,{" "}
-            <Lnk href="https://traces.com/">here</Lnk>,{" "}
-            <Lnk href="https://github.com/swarmclawai/swarmvault">here</Lnk>,{" "}
-            <Lnk href="https://x.com/Ghatikesh/status/2051780018125275406">here</Lnk>,{" "}
-            <Lnk href="https://x.com/CaelStewart2/status/2051412480572739782">here</Lnk>,{" "}
-            <Lnk href="https://www.unibase.com/">here</Lnk>,{" "}
-            <Lnk href="https://github.com/CodeAbra/iai-mcp">here</Lnk>,{" "}
-            <Lnk href="https://naumu.ai/">here</Lnk>, and{" "}
-            <Lnk href="https://x.com/AirbyteHQ/status/2051686041950523720">here</Lnk>{" "}
+            <Lnk href="https://x.com/ashpreetbedi/status/2049180168200106150">@ashpreetbedi</Lnk>,{" "}
+            <Lnk href="https://www.engram.fyi/">Engram</Lnk>,{" "}
+            <Lnk href="https://x.com/HilaShmuel/status/2049909354803962328">@HilaShmuel</Lnk>,{" "}
+            <Lnk href="https://x.com/JadHindy/status/2050280016387199245">@JadHindy</Lnk>,{" "}
+            <Lnk href="https://x.com/elementdsj/status/2049892715098169620">@elementdsj</Lnk>,{" "}
+            <Lnk href="https://x.com/Beever_AI/status/2050051528157778399">@Beever_AI</Lnk>,{" "}
+            <Lnk href="https://x.com/pauliusztin_/status/2049466230663262212">@pauliusztin_</Lnk>,{" "}
+            <Lnk href="https://x.com/driaforall/status/1966544319516402105">@driaforall</Lnk>,{" "}
+            <Lnk href="https://x.com/appliedcompute/status/2050296179330863329">@appliedcompute</Lnk>,{" "}
+            <Lnk href="https://x.com/msukkarieh1/status/2046279157496057987">@msukkarieh1</Lnk>,{" "}
+            <Lnk href="https://x.com/mernit/status/2050309641209290887">@mernit</Lnk>,{" "}
+            <Lnk href="https://x.com/BeauJohnson89/status/2050593791938105439">@BeauJohnson89</Lnk>,{" "}
+            <Lnk href="https://github.com/poteto/brainmaxxing">brainmaxxing</Lnk>,{" "}
+            <Lnk href="https://x.com/theblessnetwork/status/2047410540012556788">@theblessnetwork</Lnk>,{" "}
+            <Lnk href="https://mnemosyne.site/">Mnemosyne</Lnk>,{" "}
+            <Lnk href="https://x.com/bokiko/status/2051354191738597472">@bokiko</Lnk>,{" "}
+            <Lnk href="https://traces.com/">Traces</Lnk>,{" "}
+            <Lnk href="https://github.com/swarmclawai/swarmvault">swarmvault</Lnk>,{" "}
+            <Lnk href="https://x.com/Ghatikesh/status/2051780018125275406">@Ghatikesh</Lnk>,{" "}
+            <Lnk href="https://x.com/CaelStewart2/status/2051412480572739782">@CaelStewart2</Lnk>,{" "}
+            <Lnk href="https://www.unibase.com/">Unibase</Lnk>,{" "}
+            <Lnk href="https://github.com/CodeAbra/iai-mcp">iai-mcp</Lnk>,{" "}
+            <Lnk href="https://naumu.ai/">Naumu</Lnk>, and{" "}
+            <Lnk href="https://x.com/AirbyteHQ/status/2051686041950523720">@AirbyteHQ</Lnk>{" "}
             for some example implementations.)
           </p>
           <p>
@@ -316,8 +316,8 @@ export default function ThreeDimensionsPage() {
             clearly a desideratum of any reasonable memory system would be that the
             agent is able to remember this fact. So, this fact needs to be pushed
             to the agent. This example comes from a friend of mine, who presents an
-            extremely interesting version of the &ldquo;push&rdquo; approach{" "}
-            <Lnk href="https://memory.orinlabs.org/">here</Lnk>.
+            extremely interesting version of the &ldquo;push&rdquo; approach at{" "}
+            <Lnk href="https://memory.orinlabs.org/">Orin Labs Memory</Lnk>.
           </p>
           <p>
             Also, I would push back on &ldquo;push&rdquo; being inherently not
