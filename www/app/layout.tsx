@@ -24,10 +24,10 @@ const description =
   "Stash connects your tools and captures every agent session into one context graph your agents — and your team — can read. Open source, MIT licensed, self-hostable.";
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://joinstash.ai"),
+  metadataBase: new URL("https://www.joinstash.ai"),
   title,
   description,
-  openGraph: { title, description, type: "website", url: "https://joinstash.ai" },
+  openGraph: { title, description, type: "website" },
   twitter: { card: "summary_large_image", title, description },
 };
 

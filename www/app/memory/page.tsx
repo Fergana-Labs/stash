@@ -6,6 +6,7 @@ import SiteHeader from "../_components/SiteHeader";
 import Texture from "../_components/Texture";
 
 export const metadata: Metadata = {
+  alternates: { canonical: "/memory" },
   title: "Memory & Observability · Stash",
   description:
     "Best-in-class agent memory — a three-way hybrid index of curated wiki, vector search, and grep — plus observability over every agent session your team runs: onboarding, coaching, monitoring, and automations.",

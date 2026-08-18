@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import LegalShell from "../_components/LegalShell";
 
 export const metadata: Metadata = {
+  alternates: { canonical: "/privacy" },
   title: "Privacy Policy · Stash",
   description:
     "How Fergana Labs collects, stores, and uses data in the Stash managed service and open-source project.",

@@ -1,4 +1,13 @@
+import type { Metadata } from "next";
+
 import { Code, CodeBlock, H3, P, Title, Subtitle } from "../components";
+
+export const metadata: Metadata = {
+  title: "Self-Hosting · Stash Docs",
+  description:
+    "Run Stash on your own machine with Docker Compose and prebuilt GHCR images. MIT licensed, no vendor lock-in.",
+  alternates: { canonical: "/docs/self-hosting" },
+};
 
 export default function SelfHostingPage() {
   return (

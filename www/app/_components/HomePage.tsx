@@ -116,7 +116,7 @@ export function HeroFunnel() {
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src="/hero-funnel.png"
+          src="/hero-funnel.webp"
           alt="A blurred fan of customer-feedback sources funnelling into a single, crisp Stash article that synthesizes the recurring asks."
           width={1086}
           height={1676}
@@ -203,6 +203,8 @@ export function Logos() {
               <img
                 src={t.src}
                 alt={t.name}
+                width={24}
+                height={24}
                 className="h-6 w-6 shrink-0 object-contain"
               />
               <span>{t.name}</span>
@@ -1199,9 +1201,9 @@ export function Footer() {
         </div>
         {columns.map((col) => (
           <div key={col.h}>
-            <h4 className="mb-3.5 font-mono text-[11px] font-medium uppercase tracking-[0.14em] text-muted">
+            <h3 className="mb-3.5 font-mono text-[11px] font-medium uppercase tracking-[0.14em] text-muted">
               {col.h}
-            </h4>
+            </h3>
             {col.links.map(([label, href]) =>
               href.startsWith("#") ? (
                 <ScrollLink

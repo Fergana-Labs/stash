@@ -1,4 +1,13 @@
+import type { Metadata } from "next";
+
 import { Callout, Code, CodeBlock, H3, P, Title, Subtitle } from "../components";
+
+export const metadata: Metadata = {
+  title: "Contributing · Stash Docs",
+  description:
+    "Set up a local Stash development environment, run the backend and frontend test suites, and submit a pull request.",
+  alternates: { canonical: "/docs/contributing" },
+};
 
 export default function ContributingPage() {
   return (

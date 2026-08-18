@@ -1,15 +1,24 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
+import { POSTS, blogPostingJsonLd } from "../_lib/posts";
+
 export const metadata: Metadata = {
+  alternates: { canonical: "/blog/three-dimensions-agent-memory-store" },
   title: "Three Dimensions That Matter To An Agent Memory Store · Stash",
   description:
     "An opinionated take on three key decisions memory builders need to make: retrieval, injection policy, and what to store.",
 };
 
 export default function ThreeDimensionsPage() {
+  const post = POSTS["three-dimensions-agent-memory-store"];
+
   return (
     <main className="min-h-screen bg-background text-foreground">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(blogPostingJsonLd(post)) }}
+      />
       <Header />
 
       <article className="mx-auto max-w-[720px] px-7 pb-24 pt-16">
@@ -20,7 +29,10 @@ export default function ThreeDimensionsPage() {
         <h1 className="mt-5 text-balance font-display text-[clamp(32px,4.4vw,52px)] font-black leading-[1.04] tracking-[-0.035em] text-ink">
           Three Dimensions That Matter To An Agent Memory Store
         </h1>
-        <p className="mt-5 text-[14px] text-muted">By Henry Dowling</p>
+        <p className="mt-5 text-[14px] text-muted">
+          By {post.author.name} ·{" "}
+          <time dateTime={post.datePublished}>{post.byline}</time>
+        </p>
 
         <div className="prose prose-lg mt-10">
           <p>
@@ -171,7 +183,10 @@ export default function ThreeDimensionsPage() {
             as your <em>primary</em> way of representing memory.
           </p>
           <img
-            src="/blog/joy-breakup.png"
+            src="/blog/joy-breakup.webp"
+            width={720}
+            height={615}
+            loading="lazy"
             alt="iMessage from Joy reading “I broke up with Dylan…”"
             className="mx-auto w-full max-w-[360px] rounded-xl border border-border-subtle"
           />
@@ -242,7 +257,10 @@ export default function ThreeDimensionsPage() {
             </li>
           </ul>
           <img
-            src="/blog/memgpt-architecture.png"
+            src="/blog/memgpt-architecture.webp"
+            width={1110}
+            height={458}
+            loading="lazy"
             alt="MemGPT architecture diagram from the Letta paper, showing the LLM context window split into system instructions, working context, and a FIFO queue, backed by archival and recall storage."
             className="mx-auto w-full rounded-xl border border-border-subtle"
           />

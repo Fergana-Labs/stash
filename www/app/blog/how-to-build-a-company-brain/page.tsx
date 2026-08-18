@@ -1,7 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
+import { POSTS, blogPostingJsonLd } from "../_lib/posts";
+
 export const metadata: Metadata = {
+  alternates: { canonical: "/blog/how-to-build-a-company-brain" },
   title:
     "Giving yourself superpowers: Advice on building a simple company brain · Stash",
   description:
@@ -9,8 +12,14 @@ export const metadata: Metadata = {
 };
 
 export default function HowToBuildACompanyBrainPage() {
+  const post = POSTS["how-to-build-a-company-brain"];
+
   return (
     <main className="min-h-screen bg-background text-foreground">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(blogPostingJsonLd(post)) }}
+      />
       <Header />
 
       <article className="mx-auto max-w-[720px] px-7 pb-24 pt-16">
@@ -21,7 +30,10 @@ export default function HowToBuildACompanyBrainPage() {
         <h1 className="mt-5 text-balance font-display text-[clamp(32px,4.4vw,52px)] font-black leading-[1.04] tracking-[-0.035em] text-ink">
           Giving yourself superpowers: Advice on building a simple company brain
         </h1>
-        <p className="mt-5 text-[14px] text-muted">By Henry Dowling · June 2026</p>
+        <p className="mt-5 text-[14px] text-muted">
+          By {post.author.name} ·{" "}
+          <time dateTime={post.datePublished}>{post.byline}</time>
+        </p>
 
         <div className="prose prose-lg mt-10">
           <p>
@@ -113,7 +125,10 @@ export default function HowToBuildACompanyBrainPage() {
             rel="noopener noreferrer"
           >
             <img
-              src="/blog/dflieb-company-brain.png"
+              src="/blog/dflieb-company-brain.webp"
+              width={1080}
+              height={352}
+              loading="lazy"
               alt="Tweet from David Lieb (@dflieb): “It's so nice having our YC company brain have access to slack, so I can use my agent to….search slack.”"
               className="mx-auto w-full max-w-[540px] rounded-xl border border-border-subtle"
             />
@@ -160,7 +175,10 @@ export default function HowToBuildACompanyBrainPage() {
             unless you want your CISO to get mad at you.
           </p>
           <img
-            src="/blog/integrations-auth-table.png"
+            src="/blog/integrations-auth-table.webp"
+            width={1600}
+            height={408}
+            loading="lazy"
             alt="A central integrations table storing encrypted client_id, client_secret, bearer auth token, and refresh token per integration (Jira and Granola shown)."
             className="w-full rounded-xl border border-border-subtle"
           />
@@ -254,7 +272,10 @@ export default function HowToBuildACompanyBrainPage() {
             of such a document:
           </p>
           <img
-            src="/blog/gong-data-retention-report.png"
+            src="/blog/gong-data-retention-report.webp"
+            width={1120}
+            height={772}
+            loading="lazy"
             alt="An HTML report an agent produced from Gong sales-call data: “How often is data retention coming up in sales calls?” with summary stats and a weekly-mentions chart."
             className="w-full rounded-xl border border-border-subtle"
           />
@@ -284,7 +305,10 @@ export default function HowToBuildACompanyBrainPage() {
             of time they waste on coding tasks by nearly half!
           </p>
           <img
-            src="/blog/transcript-sharing-benchmark.png"
+            src="/blog/transcript-sharing-benchmark.webp"
+            width={1120}
+            height={567}
+            loading="lazy"
             alt="Bar chart, “Claude Code arrives at the fix faster with transcript sharing”: tool calls 272 → ~137, agent turns 123 → ~71, and wasted actions 192 → ~5 when transcripts are shared."
             className="mx-auto w-full max-w-[560px] rounded-xl border border-border-subtle"
           />

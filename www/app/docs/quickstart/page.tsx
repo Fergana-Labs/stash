@@ -1,3 +1,5 @@
+import type { Metadata } from "next";
+
 import { Callout, Code, CodeBlock, H3, P, Title, Subtitle } from "../components";
 
 const PROMPTS = [
@@ -5,6 +7,13 @@ const PROMPTS = [
   { label: "Search across everything", prompt: '"Check my Stash knowledge base — what do we know about authentication patterns?"' },
   { label: "Create a report", prompt: '"Create a Stash page summarizing our key findings on database performance"' },
 ];
+
+export const metadata: Metadata = {
+  title: "Quickstart · Stash Docs",
+  description:
+    "Install the Stash CLI, connect your coding agent, and start building shared knowledge in 5 minutes.",
+  alternates: { canonical: "/docs/quickstart" },
+};
 
 export default function QuickstartPage() {
   return (

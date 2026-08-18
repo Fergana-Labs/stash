@@ -6,6 +6,7 @@ import Texture from "../_components/Texture";
 import AssessmentChat from "./AssessmentChat";
 
 export const metadata: Metadata = {
+  alternates: { canonical: "/smb" },
   title: "Stash for SMBs · Free AI Snapshot",
   description:
     "Three minutes of questions, one page of answers: where your hours are going, the one tool to start with, and what those hours are worth — from your own numbers.",

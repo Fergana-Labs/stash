@@ -5,6 +5,7 @@ import MarkdownView from "../_components/MarkdownView";
 import { AGENT_DOCS } from "../_lib/agent-docs";
 
 export const metadata: Metadata = {
+  alternates: { canonical: "/pages/agents" },
   title: "Agent instructions · Stash Pages",
   description:
     "How agents create, read, and update Stash Pages over plain HTTP — same options and links as the UI.",

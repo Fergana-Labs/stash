@@ -37,8 +37,13 @@ export async function proxy(request: NextRequest) {
   if (pasteSlug && request.method === "GET") {
     const accept = request.headers.get("accept") ?? "";
     if (!accept.includes("text/html") && !request.headers.get("rsc")) {
-      return NextResponse.rewrite(new URL(`/pages/${pasteSlug}/raw`, request.url));
+      return withNoIndex(NextResponse.rewrite(new URL(`/pages/${pasteSlug}/raw`, request.url)));
     }
+  }
+  // Raw markdown carries no <head>, so the page's noindex meta tag cannot
+  // reach it — the directive has to travel as a header instead.
+  if (/^\/pages\/[^/]+\/raw$/.test(pathname)) {
+    return withNoIndex(NextResponse.next());
   }
 
   if (pathname.startsWith("/admin") && pathname !== "/admin/login") {
@@ -52,6 +57,11 @@ export async function proxy(request: NextRequest) {
   if (!AUTH0_ENABLED) return NextResponse.next();
   const { runAuth0Middleware } = await import("@managed/auth0/middleware");
   return runAuth0Middleware(request);
+}
+
+function withNoIndex(response: NextResponse) {
+  response.headers.set("X-Robots-Tag", "noindex, nofollow");
+  return response;
 }
 
 export const config = {

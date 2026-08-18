@@ -1,4 +1,13 @@
+import type { Metadata } from "next";
+
 import { Callout, Code, CodeBlock, CommandRef, H2, P, Title, Subtitle } from "../components";
+
+export const metadata: Metadata = {
+  title: "CLI Reference · Stash Docs",
+  description:
+    "Every stash command: push session events, browse the VFS, search, upload files, and manage skills from your terminal.",
+  alternates: { canonical: "/docs/cli" },
+};
 
 export default function CLIPage() {
   return (
