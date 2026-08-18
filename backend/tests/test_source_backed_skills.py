@@ -28,25 +28,25 @@ def _declared(name: str, description: str, body: str = "Do the thing.") -> str:
 def test_skill_shelf_explains_each_document_status():
     classify = skill_service.source_document_skill_status
 
-    assert classify("instructions.md", _declared("Instructions", "Do this"), "done") == {
+    assert classify(_declared("Instructions", "Do this"), "done") == {
         "skill_status": "skill",
         "skill_status_reason": "Agents can load this file as a Skill.",
     }
-    assert classify("draft.md", _declared("Draft", "Not ready", body=""), "done") == {
+    assert classify(_declared("Draft", "Not ready", body=""), "done") == {
         "skill_status": "draft",
         "skill_status_reason": "Add instructions below the closing --- line.",
     }
-    assert classify("notes.md", "Meeting notes", "done") == {
+    assert classify("Meeting notes", "done") == {
         "skill_status": "not_skill",
         "skill_status_reason": "At the top, add a name and description between --- lines.",
     }
-    assert classify("pending.pdf", None, "processing") == {
+    assert classify(None, "processing") == {
         "skill_status": "checking",
         "skill_status_reason": "Stash is still reading this file.",
     }
-    assert classify("references/manual.md", _declared("Manual", "Nested"), "done") == {
-        "skill_status": "not_skill",
-        "skill_status_reason": ("Only files directly inside the connected folder can be Skills."),
+    assert classify(_declared("Manual", "Nested"), "done") == {
+        "skill_status": "skill",
+        "skill_status_reason": "Agents can load this file as a Skill.",
     }
 
 
@@ -183,9 +183,9 @@ async def test_a_document_still_extracting_is_not_yet_a_skill(client: AsyncClien
 
 
 @pytest.mark.asyncio
-async def test_only_documents_sitting_directly_in_the_shelf_are_skills(client: AsyncClient, pool):
-    """A nested document is reference material belonging to a shelf, not a shelf
-    of its own — even when it declares itself."""
+async def test_a_skill_can_live_inside_a_subfolder(client: AsyncClient, pool):
+    """Subfolders organize Drive files; they do not change whether a file's
+    author declared it as a Skill."""
     _key, owner_id = await _register(client)
     source_id = await _skill_shelf(pool, owner_id)
     await _doc(
@@ -195,7 +195,7 @@ async def test_only_documents_sitting_directly_in_the_shelf_are_skills(client: A
         path="Turbochargers.md",
         content=_declared("Turbochargers", "Boost loss."),
     )
-    await _doc(
+    nested_id = await _doc(
         pool,
         owner_id,
         source_id,
@@ -205,7 +205,15 @@ async def test_only_documents_sitting_directly_in_the_shelf_are_skills(client: A
 
     skills = await skill_service.list_skills(owner_id, owner_id)
 
-    assert [s["name"] for s in skills] == ["Turbochargers"]
+    assert [s["name"] for s in skills] == ["Torque specs", "Turbochargers"]
+
+    nested = await skill_service.read_source_skill(owner_id, nested_id, owner_id)
+    assert nested is not None
+    assert nested["name"] == "Torque specs"
+
+    counts = await skill_service.count_shelf_skills(owner_id, [str(source_id)])
+    assert counts[str(source_id)]["skills"] == 2
+    assert counts[str(source_id)]["documents"] == 2
 
 
 @pytest.mark.asyncio

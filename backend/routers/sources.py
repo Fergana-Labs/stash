@@ -492,8 +492,7 @@ async def bind_source_skills(
     source_id: UUID,
     current_user: dict = Depends(get_current_user),
 ):
-    """Mark a picked Drive folder as a shelf of skills: every document sitting
-    directly in it becomes one skill, read live from the source."""
+    """Use the documents inside a picked Drive folder as Skills."""
     return await _set_binds_skills(source_id, current_user, True)
 
 

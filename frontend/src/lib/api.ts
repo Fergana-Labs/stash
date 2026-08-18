@@ -305,9 +305,8 @@ export interface Source {
   last_synced_at?: string | null;
   search_hint?: string | null;
   settings?: Record<string, unknown> | null;
-  // True when this picked Drive folder is a shelf of skills: the documents
-  // sitting directly in it that declare themselves skills are read as such,
-  // live from the source. `skills` and `documents` count the pair, so a
+  // True when documents inside this picked Drive folder can become Skills.
+  // `skills` and `documents` count the pair, so a
   // document missing its frontmatter shows up as a gap rather than vanishing.
   binds_skills?: boolean;
   skills?: number;
@@ -332,7 +331,7 @@ export interface SourceEntry {
   // Null/absent for sources without an archive pipeline.
   status?: string | null;
   // Present for documents inside a Drive folder used for Skills.
-  skill_status?: "skill" | "draft" | "not_skill" | "checking" | "reference";
+  skill_status?: "skill" | "draft" | "not_skill" | "checking";
   skill_status_reason?: string;
 }
 

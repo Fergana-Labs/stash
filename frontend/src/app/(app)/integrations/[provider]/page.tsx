@@ -266,7 +266,7 @@ export function IntegrationDetail({ provider }: { provider: string }) {
     if (binding) {
       const ok = await confirm({
         title: `Use ${source.display_name} for Skills?`,
-        body: "A file directly inside this folder becomes a Skill when it starts with a name and description between --- lines. Other files remain regular source material.",
+        body: "A file anywhere inside this folder becomes a Skill when it starts with a name and description between --- lines. Other files remain regular source material.",
         confirmLabel: "Use for Skills",
         // Nothing is deleted or overwritten — this only starts reading the
         // folder as skills, and the menu item undoes it.
@@ -1274,7 +1274,6 @@ const skillDocumentLabels: Record<NonNullable<SourceEntry["skill_status"]>, stri
   draft: "Draft Skill",
   not_skill: "Not a Skill",
   checking: "Checking",
-  reference: "Regular subfolder",
 };
 
 const skillDocumentStyles: Record<NonNullable<SourceEntry["skill_status"]>, string> = {
@@ -1282,7 +1281,6 @@ const skillDocumentStyles: Record<NonNullable<SourceEntry["skill_status"]>, stri
   draft: "border-warning/40 bg-warning/10 text-warning",
   not_skill: "border-border text-muted-foreground",
   checking: "border-border text-muted-foreground",
-  reference: "border-border text-muted-foreground",
 };
 
 export function SkillDocumentStatus({ entry }: { entry: SourceEntry }) {
@@ -1381,21 +1379,10 @@ function NavigablePanel({
       const segment = rel.slice(0, slash);
       if (seenFolders.has(segment)) continue;
       seenFolders.add(segment);
-      rows.push({
-        name: segment,
-        kind: "dir",
-        path: `${dirPrefix}${segment}`,
-        ...(source.binds_skills
-          ? {
-              skill_status: "reference" as const,
-              skill_status_reason:
-                "Files inside subfolders are source material, not Skills.",
-            }
-          : {}),
-      });
+      rows.push({ name: segment, kind: "dir", path: `${dirPrefix}${segment}` });
     }
     return rows;
-  }, [entries, path, source.binds_skills]);
+  }, [entries, path]);
 
   // Folder-like entries (have a `path` and are a container) drill in; leaves open a doc.
   function isFolder(entry: SourceEntry): boolean {
@@ -1430,7 +1417,7 @@ function NavigablePanel({
                 This folder is used for Skills.
               </div>
               <div className="mt-0.5 text-muted-foreground">
-                Only files directly inside this folder can be Skills. At the top, each file
+                A file anywhere inside this folder can be a Skill. At the top, each file
                 needs a name and description between --- lines. “Draft Skill” means those
                 fields are present but no instructions follow them yet.
               </div>

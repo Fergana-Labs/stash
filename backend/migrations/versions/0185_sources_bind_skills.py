@@ -6,10 +6,10 @@ whose truth lives upstream, and the copy has to be guarded against edits that
 would silently diverge from Drive.
 
 A source-backed skill removes the copy: `user_sources.binds_skills` marks a
-picked Drive folder as a shelf, and every document sitting directly in it that
-declares itself a skill — the same frontmatter block, checked by the same
-validator, as any other SKILL.md — is read as one straight out of
-`drive_documents`. Everything else on the shelf stays ordinary source material.
+picked Drive folder as a source of Skills, and every document anywhere inside
+it that declares itself a Skill — the same frontmatter block, checked by the
+same validator, as any other SKILL.md — is read as one straight out of
+`drive_documents`. Everything else remains ordinary source material.
 Sources are read-only in Stash, so divergence from Drive is unrepresentable
 rather than merely guarded.
 

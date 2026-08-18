@@ -573,12 +573,12 @@ SKILL_BINDABLE_SOURCE_TYPES = ("google_drive_folder",)
 
 
 async def set_source_binds_skills(source_id: UUID, owner_user_id: UUID, binds_skills: bool) -> dict:
-    """Mark a picked Drive folder as a shelf of skills, or stop.
+    """Use a picked Drive folder for Skills, or stop.
 
     Only a picked folder can be bound: its documents are crawled into
-    `drive_documents` with a path relative to the folder, which is what makes
-    "the documents sitting directly in it" a meaningful set. Binding a whole
-    Drive or a search-driven source would have no such boundary."""
+    `drive_documents` with a path relative to the folder, which gives the
+    Skill collection a clear boundary. Binding a whole Drive or a
+    search-driven source would have no such boundary."""
     row = await get_pool().fetchrow(
         "UPDATE user_sources SET binds_skills = $3, updated_at = now() "
         "WHERE id = $1 AND owner_user_id = $2 RETURNING *",
@@ -1140,11 +1140,7 @@ async def list_documents(
     from .skill_service import source_document_skill_status
 
     for entry, row in zip(entries, rows, strict=True):
-        entry.update(
-            source_document_skill_status(
-                row["path"], row["skill_content"], row["extraction_status"]
-            )
-        )
+        entry.update(source_document_skill_status(row["skill_content"], row["extraction_status"]))
     return entries
 
 

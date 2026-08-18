@@ -126,18 +126,8 @@ def declared_skill(content: str | None) -> dict | None:
     return meta
 
 
-def source_document_skill_status(
-    path: str, content: str | None, extraction_status: str
-) -> dict[str, str]:
+def source_document_skill_status(content: str | None, extraction_status: str) -> dict[str, str]:
     """Explain whether one document in a bound Drive folder is a Skill."""
-    if "/" in path:
-        return {
-            "skill_status": "not_skill",
-            "skill_status_reason": (
-                "Only files directly inside the connected folder can be Skills."
-            ),
-        }
-
     if extraction_status in ("pending", "processing"):
         return {
             "skill_status": "checking",
@@ -208,7 +198,7 @@ async def count_shelf_skills(owner_user_id: UUID, source_ids: list[str]) -> dict
         "FROM drive_documents d "
         "JOIN user_sources src ON src.id = d.source_id "
         "WHERE d.owner_user_id = $1 AND d.deleted_at IS NULL AND src.binds_skills "
-        "  AND d.source_id = ANY($2::uuid[]) AND position('/' in d.path) = 0 "
+        "  AND d.source_id = ANY($2::uuid[]) "
         "ORDER BY d.name",
         owner_user_id,
         source_ids,
@@ -228,11 +218,7 @@ async def count_shelf_skills(owner_user_id: UUID, source_ids: list[str]) -> dict
 
 
 async def list_source_skills(owner_user_id: UUID, user_id: UUID) -> list[dict]:
-    """Every document in a skill-binding source that declares itself a skill.
-
-    Immediate children only: a document nested inside a subfolder is material
-    belonging to the shelf, not a shelf of its own.
-    """
+    """Every document in a skill-binding source that declares itself a skill."""
     readable = permission_service.readable_content_condition("source", "src", 2)
     rows = await get_pool().fetch(
         # Only the frontmatter is needed to list a skill, and only a document
@@ -243,7 +229,7 @@ async def list_source_skills(owner_user_id: UUID, user_id: UUID) -> list[dict]:
         "FROM drive_documents d "
         "JOIN user_sources src ON src.id = d.source_id "
         "WHERE d.owner_user_id = $1 AND d.deleted_at IS NULL AND src.binds_skills "
-        f"  AND position('/' in d.path) = 0 AND d.content LIKE '---%' AND {readable} "
+        f"  AND d.content LIKE '---%' AND {readable} "
         "ORDER BY d.name",
         owner_user_id,
         user_id,
@@ -349,7 +335,7 @@ async def read_source_skill(owner_user_id: UUID, doc_id: UUID, user_id: UUID) ->
         "FROM drive_documents d "
         "JOIN user_sources src ON src.id = d.source_id "
         "WHERE d.owner_user_id = $1 AND d.id = $2 AND d.deleted_at IS NULL "
-        f"  AND src.binds_skills AND position('/' in d.path) = 0 AND {readable}",
+        f"  AND src.binds_skills AND {readable}",
         owner_user_id,
         doc_id,
         user_id,
