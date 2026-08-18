@@ -863,9 +863,8 @@ class StashClient:
     def delete_session(self, session_row_id: str) -> None:
         self._delete(f"/api/v1/me/sessions/{session_row_id}")
 
-    def get_transcript_events(self, session_id: str) -> list:
-        data = self._get(f"/api/v1/me/transcripts/{session_id}/events")
-        return data.get("events", []) if isinstance(data, dict) else data
+    def get_transcript_events(self, session_id: str, limit: int, offset: int = 0) -> dict:
+        return self._get(f"/api/v1/me/transcripts/{session_id}/events", limit=limit, offset=offset)
 
     def export_transcript_jsonl(self, session_id: str) -> str:
         return self._request(

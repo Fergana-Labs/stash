@@ -491,6 +491,7 @@ class SkillAppVfsShell:
             sweep.append(file_paths)
             total_files += len(file_paths)
         docs_scanned = 0
+        scanned: list[str] = []
         budget_hit = False
         # The per-document reads below are the mechanics of one search, not
         # documents the user asked to see — scan_calls tags them so analytics
@@ -500,10 +501,10 @@ class SkillAppVfsShell:
             for file_paths in sweep:
                 if budget_hit:
                     break
-                self.model.prefetch(file_paths)
+                self.model.prefetch(file_paths, for_scan=True)
                 for file_path in file_paths:
                     try:
-                        text = self._read_text(file_path)
+                        text = self._read_for_scan(file_path)
                     except VfsScanBudget:
                         # Out of reads mid-sweep: report what was found rather
                         # than aborting, but never silently — the warning below
@@ -515,6 +516,7 @@ class SkillAppVfsShell:
                         self._warn(f"{name}: {file_path}: {e.detail}")
                         continue
                     docs_scanned += 1
+                    scanned.append(file_path)
                     matches.append(
                         _grep_text(
                             regex,
@@ -527,6 +529,17 @@ class SkillAppVfsShell:
                         )
                     )
         self.model.client.record_search(pattern, roots, docs_scanned)
+        for file_path in scanned:
+            shortfall = self.model.truncated_transcript(file_path)
+            if not shortfall:
+                continue
+            rendered, total = shortfall
+            self._warn(
+                f"{name}: '{file_path}' was searched in FULL ({total:,} events), but the "
+                f"file as rendered holds only the FIRST {rendered:,}. Matches past event "
+                f"{rendered:,} are NOT in the file, and its line numbers will not find "
+                "them. Complete session: the transcript.jsonl beside it."
+            )
         if budget_hit:
             self._warn(
                 f"{name}: stopped after reading {docs_scanned} of {total_files} files "
@@ -825,6 +838,11 @@ class SkillAppVfsShell:
 
     def _read_text(self, path: str) -> str:
         return self.model.read_file(path).decode("utf-8", errors="replace")
+
+    def _read_for_scan(self, path: str) -> str:
+        """What grep searches. Usually identical to `_read_text`; a transcript
+        is searched whole even though it renders a bounded slice."""
+        return self.model.read_for_scan(path).decode("utf-8", errors="replace")
 
     def _walk(self, root: str) -> list[str]:
         self.model._get_node(root)

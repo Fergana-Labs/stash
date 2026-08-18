@@ -344,16 +344,13 @@ async def read_session_events(
 async def read_session_events_page(
     owner_user_id: UUID,
     session_id: str,
-    limit: int | None,
+    limit: int,
     offset: int,
 ) -> tuple[list[dict], int]:
     """One page of renderable session events (oldest first) plus the total
     renderable count, for the lazily-loaded transcript viewer. Filtering to
     renderable event types keeps the offset aligned with the turn ordinal the
-    viewer shows. Callers enforce readability.
-
-    A None limit reads the session whole: Postgres treats LIMIT NULL as
-    LIMIT ALL, so the unpaged read stays on this one codepath."""
+    viewer shows. Callers enforce readability."""
     pool = get_pool()
     total = await pool.fetchval(
         "SELECT COUNT(*) FROM history_events "

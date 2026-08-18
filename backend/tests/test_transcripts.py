@@ -90,6 +90,7 @@ async def test_upload_inserts_events_and_events_roundtrip(client: AsyncClient):
 
     events_resp = await client.get(
         "/api/v1/me/transcripts/sess-1/events",
+        params={"limit": 100},
         headers=headers,
     )
     assert events_resp.status_code == 200
@@ -100,11 +101,12 @@ async def test_upload_inserts_events_and_events_roundtrip(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_events_endpoint_without_limit_returns_whole_session(client: AsyncClient):
-    """Omitting limit must return every turn. The VFS renders
-    sessions/<name>/transcript.md from this route and cannot page, so any
-    default page size here silently truncates that file — an agent grepping a
-    long transcript gets a clean miss instead of the match."""
+async def test_events_endpoint_requires_an_explicit_limit(client: AsyncClient):
+    """limit is required, with no server-side default. A default is invisible
+    to the caller: a short response is indistinguishable from a short session,
+    which is precisely how every long transcript came to be rendered silently
+    cut off. Refusing the bare request forces the caller to choose a count, and
+    a caller that chose one can disclose what it left out."""
     key = await _register(client)
     headers = {"Authorization": f"Bearer {key}"}
 
@@ -130,9 +132,18 @@ async def test_events_endpoint_without_limit_returns_whole_session(client: Async
     )
     assert up.status_code == 201, up.text
 
-    resp = await client.get("/api/v1/me/transcripts/sess-unpaged/events", headers=headers)
-    assert resp.status_code == 200
-    payload = resp.json()
+    bare = await client.get("/api/v1/me/transcripts/sess-unpaged/events", headers=headers)
+    assert bare.status_code == 422
+
+    # A limit past the end of the session is not an error — it is how a caller
+    # asks for the whole thing and learns that it got it.
+    whole = await client.get(
+        "/api/v1/me/transcripts/sess-unpaged/events",
+        params={"limit": turns * 2},
+        headers=headers,
+    )
+    assert whole.status_code == 200
+    payload = whole.json()
     assert payload["total"] == turns
     assert payload["has_more"] is False
     assert len(payload["events"]) == turns
@@ -430,6 +441,7 @@ async def test_replace_reimports_existing_session(client: AsyncClient):
 
     events_resp = await client.get(
         "/api/v1/me/transcripts/sess-replace/events",
+        params={"limit": 100},
         headers=headers,
     )
     assert events_resp.status_code == 200
@@ -840,6 +852,7 @@ async def test_transcript_viewer_includes_streamed_legacy_event_types(client: As
 
     events_resp = await client.get(
         "/api/v1/me/transcripts/sess-streamed/events",
+        params={"limit": 100},
         headers=headers,
     )
     assert events_resp.status_code == 200
