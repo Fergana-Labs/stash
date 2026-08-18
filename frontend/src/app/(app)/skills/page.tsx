@@ -19,13 +19,16 @@ import { SkillComposer } from "@/components/skill/SkillComposer";
 import ForkSkillCardButton from "@/components/skill/ForkSkillCardButton";
 import { SelectBox } from "@/components/content/file-browser/ItemsList";
 import {
+  addSource,
   forkSkill,
   ApiError,
   API_BASE,
   createSkill,
   deleteFolder,
   listSkills,
+  setSourceBindsSkills,
   skillKey,
+  syncSource,
   type FolderBackedSkill,
   type Skill,
   type PublicSkillCard,
@@ -34,6 +37,7 @@ import { useAuth } from "@/hooks/useAuth";
 import type { LaunchableSkill } from "@/lib/types";
 import { usePins } from "@/lib/pins";
 import { skillSlugFromInput } from "@/lib/skillLinks";
+import { parseDriveFolderId } from "@/components/integrations/pickers";
 import { refreshSidebar } from "@/lib/skillNavigationCache";
 
 type ViewKey = "grid" | "list";
@@ -308,9 +312,15 @@ function ExternalSkillLinkForm({ onAdded }: { onAdded: () => void }) {
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    const slug = skillSlugFromInput(input);
-    if (!slug) {
-      setError("Paste a Skill URL like /skills/product-plan or a Skill slug.");
+    // A Drive folder link connects the folder and turns it into Skills — the
+    // same source the integrations page manages, just reachable from where the
+    // user's intent actually is.
+    const folderId = parseDriveFolderId(input);
+    const slug = folderId ? null : skillSlugFromInput(input);
+    if (!folderId && !slug) {
+      setError(
+        "Paste a Google Drive folder link, a Skill URL like /skills/product-plan, or a Skill slug."
+      );
       setMessage("");
       return;
     }
@@ -319,9 +329,22 @@ function ExternalSkillLinkForm({ onAdded }: { onAdded: () => void }) {
     setError("");
     setMessage("");
     try {
-      const forked = await forkSkill(slug);
-      setInput("");
-      setMessage(`Added ${forked.name} to your Skills.`);
+      if (folderId) {
+        const created = await addSource({
+          source_type: "google_drive_folder",
+          external_ref: folderId,
+        });
+        await setSourceBindsSkills(created.id, true);
+        await syncSource(created.id);
+        setInput("");
+        setMessage(
+          "Drive folder connected and syncing. Files with skill frontmatter appear here as soon as they are read."
+        );
+      } else {
+        const forked = await forkSkill(slug!);
+        setInput("");
+        setMessage(`Added ${forked.name} to your Skills.`);
+      }
       onAdded();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Could not add skill");
@@ -344,7 +367,7 @@ function ExternalSkillLinkForm({ onAdded }: { onAdded: () => void }) {
             id="external-skill-link"
             value={input}
             onChange={(event) => setInput(event.target.value)}
-            placeholder="https://.../skills/product-plan"
+            placeholder="Drive folder link, or https://.../skills/product-plan"
             className="mt-1 w-full rounded-md border border-border bg-base px-3 py-2 text-[13px] text-foreground placeholder:text-muted-foreground focus:border-brand focus:outline-none"
           />
         </div>

@@ -8,7 +8,15 @@ import {
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import SkillsPage from "./page";
-import { createSkill, listSkills, type FolderBackedSkill, type Skill } from "@/lib/api";
+import {
+  addSource,
+  createSkill,
+  listSkills,
+  setSourceBindsSkills,
+  syncSource,
+  type FolderBackedSkill,
+  type Skill,
+} from "@/lib/api";
 import { ConfirmDialogProvider } from "@/components/ConfirmDialog";
 
 function render(ui: ReactNode) {
@@ -48,10 +56,13 @@ vi.mock("@/lib/api", () => ({
       this.status = status;
     }
   },
+  addSource: vi.fn(),
   createSkill: vi.fn(),
   deleteFolder: vi.fn(),
   forkSkill: vi.fn(),
   listSkills: vi.fn(),
+  setSourceBindsSkills: vi.fn(),
+  syncSource: vi.fn(),
   // Real behaviour, not a stub: the page keys pins, selection, and React
   // children off this, so a mock returning undefined collapses the render.
   skillKey: (s: Skill) => (s.backing === "folder" ? s.folder_id : s.source_ref),
@@ -207,6 +218,32 @@ describe("SkillsPage", () => {
     await waitFor(() =>
       expect(router.push).toHaveBeenCalledWith("/skills/folder/folder-9"),
     );
+  });
+
+  it("connects a pasted Drive folder link as a skill source", async () => {
+    // The box is labeled "add external skill by link", and a Drive folder is
+    // the one truly external kind of skill — pasting its link must work, not
+    // bounce the user to the integrations page with an error.
+    vi.mocked(addSource).mockResolvedValue({ id: "src-1" });
+
+    render(<SkillsPage />);
+
+    fireEvent.change(await screen.findByLabelText("Add external skill by link"), {
+      target: { value: "https://drive.google.com/drive/u/0/folders/1bHglufVmdfzMPhX9W6HRfSkJkox8dOBE" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Add Skill" }));
+
+    await waitFor(() =>
+      expect(addSource).toHaveBeenCalledWith({
+        source_type: "google_drive_folder",
+        external_ref: "1bHglufVmdfzMPhX9W6HRfSkJkox8dOBE",
+      }),
+    );
+    await waitFor(() => expect(setSourceBindsSkills).toHaveBeenCalledWith("src-1", true));
+    await waitFor(() => expect(syncSource).toHaveBeenCalledWith("src-1"));
+    expect(
+      await screen.findByText(/Drive folder connected and syncing/),
+    ).toBeInTheDocument();
   });
 
   it("keeps source-backed skills distinct from each other in every list", async () => {
