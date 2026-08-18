@@ -381,7 +381,7 @@ export async function addSource(body: {
   external_ref?: string;
   display_name?: string;
   settings?: Record<string, unknown>;
-}): Promise<{ id: string }> {
+}): Promise<{ id: string; display_name: string }> {
   return apiFetch(`${ME}/sources`, {
     method: "POST",
     body: JSON.stringify(body),

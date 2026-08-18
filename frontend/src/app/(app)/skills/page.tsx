@@ -337,15 +337,39 @@ function ExternalSkillLinkForm({ onAdded }: { onAdded: () => void }) {
         await setSourceBindsSkills(created.id, true);
         await syncSource(created.id);
         setInput("");
+        setMessage(`Connected "${created.display_name}" — reading its files now…`);
+        onAdded();
+        // Sync and text extraction land a few seconds after the connect. A
+        // single refetch races them and loses, leaving a page that says "No
+        // skills yet" about a folder that is about to produce some — so keep
+        // looking until its skills arrive or it's clear none are coming.
+        for (let attempt = 0; attempt < 15; attempt++) {
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+          const skills = await listSkills();
+          const arrived = skills.filter(
+            (s) => s.backing === "source" && s.source_name === created.display_name
+          );
+          if (arrived.length > 0) {
+            setMessage(
+              `"${created.display_name}" is connected: ${arrived.length} ${
+                arrived.length === 1 ? "skill" : "skills"
+              } added.`
+            );
+            onAdded();
+            return;
+          }
+        }
         setMessage(
-          "Drive folder connected and syncing. Files with skill frontmatter appear here as soon as they are read."
+          `"${created.display_name}" is connected, but none of its files declare a skill yet. ` +
+            "Each file's status is on the folder's Integrations page."
         );
+        onAdded();
       } else {
         const forked = await forkSkill(slug!);
         setInput("");
         setMessage(`Added ${forked.name} to your Skills.`);
+        onAdded();
       }
-      onAdded();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Could not add skill");
     } finally {
@@ -380,7 +404,11 @@ function ExternalSkillLinkForm({ onAdded }: { onAdded: () => void }) {
         </button>
       </div>
       {error ? <p className="mt-2 text-[12px] text-red-500">{error}</p> : null}
-      {message ? <p className="mt-2 text-[12px] text-muted-foreground">{message}</p> : null}
+      {message ? (
+        <p className="mt-2 text-[13px] font-medium text-foreground" role="status">
+          {message}
+        </p>
+      ) : null}
     </form>
   );
 }

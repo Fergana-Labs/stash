@@ -220,11 +220,14 @@ describe("SkillsPage", () => {
     );
   });
 
-  it("connects a pasted Drive folder link as a skill source", async () => {
+  it("connects a pasted Drive folder link and reports when its skills arrive", async () => {
     // The box is labeled "add external skill by link", and a Drive folder is
     // the one truly external kind of skill — pasting its link must work, not
-    // bounce the user to the integrations page with an error.
-    vi.mocked(addSource).mockResolvedValue({ id: "src-1" });
+    // bounce the user to the integrations page with an error. And because
+    // sync + extraction land seconds later, a single refetch loses the race:
+    // the form must keep watching until the folder's skills actually appear,
+    // or the user sees a page that claims nothing happened.
+    vi.mocked(addSource).mockResolvedValue({ id: "src-1", display_name: "skillz" });
 
     render(<SkillsPage />);
 
@@ -242,7 +245,15 @@ describe("SkillsPage", () => {
     await waitFor(() => expect(setSourceBindsSkills).toHaveBeenCalledWith("src-1", true));
     await waitFor(() => expect(syncSource).toHaveBeenCalledWith("src-1"));
     expect(
-      await screen.findByText(/Drive folder connected and syncing/),
+      await screen.findByText('Connected "skillz" — reading its files now…'),
+    ).toBeInTheDocument();
+
+    // The next poll finds the folder's first extracted skill.
+    vi.mocked(listSkills).mockResolvedValue([sourceSkill()]);
+    expect(
+      await screen.findByText('"skillz" is connected: 1 skill added.', undefined, {
+        timeout: 4000,
+      }),
     ).toBeInTheDocument();
   });
 
