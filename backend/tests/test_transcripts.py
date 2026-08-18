@@ -100,6 +100,46 @@ async def test_upload_inserts_events_and_events_roundtrip(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_events_endpoint_without_limit_returns_whole_session(client: AsyncClient):
+    """Omitting limit must return every turn. The VFS renders
+    sessions/<name>/transcript.md from this route and cannot page, so any
+    default page size here silently truncates that file — an agent grepping a
+    long transcript gets a clean miss instead of the match."""
+    key = await _register(client)
+    headers = {"Authorization": f"Bearer {key}"}
+
+    turns = 150
+    body = (
+        "\n".join(
+            json.dumps(
+                {
+                    "type": "user",
+                    "message": {"content": f"msg-{i}"},
+                    "timestamp": f"2026-05-10T20:00:00.{i:03d}Z",
+                }
+            )
+            for i in range(turns)
+        )
+        + "\n"
+    ).encode()
+    up = await client.post(
+        "/api/v1/me/transcripts",
+        files={"file": ("s.jsonl", io.BytesIO(body), "application/jsonl")},
+        data={"session_id": "sess-unpaged", "agent_name": "claude"},
+        headers=headers,
+    )
+    assert up.status_code == 201, up.text
+
+    resp = await client.get("/api/v1/me/transcripts/sess-unpaged/events", headers=headers)
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["total"] == turns
+    assert payload["has_more"] is False
+    assert len(payload["events"]) == turns
+    assert payload["events"][-1]["content"] == f"msg-{turns - 1}"
+
+
+@pytest.mark.asyncio
 async def test_events_endpoint_paginates(client: AsyncClient):
     """The viewer loads the transcript a page at a time. offset is a turn
     ordinal, total is the full turn count, and has_more drives infinite scroll —

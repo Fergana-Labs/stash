@@ -7,6 +7,8 @@ partner: reads run as the calling credential, and the caller's cloud computer is
 not part of the tree.
 """
 
+import io
+import json
 from uuid import UUID
 
 import pytest
@@ -280,3 +282,48 @@ async def test_overview_reports_machine_provisioned_state(client: AsyncClient, m
     )
     after = await client.get("/api/v1/me/overview", headers=_auth(api_key))
     assert after.json()["machine"] == {"provisioned": True}
+
+
+async def test_transcript_md_renders_the_whole_session(client: AsyncClient):
+    """sessions/<name>/transcript.md renders from the transcript events route,
+    which this loader reads in one shot — it has no way to page. A default page
+    size there truncated the file, so an agent reading or grepping a long
+    session got a clean miss for anything past the cap instead of the match."""
+    api_key, _ = await _register(client)
+
+    turns = 150
+    body = (
+        "\n".join(
+            json.dumps(
+                {
+                    "type": "user",
+                    "message": {"content": f"msg-{i}"},
+                    "timestamp": f"2026-05-10T20:00:00.{i:03d}Z",
+                }
+            )
+            for i in range(turns)
+        )
+        + "\n"
+    ).encode()
+    up = await client.post(
+        "/api/v1/me/transcripts",
+        files={"file": ("s.jsonl", io.BytesIO(body), "application/jsonl")},
+        data={"session_id": "sess-vfs-long", "agent_name": "claude"},
+        headers=_auth(api_key),
+    )
+    assert up.status_code == 201, up.text
+
+    located = await _vfs(client, api_key, "find /sessions -name transcript.md")
+    assert located.status_code == 200
+    path = located.json()["stdout"].strip()
+    assert path, located.json()
+
+    # Read transcript.md by its own path. A recursive grep of the session
+    # directory would pass on the uncapped transcript.jsonl beside it and never
+    # exercise the markdown at all.
+    resp = await _vfs(client, api_key, f'cat "{path}"')
+
+    assert resp.status_code == 200
+    result = resp.json()
+    assert result["exit_code"] == 0, result
+    assert f"msg-{turns - 1}" in result["stdout"]
