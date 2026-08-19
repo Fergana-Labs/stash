@@ -5,6 +5,7 @@ import { use, useEffect, useState } from "react";
 
 import { BasicPageSkeleton } from "@/components/SkeletonStates";
 import { getPublicSessionFolder, type PublicSessionFolder } from "@/lib/api";
+import SessionFolderIcon from "@/components/SessionFolderIcon";
 
 // Read-only viewer for a session folder reached by slug. Renders for anyone the
 // access rules allow (a public folder needs no login); the layout exempts
@@ -42,7 +43,7 @@ export default function PublicSessionFolderPage({
   return (
     <div className="mx-auto max-w-[820px] px-6 py-10">
       <div className="flex items-center gap-2 text-[12px] text-muted-foreground">
-        <span aria-hidden>{folder.is_default ? "🗃️" : "📁"}</span>
+        <SessionFolderIcon folder={folder} className="h-3.5 w-3.5 shrink-0" />
         <span>Shared session folder</span>
       </div>
       <h1 className="mt-2 font-display text-[24px] font-bold tracking-tight text-foreground">

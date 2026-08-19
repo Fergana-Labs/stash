@@ -2,10 +2,12 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { FolderSymlink } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { useBreadcrumbs } from "@/components/BreadcrumbContext";
 import { useConfirm } from "@/components/ConfirmDialog";
 import CopyableCommandBlock from "@/components/CopyableCommandBlock";
+import SessionFolderIcon from "@/components/SessionFolderIcon";
 import SessionUpload from "@/components/SessionUpload";
 import { SessionsListSkeleton } from "@/components/SkeletonStates";
 import { PinIcon } from "@/components/SkillIcons";
@@ -1037,9 +1039,7 @@ function FolderCard({
         (over ? "border-[var(--color-brand-300)] ring-1 ring-inset ring-[var(--color-brand-300)]" : "border-border")
       }
     >
-      <span aria-hidden className="mt-0.5 text-[18px]">
-        {folder.is_default ? "🗃️" : "📁"}
-      </span>
+      <SessionFolderIcon folder={folder} className="mt-0.5 h-[18px] w-[18px] shrink-0 text-muted-foreground" />
       <span className="min-w-0 flex-1">
         <span className="flex items-center gap-1.5">
           <span className="min-w-0 truncate text-[13.5px] font-semibold text-foreground">
@@ -1091,9 +1091,7 @@ function SharedFolderCard({
       onClick={onClick}
       className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-border bg-surface/50 px-3 py-3 text-left transition hover:border-[var(--color-brand-300)] hover:bg-raised/50"
     >
-      <span aria-hidden className="mt-0.5 text-[18px]">
-        🗂️
-      </span>
+      <FolderSymlink className="mt-0.5 h-[18px] w-[18px] shrink-0 text-muted-foreground" strokeWidth={1.75} />
       <span className="min-w-0">
         <span className="block truncate text-[13.5px] font-semibold text-foreground">{name}</span>
         <span className="block truncate text-[11.5px] text-muted-foreground">{subtitle}</span>
@@ -1217,7 +1215,11 @@ function FolderDrill({
       </button>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
         <h2 className="m-0 flex items-center gap-2 font-display text-[18px] font-semibold text-foreground">
-          <span aria-hidden>{folder.shared ? "🗂️" : ownFolder?.is_default ? "🗃️" : "📁"}</span>
+          {folder.shared ? (
+            <FolderSymlink className="h-[18px] w-[18px] shrink-0 text-muted-foreground" strokeWidth={1.75} />
+          ) : (
+            <SessionFolderIcon folder={ownFolder} className="h-[18px] w-[18px] shrink-0 text-muted-foreground" />
+          )}
           {folder.name}
           {ownFolder && <FolderAccessBadge folder={ownFolder} />}
         </h2>
@@ -1340,7 +1342,7 @@ function FolderDropChip({
           : "border-border bg-base text-dim")
       }
     >
-      <span aria-hidden>{folder.is_default ? "🗃️" : "📁"}</span>
+      <SessionFolderIcon folder={folder} className="h-3.5 w-3.5 shrink-0" />
       {folder.name}
     </span>
   );

@@ -3,6 +3,7 @@
 import { type DragEvent, useRef, useState } from "react";
 
 import { createFolder, uploadFileOrPage } from "@/lib/api";
+import { FolderUp } from "lucide-react";
 
 type VaultStatus =
   | { kind: "idle" }
@@ -169,9 +170,7 @@ export default function ObsidianVaultDropZone({ onUploaded }: Props) {
             : "border-border bg-background/40 hover:border-brand hover:bg-raised"
         }`}
       >
-        <div className="text-[24px] leading-none" aria-hidden>
-          📁
-        </div>
+        <FolderUp className="h-6 w-6 text-muted-foreground" strokeWidth={1.5} />
         <div className="text-[13px] font-medium text-foreground">
           {dragActive
             ? "Release to upload your vault"

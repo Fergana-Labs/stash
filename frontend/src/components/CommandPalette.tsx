@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { File, FileText, Folder, MessagesSquare, Search, Table } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type MouseEvent, type RefObject } from "react";
 import { getSidebar, listAllTables, semanticSearchPages, type Sidebar } from "../lib/api";
 import type { TableWithOwner } from "../lib/types";
@@ -20,6 +21,24 @@ interface Result {
   label: string;
   href: string;
   detail?: string;
+}
+
+const KIND_ICON = {
+  search: Search,
+  page: FileText,
+  session: MessagesSquare,
+  folder: Folder,
+  file: File,
+  table: Table,
+} satisfies Record<Result["kind"], typeof Search>;
+
+function KindIcon({ kind }: { kind: Result["kind"] }) {
+  const Icon = KIND_ICON[kind];
+  return (
+    <span className="flex w-5 shrink-0 justify-center text-muted-foreground">
+      <Icon className="h-4 w-4" strokeWidth={1.75} />
+    </span>
+  );
 }
 
 export default function CommandPalette({
@@ -198,13 +217,6 @@ export default function CommandPalette({
 
   if (!open) return null;
 
-  const kindIcon: Record<string, string> = {
-    search: "⌕",
-    page: "📄",
-    session: "#",
-    file: "📁",
-    table: "T",
-  };
 
   return (
     <div className="fixed inset-0 z-[60] cursor-pointer bg-transparent" onClick={onClose}>
@@ -257,9 +269,7 @@ export default function CommandPalette({
                   (i === selected ? "bg-[var(--color-brand-50)] text-foreground" : "text-dim hover:bg-raised")
                 }
               >
-                <span className="w-5 text-center text-[14px] text-muted-foreground">
-                  {kindIcon[r.kind] || "-"}
-                </span>
+                <KindIcon kind={r.kind} />
                 <div className="min-w-0 flex-1">
                   <div className="truncate font-medium">{r.label}</div>
                   {r.detail && <div className="truncate text-[11px] text-muted-foreground">{r.detail}</div>}
