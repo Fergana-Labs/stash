@@ -113,39 +113,39 @@ export default function ContextGoldRushPage() {
           <ul>
             <li>
               <strong>Personal knowledge base.</strong> A GitHub repo, gbrain, Claude Code plus
-              Obsidian. A folder of markdown files that serves as skills and memory for your
+              <Lnk href="https://x.com/obsdmd">Obsidian</Lnk>. A folder of markdown files that serves as skills and memory for your
               agents. Where people start when experimenting. They fail when trying to expand to
               an entire team.
             </li>
             <li>
-              <strong>Agent memory.</strong> Letta, Honcho, Engram Lab. Per-agent memory layers
+              <strong>Agent memory.</strong> <Lnk href="https://x.com/Letta_AI">Letta</Lnk>, <Lnk href="https://x.com/honchodotdev">Honcho</Lnk>, <Lnk href="https://x.com/EngramLab">Engram Lab</Lnk>. Per-agent memory layers
               that scale vertically in time. These companies tend to be research focused on
               building super long-horizon agents, split between those who believe in token space
               and those who believe in weight space.
             </li>
             <li>
-              <strong>Observability tools.</strong> Braintrust, Raindrop. They capture the traces
+              <strong>Observability tools.</strong> <Lnk href="https://x.com/braintrust">Braintrust</Lnk>, <Lnk href="https://x.com/raindrop_ai">Raindrop</Lnk>. They capture the traces
               your external, production agents emit. The outputs tend to be dashboards and evals
               rather than an accumulating data store for future agents. Not directly playing
               here, but a natural place where the data accumulates.
             </li>
             <li>
-              <strong>Agent dev tools.</strong> Entire, Mintlify. A similar service to
+              <strong>Agent dev tools.</strong> <Lnk href="https://x.com/EntireHQ">Entire</Lnk>, <Lnk href="https://x.com/mintlify">Mintlify</Lnk>. A similar service to
               observability tools, except for your internal coding agents. The output is a set of
               docs so that your coding agents produce less slop and run for longer.
             </li>
             <li>
-              <strong>Data moat builders.</strong> Applied Compute, Prime Intellect. They sell
+              <strong>Data moat builders.</strong> <Lnk href="https://x.com/appliedcompute">Applied Compute</Lnk>, <Lnk href="https://x.com/PrimeIntellect">Prime Intellect</Lnk>. They sell
               enterprises on a vision of custom models and a context layer hyper-specific to
               their workflows. Part research lab, part AI context consulting firm, part GPU
               provider: own the customer relationship end to end and be a one-stop shop.
             </li>
             <li>
-              <strong>Companies reinventing themselves.</strong> Notion, ClickUp, Airbyte, Glean,
-              PromptQL. Established in related areas, and now joining the context gold rush.
+              <strong>Companies reinventing themselves.</strong> <Lnk href="https://x.com/NotionHQ">Notion</Lnk>, <Lnk href="https://x.com/clickup">ClickUp</Lnk>, <Lnk href="https://x.com/AirbyteHQ">Airbyte</Lnk>, <Lnk href="https://x.com/Glean">Glean</Lnk>,
+              <Lnk href="https://x.com/PromptQL">PromptQL</Lnk>. Established in related areas, and now joining the context gold rush.
             </li>
             <li>
-              <strong>AI employee.</strong> Viktor, Lindy. Starting at the level of individual
+              <strong>AI employee.</strong> <Lnk href="https://x.com/viktor__com">Viktor</Lnk>, <Lnk href="https://x.com/getlindy">Lindy</Lnk>. Starting at the level of individual
               users, on the premise that they are well positioned to capture context and build a
               PLG motion that maps context across entire orgs.
             </li>
@@ -156,18 +156,18 @@ export default function ContextGoldRushPage() {
               player.
             </li>
             <li>
-              <strong>Company brain.</strong> Stash (full disclosure — this is us), Sentra,
-              Hyperspell, Supermemory. All relatively early start-ups, started to natively solve
+              <strong>Company brain.</strong> <Link href="/">Stash</Link> (full disclosure — this is us), <Lnk href="https://x.com/sentra_app">Sentra</Lnk>,
+              <Lnk href="https://x.com/hyperspell">Hyperspell</Lnk>, <Lnk href="https://x.com/supermemory">Supermemory</Lnk>. All relatively early start-ups, started to natively solve
               the org-level context layer problem. The bet is that attacking this problem from
               day one, rather than moving into it laterally, is how the category gets won.
             </li>
           </ul>
           <p>
             And this doesn&rsquo;t count the frontier labs doing similar work across their FDE
-            and product teams, or related players like Hydra and Pinecone expanding vertically up
-            from infrastructure, Exa moving from web search to enterprise search, agent
+            and product teams, or related players like <Lnk href="https://x.com/hydra_db">Hydra</Lnk> and <Lnk href="https://x.com/pinecone">Pinecone</Lnk> expanding vertically up
+            from infrastructure, <Lnk href="https://x.com/ExaAILabs">Exa</Lnk> moving from web search to enterprise search, agent
             orchestration companies building memory into their products, or integration companies
-            like Composio that connect to existing context and sources of truth. All of them
+            like <Lnk href="https://x.com/composio">Composio</Lnk> that connect to existing context and sources of truth. All of them
             could move laterally into context management if the opportunity appears. An open
             question: as models get smarter, are integrations all you need?
           </p>
