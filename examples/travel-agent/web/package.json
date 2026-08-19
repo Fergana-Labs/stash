@@ -1,0 +1,17 @@
+{
+  "name": "travel-agent-demo",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -p 3200"
+  },
+  "dependencies": {
+    "next": "16.2.11",
+    "react": "19.2.0",
+    "react-dom": "19.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "26.2.0",
+    "@types/react": "19.2.18",
+    "typescript": "7.0.2"
+  }
+}
