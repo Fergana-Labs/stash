@@ -33,6 +33,8 @@ htmlcov/
 coverage/
 .vercel
 .claude/
+.agents/
+.codex/
 .global-agents/
 .celerybeat-schedule*
 
