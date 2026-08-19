@@ -1,73 +1,79 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
+import SiteFooter from "../_components/SiteFooter";
+import SiteHeader from "../_components/SiteHeader";
 import ContactSalesForm from "./ContactSalesForm";
 
 export const metadata: Metadata = {
   alternates: { canonical: "/contact-sales" },
   title: "Contact sales · Stash",
   description:
-    "Book a demo of Stash for your team. We'll show you how shared agent memory compounds across your engineers.",
+    "Book a demo of Stash for your team. Bring the agents you already run and we import real sessions on the call.",
 };
+
+const POINTS = [
+  [
+    "We start from your logs",
+    "Bring a repository and the agents you already run. We import real sessions on the call.",
+  ],
+  [
+    "Internal and external agents",
+    "How one memory layer serves the agents your team runs and the agents your customers use.",
+  ],
+  ["Self-hosted or managed", "Deployment, security review, and pricing for either path."],
+  ["Wiring help", "Claude Code, Cursor, Codex, OpenCode, Openclaw, and Hermes."],
+];
 
 export default function ContactSalesPage() {
   return (
     <main className="min-h-screen bg-background text-foreground">
-      <header className="sticky top-0 z-30 border-b border-border-subtle bg-background/85 backdrop-blur">
-        <div className="mx-auto flex h-16 max-w-[1200px] items-center justify-between px-7">
-          <Link
-            href="/"
-            className="font-display text-[20px] font-bold tracking-[-0.03em] text-ink"
-          >
-            stash
-          </Link>
-          <nav className="flex items-center gap-6 text-[14px] text-dim">
-            <Link href="/docs" className="transition hover:text-ink">
-              Docs
-            </Link>
-            <Link href="/" className="transition hover:text-ink">
-              Home
-            </Link>
-          </nav>
-        </div>
-      </header>
+      <SiteHeader />
 
-      <section className="mx-auto grid max-w-[1100px] grid-cols-1 gap-12 px-7 pb-24 pt-16 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:gap-16">
+      <section className="mx-auto grid max-w-[1180px] grid-cols-1 gap-10 px-5 pb-24 pt-16 sm:px-7 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)] lg:gap-20">
         <div>
-          <p className="flex items-center font-mono text-[11px] font-medium uppercase tracking-[0.14em] text-muted">
-            <span className="mr-[10px] inline-block h-[6px] w-[6px] rounded-full bg-brand" />
-            Contact sales
-          </p>
-          <h1 className="mt-5 text-balance font-display text-[clamp(36px,4.6vw,56px)] font-bold leading-[1.02] tracking-[-0.035em] text-ink">
-            Book a demo for
-            <br />
-            <span className="text-brand">your team.</span>
+          <h1 className="max-w-[14ch] font-display text-[clamp(34px,4.4vw,54px)] font-medium leading-[1.06] tracking-[-0.028em] text-ink">
+            Book a demo for <span className="text-brand">your team.</span>
           </h1>
-          <p className="mt-6 max-w-[440px] text-[17px] leading-[1.6] text-foreground">
-            Tell us a bit about your team and we&apos;ll set up a 30-minute
-            walkthrough. We&apos;ll cover how Stash connects your agents to all
-            your data and gives them an agent-native Drive to write the work
-            back into.
+          <p className="mt-[22px] max-w-[46ch] text-[17px] leading-[1.6] text-dim">
+            Tell us about your setup and we will run a 30 minute walkthrough on your stack. No slide
+            deck.
           </p>
 
-          <ul className="mt-8 flex flex-col gap-3 text-[14px] text-dim">
-            <li className="flex items-start gap-2.5">
-              <span className="mt-[7px] h-[6px] w-[6px] shrink-0 rounded-full bg-brand" />
-              30-minute live walkthrough tailored to your stack.
-            </li>
-            <li className="flex items-start gap-2.5">
-              <span className="mt-[7px] h-[6px] w-[6px] shrink-0 rounded-full bg-brand" />
-              Pricing and self-host options for security-sensitive teams.
-            </li>
-            <li className="flex items-start gap-2.5">
-              <span className="mt-[7px] h-[6px] w-[6px] shrink-0 rounded-full bg-brand" />
-              Help wiring Stash into Claude Code, Cursor, Codex, and OpenCode.
-            </li>
-          </ul>
+          <dl className="mt-9 border-t border-border-subtle">
+            {POINTS.map(([term, body]) => (
+              <div key={term} className="border-b border-border-subtle py-4">
+                <dt className="font-display text-[16.5px] font-medium tracking-[-0.02em] text-ink">
+                  {term}
+                </dt>
+                <dd className="mt-1 text-[15px] leading-[1.6] text-dim">{body}</dd>
+              </div>
+            ))}
+          </dl>
+
+          <p className="mt-6 text-[15px] text-dim">
+            In a hurry?{" "}
+            <Link
+              href={process.env.MANAGED_APP_URL || "https://app.joinstash.ai"}
+              className="text-brand underline decoration-brand/40 underline-offset-4"
+            >
+              Sign up free
+            </Link>{" "}
+            and import your logs in one prompt, or email{" "}
+            <a
+              href="mailto:sam@joinstash.ai"
+              className="text-brand underline decoration-brand/40 underline-offset-4"
+            >
+              sam@joinstash.ai
+            </a>
+            .
+          </p>
         </div>
 
         <ContactSalesForm />
       </section>
+
+      <SiteFooter />
     </main>
   );
 }

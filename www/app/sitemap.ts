@@ -2,15 +2,11 @@ import type { MetadataRoute } from "next";
 
 const BASE = "https://www.joinstash.ai";
 
-// Public marketing routes. Keep in sync with the nav/footer so new use-case
-// pages get indexed as the site scales. Painted-door /m/* variants and the
-// page editor are deliberately absent — they set robots: { index: false }.
+// Public marketing routes. Keep in sync with the nav/footer so new pages get
+// indexed as the site scales. The page editor is deliberately absent — it sets
+// robots: { index: false }.
 const ROUTES = [
   "",
-  "/company-brain",
-  "/memory",
-  "/drive",
-  "/bookmarks",
   "/discover",
   "/pages",
   "/pages/agents",
