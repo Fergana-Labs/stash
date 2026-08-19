@@ -7,6 +7,8 @@ const BASE = "https://www.joinstash.ai";
 // robots: { index: false }.
 const ROUTES = [
   "",
+  "/internal-agents",
+  "/external-agents",
   "/discover",
   "/pages",
   "/pages/agents",
@@ -23,6 +25,8 @@ const ROUTES = [
   "/blog/three-dimensions-agent-memory-store",
   "/blog/open-questions-in-memory",
   "/blog/why-no-great-consumer-ai",
+  "/blog/context-gold-rush",
+  "/blog/containerizing-memory",
   "/contact-sales",
   "/privacy",
   "/terms",

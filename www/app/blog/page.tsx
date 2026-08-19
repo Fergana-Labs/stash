@@ -20,6 +20,21 @@ type Post = {
 
 const POSTS: Post[] = [
   {
+    title: "The context gold rush: why everyone is building the same thing",
+    blurb:
+      "Context graph, company brain, LLM wiki — a map of who is building the context layer, the patterns that have converged, and what is still missing before any of it reaches mass adoption.",
+    href: "/blog/context-gold-rush",
+    author: "Sam Liu",
+  },
+  {
+    title:
+      "Containerizing memory: the real barrier to continual learning and enterprise AI adoption",
+    blurb:
+      "The shipping container standardized freight and the world economy followed. Agent memory has no such standard yet, and that missing consistency is why enterprise adoption has been mixed.",
+    href: "/blog/containerizing-memory",
+    author: "Sam Liu",
+  },
+  {
     title: "Open Questions in Memory, and Our Predictions",
     blurb:
       "The questions we argue about most with others building memory — labs vs startups, weight vs token space, retrieval vs blast radius, benchmarks — and where we think each one lands.",
