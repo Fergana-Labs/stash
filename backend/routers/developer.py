@@ -104,6 +104,26 @@ async def list_orgs(
     }
 
 
+async def _org_in_scope(org_id: UUID, scope_user_id: UUID) -> dict:
+    org = await org_service.get_org(org_id)
+    if org is None:
+        raise HTTPException(status_code=404, detail="Org not found")
+    workspace = await workspace_service.get_workspace(org["workspace_id"])
+    if workspace["scope_user_id"] != scope_user_id:
+        raise HTTPException(status_code=403, detail="Org is not in this scope")
+    return org
+
+
+@orgs_router.get("/{org_id}")
+async def get_org_detail(
+    org_id: UUID,
+    current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
+):
+    """One customer's world: their sessions, their files, their wiki setting."""
+    return await org_service.org_detail(await _org_in_scope(org_id, scope_user_id))
+
+
 @orgs_router.patch("/{org_id}")
 async def update_org(
     org_id: UUID,
@@ -111,10 +131,5 @@ async def update_org(
     current_user: dict = Depends(get_current_user),
     scope_user_id: UUID = Depends(get_scope),
 ):
-    org = await org_service.get_org(org_id)
-    if org is None:
-        raise HTTPException(status_code=404, detail="Org not found")
-    workspace = await workspace_service.get_workspace(org["workspace_id"])
-    if workspace["scope_user_id"] != scope_user_id:
-        raise HTTPException(status_code=403, detail="Org is not in this scope")
+    await _org_in_scope(org_id, scope_user_id)
     return await org_service.update_org(org_id, name=req.name, share_wiki=req.share_wiki)

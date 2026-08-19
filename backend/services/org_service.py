@@ -193,3 +193,34 @@ async def update_org(org_id: UUID, name: str | None = None, share_wiki: bool | N
     if row is None:
         raise ValueError("org not found")
     return dict(row)
+
+
+async def org_detail(org: dict) -> dict:
+    """Everything the console shows about one customer: their transcripts, the
+    files their uploads carried, and the notepad the curator writes for them."""
+    pool = get_pool()
+    sessions = await pool.fetch(
+        "SELECT s.session_id, s.agent_name, s.started_at, st.title, "
+        "       COUNT(he.id)::int AS event_count, "
+        "       COALESCE(MAX(he.created_at), s.started_at) AS last_event_at "
+        "FROM sessions s "
+        "LEFT JOIN session_titles st "
+        "  ON st.owner_user_id = s.owner_user_id AND st.session_id = s.session_id "
+        "LEFT JOIN history_events he "
+        "  ON he.owner_user_id = s.owner_user_id AND he.session_id = s.session_id "
+        "WHERE s.org_id = $1 AND s.deleted_at IS NULL "
+        "GROUP BY s.session_id, s.agent_name, s.started_at, st.title "
+        "ORDER BY last_event_at DESC",
+        org["id"],
+    )
+    files = await pool.fetch(
+        "SELECT id, name, content_type, size_bytes, created_at "
+        "FROM files WHERE org_id = $1 AND deleted_at IS NULL "
+        "ORDER BY created_at DESC",
+        org["id"],
+    )
+    return {
+        "org": org,
+        "sessions": [dict(r) for r in sessions],
+        "files": [dict(r) for r in files],
+    }

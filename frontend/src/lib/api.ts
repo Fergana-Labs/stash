@@ -238,6 +238,31 @@ export async function listOrgs(): Promise<{
   return apiFetch(`${ME}/orgs`);
 }
 
+export interface OrgSession {
+  session_id: string;
+  agent_name: string | null;
+  title: string | null;
+  event_count: number;
+  started_at: string | null;
+  last_event_at: string | null;
+}
+
+export interface OrgFile {
+  id: string;
+  name: string;
+  content_type: string | null;
+  size_bytes: number;
+  created_at: string;
+}
+
+export async function getOrg(orgId: string): Promise<{
+  org: Org;
+  sessions: OrgSession[];
+  files: OrgFile[];
+}> {
+  return apiFetch(`${ME}/orgs/${orgId}`);
+}
+
 export async function updateOrg(
   orgId: string,
   patch: { name?: string; share_wiki?: boolean },
