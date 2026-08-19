@@ -146,7 +146,7 @@ export default defineSoftwareMap({
             cliRelease: {
               label: "CLI release header",
               description:
-                "Names the CLI release clients should run, read from the repo's pyproject version — the same number publish.yml pushes to PyPI — and stamped on every response as X-Stash-Cli-Latest. A missing pyproject raises at import instead of quietly telling the whole fleet nothing.",
+                "Names the CLI release clients should run, read from the repo's pyproject version — the same number publish.yml pushes to PyPI — and stamped on every response as X-Stash-Cli-Latest. A missing pyproject or a version clients cannot compare — a PEP-440 pre-release like 0.1.365rc1, which every install would read as older than what it already runs — raises at import instead of quietly freezing the whole fleet.",
               changeStatus: "added",
               coverage: { files: ["backend/cli_release.py", "backend/main.py"] },
             },
@@ -402,7 +402,8 @@ export default defineSoftwareMap({
             commands: {
               label: "Command surface",
               description:
-                "Typer command tree and output formatting: uploads, skills, sources, sessions, tables, `stash sql`, `stash vfs`, and the setup flow that detects which agent harnesses are installed.",
+                "Typer command tree and output formatting: uploads, skills, sources, sessions, tables, `stash sql`, `stash vfs`, and the setup flow that detects which agent harnesses are installed. `stash upgrade` now runs whatever the self-upgrade component would have run, and the commands that stream for the length of a cloud-agent turn (`agent chat`, `agent run`, `agent watch`) turn self-upgrade off for their own process. The `stash hook auto-update on|off` command and its `codex_auto_update` preference are gone.",
+              changeStatus: "modified",
               coverage: {
                 files: [
                   "cli/main.py",
@@ -423,13 +424,15 @@ export default defineSoftwareMap({
             selfUpgrade: {
               label: "Self-upgrade",
               description:
-                "Keeps the running install current with no user action. It reads the release the backend advertises off responses the process already makes; when the running version is older it upgrades that exact install — uv tool or the running interpreter's pip, decided by the uv receipt in sys.prefix — in a detached process, prints one line to stderr, and stamps the attempt so a machine that cannot upgrade retries at most hourly. Editable checkouts are told and left alone; a backend that sends no header is read as no opinion.",
+                "Keeps the running install current with no user action. It reads the release the backend advertises off responses the process already makes; when the running version is older it upgrades that exact install — uv tool or the running interpreter's pip, decided by the uv receipt in sys.prefix — in a detached process, prints one line to stderr, and stamps the attempt so a machine that cannot upgrade retries at most hourly. A file lock around the stamp keeps a burst of concurrent hook processes from all claiming the same release, and an unwritable ~/.stash turns the whole path off with one notice rather than storming or crashing a successful request. An install with no usable upgrader (a uv venv without pip) is told to reinstall instead of being promised an upgrade that dies unseen; a PEP 668 python gets the same --user --break-system-packages flags our sprite setup uses. Editable checkouts are told and left alone; a backend that sends no header is read as no opinion. `stash upgrade` calls the same command builder, so the manual and automatic paths cannot drift apart.",
               changeStatus: "added",
               coverage: { files: ["stashai/self_upgrade.py"] },
             },
             mcpServer: {
               label: "MCP server",
-              description: "Exposes Stash operations to agents over MCP.",
+              description:
+                "Exposes Stash operations to agents over MCP. Holds one interpreter open for a whole editor session, so it turns self-upgrade off rather than have the package swapped under it.",
+              changeStatus: "modified",
               coverage: { files: ["cli/mcp_server.py"] },
             },
           },
@@ -467,7 +470,7 @@ export default defineSoftwareMap({
             harnessConfig: {
               label: "Harness-side plugin sources",
               description:
-                "Per-agent hook configuration and scripts as authored in-repo. Claude's copy reaches users through the Claude Code marketplace, which updates independently of the CLI; every other agent's config is written onto disk by the CLI installer. Session start no longer upgrades anything: Codex stops asking the user for an auto-update preference, and the other harnesses stop spawning an installer.",
+                "Per-agent hook configuration and scripts as authored in-repo. Claude's copy reaches users through the Claude Code marketplace, which updates independently of the CLI; every other agent's config is written onto disk by the CLI installer. Session start no longer upgrades anything: Codex stops asking the user for an auto-update preference, and the other harnesses stop spawning an installer. Claude's ensure_cli.sh keeps only what self-upgrade cannot reach — installs published before it existed, and the version floor its hooks depend on.",
               changeStatus: "modified",
               coverage: { globs: ["plugins/**"] },
             },
@@ -636,6 +639,9 @@ export default defineSoftwareMap({
     { kind: "semantic", from: "stash.backend.cliRelease", to: "stash.cli.selfUpgrade", label: "advertises release", description: "X-Stash-Cli-Latest rides every response, so a client learns the current release from traffic it already makes." },
     { kind: "semantic", from: "stash.cli.apiClient", to: "stash.cli.selfUpgrade", label: "reports header", description: "Each `stash` command's responses are handed to note_latest." },
     { kind: "semantic", from: "stash.plugin.uploadRuntime", to: "stash.cli.selfUpgrade", label: "reports header", description: "Hook uploads carry the same header; for an active user this is thousands of chances a day to notice a new release." },
+    { kind: "semantic", from: "stash.cli.commands", to: "stash.cli.selfUpgrade", label: "shares upgrade command", description: "`stash upgrade` runs upgrade_command() — the same command the background path spawns — and refuses an editable checkout the same way." },
+    { kind: "semantic", from: "stash.cli.mcpServer", to: "stash.cli.selfUpgrade", label: "disables", description: "Processes that outlive a single request (the MCP server, the streaming agent commands, the session watcher) opt out; short-lived commands and hooks carry the upgrade instead." },
+    { kind: "semantic", from: "stash.plugin.harnessConfig", to: "stash.cli.selfUpgrade", label: "defers to", description: "ensure_cli.sh upgrades only installs older than 0.1.366; at or past it the CLI manages its own freshness, so upgrading from here would race it and could mint a second uv copy shadowing a pip install." },
     { kind: "semantic", from: "stash.cli.selfUpgrade", to: "pypi", label: "installs from", description: "Detached `uv tool install stashai@latest` or `<sys.executable> -m pip install --upgrade stashai`." },
   ],
 });
