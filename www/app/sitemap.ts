@@ -10,7 +10,6 @@ const ROUTES = [
   "/discover",
   "/pages",
   "/pages/agents",
-  "/smb",
   "/security",
   "/docs",
   "/docs/quickstart",
