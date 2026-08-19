@@ -92,6 +92,7 @@ function skill(overrides: Partial<FolderBackedSkill> = {}): Skill {
   return {
     backing: "folder",
     source_ref: null,
+    source_id: null,
     source_name: null,
     folder_id: "folder-1",
     name: "Launch Plan",
@@ -112,6 +113,7 @@ function sourceSkill(overrides: Partial<Skill> = {}): Skill {
     backing: "source",
     folder_id: null,
     source_ref: "drive-file-1",
+    source_id: "source-1",
     source_name: "skillz",
     name: "Turbochargers",
     description: "Use when a customer reports boost loss.",
@@ -314,6 +316,21 @@ describe("SkillsPage", () => {
       "_blank",
       "noopener",
     );
+  });
+
+  it("lets a draft source skill pull a fresh copy without leaving the page", async () => {
+    // Drive syncs on a minutes-long interval, so an instruction edit made in
+    // Drive stays invisible here until the next sync. The draft row must offer
+    // an immediate re-sync or the "edit it in Drive" flow dead-ends.
+    vi.mocked(listSkills).mockResolvedValue([sourceSkill({ has_instructions: false })]);
+    vi.mocked(syncSource).mockResolvedValue({ task_id: "task-1" });
+
+    render(<SkillsPage />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Re-sync" }));
+
+    await waitFor(() => expect(syncSource).toHaveBeenCalledWith("source-1"));
+    expect(screen.getByRole("button", { name: "Syncing…" })).toBeDisabled();
   });
 
   it("keeps source-backed skills distinct from each other in every list", async () => {

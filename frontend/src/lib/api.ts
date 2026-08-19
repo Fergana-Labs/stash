@@ -1496,12 +1496,15 @@ export type Skill =
       backing: "folder";
       folder_id: string;
       source_ref: null;
+      source_id: null;
       source_name: null;
     })
   | (SkillCommon & {
       backing: "source";
       folder_id: null;
       source_ref: string;
+      // The connected source's row id — what syncSource takes.
+      source_id: string;
       // The shelf it was read from — two shelves can hold skills with the
       // same name, and the card is where you tell them apart.
       source_name: string;

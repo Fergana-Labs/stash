@@ -265,6 +265,7 @@ export default function SkillsPage() {
                 selectedIds={selectedIds}
                 onToggleSelect={toggleSelect}
                 onRun={(s) => setLaunching(launchableFromSkill(s))}
+                onRefresh={load}
               />
             ) : (
               <NoSkillsYet onBrowseDiscover={() => setTab("discover")} />
@@ -699,30 +700,88 @@ function skillPublishBadge(skill: Skill): { discoverable: boolean } | null {
 // folder-backed skill's editor is the card's own link target, so a label is
 // enough. Cards and rows are wrapped in a Link, hence the button + window.open
 // instead of a nested anchor.
-function DraftCta({ skill }: { skill: Skill }) {
+function DraftCta({ skill, onRefresh }: { skill: Skill; onRefresh: () => Promise<void> }) {
   if (skill.backing === "source") {
     return (
-      <button
-        type="button"
-        onClick={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          window.open(
-            `https://drive.google.com/open?id=${skill.source_ref}`,
-            "_blank",
-            "noopener"
-          );
-        }}
-        className="cursor-pointer whitespace-nowrap rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-[11.5px] font-medium text-amber-800 hover:bg-amber-100"
-      >
-        Add instructions in Drive
-      </button>
+      <span className="inline-flex items-center gap-1.5">
+        <button
+          type="button"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            window.open(
+              `https://drive.google.com/open?id=${skill.source_ref}`,
+              "_blank",
+              "noopener"
+            );
+          }}
+          className="cursor-pointer whitespace-nowrap rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-[11.5px] font-medium text-amber-800 hover:bg-amber-100"
+        >
+          Add instructions in Drive
+        </button>
+        <ResyncButton sourceId={skill.source_id} onRefresh={onRefresh} />
+      </span>
     );
   }
   return (
     <span className="whitespace-nowrap text-[11.5px] font-medium text-amber-800">
       Add instructions →
     </span>
+  );
+}
+
+// Drive syncs on a 30-minute interval, so an upstream edit sits invisible for
+// up to half an hour unless the user finds the Sync action on the Integrations
+// page. This pulls a fresh copy right where the draft tells them to edit.
+function ResyncButton({
+  sourceId,
+  onRefresh,
+}: {
+  sourceId: string;
+  onRefresh: () => Promise<void>;
+}) {
+  const [syncing, setSyncing] = useState(false);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+
+  async function resync(e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (syncing) return;
+    setSyncing(true);
+    try {
+      await syncSource(sourceId);
+      // The sync runs in a worker; poll the list until the row reflects the
+      // upstream edit. If instructions arrived, this component unmounts with
+      // the row's re-render — the mounted ref ends the loop.
+      for (let i = 0; i < 10 && mounted.current; i++) {
+        await new Promise((r) => setTimeout(r, 3000));
+        await onRefresh();
+      }
+    } finally {
+      if (mounted.current) setSyncing(false);
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={(e) => void resync(e)}
+      disabled={syncing}
+      className={
+        "whitespace-nowrap rounded-md border border-border px-2 py-1 text-[11.5px] font-medium " +
+        (syncing
+          ? "cursor-default text-muted-foreground"
+          : "cursor-pointer text-foreground hover:bg-raised")
+      }
+    >
+      {syncing ? "Syncing…" : "Re-sync"}
+    </button>
   );
 }
 
@@ -758,6 +817,7 @@ function SkillCollection({
   selectedIds,
   onToggleSelect,
   onRun,
+  onRefresh,
 }: {
   skills: Skill[];
   view: ViewKey;
@@ -766,6 +826,7 @@ function SkillCollection({
   selectedIds: Set<string>;
   onToggleSelect: (id: string) => void;
   onRun: (skill: Skill) => void;
+  onRefresh: () => Promise<void>;
 }) {
   if (view === "list") {
     return (
@@ -779,6 +840,7 @@ function SkillCollection({
             selected={selectedIds.has(skillKey(skill))}
             onToggleSelect={onToggleSelect}
             onRun={onRun}
+            onRefresh={onRefresh}
           />
         ))}
       </div>
@@ -836,7 +898,7 @@ function SkillCollection({
                   <span className="min-w-0 truncate">
                     Draft — no instructions for an agent yet.
                   </span>
-                  <DraftCta skill={skill} />
+                  <DraftCta skill={skill} onRefresh={onRefresh} />
                 </>
               )
             }
@@ -854,6 +916,7 @@ function SkillListRow({
   selected,
   onToggleSelect,
   onRun,
+  onRefresh,
 }: {
   skill: Skill;
   pinned: boolean;
@@ -861,6 +924,7 @@ function SkillListRow({
   selected: boolean;
   onToggleSelect: (id: string) => void;
   onRun: (skill: Skill) => void;
+  onRefresh: () => Promise<void>;
 }) {
   const href = skillHref(skill);
   const className =
@@ -893,7 +957,7 @@ function SkillListRow({
       {skill.has_instructions ? (
         <RunSkillButton onRun={() => onRun(skill)} />
       ) : (
-        <DraftCta skill={skill} />
+        <DraftCta skill={skill} onRefresh={onRefresh} />
       )}
       <span
         className={

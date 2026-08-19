@@ -222,7 +222,7 @@ async def list_source_skills(owner_user_id: UUID, user_id: UUID) -> list[dict]:
         # that starts with a delimiter can carry any — so the shelf's bodies
         # stay in the database instead of crossing the wire to be discarded.
         f"SELECT d.external_ref, d.name, left(d.content, {FRONTMATTER_SCAN_BYTES}) AS head, "
-        "  d.updated_at, src.display_name AS source_name "
+        "  d.updated_at, d.source_id, src.display_name AS source_name "
         "FROM drive_documents d "
         "JOIN user_sources src ON src.id = d.source_id "
         "WHERE d.owner_user_id = $1 AND d.deleted_at IS NULL AND src.binds_skills "
@@ -240,6 +240,9 @@ async def list_source_skills(owner_user_id: UUID, user_id: UUID) -> list[dict]:
             "folder_id": None,
             "source_ref": r["external_ref"],
             "backing": "source",
+            # The connected source's row id — what the sync endpoint takes, so
+            # the UI can pull a fresh copy of an upstream edit on demand.
+            "source_id": str(r["source_id"]),
             "source_name": r["source_name"],
             "name": meta["name"],
             "description": meta["description"],
@@ -303,6 +306,7 @@ async def list_skills(owner_user_id: UUID, user_id: UUID) -> list[dict]:
                 "folder_id": str(r["folder_id"]),
                 "source_ref": None,
                 "backing": "folder",
+                "source_id": None,
                 "source_name": None,
                 "name": meta.get("name") or r["folder_name"],
                 "description": meta.get("description", ""),

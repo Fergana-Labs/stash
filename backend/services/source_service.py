@@ -90,7 +90,10 @@ DEFAULT_SYNC_INTERVAL_S = {
     "github_repo": 3600,
     "gmail": 1800,
     "google_drive": 1800,
-    "google_drive_folder": 1800,
+    # Tighter than the rest: a folder bound as a skill shelf is edited in
+    # Drive and read back here, and a half-hour lag makes that loop feel
+    # broken. (Real freshness wants Drive push channels — future work.)
+    "google_drive_folder": 300,
     "notion": 1800,
     "slack": 21600,
     "granola": 21600,
