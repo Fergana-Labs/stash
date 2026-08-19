@@ -116,11 +116,6 @@ export function ResourceShareDialog({
   const [savingAccess, setSavingAccess] = useState(false);
 
   const supportsGeneralAccess = GENERAL_ACCESS_TYPES.includes(objectType);
-  // A connected source rides the owner's OAuth token, so the backend only
-  // grants recipients read access and rejects comment/write. Collapse the
-  // permission controls to a static "Can view" rather than offer a level the
-  // POST would 400 on.
-  const readOnlyShare = objectType === "source";
 
   useEscapeKey(true, onClose);
 
@@ -290,27 +285,21 @@ export function ResourceShareDialog({
             placeholder="Add people by email"
             className="min-w-0 flex-1 rounded-md border border-border bg-base px-3 py-2 text-[13px] text-foreground placeholder:text-muted-foreground focus:border-brand focus:outline-none"
           />
-          {readOnlyShare ? (
-            <span className="flex items-center rounded-md border border-border bg-surface px-2.5 py-2 text-[12px] text-muted-foreground">
-              Can view
-            </span>
-          ) : (
-            <select
-              value={permission}
-              onChange={(event) =>
-                setPermission(event.target.value as SharePermission)
-              }
-              disabled={busy}
-              aria-label="Invite permission"
-              className="rounded-md border border-border bg-base px-2 py-2 text-[12px] text-foreground"
-            >
-              {PERMISSIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          )}
+          <select
+            value={permission}
+            onChange={(event) =>
+              setPermission(event.target.value as SharePermission)
+            }
+            disabled={busy}
+            aria-label="Invite permission"
+            className="rounded-md border border-border bg-base px-2 py-2 text-[12px] text-foreground"
+          >
+            {PERMISSIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
           <button
             type="submit"
             disabled={busy || !email.trim()}
@@ -349,9 +338,8 @@ export function ResourceShareDialog({
                     : share.email ?? share.principal_type
                 }
                 permission={share.permission as SharePermission}
-                permissionLabel={readOnlyShare ? "Can view" : undefined}
                 onChangePermission={
-                  share.email && !readOnlyShare
+                  share.email
                     ? (next) => void changePermission(share, next)
                     : undefined
                 }

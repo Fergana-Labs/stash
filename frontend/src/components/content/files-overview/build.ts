@@ -139,8 +139,13 @@ export function buildSessionNodes(sessions: SidebarSession[]): VNode[] {
   }));
 }
 
+// Source-backed skills are left out: these nodes drill into a skill's folder,
+// and those are read from their source rather than held as folders here.
 export function buildSkillNodes(skills: Skill[]): VNode[] {
-  return [...skills].sort(byName).map((s) => ({
+  return [...skills]
+    .filter((s) => s.backing === "folder")
+    .sort(byName)
+    .map((s) => ({
     key: s.folder_id,
     kind: "skill",
     name: s.name,

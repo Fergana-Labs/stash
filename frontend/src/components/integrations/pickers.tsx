@@ -145,7 +145,7 @@ export function AddSourceControls({
             add({
               source_type: "google_drive_folder",
               external_ref: folderId,
-              display_name: displayName,
+              ...(displayName ? { display_name: displayName } : {}),
             })
           }
         />
@@ -272,6 +272,7 @@ function DriveFolderControls({
 }: {
   busy: boolean;
   onAddMyDrive: () => Promise<boolean>;
+  // Blank name means the server names the source after the Drive folder.
   onAddFolder: (folderId: string, displayName: string) => Promise<boolean>;
 }) {
   const [link, setLink] = useState("");
@@ -280,7 +281,7 @@ function DriveFolderControls({
 
   async function addFolder() {
     if (!folderId) return;
-    const added = await onAddFolder(folderId, name.trim() || "Google Drive folder");
+    const added = await onAddFolder(folderId, name.trim());
     if (added) {
       setLink("");
       setName("");
@@ -306,7 +307,7 @@ function DriveFolderControls({
         <input
           value={name}
           onChange={(event) => setName(event.target.value)}
-          placeholder="Name (e.g. Knowledge Base)"
+          placeholder="Name (optional — defaults to the folder's name)"
           className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-[12px] text-foreground placeholder:text-muted-foreground"
           disabled={busy}
         />

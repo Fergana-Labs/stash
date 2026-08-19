@@ -305,6 +305,14 @@ export interface Source {
   last_synced_at?: string | null;
   search_hint?: string | null;
   settings?: Record<string, unknown> | null;
+  // True when documents inside this picked Drive folder can become Skills.
+  // `skills` and `documents` count the pair, so a
+  // document missing its frontmatter shows up as a gap rather than vanishing.
+  binds_skills?: boolean;
+  skills?: number;
+  documents?: number;
+  // Named so a shelf that is short of skills says which documents to go fix.
+  not_skills?: string[];
 }
 
 export interface SourceStatus extends Source {
@@ -322,6 +330,9 @@ export interface SourceEntry {
   // Archive state for save-type sources: 'done' | 'pending' | 'failed'.
   // Null/absent for sources without an archive pipeline.
   status?: string | null;
+  // Present for documents inside a Drive folder used for Skills.
+  skill_status?: "skill" | "draft" | "not_skill" | "checking";
+  skill_status_reason?: string;
 }
 
 const NATIVE_SOURCE_TYPES = new Set(["native_files", "native_sessions"]);
@@ -370,7 +381,7 @@ export async function addSource(body: {
   external_ref?: string;
   display_name?: string;
   settings?: Record<string, unknown>;
-}): Promise<{ id: string }> {
+}): Promise<{ id: string; display_name: string }> {
   return apiFetch(`${ME}/sources`, {
     method: "POST",
     body: JSON.stringify(body),
@@ -379,6 +390,17 @@ export async function addSource(body: {
 
 export async function syncSource(sourceId: string): Promise<{ task_id: string }> {
   return apiFetch(`${ME}/sources/${sourceId}/sync`, {
+    method: "POST",
+  });
+}
+
+// Treat a picked Drive folder as a shelf of skills, or stop. Only the binding
+// changes — the documents stay indexed either way.
+export async function setSourceBindsSkills(
+  sourceId: string,
+  bindsSkills: boolean
+): Promise<Source> {
+  return apiFetch(`${ME}/sources/${sourceId}/${bindsSkills ? "bind" : "unbind"}-skills`, {
     method: "POST",
   });
 }
@@ -1448,9 +1470,7 @@ export interface SkillPublishInfo {
   view_count: number;
 }
 
-// A skill folder: SKILL.md frontmatter + folder stats + publish info.
-export interface Skill {
-  folder_id: string;
+interface SkillCommon {
   name: string;
   description: string;
   when_to_use: string;
@@ -1458,7 +1478,63 @@ export interface Skill {
   mcp_exposed: boolean;
   file_count: number;
   updated_at: string;
+  // False = a draft: named and declared, but with no instructions for an
+  // agent to load. Agents refuse to run one, so every surface must say so.
+  has_instructions: boolean;
   published: SkillPublishInfo | null;
+}
+
+// A skill: SKILL.md frontmatter + stats + publish info.
+//
+// `backing` says where it lives, and the two cases carry different ids so the
+// compiler refuses folder verbs on a source-backed skill. A folder-backed
+// skill is the editable kind. A source-backed one is a document in a connected
+// source bound as a skill shelf: it has no folder, and it is managed upstream
+// in Drive rather than here.
+export type Skill =
+  | (SkillCommon & {
+      backing: "folder";
+      folder_id: string;
+      source_ref: null;
+      source_id: null;
+      source_name: null;
+    })
+  | (SkillCommon & {
+      backing: "source";
+      folder_id: null;
+      source_ref: string;
+      // The connected source's row id — what syncSource takes.
+      source_id: string;
+      // The shelf it was read from — two shelves can hold skills with the
+      // same name, and the card is where you tell them apart.
+      source_name: string;
+    });
+
+// The editable kind, for the verbs that only apply to a real folder.
+export type FolderBackedSkill = Extract<Skill, { backing: "folder" }>;
+
+// One source-backed skill, read: its document IS the instructions.
+export interface SourceSkillRead {
+  source_ref: string;
+  // The connected source's row id — what syncSource takes.
+  source_id: string;
+  name: string;
+  description: string;
+  source_name: string;
+  has_instructions: boolean;
+  body: string;
+  files: { id: string; name: string; updated_at: string; content: string }[];
+}
+
+// Addressed by the upstream file id, so the link survives a rename in Drive.
+export async function readSourceSkill(sourceRef: string): Promise<SourceSkillRead> {
+  return apiFetch(`${ME}/source-skills/${encodeURIComponent(sourceRef)}`);
+}
+
+// A skill's identity across surfaces that only need to tell skills apart —
+// pins, selection, React keys.
+export function skillKey(skill: Skill): string {
+  return skill.backing === "folder" ? skill.folder_id : skill.source_ref;
 }
 
 export async function listSkills(): Promise<Skill[]> {
@@ -1982,8 +2058,7 @@ export type SharedObjectType =
   | "page"
   | "file"
   | "table"
-  | "session"
-  | "source";
+  | "session";
 
 export interface SharedWithMeItem {
   object_type: SharedObjectType;

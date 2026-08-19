@@ -19,6 +19,7 @@ from typing import Literal
 from urllib.parse import quote
 from uuid import UUID, uuid4
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel
 
@@ -26,6 +27,7 @@ from ..auth import get_current_user, get_scope
 from ..celery_app import celery
 from ..database import get_pool
 from ..integrations import storage as integration_storage
+from ..integrations.google import indexer as google_indexer
 from ..integrations.registry import get_provider
 from ..services import (
     security_audit_service,
@@ -126,6 +128,24 @@ async def _resolve_heavi_source(user_id) -> tuple[str, str]:
     if not connected)."""
     token = await integration_storage.get_valid_token(user_id, "heavi")
     return json.loads(token)["base_url"], "Heavi — Rules of the Road"
+
+
+async def _resolve_drive_folder_name(user_id, folder_id: str) -> str:
+    """Name a picked folder after what it is called in Drive.
+
+    "root" is My Drive itself, which has no folder metadata to fetch."""
+    if folder_id == "root":
+        return "Google Drive"
+    try:
+        return await google_indexer.fetch_drive_folder_name(user_id, folder_id)
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Could not read that Drive folder. Check the link, and that this "
+                "Google account has access to it."
+            ),
+        ) from exc
 
 
 async def _resolve_posthog_source(user_id) -> tuple[str, str]:
@@ -391,6 +411,8 @@ async def add_source(
     elif body.source_type == "heavi_learnings":
         external_ref, resolved_name = await _resolve_heavi_source(current_user["id"])
         display_name = display_name or resolved_name
+    elif body.source_type == "google_drive_folder" and external_ref and not display_name:
+        display_name = await _resolve_drive_folder_name(current_user["id"], external_ref)
 
     if not external_ref:
         raise HTTPException(status_code=400, detail="external_ref is required")
@@ -463,6 +485,49 @@ async def sync_source_now(
         metadata={"task_id": task_id},
     )
     return {"task_id": task_id}
+
+
+@router.post("/{source_id}/bind-skills")
+async def bind_source_skills(
+    source_id: UUID,
+    current_user: dict = Depends(get_current_user),
+):
+    """Use the documents inside a picked Drive folder as Skills."""
+    return await _set_binds_skills(source_id, current_user, True)
+
+
+@router.post("/{source_id}/unbind-skills")
+async def unbind_source_skills(
+    source_id: UUID,
+    current_user: dict = Depends(get_current_user),
+):
+    """Stop treating the folder's documents as skills. The documents stay
+    indexed and readable as an ordinary source."""
+    return await _set_binds_skills(source_id, current_user, False)
+
+
+async def _set_binds_skills(source_id: UUID, current_user: dict, binds_skills: bool) -> dict:
+    owner_user_id = current_user["id"]
+    await _require_write(owner_user_id, current_user["id"])
+    source = await source_service.get_owned_source(source_id, current_user["id"])
+    if source is None:
+        raise HTTPException(status_code=404, detail="Source not found")
+    if source["source_type"] not in source_service.SKILL_BINDABLE_SOURCE_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail="Only a picked Google Drive folder can hold skills",
+        )
+    updated = await source_service.set_source_binds_skills(source_id, owner_user_id, binds_skills)
+    await security_audit_service.record_event(
+        action="source.skills_bound" if binds_skills else "source.skills_unbound",
+        actor_user_id=current_user["id"],
+        owner_user_id=owner_user_id,
+        target_type="source",
+        target_id=str(source_id),
+        provider=source_service.SOURCE_TYPE_PROVIDER.get(source["source_type"]),
+        source_type=source["source_type"],
+    )
+    return updated
 
 
 @router.delete("/{source_id}")

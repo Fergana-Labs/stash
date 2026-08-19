@@ -20,6 +20,7 @@ API silently drops Shared Drive items.
 from __future__ import annotations
 
 import logging
+import re
 from datetime import datetime
 from uuid import UUID
 
@@ -97,6 +98,86 @@ async def _target_modified_time(client: httpx.AsyncClient, file_id: str) -> str 
     )
     resp.raise_for_status()
     return resp.json().get("modifiedTime")
+
+
+# One backslash before any ASCII punctuation — the CommonMark escapable set,
+# which is exactly what Google's exporter escapes.
+_EXPORT_ESCAPE_RE = re.compile(r"\\([!-/:-@\[-`{-~])")
+
+
+def unescape_exported_markdown(markdown: str) -> str:
+    r"""Strip one level of the backslash-escaping Google's markdown export adds.
+
+    The exporter escapes punctuation the author never escaped: `---` becomes
+    `\---` (fatal to a frontmatter block — the skill can never declare itself),
+    `- item` becomes `\- item` (no longer a list), `**bold**` becomes
+    `\*\*bold\*\*`, `#`/`+`/`~` all grow backslashes mid-sentence. The author
+    typed plain punctuation, so it is plain punctuation again here.
+
+    One level is lossless for authors too: a backslash actually typed in the
+    Doc is itself escaped on export (`\-` exports as `\\-`), so stripping one
+    level returns exactly what was written.
+
+    Trailing spaces are left alone — Google marks every line with them as a
+    hard break, and the frontmatter parser already ignores them.
+    """
+    return _EXPORT_ESCAPE_RE.sub(r"\1", markdown)
+
+
+async def _require_readable_folder(client: httpx.AsyncClient, folder_id: str) -> None:
+    """Fail the sync unless the folder is still ours to list.
+
+    Drive answers an emptied folder and an unreadable one identically — 200
+    with no files — and the walk's result drives a *physical* delete of every
+    document it didn't see (`drive_documents` is a content table). So the
+    folder is asked about directly before its listing is believed: gone,
+    trashed, or no longer listable stops the sync here rather than arriving
+    later disguised as an empty account.
+
+    This is the same bargain `expect_items` strikes one level down. It believes
+    an empty list once it knows it understood the response; this establishes
+    that there was anything to understand.
+    """
+    resp = await client.get(
+        DRIVE_FILE_URL.format(file_id=folder_id),
+        params={**ALL_DRIVES, "fields": "trashed,capabilities(canListChildren)"},
+    )
+    if resp.status_code in (403, 404):
+        raise source_service.SourceSyncUserError(
+            "That Drive folder is no longer readable with this Google account, so "
+            "syncing is paused for this source to protect your saved data. Nothing "
+            "was deleted. Check the folder still exists and is shared with this "
+            "account, then sync again."
+        )
+    resp.raise_for_status()
+    folder = resp.json()
+    if folder.get("trashed") or not folder.get("capabilities", {}).get("canListChildren"):
+        raise source_service.SourceSyncUserError(
+            "That Drive folder is in the trash, or can no longer be listed by this "
+            "Google account, so syncing is paused for this source to protect your "
+            "saved data. Nothing was deleted. Restore the folder or its access, then "
+            "sync again."
+        )
+
+
+async def fetch_drive_folder_name(owner_user_id: UUID, folder_id: str) -> str:
+    """What Drive calls this folder, for naming the source after it.
+
+    Raises when the folder can't be read. That is the right outcome rather than
+    a placeholder name: a folder we cannot fetch metadata for is one we cannot
+    crawl either, so the source would be born broken and named "Google Drive
+    folder" while looking fine.
+    """
+    token = await get_valid_token(owner_user_id, "google")
+    async with httpx.AsyncClient(timeout=30.0, headers={"Authorization": f"Bearer {token}"}) as (
+        client
+    ):
+        resp = await client.get(
+            DRIVE_FILE_URL.format(file_id=folder_id),
+            params={**ALL_DRIVES, "fields": "name"},
+        )
+        resp.raise_for_status()
+        return resp.json()["name"]
 
 
 async def _resolve_shortcut(client: httpx.AsyncClient, entry: dict) -> dict:
@@ -262,6 +343,7 @@ async def index_google_drive_folder(source: dict) -> str | None:
                 if row_id is not None:
                     stale.append(row_id)
 
+        await _require_readable_folder(client, folder_id)
         await _walk(folder_id, "", 0)
 
     await source_service.remove_missing_documents("drive_documents", source_id, present)
@@ -417,7 +499,7 @@ async def extract_drive_text(
         from ...services.file_extraction import extract_text, is_pdf
 
         if mime == MIME_GOOGLE_DOC:
-            text = await _export(client, file_id, "text/markdown")
+            text = unescape_exported_markdown(await _export(client, file_id, "text/markdown"))
         elif mime == MIME_GOOGLE_SHEET:
             # XLSX export keeps every visible sheet (Drive's CSV export drops
             # everything except the first).

@@ -18,6 +18,7 @@ import {
   listSources,
   readSourceDoc,
   searchSource,
+  setSourceBindsSkills,
   syncSource as syncSourceApi,
   type Source,
   type SourceEntry,
@@ -40,14 +41,12 @@ import {
   secondaryButton,
 } from "@/components/integrations/pickers";
 import PaywallModal from "@/components/PaywallModal";
-import { ResourceShareDialog } from "@/components/share/ResourceShareButton";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import type { User } from "@/lib/types";
 import { routes } from "@/lib/workspace-routes";
 import { useTabTitle } from "@/lib/workspace-store";
 
@@ -255,6 +254,31 @@ export function IntegrationDetail({ provider }: { provider: string }) {
       await refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not start sync");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function toggleSkills(source: Source) {
+    const binding = !source.binds_skills;
+    if (binding) {
+      const ok = await confirm({
+        title: `Use ${source.display_name} for Skills?`,
+        body: "A file anywhere inside this folder becomes a Skill when it starts with a name and description between --- lines. Other files remain regular source material.",
+        confirmLabel: "Use for Skills",
+        // Nothing is deleted or overwritten — this only starts reading the
+        // folder as skills, and the menu item undoes it.
+        destructive: false,
+      });
+      if (!ok) return;
+    }
+    setBusy(`skills:${source.source}`);
+    setError("");
+    try {
+      await setSourceBindsSkills(source.source, binding);
+      await refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not change the skills binding");
     } finally {
       setBusy(null);
     }
@@ -559,13 +583,14 @@ export function IntegrationDetail({ provider }: { provider: string }) {
                 <SourceRow
                   key={source.source}
                   source={source}
-                  currentUser={user}
                   highlighted={source.source === highlightSourceId}
                   open={source.source === openSourceId}
                   busySync={busy === `sync:${source.source}`}
                   busyDelete={busy === `delete:${source.source}`}
+                  busySkills={busy === `skills:${source.source}`}
                   onOpen={() => setOpenSourceId((v) => (v === source.source ? null : source.source))}
                   onSync={() => void syncSource(source)}
+                  onToggleSkills={() => void toggleSkills(source)}
                   onRemove={() => void removeSource(source)}
                 />
               ))}
@@ -668,23 +693,25 @@ function shortRef(source: Source): string | null {
 
 function SourceRow({
   source,
-  currentUser,
   highlighted,
   open,
   busySync,
   busyDelete,
+  busySkills,
   onOpen,
   onSync,
+  onToggleSkills,
   onRemove,
 }: {
   source: Source;
-  currentUser: User;
   highlighted: boolean;
   open: boolean;
   busySync: boolean;
   busyDelete: boolean;
+  busySkills: boolean;
   onOpen: () => void;
   onSync: () => void;
+  onToggleSkills: () => void;
   onRemove: () => void;
 }) {
   // The row owns a live status so the item count and sync badge update as the
@@ -697,10 +724,6 @@ function SourceRow({
   // Why this row stopped tracking the sync. Distinct from `status.sync_error`,
   // which is the sync itself failing — this is us failing to observe it.
   const [pollStopped, setPollStopped] = useState<string | null>(null);
-  const [shareOpen, setShareOpen] = useState(false);
-  // Outside-click boundary for the share dialog: covers the "..." trigger so
-  // opening the menu doesn't immediately close the dialog.
-  const menuBoundaryRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -754,7 +777,12 @@ function SourceRow({
         (highlighted ? "-mx-2 rounded-lg bg-[var(--color-brand-50)] px-3" : "")
       }
     >
-      <button type="button" onClick={onOpen} className="min-w-0 flex-1 cursor-pointer text-left">
+      <button
+        type="button"
+        onClick={onOpen}
+        aria-expanded={open}
+        className="min-w-0 flex-1 cursor-pointer text-left"
+      >
         <div className="flex items-center gap-2 truncate text-[13.5px] font-semibold text-foreground">
           {source.display_name}
           {ref && <span className="font-mono text-[12px] font-normal text-muted-foreground">{ref}</span>}
@@ -803,10 +831,25 @@ function SourceRow({
         )}
       </button>
       <div className="flex shrink-0 items-center gap-1.5">
+        {source.type === "google_drive_folder" && source.binds_skills && (
+          <Link
+            href="/skills"
+            className="rounded-full border border-[var(--color-brand-300)] bg-[var(--color-brand-50)] px-2 py-0.5 text-[10.5px] font-semibold text-brand transition hover:border-brand"
+          >
+            {source.skills === undefined
+              ? "Used for Skills →"
+              : `Used for Skills · ${source.skills} of ${source.documents} →`}
+          </Link>
+        )}
+        {source.type === "google_drive_folder" && !source.binds_skills && (
+          <span className="rounded-full border border-border px-2 py-0.5 text-[10.5px] font-semibold text-muted-foreground">
+            Not used for Skills
+          </span>
+        )}
         {/* Browsing is the row itself (and the VFS); syncing is automatic —
             scheduled, plus kicked by access when stale. The old Browse/Sync
             buttons duplicated those, so the escape hatches live in ⋯ now. */}
-        <div ref={menuBoundaryRef} className="relative">
+        <div className="relative">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
@@ -823,7 +866,11 @@ function SourceRow({
                   {busySync ? "Syncing..." : "Sync now"}
                 </DropdownMenuItem>
               )}
-              <DropdownMenuItem onClick={() => setShareOpen(true)}>Share</DropdownMenuItem>
+              {source.type === "google_drive_folder" && (
+                <DropdownMenuItem disabled={busySkills} onClick={onToggleSkills}>
+                  {source.binds_skills ? "Stop using for Skills" : "Use for Skills"}
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem
                 variant="destructive"
                 disabled={busyDelete}
@@ -833,17 +880,6 @@ function SourceRow({
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          {shareOpen && (
-            <ResourceShareDialog
-              objectType="source"
-              objectId={source.source}
-              resourceName={source.display_name}
-              resourceUrlPath={`/integrations/${providerForSourceType[source.type]}?source=${source.source}`}
-              currentUser={currentUser}
-              boundaryRef={menuBoundaryRef}
-              onClose={() => setShareOpen(false)}
-            />
-          )}
         </div>
       </div>
     </div>
@@ -1212,6 +1248,40 @@ function HitRow({
   );
 }
 
+const skillDocumentLabels: Record<NonNullable<SourceEntry["skill_status"]>, string> = {
+  skill: "Skill",
+  draft: "Draft Skill",
+  not_skill: "Not a Skill",
+  checking: "Checking",
+};
+
+const skillDocumentStyles: Record<NonNullable<SourceEntry["skill_status"]>, string> = {
+  skill: "border-[var(--color-brand-300)] bg-[var(--color-brand-50)] text-brand",
+  draft: "border-warning/40 bg-warning/10 text-warning",
+  not_skill: "border-border text-muted-foreground",
+  checking: "border-border text-muted-foreground",
+};
+
+export function SkillDocumentStatus({ entry }: { entry: SourceEntry }) {
+  if (!entry.skill_status || !entry.skill_status_reason) return null;
+
+  return (
+    <span className="mt-0.5 block">
+      <span
+        className={
+          "inline-flex rounded-full border px-1.5 py-px text-[10px] font-semibold " +
+          skillDocumentStyles[entry.skill_status]
+        }
+      >
+        {skillDocumentLabels[entry.skill_status]}
+      </span>
+      <span className="ml-1.5 text-[11px] text-muted-foreground">
+        {entry.skill_status_reason}
+      </span>
+    </span>
+  );
+}
+
 function NavigablePanel({
   source,
   providerLabel,
@@ -1318,6 +1388,18 @@ function NavigablePanel({
 
   return (
     <div>
+      {source.type === "google_drive_folder" && source.binds_skills && (
+        <div className="mb-3 rounded-lg border border-border bg-raised px-3 py-2.5 text-[12px]">
+          <div className="font-semibold text-foreground">
+            This folder is used for Skills.
+          </div>
+          <div className="mt-0.5 text-muted-foreground">
+            A file anywhere inside this folder can be a Skill. At the top, each file
+            needs a name and description between --- lines. “Draft Skill” means those
+            fields are present but no instructions follow them yet.
+          </div>
+        </div>
+      )}
       <div className="mb-2 flex flex-wrap items-center gap-1 text-[12px] text-muted-foreground">
         {crumbs.map((c, i) => (
           <span key={c.path + i} className="flex items-center gap-1">
@@ -1377,7 +1459,8 @@ function NavigablePanel({
                     ) : (
                       <span className="block truncate text-[12.5px] text-foreground">{entry.name}</span>
                     )}
-                    {entry.snippet && !pending && !failed && (
+                    <SkillDocumentStatus entry={entry} />
+                    {entry.snippet && !entry.skill_status && !pending && !failed && (
                       <span className="mt-0.5 block truncate text-[11.5px] text-muted-foreground">
                         {entry.snippet}
                       </span>

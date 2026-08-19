@@ -72,7 +72,7 @@ describe("DriveFolderControls", () => {
     fireEvent.change(screen.getByPlaceholderText("Paste a Drive folder link"), {
       target: { value: "https://drive.google.com/drive/u/0/folders/1AbC_dEf-234567890?usp=sharing" },
     });
-    fireEvent.change(screen.getByPlaceholderText("Name (e.g. Knowledge Base)"), {
+    fireEvent.change(screen.getByPlaceholderText(/Name \(optional/), {
       target: { value: "Heavi Knowledge Base" },
     });
     fireEvent.click(screen.getByText("Add folder"));
@@ -84,7 +84,10 @@ describe("DriveFolderControls", () => {
     });
   });
 
-  it("accepts a bare folder id and defaults the name", async () => {
+  it("leaves an unnamed folder to be named after the folder itself", async () => {
+    // Sending no display_name is the whole point: the server asks Drive what
+    // the folder is called. A placeholder here would stick every unnamed
+    // folder with the same meaningless label.
     addSource.mockResolvedValue({});
     renderControls();
 
@@ -96,7 +99,6 @@ describe("DriveFolderControls", () => {
     expect(addSource).toHaveBeenCalledWith({
       source_type: "google_drive_folder",
       external_ref: "1AbC_dEf-234567890",
-      display_name: "Google Drive folder",
     });
   });
 
