@@ -792,9 +792,7 @@ function SkillCollection({
                 </>
               ) : (
                 <>
-                  <span className="min-w-0 truncate">
-                    Draft — no instructions for an agent yet.
-                  </span>
+                  <span className="min-w-0 truncate">Draft</span>
                   {skill.backing === "source" && (
                     <ResyncSourceButton sourceId={skill.source_id} onRefresh={onRefresh} />
                   )}

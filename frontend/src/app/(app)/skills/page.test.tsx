@@ -306,8 +306,7 @@ describe("SkillsPage", () => {
 
     render(<SkillsPage />);
 
-    expect(await screen.findByText("Draft")).toBeInTheDocument();
-    expect(screen.getByText("Draft — no instructions for an agent yet.")).toBeInTheDocument();
+    expect((await screen.findAllByText("Draft")).length).toBeGreaterThan(0);
     expect(screen.queryByRole("button", { name: "Run" })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Add instructions in Drive" }));
