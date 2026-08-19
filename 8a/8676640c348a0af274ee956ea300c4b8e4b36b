@@ -91,7 +91,7 @@ export default defineSoftwareMap({
             content: {
               label: "Files, pages, skills & tables",
               description:
-                "The Files tree (folders/pages/files), tables, skills bundles, publish/discover, shares, and trash.",
+                "The Files tree (folders/pages/files), tables, skills bundles, publish/discover, shares, and trash. A skill is either a folder here or a document inside a connected source that a user marked as backing skills; both are listed and read through the same service.",
               coverage: {
                 files: [
                   "backend/routers/files_tree.py",
@@ -133,7 +133,7 @@ export default defineSoftwareMap({
             integrations: {
               label: "Connected sources",
               description:
-                "OAuth + import pipelines for external providers (GitHub, Google, Notion, Slack, Linear, ...).",
+                "OAuth + import pipelines for external providers (GitHub, Google, Notion, Slack, Linear, ...). A Drive folder can carry `binds_skills`, which makes its imported documents readable as skills. Sources themselves are no longer shareable.",
               coverage: {
                 files: [
                   "backend/routers/sources.py",
@@ -328,7 +328,7 @@ export default defineSoftwareMap({
         www: {
           label: "Landing site (Next.js)",
           description:
-            "Marketing/landing + docs/blog Next.js site on port 3100.",
+            "Marketing/landing + docs/blog Next.js site on port 3100. The home page splits into an internal-agents and an external-agents page; the public pastebin (/pages) and the SMB assessment funnel (/smb, /m) were removed along with their backend routes.",
           coverage: { globs: ["www/**"] },
         },
         desktop: {
@@ -578,6 +578,8 @@ export default defineSoftwareMap({
     { kind: "semantic", from: "stash.cli.commands", to: "stash.plugin.shippedAssets", label: "executes", description: "`stash hook run` dispatches a known agent/event to the script vendored in the installed package." },
     { kind: "semantic", from: "stash.plugin.shippedAssets", to: "stash.plugin.uploadRuntime", label: "imports", description: "Hook scripts run under the package's own interpreter and import the upload runtime." },
     { kind: "semantic", from: "stash.backend.sessions", to: "stash.backend.content", label: "materializes", description: "Session artifacts materialize into the Files tree." },
+    { kind: "semantic", from: "stash.backend.content", to: "stash.backend.integrations", label: "reads source docs", description: "For a source with binds_skills set, documents whose frontmatter declares a skill are served straight from the imported source documents — no copy in the Files tree, so the upstream file stays the only writer." },
+    { kind: "semantic", from: "stash.backend.vfs", to: "stash.backend.content", label: "lists skills", description: "The VFS skills listing includes source-backed skills, addressed by their upstream document reference." },
     { kind: "semantic", from: "stash.frontend.clientLib", to: "stash.backend.content", label: "REST", description: "Files/skills views read and write content routes." },
     { kind: "semantic", from: "stash.sdk", to: "stash.backend", label: "REST" },
     { kind: "semantic", from: "stash.chromeExtension", to: "stash.backend", label: "REST", description: "Saves clips into the user's Stash." },
