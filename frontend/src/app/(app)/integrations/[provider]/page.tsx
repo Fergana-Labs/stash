@@ -1388,29 +1388,16 @@ function NavigablePanel({
 
   return (
     <div>
-      {source.type === "google_drive_folder" && (
+      {source.type === "google_drive_folder" && source.binds_skills && (
         <div className="mb-3 rounded-lg border border-border bg-raised px-3 py-2.5 text-[12px]">
-          {source.binds_skills ? (
-            <>
-              <div className="font-semibold text-foreground">
-                This folder is used for Skills.
-              </div>
-              <div className="mt-0.5 text-muted-foreground">
-                A file anywhere inside this folder can be a Skill. At the top, each file
-                needs a name and description between --- lines. “Draft Skill” means those
-                fields are present but no instructions follow them yet.
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="font-semibold text-foreground">
-                This folder is not used for Skills.
-              </div>
-              <div className="mt-0.5 text-muted-foreground">
-                Agents can search and read these files, but none of them are Skills.
-              </div>
-            </>
-          )}
+          <div className="font-semibold text-foreground">
+            This folder is used for Skills.
+          </div>
+          <div className="mt-0.5 text-muted-foreground">
+            A file anywhere inside this folder can be a Skill. At the top, each file
+            needs a name and description between --- lines. “Draft Skill” means those
+            fields are present but no instructions follow them yet.
+          </div>
         </div>
       )}
       <div className="mb-2 flex flex-wrap items-center gap-1 text-[12px] text-muted-foreground">
