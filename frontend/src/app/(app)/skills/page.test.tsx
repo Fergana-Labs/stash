@@ -318,11 +318,11 @@ describe("SkillsPage", () => {
     );
   });
 
-  it("lets a draft source skill pull a fresh copy without leaving the page", async () => {
-    // Drive syncs on a minutes-long interval, so an instruction edit made in
-    // Drive stays invisible here until the next sync. The draft row must offer
-    // an immediate re-sync or the "edit it in Drive" flow dead-ends.
-    vi.mocked(listSkills).mockResolvedValue([sourceSkill({ has_instructions: false })]);
+  it("lets any source-backed skill pull a fresh copy without leaving the page", async () => {
+    // The use case: "I just edited my skill in Drive — confirm it's in Stash."
+    // Drive syncs on a minutes-long interval, so without this the edit stays
+    // invisible until the next sync, draft or not.
+    vi.mocked(listSkills).mockResolvedValue([sourceSkill({ has_instructions: true })]);
     vi.mocked(syncSource).mockResolvedValue({ task_id: "task-1" });
 
     render(<SkillsPage />);
@@ -331,6 +331,8 @@ describe("SkillsPage", () => {
 
     await waitFor(() => expect(syncSource).toHaveBeenCalledWith("source-1"));
     expect(screen.getByRole("button", { name: "Syncing…" })).toBeDisabled();
+    // Re-sync sits beside Run, not instead of it.
+    expect(screen.getByRole("button", { name: "Run" })).toBeInTheDocument();
   });
 
   it("keeps source-backed skills distinct from each other in every list", async () => {

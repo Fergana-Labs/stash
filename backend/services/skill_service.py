@@ -341,7 +341,7 @@ async def read_source_skill(owner_user_id: UUID, source_ref: str, user_id: UUID)
     readable = permission_service.readable_content_condition("source", "src", 3)
     row = await get_pool().fetchrow(
         "SELECT d.external_ref, d.name, d.content, d.updated_at, "
-        "  src.display_name AS source_name "
+        "  d.source_id, src.display_name AS source_name "
         "FROM drive_documents d "
         "JOIN user_sources src ON src.id = d.source_id "
         "WHERE d.owner_user_id = $1 AND d.external_ref = $2 AND d.deleted_at IS NULL "
@@ -367,6 +367,7 @@ async def read_source_skill(owner_user_id: UUID, source_ref: str, user_id: UUID)
         "folder_id": None,
         "source_ref": row["external_ref"],
         "backing": "source",
+        "source_id": str(row["source_id"]),
         "source_name": row["source_name"],
         "name": meta["name"],
         "description": meta["description"],

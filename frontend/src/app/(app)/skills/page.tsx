@@ -17,6 +17,7 @@ import SkillCard, {
 } from "@/components/skill/SkillCard";
 import SkillLauncher from "@/components/skill/SkillLauncher";
 import { SkillComposer } from "@/components/skill/SkillComposer";
+import ResyncSourceButton from "@/components/skill/ResyncSourceButton";
 import ForkSkillCardButton from "@/components/skill/ForkSkillCardButton";
 import { SelectBox } from "@/components/content/file-browser/ItemsList";
 import {
@@ -700,88 +701,30 @@ function skillPublishBadge(skill: Skill): { discoverable: boolean } | null {
 // folder-backed skill's editor is the card's own link target, so a label is
 // enough. Cards and rows are wrapped in a Link, hence the button + window.open
 // instead of a nested anchor.
-function DraftCta({ skill, onRefresh }: { skill: Skill; onRefresh: () => Promise<void> }) {
+function DraftCta({ skill }: { skill: Skill }) {
   if (skill.backing === "source") {
     return (
-      <span className="inline-flex items-center gap-1.5">
-        <button
-          type="button"
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            window.open(
-              `https://drive.google.com/open?id=${skill.source_ref}`,
-              "_blank",
-              "noopener"
-            );
-          }}
-          className="cursor-pointer whitespace-nowrap rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-[11.5px] font-medium text-amber-800 hover:bg-amber-100"
-        >
-          Add instructions in Drive
-        </button>
-        <ResyncButton sourceId={skill.source_id} onRefresh={onRefresh} />
-      </span>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          window.open(
+            `https://drive.google.com/open?id=${skill.source_ref}`,
+            "_blank",
+            "noopener"
+          );
+        }}
+        className="cursor-pointer whitespace-nowrap rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-[11.5px] font-medium text-amber-800 hover:bg-amber-100"
+      >
+        Add instructions in Drive
+      </button>
     );
   }
   return (
     <span className="whitespace-nowrap text-[11.5px] font-medium text-amber-800">
       Add instructions →
     </span>
-  );
-}
-
-// Drive syncs on a 30-minute interval, so an upstream edit sits invisible for
-// up to half an hour unless the user finds the Sync action on the Integrations
-// page. This pulls a fresh copy right where the draft tells them to edit.
-function ResyncButton({
-  sourceId,
-  onRefresh,
-}: {
-  sourceId: string;
-  onRefresh: () => Promise<void>;
-}) {
-  const [syncing, setSyncing] = useState(false);
-  const mounted = useRef(true);
-  useEffect(() => {
-    mounted.current = true;
-    return () => {
-      mounted.current = false;
-    };
-  }, []);
-
-  async function resync(e: React.MouseEvent) {
-    e.preventDefault();
-    e.stopPropagation();
-    if (syncing) return;
-    setSyncing(true);
-    try {
-      await syncSource(sourceId);
-      // The sync runs in a worker; poll the list until the row reflects the
-      // upstream edit. If instructions arrived, this component unmounts with
-      // the row's re-render — the mounted ref ends the loop.
-      for (let i = 0; i < 10 && mounted.current; i++) {
-        await new Promise((r) => setTimeout(r, 3000));
-        await onRefresh();
-      }
-    } finally {
-      if (mounted.current) setSyncing(false);
-    }
-  }
-
-  return (
-    <button
-      type="button"
-      onClick={(e) => void resync(e)}
-      disabled={syncing}
-      className={
-        "whitespace-nowrap rounded-md border border-border px-2 py-1 text-[11.5px] font-medium " +
-        (syncing
-          ? "cursor-default text-muted-foreground"
-          : "cursor-pointer text-foreground hover:bg-raised")
-      }
-    >
-      {syncing ? "Syncing…" : "Re-sync"}
-    </button>
   );
 }
 
@@ -891,6 +834,9 @@ function SkillCollection({
                   <span className="min-w-0 truncate">
                     {skill.when_to_use || "Hand this to an agent"}
                   </span>
+                  {skill.backing === "source" && (
+                    <ResyncSourceButton sourceId={skill.source_id} onRefresh={onRefresh} />
+                  )}
                   <RunSkillButton onRun={() => onRun(skill)} />
                 </>
               ) : (
@@ -898,7 +844,10 @@ function SkillCollection({
                   <span className="min-w-0 truncate">
                     Draft — no instructions for an agent yet.
                   </span>
-                  <DraftCta skill={skill} onRefresh={onRefresh} />
+                  {skill.backing === "source" && (
+                    <ResyncSourceButton sourceId={skill.source_id} onRefresh={onRefresh} />
+                  )}
+                  <DraftCta skill={skill} />
                 </>
               )
             }
@@ -954,11 +903,16 @@ function SkillListRow({
         <PublishBadge published={skillPublishBadge(skill)} />
         {!skill.has_instructions && <DraftBadge />}
       </span>
-      {skill.has_instructions ? (
-        <RunSkillButton onRun={() => onRun(skill)} />
-      ) : (
-        <DraftCta skill={skill} onRefresh={onRefresh} />
-      )}
+      <span className="inline-flex items-center gap-1.5">
+        {skill.backing === "source" && (
+          <ResyncSourceButton sourceId={skill.source_id} onRefresh={onRefresh} />
+        )}
+        {skill.has_instructions ? (
+          <RunSkillButton onRun={() => onRun(skill)} />
+        ) : (
+          <DraftCta skill={skill} />
+        )}
+      </span>
       <span
         className={
           pinned

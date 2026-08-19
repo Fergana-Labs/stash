@@ -1516,6 +1516,8 @@ export type FolderBackedSkill = Extract<Skill, { backing: "folder" }>;
 // One source-backed skill, read: its document IS the instructions.
 export interface SourceSkillRead {
   source_ref: string;
+  // The connected source's row id — what syncSource takes.
+  source_id: string;
   name: string;
   description: string;
   source_name: string;

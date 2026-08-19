@@ -1,23 +1,30 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 import { useBreadcrumbs } from "@/components/BreadcrumbContext";
 import { FileBrowserSkeleton } from "@/components/SkeletonStates";
+import ResyncSourceButton from "@/components/skill/ResyncSourceButton";
 import { readSourceSkill, type SourceSkillRead } from "@/lib/api";
 
 export default function SourceSkillClient({ sourceRef }: { sourceRef: string }) {
   const [skill, setSkill] = useState<SourceSkillRead | null>(null);
   const [error, setError] = useState("");
 
-  useEffect(() => {
-    readSourceSkill(sourceRef)
-      .then(setSkill)
-      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load this skill"));
+  const load = useCallback(async () => {
+    try {
+      setSkill(await readSourceSkill(sourceRef));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load this skill");
+    }
   }, [sourceRef]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
 
   useBreadcrumbs(
     [{ label: "Skills" }, { label: skill?.name ?? "Skill" }],
@@ -56,6 +63,7 @@ export default function SourceSkillClient({ sourceRef }: { sourceRef: string }) 
             Read from <span className="text-foreground">{skill.source_name}</span>. Edit it in
             Google Drive — changes sync back here.
           </span>
+          <ResyncSourceButton sourceId={skill.source_id} onRefresh={load} />
         </div>
 
         {skill.has_instructions ? (
