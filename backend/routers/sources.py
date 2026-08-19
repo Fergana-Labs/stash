@@ -47,8 +47,9 @@ async def _require_member(owner_user_id: UUID, user_id: UUID) -> None:
 
 
 async def _require_write(owner_user_id: UUID, user_id: UUID) -> None:
-    """Mutation gate: owner only — members never manage the scope's sources."""
-    if not await user_scope_service.is_owner(owner_user_id, user_id):
+    """Mutation gate: the scope's owner, or the creator of the workspace it
+    belongs to. Ordinary members never manage the scope's sources."""
+    if not await user_scope_service.can_manage_scope(owner_user_id, user_id):
         raise HTTPException(status_code=404, detail="Scope not found")
 
 

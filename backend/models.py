@@ -186,6 +186,12 @@ class FolderListResponse(BaseModel):
 class PageCreateRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
     folder_id: UUID | None = None
+    org_id: str | None = Field(
+        None,
+        max_length=128,
+        description="External Multiplayer: the customer this page is about, "
+        "named by the developer's own org id",
+    )
     content: str = ""
     content_type: str = Field("markdown", pattern=r"^(markdown|html)$")
     content_html: str = ""
@@ -232,6 +238,12 @@ class PageResponse(BaseModel):
     id: UUID
     owner_user_id: UUID
     folder_id: UUID | None
+    # External Multiplayer: the customer this page is about, if any.
+    org_id: UUID | None = None
+    # Which wiki this page is written for, derived from where it sits:
+    # "external" (the workspace's cross-org, anonymized wiki), "internal" (the
+    # scope's own Memory wiki), or None for an ordinary page.
+    wiki: str | None = None
     name: str
     content_markdown: str
     content_type: str = "markdown"
