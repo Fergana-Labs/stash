@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import DeveloperGate from "@/components/developer/DeveloperGate";
+import { PageHeading } from "@/components/developer/DocsPrimitives";
 import OrgTable from "@/components/developer/OrgTable";
 import { listOrgs } from "@/lib/api";
 import type { Org } from "@/lib/types";
@@ -31,21 +32,18 @@ function Orgs() {
   }, [refresh]);
 
   return (
-    <div className="mx-auto max-w-4xl space-y-4 p-8">
-      <div>
-        <h1 className="text-xl font-semibold">Orgs</h1>
-        <p className="mt-1 text-sm text-zinc-500">
-          Your customers. Each has a private notepad; the wiki toggle controls
-          whether their sessions feed the shared anonymized wiki.
-        </p>
-      </div>
+    <>
+      <PageHeading title="Orgs">
+        Your customers. Each has a private notepad; the wiki toggle controls whether their
+        sessions feed the shared anonymized wiki.
+      </PageHeading>
       {error ? (
-        <p className="text-sm text-destructive">Couldn&apos;t load orgs: {error}</p>
+        <p className="text-[15px] text-error">Couldn&apos;t load orgs: {error}</p>
       ) : orgs === null ? (
-        <p className="text-sm text-zinc-500">Loading…</p>
+        <p className="text-[15px] text-muted-foreground">Loading…</p>
       ) : (
         <OrgTable orgs={orgs} onChanged={refresh} />
       )}
-    </div>
+    </>
   );
 }

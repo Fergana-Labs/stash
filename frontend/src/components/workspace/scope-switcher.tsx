@@ -60,7 +60,7 @@ export default function ScopeSwitcher() {
     window.location.assign("/");
   }
 
-  function enterConsole(w: Workspace) {
+  function enterPlatform(w: Workspace) {
     setScope({ scope_user_id: w.scope_user_id, name: w.name, view: "developer" });
     window.location.assign("/developer");
   }
@@ -72,10 +72,10 @@ export default function ScopeSwitcher() {
       <DropdownMenuTrigger
         className={cn(
           "flex h-8 items-center gap-1.5 rounded-full border px-3 text-[13px] font-medium transition-colors",
-          // Inside the developer shell the pill goes monochrome with the rest
-          // of the infra chrome; brand color belongs to the consumer app.
+          // Inside the Developer Platform the pill drops the brand fill: that
+          // surface spends its accent on the active nav item instead.
           scope?.view === "developer"
-            ? "rounded-md border-zinc-200 bg-white text-zinc-900 hover:bg-zinc-50"
+            ? "border-border bg-surface text-foreground hover:bg-raised"
             : inWorkspace
               ? "border-brand-300 bg-brand-500/12 text-brand-600 hover:bg-brand-500/20"
               : "border-border bg-surface text-foreground hover:bg-raised",
@@ -89,7 +89,7 @@ export default function ScopeSwitcher() {
           <CircleUser className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
         )}
         <span className="max-w-[160px] truncate">
-          {scope ? (scope.view === "developer" ? `${scope.name} Console` : scope.name) : "Personal"}
+          {scope ? (scope.view === "developer" ? `${scope.name} Platform` : scope.name) : "Personal"}
         </span>
         <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-60" />
       </DropdownMenuTrigger>
@@ -121,7 +121,7 @@ export default function ScopeSwitcher() {
             workspaces={workspaces}
             scope={scope}
             onSelect={select}
-            onEnterConsole={enterConsole}
+            onEnterPlatform={enterPlatform}
           />
         )}
       </DropdownMenuContent>
@@ -130,17 +130,17 @@ export default function ScopeSwitcher() {
 }
 
 /** Every row that needs the workspace list, so the list is non-null here and
- *  "you have no console" is only ever said about a list that actually loaded. */
+ *  "you have no platform" is only ever said about a list that actually loaded. */
 function WorkspaceScopes({
   workspaces,
   scope,
   onSelect,
-  onEnterConsole,
+  onEnterPlatform,
 }: {
   workspaces: Workspace[];
   scope: Scope | null;
   onSelect: (next: Scope | null) => void;
-  onEnterConsole: (w: Workspace) => void;
+  onEnterPlatform: (w: Workspace) => void;
 }) {
   const consoles = workspaces.filter((w) => w.external_wiki_folder_id !== null);
   return (
@@ -164,16 +164,16 @@ function WorkspaceScopes({
         <ScopeItem
           key={`console-${w.id}`}
           icon={<TerminalSquare className="h-4 w-4 text-brand-500" />}
-          label={`${w.name} Console`}
+          label={`${w.name} Platform`}
           detail="Orgs, memory, API keys"
           selected={scope?.scope_user_id === w.scope_user_id && scope?.view === "developer"}
-          onSelect={() => onEnterConsole(w)}
+          onSelect={() => onEnterPlatform(w)}
         />
       ))}
       {consoles.length === 0 && (
         <ScopeItem
           icon={<TerminalSquare className="h-4 w-4 text-muted-foreground" />}
-          label="Set up Developer Console"
+          label="Set up Developer Platform"
           detail="Run Stash for your product's customers"
           selected={false}
           onSelect={() => {

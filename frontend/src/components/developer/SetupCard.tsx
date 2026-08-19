@@ -1,9 +1,21 @@
 "use client";
 
 import { useState } from "react";
-import { Check, Copy, KeyRound } from "lucide-react";
 
+import { Code, CodeBlock, SectionHeading } from "@/components/developer/DocsPrimitives";
 import { mintDeveloperKey } from "@/lib/api";
+
+const INTEGRATION = `# write: one event per turn, org_id names your customer
+curl -X POST https://api.joinstash.ai/api/v1/me/sessions/events/batch \\
+  -H "Authorization: Bearer $STASH_API_KEY" -H "Content-Type: application/json" \\
+  -d '{"events":[{"agent_name":"my-agent","event_type":"user_message",
+       "content":"...","session_id":"conv-123",
+       "org_id":"org_acme","org_name":"Acme Trucks"}]}'
+
+# read: the same org_id scopes the tree to that customer
+curl -X POST https://api.joinstash.ai/api/v1/me/vfs \\
+  -H "Authorization: Bearer $STASH_API_KEY" -H "Content-Type: application/json" \\
+  -d '{"script":"cat /memory/*", "org_id":"org_acme"}'`;
 
 /** Key minting plus the two-call integration contract. */
 export default function SetupCard() {
@@ -33,17 +45,16 @@ export default function SetupCard() {
   }
 
   return (
-    <div className="space-y-3 rounded-lg border border-zinc-200 bg-white p-4">
+    <>
       {minted ? (
-        <div className="flex items-center gap-2">
-          <code className="min-w-0 flex-1 truncate rounded bg-zinc-50 px-2 py-1 text-xs">
+        <div className="flex items-center gap-3 rounded-2xl border border-border bg-surface px-5 py-4">
+          <code className="min-w-0 flex-1 truncate font-mono text-[13px] text-foreground">
             {minted}
           </code>
           <button
             onClick={copy}
-            className="flex items-center gap-1 rounded-md border border-zinc-200 px-2 py-1 text-xs hover:bg-zinc-50"
+            className="shrink-0 rounded-lg border border-border px-3 py-1.5 text-[13px] text-dim transition-colors hover:bg-raised hover:text-foreground"
           >
-            {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
             {copied ? "Copied" : "Copy"}
           </button>
         </div>
@@ -51,33 +62,25 @@ export default function SetupCard() {
         <button
           onClick={mint}
           disabled={minting}
-          className="flex items-center gap-2 rounded-md border border-zinc-200 px-3 py-1.5 text-sm hover:bg-zinc-50 disabled:opacity-50"
+          className="rounded-lg bg-brand-500 px-4 py-2 text-[14px] font-medium text-white transition-colors hover:bg-brand-600 disabled:opacity-50"
         >
-          <KeyRound className="h-4 w-4" />
           {minting ? "Minting…" : "Mint an API key"}
         </button>
       )}
-      {error && <p className="text-xs text-destructive">{error}</p>}
-      <p className="text-xs text-zinc-500">
-        Two calls integrate Stash: upload each turn with your customer&apos;s{" "}
-        <code>org_id</code>, and read with the same <code>org_id</code> to get
-        that org&apos;s view (shared wiki at <code>/memory</code>, its notepad
-        and files under <code>/files</code>, its transcripts under{" "}
-        <code>/sessions</code>).
-      </p>
-      <pre className="overflow-x-auto rounded bg-zinc-50 p-3 text-[11px] leading-relaxed">
-        {`# write: one event per turn, org_id names your customer
-curl -X POST https://api.joinstash.ai/api/v1/me/sessions/events/batch \\
-  -H "Authorization: Bearer $STASH_API_KEY" -H "Content-Type: application/json" \\
-  -d '{"events":[{"agent_name":"my-agent","event_type":"user_message",
-       "content":"...","session_id":"conv-123",
-       "org_id":"org_acme","org_name":"Acme Trucks"}]}'
+      {error && <p className="mt-3 text-[14px] text-error">{error}</p>}
 
-# read: the same org_id scopes the tree to that customer
-curl -X POST https://api.joinstash.ai/api/v1/me/vfs \\
-  -H "Authorization: Bearer $STASH_API_KEY" -H "Content-Type: application/json" \\
-  -d '{"script":"cat /memory/*", "org_id":"org_acme"}'`}
-      </pre>
-    </div>
+      <div className="mt-12">
+        <SectionHeading>Two calls integrate Stash</SectionHeading>
+        <p className="mt-3 max-w-2xl text-[15px] leading-7 text-dim">
+          Upload each turn with your customer&apos;s <Code>org_id</Code>, then read with the
+          same <Code>org_id</Code> to get that org&apos;s view: the shared wiki at{" "}
+          <Code>/memory</Code>, its notepad and files under <Code>/files</Code>, its
+          transcripts under <Code>/sessions</Code>.
+        </p>
+        <div className="mt-5">
+          <CodeBlock>{INTEGRATION}</CodeBlock>
+        </div>
+      </div>
+    </>
   );
 }

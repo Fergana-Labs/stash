@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Instrument_Sans, JetBrains_Mono, Space_Grotesk } from "next/font/google";
+import { IBM_Plex_Mono, Instrument_Sans, JetBrains_Mono, Space_Grotesk } from "next/font/google";
 import "./globals.css";
 import { BreadcrumbProvider } from "../components/BreadcrumbContext";
 import { ShellChromeProvider } from "../components/ShellChromeContext";
@@ -18,6 +18,14 @@ const jetbrainsMono = JetBrains_Mono({
 const spaceGrotesk = Space_Grotesk({
   variable: "--font-space-grotesk",
   subsets: ["latin"],
+});
+
+// The Developer Platform runs the landing site's type system (www/DESIGN.md)
+// rather than the product's, so it reads as the same brand as the docs.
+const ibmPlexMono = IBM_Plex_Mono({
+  variable: "--font-ibm-plex-mono",
+  subsets: ["latin"],
+  weight: ["400", "500"],
 });
 
 export const metadata: Metadata = {
@@ -40,8 +48,17 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
+      <head>
+        {/* Chillax and Supreme are Fontshare-only — the same stylesheet the
+            landing site loads. Used by the Developer Platform. */}
+        <link rel="preconnect" href="https://api.fontshare.com" />
+        <link
+          rel="stylesheet"
+          href="https://api.fontshare.com/v2/css?f[]=chillax@400,500,600&f[]=supreme@400,500&display=swap"
+        />
+      </head>
       <body
-        className={`${instrumentSans.variable} ${jetbrainsMono.variable} ${spaceGrotesk.variable} antialiased min-h-screen`}
+        className={`${instrumentSans.variable} ${jetbrainsMono.variable} ${spaceGrotesk.variable} ${ibmPlexMono.variable} antialiased min-h-screen`}
       >
         <BreadcrumbProvider>
           <ShellChromeProvider>

@@ -29,8 +29,8 @@ function WikiRedirect() {
   }, [router]);
 
   if (error) {
-    return <div className="p-8 text-sm text-destructive">Couldn&apos;t open the wiki: {error}</div>;
+    return <p className="text-[15px] text-error">Couldn&apos;t open the wiki: {error}</p>;
   }
 
-  return <div className="p-8 text-sm text-zinc-500">Opening the wiki…</div>;
+  return <p className="text-[15px] text-muted-foreground">Opening the wiki…</p>;
 }

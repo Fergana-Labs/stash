@@ -2,17 +2,13 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { BookOpen, Building2, KeyRound, MessagesSquare } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 
 import DeveloperGate from "@/components/developer/DeveloperGate";
+import { Code, PageHeading, SectionHeading } from "@/components/developer/DocsPrimitives";
 import { listOrgs } from "@/lib/api";
 import type { Org, Workspace } from "@/lib/types";
 
-/**
- * Console Overview: the devtool landing. Stat tiles for what the platform has
- * absorbed, then the explore cards — the Supermemory-console shape from the
- * shaping doc's design inspiration.
- */
 export default function DeveloperOverview() {
   return (
     <DeveloperGate>
@@ -20,6 +16,27 @@ export default function DeveloperOverview() {
     </DeveloperGate>
   );
 }
+
+// Setup steps, in the order a developer does them. Bordered rows rather than
+// www/DESIGN.md's numbered hairline list: that move is for claims you read,
+// and these are things you click.
+const ROUTES = [
+  {
+    href: "/developer/keys",
+    title: "Mint a key, wire two calls",
+    detail: "Upload each turn with an org_id, read back with the same one.",
+  },
+  {
+    href: "/developer/orgs",
+    title: "Your customers, one org each",
+    detail: "Private notepads, and who feeds the shared wiki.",
+  },
+  {
+    href: "/developer/wiki",
+    title: "The anonymized shared wiki",
+    detail: "What every org's agent reads, with no org named.",
+  },
+];
 
 function Overview() {
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
@@ -43,116 +60,93 @@ function Overview() {
   }, [refresh]);
 
   if (error) {
-    return (
-      <div className="p-8 text-sm text-destructive">Couldn&apos;t load the console: {error}</div>
-    );
+    return <p className="text-[15px] text-error">Couldn&apos;t load the console: {error}</p>;
   }
 
   if (!workspace) {
-    return <div className="p-8 text-sm text-zinc-500">Loading…</div>;
+    return <p className="text-[15px] text-muted-foreground">Loading…</p>;
   }
 
   return (
-    <div className="mx-auto max-w-4xl space-y-8 p-8">
-      <div>
-        <h1 className="text-xl font-semibold">Overview</h1>
-        <p className="mt-1 text-sm text-zinc-500">{workspace.name}</p>
+    <>
+      <PageHeading title="Overview">{workspace.name}</PageHeading>
+
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+        <Stat label="Orgs" value={orgs.length} />
+        <Stat label="Org sessions" value={stats.org_session_count} />
+        <Stat label="Wiki pages" value={stats.wiki_page_count} />
+        <Stat label="Feeding the wiki" value={orgs.filter((o) => o.share_wiki).length} />
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <StatTile label="Orgs" value={orgs.length} />
-        <StatTile label="Org sessions" value={stats.org_session_count} />
-        <StatTile label="Wiki pages" value={stats.wiki_page_count} />
-        <StatTile
-          label="Feeding the wiki"
-          value={orgs.filter((o) => o.share_wiki).length}
-        />
-      </div>
-
-      <section>
-        <h2 className="mb-3 text-sm font-semibold">Explore the platform</h2>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <ExploreCard
-            href="/developer/keys"
-            icon={<KeyRound className="h-4 w-4" />}
-            title="Quick Setup"
-            detail="Mint a key and wire the two-call contract"
-          />
-          <ExploreCard
-            href="/developer/orgs"
-            icon={<Building2 className="h-4 w-4" />}
-            title="Orgs"
-            detail="Your customers, their memory, wiki opt-outs"
-          />
-          <ExploreCard
-            href="/developer/wiki"
-            icon={<BookOpen className="h-4 w-4" />}
-            title="Shared Wiki"
-            detail="Anonymized knowledge read by every org"
-          />
-        </div>
-      </section>
-
-      <section>
-        <h2 className="mb-3 text-sm font-semibold">Recent orgs</h2>
-        <div className="divide-y divide-zinc-200 rounded-lg border border-zinc-200 bg-white">
-          {orgs.slice(0, 5).map((org) => (
-            <div key={org.id} className="flex items-center gap-3 px-4 py-2.5 text-sm">
-              <Building2 className="h-4 w-4 text-zinc-900" />
-              <span className="font-medium">{org.name}</span>
-              <span className="text-xs text-zinc-500">{org.external_id}</span>
-              <span className="ml-auto flex items-center gap-1 text-xs text-zinc-500">
-                <MessagesSquare className="h-3.5 w-3.5" />
-                {org.session_count}
+      <section className="mt-12">
+        <SectionHeading>Set up</SectionHeading>
+        <div className="mt-4 space-y-2">
+          {ROUTES.map((route, i) => (
+            <Link
+              key={route.href}
+              href={route.href}
+              className="group flex items-center gap-4 rounded-2xl border border-border bg-surface px-5 py-4 transition-colors hover:border-brand-300 hover:bg-raised"
+            >
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-500/10 font-mono text-[12px] text-brand-500">
+                {i + 1}
               </span>
-            </div>
+              <span className="min-w-0 flex-1">
+                <span className="block text-[15px] font-medium text-foreground">
+                  {route.title}
+                </span>
+                <span className="mt-0.5 block text-[13.5px] leading-6 text-muted-foreground">
+                  {route.detail}
+                </span>
+              </span>
+              <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground transition-colors group-hover:text-brand-500" />
+            </Link>
           ))}
-          {orgs.length === 0 && (
-            <div className="px-4 py-6 text-sm text-zinc-500">
-              No orgs yet — they appear when your backend uploads a session with
-              a new <code>org_id</code>. Start with{" "}
-              <Link href="/developer/keys" className="text-zinc-900 underline">
-                Quick Setup
-              </Link>
-              .
-            </div>
-          )}
         </div>
       </section>
-    </div>
+
+      <section className="mt-14">
+        <SectionHeading>Recent orgs</SectionHeading>
+        {orgs.length === 0 ? (
+          <p className="mt-3 text-[15px] leading-7 text-dim">
+            No orgs yet — they appear when your backend uploads a session with a new{" "}
+            <Code>org_id</Code>. Start with{" "}
+            <Link href="/developer/keys" className="text-brand-500 underline underline-offset-2">
+              API Keys
+            </Link>
+            .
+          </p>
+        ) : (
+          <div className="mt-4 overflow-hidden rounded-2xl border border-border bg-surface">
+            {orgs.slice(0, 5).map((org) => (
+              <div
+                key={org.id}
+                className="flex items-center gap-3 border-b border-border px-5 py-3.5 text-[14px] last:border-b-0"
+              >
+                <span className="font-medium text-foreground">{org.name}</span>
+                <code className="font-mono text-[12px] text-muted-foreground">
+                  {org.external_id}
+                </code>
+                <span className="ml-auto font-mono text-[12px] text-muted-foreground">
+                  {org.session_count} session{org.session_count === 1 ? "" : "s"}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+    </>
   );
 }
 
-function StatTile({ label, value }: { label: string; value: number }) {
+function Stat({ label, value }: { label: string; value: number }) {
   return (
-    <div className="rounded-lg border border-zinc-200 bg-white p-4">
-      <div className="text-xs text-zinc-500">{label}</div>
-      <div className="mt-1 font-mono text-2xl font-semibold tabular-nums">{value}</div>
-    </div>
-  );
-}
-
-function ExploreCard({
-  href,
-  icon,
-  title,
-  detail,
-}: {
-  href: string;
-  icon: React.ReactNode;
-  title: string;
-  detail: string;
-}) {
-  return (
-    <Link
-      href={href}
-      className="rounded-lg border border-zinc-200 bg-white p-4 transition-colors hover:bg-zinc-50"
-    >
-      <div className="flex items-center gap-2 text-sm font-medium">
-        <span className="text-zinc-900">{icon}</span>
-        {title}
+    <div className="rounded-2xl border border-border bg-surface px-5 py-4">
+      <div className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+        {label}
       </div>
-      <div className="mt-1 text-xs text-zinc-500">{detail}</div>
-    </Link>
+      <div className="mt-2 font-display text-[28px] font-medium tabular-nums text-foreground">
+        {value}
+      </div>
+    </div>
   );
 }
