@@ -6,6 +6,8 @@ const BASE = "https://www.joinstash.ai";
 // indexed as the site scales.
 const ROUTES = [
   "",
+  "/internal-agents",
+  "/external-agents",
   "/discover",
   "/security",
   "/docs",
@@ -19,6 +21,8 @@ const ROUTES = [
   "/blog/three-dimensions-agent-memory-store",
   "/blog/open-questions-in-memory",
   "/blog/why-no-great-consumer-ai",
+  "/blog/context-gold-rush",
+  "/blog/containerizing-memory",
   "/contact-sales",
   "/privacy",
   "/terms",

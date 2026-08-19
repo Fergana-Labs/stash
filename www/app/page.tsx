@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 
 import HomePage from "./_components/HomePage";
 
-const title = "Stash · The Company Brain for Your AI Agents and Team";
+const title = "Stash · Agents That Learn From the Real World";
 const description =
-  "Stash is the company brain for AI agents — it connects your tools, captures every session, and serves one searchable context graph agents and teams share.";
+  "Stash is an applied AI lab building continual learning. We refine raw agent logs into context any agent can read, and use the same logs to train models that improve with every run.";
 
 export const metadata: Metadata = {
   title,
@@ -77,24 +77,6 @@ const jsonLd = {
       softwareHelp: { "@type": "WebPage", url: `${SITE}/docs` },
       license: "https://opensource.org/licenses/MIT",
       publisher: { "@id": `${SITE}#organization` },
-      offers: [
-        {
-          "@type": "Offer",
-          name: "Free",
-          price: "0",
-          priceCurrency: "USD",
-          description: "Two connected sources, unlimited pages, sessions, and tables.",
-          url: `${SITE}/#pricing`,
-        },
-        {
-          "@type": "Offer",
-          name: "Pro",
-          price: "20",
-          priceCurrency: "USD",
-          description: "Unlimited connected sources, per user / month.",
-          url: `${SITE}/#pricing`,
-        },
-      ],
     },
   ],
 };

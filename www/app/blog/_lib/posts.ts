@@ -60,6 +60,25 @@ export const POSTS: Record<string, Post> = {
     datePublished: "2026-07-03",
     byline: "July 2026",
   },
+  "context-gold-rush": {
+    slug: "context-gold-rush",
+    headline: "The context gold rush: why everyone is building the same thing",
+    description:
+      "Context graph, company brain, LLM wiki — a map of who is building the context layer, the patterns that have converged, and the pieces still missing before any of it reaches mass adoption.",
+    author: AUTHORS["Sam Liu"],
+    datePublished: "2026-07-23",
+    byline: "July 2026",
+  },
+  "containerizing-memory": {
+    slug: "containerizing-memory",
+    headline:
+      "Containerizing memory: the real barrier to continual learning and enterprise AI adoption",
+    description:
+      "The shipping container standardized freight and the world's economy followed. Agent memory has no such standard yet, and that missing consistency is why enterprise agent adoption has been mixed.",
+    author: AUTHORS["Sam Liu"],
+    datePublished: "2026-07-10",
+    byline: "July 2026",
+  },
   "open-questions-in-memory": {
     slug: "open-questions-in-memory",
     headline: "Open Questions in Memory, and Our Predictions",
