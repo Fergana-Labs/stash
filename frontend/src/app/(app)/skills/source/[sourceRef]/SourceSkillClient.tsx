@@ -2,8 +2,6 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import Markdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 
 import { useBreadcrumbs } from "@/components/BreadcrumbContext";
 import { FileBrowserSkeleton } from "@/components/SkeletonStates";
@@ -67,9 +65,12 @@ export default function SourceSkillClient({ sourceRef }: { sourceRef: string }) 
         </div>
 
         {skill.has_instructions ? (
-          <article className="prose prose-sm markdown-content mt-6 text-foreground">
-            <Markdown remarkPlugins={[remarkGfm]}>{skill.body}</Markdown>
-          </article>
+          // The exact stored text, not a markdown render. This page is where
+          // you verify what the agent will read — rendering interprets escape
+          // noise and line structure away, which hid a real extraction bug.
+          <pre className="mt-6 whitespace-pre-wrap break-words font-mono text-[12.5px] leading-[1.6] text-foreground">
+            {skill.body}
+          </pre>
         ) : (
           // A document only reaches this page by declaring itself a skill, so
           // the empty case is always the same one: a frontmatter block with
