@@ -7,16 +7,16 @@ export default function Logo({ size = 28 }: { size?: number }) {
       height={(size * 72) / 64}
       aria-hidden="true"
     >
-      <ellipse cx="32" cy="24" rx="22" ry="18" fill="#F97316" />
+      <ellipse cx="32" cy="24" rx="22" ry="18" fill="var(--brand)" />
       <circle cx="25" cy="22" r="4" fill="#fff" />
       <circle cx="39" cy="22" r="4" fill="#fff" />
-      <circle cx="26" cy="22" r="2" fill="#0F172A" />
-      <circle cx="40" cy="22" r="2" fill="#0F172A" />
-      <path d="M12 38 Q8 52 4 60" stroke="#F97316" strokeWidth="4" strokeLinecap="round" fill="none" />
-      <path d="M20 40 Q18 54 14 62" stroke="#F97316" strokeWidth="4" strokeLinecap="round" fill="none" />
-      <path d="M32 42 Q32 56 32 64" stroke="#F97316" strokeWidth="4" strokeLinecap="round" fill="none" />
-      <path d="M44 40 Q46 54 50 62" stroke="#F97316" strokeWidth="4" strokeLinecap="round" fill="none" />
-      <path d="M52 38 Q56 52 60 60" stroke="#F97316" strokeWidth="4" strokeLinecap="round" fill="none" />
+      <circle cx="26" cy="22" r="2" fill="var(--text-strong)" />
+      <circle cx="40" cy="22" r="2" fill="var(--text-strong)" />
+      <path d="M12 38 Q8 52 4 60" stroke="var(--brand)" strokeWidth="4" strokeLinecap="round" fill="none" />
+      <path d="M20 40 Q18 54 14 62" stroke="var(--brand)" strokeWidth="4" strokeLinecap="round" fill="none" />
+      <path d="M32 42 Q32 56 32 64" stroke="var(--brand)" strokeWidth="4" strokeLinecap="round" fill="none" />
+      <path d="M44 40 Q46 54 50 62" stroke="var(--brand)" strokeWidth="4" strokeLinecap="round" fill="none" />
+      <path d="M52 38 Q56 52 60 60" stroke="var(--brand)" strokeWidth="4" strokeLinecap="round" fill="none" />
     </svg>
   );
 }

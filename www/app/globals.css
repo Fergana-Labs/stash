@@ -24,10 +24,6 @@
   --brand-ink: #C4421F;
   --brand-soft: rgba(255, 90, 54, 0.12);
 
-  --agent: #FF5A36;
-  --agent-soft: rgba(255, 90, 54, 0.14);
-  --human: #2B4BFF;
-  --human-soft: rgba(43, 75, 255, 0.12);
 
   --shadow-card: 0 1px 2px rgba(22, 19, 15, 0.04), 0 12px 28px -18px rgba(22, 19, 15, 0.16);
   --shadow-terminal: 0 30px 60px -40px rgba(22, 19, 15, 0.5);
