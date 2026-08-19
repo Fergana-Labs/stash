@@ -15,6 +15,7 @@ import pytest
 from httpx import AsyncClient
 
 from backend.services import source_service
+from stashvfs.model import TRANSCRIPT_EVENTS_PAGE
 
 from .conftest import unique_name
 
@@ -284,21 +285,16 @@ async def test_overview_reports_machine_provisioned_state(client: AsyncClient, m
     assert after.json()["machine"] == {"provisioned": True}
 
 
-async def test_transcript_md_renders_the_whole_session(client: AsyncClient):
-    """sessions/<name>/transcript.md renders from the transcript events route,
-    which this loader reads in one shot — it has no way to page. A default page
-    size there truncated the file, so an agent reading or grepping a long
-    session got a clean miss for anything past the cap instead of the match."""
-    api_key, _ = await _register(client)
-
-    turns = 150
+async def _upload_turns(client: AsyncClient, api_key: str, session_id: str, turns: int) -> None:
+    """A session of `turns` user turns, numbered so a test can name any one of
+    them (msg-0 … msg-N) and know where it falls relative to the render cap."""
     body = (
         "\n".join(
             json.dumps(
                 {
                     "type": "user",
                     "message": {"content": f"msg-{i}"},
-                    "timestamp": f"2026-05-10T20:00:00.{i:03d}Z",
+                    "timestamp": f"2026-05-10T20:00:00.{i:06d}Z",
                 }
             )
             for i in range(turns)
@@ -308,22 +304,124 @@ async def test_transcript_md_renders_the_whole_session(client: AsyncClient):
     up = await client.post(
         "/api/v1/me/transcripts",
         files={"file": ("s.jsonl", io.BytesIO(body), "application/jsonl")},
-        data={"session_id": "sess-vfs-long", "agent_name": "claude"},
+        data={"session_id": session_id, "agent_name": "claude"},
         headers=_auth(api_key),
     )
     assert up.status_code == 201, up.text
 
+
+async def _transcript_path(client: AsyncClient, api_key: str) -> str:
+    """The session's transcript.md, by path. Tests must target this file
+    directly: a recursive grep of the session directory also matches the
+    uncapped transcript.jsonl beside it, so a `grep -r` assertion passes even
+    when the markdown is completely broken. That already fooled us once."""
     located = await _vfs(client, api_key, "find /sessions -name transcript.md")
     assert located.status_code == 200
     path = located.json()["stdout"].strip()
     assert path, located.json()
+    return path
 
-    # Read transcript.md by its own path. A recursive grep of the session
-    # directory would pass on the uncapped transcript.jsonl beside it and never
-    # exercise the markdown at all.
+
+async def test_short_transcript_renders_whole_and_unbannered(client: AsyncClient):
+    """Under the render cap nothing is withheld, so nothing is announced. A
+    banner on every session would be noise people learn to skip past."""
+    api_key, _ = await _register(client)
+    await _upload_turns(client, api_key, "sess-vfs-short", 150)
+    path = await _transcript_path(client, api_key)
+
     resp = await _vfs(client, api_key, f'cat "{path}"')
 
     assert resp.status_code == 200
     result = resp.json()
     assert result["exit_code"] == 0, result
-    assert f"msg-{turns - 1}" in result["stdout"]
+    assert "msg-149" in result["stdout"]
+    assert "TRUNCATED" not in result["stdout"]
+
+
+async def test_long_transcript_says_what_it_withheld(client: AsyncClient):
+    """Over the cap the file must state that it is partial, by how much, and
+    where the whole session lives — at the top for a reader who takes the first
+    screenful, and at the bottom for one who reads to the end."""
+    api_key, _ = await _register(client)
+    turns = TRANSCRIPT_EVENTS_PAGE + 5
+    await _upload_turns(client, api_key, "sess-vfs-long", turns)
+    path = await _transcript_path(client, api_key)
+
+    resp = await _vfs(client, api_key, f'cat "{path}"')
+
+    assert resp.status_code == 200
+    body = resp.json()["stdout"]
+    assert body.count("TRUNCATED") == 2, "banner belongs at both ends"
+    assert f"FIRST {TRANSCRIPT_EVENTS_PAGE:,} of {turns:,} events" in body
+    assert f"{turns - TRANSCRIPT_EVENTS_PAGE:,} MORE events" in body
+    assert "./transcript.jsonl" in body
+    assert "msg-0" in body
+    assert f"msg-{turns - 1}" not in body
+
+
+async def test_grep_searches_the_whole_transcript_and_says_cat_will_not(
+    client: AsyncClient,
+):
+    """The deliberate divergence, pinned in one place so it cannot be
+    "tidied up" by accident: grep searches every event, while the rendered file
+    stops at the cap. Complete search is worth more than a search that silently
+    skips the back half of a session — but it means grep reports matches, and
+    line numbers, for text that is genuinely not in the file. The stderr
+    warning is what keeps that from being inexplicable.
+
+    Changing this is a product decision, not a cleanup: update the warning and
+    this test together, or not at all."""
+    api_key, _ = await _register(client)
+    turns = TRANSCRIPT_EVENTS_PAGE + 5
+    await _upload_turns(client, api_key, "sess-vfs-grep", turns)
+    path = await _transcript_path(client, api_key)
+    past_the_cap = f"msg-{turns - 1}"
+
+    found = await _vfs(client, api_key, f'grep -n "{past_the_cap}" "{path}"')
+
+    assert found.status_code == 200
+    result = found.json()
+    assert result["exit_code"] == 0, result
+    assert past_the_cap in result["stdout"], "grep must reach past the rendered slice"
+    assert "searched in FULL" in result["stderr"]
+    assert "will not find them" in result["stderr"]
+
+    shown = await _vfs(client, api_key, f'cat "{path}"')
+    assert past_the_cap not in shown.json()["stdout"], (
+        "the rendered file is bounded on purpose; if this starts passing, the "
+        "divergence is gone and the warning above is now a lie"
+    )
+
+
+async def test_events_json_reports_what_it_withheld(client: AsyncClient):
+    """The machine-readable half of the same disclosure, for a caller parsing
+    JSON rather than reading prose."""
+    api_key, _ = await _register(client)
+    turns = TRANSCRIPT_EVENTS_PAGE + 5
+    await _upload_turns(client, api_key, "sess-vfs-json", turns)
+
+    located = await _vfs(client, api_key, "find /sessions -name events.json")
+    path = located.json()["stdout"].strip()
+    resp = await _vfs(client, api_key, f'cat "{path}"')
+
+    payload = json.loads(resp.json()["stdout"])
+    assert payload["total"] == turns
+    assert payload["shown"] == TRANSCRIPT_EVENTS_PAGE
+    assert payload["truncated"] is True
+    assert len(payload["events"]) == TRANSCRIPT_EVENTS_PAGE
+
+
+async def test_transcript_jsonl_is_the_escape_hatch_the_banner_names(
+    client: AsyncClient,
+):
+    """The banner sends readers to transcript.jsonl, so that file had better be
+    complete. It renders from the unpaged export route and must stay that way."""
+    api_key, _ = await _register(client)
+    turns = TRANSCRIPT_EVENTS_PAGE + 5
+    await _upload_turns(client, api_key, "sess-vfs-jsonl", turns)
+
+    located = await _vfs(client, api_key, "find /sessions -name transcript.jsonl")
+    path = located.json()["stdout"].strip()
+    resp = await _vfs(client, api_key, f'cat "{path}"')
+
+    assert f"msg-{turns - 1}" in resp.json()["stdout"]

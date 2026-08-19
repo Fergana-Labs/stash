@@ -76,7 +76,12 @@ class VfsClient(Protocol):
 
     def get_source_skill_text(self, doc_id: str) -> str: ...
 
-    def get_transcript_events(self, session_id: str) -> list: ...
+    def get_transcript_events(self, session_id: str, limit: int, offset: int = 0) -> dict:
+        """One page of a session's events. Returns the whole envelope —
+        `events`, `total`, `has_more` — not just the list: a caller that
+        renders a bounded slice can only disclose what it left out if it is
+        told the total."""
+        ...
 
     def export_transcript_jsonl(self, session_id: str) -> str: ...
 

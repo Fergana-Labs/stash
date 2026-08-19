@@ -181,9 +181,9 @@ class InProcessVfsClient:
             .get("combined", "")
         )
 
-    def get_transcript_events(self, session_id: str) -> list:
+    def get_transcript_events(self, session_id: str, limit: int, offset: int = 0) -> dict:
         path = f"/api/v1/me/transcripts/{session_id}/events"
-        return self._read_document("GET", path).json()["events"]
+        return self._read_document("GET", path, limit=limit, offset=offset).json()
 
     def export_transcript_jsonl(self, session_id: str) -> str:
         path = f"/api/v1/me/transcripts/{session_id}/export.jsonl"

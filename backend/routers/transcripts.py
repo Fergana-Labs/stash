@@ -15,7 +15,7 @@ just to have the client parse it back — the rows are the source of truth.
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, Form, HTTPException, Query, UploadFile
 from fastapi.responses import PlainTextResponse
 
 from ..auth import get_current_user, get_scope
@@ -250,19 +250,21 @@ async def get_transcript_metadata(
 @router.get("/{session_id}/events")
 async def get_transcript_events(
     session_id: str,
-    limit: int | None = None,
+    limit: int = Query(..., ge=1),
     offset: int = 0,
     current_user: dict = Depends(get_current_user),
 ):
-    """Chat-thread turns for a session, oldest first, sourced directly from
-    history_events. offset is a turn ordinal, so a future in-session search can
-    jump straight to a match's window.
+    """One page of chat-thread turns for a session, oldest first, sourced
+    directly from history_events. offset is a turn ordinal, so a future
+    in-session search can jump straight to a match's window.
 
-    Omitting limit returns the whole session. Paging is opt-in because the
-    callers that cannot page are the ones that read this as a file: the VFS
-    renders sessions/<name>/transcript.md from this route, and a default page
-    size silently truncated every long transcript it served. The viewer asks
-    for a limit explicitly and scrolls through offsets.
+    limit is required and has no server-side default. A default here is
+    invisible to the caller, and the callers that read this route as a file
+    (the VFS renders sessions/<name>/transcript.md from it) cannot tell a
+    short session from a truncated one — which is exactly how every long
+    transcript came to be served silently cut off. Requiring the count moves
+    that decision to the caller, who is the only one who can disclose it:
+    `total` and `has_more` come back on every response so it can.
 
     No ownership gate: can_read_session is enforced per scope below, so
     another user the session is shared with can read it."""

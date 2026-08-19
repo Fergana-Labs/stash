@@ -164,9 +164,15 @@ class FakeClient:
         assert source == "src-gmail-1"
         return f"RAW BYTES of {ref}".encode()
 
-    def get_transcript_events(self, session_id):
+    def get_transcript_events(self, session_id, limit, offset=0):
         assert session_id == "session-abc"
-        return [{"role": "user", "content": "hello", "created_at": "2026-05-19T10:00:00Z"}]
+        events = [{"role": "user", "content": "hello", "created_at": "2026-05-19T10:00:00Z"}]
+        window = events[offset : offset + limit]
+        return {
+            "events": window,
+            "total": len(events),
+            "has_more": offset + len(window) < len(events),
+        }
 
     def export_transcript_jsonl(self, session_id):
         assert session_id == "session-abc"
