@@ -293,6 +293,10 @@ export async function getCurator(): Promise<{
   return apiFetch(`${ME}/developer/curator`);
 }
 
+export async function runCuratorNow(): Promise<{ status: string }> {
+  return apiFetch(`${ME}/developer/curator/run`, { method: "POST" });
+}
+
 export interface OrgSource {
   id: string;
   provider: string;

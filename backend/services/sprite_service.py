@@ -386,6 +386,36 @@ async def _sprites_exec_stream(
     raise SpriteError("sprite exec stream closed without an exit frame")
 
 
+# One machine key per user per process. `create_api_key` returns the secret
+# only at creation, so it cannot be re-read from the row later.
+_LOCAL_KEYS: dict[UUID, str] = {}
+
+
+async def local_agent_env(user_id: UUID) -> dict[str, str]:
+    """Stash credentials for an agent turn running in local exec mode.
+
+    Local mode runs the harness as this machine's own user, so without these
+    the `stash` CLI inside the turn falls back to the developer's own
+    ~/.stash/config.json — which points at production. An agent would then be
+    reading and writing the developer's real Stash instead of the one the
+    backend is serving, and any command that persists config (workspace
+    switch, sign-in) would mutate their login.
+
+    Both variables override the config file in the CLI, so the developer's
+    ~/.stash is untouched and their local Claude login — which local mode
+    deliberately relies on — still resolves.
+    """
+    if settings.AGENT_EXEC_MODE != "local":
+        return {}
+    key = _LOCAL_KEYS.get(user_id)
+    if key is None:
+        from ..auth import create_api_key
+
+        key = await create_api_key(user_id, name="local sprite", key_type="machine")
+        _LOCAL_KEYS[user_id] = key
+    return {"STASH_API_KEY": key, "STASH_URL": f"http://localhost:{settings.PORT}"}
+
+
 def _local_workdir() -> Path:
     return Path.home() / ".stash-dev-sprite" / "work"
 

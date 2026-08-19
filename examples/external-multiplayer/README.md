@@ -29,10 +29,10 @@ Acme hits a fault it has never seen and finds the fix. Beta asks about
 something unrelated. Watch **Orgs** in the console: both appear on their first
 turn, with their sessions.
 
-Then curate — either wait for the nightly pass, or run it now:
+Then curate. In the console, **Curator → Run now** (or wait for the nightly
+pass), and when it finishes:
 
 ```bash
-stash agents run "External wiki curator"
 python demo.py verify
 ```
 

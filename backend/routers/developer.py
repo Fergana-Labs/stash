@@ -139,6 +139,38 @@ async def get_curator(
     }
 
 
+@router.post("/curator/run", status_code=202)
+async def run_curator_now(
+    current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
+):
+    """Run the external curator now instead of waiting for tonight's tick.
+
+    The same task the nightly schedule dispatches, minus the due-check — the
+    developer is the trigger. Without this there is no way to see the wiki
+    build: a developer wiring up their integration would have to wait a day to
+    learn whether any of it works.
+    """
+    from ..services import agent_auth
+    from ..tasks.agent_schedules import run_curator_now as dispatch
+
+    await _require_active_workspace(scope_user_id)
+    if not await permission_service.is_workspace_member(scope_user_id, current_user["id"]):
+        raise HTTPException(status_code=403, detail="Not a workspace member")
+    curator = await agent_service.get_or_create_curator(scope_user_id, wiki="external")
+    try:
+        await agent_auth.resolve(scope_user_id, curator["model_provider"])
+    except agent_auth.NeedsAuth:
+        raise HTTPException(
+            status_code=402,
+            detail="Connect a model credential for this workspace before running the curator.",
+        )
+    except agent_auth.ProviderNotConfigured:
+        raise HTTPException(status_code=503, detail="The agent is not configured.")
+    dispatch.delay(curator["id"])
+    return {"status": "started", "agent_id": curator["id"]}
+
+
 @orgs_router.get("")
 async def list_orgs(
     current_user: dict = Depends(get_current_user),

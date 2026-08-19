@@ -27,17 +27,29 @@ def main() -> int:
     stash = Stash(api_key, BASE_URL)
 
     say("Acme asks about a fault it has never seen")
-    ask(stash, anthropic_key, ACME, "acme-1", "2020 Cascadia throwing fault F45. What is it?")
     ask(
         stash,
         anthropic_key,
         ACME,
-        "acme-1",
+        f"{ACME[0]}/conv-1",
+        "2020 Cascadia throwing fault F45. What is it?",
+    )
+    ask(
+        stash,
+        anthropic_key,
+        ACME,
+        f"{ACME[0]}/conv-1",
         "We fitted brake valve X123 and F45 cleared. Torque was 90 Nm.",
     )
 
     say("Beta asks about something of its own")
-    ask(stash, anthropic_key, BETA, "beta-1", "Our 2018 Volvo VNL needs a serpentine belt.")
+    ask(
+        stash,
+        anthropic_key,
+        BETA,
+        f"{BETA[0]}/conv-1",
+        "Our 2018 Volvo VNL needs a serpentine belt.",
+    )
 
     say("What each shop can see right now")
     for org, name in (ACME, BETA):
@@ -45,8 +57,8 @@ def main() -> int:
         print(indent(stash.read(org, "ls /sessions")))
 
     say("Run the curator, then re-check")
-    print("  Run it now with:  stash agents run 'External wiki curator'")
-    print("  or wait for tonight's pass. Then:  python demo.py verify\n")
+    print("  Console -> Curator -> Run now, or wait for tonight's pass.")
+    print("  Then:  python demo.py verify\n")
     return 0
 
 
@@ -55,7 +67,13 @@ def verify() -> int:
     anthropic_key = os.environ["ANTHROPIC_API_KEY"]
 
     say("Beta hits the fault Acme already solved")
-    ask(stash, anthropic_key, BETA, "beta-2", "Now a 2020 Cascadia with fault F45. Any ideas?")
+    ask(
+        stash,
+        anthropic_key,
+        BETA,
+        f"{BETA[0]}/conv-2",
+        "Now a 2020 Cascadia with fault F45. Any ideas?",
+    )
 
     say("Can Beta tell where that came from?")
     leaked = stash.read(BETA[0], "grep -ri 'acme' /memory /files 2>/dev/null")

@@ -614,6 +614,10 @@ async def run_chat(
         raise NeedsAuth
     except agent_auth.ProviderNotConfigured:
         raise RuntimeError("cloud agent is not configured")
+    # Local exec runs the harness as this machine's own user, so hand the turn
+    # its own Stash credentials: without them the `stash` CLI inside it falls
+    # back to the developer's ~/.stash, which points at production.
+    auth.env.update(await sprite_service.local_agent_env(user_id))
     async with _TurnLock(session_id):
         history = await _load_history(owner_user_id, session_id, user_id)
         await memory_service.push_event(

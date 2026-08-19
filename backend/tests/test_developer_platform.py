@@ -137,20 +137,27 @@ async def test_org_upload_creates_org_and_stamps_session(client: AsyncClient, po
 
 
 @pytest.mark.asyncio
-async def test_org_is_set_once_like_folders(client: AsyncClient, pool):
+async def test_one_org_appends_to_its_session_across_batches(client: AsyncClient, pool):
+    """The ordinary case the collision guard must not break: a customer's agent
+    pushes turn after turn under the same session id, and they accumulate in one
+    session belonging to that customer."""
     api_key, _, workspace = await _developer(client)
     machine_key = await _mint_workspace_key(client, api_key, workspace)
 
-    await _push(client, machine_key, [_event("sess-sticky", org_id="org_a", org_name="A")])
-    # A later event asserting a different org must not migrate the session.
-    await _push(client, machine_key, [_event("sess-sticky", org_id="org_b", org_name="B")])
+    for _ in range(3):
+        await _push(client, machine_key, [_event("sess-sticky", org_id="org_a", org_name="A")])
 
-    row = await pool.fetchrow(
+    rows = await pool.fetch(
         "SELECT o.external_id FROM sessions s JOIN orgs o ON o.id = s.org_id "
         "WHERE s.owner_user_id = $1 AND s.session_id = 'sess-sticky'",
         uuid.UUID(workspace["scope_user_id"]),
     )
-    assert row["external_id"] == "org_a"
+    assert [r["external_id"] for r in rows] == ["org_a"]
+    events = await pool.fetchval(
+        "SELECT count(*) FROM history_events WHERE owner_user_id = $1 AND session_id = 'sess-sticky'",
+        uuid.UUID(workspace["scope_user_id"]),
+    )
+    assert events == 3
 
 
 @pytest.mark.asyncio
@@ -225,15 +232,67 @@ async def test_org_vfs_isolates_orgs(client: AsyncClient, pool):
 
 
 @pytest.mark.asyncio
-async def test_org_vfs_unknown_org_fails_loud(client: AsyncClient):
+async def test_new_org_reads_the_shared_wiki_before_it_has_written(client: AsyncClient, pool):
+    """A customer's agent reads context before it records anything, so its very
+    first call names an org that has no row yet. That has to work, and it has to
+    return the shared wiki: the accumulated cross-org knowledge is exactly what
+    a brand-new customer benefits from on day one. Failing here would mean a
+    customer can only read the wiki after contributing to it."""
     api_key, _, workspace = await _developer(client)
     machine_key = await _mint_workspace_key(client, api_key, workspace)
+    await pool.execute(
+        "INSERT INTO pages (owner_user_id, name, content_markdown, folder_id, created_by) "
+        "VALUES ($1, 'Fault codes', 'body', $2, $1)",
+        uuid.UUID(workspace["scope_user_id"]),
+        uuid.UUID(workspace["external_wiki_folder_id"]),
+    )
+
     resp = await client.post(
         "/api/v1/me/vfs",
-        json={"script": "ls /", "org_id": "org_never_seen"},
+        json={"script": "find / -type f", "org_id": "org_never_seen"},
         headers=_auth(machine_key),
     )
-    assert resp.status_code == 400
+    assert resp.status_code == 200, resp.text
+    listing = resp.json()["stdout"]
+    assert "Fault codes" in listing
+    # It owns nothing yet — no notepad, no sessions of its own.
+    assert "notepad" not in listing
+
+
+@pytest.mark.asyncio
+async def test_two_orgs_cannot_share_a_session_id(client: AsyncClient, pool):
+    """Session ids come from the developer's own app, so two of their customers
+    picking the same one is ordinary. Sessions are unique on (owner, session_id)
+    and the owner is the workspace, so appending regardless files one customer's
+    turn inside another customer's transcript — where that customer's agent can
+    read it. This is the isolation the whole feature promises."""
+    api_key, _, workspace = await _developer(client)
+    machine_key = await _mint_workspace_key(client, api_key, workspace)
+
+    await _push(client, machine_key, [_event("conv-1", org_id="org_one", org_name="One")])
+
+    collision = await client.post(
+        "/api/v1/me/sessions/events/batch",
+        json={"events": [_event("conv-1", org_id="org_two", org_name="Two")]},
+        headers=_auth(machine_key),
+    )
+    assert collision.status_code == 400
+    assert "conv-1" in collision.json()["detail"]
+
+    # Refused before anything was stored: the first customer's session holds
+    # only its own turn, and the second customer has no session at all.
+    rows = await pool.fetch(
+        "SELECT o.external_id FROM sessions s JOIN orgs o ON o.id = s.org_id "
+        "WHERE s.session_id = 'conv-1'"
+    )
+    assert [r["external_id"] for r in rows] == ["org_one"]
+    contents = [
+        r["content"]
+        for r in await pool.fetch(
+            "SELECT content FROM history_events WHERE session_id = 'conv-1' ORDER BY created_at"
+        )
+    ]
+    assert len(contents) == 1, contents
 
 
 # --- The console API ---

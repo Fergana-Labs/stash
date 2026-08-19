@@ -9,7 +9,7 @@ import {
   PageHeading,
   SectionHeading,
 } from "@/components/developer/DocsPrimitives";
-import { getCurator, type CuratorRun, type OrgRef } from "@/lib/api";
+import { getCurator, runCuratorNow, type CuratorRun, type OrgRef } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 export default function CuratorRoute() {
@@ -26,6 +26,8 @@ function Curator() {
   const [data, setData] = useState<CuratorData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showPrompt, setShowPrompt] = useState(false);
+  const [running, setRunning] = useState(false);
+  const [runError, setRunError] = useState<string | null>(null);
 
   const refresh = useCallback(() => {
     setError(null);
@@ -43,6 +45,20 @@ function Curator() {
   }
   if (!data) {
     return <p className="text-[15px] text-muted-foreground">Loading…</p>;
+  }
+
+  async function runNow() {
+    setRunning(true);
+    setRunError(null);
+    try {
+      await runCuratorNow();
+      // The run happens on the worker; the entry appears when it writes.
+      setTimeout(refresh, 4000);
+    } catch (e) {
+      setRunError(e instanceof Error ? e.message : "Could not start the run");
+    } finally {
+      setRunning(false);
+    }
   }
 
   return (
@@ -115,7 +131,17 @@ function Curator() {
       </section>
 
       <section>
-        <SectionHeading>Recent runs</SectionHeading>
+        <div className="flex items-baseline justify-between gap-4">
+          <SectionHeading>Recent runs</SectionHeading>
+          <button
+            onClick={() => void runNow()}
+            disabled={running}
+            className="rounded-sm bg-brand-500 px-3 py-1.5 text-[13px] font-medium text-white transition-colors hover:bg-brand-600 disabled:opacity-50"
+          >
+            {running ? "Starting…" : "Run now"}
+          </button>
+        </div>
+        {runError && <p className="mt-2 text-[13px] text-error">{runError}</p>}
         {data.runs.length === 0 ? (
           <p className="mt-4 rounded border border-dashed border-border px-6 py-8 text-center text-[14px] leading-6 text-muted-foreground">
             It hasn&apos;t run yet. The first run happens on the next nightly tick, once there are
