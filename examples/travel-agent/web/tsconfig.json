@@ -22,7 +22,6 @@
         "./*"
       ]
     },
-    "baseUrl": ".",
     "allowJs": true,
     "incremental": true,
     "resolveJsonModule": true,

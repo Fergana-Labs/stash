@@ -3,10 +3,12 @@
 const BASE = process.env.STASH_BASE_URL ?? "http://localhost:3456";
 
 function headers() {
-  return {
-    Authorization: `Bearer ${process.env.STASH_API_KEY}`,
-    "Content-Type": "application/json",
-  };
+  const key = process.env.STASH_API_KEY;
+  // Without this the header goes out as "Bearer undefined" and every call
+  // comes back 401, which reads like a bad key rather than a missing one.
+  if (!key)
+    throw new Error("STASH_API_KEY is not set — put it in web/.env.local");
+  return { Authorization: `Bearer ${key}`, "Content-Type": "application/json" };
 }
 
 export async function read(org: string, script: string): Promise<string> {
@@ -16,7 +18,8 @@ export async function read(org: string, script: string): Promise<string> {
     body: JSON.stringify({ script, org_id: org }),
     cache: "no-store",
   });
-  if (!res.ok) throw new Error(`stash read failed: ${res.status} ${await res.text()}`);
+  if (!res.ok)
+    throw new Error(`stash read failed: ${res.status} ${await res.text()}`);
   return (await res.json()).stdout as string;
 }
 
@@ -40,12 +43,19 @@ export async function record(
       })),
     }),
   });
-  if (!res.ok) throw new Error(`stash write failed: ${res.status} ${await res.text()}`);
+  if (!res.ok)
+    throw new Error(`stash write failed: ${res.status} ${await res.text()}`);
 }
 
-export async function listOrgs(): Promise<{ id: string; external_id: string; name: string; session_count: number }[]> {
-  const res = await fetch(`${BASE}/api/v1/me/orgs`, { headers: headers(), cache: "no-store" });
-  if (!res.ok) throw new Error(`stash orgs failed: ${res.status}`);
+export async function listOrgs(): Promise<
+  { id: string; external_id: string; name: string; session_count: number }[]
+> {
+  const res = await fetch(`${BASE}/api/v1/me/orgs`, {
+    headers: headers(),
+    cache: "no-store",
+  });
+  if (!res.ok)
+    throw new Error(`GET /me/orgs failed: ${res.status} ${await res.text()}`);
   return (await res.json()).orgs;
 }
 
@@ -55,7 +65,8 @@ export async function listOrgs(): Promise<{ id: string; external_id: string; nam
 export async function context(org: string): Promise<string> {
   const parts: string[] = [];
   for (const root of ["/memory", "/files/notepad"]) {
-    if ((await read(org, `ls ${root}`)).trim()) parts.push(await read(org, `cat ${root}/*`));
+    if ((await read(org, `ls ${root}`)).trim())
+      parts.push(await read(org, `cat ${root}/*`));
   }
   return parts.join("\n\n");
 }
