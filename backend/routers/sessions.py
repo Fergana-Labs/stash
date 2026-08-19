@@ -445,9 +445,7 @@ async def bulk_soft_delete_my_sessions(
         # content.session_deleted audit; a False here means a concurrent
         # delete raced the classification above, which is the idempotent
         # success state rather than an error.
-        if await session_service.delete_session(
-            row["id"], owner_user_id, current_user["id"]
-        ):
+        if await session_service.delete_session(row["id"], owner_user_id, current_user["id"]):
             deleted.append(session_id)
         else:
             already_deleted.append(session_id)
