@@ -261,6 +261,38 @@ export interface OrgNotepadPage {
   updated_at: string;
 }
 
+export interface CuratorRun {
+  session_id: string;
+  started_at: string;
+  status: "completed" | "failed" | "running" | "stopped" | "interrupted";
+  summary: string | null;
+  error: string | null;
+}
+
+export interface OrgRef {
+  id: string;
+  name: string;
+  external_id: string;
+}
+
+export async function getCurator(): Promise<{
+  curator: {
+    name: string;
+    schedule_cron: string;
+    curated_through: string | null;
+    last_run_at: string | null;
+    last_run_outcome: string | null;
+    last_run_error: string | null;
+  };
+  next_run_at: string | null;
+  prompt: string;
+  feeding: OrgRef[];
+  opted_out: OrgRef[];
+  runs: CuratorRun[];
+}> {
+  return apiFetch(`${ME}/developer/curator`);
+}
+
 export interface OrgSource {
   id: string;
   provider: string;

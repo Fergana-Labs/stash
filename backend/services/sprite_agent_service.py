@@ -381,11 +381,13 @@ async def build_scheduled_turn(agent: dict, run_stamp: str) -> tuple[str, str]:
     session_id = f"{scheduled_session_prefix(agent)}{run_stamp}"
     if agent.get("is_curator"):
         since = agent["curated_through"].isoformat() if agent.get("curated_through") else None
-        # A developer workspace's curator runs in External Multiplayer mode:
-        # same delta feed, but compiled into the shared anonymized wiki plus
-        # per-org notepads instead of the personal Memory wiki.
-        workspace = await org_service.workspace_for_scope(user_id)
-        if workspace is not None and workspace["external_wiki_folder_id"] is not None:
+        # Which wiki this curator writes decides its prompt. A developer
+        # workspace runs both: the internal pass over its own Memory wiki, and
+        # the external pass compiling the cross-org wiki plus per-org notepads.
+        if agent.get("curator_wiki") == "external":
+            workspace = await org_service.workspace_for_scope(user_id)
+            if workspace is None or workspace["external_wiki_folder_id"] is None:
+                raise ValueError("external curator on a scope with no active developer platform")
             orgs = await org_service.list_orgs(workspace["id"])
             return session_id, prompts.render_external_curator_prompt(
                 str(workspace["external_wiki_folder_id"]),

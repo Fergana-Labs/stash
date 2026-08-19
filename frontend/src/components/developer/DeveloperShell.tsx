@@ -22,6 +22,11 @@ const NAV: { title: string; items: NavItem[] }[] = [
         label: "Shared Wiki",
         match: (p) => p.startsWith("/developer/wiki"),
       },
+      {
+        href: "/developer/curator",
+        label: "Curator",
+        match: (p) => p.startsWith("/developer/curator"),
+      },
     ],
   },
   {

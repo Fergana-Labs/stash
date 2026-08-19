@@ -14,7 +14,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from ..auth import API_KEY_ACCESS_LEVELS, create_api_key, get_current_user, get_scope
-from ..services import org_service, permission_service, workspace_service
+from ..services import agent_service, org_service, permission_service, prompts, workspace_service
+from .curator_log import curator_runs
 
 router = APIRouter(prefix="/api/v1/me/developer", tags=["developer"])
 orgs_router = APIRouter(prefix="/api/v1/me/orgs", tags=["developer"])
@@ -48,6 +49,16 @@ async def _require_member_workspace(workspace_id: UUID, user_id: UUID) -> dict:
     return workspace
 
 
+async def _require_active_workspace(scope_user_id: UUID) -> dict:
+    workspace = await org_service.workspace_for_scope(scope_user_id)
+    if workspace is None or workspace["external_wiki_folder_id"] is None:
+        raise HTTPException(
+            status_code=400,
+            detail="scope is not an active developer workspace — activate first",
+        )
+    return workspace
+
+
 @router.post("/activate")
 async def activate_developer_platform(
     req: ActivateRequest, current_user: dict = Depends(get_current_user)
@@ -76,14 +87,56 @@ async def mint_developer_key(
     X-Stash-Scope to pick the workspace."""
     if req.access not in API_KEY_ACCESS_LEVELS:
         raise HTTPException(status_code=400, detail=f"unknown access level: {req.access}")
-    workspace = await org_service.workspace_for_scope(scope_user_id)
-    if workspace is None or workspace["external_wiki_folder_id"] is None:
-        raise HTTPException(
-            status_code=400,
-            detail="scope is not an active developer workspace — activate first",
-        )
+    workspace = await _require_active_workspace(scope_user_id)
     key = await create_api_key(scope_user_id, name=req.name, key_type="machine", access=req.access)
     return {"workspace_id": str(workspace["id"]), "api_key": key, "access": req.access}
+
+
+@router.get("/curator")
+async def get_curator(
+    current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
+):
+    """Everything about the external curator: when it next runs, the exact
+    prompt that run will use, which orgs feed the shared wiki, and how the
+    recent runs went.
+
+    The prompt is rendered from live state rather than stored, so what this
+    shows is literally what the next run sends — including the org list and
+    each org's wiki opt-out.
+    """
+    workspace = await _require_active_workspace(scope_user_id)
+    curator = await agent_service.get_or_create_curator(scope_user_id, wiki="external")
+    orgs = await org_service.list_orgs(workspace["id"])
+    since = curator["curated_through"]
+    prompt = prompts.render_external_curator_prompt(
+        str(workspace["external_wiki_folder_id"]),
+        [
+            {
+                "name": org["name"],
+                "notepad_folder_id": str(org["notepad_folder_id"]),
+                "share_wiki": org["share_wiki"],
+            }
+            for org in orgs
+        ],
+        since.isoformat() if since else None,
+    )
+    return {
+        "curator": curator,
+        "next_run_at": agent_service.next_run_at(curator),
+        "prompt": prompt,
+        "feeding": [
+            {"id": str(o["id"]), "name": o["name"], "external_id": o["external_id"]}
+            for o in orgs
+            if o["share_wiki"]
+        ],
+        "opted_out": [
+            {"id": str(o["id"]), "name": o["name"], "external_id": o["external_id"]}
+            for o in orgs
+            if not o["share_wiki"]
+        ],
+        "runs": await curator_runs(scope_user_id, curator),
+    }
 
 
 @orgs_router.get("")
@@ -91,12 +144,7 @@ async def list_orgs(
     current_user: dict = Depends(get_current_user),
     scope_user_id: UUID = Depends(get_scope),
 ):
-    workspace = await org_service.workspace_for_scope(scope_user_id)
-    if workspace is None or workspace["external_wiki_folder_id"] is None:
-        raise HTTPException(
-            status_code=400,
-            detail="scope is not an active developer workspace — activate first",
-        )
+    workspace = await _require_active_workspace(scope_user_id)
     return {
         "workspace": workspace,
         "orgs": await org_service.list_orgs(workspace["id"]),

@@ -55,6 +55,11 @@ async def activate(workspace_id: UUID, created_by: UUID) -> dict:
     if row is None:
         # Lost an activation race — the other winner's folders stand.
         return await workspace_service.get_workspace(workspace_id)
+    # The external wiki needs its own curator: the internal one writes the
+    # scope's Memory wiki under the opposite privacy rules.
+    from . import agent_service
+
+    await agent_service.get_or_create_curator(owner, wiki="external")
     return dict(row)
 
 
