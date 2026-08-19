@@ -622,7 +622,7 @@ def test_a_frontmatter_block_written_in_a_doc_survives_google_s_export():
         'description: "Use when a customer reports boost loss."  \n\\---  \n\nCheck the wastegate.\n'
     )
 
-    repaired = indexer.unescape_exported_rules(exported)
+    repaired = indexer.unescape_exported_markdown(exported)
 
     meta = skill_service.declared_skill(repaired)
     assert meta is not None
@@ -630,7 +630,20 @@ def test_a_frontmatter_block_written_in_a_doc_survives_google_s_export():
     assert meta["description"] == "Use when a customer reports boost loss."
 
 
-def test_dashes_inside_a_document_are_left_alone():
-    """Only a line that is nothing but an escaped rule is repaired; an escaped
-    dash inside a sentence is the author's own text."""
-    assert indexer.unescape_exported_rules("a \\--- b\n") == "a \\--- b\n"
+def test_export_escaping_is_stripped_from_body_punctuation():
+    """Google escapes punctuation the author never escaped — lists arrive as
+    `\\- item`, bold as `\\*\\*`, and plain hyphens mid-sentence as `\\-` (seen
+    in Heavi's real cheat sheets). The agent must read what the author wrote,
+    not the exporter's noise."""
+    exported = "\\*\\*Run the table.\n\\- Lining type \\- ONLY \\- not rotors\nQ2 \\+ Q3 \\-\\> one FMSI \\#1311 \\~2016\n"
+
+    assert indexer.unescape_exported_markdown(exported) == (
+        "**Run the table.\n- Lining type - ONLY - not rotors\nQ2 + Q3 -> one FMSI #1311 ~2016\n"
+    )
+
+
+def test_an_author_s_own_backslash_survives_one_level_of_unescaping():
+    """A backslash actually typed in the Doc is itself escaped on export
+    (`\\-` exports as `\\\\-`), so stripping one level returns exactly what the
+    author wrote."""
+    assert indexer.unescape_exported_markdown("a \\\\- b\n") == "a \\- b\n"

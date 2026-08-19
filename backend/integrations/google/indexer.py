@@ -100,22 +100,28 @@ async def _target_modified_time(client: httpx.AsyncClient, file_id: str) -> str 
     return resp.json().get("modifiedTime")
 
 
-_ESCAPED_RULE_RE = re.compile(r"^\\(-{3,})[ \t]*$", re.MULTILINE)
+# One backslash before any ASCII punctuation — the CommonMark escapable set,
+# which is exactly what Google's exporter escapes.
+_EXPORT_ESCAPE_RE = re.compile(r"\\([!-/:-@\[-`{-~])")
 
 
-def unescape_exported_rules(markdown: str) -> str:
-    r"""Undo the escaping Google's markdown export applies to a line of dashes.
+def unescape_exported_markdown(markdown: str) -> str:
+    r"""Strip one level of the backslash-escaping Google's markdown export adds.
 
-    A Doc whose author typed `---` exports as `\---`, because bare dashes would
-    otherwise be a horizontal rule. That escaping is invisible to the author and
-    fatal to a frontmatter block: the delimiters stop being delimiters, so a
-    skill written in a Doc could never declare itself. The line was dashes when
-    it was written, so it is dashes again here.
+    The exporter escapes punctuation the author never escaped: `---` becomes
+    `\---` (fatal to a frontmatter block — the skill can never declare itself),
+    `- item` becomes `\- item` (no longer a list), `**bold**` becomes
+    `\*\*bold\*\*`, `#`/`+`/`~` all grow backslashes mid-sentence. The author
+    typed plain punctuation, so it is plain punctuation again here.
 
-    Trailing spaces are left alone — Google marks every line with them as a hard
-    break, and the frontmatter parser already ignores them.
+    One level is lossless for authors too: a backslash actually typed in the
+    Doc is itself escaped on export (`\-` exports as `\\-`), so stripping one
+    level returns exactly what was written.
+
+    Trailing spaces are left alone — Google marks every line with them as a
+    hard break, and the frontmatter parser already ignores them.
     """
-    return _ESCAPED_RULE_RE.sub(r"\1", markdown)
+    return _EXPORT_ESCAPE_RE.sub(r"\1", markdown)
 
 
 async def _require_readable_folder(client: httpx.AsyncClient, folder_id: str) -> None:
@@ -493,7 +499,7 @@ async def extract_drive_text(
         from ...services.file_extraction import extract_text, is_pdf
 
         if mime == MIME_GOOGLE_DOC:
-            text = unescape_exported_rules(await _export(client, file_id, "text/markdown"))
+            text = unescape_exported_markdown(await _export(client, file_id, "text/markdown"))
         elif mime == MIME_GOOGLE_SHEET:
             # XLSX export keeps every visible sheet (Drive's CSV export drops
             # everything except the first).
