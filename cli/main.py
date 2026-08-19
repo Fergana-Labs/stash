@@ -82,21 +82,23 @@ def root(
 @app.command()
 def upgrade() -> None:
     """Upgrade the stash CLI to the latest version on PyPI."""
-    import shutil
     import subprocess
 
-    if not shutil.which("uv"):
+    from stashai import release
+
+    if release.is_editable():
+        typer.echo("This is an editable checkout — `git pull` to update it.", err=True)
+        raise typer.Exit(1)
+    command = release.upgrade_command()
+    if command is None:
         typer.echo(
-            "uv is not on PATH. Re-run the installer: "
-            'bash -c "$(curl -fsSL https://joinstash.ai/install)"',
+            "This install has no working upgrader (no uv, no pip). "
+            f"Re-run the installer: {release.INSTALLER}",
             err=True,
         )
         raise typer.Exit(1)
     typer.echo(f"Upgrading stashai from {__version__}…")
-    result = subprocess.run(
-        ["uv", "tool", "install", "--force", "--reinstall", "--refresh", "stashai"]
-    )
-    raise typer.Exit(result.returncode)
+    raise typer.Exit(subprocess.run(command).returncode)
 
 
 def _client(auto: bool = False) -> StashClient:

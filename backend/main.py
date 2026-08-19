@@ -8,6 +8,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from starlette.responses import JSONResponse
 
+from . import cli_release
 from . import exports as _exports  # noqa: F401 — registers exporter Celery tasks
 from . import integrations as _integrations  # noqa: F401 — registers providers + importers
 from .config import settings
@@ -184,6 +185,9 @@ async def add_security_headers(request: Request, call_next):
     for key, value in SECURITY_HEADERS.items():
         if key not in response.headers:
             response.headers[key] = value
+    # Every client learns the current release from traffic it already makes, so
+    # noticing a stale install costs no extra request and needs no hook.
+    response.headers[cli_release.LATEST_VERSION_HEADER] = cli_release.LATEST_CLI_VERSION
     return response
 
 
