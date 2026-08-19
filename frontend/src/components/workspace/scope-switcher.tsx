@@ -29,7 +29,8 @@ import {
  */
 export default function ScopeSwitcher() {
   const scope = useScope();
-  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
+  const [workspaces, setWorkspaces] = useState<Workspace[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     listMyWorkspaces()
@@ -43,7 +44,9 @@ export default function ScopeSwitcher() {
           setScope(null);
         }
       })
-      .catch(() => setWorkspaces([]));
+      .catch((e) =>
+        setError(e instanceof Error ? e.message : "Failed to load your workspaces"),
+      );
   }, []);
 
   function select(next: Scope | null) {
@@ -62,7 +65,6 @@ export default function ScopeSwitcher() {
     window.location.assign("/developer");
   }
 
-  const consoles = workspaces.filter((w) => w.external_wiki_folder_id !== null);
   const inWorkspace = scope !== null;
 
   return (
@@ -102,44 +104,84 @@ export default function ScopeSwitcher() {
           selected={!inWorkspace}
           onSelect={() => select(null)}
         />
-        {workspaces.length > 0 && <DropdownMenuSeparator />}
-        {workspaces.map((w) => (
-          <ScopeItem
-            key={w.id}
-            icon={<Building2 className="h-4 w-4 text-brand-500" />}
-            label={w.name}
-            detail={w.domain ?? "invite-only workspace"}
-            selected={scope?.scope_user_id === w.scope_user_id && scope?.view !== "developer"}
-            onSelect={() => select({ scope_user_id: w.scope_user_id, name: w.name })}
-          />
-        ))}
-        <DropdownMenuSeparator />
-        <DropdownMenuLabel className="text-[11px] text-muted-foreground">
-          Developer
-        </DropdownMenuLabel>
-        {consoles.map((w) => (
-          <ScopeItem
-            key={`console-${w.id}`}
-            icon={<TerminalSquare className="h-4 w-4 text-brand-500" />}
-            label={`${w.name} Console`}
-            detail="Orgs, memory, API keys"
-            selected={scope?.scope_user_id === w.scope_user_id && scope?.view === "developer"}
-            onSelect={() => enterConsole(w)}
-          />
-        ))}
-        {consoles.length === 0 && (
-          <ScopeItem
-            icon={<TerminalSquare className="h-4 w-4 text-muted-foreground" />}
-            label="Set up Developer Console"
-            detail="Run Stash for your product's customers"
-            selected={false}
-            onSelect={() => {
-              window.location.assign("/developer");
-            }}
+        {error ? (
+          <>
+            <DropdownMenuSeparator />
+            <div className="px-2 py-1.5 text-[12px] text-destructive">
+              Couldn&apos;t load your workspaces: {error}
+            </div>
+          </>
+        ) : workspaces === null ? (
+          <>
+            <DropdownMenuSeparator />
+            <div className="px-2 py-1.5 text-[12px] text-muted-foreground">Loading…</div>
+          </>
+        ) : (
+          <WorkspaceScopes
+            workspaces={workspaces}
+            scope={scope}
+            onSelect={select}
+            onEnterConsole={enterConsole}
           />
         )}
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+}
+
+/** Every row that needs the workspace list, so the list is non-null here and
+ *  "you have no console" is only ever said about a list that actually loaded. */
+function WorkspaceScopes({
+  workspaces,
+  scope,
+  onSelect,
+  onEnterConsole,
+}: {
+  workspaces: Workspace[];
+  scope: Scope | null;
+  onSelect: (next: Scope | null) => void;
+  onEnterConsole: (w: Workspace) => void;
+}) {
+  const consoles = workspaces.filter((w) => w.external_wiki_folder_id !== null);
+  return (
+    <>
+      {workspaces.length > 0 && <DropdownMenuSeparator />}
+      {workspaces.map((w) => (
+        <ScopeItem
+          key={w.id}
+          icon={<Building2 className="h-4 w-4 text-brand-500" />}
+          label={w.name}
+          detail={w.domain ?? "invite-only workspace"}
+          selected={scope?.scope_user_id === w.scope_user_id && scope?.view !== "developer"}
+          onSelect={() => onSelect({ scope_user_id: w.scope_user_id, name: w.name })}
+        />
+      ))}
+      <DropdownMenuSeparator />
+      <DropdownMenuLabel className="text-[11px] text-muted-foreground">
+        Developer
+      </DropdownMenuLabel>
+      {consoles.map((w) => (
+        <ScopeItem
+          key={`console-${w.id}`}
+          icon={<TerminalSquare className="h-4 w-4 text-brand-500" />}
+          label={`${w.name} Console`}
+          detail="Orgs, memory, API keys"
+          selected={scope?.scope_user_id === w.scope_user_id && scope?.view === "developer"}
+          onSelect={() => onEnterConsole(w)}
+        />
+      ))}
+      {consoles.length === 0 && (
+        <ScopeItem
+          icon={<TerminalSquare className="h-4 w-4 text-muted-foreground" />}
+          label="Set up Developer Console"
+          detail="Run Stash for your product's customers"
+          selected={false}
+          onSelect={() => {
+            window.location.assign("/developer");
+          }}
+        />
+      )}
+    </>
   );
 }
 
