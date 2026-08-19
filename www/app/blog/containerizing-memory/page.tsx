@@ -58,6 +58,16 @@ export default function ContainerizingMemoryPage() {
             agreed-upon dimensions: liftable by any crane, stackable on any ship, latchable to any
             truck. Shipping costs fell so low that they effectively stopped mattering.
           </p>
+
+          <img
+            src="/blog/shipping-container.webp"
+            width={1192}
+            height={894}
+            loading="lazy"
+            alt="A single blue shipping container standing in a yard, with stacks of more containers behind it"
+            className="mx-auto w-full rounded-xl border border-border-subtle"
+          />
+          <p className="text-[14px] italic text-muted">One agreed-upon steel box. Liftable by any crane, stackable on any ship, latchable to any truck.</p>
           <p>
             And so it goes with the entire story of the industrial revolution and beyond. Flat
             planes and lathes gave us precision manufacturing, making the steam engine viable.
@@ -96,6 +106,16 @@ export default function ContainerizingMemoryPage() {
             everything. Otherwise decisions constantly have to be remade, with inconsistencies
             causing cascading changes.
           </p>
+
+          <img
+            src="/blog/shipping-containers-stacked.webp"
+            width={780}
+            height={312}
+            loading="lazy"
+            alt="A wall of stacked shipping containers in many colours, filling the frame"
+            className="mx-auto w-full rounded-xl border border-border-subtle"
+          />
+          <p className="text-[14px] italic text-muted">Standardization is how you get more output for less input. You decide once, and it scales across everything.</p>
           <p>
             There is a crucial caveat: pure consistency is not the whole answer. Computers are the
             clear example. Code is perfectly consistent — it executes exactly as written, every
@@ -104,6 +124,16 @@ export default function ContainerizingMemoryPage() {
             In the 1920s Nikolai Bernstein studied expert blacksmiths and found that they are{" "}
             <em>less</em> consistent in their swings than mediocre blacksmiths.
           </p>
+          <img
+            src="/blog/bernstein-blacksmith.webp"
+            width={768}
+            height={307}
+            loading="lazy"
+            alt="Bernstein's motion study of a blacksmith: dotted traces showing the arc of the arm and hammer across repeated strikes, each path slightly different"
+            className="mx-auto w-full rounded-xl border border-border-subtle"
+          />
+          <p className="text-[14px] italic text-muted">Bernstein&rsquo;s motion study. The expert&rsquo;s swings vary; the blades do not.</p>
+
           <p>
             The magic isn&rsquo;t consistency alone. It also involves feedback loops. This is one
             of the other pillars behind the remarkable precision of modern manufacturing: control

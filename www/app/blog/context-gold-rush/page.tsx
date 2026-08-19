@@ -100,6 +100,16 @@ export default function ContextGoldRushPage() {
             it goes across the stack. Another big part is that the space is still early, with
             lots of players trying to lay claim to a fuzzy field.
           </p>
+
+          <img
+            src="/blog/context-landscape.webp"
+            width={1200}
+            height={676}
+            loading="lazy"
+            alt="A collage of marketing headlines from context and memory companies: company brain, context layer, agent memory, context engine - nearly interchangeable claims across a dozen different products"
+            className="mx-auto w-full rounded-xl border border-border-subtle"
+          />
+          <p className="text-[14px] italic text-muted">A dozen companies, one claim. The marketing copy converged faster than the products did.</p>
           <ul>
             <li>
               <strong>Personal knowledge base.</strong> A GitHub repo, gbrain, Claude Code plus
