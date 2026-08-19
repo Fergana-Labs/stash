@@ -832,7 +832,7 @@ function SkillCollection({
               skill.has_instructions ? (
                 <>
                   <span className="min-w-0 truncate">
-                    {skill.when_to_use || "Hand this to an agent"}
+                    {skill.when_to_use}
                   </span>
                   {skill.backing === "source" && (
                     <ResyncSourceButton sourceId={skill.source_id} onRefresh={onRefresh} />
