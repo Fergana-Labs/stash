@@ -174,6 +174,13 @@ class InProcessVfsClient:
     def get_skill_text(self, slug: str) -> str:
         return self._read_document("GET", f"/api/v1/skills/{slug}", format="text").text
 
+    def get_source_skill_text(self, doc_id: str) -> str:
+        return (
+            self._read_document("GET", f"/api/v1/me/source-skills/{doc_id}")
+            .json()
+            .get("combined", "")
+        )
+
     def get_transcript_events(self, session_id: str, limit: int, offset: int = 0) -> dict:
         path = f"/api/v1/me/transcripts/{session_id}/events"
         return self._read_document("GET", path, limit=limit, offset=offset).json()

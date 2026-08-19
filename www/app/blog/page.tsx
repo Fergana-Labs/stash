@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
+import SiteFooter from "../_components/SiteFooter";
+import SiteHeader from "../_components/SiteHeader";
+
 export const metadata: Metadata = {
   alternates: { canonical: "/blog" },
   title: "Blog · Stash",
@@ -16,6 +19,21 @@ type Post = {
 };
 
 const POSTS: Post[] = [
+  {
+    title: "The context gold rush: why everyone is building the same thing",
+    blurb:
+      "Context graph, company brain, LLM wiki — a map of who is building the context layer, the patterns that have converged, and what is still missing before any of it reaches mass adoption.",
+    href: "/blog/context-gold-rush",
+    author: "Sam Liu",
+  },
+  {
+    title:
+      "Containerizing memory: the real barrier to continual learning and enterprise AI adoption",
+    blurb:
+      "The shipping container standardized freight and the world economy followed. Agent memory has no such standard yet, and that missing consistency is why enterprise adoption has been mixed.",
+    href: "/blog/containerizing-memory",
+    author: "Sam Liu",
+  },
   {
     title: "Open Questions in Memory, and Our Predictions",
     blurb:
@@ -99,97 +117,54 @@ const POSTS: Post[] = [
 export default function BlogPage() {
   return (
     <main className="min-h-screen bg-background text-foreground">
-      <Header />
+      <SiteHeader current="Blog" />
 
-      <section className="mx-auto max-w-[1200px] px-7 pb-10 pt-16">
-        <p className="flex items-center font-mono text-[11px] font-medium uppercase tracking-[0.14em] text-muted">
-          <span className="mr-[10px] inline-block h-[6px] w-[6px] rounded-full bg-brand" />
-          Blog
-        </p>
-        <h1 className="mt-5 text-balance font-display text-[clamp(36px,4.6vw,56px)] font-bold leading-[1.02] tracking-[-0.035em] text-ink">
-          Notes from the team<br />
-          <span className="text-brand">building Stash.</span>
+      <section className="mx-auto max-w-[1180px] px-5 pb-8 pt-16 sm:px-7 md:pt-24">
+        <h1 className="font-display text-[clamp(38px,5vw,60px)] font-medium leading-[1.06] tracking-[-0.028em] text-ink">
+          Writing
         </h1>
-        <p className="mt-6 max-w-[640px] text-[17px] leading-[1.6] text-foreground">
-          Writing on memory, research, and the messy human side of building
-          products. From the team at{" "}
+        <p className="mt-6 max-w-[54ch] text-[18px] leading-[1.6] text-dim">
+          Notes on memory, continual learning, and what we find while building Stash. From the team
+          at{" "}
           <Link
             href="https://ferganalabs.com"
-            className="font-medium text-brand underline underline-offset-4 transition hover:text-ink"
+            className="text-brand underline decoration-brand/40 underline-offset-4 transition hover:text-ink"
           >
             Fergana Labs
-          </Link>{" "}
-          behind Stash.
+          </Link>
+          .
         </p>
       </section>
 
-      <section className="mx-auto max-w-[1200px] px-7 pb-24">
-        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
-          {POSTS.map((post) => (
-            <PostCard key={post.href} post={post} />
-          ))}
-        </div>
+      <section className="mx-auto max-w-[1180px] px-5 pb-24 sm:px-7">
+        {POSTS.map((post) => (
+          <PostRow key={post.href} post={post} />
+        ))}
       </section>
+
+      <SiteFooter />
     </main>
   );
 }
 
-function PostCard({ post }: { post: Post }) {
+function PostRow({ post }: { post: Post }) {
   const isExternal = post.href.startsWith("http");
   return (
     <Link
       href={post.href}
       target={isExternal ? "_blank" : undefined}
       rel={isExternal ? "noopener noreferrer" : undefined}
-      className="group flex flex-col rounded-xl border border-border-subtle bg-raised/40 p-6 transition hover:border-ink hover:bg-raised"
+      className="group grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-5 border-t border-border-subtle py-5 last:border-b"
     >
-      <h2 className="font-display text-[20px] font-bold leading-[1.2] tracking-[-0.02em] text-ink">
-        {post.title}
-      </h2>
-      <p className="mt-3 flex-1 text-[15px] leading-[1.55] text-dim">
-        {post.blurb}
-      </p>
-      <div className="mt-5 flex items-center justify-between text-[13px] text-muted">
-        <span>{post.author}</span>
-        <span className="text-brand transition group-hover:translate-x-0.5">
-          Read →
+      <span>
+        <span className="font-display text-[19px] font-medium tracking-[-0.02em] text-ink transition group-hover:text-brand">
+          {post.title}
         </span>
-      </div>
+        <p className="mt-1.5 max-w-[62ch] text-[15px] leading-[1.6] text-dim">{post.blurb}</p>
+      </span>
+      <span className="text-right font-mono text-[11.5px] uppercase tracking-[0.08em] text-muted">
+        {post.author}
+      </span>
     </Link>
-  );
-}
-
-function Header() {
-  return (
-    <header className="sticky top-0 z-30 border-b border-border-subtle bg-background/85 backdrop-blur">
-      <div className="mx-auto flex h-16 max-w-[1200px] items-center justify-between px-7">
-        <Link
-          href="/"
-          className="font-display text-[20px] font-bold tracking-[-0.03em] text-ink"
-        >
-          stash
-        </Link>
-        <nav className="flex items-center gap-5 text-[14px] text-dim">
-          <Link href="/discover" className="transition hover:text-ink">
-            Discover
-          </Link>
-          <Link href="/docs" className="transition hover:text-ink">
-            Docs
-          </Link>
-          <Link href="/blog" className="text-ink">
-            Blog
-          </Link>
-          <Link href="/contact-sales" className="transition hover:text-ink">
-            Contact sales
-          </Link>
-          <Link
-            href="/login"
-            className="hidden h-10 items-center rounded-lg border border-border bg-background px-[18px] text-[14px] font-medium text-ink transition hover:border-ink sm:inline-flex"
-          >
-            Sign in
-          </Link>
-        </nav>
-      </div>
-    </header>
   );
 }

@@ -278,7 +278,11 @@ export default function Explorer({ section }: { section: ExplorerSection }) {
   // and drills into each skill folder like any other.
   const skillsRoot = useCallback(async (): Promise<Item[]> => {
     const skills = await listSkills();
-    return skills.map((s) => ({ kind: "skill" as const, id: s.folder_id, name: s.name }));
+    // Drilling in means opening a folder, so source-backed skills — which are
+    // read from their source, not held as folders — stay out of this tree.
+    return skills
+      .filter((s) => s.backing === "folder")
+      .map((s) => ({ kind: "skill" as const, id: s.folder_id, name: s.name }));
   }, []);
 
   // Skill folders someone shared with you. They stay in the owner's scope — so

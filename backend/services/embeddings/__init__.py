@@ -4,6 +4,7 @@ Supports multiple providers out of the box:
   - **openai** — OpenAI, Gemini, Cohere, or any /v1/embeddings-compatible API
   - **huggingface** — Hugging Face Inference API (any HF Hub model)
   - **local** — sentence-transformers (on-device, free, no API key)
+  - **none** — embeddings off: semantic search 503s, reconcile skips
 
 Set EMBEDDING_PROVIDER in your environment, or leave it as "auto" to
 auto-detect from available API keys.

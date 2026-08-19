@@ -11,27 +11,34 @@ import {
 } from "@/components/SkeletonStates";
 import { PinIcon, SkillIcon } from "@/components/SkillIcons";
 import SkillCard, {
+  DraftBadge,
   PUBLISH_COLOR,
   PublishBadge,
 } from "@/components/skill/SkillCard";
-import SkillLauncher from "@/components/skill/SkillLauncher";
 import { SkillComposer } from "@/components/skill/SkillComposer";
+import ResyncSourceButton from "@/components/skill/ResyncSourceButton";
 import ForkSkillCardButton from "@/components/skill/ForkSkillCardButton";
 import { SelectBox } from "@/components/content/file-browser/ItemsList";
 import {
+  addSource,
   forkSkill,
   ApiError,
   API_BASE,
   createSkill,
   deleteFolder,
   listSkills,
+  listSources,
+  setSourceBindsSkills,
+  skillKey,
+  syncSource,
+  type FolderBackedSkill,
   type Skill,
   type PublicSkillCard,
 } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
-import type { LaunchableSkill } from "@/lib/types";
 import { usePins } from "@/lib/pins";
 import { skillSlugFromInput } from "@/lib/skillLinks";
+import { parseDriveFolderId } from "@/components/integrations/pickers";
 import { refreshSidebar } from "@/lib/skillNavigationCache";
 
 type ViewKey = "grid" | "list";
@@ -47,20 +54,9 @@ const VIEW_STORAGE_KEY = "stash_skills_view";
 const COVERS = ["cover-1", "cover-2", "cover-3", "cover-4", "cover-5", "cover-6"];
 
 const TAB_COPY: Record<Tab, string> = {
-  yours:
-    "Your Skill folders. Run one to hand it to an agent, or open it to edit, share, and publish.",
+  yours: "Your Skill folders. Open one to edit, share, and publish.",
   discover: "Public skills from the community — fork one into your Skills.",
 };
-
-// Only a Skill you hold is launchable: an agent reads its own scope, so a
-// Discover skill has to be added before it can be run at all.
-function launchableFromSkill(skill: Skill): LaunchableSkill {
-  return {
-    name: skill.name,
-    description: skill.description,
-    when_to_use: skill.when_to_use,
-  };
-}
 
 export default function SkillsPage() {
   const router = useRouter();
@@ -73,9 +69,6 @@ export default function SkillsPage() {
   const [view, setView] = useState<ViewKey>("grid");
   const [error, setError] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  // The skill the launcher is open on. One at a time — a run is a decision,
-  // not a browsing mode.
-  const [launching, setLaunching] = useState<LaunchableSkill | null>(null);
 
   function toggleSelect(id: string) {
     setSelectedIds((current) => {
@@ -153,19 +146,23 @@ export default function SkillsPage() {
   }, [skills]);
 
   const pinnedSkills = useMemo(
-    () => (skills ?? []).filter((s) => pins.pinnedSet.has(s.folder_id)),
+    () => (skills ?? []).filter((s) => pins.pinnedSet.has(skillKey(s))),
     [skills, pins.pinnedSet]
   );
   const recentSkills = useMemo(
     () =>
       (skills ?? [])
-        .filter((s) => !pins.pinnedSet.has(s.folder_id))
+        .filter((s) => !pins.pinnedSet.has(skillKey(s)))
         .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
         .slice(0, 6),
     [skills, pins.pinnedSet]
   );
 
-  const selectedSkills = (skills ?? []).filter((s) => selectedIds.has(s.folder_id));
+  // Only folder-backed skills are selectable, so bulk delete can never be
+  // pointed at a skill whose content lives in Drive.
+  const selectedSkills = (skills ?? []).filter(
+    (s): s is FolderBackedSkill => s.backing === "folder" && selectedIds.has(s.folder_id)
+  );
 
   async function bulkDeleteSkills() {
     if (selectedSkills.length === 0) return;
@@ -191,7 +188,7 @@ export default function SkillsPage() {
     return <SkillsGridSkeleton />;
   }
 
-  const isPinned = (s: Skill) => pins.pinnedSet.has(s.folder_id);
+  const isPinned = (s: Skill) => pins.pinnedSet.has(skillKey(s));
 
   return (
     <div className="scroll-thin flex-1 overflow-y-auto">
@@ -232,7 +229,7 @@ export default function SkillsPage() {
             pinned={pinnedSkills}
             recent={recentSkills}
             isPinned={isPinned}
-            onTogglePin={(s) => pins.toggle(s.folder_id)}
+            onTogglePin={(s) => pins.toggle(skillKey(s))}
           />
         )}
 
@@ -249,10 +246,10 @@ export default function SkillsPage() {
                 skills={visible}
                 view={view}
                 isPinned={isPinned}
-                onTogglePin={(s) => pins.toggle(s.folder_id)}
+                onTogglePin={(s) => pins.toggle(skillKey(s))}
                 selectedIds={selectedIds}
                 onToggleSelect={toggleSelect}
-                onRun={(s) => setLaunching(launchableFromSkill(s))}
+                onRefresh={load}
               />
             ) : (
               <NoSkillsYet onBrowseDiscover={() => setTab("discover")} />
@@ -263,10 +260,6 @@ export default function SkillsPage() {
 
         {tab === "discover" && <DiscoverSection />}
       </div>
-
-      {launching && (
-        <SkillLauncher skill={launching} onClose={() => setLaunching(null)} />
-      )}
 
       {selectedSkills.length > 0 && (
         <div className="pointer-events-none fixed inset-x-0 bottom-6 z-50 flex justify-center">
@@ -302,9 +295,15 @@ function ExternalSkillLinkForm({ onAdded }: { onAdded: () => void }) {
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    const slug = skillSlugFromInput(input);
-    if (!slug) {
-      setError("Paste a Skill URL like /skills/product-plan or a Skill slug.");
+    // A Drive folder link connects the folder and turns it into Skills — the
+    // same source the integrations page manages, just reachable from where the
+    // user's intent actually is.
+    const folderId = parseDriveFolderId(input);
+    const slug = folderId ? null : skillSlugFromInput(input);
+    if (!folderId && !slug) {
+      setError(
+        "Paste a Google Drive folder link, a Skill URL like /skills/product-plan, or a Skill slug."
+      );
       setMessage("");
       return;
     }
@@ -313,10 +312,69 @@ function ExternalSkillLinkForm({ onAdded }: { onAdded: () => void }) {
     setError("");
     setMessage("");
     try {
-      const forked = await forkSkill(slug);
-      setInput("");
-      setMessage(`Added ${forked.name} to your Skills.`);
-      onAdded();
+      if (folderId) {
+        // Pasting a folder that already provides Skills is a no-op, and the
+        // message must say so — reporting its existing skills as a fresh
+        // success reads like something happened.
+        const existing = (await listSources()).find(
+          (s) => s.type === "google_drive_folder" && s.external_ref === folderId
+        );
+        if (existing?.binds_skills) {
+          setInput("");
+          const available = (await listSkills()).filter(
+            (s) => s.backing === "source" && s.source_name === existing.display_name
+          ).length;
+          setMessage(
+            `"${existing.display_name}" is already connected for Skills — nothing new to add. ` +
+              `${available} ${available === 1 ? "skill" : "skills"} available from it.`
+          );
+          onAdded();
+          return;
+        }
+        // A connected-but-unbound folder falls through: addSource is
+        // idempotent, and binding is exactly what this paste asks for.
+        const created = await addSource({
+          source_type: "google_drive_folder",
+          external_ref: folderId,
+        });
+        await setSourceBindsSkills(created.id, true);
+        await syncSource(created.id);
+        setInput("");
+        setMessage(`Connected "${created.display_name}" — reading its files now…`);
+        onAdded();
+        // Sync and text extraction land a few seconds after the connect. A
+        // single refetch races them and loses, leaving a page that says "No
+        // skills yet" about a folder that is about to produce some — so keep
+        // looking until its skills arrive or it's clear none are coming.
+        for (let attempt = 0; attempt < 15; attempt++) {
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+          const skills = await listSkills();
+          const arrived = skills.filter(
+            (s) => s.backing === "source" && s.source_name === created.display_name
+          );
+          if (arrived.length > 0) {
+            // "available", not "added": re-pasting an already-connected folder
+            // lands here too, and its skills existed before this submit.
+            setMessage(
+              `"${created.display_name}" is connected: ${arrived.length} ${
+                arrived.length === 1 ? "skill" : "skills"
+              } available from this folder.`
+            );
+            onAdded();
+            return;
+          }
+        }
+        setMessage(
+          `"${created.display_name}" is connected, but none of its files declare a skill yet. ` +
+            "Each file's status is on the folder's Integrations page."
+        );
+        onAdded();
+      } else {
+        const forked = await forkSkill(slug!);
+        setInput("");
+        setMessage(`Added ${forked.name} to your Skills.`);
+        onAdded();
+      }
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Could not add skill");
     } finally {
@@ -338,7 +396,7 @@ function ExternalSkillLinkForm({ onAdded }: { onAdded: () => void }) {
             id="external-skill-link"
             value={input}
             onChange={(event) => setInput(event.target.value)}
-            placeholder="https://.../skills/product-plan"
+            placeholder="Drive folder link, or https://.../skills/product-plan"
             className="mt-1 w-full rounded-md border border-border bg-base px-3 py-2 text-[13px] text-foreground placeholder:text-muted-foreground focus:border-brand focus:outline-none"
           />
         </div>
@@ -351,7 +409,11 @@ function ExternalSkillLinkForm({ onAdded }: { onAdded: () => void }) {
         </button>
       </div>
       {error ? <p className="mt-2 text-[12px] text-red-500">{error}</p> : null}
-      {message ? <p className="mt-2 text-[12px] text-muted-foreground">{message}</p> : null}
+      {message ? (
+        <p className="mt-2 text-[13px] font-medium text-foreground" role="status">
+          {message}
+        </p>
+      ) : null}
     </form>
   );
 }
@@ -581,8 +643,28 @@ function SearchGlyph() {
 }
 
 
+// Both kinds open — a folder skill into its browsable folder, a source-backed
+// one into a read-only view of the document behind it. Read-only is about
+// editing, never about whether you can see what an agent will be told.
 function skillHref(skill: Skill): string {
-  return `/skills/folder/${skill.folder_id}`;
+  return skill.backing === "folder"
+    ? `/skills/folder/${skill.folder_id}`
+    : `/skills/source/${encodeURIComponent(skill.source_ref)}`;
+}
+
+// Names the shelf a skill was read from. Two shelves can hold skills with the
+// same name, so "Drive" alone leaves two identical cards on the page; the shelf
+// is also where you go to change it. Folder-backed skills get no badge — that's
+// the unremarkable case.
+function ShelfBadge({ shelf }: { shelf: string }) {
+  return (
+    <span
+      title={`Read from ${shelf} in Google Drive`}
+      className="inline-flex max-w-[120px] flex-shrink-0 items-center truncate rounded border border-border bg-surface/80 px-1.5 py-px text-[10.5px] font-medium text-muted-foreground"
+    >
+      {shelf}
+    </span>
+  );
 }
 
 // Publish badge state: null = Private, otherwise Published (+ Discover dot).
@@ -593,27 +675,35 @@ function skillPublishBadge(skill: Skill): { discoverable: boolean } | null {
 
 // The primary action on a Skill anywhere it's listed: hand it to an agent.
 // Lives inside card/row links, so it stops the click from following them.
-function RunSkillButton({ onRun }: { onRun: () => void }) {
+// The completion path for a draft. A Drive-backed skill is edited in Google
+// Drive, never here, so its call-to-action opens the document itself; a
+// folder-backed skill's editor is the card's own link target, so a label is
+// enough. Cards and rows are wrapped in a Link, hence the button + window.open
+// instead of a nested anchor.
+function DraftCta({ skill }: { skill: Skill }) {
+  if (skill.backing === "source") {
+    return (
+      <button
+        type="button"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          window.open(
+            `https://drive.google.com/open?id=${skill.source_ref}`,
+            "_blank",
+            "noopener"
+          );
+        }}
+        className="cursor-pointer whitespace-nowrap rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-[11.5px] font-medium text-amber-800 hover:bg-amber-100"
+      >
+        Add instructions in Drive
+      </button>
+    );
+  }
   return (
-    <button
-      type="button"
-      onClick={(e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        onRun();
-      }}
-      className="inline-flex flex-shrink-0 cursor-pointer items-center gap-1 rounded-md bg-[var(--color-brand-600)] px-2 py-0.5 text-[11.5px] font-medium text-white hover:bg-[var(--color-brand-700)]"
-    >
-      <PlayGlyph /> Run
-    </button>
-  );
-}
-
-function PlayGlyph() {
-  return (
-    <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-      <path d="M8 5v14l11-7z" />
-    </svg>
+    <span className="whitespace-nowrap text-[11.5px] font-medium text-amber-800">
+      Add instructions →
+    </span>
   );
 }
 
@@ -624,7 +714,7 @@ function SkillCollection({
   onTogglePin,
   selectedIds,
   onToggleSelect,
-  onRun,
+  onRefresh,
 }: {
   skills: Skill[];
   view: ViewKey;
@@ -632,20 +722,20 @@ function SkillCollection({
   onTogglePin: (skill: Skill) => void;
   selectedIds: Set<string>;
   onToggleSelect: (id: string) => void;
-  onRun: (skill: Skill) => void;
+  onRefresh: () => Promise<void>;
 }) {
   if (view === "list") {
     return (
       <div className="overflow-hidden rounded-xl border border-border bg-surface">
         {skills.map((skill) => (
           <SkillListRow
-            key={skill.folder_id}
+            key={skillKey(skill)}
             skill={skill}
             pinned={isPinned(skill)}
             onTogglePin={onTogglePin}
-            selected={selectedIds.has(skill.folder_id)}
+            selected={selectedIds.has(skillKey(skill))}
             onToggleSelect={onToggleSelect}
-            onRun={onRun}
+            onRefresh={onRefresh}
           />
         ))}
       </div>
@@ -657,7 +747,7 @@ function SkillCollection({
       {skills.map((skill, i) => {
         return (
           <SkillCard
-            key={skill.folder_id}
+            key={skillKey(skill)}
             href={skillHref(skill)}
             skill={{
               title: skill.name,
@@ -667,15 +757,20 @@ function SkillCollection({
               published: skillPublishBadge(skill),
               updated_at: skill.updated_at,
               file_count: skill.file_count,
+              draft: !skill.has_instructions,
             }}
             cover={COVERS[i % COVERS.length]}
-            selected={selectedIds.has(skill.folder_id)}
+            selected={selectedIds.has(skillKey(skill))}
             badge={
               <span className="absolute left-2.5 top-2.5 z-10">
-                <SelectBox
-                  selected={selectedIds.has(skill.folder_id)}
-                  onToggle={() => onToggleSelect(skill.folder_id)}
-                />
+                {skill.backing === "folder" ? (
+                  <SelectBox
+                    selected={selectedIds.has(skill.folder_id)}
+                    onToggle={() => onToggleSelect(skill.folder_id)}
+                  />
+                ) : (
+                  <ShelfBadge shelf={skill.source_name} />
+                )}
               </span>
             }
             cornerAction={
@@ -686,12 +781,24 @@ function SkillCollection({
               />
             }
             footer={
-              <>
-                <span className="min-w-0 truncate">
-                  {skill.when_to_use || "Hand this to an agent"}
-                </span>
-                <RunSkillButton onRun={() => onRun(skill)} />
-              </>
+              skill.has_instructions ? (
+                <>
+                  <span className="min-w-0 truncate">
+                    {skill.when_to_use}
+                  </span>
+                  {skill.backing === "source" && (
+                    <ResyncSourceButton sourceId={skill.source_id} onRefresh={onRefresh} />
+                  )}
+                </>
+              ) : (
+                <>
+                  <span className="min-w-0 truncate">Draft</span>
+                  {skill.backing === "source" && (
+                    <ResyncSourceButton sourceId={skill.source_id} onRefresh={onRefresh} />
+                  )}
+                  <DraftCta skill={skill} />
+                </>
+              )
             }
           />
         );
@@ -706,25 +813,28 @@ function SkillListRow({
   onTogglePin,
   selected,
   onToggleSelect,
-  onRun,
+  onRefresh,
 }: {
   skill: Skill;
   pinned: boolean;
   onTogglePin: (skill: Skill) => void;
   selected: boolean;
   onToggleSelect: (id: string) => void;
-  onRun: (skill: Skill) => void;
+  onRefresh: () => Promise<void>;
 }) {
-  return (
-    <Link
-      href={skillHref(skill)}
-      className={
-        "group grid items-center gap-3 border-b border-border-subtle px-4 py-2 text-[13px] last:border-b-0 " +
-        (selected ? "bg-[var(--color-brand-50)]" : "hover:bg-[var(--color-brand-50)]/50")
-      }
-      style={{ gridTemplateColumns: "auto minmax(0,2fr) minmax(0,1fr) auto auto auto" }}
-    >
-      <SelectBox selected={selected} onToggle={() => onToggleSelect(skill.folder_id)} />
+  const href = skillHref(skill);
+  const className =
+    "group grid items-center gap-3 border-b border-border-subtle px-4 py-2 text-[13px] last:border-b-0 " +
+    (selected ? "bg-[var(--color-brand-50)]" : "hover:bg-[var(--color-brand-50)]/50");
+  const style = { gridTemplateColumns: "auto minmax(0,2fr) minmax(0,1fr) auto auto auto" };
+
+  const row = (
+    <>
+      {skill.backing === "folder" ? (
+        <SelectBox selected={selected} onToggle={() => onToggleSelect(skill.folder_id)} />
+      ) : (
+        <ShelfBadge shelf={skill.source_name} />
+      )}
       <div className="flex min-w-0 items-center gap-2.5">
         <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center text-[var(--color-brand-600)]">
           <SkillIcon />
@@ -736,8 +846,16 @@ function SkillListRow({
         {skill.file_count} file{skill.file_count === 1 ? "" : "s"}
         {skill.updated_at && `, ${relativeTime(skill.updated_at)}`}
       </span>
-      <PublishBadge published={skillPublishBadge(skill)} />
-      <RunSkillButton onRun={() => onRun(skill)} />
+      <span className="inline-flex items-center gap-1.5">
+        <PublishBadge published={skillPublishBadge(skill)} />
+        {!skill.has_instructions && <DraftBadge />}
+      </span>
+      <span className="inline-flex items-center gap-1.5">
+        {skill.backing === "source" && (
+          <ResyncSourceButton sourceId={skill.source_id} onRefresh={onRefresh} />
+        )}
+        {!skill.has_instructions && <DraftCta skill={skill} />}
+      </span>
       <span
         className={
           pinned
@@ -747,6 +865,12 @@ function SkillListRow({
       >
         <SkillPinButton pinned={pinned} onToggle={() => onTogglePin(skill)} />
       </span>
+    </>
+  );
+
+  return (
+    <Link href={href} className={className} style={style}>
+      {row}
     </Link>
   );
 }
@@ -807,7 +931,7 @@ function SkillQuickAccess({
         <QuickAccessRow title="Pinned">
           {pinned.map((skill) => (
             <SkillQuickCard
-              key={`pin-${skill.folder_id}`}
+              key={`pin-${skillKey(skill)}`}
               skill={skill}
               pinned
               onTogglePin={onTogglePin}
@@ -819,7 +943,7 @@ function SkillQuickAccess({
         <QuickAccessRow title="Recent">
           {recent.map((skill) => (
             <SkillQuickCard
-              key={`recent-${skill.folder_id}`}
+              key={`recent-${skillKey(skill)}`}
               skill={skill}
               pinned={isPinned(skill)}
               onTogglePin={onTogglePin}
@@ -852,11 +976,12 @@ function SkillQuickCard({
   onTogglePin: (skill: Skill) => void;
 }) {
   const dotColor = skill.published ? PUBLISH_COLOR.published : PUBLISH_COLOR.private;
-  return (
-    <Link
-      href={skillHref(skill)}
-      className="group/qa relative flex w-[200px] items-center gap-2.5 rounded-lg border border-border bg-surface px-3 py-2.5 transition hover:border-[var(--color-brand-300)] hover:bg-raised"
-    >
+  const href = skillHref(skill);
+  const className =
+    "group/qa relative flex w-[200px] items-center gap-2.5 rounded-lg border border-border bg-surface px-3 py-2.5 transition hover:border-[var(--color-brand-300)] hover:bg-raised";
+
+  const tile = (
+    <>
       <span className="relative flex h-5 w-5 shrink-0 items-center justify-center text-[var(--color-brand-600)]">
         <SkillIcon className="text-[18px]" />
         {dotColor && (
@@ -877,6 +1002,12 @@ function SkillQuickCard({
       <span className="shrink-0">
         <SkillPinButton pinned={pinned} onToggle={() => onTogglePin(skill)} />
       </span>
+    </>
+  );
+
+  return (
+    <Link href={href} className={className}>
+      {tile}
     </Link>
   );
 }

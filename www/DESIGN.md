@@ -1,58 +1,62 @@
 # Design System — Stash landing (`www/`)
 
-The landing page's brand system. It deliberately diverges from the cool, clinical,
-sans-serif look that Supermemory and Hyperspell share — warm paper, a grotesque
-display, and an elevated mono signature instead.
+The landing page's brand system. Warm paper, one accent, and restraint: the pages this
+product gets compared to (Linear, Vercel, Resend, Modal, Cursor) win on space and type, not
+on decoration.
 
 ## Fonts
-- **Display — Space Grotesk** (`--font-display`, weights 400–700). Headlines, the
-  wordmark, card titles, big numbers. Also the product UI's display font, so the
-  landing and app read as one brand. Max weight is **700** — never use `font-black`,
-  it renders as faux-bold.
-- **Body — Instrument Sans** (`--font-sans`). Paragraphs, ledes, UI text.
-- **Mono — JetBrains Mono** (`--font-mono`), promoted to a *brand voice*: kickers,
-  nav-adjacent labels, tags, captions, coordinate labels, terminal slabs.
+- **Display — Chillax** (`--font-display`, weights 400–600). Headlines, the wordmark, card
+  titles. A rounded geometric grotesque; it carries the warm half of the brand. Loaded from
+  Fontshare via a stylesheet link in `layout.tsx`, since it is not on Google Fonts. Max weight
+  is **600** — never `font-bold` or heavier, it renders as faux-bold.
+- **Body — Supreme** (`--font-sans`). Paragraphs, ledes, UI text. Also from Fontshare.
+- **Mono — IBM Plex Mono** (`--font-mono`) for labels, captions, code, and terminal slabs.
+- **Serif — Instrument Serif** (`--font-serif`) for a single pull quote per page, and nothing
+  else. If a page has two serif moments, one of them is wrong.
 
-## Color (warm paper palette — tokens in `globals.css`)
-- Backgrounds: `--bg-base #FBFAF8`, `--bg-surface #F4F2EC` (alternating sections),
-  `--bg-raised #EBE8DF`, `--bg-inverted #1A1714` (warm charcoal — terminal slabs only).
-- Text: `--text-strong #1A1714`, `--text #44403A`, `--text-dim #6B655B`, `--text-muted #9A9389`.
-- Brand orange `#F97316` (`--brand`) — used **rarely** (primary CTA, one highlighted
-  word per heading, the terminal `›` prompt, the kicker brackets). If orange is on every
-  element the accent dies.
+## Color (tokens in `globals.css`)
+- Backgrounds: `--bg-base #F7F4EE` (warm paper), `--bg-surface #F1EDE5`, `--bg-raised #EBE6DC`,
+  `--bg-inverted #16130F` (ink — code blocks and the docs announcement bar).
+- Text: `--text-strong #16130F`, `--text #453F37`, `--text-dim #7C7469`, `--text-muted #A79E92`.
+- Brand coral `#FF5A36` (`--brand`). **Two or three uses per screen, maximum**: one word in the
+  headline, the primary button, and a single marker such as a bullet or an active nav item.
+  White cards are `#FFFFFF` against the paper, which is what gives the page its depth.
 
 ## Signature moves
-- **The mono kicker.** Every section opens with `[ SECTION.NAME ]` — the `.kicker`
-  class (JetBrains Mono, uppercase, orange brackets via `::before`/`::after`). One
-  ownable, repeatable label treatment. Author the label dotted/short: `How.it.works`.
-- **Warm dot-field texture.** `<Texture>` paints `--dot-field` (a sparse, low-opacity
-  dotted field) behind the hero, the closing CTA, and the OG image. Sparse and faded —
-  **not** a stroke-heavy line grid.
-- **Terminal slabs are the only dark surface.** Real `stash` CLI commands on
-  `--bg-inverted`, mono, orange prompt. `<HeroTerminal>` types them out (the hero's
-  centrepiece). Keep dark rare — it's what makes code feel canonical.
-- **Asymmetric layouts.** Left-weighted hero, off-axis section headers. Avoid the
-  centered, evenly-padded competitor template.
-
-## Motion (CSS + tiny JS, no framer-motion; all gated on `prefers-reduced-motion`)
-- `HeroTerminal` types real commands; `cursor-blink` for the caret.
-- `.rise-in` — a short rise used on the hero kicker.
-- `live-pulse` — the "live" status dot.
-
-## CTA system
-One pair everywhere: **`Sign up free →`** (orange, primary → `MANAGED_APP_URL`) and
-**`Book a call`** (outlined, secondary → `/contact-sales`). Use the `<CtaPair>`
-component. No other CTA labels ("Start free", "Talk to us", "Contact us" are retired).
+- **The artifact carries the page.** A real product capture or a real terminal transcript,
+  never a diagram assembled from rounded rectangles and arrows.
+- **Hairlines, not tinted sections.** Sections divide with `border-border-subtle` and vertical
+  space. The one exception is a single ink section per page, used at most once.
+- **Numbered hairline lists** for claims and principles: `01` in mono, a display-weight title,
+  and one line of dim body. Used on the home page and on `/internal-agents`.
+- **Asymmetric, left-weighted layouts** on the argument pages; the product page centres its
+  hero and its code panel, and nothing else.
 
 ## Rhythm
-- Section vertical padding: 96–128px desktop (`py-24 md:py-32`).
-- Max content width: 1200px. Section seams: `border-border-subtle`.
+- Section vertical padding: 64–112px (`py-16 md:py-28`).
+- Max content width: 1180px. Docs run full-bleed with a 272px sidebar and a 232px TOC rail.
+- Headline ≤ 9 words. Sub-copy ≤ 2 short lines, in `--text-dim`, never a paragraph.
+
+## Pages
+- `/` — the thesis. Four beliefs, two doors, a research index. No product tour.
+- `/internal-agents` — the product page. Tabbed quickstart, import/refine/serve, sharing,
+  ownership, research.
+- `/external-agents` — the production-memory argument, written as documentation.
+- `/blog`, `/contact-sales` — the same system, minus the product furniture.
+
+## CTA system
+`Sign up` (coral, primary) and `Book a call` (outlined). The header carries both plus a quiet
+`Sign in`. On the argument pages the pair becomes `For internal agents` / `For external
+agents`, which routes rather than converts.
 
 ## Anti-patterns (do not ship)
-- Cool/clinical white + neutral sans (that's the competitors).
-- Overused serif + sans editorial pairing.
-- Stroke-heavy line grids, node-network "memory graph" diagrams.
-- Centered, evenly-padded competitor layout.
-- `font-black`, or any font outside Space Grotesk / Instrument Sans / JetBrains Mono.
-- "Unleash / Supercharge / Empower" copy; "Book a demo" as the primary CTA.
-- Invented testimonials — the `TESTIMONIALS` array stays empty until we have real quotes.
+These are the tells that make a page read as machine-made. Each one was in a draft of this
+redesign and was cut.
+- All-caps eyebrows with wide letter-spacing above every section.
+- Blurred colour blobs, glows, or any decorative gradient.
+- The three-card grid, especially used more than once on a page.
+- Status pills that state nothing (`● LIVE`, `STREAMING`), and chip rows under a CTA.
+- Two accent colours competing across the page.
+- A four-line hero paragraph.
+- Invented testimonials or metrics. Benchmark claims need a citation before they ship.
+- `font-black`, or any font outside Chillax / Supreme / IBM Plex Mono / Instrument Serif.

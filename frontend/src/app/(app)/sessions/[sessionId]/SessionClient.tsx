@@ -21,9 +21,9 @@ import {
   materializeSession,
   renameSession,
   trashItem,
+  type FolderBackedSkill,
   type SessionDetail,
   type SessionEvent,
-  type Skill,
 } from "@/lib/api";
 import EditableTitle from "@/components/content/EditableTitle";
 import { useTabTitle } from "@/lib/workspace-store";
@@ -366,7 +366,7 @@ function SaveToSkillButton({
   onSaved: (pageId: string) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const [skills, setSkills] = useState<Skill[] | null>(null);
+  const [skills, setSkills] = useState<FolderBackedSkill[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const ref = useRef<HTMLDivElement>(null);
@@ -385,11 +385,13 @@ function SaveToSkillButton({
   useEffect(() => {
     if (!open || skills !== null) return;
     listSkills()
-      .then(setSkills)
+      // Saving a session writes a page into the skill's folder, which a
+      // source-backed skill has not got — its content lives in its source.
+      .then((all) => setSkills(all.filter((s) => s.backing === "folder")))
       .catch(() => setSkills([]));
   }, [open, skills]);
 
-  async function save(skill: Skill) {
+  async function save(skill: FolderBackedSkill) {
     setBusy(true);
     setMessage("");
     try {

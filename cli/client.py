@@ -253,6 +253,12 @@ class StashClient:
         resp = self._request("GET", f"/api/v1/skills/{slug}", params={"format": "text"})
         return resp.text
 
+    def get_source_skill_text(self, doc_id: str) -> str:
+        """A source-backed skill has no publish slug — it is addressed by the
+        document that backs it."""
+        resp = self._request("GET", f"/api/v1/me/source-skills/{doc_id}")
+        return resp.json().get("combined", "")
+
     def snapshot_source_into_skill(self, skill_id: str, source_id: str, path: str) -> dict:
         return self._post(
             f"/api/v1/me/skills/{skill_id}/snapshot-source",

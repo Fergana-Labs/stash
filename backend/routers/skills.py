@@ -225,6 +225,22 @@ async def get_local_skill(
     return skill
 
 
+@me_router.get("/source-skills/{source_ref}")
+async def read_source_skill(
+    source_ref: str,
+    current_user: dict = Depends(get_current_user),
+    owner_user_id: UUID = Depends(get_scope),
+):
+    """Read one source-backed skill by the upstream file that backs it.
+    Addressed by file rather than name because a shelf can hold two documents
+    with the same title, and by the upstream id rather than ours because a
+    rename in Drive replaces our row."""
+    skill = await skill_service.read_source_skill(owner_user_id, source_ref, current_user["id"])
+    if not skill:
+        raise HTTPException(status_code=404, detail="Skill not found")
+    return skill
+
+
 async def _require_skill_folder(owner_user_id: UUID, folder_id: UUID, user_id: UUID) -> dict:
     folder = await files_tree_service.get_folder(folder_id)
     if not folder or folder["owner_user_id"] != owner_user_id:

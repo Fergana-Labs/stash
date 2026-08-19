@@ -165,7 +165,7 @@ class Settings:
     )
 
     # --- Embeddings ---
-    # Provider: "openai", "huggingface", "local", or "auto" (default).
+    # Provider: "openai", "huggingface", "local", "none", or "auto" (default).
     # Auto-detect: OPENAI_API_KEY → openai, HF_TOKEN → huggingface, else → local.
     EMBEDDING_PROVIDER: str = os.getenv("EMBEDDING_PROVIDER", "auto")
     OPENAI_API_KEY: str | None = os.getenv("OPENAI_API_KEY")

@@ -74,6 +74,8 @@ class VfsClient(Protocol):
 
     def get_skill_text(self, slug: str) -> str: ...
 
+    def get_source_skill_text(self, doc_id: str) -> str: ...
+
     def get_transcript_events(self, session_id: str, limit: int, offset: int = 0) -> dict:
         """One page of a session's events. Returns the whole envelope —
         `events`, `total`, `has_more` — not just the list: a caller that

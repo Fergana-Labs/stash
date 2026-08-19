@@ -799,7 +799,11 @@ async def install_public_skill(owner_user_id: UUID, slug: str, added_by: UUID) -
         return None
 
     held = await skill_service.list_skills(owner_user_id, added_by)
-    match = next((s for s in held if s["name"] == title), None)
+    # Only a folder in the scope can be a copy of a published skill. A
+    # source-backed skill of the same name is a document in someone's Drive
+    # that happens to share a title — treating it as held would refuse the
+    # install and hand back a folder id that doesn't exist.
+    match = next((s for s in held if s["name"] == title and s["backing"] == "folder"), None)
     if match:
         return {"folder_id": match["folder_id"], "name": match["name"], "installed": False}
 

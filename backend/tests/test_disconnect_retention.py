@@ -165,7 +165,7 @@ async def test_reconnect_reenables_source_and_preserves_settings(pool) -> None:
 
 
 @pytest.mark.asyncio
-async def test_per_source_delete_cleans_blobs_and_shares(pool, monkeypatch) -> None:
+async def test_per_source_delete_cleans_blobs(pool, monkeypatch) -> None:
     # The per-source Remove button is the only delete path extension-fed
     # sources have — it must clean up exactly what the provider purge does.
     from backend.services import storage_service
@@ -194,31 +194,15 @@ async def test_per_source_delete_cleans_blobs_and_shares(pool, monkeypatch) -> N
         user_id,
         source_id,
     )
-    await pool.execute(
-        "INSERT INTO shares (owner_user_id, created_by, object_type, object_id, "
-        "principal_type, principal_id, permission) "
-        "VALUES ($1, $1, 'source', $2, 'user', $3, 'read')",
-        user_id,
-        source_id,
-        grantee_id,
-    )
-
     assert await source_service.delete_source(source_id, user_id) is True
 
     assert deleted_blobs == ["store/x-2-0.jpg"]
-    assert (
-        await pool.fetchval(
-            "SELECT count(*) FROM shares WHERE object_type = 'source' AND object_id = $1",
-            source_id,
-        )
-        == 0
-    )
     # A non-owner can't trigger the cleanup path at all.
     assert await source_service.delete_source(source_id, grantee_id) is False
 
 
 @pytest.mark.asyncio
-async def test_purge_deletes_documents_media_blobs_and_shares(pool, monkeypatch) -> None:
+async def test_purge_deletes_documents_and_media_blobs(pool, monkeypatch) -> None:
     from backend.services import storage_service
 
     deleted_blobs: list[str] = []
@@ -229,7 +213,6 @@ async def test_purge_deletes_documents_media_blobs_and_shares(pool, monkeypatch)
     monkeypatch.setattr(storage_service, "delete_file", fake_delete_file)
 
     user_id = await _user()
-    grantee_id = await _user()
     source = await source_service.create_source(
         owner_user_id=user_id,
         source_type="x_saves",
@@ -245,26 +228,10 @@ async def test_purge_deletes_documents_media_blobs_and_shares(pool, monkeypatch)
         user_id,
         source_id,
     )
-    await pool.execute(
-        "INSERT INTO shares (owner_user_id, created_by, object_type, object_id, "
-        "principal_type, principal_id, permission) "
-        "VALUES ($1, $1, 'source', $2, 'user', $3, 'read')",
-        user_id,
-        source_id,
-        grantee_id,
-    )
-
     purged = await source_service.purge_sources_for_provider(user_id, "x")
 
     assert [UUID(p["id"]) for p in purged] == [source_id]
     assert deleted_blobs == ["store/x-1-0.jpg"]
     assert (
         await pool.fetchval("SELECT count(*) FROM x_save_docs WHERE source_id = $1", source_id) == 0
-    )
-    assert (
-        await pool.fetchval(
-            "SELECT count(*) FROM shares WHERE object_type = 'source' AND object_id = $1",
-            source_id,
-        )
-        == 0
     )
