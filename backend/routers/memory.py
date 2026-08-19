@@ -17,7 +17,7 @@ from ..models import (
     HistoryEventListResponse,
     HistoryEventResponse,
 )
-from ..services import memory_service, user_scope_service
+from ..services import memory_service, session_folder_service, user_scope_service
 from ..tasks.session_titles import generate_session_title
 
 me_router = APIRouter(prefix="/api/v1/me/sessions", tags=["sessions"])
@@ -38,6 +38,21 @@ async def _check_write(owner_user_id: UUID, user_id: UUID) -> None:
         raise HTTPException(status_code=403, detail="Only the owner can write sessions")
 
 
+async def _check_event_folders(owner_user_id: UUID, user_id: UUID, folder_ids: set[UUID]) -> None:
+    """Same gate the session/transcript upload routes run: an event may only
+    pin its session to a folder in the caller's scope that the caller may add
+    to. Without this, a session_folder_id names ANY folder in the system —
+    filing the session into a stranger's folder listing and granting that
+    folder's owner read on it."""
+    for folder_id in folder_ids:
+        if not await session_folder_service.can_add_session_to_folder(
+            owner_user_id=owner_user_id,
+            user_id=user_id,
+            folder_id=folder_id,
+        ):
+            raise HTTPException(status_code=404, detail="Session folder not found")
+
+
 # ===== Scope event endpoints =====
 
 
@@ -51,6 +66,8 @@ async def push_event(
     # default, a workspace when the plugin/CLI sends X-Stash-Scope.
     owner_user_id = scope_user_id
     await _check_write(owner_user_id, current_user["id"])
+    if req.session_folder_id is not None:
+        await _check_event_folders(owner_user_id, current_user["id"], {req.session_folder_id})
     attachments = [a.model_dump(mode="json") for a in req.attachments] if req.attachments else None
     try:
         event = await memory_service.push_event(
@@ -83,6 +100,9 @@ async def push_events_batch(
 ):
     owner_user_id = scope_user_id
     await _check_write(owner_user_id, current_user["id"])
+    folder_ids = {e.session_folder_id for e in req.events if e.session_folder_id is not None}
+    if folder_ids:
+        await _check_event_folders(owner_user_id, current_user["id"], folder_ids)
     events_data = [e.model_dump() for e in req.events]
     try:
         events = await memory_service.push_events_batch(
