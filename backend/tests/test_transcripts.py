@@ -254,10 +254,10 @@ async def test_empty_session_shell_is_hidden_from_default_views(client: AsyncCli
 
 
 @pytest.mark.asyncio
-async def test_event_created_session_lands_in_default_folder(client: AsyncClient):
-    """An un-targeted push hook (e.g. Codex, which has no session-start hook so
-    the first event creates the row) must land in the Default folder, never at
-    the scope root with no folder."""
+async def test_event_creates_the_session_row(client: AsyncClient):
+    """An agent with no session-start hook (e.g. Codex) creates its session row
+    from the first pushed event, so the session must appear in the list even
+    though nothing called the session endpoint."""
     key = await _register(client)
     scope = await _scope(client, key)
     headers = {"Authorization": f"Bearer {key}"}
