@@ -798,28 +798,6 @@ def stash_snapshot_source(skill_id: str, source_id: str, path: str) -> str:
     return _json(_client().snapshot_source_into_skill(skill_id, source_id, path))
 
 
-# ── Session folders ───────────────────────────────────────────────
-
-
-@mcp.tool()
-def stash_list_session_folders() -> str:
-    """List session folders (shareable groupings of sessions)."""
-    return _json(_client().list_session_folders())
-
-
-@mcp.tool()
-def stash_create_session_folder(name: str) -> str:
-    """Create a session folder."""
-    return _json(_client().create_session_folder(name))
-
-
-@mcp.tool()
-def stash_assign_session(session_row_id: str, folder_id: str = "") -> str:
-    """Move a session into a session folder, or pass an empty folder_id to move
-    it back to the ungrouped root."""
-    return _json(_client().assign_session_folder(session_row_id, folder_id=folder_id or None))
-
-
 # ── Entry point ───────────────────────────────────────────────────
 
 

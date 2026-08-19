@@ -96,13 +96,16 @@ async def get_or_create_org(workspace: dict, external_id: str, name: str | None 
             )
             if row:
                 return dict(row)
+            # The folder is named by external_id, not the display name: folders
+            # are unique on (owner, parent, name), and two of a developer's
+            # customers may well share a display name.
             notepad = await conn.fetchrow(
                 "INSERT INTO folders "
                 "  (owner_user_id, parent_folder_id, name, created_by, is_protected) "
                 "VALUES ($1, $2, $3, $4, true) RETURNING id",
                 workspace["scope_user_id"],
                 workspace["org_notepads_folder_id"],
-                name or external_id,
+                external_id,
                 workspace["scope_user_id"],
             )
             row = await conn.fetchrow(

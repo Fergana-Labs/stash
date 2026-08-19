@@ -74,7 +74,7 @@ function ExplorerPanel({ section }: { section: ExplorerSection }) {
  *  beside the Sessions explorer. */
 function sectionForPath(pathname: string): ExplorerSection | null {
   if (pathname === "/files" || /^\/(p|f|folders|tables)\//.test(pathname)) return "files";
-  if (pathname === "/sessions" || pathname.startsWith("/sessions/") || pathname.startsWith("/session-folders")) return "sessions";
+  if (pathname === "/sessions" || pathname.startsWith("/sessions/")) return "sessions";
   if (pathname === "/skills" || pathname.startsWith("/skills/folder")) return "skills";
   if (pathname === "/agents") return "agents";
   if (pathname === "/tools" || pathname.startsWith("/integrations")) return "tools";

@@ -19,7 +19,7 @@ from fastapi import HTTPException
 from ..database import get_pool
 from . import email_service, permission_service, security_audit_service, user_scope_service
 
-_SHAREABLE = {"file", "page", "folder", "session", "session_folder", "table"}
+_SHAREABLE = {"file", "page", "folder", "session", "table"}
 _PERMISSIONS = {"read", "comment", "write"}
 
 # Objects that carry a per-object public link ("anyone with the link"). Session
@@ -380,7 +380,6 @@ async def list_shared_with_user(user_id: UUID) -> list[dict]:
                COALESCE(u.display_name, u.name) AS shared_by,
                COALESCE(
                  (SELECT name FROM folders         WHERE id = s.object_id AND s.object_type = 'folder'),
-                 (SELECT name FROM session_folders WHERE id = s.object_id AND s.object_type = 'session_folder'),
                  (SELECT name FROM pages           WHERE id = s.object_id AND s.object_type = 'page'),
                  (SELECT name FROM files           WHERE id = s.object_id AND s.object_type = 'file'),
                  (SELECT name FROM tables          WHERE id = s.object_id AND s.object_type = 'table'),
@@ -412,52 +411,4 @@ async def list_shared_with_user(user_id: UUID) -> list[dict]:
         }
         for r in rows
         if r["name"] is not None
-    ]
-
-
-async def list_shared_session_folder_sessions(folder_id: UUID, user_id: UUID) -> list[dict]:
-    """Sessions inside a session-folder shared with the user, in the same
-    SessionSummary shape as /me/sessions so the viewer renders the full
-    chronological/filter browser (not a bare list). Gated on the share."""
-    if not await permission_service.check_access("session_folder", folder_id, user_id):
-        raise HTTPException(status_code=404, detail="Not found")
-    rows = await get_pool().fetch(
-        "SELECT s.id, s.owner_user_id, "
-        "       COALESCE(ow.display_name, ow.name) AS owner_name, s.session_id, s.agent_name, "
-        "       st.title, s.started_at, sf.name AS session_folder_name, "
-        "       (ARRAY_AGG(NULLIF(u.display_name, '') ORDER BY he.created_at) "
-        "        FILTER (WHERE NULLIF(u.display_name, '') IS NOT NULL))[1] AS user_name, "
-        "       COUNT(he.id)::int AS event_count, "
-        "       COALESCE(MAX(he.created_at), s.started_at) AS last_event_at "
-        "FROM sessions s "
-        "LEFT JOIN users ow ON ow.id = s.owner_user_id "
-        "LEFT JOIN session_folders sf ON sf.id = s.session_folder_id "
-        "LEFT JOIN session_titles st "
-        "  ON st.owner_user_id = s.owner_user_id AND st.session_id = s.session_id "
-        "LEFT JOIN history_events he "
-        "  ON he.owner_user_id = s.owner_user_id AND he.session_id = s.session_id "
-        "LEFT JOIN users u ON u.id = he.created_by "
-        "WHERE s.session_folder_id = $1 AND s.deleted_at IS NULL "
-        "GROUP BY s.id, s.owner_user_id, ow.display_name, ow.name, s.session_id, "
-        "         s.agent_name, st.title, s.started_at, sf.name "
-        "ORDER BY last_event_at DESC",
-        folder_id,
-    )
-    return [
-        {
-            "id": str(r["id"]),
-            "session_id": r["session_id"],
-            "title": r["title"] or r["session_id"],
-            "linear_tickets": [],
-            "owner_user_id": str(r["owner_user_id"]),
-            "owner_name": r["owner_name"],
-            "user_name": r["user_name"] or (r["agent_name"] or "agent"),
-            "agent_name": r["agent_name"],
-            "event_count": int(r["event_count"] or 0),
-            "started_at": r["started_at"].isoformat() if r["started_at"] else None,
-            "last_event_at": r["last_event_at"].isoformat() if r["last_event_at"] else None,
-            "session_folder_id": str(folder_id),
-            "session_folder_name": r["session_folder_name"],
-        }
-        for r in rows
     ]

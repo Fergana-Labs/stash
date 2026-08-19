@@ -41,7 +41,6 @@ from .routers import (
     pins,
     publish,
     security_audit,
-    session_folders,
     sessions,
     shares,
     skills,
@@ -157,8 +156,6 @@ app.include_router(agent_credentials.router)
 app.include_router(agents.router)
 app.include_router(machine.router)
 app.include_router(telegram.router)
-app.include_router(session_folders.me_router)
-app.include_router(session_folders.public_router)
 app.include_router(shares.router)
 app.include_router(webhooks.router)
 app.include_router(billing.router)

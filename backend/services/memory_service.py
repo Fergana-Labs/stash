@@ -120,7 +120,6 @@ async def push_event(
     content: str,
     created_by: UUID,
     session_id: str,
-    session_folder_id: UUID | None = None,
     org_id: str | None = None,
     org_name: str | None = None,
     tool_name: str | None = None,
@@ -172,7 +171,6 @@ async def push_event(
             agent_name=agent_name,
             cwd=meta.get("cwd") if isinstance(meta.get("cwd"), str) else None,
             created_by=created_by,
-            session_folder_id=session_folder_id,
             org_id=org["id"] if org else None,
         )
         if linear_ticket_service.has_ticket_hint([content]):
@@ -285,9 +283,6 @@ async def _upsert_sessions_for_events(
         sessions[session_id] = {
             "agent_name": event.get("agent_name") or "",
             "cwd": metadata.get("cwd") if isinstance(metadata.get("cwd"), str) else None,
-            # First event for a session wins, matching upsert_session's
-            # set-once folder semantics.
-            "session_folder_id": event.get("session_folder_id"),
             "org_id": event.get("org_id"),
             "org_name": event.get("org_name"),
         }
@@ -302,7 +297,6 @@ async def _upsert_sessions_for_events(
             agent_name=session["agent_name"],
             cwd=session["cwd"],
             created_by=created_by,
-            session_folder_id=session["session_folder_id"],
             org_id=org["id"] if org else None,
         )
         contents = [

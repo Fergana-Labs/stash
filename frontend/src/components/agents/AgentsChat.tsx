@@ -90,7 +90,7 @@ export default function AgentsChat() {
       // Narrowed server-side: a recent window of every session kind is mostly
       // recorded CLI transcripts, so filtering to chats here would hide every
       // chat that fell outside it — "No chats yet" for someone with chats.
-      const all = await listMySessions(100, undefined, 0, CHAT_SESSION_PREFIX);
+      const all = await listMySessions(100, 0, CHAT_SESSION_PREFIX);
       // The chat API reads a session in the caller's own scope only, so a chat
       // shared in from another scope would open blank — it doesn't belong in a
       // list whose only action is opening it.

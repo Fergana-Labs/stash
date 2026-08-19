@@ -23,7 +23,6 @@ from ..database import get_pool
 from ..services import (
     memory_service,
     security_audit_service,
-    session_folder_service,
     session_service,
     transcript_import,
     user_scope_service,
@@ -52,7 +51,6 @@ async def upload_transcript(
     session_id: str = Form(...),
     agent_name: str = Form(...),
     cwd: str | None = Form(None),
-    session_folder_id: UUID | None = Form(None),
     replace: bool = Form(False),
     current_user: dict = Depends(get_current_user),
     scope_user_id: UUID = Depends(get_scope),
@@ -70,13 +68,6 @@ async def upload_transcript(
         raise HTTPException(status_code=400, detail="Session uploads must be .JSONL files")
     if not session_id.strip():
         raise HTTPException(status_code=400, detail="session_id is required")
-    if session_folder_id is not None and not await session_folder_service.can_add_session_to_folder(
-        owner_user_id=owner_user_id,
-        user_id=current_user["id"],
-        folder_id=session_folder_id,
-    ):
-        raise HTTPException(status_code=404, detail="Session folder not found")
-
     body = await file.read()
     if len(body) > MAX_TRANSCRIPT_SIZE:
         raise HTTPException(status_code=413, detail="Transcript too large (max 50 MB)")
@@ -125,7 +116,6 @@ async def upload_transcript(
                 agent_name=agent_name,
                 cwd=cwd,
                 created_by=current_user["id"],
-                session_folder_id=session_folder_id,
             )
             return {
                 "session_id": session_id,
@@ -152,7 +142,6 @@ async def upload_transcript(
             agent_name=agent_name,
             cwd=cwd,
             created_by=current_user["id"],
-            session_folder_id=session_folder_id,
             started_at=transcript_started_at,
         )
     if cwd:

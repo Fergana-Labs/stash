@@ -54,7 +54,6 @@ def get_config(client: str) -> dict:
         "api_endpoint": cli.get("base_url", PRODUCTION_BASE_URL),
         "api_key": cli.get("api_key", ""),
         "agent_name": cli.get("username", ""),
-        "session_folder_id": cli.get("session_folder_id", ""),
         "stopped_streaming": bool(cli.get("stopped_streaming")),
         "client": client,
     }

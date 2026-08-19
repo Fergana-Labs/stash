@@ -41,8 +41,6 @@ vi.mock("@/lib/api", () => ({
   trashItem: vi.fn(),
   deleteFolder: vi.fn(),
   deleteTable: vi.fn(),
-  deleteSessionFolder: vi.fn(),
-  updateSessionFolder: vi.fn(),
   uploadFileOrPage: vi.fn(),
   importGithubRepo: vi.fn(),
   inspectGithubImport: vi.fn().mockResolvedValue({ skill_dirs: [] }),

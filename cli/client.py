@@ -317,20 +317,6 @@ class StashClient:
 
     # --- Session folders (shareable grouping for sessions) ---
 
-    def list_session_folders(self) -> list:
-        return self._list("/api/v1/me/session-folders", "folders")
-
-    def create_session_folder(self, name: str) -> dict:
-        return self._post("/api/v1/me/session-folders", json={"name": name})
-
-    def assign_session_folder(self, session_row_id: str, folder_id: str | None = None) -> dict:
-        return self._post(
-            "/api/v1/me/session-folders/assign",
-            json={"session_row_id": session_row_id, "folder_id": folder_id},
-        )
-
-    # --- Aggregate ---
-
     def all_pages(self) -> list:
         return self._list("/api/v1/me/pages", "pages")
 

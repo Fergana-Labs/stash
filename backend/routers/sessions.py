@@ -22,7 +22,6 @@ from ..services import (
     memory_service,
     permission_service,
     security_audit_service,
-    session_folder_service,
     session_service,
     session_title_service,
     storage_service,
@@ -40,7 +39,6 @@ class SessionUpsertRequest(BaseModel):
     agent_name: str = Field("", max_length=64)
     cwd: str | None = Field(None, max_length=1024)
     files_touched: list[str] = Field(default_factory=list)
-    session_folder_id: UUID | None = None
 
 
 def _session_app_url(session_id: str) -> str:
@@ -90,7 +88,6 @@ async def _session_artifacts(session_row_id: UUID) -> list[dict]:
 @router.get("/me/sessions")
 async def list_my_sessions(
     owner_user_id: UUID | None = Query(None),
-    session_folder_id: UUID | None = Query(None),
     session_id_prefix: str | None = Query(None, max_length=64),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
@@ -101,8 +98,6 @@ async def list_my_sessions(
     session_id. Each row carries the agent name, event count, first & last
     timestamps, and a preview of the first prompt.
 
-    Pass `session_folder_id` to scope to one folder — without it the list is a
-    global recent window, so a folder's older sessions would never appear.
     `session_id_prefix` narrows to one family of sessions by id — the chat
     sidebar asks for `agent-` so a user whose recent window is full of recorded
     CLI transcripts still sees their web chats; filtering client-side loses
@@ -132,9 +127,6 @@ async def list_my_sessions(
         args.append(owner_user_id)
         where.append(f"he.owner_user_id = ${len(args)}")
         title_where.append(f"he_title.owner_user_id = ${len(args)}")
-    if session_folder_id is not None:
-        args.append(session_folder_id)
-        where.append(f"s.session_folder_id = ${len(args)}")
     if session_id_prefix is not None:
         args.append(session_id_prefix)
         # starts_with, not LIKE: the prefix is caller-supplied and LIKE would
@@ -165,8 +157,6 @@ async def list_my_sessions(
         SELECT
           he.session_id,
           s.id AS id,
-          s.session_folder_id,
-          sf.name AS session_folder_name,
           he.owner_user_id,
           owner.display_name AS owner_name,
           {linear_ticket_service.sql_json_agg("s")} AS linear_tickets,
@@ -185,10 +175,9 @@ async def list_my_sessions(
         LEFT JOIN sessions s ON s.owner_user_id IS NOT DISTINCT FROM he.owner_user_id
           AND s.session_id = he.session_id
           AND s.deleted_at IS NULL
-        LEFT JOIN session_folders sf ON sf.id = s.session_folder_id
         WHERE {" AND ".join(where)}
-        GROUP BY he.session_id, he.owner_user_id, owner.display_name, s.id, s.session_folder_id,
-          sf.name, title_sources.title_source
+        GROUP BY he.session_id, he.owner_user_id, owner.display_name, s.id,
+          title_sources.title_source
         ORDER BY last_event_at DESC, user_name ASC, session_id ASC
         LIMIT {int(limit)} OFFSET {int(offset)}
         """,
@@ -226,23 +215,12 @@ async def upsert_session(
     # non-members, so no separate write check is needed).
     owner_user_id = scope_user_id
 
-    # A session always lands in a folder: the one it was pushed to, or the
-    # scope's Default folder (resolved by upsert_session when unset).
-    folder_id = req.session_folder_id
-    if folder_id is not None and not await session_folder_service.can_add_session_to_folder(
-        owner_user_id=owner_user_id,
-        user_id=current_user["id"],
-        folder_id=folder_id,
-    ):
-        raise HTTPException(status_code=404, detail="Session folder not found")
-
     row = await session_service.upsert_session(
         owner_user_id=owner_user_id,
         session_id=req.session_id,
         agent_name=req.agent_name,
         cwd=req.cwd,
         created_by=current_user["id"],
-        session_folder_id=folder_id,
     )
     if req.files_touched:
         await session_service.set_files_touched(row["id"], req.files_touched)

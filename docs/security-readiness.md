@@ -33,8 +33,7 @@ Operational evidence collection lives in [security-operations.md](security-opera
 - Analytics visualizations must serve only the requesting user's own labels and topics; cross-user data must not leak through persistent caches.
 - Reads and writes must be scoped to the authenticated user; one user must not be able to read or modify another user's content.
 - Skill publishing and forking must require ownership of the source content; published Skills are read-only to anyone but their owner.
-- Public, discoverable, or shared session folders must require owner authentication; session-folder management and session assignment must require the authenticated owner.
-- Public links must not create write-capable paths for Stashes, session folders, files, pages, tables, or collaboration documents.
+- Public links must not create write-capable paths for Stashes, files, pages, tables, or collaboration documents.
 - Export workers must re-check page/file access server-side and must block outbound network access during export rendering.
 - Stored file access must use signed URLs. Raw storage URLs must not be returned to clients.
 - Slack and Gong integrations must require explicit allowlists before sync. Empty allowlists must not default to broad access.

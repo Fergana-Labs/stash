@@ -82,7 +82,8 @@ async def changes_since(owner_user_id: UUID, user_id: UUID, since: datetime | No
             "event_type": e.get("event_type"),
             "content": (e.get("content") or "")[:_SNIPPET],
             "created_at": _iso(e.get("created_at")),
-            "folder": e.get("folder"),
+            "org": e.get("org"),
+            "org_share_wiki": e.get("org_share_wiki"),
         }
         for e in events
     ]
@@ -246,12 +247,8 @@ async def _feed_events(
     wiki, and filtering after the query would let them consume feed slots that
     belong to real activity.
 
-    Each event carries its session's folder name: folder placement is the
-    owner's curation signal (e.g. one folder per customer org, or a designated
-    folder of expert-sanctioned traces), so the curator must see it.
-
-    External Multiplayer events additionally carry their session's org (name
-    and wiki opt-out) — the external curator routes by it: every org's
+    Each event carries its session's org (name and wiki opt-out) when it has
+    one — the external curator routes by it: every org's
     material feeds that org's notepad, and only share_wiki orgs feed the
     shared anonymized wiki."""
     pool = get_pool()
@@ -265,11 +262,10 @@ async def _feed_events(
         where += f" AND he.created_at <= ${len(args)}"
     rows = await pool.fetch(
         f"SELECT he.session_id, he.agent_name, he.event_type, he.content, he.created_at, "
-        f"sf.name AS folder, org.name AS org, org.share_wiki AS org_share_wiki "
+        f"org.name AS org, org.share_wiki AS org_share_wiki "
         f"FROM history_events he "
         f"LEFT JOIN sessions s ON s.owner_user_id = he.owner_user_id "
         f"  AND s.session_id = he.session_id "
-        f"LEFT JOIN session_folders sf ON sf.id = s.session_folder_id "
         f"LEFT JOIN orgs org ON org.id = s.org_id "
         f"WHERE {where} "
         f"ORDER BY he.created_at, he.id LIMIT {limit + 1}",

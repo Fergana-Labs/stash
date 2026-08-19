@@ -15,7 +15,7 @@ type RailItem = { key: RailSection; label: string; icon: typeof Bot; match: (p: 
 const PRIMARY: RailItem[] = [
   { key: "home", label: "Home", icon: Home, match: (p) => p === "/" },
   { key: "files", label: "VFS", icon: FolderTree, match: (p) => p === "/files" || p.startsWith("/f/") || p.startsWith("/p/") || p.startsWith("/folders/") || p.startsWith("/tables/") },
-  { key: "sessions", label: "Sessions", icon: MessagesSquare, match: (p) => p.startsWith("/sessions") || p.startsWith("/session-folders") },
+  { key: "sessions", label: "Sessions", icon: MessagesSquare, match: (p) => p.startsWith("/sessions") },
   { key: "skills", label: "Skills", icon: GraduationCap, match: (p) => p.startsWith("/skills") },
   { key: "tools", label: "Tools", icon: Wrench, match: (p) => p.startsWith("/tools") || p.startsWith("/integrations") },
   { key: "agents", label: "Chat", icon: Bot, match: (p) => p.startsWith("/agents") },

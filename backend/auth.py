@@ -25,7 +25,6 @@ _READ_KEY_WRITE_ALLOWLIST = {
     ("POST", "/api/v1/me/sessions/{session_row_id}/artifacts"),
     ("POST", "/api/v1/me/sessions/events"),
     ("POST", "/api/v1/me/sessions/events/batch"),
-    ("POST", "/api/v1/me/session-folders/get-or-create"),
     ("POST", "/api/v1/me/ask"),
     ("POST", "/api/v1/me/vfs"),
     ("POST", "/api/v1/me/vfs/searches"),

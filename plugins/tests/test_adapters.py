@@ -276,7 +276,6 @@ def test_client_facet_flows_through_stream_paths():
     for client_name in ("cursor", "gemini_cli", "codex_cli", "opencode"):
         calls.clear()
         cfg = {
-            "session_folder_id": "fld1",
             "agent_name": "henry",
             "client": client_name,
         }
@@ -330,7 +329,7 @@ def test_model_metadata_flows_through_stream_paths():
             calls.append(kwargs.get("json", {}))
             return {}
 
-    cfg = {"session_folder_id": "fld1", "agent_name": "henry", "client": "codex_cli"}
+    cfg = {"agent_name": "henry", "client": "codex_cli"}
     state = {"session_id": "s1"}
     c = FakeClient(base_url="http://x", api_key="k")
     extras = {"model": "gpt-4o", "permission_mode": "default"}
@@ -400,7 +399,7 @@ def test_stream_session_end_not_emitted_on_assistant_message():
             return {}
 
     c = FakeClient(base_url="http://x", api_key="k")
-    cfg = {"session_folder_id": "fld1", "agent_name": "henry", "client": "claude_code"}
+    cfg = {"agent_name": "henry", "client": "claude_code"}
     state = {"session_id": "s1"}
     stream_assistant_message(
         c,

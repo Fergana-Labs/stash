@@ -1271,99 +1271,20 @@ export interface SessionSummary {
   event_count: number;
   started_at: string;
   last_event_at: string;
-  session_folder_id: string | null;
-  session_folder_name: string | null;
 }
 
 export type GeneralPermission = "none" | "read" | "comment" | "write";
 // Stored visibility is two-state. "shared" is a derived display state.
-export type SessionFolderVisibility = "private" | "public";
 export type DisplayVisibility = "private" | "shared" | "public";
 
 // The label to show: public link, else "shared" if anyone's been invited, else
-// private. Session folders feed (access, count) in.
+// private.
 export function displayVisibility(
   access: "private" | "public",
   shareCount: number,
 ): DisplayVisibility {
   if (access === "public") return "public";
   return shareCount > 0 ? "shared" : "private";
-}
-
-export interface SessionFolder {
-  id: string;
-  owner_user_id: string;
-  slug: string;
-  name: string;
-  owner_display_name: string | null;
-  access: SessionFolderVisibility;
-  public_permission: GeneralPermission;
-  discoverable: boolean;
-  is_default: boolean;
-  view_count: number;
-  session_count: number;
-  share_count: number;
-}
-
-export async function listSessionFolders(): Promise<SessionFolder[]> {
-  const data = await apiFetch<{ folders: SessionFolder[] }>(`${ME}/session-folders`);
-  return data.folders;
-}
-
-export async function createSessionFolder(name: string): Promise<SessionFolder> {
-  return apiFetch<SessionFolder>(`${ME}/session-folders`, {
-    method: "POST",
-    body: JSON.stringify({ name }),
-  });
-}
-
-export async function updateSessionFolder(
-  folderId: string,
-  data: {
-    name?: string;
-    public_permission?: GeneralPermission;
-    discoverable?: boolean;
-  },
-): Promise<SessionFolder> {
-  return apiFetch<SessionFolder>(
-    `${ME}/session-folders/${folderId}`,
-    { method: "PATCH", body: JSON.stringify(data) },
-  );
-}
-
-export async function deleteSessionFolder(folderId: string): Promise<void> {
-  await apiFetch(`${ME}/session-folders/${folderId}`, {
-    method: "DELETE",
-  });
-}
-
-// Move one or more sessions into a folder (or out, with folderId null).
-export async function assignSessionFolder(
-  sessionRowIds: string[],
-  folderId: string | null,
-): Promise<void> {
-  await apiFetch(`${ME}/session-folders/assign`, {
-    method: "POST",
-    body: JSON.stringify({ session_row_ids: sessionRowIds, folder_id: folderId }),
-  });
-}
-
-export interface PublicSessionFolder {
-  folder: SessionFolder;
-  sessions: {
-    id: string;
-    session_id: string;
-    agent_name: string;
-    cwd: string | null;
-    user_name: string | null;
-    event_count: number;
-    started_at: string | null;
-    last_event_at: string | null;
-  }[];
-}
-
-export async function getPublicSessionFolder(slug: string): Promise<PublicSessionFolder> {
-  return apiFetch<PublicSessionFolder>(`/api/v1/session-folders/${slug}`);
 }
 
 export interface LinearTicketLabel {
@@ -1384,14 +1305,12 @@ export interface LinearTicketLabel {
 
 export async function listMySessions(
   limit = 50,
-  sessionFolderId?: string,
   offset = 0,
   sessionIdPrefix?: string
 ): Promise<SessionSummary[]> {
   const qs = new URLSearchParams();
   qs.set("limit", String(limit));
   if (offset) qs.set("offset", String(offset));
-  if (sessionFolderId) qs.set("session_folder_id", sessionFolderId);
   if (sessionIdPrefix) qs.set("session_id_prefix", sessionIdPrefix);
   const data = await apiFetch<{ sessions: SessionSummary[] }>(
     `${ME}/sessions?${qs.toString()}`
@@ -2096,7 +2015,6 @@ export async function getFolderContents(folderId: string): Promise<FolderContent
 
 export type SharedObjectType =
   | "folder"
-  | "session_folder"
   | "page"
   | "file"
   | "table"
@@ -2115,17 +2033,6 @@ export interface SharedWithMeItem {
 export async function listSharedWithMe(): Promise<SharedWithMeItem[]> {
   const res = await apiFetch<{ items: SharedWithMeItem[] }>("/api/v1/share/with-me");
   return res.items;
-}
-
-// Sessions inside a folder shared with you, in SessionSummary shape so the
-// shared view renders the same chronological/filter browser as your own.
-export async function listSharedSessionFolderSessions(
-  folderId: string,
-): Promise<SessionSummary[]> {
-  const res = await apiFetch<{ sessions: SessionSummary[] }>(
-    `/api/v1/share/session-folders/${folderId}/sessions`
-  );
-  return res.sessions;
 }
 
 export interface ObjectShare {

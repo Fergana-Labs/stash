@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Bot, ChevronRight, File, Folder, Loader2, MessagesSquare, GraduationCap, Monitor, Plus, Settings, FolderTree, Plug, SquareTerminal } from "lucide-react";
-import { ApiError, listMySessions, listSessionFolders, listSharedWithMe, listSkillsSharedWithMe, listSharedSessionFolderSessions, createSessionFolder, listSkills, listSources, machineFsList, listAgents, createAgent, type Agent as AgentRow, type MachineEntry, type SessionSummary, type Source } from "@/lib/api";
+import { ApiError, listMySessions, listSkillsSharedWithMe, listSkills, listSources, machineFsList, listAgents, createAgent, type Agent as AgentRow, type MachineEntry, type SessionSummary, type Source } from "@/lib/api";
 import { requestAgentConfigView } from "@/lib/agent-tab-view";
 import { cn } from "@/lib/utils";
 import { useWorkspace, type TabKind } from "@/lib/workspace-store";
@@ -304,48 +304,18 @@ export default function Explorer({ section }: { section: ExplorerSection }) {
     router.push("/skills?new=1");
   }, [router]);
 
-  // Sessions are their own tree: session folders + loose sessions at the root,
-  // sessions inside each folder. Flat (folders don't nest).
+  // Sessions are a flat list — every session the scope can read.
   const sessionLabel = (s: SessionSummary) => s.title || s.agent_name || "Session";
 
-  // Your own folders plus the ones shared with you. Without the shared half the
-  // tree can't reach another person's sessions at all: every session is filed
-  // into a folder at upload, and the root only lists unfiled ones.
-  // Shared rows carry the owner's name because folder names collide across
-  // people — everyone has a "Default".
-  const sessionFolderRows = useCallback(async () => {
-    const [own, shared] = await Promise.all([listSessionFolders(), listSharedWithMe()]);
-    return [
-      ...own.map((f) => ({ id: f.id, name: f.name, shared: false })),
-      ...shared
-        .filter((s) => s.object_type === "session_folder")
-        .map((s) => ({ id: s.object_id, name: `${s.name} (${s.owner_name})`, shared: true })),
-    ];
-  }, []);
-
   const sessionsRoot = useCallback(async (): Promise<Item[]> => {
-    const [folders, sessions] = await Promise.all([sessionFolderRows(), listMySessions(100)]);
-    return [
-      ...folders.map((f) => ({ kind: "session-folder" as const, id: f.id, name: f.name, readOnly: f.shared })),
-      ...sessions.filter((s) => !s.session_folder_id).map((s) => ({ kind: "session" as const, id: s.session_id, name: sessionLabel(s), ts: s.last_event_at })),
-    ];
-  }, [sessionFolderRows]);
-
-  const sessionsFolder = useCallback(async (folderId: string) => {
-    const folders = await sessionFolderRows();
-    const folder = folders.find((f) => f.id === folderId);
-    if (!folder) throw new Error(`Session folder ${folderId} is neither yours nor shared with you`);
-    // A shared folder's sessions live in another scope, so they come from the
-    // share endpoint — the personal /me/sessions window is the wrong source.
-    const sessions = folder.shared
-      ? await listSharedSessionFolderSessions(folderId)
-      : await listMySessions(100, folderId);
-    return {
-      crumbs: [{ id: folderId, name: folder.name, is_skill: false }],
-      items: sessions.map((s) => ({ kind: "session" as const, id: s.session_id, name: sessionLabel(s), ts: s.last_event_at })),
-    };
-  }, [sessionFolderRows]);
-  const createSessionFolderItem = useCallback(async () => { await createSessionFolder("New folder"); }, []);
+    const sessions = await listMySessions(100);
+    return sessions.map((s) => ({
+      kind: "session" as const,
+      id: s.session_id,
+      name: sessionLabel(s),
+      ts: s.last_event_at,
+    }));
+  }, []);
 
   if (section === "agents") return <AgentsExplorer />;
 
@@ -367,13 +337,12 @@ export default function Explorer({ section }: { section: ExplorerSection }) {
           // a file inside a skill teleported you to the Files tab.
           tabSection={section === "skills" ? section : undefined}
           loadRoot={section === "skills" ? skillsRoot : isSessions ? sessionsRoot : undefined}
-          loadFolder={isSessions ? sessionsFolder : undefined}
           // Sessions already merges shared folders into its root — it doesn't
           // get a second shared surface.
           loadShared={section === "skills" ? sharedSkills : undefined}
           newRootItem={
             section === "skills" ? { label: "New skill", run: createSkill } :
-            isSessions ? { label: "New folder", run: createSessionFolderItem } : undefined
+            undefined
           }
           openRootTab={isSessions ? () => open("sessions-home", "sessions", "Sessions") : undefined}
           showImport={!isSessions}

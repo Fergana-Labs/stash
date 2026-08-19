@@ -6,7 +6,7 @@ from datetime import datetime
 from uuid import UUID
 
 from ..database import get_pool
-from . import security_audit_service, session_folder_service
+from . import security_audit_service
 
 _SELECT_COLS = (
     "id, owner_user_id, session_id, agent_name, cwd, files_touched, "
@@ -21,20 +21,12 @@ async def upsert_session(
     agent_name: str = "",
     cwd: str | None = None,
     created_by: UUID | None = None,
-    session_folder_id: UUID | None = None,
     org_id: UUID | None = None,
     started_at: datetime | None = None,
 ) -> dict:
     """Idempotent: return the session row, creating it if missing.
 
     The CLI calls this lazily — first event for a session writes the row.
-
-    Every session is born into a folder: the one it was pushed to (the repo's
-    pinned folder, streamed on every event), or the owner's Default. We
-    resolve the Default only when the row doesn't exist yet. The folder is set
-    once at insert and never touched on update, so a manual move — including a
-    move to root (session_folder_id = NULL) — sticks even as the agent keeps
-    streaming the pin.
 
     `started_at` is when the session actually began. Only a transcript upload
     knows it, because the transcript carries the original event times and a
@@ -43,24 +35,14 @@ async def upsert_session(
     pass nothing. It is set at insert only: a later event stream must never
     restamp an imported session to now().
 
-    `org_id` (External Multiplayer) follows the folder's set-once rule: the
-    org a session was born into is its privacy boundary and never changes.
+    `org_id` (External Multiplayer) is set at insert only: the org a session
+    was born into is its privacy boundary and never changes.
     """
     pool = get_pool()
-    if session_folder_id is None:
-        exists = await pool.fetchval(
-            "SELECT 1 FROM sessions WHERE owner_user_id = $1 AND session_id = $2",
-            owner_user_id,
-            session_id,
-        )
-        if not exists:
-            default_folder = await session_folder_service.ensure_default_folder(owner_user_id)
-            session_folder_id = UUID(default_folder["id"])
     row = await pool.fetchrow(
         "INSERT INTO sessions "
-        "  (owner_user_id, session_id, agent_name, cwd, created_by, "
-        "   session_folder_id, org_id, started_at) "
-        "VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8, now())) "
+        "  (owner_user_id, session_id, agent_name, cwd, created_by, org_id, started_at) "
+        "VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7, now())) "
         "ON CONFLICT (owner_user_id, session_id) DO UPDATE SET "
         "  agent_name = COALESCE(NULLIF(EXCLUDED.agent_name, ''), sessions.agent_name), "
         "  cwd = COALESCE(EXCLUDED.cwd, sessions.cwd), "
@@ -71,7 +53,6 @@ async def upsert_session(
         agent_name,
         cwd,
         created_by,
-        session_folder_id,
         org_id,
         started_at,
     )
