@@ -20,7 +20,7 @@ platform is active" marker.
 from uuid import UUID
 
 from ..database import get_pool
-from . import files_tree_service, workspace_service
+from . import files_tree_service, source_service, workspace_service
 
 _ORG_COLS_PLAIN = "id, workspace_id, external_id, name, share_wiki, notepad_folder_id, created_at"
 _ORG_COLS = ", ".join(f"o.{col}" for col in _ORG_COLS_PLAIN.split(", "))
@@ -224,9 +224,14 @@ async def org_detail(org: dict) -> dict:
         "WHERE folder_id = $1 AND deleted_at IS NULL ORDER BY updated_at DESC",
         org["notepad_folder_id"],
     )
+    workspace = await workspace_service.get_workspace(org["workspace_id"])
+    sources = await source_service.list_connected_sources(
+        workspace["scope_user_id"], org_id=org["id"]
+    )
     return {
         "org": org,
         "sessions": [dict(r) for r in sessions],
         "files": [dict(r) for r in files],
         "notepad_pages": [dict(r) for r in notepad_pages],
+        "sources": sources,
     }

@@ -261,11 +261,21 @@ export interface OrgNotepadPage {
   updated_at: string;
 }
 
+export interface OrgSource {
+  id: string;
+  provider: string;
+  type: string;
+  display_name: string;
+  sync_status: string | null;
+  last_synced_at: string | null;
+}
+
 export async function getOrg(orgId: string): Promise<{
   org: Org;
   sessions: OrgSession[];
   files: OrgFile[];
   notepad_pages: OrgNotepadPage[];
+  sources: OrgSource[];
 }> {
   return apiFetch(`${ME}/orgs/${orgId}`);
 }

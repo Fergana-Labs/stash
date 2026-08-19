@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 from stashvfs import MountError
 
 from ..auth import get_current_user
-from ..services import org_service, security_audit_service, vfs_service
+from ..services import org_service, security_audit_service, source_service, vfs_service
 from ..services.vfs_service import VfsBudgetExceeded
 
 router = APIRouter(prefix="/api/v1/me/vfs", tags=["vfs"])
@@ -42,10 +42,12 @@ async def _org_ctx(current_user: dict, org_id: str | None) -> dict | None:
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     workspace = await org_service.workspace_for_scope(current_user["id"])
+    connected = await source_service.list_connected_sources(current_user["id"], org_id=org["id"])
     return {
         "external_id": org["external_id"],
         "wiki_folder_id": str(workspace["external_wiki_folder_id"]),
         "notepad_folder_id": str(org["notepad_folder_id"]),
+        "source_ids": {s["id"] for s in connected},
     }
 
 

@@ -21,7 +21,7 @@ from uuid import UUID, uuid4
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from ..auth import get_current_user, get_scope
 from ..celery_app import celery
@@ -30,6 +30,7 @@ from ..integrations import storage as integration_storage
 from ..integrations.google import indexer as google_indexer
 from ..integrations.registry import get_provider
 from ..services import (
+    org_service,
     security_audit_service,
     source_service,
     task_service,
@@ -58,6 +59,9 @@ class AddSourceRequest(BaseModel):
     external_ref: str | None = None
     display_name: str | None = None
     settings: dict | None = None
+    # External Multiplayer: scope this source to one customer, named by the
+    # developer's own org id. Omitted, the source belongs to the workspace.
+    org_id: str | None = Field(None, max_length=128)
 
 
 async def _resolve_slack_source(user_id) -> tuple[str, str]:
@@ -388,6 +392,13 @@ async def add_source(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+    org = None
+    if body.org_id is not None:
+        try:
+            org = await org_service.resolve_org_for_scope(owner_user_id, body.org_id)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
     external_ref = body.external_ref
     display_name = body.display_name
     if body.source_type == "slack" and not external_ref:
@@ -423,6 +434,7 @@ async def add_source(
             external_ref=external_ref,
             display_name=display_name or external_ref,
             settings=source_settings,
+            org_id=org["id"] if org else None,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

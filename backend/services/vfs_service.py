@@ -220,8 +220,9 @@ class OrgVfsClient(InProcessVfsClient):
     `/memory` becomes the workspace's shared external wiki (the memory-folder
     call answers with the wiki folder, and the model re-roots whatever that
     returns), `/files` holds the org's notepad and the org's own uploads,
-    `/sessions` only the org's transcripts. Skills, sources, and tables are
-    developer-side surfaces and don't exist in an org's view.
+    `/sessions` only the org's transcripts, and `/sources` the sources
+    connected for this org. Skills and tables are developer-side surfaces and
+    don't exist in an org's view.
     """
 
     def __init__(self, http, loop, org_ctx: dict) -> None:
@@ -235,7 +236,10 @@ class OrgVfsClient(InProcessVfsClient):
         return []
 
     def list_sources(self) -> list:
-        return []
+        """Only the sources connected for this org — a customer's Drive folder
+        belongs to that customer, never to the developer's other customers."""
+        allowed = self._org["source_ids"]
+        return [s for s in super().list_sources() if s.get("source") in allowed]
 
     def get_overview(self) -> dict:
         overview = super().get_overview()

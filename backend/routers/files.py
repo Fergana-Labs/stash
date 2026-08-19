@@ -226,16 +226,12 @@ async def ingest_bytes(
     # support comments, and live in the same VFS tree as binary files.
     # Anything else is a binary upload (S3-backed file row). Frontend, CLI,
     # and MCP all hit this single path and get the routing for free.
-    page_kind = files_tree_service.detect_page_kind(filename, content_type)
+    # An org's uploads are raw data by definition: markdown that would normally
+    # become an editable page stays a file when it belongs to a customer, since
+    # pages are the memory substrate (wiki, notepad) and those are curated, not
+    # uploaded. Text an org should *remember* goes to its notepad folder.
+    page_kind = None if org_row_id else files_tree_service.detect_page_kind(filename, content_type)
     if page_kind is not None:
-        if org_row_id is not None:
-            # Pages have no org column. Org-scoped text belongs in the org's
-            # notepad folder (pass folder_id), not on the org itself.
-            raise HTTPException(
-                status_code=400,
-                detail="org_id applies to binary file uploads only — upload "
-                "markdown/html into the org's notepad folder instead",
-            )
         if folder_id is not None:
             pool = get_pool()
             owns = await pool.fetchval(

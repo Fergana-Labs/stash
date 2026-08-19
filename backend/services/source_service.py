@@ -277,6 +277,7 @@ def _source_row(row) -> dict:
         "last_synced_at": row["last_synced_at"].isoformat() if row["last_synced_at"] else None,
         "settings": row["settings"] or {},
         "binds_skills": row["binds_skills"],
+        "org_id": str(row["org_id"]) if row["org_id"] else None,
     }
 
 
@@ -294,6 +295,7 @@ async def create_source(
     external_ref: str,
     display_name: str,
     settings: dict | None = None,
+    org_id: UUID | None = None,
 ) -> dict:
     """Register a connected source (idempotent on the natural key). For synced
     types the first sync runs immediately because `next_sync_at` defaults to
@@ -310,9 +312,9 @@ async def create_source(
         """
         INSERT INTO user_sources (
             owner_user_id, source_type, external_ref,
-            display_name, capability, sync_interval_s, sync_enabled, settings
+            display_name, capability, sync_interval_s, sync_enabled, settings, org_id
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9)
         ON CONFLICT (owner_user_id, source_type, external_ref)
         DO UPDATE SET
             display_name = EXCLUDED.display_name,
@@ -332,6 +334,7 @@ async def create_source(
         interval,
         sync_enabled,
         normalized_settings,
+        org_id,
     )
     source = _source_row(row)
     await purge_disallowed_copied_documents(source)
@@ -379,11 +382,19 @@ async def purge_disallowed_copied_documents(source: dict) -> int:
     return 0
 
 
-async def list_connected_sources(user_id: UUID) -> list[dict]:
-    """Connected sources owned by `user_id`."""
+async def list_connected_sources(user_id: UUID, org_id: UUID | None = None) -> list[dict]:
+    """Connected sources owned by `user_id`. With `org_id`, only that org's —
+    the isolation an org's own reads depend on. Without it, everything the
+    owner has connected, org-scoped rows included, since the owner connected
+    them all."""
+    where = "owner_user_id = $1"
+    args: list = [user_id]
+    if org_id is not None:
+        args.append(org_id)
+        where += " AND org_id = $2"
     rows = await get_pool().fetch(
-        "SELECT * FROM user_sources WHERE owner_user_id = $1 ORDER BY source_type, display_name",
-        user_id,
+        f"SELECT * FROM user_sources WHERE {where} ORDER BY source_type, display_name",
+        *args,
     )
     return [_source_row(r) for r in rows]
 

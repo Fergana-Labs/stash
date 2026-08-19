@@ -8,7 +8,13 @@ import { ArrowLeft } from "lucide-react";
 import DeveloperGate from "@/components/developer/DeveloperGate";
 import { Code, PageHeading, SectionHeading } from "@/components/developer/DocsPrimitives";
 import WikiToggle from "@/components/developer/WikiToggle";
-import { getOrg, type OrgFile, type OrgNotepadPage, type OrgSession } from "@/lib/api";
+import {
+  getOrg,
+  type OrgFile,
+  type OrgNotepadPage,
+  type OrgSession,
+  type OrgSource,
+} from "@/lib/api";
 import type { Org } from "@/lib/types";
 
 export default function OrgDetailRoute() {
@@ -25,6 +31,7 @@ function OrgDetail() {
   const [sessions, setSessions] = useState<OrgSession[]>([]);
   const [files, setFiles] = useState<OrgFile[]>([]);
   const [notepad, setNotepad] = useState<OrgNotepadPage[]>([]);
+  const [sources, setSources] = useState<OrgSource[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(() => {
@@ -35,6 +42,7 @@ function OrgDetail() {
         setSessions(res.sessions);
         setFiles(res.files);
         setNotepad(res.notepad_pages);
+        setSources(res.sources);
       })
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load the org"));
   }, [orgId]);
@@ -145,6 +153,37 @@ function OrgDetail() {
                 </span>
                 <span className="shrink-0 font-mono text-[12px] text-muted-foreground">
                   {formatDate(s.last_event_at)}
+                </span>
+              </Link>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="mb-12">
+        <SectionHeading>Connected sources</SectionHeading>
+        <p className="mt-2 text-[13.5px] leading-6 text-muted-foreground">
+          Integrations connected for this customer alone. Their agent reads these; your other
+          customers never see them.
+        </p>
+        {sources.length === 0 ? (
+          <Empty>
+            None connected. Add one with this org&apos;s <Code>org_id</Code> to scope it here.
+          </Empty>
+        ) : (
+          <div className="mt-4 overflow-hidden rounded border border-border bg-surface">
+            {sources.map((source) => (
+              <Link
+                key={source.id}
+                href={`/integrations/${source.provider}?source=${source.id}`}
+                className="flex items-center gap-4 border-b border-border px-5 py-3.5 transition-colors last:border-b-0 hover:bg-raised"
+              >
+                <span className="min-w-0 flex-1 truncate text-[14.5px] text-foreground">
+                  {source.display_name}
+                </span>
+                <span className="shrink-0 font-mono text-[12px] text-muted-foreground">
+                  {source.type}
+                  {source.last_synced_at ? ` · synced ${formatDate(source.last_synced_at)}` : ""}
                 </span>
               </Link>
             ))}
