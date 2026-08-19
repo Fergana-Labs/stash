@@ -1,23 +1,34 @@
-"""A truck-parts support agent, of the shape Stash's external customers ship.
+"""A travel-planning agent serving several agencies.
 
-It serves many repair shops. Each shop is an org: their history is theirs
-alone, but what the agent learns about a fault code should help every shop.
-Stash is what makes both true at once.
+Each agency is an **org**. What the agent knows about *their* travellers —
+who hates red-eyes, which corporate card, the client who always extends by a
+weekend — is theirs alone. What it learns about *the world* — that this
+consulate takes three weeks, that this airline reroutes through Doha in
+winter — should help every agency, without any of them learning who the
+others are.
+
+Stash is what makes both true at once. Two calls do it: record each turn with
+the agency's org id, and read back with the same org id.
 """
 
 import httpx
 
 MODEL = "claude-sonnet-4-6"
 
-SYSTEM = """You are a truck-parts support agent for a repair-shop customer.
-Answer in two sentences at most. Use the context when it is relevant, and say
-which part number to fit when you know it. Never mention other customers by
-name — you do not know who they are."""
+SYSTEM = """You are a travel planner working for a travel agency.
+
+Context you are given comes from two places: general travel knowledge learned
+across many agencies, and this agency's own notes about their travellers. Use
+both. Be concrete — name airlines, airports, visa timelines, neighbourhoods.
+Three sentences at most unless asked for an itinerary.
+
+You do not know which other agencies exist and must never speculate about
+them."""
 
 
 def answer(stash, anthropic_key: str, org: str, org_name: str, session: str, question: str) -> str:
-    # Read this customer's world before answering: the shared wiki everyone's
-    # agent reads, plus this customer's own notepad.
+    # Everything this agency's planner is allowed to know: the shared wiki at
+    # /memory, and their own notepad and files under /files.
     context = _context(stash, org)
     reply = _claude(anthropic_key, context, question)
     stash.record(org, org_name, session, [("user_message", question), ("assistant_message", reply)])
@@ -45,7 +56,7 @@ def _claude(api_key: str, context: str, question: str) -> str:
         },
         json={
             "model": MODEL,
-            "max_tokens": 300,
+            "max_tokens": 400,
             "system": SYSTEM,
             "messages": [
                 {
@@ -57,4 +68,4 @@ def _claude(api_key: str, context: str, question: str) -> str:
         timeout=120,
     )
     resp.raise_for_status()
-    return "".join(block["text"] for block in resp.json()["content"] if block["type"] == "text")
+    return "".join(b["text"] for b in resp.json()["content"] if b["type"] == "text")

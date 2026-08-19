@@ -102,7 +102,37 @@ class SkillAppVfsShell:
     def _warn(self, message: str) -> None:
         self._warnings.append(f"{message}\n")
 
+    def _expand_globs(self, args: list[str]) -> list[str]:
+        """Expand `*`, `?` and `[...]` in path arguments, as a shell does.
+
+        This reads as a shell, so people write shell — `cat /memory/*` is the
+        idiom our own setup docs hand to developers. Without expansion that
+        resolved to a literal filename, found nothing, and returned empty:
+        an agent built on it ran with no context at all and nothing said so.
+        A pattern that matches nothing is left as-is, so the command reports
+        the missing path rather than silently reading less than asked.
+        """
+        expanded: list[str] = []
+        for arg in args:
+            if arg.startswith("-") or not any(ch in arg for ch in "*?["):
+                expanded.append(arg)
+                continue
+            directory, _, pattern = self._resolve_path(arg).rpartition("/")
+            try:
+                names = sorted(self.model.list_dir(directory or "/"))
+            except (FileNotFoundError, NotADirectoryError, MountError):
+                expanded.append(arg)
+                continue
+            hits = [
+                posixpath.join(directory or "/", name)
+                for name in names
+                if fnmatch.fnmatchcase(name, pattern)
+            ]
+            expanded.extend(hits or [arg])
+        return expanded
+
     def _dispatch(self, name: str, args: list[str], stdin: str | None) -> str:
+        args = self._expand_globs(args)
         if name == "pwd":
             return f"{self.cwd}\n"
         if name == "cd":
