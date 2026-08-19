@@ -49,7 +49,8 @@ export default function HomePage() {
       <AppRedirectForSignedInUsers appUrl={APP_URL} />
       <SiteHeader />
 
-      <section className="mx-auto max-w-[1180px] px-5 pb-14 pt-24 sm:px-7 md:pb-20 md:pt-36">
+      <section className="mx-auto grid max-w-[1180px] grid-cols-1 items-center gap-10 px-5 pb-14 pt-24 sm:px-7 md:pb-20 md:pt-36 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] lg:gap-16">
+        <div>
         <h1 className="max-w-[18ch] font-display text-[clamp(38px,5vw,64px)] font-medium leading-[1.06] tracking-[-0.028em] text-ink">
           Agents that learn from the <span className="text-brand">real world.</span>
         </h1>
@@ -72,6 +73,16 @@ export default function HomePage() {
             For external agents
           </Link>
         </div>
+        </div>
+
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/octopus.webp"
+          width={900}
+          height={811}
+          alt="The Stash octopus"
+          className="mx-auto w-full max-w-[380px] lg:max-w-[440px]"
+        />
       </section>
 
       <section className="border-t border-border-subtle py-16 md:py-24">
