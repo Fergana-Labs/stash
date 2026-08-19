@@ -17,6 +17,8 @@ import type { Workspace } from "@/lib/types";
 export default function DeveloperGate({ children }: { children: React.ReactNode }) {
   const [workspaces, setWorkspaces] = useState<Workspace[] | null>(null);
   const [activating, setActivating] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [activateError, setActivateError] = useState<string | null>(null);
 
   const scope = getScope();
   const inConsole =
@@ -28,8 +30,20 @@ export default function DeveloperGate({ children }: { children: React.ReactNode 
   useEffect(() => {
     listMyWorkspaces()
       .then(setWorkspaces)
-      .catch(() => setWorkspaces([]));
+      .catch((e) =>
+        setLoadError(e instanceof Error ? e.message : "Failed to load your workspaces"),
+      );
   }, []);
+
+  // Which consoles exist decides what this screen offers, so an unreachable
+  // list is never treated as "you have none".
+  if (loadError) {
+    return (
+      <div className="p-8 text-sm text-destructive">
+        Couldn&apos;t load your workspaces: {loadError}
+      </div>
+    );
+  }
 
   if (workspaces === null) {
     return <div className="p-8 text-sm text-muted-foreground">Loading…</div>;
@@ -44,9 +58,12 @@ export default function DeveloperGate({ children }: { children: React.ReactNode 
 
   async function activate() {
     setActivating(true);
+    setActivateError(null);
     try {
       const ws = await activateDeveloperPlatform();
       enter(ws);
+    } catch (e) {
+      setActivateError(e instanceof Error ? e.message : "Could not set up the console");
     } finally {
       setActivating(false);
     }
@@ -82,6 +99,7 @@ export default function DeveloperGate({ children }: { children: React.ReactNode 
       >
         {activating ? "Setting up…" : "Set up a Developer Console"}
       </button>
+      {activateError && <p className="mt-2 text-sm text-destructive">{activateError}</p>}
     </div>
   );
 }

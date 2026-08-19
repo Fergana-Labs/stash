@@ -25,20 +25,28 @@ function Overview() {
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [orgs, setOrgs] = useState<Org[]>([]);
   const [stats, setStats] = useState({ wiki_page_count: 0, org_session_count: 0 });
+  const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(() => {
+    setError(null);
     listOrgs()
       .then((res) => {
         setWorkspace(res.workspace);
         setOrgs(res.orgs);
         setStats(res.stats);
       })
-      .catch(() => setOrgs([]));
+      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load the console"));
   }, []);
 
   useEffect(() => {
     refresh();
   }, [refresh]);
+
+  if (error) {
+    return (
+      <div className="p-8 text-sm text-destructive">Couldn&apos;t load the console: {error}</div>
+    );
+  }
 
   if (!workspace) {
     return <div className="p-8 text-sm text-zinc-500">Loading…</div>;

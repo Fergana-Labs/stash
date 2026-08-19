@@ -10,12 +10,16 @@ export default function SetupCard() {
   const [minted, setMinted] = useState<string | null>(null);
   const [minting, setMinting] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   async function mint() {
     setMinting(true);
+    setError(null);
     try {
       const res = await mintDeveloperKey("production");
       setMinted(res.api_key);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not mint a key");
     } finally {
       setMinting(false);
     }
@@ -53,6 +57,7 @@ export default function SetupCard() {
           {minting ? "Minting…" : "Mint an API key"}
         </button>
       )}
+      {error && <p className="text-xs text-destructive">{error}</p>}
       <p className="text-xs text-zinc-500">
         Two calls integrate Stash: upload each turn with your customer&apos;s{" "}
         <code>org_id</code>, and read with the same <code>org_id</code> to get

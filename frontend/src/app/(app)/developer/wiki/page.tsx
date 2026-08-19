@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import DeveloperGate from "@/components/developer/DeveloperGate";
@@ -18,12 +18,19 @@ export default function DeveloperWiki() {
  *  id and forwards to the folder view, so the rail has a stable Wiki entry. */
 function WikiRedirect() {
   const router = useRouter();
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    listOrgs().then((res) => {
-      router.replace(`/folders/${res.workspace.external_wiki_folder_id}`);
-    });
+    listOrgs()
+      .then((res) => {
+        router.replace(`/folders/${res.workspace.external_wiki_folder_id}`);
+      })
+      .catch((e) => setError(e instanceof Error ? e.message : "Failed to open the wiki"));
   }, [router]);
+
+  if (error) {
+    return <div className="p-8 text-sm text-destructive">Couldn&apos;t open the wiki: {error}</div>;
+  }
 
   return <div className="p-8 text-sm text-zinc-500">Opening the wiki…</div>;
 }

@@ -92,15 +92,16 @@ async def list_orgs(
     scope_user_id: UUID = Depends(get_scope),
 ):
     workspace = await org_service.workspace_for_scope(scope_user_id)
-    if workspace is None:
-        raise HTTPException(status_code=400, detail="scope is not a workspace")
-    orgs = await org_service.list_orgs(workspace["id"])
-    stats = (
-        await org_service.workspace_stats(workspace)
-        if workspace["external_wiki_folder_id"] is not None
-        else {"wiki_page_count": 0, "org_session_count": 0}
-    )
-    return {"workspace": workspace, "orgs": orgs, "stats": stats}
+    if workspace is None or workspace["external_wiki_folder_id"] is None:
+        raise HTTPException(
+            status_code=400,
+            detail="scope is not an active developer workspace — activate first",
+        )
+    return {
+        "workspace": workspace,
+        "orgs": await org_service.list_orgs(workspace["id"]),
+        "stats": await org_service.workspace_stats(workspace),
+    }
 
 
 @orgs_router.patch("/{org_id}")

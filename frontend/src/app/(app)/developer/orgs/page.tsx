@@ -16,12 +16,14 @@ export default function DeveloperOrgs() {
 }
 
 function Orgs() {
-  const [orgs, setOrgs] = useState<Org[]>([]);
+  const [orgs, setOrgs] = useState<Org[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(() => {
+    setError(null);
     listOrgs()
       .then((res) => setOrgs(res.orgs))
-      .catch(() => setOrgs([]));
+      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load orgs"));
   }, []);
 
   useEffect(() => {
@@ -37,7 +39,13 @@ function Orgs() {
           whether their sessions feed the shared anonymized wiki.
         </p>
       </div>
-      <OrgTable orgs={orgs} onChanged={refresh} />
+      {error ? (
+        <p className="text-sm text-destructive">Couldn&apos;t load orgs: {error}</p>
+      ) : orgs === null ? (
+        <p className="text-sm text-zinc-500">Loading…</p>
+      ) : (
+        <OrgTable orgs={orgs} onChanged={refresh} />
+      )}
     </div>
   );
 }
