@@ -333,12 +333,32 @@ export interface TrashListing {
 export interface Workspace {
   id: string;
   name: string;
-  domain: string;
+  /** NULL for invite-only (developer) workspaces — membership is explicit. */
+  domain: string | null;
   scope_user_id: string;
+  /** Set when the developer platform is active on this workspace. */
+  external_wiki_folder_id: string | null;
 }
 
-/** The selected scope — the slice of a workspace we persist and send. */
-export type Scope = Pick<Workspace, "scope_user_id" | "name">;
+/** External Multiplayer: one customer of a developer workspace. */
+export interface Org {
+  id: string;
+  workspace_id: string;
+  external_id: string;
+  name: string;
+  share_wiki: boolean;
+  notepad_folder_id: string;
+  created_at: string;
+  session_count: number;
+  last_session_at: string | null;
+}
+
+/** The selected scope — the slice of a workspace we persist and send.
+ *  `view` distinguishes the two faces of a developer workspace: the internal
+ *  knowledge base (default) and the developer console chrome. */
+export type Scope = Pick<Workspace, "scope_user_id" | "name"> & {
+  view?: "developer";
+};
 
 /** Filter-chip counts, computed over the whole table rather than a loaded
  *  page — a chip whose count reflects page one is worse than no chip. */

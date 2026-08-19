@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 from stashvfs import MountError
 
 from ..auth import get_current_user
-from ..services import security_audit_service, vfs_service
+from ..services import org_service, security_audit_service, vfs_service
 from ..services.vfs_service import VfsBudgetExceeded
 
 router = APIRouter(prefix="/api/v1/me/vfs", tags=["vfs"])
@@ -21,6 +21,32 @@ MAX_SCRIPT_LENGTH = 4096
 class VfsRequest(BaseModel):
     script: str = Field(max_length=MAX_SCRIPT_LENGTH)
     cwd: str = "/"
+    org_id: str | None = Field(
+        None,
+        max_length=128,
+        description="External Multiplayer: narrow the tree to this org — "
+        "shared wiki at /memory, the org's notepad and files under /files, "
+        "the org's transcripts under /sessions",
+    )
+
+
+async def _org_ctx(current_user: dict, org_id: str | None) -> dict | None:
+    """The developer contract: the caller's key belongs to the workspace's
+    scope user, and org_id is asserted by their backend. Unknown org or a
+    non-workspace scope fails loud — isolation between one developer's orgs
+    is enforced at the developer boundary, not here."""
+    if org_id is None:
+        return None
+    try:
+        org = await org_service.resolve_org_for_scope(current_user["id"], org_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    workspace = await org_service.workspace_for_scope(current_user["id"])
+    return {
+        "external_id": org["external_id"],
+        "wiki_folder_id": str(workspace["external_wiki_folder_id"]),
+        "notepad_folder_id": str(org["notepad_folder_id"]),
+    }
 
 
 class VfsSearch(BaseModel):
@@ -47,8 +73,11 @@ async def run_vfs(
             status_code=401,
             detail="The VFS runs every read as the calling credential; use an API key, not a cookie.",
         )
+    org_ctx = await _org_ctx(current_user, body.org_id)
     try:
-        return await vfs_service.run_vfs_script(request.app, authorization, body.script, body.cwd)
+        return await vfs_service.run_vfs_script(
+            request.app, authorization, body.script, body.cwd, org_ctx
+        )
     except MountError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     except VfsBudgetExceeded as e:

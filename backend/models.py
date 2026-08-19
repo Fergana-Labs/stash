@@ -515,6 +515,17 @@ class HistoryEventCreateRequest(BaseModel):
     session_folder_id: UUID | None = Field(
         None, description="Pinned folder for this session (from the repo manifest)"
     )
+    org_id: str | None = Field(
+        None,
+        max_length=128,
+        description="External Multiplayer: the developer-managed org this "
+        "session belongs to; requires a developer workspace scope",
+    )
+    org_name: str | None = Field(
+        None,
+        max_length=255,
+        description="Display name for the org, used only when it is first seen",
+    )
     tool_name: str | None = Field(None, max_length=128)
     metadata: dict = Field(default_factory=dict)
     attachments: list[Attachment] | None = None

@@ -2,6 +2,8 @@
 
 import { ReactNode, useEffect, useState } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
+import DeveloperShell from "@/components/developer/DeveloperShell";
+import { useScope } from "@/lib/scope-store";
 import { useWorkspace } from "@/lib/workspace-store";
 import type { User } from "@/lib/types";
 import { Toaster } from "@/components/ui/sonner";
@@ -119,6 +121,7 @@ export default function WorkspaceShell({
 }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const scope = useScope();
   const routeSection = sectionForPath(pathname);
   const requestedSection = searchParams.get("section");
   const selectedSection = EXPLORER_SECTIONS.find((s) => s === requestedSection) ?? null;
@@ -141,6 +144,19 @@ export default function WorkspaceShell({
   // the same thing twice. An explicit ?section= still summons the panel.
   const isFilesHome = pathname === "/files" && !selectedSection;
   const showExplorer = section !== null && PANELLED_SECTIONS.includes(section) && !isFilesHome;
+
+  // A Developer Console context gets its own chrome — the infra-dashboard
+  // shell, not the consumer app's rail and workbench.
+  if (scope?.view === "developer") {
+    return (
+      <>
+        <DeveloperShell user={user} onLogout={onLogout}>
+          {children}
+        </DeveloperShell>
+        <Toaster />
+      </>
+    );
+  }
 
   return (
     // Chrome surface — the content panel floats on top of it.

@@ -214,13 +214,96 @@ def _error_detail(response: httpx.Response) -> str:
     return f"HTTP {response.status_code}"
 
 
+class OrgVfsClient(InProcessVfsClient):
+    """External Multiplayer: the caller's Stash narrowed to one org.
+
+    `/memory` becomes the workspace's shared external wiki (the memory-folder
+    call answers with the wiki folder, and the model re-roots whatever that
+    returns), `/files` holds the org's notepad and the org's own uploads,
+    `/sessions` only the org's transcripts. Skills, sources, and tables are
+    developer-side surfaces and don't exist in an org's view.
+    """
+
+    def __init__(self, http, loop, org_ctx: dict) -> None:
+        super().__init__(http, loop)
+        self._org = org_ctx
+
+    def get_memory_folder(self) -> dict:
+        return {"id": self._org["wiki_folder_id"]}
+
+    def list_tables(self) -> list:
+        return []
+
+    def list_sources(self) -> list:
+        return []
+
+    def get_overview(self) -> dict:
+        overview = super().get_overview()
+        external_id = self._org["external_id"]
+        tree = overview.get("files", {})
+        folders = tree.get("folders", [])
+
+        # Descendant closure of the wiki and notepad roots. Everything else in
+        # the workspace — other orgs' notepads included — is invisible.
+        children: dict[str | None, list[dict]] = {}
+        for folder in folders:
+            children.setdefault(folder["parent_folder_id"], []).append(folder)
+        kept_ids: set[str] = set()
+        frontier = [self._org["wiki_folder_id"], self._org["notepad_folder_id"]]
+        while frontier:
+            folder_id = frontier.pop()
+            if folder_id in kept_ids:
+                continue
+            kept_ids.add(folder_id)
+            frontier.extend(f["id"] for f in children.get(folder_id, []))
+
+        kept_folders = []
+        for folder in folders:
+            if folder["id"] not in kept_ids:
+                continue
+            if folder["id"] == self._org["notepad_folder_id"]:
+                # The notepad root's parent (the workspace's "Org Notepads"
+                # container) is filtered out, so mount it at /files/notepad.
+                folder = {**folder, "parent_folder_id": None, "name": "notepad"}
+            kept_folders.append(folder)
+
+        return {
+            **overview,
+            "sessions": [
+                s for s in overview.get("sessions", []) if s.get("org_external_id") == external_id
+            ],
+            "skills": [],
+            "files": {
+                "folders": kept_folders,
+                "pages": [p for p in tree.get("pages", []) if p["folder_id"] in kept_ids],
+                "files": [
+                    f
+                    for f in tree.get("files", [])
+                    if f.get("org_external_id") == external_id or f["folder_id"] in kept_ids
+                ],
+            },
+        }
+
+
+def _build_model(
+    http: httpx.AsyncClient, loop: asyncio.AbstractEventLoop, org_ctx: dict | None
+) -> StashVfsModel:
+    if org_ctx is None:
+        return StashVfsModel(InProcessVfsClient(http, loop), include_computer=False)
+    return StashVfsModel(OrgVfsClient(http, loop, org_ctx), include_computer=False)
+
+
 def _run_script(
-    http: httpx.AsyncClient, loop: asyncio.AbstractEventLoop, script: str, cwd: str
+    http: httpx.AsyncClient,
+    loop: asyncio.AbstractEventLoop,
+    script: str,
+    cwd: str,
+    org_ctx: dict | None,
 ) -> dict:
     """Blocking: the model and shell are synchronous, and their lazy loaders reach
     back into `loop` to issue their requests. Runs in a worker thread for that
     reason — see `run_vfs_script`."""
-    model = StashVfsModel(InProcessVfsClient(http, loop), include_computer=False)
+    model = _build_model(http, loop, org_ctx)
     model.refresh()
     result = SkillAppVfsShell(model, cwd=cwd).run(script)
     return {
@@ -231,11 +314,15 @@ def _run_script(
     }
 
 
-async def run_vfs_script(app, authorization: str, script: str, cwd: str) -> dict:
+async def run_vfs_script(
+    app, authorization: str, script: str, cwd: str, org_ctx: dict | None = None
+) -> dict:
     """Execute one read-only shell script against the caller's Stash.
 
     `authorization` is forwarded verbatim onto every nested request, so the VFS
     sees precisely what that credential sees anywhere else in the API.
+    `org_ctx` (External Multiplayer) narrows the tree to one org — see
+    OrgVfsClient.
     """
     loop = asyncio.get_running_loop()
     transport = httpx.ASGITransport(app=app)
@@ -248,7 +335,7 @@ async def run_vfs_script(app, authorization: str, script: str, cwd: str) -> dict
         timeout=None,
     ) as http:
         return await anyio.to_thread.run_sync(
-            functools.partial(_run_script, http, loop, script, cwd)
+            functools.partial(_run_script, http, loop, script, cwd, org_ctx)
         )
 
 

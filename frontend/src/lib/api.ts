@@ -16,6 +16,7 @@ import {
   KnowledgeDensity,
   EmbeddingProjection,
   Workspace,
+  Org,
   MiniProgramApp,
   MiniProgramResolved,
   CuratedSkill,
@@ -204,6 +205,47 @@ export async function getMe(): Promise<User> {
 export async function listMyWorkspaces(): Promise<Workspace[]> {
   const data = await apiFetch<{ workspaces: Workspace[] }>(`${ME}/workspaces`);
   return data.workspaces;
+}
+
+// --- Developer platform (External Multiplayer) ---
+
+// Creates a one-man invite-only workspace (no workspace_id) or activates the
+// platform on an existing workspace the caller belongs to.
+export async function activateDeveloperPlatform(workspaceId?: string): Promise<Workspace> {
+  return apiFetch<Workspace>(`${ME}/developer/activate`, {
+    method: "POST",
+    body: JSON.stringify(workspaceId ? { workspace_id: workspaceId } : {}),
+  });
+}
+
+// Mints a machine key on the developer workspace's scope user (scope header
+// picks the workspace). The key is shown once.
+export async function mintDeveloperKey(
+  name: string,
+  access: "read" | "full" = "read",
+): Promise<{ api_key: string; access: string }> {
+  return apiFetch(`${ME}/developer/keys`, {
+    method: "POST",
+    body: JSON.stringify({ name, access }),
+  });
+}
+
+export async function listOrgs(): Promise<{
+  workspace: Workspace;
+  orgs: Org[];
+  stats: { wiki_page_count: number; org_session_count: number };
+}> {
+  return apiFetch(`${ME}/orgs`);
+}
+
+export async function updateOrg(
+  orgId: string,
+  patch: { name?: string; share_wiki?: boolean },
+): Promise<Org> {
+  return apiFetch(`${ME}/orgs/${orgId}`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
 }
 
 export async function updateMe(data: {

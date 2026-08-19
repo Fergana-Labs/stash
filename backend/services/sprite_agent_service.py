@@ -375,13 +375,31 @@ async def build_scheduled_turn(agent: dict, run_stamp: str) -> tuple[str, str]:
     server-side from its watermark; other scheduled agents run schedule_prompt.
     Each run gets its own per-run session id so history (and the CLI transcript
     it replays) can't grow unbounded across a long-lived schedule."""
-    from . import files_tree_service, prompts
+    from . import files_tree_service, org_service, prompts
 
     user_id = UUID(str(agent["user_id"]))
     session_id = f"{scheduled_session_prefix(agent)}{run_stamp}"
     if agent.get("is_curator"):
-        memory = await files_tree_service.get_or_create_memory_folder(user_id, user_id)
         since = agent["curated_through"].isoformat() if agent.get("curated_through") else None
+        # A developer workspace's curator runs in External Multiplayer mode:
+        # same delta feed, but compiled into the shared anonymized wiki plus
+        # per-org notepads instead of the personal Memory wiki.
+        workspace = await org_service.workspace_for_scope(user_id)
+        if workspace is not None and workspace["external_wiki_folder_id"] is not None:
+            orgs = await org_service.list_orgs(workspace["id"])
+            return session_id, prompts.render_external_curator_prompt(
+                str(workspace["external_wiki_folder_id"]),
+                [
+                    {
+                        "name": org["name"],
+                        "notepad_folder_id": str(org["notepad_folder_id"]),
+                        "share_wiki": org["share_wiki"],
+                    }
+                    for org in orgs
+                ],
+                since,
+            )
+        memory = await files_tree_service.get_or_create_memory_folder(user_id, user_id)
         return session_id, prompts.render_curator_prompt(memory["id"], since)
     return session_id, agent["schedule_prompt"]
 

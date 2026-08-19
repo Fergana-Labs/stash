@@ -15,7 +15,13 @@ import numpy as np
 
 from ..database import get_pool
 from . import embeddings as embedding_service
-from . import github_pr_service, linear_ticket_service, permission_service, session_service
+from . import (
+    github_pr_service,
+    linear_ticket_service,
+    org_service,
+    permission_service,
+    session_service,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -115,6 +121,8 @@ async def push_event(
     created_by: UUID,
     session_id: str,
     session_folder_id: UUID | None = None,
+    org_id: str | None = None,
+    org_name: str | None = None,
     tool_name: str | None = None,
     metadata: dict | None = None,
     attachments: list[dict] | None = None,
@@ -154,6 +162,10 @@ async def push_event(
     if embedding_service.is_configured():
         _schedule_event_embed(event["id"], content, _text_hash(content))
     if owner_user_id is not None and session_id:
+        org_rows = await _resolve_event_orgs(
+            owner_user_id, [{"org_id": org_id, "org_name": org_name}]
+        )
+        org = org_rows.get(org_id) if org_id else None
         session = await session_service.upsert_session(
             owner_user_id,
             session_id,
@@ -161,6 +173,7 @@ async def push_event(
             cwd=meta.get("cwd") if isinstance(meta.get("cwd"), str) else None,
             created_by=created_by,
             session_folder_id=session_folder_id,
+            org_id=org["id"] if org else None,
         )
         if linear_ticket_service.has_ticket_hint([content]):
             await linear_ticket_service.sync_session_labels(
@@ -236,6 +249,25 @@ async def push_events_batch(
     return results
 
 
+async def _resolve_event_orgs(owner_user_id: UUID, sessions) -> dict[str, dict]:
+    """External Multiplayer: map developer-asserted org ids to org rows,
+    creating unseen orgs on the fly. An org id on a scope that isn't an
+    active developer workspace is a caller error — fail loud, no fallback."""
+    external_ids = {s["org_id"]: s["org_name"] for s in sessions if s["org_id"]}
+    if not external_ids:
+        return {}
+    workspace = await org_service.workspace_for_scope(owner_user_id)
+    if workspace is None:
+        raise ValueError(
+            "events carry org_id but this scope is not a workspace — "
+            "org uploads require a developer workspace scope"
+        )
+    return {
+        external_id: await org_service.get_or_create_org(workspace, external_id, name)
+        for external_id, name in external_ids.items()
+    }
+
+
 async def _upsert_sessions_for_events(
     owner_user_id: UUID | None,
     created_by: UUID,
@@ -256,9 +288,14 @@ async def _upsert_sessions_for_events(
             # First event for a session wins, matching upsert_session's
             # set-once folder semantics.
             "session_folder_id": event.get("session_folder_id"),
+            "org_id": event.get("org_id"),
+            "org_name": event.get("org_name"),
         }
 
+    org_rows = await _resolve_event_orgs(owner_user_id, sessions.values())
+
     for session_id, session in sessions.items():
+        org = org_rows.get(session["org_id"]) if session["org_id"] else None
         row = await session_service.upsert_session(
             owner_user_id,
             session_id,
@@ -266,6 +303,7 @@ async def _upsert_sessions_for_events(
             cwd=session["cwd"],
             created_by=created_by,
             session_folder_id=session["session_folder_id"],
+            org_id=org["id"] if org else None,
         )
         contents = [
             event.get("content") or "" for event in events if event.get("session_id") == session_id
@@ -390,7 +428,7 @@ async def list_scope_sessions(owner_user_id: UUID, user_id: UUID) -> list[dict]:
     readable_session = permission_service.readable_content_condition("session", "s", 2)
     rows = await pool.fetch(
         "WITH readable_sessions AS ( "
-        "  SELECT s.id, s.owner_user_id, s.session_id "
+        "  SELECT s.id, s.owner_user_id, s.session_id, s.org_id "
         "  FROM sessions s "
         "  WHERE s.owner_user_id = $1 AND s.deleted_at IS NULL "
         f"    AND {readable_session} "
@@ -417,6 +455,8 @@ async def list_scope_sessions(owner_user_id: UUID, user_id: UUID) -> list[dict]:
         "       (ARRAY_AGG(NULLIF(u.display_name, '') ORDER BY h.created_at) "
         "        FILTER (WHERE NULLIF(u.display_name, '') IS NOT NULL))[1] AS user_name, "
         "       title_sources.title_source, "
+        "       org.external_id AS org_external_id, "
+        "       org.name AS org_name, "
         "       COUNT(*)::INT AS event_count, "
         "       SUM(pg_column_size(h.content))::BIGINT AS size_bytes, "
         "       MIN(h.created_at) AS started_at, "
@@ -424,11 +464,13 @@ async def list_scope_sessions(owner_user_id: UUID, user_id: UUID) -> list[dict]:
         "FROM history_events h "
         "JOIN readable_sessions rs ON rs.owner_user_id = h.owner_user_id "
         "  AND rs.session_id = h.session_id "
+        "LEFT JOIN orgs org ON org.id = rs.org_id "
         "LEFT JOIN title_sources ON title_sources.owner_user_id = h.owner_user_id "
         "  AND title_sources.session_id = h.session_id "
         "LEFT JOIN users u ON u.id = h.created_by "
         "WHERE h.owner_user_id = $1 AND h.session_id IS NOT NULL "
-        "GROUP BY h.session_id, rs.id, title_sources.title_source "
+        "GROUP BY h.session_id, rs.id, title_sources.title_source, "
+        "         org.external_id, org.name "
         "ORDER BY last_at DESC, user_name ASC, session_id ASC",
         owner_user_id,
         user_id,

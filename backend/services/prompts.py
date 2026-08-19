@@ -306,3 +306,101 @@ never a silent drop.
 
 Begin now.
 """
+
+
+# ---------------------------------------------------------------------------
+# External Multiplayer curator (developer workspaces: cross-org wiki + notepads)
+# ---------------------------------------------------------------------------
+
+
+def render_external_curator_prompt(wiki_folder_id: str, orgs: list[dict], since: str | None) -> str:
+    """The curation instruction for a developer workspace's curator.
+
+    A developer workspace serves many customer orgs. This prompt compiles the
+    same delta feed into two artifacts with opposite privacy rules: a per-org
+    notepad (non-anonymized, one folder per org) and the shared external wiki
+    (cross-org, anonymized — org identities never appear). Orgs opt out of the
+    wiki with share_wiki=false; their material still feeds their own notepad.
+    """
+    window = (
+        f"the changes since {since}"
+        if since
+        else "the full history (this is the first run — bootstrap both artifacts)"
+    )
+    changes_cmd = f"stash changes --since {since} --json" if since else "stash changes --json"
+    org_lines = "\n".join(
+        f"- `{org['name']}` — notepad folder id `{org['notepad_folder_id']}`"
+        + ("" if org["share_wiki"] else " — **opted out of the shared wiki**")
+        for org in orgs
+    )
+    return f"""# Sleep Time Compute — External Multiplayer Curation
+
+This Stash is a developer workspace: its owner ships an agent product, and
+each of their customers is an **org**. You compile {window} into two
+artifacts with opposite privacy rules:
+
+1. **Per-org notepads** — one folder per org (ids below). Non-anonymized
+   working memory for that org alone: their machines, their part numbers,
+   their people, their history. Detail is the point.
+2. **The shared external wiki** (folder id `{wiki_folder_id}`) — general
+   knowledge distilled ACROSS orgs, read by every org's agent. Org identity
+   must never appear here: no org names, no customer names, no people, no
+   identifiable specifics (a one-of-a-kind machine identifies its owner).
+   Cite anonymously: "a peer org found...". When in doubt whether a detail
+   identifies an org, it goes in the notepad, not the wiki.
+
+## The orgs
+{org_lines}
+
+## Read the inputs
+- `{changes_cmd}` — the delta. Each history event carries its session's
+  `org` (name) and `org_share_wiki`. Events with no org are the developer's
+  own activity — wiki-eligible, never notepad material.
+- `history_has_more: true` means the feed overflowed this run's cap; curate
+  what's present, the remainder is queued for your next run.
+- `stash ls /files --json` and `stash files read-page <page_id>` to inspect
+  what's already written.
+
+## Routing rules (hard)
+- Every org's material feeds THAT org's notepad, never another org's.
+- Only events from orgs WITHOUT the opt-out marker may inform the wiki.
+  Opted-out orgs' material goes in their notepad and stops there.
+- The wiki gets the anonymized general lesson; the notepad gets the specifics.
+  One event routinely produces both: "Org X's Cascadia needed part P for
+  fault F" → notepad line for org X verbatim; wiki page on fault F → part P
+  with no mention of X.
+- Files in the delta already inside the wiki folder are developer-curated
+  raw material for the wiki — fold them in like any source, they are already
+  cleared for cross-org use.
+
+## Write
+- Create a page: `stash files add-page "<Title>" --folder <folder_id> --content "<markdown>" --json`
+- Update a page: `stash files edit-page <page_id> --content "<markdown>"`
+- Create structure: `stash files create-folder "<Name>" --parent <folder_id> --json`
+- The wiki keeps a root `Wiki Index` page cataloging every page with a
+  one-line summary, and an append-only `Log` page:
+  `- [YYYY-MM-DD] created|updated|merged|skipped <page> — <detail>` per action.
+- Each notepad is a small set of topic pages plus a `Notes` page for
+  everything else — notepads are working memory, not wikis: favor updating
+  one page over minting many.
+
+## Ingest principles
+- Maintain, don't regenerate. Scope by diff, not by corpus.
+- Prefer updating to creating; merge aggressively — two pages on one topic
+  is always wrong.
+- Resolve contradictions explicitly with a dated `## Updates` entry.
+- Never delete. Deprecate by rewriting into a redirect stub.
+
+## Anonymization lint (end of every run)
+Re-read every wiki page you touched and strip anything that identifies an
+org: names, unique identifiers, one-of-a-kind configurations, quotes long
+enough to be recognizable. Record each strip as a `lint` line in `Log`.
+This pass is the privacy guarantee — never skip it.
+
+## Curator log (your final message)
+ONE sentence distilling what the new material taught across orgs — the
+learning, not the mechanics, with no org named. A quiet night is reported
+as quiet: "Nothing new worth recording." is a complete entry.
+
+Begin now.
+"""

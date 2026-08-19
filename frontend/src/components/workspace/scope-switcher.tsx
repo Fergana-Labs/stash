@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Building2, Check, ChevronDown, CircleUser } from "lucide-react";
+import { Building2, Check, ChevronDown, CircleUser, TerminalSquare } from "lucide-react";
 import { listMyWorkspaces } from "@/lib/api";
 import { getScope, setScope, useScope } from "@/lib/scope-store";
 import type { Scope, Workspace } from "@/lib/types";
@@ -16,10 +16,12 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 /**
- * Switches the scope every content request runs in: the signed-in user's
- * personal stash, or a workspace's shared knowledge base. Hidden entirely for
- * users who belong to no workspace (nearly everyone), so the chrome only grows
- * a control when there's actually a choice to make.
+ * The context switcher: one flat list of every context the user can stand in —
+ * their personal stash, each workspace's shared knowledge base, and each
+ * developer console (a workspace with the developer platform active). A flat
+ * list rather than two toggles because the workspace × surface matrix is
+ * sparse: most contexts don't have both faces, and a row simply doesn't
+ * exist when the context doesn't.
  *
  * Scope-dependent data is fetched ad hoc by ~every view (no SWR/react-query
  * cache to invalidate), so switching reloads the app rather than trying to
@@ -44,14 +46,23 @@ export default function ScopeSwitcher() {
       .catch(() => setWorkspaces([]));
   }, []);
 
-  if (workspaces.length === 0) return null;
-
   function select(next: Scope | null) {
-    if ((next?.scope_user_id ?? null) === (scope?.scope_user_id ?? null)) return;
+    // Same workspace in a different view is still a switch — the console and
+    // the internal knowledge base share a scope but not their chrome.
+    const same =
+      (next?.scope_user_id ?? null) === (scope?.scope_user_id ?? null) &&
+      (next?.view ?? null) === (scope?.view ?? null);
+    if (same) return;
     setScope(next);
-    window.location.reload();
+    window.location.assign("/");
   }
 
+  function enterConsole(w: Workspace) {
+    setScope({ scope_user_id: w.scope_user_id, name: w.name, view: "developer" });
+    window.location.assign("/developer");
+  }
+
+  const consoles = workspaces.filter((w) => w.external_wiki_folder_id !== null);
   const inWorkspace = scope !== null;
 
   return (
@@ -59,20 +70,28 @@ export default function ScopeSwitcher() {
       <DropdownMenuTrigger
         className={cn(
           "flex h-8 items-center gap-1.5 rounded-full border px-3 text-[13px] font-medium transition-colors",
-          inWorkspace
-            ? "border-brand-300 bg-brand-500/12 text-brand-600 hover:bg-brand-500/20"
-            : "border-border bg-surface text-foreground hover:bg-raised",
+          // Inside the developer shell the pill goes monochrome with the rest
+          // of the infra chrome; brand color belongs to the consumer app.
+          scope?.view === "developer"
+            ? "rounded-md border-zinc-200 bg-white text-zinc-900 hover:bg-zinc-50"
+            : inWorkspace
+              ? "border-brand-300 bg-brand-500/12 text-brand-600 hover:bg-brand-500/20"
+              : "border-border bg-surface text-foreground hover:bg-raised",
         )}
       >
-        {inWorkspace ? (
+        {scope?.view === "developer" ? (
+          <TerminalSquare className="h-3.5 w-3.5 shrink-0" />
+        ) : inWorkspace ? (
           <Building2 className="h-3.5 w-3.5 shrink-0" />
         ) : (
           <CircleUser className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
         )}
-        <span className="max-w-[160px] truncate">{scope?.name ?? "Personal"}</span>
+        <span className="max-w-[160px] truncate">
+          {scope ? (scope.view === "developer" ? `${scope.name} Console` : scope.name) : "Personal"}
+        </span>
         <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-60" />
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-60">
+      <DropdownMenuContent align="start" className="w-64">
         <DropdownMenuLabel className="text-[11px] text-muted-foreground">
           Scope
         </DropdownMenuLabel>
@@ -83,17 +102,42 @@ export default function ScopeSwitcher() {
           selected={!inWorkspace}
           onSelect={() => select(null)}
         />
-        <DropdownMenuSeparator />
+        {workspaces.length > 0 && <DropdownMenuSeparator />}
         {workspaces.map((w) => (
           <ScopeItem
             key={w.id}
             icon={<Building2 className="h-4 w-4 text-brand-500" />}
             label={w.name}
-            detail={w.domain}
-            selected={scope?.scope_user_id === w.scope_user_id}
+            detail={w.domain ?? "invite-only workspace"}
+            selected={scope?.scope_user_id === w.scope_user_id && scope?.view !== "developer"}
             onSelect={() => select({ scope_user_id: w.scope_user_id, name: w.name })}
           />
         ))}
+        <DropdownMenuSeparator />
+        <DropdownMenuLabel className="text-[11px] text-muted-foreground">
+          Developer
+        </DropdownMenuLabel>
+        {consoles.map((w) => (
+          <ScopeItem
+            key={`console-${w.id}`}
+            icon={<TerminalSquare className="h-4 w-4 text-brand-500" />}
+            label={`${w.name} Console`}
+            detail="Orgs, memory, API keys"
+            selected={scope?.scope_user_id === w.scope_user_id && scope?.view === "developer"}
+            onSelect={() => enterConsole(w)}
+          />
+        ))}
+        {consoles.length === 0 && (
+          <ScopeItem
+            icon={<TerminalSquare className="h-4 w-4 text-muted-foreground" />}
+            label="Set up Developer Console"
+            detail="Run Stash for your product's customers"
+            selected={false}
+            onSelect={() => {
+              window.location.assign("/developer");
+            }}
+          />
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );

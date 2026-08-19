@@ -10,7 +10,7 @@ from . import security_audit_service, session_folder_service
 
 _SELECT_COLS = (
     "id, owner_user_id, session_id, agent_name, cwd, files_touched, "
-    "started_at, finished_at, created_by"
+    "started_at, finished_at, created_by, org_id"
 )
 
 
@@ -22,6 +22,7 @@ async def upsert_session(
     cwd: str | None = None,
     created_by: UUID | None = None,
     session_folder_id: UUID | None = None,
+    org_id: UUID | None = None,
     started_at: datetime | None = None,
 ) -> dict:
     """Idempotent: return the session row, creating it if missing.
@@ -41,6 +42,9 @@ async def upsert_session(
     create the row as the session starts, so insert time is the start and they
     pass nothing. It is set at insert only: a later event stream must never
     restamp an imported session to now().
+
+    `org_id` (External Multiplayer) follows the folder's set-once rule: the
+    org a session was born into is its privacy boundary and never changes.
     """
     pool = get_pool()
     if session_folder_id is None:
@@ -54,8 +58,9 @@ async def upsert_session(
             session_folder_id = UUID(default_folder["id"])
     row = await pool.fetchrow(
         "INSERT INTO sessions "
-        "  (owner_user_id, session_id, agent_name, cwd, created_by, session_folder_id, started_at) "
-        "VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7, now())) "
+        "  (owner_user_id, session_id, agent_name, cwd, created_by, "
+        "   session_folder_id, org_id, started_at) "
+        "VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8, now())) "
         "ON CONFLICT (owner_user_id, session_id) DO UPDATE SET "
         "  agent_name = COALESCE(NULLIF(EXCLUDED.agent_name, ''), sessions.agent_name), "
         "  cwd = COALESCE(EXCLUDED.cwd, sessions.cwd), "
@@ -67,6 +72,7 @@ async def upsert_session(
         cwd,
         created_by,
         session_folder_id,
+        org_id,
         started_at,
     )
     return dict(row)

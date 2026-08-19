@@ -30,6 +30,7 @@ from ..models import (
 from ..services import (
     files_service,
     files_tree_service,
+    org_service,
     permission_service,
     security_audit_service,
     storage_service,
@@ -159,6 +160,7 @@ async def _download_storage_file_or_502(storage_key: str, operation: str) -> byt
 async def upload_my_file(
     file: UploadFile,
     folder_id: UUID | None = Form(None),
+    org_id: str | None = Form(None),
     current_user: dict = Depends(get_current_user),
     scope_user_id: UUID = Depends(get_scope),
 ):
@@ -190,6 +192,12 @@ async def upload_my_file(
 
     content_type = file.content_type or "application/octet-stream"
     filename = file.filename or "upload"
+    org = None
+    if org_id is not None:
+        try:
+            org = await org_service.resolve_org_for_scope(owner_user_id, org_id)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
     return await ingest_bytes(
         owner_user_id=owner_user_id,
         user_id=current_user["id"],
@@ -197,6 +205,7 @@ async def upload_my_file(
         content=content,
         content_type=content_type,
         folder_id=folder_id,
+        org_row_id=org["id"] if org else None,
     )
 
 
@@ -208,6 +217,7 @@ async def ingest_bytes(
     content: bytes,
     content_type: str,
     folder_id: UUID | None,
+    org_row_id: UUID | None = None,
 ) -> UploadResponse:
     """The single ingest path: bytes become a page (markdown/html) or an
     S3-backed file. Used by the upload endpoint and by save-to-Stash from the
@@ -218,6 +228,14 @@ async def ingest_bytes(
     # and MCP all hit this single path and get the routing for free.
     page_kind = files_tree_service.detect_page_kind(filename, content_type)
     if page_kind is not None:
+        if org_row_id is not None:
+            # Pages have no org column. Org-scoped text belongs in the org's
+            # notepad folder (pass folder_id), not on the org itself.
+            raise HTTPException(
+                status_code=400,
+                detail="org_id applies to binary file uploads only — upload "
+                "markdown/html into the org's notepad folder instead",
+            )
         if folder_id is not None:
             pool = get_pool()
             owns = await pool.fetchval(
@@ -294,8 +312,8 @@ async def ingest_bytes(
         if not owns:
             raise HTTPException(status_code=400, detail="folder_id does not belong to scope")
     row = await pool.fetchrow(
-        "INSERT INTO files (owner_user_id, name, content_type, size_bytes, storage_key, uploaded_by, folder_id) "
-        "VALUES ($1, $2, $3, $4, $5, $6, $7) "
+        "INSERT INTO files (owner_user_id, name, content_type, size_bytes, storage_key, uploaded_by, folder_id, org_id) "
+        "VALUES ($1, $2, $3, $4, $5, $6, $7, $8) "
         "RETURNING id, owner_user_id, folder_id, owner_page_id, name, content_type, size_bytes, storage_key, uploaded_by, created_at",
         owner_user_id,
         filename,
@@ -304,6 +322,7 @@ async def ingest_bytes(
         storage_key,
         user_id,
         folder_id,
+        org_row_id,
     )
     from ..tasks.extraction import extract_file_text
 

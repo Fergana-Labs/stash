@@ -28,6 +28,7 @@ from .routers import (
     clips,
     curator_log,
     demo,
+    developer,
     discover,
     exports,
     files,
@@ -149,6 +150,8 @@ app.include_router(integrations_router)
 app.include_router(sources.router)
 app.include_router(sources.saved_items_router)
 app.include_router(vfs.router)
+app.include_router(developer.router)
+app.include_router(developer.orgs_router)
 app.include_router(agent_chat.router)
 app.include_router(agent_credentials.router)
 app.include_router(agents.router)
