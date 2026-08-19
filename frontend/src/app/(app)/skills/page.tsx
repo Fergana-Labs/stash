@@ -15,7 +15,6 @@ import SkillCard, {
   PUBLISH_COLOR,
   PublishBadge,
 } from "@/components/skill/SkillCard";
-import SkillLauncher from "@/components/skill/SkillLauncher";
 import { SkillComposer } from "@/components/skill/SkillComposer";
 import ResyncSourceButton from "@/components/skill/ResyncSourceButton";
 import ForkSkillCardButton from "@/components/skill/ForkSkillCardButton";
@@ -37,7 +36,6 @@ import {
   type PublicSkillCard,
 } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
-import type { LaunchableSkill } from "@/lib/types";
 import { usePins } from "@/lib/pins";
 import { skillSlugFromInput } from "@/lib/skillLinks";
 import { parseDriveFolderId } from "@/components/integrations/pickers";
@@ -56,20 +54,9 @@ const VIEW_STORAGE_KEY = "stash_skills_view";
 const COVERS = ["cover-1", "cover-2", "cover-3", "cover-4", "cover-5", "cover-6"];
 
 const TAB_COPY: Record<Tab, string> = {
-  yours:
-    "Your Skill folders. Run one to hand it to an agent, or open it to edit, share, and publish.",
+  yours: "Your Skill folders. Open one to edit, share, and publish.",
   discover: "Public skills from the community — fork one into your Skills.",
 };
-
-// Only a Skill you hold is launchable: an agent reads its own scope, so a
-// Discover skill has to be added before it can be run at all.
-function launchableFromSkill(skill: Skill): LaunchableSkill {
-  return {
-    name: skill.name,
-    description: skill.description,
-    when_to_use: skill.when_to_use,
-  };
-}
 
 export default function SkillsPage() {
   const router = useRouter();
@@ -82,9 +69,6 @@ export default function SkillsPage() {
   const [view, setView] = useState<ViewKey>("grid");
   const [error, setError] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  // The skill the launcher is open on. One at a time — a run is a decision,
-  // not a browsing mode.
-  const [launching, setLaunching] = useState<LaunchableSkill | null>(null);
 
   function toggleSelect(id: string) {
     setSelectedIds((current) => {
@@ -265,7 +249,6 @@ export default function SkillsPage() {
                 onTogglePin={(s) => pins.toggle(skillKey(s))}
                 selectedIds={selectedIds}
                 onToggleSelect={toggleSelect}
-                onRun={(s) => setLaunching(launchableFromSkill(s))}
                 onRefresh={load}
               />
             ) : (
@@ -277,10 +260,6 @@ export default function SkillsPage() {
 
         {tab === "discover" && <DiscoverSection />}
       </div>
-
-      {launching && (
-        <SkillLauncher skill={launching} onClose={() => setLaunching(null)} />
-      )}
 
       {selectedSkills.length > 0 && (
         <div className="pointer-events-none fixed inset-x-0 bottom-6 z-50 flex justify-center">
@@ -728,30 +707,6 @@ function DraftCta({ skill }: { skill: Skill }) {
   );
 }
 
-function RunSkillButton({ onRun }: { onRun: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={(e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        onRun();
-      }}
-      className="inline-flex flex-shrink-0 cursor-pointer items-center gap-1 rounded-md bg-[var(--color-brand-600)] px-2 py-0.5 text-[11.5px] font-medium text-white hover:bg-[var(--color-brand-700)]"
-    >
-      <PlayGlyph /> Run
-    </button>
-  );
-}
-
-function PlayGlyph() {
-  return (
-    <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-      <path d="M8 5v14l11-7z" />
-    </svg>
-  );
-}
-
 function SkillCollection({
   skills,
   view,
@@ -759,7 +714,6 @@ function SkillCollection({
   onTogglePin,
   selectedIds,
   onToggleSelect,
-  onRun,
   onRefresh,
 }: {
   skills: Skill[];
@@ -768,7 +722,6 @@ function SkillCollection({
   onTogglePin: (skill: Skill) => void;
   selectedIds: Set<string>;
   onToggleSelect: (id: string) => void;
-  onRun: (skill: Skill) => void;
   onRefresh: () => Promise<void>;
 }) {
   if (view === "list") {
@@ -782,7 +735,6 @@ function SkillCollection({
             onTogglePin={onTogglePin}
             selected={selectedIds.has(skillKey(skill))}
             onToggleSelect={onToggleSelect}
-            onRun={onRun}
             onRefresh={onRefresh}
           />
         ))}
@@ -837,7 +789,6 @@ function SkillCollection({
                   {skill.backing === "source" && (
                     <ResyncSourceButton sourceId={skill.source_id} onRefresh={onRefresh} />
                   )}
-                  <RunSkillButton onRun={() => onRun(skill)} />
                 </>
               ) : (
                 <>
@@ -864,7 +815,6 @@ function SkillListRow({
   onTogglePin,
   selected,
   onToggleSelect,
-  onRun,
   onRefresh,
 }: {
   skill: Skill;
@@ -872,7 +822,6 @@ function SkillListRow({
   onTogglePin: (skill: Skill) => void;
   selected: boolean;
   onToggleSelect: (id: string) => void;
-  onRun: (skill: Skill) => void;
   onRefresh: () => Promise<void>;
 }) {
   const href = skillHref(skill);
@@ -907,11 +856,7 @@ function SkillListRow({
         {skill.backing === "source" && (
           <ResyncSourceButton sourceId={skill.source_id} onRefresh={onRefresh} />
         )}
-        {skill.has_instructions ? (
-          <RunSkillButton onRun={() => onRun(skill)} />
-        ) : (
-          <DraftCta skill={skill} />
-        )}
+        {!skill.has_instructions && <DraftCta skill={skill} />}
       </span>
       <span
         className={

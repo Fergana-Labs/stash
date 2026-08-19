@@ -331,8 +331,6 @@ describe("SkillsPage", () => {
 
     await waitFor(() => expect(syncSource).toHaveBeenCalledWith("source-1"));
     expect(screen.getByRole("button", { name: "Syncing…" })).toBeDisabled();
-    // Re-sync sits beside Run, not instead of it.
-    expect(screen.getByRole("button", { name: "Run" })).toBeInTheDocument();
   });
 
   it("keeps source-backed skills distinct from each other in every list", async () => {
