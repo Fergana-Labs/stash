@@ -219,8 +219,14 @@ async def org_detail(org: dict) -> dict:
         "ORDER BY created_at DESC",
         org["id"],
     )
+    notepad_pages = await pool.fetch(
+        "SELECT id, name, updated_at FROM pages "
+        "WHERE folder_id = $1 AND deleted_at IS NULL ORDER BY updated_at DESC",
+        org["notepad_folder_id"],
+    )
     return {
         "org": org,
         "sessions": [dict(r) for r in sessions],
         "files": [dict(r) for r in files],
+        "notepad_pages": [dict(r) for r in notepad_pages],
     }

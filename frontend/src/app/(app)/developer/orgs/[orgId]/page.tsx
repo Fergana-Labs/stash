@@ -8,7 +8,7 @@ import { ArrowLeft } from "lucide-react";
 import DeveloperGate from "@/components/developer/DeveloperGate";
 import { Code, PageHeading, SectionHeading } from "@/components/developer/DocsPrimitives";
 import WikiToggle from "@/components/developer/WikiToggle";
-import { getOrg, type OrgFile, type OrgSession } from "@/lib/api";
+import { getOrg, type OrgFile, type OrgNotepadPage, type OrgSession } from "@/lib/api";
 import type { Org } from "@/lib/types";
 
 export default function OrgDetailRoute() {
@@ -24,6 +24,7 @@ function OrgDetail() {
   const [org, setOrg] = useState<Org | null>(null);
   const [sessions, setSessions] = useState<OrgSession[]>([]);
   const [files, setFiles] = useState<OrgFile[]>([]);
+  const [notepad, setNotepad] = useState<OrgNotepadPage[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(() => {
@@ -33,6 +34,7 @@ function OrgDetail() {
         setOrg(res.org);
         setSessions(res.sessions);
         setFiles(res.files);
+        setNotepad(res.notepad_pages);
       })
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load the org"));
   }, [orgId]);
@@ -80,12 +82,44 @@ function OrgDetail() {
           </div>
           <WikiToggle org={org} onChanged={refresh} />
         </div>
-        <Link
-          href={`/folders/${org.notepad_folder_id}`}
-          className="mt-3 inline-block rounded-lg border border-border px-3 py-1.5 text-[13px] text-dim transition-colors hover:bg-raised hover:text-foreground"
-        >
-          Open their notepad
-        </Link>
+      </section>
+
+      <section className="mb-12">
+        <div className="flex items-baseline justify-between gap-4">
+          <SectionHeading>Notepad</SectionHeading>
+          <Link
+            href={`/folders/${org.notepad_folder_id}`}
+            className="text-[13px] text-muted-foreground transition-colors hover:text-foreground"
+          >
+            Open folder
+          </Link>
+        </div>
+        <p className="mt-2 text-[13.5px] leading-6 text-muted-foreground">
+          What the curator has learned about this org specifically — kept out of the shared
+          wiki, in their own words and their own detail.
+        </p>
+        {notepad.length === 0 ? (
+          <Empty>
+            Nothing yet. The curator writes here on its next run over this org&apos;s sessions.
+          </Empty>
+        ) : (
+          <div className="mt-4 overflow-hidden rounded-2xl border border-border bg-surface">
+            {notepad.map((page) => (
+              <Link
+                key={page.id}
+                href={`/p/${page.id}`}
+                className="flex items-center gap-4 border-b border-border px-5 py-3.5 transition-colors last:border-b-0 hover:bg-raised"
+              >
+                <span className="min-w-0 flex-1 truncate text-[14.5px] text-foreground">
+                  {page.name}
+                </span>
+                <span className="shrink-0 font-mono text-[12px] text-muted-foreground">
+                  {formatDate(page.updated_at)}
+                </span>
+              </Link>
+            ))}
+          </div>
+        )}
       </section>
 
       <section className="mb-12">

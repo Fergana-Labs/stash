@@ -255,10 +255,17 @@ export interface OrgFile {
   created_at: string;
 }
 
+export interface OrgNotepadPage {
+  id: string;
+  name: string;
+  updated_at: string;
+}
+
 export async function getOrg(orgId: string): Promise<{
   org: Org;
   sessions: OrgSession[];
   files: OrgFile[];
+  notepad_pages: OrgNotepadPage[];
 }> {
   return apiFetch(`${ME}/orgs/${orgId}`);
 }
