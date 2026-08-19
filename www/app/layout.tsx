@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Instrument_Sans, JetBrains_Mono, Space_Grotesk } from "next/font/google";
+import { IBM_Plex_Mono, Instrument_Sans, Instrument_Serif } from "next/font/google";
 import Script from "next/script";
 import "./globals.css";
 
@@ -8,20 +8,23 @@ const instrumentSans = Instrument_Sans({
   subsets: ["latin"],
 });
 
-const spaceGrotesk = Space_Grotesk({
-  variable: "--font-space-grotesk",
+const ibmPlexMono = IBM_Plex_Mono({
+  variable: "--font-ibm-plex-mono",
   subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
+  weight: ["400", "500"],
 });
 
-const jetbrainsMono = JetBrains_Mono({
-  variable: "--font-jetbrains-mono",
+// One serif moment per page, for a pull quote.
+const instrumentSerif = Instrument_Serif({
+  variable: "--font-instrument-serif",
   subsets: ["latin"],
+  weight: ["400"],
+  style: ["normal", "italic"],
 });
 
-const title = "Stash · Give your agents a memory that compounds";
+const title = "Stash · Agents that learn from the real world";
 const description =
-  "Stash connects your tools and captures every agent session into one context graph your agents — and your team — can read. Open source, MIT licensed, self-hostable.";
+  "Stash is an applied AI lab building continual learning. Search, share, and learn from agent traces, and improve your agents automatically. Open source, MIT licensed, self-hostable.";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://www.joinstash.ai"),
@@ -39,9 +42,14 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${instrumentSans.variable} ${spaceGrotesk.variable} ${jetbrainsMono.variable}`}
+      className={`${instrumentSans.variable} ${ibmPlexMono.variable} ${instrumentSerif.variable}`}
     >
       <head>
+        <link rel="preconnect" href="https://api.fontshare.com" />
+        <link
+          rel="stylesheet"
+          href="https://api.fontshare.com/v2/css?f[]=chillax@400,500,600&f[]=supreme@400,500&display=swap"
+        />
         <script
           dangerouslySetInnerHTML={{
             __html:

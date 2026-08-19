@@ -2,40 +2,37 @@
 @plugin "@tailwindcss/typography";
 
 :root {
-  /* Warm paper palette — deliberately off the cool clinical white that
-     Supermemory/Hyperspell use, and matched to the product's Notion-tan UI
-     so the landing and the app finally read as the same brand. */
-  --bg-base: #FBFAF8;
-  --bg-surface: #F4F2EC;
-  --bg-raised: #EBE8DF;
-  --bg-inverted: #1A1714;
+  /* Warm paper, one accent. The landing, the deck, and the product read as one
+     brand; the accent is spent two or three times a screen and nowhere else. */
+  --bg-base: #F7F4EE;
+  --bg-surface: #F1EDE5;
+  --bg-raised: #EBE6DC;
+  --bg-inverted: #16130F;
 
-  --border: #E4E0D7;
-  --border-subtle: #EEEBE3;
+  --border: #E3DED4;
+  --border-subtle: #EDE9E1;
 
-  --text-strong: #1A1714;
-  --text: #44403A;
-  --text-dim: #6B655B;
-  --text-muted: #9A9389;
-  --text-on-inverted: #EDE9E2;
-  --text-on-inverted-dim: #A39C90;
+  --text-strong: #16130F;
+  --text: #453F37;
+  --text-dim: #7C7469;
+  --text-muted: #A79E92;
+  --text-on-inverted: #FBF8F3;
+  --text-on-inverted-dim: rgba(247, 244, 238, 0.62);
 
-  --brand: #F97316;
-  --brand-hover: #EA580C;
-  --brand-ink: #7C2D12;
-  --brand-soft: rgba(249, 115, 22, 0.12);
+  --brand: #FF5A36;
+  --brand-hover: #F04A26;
+  --brand-ink: #C4421F;
+  --brand-soft: rgba(255, 90, 54, 0.12);
 
-  --agent: #EA580C;
-  --agent-soft: rgba(249, 115, 22, 0.14);
-  --human: #2563EB;
-  --human-soft: rgba(37, 99, 235, 0.12);
+  --agent: #FF5A36;
+  --agent-soft: rgba(255, 90, 54, 0.14);
+  --human: #2B4BFF;
+  --human-soft: rgba(43, 75, 255, 0.12);
 
-  --shadow-card: 0 1px 2px rgba(26, 23, 20, 0.04), 0 12px 28px -18px rgba(26, 23, 20, 0.16);
-  --shadow-terminal: 0 30px 80px -40px rgba(26, 23, 20, 0.55);
+  --shadow-card: 0 1px 2px rgba(22, 19, 15, 0.04), 0 12px 28px -18px rgba(22, 19, 15, 0.16);
+  --shadow-terminal: 0 30px 60px -40px rgba(22, 19, 15, 0.5);
 
-  /* Warm dot-field texture — the reusable brand motif. A sparse, low-opacity
-     dotted field, NOT a stroke-heavy grid (the look we're avoiding). */
-  --dot-field: radial-gradient(rgba(26, 23, 20, 0.05) 1px, transparent 1.4px);
+  --dot-field: radial-gradient(rgba(22, 19, 15, 0.05) 1px, transparent 1.4px);
   --dot-field-size: 22px 22px;
 }
 
@@ -59,9 +56,10 @@
   --color-brand-hover: var(--brand-hover);
   --color-brand-ink: var(--brand-ink);
 
-  --font-sans: var(--font-instrument-sans), 'Instrument Sans', sans-serif;
-  --font-display: var(--font-space-grotesk), 'Space Grotesk', var(--font-instrument-sans), sans-serif;
-  --font-mono: var(--font-jetbrains-mono), 'JetBrains Mono', monospace;
+  --font-sans: 'Supreme', var(--font-instrument-sans), 'Instrument Sans', sans-serif;
+  --font-display: 'Chillax', 'Avenir Next', var(--font-instrument-sans), sans-serif;
+  --font-mono: var(--font-ibm-plex-mono), 'IBM Plex Mono', monospace;
+  --font-serif: var(--font-instrument-serif), 'Iowan Old Style', Georgia, serif;
 }
 
 html, body {
