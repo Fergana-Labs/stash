@@ -3,12 +3,10 @@ import type { MetadataRoute } from "next";
 const BASE = "https://www.joinstash.ai";
 
 // Public marketing routes. Keep in sync with the nav/footer so new pages get
-// indexed as the site scales. The page editor is deliberately absent — it sets
-// robots: { index: false }.
+// indexed as the site scales.
 const ROUTES = [
   "",
   "/discover",
-  "/smb",
   "/security",
   "/docs",
   "/docs/quickstart",
