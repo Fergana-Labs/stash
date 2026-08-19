@@ -19,6 +19,7 @@ API silently drops Shared Drive items.
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 from datetime import datetime
@@ -27,6 +28,7 @@ from uuid import UUID
 import httpx
 
 from ...services import source_service
+from ...services.skill_service import FRONTMATTER_SCAN_BYTES, declared_skill
 from ..storage import get_valid_token
 
 logger = logging.getLogger(__name__)
@@ -122,6 +124,101 @@ def unescape_exported_markdown(markdown: str) -> str:
     hard break, and the frontmatter parser already ignores them.
     """
     return _EXPORT_ESCAPE_RE.sub(r"\1", markdown)
+
+
+_ESCAPED_RULE_RE = re.compile(r"^\\(-{3,})[ \t]*$", re.MULTILINE)
+# Still-escaped delimiters are accepted here because a leading BOM blocks the
+# MULTILINE ^ above from ever seeing the first line.
+_DELIMITER_RE = re.compile(r"\\?-{3,}[ \t]*")
+# A bare * or _ in the export is the exporter's styling markup (bold, italic):
+# the author's own characters always arrive backslash-escaped, which the
+# lookbehind preserves for the unescape pass to restore.
+_EMPHASIS_RE = re.compile(r"(?<!\\)[*_]+")
+# Docs curls typed quotes by default; both pairs mean "the author quoted this".
+_QUOTE_PAIRS = (("\u201c", "\u201d"), ("\u2018", "\u2019"), ('"', '"'))
+
+
+def repair_exported_markdown(markdown: str) -> str:
+    r"""Everything the extractor undoes about Google's markdown export.
+
+    Two passes with distinct jobs. The frontmatter block is repaired
+    *structurally* — escaped delimiters restored, styled keys unstyled, curly
+    wrapping quotes re-encoded via json.dumps, a leading BOM or blank paragraph
+    dropped — and the rewrite is kept ONLY when the result declares a valid
+    skill: prose that merely opens with a horizontal rule is the author's text,
+    not frontmatter. Everything outside that block gets one level of
+    backslash-escaping stripped (unescape_exported_markdown).
+
+    The order is load-bearing twice over. The repair must see the raw export,
+    because it tells the exporter's styling markup (bare `*`/`_`) from the
+    author's own characters (escaped) — a distinction the unescape erases. And
+    the unescape must never run over the repaired block, because json.dumps may
+    itself emit backslashes that are now the value's real content.
+    """
+    text = _ESCAPED_RULE_RE.sub(r"\1", markdown)
+    head, tail = text[:FRONTMATTER_SCAN_BYTES], text[FRONTMATTER_SCAN_BYTES:]
+    split = _split_repaired_frontmatter(head)
+    if split is not None:
+        block, rest_lines = split
+        body = "\n".join(rest_lines)
+        candidate = block
+        if rest_lines:
+            candidate += "\n" + unescape_exported_markdown(body + tail)
+        else:
+            candidate += unescape_exported_markdown(tail)
+        if declared_skill(candidate[:FRONTMATTER_SCAN_BYTES]) is not None:
+            return candidate
+    return unescape_exported_markdown(text)
+
+
+def _split_repaired_frontmatter(head: str) -> tuple[str, list[str]] | None:
+    """The head's repaired frontmatter block and the lines after it, or None.
+
+    A leading BOM or empty first paragraph — one invisible keystroke in a Doc —
+    is dropped so the block sits at the top, where every parser and the
+    `content LIKE '---%'` prefilter expect it. Delimiter lines are normalized
+    to exactly `---` so the repaired span and the span parse_frontmatter reads
+    are the same span.
+    """
+    lines = head.lstrip("\ufeff").split("\n")
+    start = 0
+    while start < len(lines) and not lines[start].strip():
+        start += 1
+    if start >= len(lines) or not _DELIMITER_RE.fullmatch(lines[start]):
+        return None
+    closing = next(
+        (i for i in range(start + 1, len(lines)) if _DELIMITER_RE.fullmatch(lines[i])), None
+    )
+    if closing is None:
+        return None
+    repaired = [_repair_frontmatter_line(line) for line in lines[start + 1 : closing]]
+    return "\n".join(["---", *repaired, "---"]), lines[closing + 1 :]
+
+
+def _repair_frontmatter_line(line: str) -> str:
+    r"""One `key: value` line, as the author wrote it in the Doc.
+
+    Emphasis markers go because frontmatter has no formatting — a key the
+    author styled is still just the key. Backslashes go because the escaping is
+    the exporter's. The order is load-bearing: bare `*`/`_` are markup only
+    because the author's own are still escaped when emphasis is stripped.
+    """
+    line = _EXPORT_ESCAPE_RE.sub(r"\1", _EMPHASIS_RE.sub("", line))
+    key, colon, value = line.partition(":")
+    if not colon:
+        return line
+    return f"{key.strip()}: {_requoted_value(value.strip())}"
+
+
+def _requoted_value(value: str) -> str:
+    """A value the author wrapped in quotes, re-encoded as the JSON string the
+    frontmatter parser expects. json.dumps, not hand-built quoting: the interior
+    is the author's literal text, and it may contain quotes or backslashes of
+    its own. A curly quote inside the sentence is their text and stays curly."""
+    for opening, closing in _QUOTE_PAIRS:
+        if len(value) >= 2 and value.startswith(opening) and value.endswith(closing):
+            return json.dumps(value[1:-1], ensure_ascii=False)
+    return value
 
 
 async def _require_readable_folder(client: httpx.AsyncClient, folder_id: str) -> None:
@@ -499,7 +596,7 @@ async def extract_drive_text(
         from ...services.file_extraction import extract_text, is_pdf
 
         if mime == MIME_GOOGLE_DOC:
-            text = unescape_exported_markdown(await _export(client, file_id, "text/markdown"))
+            text = repair_exported_markdown(await _export(client, file_id, "text/markdown"))
         elif mime == MIME_GOOGLE_SHEET:
             # XLSX export keeps every visible sheet (Drive's CSV export drops
             # everything except the first).
