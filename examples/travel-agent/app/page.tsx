@@ -36,6 +36,7 @@ export default function Home() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [question, setQuestion] = useState("");
   const [busy, setBusy] = useState(false);
+  const [seeding, setSeeding] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [session] = useState(
     () => `web-${Math.random().toString(36).slice(2, 10)}`,
@@ -60,6 +61,23 @@ export default function Home() {
     if (org) loadTranscripts(org.external_id);
   }, [org, loadTranscripts]);
 
+  // Replaces the old python demo.py: the same scripted scenario, run by the
+  // app so there is one implementation of the integration, not two.
+  async function seed() {
+    setSeeding(true);
+    setError(null);
+    try {
+      await load("/api/seed", { method: "POST" });
+      const d = await load<{ orgs: Org[] }>("/api/orgs");
+      setOrgs(d.orgs ?? []);
+      setOrg(d.orgs?.find((o) => o.external_id === "globetrek") ?? d.orgs?.[0] ?? null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSeeding(false);
+    }
+  }
+
   async function ask() {
     if (!org || !question.trim()) return;
     const asked = question;
@@ -74,7 +92,7 @@ export default function Home() {
         body: JSON.stringify({
           org: org.external_id,
           orgName: org.name,
-          session: `${org.external_id}/${session}`,
+          session: `${org.external_id}:${session}`,
           question: asked,
         }),
       });
@@ -136,6 +154,26 @@ export default function Home() {
             </span>
           </button>
         ))}
+      </div>
+
+      <div style={{ marginBottom: 20 }}>
+        <button
+          onClick={() => void seed()}
+          disabled={seeding}
+          style={{
+            padding: "8px 14px",
+            borderRadius: 4,
+            border: "1px solid #E9E5DC",
+            background: "#F4F2EC",
+            font: "500 14px ui-sans-serif, system-ui",
+            cursor: "pointer",
+          }}
+        >
+          {seeding ? "Seeding — this makes four real calls…" : "Seed the demo scenario"}
+        </button>
+        <span style={{ marginLeft: 12, color: "#A79E92", fontSize: 13 }}>
+          Wanderly learns a visa lesson the hard way; Globetrek asks about its own trip.
+        </span>
       </div>
 
       {error && (

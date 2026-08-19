@@ -7,7 +7,7 @@ function headers() {
   // Without this the header goes out as "Bearer undefined" and every call
   // comes back 401, which reads like a bad key rather than a missing one.
   if (!key)
-    throw new Error("STASH_API_KEY is not set — put it in web/.env.local");
+    throw new Error("STASH_API_KEY is not set — put it in .env.local");
   return { Authorization: `Bearer ${key}`, "Content-Type": "application/json" };
 }
 

@@ -1,6 +1,7 @@
 import { context, record } from "@/lib/stash";
 
 const MODEL = "claude-sonnet-4-6";
+
 const SYSTEM = `You are a travel planner working for a travel agency.
 
 Context comes from two places: general travel knowledge learned across many
@@ -10,25 +11,30 @@ sentences at most unless asked for an itinerary.
 
 You do not know which other agencies exist and must never speculate about them.`;
 
-export async function POST(request: Request) {
-  try {
-    return await chat(request);
-  } catch (e) {
-    return Response.json(
-      { error: e instanceof Error ? e.message : String(e) },
-      { status: 500 },
-    );
-  }
+/** One turn: read what this agency may know, answer, record it back. This is
+ *  the whole integration — everything else in the app is presentation. */
+export async function answer(
+  org: string,
+  orgName: string,
+  session: string,
+  question: string,
+): Promise<string> {
+  const ctx = await context(org);
+  const reply = await claude(ctx, question);
+  await record(org, orgName, session, [
+    ["user_message", question],
+    ["assistant_message", reply],
+  ]);
+  return reply;
 }
 
-async function chat(request: Request) {
-  const { org, orgName, session, question } = await request.json();
-  const ctx = await context(org);
-
+async function claude(ctx: string, question: string): Promise<string> {
+  const key = process.env.ANTHROPIC_API_KEY;
+  if (!key) throw new Error("ANTHROPIC_API_KEY is not set — put it in .env.local");
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
-      "x-api-key": process.env.ANTHROPIC_API_KEY!,
+      "x-api-key": key,
       "anthropic-version": "2023-06-01",
       "content-type": "application/json",
     },
@@ -37,24 +43,14 @@ async function chat(request: Request) {
       max_tokens: 400,
       system: SYSTEM,
       messages: [
-        {
-          role: "user",
-          content: `What we know:\n${ctx || "(nothing yet)"}\n\n${question}`,
-        },
+        { role: "user", content: `What we know:\n${ctx || "(nothing yet)"}\n\n${question}` },
       ],
     }),
   });
-  if (!res.ok)
-    return Response.json({ error: await res.text() }, { status: 502 });
+  if (!res.ok) throw new Error(`anthropic ${res.status}: ${await res.text()}`);
   const body = await res.json();
-  const reply = body.content
+  return body.content
     .filter((b: { type: string }) => b.type === "text")
     .map((b: { text: string }) => b.text)
     .join("");
-
-  await record(org, orgName, session, [
-    ["user_message", question],
-    ["assistant_message", reply],
-  ]);
-  return Response.json({ reply, contextChars: ctx.length });
 }
