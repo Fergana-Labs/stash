@@ -52,8 +52,17 @@ async def init_db() -> None:
                 managed_cfg = Config(managed_ini)
                 alembic_cmd.upgrade(managed_cfg, "head")
 
+    # Serialize migrations across processes: with --workers 2 (and two Render
+    # instances) several backends boot concurrently, and alembic has no lock of
+    # its own — concurrent `upgrade head` runs race on alembic_version. The
+    # session-level advisory lock is held until the connection closes.
     loop = asyncio.get_running_loop()
-    await loop.run_in_executor(None, functools.partial(_run_alembic))
+    lock_conn = await asyncpg.connect(settings.DATABASE_URL)
+    try:
+        await lock_conn.execute("SELECT pg_advisory_lock(715551)")  # arbitrary app-wide key
+        await loop.run_in_executor(None, functools.partial(_run_alembic))
+    finally:
+        await lock_conn.close()
 
     pool = await asyncpg.create_pool(
         settings.DATABASE_URL,
