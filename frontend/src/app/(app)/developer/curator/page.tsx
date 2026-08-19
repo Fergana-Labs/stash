@@ -92,7 +92,7 @@ function Curator() {
 
       <section className="mb-12">
         <div className="flex items-baseline justify-between gap-4">
-          <SectionHeading>The prompt it will use</SectionHeading>
+          <SectionHeading>Prompt</SectionHeading>
           <button
             onClick={() => setShowPrompt((open) => !open)}
             className="text-[13px] text-muted-foreground transition-colors hover:text-foreground"
