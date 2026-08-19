@@ -32,16 +32,31 @@ class VfsRequest(BaseModel):
 
 async def _org_ctx(current_user: dict, org_id: str | None) -> dict | None:
     """The developer contract: the caller's key belongs to the workspace's
-    scope user, and org_id is asserted by their backend. Unknown org or a
-    non-workspace scope fails loud — isolation between one developer's orgs
-    is enforced at the developer boundary, not here."""
+    scope user, and org_id is asserted by their backend. Isolation between one
+    developer's orgs is enforced at the developer boundary, not here.
+
+    An org id with no row yet is a customer who has not been written for —
+    their agent's very first turn reads before it records anything. That reads
+    the shared wiki and an empty set of their own material, which is exactly
+    right: the accumulated cross-org knowledge is what a new customer benefits
+    from on day one. The org appears once their first session is uploaded.
+    """
     if org_id is None:
         return None
-    try:
-        org = await org_service.resolve_org_for_scope(current_user["id"], org_id)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
     workspace = await org_service.workspace_for_scope(current_user["id"])
+    if workspace is None or workspace["external_wiki_folder_id"] is None:
+        raise HTTPException(
+            status_code=400,
+            detail="org_id requires a developer workspace scope — activate the platform first",
+        )
+    org = await org_service.find_org(workspace["id"], org_id)
+    if org is None:
+        return {
+            "external_id": org_id,
+            "wiki_folder_id": str(workspace["external_wiki_folder_id"]),
+            "notepad_folder_id": None,
+            "source_ids": set(),
+        }
     connected = await source_service.list_connected_sources(current_user["id"], org_id=org["id"])
     return {
         "external_id": org["external_id"],

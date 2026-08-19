@@ -247,6 +247,41 @@ async def push_events_batch(
     return results
 
 
+async def reject_cross_org_sessions(owner_user_id: UUID, events: list[dict]) -> None:
+    """A session belongs to exactly one customer.
+
+    Session ids are chosen by the developer's own app, so two of their
+    customers can easily pick the same one. Appending regardless files one
+    customer's turn inside another customer's transcript — readable by that
+    customer, which is the single thing External Multiplayer promises will
+    never happen. Refuse the write instead, before any event is stored, and
+    say which session collided so the caller can namespace their ids.
+    """
+    asserted: dict[str, str | None] = {}
+    for event in events:
+        session_id = event.get("session_id")
+        if session_id:
+            asserted.setdefault(session_id, event.get("org_id"))
+    if not asserted:
+        return
+    rows = await get_pool().fetch(
+        "SELECT s.session_id, o.external_id FROM sessions s "
+        "LEFT JOIN orgs o ON o.id = s.org_id "
+        "WHERE s.owner_user_id = $1 AND s.session_id = ANY($2::text[])",
+        owner_user_id,
+        list(asserted),
+    )
+    for row in rows:
+        existing = row["external_id"]
+        incoming = asserted[row["session_id"]]
+        if existing != incoming:
+            raise ValueError(
+                f"session {row['session_id']!r} already belongs to "
+                f"{existing or 'no org'}; it cannot also carry {incoming or 'no org'}. "
+                "Session ids must be unique across your customers."
+            )
+
+
 async def _resolve_event_orgs(owner_user_id: UUID, sessions) -> dict[str, dict]:
     """External Multiplayer: map developer-asserted org ids to org rows,
     creating unseen orgs on the fly. An org id on a scope that isn't an

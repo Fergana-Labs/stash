@@ -126,6 +126,18 @@ async def get_or_create_org(workspace: dict, external_id: str, name: str | None 
             return dict(row)
 
 
+async def find_org(workspace_id: UUID, external_id: str) -> dict | None:
+    """The org by the developer's own id, or None if they have never written
+    for that customer."""
+    pool = get_pool()
+    row = await pool.fetchrow(
+        f"SELECT {_ORG_COLS} FROM orgs o WHERE o.workspace_id = $1 AND o.external_id = $2",
+        workspace_id,
+        external_id,
+    )
+    return dict(row) if row else None
+
+
 async def resolve_org_for_scope(owner_user_id: UUID, external_id: str) -> dict:
     """The API-call path: owner scope + developer-asserted org id → org row.
     Fails loud when the scope is not a developer workspace or the org is

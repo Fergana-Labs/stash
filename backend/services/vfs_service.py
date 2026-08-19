@@ -253,7 +253,11 @@ class OrgVfsClient(InProcessVfsClient):
         for folder in folders:
             children.setdefault(folder["parent_folder_id"], []).append(folder)
         kept_ids: set[str] = set()
-        frontier = [self._org["wiki_folder_id"], self._org["notepad_folder_id"]]
+        # A customer with no notepad yet has not been written for — they still
+        # read the shared wiki, they just own nothing.
+        frontier = [self._org["wiki_folder_id"]]
+        if self._org["notepad_folder_id"]:
+            frontier.append(self._org["notepad_folder_id"])
         while frontier:
             folder_id = frontier.pop()
             if folder_id in kept_ids:
