@@ -622,7 +622,7 @@ def test_a_frontmatter_block_written_in_a_doc_survives_google_s_export():
         'description: "Use when a customer reports boost loss."  \n\\---  \n\nCheck the wastegate.\n'
     )
 
-    repaired = indexer.unescape_exported_markdown(exported)
+    repaired = indexer.repair_exported_markdown(exported)
 
     meta = skill_service.declared_skill(repaired)
     assert meta is not None
@@ -647,3 +647,198 @@ def test_an_author_s_own_backslash_survives_one_level_of_unescaping():
     (`\\-` exports as `\\\\-`), so stripping one level returns exactly what the
     author wrote."""
     assert indexer.unescape_exported_markdown("a \\\\- b\n") == "a \\- b\n"
+
+
+def _skill_from_export(exported: str) -> dict | None:
+    return skill_service.declared_skill(indexer.repair_exported_markdown(exported))
+
+
+def test_quotes_the_author_typed_in_a_doc_are_curly():
+    """Docs curls a typed quote by default, so the example we hand a customer
+    comes back as `name: \u201cTurbochargers\u201d` — which parses, and names the skill
+    with the quotes still in it."""
+    meta = _skill_from_export(
+        "\\---  \nname: \u201cTurbochargers\u201d  \n"
+        "description: \u201cUse when a customer reports boost loss.\u201d  \n\\---  \n\nCheck it.\n"
+    )
+
+    assert meta is not None
+    assert meta["name"] == "Turbochargers"
+    assert meta["description"] == "Use when a customer reports boost loss."
+
+
+def test_an_apostrophe_inside_a_value_stays_curly():
+    """Only the wrapping pair is straightened. A curly apostrophe mid-sentence
+    is the author's own text, and rewriting it would be us editing their words."""
+    meta = _skill_from_export(
+        '\\---  \nname: "Turbochargers"  \n'
+        "description: \u201cUse when the customer\u2019s VIN is known.\u201d  \n\\---  \n\nCheck it.\n"
+    )
+
+    assert meta is not None
+    assert meta["description"] == "Use when the customer\u2019s VIN is known."
+
+
+def test_an_underscore_in_a_description_does_not_cost_the_skill():
+    """Google escapes an underscore that could read as emphasis. Inside a quoted
+    value that `\\_` is invalid JSON, so the parser used to reject the block and
+    the document silently stopped being a skill over one character."""
+    meta = _skill_from_export(
+        '\\---  \nname: "Turbochargers"  \n'
+        'description: "Use when the customer gives a part\\_number or VIN\\_code."  \n'
+        "\\---  \n\nCheck it.\n"
+    )
+
+    assert meta is not None
+    assert meta["description"] == "Use when the customer gives a part_number or VIN_code."
+
+
+def test_a_key_the_author_styled_is_still_the_key():
+    """Bolding `name:` in the Doc exports as `**name:**`, which partitions to a
+    key nobody is looking for. Frontmatter has no formatting in it."""
+    meta = _skill_from_export(
+        '\\---  \n**name:** "Turbochargers"  \n'
+        '**description:** "Use when a customer reports boost loss."  \n\\---  \n\nCheck it.\n'
+    )
+
+    assert meta is not None
+    assert meta["name"] == "Turbochargers"
+    assert meta["description"] == "Use when a customer reports boost loss."
+
+
+def test_an_empty_first_paragraph_does_not_hide_the_block():
+    """A blank line above the block is one keystroke in a Doc and invisible in
+    the editor. It used to be fatal twice over: the block is no longer at the
+    top, and the listing query never even reaches a document that doesn't start
+    with a delimiter."""
+    repaired = indexer.repair_exported_markdown(
+        '\n\\---  \nname: "Turbochargers"  \n'
+        'description: "Use when a customer reports boost loss."  \n\\---  \n\nCheck it.\n'
+    )
+
+    assert repaired.startswith("---")
+    assert skill_service.declared_skill(repaired) is not None
+
+
+def test_the_body_reads_as_the_author_wrote_it():
+    """Two different repairs meet at the closing delimiter. Emphasis the author
+    styled (`**wastegate**`) is their markdown and stays; a backslash the
+    exporter added (`part\\_number`) is noise the agent would read literally,
+    and goes. Delivery is the product: the agent gets the author's words."""
+    exported = (
+        '\\---  \nname: "Turbochargers"  \n'
+        'description: "Use when a customer reports boost loss."  \n\\---  \n\n'
+        "Check the **wastegate** and the part\\_number on the tag.\n"
+    )
+
+    body = indexer.repair_exported_markdown(exported).split("---\n")[-1]
+
+    assert "**wastegate**" in body
+    assert "part_number" in body
+    assert "\\_" not in body
+
+
+def test_an_ordinary_document_opening_with_a_divider_keeps_its_structure():
+    """The frontmatter rewrite is kept only when it produces a valid skill
+    declaration. A meeting-notes Doc that happens to open with a typed divider
+    is prose — stripping its bold or respacing its times would corrupt stored
+    text that was never frontmatter. (Backslash-unescaping still applies: that
+    noise is the exporter's in any Doc.)"""
+    exported = (
+        "---\n\nStandup 9:00 AM  \nAttendees: **Ann**, Bob  \n"
+        "Notes at https://wiki.example.com/turbo  \n\n---\n\nAction items below.\n"
+    )
+
+    assert indexer.repair_exported_markdown(exported) == exported
+
+
+def test_a_straight_quote_inside_a_curly_quoted_value_still_parses():
+    """The interior of a quoted value is the author's literal text, re-encoded
+    with json.dumps — an inner straight quote must not break the JSON, and the
+    body unescape must never strip the JSON escapes the repair just wrote."""
+    meta = _skill_from_export(
+        '\\---  \nname: "Turbochargers"  \n'
+        'description: \u201cSay "no" to boost loss.\u201d  \n\\---  \n\nCheck it.\n'
+    )
+
+    assert meta is not None
+    assert meta["description"] == 'Say "no" to boost loss.'
+
+
+def test_a_backslash_the_author_typed_survives():
+    """The author's own backslash arrives doubled from the exporter; after
+    repair the stored value must read back as the single backslash they saw."""
+    meta = _skill_from_export(
+        '\\---  \nname: "Turbochargers"  \n'
+        "description: \u201cCheck the C:\\\\temp folder.\u201d  \n\\---  \n\nCheck it.\n"
+    )
+
+    assert meta is not None
+    assert meta["description"] == "Check the C:\\temp folder."
+
+
+def test_every_exporter_escape_is_undone_in_frontmatter():
+    """The exporter escapes any CommonMark punctuation, not just the common
+    few — a surviving backslash inside a quoted value breaks json.loads and
+    silently costs the skill."""
+    meta = _skill_from_export(
+        '\\---  \nname: "Turbochargers"  \n'
+        'description: "Use when boost is \\<5 psi or the code is A\\|B\\~C."  \n'
+        "\\---  \n\nCheck it.\n"
+    )
+
+    assert meta is not None
+    assert meta["description"] == "Use when boost is <5 psi or the code is A|B~C."
+
+
+def test_single_curly_quotes_are_straightened_too():
+    """Docs curls a typed single quote exactly like a double one; both wrapping
+    pairs mean "the author quoted this"."""
+    meta = _skill_from_export(
+        "\\---  \nname: \u2018Turbochargers\u2019  \n"
+        "description: \u2018Use when a customer reports boost loss.\u2019  \n\\---  \n\nCheck it.\n"
+    )
+
+    assert meta is not None
+    assert meta["name"] == "Turbochargers"
+    assert meta["description"] == "Use when a customer reports boost loss."
+
+
+def test_an_italicized_key_is_still_the_key():
+    """Italic is the same one-click styling accident as bold and gets the same
+    treatment — `*name:*` partitions to a key nobody is looking for."""
+    meta = _skill_from_export(
+        '\\---  \n*name:* "Turbochargers"  \n'
+        '*description:* "Use when a customer reports boost loss."  \n\\---  \n\nCheck it.\n'
+    )
+
+    assert meta is not None
+    assert meta["name"] == "Turbochargers"
+
+
+def test_a_blank_first_line_with_hard_break_spaces_does_not_hide_the_block():
+    """An empty first paragraph exports with Google's hard-break trailing
+    spaces, not as a bare newline — and a BOM is the same invisible-junk shape.
+    Both must still land the block at the top of the stored text."""
+    for prefix in ("  \n", "\ufeff", "\ufeff  \n"):
+        repaired = indexer.repair_exported_markdown(
+            prefix + '\\---  \nname: "Turbochargers"  \n'
+            'description: "Use when a customer reports boost loss."  \n\\---  \n\nCheck it.\n'
+        )
+
+        assert repaired.startswith("---"), repr(prefix)
+        assert skill_service.declared_skill(repaired) is not None, repr(prefix)
+
+
+def test_four_dash_delimiters_leave_no_stray_dash_in_the_body():
+    """Delimiter lines are normalized to exactly `---` so the span the repair
+    rewrites and the span parse_frontmatter reads are the same span — a 4-dash
+    rule must not leak a dangling dash into the instructions the agent reads."""
+    repaired = indexer.repair_exported_markdown(
+        '\\----  \nname: "Turbochargers"  \n'
+        'description: "Use when a customer reports boost loss."  \n\\----  \n\nCheck it.\n'
+    )
+
+    meta, body = skill_service.parse_frontmatter(repaired)
+    assert meta["name"] == "Turbochargers"
+    assert body == "Check it.\n"
