@@ -8,7 +8,6 @@ import { MoreHorizontal } from "lucide-react";
 import { useBreadcrumbs } from "@/components/BreadcrumbContext";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { useAuth } from "@/hooks/useAuth";
-import SourceDocViewer from "@/components/SourceDocViewer";
 import {
   ApiError,
   deleteSource,
@@ -1398,16 +1397,6 @@ function NavigablePanel({
             );
           })}
         </div>
-      )}
-
-      {openDoc && (
-        <SourceDocViewer
-          source={source.source}
-          providerLabel={providerLabel}
-          refValue={openDoc.ref}
-          name={openDoc.name}
-          onClose={() => setOpenDoc(null)}
-        />
       )}
 
       {source.type === "slack" || source.type === "gong_calls" ? (
