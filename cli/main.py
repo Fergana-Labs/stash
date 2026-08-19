@@ -81,21 +81,23 @@ def root(
 @app.command()
 def upgrade() -> None:
     """Upgrade the stash CLI to the latest version on PyPI."""
-    import shutil
     import subprocess
 
-    if not shutil.which("uv"):
+    from stashai import self_upgrade
+
+    if self_upgrade.is_editable():
+        typer.echo("This is an editable checkout — `git pull` to update it.", err=True)
+        raise typer.Exit(1)
+    command = self_upgrade.upgrade_command()
+    if command is None:
         typer.echo(
-            "uv is not on PATH. Re-run the installer: "
-            'bash -c "$(curl -fsSL https://joinstash.ai/install)"',
+            "This install has no working upgrader (no uv, no pip). "
+            'Re-run the installer: bash -c "$(curl -fsSL https://joinstash.ai/install)"',
             err=True,
         )
         raise typer.Exit(1)
     typer.echo(f"Upgrading stashai from {__version__}…")
-    result = subprocess.run(
-        ["uv", "tool", "install", "--force", "--reinstall", "--refresh", "stashai"]
-    )
-    raise typer.Exit(result.returncode)
+    raise typer.Exit(subprocess.run(command).returncode)
 
 
 def _client(auto: bool = False) -> StashClient:
@@ -3068,6 +3070,11 @@ def agent_chat(
     """Start (or continue) a cloud agent chat and stream the turn live.
 
     Ctrl-C disconnects the stream, which stops the turn on the box."""
+    from stashai import self_upgrade
+
+    # Streams for as long as the turn runs; swapping the package under a live
+    # interpreter breaks its lazy imports (see stashai/self_upgrade.disable).
+    self_upgrade.disable()
     with _client() as c:
         try:
             agent_id = _resolve_agent_id(c, agent) if agent else None
@@ -3088,6 +3095,10 @@ def agent_run(
     agent: str = typer.Argument(..., help="Scheduled agent name or id."),
 ):
     """Run a prompt-scheduled agent now and stream the run live."""
+    from stashai import self_upgrade
+
+    # Streams for as long as the run takes; see agent_chat.
+    self_upgrade.disable()
     with _client() as c:
         try:
             agent_id = _resolve_agent_id(c, agent)
@@ -3121,6 +3132,10 @@ def agent_watch(
 ):
     """Follow a chat session live — works for turns started anywhere
     (web, Slack, a schedule, or another terminal). Exits when the turn ends."""
+    from stashai import self_upgrade
+
+    # Polls indefinitely; see agent_chat.
+    self_upgrade.disable()
     role_style = {"user": "[bold]you:[/bold] ", "assistant": "", "tool": "[dim]", "": ""}
     with _client() as c:
         seen = 0

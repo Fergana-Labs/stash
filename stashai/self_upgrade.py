@@ -22,15 +22,19 @@ the notice and nothing else.
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 import shutil
 import subprocess
 import sys
+import sysconfig
 import time
 from functools import lru_cache
 from importlib.metadata import distribution, version
 from pathlib import Path
+
+from filelock import FileLock, Timeout
 
 LATEST_VERSION_HEADER = "X-Stash-Cli-Latest"
 
@@ -42,9 +46,11 @@ _STAMP_PATH = Path.home() / ".stash" / "upgrade_attempt.json"
 # storm. A newly published release retries immediately regardless of the clock.
 _THROTTLE_SECONDS = 3600
 
-_INSTALLER = "curl -LsSf https://joinstash.ai/install.sh | sh"
+_INSTALLER = 'bash -c "$(curl -fsSL https://joinstash.ai/install)"'
 
 _enabled = True
+
+_warned_stamp_unwritable = False
 
 
 def disable() -> None:
@@ -90,40 +96,65 @@ def _parts(release: str) -> tuple[int, ...]:
 def _claim_attempt(latest: str) -> bool:
     """True when this process should attempt the upgrade now. Writing the stamp
     before spawning means a failed attempt still counts — the throttle exists to
-    bound failure, not success."""
-    stamp = _read_stamp()
-    attempted_at = stamp.get("at", 0) if stamp.get("version") == latest else 0
-    if time.time() - attempted_at < _THROTTLE_SECONDS:
-        return False
-    _STAMP_PATH.parent.mkdir(parents=True, exist_ok=True)
-    _STAMP_PATH.write_text(json.dumps({"version": latest, "at": time.time()}))
-    return True
-
-
-def _read_stamp() -> dict:
-    """The last attempt we made. A missing or unreadable file means we have
-    never attempted this release, which is the state we want to act on."""
-    if not _STAMP_PATH.is_file():
-        return {}
+    bound failure, not success. The lock keeps a burst of concurrent hook
+    processes from all claiming the same release at once."""
     try:
-        return json.loads(_STAMP_PATH.read_text())
-    except (OSError, ValueError):
-        return {}
+        _STAMP_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with FileLock(str(_STAMP_PATH) + ".lock", timeout=1):
+            stamped_version, attempted_at = _read_stamp()
+            # Only a release *newer* than the stamped one retries immediately.
+            # Merely different is not enough: a rolling deploy alternates old
+            # and new headers for minutes, and treating each flip as a fresh
+            # release would defeat the throttle for the whole window.
+            if _is_older(stamped_version, latest):
+                attempted_at = 0.0
+            if time.time() - attempted_at < _THROTTLE_SECONDS:
+                return False
+            _STAMP_PATH.write_text(json.dumps({"version": latest, "at": time.time()}))
+            return True
+    except Timeout:
+        # A sibling process holds the lock, so it is making this attempt.
+        return False
+    except OSError:
+        # This rides on every API response, so an unwritable ~/.stash
+        # (root-owned install, full disk) must not turn successful requests
+        # into crashes. Without the stamp the throttle can't engage, so the
+        # only storm-proof move is to not attempt — and say so once.
+        global _warned_stamp_unwritable
+        if not _warned_stamp_unwritable:
+            _warned_stamp_unwritable = True
+            _say(
+                f"a newer release exists but {_STAMP_PATH.parent} is not "
+                "writable, so self-upgrade is off. Fix its permissions to resume."
+            )
+        return False
+
+
+def _read_stamp() -> tuple[str, float]:
+    """The last attempt we made, as (version, at). A missing, unreadable, or
+    corrupt file reads as never-attempted — the state we want to act on."""
+    if not _STAMP_PATH.is_file():
+        return "", 0.0
+    try:
+        stamp = json.loads(_STAMP_PATH.read_text())
+        return str(stamp.get("version", "")), float(stamp.get("at", 0))
+    except (OSError, ValueError, AttributeError, TypeError):
+        return "", 0.0
 
 
 def _upgrade(current: str, latest: str) -> None:
-    if _is_editable():
+    if is_editable():
         _say(
             f"this checkout is {current}; the current release is {latest}. "
             "Editable installs are left alone — `git pull` when you want the fix."
         )
         return
 
-    command = _upgrade_command()
+    command = upgrade_command()
     if command is None:
         _say(
-            f"{current} is behind {latest}, but uv is not installed so the "
-            f"upgrade can't run. Reinstall with: {_INSTALLER}"
+            f"{current} is behind {latest}, but this install has no working "
+            f"upgrader (no uv, no pip). Reinstall with: {_INSTALLER}"
         )
         return
 
@@ -147,14 +178,36 @@ def _upgrade(current: str, latest: str) -> None:
     _say(f"upgrading {current} → {latest} in the background; this run used {current}.")
 
 
-def _upgrade_command() -> list[str] | None:
-    """How to upgrade *this* install. The kind is decided by where the running
-    interpreter lives, so a pip install under pyenv is upgraded by that pip
-    instead of by uv quietly refreshing a copy nobody runs."""
+def upgrade_command() -> list[str] | None:
+    """How to upgrade *this* install, or None when it has no working upgrader.
+    The kind is decided by where the running interpreter lives, so a pip
+    install under pyenv is upgraded by that pip instead of by uv quietly
+    refreshing a copy nobody runs. Also `stash upgrade`'s command, so the
+    manual and automatic paths cannot drift apart."""
     if _is_uv_tool():
         uv = _find_uv()
         return [uv, "tool", "install", "--quiet", "stashai@latest"] if uv else None
-    return [sys.executable, "-m", "pip", "install", "--quiet", "--upgrade", "stashai"]
+    if not _has_pip():
+        # uv venvs ship without pip; `python -m pip` there dies unseen in the
+        # detached child while the notice claims the upgrade is running.
+        return None
+    command = [sys.executable, "-m", "pip", "install", "--quiet", "--upgrade", "stashai"]
+    if _is_externally_managed():
+        # PEP 668 pythons (Debian's, the Fly Sprites we provision) refuse
+        # plain installs; these are the flags our own sprite setup uses
+        # (backend/services/sprite_service.py).
+        command += ["--user", "--break-system-packages"]
+    return command
+
+
+def _has_pip() -> bool:
+    return importlib.util.find_spec("pip") is not None
+
+
+def _is_externally_managed() -> bool:
+    """The PEP 668 marker: this python's distributor forbids installing into
+    it without an explicit override."""
+    return (Path(sysconfig.get_path("stdlib")) / "EXTERNALLY-MANAGED").is_file()
 
 
 def _is_uv_tool() -> bool:
@@ -168,7 +221,7 @@ def _is_uv_tool() -> bool:
     return (Path(sys.prefix) / "uv-receipt.toml").is_file()
 
 
-def _is_editable() -> bool:
+def is_editable() -> bool:
     """PEP 610 records how a distribution was installed; `pip install -e .`
     writes dir_info.editable."""
     raw = distribution("stashai").read_text("direct_url.json")

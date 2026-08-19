@@ -16,6 +16,15 @@ from stashai import self_upgrade
 from stashai.plugin.stash_client import StashClient as PluginClient
 
 
+def test_the_header_name_is_the_wire_literal():
+    """The backend serves this exact string (backend/cli_release.py), and the
+    CLI ships separately so the two constants cannot import each other. Every
+    other test here builds its mocks from the constant itself, so without this
+    pin, renaming it would pass the whole suite while every deployed CLI
+    silently stopped seeing the header."""
+    assert self_upgrade.LATEST_VERSION_HEADER == "X-Stash-Cli-Latest"
+
+
 @pytest.fixture
 def seen(monkeypatch) -> list[str]:
     latest: list[str] = []

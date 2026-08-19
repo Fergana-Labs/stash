@@ -824,6 +824,12 @@ def stash_assign_session(session_row_id: str, folder_id: str = "") -> str:
 
 
 def main():
+    # This server holds one interpreter open for a whole editor session;
+    # swapping the package under it would break the next lazy import hours in
+    # (see stashai/self_upgrade.disable).
+    from stashai import self_upgrade
+
+    self_upgrade.disable()
     mcp.run(transport="stdio")
 
 

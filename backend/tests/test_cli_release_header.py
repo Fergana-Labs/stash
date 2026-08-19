@@ -36,3 +36,13 @@ def test_release_is_the_published_version():
     diverge, clients chase a release that does not exist."""
     with (REPO_ROOT / "pyproject.toml").open("rb") as f:
         assert cli_release.LATEST_CLI_VERSION == tomllib.load(f)["project"]["version"]
+
+
+def test_a_prerelease_version_is_refused_at_import(tmp_path):
+    """Clients compare plain dotted numbers, so '0.1.365rc1' would read as
+    *older* than what they run and silently freeze every install on the fleet.
+    The backend must refuse to serve it rather than serve it quietly."""
+    pyproject = tmp_path / "pyproject.toml"
+    pyproject.write_text('[project]\nversion = "0.1.365rc1"\n')
+    with pytest.raises(ValueError, match="not a plain dotted release"):
+        cli_release._read_release(pyproject)
