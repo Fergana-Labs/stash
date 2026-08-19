@@ -46,7 +46,10 @@ class LocalEmbedder(BaseEmbedder):
                 "Install it with: pip install sentence-transformers"
             )
         logger.info("Loading local embedding model: %s", self.model_name)
-        self._model = SentenceTransformer(self.model_name)
+        # Pinned to CPU: torch's MPS backend is not thread-safe, and encode runs
+        # on an asyncio executor thread — on Apple Silicon it segfaults the
+        # server (EXC_BAD_ACCESS in MetalShaderLibrary::exec_unary_kernel).
+        self._model = SentenceTransformer(self.model_name, device="cpu")
 
     async def embed_batch(self, texts: list[str]) -> list[np.ndarray] | None:
         if not texts:

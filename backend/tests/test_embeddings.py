@@ -110,3 +110,19 @@ async def test_openai_embedder_clips_inputs_before_http_request():
 
     assert vectors is not None
     assert len(client.payload["input"][0]) == embedding_service.MAX_TEXT_CHARS
+
+
+@pytest.mark.asyncio
+async def test_provider_none_disables_embeddings(monkeypatch):
+    """EMBEDDING_PROVIDER=none must read as "not configured" so every gated
+    callsite (semantic search 503, reconcile skip) turns itself off — and any
+    ungated embed call must fail loud instead of silently returning vectors."""
+    monkeypatch.setenv("EMBEDDING_PROVIDER", "none")
+    await embedding_service.close()  # drop any cached provider
+
+    try:
+        assert embedding_service.is_configured() is False
+        with pytest.raises(RuntimeError, match="disabled"):
+            await embedding_service.get_embedder().embed_batch(["text"])
+    finally:
+        await embedding_service.close()

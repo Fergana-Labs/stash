@@ -31,7 +31,12 @@ def get_embedder() -> BaseEmbedder:
 
     provider = os.getenv("EMBEDDING_PROVIDER", "auto").lower()
 
-    if provider == "openai":
+    if provider == "none":
+        from .disabled import DisabledEmbedder
+
+        _embedder = DisabledEmbedder()
+
+    elif provider == "openai":
         from .openai_compat import OpenAICompatEmbedder
 
         _embedder = OpenAICompatEmbedder()
@@ -62,7 +67,8 @@ def get_embedder() -> BaseEmbedder:
 
     else:
         raise ValueError(
-            f"Unknown EMBEDDING_PROVIDER={provider!r}. Choose: openai, huggingface, local, or auto."
+            f"Unknown EMBEDDING_PROVIDER={provider!r}. "
+            "Choose: openai, huggingface, local, none, or auto."
         )
 
     logger.info("Embedding provider: %s", _embedder.name)
