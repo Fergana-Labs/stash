@@ -74,7 +74,7 @@ export default function DeveloperGate({ children }: { children: React.ReactNode 
         private memory, and your agents share one anonymized wiki distilled across all of them.
       </PageHeading>
       {active.length > 0 && (
-        <div className="mb-6 overflow-hidden rounded-2xl border border-border bg-surface">
+        <div className="mb-6 overflow-hidden rounded border border-border bg-surface">
           {active.map((w) => (
             <button
               key={w.id}
@@ -90,7 +90,7 @@ export default function DeveloperGate({ children }: { children: React.ReactNode 
       <button
         onClick={activate}
         disabled={activating}
-        className="rounded-lg bg-brand-500 px-4 py-2 text-[14px] font-medium text-white transition-colors hover:bg-brand-600 disabled:opacity-50"
+        className="rounded-sm bg-brand-500 px-4 py-2 text-[14px] font-medium text-white transition-colors hover:bg-brand-600 disabled:opacity-50"
       >
         {activating ? "Setting up…" : "Set up the Developer Platform"}
       </button>

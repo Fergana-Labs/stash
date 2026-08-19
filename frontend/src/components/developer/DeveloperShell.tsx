@@ -105,7 +105,7 @@ export default function DeveloperShell({
       <div className="mx-auto max-w-[1440px] px-6 py-8 md:px-8">
         <div className="grid grid-cols-1 gap-8 md:grid-cols-[220px_minmax(0,1fr)] lg:grid-cols-[240px_minmax(0,1fr)] lg:gap-10">
           <aside className="hidden md:block">
-            <nav className="sticky top-24 rounded-2xl border border-border bg-surface p-4">
+            <nav className="sticky top-24 rounded border border-border bg-surface p-4">
               {NAV.map((section) => (
                 <div key={section.title} className="mb-5 last:mb-0">
                   <div className="px-2 pb-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
@@ -117,7 +117,7 @@ export default function DeveloperShell({
                         key={item.href}
                         href={item.href}
                         className={cn(
-                          "block rounded-lg px-3 py-2 text-[13px] transition-colors",
+                          "block rounded-sm px-3 py-2 text-[13px] transition-colors",
                           item.match(pathname)
                             ? "bg-brand-500/10 font-medium text-brand-500"
                             : "text-dim hover:bg-raised hover:text-foreground",
@@ -133,7 +133,7 @@ export default function DeveloperShell({
           </aside>
 
           <main className="min-w-0">
-            <div className="rounded-[28px] border border-border bg-base px-6 py-8 sm:px-8 md:px-10">
+            <div className="rounded border border-border bg-base px-6 py-8 sm:px-8 md:px-10">
               {children}
             </div>
           </main>

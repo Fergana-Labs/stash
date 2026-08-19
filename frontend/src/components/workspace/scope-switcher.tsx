@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Building2, Check, ChevronDown, CircleUser, TerminalSquare } from "lucide-react";
+import { Check, ChevronDown, CircleUser, TerminalSquare } from "lucide-react";
 import { listMyWorkspaces } from "@/lib/api";
 import { getScope, setScope, useScope } from "@/lib/scope-store";
 import type { Scope, Workspace } from "@/lib/types";
@@ -83,9 +83,7 @@ export default function ScopeSwitcher() {
       >
         {scope?.view === "developer" ? (
           <TerminalSquare className="h-3.5 w-3.5 shrink-0" />
-        ) : inWorkspace ? (
-          <Building2 className="h-3.5 w-3.5 shrink-0" />
-        ) : (
+        ) : inWorkspace ? null : (
           <CircleUser className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
         )}
         <span className="max-w-[160px] truncate">
@@ -149,7 +147,7 @@ function WorkspaceScopes({
       {workspaces.map((w) => (
         <ScopeItem
           key={w.id}
-          icon={<Building2 className="h-4 w-4 text-brand-500" />}
+          icon={null}
           label={w.name}
           detail={w.domain ?? "invite-only workspace"}
           selected={scope?.scope_user_id === w.scope_user_id && scope?.view !== "developer"}

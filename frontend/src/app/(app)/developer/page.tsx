@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 
 import DeveloperGate from "@/components/developer/DeveloperGate";
+import OrgTable from "@/components/developer/OrgTable";
 import { Code, PageHeading, SectionHeading } from "@/components/developer/DocsPrimitives";
 import { listOrgs } from "@/lib/api";
 import type { Org, Workspace } from "@/lib/types";
@@ -85,7 +86,7 @@ function Overview() {
             <Link
               key={route.href}
               href={route.href}
-              className="group flex items-center gap-4 rounded-2xl border border-border bg-surface px-5 py-4 transition-colors hover:border-brand-300 hover:bg-raised"
+              className="group flex items-center gap-4 rounded border border-border bg-surface px-5 py-4 transition-colors hover:border-brand-300 hover:bg-raised"
             >
               <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-500/10 font-mono text-[12px] text-brand-500">
                 {i + 1}
@@ -116,21 +117,8 @@ function Overview() {
             .
           </p>
         ) : (
-          <div className="mt-4 overflow-hidden rounded-2xl border border-border bg-surface">
-            {orgs.slice(0, 5).map((org) => (
-              <div
-                key={org.id}
-                className="flex items-center gap-3 border-b border-border px-5 py-3.5 text-[14px] last:border-b-0"
-              >
-                <span className="font-medium text-foreground">{org.name}</span>
-                <code className="font-mono text-[12px] text-muted-foreground">
-                  {org.external_id}
-                </code>
-                <span className="ml-auto font-mono text-[12px] text-muted-foreground">
-                  {org.session_count} session{org.session_count === 1 ? "" : "s"}
-                </span>
-              </div>
-            ))}
+          <div className="mt-4">
+            <OrgTable orgs={orgs.slice(0, 5)} onChanged={refresh} />
           </div>
         )}
       </section>
@@ -140,7 +128,7 @@ function Overview() {
 
 function Stat({ label, value }: { label: string; value: number }) {
   return (
-    <div className="rounded-2xl border border-border bg-surface px-5 py-4">
+    <div className="rounded border border-border bg-surface px-5 py-4">
       <div className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
         {label}
       </div>

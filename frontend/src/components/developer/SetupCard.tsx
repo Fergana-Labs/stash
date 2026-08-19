@@ -47,13 +47,13 @@ export default function SetupCard() {
   return (
     <>
       {minted ? (
-        <div className="flex items-center gap-3 rounded-2xl border border-border bg-surface px-5 py-4">
+        <div className="flex items-center gap-3 rounded border border-border bg-surface px-5 py-4">
           <code className="min-w-0 flex-1 truncate font-mono text-[13px] text-foreground">
             {minted}
           </code>
           <button
             onClick={copy}
-            className="shrink-0 rounded-lg border border-border px-3 py-1.5 text-[13px] text-dim transition-colors hover:bg-raised hover:text-foreground"
+            className="shrink-0 rounded-sm border border-border px-3 py-1.5 text-[13px] text-dim transition-colors hover:bg-raised hover:text-foreground"
           >
             {copied ? "Copied" : "Copy"}
           </button>
@@ -62,7 +62,7 @@ export default function SetupCard() {
         <button
           onClick={mint}
           disabled={minting}
-          className="rounded-lg bg-brand-500 px-4 py-2 text-[14px] font-medium text-white transition-colors hover:bg-brand-600 disabled:opacity-50"
+          className="rounded-sm bg-brand-500 px-4 py-2 text-[14px] font-medium text-white transition-colors hover:bg-brand-600 disabled:opacity-50"
         >
           {minting ? "Minting…" : "Mint an API key"}
         </button>

@@ -27,7 +27,7 @@ export function SectionHeading({ children }: { children: React.ReactNode }) {
 
 export function Code({ children }: { children: React.ReactNode }) {
   return (
-    <code className="rounded-md bg-surface px-1.5 py-0.5 font-mono text-[13px] text-brand-700">
+    <code className="rounded-sm bg-surface px-1.5 py-0.5 font-mono text-[13px] text-brand-700">
       {children}
     </code>
   );
@@ -35,7 +35,7 @@ export function Code({ children }: { children: React.ReactNode }) {
 
 export function CodeBlock({ children }: { children: string }) {
   return (
-    <pre className="overflow-x-auto rounded-2xl border border-border bg-surface p-5 font-mono text-[12.5px] leading-6 text-dim">
+    <pre className="overflow-x-auto rounded border border-border bg-surface p-5 font-mono text-[12.5px] leading-6 text-dim">
       <code>{children}</code>
     </pre>
   );

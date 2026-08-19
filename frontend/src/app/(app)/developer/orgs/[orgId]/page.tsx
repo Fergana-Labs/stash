@@ -67,7 +67,7 @@ function OrgDetail() {
 
       <section className="mb-12">
         <SectionHeading>Shared memory</SectionHeading>
-        <div className="mt-4 flex items-center gap-4 rounded-2xl border border-border bg-surface px-5 py-4">
+        <div className="mt-4 flex items-center gap-4 rounded border border-border bg-surface px-5 py-4">
           <div className="min-w-0 flex-1">
             <div className="text-[15px] text-foreground">
               {org.share_wiki
@@ -103,7 +103,7 @@ function OrgDetail() {
             Nothing yet. The curator writes here on its next run over this org&apos;s sessions.
           </Empty>
         ) : (
-          <div className="mt-4 overflow-hidden rounded-2xl border border-border bg-surface">
+          <div className="mt-4 overflow-hidden rounded border border-border bg-surface">
             {notepad.map((page) => (
               <Link
                 key={page.id}
@@ -127,7 +127,7 @@ function OrgDetail() {
         {sessions.length === 0 ? (
           <Empty>No sessions yet for this org.</Empty>
         ) : (
-          <div className="mt-4 overflow-hidden rounded-2xl border border-border bg-surface">
+          <div className="mt-4 overflow-hidden rounded border border-border bg-surface">
             {sessions.map((s) => (
               <Link
                 key={s.session_id}
@@ -160,7 +160,7 @@ function OrgDetail() {
             <Code>org_id</Code>.
           </Empty>
         ) : (
-          <div className="mt-4 overflow-hidden rounded-2xl border border-border bg-surface">
+          <div className="mt-4 overflow-hidden rounded border border-border bg-surface">
             {files.map((f) => (
               <Link
                 key={f.id}
@@ -184,7 +184,7 @@ function OrgDetail() {
 
 function Empty({ children }: { children: React.ReactNode }) {
   return (
-    <p className="mt-4 rounded-2xl border border-dashed border-border px-6 py-8 text-center text-[14px] leading-6 text-muted-foreground">
+    <p className="mt-4 rounded border border-dashed border-border px-6 py-8 text-center text-[14px] leading-6 text-muted-foreground">
       {children}
     </p>
   );

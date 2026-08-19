@@ -37,7 +37,7 @@ export default function WikiToggle({ org, onChanged }: { org: Org; onChanged: ()
         disabled={saving}
         title="Whether this org's sessions feed the shared anonymized wiki"
         className={cn(
-          "rounded-lg px-3 py-1.5 text-[13px] transition-colors disabled:opacity-50",
+          "rounded-sm px-3 py-1.5 text-[13px] transition-colors disabled:opacity-50",
           org.share_wiki
             ? "bg-brand-500/10 font-medium text-brand-500"
             : "border border-border text-muted-foreground hover:bg-raised",

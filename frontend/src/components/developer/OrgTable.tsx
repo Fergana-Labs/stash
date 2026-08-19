@@ -10,14 +10,14 @@ import type { Org } from "@/lib/types";
 export default function OrgTable({ orgs, onChanged }: { orgs: Org[]; onChanged: () => void }) {
   if (orgs.length === 0) {
     return (
-      <p className="rounded-2xl border border-dashed border-border px-6 py-10 text-center text-[15px] leading-7 text-muted-foreground">
+      <p className="rounded border border-dashed border-border px-6 py-10 text-center text-[15px] leading-7 text-muted-foreground">
         No orgs yet. Orgs appear automatically the first time your backend uploads a session
         with a new <Code>org_id</Code>.
       </p>
     );
   }
   return (
-    <div className="overflow-hidden rounded-2xl border border-border bg-surface">
+    <div className="overflow-hidden rounded border border-border bg-surface">
       {orgs.map((org) => (
         <Link
           key={org.id}
