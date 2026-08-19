@@ -5,7 +5,6 @@ import Link from "next/link";
 
 import DeveloperGate from "@/components/developer/DeveloperGate";
 import {
-  Code,
   CodeBlock,
   PageHeading,
   SectionHeading,
@@ -54,7 +53,11 @@ function Curator() {
       </PageHeading>
 
       <section className="mb-12 grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <Fact label="Next run" value={formatWhen(data.next_run_at)} />
+        <Fact
+          label="Next run"
+          value={formatWhen(data.next_run_at)}
+          detail={describeSchedule(data.curator.schedule_cron)}
+        />
         <Fact label="Last run" value={formatWhen(data.curator.last_run_at)} />
         <Fact
           label="Reading since"
@@ -102,8 +105,7 @@ function Curator() {
         </div>
         <p className="mt-2 text-[13.5px] leading-6 text-muted-foreground">
           Rendered from live state, so this is exactly what tonight&apos;s run sends — including
-          the org list above and each org&apos;s wiki setting. Runs on{" "}
-          <Code>{data.curator.schedule_cron}</Code> (UTC).
+          the org list above and each org&apos;s wiki setting.
         </p>
         {showPrompt && (
           <div className="mt-4">
@@ -223,6 +225,16 @@ function Run({ run }: { run: CuratorRun }) {
       {run.error && <p className="mt-1.5 text-[13px] leading-5 text-error">{run.error}</p>}
     </div>
   );
+}
+
+// The curator's cron is generated as a staggered nightly slot ("M H * * *") so
+// every workspace runs at its own minute. Say that in words — a crontab string
+// is not an answer to "when does this run".
+function describeSchedule(cron: string): string {
+  const nightly = /^(\d{1,2}) (\d{1,2}) \* \* \*$/.exec(cron.trim());
+  if (!nightly) return `Runs on ${cron} (UTC)`;
+  const [, minute, hour] = nightly;
+  return `Every night at ${hour.padStart(2, "0")}:${minute.padStart(2, "0")} UTC`;
 }
 
 function formatWhen(iso: string | null): string {

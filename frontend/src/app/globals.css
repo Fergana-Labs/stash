@@ -195,11 +195,11 @@
  * Deliberately light-only: the docs have no dark mode, and this block sits below
  * `[data-theme="dark"]` on the tree, so it wins in either theme. */
 [data-surface="developer"] {
-  --bg-base: #F7F4EE;
-  --bg-surface: #F1EDE5;
-  --bg-raised: #EBE6DC;
-  --border-color: #E3DED4;
-  --border-subtle-color: #EDE9E1;
+  --bg-base: #F8F6F1;
+  --bg-surface: #F4F2EC;
+  --bg-raised: #EEEBE3;
+  --border-color: #E9E5DC;
+  --border-subtle-color: #F1EEE7;
   --text-primary: #16130F;
   --text-dim: #453F37;
   --text-muted: #7C7469;
