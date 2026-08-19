@@ -60,8 +60,8 @@ export default function SourceSkillClient({ sourceRef }: { sourceRef: string }) 
         <div className="mt-3 flex items-center gap-2 text-[11.5px] text-muted-foreground">
           <span className="rounded border border-border px-1.5 py-px font-medium">Drive</span>
           <span>
-            Read from <span className="text-foreground">{skill.source_name}</span>. Edit it in
-            Google Drive — changes sync back here.
+            Read from <span className="text-foreground">{skill.source_name}</span>. You can make
+            edits in Google Drive and they&apos;ll sync back here automatically.
           </span>
           <ResyncSourceButton sourceId={skill.source_id} onRefresh={load} />
         </div>
