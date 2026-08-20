@@ -388,18 +388,8 @@ async def build_scheduled_turn(agent: dict, run_stamp: str) -> tuple[str, str]:
             workspace = await tenant_service.workspace_for_scope(user_id)
             if workspace is None or workspace["external_wiki_folder_id"] is None:
                 raise ValueError("external curator on a scope with no active developer platform")
-            tenants = await tenant_service.list_tenants(workspace["id"])
-            return session_id, prompts.render_external_curator_prompt(
-                str(workspace["external_wiki_folder_id"]),
-                [
-                    {
-                        "name": tenant["name"],
-                        "notepad_folder_id": str(tenant["notepad_folder_id"]),
-                        "share_wiki": tenant["share_wiki"],
-                    }
-                    for tenant in tenants
-                ],
-                since,
+            return session_id, await tenant_service.external_curator_prompt(
+                workspace, agent.get("curated_through")
             )
         memory = await files_tree_service.get_or_create_memory_folder(user_id, user_id)
         return session_id, prompts.render_curator_prompt(memory["id"], since)

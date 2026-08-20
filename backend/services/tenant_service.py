@@ -25,7 +25,9 @@ from . import files_tree_service, source_service, workspace_service
 _TENANT_COLS_PLAIN = (
     "id, workspace_id, external_id, name, share_wiki, notepad_folder_id, created_at"
 )
-_TENANT_COLS = ", ".join(f"o.{col}" for col in _TENANT_COLS_PLAIN.split(", "))
+_TENANT_COLS = (
+    "t.id, t.workspace_id, t.external_id, t.name, t.share_wiki, t.notepad_folder_id, t.created_at"
+)
 
 
 async def activate(workspace_id: UUID, created_by: UUID) -> dict:
@@ -84,7 +86,7 @@ async def get_or_create_tenant(workspace: dict, external_id: str, name: str | No
         raise ValueError("developer platform is not active on this workspace — activate it first")
     pool = get_pool()
     row = await pool.fetchrow(
-        f"SELECT {_TENANT_COLS} FROM tenants o WHERE o.workspace_id = $1 AND o.external_id = $2",
+        f"SELECT {_TENANT_COLS} FROM tenants t WHERE t.workspace_id = $1 AND t.external_id = $2",
         workspace["id"],
         external_id,
     )
@@ -97,7 +99,7 @@ async def get_or_create_tenant(workspace: dict, external_id: str, name: str | No
                 f"tenant:{workspace['id']}:{external_id}",
             )
             row = await conn.fetchrow(
-                f"SELECT {_TENANT_COLS} FROM tenants o WHERE o.workspace_id = $1 AND o.external_id = $2",
+                f"SELECT {_TENANT_COLS} FROM tenants t WHERE t.workspace_id = $1 AND t.external_id = $2",
                 workspace["id"],
                 external_id,
             )
@@ -133,7 +135,7 @@ async def find_tenant(workspace_id: UUID, external_id: str) -> dict | None:
     for that customer."""
     pool = get_pool()
     row = await pool.fetchrow(
-        f"SELECT {_TENANT_COLS} FROM tenants o WHERE o.workspace_id = $1 AND o.external_id = $2",
+        f"SELECT {_TENANT_COLS} FROM tenants t WHERE t.workspace_id = $1 AND t.external_id = $2",
         workspace_id,
         external_id,
     )
@@ -147,9 +149,9 @@ async def resolve_tenant_for_scope(owner_user_id: UUID, external_id: str) -> dic
     them, before reading by tenant."""
     pool = get_pool()
     row = await pool.fetchrow(
-        f"SELECT {_TENANT_COLS} FROM tenants o "
-        "JOIN workspaces w ON w.id = o.workspace_id "
-        "WHERE w.scope_user_id = $1 AND o.external_id = $2",
+        f"SELECT {_TENANT_COLS} FROM tenants t "
+        "JOIN workspaces w ON w.id = t.workspace_id "
+        "WHERE w.scope_user_id = $1 AND t.external_id = $2",
         owner_user_id,
         external_id,
     )
@@ -163,13 +165,63 @@ async def list_tenants(workspace_id: UUID) -> list[dict]:
     rows = await pool.fetch(
         f"SELECT {_TENANT_COLS}, "
         "       (SELECT count(*) FROM sessions s "
-        "        WHERE s.tenant_id = o.id AND s.deleted_at IS NULL) AS session_count, "
+        "        WHERE s.tenant_id = t.id AND s.deleted_at IS NULL) AS session_count, "
         "       (SELECT max(s.started_at) FROM sessions s "
-        "        WHERE s.tenant_id = o.id AND s.deleted_at IS NULL) AS last_session_at "
-        "FROM tenants o WHERE o.workspace_id = $1 ORDER BY o.created_at",
+        "        WHERE s.tenant_id = t.id AND s.deleted_at IS NULL) AS last_session_at "
+        "FROM tenants t WHERE t.workspace_id = $1 ORDER BY t.created_at",
         workspace_id,
     )
     return [dict(r) for r in rows]
+
+
+async def tenants_with_activity_since(workspace_id: UUID, since) -> list[dict]:
+    """The tenants a curator run can actually write for: those with events after
+    the watermark.
+
+    The prompt names every tenant it lists, so listing all of them makes the
+    prompt grow with the size of the customer base rather than with the work in
+    front of it. A tenant that said nothing since the last run cannot have
+    anything curated for it, so naming it costs tokens and buys nothing — and at
+    a few thousand tenants it stops the run working at all.
+    """
+    pool = get_pool()
+    rows = await pool.fetch(
+        f"SELECT {_TENANT_COLS} FROM tenants t "
+        "WHERE t.workspace_id = $1 AND EXISTS ("
+        "  SELECT 1 FROM sessions s "
+        "  JOIN history_events he ON he.owner_user_id = s.owner_user_id "
+        "    AND he.session_id = s.session_id "
+        "  WHERE s.tenant_id = t.id AND s.deleted_at IS NULL "
+        "    AND ($2::timestamptz IS NULL OR he.created_at > $2)"
+        ") ORDER BY t.created_at",
+        workspace_id,
+        since,
+    )
+    return [dict(r) for r in rows]
+
+
+async def external_curator_prompt(workspace: dict, since) -> str:
+    """The prompt the external curator will send for this workspace.
+
+    One definition, used by the run and by the console that shows it — the
+    console's whole claim is that what it displays is what the run sends, which
+    only holds if they build it the same way.
+    """
+    from . import prompts
+
+    tenants = await tenants_with_activity_since(workspace["id"], since)
+    return prompts.render_external_curator_prompt(
+        str(workspace["external_wiki_folder_id"]),
+        [
+            {
+                "name": tenant["name"],
+                "notepad_folder_id": str(tenant["notepad_folder_id"]),
+                "share_wiki": tenant["share_wiki"],
+            }
+            for tenant in tenants
+        ],
+        since.isoformat() if since else None,
+    )
 
 
 async def workspace_stats(workspace: dict) -> dict:
@@ -185,8 +237,8 @@ async def workspace_stats(workspace: dict) -> dict:
         workspace["external_wiki_folder_id"],
     )
     session_count = await pool.fetchval(
-        "SELECT count(*) FROM sessions s JOIN tenants o ON o.id = s.tenant_id "
-        "WHERE o.workspace_id = $1 AND s.deleted_at IS NULL",
+        "SELECT count(*) FROM sessions s JOIN tenants t ON t.id = s.tenant_id "
+        "WHERE t.workspace_id = $1 AND s.deleted_at IS NULL",
         workspace["id"],
     )
     return {"wiki_page_count": wiki_page_count, "tenant_session_count": session_count}
@@ -194,7 +246,7 @@ async def workspace_stats(workspace: dict) -> dict:
 
 async def get_tenant(tenant_id: UUID) -> dict | None:
     pool = get_pool()
-    row = await pool.fetchrow(f"SELECT {_TENANT_COLS} FROM tenants o WHERE o.id = $1", tenant_id)
+    row = await pool.fetchrow(f"SELECT {_TENANT_COLS} FROM tenants t WHERE t.id = $1", tenant_id)
     return dict(row) if row else None
 
 

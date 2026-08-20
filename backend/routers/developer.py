@@ -14,7 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from ..auth import API_KEY_ACCESS_LEVELS, create_api_key, get_current_user, get_scope
-from ..services import agent_service, permission_service, prompts, tenant_service, workspace_service
+from ..services import agent_service, permission_service, tenant_service, workspace_service
 from .curator_log import curator_runs
 
 router = APIRouter(prefix="/api/v1/me/developer", tags=["developer"])
@@ -107,20 +107,12 @@ async def get_curator(
     """
     workspace = await _require_active_workspace(scope_user_id)
     curator = await agent_service.get_or_create_curator(scope_user_id, wiki="external")
+    # Every tenant, for the overview columns; the prompt names only those with
+    # material since the watermark, which is all a run can write for.
     tenants = await tenant_service.list_tenants(workspace["id"])
     since = curator["curated_through"]
-    prompt = prompts.render_external_curator_prompt(
-        str(workspace["external_wiki_folder_id"]),
-        [
-            {
-                "name": tenant["name"],
-                "notepad_folder_id": str(tenant["notepad_folder_id"]),
-                "share_wiki": tenant["share_wiki"],
-            }
-            for tenant in tenants
-        ],
-        since.isoformat() if since else None,
-    )
+    prompt = await tenant_service.external_curator_prompt(workspace, since)
+
     return {
         "curator": curator,
         "next_run_at": agent_service.next_run_at(curator),

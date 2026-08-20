@@ -120,8 +120,10 @@ function Curator() {
           </button>
         </div>
         <p className="mt-2 text-[13.5px] leading-6 text-muted-foreground">
-          Rendered from live state, so this is exactly what tonight&apos;s run sends — including
-          the tenant list above and each tenant&apos;s wiki setting.
+          Rendered from live state, so this is exactly what tonight&apos;s run sends. It names
+          only the tenants with something new since the watermark — a tenant that has said
+          nothing cannot have anything curated for it, and naming every tenant would grow the
+          prompt with your customer base rather than with the work in front of it.
         </p>
         {showPrompt && (
           <div className="mt-4">
