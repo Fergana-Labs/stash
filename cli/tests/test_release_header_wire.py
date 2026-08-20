@@ -1,0 +1,68 @@
+"""Both HTTP clients must read the release header off every response.
+
+The warning is worthless if nothing feeds it. The CLI client covers
+`stash <command>`; the plugin client covers hook traffic, which for an active
+user is thousands of requests a day.
+"""
+
+from __future__ import annotations
+
+import httpx
+import pytest
+
+from cli.client import StashClient
+from stashai import release
+from stashai.plugin.stash_client import StashClient as PluginClient
+
+
+def test_the_header_name_is_the_wire_literal():
+    """The backend serves this exact string (backend/cli_release.py), and the
+    CLI ships separately, so the two constants cannot import each other. Every
+    other test here builds its mocks from the constant itself, so without this
+    pin, renaming it would pass the whole suite while every deployed CLI
+    silently stopped seeing the header."""
+    assert release.LATEST_VERSION_HEADER == "X-Stash-Cli-Latest"
+
+
+@pytest.fixture
+def seen(monkeypatch) -> list[str]:
+    latest: list[str] = []
+    monkeypatch.setattr(release, "note_latest", latest.append)
+    return latest
+
+
+def _transport(headers: dict[str, str]) -> httpx.MockTransport:
+    return httpx.MockTransport(lambda request: httpx.Response(200, json={}, headers=headers))
+
+
+def test_cli_client_reads_the_header(seen):
+    client = StashClient("https://example.test", api_key="k")
+    client._http = httpx.Client(
+        base_url="https://example.test",
+        transport=_transport({release.LATEST_VERSION_HEADER: "0.1.365"}),
+    )
+
+    client._get("/api/v1/me/files")
+
+    assert seen == ["0.1.365"]
+
+
+def test_plugin_client_reads_the_header(seen):
+    client = PluginClient("https://example.test", api_key="k")
+    client._http = httpx.Client(
+        base_url="https://example.test",
+        transport=_transport({release.LATEST_VERSION_HEADER: "0.1.365"}),
+    )
+
+    client._get("/api/v1/me/whoami")
+
+    assert seen == ["0.1.365"]
+
+
+def test_a_backend_without_the_header_passes_an_empty_string(seen):
+    client = StashClient("https://example.test", api_key="k")
+    client._http = httpx.Client(base_url="https://example.test", transport=_transport({}))
+
+    client._get("/api/v1/me/files")
+
+    assert seen == [""]

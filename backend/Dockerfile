@@ -38,6 +38,8 @@ COPY docs/skills/ ./docs/skills/
 COPY stashvfs/ ./stashvfs/
 COPY backend/entrypoint.sh ./entrypoint.sh
 COPY alembic.ini ./alembic.ini
+# The CLI release number clients are told about (backend/cli_release.py).
+COPY pyproject.toml ./pyproject.toml
 
 RUN mkdir -p /app/.secrets && \
     chmod 700 /app/.secrets && \
