@@ -502,14 +502,9 @@ class StashVfsModel:
         sessions_path = "/sessions"
         self._add_dir(sessions_path)
         self._add_jsonl_file(f"{sessions_path}/_index.jsonl", sessions)
-        ambiguous = _ambiguous_basenames(
-            [_safe_name(session.get("title") or str(session["session_id"])) for session in sessions]
-        )
-        for session in sessions:
+        for session, name in zip(sessions, session_dir_names(sessions)):
             session_id = str(session["session_id"])
-            row_id = str(session.get("id") or session_id)
             updated_at = session.get("updated_at")
-            name = _dir_display_name(session.get("title") or session_id, row_id, ambiguous)
             session_path = self._add_dir_child(sessions_path, name, updated_at=updated_at)
             self._add_json_file(f"{session_path}/metadata.json", session, updated_at=updated_at)
             events_path = f"{session_path}/events.json"
@@ -884,7 +879,40 @@ def _inode_for_path(path: str) -> int:
     return int.from_bytes(digest[:8], "big") & 0x7FFFFFFFFFFFFFFF
 
 
+def safe_name(value: str) -> str:
+    """The VFS spelling of a display name — what `ls` shows and paths use.
+
+    Public so other surfaces (e.g. search results) can name objects exactly
+    as the VFS does; a name that differs only in shell-hostile punctuation
+    sends agents down unfollowable paths."""
+    return _safe_name(value)
+
+
+def session_dir_names(sessions: list[dict]) -> list[str]:
+    """The `/sessions/<name>` directory name of each session, in order.
+
+    This is the name an agent reads out of `ls /sessions`, so it is the name
+    it hands back to `stash share`/`rm`/`restore` — including the `--<id>`
+    suffix that separates two sessions sharing a title. Resolution and the
+    filesystem both spell it here rather than each deriving it, so the name
+    shown is always a name that resolves."""
+    ambiguous = _ambiguous_basenames([_safe_name(_session_title(s)) for s in sessions])
+    return [_dir_display_name(_session_title(s), _session_row_id(s), ambiguous) for s in sessions]
+
+
+def _session_title(session: dict) -> str:
+    return session.get("title") or str(session["session_id"])
+
+
+def _session_row_id(session: dict) -> str:
+    return str(session.get("id") or session["session_id"])
+
+
 def _safe_name(value: str) -> str:
+    # Quotes, backticks, and `$` make paths hostile to shell-quote — agents
+    # drive the VFS through `stash vfs "<script>"`, where names pass two
+    # layers of shell parsing.
+    value = re.sub(r"['\"`$]", "", value)
     value = re.sub(r"[\x00/\\:]", "-", value.strip())
     value = re.sub(r"\s+", " ", value)
     value = value.strip(". ")

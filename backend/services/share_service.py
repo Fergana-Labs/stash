@@ -384,10 +384,8 @@ async def list_shared_with_user(user_id: UUID) -> list[dict]:
                  (SELECT name FROM pages           WHERE id = s.object_id AND s.object_type = 'page'),
                  (SELECT name FROM files           WHERE id = s.object_id AND s.object_type = 'file'),
                  (SELECT name FROM tables          WHERE id = s.object_id AND s.object_type = 'table'),
-                 (SELECT COALESCE(st.title, sess.session_id)
+                 (SELECT COALESCE(sess.title, sess.session_id)
                     FROM sessions sess
-                    LEFT JOIN session_titles st
-                      ON st.owner_user_id = sess.owner_user_id AND st.session_id = sess.session_id
                     WHERE sess.id = s.object_id AND s.object_type = 'session')
                ) AS name
         FROM shares s
@@ -424,7 +422,7 @@ async def list_shared_session_folder_sessions(folder_id: UUID, user_id: UUID) ->
     rows = await get_pool().fetch(
         "SELECT s.id, s.owner_user_id, "
         "       COALESCE(ow.display_name, ow.name) AS owner_name, s.session_id, s.agent_name, "
-        "       st.title, s.started_at, sf.name AS session_folder_name, "
+        "       s.title, s.started_at, sf.name AS session_folder_name, "
         "       (ARRAY_AGG(NULLIF(u.display_name, '') ORDER BY he.created_at) "
         "        FILTER (WHERE NULLIF(u.display_name, '') IS NOT NULL))[1] AS user_name, "
         "       COUNT(he.id)::int AS event_count, "
@@ -432,14 +430,12 @@ async def list_shared_session_folder_sessions(folder_id: UUID, user_id: UUID) ->
         "FROM sessions s "
         "LEFT JOIN users ow ON ow.id = s.owner_user_id "
         "LEFT JOIN session_folders sf ON sf.id = s.session_folder_id "
-        "LEFT JOIN session_titles st "
-        "  ON st.owner_user_id = s.owner_user_id AND st.session_id = s.session_id "
         "LEFT JOIN history_events he "
         "  ON he.owner_user_id = s.owner_user_id AND he.session_id = s.session_id "
         "LEFT JOIN users u ON u.id = he.created_by "
         "WHERE s.session_folder_id = $1 AND s.deleted_at IS NULL "
         "GROUP BY s.id, s.owner_user_id, ow.display_name, ow.name, s.session_id, "
-        "         s.agent_name, st.title, s.started_at, sf.name "
+        "         s.agent_name, s.title, s.started_at, sf.name "
         "ORDER BY last_event_at DESC",
         folder_id,
     )

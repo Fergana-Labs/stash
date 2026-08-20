@@ -106,8 +106,9 @@ async def _generate_for_session(owner_user_id: UUID, session_id: str) -> str:
     source_hash = session_title_service.source_hash(stats)
     pool = get_pool()
     cached = await pool.fetchrow(
-        "SELECT source_hash, user_set FROM session_titles "
-        "WHERE owner_user_id = $1 AND session_id = $2",
+        "SELECT title_source_hash AS source_hash, title_user_set AS user_set "
+        "FROM sessions "
+        "WHERE owner_user_id = $1 AND session_id = $2 AND title IS NOT NULL",
         owner_user_id,
         session_id,
     )
@@ -138,12 +139,11 @@ async def _generate_for_session(owner_user_id: UUID, session_id: str) -> str:
 
     await pool.execute(
         """
-        INSERT INTO session_titles (owner_user_id, session_id, title, source_hash)
-        VALUES ($1, $2, $3, $4)
-        ON CONFLICT (owner_user_id, session_id) DO UPDATE SET
-          title = EXCLUDED.title,
-          source_hash = EXCLUDED.source_hash,
-          updated_at = now()
+        UPDATE sessions SET
+          title = $3,
+          title_source_hash = $4,
+          title_updated_at = now()
+        WHERE owner_user_id = $1 AND session_id = $2
         """,
         owner_user_id,
         session_id,
@@ -168,11 +168,9 @@ async def _reconcile_missing() -> int:
         SELECT h.owner_user_id, h.session_id
         FROM history_events h
         JOIN sessions s ON s.owner_user_id = h.owner_user_id AND s.session_id = h.session_id
-        LEFT JOIN session_titles st
-          ON st.owner_user_id = h.owner_user_id AND st.session_id = h.session_id
         WHERE h.owner_user_id IS NOT NULL
           AND h.session_id IS NOT NULL
-          AND st.session_id IS NULL
+          AND s.title IS NULL
           AND s.deleted_at IS NULL
           AND NULLIF(BTRIM(h.content), '') IS NOT NULL
         GROUP BY h.owner_user_id, h.session_id

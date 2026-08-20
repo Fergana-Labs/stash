@@ -618,8 +618,11 @@ async def test_sidebar_etag_changes_after_generated_title(
 
     await pool.execute(
         """
-        INSERT INTO session_titles (owner_user_id, session_id, title, source_hash)
-        VALUES ($1, $2, $3, $4)
+        UPDATE sessions SET
+          title = $3,
+          title_source_hash = $4,
+          title_updated_at = now()
+        WHERE owner_user_id = $1 AND session_id = $2
         """,
         UUID(scope),
         "sess-generated-title",

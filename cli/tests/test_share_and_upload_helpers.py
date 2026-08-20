@@ -13,6 +13,89 @@ def test_upload_text_file_detection() -> None:
     assert not _is_upload_text_file(Path("diagram.png"))
 
 
+def _resolver_client(resolved, calls=None):
+    """A client whose resolve_session answers with a canned payload.
+
+    Matching a handle to a session is the server's job now, so what the CLI
+    owes is narrower: ask once, and use the field the caller needs.
+    """
+
+    class FakeClient:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def resolve_session(self, ref, trashed=False):
+            if calls is not None:
+                calls.append((ref, trashed))
+            return resolved
+
+    return FakeClient
+
+
+def test_resolve_session_takes_the_id_the_caller_needs(monkeypatch) -> None:
+    # share follows the transcript stream id; rm/restore/mv/shares take the
+    # row id. One lookup answers both.
+    monkeypatch.setattr(
+        main,
+        "_client",
+        _resolver_client(
+            {"matched": True, "session_id": "sess-1", "id": "row-1", "name": "Ship the fast path"}
+        ),
+    )
+
+    assert main._resolve_session("Ship the fast path") == "sess-1"
+    assert main._resolve_session("Ship the fast path", field="id") == "row-1"
+
+
+def test_resolve_session_passes_unmatched_handles_through(monkeypatch) -> None:
+    # A handle naming no title is already an id: the server echoes it back, so
+    # the CLI needs no branch and the endpoint that uses it rejects it if wrong.
+    monkeypatch.setattr(
+        main,
+        "_client",
+        _resolver_client(
+            {"matched": False, "session_id": "sess-unknown", "id": "sess-unknown", "name": None}
+        ),
+    )
+
+    assert main._resolve_session("sess-unknown") == "sess-unknown"
+
+
+def test_restore_asks_the_trash_and_other_commands_do_not(monkeypatch) -> None:
+    # A trashed session is out of the scope listing, so restore has to say so;
+    # every other command must not, or it would resolve against the wrong set.
+    calls: list = []
+    monkeypatch.setattr(
+        main,
+        "_client",
+        _resolver_client({"matched": True, "session_id": "sess-9", "id": "row-9"}, calls),
+    )
+
+    assert main._resolve_session_refs([("session", "Abandoned refactor")], trashed=True) == [
+        ("session", "row-9")
+    ]
+    assert calls == [("Abandoned refactor", True)]
+
+    calls.clear()
+    assert main._resolve_session_refs([("session", "Live one")]) == [("session", "row-9")]
+    assert calls == [("Live one", False)]
+
+
+def test_non_session_refs_are_never_resolved(monkeypatch) -> None:
+    calls: list = []
+    monkeypatch.setattr(
+        main,
+        "_client",
+        _resolver_client({"matched": True, "session_id": "sess-9", "id": "row-9"}, calls),
+    )
+
+    assert main._resolve_session_refs([("page", "Some page")]) == [("page", "Some page")]
+    assert calls == []
+
+
 def test_parse_file_ref_accepts_id_and_embed_link() -> None:
     # Pages embed attachments as /api/v1/me/files/<id>/download; agents can
     # paste that link straight into `stash files download`.

@@ -16,7 +16,7 @@ A Skill is **not** a wrapper around every single file you happen to share. One-i
 | Upload a folder / project into your Stash | `stash upload <path> --json` | the returned `app_url` |
 | Publish a curated bundle as one shareable thing | `stash upload <path> --skill "<title>" --json` | the returned `url` |
 | Create a fresh skill folder | `stash skills create "<name>" --public --json` | the returned folder |
-| Share a coding session (transcript + files) | `stash share <session_id>` | the returned `url` |
+| Share a coding session (transcript + files) | `stash share` (this one), or `--session "<title>"` | the returned `url` |
 | Use a public Skill in this agent | `stash skills install <slug>` | the installed `~/.claude/skills` path |
 | Sync your Stash skills with local agent skills | `stash skills sync` | runs automatically at session start; two-way |
 

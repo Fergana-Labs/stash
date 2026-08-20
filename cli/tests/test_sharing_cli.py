@@ -16,6 +16,12 @@ class _FakeClient:
     def __exit__(self, *_args):
         return None
 
+    # Session handles resolve server-side; no titled sessions here, so every
+    # handle passes through as the id it already is.
+    def resolve_session(self, ref, trashed=False):
+        self._calls.append(("resolve", ref, trashed))
+        return {"matched": False, "session_id": ref, "id": ref, "name": None}
+
     # object sharing
     def share_object(self, object_type, object_id, email, permission="read", expires_at=None):
         self._calls.append(("share", object_type, object_id, email, permission))

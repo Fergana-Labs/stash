@@ -58,7 +58,8 @@ async def test_rename_session_persists_title(client: AsyncClient, pool):
     assert get_resp.json()["title"] == "Investigate flaky auth test"
 
     row = await pool.fetchrow(
-        "SELECT title, user_set FROM session_titles WHERE owner_user_id = $1 AND session_id = $2",
+        "SELECT title, title_user_set AS user_set FROM sessions "
+        "WHERE owner_user_id = $1 AND session_id = $2",
         scope["id"],
         "sess-rename-1",
     )
@@ -80,6 +81,23 @@ async def test_rename_session_truncates_overlong_title(client: AsyncClient, pool
     assert resp.status_code == 200
     # MAX_TITLE_LENGTH from the service is 80
     assert len(resp.json()["title"]) == 80
+
+
+@pytest.mark.asyncio
+async def test_rename_session_stores_title_verbatim(client: AsyncClient):
+    """Quotes and backticks are the user's spelling — store the title
+    untouched. The VFS sanitizes shell-hostile characters at display time
+    (stashvfs safe_name), so the original is never lost."""
+    api_key, _user = await _register(client)
+    _scope, _session = await _make_scope_with_session(client, api_key, "sess-rename-7")
+
+    resp = await client.patch(
+        "/api/v1/me/sessions/sess-rename-7/title",
+        json={"title": 'Ship the "fast" path for Bob\'s `deals`'},
+        headers=_auth(api_key),
+    )
+    assert resp.status_code == 200
+    assert resp.json() == {"title": 'Ship the "fast" path for Bob\'s `deals`'}
 
 
 @pytest.mark.asyncio
@@ -159,7 +177,8 @@ async def test_user_set_title_survives_auto_regeneration(client: AsyncClient, po
     assert result == "user-set"
 
     row = await pool.fetchrow(
-        "SELECT title, user_set FROM session_titles WHERE owner_user_id = $1 AND session_id = $2",
+        "SELECT title, title_user_set AS user_set FROM sessions "
+        "WHERE owner_user_id = $1 AND session_id = $2",
         scope["id"],
         "sess-rename-6",
     )

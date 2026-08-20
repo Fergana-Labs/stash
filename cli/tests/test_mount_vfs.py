@@ -454,6 +454,32 @@ def test_vfs_suffixes_only_colliding_names():
     assert "Untitled table" not in entries
 
 
+class QuotedTitleClient(FakeClient):
+    """A session titled with quotes — agents drive the VFS through
+    `stash vfs "<script>"`, so quotes in a path must survive two layers of
+    shell parsing. Sanitizing them out of the projected name is what keeps
+    session dirs addressable from a shell one-liner."""
+
+    def get_overview(self):
+        overview = super().get_overview()
+        overview["sessions"] = [
+            {
+                "id": "dddddddd-4444",
+                "session_id": "sess-1",
+                "title": 'Buy the "best" product from Bob\'s $5 `deals`',
+            }
+        ]
+        return overview
+
+
+def test_vfs_strips_shell_hostile_chars_from_names():
+    model = StashVfsModel(QuotedTitleClient(), include_computer=True)
+    model.refresh()
+
+    (name,) = [n for n in model.list_dir("/sessions") if n != "_index.jsonl"]
+    assert name == "Buy the best product from Bobs 5 deals"
+
+
 class SkillFolderTableClient(FakeClient):
     """A table filed inside a skill folder, alongside a normal one. Tables come
     from their own listing, which does not hide skill subtrees the way the
