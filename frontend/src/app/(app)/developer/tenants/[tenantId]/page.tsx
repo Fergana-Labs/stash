@@ -9,67 +9,67 @@ import DeveloperGate from "@/components/developer/DeveloperGate";
 import { Code, PageHeading, SectionHeading } from "@/components/developer/DocsPrimitives";
 import WikiToggle from "@/components/developer/WikiToggle";
 import {
-  getOrg,
-  type OrgFile,
-  type OrgNotepadPage,
-  type OrgSession,
-  type OrgSource,
+  getTenant,
+  type TenantFile,
+  type TenantNotepadPage,
+  type TenantSession,
+  type TenantSource,
 } from "@/lib/api";
-import type { Org } from "@/lib/types";
+import type { Tenant } from "@/lib/types";
 
-export default function OrgDetailRoute() {
+export default function TenantDetailRoute() {
   return (
     <DeveloperGate>
-      <OrgDetail />
+      <TenantDetail />
     </DeveloperGate>
   );
 }
 
-function OrgDetail() {
-  const orgId = String(useParams().orgId);
-  const [org, setOrg] = useState<Org | null>(null);
-  const [sessions, setSessions] = useState<OrgSession[]>([]);
-  const [files, setFiles] = useState<OrgFile[]>([]);
-  const [notepad, setNotepad] = useState<OrgNotepadPage[]>([]);
-  const [sources, setSources] = useState<OrgSource[]>([]);
+function TenantDetail() {
+  const tenantId = String(useParams().tenantId);
+  const [tenant, setOrg] = useState<Tenant | null>(null);
+  const [sessions, setSessions] = useState<TenantSession[]>([]);
+  const [files, setFiles] = useState<TenantFile[]>([]);
+  const [notepad, setNotepad] = useState<TenantNotepadPage[]>([]);
+  const [sources, setSources] = useState<TenantSource[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(() => {
     setError(null);
-    getOrg(orgId)
+    getTenant(tenantId)
       .then((res) => {
-        setOrg(res.org);
+        setOrg(res.tenant);
         setSessions(res.sessions);
         setFiles(res.files);
         setNotepad(res.notepad_pages);
         setSources(res.sources);
       })
-      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load the org"));
-  }, [orgId]);
+      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load the tenant"));
+  }, [tenantId]);
 
   useEffect(() => {
     refresh();
   }, [refresh]);
 
   if (error) {
-    return <p className="text-[15px] text-error">Couldn&apos;t load the org: {error}</p>;
+    return <p className="text-[15px] text-error">Couldn&apos;t load the tenant: {error}</p>;
   }
-  if (!org) {
+  if (!tenant) {
     return <p className="text-[15px] text-muted-foreground">Loading…</p>;
   }
 
   return (
     <>
       <Link
-        href="/developer/orgs"
+        href="/developer/tenants"
         className="mb-6 inline-flex items-center gap-1.5 text-[13px] text-muted-foreground transition-colors hover:text-foreground"
       >
         <ArrowLeft className="h-3.5 w-3.5" />
-        All orgs
+        All tenants
       </Link>
 
-      <PageHeading title={org.name}>
-        <Code>{org.external_id}</Code> — the id your backend asserts on every call for this
+      <PageHeading title={tenant.name}>
+        <Code>{tenant.external_id}</Code> — the id your backend asserts on every call for this
         customer.
       </PageHeading>
 
@@ -78,17 +78,17 @@ function OrgDetail() {
         <div className="mt-4 flex items-center gap-4 rounded border border-border bg-surface px-5 py-4">
           <div className="min-w-0 flex-1">
             <div className="text-[15px] text-foreground">
-              {org.share_wiki
-                ? "This org's sessions feed the shared wiki"
-                : "This org is opted out of the shared wiki"}
+              {tenant.share_wiki
+                ? "This tenant's sessions feed the shared wiki"
+                : "This tenant is opted out of the shared wiki"}
             </div>
             <p className="mt-1 text-[13.5px] leading-6 text-muted-foreground">
-              {org.share_wiki
-                ? "The curator distils anonymized lessons from their sessions into the wiki every org's agent reads. Their identity never appears there."
+              {tenant.share_wiki
+                ? "The curator distils anonymized lessons from their sessions into the wiki every tenant's agent reads. Their identity never appears there."
                 : "Their sessions stay in their own notepad. Anything already written to the wiki stays — an opt-out is not a retraction."}
             </p>
           </div>
-          <WikiToggle org={org} onChanged={refresh} />
+          <WikiToggle tenant={tenant} onChanged={refresh} />
         </div>
       </section>
 
@@ -96,19 +96,19 @@ function OrgDetail() {
         <div className="flex items-baseline justify-between gap-4">
           <SectionHeading>Notepad</SectionHeading>
           <Link
-            href={`/folders/${org.notepad_folder_id}`}
+            href={`/folders/${tenant.notepad_folder_id}`}
             className="text-[13px] text-muted-foreground transition-colors hover:text-foreground"
           >
             Open folder
           </Link>
         </div>
         <p className="mt-2 text-[13.5px] leading-6 text-muted-foreground">
-          What the curator has learned about this org specifically — kept out of the shared
+          What the curator has learned about this tenant specifically — kept out of the shared
           wiki, in their own words and their own detail.
         </p>
         {notepad.length === 0 ? (
           <Empty>
-            Nothing yet. The curator writes here on its next run over this org&apos;s sessions.
+            Nothing yet. The curator writes here on its next run over this tenant&apos;s sessions.
           </Empty>
         ) : (
           <div className="mt-4 overflow-hidden rounded border border-border bg-surface">
@@ -133,7 +133,7 @@ function OrgDetail() {
       <section className="mb-12">
         <SectionHeading>Sessions</SectionHeading>
         {sessions.length === 0 ? (
-          <Empty>No sessions yet for this org.</Empty>
+          <Empty>No sessions yet for this tenant.</Empty>
         ) : (
           <div className="mt-4 overflow-hidden rounded border border-border bg-surface">
             {sessions.map((s) => (
@@ -168,7 +168,7 @@ function OrgDetail() {
         </p>
         {sources.length === 0 ? (
           <Empty>
-            None connected. Add one with this org&apos;s <Code>org_id</Code> to scope it here.
+            None connected. Add one with this tenant&apos;s <Code>tenant_id</Code> to scope it here.
           </Empty>
         ) : (
           <div className="mt-4 overflow-hidden rounded border border-border bg-surface">
@@ -195,8 +195,8 @@ function OrgDetail() {
         <SectionHeading>Files</SectionHeading>
         {files.length === 0 ? (
           <Empty>
-            No files yet. Files arrive when your backend uploads one with this org&apos;s{" "}
-            <Code>org_id</Code>.
+            No files yet. Files arrive when your backend uploads one with this tenant&apos;s{" "}
+            <Code>tenant_id</Code>.
           </Empty>
         ) : (
           <div className="mt-4 overflow-hidden rounded border border-border bg-surface">

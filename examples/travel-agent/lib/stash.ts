@@ -1,5 +1,5 @@
 // The whole Stash integration, server-side: write a turn with the customer's
-// org id, read back with the same org id.
+// tenant id, read back with the same tenant id.
 const BASE = process.env.STASH_BASE_URL ?? "http://localhost:3456";
 
 function headers() {
@@ -11,11 +11,11 @@ function headers() {
   return { Authorization: `Bearer ${key}`, "Content-Type": "application/json" };
 }
 
-export async function read(org: string, script: string): Promise<string> {
+export async function read(tenant: string, script: string): Promise<string> {
   const res = await fetch(`${BASE}/api/v1/me/vfs`, {
     method: "POST",
     headers: headers(),
-    body: JSON.stringify({ script, org_id: org }),
+    body: JSON.stringify({ script, tenant_id: tenant }),
     cache: "no-store",
   });
   if (!res.ok)
@@ -24,8 +24,8 @@ export async function read(org: string, script: string): Promise<string> {
 }
 
 export async function record(
-  org: string,
-  orgName: string,
+  tenant: string,
+  tenantName: string,
   session: string,
   events: [string, string][],
 ): Promise<void> {
@@ -38,8 +38,8 @@ export async function record(
         event_type,
         content,
         session_id: session,
-        org_id: org,
-        org_name: orgName,
+        tenant_id: tenant,
+        tenant_name: tenantName,
       })),
     }),
   });
@@ -47,26 +47,26 @@ export async function record(
     throw new Error(`stash write failed: ${res.status} ${await res.text()}`);
 }
 
-export async function listOrgs(): Promise<
+export async function listTenants(): Promise<
   { id: string; external_id: string; name: string; session_count: number }[]
 > {
-  const res = await fetch(`${BASE}/api/v1/me/orgs`, {
+  const res = await fetch(`${BASE}/api/v1/me/tenants`, {
     headers: headers(),
     cache: "no-store",
   });
   if (!res.ok)
-    throw new Error(`GET /me/orgs failed: ${res.status} ${await res.text()}`);
-  return (await res.json()).orgs;
+    throw new Error(`GET /me/tenants failed: ${res.status} ${await res.text()}`);
+  return (await res.json()).tenants;
 }
 
 // Everything this customer may know: the shared wiki, and their own notepad.
 // One root at a time — the VFS shell fails a whole command on a path that
 // matches nothing.
-export async function context(org: string): Promise<string> {
+export async function context(tenant: string): Promise<string> {
   const parts: string[] = [];
   for (const root of ["/memory", "/files/notepad"]) {
-    if ((await read(org, `ls ${root}`)).trim())
-      parts.push(await read(org, `cat ${root}/*`));
+    if ((await read(tenant, `ls ${root}`)).trim())
+      parts.push(await read(tenant, `cat ${root}/*`));
   }
   return parts.join("\n\n");
 }

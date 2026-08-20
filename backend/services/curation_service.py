@@ -82,8 +82,8 @@ async def changes_since(owner_user_id: UUID, user_id: UUID, since: datetime | No
             "event_type": e.get("event_type"),
             "content": (e.get("content") or "")[:_SNIPPET],
             "created_at": _iso(e.get("created_at")),
-            "org": e.get("org"),
-            "org_share_wiki": e.get("org_share_wiki"),
+            "tenant": e.get("tenant"),
+            "tenant_share_wiki": e.get("tenant_share_wiki"),
         }
         for e in events
     ]
@@ -247,9 +247,9 @@ async def _feed_events(
     wiki, and filtering after the query would let them consume feed slots that
     belong to real activity.
 
-    Each event carries its session's org (name and wiki opt-out) when it has
-    one — the external curator routes by it: every org's
-    material feeds that org's notepad, and only share_wiki orgs feed the
+    Each event carries its session's tenant (name and wiki opt-out) when it has
+    one — the external curator routes by it: every tenant's
+    material feeds that tenant's notepad, and only share_wiki tenants feed the
     shared anonymized wiki."""
     pool = get_pool()
     args: list = [owner_user_id]
@@ -262,11 +262,11 @@ async def _feed_events(
         where += f" AND he.created_at <= ${len(args)}"
     rows = await pool.fetch(
         f"SELECT he.session_id, he.agent_name, he.event_type, he.content, he.created_at, "
-        f"org.name AS org, org.share_wiki AS org_share_wiki "
+        f"tenant.name AS tenant, tenant.share_wiki AS tenant_share_wiki "
         f"FROM history_events he "
         f"LEFT JOIN sessions s ON s.owner_user_id = he.owner_user_id "
         f"  AND s.session_id = he.session_id "
-        f"LEFT JOIN orgs org ON org.id = s.org_id "
+        f"LEFT JOIN tenants tenant ON tenant.id = s.tenant_id "
         f"WHERE {where} "
         f"ORDER BY he.created_at, he.id LIMIT {limit + 1}",
         *args,

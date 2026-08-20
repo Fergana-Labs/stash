@@ -2,7 +2,7 @@
 
 A source belongs to the scope that connected it (`owner_user_id`). Reads run
 in the active scope (the X-Stash-Scope header): a workspace member browsing
-the workspace sees the workspace's connections — the org Drive hopper — while
+the workspace sees the workspace's connections — the tenant Drive hopper — while
 personal scope shows their own. Mutations (connect, sync, remove, history)
 stay owner-only: members read the hopper, only the scope owner wires it up.
 The agent reaches a source's indexed content through the source tools; these
@@ -30,10 +30,10 @@ from ..integrations import storage as integration_storage
 from ..integrations.google import indexer as google_indexer
 from ..integrations.registry import get_provider
 from ..services import (
-    org_service,
     security_audit_service,
     source_service,
     task_service,
+    tenant_service,
     user_scope_service,
 )
 
@@ -61,8 +61,8 @@ class AddSourceRequest(BaseModel):
     display_name: str | None = None
     settings: dict | None = None
     # External Multiplayer: scope this source to one customer, named by the
-    # developer's own org id. Omitted, the source belongs to the workspace.
-    org_id: str | None = Field(None, max_length=128)
+    # developer's own tenant id. Omitted, the source belongs to the workspace.
+    tenant_id: str | None = Field(None, max_length=128)
 
 
 async def _resolve_slack_source(user_id) -> tuple[str, str]:
@@ -393,10 +393,10 @@ async def add_source(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-    org = None
-    if body.org_id is not None:
+    tenant = None
+    if body.tenant_id is not None:
         try:
-            org = await org_service.resolve_org_for_scope(owner_user_id, body.org_id)
+            tenant = await tenant_service.resolve_tenant_for_scope(owner_user_id, body.tenant_id)
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
 
@@ -435,7 +435,7 @@ async def add_source(
             external_ref=external_ref,
             display_name=display_name or external_ref,
             settings=source_settings,
-            org_id=org["id"] if org else None,
+            tenant_id=tenant["id"] if tenant else None,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

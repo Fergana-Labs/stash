@@ -9,7 +9,7 @@ import {
   PageHeading,
   SectionHeading,
 } from "@/components/developer/DocsPrimitives";
-import { getCurator, runCuratorNow, type CuratorRun, type OrgRef } from "@/lib/api";
+import { getCurator, runCuratorNow, type CuratorRun, type TenantRef } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 export default function CuratorRoute() {
@@ -65,7 +65,7 @@ function Curator() {
     <>
       <PageHeading title="Curator">
         Every night it reads the sessions uploaded since it last ran and compiles them into two
-        places: each org&apos;s own notepad, and the shared wiki every org&apos;s agent reads.
+        places: each tenant&apos;s own notepad, and the shared wiki every tenant&apos;s agent reads.
       </PageHeading>
 
       <section className="mb-12 grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -91,20 +91,20 @@ function Curator() {
       <section className="mb-12">
         <SectionHeading>Feeding the shared wiki</SectionHeading>
         <p className="mt-2 text-[13.5px] leading-6 text-muted-foreground">
-          Every org gets its own notepad regardless. This is who also contributes to the
+          Every tenant gets its own notepad regardless. This is who also contributes to the
           anonymized wiki the others read.
         </p>
         <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <OrgColumn
+          <TenantColumn
             title="Feeding"
-            orgs={data.feeding}
-            empty="No org is feeding the wiki, so it will stay as it is."
+            tenants={data.feeding}
+            empty="No tenant is feeding the wiki, so it will stay as it is."
             accent
           />
-          <OrgColumn
+          <TenantColumn
             title="Opted out"
-            orgs={data.opted_out}
-            empty="Every org is feeding the wiki."
+            tenants={data.opted_out}
+            empty="Every tenant is feeding the wiki."
           />
         </div>
       </section>
@@ -121,7 +121,7 @@ function Curator() {
         </div>
         <p className="mt-2 text-[13.5px] leading-6 text-muted-foreground">
           Rendered from live state, so this is exactly what tonight&apos;s run sends — including
-          the org list above and each org&apos;s wiki setting.
+          the tenant list above and each tenant&apos;s wiki setting.
         </p>
         {showPrompt && (
           <div className="mt-4">
@@ -179,14 +179,14 @@ function Fact({
   );
 }
 
-function OrgColumn({
+function TenantColumn({
   title,
-  orgs,
+  tenants,
   empty,
   accent,
 }: {
   title: string;
-  orgs: OrgRef[];
+  tenants: TenantRef[];
   empty: string;
   accent?: boolean;
 }) {
@@ -200,21 +200,21 @@ function OrgColumn({
             accent ? "text-brand-500" : "text-muted-foreground",
           )}
         >
-          {orgs.length}
+          {tenants.length}
         </span>
       </div>
-      {orgs.length === 0 ? (
+      {tenants.length === 0 ? (
         <p className="px-5 py-4 text-[13px] leading-5 text-muted-foreground">{empty}</p>
       ) : (
-        orgs.map((org) => (
+        tenants.map((tenant) => (
           <Link
-            key={org.id}
-            href={`/developer/orgs/${org.id}`}
+            key={tenant.id}
+            href={`/developer/tenants/${tenant.id}`}
             className="flex items-center gap-3 border-b border-border px-5 py-2.5 text-[14px] transition-colors last:border-b-0 hover:bg-raised"
           >
-            <span className="min-w-0 flex-1 truncate text-foreground">{org.name}</span>
+            <span className="min-w-0 flex-1 truncate text-foreground">{tenant.name}</span>
             <span className="shrink-0 font-mono text-[12px] text-muted-foreground">
-              {org.external_id}
+              {tenant.external_id}
             </span>
           </Link>
         ))

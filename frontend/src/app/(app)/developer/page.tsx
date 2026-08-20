@@ -5,10 +5,10 @@ import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 
 import DeveloperGate from "@/components/developer/DeveloperGate";
-import OrgTable from "@/components/developer/OrgTable";
+import TenantTable from "@/components/developer/TenantTable";
 import { Code, PageHeading, SectionHeading } from "@/components/developer/DocsPrimitives";
-import { listOrgs } from "@/lib/api";
-import type { Org, Workspace } from "@/lib/types";
+import { listTenants } from "@/lib/api";
+import type { Tenant, Workspace } from "@/lib/types";
 
 export default function DeveloperOverview() {
   return (
@@ -25,32 +25,32 @@ const ROUTES = [
   {
     href: "/developer/keys",
     title: "Mint a key, wire two calls",
-    detail: "Upload each turn with an org_id, read back with the same one.",
+    detail: "Upload each turn with a tenant_id, read back with the same one.",
   },
   {
-    href: "/developer/orgs",
-    title: "Your customers, one org each",
+    href: "/developer/tenants",
+    title: "Your customers, one tenant each",
     detail: "Private notepads, and who feeds the shared wiki.",
   },
   {
     href: "/developer/wiki",
     title: "The anonymized shared wiki",
-    detail: "What every org's agent reads, with no org named.",
+    detail: "What every tenant's agent reads, with no tenant named.",
   },
 ];
 
 function Overview() {
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
-  const [orgs, setOrgs] = useState<Org[]>([]);
-  const [stats, setStats] = useState({ wiki_page_count: 0, org_session_count: 0 });
+  const [tenants, setOrgs] = useState<Tenant[]>([]);
+  const [stats, setStats] = useState({ wiki_page_count: 0, tenant_session_count: 0 });
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(() => {
     setError(null);
-    listOrgs()
+    listTenants()
       .then((res) => {
         setWorkspace(res.workspace);
-        setOrgs(res.orgs);
+        setOrgs(res.tenants);
         setStats(res.stats);
       })
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load the console"));
@@ -73,10 +73,10 @@ function Overview() {
       <PageHeading title="Overview">{workspace.name}</PageHeading>
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <Stat label="Orgs" value={orgs.length} />
-        <Stat label="Org sessions" value={stats.org_session_count} />
+        <Stat label="Tenants" value={tenants.length} />
+        <Stat label="Tenant sessions" value={stats.tenant_session_count} />
         <Stat label="Wiki pages" value={stats.wiki_page_count} />
-        <Stat label="Feeding the wiki" value={orgs.filter((o) => o.share_wiki).length} />
+        <Stat label="Feeding the wiki" value={tenants.filter((o) => o.share_wiki).length} />
       </div>
 
       <section className="mt-12">
@@ -106,11 +106,11 @@ function Overview() {
       </section>
 
       <section className="mt-14">
-        <SectionHeading>Recent orgs</SectionHeading>
-        {orgs.length === 0 ? (
+        <SectionHeading>Recent tenants</SectionHeading>
+        {tenants.length === 0 ? (
           <p className="mt-3 text-[15px] leading-7 text-dim">
-            No orgs yet — they appear when your backend uploads a session with a new{" "}
-            <Code>org_id</Code>. Start with{" "}
+            No tenants yet — they appear when your backend uploads a session with a new{" "}
+            <Code>tenant_id</Code>. Start with{" "}
             <Link href="/developer/keys" className="text-brand-500 underline underline-offset-2">
               API Keys
             </Link>
@@ -118,7 +118,7 @@ function Overview() {
           </p>
         ) : (
           <div className="mt-4">
-            <OrgTable orgs={orgs.slice(0, 5)} onChanged={refresh} />
+            <TenantTable tenants={tenants.slice(0, 5)} onChanged={refresh} />
           </div>
         )}
       </section>

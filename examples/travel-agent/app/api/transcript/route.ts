@@ -1,12 +1,12 @@
 import { read } from "@/lib/stash";
 
-// A customer's own transcripts, read through their own org view — the same
+// A customer's own transcripts, read through their own tenant view — the same
 // call their agent makes, so what this page shows is what they can see.
 export async function GET(request: Request) {
-  const org = new URL(request.url).searchParams.get("org");
-  if (!org) return Response.json({ error: "org required" }, { status: 400 });
+  const tenant = new URL(request.url).searchParams.get("tenant");
+  if (!tenant) return Response.json({ error: "tenant required" }, { status: 400 });
   try {
-    const listing = await read(org, "ls /sessions");
+    const listing = await read(tenant, "ls /sessions");
     const names = listing
       .split("\n")
       .map((l) => l.trim())
@@ -15,7 +15,7 @@ export async function GET(request: Request) {
     for (const name of names) {
       sessions.push({
         name,
-        transcript: await read(org, `cat "/sessions/${name}/transcript.md"`),
+        transcript: await read(tenant, `cat "/sessions/${name}/transcript.md"`),
       });
     }
     return Response.json({ sessions });

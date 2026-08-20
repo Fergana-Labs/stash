@@ -27,13 +27,13 @@ const SCRIPT: [string, string, string][] = [
 export async function POST() {
   try {
     const turns = [];
-    for (const [org, orgName, question] of SCRIPT) {
-      const reply = await answer(org, question);
-      await record(org, orgName, `${org}:seed`, [
+    for (const [tenant, tenantName, question] of SCRIPT) {
+      const reply = await answer(tenant, question);
+      await record(tenant, tenantName, `${tenant}:seed`, [
         ["user_message", question],
         ["assistant_message", reply],
       ]);
-      turns.push({ org, orgName, question, reply });
+      turns.push({ tenant, tenantName, question, reply });
     }
     return Response.json({ turns });
   } catch (e) {

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-type Org = { id: string; external_id: string; name: string };
+type Tenant = { id: string; external_id: string; name: string };
 type Turn = { role: "you" | "planner"; text: string };
 type Session = { name: string; transcript: string };
 
@@ -23,8 +23,8 @@ async function load<T>(url: string, init?: RequestInit): Promise<T & { error?: s
 }
 
 export default function Home() {
-  const [orgs, setOrgs] = useState<Org[]>([]);
-  const [org, setOrg] = useState<Org | null>(null);
+  const [tenants, setOrgs] = useState<Tenant[]>([]);
+  const [tenant, setOrg] = useState<Tenant | null>(null);
   const [turns, setTurns] = useState<Turn[]>([]);
   const [question, setQuestion] = useState("");
   const [busy, setBusy] = useState(false);
@@ -36,12 +36,12 @@ export default function Home() {
 
   const loadOrgs = useCallback(
     (prefer?: string) =>
-      load<{ orgs: Org[] }>("/api/orgs")
+      load<{ tenants: Tenant[] }>("/api/tenants")
         .then((d) => {
-          setOrgs(d.orgs ?? []);
+          setOrgs(d.tenants ?? []);
           setOrg(
             (current) =>
-              d.orgs?.find((o) => o.external_id === prefer) ?? current ?? d.orgs?.[0] ?? null,
+              d.tenants?.find((o) => o.external_id === prefer) ?? current ?? d.tenants?.[0] ?? null,
           );
         })
         .catch((e) => setError(e.message)),
@@ -60,24 +60,24 @@ export default function Home() {
   // the planner still knows what that agency knows — because the memory is in
   // Stash, not in this page.
   function pick(external: string) {
-    setOrg(orgs.find((o) => o.external_id === external) ?? null);
+    setOrg(tenants.find((o) => o.external_id === external) ?? null);
     setTurns([]);
     setSessions(null);
   }
 
   async function ask() {
-    if (!org || !question.trim() || busy) return;
+    if (!tenant || !question.trim() || busy) return;
     const asked = question;
     setQuestion("");
     setTurns((t) => [...t, { role: "you", text: asked }]);
     setBusy(true);
     setError(null);
     try {
-      // The agent reads and answers with an org id and nothing else…
+      // The agent reads and answers with a tenant id and nothing else…
       const { reply } = await load<{ reply: string }>("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ org: org.external_id, question: asked }),
+        body: JSON.stringify({ tenant: tenant.external_id, question: asked }),
       });
       setTurns((t) => [...t, { role: "planner", text: reply }]);
       // …and the transcript upload is its own call, as it is in a real backend.
@@ -85,9 +85,9 @@ export default function Home() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          org: org.external_id,
-          orgName: org.name,
-          session: `${org.external_id}:${session}`,
+          tenant: tenant.external_id,
+          tenantName: tenant.name,
+          session: `${tenant.external_id}:${session}`,
           question: asked,
           reply,
         }),
@@ -115,10 +115,10 @@ export default function Home() {
 
   async function toggleTranscripts() {
     if (sessions) return setSessions(null);
-    if (!org) return;
+    if (!tenant) return;
     try {
       const d = await load<{ sessions: Session[] }>(
-        `/api/transcript?org=${encodeURIComponent(org.external_id)}`,
+        `/api/transcript?tenant=${encodeURIComponent(tenant.external_id)}`,
       );
       setSessions(d.sessions ?? []);
     } catch (e) {
@@ -141,7 +141,7 @@ export default function Home() {
           Travel planner
         </strong>
         <select
-          value={org?.external_id ?? ""}
+          value={tenant?.external_id ?? ""}
           onChange={(e) => pick(e.target.value)}
           style={{
             padding: "5px 8px",
@@ -152,7 +152,7 @@ export default function Home() {
             color: "#453F37",
           }}
         >
-          {orgs.map((o) => (
+          {tenants.map((o) => (
             <option key={o.id} value={o.external_id}>
               {o.name}
             </option>
@@ -193,7 +193,7 @@ export default function Home() {
           }}
         >
           <div style={{ fontSize: 13, color: "#7C7469", marginBottom: 8 }}>
-            Everything {org?.name} can see. Switch agency and look again.
+            Everything {tenant?.name} can see. Switch agency and look again.
           </div>
           {sessions.length === 0 && <div style={{ color: "#A79E92", fontSize: 14 }}>Nothing yet.</div>}
           {sessions.map((s) => (
@@ -217,7 +217,7 @@ export default function Home() {
       <div style={{ minHeight: 320, padding: "20px 0" }}>
         {turns.length === 0 && !busy && (
           <p style={{ color: "#A79E92", fontSize: 15 }}>
-            Ask {org?.name ?? "the planner"} something. It knows what this agency knows.
+            Ask {tenant?.name ?? "the planner"} something. It knows what this agency knows.
           </p>
         )}
         {turns.map((t, i) => (

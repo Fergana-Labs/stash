@@ -1,14 +1,14 @@
 # External Multiplayer, end to end
 
 A truck-parts support agent serving two repair shops, of the shape Stash's
-external customers ship. Each shop is an **org**: their history is theirs
+external customers ship. Each shop is an **tenant**: their history is theirs
 alone, but what the agent learns about a fault code helps every shop. Stash is
 what makes both true at once.
 
 Three files, no framework:
 
 - `stash.py` — the whole integration. Two calls: write a turn with the
-  customer's org id, read back with the same org id.
+  customer's tenant id, read back with the same tenant id.
 - `agent.py` — reads that customer's world, answers with Claude, records the
   turn.
 - `demo.py` — the scenario below.
@@ -26,7 +26,7 @@ python demo.py
 ```
 
 Acme hits a fault it has never seen and finds the fix. Beta asks about
-something unrelated. Watch **Orgs** in the console: both appear on their first
+something unrelated. Watch **Tenants** in the console: both appear on their first
 turn, with their sessions.
 
 Then curate. In the console, **Curator → Run now** (or wait for the nightly
@@ -42,10 +42,10 @@ the lesson without learning that Acme exists.
 
 ## What to look at in the console
 
-- **Orgs** — each customer, their sessions, files, connected sources, notepad.
+- **Tenants** — each customer, their sessions, files, connected sources, notepad.
 - **Curator** — when it next runs, the exact prompt it will send, and which
-  orgs feed the shared wiki.
-- **Shared Wiki** — what every customer's agent reads. No org named anywhere.
+  tenants feed the shared wiki.
+- **Shared Wiki** — what every customer's agent reads. No tenant named anywhere.
 
 ## Session ids
 

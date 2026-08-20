@@ -663,7 +663,7 @@ async def create_page(
     html_layout: str = "responsive",
     edit_session_id: str | None = None,
     edit_agent_name: str | None = None,
-    org_id: UUID | None = None,
+    tenant_id: UUID | None = None,
 ) -> dict:
     pool = get_pool()
     if folder_id is not None:
@@ -679,9 +679,9 @@ async def create_page(
             "INSERT INTO pages "
             "(owner_user_id, folder_id, name, content_markdown, content_html, content_type, "
             "html_layout, content_hash, metadata, created_by, updated_by, "
-            "last_edit_session_id, last_edit_agent_name, org_id) "
+            "last_edit_session_id, last_edit_agent_name, tenant_id) "
             "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $10, $11, $12, $13) "
-            "RETURNING id, owner_user_id, folder_id, org_id, name, content_markdown, content_html, "
+            "RETURNING id, owner_user_id, folder_id, tenant_id, name, content_markdown, content_html, "
             "content_type, html_layout, content_hash, metadata, created_by, updated_by, "
             "last_edit_session_id, last_edit_agent_name, created_at, updated_at",
             owner_user_id,
@@ -696,7 +696,7 @@ async def create_page(
             created_by,
             edit_session_id,
             edit_agent_name,
-            org_id,
+            tenant_id,
         )
     except asyncpg.UniqueViolationError as e:
         raise DuplicatePageName(owner_user_id, folder_id, name) from e
@@ -735,7 +735,7 @@ async def get_page(
 ) -> dict | None:
     pool = get_pool()
     row = await pool.fetchrow(
-        "SELECT id, owner_user_id, folder_id, org_id, name, content_markdown, content_html, "
+        "SELECT id, owner_user_id, folder_id, tenant_id, name, content_markdown, content_html, "
         "content_type, html_layout, content_hash, metadata, "
         "last_edit_session_id, last_edit_agent_name, "
         "created_by, updated_by, created_at, updated_at "
@@ -761,7 +761,7 @@ async def wiki_for_folder(owner_user_id: UUID, folder_id: UUID | None) -> str | 
 
     "internal" is the scope's own Memory subtree: the team wiki, written by the
     internal curator and read by that team's agents. "external" is the
-    workspace's External Wiki subtree: cross-org and anonymized, read by every
+    workspace's External Wiki subtree: cross-tenant and anonymized, read by every
     customer's agent. A workspace can have both, and the two must never be
     confused — an internal page names people and projects, an external one may
     not name anyone at all.

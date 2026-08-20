@@ -33,8 +33,8 @@ DEMO_PASSWORD = "demopass123"
 SEED_SOURCES = [
     {
         "source_type": "github_repo",
-        "external_ref": "demo-org/demo-repo",
-        "display_name": "demo-org/demo-repo",
+        "external_ref": "demo-tenant/demo-repo",
+        "display_name": "demo-tenant/demo-repo",
     },
     {"source_type": "google_drive", "external_ref": "root", "display_name": "Google Drive"},
     {

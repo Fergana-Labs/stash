@@ -16,7 +16,7 @@ import {
   KnowledgeDensity,
   EmbeddingProjection,
   Workspace,
-  Org,
+  Tenant,
   MiniProgramApp,
   MiniProgramResolved,
   CuratedSkill,
@@ -230,15 +230,15 @@ export async function mintDeveloperKey(
   });
 }
 
-export async function listOrgs(): Promise<{
+export async function listTenants(): Promise<{
   workspace: Workspace;
-  orgs: Org[];
-  stats: { wiki_page_count: number; org_session_count: number };
+  tenants: Tenant[];
+  stats: { wiki_page_count: number; tenant_session_count: number };
 }> {
-  return apiFetch(`${ME}/orgs`);
+  return apiFetch(`${ME}/tenants`);
 }
 
-export interface OrgSession {
+export interface TenantSession {
   session_id: string;
   agent_name: string | null;
   title: string | null;
@@ -247,7 +247,7 @@ export interface OrgSession {
   last_event_at: string | null;
 }
 
-export interface OrgFile {
+export interface TenantFile {
   id: string;
   name: string;
   content_type: string | null;
@@ -255,7 +255,7 @@ export interface OrgFile {
   created_at: string;
 }
 
-export interface OrgNotepadPage {
+export interface TenantNotepadPage {
   id: string;
   name: string;
   updated_at: string;
@@ -269,7 +269,7 @@ export interface CuratorRun {
   error: string | null;
 }
 
-export interface OrgRef {
+export interface TenantRef {
   id: string;
   name: string;
   external_id: string;
@@ -286,8 +286,8 @@ export async function getCurator(): Promise<{
   };
   next_run_at: string | null;
   prompt: string;
-  feeding: OrgRef[];
-  opted_out: OrgRef[];
+  feeding: TenantRef[];
+  opted_out: TenantRef[];
   runs: CuratorRun[];
 }> {
   return apiFetch(`${ME}/developer/curator`);
@@ -297,7 +297,7 @@ export async function runCuratorNow(): Promise<{ status: string }> {
   return apiFetch(`${ME}/developer/curator/run`, { method: "POST" });
 }
 
-export interface OrgSource {
+export interface TenantSource {
   id: string;
   provider: string;
   type: string;
@@ -306,21 +306,21 @@ export interface OrgSource {
   last_synced_at: string | null;
 }
 
-export async function getOrg(orgId: string): Promise<{
-  org: Org;
-  sessions: OrgSession[];
-  files: OrgFile[];
-  notepad_pages: OrgNotepadPage[];
-  sources: OrgSource[];
+export async function getTenant(tenantId: string): Promise<{
+  tenant: Tenant;
+  sessions: TenantSession[];
+  files: TenantFile[];
+  notepad_pages: TenantNotepadPage[];
+  sources: TenantSource[];
 }> {
-  return apiFetch(`${ME}/orgs/${orgId}`);
+  return apiFetch(`${ME}/tenants/${tenantId}`);
 }
 
-export async function updateOrg(
-  orgId: string,
+export async function updateTenant(
+  tenantId: string,
   patch: { name?: string; share_wiki?: boolean },
-): Promise<Org> {
-  return apiFetch(`${ME}/orgs/${orgId}`, {
+): Promise<Tenant> {
+  return apiFetch(`${ME}/tenants/${tenantId}`, {
     method: "PATCH",
     body: JSON.stringify(patch),
   });

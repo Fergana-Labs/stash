@@ -1,16 +1,16 @@
-"""Orgs: External Multiplayer's per-customer boundary.
+"""Tenants: External Multiplayer's per-customer boundary.
 
 A developer (e.g. Heavi) runs Stash for *their* customers. Each customer is an
-`orgs` row under the developer's workspace, identified by `external_id` — an
+`tenants` row under the developer's workspace, identified by `external_id` — an
 id the developer's own backend manages and asserts on every call. Stash
-isolates between developers (API keys), not between one developer's orgs:
-a request carrying the developer's key may name any of that developer's orgs.
+isolates between developers (API keys), not between one developer's tenants:
+a request carrying the developer's key may name any of that developer's tenants.
 
 Two memory surfaces hang off this table:
 - the workspace's external wiki (`workspaces.external_wiki_folder_id`) —
-  cross-org, anonymized by the curator, opt-out per org via `share_wiki`;
-- a per-org notepad folder (`orgs.notepad_folder_id`) — non-anonymized,
-  visible only through that org's own reads and the developer console.
+  cross-tenant, anonymized by the curator, opt-out per tenant via `share_wiki`;
+- a per-tenant notepad folder (`tenants.notepad_folder_id`) — non-anonymized,
+  visible only through that tenant's own reads and the developer console.
 
 Activating the developer platform on a workspace creates the wiki and
 notepads folders; `external_wiki_folder_id IS NOT NULL` is the "developer
@@ -22,13 +22,15 @@ from uuid import UUID
 from ..database import get_pool
 from . import files_tree_service, source_service, workspace_service
 
-_ORG_COLS_PLAIN = "id, workspace_id, external_id, name, share_wiki, notepad_folder_id, created_at"
-_ORG_COLS = ", ".join(f"o.{col}" for col in _ORG_COLS_PLAIN.split(", "))
+_TENANT_COLS_PLAIN = (
+    "id, workspace_id, external_id, name, share_wiki, notepad_folder_id, created_at"
+)
+_TENANT_COLS = ", ".join(f"o.{col}" for col in _TENANT_COLS_PLAIN.split(", "))
 
 
 async def activate(workspace_id: UUID, created_by: UUID) -> dict:
     """Turn on the developer platform for a workspace: create the external
-    wiki and org-notepads folders and stamp them on the row. Idempotent."""
+    wiki and tenant-notepads folders and stamp them on the row. Idempotent."""
     pool = get_pool()
     workspace = await workspace_service.get_workspace(workspace_id)
     if workspace is None:
@@ -40,14 +42,14 @@ async def activate(workspace_id: UUID, created_by: UUID) -> dict:
         owner, "External Wiki", created_by, protected=True
     )
     notepads = await files_tree_service.create_folder(
-        owner, "Org Notepads", created_by, protected=True
+        owner, "Tenant Notepads", created_by, protected=True
     )
     row = await pool.fetchrow(
         "UPDATE workspaces "
-        "SET external_wiki_folder_id = $2, org_notepads_folder_id = $3 "
+        "SET external_wiki_folder_id = $2, tenant_notepads_folder_id = $3 "
         "WHERE id = $1 AND external_wiki_folder_id IS NULL "
         "RETURNING id, name, domain, scope_user_id, created_by, "
-        "         external_wiki_folder_id, org_notepads_folder_id, created_at",
+        "         external_wiki_folder_id, tenant_notepads_folder_id, created_at",
         workspace_id,
         wiki["id"],
         notepads["id"],
@@ -67,22 +69,22 @@ async def workspace_for_scope(scope_user_id: UUID) -> dict | None:
     pool = get_pool()
     row = await pool.fetchrow(
         "SELECT id, name, domain, scope_user_id, created_by, "
-        "       external_wiki_folder_id, org_notepads_folder_id, created_at "
+        "       external_wiki_folder_id, tenant_notepads_folder_id, created_at "
         "FROM workspaces WHERE scope_user_id = $1",
         scope_user_id,
     )
     return dict(row) if row else None
 
 
-async def get_or_create_org(workspace: dict, external_id: str, name: str | None = None) -> dict:
-    """Resolve an org by the developer's own id, creating it (and its notepad
+async def get_or_create_tenant(workspace: dict, external_id: str, name: str | None = None) -> dict:
+    """Resolve a tenant by the developer's own id, creating it (and its notepad
     folder) on first sight. The name defaults to the external id and is only
     a display label — identity lives on (workspace_id, external_id)."""
     if workspace["external_wiki_folder_id"] is None:
         raise ValueError("developer platform is not active on this workspace — activate it first")
     pool = get_pool()
     row = await pool.fetchrow(
-        f"SELECT {_ORG_COLS} FROM orgs o WHERE o.workspace_id = $1 AND o.external_id = $2",
+        f"SELECT {_TENANT_COLS} FROM tenants o WHERE o.workspace_id = $1 AND o.external_id = $2",
         workspace["id"],
         external_id,
     )
@@ -92,10 +94,10 @@ async def get_or_create_org(workspace: dict, external_id: str, name: str | None 
         async with conn.transaction():
             await conn.execute(
                 "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
-                f"org:{workspace['id']}:{external_id}",
+                f"tenant:{workspace['id']}:{external_id}",
             )
             row = await conn.fetchrow(
-                f"SELECT {_ORG_COLS} FROM orgs o WHERE o.workspace_id = $1 AND o.external_id = $2",
+                f"SELECT {_TENANT_COLS} FROM tenants o WHERE o.workspace_id = $1 AND o.external_id = $2",
                 workspace["id"],
                 external_id,
             )
@@ -109,15 +111,15 @@ async def get_or_create_org(workspace: dict, external_id: str, name: str | None 
                 "  (owner_user_id, parent_folder_id, name, created_by, is_protected) "
                 "VALUES ($1, $2, $3, $4, true) RETURNING id",
                 workspace["scope_user_id"],
-                workspace["org_notepads_folder_id"],
+                workspace["tenant_notepads_folder_id"],
                 external_id,
                 workspace["scope_user_id"],
             )
             row = await conn.fetchrow(
-                f"INSERT INTO orgs "
+                f"INSERT INTO tenants "
                 "  (workspace_id, external_id, name, notepad_folder_id) "
                 "VALUES ($1, $2, $3, $4) "
-                f"RETURNING {_ORG_COLS_PLAIN}",
+                f"RETURNING {_TENANT_COLS_PLAIN}",
                 workspace["id"],
                 external_id,
                 name or external_id,
@@ -126,45 +128,45 @@ async def get_or_create_org(workspace: dict, external_id: str, name: str | None 
             return dict(row)
 
 
-async def find_org(workspace_id: UUID, external_id: str) -> dict | None:
-    """The org by the developer's own id, or None if they have never written
+async def find_tenant(workspace_id: UUID, external_id: str) -> dict | None:
+    """The tenant by the developer's own id, or None if they have never written
     for that customer."""
     pool = get_pool()
     row = await pool.fetchrow(
-        f"SELECT {_ORG_COLS} FROM orgs o WHERE o.workspace_id = $1 AND o.external_id = $2",
+        f"SELECT {_TENANT_COLS} FROM tenants o WHERE o.workspace_id = $1 AND o.external_id = $2",
         workspace_id,
         external_id,
     )
     return dict(row) if row else None
 
 
-async def resolve_org_for_scope(owner_user_id: UUID, external_id: str) -> dict:
-    """The API-call path: owner scope + developer-asserted org id → org row.
-    Fails loud when the scope is not a developer workspace or the org is
-    unknown — callers must create orgs through the write path, which names
-    them, before reading by org."""
+async def resolve_tenant_for_scope(owner_user_id: UUID, external_id: str) -> dict:
+    """The API-call path: owner scope + developer-asserted tenant id → tenant row.
+    Fails loud when the scope is not a developer workspace or the tenant is
+    unknown — callers must create tenants through the write path, which names
+    them, before reading by tenant."""
     pool = get_pool()
     row = await pool.fetchrow(
-        f"SELECT {_ORG_COLS} FROM orgs o "
+        f"SELECT {_TENANT_COLS} FROM tenants o "
         "JOIN workspaces w ON w.id = o.workspace_id "
         "WHERE w.scope_user_id = $1 AND o.external_id = $2",
         owner_user_id,
         external_id,
     )
     if row is None:
-        raise ValueError(f"unknown org {external_id!r} for this scope")
+        raise ValueError(f"unknown tenant {external_id!r} for this scope")
     return dict(row)
 
 
-async def list_orgs(workspace_id: UUID) -> list[dict]:
+async def list_tenants(workspace_id: UUID) -> list[dict]:
     pool = get_pool()
     rows = await pool.fetch(
-        f"SELECT {_ORG_COLS}, "
+        f"SELECT {_TENANT_COLS}, "
         "       (SELECT count(*) FROM sessions s "
-        "        WHERE s.org_id = o.id AND s.deleted_at IS NULL) AS session_count, "
+        "        WHERE s.tenant_id = o.id AND s.deleted_at IS NULL) AS session_count, "
         "       (SELECT max(s.started_at) FROM sessions s "
-        "        WHERE s.org_id = o.id AND s.deleted_at IS NULL) AS last_session_at "
-        "FROM orgs o WHERE o.workspace_id = $1 ORDER BY o.created_at",
+        "        WHERE s.tenant_id = o.id AND s.deleted_at IS NULL) AS last_session_at "
+        "FROM tenants o WHERE o.workspace_id = $1 ORDER BY o.created_at",
         workspace_id,
     )
     return [dict(r) for r in rows]
@@ -183,36 +185,38 @@ async def workspace_stats(workspace: dict) -> dict:
         workspace["external_wiki_folder_id"],
     )
     session_count = await pool.fetchval(
-        "SELECT count(*) FROM sessions s JOIN orgs o ON o.id = s.org_id "
+        "SELECT count(*) FROM sessions s JOIN tenants o ON o.id = s.tenant_id "
         "WHERE o.workspace_id = $1 AND s.deleted_at IS NULL",
         workspace["id"],
     )
-    return {"wiki_page_count": wiki_page_count, "org_session_count": session_count}
+    return {"wiki_page_count": wiki_page_count, "tenant_session_count": session_count}
 
 
-async def get_org(org_id: UUID) -> dict | None:
+async def get_tenant(tenant_id: UUID) -> dict | None:
     pool = get_pool()
-    row = await pool.fetchrow(f"SELECT {_ORG_COLS} FROM orgs o WHERE o.id = $1", org_id)
+    row = await pool.fetchrow(f"SELECT {_TENANT_COLS} FROM tenants o WHERE o.id = $1", tenant_id)
     return dict(row) if row else None
 
 
-async def update_org(org_id: UUID, name: str | None = None, share_wiki: bool | None = None) -> dict:
+async def update_tenant(
+    tenant_id: UUID, name: str | None = None, share_wiki: bool | None = None
+) -> dict:
     pool = get_pool()
     row = await pool.fetchrow(
-        f"UPDATE orgs SET "
+        f"UPDATE tenants SET "
         "  name = COALESCE($2, name), "
         "  share_wiki = COALESCE($3, share_wiki) "
-        f"WHERE id = $1 RETURNING {_ORG_COLS_PLAIN}",
-        org_id,
+        f"WHERE id = $1 RETURNING {_TENANT_COLS_PLAIN}",
+        tenant_id,
         name,
         share_wiki,
     )
     if row is None:
-        raise ValueError("org not found")
+        raise ValueError("tenant not found")
     return dict(row)
 
 
-async def org_detail(org: dict) -> dict:
+async def tenant_detail(tenant: dict) -> dict:
     """Everything the console shows about one customer: their transcripts, the
     files their uploads carried, and the notepad the curator writes for them."""
     pool = get_pool()
@@ -225,28 +229,28 @@ async def org_detail(org: dict) -> dict:
         "  ON st.owner_user_id = s.owner_user_id AND st.session_id = s.session_id "
         "LEFT JOIN history_events he "
         "  ON he.owner_user_id = s.owner_user_id AND he.session_id = s.session_id "
-        "WHERE s.org_id = $1 AND s.deleted_at IS NULL "
+        "WHERE s.tenant_id = $1 AND s.deleted_at IS NULL "
         "GROUP BY s.session_id, s.agent_name, s.started_at, st.title "
         "ORDER BY last_event_at DESC",
-        org["id"],
+        tenant["id"],
     )
     files = await pool.fetch(
         "SELECT id, name, content_type, size_bytes, created_at "
-        "FROM files WHERE org_id = $1 AND deleted_at IS NULL "
+        "FROM files WHERE tenant_id = $1 AND deleted_at IS NULL "
         "ORDER BY created_at DESC",
-        org["id"],
+        tenant["id"],
     )
     notepad_pages = await pool.fetch(
         "SELECT id, name, updated_at FROM pages "
         "WHERE folder_id = $1 AND deleted_at IS NULL ORDER BY updated_at DESC",
-        org["notepad_folder_id"],
+        tenant["notepad_folder_id"],
     )
-    workspace = await workspace_service.get_workspace(org["workspace_id"])
+    workspace = await workspace_service.get_workspace(tenant["workspace_id"])
     sources = await source_service.list_connected_sources(
-        workspace["scope_user_id"], org_id=org["id"]
+        workspace["scope_user_id"], tenant_id=tenant["id"]
     )
     return {
-        "org": org,
+        "tenant": tenant,
         "sessions": [dict(r) for r in sessions],
         "files": [dict(r) for r in files],
         "notepad_pages": [dict(r) for r in notepad_pages],

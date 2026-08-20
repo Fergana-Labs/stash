@@ -16,7 +16,7 @@ const NAV: { title: string; items: NavItem[] }[] = [
     title: "Platform",
     items: [
       { href: "/developer", label: "Overview", match: (p) => p === "/developer" },
-      { href: "/developer/orgs", label: "Orgs", match: (p) => p.startsWith("/developer/orgs") },
+      { href: "/developer/tenants", label: "Tenants", match: (p) => p.startsWith("/developer/tenants") },
       {
         href: "/developer/wiki",
         label: "Shared Wiki",

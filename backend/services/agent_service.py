@@ -121,7 +121,7 @@ async def get_or_create_curator(user_id: UUID, wiki: str = "internal") -> dict:
     """The scope's reserved curator for one wiki, created on first use.
 
     `wiki` is "internal" (the scope's own Memory wiki) or "external" (the
-    workspace's cross-org anonymized wiki). They are separate agents: separate
+    workspace's cross-tenant anonymized wiki). They are separate agents: separate
     schedules, watermarks and run histories, because they write to different
     places under opposite privacy rules.
 

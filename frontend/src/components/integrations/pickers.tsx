@@ -501,7 +501,7 @@ export function GitHubAccessControls({
           checked={view === "all"}
           onClick={() => setView("all")}
           title={<>All repositories{count !== null && <span className="font-medium text-dim"> ({count})</span>}</>}
-          description="Everything you can see — your own repos, collaborations, and org repos. Repos you gain access to later sync automatically."
+          description="Everything you can see — your own repos, collaborations, and tenant repos. Repos you gain access to later sync automatically."
         />
         <AccessChoice
           checked={view === "select"}

@@ -1,7 +1,7 @@
 """GitHub all-repos mode.
 
 When `user_integrations.sync_all` is set on a github connection, every repo
-the account can see (own, collaborations, org repos) gets a github_repo
+the account can see (own, collaborations, tenant repos) gets a github_repo
 source. The hourly reconcile task re-runs `sync_all_repos` for flagged
 accounts so repos the user gains access to later join automatically.
 `create_source` is idempotent, so re-running is always safe.

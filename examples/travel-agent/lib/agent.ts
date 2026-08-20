@@ -13,12 +13,12 @@ You do not know which other agencies exist and must never speculate about them.`
 
 /**
  * The agent's own tool call: read what this agency is allowed to know, then
- * answer. `org` is the only thing Stash needs — it is the isolation boundary.
+ * answer. `tenant` is the only thing Stash needs — it is the isolation boundary.
  * There is no session here, because reading memory has nothing to do with
  * which conversation you are in.
  */
-export async function answer(org: string, question: string): Promise<string> {
-  return claude(await context(org), question);
+export async function answer(tenant: string, question: string): Promise<string> {
+  return claude(await context(tenant), question);
 }
 
 async function claude(ctx: string, question: string): Promise<string> {

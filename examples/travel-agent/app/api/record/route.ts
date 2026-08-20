@@ -7,12 +7,12 @@ import { record } from "@/lib/stash";
  * endpoint here rather than something the answering path does on the way past.
  *
  * This is the only place a session id appears: it groups turns into one
- * transcript. It is not a security boundary — org_id is.
+ * transcript. It is not a security boundary — tenant_id is.
  */
 export async function POST(request: Request) {
   try {
-    const { org, orgName, session, question, reply } = await request.json();
-    await record(org, orgName, session, [
+    const { tenant, tenantName, session, question, reply } = await request.json();
+    await record(tenant, tenantName, session, [
       ["user_message", question],
       ["assistant_message", reply],
     ]);

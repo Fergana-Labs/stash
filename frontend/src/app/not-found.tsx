@@ -3,7 +3,7 @@ import Link from "next/link";
 function LostOctopus() {
   return (
     <svg
-      xmlns="http://www.w3.org/2000/svg"
+      xmlns="http://www.w3.tenant/2000/svg"
       viewBox="0 0 200 220"
       width={200}
       height={220}

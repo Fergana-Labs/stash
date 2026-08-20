@@ -32,12 +32,12 @@ from ..models import (
 from ..services import (
     comment_service,
     files_tree_service,
-    org_service,
     page_events,
     permission_service,
     prompts,
     security_audit_service,
     skill_service,
+    tenant_service,
     user_scope_service,
 )
 from ..services.files_tree_service import (
@@ -602,10 +602,10 @@ async def create_page(
             current_user["id"],
             require="write",
         )
-    org = None
-    if req.org_id is not None:
+    tenant = None
+    if req.tenant_id is not None:
         try:
-            org = await org_service.resolve_org_for_scope(owner_user_id, req.org_id)
+            tenant = await tenant_service.resolve_tenant_for_scope(owner_user_id, req.tenant_id)
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
     page = await files_tree_service.create_page_unique(
@@ -617,7 +617,7 @@ async def create_page(
         content_type=req.content_type,
         content_html=req.content_html,
         html_layout=req.html_layout,
-        org_id=org["id"] if org else None,
+        tenant_id=tenant["id"] if tenant else None,
     )
     # The creator just wrote it; the response must not demote the editor.
     return PageResponse(**{**page, "can_write": True})

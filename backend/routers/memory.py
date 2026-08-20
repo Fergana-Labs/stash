@@ -53,7 +53,7 @@ async def push_event(
     await _check_write(owner_user_id, current_user["id"])
     attachments = [a.model_dump(mode="json") for a in req.attachments] if req.attachments else None
     try:
-        await memory_service.reject_cross_org_sessions(owner_user_id, [req.model_dump()])
+        await memory_service.reject_cross_tenant_sessions(owner_user_id, [req.model_dump()])
         event = await memory_service.push_event(
             owner_user_id,
             agent_name=req.agent_name,
@@ -61,8 +61,8 @@ async def push_event(
             content=req.content,
             created_by=current_user["id"],
             session_id=req.session_id,
-            org_id=req.org_id,
-            org_name=req.org_name,
+            tenant_id=req.tenant_id,
+            tenant_name=req.tenant_name,
             tool_name=req.tool_name,
             metadata=req.metadata,
             attachments=attachments,
@@ -85,7 +85,7 @@ async def push_events_batch(
     await _check_write(owner_user_id, current_user["id"])
     events_data = [e.model_dump() for e in req.events]
     try:
-        await memory_service.reject_cross_org_sessions(owner_user_id, events_data)
+        await memory_service.reject_cross_tenant_sessions(owner_user_id, events_data)
         events = await memory_service.push_events_batch(
             owner_user_id, current_user["id"], events_data
         )

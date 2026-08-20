@@ -2,8 +2,8 @@
 
 Self-serve counterpart to the admin workspace endpoints. A user activates the
 platform (creating a one-man, invite-only workspace when they have none),
-mints machine keys on the workspace's scope user, and manages the orgs their
-product's sessions create. Org listing and editing are scope-based like every
+mints machine keys on the workspace's scope user, and manages the tenants their
+product's sessions create. Tenant listing and editing are scope-based like every
 other surface: the console sends X-Stash-Scope with the workspace's scope
 user id.
 """
@@ -14,11 +14,11 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from ..auth import API_KEY_ACCESS_LEVELS, create_api_key, get_current_user, get_scope
-from ..services import agent_service, org_service, permission_service, prompts, workspace_service
+from ..services import agent_service, permission_service, prompts, tenant_service, workspace_service
 from .curator_log import curator_runs
 
 router = APIRouter(prefix="/api/v1/me/developer", tags=["developer"])
-orgs_router = APIRouter(prefix="/api/v1/me/orgs", tags=["developer"])
+tenants_router = APIRouter(prefix="/api/v1/me/tenants", tags=["developer"])
 
 
 class ActivateRequest(BaseModel):
@@ -50,7 +50,7 @@ async def _require_member_workspace(workspace_id: UUID, user_id: UUID) -> dict:
 
 
 async def _require_active_workspace(scope_user_id: UUID) -> dict:
-    workspace = await org_service.workspace_for_scope(scope_user_id)
+    workspace = await tenant_service.workspace_for_scope(scope_user_id)
     if workspace is None or workspace["external_wiki_folder_id"] is None:
         raise HTTPException(
             status_code=400,
@@ -73,7 +73,7 @@ async def activate_developer_platform(
         workspace = await workspace_service.create_workspace(
             name, domain=None, created_by=current_user["id"]
         )
-    return await org_service.activate(workspace["id"], current_user["id"])
+    return await tenant_service.activate(workspace["id"], current_user["id"])
 
 
 @router.post("/keys")
@@ -98,26 +98,26 @@ async def get_curator(
     scope_user_id: UUID = Depends(get_scope),
 ):
     """Everything about the external curator: when it next runs, the exact
-    prompt that run will use, which orgs feed the shared wiki, and how the
+    prompt that run will use, which tenants feed the shared wiki, and how the
     recent runs went.
 
     The prompt is rendered from live state rather than stored, so what this
-    shows is literally what the next run sends — including the org list and
-    each org's wiki opt-out.
+    shows is literally what the next run sends — including the tenant list and
+    each tenant's wiki opt-out.
     """
     workspace = await _require_active_workspace(scope_user_id)
     curator = await agent_service.get_or_create_curator(scope_user_id, wiki="external")
-    orgs = await org_service.list_orgs(workspace["id"])
+    tenants = await tenant_service.list_tenants(workspace["id"])
     since = curator["curated_through"]
     prompt = prompts.render_external_curator_prompt(
         str(workspace["external_wiki_folder_id"]),
         [
             {
-                "name": org["name"],
-                "notepad_folder_id": str(org["notepad_folder_id"]),
-                "share_wiki": org["share_wiki"],
+                "name": tenant["name"],
+                "notepad_folder_id": str(tenant["notepad_folder_id"]),
+                "share_wiki": tenant["share_wiki"],
             }
-            for org in orgs
+            for tenant in tenants
         ],
         since.isoformat() if since else None,
     )
@@ -127,12 +127,12 @@ async def get_curator(
         "prompt": prompt,
         "feeding": [
             {"id": str(o["id"]), "name": o["name"], "external_id": o["external_id"]}
-            for o in orgs
+            for o in tenants
             if o["share_wiki"]
         ],
         "opted_out": [
             {"id": str(o["id"]), "name": o["name"], "external_id": o["external_id"]}
-            for o in orgs
+            for o in tenants
             if not o["share_wiki"]
         ],
         "runs": await curator_runs(scope_user_id, curator),
@@ -171,45 +171,45 @@ async def run_curator_now(
     return {"status": "started", "agent_id": curator["id"]}
 
 
-@orgs_router.get("")
-async def list_orgs(
+@tenants_router.get("")
+async def list_tenants(
     current_user: dict = Depends(get_current_user),
     scope_user_id: UUID = Depends(get_scope),
 ):
     workspace = await _require_active_workspace(scope_user_id)
     return {
         "workspace": workspace,
-        "orgs": await org_service.list_orgs(workspace["id"]),
-        "stats": await org_service.workspace_stats(workspace),
+        "tenants": await tenant_service.list_tenants(workspace["id"]),
+        "stats": await tenant_service.workspace_stats(workspace),
     }
 
 
-async def _org_in_scope(org_id: UUID, scope_user_id: UUID) -> dict:
-    org = await org_service.get_org(org_id)
-    if org is None:
-        raise HTTPException(status_code=404, detail="Org not found")
-    workspace = await workspace_service.get_workspace(org["workspace_id"])
+async def _tenant_in_scope(tenant_id: UUID, scope_user_id: UUID) -> dict:
+    tenant = await tenant_service.get_tenant(tenant_id)
+    if tenant is None:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+    workspace = await workspace_service.get_workspace(tenant["workspace_id"])
     if workspace["scope_user_id"] != scope_user_id:
-        raise HTTPException(status_code=403, detail="Org is not in this scope")
-    return org
+        raise HTTPException(status_code=403, detail="Tenant is not in this scope")
+    return tenant
 
 
-@orgs_router.get("/{org_id}")
-async def get_org_detail(
-    org_id: UUID,
+@tenants_router.get("/{tenant_id}")
+async def get_tenant_detail(
+    tenant_id: UUID,
     current_user: dict = Depends(get_current_user),
     scope_user_id: UUID = Depends(get_scope),
 ):
     """One customer's world: their sessions, their files, their wiki setting."""
-    return await org_service.org_detail(await _org_in_scope(org_id, scope_user_id))
+    return await tenant_service.tenant_detail(await _tenant_in_scope(tenant_id, scope_user_id))
 
 
-@orgs_router.patch("/{org_id}")
-async def update_org(
-    org_id: UUID,
+@tenants_router.patch("/{tenant_id}")
+async def update_tenant(
+    tenant_id: UUID,
     req: OrgUpdateRequest,
     current_user: dict = Depends(get_current_user),
     scope_user_id: UUID = Depends(get_scope),
 ):
-    await _org_in_scope(org_id, scope_user_id)
-    return await org_service.update_org(org_id, name=req.name, share_wiki=req.share_wiki)
+    await _tenant_in_scope(tenant_id, scope_user_id)
+    return await tenant_service.update_tenant(tenant_id, name=req.name, share_wiki=req.share_wiki)

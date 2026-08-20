@@ -186,11 +186,11 @@ class FolderListResponse(BaseModel):
 class PageCreateRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
     folder_id: UUID | None = None
-    org_id: str | None = Field(
+    tenant_id: str | None = Field(
         None,
         max_length=128,
         description="External Multiplayer: the customer this page is about, "
-        "named by the developer's own org id",
+        "named by the developer's own tenant id",
     )
     content: str = ""
     content_type: str = Field("markdown", pattern=r"^(markdown|html)$")
@@ -239,9 +239,9 @@ class PageResponse(BaseModel):
     owner_user_id: UUID
     folder_id: UUID | None
     # External Multiplayer: the customer this page is about, if any.
-    org_id: UUID | None = None
+    tenant_id: UUID | None = None
     # Which wiki this page is written for, derived from where it sits:
-    # "external" (the workspace's cross-org, anonymized wiki), "internal" (the
+    # "external" (the workspace's cross-tenant, anonymized wiki), "internal" (the
     # scope's own Memory wiki), or None for an ordinary page.
     wiki: str | None = None
     name: str
@@ -544,16 +544,16 @@ class HistoryEventCreateRequest(BaseModel):
     event_type: str = Field(..., min_length=1, max_length=64)
     content: str = Field(..., min_length=1)
     session_id: SessionId = Field(..., min_length=1, max_length=64)
-    org_id: str | None = Field(
+    tenant_id: str | None = Field(
         None,
         max_length=128,
-        description="External Multiplayer: the developer-managed org this "
+        description="External Multiplayer: the developer-managed tenant this "
         "session belongs to; requires a developer workspace scope",
     )
-    org_name: str | None = Field(
+    tenant_name: str | None = Field(
         None,
         max_length=255,
-        description="Display name for the org, used only when it is first seen",
+        description="Display name for the tenant, used only when it is first seen",
     )
     tool_name: str | None = Field(None, max_length=128)
     metadata: dict = Field(default_factory=dict)

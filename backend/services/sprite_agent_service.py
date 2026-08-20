@@ -375,7 +375,7 @@ async def build_scheduled_turn(agent: dict, run_stamp: str) -> tuple[str, str]:
     server-side from its watermark; other scheduled agents run schedule_prompt.
     Each run gets its own per-run session id so history (and the CLI transcript
     it replays) can't grow unbounded across a long-lived schedule."""
-    from . import files_tree_service, org_service, prompts
+    from . import files_tree_service, prompts, tenant_service
 
     user_id = UUID(str(agent["user_id"]))
     session_id = f"{scheduled_session_prefix(agent)}{run_stamp}"
@@ -383,21 +383,21 @@ async def build_scheduled_turn(agent: dict, run_stamp: str) -> tuple[str, str]:
         since = agent["curated_through"].isoformat() if agent.get("curated_through") else None
         # Which wiki this curator writes decides its prompt. A developer
         # workspace runs both: the internal pass over its own Memory wiki, and
-        # the external pass compiling the cross-org wiki plus per-org notepads.
+        # the external pass compiling the cross-tenant wiki plus per-tenant notepads.
         if agent.get("curator_wiki") == "external":
-            workspace = await org_service.workspace_for_scope(user_id)
+            workspace = await tenant_service.workspace_for_scope(user_id)
             if workspace is None or workspace["external_wiki_folder_id"] is None:
                 raise ValueError("external curator on a scope with no active developer platform")
-            orgs = await org_service.list_orgs(workspace["id"])
+            tenants = await tenant_service.list_tenants(workspace["id"])
             return session_id, prompts.render_external_curator_prompt(
                 str(workspace["external_wiki_folder_id"]),
                 [
                     {
-                        "name": org["name"],
-                        "notepad_folder_id": str(org["notepad_folder_id"]),
-                        "share_wiki": org["share_wiki"],
+                        "name": tenant["name"],
+                        "notepad_folder_id": str(tenant["notepad_folder_id"]),
+                        "share_wiki": tenant["share_wiki"],
                     }
-                    for org in orgs
+                    for tenant in tenants
                 ],
                 since,
             )

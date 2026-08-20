@@ -56,8 +56,8 @@ async def _list_sessions(owner_user_id: UUID, user_id: UUID) -> list[dict]:
             "size_bytes": int(s["size_bytes"] or 0),
             "last_at": s["last_at"],
             "updated_at": s["last_at"],
-            "org_external_id": s["org_external_id"],
-            "org_name": s["org_name"],
+            "tenant_external_id": s["tenant_external_id"],
+            "tenant_name": s["tenant_name"],
         }
         for s in sessions
     ]
@@ -98,9 +98,9 @@ async def _files_tree(owner_user_id: UUID, user_id: UUID) -> dict:
             # tree entries — the overview only carries filed files.
             "SELECT fi.id, fi.name, fi.folder_id, fi.size_bytes, "
             "       fi.content_type, fi.created_at, fi.linked_table_id, "
-            "       org.external_id AS org_external_id "
+            "       tenant.external_id AS tenant_external_id "
             "FROM files fi "
-            "LEFT JOIN orgs org ON org.id = fi.org_id "
+            "LEFT JOIN tenants tenant ON tenant.id = fi.tenant_id "
             f"WHERE fi.owner_user_id = $1 AND fi.deleted_at IS NULL "
             f"AND fi.owner_page_id IS NULL AND {readable_file} ORDER BY fi.created_at DESC",
             owner_user_id,
@@ -147,7 +147,7 @@ async def _files_tree(owner_user_id: UUID, user_id: UUID) -> dict:
                 "url": None,
                 "created_at": f["created_at"],
                 "linked_table_id": str(f["linked_table_id"]) if f["linked_table_id"] else None,
-                "org_external_id": f["org_external_id"],
+                "tenant_external_id": f["tenant_external_id"],
             }
             for f in file_rows
         ],

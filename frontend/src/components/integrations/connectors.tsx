@@ -118,7 +118,7 @@ export const CONNECTORS: Connector[] = [
     label: "Heavi",
     sourceType: "heavi_learnings",
     kind: "auto",
-    blurb: "Rules of the road, read live from your Heavi org.",
+    blurb: "Rules of the road, read live from your Heavi tenant.",
   },
   {
     provider: "posthog",

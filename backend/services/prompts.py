@@ -198,7 +198,7 @@ Use the `stash` CLI for everything — every subcommand supports `--json`.
   through what you were shown) — curate what's present, don't try to page.
 - Each history event carries its session's `folder`. Folder placement is the
   owner's deliberate curation signal: sessions filed into a named folder share
-  a context (a customer, an org, a project) — attribute what you learn to that
+  a context (a customer, a tenant, a project) — attribute what you learn to that
   context rather than generalizing it. A folder whose name marks it as
   global/approved (e.g. "Global — approved for learning") holds traces an
   expert has sanctioned: treat those as trustworthy, general knowledge and
@@ -216,7 +216,7 @@ Use the `stash` CLI for everything — every subcommand supports `--json`.
   Never rewrite old entries; this is the permanent record of what each run did.
 - **Categories** are subfolders of Memory; every other page lives in exactly
   one category.
-- Two page kinds inside categories: **entity pages** (a person, org, tool,
+- Two page kinds inside categories: **entity pages** (a person, tenant, tool,
   product, project — reused across sources) and **concept pages** (an idea,
   decision, or theme synthesized across sources). Reuse an entity by linking
   to its page, never by duplicating its facts.
@@ -309,17 +309,20 @@ Begin now.
 
 
 # ---------------------------------------------------------------------------
-# External Multiplayer curator (developer workspaces: cross-org wiki + notepads)
+# External Multiplayer curator (developer workspaces: cross-tenant wiki + notepads)
 # ---------------------------------------------------------------------------
 
 
-def render_external_curator_prompt(wiki_folder_id: str, orgs: list[dict], since: str | None) -> str:
+def render_external_curator_prompt(
+    wiki_folder_id: str, tenants: list[dict], since: str | None
+) -> str:
     """The curation instruction for a developer workspace's curator.
 
-    A developer workspace serves many customer orgs. This prompt compiles the
-    same delta feed into two artifacts with opposite privacy rules: a per-org
-    notepad (non-anonymized, one folder per org) and the shared external wiki
-    (cross-org, anonymized — org identities never appear). Orgs opt out of the
+    A developer workspace serves many tenants — one end user of the developer's
+    product each, whether that is a repair shop or one person. This prompt compiles the
+    same delta feed into two artifacts with opposite privacy rules: a per-tenant
+    notepad (non-anonymized, one folder per tenant) and the shared external wiki
+    (cross-tenant, anonymized — tenant identities never appear). Tenants opt out of the
     wiki with share_wiki=false; their material still feeds their own notepad.
     """
     window = (
@@ -328,33 +331,34 @@ def render_external_curator_prompt(wiki_folder_id: str, orgs: list[dict], since:
         else "the full history (this is the first run — bootstrap both artifacts)"
     )
     changes_cmd = f"stash changes --since {since} --json" if since else "stash changes --json"
-    org_lines = "\n".join(
-        f"- `{org['name']}` — notepad folder id `{org['notepad_folder_id']}`"
-        + ("" if org["share_wiki"] else " — **opted out of the shared wiki**")
-        for org in orgs
+    tenant_lines = "\n".join(
+        f"- `{tenant['name']}` — notepad folder id `{tenant['notepad_folder_id']}`"
+        + ("" if tenant["share_wiki"] else " — **opted out of the shared wiki**")
+        for tenant in tenants
     )
     return f"""# Sleep Time Compute — External Multiplayer Curation
 
 This Stash is a developer workspace: its owner ships an agent product, and
-each of their customers is an **org**. You compile {window} into two
+each end user of it is a **tenant** — a company, or one person. You compile
+{window} into two
 artifacts with opposite privacy rules:
 
-1. **Per-org notepads** — one folder per org (ids below). Non-anonymized
-   working memory for that org alone: their machines, their part numbers,
+1. **Per-tenant notepads** — one folder per tenant (ids below). Non-anonymized
+   working memory for that tenant alone: their machines, their part numbers,
    their people, their history. Detail is the point.
 2. **The shared external wiki** (folder id `{wiki_folder_id}`) — general
-   knowledge distilled ACROSS orgs, read by every org's agent. Org identity
-   must never appear here: no org names, no customer names, no people, no
+   knowledge distilled ACROSS tenants, read by every tenant's agent. Tenant identity
+   must never appear here: no tenant names, no customer names, no people, no
    identifiable specifics (a one-of-a-kind machine identifies its owner).
-   Cite anonymously: "a peer org found...". When in doubt whether a detail
-   identifies an org, it goes in the notepad, not the wiki.
+   Cite anonymously: "a peer tenant found...". When in doubt whether a detail
+   identifies a tenant, it goes in the notepad, not the wiki.
 
-## The orgs
-{org_lines}
+## The tenants
+{tenant_lines}
 
 ## Read the inputs
 - `{changes_cmd}` — the delta. Each history event carries its session's
-  `org` (name) and `org_share_wiki`. Events with no org are the developer's
+  `tenant` (name) and `tenant_share_wiki`. Events with no tenant are the developer's
   own activity — wiki-eligible, never notepad material.
 - `history_has_more: true` means the feed overflowed this run's cap; curate
   what's present, the remainder is queued for your next run.
@@ -362,16 +366,16 @@ artifacts with opposite privacy rules:
   what's already written.
 
 ## Routing rules (hard)
-- Every org's material feeds THAT org's notepad, never another org's.
-- Only events from orgs WITHOUT the opt-out marker may inform the wiki.
-  Opted-out orgs' material goes in their notepad and stops there.
+- Every tenant's material feeds THAT tenant's notepad, never another tenant's.
+- Only events from tenants WITHOUT the opt-out marker may inform the wiki.
+  Opted-out tenants' material goes in their notepad and stops there.
 - The wiki gets the anonymized general lesson; the notepad gets the specifics.
-  One event routinely produces both: "Org X's Cascadia needed part P for
-  fault F" → notepad line for org X verbatim; wiki page on fault F → part P
+  One event routinely produces both: "Tenant X's Cascadia needed part P for
+  fault F" → notepad line for tenant X verbatim; wiki page on fault F → part P
   with no mention of X.
 - Files in the delta already inside the wiki folder are developer-curated
   raw material for the wiki — fold them in like any source, they are already
-  cleared for cross-org use.
+  cleared for cross-tenant use.
 
 ## Write
 - Create a page: `stash files add-page "<Title>" --folder <folder_id> --content "<markdown>" --json`
@@ -393,13 +397,13 @@ artifacts with opposite privacy rules:
 
 ## Anonymization lint (end of every run)
 Re-read every wiki page you touched and strip anything that identifies an
-org: names, unique identifiers, one-of-a-kind configurations, quotes long
+tenant: names, unique identifiers, one-of-a-kind configurations, quotes long
 enough to be recognizable. Record each strip as a `lint` line in `Log`.
 This pass is the privacy guarantee — never skip it.
 
 ## Curator log (your final message)
-ONE sentence distilling what the new material taught across orgs — the
-learning, not the mechanics, with no org named. A quiet night is reported
+ONE sentence distilling what the new material taught across tenants — the
+learning, not the mechanics, with no tenant named. A quiet night is reported
 as quiet: "Nothing new worth recording." is a complete entry.
 
 Begin now.

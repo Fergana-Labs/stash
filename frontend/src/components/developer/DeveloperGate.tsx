@@ -70,7 +70,8 @@ export default function DeveloperGate({ children }: { children: React.ReactNode 
   return (
     <div className="max-w-xl">
       <PageHeading title="Developer Platform">
-        Run Stash for your product&apos;s customers: each customer is an org with its own
+        Run Stash for your product&apos;s users: each tenant is one of them — a company or
+        one person — with its own
         private memory, and your agents share one anonymized wiki distilled across all of them.
       </PageHeading>
       {active.length > 0 && (

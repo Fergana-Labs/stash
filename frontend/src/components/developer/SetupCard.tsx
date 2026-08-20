@@ -5,12 +5,12 @@ import { useState } from "react";
 import { Code, CodeBlock, SectionHeading } from "@/components/developer/DocsPrimitives";
 import { mintDeveloperKey } from "@/lib/api";
 
-const READ = `# Your agent reads. org_id is the only thing Stash needs — it is
+const READ = `# Your agent reads. tenant_id is the only thing Stash needs — it is
 # the isolation boundary. No session, no conversation: reading memory has
 # nothing to do with which conversation you are in.
 curl -X POST https://api.joinstash.ai/api/v1/me/vfs \\
   -H "Authorization: Bearer $STASH_API_KEY" -H "Content-Type: application/json" \\
-  -d '{"script":"cat /memory/*", "org_id":"org_acme"}'`;
+  -d '{"script":"cat /memory/*", "tenant_id":"org_acme"}'`;
 
 const WRITE = `# Your backend uploads transcripts. Its own mechanism — after the
 # turn, in a batch, from a queue worker, whenever suits you.
@@ -18,7 +18,7 @@ curl -X POST https://api.joinstash.ai/api/v1/me/sessions/events/batch \\
   -H "Authorization: Bearer $STASH_API_KEY" -H "Content-Type: application/json" \\
   -d '{"events":[{"agent_name":"my-agent","event_type":"user_message",
        "content":"...","session_id":"org_acme:conv-123",
-       "org_id":"org_acme","org_name":"Acme Trucks"}]}'`;
+       "tenant_id":"org_acme","tenant_name":"Acme Trucks"}]}'`;
 
 /** Key minting plus the two-call integration contract. */
 export default function SetupCard() {
@@ -75,11 +75,11 @@ export default function SetupCard() {
       <div className="mt-12">
         <SectionHeading>Reading: what your agent sees</SectionHeading>
         <p className="mt-3 max-w-2xl text-[15px] leading-7 text-dim">
-          One field. <Code>org_id</Code> is your own id for that customer, and it is the
+          One field. <Code>tenant_id</Code> is your own id for that customer, and it is the
           isolation boundary: the shared wiki at <Code>/memory</Code>, that customer&apos;s
           notepad and files under <Code>/files</Code>, their transcripts under{" "}
           <Code>/sessions</Code>, and nothing of anyone else&apos;s. First time we see an id,
-          the org is created.
+          the tenant is created.
         </p>
         <div className="mt-5">
           <CodeBlock>{READ}</CodeBlock>
@@ -90,7 +90,7 @@ export default function SetupCard() {
         <SectionHeading>Uploading: recording what happened</SectionHeading>
         <p className="mt-3 max-w-2xl text-[15px] leading-7 text-dim">
           A separate mechanism, and the only place a <Code>session_id</Code> appears. It is
-          not a security boundary — <Code>org_id</Code> is. It groups turns into one
+          not a security boundary — <Code>tenant_id</Code> is. It groups turns into one
           transcript, which is what the curator learns from.
         </p>
         <p className="mt-3 max-w-2xl text-[15px] leading-7 text-dim">

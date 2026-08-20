@@ -30,7 +30,7 @@ class VfsScanBudget(Exception):
 
     Raised by clients that meter reads (the server-side VFS) for reads issued
     inside `scan_calls`. The shell stops the grep sweep at this point and
-    reports the results so far with a loud truncation warning — an org-wide
+    reports the results so far with a loud truncation warning — a tenant-wide
     sweep degrades to a partial answer instead of an aborted command.
     """
 

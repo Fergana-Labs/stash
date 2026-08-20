@@ -277,7 +277,7 @@ def _source_row(row) -> dict:
         "last_synced_at": row["last_synced_at"].isoformat() if row["last_synced_at"] else None,
         "settings": row["settings"] or {},
         "binds_skills": row["binds_skills"],
-        "org_id": str(row["org_id"]) if row["org_id"] else None,
+        "tenant_id": str(row["tenant_id"]) if row["tenant_id"] else None,
     }
 
 
@@ -295,7 +295,7 @@ async def create_source(
     external_ref: str,
     display_name: str,
     settings: dict | None = None,
-    org_id: UUID | None = None,
+    tenant_id: UUID | None = None,
 ) -> dict:
     """Register a connected source (idempotent on the natural key). For synced
     types the first sync runs immediately because `next_sync_at` defaults to
@@ -312,7 +312,7 @@ async def create_source(
         """
         INSERT INTO user_sources (
             owner_user_id, source_type, external_ref,
-            display_name, capability, sync_interval_s, sync_enabled, settings, org_id
+            display_name, capability, sync_interval_s, sync_enabled, settings, tenant_id
         )
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9)
         ON CONFLICT (owner_user_id, source_type, external_ref)
@@ -334,7 +334,7 @@ async def create_source(
         interval,
         sync_enabled,
         normalized_settings,
-        org_id,
+        tenant_id,
     )
     source = _source_row(row)
     await purge_disallowed_copied_documents(source)
@@ -382,16 +382,16 @@ async def purge_disallowed_copied_documents(source: dict) -> int:
     return 0
 
 
-async def list_connected_sources(user_id: UUID, org_id: UUID | None = None) -> list[dict]:
-    """Connected sources owned by `user_id`. With `org_id`, only that org's —
-    the isolation an org's own reads depend on. Without it, everything the
-    owner has connected, org-scoped rows included, since the owner connected
+async def list_connected_sources(user_id: UUID, tenant_id: UUID | None = None) -> list[dict]:
+    """Connected sources owned by `user_id`. With `tenant_id`, only that tenant's —
+    the isolation a tenant's own reads depend on. Without it, everything the
+    owner has connected, tenant-scoped rows included, since the owner connected
     them all."""
     where = "owner_user_id = $1"
     args: list = [user_id]
-    if org_id is not None:
-        args.append(org_id)
-        where += " AND org_id = $2"
+    if tenant_id is not None:
+        args.append(tenant_id)
+        where += " AND tenant_id = $2"
     rows = await get_pool().fetch(
         f"SELECT * FROM user_sources WHERE {where} ORDER BY source_type, display_name",
         *args,
@@ -1829,7 +1829,7 @@ async def list_sources(owner_user_id: UUID, user_id: UUID) -> list[dict]:
     """Every source in this scope's view: the two native sources plus the
     scope's connected sources. In personal scope (owner == user) that is the
     caller's own view; in a workspace scope it is the workspace's connections
-    (the org Drive etc.), readable by every member."""
+    (the tenant Drive etc.), readable by every member."""
     sources = [
         {
             "source": NATIVE_FILES,

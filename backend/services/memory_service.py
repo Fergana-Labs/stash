@@ -18,9 +18,9 @@ from . import embeddings as embedding_service
 from . import (
     github_pr_service,
     linear_ticket_service,
-    org_service,
     permission_service,
     session_service,
+    tenant_service,
 )
 
 logger = logging.getLogger(__name__)
@@ -120,8 +120,8 @@ async def push_event(
     content: str,
     created_by: UUID,
     session_id: str,
-    org_id: str | None = None,
-    org_name: str | None = None,
+    tenant_id: str | None = None,
+    tenant_name: str | None = None,
     tool_name: str | None = None,
     metadata: dict | None = None,
     attachments: list[dict] | None = None,
@@ -161,17 +161,17 @@ async def push_event(
     if embedding_service.is_configured():
         _schedule_event_embed(event["id"], content, _text_hash(content))
     if owner_user_id is not None and session_id:
-        org_rows = await _resolve_event_orgs(
-            owner_user_id, [{"org_id": org_id, "org_name": org_name}]
+        org_rows = await _resolve_event_tenants(
+            owner_user_id, [{"tenant_id": tenant_id, "tenant_name": tenant_name}]
         )
-        org = org_rows.get(org_id) if org_id else None
+        tenant = org_rows.get(tenant_id) if tenant_id else None
         session = await session_service.upsert_session(
             owner_user_id,
             session_id,
             agent_name=agent_name,
             cwd=meta.get("cwd") if isinstance(meta.get("cwd"), str) else None,
             created_by=created_by,
-            org_id=org["id"] if org else None,
+            tenant_id=tenant["id"] if tenant else None,
         )
         if linear_ticket_service.has_ticket_hint([content]):
             await linear_ticket_service.sync_session_labels(
@@ -247,7 +247,7 @@ async def push_events_batch(
     return results
 
 
-async def reject_cross_org_sessions(owner_user_id: UUID, events: list[dict]) -> None:
+async def reject_cross_tenant_sessions(owner_user_id: UUID, events: list[dict]) -> None:
     """A session belongs to exactly one customer.
 
     Session ids are chosen by the developer's own app, so two of their
@@ -261,12 +261,12 @@ async def reject_cross_org_sessions(owner_user_id: UUID, events: list[dict]) -> 
     for event in events:
         session_id = event.get("session_id")
         if session_id:
-            asserted.setdefault(session_id, event.get("org_id"))
+            asserted.setdefault(session_id, event.get("tenant_id"))
     if not asserted:
         return
     rows = await get_pool().fetch(
         "SELECT s.session_id, o.external_id FROM sessions s "
-        "LEFT JOIN orgs o ON o.id = s.org_id "
+        "LEFT JOIN tenants o ON o.id = s.tenant_id "
         "WHERE s.owner_user_id = $1 AND s.session_id = ANY($2::text[])",
         owner_user_id,
         list(asserted),
@@ -277,26 +277,26 @@ async def reject_cross_org_sessions(owner_user_id: UUID, events: list[dict]) -> 
         if existing != incoming:
             raise ValueError(
                 f"session {row['session_id']!r} already belongs to "
-                f"{existing or 'no org'}; it cannot also carry {incoming or 'no org'}. "
+                f"{existing or 'no tenant'}; it cannot also carry {incoming or 'no tenant'}. "
                 "Session ids must be unique across your customers."
             )
 
 
-async def _resolve_event_orgs(owner_user_id: UUID, sessions) -> dict[str, dict]:
-    """External Multiplayer: map developer-asserted org ids to org rows,
-    creating unseen orgs on the fly. An org id on a scope that isn't an
+async def _resolve_event_tenants(owner_user_id: UUID, sessions) -> dict[str, dict]:
+    """External Multiplayer: map developer-asserted tenant ids to tenant rows,
+    creating unseen tenants on the fly. A tenant id on a scope that isn't an
     active developer workspace is a caller error — fail loud, no fallback."""
-    external_ids = {s["org_id"]: s["org_name"] for s in sessions if s["org_id"]}
+    external_ids = {s["tenant_id"]: s["tenant_name"] for s in sessions if s["tenant_id"]}
     if not external_ids:
         return {}
-    workspace = await org_service.workspace_for_scope(owner_user_id)
+    workspace = await tenant_service.workspace_for_scope(owner_user_id)
     if workspace is None:
         raise ValueError(
-            "events carry org_id but this scope is not a workspace — "
-            "org uploads require a developer workspace scope"
+            "events carry tenant_id but this scope is not a workspace — "
+            "tenant uploads require a developer workspace scope"
         )
     return {
-        external_id: await org_service.get_or_create_org(workspace, external_id, name)
+        external_id: await tenant_service.get_or_create_tenant(workspace, external_id, name)
         for external_id, name in external_ids.items()
     }
 
@@ -318,21 +318,21 @@ async def _upsert_sessions_for_events(
         sessions[session_id] = {
             "agent_name": event.get("agent_name") or "",
             "cwd": metadata.get("cwd") if isinstance(metadata.get("cwd"), str) else None,
-            "org_id": event.get("org_id"),
-            "org_name": event.get("org_name"),
+            "tenant_id": event.get("tenant_id"),
+            "tenant_name": event.get("tenant_name"),
         }
 
-    org_rows = await _resolve_event_orgs(owner_user_id, sessions.values())
+    org_rows = await _resolve_event_tenants(owner_user_id, sessions.values())
 
     for session_id, session in sessions.items():
-        org = org_rows.get(session["org_id"]) if session["org_id"] else None
+        tenant = org_rows.get(session["tenant_id"]) if session["tenant_id"] else None
         row = await session_service.upsert_session(
             owner_user_id,
             session_id,
             agent_name=session["agent_name"],
             cwd=session["cwd"],
             created_by=created_by,
-            org_id=org["id"] if org else None,
+            tenant_id=tenant["id"] if tenant else None,
         )
         contents = [
             event.get("content") or "" for event in events if event.get("session_id") == session_id
@@ -457,7 +457,7 @@ async def list_scope_sessions(owner_user_id: UUID, user_id: UUID) -> list[dict]:
     readable_session = permission_service.readable_content_condition("session", "s", 2)
     rows = await pool.fetch(
         "WITH readable_sessions AS ( "
-        "  SELECT s.id, s.owner_user_id, s.session_id, s.org_id "
+        "  SELECT s.id, s.owner_user_id, s.session_id, s.tenant_id "
         "  FROM sessions s "
         "  WHERE s.owner_user_id = $1 AND s.deleted_at IS NULL "
         f"    AND {readable_session} "
@@ -484,8 +484,8 @@ async def list_scope_sessions(owner_user_id: UUID, user_id: UUID) -> list[dict]:
         "       (ARRAY_AGG(NULLIF(u.display_name, '') ORDER BY h.created_at) "
         "        FILTER (WHERE NULLIF(u.display_name, '') IS NOT NULL))[1] AS user_name, "
         "       title_sources.title_source, "
-        "       org.external_id AS org_external_id, "
-        "       org.name AS org_name, "
+        "       tenant.external_id AS tenant_external_id, "
+        "       tenant.name AS tenant_name, "
         "       COUNT(*)::INT AS event_count, "
         "       SUM(pg_column_size(h.content))::BIGINT AS size_bytes, "
         "       MIN(h.created_at) AS started_at, "
@@ -493,13 +493,13 @@ async def list_scope_sessions(owner_user_id: UUID, user_id: UUID) -> list[dict]:
         "FROM history_events h "
         "JOIN readable_sessions rs ON rs.owner_user_id = h.owner_user_id "
         "  AND rs.session_id = h.session_id "
-        "LEFT JOIN orgs org ON org.id = rs.org_id "
+        "LEFT JOIN tenants tenant ON tenant.id = rs.tenant_id "
         "LEFT JOIN title_sources ON title_sources.owner_user_id = h.owner_user_id "
         "  AND title_sources.session_id = h.session_id "
         "LEFT JOIN users u ON u.id = h.created_by "
         "WHERE h.owner_user_id = $1 AND h.session_id IS NOT NULL "
         "GROUP BY h.session_id, rs.id, title_sources.title_source, "
-        "         org.external_id, org.name "
+        "         tenant.external_id, tenant.name "
         "ORDER BY last_at DESC, user_name ASC, session_id ASC",
         owner_user_id,
         user_id,

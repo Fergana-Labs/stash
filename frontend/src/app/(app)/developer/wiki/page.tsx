@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import DeveloperGate from "@/components/developer/DeveloperGate";
-import { listOrgs } from "@/lib/api";
+import { listTenants } from "@/lib/api";
 
 export default function DeveloperWiki() {
   return (
@@ -21,7 +21,7 @@ function WikiRedirect() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    listOrgs()
+    listTenants()
       .then((res) => {
         router.replace(`/folders/${res.workspace.external_wiki_folder_id}`);
       })

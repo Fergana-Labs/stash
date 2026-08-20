@@ -30,7 +30,7 @@ class HeaviIntegration:
             name="base_url",
             label="Learnings endpoint URL",
             placeholder="https://app.heaviai.com/api/stash/learnings",
-            help="The GET endpoint that returns your org's rules of the road as JSON.",
+            help="The GET endpoint that returns your tenant's rules of the road as JSON.",
         ),
         CredentialField(
             name="api_token",

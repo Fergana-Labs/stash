@@ -54,7 +54,7 @@ CLAUDE = OAuthProvider(
     token="https://platform.claude.com/v1/oauth/token",
     redirect="https://platform.claude.com/oauth/code/callback",
     scope=(
-        "org:create_api_key user:profile user:inference "
+        "tenant:create_api_key user:profile user:inference "
         "user:sessions:claude_code user:mcp_servers user:file_upload"
     ),
     extra={"code": "true"},  # Claude wants code=true first, state last.

@@ -86,13 +86,13 @@ def resolve_archive_url(
             headers["PRIVATE-TOKEN"] = pat
         return ResolvedArchive(archive_url=archive_url, headers=headers, host_kind="gitlab")
 
-    if host == "bitbucket.org" or host.endswith(".bitbucket.org"):
+    if host == "bitbucket.tenant" or host.endswith(".bitbucket.tenant"):
         owner_repo = _parse_owner_repo(parsed.path)
         if owner_repo is None:
-            raise UnsupportedHostError("bitbucket.org URL must include /owner/repo")
+            raise UnsupportedHostError("bitbucket.tenant URL must include /owner/repo")
         owner, repo = owner_repo
         ref_seg = quote(ref) if ref else "HEAD"
-        archive_url = f"https://bitbucket.org/{owner}/{repo}/get/{ref_seg}.zip"
+        archive_url = f"https://bitbucket.tenant/{owner}/{repo}/get/{ref_seg}.zip"
         headers = {}
         if pat:
             # Bitbucket app password — sent as basic auth username:app_password.
@@ -101,5 +101,5 @@ def resolve_archive_url(
         return ResolvedArchive(archive_url=archive_url, headers=headers, host_kind="bitbucket")
 
     raise UnsupportedHostError(
-        "paste a github.com / gitlab.com / bitbucket.org URL, or a direct .zip archive URL"
+        "paste a github.com / gitlab.com / bitbucket.tenant URL, or a direct .zip archive URL"
     )
