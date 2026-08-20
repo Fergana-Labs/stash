@@ -19,6 +19,7 @@ API silently drops Shared Drive items.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
@@ -601,7 +602,7 @@ async def extract_drive_text(
             # XLSX export keeps every visible sheet (Drive's CSV export drops
             # everything except the first).
             xlsx = await _export_bytes(client, file_id, _XLSX_MIME)
-            text = extract_text(xlsx, _XLSX_MIME)
+            text = await asyncio.to_thread(extract_text, xlsx, _XLSX_MIME)
         elif mime == MIME_GOOGLE_SLIDE:
             text = await _export(client, file_id, "text/plain")
         else:
@@ -634,8 +635,12 @@ async def extract_drive_text(
             else:
                 # Defer to the file-extraction service so docx/pptx/xlsx/pdf/
                 # text/* share the same handler set as the direct-upload
-                # extraction queue.
-                text = extract_text(content, mime)
+                # extraction queue. Off the event loop: this runs on the API
+                # request path (lazy whole-Drive reads), and a synchronous
+                # pypdf parse of a 25 MB catalog froze the loop long enough to
+                # fail Render's 5s health check and get the instance killed
+                # (prod incident, 2026-08-19).
+                text = await asyncio.to_thread(extract_text, content, mime)
 
         # Every branch lands here, Google-native exports included — an export
         # that came back empty must not be stored as a blank 'done' document.
