@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field
 from ..auth import get_current_user, get_scope
 from ..config import settings
 from ..database import get_pool
+from ..models import SessionId
 from ..services import (
     files_tree_service,
     linear_ticket_service,
@@ -35,7 +36,7 @@ SESSIONS_FOLDER_NAME = "Sessions"
 
 
 class SessionUpsertRequest(BaseModel):
-    session_id: str = Field(..., min_length=1, max_length=128)
+    session_id: SessionId = Field(..., min_length=1, max_length=128)
     agent_name: str = Field("", max_length=64)
     cwd: str | None = Field(None, max_length=1024)
     files_touched: list[str] = Field(default_factory=list)

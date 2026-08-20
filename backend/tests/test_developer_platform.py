@@ -260,6 +260,31 @@ async def test_new_org_reads_the_shared_wiki_before_it_has_written(client: Async
 
 
 @pytest.mark.asyncio
+async def test_session_id_with_a_slash_is_refused(client: AsyncClient):
+    """A slash makes the id unusable on the transcript endpoints, where it is a
+    path parameter. The write would still succeed and the session would still
+    list and grep — only `cat` on its transcript would 404, months later, for a
+    subset of the data. Refuse it at the door, and say what to use instead."""
+    api_key, _, workspace = await _developer(client)
+    machine_key = await _mint_workspace_key(client, api_key, workspace)
+
+    resp = await client.post(
+        "/api/v1/me/sessions/events/batch",
+        json={"events": [_event("acme/conv-1", org_id="org_a", org_name="A")]},
+        headers=_auth(machine_key),
+    )
+    assert resp.status_code == 422
+    assert "acme:conv-1" in str(resp.json()["detail"])
+
+    ok = await client.post(
+        "/api/v1/me/sessions/events/batch",
+        json={"events": [_event("acme:conv-1", org_id="org_a", org_name="A")]},
+        headers=_auth(machine_key),
+    )
+    assert ok.status_code == 201
+
+
+@pytest.mark.asyncio
 async def test_two_orgs_cannot_share_a_session_id(client: AsyncClient, pool):
     """Session ids come from the developer's own app, so two of their customers
     picking the same one is ordinary. Sessions are unique on (owner, session_id)
