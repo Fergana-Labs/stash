@@ -12,7 +12,7 @@ import { SquarePen } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { listMySessions, type SessionSummary } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
-import { timeAgo } from "@/components/content/files-overview/build";
+import { timeAgo } from "@/lib/utils";
 import AgentChatView from "./AgentChatView";
 
 // Web chats mint `agent-<32 hex>` session ids; scheduled and curator runs use

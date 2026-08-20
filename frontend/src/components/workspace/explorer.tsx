@@ -12,7 +12,6 @@ import { CONNECTORS, connectorIcon, providerForSourceType } from "@/components/i
 import { INTEGRATIONS_CHANGED_EVENT, listIntegrations } from "@/lib/integrations";
 import { opensNewTab } from "@/lib/tab-nav";
 import FilesExplorer, { type Item } from "./files-explorer";
-import VfsTree from "./vfs-tree";
 
 export type ExplorerSection = "files" | "sessions" | "skills" | "agents" | "tools" | "computer";
 
@@ -319,8 +318,9 @@ export default function Explorer({ section }: { section: ExplorerSection }) {
 
   if (section === "agents") return <AgentsExplorer />;
 
-  // The VFS section docks the same tree the /files lens shows full-screen.
-  if (section === "files") return <VfsTree />;
+  // Files docks the same browser the /files page shows full-screen.
+  if (section === "files")
+    return <FilesExplorer onRoot={() => setAtRoot(true)} rootLabel="Files" rootFolderId={null} />;
 
   // Skills & Sessions are file managers (own breadcrumb/toolbar).
   if ((section === "skills" || section === "sessions") && !atRoot) {
