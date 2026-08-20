@@ -86,7 +86,16 @@ export default function Home() {
     setBusy(true);
     setError(null);
     try {
+      // Two independent calls, as a real integration has them: the agent
+      // reads and answers with only an org id, then the transcript is uploaded
+      // separately — which is why the session id appears in the second call
+      // and nowhere in the first.
       const data = await load<{ reply: string }>("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ org: org.external_id, question: asked }),
+      });
+      await load("/api/record", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -94,6 +103,7 @@ export default function Home() {
           orgName: org.name,
           session: `${org.external_id}:${session}`,
           question: asked,
+          reply: data.reply,
         }),
       });
       setTurns((t) => [...t, { role: "planner", text: data.reply }]);

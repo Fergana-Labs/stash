@@ -1,4 +1,5 @@
 import { answer } from "@/lib/agent";
+import { record } from "@/lib/stash";
 
 // The scenario worth showing: one agency learns something about the world the
 // hard way and records something private about a traveller; a second agency
@@ -27,7 +28,11 @@ export async function POST() {
   try {
     const turns = [];
     for (const [org, orgName, question] of SCRIPT) {
-      const reply = await answer(org, orgName, `${org}:seed`, question);
+      const reply = await answer(org, question);
+      await record(org, orgName, `${org}:seed`, [
+        ["user_message", question],
+        ["assistant_message", reply],
+      ]);
       turns.push({ org, orgName, question, reply });
     }
     return Response.json({ turns });

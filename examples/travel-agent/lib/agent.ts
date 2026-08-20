@@ -1,4 +1,4 @@
-import { context, record } from "@/lib/stash";
+import { context } from "@/lib/stash";
 
 const MODEL = "claude-sonnet-4-6";
 
@@ -11,21 +11,14 @@ sentences at most unless asked for an itinerary.
 
 You do not know which other agencies exist and must never speculate about them.`;
 
-/** One turn: read what this agency may know, answer, record it back. This is
- *  the whole integration — everything else in the app is presentation. */
-export async function answer(
-  org: string,
-  orgName: string,
-  session: string,
-  question: string,
-): Promise<string> {
-  const ctx = await context(org);
-  const reply = await claude(ctx, question);
-  await record(org, orgName, session, [
-    ["user_message", question],
-    ["assistant_message", reply],
-  ]);
-  return reply;
+/**
+ * The agent's own tool call: read what this agency is allowed to know, then
+ * answer. `org` is the only thing Stash needs — it is the isolation boundary.
+ * There is no session here, because reading memory has nothing to do with
+ * which conversation you are in.
+ */
+export async function answer(org: string, question: string): Promise<string> {
+  return claude(await context(org), question);
 }
 
 async function claude(ctx: string, question: string): Promise<string> {
