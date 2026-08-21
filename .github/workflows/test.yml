@@ -75,13 +75,27 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The merge below needs a merge base, which a depth-1 clone lacks.
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - run: pip install "$(grep '^alembic' backend/requirements.txt)"
+      # GitHub builds the PR merge ref from main as of the branch's last push
+      # and does not re-run workflows when main moves, so this job can pass
+      # against a base that is weeks stale — #965 did, and collided with a
+      # migration that had landed on main in the meantime. Merging main here
+      # makes the check see the tree that will actually be deployed.
+      - name: Merge current main
+        run: |
+          git fetch origin main
+          git merge --no-commit --no-ff FETCH_HEAD || {
+            echo "::error::This branch conflicts with main; rebase onto main."
+            exit 1
+          }
       # Two PRs merging migrations onto the same parent leave alembic with two
-      # heads and break every deploy (#712 + #713 both shipped "0125"). PR CI
-      # runs against the merge ref, so this reds the second PR before merge.
+      # heads and break every deploy (#712 + #713 both shipped "0125").
       - run: python backend/migrations/check_heads.py
 
   plugin-test:
