@@ -80,13 +80,18 @@ async def create_api_key(
     pool = get_pool()
     api_key = generate_api_key()
     await pool.execute(
-        "INSERT INTO user_api_keys (user_id, key_hash, name, key_type, access) "
-        "VALUES ($1, $2, $3, $4, $5)",
+        "INSERT INTO user_api_keys "
+        "(user_id, key_hash, name, key_type, access, key_prefix, key_suffix) "
+        "VALUES ($1, $2, $3, $4, $5, $6, $7)",
         user_id,
         hash_api_key(api_key),
         name[:128],
         key_type,
         access,
+        # The only unhashed trace of the key: enough to recognize it in a
+        # table, far too little to reconstruct it.
+        api_key[:8],
+        api_key[-4:],
     )
     return api_key
 

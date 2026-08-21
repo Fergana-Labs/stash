@@ -69,6 +69,7 @@ export default function KeyTable({ refresh }: { refresh: number }) {
               {key.name}
             </span>
             <span className="mt-0.5 block truncate font-mono text-[12px] text-muted-foreground">
+              {key.key_prefix ? `${key.key_prefix}…${key.key_suffix} · ` : ""}
               created {when(key.created_at)} · last used {when(key.last_used_at)}
             </span>
           </span>

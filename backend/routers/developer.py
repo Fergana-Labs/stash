@@ -99,7 +99,8 @@ async def list_developer_keys(scope_user_id: UUID = Depends(get_scope)):
     is never returned; a key is shown once, at mint time."""
     await _require_active_workspace(scope_user_id)
     rows = await get_pool().fetch(
-        "SELECT id, name, access, created_at, last_used_at FROM user_api_keys "
+        "SELECT id, name, access, created_at, last_used_at, key_prefix, key_suffix "
+        "FROM user_api_keys "
         "WHERE user_id = $1 AND key_type = 'machine' AND revoked_at IS NULL "
         "ORDER BY created_at DESC",
         scope_user_id,

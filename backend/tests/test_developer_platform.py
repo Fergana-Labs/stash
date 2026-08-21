@@ -384,8 +384,11 @@ async def test_key_list_and_revoke(client: AsyncClient, pool):
     keys = listed.json()["keys"]
     assert [k["name"] for k in keys] == ["prod"]
     assert keys[0]["access"] == "read"
-    # Key material is shown once, at mint — never by the list.
+    # Key material is shown once, at mint — never by the list. What the list
+    # carries is the recognition fragment stamped at mint time.
     assert "api_key" not in keys[0] and "key_hash" not in keys[0]
+    assert keys[0]["key_prefix"] == minted[:8]
+    assert keys[0]["key_suffix"] == minted[-4:]
 
     # The minted key works before revocation…
     ok = await client.post("/api/v1/me/vfs", json={"script": "ls /"}, headers=_auth(minted))

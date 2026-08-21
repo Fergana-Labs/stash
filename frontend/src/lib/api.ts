@@ -226,6 +226,9 @@ export type DeveloperKey = {
   access: "read" | "full";
   created_at: string;
   last_used_at: string | null;
+  /** First/last characters of the key, for recognition. Null on keys minted before fragments were stored. */
+  key_prefix: string | null;
+  key_suffix: string | null;
 };
 
 // Names and usage only — key material is shown once, at mint time.

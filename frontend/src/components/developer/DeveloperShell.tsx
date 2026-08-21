@@ -37,7 +37,7 @@ const NAV: { title: string; items: NavItem[] }[] = [
     ],
   },
   {
-    title: "Developer",
+    title: "Access",
     items: [
       { href: "/developer/keys", label: "API Keys", match: (p) => p.startsWith("/developer/keys") },
     ],
