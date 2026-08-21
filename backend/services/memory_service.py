@@ -334,7 +334,7 @@ async def read_session_events(
     rows = await pool.fetch(
         "SELECT id, agent_name, event_type, tool_name, content, metadata, created_at "
         "FROM history_events WHERE owner_user_id = $1 AND session_id = $2 "
-        "ORDER BY created_at, id",
+        "ORDER BY created_at, seq, id",
         owner_user_id,
         session_id,
     )
@@ -363,7 +363,7 @@ async def read_session_events_page(
         "SELECT id, agent_name, event_type, tool_name, content, metadata, created_at "
         "FROM history_events "
         "WHERE owner_user_id = $1 AND session_id = $2 AND event_type = ANY($3::text[]) "
-        "ORDER BY created_at, id LIMIT $4 OFFSET $5",
+        "ORDER BY created_at, seq, id LIMIT $4 OFFSET $5",
         owner_user_id,
         session_id,
         list(RENDERABLE_EVENT_TYPES),
