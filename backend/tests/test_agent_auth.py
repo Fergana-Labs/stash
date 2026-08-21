@@ -93,6 +93,27 @@ async def test_no_credential_pro_gets_managed_openrouter_glm(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_no_credential_free_curator_run_gets_managed(monkeypatch):
+    """A free account with nothing connected still gets its Memory curator: the
+    managed tier is open to curator runs because the monthly allowance already
+    caps their cost. Interactive chat stays Pro-gated (next test)."""
+    monkeypatch.setattr(settings, "AGENT_EXEC_MODE", "sprites")
+    monkeypatch.setattr(settings, "OPENROUTER_API_KEY", "sk-managed-or")
+
+    async def no_cred(_uid):
+        return None
+
+    async def not_pro(_uid):
+        return False
+
+    monkeypatch.setattr(agent_auth, "_get_credential", no_cred)
+    monkeypatch.setattr(billing_service, "is_pro", not_pro)
+    auth = await agent_auth.resolve(uuid.uuid4(), curator_run=True)
+    assert auth.harness is h.OPENCODE
+    assert auth.env == {"OPENROUTER_API_KEY": "sk-managed-or"}
+
+
+@pytest.mark.asyncio
 async def test_no_credential_free_is_gated(monkeypatch):
     monkeypatch.setattr(settings, "AGENT_EXEC_MODE", "sprites")
 

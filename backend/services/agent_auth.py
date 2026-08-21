@@ -133,12 +133,19 @@ async def delete_credential(user_id: UUID, provider: str) -> None:
     )
 
 
-async def resolve(user_id: UUID, prefer_provider: str | None = None) -> RunAuth:
+async def resolve(
+    user_id: UUID, prefer_provider: str | None = None, curator_run: bool = False
+) -> RunAuth:
     """The harness + credential injection for this user's next turn.
 
     `prefer_provider` is an agent's model override: if the user has that
     provider's credential, run it; a managed OpenRouter preference on Pro uses
     the managed GLM. Falls back to the user's default resolution otherwise.
+
+    `curator_run` marks a Memory-curator run: the managed tier is open to free
+    accounts there, because curator runs are already capped by the monthly
+    allowance (FREE_CURATOR_RUNS_PER_MONTH) — unlike interactive chat, which
+    stays Pro-gated.
     """
     # Local dev: the machine's own harness login; inject nothing.
     if settings.AGENT_EXEC_MODE == "local":
@@ -148,9 +155,9 @@ async def resolve(user_id: UUID, prefer_provider: str | None = None) -> RunAuth:
         cred = await _get_credential(user_id, prefer_provider)
         if cred is not None:
             return _byo_auth(cred)
-        # Preferred managed OpenRouter with no BYO key → managed GLM (Pro gate).
+        # Preferred managed OpenRouter with no BYO key → managed GLM.
         if prefer_provider == "openrouter":
-            return await _managed(user_id)
+            return await _managed(user_id, curator_run)
         # The agent explicitly picked a model the user hasn't connected — fail
         # loud rather than silently running a different harness.
         raise NeedsAuth
@@ -158,12 +165,13 @@ async def resolve(user_id: UUID, prefer_provider: str | None = None) -> RunAuth:
     cred = await _get_credential(user_id)
     if cred is not None:
         return _byo_auth(cred)
-    return await _managed(user_id)
+    return await _managed(user_id, curator_run)
 
 
-async def _managed(user_id: UUID) -> RunAuth:
-    """The managed agent: opencode on OpenRouter GLM, Pro only."""
-    if not await billing_service.is_pro(user_id):
+async def _managed(user_id: UUID, curator_run: bool = False) -> RunAuth:
+    """The managed agent: opencode on OpenRouter GLM. Pro only, except curator
+    runs — those are metered by the free monthly allowance instead."""
+    if not curator_run and not await billing_service.is_pro(user_id):
         raise NeedsAuth
     key = settings.OPENROUTER_API_KEY
     if not key:
