@@ -8,10 +8,11 @@ session viewer can ship a Share button without involving the CLI.
 """
 
 import json
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StringConstraints
 
 from ..auth import get_current_user, get_scope
 from ..config import settings
@@ -42,6 +43,13 @@ class SessionUpsertRequest(BaseModel):
     cwd: str | None = Field(None, max_length=1024)
     files_touched: list[str] = Field(default_factory=list)
     session_folder_id: UUID | None = None
+
+
+class SessionBulkSoftDeleteRequest(BaseModel):
+    session_ids: Annotated[
+        list[Annotated[str, StringConstraints(min_length=1, max_length=128)]],
+        Field(..., min_length=1, max_length=100),
+    ]
 
 
 def _session_app_url(session_id: str) -> str:
@@ -413,6 +421,66 @@ async def delete_my_session(
     )
     if not deleted:
         raise HTTPException(status_code=404, detail="Session not found")
+
+
+@router.post("/me/sessions/soft-delete")
+async def bulk_soft_delete_my_sessions(
+    body: SessionBulkSoftDeleteRequest,
+    current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
+):
+    """Bulk soft-delete in the caller's active scope, addressed by top-level
+    session_id (the row uuid the per-row delete uses is not known to callers).
+
+    Each requested id lands in at most one outcome bucket — deleted,
+    already_deleted, or not_found — in request order, and a valid body always
+    returns 200 with per-id outcomes instead of a 404/409, so the call is
+    idempotent and safe to retry. A row the caller lacks write access to is
+    reported not_found: like the canonical lookup, this never confirms that an
+    unreadable session exists."""
+    owner_user_id = scope_user_id
+    session_ids = list(dict.fromkeys(body.session_ids))
+    rows = await get_pool().fetch(
+        "SELECT id, session_id, deleted_at FROM sessions "
+        "WHERE owner_user_id = $1 AND session_id = ANY($2)",
+        owner_user_id,
+        session_ids,
+    )
+    row_by_session_id = {row["session_id"]: row for row in rows}
+    deleted: list[str] = []
+    already_deleted: list[str] = []
+    not_found: list[str] = []
+    for session_id in session_ids:
+        row = row_by_session_id.get(session_id)
+        if row is None:
+            not_found.append(session_id)
+            continue
+        if row["deleted_at"] is not None:
+            already_deleted.append(session_id)
+            continue
+        can_write = await permission_service.check_access(
+            "session",
+            row["id"],
+            current_user["id"],
+            owner_user_id=owner_user_id,
+            require="write",
+        )
+        if not can_write:
+            not_found.append(session_id)
+            continue
+        # delete_session stamps deleted_at/deleted_by and emits the
+        # content.session_deleted audit; a False here means a concurrent
+        # delete raced the classification above, which is the idempotent
+        # success state rather than an error.
+        if await session_service.delete_session(row["id"], owner_user_id, current_user["id"]):
+            deleted.append(session_id)
+        else:
+            already_deleted.append(session_id)
+    return {
+        "deleted": deleted,
+        "already_deleted": already_deleted,
+        "not_found": not_found,
+    }
 
 
 @router.post("/me/sessions/{session_row_id}/restore", status_code=204)
