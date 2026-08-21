@@ -91,3 +91,50 @@ async def test_invalid_gzip_body_is_a_400(client: AsyncClient):
     )
     assert resp.status_code == 400
     assert "gzip" in resp.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
+async def test_truncated_gzip_body_is_a_400(client: AsyncClient):
+    """A body cut off mid-stream inflates without error but is incomplete.
+
+    zlib returns the bytes it managed to inflate rather than raising, so
+    without an explicit end-of-stream check a half-received request would
+    reach routing as silently truncated JSON.
+    """
+    api_key = await _register(client)
+
+    whole = gzip.compress(json.dumps({"name": "Truncated", "content": _WAF_HOSTILE}).encode())
+    resp = await client.post(
+        "/api/v1/me/pages/new",
+        content=whole[: len(whole) // 2],
+        headers={
+            **_auth(api_key),
+            "Content-Type": "application/json",
+            "Content-Encoding": "gzip",
+        },
+    )
+    assert resp.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_gzip_bomb_is_refused_before_it_is_buffered(client: AsyncClient):
+    """Compression amplifies, so an uncapped decompressor is a memory DoS.
+
+    A few hundred kilobytes on the wire inflate to gigabytes; the request must
+    be refused on size rather than accepted because it arrived small.
+    """
+    api_key = await _register(client)
+
+    bomb = gzip.compress(b"\0" * (200 * 1024 * 1024))
+    assert len(bomb) < 1024 * 1024, "the point of the test is a small body that inflates hugely"
+
+    resp = await client.post(
+        "/api/v1/me/pages/new",
+        content=bomb,
+        headers={
+            **_auth(api_key),
+            "Content-Type": "application/json",
+            "Content-Encoding": "gzip",
+        },
+    )
+    assert resp.status_code == 413

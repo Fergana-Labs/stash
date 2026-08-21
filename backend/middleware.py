@@ -1,7 +1,7 @@
 """Shared middleware and rate-limiting configuration."""
 
-import gzip
 import os
+import zlib
 
 from slowapi import Limiter
 from slowapi.util import get_remote_address
@@ -13,6 +13,17 @@ _rate_limit_enabled = not bool(os.getenv("TEST_DATABASE_URL"))
 
 limiter = Limiter(key_func=get_remote_address, enabled=_rate_limit_enabled)
 
+# zlib speaks raw deflate by default; the +16 selects the gzip wrapper clients send.
+_GZIP_WINDOW = 16 + zlib.MAX_WBITS
+
+# Far above any real body (the largest is a shared session's Full Transcript
+# page, under a megabyte) and far below what a gzip bomb aims for.
+_MAX_DECOMPRESSED_BODY = 100 * 1024 * 1024
+
+
+async def _reject(scope, receive, send, status: int, detail: str) -> None:
+    await JSONResponse({"detail": detail}, status_code=status)(scope, receive, send)
+
 
 class GzipRequestMiddleware:
     """Decompress request bodies sent with `Content-Encoding: gzip`.
@@ -23,6 +34,11 @@ class GzipRequestMiddleware:
     (measured in plugins commit eae5bdca). We cannot configure that WAF, so
     clients gzip their JSON bodies and the edge has nothing to match. This
     middleware restores the plaintext body before routing sees it.
+
+    Inflating is incremental rather than one `gzip.decompress` of the buffered
+    body: compression is an amplifier, so a few hundred kilobytes on the wire
+    can inflate to gigabytes of our memory. Streaming lets us stop at the first
+    chunk that crosses the ceiling instead of after paying for all of it.
     """
 
     def __init__(self, app):
@@ -37,22 +53,35 @@ class GzipRequestMiddleware:
             await self.app(scope, receive, send)
             return
 
-        chunks = []
+        inflater = zlib.decompressobj(_GZIP_WINDOW)
+        body = bytearray()
         while True:
             message = await receive()
-            chunks.append(message.get("body", b""))
+            # Cap output at one byte past the limit: enough to notice the
+            # overflow, never enough to hold the bomb.
+            headroom = _MAX_DECOMPRESSED_BODY - len(body) + 1
+            try:
+                body += inflater.decompress(message.get("body", b""), headroom)
+            except zlib.error:
+                await _reject(
+                    scope, receive, send, 400, "Body does not match Content-Encoding: gzip"
+                )
+                return
+            if len(body) > _MAX_DECOMPRESSED_BODY:
+                await _reject(
+                    scope, receive, send, 413, "Gzipped body inflates past the size limit"
+                )
+                return
             if not message.get("more_body", False):
                 break
-        try:
-            body = gzip.decompress(b"".join(chunks))
-        except (OSError, EOFError):
-            response = JSONResponse(
-                {"detail": "Body does not match Content-Encoding: gzip"},
-                status_code=400,
-            )
-            await response(scope, receive, send)
+
+        # A body that stops mid-stream decompresses without error but is
+        # missing its tail; routing must never see a half-parsed request.
+        if not inflater.eof:
+            await _reject(scope, receive, send, 400, "Body does not match Content-Encoding: gzip")
             return
 
+        body = bytes(body)
         scope = dict(scope)
         scope["headers"] = [
             (k, v) for k, v in scope["headers"] if k not in (b"content-encoding", b"content-length")
