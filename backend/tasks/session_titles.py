@@ -13,6 +13,15 @@ from ._celery_helpers import run_async
 MAX_SOURCE_CHARS = 2_000
 RECONCILE_BATCH_SIZE = 25
 
+# Every query below reads past session_end events. A session_end event is a
+# wrap-up marker the plugin hook and the history importer emit for every
+# session -- "Session ended.", "Session ended. 2 tool uses.", "Imported
+# historical session (27 KB)" -- so it is non-blank content that names nothing
+# the session did. A session carrying only that marker therefore has no
+# titleable content at all and never reaches the LLM. Keeping the marker out of
+# _session_stats also keeps it out of source_hash, so a session that was already
+# titled while it ran is not re-titled just because it later ended.
+
 
 def _clean_text(text: str) -> str:
     return " ".join(text.split())
@@ -35,6 +44,7 @@ async def _session_stats(owner_user_id: UUID, session_id: str) -> dict | None:
         WHERE h.owner_user_id = $1
           AND h.session_id = $2
           AND NULLIF(BTRIM(h.content), '') IS NOT NULL
+          AND h.event_type <> 'session_end'
           AND s.deleted_at IS NULL
         GROUP BY h.session_id
         """,
@@ -53,6 +63,7 @@ async def _session_events(owner_user_id: UUID, session_id: str) -> list[dict]:
         WHERE owner_user_id = $1
           AND session_id = $2
           AND NULLIF(BTRIM(content), '') IS NOT NULL
+          AND event_type <> 'session_end'
         ORDER BY created_at ASC, id ASC
         LIMIT 16
         """,
@@ -173,6 +184,7 @@ async def _reconcile_missing() -> int:
           AND s.title IS NULL
           AND s.deleted_at IS NULL
           AND NULLIF(BTRIM(h.content), '') IS NOT NULL
+          AND h.event_type <> 'session_end'
         GROUP BY h.owner_user_id, h.session_id
         ORDER BY MAX(h.created_at) DESC
         LIMIT $1
