@@ -7,12 +7,13 @@ back in either order. About half the time the transcript showed the answer
 above the question. seq holds the event's position in the array the caller
 sent, and the reads break ties on it.
 
-It only has to separate events that share a created_at, which is why nothing
-but the batch endpoint fills it in: the single-event endpoint and the
-transcript-file import each give their events distinct timestamps, so
-created_at already orders those.
+Every caller of push_events_batch fills it in, so this covers the other way a
+transcript ends up with tied timestamps: a JSONL file whose own events share
+one. Those now order by position in the file rather than by id. The
+single-event endpoint leaves seq NULL and needs nothing — each call stamps its
+own now().
 
-Existing rows stay NULL, as do rows from those other paths. The order a stored
+Existing rows stay NULL, as do rows written one at a time. The order a stored
 batch was written in was never recorded, so it cannot be recovered, and
 backfilling would rewrite a multi-gigabyte table while the backend waits on it
 at boot (migrations run at startup). NULLs sort last and tie among themselves,
