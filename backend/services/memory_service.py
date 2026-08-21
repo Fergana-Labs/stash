@@ -198,21 +198,26 @@ async def push_events_batch(
     metadatas = [json.dumps(e.get("metadata") or {}) for e in events]
     attachments = [json.dumps(e["attachments"]) if e.get("attachments") else None for e in events]
     timestamps = [_normalize_ts(e["created_at"]) if e.get("created_at") else now for e in events]
+    # Every event that arrives without its own created_at gets `now`, so a whole
+    # batch usually shares one timestamp and the read has nothing left to order
+    # by. seq carries the caller's order — the position in this array — across
+    # to the read.
+    seqs = list(range(len(events)))
 
     rows = await pool.fetch(
         """
         INSERT INTO history_events
             (owner_user_id, created_by, agent_name, event_type, content,
-             session_id, tool_name, metadata, attachments, created_at)
+             session_id, tool_name, metadata, attachments, created_at, seq)
         SELECT $1::uuid, $2::uuid, u.an, u.et, u.c,
                u.sid, u.tn, u.md::jsonb,
                CASE WHEN u.att IS NULL THEN NULL ELSE u.att::jsonb END,
-               u.ts
+               u.ts, u.seq
         FROM UNNEST(
             $3::varchar[], $4::varchar[], $5::text[],
             $6::varchar[], $7::varchar[],
-            $8::text[], $9::text[], $10::timestamptz[]
-        ) AS u(an, et, c, sid, tn, md, att, ts)
+            $8::text[], $9::text[], $10::timestamptz[], $11::int[]
+        ) AS u(an, et, c, sid, tn, md, att, ts, seq)
         RETURNING id, owner_user_id, created_by, agent_name, event_type,
                   session_id, tool_name, content, metadata, attachments, created_at
         """,
@@ -226,6 +231,7 @@ async def push_events_batch(
         metadatas,
         attachments,
         timestamps,
+        seqs,
     )
     results = [dict(r) for r in rows]
     await _upsert_sessions_for_events(owner_user_id, created_by, events)

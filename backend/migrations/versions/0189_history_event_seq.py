@@ -1,16 +1,22 @@
-"""Record the order events were written in, so a batch reads back in order.
+"""Record where an event sat in the upload that wrote it.
 
-push_events_batch stamps every event in one upload with the same created_at,
-and transcript reads order by (created_at, id) where id is a random UUID — so
-a question and the answer to it, uploaded together, came back in either order.
-About half the time the transcript showed the answer above the question. seq is
-a monotonic counter that breaks those ties by insertion order.
+push_events_batch stamps every event that arrives without its own created_at
+with the same instant, and transcript reads order by (created_at, id) where id
+is a random UUID — so a question and the answer to it, uploaded together, came
+back in either order. About half the time the transcript showed the answer
+above the question. seq holds the event's position in the array the caller
+sent, and the reads break ties on it.
 
-Existing rows are deliberately left NULL. The order they were inserted in was
-never stored, so it cannot be recovered, and backfilling would rewrite a
-multi-gigabyte table while the backend waits on it at boot (migrations run at
-startup). NULLs sort last and tie among themselves, falling through to id —
-exactly what those rows do today.
+It only has to separate events that share a created_at, which is why nothing
+but the batch endpoint fills it in: the single-event endpoint and the
+transcript-file import each give their events distinct timestamps, so
+created_at already orders those.
+
+Existing rows stay NULL, as do rows from those other paths. The order a stored
+batch was written in was never recorded, so it cannot be recovered, and
+backfilling would rewrite a multi-gigabyte table while the backend waits on it
+at boot (migrations run at startup). NULLs sort last and tie among themselves,
+falling through to id — exactly what those rows do today.
 
 Revision ID: 0189
 Revises: 0188
@@ -25,17 +31,10 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # Three statements rather than one ADD COLUMN ... DEFAULT nextval(...):
-    # nextval is volatile, and Postgres rewrites the entire table for a column
-    # added with a volatile default. Adding the column bare and attaching the
-    # default afterwards is catalog-only, so this is instant on a large table.
-    op.execute("ALTER TABLE history_events ADD COLUMN seq BIGINT")
-    op.execute("CREATE SEQUENCE history_events_seq_seq OWNED BY history_events.seq")
-    op.execute(
-        "ALTER TABLE history_events ALTER COLUMN seq SET DEFAULT nextval('history_events_seq_seq')"
-    )
+    # No default, so this is catalog-only: Postgres rewrites the whole table
+    # for a column added with a volatile default, and this table is large.
+    op.execute("ALTER TABLE history_events ADD COLUMN seq INT")
 
 
 def downgrade() -> None:
-    # The sequence is OWNED BY the column, so dropping the column drops it too.
     op.execute("ALTER TABLE history_events DROP COLUMN seq")
