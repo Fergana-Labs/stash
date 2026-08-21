@@ -35,8 +35,8 @@ except ImportError:
     _HAS_OPENPYXL = False
 
 
-_OOXML_DRAWING_NS = "{http://schemas.openxmlformats.tenant/drawingml/2006/main}"
-_OOXML_WORD_NS = "{http://schemas.openxmlformats.tenant/wordprocessingml/2006/main}"
+_OOXML_DRAWING_NS = "{http://schemas.openxmlformats.org/drawingml/2006/main}"
+_OOXML_WORD_NS = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 
 
 def is_pdf(content_type: str) -> bool:

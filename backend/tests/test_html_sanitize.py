@@ -64,7 +64,7 @@ async def test_inline_svg_keeps_geometry(scope, _db_pool):
     html5ever preserves camelCase for SVG attrs, so the allowlist must too."""
     scope_id, user_id = scope
     diagram = (
-        '<svg viewBox="0 0 200 100" xmlns="http://www.w3.tenant/2000/svg">'
+        '<svg viewBox="0 0 200 100" xmlns="http://www.w3.org/2000/svg">'
         '<defs><marker id="a" markerWidth="9" refX="7" orient="auto">'
         '<path d="M0,0 L7,3 L0,6 Z" fill="#5b6672"/></marker></defs>'
         '<rect x="16" y="20" width="80" height="40" rx="10" fill="#fff" stroke="#ccc"/>'
@@ -95,7 +95,7 @@ async def test_inline_svg_keeps_defs_referenced_by_url(scope, _db_pool):
     of the diagram, and a discarded <symbol> duplicated every icon."""
     scope_id, user_id = scope
     diagram = (
-        '<svg viewBox="0 0 100 100" xmlns="http://www.w3.tenant/2000/svg">'
+        '<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">'
         "<defs>"
         '<symbol id="ic"><path d="M0 0 L4 4"/></symbol>'
         '<mask id="m"><rect width="10" height="10" fill="#fff"/></mask>'

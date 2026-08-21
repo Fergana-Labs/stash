@@ -159,7 +159,7 @@ async def test_clip_file_lands_in_raw_and_adds_bookmark(
     resp = await client.post(
         "/api/v1/me/clips/file",
         files={"file": ("paper.pdf", b"%PDF-1.4 fake body", "application/pdf")},
-        data={"url": "https://arxiv.tenant/pdf/2401.00001"},
+        data={"url": "https://arxiv.org/pdf/2401.00001"},
         headers=headers,
     )
     assert resp.status_code == 201
@@ -172,7 +172,7 @@ async def test_clip_file_lands_in_raw_and_adds_bookmark(
         "JOIN folders gp ON gp.id = fo.parent_folder_id WHERE fi.id = $1",
         UUID(data["id"]),
     )
-    assert row["source_url"] == "https://arxiv.tenant/pdf/2401.00001"
+    assert row["source_url"] == "https://arxiv.org/pdf/2401.00001"
     assert row["folder_name"] == "raw"
     assert row["parent_name"] == "Clips"
 

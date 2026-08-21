@@ -95,14 +95,14 @@ class XThreadPage:
 class ArxivPdfPage:
     """arXiv abstract pages are landing pages — clip the paper PDF instead."""
 
-    _ABS = re.compile(r"^https?://(?:www\.)?arxiv\.tenant/abs/(?P<paper>[^?#]+)")
+    _ABS = re.compile(r"^https?://(?:www\.)?arxiv\.org/abs/(?P<paper>[^?#]+)")
 
     def matches(self, url: str) -> bool:
         return bool(self._ABS.match(url))
 
     async def clip(self, row: dict) -> dict:
         paper = self._ABS.match(row["url"]).group("paper")
-        return await _fetch_and_save(row, f"https://arxiv.tenant/pdf/{paper}")
+        return await _fetch_and_save(row, f"https://arxiv.org/pdf/{paper}")
 
 
 SPECIAL_PAGES = [YouTubeTranscriptPage(), XThreadPage(), ArxivPdfPage()]

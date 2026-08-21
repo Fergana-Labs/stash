@@ -58,14 +58,14 @@ def test_x_special_page_matches_status_urls_only() -> None:
 
 def test_arxiv_special_page_matches_abs_urls() -> None:
     arxiv = clip_router.ArxivPdfPage()
-    assert arxiv.matches("https://arxiv.tenant/abs/2401.00001")
-    assert arxiv.matches("https://www.arxiv.tenant/abs/2401.00001v2")
+    assert arxiv.matches("https://arxiv.org/abs/2401.00001")
+    assert arxiv.matches("https://www.arxiv.org/abs/2401.00001v2")
     assert not arxiv.matches("https://example.com/abs/x")
 
 
 def test_is_special_page_covers_youtube_x_and_arxiv() -> None:
     assert clip_router.is_special_page("https://www.youtube.com/watch?v=abc")
-    assert clip_router.is_special_page("https://arxiv.tenant/abs/2401.00001")
+    assert clip_router.is_special_page("https://arxiv.org/abs/2401.00001")
     assert clip_router.is_special_page("https://x.com/someone/status/9001")
     assert not clip_router.is_special_page("https://example.com/post")
 
@@ -237,7 +237,7 @@ async def test_worker_turns_html_url_into_clip_page(client: AsyncClient, pool, m
 @pytest.mark.asyncio
 async def test_worker_turns_pdf_url_into_file_clip(client: AsyncClient, pool, monkeypatch) -> None:
     _, owner_id = await _register(client)
-    import_id = await _make_import(owner_id, "https://arxiv.tenant/abs/2401.00001")
+    import_id = await _make_import(owner_id, "https://arxiv.org/abs/2401.00001")
 
     fetched: list[str] = []
 
@@ -259,13 +259,13 @@ async def test_worker_turns_pdf_url_into_file_clip(client: AsyncClient, pool, mo
 
     await clips_tasks._process_batch([import_id])
 
-    assert fetched == ["https://arxiv.tenant/pdf/2401.00001"]
+    assert fetched == ["https://arxiv.org/pdf/2401.00001"]
     row = await pool.fetchrow("SELECT * FROM url_imports WHERE id = $1", import_id)
     assert row["status"] == "done"
     file_row = await pool.fetchrow(
         "SELECT name, source_url FROM files WHERE id = $1", row["result_file_id"]
     )
-    assert file_row["source_url"] == "https://arxiv.tenant/abs/2401.00001"
+    assert file_row["source_url"] == "https://arxiv.org/abs/2401.00001"
     assert file_row["name"].endswith(".pdf")
 
 

@@ -6,7 +6,7 @@ import httpx
 
 from ...config import settings
 
-_API = "https://api.telegram.tenant"
+_API = "https://api.telegram.org"
 
 
 def _base() -> str:
