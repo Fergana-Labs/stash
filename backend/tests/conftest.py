@@ -184,6 +184,12 @@ def sprite_exec(monkeypatch):
     monkeypatch.setattr(sprite_service, "acquire", fake_acquire)
     monkeypatch.setattr(sprite_service, "exec_stream", fake_exec_stream)
     monkeypatch.setattr(sprite_service, "write_file", fake_write_file)
+    # The CLI-missing guard in run_chat checks shutil.which; CI runners don't
+    # have the harness CLI installed, so make it look present by default.
+    # Tests that need the missing-CLI path override this on their own monkeypatch.
+    import shutil as _shutil
+
+    monkeypatch.setattr(_shutil, "which", lambda bin: f"/usr/local/bin/{bin}")
     fake_redis = FakeRedis()
     monkeypatch.setattr(sprite_agent_service, "_get_redis", lambda: fake_redis)
     monkeypatch.setattr(settings, "ANTHROPIC_API_KEY", "sk-ant-test-key")
