@@ -17,60 +17,60 @@ import {
 } from "@/lib/api";
 import type { Tenant } from "@/lib/types";
 
-export default function TenantDetailRoute() {
+export default function UserDetailRoute() {
   return (
     <DeveloperGate>
-      <TenantDetail />
+      <UserDetail />
     </DeveloperGate>
   );
 }
 
-function TenantDetail() {
-  const tenantId = String(useParams().tenantId);
-  const [tenant, setOrg] = useState<Tenant | null>(null);
+function UserDetail() {
+  const userId = String(useParams().userId);
+  const [user, setUser] = useState<Tenant | null>(null);
   const [sessions, setSessions] = useState<TenantSession[]>([]);
   const [files, setFiles] = useState<TenantFile[]>([]);
-  const [notepad, setNotepad] = useState<TenantNotepadPage[]>([]);
+  const [wikiPages, setWikiPages] = useState<TenantNotepadPage[]>([]);
   const [sources, setSources] = useState<TenantSource[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(() => {
     setError(null);
-    getTenant(tenantId)
+    getTenant(userId)
       .then((res) => {
-        setOrg(res.tenant);
+        setUser(res.tenant);
         setSessions(res.sessions);
         setFiles(res.files);
-        setNotepad(res.notepad_pages);
+        setWikiPages(res.notepad_pages);
         setSources(res.sources);
       })
-      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load the tenant"));
-  }, [tenantId]);
+      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load the user"));
+  }, [userId]);
 
   useEffect(() => {
     refresh();
   }, [refresh]);
 
   if (error) {
-    return <p className="text-[15px] text-error">Couldn&apos;t load the tenant: {error}</p>;
+    return <p className="text-[15px] text-error">Couldn&apos;t load the user: {error}</p>;
   }
-  if (!tenant) {
+  if (!user) {
     return <p className="text-[15px] text-muted-foreground">Loading…</p>;
   }
 
   return (
     <>
       <Link
-        href="/developer/tenants"
+        href="/developer/users"
         className="mb-6 inline-flex items-center gap-1.5 text-[13px] text-muted-foreground transition-colors hover:text-foreground"
       >
         <ArrowLeft className="h-3.5 w-3.5" />
-        All tenants
+        All users
       </Link>
 
-      <PageHeading title={tenant.name}>
-        <Code>{tenant.external_id}</Code> — the id your backend asserts on every call for this
-        customer.
+      <PageHeading title={user.name}>
+        <Code>{user.external_id}</Code> — the <Code>tenant_id</Code> your backend asserts on
+        every call for this user.
       </PageHeading>
 
       <section className="mb-12">
@@ -78,41 +78,42 @@ function TenantDetail() {
         <div className="mt-4 flex items-center gap-4 rounded border border-border bg-surface px-5 py-4">
           <div className="min-w-0 flex-1">
             <div className="text-[15px] text-foreground">
-              {tenant.share_wiki
-                ? "This tenant's sessions feed the shared wiki"
-                : "This tenant is opted out of the shared wiki"}
+              {user.share_wiki
+                ? "This user's sessions feed the shared wiki"
+                : "This user is opted out of the shared wiki"}
             </div>
             <p className="mt-1 text-[13.5px] leading-6 text-muted-foreground">
-              {tenant.share_wiki
-                ? "The curator distils anonymized lessons from their sessions into the wiki every tenant's agent reads. Their identity never appears there."
-                : "Their sessions stay in their own notepad. Anything already written to the wiki stays — an opt-out is not a retraction."}
+              {user.share_wiki
+                ? "The curator distils anonymized lessons from their sessions into the wiki every user's agent reads. Their identity never appears there."
+                : "Their sessions stay in their own wiki. Anything already written to the shared wiki stays — an opt-out is not a retraction."}
             </p>
           </div>
-          <WikiToggle tenant={tenant} onChanged={refresh} />
+          <WikiToggle tenant={user} onChanged={refresh} />
         </div>
       </section>
 
       <section className="mb-12">
         <div className="flex items-baseline justify-between gap-4">
-          <SectionHeading>Notepad</SectionHeading>
+          <SectionHeading>This user&apos;s wiki</SectionHeading>
           <Link
-            href={`/folders/${tenant.notepad_folder_id}`}
+            href={`/folders/${user.notepad_folder_id}`}
             className="text-[13px] text-muted-foreground transition-colors hover:text-foreground"
           >
             Open folder
           </Link>
         </div>
         <p className="mt-2 text-[13.5px] leading-6 text-muted-foreground">
-          What the curator has learned about this tenant specifically — kept out of the shared
-          wiki, in their own words and their own detail.
+          What the curator has learned about this user specifically — kept out of the shared
+          wiki, in their own words and their own detail. Only this user&apos;s agent (and you)
+          can read it.
         </p>
-        {notepad.length === 0 ? (
+        {wikiPages.length === 0 ? (
           <Empty>
-            Nothing yet. The curator writes here on its next run over this tenant&apos;s sessions.
+            Nothing yet. The curator writes here on its next run over this user&apos;s sessions.
           </Empty>
         ) : (
           <div className="mt-4 overflow-hidden rounded border border-border bg-surface">
-            {notepad.map((page) => (
+            {wikiPages.map((page) => (
               <Link
                 key={page.id}
                 href={`/p/${page.id}`}
@@ -133,7 +134,7 @@ function TenantDetail() {
       <section className="mb-12">
         <SectionHeading>Sessions</SectionHeading>
         {sessions.length === 0 ? (
-          <Empty>No sessions yet for this tenant.</Empty>
+          <Empty>No sessions yet for this user.</Empty>
         ) : (
           <div className="mt-4 overflow-hidden rounded border border-border bg-surface">
             {sessions.map((s) => (
@@ -160,42 +161,16 @@ function TenantDetail() {
         )}
       </section>
 
-      <section className="mb-12">
-        <SectionHeading>Connected sources</SectionHeading>
-        <p className="mt-2 text-[13.5px] leading-6 text-muted-foreground">
-          Integrations connected for this customer alone. Their agent reads these; your other
-          customers never see them.
-        </p>
-        {sources.length === 0 ? (
-          <Empty>
-            None connected. Add one with this tenant&apos;s <Code>tenant_id</Code> to scope it here.
-          </Empty>
-        ) : (
-          <div className="mt-4 overflow-hidden rounded border border-border bg-surface">
-            {sources.map((source) => (
-              <Link
-                key={source.id}
-                href={`/integrations/${source.provider}?source=${source.id}`}
-                className="flex items-center gap-4 border-b border-border px-5 py-3.5 transition-colors last:border-b-0 hover:bg-raised"
-              >
-                <span className="min-w-0 flex-1 truncate text-[14.5px] text-foreground">
-                  {source.display_name}
-                </span>
-                <span className="shrink-0 font-mono text-[12px] text-muted-foreground">
-                  {source.type}
-                  {source.last_synced_at ? ` · synced ${formatDate(source.last_synced_at)}` : ""}
-                </span>
-              </Link>
-            ))}
-          </div>
-        )}
-      </section>
-
       <section>
         <SectionHeading>Files</SectionHeading>
+        <p className="mt-2 text-[13.5px] leading-6 text-muted-foreground">
+          Everything this user&apos;s agent can read besides the wikis: files your backend
+          uploaded with their <Code>tenant_id</Code>, and integrations connected for them
+          alone. Your other users never see any of it.
+        </p>
         {files.length === 0 ? (
           <Empty>
-            No files yet. Files arrive when your backend uploads one with this tenant&apos;s{" "}
+            No files yet. Files arrive when your backend uploads one with this user&apos;s{" "}
             <Code>tenant_id</Code>.
           </Empty>
         ) : (
@@ -211,6 +186,33 @@ function TenantDetail() {
                 </span>
                 <span className="shrink-0 font-mono text-[12px] text-muted-foreground">
                   {formatBytes(f.size_bytes)} · {formatDate(f.created_at)}
+                </span>
+              </Link>
+            ))}
+          </div>
+        )}
+        <div className="mt-6 font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+          Connected sources
+        </div>
+        {sources.length === 0 ? (
+          <Empty>
+            None connected. Add one with this user&apos;s <Code>tenant_id</Code> to scope it
+            here.
+          </Empty>
+        ) : (
+          <div className="mt-3 overflow-hidden rounded border border-border bg-surface">
+            {sources.map((source) => (
+              <Link
+                key={source.id}
+                href={`/integrations/${source.provider}?source=${source.id}`}
+                className="flex items-center gap-4 border-b border-border px-5 py-3.5 transition-colors last:border-b-0 hover:bg-raised"
+              >
+                <span className="min-w-0 flex-1 truncate text-[14.5px] text-foreground">
+                  {source.display_name}
+                </span>
+                <span className="shrink-0 font-mono text-[12px] text-muted-foreground">
+                  {source.type}
+                  {source.last_synced_at ? ` · synced ${formatDate(source.last_synced_at)}` : ""}
                 </span>
               </Link>
             ))}

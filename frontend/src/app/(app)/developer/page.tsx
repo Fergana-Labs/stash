@@ -5,7 +5,7 @@ import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 
 import DeveloperGate from "@/components/developer/DeveloperGate";
-import TenantTable from "@/components/developer/TenantTable";
+import UserTable from "@/components/developer/UserTable";
 import { Code, PageHeading, SectionHeading } from "@/components/developer/DocsPrimitives";
 import { listTenants } from "@/lib/api";
 import type { Tenant, Workspace } from "@/lib/types";
@@ -28,20 +28,20 @@ const ROUTES = [
     detail: "Upload each turn with a tenant_id, read back with the same one.",
   },
   {
-    href: "/developer/tenants",
-    title: "Your customers, one tenant each",
-    detail: "Private notepads, and who feeds the shared wiki.",
+    href: "/developer/users",
+    title: "Your product's users",
+    detail: "A private wiki each, and who feeds the shared wiki.",
   },
   {
     href: "/developer/wiki",
     title: "The anonymized shared wiki",
-    detail: "What every tenant's agent reads, with no tenant named.",
+    detail: "What every user's agent reads, with no user named.",
   },
 ];
 
 function Overview() {
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
-  const [tenants, setOrgs] = useState<Tenant[]>([]);
+  const [users, setUsers] = useState<Tenant[]>([]);
   const [stats, setStats] = useState({ wiki_page_count: 0, tenant_session_count: 0 });
   const [error, setError] = useState<string | null>(null);
 
@@ -50,7 +50,7 @@ function Overview() {
     listTenants()
       .then((res) => {
         setWorkspace(res.workspace);
-        setOrgs(res.tenants);
+        setUsers(res.tenants);
         setStats(res.stats);
       })
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load the console"));
@@ -73,10 +73,10 @@ function Overview() {
       <PageHeading title="Overview">{workspace.name}</PageHeading>
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <Stat label="Tenants" value={tenants.length} />
-        <Stat label="Tenant sessions" value={stats.tenant_session_count} />
+        <Stat label="Users" value={users.length} />
+        <Stat label="User sessions" value={stats.tenant_session_count} />
         <Stat label="Wiki pages" value={stats.wiki_page_count} />
-        <Stat label="Feeding the wiki" value={tenants.filter((o) => o.share_wiki).length} />
+        <Stat label="Feeding the wiki" value={users.filter((o) => o.share_wiki).length} />
       </div>
 
       <section className="mt-12">
@@ -106,10 +106,10 @@ function Overview() {
       </section>
 
       <section className="mt-14">
-        <SectionHeading>Recent tenants</SectionHeading>
-        {tenants.length === 0 ? (
+        <SectionHeading>Recent users</SectionHeading>
+        {users.length === 0 ? (
           <p className="mt-3 text-[15px] leading-7 text-dim">
-            No tenants yet — they appear when your backend uploads a session with a new{" "}
+            No users yet — they appear when your backend uploads a session with a new{" "}
             <Code>tenant_id</Code>. Start with{" "}
             <Link href="/developer/keys" className="text-brand-500 underline underline-offset-2">
               API Keys
@@ -118,7 +118,7 @@ function Overview() {
           </p>
         ) : (
           <div className="mt-4">
-            <TenantTable tenants={tenants.slice(0, 5)} onChanged={refresh} />
+            <UserTable tenants={users.slice(0, 5)} onChanged={refresh} />
           </div>
         )}
       </section>

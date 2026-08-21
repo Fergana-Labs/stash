@@ -370,6 +370,19 @@ async def mark_curated(agent_id: UUID, through) -> None:
     )
 
 
+async def set_system_prompt(agent_id: UUID, text: str | None) -> dict:
+    """The agent's persona — appended to its system prompt on every run.
+    Empty string clears it back to the default."""
+    row = await get_pool().fetchrow(
+        f"UPDATE agents SET system_prompt = $2 WHERE id = $1 RETURNING {_COLUMNS}",
+        agent_id,
+        text or None,
+    )
+    if row is None:
+        raise ValueError(f"agent {agent_id} not found")
+    return _row(row)
+
+
 async def channel_agent(user_id: UUID, channel: str) -> dict:
     """The agent bound to a channel ('slack'|'telegram'), or the default."""
     col = "slack_bound" if channel == "slack" else "telegram_bound"

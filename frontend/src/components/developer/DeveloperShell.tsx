@@ -16,7 +16,7 @@ const NAV: { title: string; items: NavItem[] }[] = [
     title: "Platform",
     items: [
       { href: "/developer", label: "Overview", match: (p) => p === "/developer" },
-      { href: "/developer/tenants", label: "Tenants", match: (p) => p.startsWith("/developer/tenants") },
+      { href: "/developer/users", label: "Users", match: (p) => p.startsWith("/developer/users") },
       {
         href: "/developer/wiki",
         label: "Shared Wiki",
@@ -32,8 +32,16 @@ const NAV: { title: string; items: NavItem[] }[] = [
   {
     title: "Data",
     items: [
-      { href: "/sessions", label: "Sessions", match: (p) => p.startsWith("/sessions") },
-      { href: "/files", label: "Files", match: (p) => p === "/files" || p.startsWith("/f/") },
+      {
+        href: "/developer/sessions",
+        label: "Sessions",
+        match: (p) => p.startsWith("/developer/sessions"),
+      },
+      {
+        href: "/developer/files",
+        label: "Files",
+        match: (p) => p.startsWith("/developer/files"),
+      },
     ],
   },
   {

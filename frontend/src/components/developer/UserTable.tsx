@@ -7,11 +7,13 @@ import { Code } from "@/components/developer/DocsPrimitives";
 import WikiToggle from "@/components/developer/WikiToggle";
 import type { Tenant } from "@/lib/types";
 
-export default function TenantTable({ tenants, onChanged }: { tenants: Tenant[]; onChanged: () => void }) {
+// The console calls a tenant a "user": one end user of the developer's
+// product. The API field stays tenant_id.
+export default function UserTable({ tenants, onChanged }: { tenants: Tenant[]; onChanged: () => void }) {
   if (tenants.length === 0) {
     return (
       <p className="rounded border border-dashed border-border px-6 py-10 text-center text-[15px] leading-7 text-muted-foreground">
-        No tenants yet. Tenants appear automatically the first time your backend uploads a session
+        No users yet. Users appear automatically the first time your backend uploads a session
         with a new <Code>tenant_id</Code>.
       </p>
     );
@@ -21,7 +23,7 @@ export default function TenantTable({ tenants, onChanged }: { tenants: Tenant[];
       {tenants.map((tenant) => (
         <Link
           key={tenant.id}
-          href={`/developer/tenants/${tenant.id}`}
+          href={`/developer/users/${tenant.id}`}
           className="flex items-center gap-4 border-b border-border px-5 py-4 transition-colors last:border-b-0 hover:bg-raised"
         >
           <span className="min-w-0 flex-1">

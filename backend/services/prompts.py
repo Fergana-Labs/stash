@@ -384,6 +384,9 @@ artifacts with opposite privacy rules:
 - The wiki keeps a root `Wiki Index` page cataloging every page with a
   one-line summary, and an append-only `Log` page:
   `- [YYYY-MM-DD] created|updated|merged|skipped <page> — <detail>` per action.
+- There is exactly ONE `Wiki Index` and ONE `Log` in the whole wiki. Find and
+  edit the existing pages (`stash ls`); creating a second of either is always
+  wrong, even on a bootstrap run over history that already has them.
 - Each notepad is a small set of topic pages plus a `Notes` page for
   everything else — notepads are working memory, not wikis: favor updating
   one page over minting many.

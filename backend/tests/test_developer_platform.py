@@ -374,6 +374,138 @@ async def test_console_wiki_opt_out(client: AsyncClient):
     assert resp.status_code == 403
 
 
+@pytest.mark.asyncio
+async def test_console_sessions_labelled_by_tenant(client: AsyncClient):
+    """The console's sessions list is the cross-tenant view: every session the
+    workspace recorded, each carrying its tenant label — and tenant-less rows
+    (the workspace's own agents) still listed rather than hidden."""
+    api_key, _, workspace = await _developer(client)
+    machine_key = await _mint_workspace_key(client, api_key, workspace)
+    await _push(
+        client,
+        machine_key,
+        [
+            _event("s-acme", tenant_id="org_acme", tenant_name="Acme"),
+            _event("s-beta", tenant_id="org_beta", tenant_name="Beta"),
+            _event("s-internal"),
+        ],
+    )
+
+    resp = await client.get(
+        "/api/v1/me/developer/sessions",
+        headers={**_auth(api_key), "X-Stash-Scope": workspace["scope_user_id"]},
+    )
+    assert resp.status_code == 200, resp.text
+    rows = {r["session_id"]: r for r in resp.json()["sessions"]}
+    assert rows["s-acme"]["tenant_name"] == "Acme"
+    assert rows["s-beta"]["tenant_external_id"] == "org_beta"
+    assert rows["s-internal"]["tenant_id"] is None
+    assert rows["s-acme"]["event_count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_console_files_split_by_wiki_and_tenant(client: AsyncClient, pool):
+    """The files view answers 'whose is this?' by construction: shared wiki
+    material in one pile, each tenant's own pages in theirs — never mixed."""
+    api_key, _, workspace = await _developer(client)
+    machine_key = await _mint_workspace_key(client, api_key, workspace)
+    await _push(
+        client,
+        machine_key,
+        [
+            _event("s-acme", tenant_id="org_acme", tenant_name="Acme"),
+            _event("s-beta", tenant_id="org_beta", tenant_name="Beta"),
+        ],
+    )
+    tenants = {
+        r["external_id"]: r
+        for r in await pool.fetch(
+            "SELECT external_id, notepad_folder_id FROM tenants WHERE workspace_id = $1",
+            uuid.UUID(workspace["id"]),
+        )
+    }
+    scope_id = uuid.UUID(workspace["scope_user_id"])
+    for name, folder_id in [
+        ("Fault codes", uuid.UUID(workspace["external_wiki_folder_id"])),
+        ("Acme notes", tenants["org_acme"]["notepad_folder_id"]),
+    ]:
+        await pool.execute(
+            "INSERT INTO pages (owner_user_id, name, content_markdown, folder_id, created_by) "
+            "VALUES ($1, $2, 'body', $3, $1)",
+            scope_id,
+            name,
+            folder_id,
+        )
+
+    resp = await client.get(
+        "/api/v1/me/developer/files",
+        headers={**_auth(api_key), "X-Stash-Scope": workspace["scope_user_id"]},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert [p["name"] for p in body["wiki_pages"]] == ["Fault codes"]
+    by_tenant = {t["external_id"]: t for t in body["tenants"]}
+    assert [p["name"] for p in by_tenant["org_acme"]["notepad_pages"]] == ["Acme notes"]
+    assert by_tenant["org_beta"]["notepad_pages"] == []
+
+
+@pytest.mark.asyncio
+async def test_curator_instructions_roundtrip(client: AsyncClient):
+    """The instructions are the developer's one hook into the curator's prompt:
+    a save must come back on the next read, and an empty save must clear them
+    rather than storing an empty persona."""
+    api_key, _, workspace = await _developer(client)
+    scope = {**_auth(api_key), "X-Stash-Scope": workspace["scope_user_id"]}
+
+    resp = await client.get("/api/v1/me/developer/curator", headers=scope)
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["instructions"] is None
+    assert "full history" in resp.json()["backfill_prompt"]
+
+    resp = await client.patch(
+        "/api/v1/me/developer/curator",
+        json={"instructions": "Never share pricing between tenants."},
+        headers=scope,
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["instructions"] == "Never share pricing between tenants."
+
+    resp = await client.get("/api/v1/me/developer/curator", headers=scope)
+    assert resp.json()["instructions"] == "Never share pricing between tenants."
+
+    resp = await client.patch(
+        "/api/v1/me/developer/curator", json={"instructions": ""}, headers=scope
+    )
+    assert resp.status_code == 200
+    assert resp.json()["instructions"] is None
+
+
+@pytest.mark.asyncio
+async def test_backfill_clears_watermark_and_dispatches(client: AsyncClient, monkeypatch):
+    """Backfill means 'read everything again': the watermark must clear so the
+    dispatched run renders the full-history prompt."""
+    from backend.tasks import agent_schedules
+
+    dispatched: list[str] = []
+    monkeypatch.setattr(
+        agent_schedules.run_curator_now, "delay", lambda agent_id: dispatched.append(agent_id)
+    )
+
+    api_key, _, workspace = await _developer(client)
+    scope = {**_auth(api_key), "X-Stash-Scope": workspace["scope_user_id"]}
+
+    # Creating the curator seeds a bounded-backfill watermark.
+    resp = await client.get("/api/v1/me/developer/curator", headers=scope)
+    assert resp.json()["curator"]["curated_through"] is not None
+
+    resp = await client.post("/api/v1/me/developer/curator/backfill", headers=scope)
+    assert resp.status_code == 202, resp.text
+    assert len(dispatched) == 1
+
+    resp = await client.get("/api/v1/me/developer/curator", headers=scope)
+    assert resp.json()["curator"]["curated_through"] is None
+
+
 async def test_key_list_and_revoke(client: AsyncClient, pool):
     api_key, _, workspace = await _developer(client)
     scope = {**_auth(api_key), "X-Stash-Scope": workspace["scope_user_id"]}

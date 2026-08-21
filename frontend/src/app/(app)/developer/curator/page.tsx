@@ -9,7 +9,14 @@ import {
   PageHeading,
   SectionHeading,
 } from "@/components/developer/DocsPrimitives";
-import { getCurator, runCuratorNow, type CuratorRun, type TenantRef } from "@/lib/api";
+import {
+  backfillCurator,
+  getCurator,
+  runCuratorNow,
+  updateCuratorInstructions,
+  type CuratorRun,
+  type TenantRef,
+} from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 export default function CuratorRoute() {
@@ -25,9 +32,6 @@ type CuratorData = Awaited<ReturnType<typeof getCurator>>;
 function Curator() {
   const [data, setData] = useState<CuratorData | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [showPrompt, setShowPrompt] = useState(false);
-  const [running, setRunning] = useState(false);
-  const [runError, setRunError] = useState<string | null>(null);
 
   const refresh = useCallback(() => {
     setError(null);
@@ -47,25 +51,13 @@ function Curator() {
     return <p className="text-[15px] text-muted-foreground">Loading…</p>;
   }
 
-  async function runNow() {
-    setRunning(true);
-    setRunError(null);
-    try {
-      await runCuratorNow();
-      // The run happens on the worker; the entry appears when it writes.
-      setTimeout(refresh, 4000);
-    } catch (e) {
-      setRunError(e instanceof Error ? e.message : "Could not start the run");
-    } finally {
-      setRunning(false);
-    }
-  }
-
   return (
     <>
       <PageHeading title="Curator">
-        Every night it reads the sessions uploaded since it last ran and compiles them into two
-        places: each tenant&apos;s own notepad, and the shared wiki every tenant&apos;s agent reads.
+        One agent for the whole workspace, one run a night. It reads only the sessions
+        uploaded since its last run — cost scales with new conversation, not with how many
+        users you have — and in that single run writes both places at once: each active
+        user&apos;s own wiki, and the shared anonymized wiki every user&apos;s agent reads.
       </PageHeading>
 
       <section className="mb-12 grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -91,73 +83,225 @@ function Curator() {
       <section className="mb-12">
         <SectionHeading>Feeding the shared wiki</SectionHeading>
         <p className="mt-2 text-[13.5px] leading-6 text-muted-foreground">
-          Every tenant gets its own notepad regardless. This is who also contributes to the
+          Every user gets their own wiki regardless. This is who also contributes to the
           anonymized wiki the others read.
         </p>
         <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <TenantColumn
+          <UserColumn
             title="Feeding"
-            tenants={data.feeding}
-            empty="No tenant is feeding the wiki, so it will stay as it is."
+            users={data.feeding}
+            empty="No user is feeding the wiki, so it will stay as it is."
             accent
           />
-          <TenantColumn
+          <UserColumn
             title="Opted out"
-            tenants={data.opted_out}
-            empty="Every tenant is feeding the wiki."
+            users={data.opted_out}
+            empty="Every user is feeding the wiki."
           />
         </div>
       </section>
 
-      <section className="mb-12">
-        <div className="flex items-baseline justify-between gap-4">
-          <SectionHeading>Prompt</SectionHeading>
-          <button
-            onClick={() => setShowPrompt((open) => !open)}
-            className="text-[13px] text-muted-foreground transition-colors hover:text-foreground"
-          >
-            {showPrompt ? "Hide" : "Show"}
-          </button>
-        </div>
-        <p className="mt-2 text-[13.5px] leading-6 text-muted-foreground">
-          Rendered from live state, so this is exactly what tonight&apos;s run sends. It names
-          only the tenants with something new since the watermark — a tenant that has said
-          nothing cannot have anything curated for it, and naming every tenant would grow the
-          prompt with your customer base rather than with the work in front of it.
-        </p>
-        {showPrompt && (
-          <div className="mt-4">
-            <CodeBlock>{data.prompt}</CodeBlock>
-          </div>
-        )}
-      </section>
+      <Instructions initial={data.instructions} />
 
-      <section>
-        <div className="flex items-baseline justify-between gap-4">
-          <SectionHeading>Recent runs</SectionHeading>
+      <PromptSection nightly={data.prompt} backfill={data.backfill_prompt} />
+
+      <Runs runs={data.runs} onStarted={refresh} />
+    </>
+  );
+}
+
+/** The tunable part of the prompt. The rendered prompt below is built from
+ *  live state on every run, so it can't be edited directly — these
+ *  instructions are the developer's hook into it. */
+function Instructions({ initial }: { initial: string | null }) {
+  const [text, setText] = useState(initial ?? "");
+  const [saved, setSaved] = useState(initial ?? "");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function save() {
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await updateCuratorInstructions(text.trim());
+      setSaved(res.instructions ?? "");
+      setText(res.instructions ?? "");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not save the instructions");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <section className="mb-12">
+      <div className="flex items-baseline justify-between gap-4">
+        <SectionHeading>Your instructions</SectionHeading>
+        {text.trim() !== saved && (
           <button
-            onClick={() => void runNow()}
-            disabled={running}
+            onClick={() => void save()}
+            disabled={saving}
             className="rounded-sm bg-brand-500 px-3 py-1.5 text-[13px] font-medium text-white transition-colors hover:bg-brand-600 disabled:opacity-50"
           >
-            {running ? "Starting…" : "Run now"}
+            {saving ? "Saving…" : "Save"}
           </button>
-        </div>
-        {runError && <p className="mt-2 text-[13px] text-error">{runError}</p>}
-        {data.runs.length === 0 ? (
-          <p className="mt-4 rounded border border-dashed border-border px-6 py-8 text-center text-[14px] leading-6 text-muted-foreground">
-            It hasn&apos;t run yet. The first run happens on the next nightly tick, once there are
-            sessions to read.
-          </p>
-        ) : (
-          <div className="mt-4 overflow-hidden rounded border border-border bg-surface">
-            {data.runs.map((run) => (
-              <Run key={run.session_id} run={run} />
-            ))}
-          </div>
         )}
-      </section>
-    </>
+      </div>
+      <p className="mt-2 text-[13.5px] leading-6 text-muted-foreground">
+        Appended to the curator&apos;s prompt on every run — nightly, run-now, and backfill.
+        Use it to steer what gets curated: what belongs in the shared wiki, what should stay
+        per-user, what to ignore entirely.
+      </p>
+      <textarea
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        rows={4}
+        placeholder={
+          "e.g. Part cross-references and diagnostic procedures belong in the shared wiki. " +
+          "Pricing a user was quoted is per-user only, never shared."
+        }
+        className="mt-4 w-full rounded border border-border bg-surface px-4 py-3 text-[14px] leading-6 text-foreground placeholder:text-muted-foreground focus:border-brand-500 focus:outline-none"
+      />
+      {error && <p className="mt-2 text-[13px] text-error">{error}</p>}
+    </section>
+  );
+}
+
+function PromptSection({ nightly, backfill }: { nightly: string; backfill: string }) {
+  const [shown, setShown] = useState<"hidden" | "nightly" | "backfill">("hidden");
+  return (
+    <section className="mb-12">
+      <div className="flex items-baseline justify-between gap-4">
+        <SectionHeading>Prompt</SectionHeading>
+        <div className="flex items-center gap-3 text-[13px]">
+          <PromptTab shown={shown} value="nightly" onShow={setShown}>
+            Nightly
+          </PromptTab>
+          <PromptTab shown={shown} value="backfill" onShow={setShown}>
+            Backfill
+          </PromptTab>
+        </div>
+      </div>
+      <p className="mt-2 text-[13.5px] leading-6 text-muted-foreground">
+        Rendered from live state, so this is exactly what the run sends. The nightly prompt
+        names only the users with something new since the watermark — a user who has said
+        nothing cannot have anything curated for them, and naming every user would grow the
+        prompt with your customer base rather than with the work in front of it. The
+        backfill prompt is the same thing with no watermark: the full history.
+      </p>
+      {shown !== "hidden" && (
+        <div className="mt-4">
+          <CodeBlock>{shown === "nightly" ? nightly : backfill}</CodeBlock>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function PromptTab({
+  shown,
+  value,
+  onShow,
+  children,
+}: {
+  shown: string;
+  value: "nightly" | "backfill";
+  onShow: (v: "hidden" | "nightly" | "backfill") => void;
+  children: React.ReactNode;
+}) {
+  const active = shown === value;
+  return (
+    <button
+      onClick={() => onShow(active ? "hidden" : value)}
+      className={cn(
+        "transition-colors",
+        active ? "font-medium text-brand-500" : "text-muted-foreground hover:text-foreground",
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
+function Runs({ runs, onStarted }: { runs: CuratorRun[]; onStarted: () => void }) {
+  const [running, setRunning] = useState(false);
+  const [armingBackfill, setArmingBackfill] = useState(false);
+  const [runError, setRunError] = useState<string | null>(null);
+
+  async function start(action: () => Promise<unknown>) {
+    setRunning(true);
+    setRunError(null);
+    try {
+      await action();
+      // The run happens on the worker; the entry appears when it writes.
+      setTimeout(onStarted, 4000);
+    } catch (e) {
+      setRunError(e instanceof Error ? e.message : "Could not start the run");
+    } finally {
+      setRunning(false);
+      setArmingBackfill(false);
+    }
+  }
+
+  return (
+    <section>
+      <div className="flex items-baseline justify-between gap-4">
+        <SectionHeading>Recent runs</SectionHeading>
+        <div className="flex items-center gap-2">
+          {armingBackfill ? (
+            <>
+              <span className="text-[12.5px] text-muted-foreground">
+                Re-reads the full history and updates pages in place.
+              </span>
+              <button
+                onClick={() => void start(backfillCurator)}
+                disabled={running}
+                className="rounded-sm bg-brand-500 px-3 py-1.5 text-[13px] font-medium text-white transition-colors hover:bg-brand-600 disabled:opacity-50"
+              >
+                {running ? "Starting…" : "Confirm backfill"}
+              </button>
+              <button
+                onClick={() => setArmingBackfill(false)}
+                disabled={running}
+                className="rounded-sm border border-border px-3 py-1.5 text-[13px] text-dim transition-colors hover:bg-raised"
+              >
+                Cancel
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                onClick={() => setArmingBackfill(true)}
+                disabled={running}
+                className="rounded-sm border border-border px-3 py-1.5 text-[13px] text-dim transition-colors hover:bg-raised hover:text-foreground disabled:opacity-50"
+              >
+                Backfill
+              </button>
+              <button
+                onClick={() => void start(runCuratorNow)}
+                disabled={running}
+                className="rounded-sm bg-brand-500 px-3 py-1.5 text-[13px] font-medium text-white transition-colors hover:bg-brand-600 disabled:opacity-50"
+              >
+                {running ? "Starting…" : "Run now"}
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+      {runError && <p className="mt-2 text-[13px] text-error">{runError}</p>}
+      {runs.length === 0 ? (
+        <p className="mt-4 rounded border border-dashed border-border px-6 py-8 text-center text-[14px] leading-6 text-muted-foreground">
+          It hasn&apos;t run yet. The first run happens on the next nightly tick, once there
+          are sessions to read — or run it now.
+        </p>
+      ) : (
+        <div className="mt-4 overflow-hidden rounded border border-border bg-surface">
+          {runs.map((run) => (
+            <Run key={run.session_id} run={run} />
+          ))}
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -181,14 +325,14 @@ function Fact({
   );
 }
 
-function TenantColumn({
+function UserColumn({
   title,
-  tenants,
+  users,
   empty,
   accent,
 }: {
   title: string;
-  tenants: TenantRef[];
+  users: TenantRef[];
   empty: string;
   accent?: boolean;
 }) {
@@ -202,21 +346,21 @@ function TenantColumn({
             accent ? "text-brand-500" : "text-muted-foreground",
           )}
         >
-          {tenants.length}
+          {users.length}
         </span>
       </div>
-      {tenants.length === 0 ? (
+      {users.length === 0 ? (
         <p className="px-5 py-4 text-[13px] leading-5 text-muted-foreground">{empty}</p>
       ) : (
-        tenants.map((tenant) => (
+        users.map((user) => (
           <Link
-            key={tenant.id}
-            href={`/developer/tenants/${tenant.id}`}
+            key={user.id}
+            href={`/developer/users/${user.id}`}
             className="flex items-center gap-3 border-b border-border px-5 py-2.5 text-[14px] transition-colors last:border-b-0 hover:bg-raised"
           >
-            <span className="min-w-0 flex-1 truncate text-foreground">{tenant.name}</span>
+            <span className="min-w-0 flex-1 truncate text-foreground">{user.name}</span>
             <span className="shrink-0 font-mono text-[12px] text-muted-foreground">
-              {tenant.external_id}
+              {user.external_id}
             </span>
           </Link>
         ))
@@ -245,6 +389,12 @@ function Run({ run }: { run: CuratorRun }) {
         >
           {RUN_LABEL[run.status]}
         </span>
+        <Link
+          href={`/sessions/${encodeURIComponent(run.session_id)}`}
+          className="shrink-0 font-mono text-[11px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+        >
+          transcript
+        </Link>
         <span className="ml-auto shrink-0 font-mono text-[12px] text-muted-foreground">
           {formatWhen(run.started_at)}
         </span>

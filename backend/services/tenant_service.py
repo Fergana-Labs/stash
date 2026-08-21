@@ -244,6 +244,80 @@ async def workspace_stats(workspace: dict) -> dict:
     return {"wiki_page_count": wiki_page_count, "tenant_session_count": session_count}
 
 
+async def workspace_sessions(workspace: dict, limit: int = 200) -> list[dict]:
+    """Every session in the workspace, newest first, labelled by tenant.
+
+    Sessions with no tenant are the workspace's own agents — most usefully the
+    curator's runs, which the console shows in the same list so the developer
+    can see when their users' sessions were read."""
+    pool = get_pool()
+    rows = await pool.fetch(
+        "SELECT s.session_id, s.agent_name, s.started_at, st.title, "
+        "       t.id AS tenant_id, t.name AS tenant_name, t.external_id AS tenant_external_id, "
+        "       COUNT(he.id)::int AS event_count, "
+        "       COALESCE(MAX(he.created_at), s.started_at) AS last_event_at "
+        "FROM sessions s "
+        "LEFT JOIN tenants t ON t.id = s.tenant_id "
+        "LEFT JOIN session_titles st "
+        "  ON st.owner_user_id = s.owner_user_id AND st.session_id = s.session_id "
+        "LEFT JOIN history_events he "
+        "  ON he.owner_user_id = s.owner_user_id AND he.session_id = s.session_id "
+        "WHERE s.owner_user_id = $1 AND s.deleted_at IS NULL "
+        "GROUP BY s.session_id, s.agent_name, s.started_at, st.title, t.id, t.name, t.external_id "
+        "ORDER BY last_event_at DESC LIMIT $2",
+        workspace["scope_user_id"],
+        limit,
+    )
+    return [dict(r) for r in rows]
+
+
+async def workspace_files(workspace: dict) -> dict:
+    """The console's files view: the shared wiki's pages and files, and each
+    tenant's own material (notepad pages plus uploaded files)."""
+    pool = get_pool()
+    wiki_ids = list(
+        await files_tree_service.folder_subtree_ids(workspace["external_wiki_folder_id"])
+    )
+    wiki_pages = await pool.fetch(
+        "SELECT id, name, updated_at FROM pages "
+        "WHERE folder_id = ANY($1) AND deleted_at IS NULL ORDER BY updated_at DESC",
+        wiki_ids,
+    )
+    wiki_files = await pool.fetch(
+        "SELECT id, name, size_bytes, created_at FROM files "
+        "WHERE folder_id = ANY($1) AND deleted_at IS NULL ORDER BY created_at DESC",
+        wiki_ids,
+    )
+    tenants = []
+    for tenant in await list_tenants(workspace["id"]):
+        notepad_pages = await pool.fetch(
+            "SELECT id, name, updated_at FROM pages "
+            "WHERE folder_id = $1 AND deleted_at IS NULL ORDER BY updated_at DESC",
+            tenant["notepad_folder_id"],
+        )
+        files = await pool.fetch(
+            "SELECT id, name, size_bytes, created_at FROM files "
+            "WHERE tenant_id = $1 AND deleted_at IS NULL ORDER BY created_at DESC",
+            tenant["id"],
+        )
+        tenants.append(
+            {
+                "id": str(tenant["id"]),
+                "name": tenant["name"],
+                "external_id": tenant["external_id"],
+                "notepad_folder_id": str(tenant["notepad_folder_id"]),
+                "notepad_pages": [dict(r) for r in notepad_pages],
+                "files": [dict(r) for r in files],
+            }
+        )
+    return {
+        "wiki_folder_id": str(workspace["external_wiki_folder_id"]),
+        "wiki_pages": [dict(r) for r in wiki_pages],
+        "wiki_files": [dict(r) for r in wiki_files],
+        "tenants": tenants,
+    }
+
+
 async def get_tenant(tenant_id: UUID) -> dict | None:
     pool = get_pool()
     row = await pool.fetchrow(f"SELECT {_TENANT_COLS} FROM tenants t WHERE t.id = $1", tenant_id)

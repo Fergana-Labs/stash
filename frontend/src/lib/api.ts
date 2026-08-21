@@ -259,6 +259,55 @@ export async function listTenants(): Promise<{
   return apiFetch(`${ME}/tenants`);
 }
 
+// The whole workspace's sessions, newest first, labelled by tenant. Rows with
+// no tenant are the workspace's own agents — the curator's runs, mostly.
+export interface DeveloperSession {
+  session_id: string;
+  agent_name: string | null;
+  title: string | null;
+  event_count: number;
+  started_at: string | null;
+  last_event_at: string | null;
+  tenant_id: string | null;
+  tenant_name: string | null;
+  tenant_external_id: string | null;
+}
+
+export async function listDeveloperSessions(): Promise<{ sessions: DeveloperSession[] }> {
+  return apiFetch(`${ME}/developer/sessions`);
+}
+
+export interface DeveloperPageRow {
+  id: string;
+  name: string;
+  updated_at: string;
+}
+
+export interface DeveloperFileRow {
+  id: string;
+  name: string;
+  size_bytes: number;
+  created_at: string;
+}
+
+export interface DeveloperTenantFiles {
+  id: string;
+  name: string;
+  external_id: string;
+  notepad_folder_id: string;
+  notepad_pages: DeveloperPageRow[];
+  files: DeveloperFileRow[];
+}
+
+export async function listDeveloperFiles(): Promise<{
+  wiki_folder_id: string;
+  wiki_pages: DeveloperPageRow[];
+  wiki_files: DeveloperFileRow[];
+  tenants: DeveloperTenantFiles[];
+}> {
+  return apiFetch(`${ME}/developer/files`);
+}
+
 export interface TenantSession {
   session_id: string;
   agent_name: string | null;
@@ -307,6 +356,8 @@ export async function getCurator(): Promise<{
   };
   next_run_at: string | null;
   prompt: string;
+  backfill_prompt: string;
+  instructions: string | null;
   feeding: TenantRef[];
   opted_out: TenantRef[];
   runs: CuratorRun[];
@@ -314,8 +365,23 @@ export async function getCurator(): Promise<{
   return apiFetch(`${ME}/developer/curator`);
 }
 
+// Appended to the curator's prompt on every run; empty string clears it.
+export async function updateCuratorInstructions(
+  instructions: string,
+): Promise<{ instructions: string | null }> {
+  return apiFetch(`${ME}/developer/curator`, {
+    method: "PATCH",
+    body: JSON.stringify({ instructions }),
+  });
+}
+
 export async function runCuratorNow(): Promise<{ status: string }> {
   return apiFetch(`${ME}/developer/curator/run`, { method: "POST" });
+}
+
+// Clears the delta watermark and runs over the full history.
+export async function backfillCurator(): Promise<{ status: string }> {
+  return apiFetch(`${ME}/developer/curator/backfill`, { method: "POST" });
 }
 
 export interface TenantSource {

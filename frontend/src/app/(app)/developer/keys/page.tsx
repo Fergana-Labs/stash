@@ -5,10 +5,11 @@ import { useState } from "react";
 import DeveloperGate from "@/components/developer/DeveloperGate";
 import { PageHeading, SectionHeading } from "@/components/developer/DocsPrimitives";
 import KeyTable from "@/components/developer/KeyTable";
+import MintKeyDialog from "@/components/developer/MintKeyDialog";
 import SetupCard from "@/components/developer/SetupCard";
 
 export default function DeveloperKeys() {
-  // Bumped when SetupCard mints, so the table picks up the new row.
+  // Bumped when the dialog mints, so the table picks up the new row.
   const [minted, setMinted] = useState(0);
   return (
     <DeveloperGate>
@@ -18,12 +19,15 @@ export default function DeveloperKeys() {
         knowledge base and record sessions, and can never delete or rewrite anything.
       </PageHeading>
       <div className="mb-12">
-        <SectionHeading>Your keys</SectionHeading>
+        <div className="flex items-baseline justify-between gap-4">
+          <SectionHeading>Your keys</SectionHeading>
+          <MintKeyDialog onMinted={() => setMinted((n) => n + 1)} />
+        </div>
         <div className="mt-4">
           <KeyTable refresh={minted} />
         </div>
       </div>
-      <SetupCard onMinted={() => setMinted((n) => n + 1)} />
+      <SetupCard />
     </DeveloperGate>
   );
 }

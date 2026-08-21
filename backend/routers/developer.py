@@ -36,9 +36,13 @@ class DeveloperKeyRequest(BaseModel):
     access: str = "read"
 
 
-class OrgUpdateRequest(BaseModel):
+class TenantUpdateRequest(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=255)
     share_wiki: bool | None = None
+
+
+class CuratorUpdateRequest(BaseModel):
+    instructions: str | None = Field(None, max_length=20_000)
 
 
 async def _require_member_workspace(workspace_id: UUID, user_id: UUID) -> dict:
@@ -142,6 +146,23 @@ async def get_developer_wiki_graph(
     )
 
 
+@router.get("/sessions")
+async def list_developer_sessions(scope_user_id: UUID = Depends(get_scope)):
+    """Every session the workspace has recorded, newest first, each labelled
+    with its tenant. Tenant-less rows are the workspace's own agents — the
+    curator's runs, mostly."""
+    workspace = await _require_active_workspace(scope_user_id)
+    return {"sessions": await tenant_service.workspace_sessions(workspace)}
+
+
+@router.get("/files")
+async def list_developer_files(scope_user_id: UUID = Depends(get_scope)):
+    """The two kinds of files the platform holds: the shared wiki's pages, and
+    each tenant's own material (notepad pages plus uploaded files)."""
+    workspace = await _require_active_workspace(scope_user_id)
+    return await tenant_service.workspace_files(workspace)
+
+
 @router.get("/curator")
 async def get_curator(
     current_user: dict = Depends(get_current_user),
@@ -167,6 +188,10 @@ async def get_curator(
         "curator": curator,
         "next_run_at": agent_service.next_run_at(curator),
         "prompt": prompt,
+        # What a backfill would send instead: the same prompt with no
+        # watermark, so the run bootstraps from the full history.
+        "backfill_prompt": await tenant_service.external_curator_prompt(workspace, None),
+        "instructions": curator["system_prompt"],
         "feeding": [
             {"id": str(o["id"]), "name": o["name"], "external_id": o["external_id"]}
             for o in tenants
@@ -181,6 +206,44 @@ async def get_curator(
     }
 
 
+@router.patch("/curator")
+async def update_curator(
+    req: CuratorUpdateRequest,
+    current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
+):
+    """The one tunable part of the curator: the workspace's own instructions,
+    appended to the rendered prompt on every run. The rendered prompt itself is
+    built from live state, which is why it isn't editable directly."""
+    await _require_active_workspace(scope_user_id)
+    if not await permission_service.is_workspace_member(scope_user_id, current_user["id"]):
+        raise HTTPException(status_code=403, detail="Not a workspace member")
+    curator = await agent_service.get_or_create_curator(scope_user_id, wiki="external")
+    updated = await agent_service.set_system_prompt(UUID(curator["id"]), req.instructions)
+    return {"instructions": updated["system_prompt"]}
+
+
+async def _runnable_curator(scope_user_id: UUID, user_id: UUID) -> dict:
+    """The external curator, once the caller and its credentials check out —
+    shared by the run-now and backfill triggers."""
+    from ..services import agent_auth
+
+    await _require_active_workspace(scope_user_id)
+    if not await permission_service.is_workspace_member(scope_user_id, user_id):
+        raise HTTPException(status_code=403, detail="Not a workspace member")
+    curator = await agent_service.get_or_create_curator(scope_user_id, wiki="external")
+    try:
+        await agent_auth.resolve(scope_user_id, curator["model_provider"])
+    except agent_auth.NeedsAuth:
+        raise HTTPException(
+            status_code=402,
+            detail="Connect a model credential for this workspace before running the curator.",
+        )
+    except agent_auth.ProviderNotConfigured:
+        raise HTTPException(status_code=503, detail="The agent is not configured.")
+    return curator
+
+
 @router.post("/curator/run", status_code=202)
 async def run_curator_now(
     current_user: dict = Depends(get_current_user),
@@ -193,22 +256,31 @@ async def run_curator_now(
     build: a developer wiring up their integration would have to wait a day to
     learn whether any of it works.
     """
-    from ..services import agent_auth
     from ..tasks.agent_schedules import run_curator_now as dispatch
 
-    await _require_active_workspace(scope_user_id)
-    if not await permission_service.is_workspace_member(scope_user_id, current_user["id"]):
-        raise HTTPException(status_code=403, detail="Not a workspace member")
-    curator = await agent_service.get_or_create_curator(scope_user_id, wiki="external")
-    try:
-        await agent_auth.resolve(scope_user_id, curator["model_provider"])
-    except agent_auth.NeedsAuth:
-        raise HTTPException(
-            status_code=402,
-            detail="Connect a model credential for this workspace before running the curator.",
-        )
-    except agent_auth.ProviderNotConfigured:
-        raise HTTPException(status_code=503, detail="The agent is not configured.")
+    curator = await _runnable_curator(scope_user_id, current_user["id"])
+    dispatch.delay(curator["id"])
+    return {"status": "started", "agent_id": curator["id"]}
+
+
+@router.post("/curator/backfill", status_code=202)
+async def backfill_curator(
+    current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
+):
+    """Re-run the curator over the workspace's full history.
+
+    Clears the delta watermark and dispatches a run, so the prompt bootstraps
+    from everything ever uploaded instead of the delta since last night. Pages
+    are updated in place — the curator merges rather than duplicates — so this
+    is safe to use after changing the instructions or onboarding real traffic.
+    The credential check runs first: a backfill that cannot run must not have
+    already thrown the watermark away.
+    """
+    from ..tasks.agent_schedules import run_curator_now as dispatch
+
+    curator = await _runnable_curator(scope_user_id, current_user["id"])
+    await agent_service.mark_curated(UUID(curator["id"]), None)
     dispatch.delay(curator["id"])
     return {"status": "started", "agent_id": curator["id"]}
 
@@ -249,7 +321,7 @@ async def get_tenant_detail(
 @tenants_router.patch("/{tenant_id}")
 async def update_tenant(
     tenant_id: UUID,
-    req: OrgUpdateRequest,
+    req: TenantUpdateRequest,
     current_user: dict = Depends(get_current_user),
     scope_user_id: UUID = Depends(get_scope),
 ):
