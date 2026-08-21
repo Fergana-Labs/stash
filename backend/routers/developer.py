@@ -92,6 +92,24 @@ async def mint_developer_key(
     return {"workspace_id": str(workspace["id"]), "api_key": key, "access": req.access}
 
 
+@router.get("/wiki-graph")
+async def get_developer_wiki_graph(
+    scope_user_id: UUID = Depends(get_scope),
+):
+    """This workspace's shared wiki as a graph — the same shape the personal
+    Memory dashboard renders, rooted at the external wiki folder instead of
+    the Memory subtree."""
+    from ..services import files_tree_service
+
+    workspace = await _require_active_workspace(scope_user_id)
+    folder_id = workspace["external_wiki_folder_id"]
+    if not folder_id:
+        return {"nodes": [], "edges": []}
+    return await files_tree_service.wiki_graph(
+        await files_tree_service.folder_subtree_ids(folder_id)
+    )
+
+
 @router.get("/curator")
 async def get_curator(
     current_user: dict = Depends(get_current_user),

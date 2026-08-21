@@ -397,18 +397,42 @@ async def memory_subtree_folder_ids(owner_user_id: UUID) -> set[UUID]:
     return {r["id"] for r in rows}
 
 
-# The curator links wiki pages as `[Title](/p/<page_id>)` (markdown) or
-# `href="/p/<page_id>"` (HTML layout), so any /p/<uuid> reference is a link.
+# A wiki page cites another by its id. Usually that is a link — `[Title](/p/<id>)`
+# in markdown, `href="/p/<id>"` in the HTML layout — but the external curator
+# writes bare ids instead ("the canonical page is **Log** (page id `<id>`)")
+# after finding it could not verify a URL form. Match the id itself, in any
+# spelling: an id only becomes an edge if it names another page in this wiki,
+# so a uuid from somewhere else is ignored anyway.
 _WIKI_PAGE_LINK = re.compile(
-    r"/p/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})", re.IGNORECASE
+    r"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})", re.IGNORECASE
 )
 
 
 async def memory_wiki_graph(owner_user_id: UUID) -> dict:
     """The Memory wiki as a graph: every live page in the Memory subtree is a
     node; a page-body reference to another wiki page is an undirected edge."""
+    return await wiki_graph(await memory_subtree_folder_ids(owner_user_id))
+
+
+async def folder_subtree_ids(folder_id: UUID) -> set[UUID]:
+    """A folder and all its descendants."""
     pool = get_pool()
-    folder_ids = await memory_subtree_folder_ids(owner_user_id)
+    rows = await pool.fetch(
+        "WITH RECURSIVE ftree AS ("
+        "  SELECT f.id FROM folders f WHERE f.id = $1"
+        "  UNION"
+        "  SELECT f.id FROM folders f JOIN ftree t ON f.parent_folder_id = t.id"
+        ") SELECT id FROM ftree",
+        folder_id,
+    )
+    return {r["id"] for r in rows}
+
+
+async def wiki_graph(folder_ids: set[UUID]) -> dict:
+    """Pages in these folders as nodes, page-body references between them as
+    undirected edges. Shared by the personal Memory wiki and a developer
+    workspace's external wiki — same shape, different root."""
+    pool = get_pool()
     if not folder_ids:
         return {"nodes": [], "edges": []}
     rows = await pool.fetch(

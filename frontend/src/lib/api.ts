@@ -700,6 +700,11 @@ export async function getMemoryGraph(): Promise<WikiGraph> {
   return apiFetch(`${ME}/memory-graph`);
 }
 
+// The same graph for a developer workspace's shared wiki.
+export async function getDeveloperWikiGraph(): Promise<WikiGraph> {
+  return apiFetch(`${ME}/developer/wiki-graph`);
+}
+
 // --- Curator log ---
 
 // One curator run: what the night's curation learned — the run's stored
