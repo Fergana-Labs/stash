@@ -1035,3 +1035,52 @@ async def test_reupload_to_deleted_session_skips_without_resurrecting(client: As
     assert (
         await pool.fetchval("SELECT deleted_at FROM sessions WHERE id = $1", row_id)
     ) is not None
+
+
+@pytest.mark.asyncio
+async def test_batch_without_timestamps_reads_back_in_submitted_order(client: AsyncClient):
+    """A batch uploaded without per-event timestamps keeps the order it was sent in.
+
+    Every event in one batch is stamped with the same created_at, so ordering
+    fell through to the row id — a random UUID — and a question could come back
+    below the answer to it. Eight alternating turns make a chance pass
+    vanishingly unlikely: with the tie broken at random, one ordering in 8!.
+    """
+    key = await _register(client)
+    headers = {"Authorization": f"Bearer {key}"}
+
+    turns = [
+        ("user_message", "q1"),
+        ("assistant_message", "a1"),
+        ("user_message", "q2"),
+        ("assistant_message", "a2"),
+        ("user_message", "q3"),
+        ("assistant_message", "a3"),
+        ("user_message", "q4"),
+        ("assistant_message", "a4"),
+    ]
+    pushed = await client.post(
+        "/api/v1/me/sessions/events/batch",
+        json={
+            "events": [
+                {
+                    "agent_name": "claude",
+                    "event_type": event_type,
+                    "content": content,
+                    "session_id": "sess-order",
+                }
+                for event_type, content in turns
+            ]
+        },
+        headers=headers,
+    )
+    assert pushed.status_code in (200, 201), pushed.text
+
+    events_resp = await client.get(
+        "/api/v1/me/transcripts/sess-order/events",
+        params={"limit": 100},
+        headers=headers,
+    )
+    assert events_resp.status_code == 200
+    events = events_resp.json()["events"]
+    assert [event["content"] for event in events] == [content for _type, content in turns]
