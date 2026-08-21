@@ -21,7 +21,7 @@ curl -X POST https://api.joinstash.ai/api/v1/me/sessions/events/batch \\
        "tenant_id":"org_acme","tenant_name":"Acme Trucks"}]}'`;
 
 /** Key minting plus the two-call integration contract. */
-export default function SetupCard() {
+export default function SetupCard({ onMinted }: { onMinted?: () => void }) {
   const [minted, setMinted] = useState<string | null>(null);
   const [minting, setMinting] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -33,6 +33,7 @@ export default function SetupCard() {
     try {
       const res = await mintDeveloperKey("production");
       setMinted(res.api_key);
+      onMinted?.();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not mint a key");
     } finally {

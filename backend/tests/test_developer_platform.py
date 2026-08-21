@@ -372,3 +372,33 @@ async def test_console_wiki_opt_out(client: AsyncClient):
         headers={**_auth(other_key), "X-Stash-Scope": other_ws["scope_user_id"]},
     )
     assert resp.status_code == 403
+
+
+async def test_key_list_and_revoke(client: AsyncClient, pool):
+    api_key, _, workspace = await _developer(client)
+    scope = {**_auth(api_key), "X-Stash-Scope": workspace["scope_user_id"]}
+    minted = await _mint_workspace_key(client, api_key, workspace)
+
+    listed = await client.get("/api/v1/me/developer/keys", headers=scope)
+    assert listed.status_code == 200, listed.text
+    keys = listed.json()["keys"]
+    assert [k["name"] for k in keys] == ["prod"]
+    assert keys[0]["access"] == "read"
+    # Key material is shown once, at mint — never by the list.
+    assert "api_key" not in keys[0] and "key_hash" not in keys[0]
+
+    # The minted key works before revocation…
+    ok = await client.post("/api/v1/me/vfs", json={"script": "ls /"}, headers=_auth(minted))
+    assert ok.status_code == 200, ok.text
+
+    revoked = await client.delete(f"/api/v1/me/developer/keys/{keys[0]['id']}", headers=scope)
+    assert revoked.status_code == 200, revoked.text
+
+    # …is refused after, and is gone from the list.
+    denied = await client.post("/api/v1/me/vfs", json={"script": "ls /"}, headers=_auth(minted))
+    assert denied.status_code == 401
+    assert (await client.get("/api/v1/me/developer/keys", headers=scope)).json()["keys"] == []
+
+    # Revoking an already-revoked key is a 404, not a silent success.
+    again = await client.delete(f"/api/v1/me/developer/keys/{keys[0]['id']}", headers=scope)
+    assert again.status_code == 404

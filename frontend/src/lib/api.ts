@@ -220,6 +220,24 @@ export async function activateDeveloperPlatform(workspaceId?: string): Promise<W
 
 // Mints a machine key on the developer workspace's scope user (scope header
 // picks the workspace). The key is shown once.
+export type DeveloperKey = {
+  id: string;
+  name: string;
+  access: "read" | "full";
+  created_at: string;
+  last_used_at: string | null;
+};
+
+// Names and usage only — key material is shown once, at mint time.
+export async function listDeveloperKeys(): Promise<{ keys: DeveloperKey[] }> {
+  return apiFetch(`${ME}/developer/keys`);
+}
+
+// Takes effect on the key's next request.
+export async function revokeDeveloperKey(id: string): Promise<{ revoked: boolean }> {
+  return apiFetch(`${ME}/developer/keys/${id}`, { method: "DELETE" });
+}
+
 export async function mintDeveloperKey(
   name: string,
   access: "read" | "full" = "read",

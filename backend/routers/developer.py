@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from ..auth import API_KEY_ACCESS_LEVELS, create_api_key, get_current_user, get_scope
+from ..database import get_pool
 from ..services import agent_service, permission_service, tenant_service, workspace_service
 from .curator_log import curator_runs
 
@@ -90,6 +91,36 @@ async def mint_developer_key(
     workspace = await _require_active_workspace(scope_user_id)
     key = await create_api_key(scope_user_id, name=req.name, key_type="machine", access=req.access)
     return {"workspace_id": str(workspace["id"]), "api_key": key, "access": req.access}
+
+
+@router.get("/keys")
+async def list_developer_keys(scope_user_id: UUID = Depends(get_scope)):
+    """The workspace's machine keys — names, access, and usage. Key material
+    is never returned; a key is shown once, at mint time."""
+    await _require_active_workspace(scope_user_id)
+    rows = await get_pool().fetch(
+        "SELECT id, name, access, created_at, last_used_at FROM user_api_keys "
+        "WHERE user_id = $1 AND key_type = 'machine' AND revoked_at IS NULL "
+        "ORDER BY created_at DESC",
+        scope_user_id,
+    )
+    return {"keys": [dict(row) for row in rows]}
+
+
+@router.delete("/keys/{key_id}")
+async def revoke_developer_key(key_id: UUID, scope_user_id: UUID = Depends(get_scope)):
+    """Revoke one machine key — takes effect on the key's next request.
+    Revocation, not deletion: the row stays for the audit trail."""
+    await _require_active_workspace(scope_user_id)
+    status = await get_pool().execute(
+        "UPDATE user_api_keys SET revoked_at = now() "
+        "WHERE id = $1 AND user_id = $2 AND key_type = 'machine' AND revoked_at IS NULL",
+        key_id,
+        scope_user_id,
+    )
+    if status.endswith(" 0"):
+        raise HTTPException(status_code=404, detail="No such active key on this workspace")
+    return {"revoked": True}
 
 
 @router.get("/wiki-graph")
