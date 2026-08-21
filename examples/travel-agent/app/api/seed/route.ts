@@ -1,42 +1,40 @@
 import { answer } from "@/lib/agent";
 import { record } from "@/lib/stash";
+import { travellerById } from "@/lib/travellers";
 
-// The scenario worth showing: one agency learns something about the world the
-// hard way and records something private about a traveller; a second agency
-// asks about its own business. After a curator run the first agency's lesson
-// reaches the second, and the private note does not.
-const SCRIPT: [string, string, string][] = [
-  ["wanderly", "Wanderly Travel", "Client needs a Vietnam e-visa for a trip in 3 weeks. Fine?"],
+/**
+ * The scenario worth showing, run by `npm run seed` rather than from the UI:
+ * one traveller learns something about the world the hard way and mentions
+ * something private about how they travel; a second traveller asks about a trip
+ * of their own. After a curator run the first traveller's lesson reaches the
+ * second, and the private preference does not.
+ */
+const SCRIPT: [string, string][] = [
+  ["sam", "I need a Vietnam e-visa for a trip in 3 weeks. Is that enough time?"],
   [
-    "wanderly",
-    "Wanderly Travel",
-    "Update: the Vietnam e-visa took 19 working days, not the 3 the site claims. We nearly missed it. Always allow a month.",
+    "sam",
+    "Update: that e-visa took 19 working days, not the 3 the site claims. I nearly missed the flight. Never count on three days again.",
   ],
-  [
-    "wanderly",
-    "Wanderly Travel",
-    "Note for the file: our client Dr Okafor will not fly overnight and always books the aisle seat.",
-  ],
-  [
-    "globetrek",
-    "Globetrek Corporate",
-    "Best way to get a team of six from Berlin to Lisbon in May?",
-  ],
+  ["sam", "Also, for future trips: I won't fly overnight, and I always want an aisle seat."],
+  ["priya", "Six of us want to get from Berlin to Lisbon in May. What's the best way?"],
 ];
 
 export async function POST() {
   try {
     const turns = [];
-    for (const [tenant, tenantName, question] of SCRIPT) {
-      const reply = await answer(tenant, question);
-      await record(tenant, tenantName, `${tenant}:seed`, [
+    for (const [tenant, question] of SCRIPT) {
+      let reply = "";
+      for await (const event of answer(tenant, [{ role: "user", content: question }]))
+        if (event.type === "text") reply += event.delta;
+      await record(tenant, travellerById(tenant).name, `${tenant}:seed`, [
         ["user_message", question],
         ["assistant_message", reply],
       ]);
-      turns.push({ tenant, tenantName, question, reply });
+      turns.push({ tenant, question, reply });
     }
     return Response.json({ turns });
   } catch (e) {
+    console.error("[seed] failed:", e);
     return Response.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 });
   }
 }

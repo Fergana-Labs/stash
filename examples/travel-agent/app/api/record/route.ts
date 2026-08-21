@@ -10,14 +10,15 @@ import { record } from "@/lib/stash";
  * transcript. It is not a security boundary — tenant_id is.
  */
 export async function POST(request: Request) {
+  const { tenant, tenantName, session, question, reply } = await request.json();
   try {
-    const { tenant, tenantName, session, question, reply } = await request.json();
     await record(tenant, tenantName, session, [
       ["user_message", question],
       ["assistant_message", reply],
     ]);
     return Response.json({ recorded: true });
   } catch (e) {
-    return Response.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 });
+    console.error("[record] upload failed:", e);
+    return Response.json({ error: "This chat was not saved." }, { status: 500 });
   }
 }

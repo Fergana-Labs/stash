@@ -1,294 +1,368 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { TRAVELLERS, travellerById } from "@/lib/travellers";
+import { Answer } from "./answer";
+import { Compass, Menu, Plus, Send, Stash, Stop, Tick } from "./icons";
 
-type Tenant = { id: string; external_id: string; name: string };
-type Turn = { role: "you" | "planner"; text: string };
-type Session = { name: string; transcript: string };
+// An assistant turn is a run of parts in the order they happened: text it
+// said, and each read it made against Stash. A user turn is one text part.
+type Part =
+  | { kind: "text"; text: string }
+  | { kind: "read"; id: string; script: string; state: "running" | "ok" | "empty"; summary?: string };
+type Message = { role: "user" | "assistant"; parts: Part[] };
+type Conversation = { id: string; title: string };
 
-// A failed route answers with JSON too, but a crash upstream may not — read the
-// body as text first so the page shows what happened rather than a parse error
-// about the error.
-async function load<T>(url: string, init?: RequestInit): Promise<T & { error?: string }> {
-  const res = await fetch(url, init);
-  const body = await res.text();
-  let data = {} as T & { error?: string };
-  try {
-    data = body ? JSON.parse(body) : {};
-  } catch {
-    throw new Error(`${url} → ${res.status}: ${body.slice(0, 300) || "(empty response)"}`);
-  }
-  if (!res.ok) throw new Error(data.error ?? `${url} → ${res.status}`);
-  return data;
+function text(message: Message): string {
+  return message.parts
+    .filter((part): part is { kind: "text"; text: string } => part.kind === "text")
+    .map((part) => part.text)
+    .join("\n\n");
 }
 
-export default function Home() {
-  const [tenants, setOrgs] = useState<Tenant[]>([]);
-  const [tenant, setOrg] = useState<Tenant | null>(null);
-  const [turns, setTurns] = useState<Turn[]>([]);
-  const [question, setQuestion] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [seeding, setSeeding] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [sessions, setSessions] = useState<Session[] | null>(null);
-  const [session] = useState(() => `chat-${Math.random().toString(36).slice(2, 10)}`);
-  const endRef = useRef<HTMLDivElement>(null);
+export default function Page() {
+  const [travellerId, setTravellerId] = useState(TRAVELLERS[0].id);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [sessionId, setSessionId] = useState(() => newSessionId(TRAVELLERS[0].id));
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [draft, setDraft] = useState("");
+  const [streaming, setStreaming] = useState(false);
+  const [opening, setOpening] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
+  const workspaceRef = useRef<HTMLDivElement>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const traveller = travellerById(travellerId);
 
-  const loadOrgs = useCallback(
-    (prefer?: string) =>
-      load<{ tenants: Tenant[] }>("/api/tenants")
-        .then((d) => {
-          setOrgs(d.tenants ?? []);
-          setOrg(
-            (current) =>
-              d.tenants?.find((o) => o.external_id === prefer) ?? current ?? d.tenants?.[0] ?? null,
-          );
-        })
-        .catch((e) => setError(e.message)),
-    [],
-  );
+  const loadConversations = useCallback(async (tenant: string) => {
+    const res = await fetch(`/api/conversations?tenant=${encodeURIComponent(tenant)}`);
+    const body = await res.json();
+    if (!res.ok) return setNotice(body.error);
+    setConversations(body.conversations);
+  }, []);
 
   useEffect(() => {
-    void loadOrgs();
-  }, [loadOrgs]);
+    void loadConversations(travellerId);
+  }, [travellerId, loadConversations]);
 
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [turns, busy]);
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
 
-  // The chat window keeps no memory of its own. Switching agency clears it, and
-  // the planner still knows what that agency knows — because the memory is in
-  // Stash, not in this page.
-  function pick(external: string) {
-    setOrg(tenants.find((o) => o.external_id === external) ?? null);
-    setTurns([]);
-    setSessions(null);
+  // Clicking anywhere off the account switcher closes it. pointerdown rather
+  // than click, so the press that opened the menu is long past by the time this
+  // listener exists; clicks inside the switcher are left to its own handlers.
+  useEffect(() => {
+    if (!menuOpen) return;
+    function closeOnOutsidePress(event: PointerEvent) {
+      if (!workspaceRef.current?.contains(event.target as Node)) setMenuOpen(false);
+    }
+    document.addEventListener("pointerdown", closeOnOutsidePress);
+    return () => document.removeEventListener("pointerdown", closeOnOutsidePress);
+  }, [menuOpen]);
+
+  // The window keeps no memory of its own: a new chat is an empty page here and
+  // Atlas still knows this traveller, because the memory lives in Stash rather
+  // than in this tab.
+  function startChat(tenant: string) {
+    setSessionId(newSessionId(tenant));
+    setMessages([]);
+    setNotice(null);
+    setSidebarOpen(false);
   }
 
-  async function ask() {
-    if (!tenant || !question.trim() || busy) return;
-    const asked = question;
-    setQuestion("");
-    setTurns((t) => [...t, { role: "you", text: asked }]);
-    setBusy(true);
-    setError(null);
+  function switchTraveller(id: string) {
+    setTravellerId(id);
+    setMenuOpen(false);
+    startChat(id);
+  }
+
+  async function openConversation(conversation: Conversation) {
+    setSessionId(conversation.id);
+    setMessages([]);
+    setOpening(true);
+    setNotice(null);
+    setSidebarOpen(false);
+    const res = await fetch(
+      `/api/conversations?tenant=${encodeURIComponent(travellerId)}&session=${encodeURIComponent(conversation.id)}`,
+    );
+    const body = await res.json();
+    setOpening(false);
+    if (!res.ok) return setNotice(body.error);
+    setMessages(
+      (body.turns as { role: "user" | "assistant"; content: string }[]).map((turn) => ({
+        role: turn.role,
+        parts: [{ kind: "text" as const, text: turn.content }],
+      })),
+    );
+  }
+
+  async function send(draftText: string) {
+    const question = draftText.trim();
+    if (!question || streaming) return;
+
+    const history: Message[] = [...messages, { role: "user", parts: [{ kind: "text", text: question }] }];
+    setMessages([...history, { role: "assistant", parts: [] }]);
+    setDraft("");
+    setNotice(null);
+    setStreaming(true);
+
+    const controller = new AbortController();
+    abortRef.current = controller;
+    // The assistant turn is rebuilt from this array on every event, so the
+    // thread shows reads and text in the order the agent produced them.
+    const parts: Part[] = [];
     try {
-      // The agent reads and answers with a tenant id and nothing else…
-      const { reply } = await load<{ reply: string }>("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tenant: tenant.external_id, question: asked }),
-      });
-      setTurns((t) => [...t, { role: "planner", text: reply }]);
-      // …and the transcript upload is its own call, as it is in a real backend.
-      await load("/api/record", {
+      const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          tenant: tenant.external_id,
-          tenantName: tenant.name,
-          session: `${tenant.external_id}:${session}`,
-          question: asked,
-          reply,
+          tenant: travellerId,
+          messages: history.map((m) => ({ role: m.role, content: text(m) })),
         }),
+        signal: controller.signal,
       });
+      if (!res.ok) throw new Error((await res.json()).error);
+      for await (const event of eventLines(res.body!, controller.signal)) {
+        if (event.type === "text") {
+          const last = parts[parts.length - 1];
+          if (last?.kind === "text") last.text += event.delta;
+          else parts.push({ kind: "text", text: event.delta });
+        } else if (event.type === "tool") {
+          parts.push({ kind: "read", id: event.id, script: event.script, state: "running" });
+        } else if (event.type === "tool_result") {
+          const read = parts.find((part) => part.kind === "read" && part.id === event.id);
+          if (read?.kind === "read") {
+            read.state = event.ok ? "ok" : "empty";
+            read.summary = event.summary;
+          }
+        }
+        setMessages([...history, { role: "assistant", parts: [...parts] }]);
+      }
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      // Stopping is the reader throwing, and it keeps whatever arrived first.
+      if (!controller.signal.aborted) {
+        console.error(e);
+        setNotice(e instanceof Error ? e.message : String(e));
+        setMessages(history);
+      }
     } finally {
-      setBusy(false);
+      setStreaming(false);
+      abortRef.current = null;
     }
+
+    const reply = parts
+      .filter((part): part is { kind: "text"; text: string } => part.kind === "text")
+      .map((part) => part.text)
+      .join("\n\n");
+    if (!reply.trim()) return;
+    const recorded = await fetch("/api/record", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        tenant: travellerId,
+        tenantName: traveller.name,
+        session: sessionId,
+        question,
+        reply,
+      }),
+    });
+    if (!recorded.ok) return setNotice((await recorded.json()).error);
+    await loadConversations(travellerId);
   }
 
-  async function seed() {
-    setSeeding(true);
-    setError(null);
-    try {
-      await load("/api/seed", { method: "POST" });
-      await loadOrgs("globetrek");
-      setTurns([]);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setSeeding(false);
-    }
-  }
-
-  async function toggleTranscripts() {
-    if (sessions) return setSessions(null);
-    if (!tenant) return;
-    try {
-      const d = await load<{ sessions: Session[] }>(
-        `/api/transcript?tenant=${encodeURIComponent(tenant.external_id)}`,
-      );
-      setSessions(d.sessions ?? []);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    }
-  }
+  const waiting = streaming && !messages[messages.length - 1]?.parts.length;
 
   return (
-    <main style={{ maxWidth: 760, margin: "0 auto", padding: "28px 20px 40px" }}>
-      <header
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 12,
-          paddingBottom: 16,
-          borderBottom: "1px solid #E9E5DC",
-        }}
-      >
-        <strong style={{ font: "600 16px ui-sans-serif, system-ui", color: "#16130F" }}>
-          Travel planner
-        </strong>
-        <select
-          value={tenant?.external_id ?? ""}
-          onChange={(e) => pick(e.target.value)}
-          style={{
-            padding: "5px 8px",
-            borderRadius: 4,
-            border: "1px solid #E9E5DC",
-            background: "#fff",
-            font: "13px ui-sans-serif, system-ui",
-            color: "#453F37",
-          }}
-        >
-          {tenants.map((o) => (
-            <option key={o.id} value={o.external_id}>
-              {o.name}
-            </option>
+    <div className="app">
+      {sidebarOpen && <div className="overlay" onClick={() => setSidebarOpen(false)} />}
+
+      <aside className={sidebarOpen ? "sidebar open" : "sidebar"}>
+        <div className="brand">
+          <Compass />
+          <span className="brand-name">Atlas</span>
+        </div>
+
+        <button className="new-chat" onClick={() => startChat(travellerId)}>
+          <Plus />
+          New chat
+        </button>
+
+        <div className="section-label">Recent</div>
+        <div className="recents">
+          {conversations.length === 0 && (
+            <div className="recents-empty">Your trips with Atlas show up here.</div>
+          )}
+          {conversations.map((c) => (
+            <button
+              key={c.id}
+              className={c.id === sessionId ? "recent active" : "recent"}
+              onClick={() => void openConversation(c)}
+            >
+              {c.title}
+            </button>
           ))}
-        </select>
-        <div style={{ marginLeft: "auto", display: "flex", gap: 14 }}>
-          <button onClick={() => void toggleTranscripts()} style={linkStyle}>
-            {sessions ? "Hide transcripts" : "Transcripts"}
-          </button>
-          <button onClick={() => void seed()} disabled={seeding} style={linkStyle}>
-            {seeding ? "Seeding…" : "Seed demo"}
+        </div>
+
+        <div className="workspace" ref={workspaceRef}>
+          {menuOpen && (
+            <div className="menu">
+              <div className="menu-label">Switch account</div>
+              {TRAVELLERS.map((t) => (
+                <button key={t.id} className="menu-item" onClick={() => switchTraveller(t.id)}>
+                  <span className="avatar">{initials(t.name)}</span>
+                  {t.name}
+                  {t.id === travellerId && (
+                    <span className="menu-check">
+                      <Tick />
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+          <button className="workspace-button" onClick={() => setMenuOpen(!menuOpen)}>
+            <span className="avatar">{initials(traveller.name)}</span>
+            <span className="workspace-text">
+              <div className="workspace-name">{traveller.name}</div>
+              <div className="workspace-plan">{traveller.email}</div>
+            </span>
           </button>
         </div>
-      </header>
+      </aside>
 
-      {error && (
-        <p
-          style={{
-            color: "#C4421F",
-            background: "rgba(255,90,54,0.07)",
-            padding: "10px 14px",
-            borderRadius: 4,
-            fontSize: 14,
-          }}
-        >
-          {error}
-        </p>
-      )}
-
-      {sessions && (
-        <section
-          style={{
-            border: "1px solid #E9E5DC",
-            background: "#fff",
-            borderRadius: 4,
-            padding: 14,
-            margin: "16px 0",
-          }}
-        >
-          <div style={{ fontSize: 13, color: "#7C7469", marginBottom: 8 }}>
-            Everything {tenant?.name} can see. Switch agency and look again.
-          </div>
-          {sessions.length === 0 && <div style={{ color: "#A79E92", fontSize: 14 }}>Nothing yet.</div>}
-          {sessions.map((s) => (
-            <details key={s.name} style={{ marginBottom: 6 }}>
-              <summary style={{ cursor: "pointer", fontSize: 14 }}>{s.name}</summary>
-              <pre
-                style={{
-                  whiteSpace: "pre-wrap",
-                  font: "12px/1.5 ui-monospace, monospace",
-                  color: "#7C7469",
-                  marginTop: 6,
-                }}
-              >
-                {s.transcript || "(this transcript is unreadable — its id contains a slash)"}
-              </pre>
-            </details>
-          ))}
-        </section>
-      )}
-
-      <div style={{ minHeight: 320, padding: "20px 0" }}>
-        {turns.length === 0 && !busy && (
-          <p style={{ color: "#A79E92", fontSize: 15 }}>
-            Ask {tenant?.name ?? "the planner"} something. It knows what this agency knows.
-          </p>
-        )}
-        {turns.map((t, i) => (
-          <div
-            key={i}
-            style={{
-              display: "flex",
-              justifyContent: t.role === "you" ? "flex-end" : "flex-start",
-              marginBottom: 12,
-            }}
+      <main className="main">
+        <div className="topbar">
+          <button className="icon-button" onClick={() => setSidebarOpen(true)}>
+            <Menu />
+          </button>
+          <span className="brand-name">Atlas</span>
+          <button
+            className="icon-button"
+            style={{ marginLeft: "auto" }}
+            onClick={() => startChat(travellerId)}
           >
-            <div
-              style={{
-                maxWidth: "78%",
-                padding: "10px 14px",
-                borderRadius: 4,
-                background: t.role === "you" ? "#FF5A36" : "#fff",
-                color: t.role === "you" ? "#fff" : "#453F37",
-                border: t.role === "you" ? "none" : "1px solid #E9E5DC",
-                fontSize: 15,
-                lineHeight: 1.6,
-              }}
-            >
-              {t.text}
-            </div>
-          </div>
-        ))}
-        {busy && <div style={{ color: "#A79E92", fontSize: 14 }}>thinking…</div>}
-        <div ref={endRef} />
-      </div>
+            <Plus />
+          </button>
+        </div>
 
-      <div style={{ display: "flex", gap: 8 }}>
-        <input
-          value={question}
-          onChange={(e) => setQuestion(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && void ask()}
-          placeholder="Client wants Vietnam in 3 weeks. Is the e-visa going to make it?"
-          style={{
-            flex: 1,
-            padding: "12px 14px",
-            borderRadius: 4,
-            border: "1px solid #E9E5DC",
-            background: "#fff",
-            font: "15px ui-sans-serif, system-ui",
-          }}
-        />
-        <button
-          onClick={() => void ask()}
-          disabled={busy}
-          style={{
-            padding: "12px 20px",
-            borderRadius: 4,
-            border: "none",
-            background: "#FF5A36",
-            color: "#fff",
-            font: "500 15px ui-sans-serif, system-ui",
-            cursor: "pointer",
-          }}
-        >
-          Send
-        </button>
-      </div>
-    </main>
+        <div className="thread">
+          <div className="thread-inner">
+            {opening ? null : messages.length === 0 ? (
+              <div className="welcome">
+                <h1 className="greeting">Where do you want to go?</h1>
+                <p className="greeting-sub">
+                  Tell me who is travelling and roughly when, and I will work out the rest.
+                </p>
+              </div>
+            ) : (
+              messages.map((m, i) =>
+                m.role === "user" ? (
+                  <div key={i} className="turn user">
+                    <div className="bubble">{text(m)}</div>
+                  </div>
+                ) : (
+                  <div key={i} className="turn">
+                    <span className="mark">
+                      <Compass />
+                    </span>
+                    <div className="answer">
+                      {m.parts.map((part, j) =>
+                        part.kind === "read" ? (
+                          <div key={j} className={`read read-${part.state}`}>
+                            <Stash />
+                            <span className="read-label">Read from Stash</span>
+                            <code>{part.script}</code>
+                            <span className="read-summary">{part.summary ?? "…"}</span>
+                          </div>
+                        ) : (
+                          <Answer key={j} text={part.text} />
+                        ),
+                      )}
+                      {!m.parts.length &&
+                        (waiting && (
+                          <span className="dots">
+                            <span>·</span>
+                            <span>·</span>
+                            <span>·</span>
+                          </span>
+                        ))}
+                    </div>
+                  </div>
+                ),
+              )
+            )}
+            <div ref={bottomRef} />
+          </div>
+        </div>
+
+        <div className="composer-wrap">
+          <div className="composer">
+            <textarea
+              rows={1}
+              value={draft}
+              placeholder="Message Atlas…"
+              onChange={(e) => {
+                setDraft(e.target.value);
+                e.target.style.height = "auto";
+                e.target.style.height = `${e.target.scrollHeight}px`;
+              }}
+              onKeyDown={(e) => {
+                if (e.key !== "Enter" || e.shiftKey) return;
+                e.preventDefault();
+                void send(draft);
+              }}
+            />
+            {streaming ? (
+              <button className="send" onClick={() => abortRef.current?.abort()} title="Stop">
+                <Stop />
+              </button>
+            ) : (
+              <button className="send" disabled={!draft.trim()} onClick={() => void send(draft)}>
+                <Send />
+              </button>
+            )}
+          </div>
+          <div className={notice ? "footnote warn" : "footnote"}>
+            {notice ?? "Atlas can be wrong about fares and visa timelines. Check before you book."}
+          </div>
+        </div>
+      </main>
+    </div>
   );
 }
 
-const linkStyle = {
-  border: "none",
-  background: "none",
-  padding: 0,
-  color: "#7C7469",
-  font: "13px ui-sans-serif, system-ui",
-  cursor: "pointer",
-} as const;
+/** One JSON object per line, as the agent produces them. */
+async function* eventLines(
+  body: ReadableStream<Uint8Array>,
+  signal: AbortSignal,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+): AsyncGenerator<any> {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let pending = "";
+  while (!signal.aborted) {
+    const { done, value } = await reader.read();
+    if (done) return;
+    pending += decoder.decode(value, { stream: true });
+    const lines = pending.split("\n");
+    pending = lines.pop()!;
+    for (const line of lines) if (line.trim()) yield JSON.parse(line);
+  }
+}
+
+// A session belongs to one traveller, so the id carries the traveller: the
+// second customer to reuse a bare id would be refused with a 400.
+function newSessionId(tenant: string): string {
+  return `${tenant}:${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function initials(name: string): string {
+  return name
+    .split(" ")
+    .slice(0, 2)
+    .map((word) => word[0])
+    .join("");
+}

@@ -2,9 +2,11 @@
   "name": "travel-agent-demo",
   "private": true,
   "scripts": {
-    "dev": "next dev -p 3200"
+    "dev": "next dev -p 3200",
+    "seed": "curl -fsS -X POST http://localhost:3200/api/seed"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.120.0",
     "next": "16.2.11",
     "react": "19.2.0",
     "react-dom": "19.2.0"

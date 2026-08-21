@@ -1,3 +1,7 @@
 import type { NextConfig } from "next";
-const config: NextConfig = {};
+
+// The dev-mode indicator parks itself over the account switcher in the corner
+// of the sidebar.
+const config: NextConfig = { devIndicators: false };
+
 export default config;
