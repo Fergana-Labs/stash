@@ -264,12 +264,14 @@ async def recompute_memory(
                 "curator runs per month; the enterprise plan is unlimited.",
             )
     try:
-        await agent_auth.resolve(user_id, curator["model_provider"])
+        await agent_auth.resolve(user_id, curator["model_provider"], curator_run=True)
     except agent_auth.NeedsAuth:
+        # Only reachable when the curator is pinned to a provider the user
+        # hasn't connected — the managed tier covers everyone else.
         raise HTTPException(
             status_code=402,
-            detail="Connect your Claude, Codex, or OpenRouter key in settings, "
-            "or upgrade to Pro to run the Memory curator.",
+            detail="The curator is set to a model you haven't connected — "
+            "connect that key in settings.",
         )
     except agent_auth.ProviderNotConfigured:
         raise HTTPException(status_code=503, detail="The agent is not configured.")

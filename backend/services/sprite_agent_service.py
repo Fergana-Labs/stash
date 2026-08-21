@@ -407,6 +407,7 @@ async def run_scheduled(agent: dict, run_stamp: str) -> str:
         model_provider=agent["model_provider"],
         persona=agent["system_prompt"],
         agent_name=agent["name"],
+        curator_run=agent["is_curator"],
     )
 
 
@@ -578,10 +579,12 @@ async def run_chat(
     model_provider: str | None = None,
     persona: str | None = None,
     agent_name: str = AGENT_NAME,
+    curator_run: bool = False,
 ) -> str:
     """Non-streaming turn for Slack/Telegram/scheduled: returns the final answer.
     `channel` ('slack'|'telegram') selects the bound agent's model + persona;
-    a scheduled run passes model_provider/persona directly.
+    a scheduled run passes model_provider/persona directly. `curator_run` opens
+    the managed tier to free accounts (metered by the monthly allowance).
     Raises NeedsAuth for an unconnected free account so the channel can prompt."""
     if channel:
         agent = await agent_service.channel_agent(user_id, channel)
@@ -589,7 +592,7 @@ async def run_chat(
         persona = agent["system_prompt"]
         agent_name = agent["name"]
     try:
-        auth = await agent_auth.resolve(user_id, model_provider)
+        auth = await agent_auth.resolve(user_id, model_provider, curator_run=curator_run)
     except agent_auth.NeedsAuth:
         raise NeedsAuth
     except agent_auth.ProviderNotConfigured:

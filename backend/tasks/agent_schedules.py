@@ -99,9 +99,13 @@ async def _run_due() -> int:
                 )
                 await agent_service.mark_run_skipped(agent["id"], "credits")
                 continue
-        # No runnable credential (unconnected free user) → nothing can run.
+        # No runnable credential → nothing can run. Curator runs pass this on
+        # the managed tier even for free accounts (the credits gate above is
+        # their meter); other scheduled agents still need BYO or Pro.
         try:
-            await agent_auth.resolve(user_id, agent["model_provider"])
+            await agent_auth.resolve(
+                user_id, agent["model_provider"], curator_run=agent["is_curator"]
+            )
         except (agent_auth.NeedsAuth, agent_auth.ProviderNotConfigured):
             logger.info("agent schedule: no credential for agent %s — skipping", agent["id"])
             await agent_service.mark_run_skipped(agent["id"], "no_credential")
