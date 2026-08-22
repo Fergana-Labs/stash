@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowDown, ArrowUp, ArrowUpDown, LayoutGrid, Table2 } from "lucide-react";
 
+import { Select } from "@/components/ui/select";
 import { appFacets, getApp, getTable, installApp, listAppRows } from "@/lib/api";
 import type { AppFacets, MiniProgramManifest, Table, TableColumn, TableRow } from "@/lib/types";
 
@@ -305,33 +306,33 @@ export default function AppView({ slug }: { slug: string }) {
           </div>
 
           <div className="mt-3 flex flex-wrap items-center gap-2">
-            <select
+            <Select
               aria-label="Filter bookmarks"
               value={derived ?? ""}
-              onChange={(event) => setDerived(event.target.value || null)}
-              className="rounded-md border border-border bg-base px-2.5 py-1.5 text-[12px] text-foreground"
-            >
-              <option value="">All bookmarks</option>
-              {DERIVED.filter((item) => (facets?.[item.key] ?? 0) > 0).map((item) => (
-                <option key={item.key} value={item.key}>
-                  {item.label} ({facets?.[item.key]})
-                </option>
-              ))}
-            </select>
+              onChange={(v) => setDerived(v || null)}
+              options={[
+                { value: "", label: "All bookmarks" },
+                ...DERIVED.filter((item) => (facets?.[item.key] ?? 0) > 0).map((item) => ({
+                  value: item.key,
+                  label: `${item.label} (${facets?.[item.key]})`,
+                })),
+              ]}
+              className="px-2.5 py-1.5 text-[12px]"
+            />
 
-            <select
+            <Select
               aria-label="Filter by topic"
               value={topic ?? ""}
-              onChange={(event) => setTopic(event.target.value || null)}
-              className="rounded-md border border-border bg-base px-2.5 py-1.5 text-[12px] text-foreground"
-            >
-              <option value="">All topics</option>
-              {(facets?.topics ?? []).map((item) => (
-                <option key={item.label} value={item.label}>
-                  {item.label} ({item.count})
-                </option>
-              ))}
-            </select>
+              onChange={(v) => setTopic(v || null)}
+              options={[
+                { value: "", label: "All topics" },
+                ...(facets?.topics ?? []).map((item) => ({
+                  value: item.label,
+                  label: `${item.label} (${item.count})`,
+                })),
+              ]}
+              className="px-2.5 py-1.5 text-[12px]"
+            />
 
             {filtering && (
               <button
@@ -347,23 +348,22 @@ export default function AppView({ slug }: { slug: string }) {
             )}
 
             <div className="ml-auto flex items-center gap-2">
-              <select
+              <Select
                 aria-label="Sort bookmarks"
                 value={sortBy ?? ""}
-                onChange={(event) => {
-                  const columnId = event.target.value;
+                onChange={(columnId) => {
                   setSortBy(columnId || null);
                   setSortOrder("asc");
                 }}
-                className="rounded-md border border-border bg-base px-2.5 py-1.5 text-[12px] text-foreground"
-              >
-                <option value="">Default order</option>
-                {columns.map((column) => (
-                  <option key={column.id} value={column.id}>
-                    Sort by {column.name}
-                  </option>
-                ))}
-              </select>
+                options={[
+                  { value: "", label: "Default order" },
+                  ...columns.map((column) => ({
+                    value: column.id,
+                    label: `Sort by ${column.name}`,
+                  })),
+                ]}
+                className="px-2.5 py-1.5 text-[12px]"
+              />
 
               {sortBy && (
                 <button
