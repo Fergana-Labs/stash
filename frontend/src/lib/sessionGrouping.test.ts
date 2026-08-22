@@ -17,6 +17,7 @@ function session(fields: Partial<SessionSummary> & { session_id: string }): Sess
     owner_user_id: "user-1",
     user_name: fields.user_name ?? "Test User",
     agent_name: fields.agent_name ?? null,
+    session_folder_name: fields.session_folder_name ?? null,
     event_count: fields.event_count ?? 1,
     started_at: fields.started_at ?? "2026-05-14T09:00:00Z",
     last_event_at: fields.last_event_at ?? fields.started_at ?? "2026-05-14T09:00:00Z",

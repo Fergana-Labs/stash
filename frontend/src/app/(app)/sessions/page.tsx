@@ -488,11 +488,22 @@ function SessionsTable({
     return <SessionsEmptyState />;
   }
 
+  // Folders are the legacy filing lane, written only by installed clients'
+  // API calls. The column appears only when something here is actually filed,
+  // so accounts that never used folders keep the plain layout.
+  const showFolder = sessions.some((s) => s.session_folder_name);
+
   return (
     <div className="overflow-hidden rounded-lg border border-border bg-surface">
-      <div className="hidden grid-cols-[minmax(128px,0.68fr)_minmax(240px,1.7fr)_86px_58px_minmax(104px,0.62fr)_94px_88px_28px] gap-3 border-b border-border bg-base/70 px-3 py-2 text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground md:grid">
+      <div
+        className={
+          "hidden gap-3 border-b border-border bg-base/70 px-3 py-2 text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground md:grid " +
+          (showFolder ? GRID_COLS_WITH_FOLDER : GRID_COLS)
+        }
+      >
         <span>User</span>
         <span>Session</span>
+        {showFolder && <span>Folder</span>}
         <span>Ticket</span>
         <span>Events</span>
         <span>Agent</span>
@@ -504,6 +515,7 @@ function SessionsTable({
         <SessionTableRow
           key={session.session_id}
           session={session}
+          showFolder={showFolder}
           pinned={isPinned(session.session_id)}
           onTogglePin={onTogglePin}
           selected={selectedIds.has(session.session_id)}
@@ -514,14 +526,21 @@ function SessionsTable({
   );
 }
 
+const GRID_COLS =
+  "md:grid-cols-[minmax(128px,0.68fr)_minmax(240px,1.7fr)_86px_58px_minmax(104px,0.62fr)_94px_88px_28px]";
+const GRID_COLS_WITH_FOLDER =
+  "md:grid-cols-[minmax(128px,0.68fr)_minmax(200px,1.4fr)_minmax(110px,0.6fr)_86px_58px_minmax(104px,0.62fr)_94px_88px_28px]";
+
 function SessionTableRow({
   session,
+  showFolder,
   pinned,
   onTogglePin,
   selected,
   onToggleSelect,
 }: {
   session: SessionSummary;
+  showFolder: boolean;
   pinned: boolean;
   onTogglePin: (sessionId: string) => void;
   selected: boolean;
@@ -536,7 +555,9 @@ function SessionTableRow({
     <Link
       href={`/sessions/${encodeURIComponent(session.session_id)}`}
       className={
-        "group/srow grid min-h-12 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-border px-3 py-2 text-[13px] last:border-b-0 md:grid-cols-[minmax(128px,0.68fr)_minmax(240px,1.7fr)_86px_58px_minmax(104px,0.62fr)_94px_88px_28px] " +
+        "group/srow grid min-h-12 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-border px-3 py-2 text-[13px] last:border-b-0 " +
+        (showFolder ? GRID_COLS_WITH_FOLDER : GRID_COLS) +
+        " " +
         (selected ? "bg-[var(--color-brand-50)]" : "hover:bg-[var(--color-brand-50)]")
       }
     >
@@ -567,11 +588,22 @@ function SessionTableRow({
           )}
         </div>
         <div className="mt-0.5 truncate text-[11px] text-muted-foreground md:hidden">
-          {[user, ticket?.ticket_identifier, agent, formatRelative(session.last_event_at)]
+          {[
+            user,
+            session.session_folder_name,
+            ticket?.ticket_identifier,
+            agent,
+            formatRelative(session.last_event_at),
+          ]
             .filter(Boolean)
             .join(", ")}
         </div>
       </div>
+      {showFolder && (
+        <span className="hidden truncate text-[12px] text-muted-foreground md:block">
+          {session.session_folder_name ?? "—"}
+        </span>
+      )}
       <span className="hidden min-w-0 md:block">
         {ticket ? <LinearTicketPill ticket={ticket} /> : <span className="text-[11px] text-muted-foreground">None</span>}
       </span>

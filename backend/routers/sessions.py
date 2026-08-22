@@ -167,6 +167,7 @@ async def list_my_sessions(
           (ARRAY_AGG(NULLIF(u.display_name, '') ORDER BY he.created_at)
            FILTER (WHERE NULLIF(u.display_name, '') IS NOT NULL))[1] AS user_name,
           MAX(he.agent_name) AS agent_name,
+          sf.name AS session_folder_name,
           title_sources.title_source,
           COUNT(*)::INT AS event_count,
           MIN(he.created_at) AS started_at,
@@ -179,9 +180,10 @@ async def list_my_sessions(
         LEFT JOIN sessions s ON s.owner_user_id IS NOT DISTINCT FROM he.owner_user_id
           AND s.session_id = he.session_id
           AND s.deleted_at IS NULL
+        LEFT JOIN session_folders sf ON sf.id = s.session_folder_id
         WHERE {" AND ".join(where)}
         GROUP BY he.session_id, he.owner_user_id, owner.display_name, s.id,
-          title_sources.title_source
+          sf.name, title_sources.title_source
         ORDER BY last_event_at DESC, user_name ASC, session_id ASC
         LIMIT {int(limit)} OFFSET {int(offset)}
         """,

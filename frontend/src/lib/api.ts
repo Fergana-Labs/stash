@@ -1446,6 +1446,9 @@ export interface SessionSummary {
   owner_user_id: string | null;
   user_name: string;
   agent_name: string | null;
+  // LEGACY filing lane: folders are written by installed clients' API calls
+  // only (no UI creates them); shown read-only when present.
+  session_folder_name: string | null;
   event_count: number;
   started_at: string;
   last_event_at: string;
