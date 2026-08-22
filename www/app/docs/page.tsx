@@ -6,7 +6,7 @@ import { Callout, Code, H3, P, Title, Subtitle } from "./components";
 export const metadata: Metadata = {
   title: "Docs · Stash Overview",
   description:
-    "Stash is the one place your agents connect to all your data — GitHub, Drive, Gmail, Notion, Slack — plus an agent-native Drive where their sessions and pages land.",
+    "Stash does two things: memory for the coding agents your team runs, and memory for the agents inside your product.",
   alternates: { canonical: "/docs" },
 };
 
@@ -14,7 +14,10 @@ export default function DocsOverview() {
   return (
     <>
       <Title>Stash Overview</Title>
-      <Subtitle> Stash is the one place your agents connect to all your data — GitHub, Drive, Gmail, Notion, Slack and more — plus an agent-native Drive in Markdown and HTML where their sessions, files, and pages all land. </Subtitle>
+      <Subtitle>
+        Stash does two things: memory for the coding agents your team runs, and memory
+        for the agents inside your product.
+      </Subtitle>
 
       <Callout type="tip">
         <strong>Ready to get started?</strong> Go straight to the{" "}
@@ -24,12 +27,21 @@ export default function DocsOverview() {
         to install in one click.
       </Callout>
 
-      <H3>How Stash Works</H3>
+      <H3>Internal agents: self-improving skills</H3>
       <P>
-        Stash auto-uploads coding agent transcripts to a shared store, indexes them,
-        and makes those transcripts accessible to every other coding agent using the repo.
-        Durable knowledge lives in your files, and Skills let you
-        publish or share useful combinations of sessions, pages, and files.
+        The Stash plugin records the sessions your coding agents already produce — Claude
+        Code, Cursor, Codex, and the rest — into one shared, searchable store. A nightly
+        curator refines them into a wiki of pages and reusable skills, and every agent
+        reads that memory back through the CLI or MCP on its next run. One engineer&apos;s
+        debugging session becomes something every teammate&apos;s agent already knows.
+      </P>
+
+      <H3>External agents: the Developer Platform</H3>
+      <P>
+        The same memory loop for the agents inside your product. Your agents push their
+        conversations to Stash per end user; the curator writes each user a private wiki
+        plus one shared, anonymized wiki that every user&apos;s agent reads. Your product
+        gets smarter with every conversation, without you building a memory system.
       </P>
 
       <H3>Example: Don&apos;t Duplicate Work</H3>

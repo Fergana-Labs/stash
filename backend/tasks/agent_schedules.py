@@ -78,6 +78,50 @@ async def _run_curator_now(agent_id: UUID, full_history: bool = False) -> None:
         raise
 
 
+# During a workspace's first day the external wiki updates after every
+# conversation, not just on the nightly tick — a developer who just activated
+# the platform watches the wiki grow while they integrate. Debounced so a
+# stream of event batches coalesces into at most one run per window; the
+# agent's Redis turn lock already prevents overlapping runs.
+FIRST_DAY_HOURS = 24
+FIRST_DAY_DEBOUNCE = timedelta(minutes=10)
+
+
+@celery.task(name="backend.tasks.agent_schedules.first_day_curator_tick")
+def first_day_curator_tick(scope_user_id: str) -> None:
+    run_async(_first_day_curator_tick(UUID(scope_user_id)))
+
+
+async def _first_day_curator_tick(scope_user_id: UUID) -> None:
+    from ..services import agent_auth, agent_service, curation_service, end_user_service
+
+    workspace = await end_user_service.workspace_for_scope(scope_user_id)
+    if workspace is None or workspace["external_wiki_folder_id"] is None:
+        return
+    now = datetime.now(UTC)
+    if workspace["created_at"] < now - timedelta(hours=FIRST_DAY_HOURS):
+        return
+    agent = await agent_service.get_or_create_curator(scope_user_id, wiki="external")
+    # A curator that has never run skips the debounce: its seeded last_run_at
+    # is the backfill point (~account creation), which would otherwise mute
+    # the very first conversations after signup.
+    if (
+        agent["last_run_outcome"] is not None
+        and agent["last_run_at"]
+        and agent["last_run_at"] > now - FIRST_DAY_DEBOUNCE
+    ):
+        return
+    try:
+        await agent_auth.resolve(scope_user_id, agent["model_provider"])
+    except (agent_auth.NeedsAuth, agent_auth.ProviderNotConfigured):
+        return
+    if not await curation_service.has_changes_since(
+        scope_user_id, scope_user_id, agent["curated_through"]
+    ):
+        return
+    run_curator_now.delay(str(agent["id"]))
+
+
 async def _run_due() -> int:
     from ..config import settings
     from ..database import get_pool

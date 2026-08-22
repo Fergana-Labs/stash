@@ -416,6 +416,14 @@ export async function updateUser(
   });
 }
 
+// A hackathon (or other) access code: grants the code's plan to this account.
+export async function redeemCode(code: string): Promise<{ plan: string }> {
+  return apiFetch("/api/v1/users/me/redeem-code", {
+    method: "POST",
+    body: JSON.stringify({ code }),
+  });
+}
+
 export async function updateMe(data: {
   display_name?: string;
   description?: string;

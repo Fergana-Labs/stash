@@ -25,12 +25,13 @@ export default function QuickstartPage() {
       <CodeBlock>{`uv tool install stashai
 stash signin`}</CodeBlock>
       <P>
-        <Code>stash signin</Code> opens your browser to create an account (or sign in) and
-        hands the CLI a key automatically — nothing to copy. It then walks setup: session
-        recording (on by default; pause anytime with <Code>stash stop</Code>), which of
-        your installed coding agents to record — Claude Code, Cursor, Codex, OpenCode,
-        Gemini CLI, Openclaw — and a background import of your existing conversation
-        history. Re-run the wizard anytime with <Code>stash setup</Code>.
+        <Code>stash signin</Code> opens your browser to create or sign in to your account
+        and hands the CLI a key. A short wizard then asks three things: where to record
+        (everywhere on this machine, or only the folders you pick), which of your coding
+        agents to hook up — it detects Claude Code, Cursor, Codex, OpenCode, Gemini CLI,
+        Openclaw, and Hermes — and whether to import your existing session history.
+        Recording stays on until you run <Code>stash stop</Code>. Re-run the wizard
+        anytime with <Code>stash setup</Code>.
       </P>
       <Callout>
         On an unattended, browser-less machine (a CI runner, a headless box), use{" "}

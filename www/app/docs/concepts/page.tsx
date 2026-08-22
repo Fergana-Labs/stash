@@ -13,7 +13,25 @@ const CONCEPTS: { name: string; badge: string; badgeColor: string; desc: React.R
     name: "Sessions",
     badge: "Events",
     badgeColor: "bg-brand/10 text-brand",
-    desc: "Append-only event log of your agent activity. Every tool call, message, and session event is recorded with timestamps, agent names, and metadata. Events are grouped by agent_name and session_id for a conversation-like view. Searchable via full-text search.",
+    desc: "The raw material. Every conversation your agents have — messages, tool calls, timestamps — streamed in by the plugin or pushed through the API, grouped into sessions, and searchable.",
+  },
+  {
+    name: "Memory",
+    badge: "Wiki",
+    badgeColor: "bg-purple-500/10 text-purple-500",
+    desc: "The refined layer: a wiki of linked pages compiled from your sessions, which your agents read before they work. Every page is an ordinary file you can open and edit — the curator treats your edits as source material.",
+  },
+  {
+    name: "Curator",
+    badge: "Agent",
+    badgeColor: "bg-amber-500/10 text-amber-600",
+    desc: "The agent that maintains the Memory wiki. It runs nightly (and on demand), reads only the sessions uploaded since its last run, and updates the wiki in place — cost scales with new conversation, not with how much you've stored.",
+  },
+  {
+    name: "End user",
+    badge: "Developer Platform",
+    badgeColor: "bg-blue-500/10 text-blue-500",
+    desc: "A user of your product, identified by your own user id. On the Developer Platform, each end user gets a private wiki the curator maintains for them, and opted-in users also feed one shared, anonymized wiki that every user's agent reads.",
   },
   {
     name: "Files",
@@ -56,7 +74,7 @@ const CONCEPTS: { name: string; badge: string; badgeColor: string; desc: React.R
     name: "Skill",
     badge: "Bundle",
     badgeColor: "bg-purple-500/10 text-purple-500",
-    desc: "A shareable bundle of pages, sessions, tables, and files — the unit you publish to a public link, list in Discover, or share with specific people. Formerly called a Stash; the resource was renamed but the CLI name is unchanged.",
+    desc: "A shareable bundle of pages, sessions, tables, and files — the unit you publish to a public link, list in Discover, or share with specific people.",
   },
   {
     name: "Sharing",

@@ -1,7 +1,19 @@
 "use client";
 
-export default function LoginButton({ cliSession }: { cliSession?: string | null }) {
-  const returnTo = cliSession ? `/login?cli=${encodeURIComponent(cliSession)}` : "/login";
+export default function LoginButton({
+  cliSession,
+  nextPath,
+}: {
+  cliSession?: string | null;
+  nextPath?: string;
+}) {
+  // ?next= must ride through the Auth0 round trip, or a deep-linked sign-in
+  // (a shared link, the developer funnel) loses its destination.
+  const returnTo = cliSession
+    ? `/login?cli=${encodeURIComponent(cliSession)}`
+    : nextPath
+    ? `/login?next=${encodeURIComponent(nextPath)}`
+    : "/login";
   const href = `/auth/login?returnTo=${encodeURIComponent(returnTo)}`;
   return (
     <div className="space-y-4">

@@ -4,15 +4,19 @@ import ToolsPage from "./page";
 import { createMcpServer, deleteMcpServer, listMcpServers, type McpServer } from "@/lib/api";
 import { listIntegrations } from "@/lib/integrations";
 
-const router = vi.hoisted(() => ({ push: vi.fn() }));
+const router = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn() }));
 
 vi.mock("next/navigation", () => ({
   useRouter: () => router,
 }));
 
 // A stable user object — a fresh literal per render would retrigger the
-// [user]-dependent load effect and break call-count assertions.
-const authState = vi.hoisted(() => ({ user: { id: "u1", name: "sam" }, loading: false }));
+// [user]-dependent load effect and break call-count assertions. The heaviai.com
+// email matters: Tools is gated to the orgs that still use it (lib/flags.ts).
+const authState = vi.hoisted(() => ({
+  user: { id: "u1", name: "sam", email: "sam@heaviai.com" },
+  loading: false,
+}));
 
 vi.mock("@/hooks/useAuth", () => ({
   useAuth: () => authState,
@@ -155,5 +159,20 @@ describe("ToolsPage", () => {
 
     await waitFor(() => expect(deleteMcpServer).toHaveBeenCalledWith("s1"));
     await waitFor(() => expect(listMcpServers).toHaveBeenCalledTimes(2));
+  });
+
+  // Tools is cut from the product surface for everyone but the orgs that
+  // still depend on it — a user outside those domains gets sent home, not a
+  // reachable-by-URL page.
+  it("redirects users outside the allowed orgs", async () => {
+    const original = authState.user;
+    authState.user = { id: "u2", name: "vic", email: "vic@example.com" };
+    try {
+      render(<ToolsPage />);
+      await waitFor(() => expect(router.replace).toHaveBeenCalledWith("/"));
+      expect(screen.queryByText("linear")).toBeNull();
+    } finally {
+      authState.user = original;
+    }
   });
 });
