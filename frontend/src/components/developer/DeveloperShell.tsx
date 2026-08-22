@@ -27,6 +27,13 @@ const NAV: { title: string; items: NavItem[] }[] = [
         label: "Curator",
         match: (p) => p.startsWith("/developer/curator"),
       },
+      {
+        // Copy-paste prompts for the developer's own coding agent — the
+        // agent-era equivalent of a quickstart snippet.
+        href: "/developer/prompts",
+        label: "Prompts",
+        match: (p) => p.startsWith("/developer/prompts"),
+      },
     ],
   },
   {
@@ -41,23 +48,6 @@ const NAV: { title: string; items: NavItem[] }[] = [
         href: "/developer/files",
         label: "Files",
         match: (p) => p.startsWith("/developer/files"),
-      },
-    ],
-  },
-  {
-    // Copy-paste prompts for the developer's own coding agent — the agent-era
-    // equivalent of a quickstart snippet.
-    title: "Prompts",
-    items: [
-      {
-        href: "/developer/prompts/install",
-        label: "Install",
-        match: (p) => p.startsWith("/developer/prompts/install"),
-      },
-      {
-        href: "/developer/prompts/backfill",
-        label: "Backfill",
-        match: (p) => p.startsWith("/developer/prompts/backfill"),
       },
     ],
   },
