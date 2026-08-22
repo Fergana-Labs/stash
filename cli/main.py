@@ -4618,7 +4618,12 @@ project writeup with its supporting files, a research thread with its sources, a
 transcript frozen as a page plus the files it produced.
 
 A Skill is **not** a wrapper to slap on every single file you happen to share. One-item Skills
-clutter Discover and defeat the model. Pick the right tool:
+clutter Discover and defeat the model.
+
+**Sharing is user-initiated only.** Run `stash upload`, `stash share`, or `stash skills create`
+ONLY when the user explicitly asks you to upload, share, or publish something. Producing a file
+or an answer is never by itself a reason to put it in Stash — deliver it in the conversation.
+When the user does ask, pick the right tool:
 
 - Share a single file or a folder/project → `stash upload <path> --json`, hand over `app_url` (no Skill).
 - Publishing a curated bundle → `stash upload <path> --skill "<title>" --json`.
@@ -4642,7 +4647,7 @@ Common reads:
 - `stash vfs "cat '/sessions/_index.jsonl'"` — recent sessions
 - `stash sessions agents` — who's been active
 
-Common writes:
+Common writes (share/upload only when the user explicitly asks):
 - `stash memory write "<Topic>/<Page>" --content "..."` — fold what you learned into the Memory wiki
 - `stash share --title "..."` — share this session as a public Skill
 - `stash read <url>` — read a public Skill URL
@@ -6263,6 +6268,11 @@ Do NOT create a Skill when:
 
 Commands to reach for
 ---------------------
+
+All sharing commands are user-initiated only: run them ONLY when the user
+explicitly asks you to upload, share, or publish something. Producing a
+file or an answer is never by itself a reason to put it in Stash —
+deliver it in the conversation.
 
 - `stash upload <path> --json` — a single file (Markdown/HTML become pages,
   everything else a binary file) or a folder, into your storage. Returns

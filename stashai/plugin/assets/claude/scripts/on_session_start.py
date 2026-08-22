@@ -33,7 +33,11 @@ CONTEXT = (
     "published. A Skill is for a collection — a project writeup with its "
     "supporting files, a research thread with its sources. It is NOT a "
     "wrapper to slap on every single file you share.\n\n"
-    "When sharing artifacts, pick the right tool:\n"
+    "Sharing is user-initiated only: run `stash upload`, `stash share`, or "
+    "`stash skills create` ONLY when the user explicitly asks you to upload, "
+    "share, or publish something. Producing a file or an answer is never by "
+    "itself a reason to put it in Stash — deliver it in the conversation. "
+    "When the user does ask, pick the right tool:\n"
     " - Single file your teammate should look at → `stash upload "
     "<path> --json` and hand them the returned `app_url`. NO Skill needed.\n"
     " - Upload a folder/project into your Stash → `stash upload <path> "
@@ -41,7 +45,7 @@ CONTEXT = (
     " - You're publishing a curated bundle people should see together → "
     '`stash upload <path> --skill "<title>" --json` (or `stash skills '
     "create` to compose from existing items).\n"
-    " - Sharing a coding session → `stash share` (or `--session \"<title>\"` for another) wraps the "
+    ' - Sharing a coding session → `stash share` (or `--session "<title>"` for another) wraps the '
     "transcript and touched files in one Skill. Don't ALSO mint a Skill "
     "for each file in that session.\n"
     " - Using a public Skill locally → `stash skills install <slug>` "
