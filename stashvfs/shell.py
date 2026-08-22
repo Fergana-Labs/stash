@@ -115,12 +115,23 @@ class SkillAppVfsShell:
         reports the missing path rather than silently reading less than asked.
         """
         expanded: list[str] = []
+        previous = ""
         for arg in args:
-            if arg.startswith("-") or not any(ch in arg for ch in "*?["):
+            # An option's value is a pattern for the command, not a path for
+            # the shell: `find -name '*.md'` must reach find verbatim. shlex
+            # already stripped the quotes, so "follows a flag" is the only
+            # signal left that an argument was a value, not a path.
+            if (
+                arg.startswith("-")
+                or previous.startswith("-")
+                or not any(ch in arg for ch in "*?[")
+            ):
                 expanded.append(arg)
+                previous = arg
                 continue
             hits = self._glob(self._resolve_path(arg))
             expanded.extend(hits or [arg])
+            previous = arg
         return expanded
 
     def _glob(self, path: str) -> list[str]:
