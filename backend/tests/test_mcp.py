@@ -897,7 +897,7 @@ async def test_memory_search_calls_service():
             return_value=fake_token,
         ),
         patch(
-            "backend.services.files_tree_service.search_memory_pages_fts",
+            "backend.services.files_tree_service.search_pages_fts",
             return_value=fake_pages,
         ) as mock_search,
     ):
@@ -941,7 +941,7 @@ async def test_memory_search_empty_results():
             return_value=fake_token,
         ),
         patch(
-            "backend.services.files_tree_service.search_memory_pages_fts",
+            "backend.services.files_tree_service.search_pages_fts",
             return_value=[],
         ),
     ):
@@ -974,7 +974,7 @@ async def test_memory_search_default_params():
             return_value=fake_token,
         ),
         patch(
-            "backend.services.files_tree_service.search_memory_pages_fts",
+            "backend.services.files_tree_service.search_pages_fts",
             return_value=[],
         ) as mock_search,
     ):

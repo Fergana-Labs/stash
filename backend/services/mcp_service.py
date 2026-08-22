@@ -220,7 +220,7 @@ async def stash_memory_search(
         return json.dumps({"error": "Authentication required"})
 
     user_id = UUID(token.subject)
-    results = await files_tree_service.search_memory_pages_fts(
+    results = await files_tree_service.search_pages_fts(
         owner_user_id=user_id,
         query=query,
         limit=limit,

@@ -14,9 +14,9 @@ must be idempotent.
 import numpy as np
 import pytest
 
-from backend.services import embeddings as embedding_service
 from backend.services.embeddings import BaseEmbedder, set_embedder
 from backend.tasks.embeddings import _backfill_history_events
+
 from .conftest import unique_name
 
 # Deterministic 384-dim basis vectors: e_i has 1.0 at index i, 0 elsewhere.
@@ -74,12 +74,18 @@ async def _ensure_session(pool, owner_id, user_id, session_id: str):
         "INSERT INTO sessions (id, owner_user_id, session_id, agent_name, created_by) "
         "VALUES (gen_random_uuid(), $1, $2, 'fusion', $3) "
         "ON CONFLICT (owner_user_id, session_id) DO NOTHING",
-        owner_id, session_id, user_id,
+        owner_id,
+        session_id,
+        user_id,
     )
 
 
 async def _insert_event(
-    pool, owner_id, user_id, content: str, embedding: list[float] | None,
+    pool,
+    owner_id,
+    user_id,
+    content: str,
+    embedding: list[float] | None,
     session_id: str = "test-session",
 ):
     await _ensure_session(pool, owner_id, user_id, session_id)
@@ -89,13 +95,20 @@ async def _insert_event(
         "content, metadata, embedding, content_hash, embed_stale) "
         "VALUES (gen_random_uuid(), $1, $2, 'fusion', 'assistant_message', "
         "$6, $3, $4, $5, NULL, FALSE)",
-        owner_id, user_id, content, {}, embedding, session_id,
+        owner_id,
+        user_id,
+        content,
+        {},
+        embedding,
+        session_id,
     )
 
 
 @pytest.mark.asyncio
 async def test_semantic_search_requires_auth(client):
-    resp = await client.get("/api/v1/me/sessions/events/semantic-search", params={"q": "hello world"})
+    resp = await client.get(
+        "/api/v1/me/sessions/events/semantic-search", params={"q": "hello world"}
+    )
     assert resp.status_code == 401
 
 

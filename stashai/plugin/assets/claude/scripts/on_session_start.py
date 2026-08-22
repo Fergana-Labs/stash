@@ -41,7 +41,7 @@ CONTEXT = (
     " - You're publishing a curated bundle people should see together → "
     '`stash upload <path> --skill "<title>" --json` (or `stash skills '
     "create` to compose from existing items).\n"
-    " - Sharing a coding session → `stash share <session_id>` wraps the "
+    " - Sharing a coding session → `stash share` (or `--session \"<title>\"` for another) wraps the "
     "transcript and touched files in one Skill. Don't ALSO mint a Skill "
     "for each file in that session.\n"
     " - Using a public Skill locally → `stash skills install <slug>` "
