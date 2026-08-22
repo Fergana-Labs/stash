@@ -17,17 +17,21 @@ export default function DeveloperPrompts() {
 
       <PromptSection
         title="Install"
-        blurb="Wires the whole integration: the memory read before each turn, the transcript
-          upload after it, and a final check that a user shows up in this console."
+        blurb="The whole onboarding in one prompt: the memory read before each turn, the
+          transcript upload after it, a backfill of whatever history your database already
+          holds, and a final check that a user shows up in this console."
         prompt={INSTALL_PROMPT}
       />
 
+      <div className="mb-6 border-t border-border pt-8 font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+        Advanced
+      </div>
+
       <PromptSection
-        title="Backfill"
-        blurb="You already have months of conversations in your own database. This has your
-          agent write the one-time script that uploads them — original timestamps,
-          resumable, batched — and ends with pressing Backfill on the Curator page so the
-          wikis build from day one."
+        title="Backfill only"
+        blurb="For a stash that is already installed. Install covers your history on the way
+          in — reach for this only when there is history left to load: you skipped it
+          during install, or you've since imported another database."
         prompt={BACKFILL_PROMPT}
       />
     </DeveloperGate>
