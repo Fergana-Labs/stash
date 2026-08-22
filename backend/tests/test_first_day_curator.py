@@ -22,7 +22,7 @@ from .test_permissions import _register_with_email
 @pytest.fixture
 def dispatched(monkeypatch):
     calls: list[tuple] = []
-    monkeypatch.setattr(run_curator_now, "delay", lambda *a, **k: calls.append(a))
+    monkeypatch.setattr(run_curator_now, "delay", lambda *a, **k: calls.append((a, k)))
     return calls
 
 
@@ -34,10 +34,13 @@ async def _workspace_with_conversation(client: AsyncClient) -> UUID:
 
 
 @pytest.mark.asyncio
-async def test_first_day_conversation_dispatches_a_run(client: AsyncClient, dispatched):
+async def test_first_day_conversation_dispatches_an_unmetered_run(client: AsyncClient, dispatched):
     scope_id = await _workspace_with_conversation(client)
     await _first_day_curator_tick(scope_id)
     assert len(dispatched) == 1
+    # The platform is the trigger, so the run must not eat the workspace's
+    # free monthly curator allowance.
+    assert dispatched[0][1] == {"metered": False}
 
 
 @pytest.mark.asyncio

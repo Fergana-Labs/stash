@@ -483,7 +483,7 @@ export async function searchUsers(query: string): Promise<UserSearchResult[]> {
 
 export interface BillingInfo {
   billing_enabled: boolean;
-  plan?: "free" | "pro";
+  plan?: "free" | "pro" | "enterprise";
   status?: string | null;
   connection_count?: number;
   connection_limit?: number;

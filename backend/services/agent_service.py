@@ -285,13 +285,29 @@ def month_runs_used(agent: dict) -> int:
     return agent["month_run_count"]
 
 
-async def mark_run(agent_id: UUID) -> int:
+async def mark_run(agent_id: UUID, metered: bool = True) -> int:
     """Consume the cron tick and meter the run against the calendar month.
     Returns the run count within the current month (including this one) —
     the free-tier curator credit gate reads it.
 
+    `metered=False` consumes the tick without touching the month counter —
+    for runs the platform initiates on its own (the first-day curator), which
+    must not eat the user's free allowance.
+
     Also clears last_run_error and stamps the outcome as started. Every path
     after this call must resolve the outcome as ran, failed, or skipped."""
+    if not metered:
+        return await get_pool().fetchval(
+            """
+            UPDATE agents SET
+                last_run_at = now(),
+                last_run_error = NULL,
+                last_run_outcome = 'started'
+            WHERE id = $1
+            RETURNING month_run_count
+            """,
+            agent_id,
+        )
     return await get_pool().fetchval(
         """
         UPDATE agents SET
@@ -309,20 +325,24 @@ async def mark_run(agent_id: UUID) -> int:
     )
 
 
-async def mark_run_failed(agent_id: UUID, error: str) -> None:
+async def mark_run_failed(agent_id: UUID, error: str, metered: bool = True) -> None:
     """Stamp the failure where the API can surface it, and refund the month
-    credit — an outage shouldn't eat the free allowance. The tick itself stays
-    consumed (last_run_at), so the beat won't re-fire the same window."""
+    credit — an outage shouldn't eat the free allowance. An unmetered run
+    (`metered=False`) never charged one, so it has nothing to refund. The tick
+    itself stays consumed (last_run_at), so the beat won't re-fire the same
+    window."""
     await get_pool().execute(
         """
         UPDATE agents SET
             last_run_error = left($2, 500),
             last_run_outcome = 'failed',
-            month_run_count = greatest(month_run_count - 1, 0)
+            month_run_count = CASE WHEN $3
+                THEN greatest(month_run_count - 1, 0) ELSE month_run_count END
         WHERE id = $1
         """,
         agent_id,
         error,
+        metered,
     )
 
 
