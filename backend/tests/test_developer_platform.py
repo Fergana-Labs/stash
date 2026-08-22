@@ -260,11 +260,12 @@ async def test_new_user_reads_the_shared_wiki_before_they_have_written(client: A
 
 
 @pytest.mark.asyncio
-async def test_legacy_tenant_id_field_fails_loud(client: AsyncClient):
-    """A caller still sending the pre-rename tenant_id must get a 422, not
-    silence. Dropped on an upload it records events with no user attached;
-    dropped on a VFS read it runs unscoped — the whole workspace instead of
-    one user's view."""
+async def test_event_uploads_tolerate_unknown_fields(client: AsyncClient):
+    """Event uploads come from installed clients and customer backends we
+    don't control, so an unknown field must be ignored, never rejected —
+    extra="forbid" on the event model would bounce live traffic (Heavi's)
+    on the next deploy. The VFS surface is only called by our own clients,
+    which ship in lockstep with the server, so it stays strict."""
     api_key, _, workspace = await _developer(client)
     machine_key = await _mint_workspace_key(client, api_key, workspace)
 
@@ -277,17 +278,17 @@ async def test_legacy_tenant_id_field_fails_loud(client: AsyncClient):
                     "event_type": "user_message",
                     "content": "hi",
                     "session_id": "s1",
-                    "tenant_id": "org_acme",
+                    "some_field_we_never_heard_of": "org_acme",
                 }
             ]
         },
         headers=_auth(machine_key),
     )
-    assert upload.status_code == 422
+    assert upload.status_code == 201, upload.text
 
     read = await client.post(
         "/api/v1/me/vfs",
-        json={"script": "ls /", "tenant_id": "org_acme"},
+        json={"script": "ls /", "some_field_we_never_heard_of": "org_acme"},
         headers=_auth(machine_key),
     )
     assert read.status_code == 422

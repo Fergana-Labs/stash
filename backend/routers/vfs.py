@@ -19,9 +19,10 @@ MAX_SCRIPT_LENGTH = 4096
 
 
 class VfsRequest(BaseModel):
-    # Unknown fields are refused, not dropped. A read still sending the
-    # pre-rename tenant_id would otherwise run UNSCOPED — the whole workspace
-    # instead of one user's view — which is an isolation failure, not a typo.
+    # Unknown fields are refused, not dropped: a misspelled user_id would
+    # otherwise run UNSCOPED — the whole workspace instead of one user's
+    # view — which is an isolation failure, not a typo. Strictness is safe
+    # here because only our own clients call this surface.
     model_config = ConfigDict(extra="forbid")
 
     script: str = Field(max_length=MAX_SCRIPT_LENGTH)

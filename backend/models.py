@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, Field
 
 # --- Users ---
 
@@ -521,23 +521,9 @@ class Attachment(BaseModel):
 
 
 class HistoryEventCreateRequest(BaseModel):
-    # Tolerant of unknown fields (installed clients and customer backends send
-    # payloads we don't control), EXCEPT the pre-rename names: a tenant_id
-    # silently dropped records events with no user attached, which is exactly
-    # how a live integration lost attribution. Those fail loud.
-    model_config = ConfigDict(extra="allow")
-
-    _DEAD_FIELDS = ("tenant_id", "tenant_name", "org_id", "org_name")
-
-    @model_validator(mode="after")
-    def _reject_dead_fields(self):
-        dead = sorted(set(self._DEAD_FIELDS) & set(self.__pydantic_extra__ or {}))
-        if dead:
-            raise ValueError(
-                f"unknown field(s) {dead}: the end-user field is user_id / user_name now"
-            )
-        return self
-
+    # Unknown fields are ignored (pydantic's default), on purpose: installed
+    # clients and customer backends send payloads we don't control, so
+    # extra="forbid" here would reject live traffic on the next deploy.
     agent_name: str = Field(..., min_length=1, max_length=64)
     event_type: str = Field(..., min_length=1, max_length=64)
     content: str = Field(..., min_length=1)
