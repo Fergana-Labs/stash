@@ -64,7 +64,7 @@ session per conversation, with two extra rules:
 
 Step 4 — verify end to end. Send one message through the app and
 confirm the user appears on the Users page of our Stash developer
-console. Then tell me you're done — I'll press Backfill on the console's
+console (the /developer/users route of the Stash web app). Then tell me you're done — I'll press Backfill on the console's
 Curator page so the curator reads everything, history included, and
 builds each user's wiki plus the shared one.`;
 
