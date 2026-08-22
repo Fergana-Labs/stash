@@ -8,17 +8,27 @@
 // already exists. Backfill alone is the advanced path, for a stash that is
 // already wired and only missing its history.
 
-export const INSTALL_PROMPT = `Wire Stash (https://api.joinstash.ai) into this app so our agent has
+// The key step is rendered by the console: it either embeds a key minted on
+// the Prompts page (material exists only at mint time) or pins the prompt to
+// an existing key by name, which must already be in the app's env. The
+// Prompts page also renders the prompt with the key spot replaced by an
+// inline dropdown — INSTALL_KEY_TOKEN is the seam it splits on.
+export const INSTALL_KEY_TOKEN = "__KEY_STEP__";
+
+export function renderInstallPrompt(keyStep: string): string {
+  return `Wire Stash (https://api.joinstash.ai) into this app so our agent has
 per-user memory: every user's agent reads a shared knowledge wiki plus
 that user's own private memory, and what our users say feeds back in.
 Then load our existing history, so memory starts full instead of empty.
 
 Context:
-- Our Stash API key is in $STASH_API_KEY. It can read the knowledge base
-  and record sessions — never delete or rewrite.
 - user_id is our own id for an end user, and it is the isolation
   boundary: a read scoped to one user can never see another user's
   material. First sight of a new user_id creates the user in Stash.
+- All calls below authenticate with "Authorization: Bearer $STASH_API_KEY".
+  The key can read the knowledge base and record sessions — never delete.
+
+Step 0 — KEY. ${keyStep}
 
 Step 1 — READ. When composing the agent's context for a turn, fetch that
 user's memory and put it in the system prompt:
@@ -59,6 +69,7 @@ confirm the user appears on the Users page of our Stash developer
 console. Then tell me you're done — I'll press Backfill on the console's
 Curator page so the curator reads everything, history included, and
 builds each user's wiki plus the shared one.`;
+}
 
 export const BACKFILL_PROMPT = `Stash (https://api.joinstash.ai) is already wired into this app — this
 task only loads our existing conversation history into it, so our

@@ -31,8 +31,28 @@ const EXPIRY_OPTIONS = [
   { days: 365, label: "1 year" },
 ];
 
-export default function MintKeyDialog({ onMinted }: { onMinted: () => void }) {
-  const [open, setOpen] = useState(false);
+export default function MintKeyDialog({
+  onMinted,
+  onMintedKey,
+  open: controlledOpen,
+  onOpenChange,
+}: {
+  onMinted: () => void;
+  /** The one moment key material exists — the Prompts page uses it to embed
+   *  the key in a copied prompt. */
+  onMintedKey?: (key: { name: string; api_key: string }) => void;
+  /** Controlled mode (no trigger button rendered) — the Prompts page opens
+   *  the dialog from an option inside its inline key dropdown. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+}) {
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
+  const controlled = controlledOpen !== undefined;
+  const open = controlled ? controlledOpen : uncontrolledOpen;
+  const setOpen = (next: boolean) => {
+    if (controlled) onOpenChange?.(next);
+    else setUncontrolledOpen(next);
+  };
   const [name, setName] = useState("");
   const [expiryDays, setExpiryDays] = useState(0);
   const [minting, setMinting] = useState(false);
@@ -62,6 +82,7 @@ export default function MintKeyDialog({ onMinted }: { onMinted: () => void }) {
       setMinted(res.api_key);
       setExpiresAt(res.expires_at);
       onMinted();
+      onMintedKey?.({ name: name.trim(), api_key: res.api_key });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not mint a key");
     } finally {
@@ -78,11 +99,13 @@ export default function MintKeyDialog({ onMinted }: { onMinted: () => void }) {
 
   return (
     <Dialog open={open} onOpenChange={reset}>
-      <DialogTrigger asChild>
-        <button className="rounded-sm bg-brand-500 px-3 py-1.5 text-[13px] font-medium text-white transition-colors hover:bg-brand-600">
-          Create API key
-        </button>
-      </DialogTrigger>
+      {!controlled && (
+        <DialogTrigger asChild>
+          <button className="rounded-sm bg-brand-500 px-3 py-1.5 text-[13px] font-medium text-white transition-colors hover:bg-brand-600">
+            Create API key
+          </button>
+        </DialogTrigger>
+      )}
       <DialogContent
         data-surface="developer"
         showCloseButton={!minted}
