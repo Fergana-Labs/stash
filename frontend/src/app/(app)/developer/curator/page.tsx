@@ -288,6 +288,11 @@ function Runs({ runs, onStarted }: { runs: CuratorRun[]; onStarted: () => void }
           )}
         </div>
       </div>
+      <p className="mt-2 text-[13.5px] leading-6 text-muted-foreground">
+        Run now curates what&apos;s new since the watermark. Backfill clears the watermark and
+        re-reads the full history — after a bulk upload, or to rebuild the wikis under new
+        instructions. Pages update in place either way.
+      </p>
       {runError && <p className="mt-2 text-[13px] text-error">{runError}</p>}
       {runs.length === 0 ? (
         <p className="mt-4 rounded border border-dashed border-border px-6 py-8 text-center text-[14px] leading-6 text-muted-foreground">

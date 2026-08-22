@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ArrowLeft } from "lucide-react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useBreadcrumbs } from "@/components/BreadcrumbContext";
@@ -26,6 +27,7 @@ import {
   type SessionEvent,
 } from "@/lib/api";
 import EditableTitle from "@/components/content/EditableTitle";
+import { getScope } from "@/lib/scope-store";
 import { useTabTitle } from "@/lib/workspace-store";
 
 // One transcript page. The viewer loads this many turns at a time and fetches
@@ -127,6 +129,13 @@ export default function SessionViewerPage({ sessionId }: { sessionId: string }) 
 
   const [agentName, setAgentName] = useState("");
   const [sessionDetail, setSessionDetail] = useState<SessionDetail | null>(null);
+  // The developer console has no sidebar entry for an open transcript, so it
+  // needs a way back to the list. Resolved in an effect to match the
+  // server-rendered markup (the scope lives in localStorage).
+  const [inDeveloperConsole, setInDeveloperConsole] = useState(false);
+  useEffect(() => {
+    setInDeveloperConsole(getScope()?.view === "developer");
+  }, []);
   useTabTitle("session", sessionId, sessionDetail && sessionHeading(sessionDetail, sessionId));
   const [turns, setTurns] = useState<MessageTurn[]>([]);
   const [totalTurns, setTotalTurns] = useState(0);
@@ -279,6 +288,15 @@ export default function SessionViewerPage({ sessionId }: { sessionId: string }) 
     <div className="scroll-thin flex-1 overflow-y-auto">
       <div className="mx-auto grid max-w-[1100px] gap-7 px-12 pb-20 pt-7 lg:grid-cols-[minmax(0,1fr)_260px]">
         <main className="min-w-0">
+          {inDeveloperConsole && (
+            <Link
+              href="/developer/sessions"
+              className="mb-4 inline-flex items-center gap-1.5 text-[13px] text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <ArrowLeft className="h-3.5 w-3.5" />
+              All sessions
+            </Link>
+          )}
           <div className="mb-2 border-b border-border pb-3.5">
             {(sessionDetail?.linear_tickets.length ?? 0) > 0 && (
               <div className="mb-1.5 flex items-center gap-2">

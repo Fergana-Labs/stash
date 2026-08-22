@@ -39,7 +39,7 @@ export default function WikiToggle({ user, onChanged }: { user: EndUser; onChang
           void toggle();
         }}
         disabled={saving}
-        title="Whether this user's sessions feed the shared anonymized wiki"
+        title="Whether this user's sessions feed the shared anonymized memory"
         className="group flex cursor-pointer items-center gap-2 disabled:opacity-50"
       >
         <span
@@ -61,7 +61,7 @@ export default function WikiToggle({ user, onChanged }: { user: EndUser; onChang
             user.share_wiki ? "font-medium text-brand-500" : "text-muted-foreground",
           )}
         >
-          {user.share_wiki ? "Feeds wiki" : "Wiki opt-out"}
+          {user.share_wiki ? "Feeds shared memory" : "Opted out"}
         </span>
       </button>
       {error && <span className="mt-1 block text-[12px] text-error">{error}</span>}

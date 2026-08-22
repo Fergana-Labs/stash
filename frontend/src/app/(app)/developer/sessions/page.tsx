@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 import DeveloperGate from "@/components/developer/DeveloperGate";
 import { PageHeading } from "@/components/developer/DocsPrimitives";
@@ -16,6 +16,7 @@ export default function DeveloperSessions() {
 }
 
 function Sessions() {
+  const router = useRouter();
   const [sessions, setSessions] = useState<DeveloperSession[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -41,39 +42,68 @@ function Sessions() {
           No sessions yet. They appear as soon as your backend uploads one.
         </p>
       ) : (
-        <div className="overflow-hidden rounded border border-border bg-surface">
-          {sessions.map((s) => (
-            <Link
-              key={s.session_id}
-              href={`/sessions/${encodeURIComponent(s.session_id)}`}
-              className="flex items-center gap-4 border-b border-border px-5 py-3.5 transition-colors last:border-b-0 hover:bg-raised"
-            >
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-[14.5px] text-foreground">
-                  {s.title || s.session_id}
-                </span>
-                <span className="mt-0.5 block truncate font-mono text-[12px] text-muted-foreground">
-                  {s.agent_name || "agent"} · {s.event_count} event
-                  {s.event_count === 1 ? "" : "s"}
-                </span>
-              </span>
-              {s.user_id ? (
-                <span className="shrink-0 rounded-full bg-brand-500/10 px-2.5 py-0.5 text-[12px] font-medium text-brand-600">
-                  {s.user_name}
-                </span>
-              ) : (
-                <span className="shrink-0 rounded-full bg-raised px-2.5 py-0.5 text-[12px] text-dim">
-                  {s.agent_name || "workspace"}
-                </span>
-              )}
-              <span className="w-16 shrink-0 text-right font-mono text-[12px] text-muted-foreground">
-                {formatDate(s.last_event_at)}
-              </span>
-            </Link>
-          ))}
+        <div className="overflow-x-auto rounded border border-border bg-surface">
+          <table className="w-full text-left">
+            <thead>
+              <tr className="border-b border-border">
+                <Th>Session</Th>
+                <Th>User</Th>
+                <Th>Agent</Th>
+                <Th align="right">Events</Th>
+                <Th align="right">Last</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {sessions.map((s) => (
+                <tr
+                  key={s.session_id}
+                  onClick={() => router.push(`/sessions/${encodeURIComponent(s.session_id)}`)}
+                  className="cursor-pointer border-b border-border transition-colors last:border-b-0 hover:bg-raised"
+                >
+                  <td className="max-w-[360px] truncate px-4 py-3 text-[14px] text-foreground">
+                    {s.title || s.session_id}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-3 text-[13.5px]">
+                    {s.user_id ? (
+                      <span className="text-foreground">{s.user_name}</span>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-3 font-mono text-[12px] text-muted-foreground">
+                    {s.agent_name || "—"}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-3 text-right font-mono text-[12px] text-muted-foreground">
+                    {s.event_count}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-3 text-right font-mono text-[12px] text-muted-foreground">
+                    {formatDate(s.last_event_at)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
     </>
+  );
+}
+
+function Th({
+  children,
+  align,
+}: {
+  children: React.ReactNode;
+  align?: "right";
+}) {
+  return (
+    <th
+      className={`px-4 py-3 font-mono text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground ${
+        align === "right" ? "text-right" : ""
+      }`}
+    >
+      {children}
+    </th>
   );
 }
 
