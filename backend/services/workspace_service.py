@@ -1,4 +1,4 @@
-"""Workspaces: an org-owned scope with derived membership.
+"""Workspaces: a team-owned scope with derived membership.
 
 A workspace's knowledge base is the scope of a dedicated login-less users row
 (`workspaces.scope_user_id`). Membership is a pure function of two inputs:
@@ -8,6 +8,13 @@ definition — there is nothing to enroll, backfill, or revoke — and
 (contractors). `users.email_verified` is the trust anchor for the domain rule:
 an unverified `fake@customer.com` signup must never see the customer's KB.
 The single SQL predicate is `permission_service.workspace_member_condition`.
+
+A NULL-domain workspace has no derived membership — only explicit
+`workspace_members` rows. That is what makes one-man developer workspaces
+possible on shared email domains (two gmail.com developers can't both own a
+domain workspace, and neither should inherit the other's members). The
+membership predicate fails closed on NULL, so a domainless workspace is
+invisible to everyone but its explicit members.
 """
 
 import re
@@ -33,13 +40,16 @@ async def _unique_scope_user_name(domain: str) -> str:
     return candidate
 
 
-async def create_workspace(name: str, domain: str) -> dict:
+async def create_workspace(name: str, domain: str | None, created_by: UUID | None = None) -> dict:
     """Create a workspace and its login-less scope user. Verified users on the
     domain are members immediately — membership is derived, so there is no
     backfill step and signup order never matters.
 
+    A NULL domain means invite-only: the creator is added as the first (and
+    possibly only) explicit member, since no domain rule will ever cover them.
+
     The scope user has no password and no auth0_sub, so nobody can log in as
-    it — it is reached only through API keys minted by the admin endpoints.
+    it — it is reached only through API keys minted for it.
     """
     from . import user_scope_service
 
@@ -47,16 +57,23 @@ async def create_workspace(name: str, domain: str) -> dict:
     scope_user = await pool.fetchrow(
         "INSERT INTO users (name, display_name, description, plan) "
         "VALUES ($1, $2, 'Workspace scope user', 'enterprise') RETURNING id",
-        await _unique_scope_user_name(domain),
+        await _unique_scope_user_name(domain or name),
         name,
     )
     workspace = await pool.fetchrow(
-        "INSERT INTO workspaces (name, domain, scope_user_id) VALUES ($1, $2, $3) "
-        "RETURNING id, name, domain, scope_user_id, created_at",
+        "INSERT INTO workspaces (name, domain, scope_user_id, created_by) "
+        "VALUES ($1, $2, $3, $4) "
+        "RETURNING id, name, domain, scope_user_id, created_by, "
+        "         external_wiki_folder_id, end_user_notepads_folder_id, created_at",
         name,
         domain,
         scope_user["id"],
+        created_by,
     )
+    if domain is None:
+        if created_by is None:
+            raise ValueError("a domainless workspace requires created_by")
+        await add_member(workspace["id"], created_by)
     await user_scope_service.seed_user_scope(scope_user["id"])
     return dict(workspace)
 
@@ -64,7 +81,9 @@ async def create_workspace(name: str, domain: str) -> dict:
 async def get_workspace(workspace_id: UUID) -> dict | None:
     pool = get_pool()
     row = await pool.fetchrow(
-        "SELECT id, name, domain, scope_user_id, created_at FROM workspaces WHERE id = $1",
+        "SELECT id, name, domain, scope_user_id, created_by, "
+        "       external_wiki_folder_id, end_user_notepads_folder_id, created_at "
+        "FROM workspaces WHERE id = $1",
         workspace_id,
     )
     return dict(row) if row else None
@@ -130,8 +149,8 @@ async def list_for_user(user_id: UUID) -> list[dict]:
     membership = permission_service.workspace_member_condition("w", 1)
     pool = get_pool()
     rows = await pool.fetch(
-        f"SELECT w.id, w.name, w.domain, w.scope_user_id FROM workspaces w "
-        f"WHERE {membership} ORDER BY w.name",
+        f"SELECT w.id, w.name, w.domain, w.scope_user_id, w.external_wiki_folder_id "
+        f"FROM workspaces w WHERE {membership} ORDER BY w.name",
         user_id,
     )
     return [dict(row) for row in rows]

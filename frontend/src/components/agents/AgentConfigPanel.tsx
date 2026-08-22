@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
+import { Select } from "@/components/ui/select";
 import { type Citation, streamAgentRun } from "@/lib/agentChat";
 import { takeCuratorRun } from "@/lib/agent-tab-view";
 import {
@@ -279,17 +280,12 @@ export default function AgentConfigPanel({
       </Field>
 
       <Field label="Model" hint="Which harness runs this agent's turns.">
-        <select
+        <Select
           value={agent.model_provider ?? ""}
-          onChange={(e) => set("model_provider", (e.target.value || null) as Agent["model_provider"])}
-          className="w-full rounded-md border border-border bg-base px-3 py-2 text-[13px] text-foreground"
-        >
-          {MODELS.map((m) => (
-            <option key={m.value} value={m.value}>
-              {m.label}
-            </option>
-          ))}
-        </select>
+          onChange={(v) => set("model_provider", (v || null) as Agent["model_provider"])}
+          options={MODELS}
+          className="w-full px-3 py-2 text-[13px]"
+        />
       </Field>
 
       <Field label="Persona" hint="Extra instructions appended to the agent's system prompt.">

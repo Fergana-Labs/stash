@@ -102,7 +102,74 @@ class SkillAppVfsShell:
     def _warn(self, message: str) -> None:
         self._warnings.append(f"{message}\n")
 
+    def _expand_globs(self, args: list[str]) -> list[str]:
+        """Expand `*`, `?` and `[...]` in path arguments, as a shell does.
+
+        This reads as a shell, so people write shell — `cat /memory/*` is the
+        idiom our own setup docs hand to developers. Without expansion that
+        resolved to a literal filename, found nothing, and returned empty:
+        an agent built on it ran with no context at all and nothing said so.
+
+        Every segment expands, not just the last, so `/sessions/*/transcript.md`
+        works. A pattern that matches nothing is left as-is, so the command
+        reports the missing path rather than silently reading less than asked.
+        """
+        expanded: list[str] = []
+        previous = ""
+        for arg in args:
+            # An option's value is a pattern for the command, not a path for
+            # the shell: `find -name '*.md'` must reach find verbatim. shlex
+            # already stripped the quotes, so "follows a flag" is the only
+            # signal left that an argument was a value, not a path.
+            if (
+                arg.startswith("-")
+                or previous.startswith("-")
+                or not any(ch in arg for ch in "*?[")
+            ):
+                expanded.append(arg)
+                previous = arg
+                continue
+            hits = self._glob(self._resolve_path(arg))
+            expanded.extend(hits or [arg])
+            previous = arg
+        return expanded
+
+    def _glob(self, path: str) -> list[str]:
+        """Every existing path matching this pattern, walking it a segment at a
+        time so a wildcard in the middle expands like one at the end."""
+        segments = [segment for segment in path.split("/") if segment]
+        matches = ["/"]
+        for segment in segments:
+            if not any(ch in segment for ch in "*?["):
+                matches = [
+                    candidate
+                    for base in matches
+                    if (candidate := posixpath.join(base, segment)) and self._exists(candidate)
+                ]
+                continue
+            widened: list[str] = []
+            for base in matches:
+                try:
+                    names = sorted(self.model.list_dir(base))
+                except (FileNotFoundError, NotADirectoryError, MountError):
+                    continue
+                widened.extend(
+                    posixpath.join(base, name)
+                    for name in names
+                    if fnmatch.fnmatchcase(name, segment)
+                )
+            matches = widened
+        return matches
+
+    def _exists(self, path: str) -> bool:
+        try:
+            self.model._get_node(path)
+        except (FileNotFoundError, NotADirectoryError, MountError):
+            return False
+        return True
+
     def _dispatch(self, name: str, args: list[str], stdin: str | None) -> str:
+        args = self._expand_globs(args)
         if name == "pwd":
             return f"{self.cwd}\n"
         if name == "cd":

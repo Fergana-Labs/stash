@@ -20,7 +20,6 @@ PRODUCTION_BASE_URL = "https://api.joinstash.ai"
 class Manifest(TypedDict, total=False):
     # The session folder this repo's agent sessions are pushed into. Omitted →
     # they land in the user's Default folder.
-    session_folder_id: str
     base_url: str
 
 

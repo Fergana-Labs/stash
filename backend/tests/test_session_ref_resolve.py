@@ -40,12 +40,14 @@ async def _titled_session(client: AsyncClient, api_key: str, session_id: str, ti
     )
     assert pushed.status_code == 201
     renamed = await client.patch(
-        f"/api/v1/me/sessions/{session_id}/title",
+        f"/api/v1/me/sessions/title?session_id={session_id}",
         headers=_auth(api_key),
         json={"title": title},
     )
     assert renamed.status_code == 200
-    detail = await client.get(f"/api/v1/me/sessions/{session_id}", headers=_auth(api_key))
+    detail = await client.get(
+        f"/api/v1/me/sessions/detail?session_id={session_id}", headers=_auth(api_key)
+    )
     assert detail.status_code == 200
     return detail.json()
 

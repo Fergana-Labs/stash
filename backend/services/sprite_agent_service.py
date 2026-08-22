@@ -375,13 +375,23 @@ async def build_scheduled_turn(agent: dict, run_stamp: str) -> tuple[str, str]:
     server-side from its watermark; other scheduled agents run schedule_prompt.
     Each run gets its own per-run session id so history (and the CLI transcript
     it replays) can't grow unbounded across a long-lived schedule."""
-    from . import files_tree_service, prompts
+    from . import end_user_service, files_tree_service, prompts
 
     user_id = UUID(str(agent["user_id"]))
     session_id = f"{scheduled_session_prefix(agent)}{run_stamp}"
     if agent.get("is_curator"):
-        memory = await files_tree_service.get_or_create_memory_folder(user_id, user_id)
         since = agent["curated_through"].isoformat() if agent.get("curated_through") else None
+        # Which wiki this curator writes decides its prompt. A developer
+        # workspace runs both: the internal pass over its own Memory wiki, and
+        # the external pass compiling the cross-user wiki plus per-user notepads.
+        if agent.get("curator_wiki") == "external":
+            workspace = await end_user_service.workspace_for_scope(user_id)
+            if workspace is None or workspace["external_wiki_folder_id"] is None:
+                raise ValueError("external curator on a scope with no active developer platform")
+            return session_id, await end_user_service.external_curator_prompt(
+                workspace, agent.get("curated_through")
+            )
+        memory = await files_tree_service.get_or_create_memory_folder(user_id, user_id)
         return session_id, prompts.render_curator_prompt(memory["id"], since)
     return session_id, agent["schedule_prompt"]
 
@@ -594,6 +604,10 @@ async def run_chat(
         raise NeedsAuth
     except agent_auth.ProviderNotConfigured:
         raise RuntimeError("cloud agent is not configured")
+    # Local exec runs the harness as this machine's own user, so hand the turn
+    # its own Stash credentials: without them the `stash` CLI inside it falls
+    # back to the developer's ~/.stash, which points at production.
+    auth.env.update(await sprite_service.local_agent_env(user_id))
     async with _TurnLock(session_id):
         history = await _load_history(owner_user_id, session_id, user_id)
         await memory_service.push_event(

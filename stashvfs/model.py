@@ -14,6 +14,7 @@ from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import datetime
+from urllib.parse import quote
 
 from .client import MachineVfsClient, VfsClient, VfsClientError, VfsScanBudget
 
@@ -517,13 +518,13 @@ class StashVfsModel:
                     self._all_transcript_events_payload(sid, path)
                 ),
                 updated_at=updated_at,
-                app_url=f"/sessions/{session_id}",
+                app_url=f"/sessions/{quote(str(session_id), safe='')}",
             )
             self._add_file(
                 f"{session_path}/transcript.jsonl",
                 loader=lambda sid=session_id: _text_bytes(self.client.export_transcript_jsonl(sid)),
                 updated_at=updated_at,
-                app_url=f"/sessions/{session_id}",
+                app_url=f"/sessions/{quote(str(session_id), safe='')}",
             )
             transcript_path = f"{session_path}/transcript.md"
             self._add_file(
@@ -535,7 +536,7 @@ class StashVfsModel:
                     _session_markdown(self._all_transcript_events(sid, path))
                 ),
                 updated_at=updated_at,
-                app_url=f"/sessions/{session_id}",
+                app_url=f"/sessions/{quote(str(session_id), safe='')}",
             )
 
     def _add_sources(self) -> None:

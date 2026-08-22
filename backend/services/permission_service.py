@@ -25,6 +25,8 @@ _OWNER_LOOKUP = {
     "table": ("tables", "owner_user_id"),
     "file": ("files", "owner_user_id"),
     "session": ("sessions", "owner_user_id"),
+    # LEGACY: session folders live on for installed clients; only direct
+    # folder-level checks resolve — the share/public inheritance is gone.
     "session_folder": ("session_folders", "owner_user_id"),
     "skill": ("skills", "owner_user_id"),
     "folder": ("folders", "owner_user_id"),
@@ -70,13 +72,9 @@ def _share_target_condition(object_type: str, object_alias: str, share_alias: st
             f"AND {share_alias}.object_id IN ({folder_chain})))"
         )
     if object_type == "session":
-        # A session inherits a share on its session folder.
         return (
-            f"(({share_alias}.object_type = 'session' "
-            f"AND {share_alias}.object_id = {object_alias}.id) "
-            f"OR ({share_alias}.object_type = 'session_folder' "
-            f"AND {object_alias}.session_folder_id IS NOT NULL "
-            f"AND {share_alias}.object_id = {object_alias}.session_folder_id))"
+            f"({share_alias}.object_type = 'session' "
+            f"AND {share_alias}.object_id = {object_alias}.id)"
         )
     if object_type in _CONTENT_TYPES:
         return (
@@ -152,23 +150,6 @@ def _public_permission_condition(object_type: str, object_alias: str, require: s
     return f"({own} OR {ancestor})"
 
 
-def _public_read_container_condition(
-    object_type: str, object_alias: str, user_arg: int
-) -> str | None:
-    """Read-only access a session inherits from its session folder: the folder is
-    public, OR the viewer owns the folder — a folder owner reads every session
-    filed under it, even sessions they don't own. Content rows use the published-
-    skill grant instead; types without a container grant return None."""
-    if object_type == "session":
-        return (
-            f"EXISTS (SELECT 1 FROM session_folders public_sf "
-            f"WHERE public_sf.id = {object_alias}.session_folder_id "
-            f"AND (public_sf.public_permission <> 'none' "
-            f"OR public_sf.owner_user_id = ${user_arg}))"
-        )
-    return None
-
-
 def workspace_member_condition(workspace_alias: str, user_arg: int) -> str:
     """SQL predicate: is user ${user_arg} a member of the workspace row at
     `workspace_alias`? The single definition of membership: derived for
@@ -191,8 +172,7 @@ def readable_content_condition(
     """SQL predicate: may user ${user_arg} access the row at object_alias at the
     `require` level (read < comment < write)? The single source of truth for
     row-level access: owner OR a sufficient user share (direct/ancestor folder)
-    OR — for reads only — a public container (published skill folder / public
-    session folder). `check_access` executes this same predicate for one row, so
+    OR — for reads only — a published skill's folder. `check_access` executes this same predicate for one row, so
     the SQL filter and the boolean can never disagree."""
     share_target = _share_target_condition(object_type, object_alias, "content_share")
     parts = [
@@ -214,9 +194,6 @@ def readable_content_condition(
         parts.append(_public_permission_condition(object_type, object_alias, require))
     if require == "read":
         parts.append(_skill_grant_condition(object_type, object_alias, user_arg))
-        public_container = _public_read_container_condition(object_type, object_alias, user_arg)
-        if public_container:
-            parts.append(public_container)
     return "(" + " OR ".join(parts) + ")"
 
 
@@ -320,11 +297,6 @@ async def _object_targets(object_type: str, object_id: UUID) -> list[tuple[str, 
         return [("table", object_id)] + [
             ("folder", fid) for fid in await _folder_chain_for_table(object_id)
         ]
-    if object_type == "session":
-        pool = get_pool()
-        row = await pool.fetchrow("SELECT session_folder_id FROM sessions WHERE id = $1", object_id)
-        if row and row["session_folder_id"]:
-            return [("session", object_id), ("session_folder", row["session_folder_id"])]
     return [(object_type, object_id)]
 
 
@@ -383,23 +355,6 @@ async def is_workspace_member(scope_user_id: UUID | None, user_id: UUID | None) 
     )
 
 
-async def _session_folder_open(
-    folder: dict, folder_id: UUID, user_id: UUID | None, require: str
-) -> bool:
-    """Can the user access this session folder? Public link (read-only),
-    owner, workspace member, or an explicit user share."""
-    public = folder["public_permission"]
-    if require == "read" and public != "none":
-        return True
-    if user_id is None:
-        return False
-    if folder["owner_user_id"] == user_id:
-        return True
-    if await is_workspace_member(folder["owner_user_id"], user_id):
-        return True
-    return await _user_share_grants("session_folder", folder_id, user_id, require)
-
-
 async def check_access(
     object_type: str,
     object_id: UUID,
@@ -428,17 +383,6 @@ async def check_access(
         if require != "read":
             return await is_workspace_member(row["owner_user_id"], user_id)
         return True
-
-    # A session folder is a shareable bundle: public link, owner, or user share.
-    if object_type == "session_folder":
-        pool = get_pool()
-        row = await pool.fetchrow(
-            "SELECT owner_user_id, public_permission FROM session_folders WHERE id = $1",
-            object_id,
-        )
-        if not row:
-            return False
-        return await _session_folder_open(dict(row), object_id, user_id, require)
 
     if object_type not in _CONTENT_TYPES:
         return False

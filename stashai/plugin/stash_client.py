@@ -158,7 +158,6 @@ class StashClient:
         tool_name: str | None = None,
         metadata: dict | None = None,
         client: str | None = None,
-        session_folder_id: str | None = None,
     ) -> dict:
         body: dict = {
             "agent_name": agent_name,
@@ -166,11 +165,6 @@ class StashClient:
             "content": content,
             "session_id": session_id,
         }
-        # Pin streamed on every event so the session lands in the right folder
-        # no matter which event creates the row (agents without a session-start
-        # hook create it from the first event, not from create_session).
-        if session_folder_id:
-            body["session_folder_id"] = session_folder_id
         if tool_name:
             body["tool_name"] = tool_name
         merged_meta = dict(metadata or {})
@@ -327,7 +321,6 @@ class StashClient:
         transcript_path: Path,
         agent_name: str,
         cwd: str | None = None,
-        session_folder_id: str | None = None,
     ) -> dict:
         import gzip
 
@@ -338,9 +331,6 @@ class StashClient:
             name = name + ".gz"
 
         data = {"session_id": session_id, "agent_name": agent_name, "cwd": cwd or ""}
-        # Omit when unset so the backend routes the session to the Default folder.
-        if session_folder_id:
-            data["session_folder_id"] = session_folder_id
 
         record_upload_attempt(self._data_dir, "transcript")
         try:
@@ -368,7 +358,6 @@ class StashClient:
         agent_name: str,
         cwd: str | None = None,
         files_touched: list[str] | None = None,
-        session_folder_id: str | None = None,
     ) -> dict:
         body = {
             "session_id": session_id,
@@ -376,9 +365,6 @@ class StashClient:
             "cwd": cwd or "",
             "files_touched": files_touched or [],
         }
-        # Omit when unset so the backend routes the session to the Default folder.
-        if session_folder_id:
-            body["session_folder_id"] = session_folder_id
         return self._post("/api/v1/me/sessions", json=body)
 
     def upload_session_artifact(

@@ -221,7 +221,7 @@ async def test_transcript_export_is_logged(client: AsyncClient, pool):
     assert resp.status_code == 201, resp.text
 
     resp = await client.get(
-        f"/api/v1/me/transcripts/{session_id}/export.jsonl",
+        f"/api/v1/me/transcripts/export.jsonl?session_id={session_id}",
         headers=_auth(api_key),
     )
     assert resp.status_code == 200

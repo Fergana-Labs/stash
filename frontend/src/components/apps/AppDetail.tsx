@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ExternalLink, FileText, Plus, X } from "lucide-react";
 
+import { Select } from "@/components/ui/select";
 import { setRowTopics, updateTableRow } from "@/lib/api";
 import type { MiniProgramManifest, Table, TableColumn, TableRow } from "@/lib/types";
 
@@ -39,31 +40,29 @@ function FieldInput({
 }) {
   if (column.type === "select") {
     return (
-      <select
+      <Select
         value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="w-full rounded-md border border-border bg-base px-2.5 py-2 text-[12.5px] text-foreground"
-      >
-        <option value="">—</option>
-        {(column.options ?? []).map((option) => (
-          <option key={option} value={option}>
-            {option}
-          </option>
-        ))}
-      </select>
+        onChange={onChange}
+        options={[
+          { value: "", label: "—" },
+          ...(column.options ?? []).map((option) => ({ value: option, label: option })),
+        ]}
+        className="w-full px-2.5 py-2 text-[12.5px]"
+      />
     );
   }
 
   if (column.type === "boolean") {
     return (
-      <select
+      <Select
         value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="w-full rounded-md border border-border bg-base px-2.5 py-2 text-[12.5px] text-foreground"
-      >
-        <option value="false">No</option>
-        <option value="true">Yes</option>
-      </select>
+        onChange={onChange}
+        options={[
+          { value: "false", label: "No" },
+          { value: "true", label: "Yes" },
+        ]}
+        className="w-full px-2.5 py-2 text-[12.5px]"
+      />
     );
   }
 

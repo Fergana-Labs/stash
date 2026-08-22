@@ -9,8 +9,8 @@ import {
   ExternalLink, Share2, Users,
 } from "lucide-react";
 import {
-  getTree, getFolderContents, createPage, createFolder, createTable, updateFolder, updatePage,
-  updateFile, updateTable, trashItem, deleteFolder, deleteTable, deleteSessionFolder, updateSessionFolder,
+  getTree, getFolderContents, createPage, createFolder, createTable, listFiles, listTables, updateFolder, updatePage,
+  updateFile, updateTable, trashItem, deleteFolder, deleteTable,
   uploadFileOrPage, importGithubRepo, inspectGithubImport, listGithubImportRepos,
   type FolderBreadcrumb, type GithubImportRepo,
 } from "@/lib/api";
@@ -33,7 +33,6 @@ type Kind =
   | "file"
   | "table"
   | "skill"
-  | "session-folder"
   | "session"
   | "shared-root";
 // `readOnly` marks an item you can browse but not manage: a session folder or
@@ -169,11 +168,25 @@ export default function FilesExplorer({
         setCrumbs([]);
         setItems([...(await loadRoot()), ...(await sharedNode())]);
       } else if (folderId === null) {
-        const tree = await getTree();
+        // The root shows what lives AT the root — every kind of item, same as
+        // a folder's contents. The tree endpoint carries the whole nested set
+        // of folders/pages (and no files or tables), so filter to the root
+        // level and fetch the other two kinds alongside.
+        const [tree, files, { tables }] = await Promise.all([getTree(), listFiles(), listTables()]);
         setCrumbs([]);
         setItems([
-          ...tree.folders.map((f) => ({ kind: "folder" as const, id: f.id, name: f.name, ts: f.updated_at, readOnly: f.is_protected })),
-          ...tree.pages.map((p) => ({ kind: "page" as const, id: p.id, name: p.name || "Untitled", ts: p.updated_at })),
+          ...tree.folders
+            .filter((f) => f.parent_folder_id == null)
+            .map((f) => ({ kind: "folder" as const, id: f.id, name: f.name, ts: f.updated_at, readOnly: f.is_protected })),
+          ...tree.pages
+            .filter((p) => p.folder_id == null)
+            .map((p) => ({ kind: "page" as const, id: p.id, name: p.name || "Untitled", ts: p.updated_at })),
+          ...files
+            .filter((f) => !f.folder_id && !f.owner_page_id)
+            .map((f) => ({ kind: "file" as const, id: f.id, name: f.name, ts: f.created_at })),
+          ...tables
+            .filter((t) => !t.folder_id)
+            .map((t) => ({ kind: "table" as const, id: t.id, name: t.name, ts: t.created_at })),
           ...(await sharedNode()),
         ]);
       } else if (loadFolder) {
@@ -208,7 +221,7 @@ export default function FilesExplorer({
   function openAsTab(item: Item, opts?: { forceNewTab?: boolean }) {
     // Neither has a tab view: a session folder is a listing, and the shared
     // node is an index of other people's items. Both only navigate.
-    if (item.kind === "session-folder" || item.kind === "shared-root") { setFolderId(item.id); return; }
+    if (item.kind === "shared-root") { setFolderId(item.id); return; }
     const kind = item.kind === "folder" ? "folder" : item.kind === "skill" ? "skill" : item.kind === "session" ? "session" : item.kind === "table" ? "table" : item.kind === "page" ? "page" : "file";
     // Plain click navigates the current tab; cmd/ctrl-click (or the explicit
     // "Open in new tab" menu item) opens a new one.
@@ -223,7 +236,6 @@ export default function FilesExplorer({
   const isFolderLike = (item: Item) =>
     item.kind === "folder" ||
     item.kind === "skill" ||
-    item.kind === "session-folder" ||
     item.kind === "shared-root";
   function onRowClick(item: Item) {
     if (!isFolderLike(item)) { openAsTab(item); return; }
@@ -255,7 +267,6 @@ export default function FilesExplorer({
     if (!name.trim() || name === item.name) return;
     try {
       if (item.kind === "folder" || item.kind === "skill") await updateFolder(item.id, { name });
-      else if (item.kind === "session-folder") await updateSessionFolder(item.id, { name });
       else if (item.kind === "session") return;
       else if (item.kind === "page") await updatePage(item.id, { name });
       else if (item.kind === "table") await updateTable(item.id, { name });
@@ -272,7 +283,6 @@ export default function FilesExplorer({
     if (item.kind === "shared-root") throw new Error("The shared index cannot be deleted");
     try {
       if (item.kind === "folder" || item.kind === "skill") await deleteFolder(item.id);
-      else if (item.kind === "session-folder") await deleteSessionFolder(item.id);
       else if (item.kind === "table") await deleteTable(item.id);
       else await trashItem(item.kind, item.id); // page | file | session
     } catch (e) {
@@ -489,7 +499,7 @@ export default function FilesExplorer({
               title={item.name}
             >
               <span className="flex h-4 w-4 shrink-0 items-center justify-center text-muted-foreground">
-                {item.kind === "shared-root" ? <Users className="h-3.5 w-3.5 text-chart-4" /> : item.kind === "skill" ? <GraduationCap className="h-3.5 w-3.5 text-chart-4" /> : item.kind === "session-folder" ? <FolderIcon className="text-[13px] text-chart-4" /> : item.kind === "session" ? <MessagesSquare className="h-3.5 w-3.5" /> : item.kind === "folder" ? <FolderIcon className="text-[13px] text-chart-4" /> : item.kind === "page" ? <PageIcon className="text-[13px]" /> : item.kind === "table" ? <TableIcon className="text-[13px]" /> : <FileIcon className="text-[13px]" />}
+                {item.kind === "shared-root" ? <Users className="h-3.5 w-3.5 text-chart-4" /> : item.kind === "skill" ? <GraduationCap className="h-3.5 w-3.5 text-chart-4" /> : item.kind === "session" ? <MessagesSquare className="h-3.5 w-3.5" /> : item.kind === "folder" ? <FolderIcon className="text-[13px] text-chart-4" /> : item.kind === "page" ? <PageIcon className="text-[13px]" /> : item.kind === "table" ? <TableIcon className="text-[13px]" /> : <FileIcon className="text-[13px]" />}
               </span>
               {renaming === item.id ? (
                 <input
@@ -511,7 +521,7 @@ export default function FilesExplorer({
       {menu && (
         <div className="fixed z-50 w-44 overflow-hidden rounded-md border border-border bg-surface py-1 text-[13px] shadow-lg" style={{ left: menu.x, top: menu.y }} onClick={(e) => e.stopPropagation()}>
           {(menu.item.kind === "folder" || menu.item.kind === "skill") && <button onClick={() => { const it = menu.item; setMenu(null); openAsTab(it); }} className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-foreground hover:bg-raised"><FolderInput className="h-3.5 w-3.5" /> Open in tab</button>}
-          {menu.item.kind !== "session-folder" && <button onClick={() => { const it = menu.item; setMenu(null); openAsTab(it, { forceNewTab: true }); }} className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-foreground hover:bg-raised"><ExternalLink className="h-3.5 w-3.5" /> Open in new tab</button>}
+          {<button onClick={() => { const it = menu.item; setMenu(null); openAsTab(it, { forceNewTab: true }); }} className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-foreground hover:bg-raised"><ExternalLink className="h-3.5 w-3.5" /> Open in new tab</button>}
           {VFS_KINDS.has(menu.item.kind) && user && <button onClick={() => { setSharing({ x: menu.x, y: menu.y, item: menu.item }); setMenu(null); }} className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-foreground hover:bg-raised"><Share2 className="h-3.5 w-3.5" /> Share</button>}
           {menu.item.kind !== "session" && !menu.item.readOnly && <button onClick={() => { setRenaming(menu.item.id); setMenu(null); }} className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-foreground hover:bg-raised"><Pencil className="h-3.5 w-3.5" /> Rename</button>}
           {!menu.item.readOnly && <button onClick={async () => { const it = menu.item; setMenu(null); await del(it); }} className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-destructive hover:bg-raised"><Trash2 className="h-3.5 w-3.5" /> Delete</button>}

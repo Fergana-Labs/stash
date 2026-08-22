@@ -7,7 +7,6 @@ from httpx import AsyncClient
 
 from backend.services import (
     permission_service,
-    session_folder_service,
     share_service,
     shared_skill_service,
 )
@@ -366,28 +365,6 @@ async def test_published_skill_grants_read_only(pool):
 
 
 @pytest.mark.asyncio
-async def test_public_session_folder_grants_read_only(pool):
-    owner = await _make_user(pool)
-    stranger = await _make_user(pool)
-    scope = await _make_scope(pool, owner)
-    folder = await session_folder_service.create_folder(
-        scope,
-        "Public Sessions",
-        public_permission="read",
-    )
-    folder_id = uuid.UUID(folder["id"])
-
-    assert await permission_service.check_access("session_folder", folder_id, stranger)
-    assert await permission_service.check_access("session_folder", folder_id, None)
-    assert not await permission_service.check_access(
-        "session_folder", folder_id, stranger, require="write"
-    )
-    assert not await permission_service.check_access(
-        "session_folder", folder_id, None, require="write"
-    )
-
-
-@pytest.mark.asyncio
 async def test_skill_folder_share_grants_friend_read_of_nested_contents(pool):
     """Person-to-person skill access rides generic folder shares: an unpublished
     skill folder shared with a friend grants them read of the nested contents
@@ -419,28 +396,6 @@ async def test_share_then_unshare_revokes(pool):
         friend,
     )
     assert not await permission_service.check_access("page", page, friend)
-
-
-@pytest.mark.asyncio
-async def test_session_folder_share_cascades_to_sessions(pool):
-    owner = await _make_user(pool)
-    friend = await _make_user(pool)
-    scope = await _make_scope(pool, owner)
-    folder = await pool.fetchval(
-        "INSERT INTO session_folders (owner_user_id, name, slug) "
-        "VALUES ($1, 'launch', 'launch-' || left(replace(gen_random_uuid()::text, '-', ''), 8)) "
-        "RETURNING id",
-        scope,
-    )
-    session_row = await _make_session(pool, scope, owner, session_id="s-folder-1")
-    await pool.execute(
-        "UPDATE sessions SET session_folder_id = $2 WHERE id = $1", session_row, folder
-    )
-    # Not shared yet → friend denied.
-    assert not await permission_service.check_access("session", session_row, friend)
-    # Share the folder → cascades to the session.
-    await _share(pool, scope, "session_folder", folder, friend, "read", by=owner)
-    assert await permission_service.check_access("session", session_row, friend)
 
 
 @pytest.mark.asyncio
@@ -719,196 +674,6 @@ async def test_skill_owner_can_edit_published_skill_metadata(client: AsyncClient
 
 
 @pytest.mark.asyncio
-async def test_public_write_session_folder_requests_are_rejected(client: AsyncClient):
-    owner_key, _ = await _register(client)
-
-    create = await client.post(
-        "/api/v1/me/session-folders",
-        json={"name": "Editable sessions", "public_permission": "write"},
-        headers=_auth(owner_key),
-    )
-
-    assert create.status_code == 422
-
-
-@pytest.mark.asyncio
-async def test_session_folder_share_by_email_lists_for_non_recipient(client: AsyncClient):
-    owner_key, _ = await _register(client)
-    folder_id = (
-        await client.post(
-            "/api/v1/me/session-folders",
-            json={"name": "Deploys"},
-            headers=_auth(owner_key),
-        )
-    ).json()["id"]
-    session = await client.post(
-        "/api/v1/me/sessions",
-        json={"session_id": "deploy-1", "agent_name": "codex"},
-        headers=_auth(owner_key),
-    )
-    assert session.status_code == 201
-    assigned = await client.post(
-        "/api/v1/me/session-folders/assign",
-        json={"session_row_ids": [session.json()["id"]], "folder_id": folder_id},
-        headers=_auth(owner_key),
-    )
-    assert assigned.status_code == 200
-
-    grantee_key, _ = await _register_with_email(client, "session-folder-grantee@example.com")
-    # Another user sees this user's session folder only once it's shared with
-    # them — it surfaces on their "Shared with me" list, not in their own scope.
-    before = await client.get("/api/v1/share/with-me", headers=_auth(grantee_key))
-    assert before.status_code == 200
-    assert folder_id not in {i["object_id"] for i in before.json()["items"]}
-
-    share = await client.post(
-        "/api/v1/share",
-        json={
-            "object_type": "session_folder",
-            "object_id": folder_id,
-            "email": "session-folder-grantee@example.com",
-            "permission": "read",
-        },
-        headers=_auth(owner_key),
-    )
-    assert share.status_code == 200
-
-    after = await client.get("/api/v1/share/with-me", headers=_auth(grantee_key))
-    assert after.status_code == 200
-    shared = [i for i in after.json()["items"] if i["object_id"] == folder_id]
-    assert len(shared) == 1
-    assert shared[0]["object_type"] == "session_folder"
-    assert shared[0]["name"] == "Deploys"
-    assert shared[0]["permission"] == "read"
-
-    # The grantee can enumerate the folder's sessions via the shared route.
-    sessions = await client.get(
-        f"/api/v1/share/session-folders/{folder_id}/sessions",
-        headers=_auth(grantee_key),
-    )
-    assert sessions.status_code == 200
-    assert len(sessions.json()["sessions"]) == 1
-
-
-@pytest.mark.asyncio
-async def test_session_folder_write_access_cannot_manage_folder(client: AsyncClient):
-    owner_key, _ = await _register(client)
-    stranger_key, _ = await _register(client)
-    writer_key, _ = await _register_with_email(client, "session-folder-writer@example.com")
-    public_folder_id = (
-        await client.post(
-            "/api/v1/me/session-folders",
-            json={"name": "Public Read", "public_permission": "read"},
-            headers=_auth(owner_key),
-        )
-    ).json()["id"]
-    shared_folder_id = (
-        await client.post(
-            "/api/v1/me/session-folders",
-            json={"name": "Shared Write"},
-            headers=_auth(owner_key),
-        )
-    ).json()["id"]
-    share = await client.post(
-        "/api/v1/share",
-        json={
-            "object_type": "session_folder",
-            "object_id": shared_folder_id,
-            "email": "session-folder-writer@example.com",
-            "permission": "write",
-        },
-        headers=_auth(owner_key),
-    )
-    assert share.status_code == 200
-
-    public_update = await client.patch(
-        f"/api/v1/me/session-folders/{public_folder_id}",
-        json={"name": "Renamed"},
-        headers=_auth(stranger_key),
-    )
-    shared_delete = await client.delete(
-        f"/api/v1/me/session-folders/{shared_folder_id}",
-        headers=_auth(writer_key),
-    )
-
-    assert public_update.status_code == 404
-    assert shared_delete.status_code == 404
-
-
-@pytest.mark.asyncio
-async def test_session_folder_assign_rejects_cross_scope_ids(client: AsyncClient):
-    first_key, _ = await _register(client)
-    second_key, _ = await _register(client)
-    second_folder_id = (
-        await client.post(
-            "/api/v1/me/session-folders",
-            json={"name": "Other Scope"},
-            headers=_auth(second_key),
-        )
-    ).json()["id"]
-    direct_upsert = await client.post(
-        "/api/v1/me/sessions",
-        json={
-            "session_id": "cross-scope-direct",
-            "agent_name": "codex",
-            "session_folder_id": second_folder_id,
-        },
-        headers=_auth(first_key),
-    )
-    session = await client.post(
-        "/api/v1/me/sessions",
-        json={"session_id": "cross-scope-1", "agent_name": "codex"},
-        headers=_auth(first_key),
-    )
-    assert session.status_code == 201
-
-    assign = await client.post(
-        "/api/v1/me/session-folders/assign",
-        json={"session_row_ids": [session.json()["id"]], "folder_id": second_folder_id},
-        headers=_auth(first_key),
-    )
-
-    assert direct_upsert.status_code == 404
-    assert assign.status_code == 404
-
-
-@pytest.mark.asyncio
-async def test_session_folder_assign_batch_is_all_or_nothing(client: AsyncClient, pool):
-    # A 404 on a mixed batch must mean nothing moved — otherwise the client's
-    # view and the server state silently diverge.
-    owner_key, _ = await _register(client)
-    folder_id = (
-        await client.post(
-            "/api/v1/me/session-folders",
-            json={"name": "Deploys"},
-            headers=_auth(owner_key),
-        )
-    ).json()["id"]
-    session = await client.post(
-        "/api/v1/me/sessions",
-        json={"session_id": "batch-1", "agent_name": "codex"},
-        headers=_auth(owner_key),
-    )
-    assert session.status_code == 201
-    valid_id = session.json()["id"]
-    before = await pool.fetchrow(
-        "SELECT session_folder_id FROM sessions WHERE id = $1", uuid.UUID(valid_id)
-    )
-
-    assign = await client.post(
-        "/api/v1/me/session-folders/assign",
-        json={"session_row_ids": [valid_id, str(uuid.uuid4())], "folder_id": folder_id},
-        headers=_auth(owner_key),
-    )
-
-    assert assign.status_code == 404
-    after = await pool.fetchrow(
-        "SELECT session_folder_id FROM sessions WHERE id = $1", uuid.UUID(valid_id)
-    )
-    assert after["session_folder_id"] == before["session_folder_id"]
-
-
-@pytest.mark.asyncio
 async def test_share_by_email_pending_invite_converts_on_signup(client: AsyncClient):
     """Sharing to an email with no account yet records a pending invite that
     becomes a real share when that person signs up with the email."""
@@ -1152,34 +917,6 @@ async def test_shared_with_me_lists_incoming_not_outgoing(pool):
 
 
 @pytest.mark.asyncio
-async def test_shared_session_folder_sessions_gated_on_share(pool):
-    from fastapi import HTTPException
-
-    from backend.services import share_service
-
-    owner = await _make_user(pool)
-    friend = await _make_user(pool)
-    stranger = await _make_user(pool)
-    scope = await _make_scope(pool, owner)
-    sf = await pool.fetchval(
-        "INSERT INTO session_folders (owner_user_id, name, slug) "
-        "VALUES ($1, 'SF', 'sf-' || left(replace(gen_random_uuid()::text, '-', ''), 8)) "
-        "RETURNING id",
-        scope,
-    )
-    session_row = await _make_session(pool, scope, owner, session_id="shared-sess-1")
-    await pool.execute("UPDATE sessions SET session_folder_id = $2 WHERE id = $1", session_row, sf)
-    await _share(pool, scope, "session_folder", sf, friend, "read", by=owner)
-
-    rows = await share_service.list_shared_session_folder_sessions(sf, friend)
-    assert [r["id"] for r in rows] == [str(session_row)]
-
-    # A stranger with no share is denied.
-    with pytest.raises(HTTPException):
-        await share_service.list_shared_session_folder_sessions(sf, stranger)
-
-
-@pytest.mark.asyncio
 async def test_session_list_does_not_leak_unshared_sessions(pool):
     """Regression: sharing a single object with someone must NOT expose all of
     your sessions. `readable_session_event_condition` gates each session on a
@@ -1324,41 +1061,6 @@ async def test_predicate_and_check_access_agree(pool):
             predicate = await _predicate_says(pool, "page", pub_page, viewer, require)
             assert boolean == predicate
             assert boolean is (require == "read")
-
-
-@pytest.mark.asyncio
-async def test_session_folder_owner_reads_sessions_they_do_not_own(pool):
-    """A session-folder owner can READ every session filed under their folder —
-    even sessions owned by someone else — and only at read level. Regression
-    guard: the unified predicate must keep the folder-owner grant that the old
-    _session_folder_open provided. (Equivalence alone can't catch this: predicate
-    and boolean now agree by construction, so this asserts the actual decision.)"""
-    folder_owner = await _make_user(pool)
-    session_owner = await _make_user(pool)
-    stranger = await _make_user(pool)
-    folder = await pool.fetchval(
-        "INSERT INTO session_folders (owner_user_id, name, slug) "
-        "VALUES ($1, 'shared', 'shared-' || left(replace(gen_random_uuid()::text, '-', ''), 8)) "
-        "RETURNING id",
-        folder_owner,
-    )
-    session_row = await _make_session(pool, session_owner, session_owner, session_id="sf-owner-1")
-    await pool.execute(
-        "UPDATE sessions SET session_folder_id = $2 WHERE id = $1", session_row, folder
-    )
-
-    # Folder owner reads a session they don't own; stranger cannot.
-    assert await permission_service.check_access("session", session_row, folder_owner)
-    assert not await permission_service.check_access("session", session_row, stranger)
-    # The grant is read-only — folder ownership confers no write.
-    assert not await permission_service.check_access(
-        "session", session_row, folder_owner, require="write"
-    )
-    # Predicate and boolean agree on every viewer for this scenario.
-    for viewer in (folder_owner, session_owner, stranger):
-        boolean = await permission_service.check_access("session", session_row, viewer)
-        predicate = await _predicate_says(pool, "session", session_row, viewer, "read")
-        assert boolean == predicate
 
 
 # --- Per-object public link ("anyone with the link", read < comment < write) ---

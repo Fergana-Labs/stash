@@ -1,6 +1,6 @@
 """The local-curator prompt endpoint: Stash Desktop fetches this before every
 headless run, so it must be authenticated (it's per-user surface area, and
-later per-org) and must always serve a usable prompt — an empty prompt would
+later per-user) and must always serve a usable prompt — an empty prompt would
 silently no-op every install's curation."""
 
 from httpx import AsyncClient

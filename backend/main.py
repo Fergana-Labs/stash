@@ -29,6 +29,7 @@ from .routers import (
     clips,
     curator_log,
     demo,
+    developer,
     discover,
     exports,
     files,
@@ -140,6 +141,10 @@ app.include_router(agent_docs.router)
 app.include_router(admin.router)
 app.include_router(analytics.router)
 app.include_router(marketing.router)
+# LEGACY lane: session folders live on for installed clients (Heavi's
+# backend foremost). Nothing on the developer platform reads them.
+app.include_router(session_folders.me_router)
+app.include_router(session_folders.public_router)
 app.include_router(sessions.router)
 app.include_router(trash.router)
 app.include_router(pins.router)
@@ -151,13 +156,13 @@ app.include_router(integrations_router)
 app.include_router(sources.router)
 app.include_router(sources.saved_items_router)
 app.include_router(vfs.router)
+app.include_router(developer.router)
+app.include_router(developer.users_router)
 app.include_router(agent_chat.router)
 app.include_router(agent_credentials.router)
 app.include_router(agents.router)
 app.include_router(machine.router)
 app.include_router(telegram.router)
-app.include_router(session_folders.me_router)
-app.include_router(session_folders.public_router)
 app.include_router(shares.router)
 app.include_router(webhooks.router)
 app.include_router(billing.router)

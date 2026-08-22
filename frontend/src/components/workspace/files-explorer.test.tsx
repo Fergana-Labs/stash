@@ -31,6 +31,8 @@ vi.mock("@/components/share/ResourceShareButton", () => ({
 vi.mock("@/lib/api", () => ({
   getTree: vi.fn(),
   getFolderContents: vi.fn(),
+  listFiles: vi.fn().mockResolvedValue([]),
+  listTables: vi.fn().mockResolvedValue({ tables: [] }),
   createPage: vi.fn(),
   createFolder: vi.fn(),
   createTable: vi.fn(),
@@ -41,8 +43,6 @@ vi.mock("@/lib/api", () => ({
   trashItem: vi.fn(),
   deleteFolder: vi.fn(),
   deleteTable: vi.fn(),
-  deleteSessionFolder: vi.fn(),
-  updateSessionFolder: vi.fn(),
   uploadFileOrPage: vi.fn(),
   importGithubRepo: vi.fn(),
   inspectGithubImport: vi.fn().mockResolvedValue({ skill_dirs: [] }),

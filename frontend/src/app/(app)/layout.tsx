@@ -34,7 +34,6 @@ export default function AppGroupLayout({ children }: { children: ReactNode }) {
   // shows an error if the link isn't actually public.
   const isPublicSkillRoute =
     pathname.startsWith("/skills/") ||
-    pathname.startsWith("/session-folders/") ||
     pathname.startsWith("/p/") ||
     pathname.startsWith("/f/") ||
     isSkillItemRoute;

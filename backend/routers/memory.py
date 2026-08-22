@@ -52,19 +52,25 @@ async def push_event(
     owner_user_id = scope_user_id
     await _check_write(owner_user_id, current_user["id"])
     attachments = [a.model_dump(mode="json") for a in req.attachments] if req.attachments else None
-    event = await memory_service.push_event(
-        owner_user_id,
-        agent_name=req.agent_name,
-        event_type=req.event_type,
-        content=req.content,
-        created_by=current_user["id"],
-        session_id=req.session_id,
-        session_folder_id=req.session_folder_id,
-        tool_name=req.tool_name,
-        metadata=req.metadata,
-        attachments=attachments,
-        created_at=req.created_at,
-    )
+    try:
+        await memory_service.reject_cross_user_sessions(owner_user_id, [req.model_dump()])
+        event = await memory_service.push_event(
+            owner_user_id,
+            agent_name=req.agent_name,
+            event_type=req.event_type,
+            content=req.content,
+            created_by=current_user["id"],
+            session_id=req.session_id,
+            user_id=req.user_id,
+            user_name=req.user_name,
+            session_folder_id=req.session_folder_id,
+            tool_name=req.tool_name,
+            metadata=req.metadata,
+            attachments=attachments,
+            created_at=req.created_at,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     if settings.ANTHROPIC_API_KEY and req.session_id and req.event_type in _TITLE_EVENT_TYPES:
         generate_session_title.delay(str(owner_user_id), req.session_id)
     return HistoryEventResponse(**event)
@@ -79,7 +85,13 @@ async def push_events_batch(
     owner_user_id = scope_user_id
     await _check_write(owner_user_id, current_user["id"])
     events_data = [e.model_dump() for e in req.events]
-    events = await memory_service.push_events_batch(owner_user_id, current_user["id"], events_data)
+    try:
+        await memory_service.reject_cross_user_sessions(owner_user_id, events_data)
+        events = await memory_service.push_events_batch(
+            owner_user_id, current_user["id"], events_data
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     title_session_ids = sorted(
         {
             event.session_id

@@ -264,7 +264,7 @@ export default function ExternalAgentsPage() {
 
           <H2 id="isolation">Permission and isolation</H2>
           <P>
-            Memory that crosses a tenant boundary is a security incident, not a bad answer. Stash
+            Memory that crosses a user boundary is a security incident, not a bad answer. Stash
             scopes every memory to an owner and resolves permission at read time, using the access
             controls that databases have had for decades.
           </P>

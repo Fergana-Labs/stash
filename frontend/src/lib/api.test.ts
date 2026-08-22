@@ -188,7 +188,7 @@ describe("self-hosted agent key", () => {
 });
 
 // Every scoped read and write carries the selected workspace's scope_user_id;
-// the backend reads it to serve the org knowledge base instead of the personal
+// the backend reads it to serve the workspace knowledge base instead of the personal
 // one. Personal scope must send no header at all — an empty/absent header is
 // what keeps today's behavior the default.
 describe("workspace scope header", () => {

@@ -54,6 +54,7 @@ CLAUDE = OAuthProvider(
     token="https://platform.claude.com/v1/oauth/token",
     redirect="https://platform.claude.com/oauth/code/callback",
     scope=(
+        # Anthropic's literal scope name — "org" here is theirs, not ours.
         "org:create_api_key user:profile user:inference "
         "user:sessions:claude_code user:mcp_servers user:file_upload"
     ),

@@ -45,17 +45,23 @@ def run_scheduled_agent(agent_id: str, stamp: str) -> None:
 
 
 @celery.task(name="backend.tasks.agent_schedules.run_curator_now")
-def run_curator_now(agent_id: str) -> None:
-    run_async(_run_curator_now(UUID(agent_id)))
+def run_curator_now(agent_id: str, full_history: bool = False) -> None:
+    run_async(_run_curator_now(UUID(agent_id), full_history))
 
 
-async def _run_curator_now(agent_id: UUID) -> None:
+async def _run_curator_now(agent_id: UUID, full_history: bool = False) -> None:
     """A user-requested curator run: same execution as the daily tick, minus
     the due-check — the user is the trigger. The router already enforced the
-    free-tier allowance and resolved credentials."""
+    free-tier allowance and resolved credentials.
+
+    `full_history` is the backfill: the run reads with no watermark, but the
+    stored watermark is only advanced after success — a failed backfill must
+    not have thrown away the incremental position."""
     from ..services import agent_service, curation_service, sprite_agent_service
 
     agent = await agent_service.get_agent_by_id(agent_id)
+    if full_history:
+        agent = {**agent, "curated_through": None}
     now = datetime.now(UTC)
     await agent_service.mark_run(agent_id)
     try:

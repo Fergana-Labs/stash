@@ -34,3 +34,14 @@ if (!globalThis.localStorage) {
     configurable: true,
   });
 }
+
+// Radix popover-based widgets (Select, DropdownMenu) call pointer-capture and
+// scroll APIs jsdom doesn't implement.
+if (!Element.prototype.hasPointerCapture) {
+  Element.prototype.hasPointerCapture = () => false;
+  Element.prototype.setPointerCapture = () => {};
+  Element.prototype.releasePointerCapture = () => {};
+}
+if (!Element.prototype.scrollIntoView) {
+  Element.prototype.scrollIntoView = () => {};
+}

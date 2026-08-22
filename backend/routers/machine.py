@@ -6,7 +6,7 @@ the normal upload path so shares/extraction behave like any other upload.
 
 The browser's WebSocket can't carry an Authorization header, so the bearer
 token rides a query parameter. The backend holds both sockets and pumps
-bytes between them — the Sprites org token never reaches the browser.
+bytes between them — the Sprites tenant token never reaches the browser.
 """
 
 from __future__ import annotations
