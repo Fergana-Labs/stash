@@ -795,6 +795,11 @@ export async function getDeveloperWikiGraph(): Promise<WikiGraph> {
   return apiFetch(`${ME}/developer/wiki-graph`);
 }
 
+// One end user's own wiki, same graph shape.
+export async function getUserWikiGraph(userId: string): Promise<WikiGraph> {
+  return apiFetch(`${ME}/users/${userId}/wiki-graph`);
+}
+
 // --- Curator log ---
 
 // One curator run: what the night's curation learned — the run's stored

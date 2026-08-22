@@ -332,6 +332,22 @@ async def get_user_detail(
     return await end_user_service.end_user_detail(await _end_user_in_scope(user_id, scope_user_id))
 
 
+@users_router.get("/{user_id}/wiki-graph")
+async def get_user_wiki_graph(
+    user_id: UUID,
+    current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
+):
+    """One user's own wiki as a graph — the same rendering the shared wiki
+    gets, rooted at their notepad folder."""
+    from ..services import files_tree_service
+
+    end_user = await _end_user_in_scope(user_id, scope_user_id)
+    return await files_tree_service.wiki_graph(
+        await files_tree_service.folder_subtree_ids(end_user["notepad_folder_id"])
+    )
+
+
 @users_router.patch("/{user_id}")
 async def update_user(
     user_id: UUID,

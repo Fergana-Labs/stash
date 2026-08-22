@@ -8,12 +8,15 @@ import { ArrowLeft } from "lucide-react";
 import DeveloperGate from "@/components/developer/DeveloperGate";
 import { Code, PageHeading, SectionHeading } from "@/components/developer/DocsPrimitives";
 import WikiToggle from "@/components/developer/WikiToggle";
+import WikiGraph from "@/components/memory/WikiGraph";
 import {
   getUser,
+  getUserWikiGraph,
   type EndUserFile,
   type EndUserSession,
   type EndUserSource,
   type EndUserWikiPage,
+  type WikiGraph as WikiGraphData,
 } from "@/lib/api";
 import type { EndUser } from "@/lib/types";
 
@@ -31,6 +34,7 @@ function UserDetail() {
   const [sessions, setSessions] = useState<EndUserSession[]>([]);
   const [files, setFiles] = useState<EndUserFile[]>([]);
   const [wikiPages, setWikiPages] = useState<EndUserWikiPage[]>([]);
+  const [wikiGraph, setWikiGraph] = useState<WikiGraphData | null>(null);
   const [sources, setSources] = useState<EndUserSource[]>([]);
   const [error, setError] = useState<string | null>(null);
 
@@ -45,6 +49,10 @@ function UserDetail() {
         setSources(res.sources);
       })
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load the user"));
+    // The graph is decoration over the list — its failure shouldn't blank the page.
+    getUserWikiGraph(userId)
+      .then(setWikiGraph)
+      .catch(() => setWikiGraph(null));
   }, [userId]);
 
   useEffect(() => {
@@ -112,7 +120,13 @@ function UserDetail() {
             Nothing yet. The curator writes here on its next run over this user&apos;s sessions.
           </Empty>
         ) : (
-          <div className="mt-4 overflow-hidden rounded border border-border bg-surface">
+          <>
+            {wikiGraph && wikiGraph.nodes.length > 0 && (
+              <div className="mt-4 rounded border border-border bg-surface p-2">
+                <WikiGraph data={wikiGraph} height={320} />
+              </div>
+            )}
+            <div className="mt-4 overflow-hidden rounded border border-border bg-surface">
             {wikiPages.map((page) => (
               <Link
                 key={page.id}
@@ -127,7 +141,8 @@ function UserDetail() {
                 </span>
               </Link>
             ))}
-          </div>
+            </div>
+          </>
         )}
       </section>
 

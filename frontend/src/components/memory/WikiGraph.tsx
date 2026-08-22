@@ -4,7 +4,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { WikiGraph as WikiGraphData, WikiGraphNode } from "@/lib/api";
 
-const HEIGHT = 560;
 const MIN_SCALE = 0.25;
 const MAX_SCALE = 4;
 
@@ -107,7 +106,13 @@ type Drag =
  *  colored by link count, page-to-page links as edges. Scroll to zoom, drag
  *  the canvas to pan, drag a node to rearrange (the layout re-settles around
  *  it), double-click to reset the view, click a node to open its page. */
-export default function WikiGraph({ data }: { data: WikiGraphData }) {
+export default function WikiGraph({
+  data,
+  height = 560,
+}: {
+  data: WikiGraphData;
+  height?: number;
+}) {
   const router = useRouter();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const simRef = useRef<Sim | null>(null);
@@ -151,13 +156,13 @@ export default function WikiGraph({ data }: { data: WikiGraphData }) {
     const w = canvas.parentElement?.clientWidth || 600;
     const dpr = window.devicePixelRatio || 2;
     canvas.width = w * dpr;
-    canvas.height = HEIGHT * dpr;
+    canvas.height = height * dpr;
     canvas.style.width = `${w}px`;
-    canvas.style.height = `${HEIGHT}px`;
+    canvas.style.height = `${height}px`;
 
     const v = viewRef.current;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, w, HEIGHT);
+    ctx.clearRect(0, 0, w, height);
     ctx.translate(v.tx, v.ty);
     ctx.scale(v.scale, v.scale);
 
@@ -165,7 +170,7 @@ export default function WikiGraph({ data }: { data: WikiGraphData }) {
     const wx0 = -v.tx / v.scale;
     const wy0 = -v.ty / v.scale;
     const wx1 = (w - v.tx) / v.scale;
-    const wy1 = (HEIGHT - v.ty) / v.scale;
+    const wy1 = (height - v.ty) / v.scale;
     ctx.strokeStyle = "rgba(26,23,20,0.04)";
     ctx.lineWidth = 1 / v.scale;
     for (let gx = Math.floor(wx0 / 40) * 40; gx <= wx1; gx += 40) {
@@ -231,11 +236,11 @@ export default function WikiGraph({ data }: { data: WikiGraphData }) {
       }
       ctx.globalAlpha = 1;
     }
-  }, []);
+  }, [height]);
 
   useEffect(() => {
     const w = canvasRef.current?.parentElement?.clientWidth || 600;
-    const sim = buildSim(data, w, HEIGHT);
+    const sim = buildSim(data, w, height);
     simRef.current = sim;
     viewRef.current = { scale: 1, tx: 0, ty: 0 };
     // Obsidian-style fit: frame the 5th–95th percentile of node positions
@@ -250,18 +255,18 @@ export default function WikiGraph({ data }: { data: WikiGraphData }) {
       const bw = Math.max(maxX - minX, 1);
       const bh = Math.max(maxY - minY, 1);
       const padX = 60, padY = 30;
-      const scale = Math.min((w - 2 * padX) / bw, (HEIGHT - 2 * padY) / bh, 1);
+      const scale = Math.min((w - 2 * padX) / bw, (height - 2 * padY) / bh, 1);
       const v = viewRef.current;
       v.scale = scale;
       v.tx = (w - bw * scale) / 2 - minX * scale;
-      v.ty = (HEIGHT - bh * scale) / 2 - minY * scale;
+      v.ty = (height - bh * scale) / 2 - minY * scale;
     };
 
     let raf = 0;
     const step = () => {
       raf = 0;
       const settling = sim.alpha > 0.02;
-      if (settling) tick(sim, w, HEIGHT);
+      if (settling) tick(sim, w, height);
       // Auto-fit follows the layout while it moves, plus one frame on demand
       // when a double-click hands control back to it. Refitting on a settled
       // graph re-sorts every coordinate for a view that cannot change.
@@ -292,7 +297,7 @@ export default function WikiGraph({ data }: { data: WikiGraphData }) {
       if (raf) cancelAnimationFrame(raf);
       wakeRef.current = () => {};
     };
-  }, [data, draw]);
+  }, [data, height, draw]);
 
   // React registers onWheel passively, so preventDefault (needed to stop the
   // page scrolling while zooming) requires a native non-passive listener.
@@ -326,7 +331,7 @@ export default function WikiGraph({ data }: { data: WikiGraphData }) {
       <canvas
         ref={canvasRef}
         className="w-full"
-        style={{ height: HEIGHT, cursor }}
+        style={{ height, cursor }}
         onMouseDown={(e) => {
           const rect = e.currentTarget.getBoundingClientRect();
           const mx = e.clientX - rect.left;

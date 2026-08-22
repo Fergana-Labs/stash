@@ -505,6 +505,50 @@ async def test_backfill_clears_watermark_and_dispatches(client: AsyncClient, mon
 
 
 @pytest.mark.asyncio
+async def test_user_wiki_graph(client: AsyncClient, pool):
+    """A user's own wiki renders as a graph like the shared one — and only
+    theirs: another user's pages must not leak into it."""
+    api_key, _, workspace = await _developer(client)
+    machine_key = await _mint_workspace_key(client, api_key, workspace)
+    await _push(
+        client,
+        machine_key,
+        [
+            _event("s-acme", user_id="org_acme", user_name="Acme"),
+            _event("s-beta", user_id="org_beta", user_name="Beta"),
+        ],
+    )
+    end_users = {
+        r["external_id"]: r
+        for r in await pool.fetch(
+            "SELECT id, external_id, notepad_folder_id FROM end_users WHERE workspace_id = $1",
+            uuid.UUID(workspace["id"]),
+        )
+    }
+    scope_id = uuid.UUID(workspace["scope_user_id"])
+    for name, folder_id in [
+        ("Acme notes", end_users["org_acme"]["notepad_folder_id"]),
+        ("Beta notes", end_users["org_beta"]["notepad_folder_id"]),
+    ]:
+        await pool.execute(
+            "INSERT INTO pages (owner_user_id, name, content_markdown, folder_id, created_by) "
+            "VALUES ($1, $2, 'body', $3, $1)",
+            scope_id,
+            name,
+            folder_id,
+        )
+
+    resp = await client.get(
+        f"/api/v1/me/users/{end_users['org_acme']['id']}/wiki-graph",
+        headers={**_auth(api_key), "X-Stash-Scope": workspace["scope_user_id"]},
+    )
+    assert resp.status_code == 200, resp.text
+    names = [n["name"] for n in resp.json()["nodes"]]
+    assert "Acme notes" in names
+    assert "Beta notes" not in names
+
+
+@pytest.mark.asyncio
 async def test_key_expiry(client: AsyncClient, pool):
     """A key minted with expires_in_days works until the stamp passes, then is
     refused with "expired" — not "invalid": the developer debugging a dead
