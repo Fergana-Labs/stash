@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { BookOpen, TerminalSquare, Users } from "lucide-react";
 
-import { PageHeading } from "@/components/developer/DocsPrimitives";
 import { activateDeveloperPlatform, listMyWorkspaces } from "@/lib/api";
 import { getScope, setScope } from "@/lib/scope-store";
 import type { Workspace } from "@/lib/types";
@@ -68,34 +68,86 @@ export default function DeveloperGate({ children }: { children: React.ReactNode 
 
   const active = workspaces.filter((w) => w.external_wiki_folder_id !== null);
   return (
-    <div className="max-w-xl">
-      <PageHeading title="Developer Platform">
-        Run Stash for your product&apos;s users — a company or one person each, with their
-        own private memory, and your agents share one anonymized wiki distilled across all
-        of them.
-      </PageHeading>
-      {active.length > 0 && (
-        <div className="mb-6 overflow-hidden rounded border border-border bg-surface">
-          {active.map((w) => (
-            <button
-              key={w.id}
-              onClick={() => enter(w)}
-              className="flex w-full items-center gap-3 border-b border-border px-5 py-4 text-left text-[15px] transition-colors last:border-b-0 hover:bg-raised"
-            >
-              <span className="font-medium text-foreground">{w.name}</span>
-              <span className="ml-auto text-[13px] text-muted-foreground">Enter</span>
-            </button>
-          ))}
+    <div className="flex min-h-[70vh] items-center justify-center">
+      <div className="w-full max-w-lg">
+        <div className="rounded-xl border border-border bg-surface p-8 shadow-sm">
+          <p className="font-mono text-[11px] font-medium uppercase tracking-[0.18em] text-brand-600">
+            Developer Platform
+          </p>
+          <h1 className="mt-2 text-[24px] font-semibold leading-8 text-foreground">
+            Run Stash for your product&apos;s users
+          </h1>
+          <p className="mt-3 text-[14.5px] leading-6 text-muted-foreground">
+            Each of your users — a company or one person — gets memory of their own, and
+            your agents share what they learn.
+          </p>
+
+          <ul className="mt-7 space-y-4">
+            <Feature icon={Users} title="Per-user memory">
+              Every user gets a private wiki only their agent reads — one field,{" "}
+              <code className="rounded bg-base px-1 font-mono text-[12px]">user_id</code>, is
+              the isolation boundary.
+            </Feature>
+            <Feature icon={BookOpen} title="One shared brain">
+              A curator distills every user&apos;s sessions into a single anonymized wiki
+              all your agents read.
+            </Feature>
+            <Feature icon={TerminalSquare} title="Agent-first setup">
+              Copy one prompt into your coding agent and it wires your app — no SDK
+              required.
+            </Feature>
+          </ul>
+
+          {active.length > 0 && (
+            <div className="mt-8 overflow-hidden rounded-lg border border-border">
+              {active.map((w) => (
+                <button
+                  key={w.id}
+                  onClick={() => enter(w)}
+                  className="flex w-full items-center gap-3 border-b border-border px-4 py-3 text-left text-[14px] transition-colors last:border-b-0 hover:bg-raised"
+                >
+                  <span className="font-medium text-foreground">{w.name}</span>
+                  <span className="ml-auto text-[13px] text-muted-foreground">Enter →</span>
+                </button>
+              ))}
+            </div>
+          )}
+
+          <button
+            onClick={activate}
+            disabled={activating}
+            className="mt-8 w-full rounded-lg bg-brand-500 px-4 py-2.5 text-[14px] font-medium text-white transition-colors hover:bg-brand-600 disabled:opacity-50"
+          >
+            {activating
+              ? "Setting up…"
+              : active.length > 0
+                ? "Set up another workspace"
+                : "Set up the Developer Platform"}
+          </button>
+          {activateError && <p className="mt-3 text-[14px] text-error">{activateError}</p>}
         </div>
-      )}
-      <button
-        onClick={activate}
-        disabled={activating}
-        className="rounded-sm bg-brand-500 px-4 py-2 text-[14px] font-medium text-white transition-colors hover:bg-brand-600 disabled:opacity-50"
-      >
-        {activating ? "Setting up…" : "Set up the Developer Platform"}
-      </button>
-      {activateError && <p className="mt-3 text-[14px] text-error">{activateError}</p>}
+      </div>
     </div>
+  );
+}
+
+function Feature({
+  icon: Icon,
+  title,
+  children,
+}: {
+  icon: typeof Users;
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <li className="flex gap-3">
+      <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-brand-500/10 text-brand-600">
+        <Icon className="h-4 w-4" />
+      </span>
+      <span className="text-[13.5px] leading-5 text-muted-foreground">
+        <span className="font-medium text-foreground">{title}</span> — {children}
+      </span>
+    </li>
   );
 }
