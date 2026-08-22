@@ -498,3 +498,36 @@ async def upload_session_artifact(
         len(content),
     )
     return dict(row)
+
+
+# --- LEGACY path shapes -----------------------------------------------------
+# Same story as the transcript aliases: installed clients read sessions by
+# /{session_id} path shapes. Registered last so every static route above
+# (detail, resolve, agent-names, …) wins. Dies with the legacy cutover.
+
+
+@router.get("/sessions/{session_id}")
+async def get_session_canonical_legacy(
+    session_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    return await get_session_canonical(session_id, current_user)
+
+
+@router.get("/me/sessions/{session_id}")
+async def get_my_session_legacy(
+    session_id: str,
+    current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
+):
+    return await get_my_session(session_id, current_user, scope_user_id)
+
+
+@router.patch("/me/sessions/{session_id}/title")
+async def rename_my_session_legacy(
+    session_id: str,
+    body: SessionTitleRequest,
+    current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
+):
+    return await rename_my_session(session_id, body, current_user, scope_user_id)

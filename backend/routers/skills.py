@@ -424,6 +424,21 @@ async def materialize_session(
     return PageResponse(**{**page, "can_write": True})
 
 
+@me_router.post(
+    "/sessions/{session_id}/materialize",
+    response_model=PageResponse,
+    status_code=201,
+)
+async def materialize_session_legacy(
+    session_id: str,
+    req: MaterializeSessionRequest,
+    current_user: dict = Depends(get_current_user),
+    owner_user_id: UUID = Depends(get_scope),
+):
+    """LEGACY path shape for installed clients; dies with the legacy cutover."""
+    return await materialize_session(session_id, req, current_user, owner_user_id)
+
+
 @public_router.patch("/{skill_id}", response_model=SkillResponse)
 async def update_skill(
     skill_id: UUID,

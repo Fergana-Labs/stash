@@ -924,3 +924,47 @@ async def test_reupload_to_deleted_session_skips_without_resurrecting(client: As
     assert (
         await pool.fetchval("SELECT deleted_at FROM sessions WHERE id = $1", row_id)
     ) is not None
+
+
+@pytest.mark.asyncio
+async def test_legacy_path_shapes_still_serve(client: AsyncClient):
+    """Installed clients (released CLI, plugins, customer backends — Heavi's
+    audit trail shows ~1.7k transcript reads a month over API keys) read by
+    the old /{session_id} path shapes. The canonical routes moved the id to a
+    query parameter; these aliases keep every old client working until the
+    legacy cutover."""
+    key = await _register(client)
+    headers = {"Authorization": f"Bearer {key}"}
+    up = await client.post(
+        "/api/v1/me/sessions/events/batch",
+        json={
+            "events": [
+                {
+                    "agent_name": "claude",
+                    "event_type": "user_message",
+                    "content": "legacy shape check",
+                    "session_id": "legacy-shape-1",
+                }
+            ]
+        },
+        headers=headers,
+    )
+    assert up.status_code == 201, up.text
+
+    meta = await client.get("/api/v1/me/transcripts/legacy-shape-1", headers=headers)
+    assert meta.status_code == 200, meta.text
+    events = await client.get(
+        "/api/v1/me/transcripts/legacy-shape-1/events", params={"limit": 10}, headers=headers
+    )
+    assert events.status_code == 200
+    assert events.json()["events"][0]["content"] == "legacy shape check"
+    export = await client.get("/api/v1/me/transcripts/legacy-shape-1/export.jsonl", headers=headers)
+    assert export.status_code == 200
+    detail = await client.get("/api/v1/me/sessions/legacy-shape-1", headers=headers)
+    assert detail.status_code == 200
+    renamed = await client.patch(
+        "/api/v1/me/sessions/legacy-shape-1/title",
+        json={"title": "Legacy shape check"},
+        headers=headers,
+    )
+    assert renamed.status_code == 200

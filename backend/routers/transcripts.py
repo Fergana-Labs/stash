@@ -325,3 +325,38 @@ async def export_transcript_jsonl(
         media_type="application/jsonl",
         headers={"Content-Disposition": f'attachment; filename="session-{session_id}.jsonl"'},
     )
+
+
+# --- LEGACY path shapes -----------------------------------------------------
+# The canonical routes take session_id as a query parameter (the id is the
+# developer's own string, slashes included). These aliases keep every
+# installed client working — released CLIs and customer backends (Heavi's
+# audit trail shows ~1.7k transcript reads/month over API keys) read by the
+# old /{session_id} shapes. Registered last so the static routes above win.
+# They die with the legacy cutover, alongside session folders.
+
+
+@router.get("/{session_id}")
+async def get_transcript_metadata_legacy(
+    session_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    return await get_transcript_metadata(session_id, current_user)
+
+
+@router.get("/{session_id}/events")
+async def get_transcript_events_legacy(
+    session_id: str,
+    limit: int = Query(..., ge=1),
+    offset: int = 0,
+    current_user: dict = Depends(get_current_user),
+):
+    return await get_transcript_events(session_id, limit, offset, current_user)
+
+
+@router.get("/{session_id}/export.jsonl")
+async def export_transcript_jsonl_legacy(
+    session_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    return await export_transcript_jsonl(session_id, current_user)
