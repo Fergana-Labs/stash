@@ -1,11 +1,18 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ChevronRight, Copy } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, Copy, KeyRound, Plus } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
 import DeveloperGate from "@/components/developer/DeveloperGate";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { CodeBlock, PageHeading, SectionHeading } from "@/components/developer/DocsPrimitives";
 import MintKeyDialog from "@/components/developer/MintKeyDialog";
 import {
@@ -81,6 +88,13 @@ function InstallSection() {
         (selectedKey.key_prefix ? ` (${selectedKey.key_prefix}…${selectedKey.key_suffix})` : "")
       : "<an API key>";
 
+  const keyLabel = usingMinted
+    ? `${mintedKey.name} (just minted)`
+    : selectedKey
+      ? selectedKey.name +
+        (selectedKey.key_prefix ? ` · ${selectedKey.key_prefix}…${selectedKey.key_suffix}` : "")
+      : "choose a key…";
+
   const copyText = renderInstallPrompt(`Use ${keyRef}${keyTail}`);
   const [before, after] = renderInstallPrompt(INSTALL_KEY_TOKEN).split(INSTALL_KEY_TOKEN);
 
@@ -115,23 +129,57 @@ function InstallSection() {
           <code>
             {before}
             {"Use "}
-            <select
-              value={hasKey ? selected : "mint"}
-              onChange={(e) => {
-                if (e.target.value === "mint") setMinting(true);
-                else setSelected(e.target.value);
-              }}
-              className="mx-0.5 inline-block max-w-[280px] cursor-pointer rounded border border-border bg-base px-1.5 py-0.5 align-baseline font-mono text-[12px] text-brand-700 focus:border-brand-500 focus:outline-none"
-            >
-              {mintedKey && <option value="new">{mintedKey.name} (just minted)</option>}
-              {(keys ?? []).map((k) => (
-                <option key={k.id} value={k.id}>
-                  {k.name}
-                  {k.key_prefix ? ` · ${k.key_prefix}…${k.key_suffix}` : ""}
-                </option>
-              ))}
-              <option value="mint">＋ Create API key…</option>
-            </select>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className="mx-1 inline-flex max-w-[320px] cursor-pointer items-center gap-1.5 rounded-md border border-brand-500/50 bg-brand-500/10 px-2.5 py-1 align-middle font-mono text-[12.5px] font-medium text-brand-600 shadow-sm transition-colors hover:border-brand-500 hover:bg-brand-500/20">
+                  <KeyRound className="h-3.5 w-3.5 shrink-0" />
+                  <span className="truncate">{keyLabel}</span>
+                  <ChevronDown className="h-3.5 w-3.5 shrink-0" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                data-surface="developer"
+                align="start"
+                className="max-h-72 overflow-y-auto rounded border border-border bg-base"
+              >
+                {mintedKey && (
+                  <DropdownMenuItem
+                    onClick={() => setSelected("new")}
+                    className="gap-2 font-mono text-[12.5px]"
+                  >
+                    <Check
+                      className={cn("h-3.5 w-3.5", selected === "new" ? "" : "invisible")}
+                    />
+                    {mintedKey.name} (just minted)
+                  </DropdownMenuItem>
+                )}
+                {(keys ?? []).map((k) => (
+                  <DropdownMenuItem
+                    key={k.id}
+                    onClick={() => setSelected(k.id)}
+                    className="gap-2 font-mono text-[12.5px]"
+                  >
+                    <Check
+                      className={cn("h-3.5 w-3.5", selected === k.id ? "" : "invisible")}
+                    />
+                    {k.name}
+                    {k.key_prefix && (
+                      <span className="text-muted-foreground">
+                        {k.key_prefix}…{k.key_suffix}
+                      </span>
+                    )}
+                  </DropdownMenuItem>
+                ))}
+                {(mintedKey || (keys ?? []).length > 0) && <DropdownMenuSeparator />}
+                <DropdownMenuItem
+                  onClick={() => setMinting(true)}
+                  className="gap-2 font-mono text-[12.5px] text-brand-600"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Create API key…
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
             {keyTail}
             {after}
           </code>
