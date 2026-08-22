@@ -27,11 +27,13 @@ def answer(stash, anthropic_key: str, org: str, org_name: str, session: str, que
 def _context(stash, org: str) -> str:
     """Everything this customer is allowed to know: the shared wiki, and their
     own notepad. Read a root at a time — the VFS shell has no stderr
-    redirection, so one path that matches nothing fails the whole command."""
+    redirection, so one path that matches nothing fails the whole command.
+    Cat only *.md: wiki categories are subfolders, and cat on a directory
+    fails the command too."""
     parts = []
     for root in ("/memory", "/files/notepad"):
         if stash.read(org, f"ls {root}").strip():
-            parts.append(stash.read(org, f"cat {root}/*"))
+            parts.append(stash.read(org, f"cat {root}/*.md"))
     return "\n\n".join(parts)
 
 

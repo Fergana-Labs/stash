@@ -5,7 +5,7 @@ CLI into. Read-only: the shell has no write commands and rejects redirects.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from stashvfs import MountError
 
@@ -19,6 +19,11 @@ MAX_SCRIPT_LENGTH = 4096
 
 
 class VfsRequest(BaseModel):
+    # Unknown fields are refused, not dropped. A read still sending the
+    # pre-rename tenant_id would otherwise run UNSCOPED — the whole workspace
+    # instead of one user's view — which is an isolation failure, not a typo.
+    model_config = ConfigDict(extra="forbid")
+
     script: str = Field(max_length=MAX_SCRIPT_LENGTH)
     cwd: str = "/"
     user_id: str | None = Field(

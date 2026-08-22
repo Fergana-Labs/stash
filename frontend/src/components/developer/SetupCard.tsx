@@ -4,10 +4,11 @@ import { Code, CodeBlock, SectionHeading } from "@/components/developer/DocsPrim
 
 const READ = `# Your agent reads. user_id is the only thing Stash needs — it is
 # the isolation boundary. No session, no conversation: reading memory has
-# nothing to do with which conversation you are in.
+# nothing to do with which conversation you are in. Wiki categories are
+# subfolders: ls /memory lists them, cat /memory/<category>/*.md reads one.
 curl -X POST https://api.joinstash.ai/api/v1/me/vfs \\
   -H "Authorization: Bearer $STASH_API_KEY" -H "Content-Type: application/json" \\
-  -d '{"script":"cat /memory/*", "user_id":"user_sam"}'`;
+  -d '{"script":"cat /memory/*.md", "user_id":"user_sam"}'`;
 
 const WRITE = `# Your backend uploads transcripts. Its own mechanism — after the
 # turn, in a batch, from a queue worker, whenever suits you.

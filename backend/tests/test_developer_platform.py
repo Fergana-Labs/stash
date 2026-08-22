@@ -260,6 +260,40 @@ async def test_new_user_reads_the_shared_wiki_before_they_have_written(client: A
 
 
 @pytest.mark.asyncio
+async def test_legacy_tenant_id_field_fails_loud(client: AsyncClient):
+    """A caller still sending the pre-rename tenant_id must get a 422, not
+    silence. Dropped on an upload it records events with no user attached;
+    dropped on a VFS read it runs unscoped — the whole workspace instead of
+    one user's view."""
+    api_key, _, workspace = await _developer(client)
+    machine_key = await _mint_workspace_key(client, api_key, workspace)
+
+    upload = await client.post(
+        "/api/v1/me/sessions/events/batch",
+        json={
+            "events": [
+                {
+                    "agent_name": "heavi-chat",
+                    "event_type": "user_message",
+                    "content": "hi",
+                    "session_id": "s1",
+                    "tenant_id": "org_acme",
+                }
+            ]
+        },
+        headers=_auth(machine_key),
+    )
+    assert upload.status_code == 422
+
+    read = await client.post(
+        "/api/v1/me/vfs",
+        json={"script": "ls /", "tenant_id": "org_acme"},
+        headers=_auth(machine_key),
+    )
+    assert read.status_code == 422
+
+
+@pytest.mark.asyncio
 async def test_session_id_with_a_slash_round_trips(client: AsyncClient):
     """Session ids are the developer's own strings — slashes included. They
     used to be refused because the id was a path parameter on the transcript

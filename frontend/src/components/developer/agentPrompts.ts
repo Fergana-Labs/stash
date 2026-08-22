@@ -29,12 +29,15 @@ Step 1 — READ. When composing the agent's context for a turn, fetch that
 user's memory and put it in the system prompt:
    POST /api/v1/me/vfs
    Header "Authorization: Bearer $STASH_API_KEY", body
-   {"script": "cat /memory/*", "user_id": "<user>"}
-   stdout is markdown: the shared wiki every user's agent reads.
-   Also available on the same call: "cat /files/notepad/*" (this user's
-   own wiki), "ls /sessions" and "cat /sessions/<id>" (their raw
-   transcripts). Reading has nothing to do with which conversation you
-   are in — no session id involved.
+   {"script": "cat /memory/*.md", "user_id": "<user>"}
+   stdout is markdown: the shared wiki every user's agent reads. Wiki
+   categories are subfolders — "ls /memory" lists them,
+   "cat /memory/<category>/*.md" reads one.
+   Also on the same call: "cat /files/notepad/*.md" (this user's own
+   wiki — it exists once the curator has run over their sessions),
+   "ls /sessions" and raw transcripts under /sessions. Reading has
+   nothing to do with which conversation you are in — no session id
+   involved.
 
 Step 2 — RECORD. After each turn (or batched later from a queue),
 upload it:

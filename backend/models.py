@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 # --- Users ---
 
@@ -521,6 +521,11 @@ class Attachment(BaseModel):
 
 
 class HistoryEventCreateRequest(BaseModel):
+    # Unknown fields are refused, not dropped: an event upload still carrying
+    # the pre-rename tenant_id would otherwise record with no user attached —
+    # silently, which is exactly how a live integration lost attribution.
+    model_config = ConfigDict(extra="forbid")
+
     agent_name: str = Field(..., min_length=1, max_length=64)
     event_type: str = Field(..., min_length=1, max_length=64)
     content: str = Field(..., min_length=1)
