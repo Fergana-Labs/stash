@@ -15,6 +15,8 @@ import httpx
 from stashai import release
 from stashvfs import VfsClientError
 
+from .exit_codes import TRANSPORT_ERROR_STATUS
+
 
 class StashError(VfsClientError):
     def __init__(self, status_code: int, detail):
@@ -101,7 +103,15 @@ class StashClient:
     def _request(self, method: str, path: str, **kwargs) -> httpx.Response:
         headers = kwargs.pop("headers", {})
         headers.update(self._headers())
-        resp = self._http.request(method, path, headers=headers, **kwargs)
+        try:
+            resp = self._http.request(method, path, headers=headers, **kwargs)
+        except httpx.TransportError as exc:
+            # A transport failure (connection refused, DNS failure, connect/read
+            # timeout, network down) is a backend-delivery fault, never the
+            # caller's. Wrap it as a StashError carrying the synthetic
+            # TRANSPORT_ERROR_STATUS so the shared error router classifies it
+            # into the "not the caller's fault" internal-error band (exit 2).
+            raise StashError(TRANSPORT_ERROR_STATUS, str(exc)) from exc
         release.note_latest(resp.headers.get(release.LATEST_VERSION_HEADER, ""))
         if not resp.is_success:
             detail = ""
@@ -553,7 +563,13 @@ class StashClient:
                     timeout=120,
                 )
                 return resp.json()
-            except httpx.TransportError:
+            except (httpx.TransportError, StashError) as exc:
+                # A raw transport error (test path monkeypatches _request to raise
+                # it directly) or the wrapped transport StashError (production path
+                # from the _request wrap) both mean a transient network blip.
+                # Non-transport StashErrors surface immediately.
+                if isinstance(exc, StashError) and exc.status_code != TRANSPORT_ERROR_STATUS:
+                    raise
                 if attempt == 2:
                     raise
                 time.sleep(1 + attempt)

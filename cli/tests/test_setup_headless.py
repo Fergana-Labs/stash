@@ -42,10 +42,14 @@ def calls(monkeypatch):
     monkeypatch.setattr(main, "stop_streaming", lambda: calls.__setitem__("stop_streaming", 1))
     monkeypatch.setattr(main, "save_enabled_agents", lambda a: calls.__setitem__("saved_agents", a))
     monkeypatch.setattr(
-        main, "_install_all_hooks", lambda a: calls.__setitem__("hooks_installed", a)
+        main,
+        "_install_all_hooks",
+        lambda a, use_json=False: calls.__setitem__("hooks_installed", a),
     )
     monkeypatch.setattr(
-        main, "_auto_connect_repo", lambda root, cfg: calls.__setitem__("connected", 1)
+        main,
+        "_auto_connect_repo",
+        lambda root, cfg, use_json=False: calls.__setitem__("connected", 1),
     )
     monkeypatch.setattr(
         main, "_spawn_history_import", lambda n: calls.__setitem__("import_spawned", n)
@@ -67,9 +71,9 @@ def test_no_tty_without_flags_fails_naming_the_missing_flags(calls, monkeypatch,
     with pytest.raises(typer.Exit):
         _setup()
 
-    out = capsys.readouterr().out
-    assert "--record/--no-record" in out
-    assert "--connect/--no-connect" in out
+    err = capsys.readouterr().err
+    assert "--record/--no-record" in err
+    assert "--connect/--no-connect" in err
     assert calls["wizard_runs"] == 0
 
 
@@ -120,9 +124,9 @@ def test_unknown_agent_fails_and_names_the_detected_ones(calls, monkeypatch, cap
     with pytest.raises(typer.Exit):
         _setup(record=True, agents="cursor", connect=False, import_history=False)
 
-    out = capsys.readouterr().out
-    assert "cursor" in out
-    assert "claude" in out
+    err = capsys.readouterr().err
+    assert "cursor" in err
+    assert "claude" in err
     assert calls["start_streaming"] == 0
 
 
@@ -132,7 +136,7 @@ def test_import_history_without_record_is_an_error(calls, monkeypatch, capsys):
     with pytest.raises(typer.Exit):
         _setup(record=False, connect=False, import_history=True)
 
-    assert "--record" in capsys.readouterr().out
+    assert "--record" in capsys.readouterr().err
 
 
 def test_flags_parse_end_to_end_through_the_cli(calls):

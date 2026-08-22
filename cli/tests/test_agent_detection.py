@@ -184,3 +184,36 @@ def test_agent_folder_candidates_never_offer_a_relative_path(monkeypatch, tmp_pa
 
     assert [str(p) for p, _ in candidates] == [str(real)]
     assert all(p.is_absolute() for p, _ in candidates)
+
+
+# --- Pi: binary on PATH or the ~/.pi config dir ---
+
+
+def test_pi_detects_config_dir_without_binary(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr("shutil.which", lambda _cmd: None)
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
+
+    (tmp_path / ".pi").mkdir(parents=True)
+
+    assert _agent_present("pi")
+
+
+def test_pi_not_detected_without_binary_or_config_dir(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr("shutil.which", lambda _cmd: None)
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
+
+    assert not _agent_present("pi")
+
+
+def test_pi_detected_via_binary_without_config_dir(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr("shutil.which", lambda _cmd: _cmd == "pi")
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
+
+    assert _agent_present("pi")
+
+
+def test_pi_not_detected_when_other_binary_present(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr("shutil.which", lambda _cmd: _cmd == "claude")
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
+
+    assert not _agent_present("pi")

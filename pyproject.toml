@@ -30,7 +30,7 @@ Homepage = "https://joinstash.ai"
 Repository = "https://github.com/Fergana-Labs/stash"
 
 [project.scripts]
-stash = "cli.main:app"
+stash = "cli.main:main"
 stash-mcp = "cli.mcp_server:main"
 
 [tool.setuptools.packages.find]

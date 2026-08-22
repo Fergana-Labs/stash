@@ -104,8 +104,9 @@ def test_ls_unknown_source_fails_loudly(monkeypatch, capsys):
         main.ls_cmd(path="nope", depth=2, as_json=False)
     except Exception as e:
         assert type(e).__name__ == "Exit"
-    out = capsys.readouterr().out
-    assert "No source named 'nope'" in out
+    captured = capsys.readouterr()
+    assert "No source named 'nope'" in captured.err
+    assert "No source named 'nope'" not in captured.out
 
 
 # A provider with several connections: the first path segment selects the
