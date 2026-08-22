@@ -51,6 +51,8 @@ async def upload_transcript(
     session_id: str = Form(...),
     agent_name: str = Form(...),
     cwd: str | None = Form(None),
+    # LEGACY filing lane for installed clients: honored when sent.
+    session_folder_id: UUID | None = Form(None),
     replace: bool = Form(False),
     current_user: dict = Depends(get_current_user),
     scope_user_id: UUID = Depends(get_scope),
@@ -116,6 +118,7 @@ async def upload_transcript(
                 agent_name=agent_name,
                 cwd=cwd,
                 created_by=current_user["id"],
+                session_folder_id=session_folder_id,
             )
             return {
                 "session_id": session_id,
@@ -142,6 +145,7 @@ async def upload_transcript(
             agent_name=agent_name,
             cwd=cwd,
             created_by=current_user["id"],
+            session_folder_id=session_folder_id,
             started_at=transcript_started_at,
         )
     if cwd:

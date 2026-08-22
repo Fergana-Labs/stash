@@ -22,6 +22,7 @@ from ..services import (
     memory_service,
     permission_service,
     security_audit_service,
+    session_folder_service,
     session_ref_service,
     session_service,
     session_title_service,
@@ -37,6 +38,9 @@ class SessionUpsertRequest(BaseModel):
     agent_name: str = Field("", max_length=64)
     cwd: str | None = Field(None, max_length=1024)
     files_touched: list[str] = Field(default_factory=list)
+    # LEGACY filing lane for installed clients (Heavi's backend foremost):
+    # honored when sent, read by nothing new, no default resolved.
+    session_folder_id: UUID | None = None
 
 
 def _session_app_url(session_id: str) -> str:
@@ -215,12 +219,23 @@ async def upsert_session(
     # non-members, so no separate write check is needed).
     owner_user_id = scope_user_id
 
+    if (
+        req.session_folder_id is not None
+        and not await session_folder_service.can_add_session_to_folder(
+            owner_user_id=owner_user_id,
+            user_id=current_user["id"],
+            folder_id=req.session_folder_id,
+        )
+    ):
+        raise HTTPException(status_code=404, detail="Session folder not found")
+
     row = await session_service.upsert_session(
         owner_user_id=owner_user_id,
         session_id=req.session_id,
         agent_name=req.agent_name,
         cwd=req.cwd,
         created_by=current_user["id"],
+        session_folder_id=req.session_folder_id,
     )
     if req.files_touched:
         await session_service.set_files_touched(row["id"], req.files_touched)

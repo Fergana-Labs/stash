@@ -541,6 +541,9 @@ class HistoryEventCreateRequest(BaseModel):
         max_length=255,
         description="Display name for the end user, used only when it is first seen",
     )
+    # LEGACY filing lane, kept for installed clients (Heavi's backend
+    # foremost): honored at session insert, read by nothing new.
+    session_folder_id: UUID | None = None
     tool_name: str | None = Field(None, max_length=128)
     metadata: dict = Field(default_factory=dict)
     attachments: list[Attachment] | None = None

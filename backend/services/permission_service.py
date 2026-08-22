@@ -25,6 +25,9 @@ _OWNER_LOOKUP = {
     "table": ("tables", "owner_user_id"),
     "file": ("files", "owner_user_id"),
     "session": ("sessions", "owner_user_id"),
+    # LEGACY: session folders live on for installed clients; only direct
+    # folder-level checks resolve — the share/public inheritance is gone.
+    "session_folder": ("session_folders", "owner_user_id"),
     "skill": ("skills", "owner_user_id"),
     "folder": ("folders", "owner_user_id"),
     "page": ("pages", "owner_user_id"),

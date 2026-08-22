@@ -122,6 +122,7 @@ async def push_event(
     session_id: str,
     user_id: str | None = None,
     user_name: str | None = None,
+    session_folder_id=None,
     tool_name: str | None = None,
     metadata: dict | None = None,
     attachments: list[dict] | None = None,
@@ -172,6 +173,7 @@ async def push_event(
             cwd=meta.get("cwd") if isinstance(meta.get("cwd"), str) else None,
             created_by=created_by,
             end_user_id=end_user["id"] if end_user else None,
+            session_folder_id=session_folder_id,
         )
         if linear_ticket_service.has_ticket_hint([content]):
             await linear_ticket_service.sync_session_labels(
@@ -329,6 +331,7 @@ async def _upsert_sessions_for_events(
             "cwd": metadata.get("cwd") if isinstance(metadata.get("cwd"), str) else None,
             "user_id": event.get("user_id"),
             "user_name": event.get("user_name"),
+            "session_folder_id": event.get("session_folder_id"),
         }
 
     end_user_rows = await _resolve_event_end_users(owner_user_id, sessions.values())
@@ -342,6 +345,7 @@ async def _upsert_sessions_for_events(
             cwd=session["cwd"],
             created_by=created_by,
             end_user_id=end_user["id"] if end_user else None,
+            session_folder_id=session["session_folder_id"],
         )
         contents = [
             event.get("content") or "" for event in events if event.get("session_id") == session_id

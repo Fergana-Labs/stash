@@ -22,6 +22,7 @@ async def upsert_session(
     cwd: str | None = None,
     created_by: UUID | None = None,
     end_user_id: UUID | None = None,
+    session_folder_id: UUID | None = None,
     started_at: datetime | None = None,
 ) -> dict:
     """Idempotent: return the session row, creating it if missing.
@@ -37,12 +38,17 @@ async def upsert_session(
 
     `end_user_id` (External Multiplayer) is set at insert only: the end user a session
     was born into is its privacy boundary and never changes.
+
+    `session_folder_id` is the LEGACY filing lane, kept for installed clients
+    (Heavi's backend foremost). Set at insert only, honored only when sent —
+    nothing on the platform reads it, and no default folder is resolved.
     """
     pool = get_pool()
     row = await pool.fetchrow(
         "INSERT INTO sessions "
-        "  (owner_user_id, session_id, agent_name, cwd, created_by, end_user_id, started_at) "
-        "VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7, now())) "
+        "  (owner_user_id, session_id, agent_name, cwd, created_by, end_user_id, "
+        "   session_folder_id, started_at) "
+        "VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8, now())) "
         "ON CONFLICT (owner_user_id, session_id) DO UPDATE SET "
         "  agent_name = COALESCE(NULLIF(EXCLUDED.agent_name, ''), sessions.agent_name), "
         "  cwd = COALESCE(EXCLUDED.cwd, sessions.cwd), "
@@ -54,6 +60,7 @@ async def upsert_session(
         cwd,
         created_by,
         end_user_id,
+        session_folder_id,
         started_at,
     )
     return dict(row)

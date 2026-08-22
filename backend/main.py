@@ -42,6 +42,7 @@ from .routers import (
     pins,
     publish,
     security_audit,
+    session_folders,
     sessions,
     shares,
     skills,
@@ -139,6 +140,10 @@ app.include_router(agent_docs.router)
 app.include_router(admin.router)
 app.include_router(analytics.router)
 app.include_router(marketing.router)
+# LEGACY lane: session folders live on for installed clients (Heavi's
+# backend foremost). Nothing on the developer platform reads them.
+app.include_router(session_folders.me_router)
+app.include_router(session_folders.public_router)
 app.include_router(sessions.router)
 app.include_router(trash.router)
 app.include_router(pins.router)

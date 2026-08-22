@@ -63,6 +63,7 @@ async def push_event(
             session_id=req.session_id,
             user_id=req.user_id,
             user_name=req.user_name,
+            session_folder_id=req.session_folder_id,
             tool_name=req.tool_name,
             metadata=req.metadata,
             attachments=attachments,
