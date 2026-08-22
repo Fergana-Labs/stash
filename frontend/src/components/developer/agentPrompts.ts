@@ -41,7 +41,11 @@ Wire two calls:
 Then verify end to end: send one message through the app and confirm the
 user appears on the Users page of our Stash developer console. Memory
 builds from there — a curator compiles the uploads into the wikis
-nightly, or on demand from the console's Curator page.`;
+nightly, or on demand from the console's Curator page.
+
+This wires live traffic only. If our database already holds past
+conversations, tell me when you're done — the console's Prompts page has
+a separate Backfill prompt that uploads the history.`;
 
 export const BACKFILL_PROMPT = `Write and run a one-time backfill that uploads our existing conversation
 history into Stash (https://api.joinstash.ai), so our agent's memory starts
