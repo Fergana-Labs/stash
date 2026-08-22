@@ -9,6 +9,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { Select } from "@/components/ui/select";
 import { mintDeveloperKey } from "@/lib/api";
 
 /**
@@ -21,14 +22,14 @@ import { mintDeveloperKey } from "@/lib/api";
  * The dialog portals to <body>, outside the console's data-surface wrapper,
  * so it re-declares data-surface="developer" to keep the console's tokens.
  */
-// What the Expires select offers; 0 encodes "never" since a <select> wants
-// string values anyway.
+// What the Expires select offers; "0" encodes "never" since select values are
+// strings.
 const EXPIRY_OPTIONS = [
-  { days: 0, label: "Never" },
-  { days: 7, label: "7 days" },
-  { days: 30, label: "30 days" },
-  { days: 90, label: "90 days" },
-  { days: 365, label: "1 year" },
+  { value: "0", label: "Never" },
+  { value: "7", label: "7 days" },
+  { value: "30", label: "30 days" },
+  { value: "90", label: "90 days" },
+  { value: "365", label: "1 year" },
 ];
 
 export default function MintKeyDialog({ onMinted }: { onMinted: () => void }) {
@@ -151,18 +152,13 @@ export default function MintKeyDialog({ onMinted }: { onMinted: () => void }) {
               <label htmlFor="mint-key-expiry" className="text-[15px] font-medium text-foreground">
                 Expires
               </label>
-              <select
+              <Select
                 id="mint-key-expiry"
-                value={expiryDays}
-                onChange={(e) => setExpiryDays(Number(e.target.value))}
-                className="mt-2 w-full appearance-none rounded-lg border border-border bg-base px-4 py-3 text-[15px] text-foreground focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 focus:outline-none"
-              >
-                {EXPIRY_OPTIONS.map((option) => (
-                  <option key={option.days} value={option.days}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
+                value={String(expiryDays)}
+                onChange={(v) => setExpiryDays(Number(v))}
+                options={EXPIRY_OPTIONS}
+                className="mt-2 w-full rounded-lg px-4 py-3 text-[15px]"
+              />
             </div>
             {error && <p className="text-[13px] text-error">{error}</p>}
             <div className="flex justify-end">
