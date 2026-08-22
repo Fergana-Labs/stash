@@ -1,8 +1,8 @@
 from datetime import datetime
-from typing import Annotated, Literal
+from typing import Literal
 from uuid import UUID
 
-from pydantic import AfterValidator, BaseModel, Field
+from pydantic import BaseModel, Field
 
 # --- Users ---
 
@@ -520,31 +520,11 @@ class Attachment(BaseModel):
     content_type: str
 
 
-# Session ids are path parameters on /me/transcripts/{session_id}/... , so a
-# slash breaks those routes. The write would still succeed and the session
-# would still list, `find` and `grep` would still read it, and only `cat` on
-# its transcript would 404 — a failure you would discover months later, in a
-# subset of your data. Reject it at the door instead.
-SESSION_ID_HELP = (
-    "session_id must not contain '/' — it is a path parameter on the transcript "
-    "endpoints. Use another separator, e.g. 'acme:conv-1'."
-)
-
-
-def _reject_slash(value: str) -> str:
-    if "/" in value:
-        raise ValueError(SESSION_ID_HELP)
-    return value
-
-
-SessionId = Annotated[str, AfterValidator(_reject_slash)]
-
-
 class HistoryEventCreateRequest(BaseModel):
     agent_name: str = Field(..., min_length=1, max_length=64)
     event_type: str = Field(..., min_length=1, max_length=64)
     content: str = Field(..., min_length=1)
-    session_id: SessionId = Field(..., min_length=1, max_length=64)
+    session_id: str = Field(..., min_length=1, max_length=64)
     user_id: str | None = Field(
         None,
         max_length=128,

@@ -204,7 +204,9 @@ async def _resolve_readable_events(
     return None
 
 
-@router.get("/{session_id}")
+# session_id rides in the query, never the path: it is the developer's own
+# string and may contain anything, slashes included.
+@router.get("")
 async def get_transcript_metadata(
     session_id: str,
     current_user: dict = Depends(get_current_user),
@@ -236,7 +238,7 @@ async def get_transcript_metadata(
     }
 
 
-@router.get("/{session_id}/events")
+@router.get("/events")
 async def get_transcript_events(
     session_id: str,
     limit: int | None = None,
@@ -277,7 +279,7 @@ async def get_transcript_events(
     raise HTTPException(status_code=404, detail="Transcript not found")
 
 
-@router.get("/{session_id}/export.jsonl")
+@router.get("/export.jsonl")
 async def export_transcript_jsonl(
     session_id: str,
     current_user: dict = Depends(get_current_user),

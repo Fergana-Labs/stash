@@ -18,6 +18,7 @@ import asyncio
 import functools
 import threading
 from contextlib import contextmanager
+from urllib.parse import quote
 
 import anyio
 import anyio.to_thread
@@ -182,11 +183,11 @@ class InProcessVfsClient:
         )
 
     def get_transcript_events(self, session_id: str) -> list:
-        path = f"/api/v1/me/transcripts/{session_id}/events"
+        path = f"/api/v1/me/transcripts/events?session_id={quote(session_id, safe='')}"
         return self._read_document("GET", path).json()["events"]
 
     def export_transcript_jsonl(self, session_id: str) -> str:
-        path = f"/api/v1/me/transcripts/{session_id}/export.jsonl"
+        path = f"/api/v1/me/transcripts/export.jsonl?session_id={quote(session_id, safe='')}"
         return self._read_document("GET", path).text
 
     def get_table(self, table_id: str) -> dict:

@@ -8,6 +8,7 @@ session viewer can ship a Share button without involving the CLI.
 """
 
 import json
+from urllib.parse import quote
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
@@ -16,9 +17,7 @@ from pydantic import BaseModel, Field
 from ..auth import get_current_user, get_scope
 from ..config import settings
 from ..database import get_pool
-from ..models import SessionId
 from ..services import (
-    files_tree_service,
     linear_ticket_service,
     memory_service,
     permission_service,
@@ -26,24 +25,23 @@ from ..services import (
     session_service,
     session_title_service,
     storage_service,
-    user_scope_service,
 )
 
 router = APIRouter(prefix="/api/v1", tags=["sessions"])
 
+
 # Stable name for the auto-created folder that holds materialized sessions.
-SESSIONS_FOLDER_NAME = "Sessions"
-
-
 class SessionUpsertRequest(BaseModel):
-    session_id: SessionId = Field(..., min_length=1, max_length=128)
+    session_id: str = Field(..., min_length=1, max_length=128)
     agent_name: str = Field("", max_length=64)
     cwd: str | None = Field(None, max_length=1024)
     files_touched: list[str] = Field(default_factory=list)
 
 
 def _session_app_url(session_id: str) -> str:
-    return f"{settings.PUBLIC_URL.rstrip('/')}/sessions/{session_id}"
+    # Session ids are the developer's own strings — slashes included — so the
+    # deep link encodes the whole id into one path segment.
+    return f"{settings.PUBLIC_URL.rstrip('/')}/sessions/{quote(session_id, safe='')}"
 
 
 def _session_response(row: dict, title: str | None = None) -> dict:
@@ -255,7 +253,9 @@ async def _session_detail_payload(
     return payload
 
 
-@router.get("/sessions/{session_id}")
+# session_id rides in the query, never the path: it is the developer's own
+# string and may contain anything, slashes included.
+@router.get("/sessions/detail")
 async def get_session_canonical(
     session_id: str,
     current_user: dict = Depends(get_current_user),
@@ -273,7 +273,7 @@ async def get_session_canonical(
     raise HTTPException(status_code=404, detail="Session not found")
 
 
-@router.get("/me/sessions/{session_id}")
+@router.get("/me/sessions/detail")
 async def get_my_session(
     session_id: str,
     current_user: dict = Depends(get_current_user),
@@ -290,7 +290,7 @@ class SessionTitleRequest(BaseModel):
     title: str = Field(..., min_length=1, max_length=200)
 
 
-@router.patch("/me/sessions/{session_id}/title")
+@router.patch("/me/sessions/title")
 async def rename_my_session(
     session_id: str,
     body: SessionTitleRequest,
@@ -456,95 +456,3 @@ async def upload_session_artifact(
         len(content),
     )
     return dict(row)
-
-
-async def _find_or_create_sessions_folder(owner_user_id: UUID, user_id: UUID) -> dict:
-    return await files_tree_service.find_or_create_root_folder(
-        owner_user_id, SESSIONS_FOLDER_NAME, user_id
-    )
-
-
-def _format_session_markdown(events: list[dict]) -> str:
-    if not events:
-        return "_No events in this session._"
-    parts: list[str] = []
-    started_at = events[0]["created_at"]
-    parts.append(f"_Started {started_at.isoformat()}, {len(events)} events_\n")
-    for ev in events:
-        agent = ev["agent_name"] or "agent"
-        etype = ev["event_type"] or "event"
-        tool = ev["tool_name"]
-        header = f"### {agent} - {etype}"
-        if tool:
-            header += f" - `{tool}`"
-        parts.append(header)
-        content = (ev["content"] or "").strip()
-        if content:
-            parts.append(content)
-        parts.append("")
-    return "\n".join(parts)
-
-
-@router.post("/me/sessions/{session_id}/materialize")
-async def materialize_session(
-    session_id: str,
-    current_user: dict = Depends(get_current_user),
-    scope_user_id: UUID = Depends(get_scope),
-):
-    owner_user_id = scope_user_id
-    """Idempotent: turn a session_id into a page in the scope's
-    Sessions folder, returning the page so the frontend can open ShareSheet
-    on it. Re-materializing the same session updates the existing page rather
-    than spawning duplicates."""
-    if not await user_scope_service.can_write(owner_user_id, current_user["id"]):
-        raise HTTPException(status_code=403, detail="Only the owner can materialize sessions")
-    if not await memory_service.can_read_session(owner_user_id, session_id, current_user["id"]):
-        raise HTTPException(status_code=404, detail="No events for that session in this scope")
-
-    pool = get_pool()
-    events = await pool.fetch(
-        "SELECT agent_name, event_type, tool_name, content, created_at "
-        "FROM history_events WHERE session_id = $1 AND owner_user_id = $2 "
-        "ORDER BY created_at",
-        session_id,
-        owner_user_id,
-    )
-    if not events:
-        raise HTTPException(status_code=404, detail="No events for that session in this scope")
-
-    folder = await _find_or_create_sessions_folder(owner_user_id, current_user["id"])
-
-    agent = (events[0]["agent_name"] or "agent").strip() or "agent"
-    started = events[0]["created_at"]
-    date_str = started.strftime("%Y-%m-%d %H:%M")
-    short_id = session_id.removeprefix("session-").removeprefix("session_")[:6] or session_id[:6]
-    page_name = f"{agent} - {date_str} - {short_id}"
-    content = _format_session_markdown([dict(e) for e in events])
-
-    # Idempotency by metadata.session_id, not by name — that way we can change
-    # the display name format without orphaning previously-materialized pages.
-    existing = await pool.fetchrow(
-        "SELECT id FROM pages "
-        "WHERE owner_user_id = $1 AND folder_id = $2 AND metadata->>'session_id' = $3 "
-        "AND deleted_at IS NULL LIMIT 1",
-        owner_user_id,
-        folder["id"],
-        session_id,
-    )
-    if existing:
-        page = await files_tree_service.update_page(
-            existing["id"],
-            owner_user_id,
-            current_user["id"],
-            content=content,
-        )
-    else:
-        page = await files_tree_service.create_page(
-            owner_user_id=owner_user_id,
-            name=page_name,
-            content=content,
-            created_by=current_user["id"],
-            folder_id=folder["id"],
-            metadata={"session_id": session_id, "materialized": True},
-        )
-    return {"page": page, "folder_id": str(folder["id"])}

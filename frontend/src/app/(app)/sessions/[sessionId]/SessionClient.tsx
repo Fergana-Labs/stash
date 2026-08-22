@@ -184,9 +184,9 @@ export default function SessionViewerPage({ sessionId }: { sessionId: string }) 
             {
               label: "Download transcript (.jsonl)",
               onSelect: async () => {
-                const path = `/api/v1/me/transcripts/${encodeURIComponent(
+                const path = `/api/v1/me/transcripts/export.jsonl?session_id=${encodeURIComponent(
                   sessionId
-                )}/export.jsonl`;
+                )}`;
                 const res = await fetchAuthed(path);
                 if (!res.ok) return;
                 const blob = await res.blob();

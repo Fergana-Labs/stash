@@ -856,13 +856,16 @@ class StashClient:
         self._delete(f"/api/v1/me/sessions/{session_row_id}")
 
     def get_transcript_events(self, session_id: str) -> list:
-        data = self._get(f"/api/v1/me/transcripts/{session_id}/events")
+        # session_id is a query param, not a path segment — developers' ids may
+        # contain slashes.
+        data = self._get("/api/v1/me/transcripts/events", session_id=session_id)
         return data.get("events", []) if isinstance(data, dict) else data
 
     def export_transcript_jsonl(self, session_id: str) -> str:
         return self._request(
             "GET",
-            f"/api/v1/me/transcripts/{session_id}/export.jsonl",
+            "/api/v1/me/transcripts/export.jsonl",
+            params={"session_id": session_id},
         ).text
 
     def restore_session(self, session_row_id: str) -> None:

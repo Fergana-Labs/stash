@@ -1520,21 +1520,18 @@ export interface SessionDetail {
 }
 
 export async function getSessionDetail(sessionId: string): Promise<SessionDetail> {
-  return apiFetch(`/api/v1/sessions/${encodeURIComponent(sessionId)}`);
+  return apiFetch(`/api/v1/sessions/detail?session_id=${encodeURIComponent(sessionId)}`);
 }
 
 export async function renameSession(
   sessionId: string,
   title: string
 ): Promise<{ title: string }> {
-  return apiFetch(
-    `${ME}/sessions/${encodeURIComponent(sessionId)}/title`,
-    {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title }),
-    }
-  );
+  return apiFetch(`${ME}/sessions/title?session_id=${encodeURIComponent(sessionId)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title }),
+  });
 }
 
 export async function deleteSession(sessionRowId: string): Promise<void> {
@@ -1550,7 +1547,7 @@ export async function materializeSession(
   folderId: string
 ): Promise<Page> {
   return apiFetch(
-    `${ME}/sessions/${encodeURIComponent(sessionId)}/materialize`,
+    `${ME}/sessions/materialize?session_id=${encodeURIComponent(sessionId)}`,
     { method: "POST", body: JSON.stringify({ folder_id: folderId }) },
   );
 }
@@ -1988,8 +1985,10 @@ export interface SessionTranscript {
   download_url: string | null;
 }
 
+// session_id rides in the query, never the path — it is the developer's own
+// string and may contain anything, slashes included.
 export async function getTranscript(sessionId: string): Promise<SessionTranscript> {
-  return apiFetch(`${ME}/transcripts/${encodeURIComponent(sessionId)}`);
+  return apiFetch(`${ME}/transcripts?session_id=${encodeURIComponent(sessionId)}`);
 }
 
 export interface SessionEvent {
@@ -2012,11 +2011,9 @@ export async function getSessionEventsPage(
   limit = 100,
   offset = 0
 ): Promise<SessionEventsPage> {
-  const qs = new URLSearchParams({ limit: String(limit) });
+  const qs = new URLSearchParams({ session_id: sessionId, limit: String(limit) });
   if (offset) qs.set("offset", String(offset));
-  return apiFetch<SessionEventsPage>(
-    `${ME}/transcripts/${encodeURIComponent(sessionId)}/events?${qs}`
-  );
+  return apiFetch<SessionEventsPage>(`${ME}/transcripts/events?${qs}`);
 }
 
 // Drains every page. For consumers that search a whole session client-side;

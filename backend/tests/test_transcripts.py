@@ -82,14 +82,14 @@ async def test_upload_inserts_events_and_events_roundtrip(client: AsyncClient):
     assert payload["skipped"] is False
 
     meta = await client.get(
-        "/api/v1/me/transcripts/sess-1",
+        "/api/v1/me/transcripts?session_id=sess-1",
         headers=headers,
     )
     assert meta.status_code == 200
     assert meta.json()["event_count"] == 2
 
     events_resp = await client.get(
-        "/api/v1/me/transcripts/sess-1/events",
+        "/api/v1/me/transcripts/events?session_id=sess-1",
         headers=headers,
     )
     assert events_resp.status_code == 200
@@ -130,7 +130,9 @@ async def test_events_endpoint_without_limit_returns_whole_session(client: Async
     )
     assert up.status_code == 201, up.text
 
-    resp = await client.get("/api/v1/me/transcripts/sess-unpaged/events", headers=headers)
+    resp = await client.get(
+        "/api/v1/me/transcripts/events?session_id=sess-unpaged", headers=headers
+    )
     assert resp.status_code == 200
     payload = resp.json()
     assert payload["total"] == turns
@@ -169,7 +171,7 @@ async def test_events_endpoint_paginates(client: AsyncClient):
     assert up.status_code == 201, up.text
 
     first = await client.get(
-        "/api/v1/me/transcripts/sess-page/events",
+        "/api/v1/me/transcripts/events?session_id=sess-page",
         params={"limit": 2, "offset": 0},
         headers=headers,
     )
@@ -180,7 +182,7 @@ async def test_events_endpoint_paginates(client: AsyncClient):
     assert [e["content"] for e in page["events"]] == ["msg-0", "msg-1"]
 
     last = await client.get(
-        "/api/v1/me/transcripts/sess-page/events",
+        "/api/v1/me/transcripts/events?session_id=sess-page",
         params={"limit": 2, "offset": 4},
         headers=headers,
     )
@@ -246,7 +248,7 @@ async def test_empty_session_shell_is_hidden_from_default_views(client: AsyncCli
     assert my_sessions.json()["sessions"] == []
 
     detail = await client.get(
-        "/api/v1/me/sessions/empty-shell",
+        "/api/v1/me/sessions/detail?session_id=empty-shell",
         headers=headers,
     )
     assert detail.status_code == 200
@@ -316,7 +318,7 @@ async def test_replace_reimports_existing_session(client: AsyncClient):
     assert second.json()["imported"] == 1
 
     events_resp = await client.get(
-        "/api/v1/me/transcripts/sess-replace/events",
+        "/api/v1/me/transcripts/events?session_id=sess-replace",
         headers=headers,
     )
     assert events_resp.status_code == 200
@@ -445,7 +447,7 @@ URL: https://linear.app/ferganalabs/issue/FER-19/we-should-be-able-to-update-the
     ]
 
     detail = await client.get(
-        "/api/v1/me/sessions/sess-linear",
+        "/api/v1/me/sessions/detail?session_id=sess-linear",
         headers=headers,
     )
     assert detail.status_code == 200
@@ -529,7 +531,7 @@ async def test_session_detail_returns_files_touched_and_artifacts_list(client: A
     assert created.status_code == 201
 
     detail = await client.get(
-        "/api/v1/me/sessions/sess-files",
+        "/api/v1/me/sessions/detail?session_id=sess-files",
         headers=headers,
     )
     assert detail.status_code == 200
@@ -726,7 +728,7 @@ async def test_transcript_viewer_includes_streamed_legacy_event_types(client: As
     assert pushed.status_code == 201
 
     events_resp = await client.get(
-        "/api/v1/me/transcripts/sess-streamed/events",
+        "/api/v1/me/transcripts/events?session_id=sess-streamed",
         headers=headers,
     )
     assert events_resp.status_code == 200
@@ -799,7 +801,7 @@ async def test_viewer_cannot_mutate_existing_session_artifacts_or_materialized_p
     )
     assert folder_resp.status_code == 201
     materialize_resp = await client.post(
-        "/api/v1/me/sessions/owner-session/materialize",
+        "/api/v1/me/sessions/materialize?session_id=owner-session",
         json={"folder_id": folder_resp.json()["id"]},
         headers=viewer_headers,
     )

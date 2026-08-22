@@ -52,7 +52,4 @@ the lesson without learning that Acme exists.
 A session belongs to one customer. Namespace the ids your app sends —
 `acme:conv-1`, not `conv-1` — or the second customer to use an id is refused
 with a 400 rather than being filed into the first customer's transcript.
-
-Do not use `/` as the separator. Session ids are path parameters on the
-transcript endpoints, so an id containing a slash reads fine through `find`
-and `grep` but 404s under `cat`.
+Any characters work, slashes included.

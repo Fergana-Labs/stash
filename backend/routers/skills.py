@@ -402,7 +402,7 @@ class MaterializeSessionRequest(BaseModel):
 
 
 @me_router.post(
-    "/sessions/{session_id}/materialize",
+    "/sessions/materialize",
     response_model=PageResponse,
     status_code=201,
 )

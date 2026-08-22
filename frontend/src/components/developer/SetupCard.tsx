@@ -46,8 +46,7 @@ export default function SetupCard() {
           Session ids are yours to choose, and must be unique across all of your users —
           two users sending <Code>conv-1</Code> is refused, rather than filing one
           user&apos;s turn inside the other&apos;s transcript. Prefix them with the
-          user, and not with <Code>/</Code>: a slash makes the transcript unreadable,
-          since the id is a path parameter on those endpoints.
+          user.
         </p>
         <div className="mt-5">
           <CodeBlock>{WRITE}</CodeBlock>

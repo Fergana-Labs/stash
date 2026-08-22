@@ -45,7 +45,7 @@ upload it:
      "content": "...", "session_id": "<user>:<conversation>",
      "user_id": "<user>", "user_name": "<display name>"}]}
    session_id is ours to choose but must be unique across ALL our users
-   — prefix it with the user id — and must not contain "/".
+   — prefix it with the user id.
 
 Step 3 — BACKFILL what we already have. Find where our database stores
 past conversations and upload them through the same batch endpoint, one
@@ -87,7 +87,7 @@ Steps:
    "created_at": "<the turn's ORIGINAL timestamp, ISO 8601>"}]}.
 3. Rules that matter:
    - session_id must be unique across ALL our users — prefix it with the
-     user id, and never put "/" in it.
+     user id.
    - Keep original timestamps so transcripts read in order; batch a few
      hundred events per request; skip empty content.
    - Re-running a session's upload appends duplicates — record progress

@@ -110,7 +110,9 @@ async def test_user_resolves_session_by_external_id_alone(client: AsyncClient):
     owner_user_id = await _scope_id(client, api_key)
     session_id = await _create_session(client, api_key, owner_user_id)
 
-    resp = await client.get(f"/api/v1/sessions/{session_id}", headers=_auth(api_key))
+    resp = await client.get(
+        f"/api/v1/sessions/detail?session_id={session_id}", headers=_auth(api_key)
+    )
 
     assert resp.status_code == 200
     assert resp.json()["session_id"] == session_id
@@ -139,7 +141,9 @@ async def test_session_id_in_two_scopes_resolves_to_readable_one(client: AsyncCl
         )
         assert resp.status_code == 201
 
-    resp = await client.get(f"/api/v1/sessions/{session_id}", headers=_auth(owner_a))
+    resp = await client.get(
+        f"/api/v1/sessions/detail?session_id={session_id}", headers=_auth(owner_a)
+    )
 
     assert resp.status_code == 200
     assert resp.json()["owner_user_id"] == scope_a
@@ -152,7 +156,9 @@ async def test_non_owner_session_lookup_is_404(client: AsyncClient):
     session_id = await _create_session(client, owner_key, owner_user_id)
     outsider_key = await _register(client)
 
-    resp = await client.get(f"/api/v1/sessions/{session_id}", headers=_auth(outsider_key))
+    resp = await client.get(
+        f"/api/v1/sessions/detail?session_id={session_id}", headers=_auth(outsider_key)
+    )
 
     assert resp.status_code == 404
 
@@ -165,5 +171,7 @@ async def test_unknown_ids_get_404(client: AsyncClient):
         resp = await client.get(path, headers=_auth(api_key))
         assert resp.status_code == 404
 
-    resp = await client.get("/api/v1/sessions/never-existed", headers=_auth(api_key))
+    resp = await client.get(
+        "/api/v1/sessions/detail?session_id=never-existed", headers=_auth(api_key)
+    )
     assert resp.status_code == 404
