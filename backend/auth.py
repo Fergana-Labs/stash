@@ -1,6 +1,7 @@
 import hashlib
 import secrets
 import time
+from datetime import UTC, datetime
 from uuid import UUID
 
 import bcrypt
@@ -69,9 +70,14 @@ def hash_api_key(key: str) -> str:
 
 
 async def create_api_key(
-    user_id, name: str = "default", key_type: str = "manual", access: str = "full"
+    user_id,
+    name: str = "default",
+    key_type: str = "manual",
+    access: str = "full",
+    expires_at=None,
 ) -> str:
-    """Mint a new API key for the user and persist its hash. Returns the raw key."""
+    """Mint a new API key for the user and persist its hash. Returns the raw
+    key. `expires_at` None means the key never expires."""
     if key_type not in API_KEY_TYPES:
         raise ValueError(f"unknown API key type: {key_type}")
     if access not in API_KEY_ACCESS_LEVELS:
@@ -81,8 +87,8 @@ async def create_api_key(
     api_key = generate_api_key()
     await pool.execute(
         "INSERT INTO user_api_keys "
-        "(user_id, key_hash, name, key_type, access, key_prefix, key_suffix) "
-        "VALUES ($1, $2, $3, $4, $5, $6, $7)",
+        "(user_id, key_hash, name, key_type, access, key_prefix, key_suffix, expires_at) "
+        "VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
         user_id,
         hash_api_key(api_key),
         name[:128],
@@ -92,6 +98,7 @@ async def create_api_key(
         # table, far too little to reconstruct it.
         api_key[:8],
         api_key[-4:],
+        expires_at,
     )
     return api_key
 
@@ -116,7 +123,7 @@ async def _get_user_from_api_key(token: str, *, managed_auth_enabled: bool) -> d
         "SELECT u.id, u.name, u.display_name, u.email, u.description, "
         "       u.created_at, u.last_seen, u.role, u.referral_source, u.use_case, "
         "       u.plan, u.plan_intent, "
-        "       k.id AS key_id, k.key_type, k.access AS key_access "
+        "       k.id AS key_id, k.key_type, k.access AS key_access, k.expires_at "
         "FROM user_api_keys k JOIN users u ON u.id = k.user_id "
         "WHERE k.key_hash = $1 AND k.revoked_at IS NULL",
         key_hash,
@@ -124,6 +131,11 @@ async def _get_user_from_api_key(token: str, *, managed_auth_enabled: bool) -> d
     if not row:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key")
     user = dict(row)
+    # Checked here, not in the WHERE clause, so an expired key says so
+    # instead of looking deleted.
+    expires_at = user.pop("expires_at")
+    if expires_at is not None and expires_at <= datetime.now(UTC):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="API key expired")
     if managed_auth_enabled and user["key_type"] not in ("cli", "manual", "machine"):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

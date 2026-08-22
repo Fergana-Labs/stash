@@ -504,6 +504,39 @@ async def test_backfill_clears_watermark_and_dispatches(client: AsyncClient, mon
     assert resp.json()["curator"]["curated_through"] is None
 
 
+@pytest.mark.asyncio
+async def test_key_expiry(client: AsyncClient, pool):
+    """A key minted with expires_in_days works until the stamp passes, then is
+    refused with "expired" — not "invalid": the developer debugging a dead
+    integration must learn the key aged out, not think it was deleted."""
+    api_key, _, workspace = await _developer(client)
+    scope = {**_auth(api_key), "X-Stash-Scope": workspace["scope_user_id"]}
+
+    resp = await client.post(
+        "/api/v1/me/developer/keys",
+        json={"name": "short-lived", "access": "read", "expires_in_days": 7},
+        headers=scope,
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["expires_at"] is not None
+    minted = resp.json()["api_key"]
+
+    listed = (await client.get("/api/v1/me/developer/keys", headers=scope)).json()["keys"]
+    assert listed[0]["name"] == "short-lived"
+    assert listed[0]["expires_at"] is not None
+
+    ok = await client.post("/api/v1/me/vfs", json={"script": "ls /"}, headers=_auth(minted))
+    assert ok.status_code == 200, ok.text
+
+    await pool.execute(
+        "UPDATE user_api_keys SET expires_at = now() - interval '1 minute' WHERE id = $1",
+        uuid.UUID(listed[0]["id"]),
+    )
+    denied = await client.post("/api/v1/me/vfs", json={"script": "ls /"}, headers=_auth(minted))
+    assert denied.status_code == 401
+    assert "expired" in denied.json()["detail"]
+
+
 async def test_key_list_and_revoke(client: AsyncClient, pool):
     api_key, _, workspace = await _developer(client)
     scope = {**_auth(api_key), "X-Stash-Scope": workspace["scope_user_id"]}

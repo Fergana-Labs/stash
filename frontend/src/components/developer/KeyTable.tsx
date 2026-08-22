@@ -9,6 +9,10 @@ function when(iso: string | null): string {
   return iso ? new Date(iso).toLocaleDateString() : "never";
 }
 
+function expired(iso: string): boolean {
+  return new Date(iso) <= new Date();
+}
+
 /**
  * The workspace's active keys — name, access, age, last use, revoke. Key
  * material never appears here: a key is shown once, at mint time. `refresh`
@@ -71,6 +75,14 @@ export default function KeyTable({ refresh }: { refresh: number }) {
             <span className="mt-0.5 block truncate font-mono text-[12px] text-muted-foreground">
               {key.key_prefix ? `${key.key_prefix}…${key.key_suffix} · ` : ""}
               created {when(key.created_at)} · last used {when(key.last_used_at)}
+              {key.expires_at && (
+                <>
+                  {" · "}
+                  <span className={expired(key.expires_at) ? "text-error" : undefined}>
+                    {expired(key.expires_at) ? "expired" : "expires"} {when(key.expires_at)}
+                  </span>
+                </>
+              )}
             </span>
           </span>
           <span

@@ -229,6 +229,8 @@ export type DeveloperKey = {
   /** First/last characters of the key, for recognition. Null on keys minted before fragments were stored. */
   key_prefix: string | null;
   key_suffix: string | null;
+  /** Null = never expires. An expired key is refused at auth time but still listed. */
+  expires_at: string | null;
 };
 
 // Names and usage only — key material is shown once, at mint time.
@@ -243,11 +245,12 @@ export async function revokeDeveloperKey(id: string): Promise<{ revoked: boolean
 
 export async function mintDeveloperKey(
   name: string,
+  expiresInDays: number | null,
   access: "read" | "full" = "read",
-): Promise<{ api_key: string; access: string }> {
+): Promise<{ api_key: string; access: string; expires_at: string | null }> {
   return apiFetch(`${ME}/developer/keys`, {
     method: "POST",
-    body: JSON.stringify({ name, access }),
+    body: JSON.stringify({ name, access, expires_in_days: expiresInDays }),
   });
 }
 

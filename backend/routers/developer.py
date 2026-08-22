@@ -8,6 +8,7 @@ every other surface: the console sends X-Stash-Scope with the workspace's
 scope user id.
 """
 
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -34,6 +35,9 @@ class ActivateRequest(BaseModel):
 class DeveloperKeyRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=128)
     access: str = "read"
+    # None = the key never expires. Days rather than a timestamp so the
+    # server's clock is the only clock involved.
+    expires_in_days: int | None = Field(None, ge=1, le=3650)
 
 
 class EndUserUpdateRequest(BaseModel):
@@ -93,8 +97,18 @@ async def mint_developer_key(
     if req.access not in API_KEY_ACCESS_LEVELS:
         raise HTTPException(status_code=400, detail=f"unknown access level: {req.access}")
     workspace = await _require_active_workspace(scope_user_id)
-    key = await create_api_key(scope_user_id, name=req.name, key_type="machine", access=req.access)
-    return {"workspace_id": str(workspace["id"]), "api_key": key, "access": req.access}
+    expires_at = (
+        datetime.now(UTC) + timedelta(days=req.expires_in_days) if req.expires_in_days else None
+    )
+    key = await create_api_key(
+        scope_user_id, name=req.name, key_type="machine", access=req.access, expires_at=expires_at
+    )
+    return {
+        "workspace_id": str(workspace["id"]),
+        "api_key": key,
+        "access": req.access,
+        "expires_at": expires_at.isoformat() if expires_at else None,
+    }
 
 
 @router.get("/keys")
@@ -103,7 +117,7 @@ async def list_developer_keys(scope_user_id: UUID = Depends(get_scope)):
     is never returned; a key is shown once, at mint time."""
     await _require_active_workspace(scope_user_id)
     rows = await get_pool().fetch(
-        "SELECT id, name, access, created_at, last_used_at, key_prefix, key_suffix "
+        "SELECT id, name, access, created_at, last_used_at, key_prefix, key_suffix, expires_at "
         "FROM user_api_keys "
         "WHERE user_id = $1 AND key_type = 'machine' AND revoked_at IS NULL "
         "ORDER BY created_at DESC",

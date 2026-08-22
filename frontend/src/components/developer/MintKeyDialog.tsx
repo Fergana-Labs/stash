@@ -21,11 +21,23 @@ import { mintDeveloperKey } from "@/lib/api";
  * The dialog portals to <body>, outside the console's data-surface wrapper,
  * so it re-declares data-surface="developer" to keep the console's tokens.
  */
+// What the Expires select offers; 0 encodes "never" since a <select> wants
+// string values anyway.
+const EXPIRY_OPTIONS = [
+  { days: 0, label: "Never" },
+  { days: 7, label: "7 days" },
+  { days: 30, label: "30 days" },
+  { days: 90, label: "90 days" },
+  { days: 365, label: "1 year" },
+];
+
 export default function MintKeyDialog({ onMinted }: { onMinted: () => void }) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
+  const [expiryDays, setExpiryDays] = useState(0);
   const [minting, setMinting] = useState(false);
   const [minted, setMinted] = useState<string | null>(null);
+  const [expiresAt, setExpiresAt] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -33,7 +45,9 @@ export default function MintKeyDialog({ onMinted }: { onMinted: () => void }) {
     setOpen(nextOpen);
     if (nextOpen) {
       setName("");
+      setExpiryDays(0);
       setMinted(null);
+      setExpiresAt(null);
       setCopied(false);
       setError(null);
     }
@@ -44,8 +58,9 @@ export default function MintKeyDialog({ onMinted }: { onMinted: () => void }) {
     setMinting(true);
     setError(null);
     try {
-      const res = await mintDeveloperKey(name.trim());
+      const res = await mintDeveloperKey(name.trim(), expiryDays || null);
       setMinted(res.api_key);
+      setExpiresAt(res.expires_at);
       onMinted();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not mint a key");
@@ -79,6 +94,13 @@ export default function MintKeyDialog({ onMinted }: { onMinted: () => void }) {
               Save your API key
             </DialogTitle>
             <p className="text-[15px] leading-7 text-muted-foreground">
+              {expiresAt && (
+                <>
+                  This key expires on{" "}
+                  <span className="font-medium text-foreground">{formatExpiry(expiresAt)}</span>
+                  .{" "}
+                </>
+              )}
               Keep a record of the key below.{" "}
               <span className="font-medium text-foreground">
                 You won&apos;t be able to view it again.
@@ -125,6 +147,23 @@ export default function MintKeyDialog({ onMinted }: { onMinted: () => void }) {
                 Reads the knowledge base and records sessions — never deletes or rewrites.
               </p>
             </div>
+            <div>
+              <label htmlFor="mint-key-expiry" className="text-[15px] font-medium text-foreground">
+                Expires
+              </label>
+              <select
+                id="mint-key-expiry"
+                value={expiryDays}
+                onChange={(e) => setExpiryDays(Number(e.target.value))}
+                className="mt-2 w-full appearance-none rounded-lg border border-border bg-base px-4 py-3 text-[15px] text-foreground focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 focus:outline-none"
+              >
+                {EXPIRY_OPTIONS.map((option) => (
+                  <option key={option.days} value={option.days}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
             {error && <p className="text-[13px] text-error">{error}</p>}
             <div className="flex justify-end">
               <button
@@ -140,4 +179,15 @@ export default function MintKeyDialog({ onMinted }: { onMinted: () => void }) {
       </DialogContent>
     </Dialog>
   );
+}
+
+function formatExpiry(iso: string): string {
+  return new Date(iso).toLocaleString(undefined, {
+    weekday: "short",
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }
