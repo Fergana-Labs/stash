@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { BookOpen, TerminalSquare, Users } from "lucide-react";
 
+import { StashIcon } from "@/components/SkillIcons";
 import { activateDeveloperPlatform, listMyWorkspaces } from "@/lib/api";
 import { getScope, setScope } from "@/lib/scope-store";
 import type { Workspace } from "@/lib/types";
@@ -67,26 +69,41 @@ export default function DeveloperGate({ children }: { children: React.ReactNode 
   }
 
   const active = workspaces.filter((w) => w.external_wiki_folder_id !== null);
+  // A full-viewport takeover, deliberately outside the app chrome: entering
+  // the platform is a doorway into the console's own world, and the gate
+  // already wears that world's surface tokens.
   return (
-    <div className="flex min-h-[70vh] items-center justify-center">
-      <div className="w-full max-w-lg">
-        <div className="rounded-xl border border-border bg-surface p-8 shadow-sm">
-          <p className="font-mono text-[11px] font-medium uppercase tracking-[0.18em] text-brand-600">
+    <div data-surface="developer" className="fixed inset-0 z-50 overflow-y-auto bg-base">
+      <div className="flex items-center justify-between px-6 py-5 sm:px-10">
+        <div className="flex items-center gap-3">
+          <StashIcon className="h-6 w-6" />
+          <span className="font-mono text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
             Developer Platform
-          </p>
-          <h1 className="mt-2 text-[24px] font-semibold leading-8 text-foreground">
+          </span>
+        </div>
+        <Link
+          href="/"
+          className="text-[13.5px] text-muted-foreground transition-colors hover:text-foreground"
+        >
+          ← Back to Stash
+        </Link>
+      </div>
+
+      <div className="flex min-h-[calc(100vh-140px)] items-center justify-center px-6 py-10">
+        <div className="w-full max-w-xl">
+          <h1 className="text-[34px] font-semibold leading-[1.15] tracking-tight text-foreground text-balance">
             Run Stash for your product&apos;s users
           </h1>
-          <p className="mt-3 text-[14.5px] leading-6 text-muted-foreground">
+          <p className="mt-4 max-w-lg text-[16px] leading-7 text-dim">
             Each of your users — a company or one person — gets memory of their own, and
             your agents share what they learn.
           </p>
 
-          <ul className="mt-7 space-y-4">
+          <ul className="mt-10 space-y-5">
             <Feature icon={Users} title="Per-user memory">
               Every user gets a private wiki only their agent reads — one field,{" "}
-              <code className="rounded bg-base px-1 font-mono text-[12px]">user_id</code>, is
-              the isolation boundary.
+              <code className="rounded bg-raised px-1 font-mono text-[12.5px]">user_id</code>,
+              is the isolation boundary.
             </Feature>
             <Feature icon={BookOpen} title="One shared brain">
               A curator distills every user&apos;s sessions into a single anonymized wiki
@@ -99,12 +116,12 @@ export default function DeveloperGate({ children }: { children: React.ReactNode 
           </ul>
 
           {active.length > 0 && (
-            <div className="mt-8 overflow-hidden rounded-lg border border-border">
+            <div className="mt-10 overflow-hidden rounded-lg border border-border bg-surface">
               {active.map((w) => (
                 <button
                   key={w.id}
                   onClick={() => enter(w)}
-                  className="flex w-full items-center gap-3 border-b border-border px-4 py-3 text-left text-[14px] transition-colors last:border-b-0 hover:bg-raised"
+                  className="flex w-full items-center gap-3 border-b border-border px-5 py-3.5 text-left text-[14.5px] transition-colors last:border-b-0 hover:bg-raised"
                 >
                   <span className="font-medium text-foreground">{w.name}</span>
                   <span className="ml-auto text-[13px] text-muted-foreground">Enter →</span>
@@ -116,7 +133,7 @@ export default function DeveloperGate({ children }: { children: React.ReactNode 
           <button
             onClick={activate}
             disabled={activating}
-            className="mt-8 w-full rounded-lg bg-brand-500 px-4 py-2.5 text-[14px] font-medium text-white transition-colors hover:bg-brand-600 disabled:opacity-50"
+            className="mt-10 w-full rounded-lg bg-brand-500 px-5 py-3 text-[15px] font-medium text-white transition-colors hover:bg-brand-600 disabled:opacity-50 sm:w-auto sm:px-8"
           >
             {activating
               ? "Setting up…"
