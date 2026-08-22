@@ -126,6 +126,29 @@ def upgrade() -> None:
         """
     )
 
+    # Refuse to drop what the loops above could not convert. A keyed folder
+    # whose owner has no workspace (e.g. folders on a plain account rather
+    # than a workspace scope) would lose its per-customer grouping silently —
+    # a failing deploy is recoverable, silently deleted organization is not.
+    op.execute(
+        """
+        DO $$
+        DECLARE stranded int;
+        BEGIN
+            SELECT count(*) INTO stranded
+            FROM session_folders sf
+            WHERE sf.external_key IS NOT NULL
+              AND NOT EXISTS (
+                  SELECT 1 FROM workspaces w WHERE w.scope_user_id = sf.owner_user_id
+              );
+            IF stranded > 0 THEN
+                RAISE EXCEPTION
+                    '0190: % keyed session folder(s) belong to owners with no workspace and would be dropped unconverted — migrate those accounts onto workspaces first',
+                    stranded;
+            END IF;
+        END $$;
+        """
+    )
     op.execute("DELETE FROM shares WHERE object_type = 'session_folder'")
     op.execute("ALTER TABLE sessions DROP COLUMN session_folder_id")
     op.execute("DROP TABLE session_folders")
