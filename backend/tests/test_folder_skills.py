@@ -239,7 +239,7 @@ async def test_materialize_session_creates_transcript_page_in_folder(client: Asy
     await _page(client, api_key, scope, "SKILL.md", folder_id=skill_folder)
 
     materialized = await client.post(
-        "/api/v1/me/sessions/mat-sess-1/materialize",
+        "/api/v1/me/sessions/materialize?session_id=mat-sess-1",
         json={"folder_id": skill_folder},
         headers=_auth(api_key),
     )
@@ -258,7 +258,7 @@ async def test_materialize_unknown_session_404(client: AsyncClient):
     folder = await _folder(client, api_key, scope, "empty-skill")
 
     resp = await client.post(
-        "/api/v1/me/sessions/no-such-session/materialize",
+        "/api/v1/me/sessions/materialize?session_id=no-such-session",
         json={"folder_id": folder},
         headers=_auth(api_key),
     )

@@ -198,7 +198,7 @@ Use the `stash` CLI for everything — every subcommand supports `--json`.
   through what you were shown) — curate what's present, don't try to page.
 - Each history event carries its session's `folder`. Folder placement is the
   owner's deliberate curation signal: sessions filed into a named folder share
-  a context (a customer, an org, a project) — attribute what you learn to that
+  a context (a customer, a team, a project) — attribute what you learn to that
   context rather than generalizing it. A folder whose name marks it as
   global/approved (e.g. "Global — approved for learning") holds traces an
   expert has sanctioned: treat those as trustworthy, general knowledge and
@@ -216,7 +216,7 @@ Use the `stash` CLI for everything — every subcommand supports `--json`.
   Never rewrite old entries; this is the permanent record of what each run did.
 - **Categories** are subfolders of Memory; every other page lives in exactly
   one category.
-- Two page kinds inside categories: **entity pages** (a person, org, tool,
+- Two page kinds inside categories: **entity pages** (a person, company, tool,
   product, project — reused across sources) and **concept pages** (an idea,
   decision, or theme synthesized across sources). Reuse an entity by linking
   to its page, never by duplicating its facts.
@@ -303,6 +303,112 @@ action, appended as before. The log entry distills; the Log page accounts.
 Cover every changed page and new file in the delta there — anything you
 chose not to represent gets a `skipped` line with a one-line reason,
 never a silent drop.
+
+Begin now.
+"""
+
+
+# ---------------------------------------------------------------------------
+# External Multiplayer curator (developer workspaces: cross-user wiki + notepads)
+# ---------------------------------------------------------------------------
+
+
+def render_external_curator_prompt(
+    wiki_folder_id: str, end_users: list[dict], since: str | None
+) -> str:
+    """The curation instruction for a developer workspace's curator.
+
+    A developer workspace serves many end users — one user of the developer's
+    product each, whether that is a repair shop or one person. This prompt
+    compiles the same delta feed into two artifacts with opposite privacy
+    rules: a per-user notepad (non-anonymized, one folder per user) and the
+    shared external wiki (cross-user, anonymized — user identities never
+    appear). Users opt out of the wiki with share_wiki=false; their material
+    still feeds their own notepad.
+    """
+    window = (
+        f"the changes since {since}"
+        if since
+        else "the full history (this is the first run — bootstrap both artifacts)"
+    )
+    changes_cmd = f"stash changes --since {since} --json" if since else "stash changes --json"
+    user_lines = "\n".join(
+        f"- `{end_user['name']}` — notepad folder id `{end_user['notepad_folder_id']}`"
+        + ("" if end_user["share_wiki"] else " — **opted out of the shared wiki**")
+        for end_user in end_users
+    )
+    return f"""# Sleep Time Compute — External Multiplayer Curation
+
+This Stash is a developer workspace: its owner ships an agent product, and
+each end **user** of it is a company, or one person. You compile
+{window} into two
+artifacts with opposite privacy rules:
+
+1. **Per-user notepads** — one folder per user (ids below). Non-anonymized
+   working memory for that user alone: their machines, their part numbers,
+   their people, their history. Detail is the point.
+2. **The shared external wiki** (folder id `{wiki_folder_id}`) — general
+   knowledge distilled ACROSS users, read by every user's agent. User identity
+   must never appear here: no user names, no customer names, no people, no
+   identifiable specifics (a one-of-a-kind machine identifies its owner).
+   Cite anonymously: "a peer user found...". When in doubt whether a detail
+   identifies a user, it goes in the notepad, not the wiki.
+
+## The users
+{user_lines}
+
+## Read the inputs
+- `{changes_cmd}` — the delta. Each history event carries its session's
+  `user` (name) and `user_share_wiki`. Events with no user are the developer's
+  own activity — wiki-eligible, never notepad material.
+- `history_has_more: true` means the feed overflowed this run's cap; curate
+  what's present, the remainder is queued for your next run.
+- `stash ls /files --json` and `stash files read-page <page_id>` to inspect
+  what's already written.
+
+## Routing rules (hard)
+- Every user's material feeds THAT user's notepad, never another user's.
+- Only events from users WITHOUT the opt-out marker may inform the wiki.
+  Opted-out users' material goes in their notepad and stops there.
+- The wiki gets the anonymized general lesson; the notepad gets the specifics.
+  One event routinely produces both: "User X's Cascadia needed part P for
+  fault F" → notepad line for user X verbatim; wiki page on fault F → part P
+  with no mention of X.
+- Files in the delta already inside the wiki folder are developer-curated
+  raw material for the wiki — fold them in like any source, they are already
+  cleared for cross-user use.
+
+## Write
+- Create a page: `stash files add-page "<Title>" --folder <folder_id> --content "<markdown>" --json`
+- Update a page: `stash files edit-page <page_id> --content "<markdown>"`
+- Create structure: `stash files create-folder "<Name>" --parent <folder_id> --json`
+- The wiki keeps a root `Wiki Index` page cataloging every page with a
+  one-line summary, and an append-only `Log` page:
+  `- [YYYY-MM-DD] created|updated|merged|skipped <page> — <detail>` per action.
+- There is exactly ONE `Wiki Index` and ONE `Log` in the whole wiki. Find and
+  edit the existing pages (`stash ls`); creating a second of either is always
+  wrong, even on a bootstrap run over history that already has them.
+- Each notepad is a small set of topic pages plus a `Notes` page for
+  everything else — notepads are working memory, not wikis: favor updating
+  one page over minting many.
+
+## Ingest principles
+- Maintain, don't regenerate. Scope by diff, not by corpus.
+- Prefer updating to creating; merge aggressively — two pages on one topic
+  is always wrong.
+- Resolve contradictions explicitly with a dated `## Updates` entry.
+- Never delete. Deprecate by rewriting into a redirect stub.
+
+## Anonymization lint (end of every run)
+Re-read every wiki page you touched and strip anything that identifies a
+user: names, unique identifiers, one-of-a-kind configurations, quotes long
+enough to be recognizable. Record each strip as a `lint` line in `Log`.
+This pass is the privacy guarantee — never skip it.
+
+## Curator log (your final message)
+ONE sentence distilling what the new material taught across users — the
+learning, not the mechanics, with no user named. A quiet night is reported
+as quiet: "Nothing new worth recording." is a complete entry.
 
 Begin now.
 """

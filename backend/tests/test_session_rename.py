@@ -43,7 +43,7 @@ async def test_rename_session_persists_title(client: AsyncClient, pool):
     scope, _session = await _make_scope_with_session(client, api_key, "sess-rename-1")
 
     resp = await client.patch(
-        "/api/v1/me/sessions/sess-rename-1/title",
+        "/api/v1/me/sessions/title?session_id=sess-rename-1",
         json={"title": "  Investigate flaky auth test  "},
         headers=_auth(api_key),
     )
@@ -51,7 +51,7 @@ async def test_rename_session_persists_title(client: AsyncClient, pool):
     assert resp.json() == {"title": "Investigate flaky auth test"}
 
     get_resp = await client.get(
-        "/api/v1/me/sessions/sess-rename-1",
+        "/api/v1/me/sessions/detail?session_id=sess-rename-1",
         headers=_auth(api_key),
     )
     assert get_resp.status_code == 200
@@ -74,7 +74,7 @@ async def test_rename_session_truncates_overlong_title(client: AsyncClient, pool
 
     long_title = "a" * 200
     resp = await client.patch(
-        "/api/v1/me/sessions/sess-rename-2/title",
+        "/api/v1/me/sessions/title?session_id=sess-rename-2",
         json={"title": long_title},
         headers=_auth(api_key),
     )
@@ -92,7 +92,7 @@ async def test_rename_session_stores_title_verbatim(client: AsyncClient):
     _scope, _session = await _make_scope_with_session(client, api_key, "sess-rename-7")
 
     resp = await client.patch(
-        "/api/v1/me/sessions/sess-rename-7/title",
+        "/api/v1/me/sessions/title?session_id=sess-rename-7",
         json={"title": 'Ship the "fast" path for Bob\'s `deals`'},
         headers=_auth(api_key),
     )
@@ -106,7 +106,7 @@ async def test_rename_session_rejects_empty_title(client: AsyncClient):
     _scope, _session = await _make_scope_with_session(client, api_key, "sess-rename-3")
 
     resp = await client.patch(
-        "/api/v1/me/sessions/sess-rename-3/title",
+        "/api/v1/me/sessions/title?session_id=sess-rename-3",
         json={"title": "   "},
         headers=_auth(api_key),
     )
@@ -121,7 +121,7 @@ async def test_rename_session_rejects_unknown_session(client: AsyncClient):
     _scope, _session = await _make_scope_with_session(client, api_key, "sess-rename-4")
 
     resp = await client.patch(
-        "/api/v1/me/sessions/does-not-exist/title",
+        "/api/v1/me/sessions/title?session_id=does-not-exist",
         json={"title": "noop"},
         headers=_auth(api_key),
     )
@@ -135,7 +135,7 @@ async def test_rename_session_blocks_non_owner(client: AsyncClient):
 
     outsider_key, _outsider = await _register(client)
     resp = await client.patch(
-        "/api/v1/me/sessions/sess-rename-5/title",
+        "/api/v1/me/sessions/title?session_id=sess-rename-5",
         json={"title": "should not stick"},
         headers=_auth(outsider_key),
     )
@@ -162,7 +162,7 @@ async def test_user_set_title_survives_auto_regeneration(client: AsyncClient, po
     )
 
     rename_resp = await client.patch(
-        "/api/v1/me/sessions/sess-rename-6/title",
+        "/api/v1/me/sessions/title?session_id=sess-rename-6",
         json={"title": "User wrote this"},
         headers=_auth(api_key),
     )

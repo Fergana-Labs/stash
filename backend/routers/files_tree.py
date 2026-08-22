@@ -31,6 +31,7 @@ from ..models import (
 )
 from ..services import (
     comment_service,
+    end_user_service,
     files_tree_service,
     page_events,
     permission_service,
@@ -601,6 +602,12 @@ async def create_page(
             current_user["id"],
             require="write",
         )
+    end_user = None
+    if req.user_id is not None:
+        try:
+            end_user = await end_user_service.resolve_end_user_for_scope(owner_user_id, req.user_id)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
     page = await files_tree_service.create_page_unique(
         owner_user_id,
         req.name,
@@ -610,6 +617,7 @@ async def create_page(
         content_type=req.content_type,
         content_html=req.content_html,
         html_layout=req.html_layout,
+        end_user_id=end_user["id"] if end_user else None,
     )
     # The creator just wrote it; the response must not demote the editor.
     return PageResponse(**{**page, "can_write": True})

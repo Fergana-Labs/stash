@@ -212,3 +212,39 @@ async def test_batch_events_honor_session_folder_id(client: AsyncClient, pool):
         "SELECT session_folder_id FROM sessions WHERE session_id = 'conv-folder-test'"
     )
     assert str(stored) == folder_id
+
+
+async def test_session_listing_names_the_folder(client: AsyncClient, _db_pool):
+    """Folders have no UI of their own anymore — the read-only Folder column
+    on the sessions list is the only place a human can still see where an
+    installed client filed a session. The listing must carry the name."""
+    key = await _register(client, "goc-listing")
+
+    folder = await client.post(
+        "/api/v1/me/session-folders/get-or-create",
+        json={"external_key": "org_777", "name": "Riverside Truck Parts"},
+        headers=_auth(key),
+    )
+    folder_id = folder.json()["id"]
+
+    resp = await client.post(
+        "/api/v1/me/sessions/events/batch",
+        json={
+            "events": [
+                {
+                    "agent_name": "heavi-chat",
+                    "event_type": "user_message",
+                    "content": "Need a fan clutch",
+                    "session_id": "conv-listing-test",
+                    "session_folder_id": folder_id,
+                }
+            ]
+        },
+        headers=_auth(key),
+    )
+    assert resp.status_code == 201
+
+    listing = await client.get("/api/v1/me/sessions", headers=_auth(key))
+    assert listing.status_code == 200
+    sessions = {s["session_id"]: s for s in listing.json()["sessions"]}
+    assert sessions["conv-listing-test"]["session_folder_name"] == "Riverside Truck Parts"

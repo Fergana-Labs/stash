@@ -82,15 +82,15 @@ async def test_upload_inserts_events_and_events_roundtrip(client: AsyncClient):
     assert payload["skipped"] is False
 
     meta = await client.get(
-        "/api/v1/me/transcripts/sess-1",
+        "/api/v1/me/transcripts?session_id=sess-1",
         headers=headers,
     )
     assert meta.status_code == 200
     assert meta.json()["event_count"] == 2
 
     events_resp = await client.get(
-        "/api/v1/me/transcripts/sess-1/events",
-        params={"limit": 100},
+        "/api/v1/me/transcripts/events",
+        params={"session_id": "sess-1", "limit": 100},
         headers=headers,
     )
     assert events_resp.status_code == 200
@@ -132,14 +132,16 @@ async def test_events_endpoint_requires_an_explicit_limit(client: AsyncClient):
     )
     assert up.status_code == 201, up.text
 
-    bare = await client.get("/api/v1/me/transcripts/sess-unpaged/events", headers=headers)
+    bare = await client.get(
+        "/api/v1/me/transcripts/events?session_id=sess-unpaged", headers=headers
+    )
     assert bare.status_code == 422
 
     # A limit past the end of the session is not an error — it is how a caller
     # asks for the whole thing and learns that it got it.
     whole = await client.get(
-        "/api/v1/me/transcripts/sess-unpaged/events",
-        params={"limit": turns * 2},
+        "/api/v1/me/transcripts/events",
+        params={"session_id": "sess-unpaged", "limit": turns * 2},
         headers=headers,
     )
     assert whole.status_code == 200
@@ -180,8 +182,8 @@ async def test_events_endpoint_paginates(client: AsyncClient):
     assert up.status_code == 201, up.text
 
     first = await client.get(
-        "/api/v1/me/transcripts/sess-page/events",
-        params={"limit": 2, "offset": 0},
+        "/api/v1/me/transcripts/events",
+        params={"session_id": "sess-page", "limit": 2, "offset": 0},
         headers=headers,
     )
     assert first.status_code == 200
@@ -191,8 +193,8 @@ async def test_events_endpoint_paginates(client: AsyncClient):
     assert [e["content"] for e in page["events"]] == ["msg-0", "msg-1"]
 
     last = await client.get(
-        "/api/v1/me/transcripts/sess-page/events",
-        params={"limit": 2, "offset": 4},
+        "/api/v1/me/transcripts/events",
+        params={"session_id": "sess-page", "limit": 2, "offset": 4},
         headers=headers,
     )
     assert last.status_code == 200
@@ -257,7 +259,7 @@ async def test_empty_session_shell_is_hidden_from_default_views(client: AsyncCli
     assert my_sessions.json()["sessions"] == []
 
     detail = await client.get(
-        "/api/v1/me/sessions/empty-shell",
+        "/api/v1/me/sessions/detail?session_id=empty-shell",
         headers=headers,
     )
     assert detail.status_code == 200
@@ -265,10 +267,10 @@ async def test_empty_session_shell_is_hidden_from_default_views(client: AsyncCli
 
 
 @pytest.mark.asyncio
-async def test_event_created_session_lands_in_default_folder(client: AsyncClient):
-    """An un-targeted push hook (e.g. Codex, which has no session-start hook so
-    the first event creates the row) must land in the Default folder, never at
-    the scope root with no folder."""
+async def test_event_creates_the_session_row(client: AsyncClient):
+    """An agent with no session-start hook (e.g. Codex) creates its session row
+    from the first pushed event, so the session must appear in the list even
+    though nothing called the session endpoint."""
     key = await _register(client)
     scope = await _scope(client, key)
     headers = {"Authorization": f"Bearer {key}"}
@@ -289,120 +291,7 @@ async def test_event_created_session_lands_in_default_folder(client: AsyncClient
         "/api/v1/me/sessions", params={"owner_user_id": scope}, headers=headers
     )
     assert listed.status_code == 200
-    session = next(s for s in listed.json()["sessions"] if s["session_id"] == "codex-untargeted")
-    assert session["session_folder_id"] is not None
-    assert session["session_folder_name"] == "Default"
-
-
-@pytest.mark.asyncio
-async def test_transcript_upload_targets_explicit_session_folder(client: AsyncClient):
-    """A pinned repo passes session_folder_id with the transcript upload, so a
-    session whose row is first created by the upload lands in that folder."""
-    key = await _register(client)
-    scope = await _scope(client, key)
-    headers = {"Authorization": f"Bearer {key}"}
-
-    folder = await client.post(
-        "/api/v1/me/session-folders", json={"name": "Pinned"}, headers=headers
-    )
-    assert folder.status_code in (200, 201)
-    folder_id = folder.json()["id"]
-
-    upload = await client.post(
-        "/api/v1/me/transcripts",
-        files={"file": ("t.jsonl", io.BytesIO(BODY), "application/jsonl")},
-        data={
-            "session_id": "pinned-session",
-            "agent_name": "claude",
-            "session_folder_id": folder_id,
-        },
-        headers=headers,
-    )
-    assert upload.status_code == 201
-
-    listed = await client.get(
-        "/api/v1/me/sessions", params={"owner_user_id": scope}, headers=headers
-    )
-    session = next(s for s in listed.json()["sessions"] if s["session_id"] == "pinned-session")
-    assert session["session_folder_id"] == folder_id
-    assert session["session_folder_name"] == "Pinned"
-
-
-@pytest.mark.asyncio
-async def test_event_stream_pin_targets_folder(client: AsyncClient):
-    """A pinned repo streams session_folder_id on every event. An agent with no
-    session-start hook (Codex) creates the row from its first event, which must
-    land in the pinned folder, not Default."""
-    key = await _register(client)
-    scope = await _scope(client, key)
-    headers = {"Authorization": f"Bearer {key}"}
-
-    folder = await client.post("/api/v1/me/session-folders", json={"name": "Repo"}, headers=headers)
-    folder_id = folder.json()["id"]
-
-    pushed = await client.post(
-        "/api/v1/me/sessions/events",
-        json={
-            "agent_name": "codex",
-            "event_type": "assistant_message",
-            "content": "pinned codex session",
-            "session_id": "codex-pinned",
-            "session_folder_id": folder_id,
-        },
-        headers=headers,
-    )
-    assert pushed.status_code == 201
-
-    listed = await client.get(
-        "/api/v1/me/sessions", params={"owner_user_id": scope}, headers=headers
-    )
-    session = next(s for s in listed.json()["sessions"] if s["session_id"] == "codex-pinned")
-    assert session["session_folder_id"] == folder_id
-
-
-@pytest.mark.asyncio
-async def test_streamed_pin_does_not_re_home_explicit_move_to_root(client: AsyncClient):
-    """The folder is set once at row creation. A later streamed pin must not undo
-    an explicit move-to-root, or the agent would fight a user's manual move."""
-    key = await _register(client)
-    scope = await _scope(client, key)
-    headers = {"Authorization": f"Bearer {key}"}
-
-    folder = await client.post("/api/v1/me/session-folders", json={"name": "Repo"}, headers=headers)
-    folder_id = folder.json()["id"]
-
-    async def push():
-        return await client.post(
-            "/api/v1/me/sessions/events",
-            json={
-                "agent_name": "codex",
-                "event_type": "assistant_message",
-                "content": "turn",
-                "session_id": "moved-session",
-                "session_folder_id": folder_id,
-            },
-            headers=headers,
-        )
-
-    await push()
-    listed = await client.get(
-        "/api/v1/me/sessions", params={"owner_user_id": scope}, headers=headers
-    )
-    row_id = next(s["id"] for s in listed.json()["sessions"] if s["session_id"] == "moved-session")
-
-    moved = await client.post(
-        "/api/v1/me/session-folders/assign",
-        json={"session_row_ids": [row_id], "folder_id": None},
-        headers=headers,
-    )
-    assert moved.status_code == 200
-
-    await push()  # another turn keeps streaming the pin
-    after = await client.get(
-        "/api/v1/me/sessions", params={"owner_user_id": scope}, headers=headers
-    )
-    session = next(s for s in after.json()["sessions"] if s["session_id"] == "moved-session")
-    assert session["session_folder_id"] is None
+    assert any(s["session_id"] == "codex-untargeted" for s in listed.json()["sessions"])
 
 
 @pytest.mark.asyncio
@@ -440,8 +329,8 @@ async def test_replace_reimports_existing_session(client: AsyncClient):
     assert second.json()["imported"] == 1
 
     events_resp = await client.get(
-        "/api/v1/me/transcripts/sess-replace/events",
-        params={"limit": 100},
+        "/api/v1/me/transcripts/events",
+        params={"session_id": "sess-replace", "limit": 100},
         headers=headers,
     )
     assert events_resp.status_code == 200
@@ -570,7 +459,7 @@ URL: https://linear.app/ferganalabs/issue/FER-19/we-should-be-able-to-update-the
     ]
 
     detail = await client.get(
-        "/api/v1/me/sessions/sess-linear",
+        "/api/v1/me/sessions/detail?session_id=sess-linear",
         headers=headers,
     )
     assert detail.status_code == 200
@@ -657,7 +546,7 @@ async def test_session_detail_returns_files_touched_and_artifacts_list(client: A
     assert created.status_code == 201
 
     detail = await client.get(
-        "/api/v1/me/sessions/sess-files",
+        "/api/v1/me/sessions/detail?session_id=sess-files",
         headers=headers,
     )
     assert detail.status_code == 200
@@ -854,8 +743,8 @@ async def test_transcript_viewer_includes_streamed_legacy_event_types(client: As
     assert pushed.status_code == 201
 
     events_resp = await client.get(
-        "/api/v1/me/transcripts/sess-streamed/events",
-        params={"limit": 100},
+        "/api/v1/me/transcripts/events",
+        params={"session_id": "sess-streamed", "limit": 100},
         headers=headers,
     )
     assert events_resp.status_code == 200
@@ -928,7 +817,7 @@ async def test_viewer_cannot_mutate_existing_session_artifacts_or_materialized_p
     )
     assert folder_resp.status_code == 201
     materialize_resp = await client.post(
-        "/api/v1/me/sessions/owner-session/materialize",
+        "/api/v1/me/sessions/materialize?session_id=owner-session",
         json={"folder_id": folder_resp.json()["id"]},
         headers=viewer_headers,
     )
@@ -1035,3 +924,47 @@ async def test_reupload_to_deleted_session_skips_without_resurrecting(client: As
     assert (
         await pool.fetchval("SELECT deleted_at FROM sessions WHERE id = $1", row_id)
     ) is not None
+
+
+@pytest.mark.asyncio
+async def test_legacy_path_shapes_still_serve(client: AsyncClient):
+    """Installed clients (released CLI, plugins, customer backends — Heavi's
+    audit trail shows ~1.7k transcript reads a month over API keys) read by
+    the old /{session_id} path shapes. The canonical routes moved the id to a
+    query parameter; these aliases keep every old client working until the
+    legacy cutover."""
+    key = await _register(client)
+    headers = {"Authorization": f"Bearer {key}"}
+    up = await client.post(
+        "/api/v1/me/sessions/events/batch",
+        json={
+            "events": [
+                {
+                    "agent_name": "claude",
+                    "event_type": "user_message",
+                    "content": "legacy shape check",
+                    "session_id": "legacy-shape-1",
+                }
+            ]
+        },
+        headers=headers,
+    )
+    assert up.status_code == 201, up.text
+
+    meta = await client.get("/api/v1/me/transcripts/legacy-shape-1", headers=headers)
+    assert meta.status_code == 200, meta.text
+    events = await client.get(
+        "/api/v1/me/transcripts/legacy-shape-1/events", params={"limit": 10}, headers=headers
+    )
+    assert events.status_code == 200
+    assert events.json()["events"][0]["content"] == "legacy shape check"
+    export = await client.get("/api/v1/me/transcripts/legacy-shape-1/export.jsonl", headers=headers)
+    assert export.status_code == 200
+    detail = await client.get("/api/v1/me/sessions/legacy-shape-1", headers=headers)
+    assert detail.status_code == 200
+    renamed = await client.patch(
+        "/api/v1/me/sessions/legacy-shape-1/title",
+        json={"title": "Legacy shape check"},
+        headers=headers,
+    )
+    assert renamed.status_code == 200

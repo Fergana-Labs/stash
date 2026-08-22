@@ -397,18 +397,42 @@ async def memory_subtree_folder_ids(owner_user_id: UUID) -> set[UUID]:
     return {r["id"] for r in rows}
 
 
-# The curator links wiki pages as `[Title](/p/<page_id>)` (markdown) or
-# `href="/p/<page_id>"` (HTML layout), so any /p/<uuid> reference is a link.
+# A wiki page cites another by its id. Usually that is a link — `[Title](/p/<id>)`
+# in markdown, `href="/p/<id>"` in the HTML layout — but the external curator
+# writes bare ids instead ("the canonical page is **Log** (page id `<id>`)")
+# after finding it could not verify a URL form. Match the id itself, in any
+# spelling: an id only becomes an edge if it names another page in this wiki,
+# so a uuid from somewhere else is ignored anyway.
 _WIKI_PAGE_LINK = re.compile(
-    r"/p/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})", re.IGNORECASE
+    r"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})", re.IGNORECASE
 )
 
 
 async def memory_wiki_graph(owner_user_id: UUID) -> dict:
     """The Memory wiki as a graph: every live page in the Memory subtree is a
     node; a page-body reference to another wiki page is an undirected edge."""
+    return await wiki_graph(await memory_subtree_folder_ids(owner_user_id))
+
+
+async def folder_subtree_ids(folder_id: UUID) -> set[UUID]:
+    """A folder and all its descendants."""
     pool = get_pool()
-    folder_ids = await memory_subtree_folder_ids(owner_user_id)
+    rows = await pool.fetch(
+        "WITH RECURSIVE ftree AS ("
+        "  SELECT f.id FROM folders f WHERE f.id = $1"
+        "  UNION"
+        "  SELECT f.id FROM folders f JOIN ftree t ON f.parent_folder_id = t.id"
+        ") SELECT id FROM ftree",
+        folder_id,
+    )
+    return {r["id"] for r in rows}
+
+
+async def wiki_graph(folder_ids: set[UUID]) -> dict:
+    """Pages in these folders as nodes, page-body references between them as
+    undirected edges. Shared by the personal Memory wiki and a developer
+    workspace's external wiki — same shape, different root."""
+    pool = get_pool()
     if not folder_ids:
         return {"nodes": [], "edges": []}
     rows = await pool.fetch(
@@ -663,6 +687,7 @@ async def create_page(
     html_layout: str = "responsive",
     edit_session_id: str | None = None,
     edit_agent_name: str | None = None,
+    end_user_id: UUID | None = None,
 ) -> dict:
     pool = get_pool()
     if folder_id is not None:
@@ -678,9 +703,9 @@ async def create_page(
             "INSERT INTO pages "
             "(owner_user_id, folder_id, name, content_markdown, content_html, content_type, "
             "html_layout, content_hash, metadata, created_by, updated_by, "
-            "last_edit_session_id, last_edit_agent_name) "
-            "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $10, $11, $12) "
-            "RETURNING id, owner_user_id, folder_id, name, content_markdown, content_html, "
+            "last_edit_session_id, last_edit_agent_name, end_user_id) "
+            "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $10, $11, $12, $13) "
+            "RETURNING id, owner_user_id, folder_id, end_user_id, name, content_markdown, content_html, "
             "content_type, html_layout, content_hash, metadata, created_by, updated_by, "
             "last_edit_session_id, last_edit_agent_name, created_at, updated_at",
             owner_user_id,
@@ -695,6 +720,7 @@ async def create_page(
             created_by,
             edit_session_id,
             edit_agent_name,
+            end_user_id,
         )
     except asyncpg.UniqueViolationError as e:
         raise DuplicatePageName(owner_user_id, folder_id, name) from e
@@ -733,7 +759,7 @@ async def get_page(
 ) -> dict | None:
     pool = get_pool()
     row = await pool.fetchrow(
-        "SELECT id, owner_user_id, folder_id, name, content_markdown, content_html, "
+        "SELECT id, owner_user_id, folder_id, end_user_id, name, content_markdown, content_html, "
         "content_type, html_layout, content_hash, metadata, "
         "last_edit_session_id, last_edit_agent_name, "
         "created_by, updated_by, created_at, updated_at "
@@ -744,11 +770,48 @@ async def get_page(
     if not row:
         return None
     page = dict(row)
+    page["wiki"] = await wiki_for_folder(owner_user_id, page["folder_id"])
     if user_id is None:
         return page
     if not await permission_service.check_access("page", page_id, user_id, owner_user_id):
         return None
     return page
+
+
+async def wiki_for_folder(owner_user_id: UUID, folder_id: UUID | None) -> str | None:
+    """Which wiki a page in this folder is written for, or None for an ordinary
+    folder — derived from placement rather than stored, so it can never
+    disagree with where the page actually is.
+
+    "internal" is the scope's own Memory subtree: the team wiki, written by the
+    internal curator and read by that team's agents. "external" is the
+    workspace's External Wiki subtree: cross-user and anonymized, read by every
+    customer's agent. A workspace can have both, and the two must never be
+    confused — an internal page names people and projects, an external one may
+    not name anyone at all.
+    """
+    if folder_id is None:
+        return None
+    pool = get_pool()
+    external_root = await pool.fetchval(
+        "SELECT external_wiki_folder_id FROM workspaces WHERE scope_user_id = $1",
+        owner_user_id,
+    )
+    row = await pool.fetchrow(
+        "WITH RECURSIVE up AS ("
+        "  SELECT f.id, f.parent_folder_id, f.is_memory FROM folders f WHERE f.id = $1"
+        "  UNION ALL"
+        "  SELECT f.id, f.parent_folder_id, f.is_memory FROM folders f "
+        "    JOIN up ON up.parent_folder_id = f.id"
+        ") SELECT bool_or(is_memory) AS internal, bool_or(id = $2) AS external FROM up",
+        folder_id,
+        external_root,
+    )
+    if row and row["external"]:
+        return "external"
+    if row and row["internal"]:
+        return "internal"
+    return None
 
 
 async def get_sync_manifest(owner_user_id: UUID) -> list[dict]:

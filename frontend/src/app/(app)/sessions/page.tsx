@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useBreadcrumbs } from "@/components/BreadcrumbContext";
 import { useConfirm } from "@/components/ConfirmDialog";
 import CopyableCommandBlock from "@/components/CopyableCommandBlock";
@@ -12,26 +12,14 @@ import { PinIcon } from "@/components/SkillIcons";
 import { SelectBox } from "@/components/content/file-browser/ItemsList";
 import { useAuth } from "@/hooks/useAuth";
 import {
-  assignSessionFolder,
-  createSessionFolder,
   deleteSession,
-  deleteSessionFolder,
-  displayVisibility,
   listMySessions,
-  listSessionFolders,
-  listSharedSessionFolderSessions,
-  listSharedWithMe,
-  type DisplayVisibility,
-  type SessionFolder,
   type SessionSummary,
-  type SharedWithMeItem,
 } from "@/lib/api";
-import SessionFolderShareModal from "@/components/share/SessionFolderShareModal";
 import { usePins } from "@/lib/pins";
 import {
   groupSessionsByAgent,
   groupSessionsByDayAndUser,
-  groupSessionsByFolder,
   groupSessionsByLinearTicket,
   groupSessionsByUser,
   requireSessionUserName,
@@ -39,14 +27,11 @@ import {
   type SessionFlatGroup,
 } from "@/lib/sessionGrouping";
 
-type ViewKey = "list" | "day" | "user" | "agent" | "ticket" | "folder";
+type ViewKey = "list" | "day" | "user" | "agent" | "ticket";
 type SortKey = "recent" | "oldest" | "events" | "name";
 
 const VIEW_STORAGE_KEY = "stash_sessions_view";
 
-// One folder page. Drilled-in folders fetch this many at a time and load more
-// on scroll, so folders with thousands of sessions stay fully reachable.
-const SESSIONS_PAGE_SIZE = 100;
 
 const VIEWS: { key: ViewKey; label: string }[] = [
   { key: "list", label: "List" },
@@ -54,7 +39,6 @@ const VIEWS: { key: ViewKey; label: string }[] = [
   { key: "user", label: "By user" },
   { key: "agent", label: "By agent" },
   { key: "ticket", label: "By ticket" },
-  { key: "folder", label: "By folder" },
 ];
 
 const SORTS: { key: SortKey; label: string }[] = [
@@ -64,36 +48,6 @@ const SORTS: { key: SortKey; label: string }[] = [
   { key: "name", label: "Name" },
 ];
 
-// Drag payload: the DB row ids (sessions.id) of the dragged sessions. Dragging
-// a selected row carries the whole selection, like the file browser.
-const SESSION_DRAG_MIME = "application/x-skill-sessions";
-
-// Drag wiring threaded down to session rows: whether rows can be dragged at
-// all (off inside shared folders), the row ids the current selection would
-// carry, and a signal so drop targets can reveal themselves mid-drag.
-interface SessionDrag {
-  canDrag: boolean;
-  selectedRowIds: string[];
-  onActiveChange: (active: boolean) => void;
-}
-
-const NO_DRAG: SessionDrag = {
-  canDrag: false,
-  selectedRowIds: [],
-  onActiveChange: () => {},
-};
-
-function readSessionDrop(e: DragEvent<HTMLElement>): string[] {
-  const raw = e.dataTransfer.getData(SESSION_DRAG_MIME);
-  if (!raw) return [];
-  try {
-    const ids = JSON.parse(raw);
-    return Array.isArray(ids) ? ids.filter((id) => typeof id === "string") : [];
-  } catch {
-    return [];
-  }
-}
-
 export default function SkillSessionsPage() {
   const router = useRouter();
   const { user, loading } = useAuth();
@@ -101,18 +55,10 @@ export default function SkillSessionsPage() {
   const confirm = useConfirm();
 
   const [sessions, setSessions] = useState<SessionSummary[] | null>(null);
-  const [folders, setFolders] = useState<SessionFolder[]>([]);
-  const [sharedFolders, setSharedFolders] = useState<SharedWithMeItem[]>([]);
-  const [openFolder, setOpenFolder] = useState<OpenFolder | null>(null);
-  // Bumped after a move/assign so a drilled-in folder refetches its own
-  // sessions — its list is fetched independently of the global recent window.
-  const [drillRefresh, setDrillRefresh] = useState(0);
-  const [shareFolder, setShareFolder] = useState<SessionFolder | null>(null);
   const [error, setError] = useState("");
   const [view, setView] = useState<ViewKey>("list");
   const [sort, setSort] = useState<SortKey>("recent");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [dragActive, setDragActive] = useState(false);
 
   function toggleSelect(sessionId: string) {
     setSelectedIds((current) => {
@@ -136,14 +82,7 @@ export default function SkillSessionsPage() {
 
   const load = useCallback(async () => {
     try {
-      const [list, folderList, sharedAll] = await Promise.all([
-        listMySessions(200),
-        listSessionFolders().catch(() => [] as SessionFolder[]),
-        listSharedWithMe().catch(() => [] as SharedWithMeItem[]),
-      ]);
-      setSessions(list);
-      setFolders(folderList);
-      setSharedFolders(sharedAll.filter((i) => i.object_type === "session_folder"));
+      setSessions(await listMySessions(200));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load sessions");
     }
@@ -177,14 +116,6 @@ export default function SkillSessionsPage() {
   const selectedSessions = (sorted ?? []).filter((s) =>
     selectedIds.has(s.session_id),
   );
-  const drag: SessionDrag = {
-    canDrag: true,
-    selectedRowIds: selectedSessions
-      .filter((s) => s.id)
-      .map((s) => s.id!),
-    onActiveChange: setDragActive,
-  };
-
   function clearSelection() {
     setSelectedIds(new Set());
   }
@@ -218,75 +149,6 @@ export default function SkillSessionsPage() {
     }
   }
 
-  // Move the selected sessions into a folder (or out of one, with folderId
-  // null). `__new__` prompts for a folder name and creates it first.
-  async function moveSelectedToFolder(folderId: string | null) {
-    const targets = selectedSessions.filter((s) => s.id);
-    if (targets.length === 0) return;
-    let destination = folderId;
-    if (folderId === "__new__") {
-      const name = window.prompt("New folder name")?.trim();
-      if (!name) return;
-      try {
-        destination = (await createSessionFolder(name)).id;
-      } catch (e) {
-        setError(e instanceof Error ? e.message : "Could not create folder");
-        return;
-      }
-    }
-    try {
-      await assignSessionFolder(
-        targets.map((s) => s.id!),
-        destination,
-      );
-      clearSelection();
-      await load();
-      setDrillRefresh((n) => n + 1);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not move sessions");
-    }
-  }
-
-  // Drop handler: move the dragged session row ids into a folder.
-  async function moveRowsToFolder(rowIds: string[], folderId: string) {
-    if (rowIds.length === 0) return;
-    try {
-      await assignSessionFolder(rowIds, folderId);
-      clearSelection();
-      await load();
-      setDrillRefresh((n) => n + 1);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not move sessions");
-    }
-  }
-
-  async function newFolder() {
-    const name = window.prompt("New folder name")?.trim();
-    if (!name) return;
-    try {
-      await createSessionFolder(name);
-      await load();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not create folder");
-    }
-  }
-
-  async function removeFolder(folder: SessionFolder) {
-    const ok = await confirm({
-      title: `Delete folder "${folder.name}"?`,
-      body: "Sessions inside become unfiled (not deleted).",
-      confirmLabel: "Delete",
-    });
-    if (!ok) return;
-    try {
-      await deleteSessionFolder(folder.id);
-      setOpenFolder(null);
-      await load();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not delete folder");
-    }
-  }
-
   return (
     <div className="scroll-thin flex-1 overflow-y-auto">
       <div className="mx-auto max-w-5xl px-12 py-8">
@@ -312,68 +174,39 @@ export default function SkillSessionsPage() {
               onTogglePin={pins.toggle}
               selectedIds={selectedIds}
               onToggleSelect={toggleSelect}
-              drag={drag}
             />
           </section>
         )}
 
-        {/* Folder-first: the landing is the set of folders (Default catches
-            chat + un-targeted sessions); the chronological/filter views live
-            inside a folder once you drill in. */}
-        {openFolder ? (
-          <FolderDrill
-            folder={openFolder}
-            refreshKey={drillRefresh}
-            folders={folders}
-            view={view}
-            sort={sort}
-            onBack={() => setOpenFolder(null)}
-            onChangeView={setViewPersisted}
-            onChangeSort={setSort}
-            onShare={(f) => setShareFolder(f)}
-            onDelete={removeFolder}
-            isPinned={pins.isPinned}
-            onTogglePin={pins.toggle}
-            selectedIds={selectedIds}
-            onToggleSelect={toggleSelect}
-            drag={drag}
-            dragActive={dragActive}
-            onDropSessions={moveRowsToFolder}
+        <div className="mb-3 flex flex-wrap items-center gap-3 border-b border-border pb-2.5">
+          <SegmentedControl
+            label="View"
+            value={view}
+            options={VIEWS}
+            onChange={(v) => setViewPersisted(v as ViewKey)}
           />
-        ) : (
-          <FoldersSection
-            ownFolders={folders}
-            sharedFolders={sharedFolders}
-            onOpen={setOpenFolder}
-            onNewFolder={newFolder}
-            onShare={(f) => setShareFolder(f)}
-            onDropSessions={moveRowsToFolder}
+          <SegmentedControl
+            label="Sort"
+            value={sort}
+            options={SORTS}
+            onChange={(v) => setSort(v as SortKey)}
           />
-        )}
+        </div>
+
+        <SessionsView
+          view={view}
+          sessions={sorted}
+          isPinned={pins.isPinned}
+          onTogglePin={pins.toggle}
+          selectedIds={selectedIds}
+          onToggleSelect={toggleSelect}
+        />
       </div>
 
       {selectedSessions.length > 0 && (
         <div className="pointer-events-none fixed inset-x-0 bottom-6 z-50 flex justify-center">
           <div className="pointer-events-auto flex items-center gap-3 rounded-lg border border-border bg-foreground px-4 py-2 text-[13px] text-background shadow-lg">
             <span className="font-medium">{selectedSessions.length} selected</span>
-            <select
-              aria-label="Move to folder"
-              value=""
-              onChange={(e) => {
-                const v = e.target.value;
-                if (v) void moveSelectedToFolder(v === "__none__" ? null : v);
-                e.target.value = "";
-              }}
-              className="rounded-md border border-background/40 bg-foreground px-2 py-0.5 text-[12px] font-semibold text-background hover:bg-background/10"
-            >
-              <option value="">Move to folder…</option>
-              <option value="__new__">+ New folder</option>
-              {folders.map((f) => (
-                <option key={f.id} value={f.id}>
-                  {f.name}
-                </option>
-              ))}
-            </select>
             <button
               type="button"
               onClick={() => void bulkDeleteSessions()}
@@ -393,13 +226,6 @@ export default function SkillSessionsPage() {
         </div>
       )}
 
-      {shareFolder && (
-        <SessionFolderShareModal
-          folder={shareFolder}
-          onClose={() => setShareFolder(null)}
-          onChanged={load}
-        />
-      )}
     </div>
   );
 }
@@ -408,22 +234,17 @@ const PLUGIN_INSTALL_COMMANDS = "uv tool install stashai\nstash signin";
 
 // Empty state that sells the plugin: sessions arrive via the agent hooks the
 // CLI installs, so an empty list usually means that setup hasn't happened yet.
-// Shared folders skip the CTA — their sessions come from the folder's owner.
-function SessionsEmptyState({ withInstallCta }: { withInstallCta: boolean }) {
+function SessionsEmptyState() {
   return (
     <div className="rounded-lg border border-dashed border-border bg-surface/30 px-4 py-6 text-center text-[12.5px] text-muted-foreground">
       <p className="m-0">No sessions yet.</p>
-      {withInstallCta && (
-        <>
-          <p className="m-0 mt-1.5">
-            Sessions from Claude Code, Cursor, Codex and other agents appear here
-            automatically once the Stash plugin is installed.
-          </p>
-          <div className="mt-3">
-            <CopyableCommandBlock commands={PLUGIN_INSTALL_COMMANDS} />
-          </div>
-        </>
-      )}
+      <p className="m-0 mt-1.5">
+        Sessions from Claude Code, Cursor, Codex and other agents appear here
+        automatically once the Stash plugin is installed.
+      </p>
+      <div className="mt-3">
+        <CopyableCommandBlock commands={PLUGIN_INSTALL_COMMANDS} />
+      </div>
     </div>
   );
 }
@@ -431,26 +252,20 @@ function SessionsEmptyState({ withInstallCta }: { withInstallCta: boolean }) {
 function SessionsView({
   view,
   sessions,
-  folders,
   isPinned,
   onTogglePin,
   selectedIds,
   onToggleSelect,
-  drag,
-  withInstallCta,
 }: {
   view: ViewKey;
   sessions: SessionSummary[];
-  folders: SessionFolder[];
   isPinned: (sessionId: string) => boolean;
   onTogglePin: (sessionId: string) => void;
   selectedIds: Set<string>;
   onToggleSelect: (sessionId: string) => void;
-  drag: SessionDrag;
-  withInstallCta: boolean;
 }) {
   if (sessions.length === 0) {
-    return <SessionsEmptyState withInstallCta={withInstallCta} />;
+    return <SessionsEmptyState />;
   }
 
   if (view === "list") {
@@ -461,7 +276,6 @@ function SessionsView({
         onTogglePin={onTogglePin}
         selectedIds={selectedIds}
         onToggleSelect={onToggleSelect}
-        drag={drag}
       />
     );
   }
@@ -479,7 +293,6 @@ function SessionsView({
             onTogglePin={onTogglePin}
             selectedIds={selectedIds}
             onToggleSelect={onToggleSelect}
-            drag={drag}
           />
         ))}
       </div>
@@ -491,8 +304,6 @@ function SessionsView({
       ? groupSessionsByUser(sessions)
       : view === "ticket"
       ? groupSessionsByLinearTicket(sessions)
-      : view === "folder"
-      ? groupSessionsByFolder(sessions, folders)
       : groupSessionsByAgent(sessions);
   return (
     <div className="flex flex-col gap-4">
@@ -505,7 +316,6 @@ function SessionsView({
           onTogglePin={onTogglePin}
           selectedIds={selectedIds}
           onToggleSelect={onToggleSelect}
-          drag={drag}
         />
       ))}
     </div>
@@ -519,7 +329,6 @@ function DayGroup({
   onTogglePin,
   selectedIds,
   onToggleSelect,
-  drag,
 }: {
   group: SessionDayGroup;
   initialOpen: boolean;
@@ -527,7 +336,6 @@ function DayGroup({
   onTogglePin: (sessionId: string) => void;
   selectedIds: Set<string>;
   onToggleSelect: (sessionId: string) => void;
-  drag: SessionDrag;
 }) {
   const [open, setOpen] = useState(initialOpen);
   return (
@@ -554,7 +362,6 @@ function DayGroup({
                 onTogglePin={onTogglePin}
                 selectedIds={selectedIds}
                 onToggleSelect={onToggleSelect}
-                drag={drag}
               />
             </div>
           ))}
@@ -571,7 +378,6 @@ function FlatGroup({
   onTogglePin,
   selectedIds,
   onToggleSelect,
-  drag,
 }: {
   group: SessionFlatGroup;
   initialOpen: boolean;
@@ -579,7 +385,6 @@ function FlatGroup({
   onTogglePin: (sessionId: string) => void;
   selectedIds: Set<string>;
   onToggleSelect: (sessionId: string) => void;
-  drag: SessionDrag;
 }) {
   const [open, setOpen] = useState(initialOpen);
   return (
@@ -603,7 +408,6 @@ function FlatGroup({
             onTogglePin={onTogglePin}
             selectedIds={selectedIds}
             onToggleSelect={onToggleSelect}
-            drag={drag}
           />
         </div>
       )}
@@ -673,24 +477,33 @@ function SessionsTable({
   onTogglePin,
   selectedIds,
   onToggleSelect,
-  drag = NO_DRAG,
 }: {
   sessions: SessionSummary[];
   isPinned: (sessionId: string) => boolean;
   onTogglePin: (sessionId: string) => void;
   selectedIds: Set<string>;
   onToggleSelect: (sessionId: string) => void;
-  drag?: SessionDrag;
 }) {
   if (sessions.length === 0) {
-    return <SessionsEmptyState withInstallCta />;
+    return <SessionsEmptyState />;
   }
+
+  // Folders are the legacy filing lane, written only by installed clients'
+  // API calls. The column appears only when something here is actually filed,
+  // so accounts that never used folders keep the plain layout.
+  const showFolder = sessions.some((s) => s.session_folder_name);
 
   return (
     <div className="overflow-hidden rounded-lg border border-border bg-surface">
-      <div className="hidden grid-cols-[minmax(128px,0.68fr)_minmax(240px,1.7fr)_86px_58px_minmax(104px,0.62fr)_94px_88px_28px] gap-3 border-b border-border bg-base/70 px-3 py-2 text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground md:grid">
+      <div
+        className={
+          "hidden gap-3 border-b border-border bg-base/70 px-3 py-2 text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground md:grid " +
+          (showFolder ? GRID_COLS_WITH_FOLDER : GRID_COLS)
+        }
+      >
         <span>User</span>
         <span>Session</span>
+        {showFolder && <span>Folder</span>}
         <span>Ticket</span>
         <span>Events</span>
         <span>Agent</span>
@@ -702,31 +515,36 @@ function SessionsTable({
         <SessionTableRow
           key={session.session_id}
           session={session}
+          showFolder={showFolder}
           pinned={isPinned(session.session_id)}
           onTogglePin={onTogglePin}
           selected={selectedIds.has(session.session_id)}
           onToggleSelect={onToggleSelect}
-          drag={drag}
         />
       ))}
     </div>
   );
 }
 
+const GRID_COLS =
+  "md:grid-cols-[minmax(128px,0.68fr)_minmax(240px,1.7fr)_86px_58px_minmax(104px,0.62fr)_94px_88px_28px]";
+const GRID_COLS_WITH_FOLDER =
+  "md:grid-cols-[minmax(128px,0.68fr)_minmax(200px,1.4fr)_minmax(110px,0.6fr)_86px_58px_minmax(104px,0.62fr)_94px_88px_28px]";
+
 function SessionTableRow({
   session,
+  showFolder,
   pinned,
   onTogglePin,
   selected,
   onToggleSelect,
-  drag,
 }: {
   session: SessionSummary;
+  showFolder: boolean;
   pinned: boolean;
   onTogglePin: (sessionId: string) => void;
   selected: boolean;
   onToggleSelect: (sessionId: string) => void;
-  drag: SessionDrag;
 }) {
   const user = requireSessionUserName(session.user_name);
   const agent = session.agent_name || "agent";
@@ -736,20 +554,10 @@ function SessionTableRow({
   return (
     <Link
       href={`/sessions/${encodeURIComponent(session.session_id)}`}
-      draggable={drag.canDrag && !!session.id}
-      onDragStart={(e: DragEvent<HTMLAnchorElement>) => {
-        if (!session.id) return;
-        const ids =
-          selected && drag.selectedRowIds.length > 1
-            ? drag.selectedRowIds
-            : [session.id];
-        e.dataTransfer.setData(SESSION_DRAG_MIME, JSON.stringify(ids));
-        e.dataTransfer.effectAllowed = "move";
-        drag.onActiveChange(true);
-      }}
-      onDragEnd={() => drag.onActiveChange(false)}
       className={
-        "group/srow grid min-h-12 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-border px-3 py-2 text-[13px] last:border-b-0 md:grid-cols-[minmax(128px,0.68fr)_minmax(240px,1.7fr)_86px_58px_minmax(104px,0.62fr)_94px_88px_28px] " +
+        "group/srow grid min-h-12 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-border px-3 py-2 text-[13px] last:border-b-0 " +
+        (showFolder ? GRID_COLS_WITH_FOLDER : GRID_COLS) +
+        " " +
         (selected ? "bg-[var(--color-brand-50)]" : "hover:bg-[var(--color-brand-50)]")
       }
     >
@@ -780,11 +588,22 @@ function SessionTableRow({
           )}
         </div>
         <div className="mt-0.5 truncate text-[11px] text-muted-foreground md:hidden">
-          {[user, ticket?.ticket_identifier, agent, formatRelative(session.last_event_at)]
+          {[
+            user,
+            session.session_folder_name,
+            ticket?.ticket_identifier,
+            agent,
+            formatRelative(session.last_event_at),
+          ]
             .filter(Boolean)
             .join(", ")}
         </div>
       </div>
+      {showFolder && (
+        <span className="hidden truncate text-[12px] text-muted-foreground md:block">
+          {session.session_folder_name ?? "—"}
+        </span>
+      )}
       <span className="hidden min-w-0 md:block">
         {ticket ? <LinearTicketPill ticket={ticket} /> : <span className="text-[11px] text-muted-foreground">None</span>}
       </span>
@@ -918,442 +737,4 @@ function formatDate(iso: string | null): string {
   });
 }
 
-// --- Session folders as navigable "vaults" (own + shared-with-me) ---
 
-// `folder` is the full record for own folders (enables Share/Delete + access
-// badge); shared-with-me folders only carry the id/name.
-type OpenFolder = {
-  id: string;
-  name: string;
-  shared: boolean;
-  folder?: SessionFolder;
-};
-
-const VIS_DOT: Record<DisplayVisibility, string> = {
-  public: "#22C55E",
-  shared: "var(--color-brand-500)",
-  private: "#9CA3AF",
-};
-
-// Private folders show no badge (the common, quiet case); Shared/Public stand out.
-function FolderAccessBadge({ folder }: { folder: SessionFolder }) {
-  const vis = displayVisibility(folder.access, folder.share_count);
-  if (vis === "private") return null;
-  return (
-    <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
-      <span
-        className="inline-block h-[7px] w-[7px] rounded-full"
-        style={{ background: VIS_DOT[vis] }}
-      />
-      {vis === "shared" ? `Shared: ${folder.share_count}` : "Public"}
-    </span>
-  );
-}
-
-function FoldersSection({
-  ownFolders,
-  sharedFolders,
-  onOpen,
-  onNewFolder,
-  onShare,
-  onDropSessions,
-}: {
-  ownFolders: SessionFolder[];
-  sharedFolders: SharedWithMeItem[];
-  onOpen: (f: OpenFolder) => void;
-  onNewFolder: () => void;
-  onShare: (f: SessionFolder) => void;
-  onDropSessions: (rowIds: string[], folderId: string) => void;
-}) {
-  return (
-    <section>
-      <div className="mb-3 flex items-center justify-between border-b border-border pb-2.5">
-        <h2 className="m-0 font-display text-[15px] font-semibold text-foreground">Folders</h2>
-        <button
-          type="button"
-          onClick={onNewFolder}
-          className="cursor-pointer rounded-md border border-border bg-base px-2.5 py-1 text-[12.5px] font-medium text-foreground hover:bg-raised"
-        >
-          + New folder
-        </button>
-      </div>
-      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
-        {ownFolders.map((f) => (
-          <FolderCard
-            key={f.id}
-            folder={f}
-            onClick={() => onOpen({ id: f.id, name: f.name, shared: false, folder: f })}
-            onShare={() => onShare(f)}
-            onDropSessions={(rowIds) => onDropSessions(rowIds, f.id)}
-          />
-        ))}
-        {sharedFolders.map((f) => (
-          <SharedFolderCard
-            key={f.object_id}
-            name={f.name}
-            subtitle={f.shared_by ? `shared by ${f.shared_by}` : "shared with you"}
-            onClick={() => onOpen({ id: f.object_id, name: f.name, shared: true })}
-          />
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function FolderCard({
-  folder,
-  onClick,
-  onShare,
-  onDropSessions,
-}: {
-  folder: SessionFolder;
-  onClick: () => void;
-  onShare: () => void;
-  onDropSessions: (rowIds: string[]) => void;
-}) {
-  const [over, setOver] = useState(false);
-  return (
-    <div
-      role="button"
-      tabIndex={0}
-      onClick={onClick}
-      onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && onClick()}
-      onDragOver={(e) => {
-        if (!e.dataTransfer.types.includes(SESSION_DRAG_MIME)) return;
-        e.preventDefault();
-        e.dataTransfer.dropEffect = "move";
-        setOver(true);
-      }}
-      onDragLeave={() => setOver(false)}
-      onDrop={(e) => {
-        setOver(false);
-        const rowIds = readSessionDrop(e);
-        if (rowIds.length === 0) return;
-        e.preventDefault();
-        onDropSessions(rowIds);
-      }}
-      className={
-        "group flex cursor-pointer items-start gap-2.5 rounded-lg border bg-surface/50 px-3 py-3 text-left transition hover:border-[var(--color-brand-300)] hover:bg-raised/50 " +
-        (over ? "border-[var(--color-brand-300)] ring-1 ring-inset ring-[var(--color-brand-300)]" : "border-border")
-      }
-    >
-      <span aria-hidden className="mt-0.5 text-[18px]">
-        {folder.is_default ? "🗃️" : "📁"}
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="flex items-center gap-1.5">
-          <span className="min-w-0 truncate text-[13.5px] font-semibold text-foreground">
-            {folder.name}
-          </span>
-          {folder.is_default && (
-            <span className="shrink-0 rounded-full border border-border bg-base px-1.5 py-px text-[9.5px] uppercase tracking-wide text-muted-foreground">
-              Default
-            </span>
-          )}
-        </span>
-        <span className="mt-1 flex items-center gap-2">
-          <span className="text-[11.5px] text-muted-foreground">
-            {folder.session_count} session{folder.session_count === 1 ? "" : "s"}
-          </span>
-          {displayVisibility(folder.access, folder.share_count) !== "private" && (
-            <>
-              <FolderAccessBadge folder={folder} />
-            </>
-          )}
-        </span>
-      </span>
-      <button
-        type="button"
-        onClick={(e) => {
-          e.stopPropagation();
-          onShare();
-        }}
-        className="shrink-0 cursor-pointer rounded-md px-2 py-0.5 text-[11.5px] font-medium text-muted-foreground opacity-0 transition group-hover:opacity-100 hover:bg-base hover:text-foreground"
-      >
-        Share
-      </button>
-    </div>
-  );
-}
-
-function SharedFolderCard({
-  name,
-  subtitle,
-  onClick,
-}: {
-  name: string;
-  subtitle: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-border bg-surface/50 px-3 py-3 text-left transition hover:border-[var(--color-brand-300)] hover:bg-raised/50"
-    >
-      <span aria-hidden className="mt-0.5 text-[18px]">
-        🗂️
-      </span>
-      <span className="min-w-0">
-        <span className="block truncate text-[13.5px] font-semibold text-foreground">{name}</span>
-        <span className="block truncate text-[11.5px] text-muted-foreground">{subtitle}</span>
-      </span>
-    </button>
-  );
-}
-
-function FolderDrill({
-  folder,
-  refreshKey,
-  folders,
-  view,
-  sort,
-  onBack,
-  onChangeView,
-  onChangeSort,
-  onShare,
-  onDelete,
-  isPinned,
-  onTogglePin,
-  selectedIds,
-  onToggleSelect,
-  drag,
-  dragActive,
-  onDropSessions,
-}: {
-  folder: OpenFolder;
-  refreshKey: number;
-  folders: SessionFolder[];
-  view: ViewKey;
-  sort: SortKey;
-  onBack: () => void;
-  onChangeView: (v: ViewKey) => void;
-  onChangeSort: (s: SortKey) => void;
-  onShare: (f: SessionFolder) => void;
-  onDelete: (f: SessionFolder) => void;
-  isPinned: (sessionId: string) => boolean;
-  onTogglePin: (sessionId: string) => void;
-  selectedIds: Set<string>;
-  onToggleSelect: (sessionId: string) => void;
-  drag: SessionDrag;
-  dragActive: boolean;
-  onDropSessions: (rowIds: string[], folderId: string) => void;
-}) {
-  const [folderSessions, setFolderSessions] = useState<SessionSummary[] | null>(null);
-  const [hasMore, setHasMore] = useState(false);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [error, setError] = useState("");
-
-  // Always fetch the folder's own sessions from the backend. The global recent
-  // window the landing page loads can miss a folder's older sessions entirely,
-  // so a folder-scoped query is the only thing that reliably fills the drill.
-  // Shared folders load in full from their own endpoint; own folders page
-  // through /me/sessions, so they need infinite scroll past the first page.
-  useEffect(() => {
-    setFolderSessions(null);
-    setHasMore(false);
-    const request = folder.shared
-      ? listSharedSessionFolderSessions(folder.id)
-      : listMySessions(SESSIONS_PAGE_SIZE, folder.id, 0);
-    request
-      .then((rows) => {
-        setFolderSessions(rows);
-        setHasMore(!folder.shared && rows.length === SESSIONS_PAGE_SIZE);
-      })
-      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load sessions"));
-  }, [folder, refreshKey]);
-
-  const loadMore = useCallback(async () => {
-    if (folder.shared || loadingMore || !hasMore || folderSessions === null) return;
-    setLoadingMore(true);
-    try {
-      const rows = await listMySessions(
-        SESSIONS_PAGE_SIZE,
-        folder.id,
-        folderSessions.length
-      );
-      setFolderSessions((prev) => [...(prev ?? []), ...rows]);
-      setHasMore(rows.length === SESSIONS_PAGE_SIZE);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load more sessions");
-    } finally {
-      setLoadingMore(false);
-    }
-  }, [folder, loadingMore, hasMore, folderSessions]);
-
-  // Auto-load the next page when the sentinel scrolls into view; the button it
-  // wraps is the manual fallback if the observer can't fire. Pagination follows
-  // the server's recent-first order, so only the "recent" sort places new pages
-  // below the sentinel. Other sorts reorder appended pages above it, which would
-  // keep the sentinel in view and cascade-load the whole folder — for those the
-  // button stays as the one-page-at-a-time control.
-  const sentinelRef = useRef<HTMLDivElement | null>(null);
-  useEffect(() => {
-    const el = sentinelRef.current;
-    if (!el || !hasMore || sort !== "recent") return;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0]?.isIntersecting) loadMore();
-      },
-      { rootMargin: "600px" }
-    );
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [hasMore, loadMore, sort]);
-
-  const ownFolder = folder.folder;
-  // Shared folders are read-only: render the same chronological browser, but
-  // without selection (no move/delete on sessions you don't own).
-  const drillSessions = sortSessions(folderSessions ?? [], sort);
-
-  return (
-    <div>
-      <button
-        type="button"
-        onClick={onBack}
-        className="mb-3 inline-flex cursor-pointer items-center gap-1 text-[12.5px] text-muted-foreground hover:text-foreground"
-      >
-        ← All folders
-      </button>
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-        <h2 className="m-0 flex items-center gap-2 font-display text-[18px] font-semibold text-foreground">
-          <span aria-hidden>{folder.shared ? "🗂️" : ownFolder?.is_default ? "🗃️" : "📁"}</span>
-          {folder.name}
-          {ownFolder && <FolderAccessBadge folder={ownFolder} />}
-        </h2>
-        {ownFolder && (
-          <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={() => onShare(ownFolder)}
-              className="cursor-pointer rounded-md bg-[var(--color-brand-600)] px-2.5 py-1 text-[12.5px] font-medium text-white hover:bg-[var(--color-brand-700)]"
-            >
-              Share
-            </button>
-            {!ownFolder.is_default && (
-              <button
-                type="button"
-                onClick={() => onDelete(ownFolder)}
-                className="cursor-pointer rounded-md border border-border px-2.5 py-1 text-[12.5px] text-muted-foreground hover:text-rose-500"
-              >
-                Delete
-              </button>
-            )}
-          </div>
-        )}
-      </div>
-      {error ? <p className="text-[13px] text-rose-500">{error}</p> : null}
-      {/* Other folders surface as drop targets only while a session drag is in
-          flight — the drill view otherwise has no folder list to drop onto. */}
-      {dragActive && !folder.shared && (
-        <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-dashed border-[var(--color-brand-300)] bg-[var(--color-brand-50)]/40 px-3 py-2">
-          <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-            Move to
-          </span>
-          {folders
-            .filter((f) => f.id !== folder.id)
-            .map((f) => (
-              <FolderDropChip
-                key={f.id}
-                folder={f}
-                onDrop={(rowIds) => onDropSessions(rowIds, f.id)}
-              />
-            ))}
-        </div>
-      )}
-      <div className="mb-3 flex flex-wrap items-center gap-3 border-b border-border pb-2.5">
-        <SegmentedControl
-          label="View"
-          value={view}
-          options={VIEWS}
-          onChange={(v) => onChangeView(v as ViewKey)}
-        />
-        <SegmentedControl
-          label="Sort"
-          value={sort}
-          options={SORTS}
-          onChange={(v) => onChangeSort(v as SortKey)}
-        />
-      </div>
-      {folderSessions === null ? (
-        <p className="text-[12.5px] text-muted-foreground">Loading…</p>
-      ) : (
-        <>
-          <SessionsView
-            view={view}
-            sessions={drillSessions}
-            folders={folders}
-            isPinned={isPinned}
-            onTogglePin={onTogglePin}
-            selectedIds={folder.shared ? EMPTY_SELECTION : selectedIds}
-            onToggleSelect={folder.shared ? noop : onToggleSelect}
-            drag={folder.shared ? NO_DRAG : drag}
-            withInstallCta={!folder.shared}
-          />
-          {hasMore && (
-            <div ref={sentinelRef} className="flex justify-center py-4">
-              <button
-                type="button"
-                onClick={loadMore}
-                disabled={loadingMore}
-                className="cursor-pointer rounded-md border border-border px-3 py-1.5 text-[12.5px] text-muted-foreground hover:text-foreground disabled:cursor-default disabled:opacity-60"
-              >
-                {loadingMore ? "Loading…" : "Load more"}
-              </button>
-            </div>
-          )}
-        </>
-      )}
-    </div>
-  );
-}
-
-// A folder pill that lights up while a session drag hovers it.
-function FolderDropChip({
-  folder,
-  onDrop,
-}: {
-  folder: SessionFolder;
-  onDrop: (rowIds: string[]) => void;
-}) {
-  const [over, setOver] = useState(false);
-  return (
-    <span
-      onDragOver={(e) => {
-        if (!e.dataTransfer.types.includes(SESSION_DRAG_MIME)) return;
-        e.preventDefault();
-        e.dataTransfer.dropEffect = "move";
-        setOver(true);
-      }}
-      onDragLeave={() => setOver(false)}
-      onDrop={(e) => {
-        setOver(false);
-        const rowIds = readSessionDrop(e);
-        if (rowIds.length === 0) return;
-        e.preventDefault();
-        onDrop(rowIds);
-      }}
-      className={
-        "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[12px] " +
-        (over
-          ? "border-[var(--color-brand-400)] bg-[var(--color-brand-50)] font-semibold text-foreground"
-          : "border-border bg-base text-dim")
-      }
-    >
-      <span aria-hidden>{folder.is_default ? "🗃️" : "📁"}</span>
-      {folder.name}
-    </span>
-  );
-}
-
-const EMPTY_SELECTION: Set<string> = new Set();
-function noop() {}
-
-function sortSessions(list: SessionSummary[], sort: SortKey): SessionSummary[] {
-  const copy = [...list];
-  if (sort === "recent") copy.sort((a, b) => sessionTime(b) - sessionTime(a));
-  else if (sort === "oldest") copy.sort((a, b) => sessionTime(a) - sessionTime(b));
-  else if (sort === "events") copy.sort((a, b) => b.event_count - a.event_count);
-  else copy.sort((a, b) => sessionTitle(a).localeCompare(sessionTitle(b)));
-  return copy;
-}

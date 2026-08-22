@@ -277,6 +277,7 @@ def _source_row(row) -> dict:
         "last_synced_at": row["last_synced_at"].isoformat() if row["last_synced_at"] else None,
         "settings": row["settings"] or {},
         "binds_skills": row["binds_skills"],
+        "end_user_id": str(row["end_user_id"]) if row["end_user_id"] else None,
     }
 
 
@@ -294,6 +295,7 @@ async def create_source(
     external_ref: str,
     display_name: str,
     settings: dict | None = None,
+    end_user_id: UUID | None = None,
 ) -> dict:
     """Register a connected source (idempotent on the natural key). For synced
     types the first sync runs immediately because `next_sync_at` defaults to
@@ -310,9 +312,9 @@ async def create_source(
         """
         INSERT INTO user_sources (
             owner_user_id, source_type, external_ref,
-            display_name, capability, sync_interval_s, sync_enabled, settings
+            display_name, capability, sync_interval_s, sync_enabled, settings, end_user_id
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9)
         ON CONFLICT (owner_user_id, source_type, external_ref)
         DO UPDATE SET
             display_name = EXCLUDED.display_name,
@@ -321,6 +323,9 @@ async def create_source(
             settings = coalesce(user_sources.settings, '{}'::jsonb) || EXCLUDED.settings,
             -- A disconnected-with-data source resumes syncing on reconnect.
             sync_enabled = EXCLUDED.sync_enabled,
+            -- The connect call's scoping wins: reconnecting for a different
+            -- end user (or none) must not keep the old row's scope.
+            end_user_id = EXCLUDED.end_user_id,
             updated_at = now()
         RETURNING *
         """,
@@ -332,6 +337,7 @@ async def create_source(
         interval,
         sync_enabled,
         normalized_settings,
+        end_user_id,
     )
     source = _source_row(row)
     await purge_disallowed_copied_documents(source)
@@ -379,11 +385,19 @@ async def purge_disallowed_copied_documents(source: dict) -> int:
     return 0
 
 
-async def list_connected_sources(user_id: UUID) -> list[dict]:
-    """Connected sources owned by `user_id`."""
+async def list_connected_sources(user_id: UUID, end_user_id: UUID | None = None) -> list[dict]:
+    """Connected sources owned by `user_id`. With `end_user_id`, only that end
+    user's — the isolation a user's own reads depend on. Without it, everything
+    the owner has connected, user-scoped rows included, since the owner
+    connected them all."""
+    where = "owner_user_id = $1"
+    args: list = [user_id]
+    if end_user_id is not None:
+        args.append(end_user_id)
+        where += " AND end_user_id = $2"
     rows = await get_pool().fetch(
-        "SELECT * FROM user_sources WHERE owner_user_id = $1 ORDER BY source_type, display_name",
-        user_id,
+        f"SELECT * FROM user_sources WHERE {where} ORDER BY source_type, display_name",
+        *args,
     )
     return [_source_row(r) for r in rows]
 
@@ -1682,7 +1696,7 @@ async def _readable_source_ids(
     """The sources the user may read, grouped by content table. Resolved before
     the FTS query so it filters by explicit source ids: Postgres skips tables
     with no readable sources outright instead of evaluating to_tsvector over
-    every tenant's documents and discarding them at the access check."""
+    every source's documents and discarding them at the access check."""
     source_types = [st for st, tb in SOURCE_TABLE.items() if tb in tables]
     readable = permission_service.readable_content_condition("source", "s", 1)
     rows = await get_pool().fetch(
@@ -1818,7 +1832,7 @@ async def list_sources(owner_user_id: UUID, user_id: UUID) -> list[dict]:
     """Every source in this scope's view: the two native sources plus the
     scope's connected sources. In personal scope (owner == user) that is the
     caller's own view; in a workspace scope it is the workspace's connections
-    (the org Drive etc.), readable by every member."""
+    (the team Drive etc.), readable by every member."""
     sources = [
         {
             "source": NATIVE_FILES,

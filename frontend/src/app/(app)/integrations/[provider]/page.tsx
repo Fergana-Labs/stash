@@ -3,7 +3,7 @@
 import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { MoreHorizontal } from "lucide-react";
+import { FileText, Folder, MoreHorizontal } from "lucide-react";
 
 import { useBreadcrumbs } from "@/components/BreadcrumbContext";
 import { useConfirm } from "@/components/ConfirmDialog";
@@ -1443,9 +1443,11 @@ function NavigablePanel({
                     (isOpen ? "bg-raised" : "")
                   }
                 >
-                  <span aria-hidden className="text-[13px] leading-5">
-                    {folder ? "📁" : "📄"}
-                  </span>
+                  {folder ? (
+                    <Folder className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" strokeWidth={1.75} />
+                  ) : (
+                    <FileText className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" strokeWidth={1.75} />
+                  )}
                   <span className="min-w-0 flex-1">
                     {failed ? (
                       <span className="flex items-center gap-2">

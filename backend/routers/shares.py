@@ -89,18 +89,6 @@ async def list_shared_with_me(current_user: dict = Depends(get_current_user)):
     return {"items": await share_service.list_shared_with_user(current_user["id"])}
 
 
-@router.get("/session-folders/{folder_id}/sessions")
-async def list_shared_session_folder_sessions(
-    folder_id: UUID, current_user: dict = Depends(get_current_user)
-):
-    """Sessions inside a session-folder shared with the current user."""
-    return {
-        "sessions": await share_service.list_shared_session_folder_sessions(
-            folder_id, current_user["id"]
-        )
-    }
-
-
 @router.patch("/general-access")
 async def set_general_access(
     req: GeneralAccessRequest, current_user: dict = Depends(get_current_user)

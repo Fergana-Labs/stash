@@ -37,12 +37,14 @@ async def _titled_session(client: AsyncClient, api_key: str, session_id: str, ti
     )
     assert pushed.status_code == 201
     renamed = await client.patch(
-        f"/api/v1/me/sessions/{session_id}/title",
+        f"/api/v1/me/sessions/title?session_id={session_id}",
         headers=_auth(api_key),
         json={"title": title},
     )
     assert renamed.status_code == 200
-    detail = await client.get(f"/api/v1/me/sessions/{session_id}", headers=_auth(api_key))
+    detail = await client.get(
+        f"/api/v1/me/sessions/detail?session_id={session_id}", headers=_auth(api_key)
+    )
     assert detail.status_code == 200
     return detail.json()
 
@@ -81,7 +83,9 @@ async def test_untitled_trashed_session_falls_back_to_its_session_id(client: Asy
         },
     )
     assert pushed.status_code == 201
-    detail = await client.get("/api/v1/me/sessions/claude-untitled", headers=_auth(api_key))
+    detail = await client.get(
+        "/api/v1/me/sessions/detail?session_id=claude-untitled", headers=_auth(api_key)
+    )
     assert detail.status_code == 200
 
     await client.delete(f"/api/v1/me/sessions/{detail.json()['id']}", headers=_auth(api_key))

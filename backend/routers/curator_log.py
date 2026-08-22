@@ -27,6 +27,12 @@ async def curator_log(
 ) -> dict:
     user_id = current_user["id"]
     curator = await agent_service.get_or_create_curator(user_id)
+    return {"entries": await curator_runs(user_id, curator, limit)}
+
+
+async def curator_runs(user_id, curator: dict, limit: int = 14) -> list[dict]:
+    """One entry per run of this curator, newest first. Shared with the
+    developer console, which shows the external curator's history."""
     prefix = scheduled_session_prefix(curator)
     pool = get_pool()
     runs = await pool.fetch(
@@ -44,7 +50,7 @@ async def curator_log(
         f"{prefix}%",
         limit,
     )
-    return {"entries": [await _entry(dict(run)) for run in runs]}
+    return [await _entry(dict(run)) for run in runs]
 
 
 async def _entry(run: dict) -> dict:

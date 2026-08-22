@@ -38,7 +38,7 @@
    ├─ Agents                         chat over all sources; primary use is via your own agent (CLI/MCP/API)
    ├─ Sources                        what the agent can read
    │  ├─ Files          (native)     folders + pages + uploaded files (Obsidian vault drops in here)
-   │  ├─ Sessions       (native)     agent transcripts, grouped into session folders
+   │  ├─ Sessions       (native)     agent transcripts
    │  ├─ GitHub         (connected)  repos exposed as a filesystem
    │  ├─ Google Drive   (connected)  index only; document data fetched lazily
    │  ├─ Notion         (connected)  index only; page/db data fetched lazily
@@ -51,7 +51,7 @@
   <p><b>Private by default.</b> A user owns everything in their workspace (workspace membership == ownership). Nobody else sees anything until a <code>shares</code> row exists.</p>
   <h3>The two-table model</h3>
   <ul>
-    <li><b><code>shares</code></b> — grants a <b>principal</b> (a <code>user</code>, or a <code>skill</code>) access to an object. This is the primary, team-collaboration path: <i>share a folder/file/session with a person by email</i>. Folder &amp; session-folder shares <b>cascade</b> to their contents.</li>
+    <li><b><code>shares</code></b> — grants a <b>principal</b> (a <code>user</code>, or a <code>skill</code>) access to an object. This is the primary, team-collaboration path: <i>share a folder/file/session with a person by email</i>. Folder shares <b>cascade</b> to their contents.</li>
     <li><b><code>skills</code></b> — the publish record for a skill folder (a folder containing SKILL.md): slug, Discover flag, cover art. Existence = publicly readable. Person shares ride the generic <code>shares</code> table on the folder. Adding a source to a skill copies a <b>snapshot</b> page into its folder so it's self-contained.</li>
   </ul>
   <h3>Access resolution — <code>check_access(object, user)</code></h3>
@@ -74,7 +74,6 @@ else                                                         → denied</pre>
   <table>
     <tr><th>Table</th><th>Key columns</th><th>Purpose</th></tr>
     <tr><td><code>workspace_sources</code></td><td>id, workspace_id, owner_user_id, source_type, external_ref, capability, sync_status, sync_cursor</td><td>Registry of connected sources (user-scoped). Native files/sessions are virtual.</td></tr>
-    <tr><td><code>session_folders</code></td><td>id, workspace_id, owner_user_id, name (+ <code>sessions.session_folder_id</code>)</td><td>Shareable grouping for sessions.</td></tr>
   </table>
   <h3>Per-integration storage</h3>
   <p>One table per integration, grouped by storage strategy. They share a navigation shape (<code>path</code>/<code>name</code>/<code>kind</code>/<code>deleted_at</code>) so the agent's list/read tools stay uniform; the copied-content tables add <code>content</code>/<code>content_hash</code>/<code>embedding</code>/<code>embed_stale</code>.</p>
@@ -106,7 +105,6 @@ search(query, source?)          FTS + vector across sources, owner/share scoped<
     <tr><td><code>POST /api/v1/integrations/slack/events</code></td><td>Slack Events-API webhook (signature-verified).</td></tr>
     <tr><td><code>POST /api/v1/share</code> · <code>DELETE</code> · <code>GET</code></td><td>Share an object with a person by email (a pending invite if they're not a user yet, converting on signup); revoke; list shares.</td></tr>
     <tr><td><code>POST /api/v1/workspaces/{ws}/skills/{id}/snapshot-source</code></td><td>Copy a source document into a skill as a self-contained page.</td></tr>
-    <tr><td><code>POST /api/v1/workspaces/{ws}/session-folders</code> · <code>/assign</code></td><td>Create a session folder; assign sessions.</td></tr>
     <tr><td><code>POST /api/v1/workspaces/{ws}/skills</code> · <code>/publish</code></td><td>Create / publish a skill bundle.</td></tr>
     <tr><td><code>GET /stashes/{slug}.md</code> · <code>.json</code></td><td>Agent-readable skill (curl without the CLI).</td></tr>
     <tr><td><code>POST /api/v1/workspaces/{ws}/ask</code></td><td>SSE stream — ask the agent across sources.</td></tr>
@@ -137,7 +135,7 @@ search(query, source?)          FTS + vector across sources, owner/share scoped<
   <p class="note">Skills are themselves a portable plugin format: a Files folder whose immediate child is a <code>SKILL.md</code> (the same convention Claude Code uses) is exposed over MCP (<code>stash_list_skills</code>/<code>stash_read_skill</code>) and drops straight into any agent's <code>~/.claude/skills/</code>. AGENTS.md is the cross-tool context file — Codex, OpenCode, and Cursor read it the way Claude Code reads CLAUDE.md.</p>
 
   <h2>7. Status</h2>
-  <p><span class="ok">Shipped:</span> Skill rename; user-scoped UI (no workspace switcher/Members); the <code>shares</code> permission model + per-object/folder sharing, share-by-email with pending invites that convert on signup; session folders with a "By folder" view on the Sessions page; Agents view with the CLI/MCP/API install tab; per-integration source storage (copied content for GitHub/Slack/Granola — Granola on its real key-based API, index-only + lazy read for Drive/Notion); skill snapshot-on-add for source content; Obsidian vault upload (lands in native Files); multi-turn agent chat stored as Sessions; the add-source modal + flat Sources sidebar; cleanup of the legacy import UI.</p>
+  <p><span class="ok">Shipped:</span> Skill rename; user-scoped UI (no workspace switcher/Members); the <code>shares</code> permission model + per-object/folder sharing, share-by-email with pending invites that convert on signup; Agents view with the CLI/MCP/API install tab; per-integration source storage (copied content for GitHub/Slack/Granola — Granola on its real key-based API, index-only + lazy read for Drive/Notion); skill snapshot-on-add for source content; Obsidian vault upload (lands in native Files); multi-turn agent chat stored as Sessions; the add-source modal + flat Sources sidebar; cleanup of the legacy import UI.</p>
 </div>
 </body>
 </html>

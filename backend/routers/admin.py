@@ -188,7 +188,7 @@ async def remove_discover_skill(req: RepoRequest):
     return {"repo_url": req.repo_url, "removed": removed}
 
 
-# --- Workspaces: org-owned scopes, managed by ops (like plans) ---
+# --- Workspaces: team-owned scopes, managed by ops (like plans) ---
 
 
 class WorkspaceRequest(BaseModel):

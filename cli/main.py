@@ -44,7 +44,6 @@ from .config import (
     stop_streaming,
     stored_base_url,
     streaming_stopped,
-    write_manifest,
 )
 from .formatting import console, output_json, print_user
 
@@ -2765,80 +2764,6 @@ def hist_agents(as_json: bool = typer.Option(False, "--json")):
                 console.print(f"  {name}")
 
 
-@hist_app.command("folders")
-def hist_folders(as_json: bool = typer.Option(False, "--json")):
-    """List session folders (shareable groupings of sessions)."""
-    with _client() as c:
-        try:
-            data = c.list_session_folders()
-        except StashError as e:
-            _err(e)
-    if _use_json(as_json):
-        output_json(data)
-        return
-    if not data:
-        console.print("[dim]No session folders.[/dim]")
-        return
-    for f in data:
-        console.print(f"  [bold]{f.get('name')}[/bold]  [dim]({f.get('id')})[/dim]")
-
-
-@hist_app.command("new-folder")
-def hist_new_folder(
-    name: str = typer.Argument(...),
-    as_json: bool = typer.Option(False, "--json"),
-):
-    """Create a session folder."""
-    with _client() as c:
-        try:
-            data = c.create_session_folder(name)
-        except StashError as e:
-            _err(e)
-    if _use_json(as_json):
-        output_json(data)
-        return
-    console.print(f"[green]Created folder[/green] {name}  [dim]({data.get('id')})[/dim]")
-
-
-@hist_app.command("use-folder")
-def hist_use_folder(
-    folder: str = typer.Argument(
-        None, help="Folder name or id to pin this repo's sessions to. A new name is created."
-    ),
-    use_default: bool = typer.Option(
-        False, "--default", help="Clear the pin so sessions land in the Default folder."
-    ),
-):
-    """Pin this repo's agent sessions to a session folder (writes `.stash`)."""
-    if load_manifest() is None:
-        console.print(f"[red]No {MANIFEST_FILE} here. Run [bold]stash connect[/bold] first.[/red]")
-        raise typer.Exit(1)
-    if not folder and not use_default:
-        console.print("[red]Pass a folder name/id, or --default to clear the pin.[/red]")
-        raise typer.Exit(1)
-
-    if use_default:
-        write_manifest({"session_folder_id": ""})
-        console.print("[green]✓[/green] Sessions will land in the Default folder.")
-        return
-
-    with _client() as c:
-        try:
-            folders = c.list_session_folders()
-            match = next((f for f in folders if folder in (f.get("id"), f.get("name"))), None)
-            if match is None:
-                match = c.create_session_folder(folder)
-                console.print(f"[green]Created folder[/green] {folder}")
-        except StashError as e:
-            _err(e)
-
-    write_manifest({"session_folder_id": match["id"]})
-    console.print(
-        f"[green]✓[/green] Sessions in this repo now land in "
-        f"[bold]{match.get('name')}[/bold]  [dim]({match['id']})[/dim]"
-    )
-
-
 @hist_app.command("push")
 def hist_push(
     content: str = typer.Argument(...),
@@ -3873,15 +3798,13 @@ def mv_cmd(
     if not to_folder and not to_root:
         console.print("[red]Pass --to-folder <id> or --to-root.[/red]")
         raise typer.Exit(1)
-    items = _resolve_session_refs(_parse_refs(refs))
-    sessions = [i for t, i in items if t == "session"]
-    others = [{"object_type": t, "object_id": i} for t, i in items if t != "session"]
+    # Sessions can't be moved — session folders were removed with the
+    # developer platform work; sessions live in the flat sessions surface.
+    items = _parse_refs(refs)
+    moves = [{"object_type": t, "object_id": i} for t, i in items]
     with _client() as c:
         try:
-            if others:
-                c.batch_move(others, target_folder_id=to_folder, move_to_root=to_root)
-            for session_id in sessions:
-                c.assign_session_folder(session_id, folder_id=None if to_root else to_folder)
+            c.batch_move(moves, target_folder_id=to_folder, move_to_root=to_root)
         except StashError as e:
             _err(e)
     console.print(f"[green]{len(items)} item(s) moved.[/green]")
@@ -3920,7 +3843,7 @@ def cp_cmd(
 shares_app = typer.Typer(help="Shares — grant people access to an object by email.")
 app.add_typer(shares_app, name="shares")
 
-_SHARE_OBJECT_TYPES = "folder | page | file | session | session_folder | table | source"
+_SHARE_OBJECT_TYPES = "folder | page | file | session | table | source"
 
 
 @shares_app.command("ls")

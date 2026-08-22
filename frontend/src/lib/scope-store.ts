@@ -32,6 +32,11 @@ export function getScopeUserId(): string | null {
   return read()?.scope_user_id ?? null;
 }
 
+/** True while the selected context is a developer console (see Scope.view). */
+export function isDeveloperView(): boolean {
+  return read()?.view === "developer";
+}
+
 export function setScope(scope: Scope | null): void {
   cache = scope;
   if (scope) localStorage.setItem(SCOPE_KEY, JSON.stringify(scope));

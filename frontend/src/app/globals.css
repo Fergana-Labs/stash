@@ -21,6 +21,24 @@
   --text-muted: #97948D;
   --divider-color: #DDDBD4;
 
+  /* Brand ramp and type stacks live here rather than inline in `@theme` so a
+     scoped surface can retarget them — `@theme inline` bakes literal values
+     into every utility, which makes an override impossible. */
+  --brand-50: #FFF7ED;
+  --brand-100: #FFEDD5;
+  --brand-200: #FED7AA;
+  --brand-300: #FDBA74;
+  --brand-400: #FB923C;
+  --brand-500: #F97316;
+  --brand-600: #EA580C;
+  --brand-700: #C2410C;
+  --brand-800: #9A3412;
+  --brand-900: #7C2D12;
+
+  --font-sans-stack: var(--font-instrument-sans), 'Instrument Sans', sans-serif;
+  --font-display-stack: var(--font-space-grotesk), 'Space Grotesk', 'Satoshi', sans-serif;
+  --font-mono-stack: var(--font-jetbrains-mono), 'JetBrains Mono', monospace;
+
   /* shadcn/ui semantic vars, sourced from the moltchat tokens above so the two
      systems share one palette. Brand stays orange (no indigo). `--muted` follows
      shadcn semantics: a subtle SURFACE (not gray text); gray text is
@@ -128,20 +146,20 @@
   --radius-xl: calc(var(--radius) + 4px);
 
   /* Brand (orange — DESIGN.md: #F97316 primary) */
-  --color-brand-50: #FFF7ED;
-  --color-brand-100: #FFEDD5;
-  --color-brand-200: #FED7AA;
-  --color-brand-300: #FDBA74;
-  --color-brand-400: #FB923C;
-  --color-brand-500: #F97316;
-  --color-brand-600: #EA580C;
-  --color-brand-700: #C2410C;
-  --color-brand-800: #9A3412;
-  --color-brand-900: #7C2D12;
-  --color-brand: #F97316;
-  --color-brand-hover: #EA580C;
-  --color-brand-muted: #FFF7ED;
-  --color-brand-deep: #C2410C;
+  --color-brand-50: var(--brand-50);
+  --color-brand-100: var(--brand-100);
+  --color-brand-200: var(--brand-200);
+  --color-brand-300: var(--brand-300);
+  --color-brand-400: var(--brand-400);
+  --color-brand-500: var(--brand-500);
+  --color-brand-600: var(--brand-600);
+  --color-brand-700: var(--brand-700);
+  --color-brand-800: var(--brand-800);
+  --color-brand-900: var(--brand-900);
+  --color-brand: var(--brand-500);
+  --color-brand-hover: var(--brand-600);
+  --color-brand-muted: var(--brand-50);
+  --color-brand-deep: var(--brand-700);
 
   /* Agent/session accent */
   --color-agent: #EA580C;
@@ -160,9 +178,47 @@
   --color-error-muted: oklch(0.6 0.2 25 / 0.12);
 
   /* Typography */
-  --font-sans: var(--font-instrument-sans), 'Instrument Sans', sans-serif;
-  --font-display: var(--font-space-grotesk), 'Space Grotesk', 'Satoshi', sans-serif;
-  --font-mono: var(--font-jetbrains-mono), 'JetBrains Mono', monospace;
+  --font-sans: var(--font-sans-stack);
+  --font-display: var(--font-display-stack);
+  --font-mono: var(--font-mono-stack);
+}
+
+/* === Developer Platform surface ===
+ *
+ * The Developer Platform is the one part of the product that runs the landing
+ * site's brand system (www/DESIGN.md) instead of the app's: warm paper, coral,
+ * Chillax and IBM Plex Mono, so it reads as the same product as joinstash.ai/docs.
+ * These override the tokens the `@theme inline` maps already read from, so every
+ * `bg-surface` / `text-dim` / `text-brand` utility inside the shell retargets
+ * without a single hardcoded hex in the components.
+ *
+ * Deliberately light-only: the docs have no dark mode, and this block sits below
+ * `[data-theme="dark"]` on the tree, so it wins in either theme. */
+[data-surface="developer"] {
+  --bg-base: #F8F6F1;
+  --bg-surface: #F4F2EC;
+  --bg-raised: #EEEBE3;
+  --border-color: #E9E5DC;
+  --border-subtle-color: #F1EEE7;
+  --text-primary: #16130F;
+  --text-dim: #453F37;
+  --text-muted: #7C7469;
+  --divider-color: #E3DED4;
+
+  --brand-50: #FFEFEA;
+  --brand-300: #FFA98F;
+  --brand-400: #FF7B57;
+  --brand-500: #FF5A36;
+  --brand-600: #F04A26;
+  --brand-700: #C4421F;
+
+  --font-sans-stack: 'Supreme', var(--font-instrument-sans), sans-serif;
+  --font-display-stack: 'Chillax', 'Avenir Next', var(--font-instrument-sans), sans-serif;
+  --font-mono-stack: var(--font-ibm-plex-mono), 'IBM Plex Mono', monospace;
+
+  background: var(--bg-base);
+  color: var(--text-dim);
+  font-family: var(--font-sans), sans-serif;
 }
 
 body {
