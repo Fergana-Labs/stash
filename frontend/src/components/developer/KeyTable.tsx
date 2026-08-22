@@ -51,7 +51,7 @@ export default function KeyTable({ refresh }: { refresh: number }) {
   if (keys.length === 0) {
     return (
       <p className="rounded border border-dashed border-border px-6 py-8 text-center text-[15px] leading-7 text-muted-foreground">
-        No active keys. Mint one below — it is shown once, then only its name lives here.
+        No active keys. Create one — it is shown once, then only its name lives here.
       </p>
     );
   }
