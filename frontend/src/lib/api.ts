@@ -16,7 +16,7 @@ import {
   KnowledgeDensity,
   EmbeddingProjection,
   Workspace,
-  Tenant,
+  EndUser,
   MiniProgramApp,
   MiniProgramResolved,
   CuratedSkill,
@@ -251,16 +251,16 @@ export async function mintDeveloperKey(
   });
 }
 
-export async function listTenants(): Promise<{
+export async function listUsers(): Promise<{
   workspace: Workspace;
-  tenants: Tenant[];
-  stats: { wiki_page_count: number; tenant_session_count: number };
+  users: EndUser[];
+  stats: { wiki_page_count: number; user_session_count: number };
 }> {
-  return apiFetch(`${ME}/tenants`);
+  return apiFetch(`${ME}/users`);
 }
 
-// The whole workspace's sessions, newest first, labelled by tenant. Rows with
-// no tenant are the workspace's own agents — the curator's runs, mostly.
+// The whole workspace's sessions, newest first, labelled by user. Rows with
+// no user are the workspace's own agents — the curator's runs, mostly.
 export interface DeveloperSession {
   session_id: string;
   agent_name: string | null;
@@ -268,9 +268,9 @@ export interface DeveloperSession {
   event_count: number;
   started_at: string | null;
   last_event_at: string | null;
-  tenant_id: string | null;
-  tenant_name: string | null;
-  tenant_external_id: string | null;
+  user_id: string | null;
+  user_name: string | null;
+  user_external_id: string | null;
 }
 
 export async function listDeveloperSessions(): Promise<{ sessions: DeveloperSession[] }> {
@@ -290,7 +290,7 @@ export interface DeveloperFileRow {
   created_at: string;
 }
 
-export interface DeveloperTenantFiles {
+export interface DeveloperUserFiles {
   id: string;
   name: string;
   external_id: string;
@@ -303,12 +303,12 @@ export async function listDeveloperFiles(): Promise<{
   wiki_folder_id: string;
   wiki_pages: DeveloperPageRow[];
   wiki_files: DeveloperFileRow[];
-  tenants: DeveloperTenantFiles[];
+  users: DeveloperUserFiles[];
 }> {
   return apiFetch(`${ME}/developer/files`);
 }
 
-export interface TenantSession {
+export interface EndUserSession {
   session_id: string;
   agent_name: string | null;
   title: string | null;
@@ -317,7 +317,7 @@ export interface TenantSession {
   last_event_at: string | null;
 }
 
-export interface TenantFile {
+export interface EndUserFile {
   id: string;
   name: string;
   content_type: string | null;
@@ -325,7 +325,7 @@ export interface TenantFile {
   created_at: string;
 }
 
-export interface TenantNotepadPage {
+export interface EndUserWikiPage {
   id: string;
   name: string;
   updated_at: string;
@@ -339,7 +339,7 @@ export interface CuratorRun {
   error: string | null;
 }
 
-export interface TenantRef {
+export interface EndUserRef {
   id: string;
   name: string;
   external_id: string;
@@ -358,8 +358,8 @@ export async function getCurator(): Promise<{
   prompt: string;
   backfill_prompt: string;
   instructions: string | null;
-  feeding: TenantRef[];
-  opted_out: TenantRef[];
+  feeding: EndUserRef[];
+  opted_out: EndUserRef[];
   runs: CuratorRun[];
 }> {
   return apiFetch(`${ME}/developer/curator`);
@@ -384,7 +384,7 @@ export async function backfillCurator(): Promise<{ status: string }> {
   return apiFetch(`${ME}/developer/curator/backfill`, { method: "POST" });
 }
 
-export interface TenantSource {
+export interface EndUserSource {
   id: string;
   provider: string;
   type: string;
@@ -393,21 +393,21 @@ export interface TenantSource {
   last_synced_at: string | null;
 }
 
-export async function getTenant(tenantId: string): Promise<{
-  tenant: Tenant;
-  sessions: TenantSession[];
-  files: TenantFile[];
-  notepad_pages: TenantNotepadPage[];
-  sources: TenantSource[];
+export async function getUser(userId: string): Promise<{
+  user: EndUser;
+  sessions: EndUserSession[];
+  files: EndUserFile[];
+  notepad_pages: EndUserWikiPage[];
+  sources: EndUserSource[];
 }> {
-  return apiFetch(`${ME}/tenants/${tenantId}`);
+  return apiFetch(`${ME}/users/${userId}`);
 }
 
-export async function updateTenant(
-  tenantId: string,
+export async function updateUser(
+  userId: string,
   patch: { name?: string; share_wiki?: boolean },
-): Promise<Tenant> {
-  return apiFetch(`${ME}/tenants/${tenantId}`, {
+): Promise<EndUser> {
+  return apiFetch(`${ME}/users/${userId}`, {
     method: "PATCH",
     body: JSON.stringify(patch),
   });

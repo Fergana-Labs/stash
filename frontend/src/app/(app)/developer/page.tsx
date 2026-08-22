@@ -7,8 +7,8 @@ import { ChevronRight } from "lucide-react";
 import DeveloperGate from "@/components/developer/DeveloperGate";
 import UserTable from "@/components/developer/UserTable";
 import { Code, PageHeading, SectionHeading } from "@/components/developer/DocsPrimitives";
-import { listTenants } from "@/lib/api";
-import type { Tenant, Workspace } from "@/lib/types";
+import { listUsers } from "@/lib/api";
+import type { EndUser, Workspace } from "@/lib/types";
 
 export default function DeveloperOverview() {
   return (
@@ -25,7 +25,7 @@ const ROUTES = [
   {
     href: "/developer/keys",
     title: "Mint a key, wire two calls",
-    detail: "Upload each turn with a tenant_id, read back with the same one.",
+    detail: "Upload each turn with a user_id, read back with the same one.",
   },
   {
     href: "/developer/users",
@@ -41,16 +41,16 @@ const ROUTES = [
 
 function Overview() {
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
-  const [users, setUsers] = useState<Tenant[]>([]);
-  const [stats, setStats] = useState({ wiki_page_count: 0, tenant_session_count: 0 });
+  const [users, setUsers] = useState<EndUser[]>([]);
+  const [stats, setStats] = useState({ wiki_page_count: 0, user_session_count: 0 });
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(() => {
     setError(null);
-    listTenants()
+    listUsers()
       .then((res) => {
         setWorkspace(res.workspace);
-        setUsers(res.tenants);
+        setUsers(res.users);
         setStats(res.stats);
       })
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load the console"));
@@ -74,7 +74,7 @@ function Overview() {
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         <Stat label="Users" value={users.length} />
-        <Stat label="User sessions" value={stats.tenant_session_count} />
+        <Stat label="User sessions" value={stats.user_session_count} />
         <Stat label="Wiki pages" value={stats.wiki_page_count} />
         <Stat label="Feeding the wiki" value={users.filter((o) => o.share_wiki).length} />
       </div>
@@ -110,7 +110,7 @@ function Overview() {
         {users.length === 0 ? (
           <p className="mt-3 text-[15px] leading-7 text-dim">
             No users yet — they appear when your backend uploads a session with a new{" "}
-            <Code>tenant_id</Code>. Start with{" "}
+            <Code>user_id</Code>. Start with{" "}
             <Link href="/developer/keys" className="text-brand-500 underline underline-offset-2">
               API Keys
             </Link>
@@ -118,7 +118,7 @@ function Overview() {
           </p>
         ) : (
           <div className="mt-4">
-            <UserTable tenants={users.slice(0, 5)} onChanged={refresh} />
+            <UserTable users={users.slice(0, 5)} onChanged={refresh} />
           </div>
         )}
       </section>

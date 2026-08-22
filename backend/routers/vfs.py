@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 from stashvfs import MountError
 
 from ..auth import get_current_user
-from ..services import security_audit_service, source_service, tenant_service, vfs_service
+from ..services import end_user_service, security_audit_service, source_service, vfs_service
 from ..services.vfs_service import VfsBudgetExceeded
 
 router = APIRouter(prefix="/api/v1/me/vfs", tags=["vfs"])
@@ -21,49 +21,49 @@ MAX_SCRIPT_LENGTH = 4096
 class VfsRequest(BaseModel):
     script: str = Field(max_length=MAX_SCRIPT_LENGTH)
     cwd: str = "/"
-    tenant_id: str | None = Field(
+    user_id: str | None = Field(
         None,
         max_length=128,
-        description="External Multiplayer: narrow the tree to this tenant — "
-        "shared wiki at /memory, the tenant's notepad and files under /files, "
-        "the tenant's transcripts under /sessions",
+        description="External Multiplayer: narrow the tree to this end user — "
+        "shared wiki at /memory, the user's notepad and files under /files, "
+        "the user's transcripts under /sessions",
     )
 
 
-async def _tenant_ctx(current_user: dict, tenant_id: str | None) -> dict | None:
+async def _end_user_ctx(current_user: dict, user_id: str | None) -> dict | None:
     """The developer contract: the caller's key belongs to the workspace's
-    scope user, and tenant_id is asserted by their backend. Isolation between one
-    developer's tenants is enforced at the developer boundary, not here.
+    scope user, and user_id is asserted by their backend. Isolation between one
+    developer's users is enforced at the developer boundary, not here.
 
-    A tenant id with no row yet is a customer who has not been written for —
+    A user id with no row yet is a customer who has not been written for —
     their agent's very first turn reads before it records anything. That reads
     the shared wiki and an empty set of their own material, which is exactly
-    right: the accumulated cross-tenant knowledge is what a new customer benefits
-    from on day one. The tenant appears once their first session is uploaded.
+    right: the accumulated cross-user knowledge is what a new user benefits
+    from on day one. The user appears once their first session is uploaded.
     """
-    if tenant_id is None:
+    if user_id is None:
         return None
-    workspace = await tenant_service.workspace_for_scope(current_user["id"])
+    workspace = await end_user_service.workspace_for_scope(current_user["id"])
     if workspace is None or workspace["external_wiki_folder_id"] is None:
         raise HTTPException(
             status_code=400,
-            detail="tenant_id requires a developer workspace scope — activate the platform first",
+            detail="user_id requires a developer workspace scope — activate the platform first",
         )
-    tenant = await tenant_service.find_tenant(workspace["id"], tenant_id)
-    if tenant is None:
+    end_user = await end_user_service.find_end_user(workspace["id"], user_id)
+    if end_user is None:
         return {
-            "external_id": tenant_id,
+            "external_id": user_id,
             "wiki_folder_id": str(workspace["external_wiki_folder_id"]),
             "notepad_folder_id": None,
             "source_ids": set(),
         }
     connected = await source_service.list_connected_sources(
-        current_user["id"], tenant_id=tenant["id"]
+        current_user["id"], end_user_id=end_user["id"]
     )
     return {
-        "external_id": tenant["external_id"],
+        "external_id": end_user["external_id"],
         "wiki_folder_id": str(workspace["external_wiki_folder_id"]),
-        "notepad_folder_id": str(tenant["notepad_folder_id"]),
+        "notepad_folder_id": str(end_user["notepad_folder_id"]),
         "source_ids": {s["id"] for s in connected},
     }
 
@@ -92,10 +92,10 @@ async def run_vfs(
             status_code=401,
             detail="The VFS runs every read as the calling credential; use an API key, not a cookie.",
         )
-    tenant_ctx = await _tenant_ctx(current_user, body.tenant_id)
+    end_user_ctx = await _end_user_ctx(current_user, body.user_id)
     try:
         return await vfs_service.run_vfs_script(
-            request.app, authorization, body.script, body.cwd, tenant_ctx
+            request.app, authorization, body.script, body.cwd, end_user_ctx
         )
     except MountError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e

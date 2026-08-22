@@ -221,7 +221,7 @@ async def test_unknown_cwd_is_a_client_error(client: AsyncClient):
 
 
 async def test_scan_budget_makes_grep_partial_and_loud(client: AsyncClient, monkeypatch):
-    """A tenant-wide grep that outruns the read budget must return whatever it
+    """A scope-wide grep that outruns the read budget must return whatever it
     found so far with an explicit truncation warning — not abort with 413
     (Heavi's agent lost entire per-VIN sweeps to that), and never a clean
     no-match exit that reads as 'searched everything, found nothing'."""

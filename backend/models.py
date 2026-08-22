@@ -186,11 +186,11 @@ class FolderListResponse(BaseModel):
 class PageCreateRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
     folder_id: UUID | None = None
-    tenant_id: str | None = Field(
+    user_id: str | None = Field(
         None,
         max_length=128,
-        description="External Multiplayer: the customer this page is about, "
-        "named by the developer's own tenant id",
+        description="External Multiplayer: the end user this page is about, "
+        "named by the developer's own user id",
     )
     content: str = ""
     content_type: str = Field("markdown", pattern=r"^(markdown|html)$")
@@ -238,10 +238,11 @@ class PageResponse(BaseModel):
     id: UUID
     owner_user_id: UUID
     folder_id: UUID | None
-    # External Multiplayer: the customer this page is about, if any.
-    tenant_id: UUID | None = None
+    # External Multiplayer: the end user this page is about, if any. The
+    # end_users row id — "user_id" would read as a Stash account here.
+    end_user_id: UUID | None = None
     # Which wiki this page is written for, derived from where it sits:
-    # "external" (the workspace's cross-tenant, anonymized wiki), "internal" (the
+    # "external" (the workspace's cross-user, anonymized wiki), "internal" (the
     # scope's own Memory wiki), or None for an ordinary page.
     wiki: str | None = None
     name: str
@@ -544,16 +545,16 @@ class HistoryEventCreateRequest(BaseModel):
     event_type: str = Field(..., min_length=1, max_length=64)
     content: str = Field(..., min_length=1)
     session_id: SessionId = Field(..., min_length=1, max_length=64)
-    tenant_id: str | None = Field(
+    user_id: str | None = Field(
         None,
         max_length=128,
-        description="External Multiplayer: the developer-managed tenant this "
-        "session belongs to; requires a developer workspace scope",
+        description="External Multiplayer: the developer's own id for the end "
+        "user this session belongs to; requires a developer workspace scope",
     )
-    tenant_name: str | None = Field(
+    user_name: str | None = Field(
         None,
         max_length=255,
-        description="Display name for the tenant, used only when it is first seen",
+        description="Display name for the end user, used only when it is first seen",
     )
     tool_name: str | None = Field(None, max_length=128)
     metadata: dict = Field(default_factory=dict)

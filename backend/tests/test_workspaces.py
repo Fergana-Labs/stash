@@ -1,4 +1,4 @@
-"""Workspaces: tenant-owned scopes with derived membership.
+"""Workspaces: team-owned scopes with derived membership.
 
 What matters here:
 - On-domain membership is derived: a *verified* email on the workspace domain
@@ -44,7 +44,7 @@ async def _verify_email(pool, user_id) -> None:
     await pool.execute("UPDATE users SET email_verified = true WHERE id = $1", user_id)
 
 
-async def _workspace_page(pool, scope_user_id, name="tenant-page") -> uuid.UUID:
+async def _workspace_page(pool, scope_user_id, name="team-page") -> uuid.UUID:
     row = await pool.fetchrow(
         "INSERT INTO pages (owner_user_id, name, content_markdown, created_by) "
         "VALUES ($1, $2, 'enterprise knowledge', $1) RETURNING id",
@@ -223,7 +223,7 @@ async def test_member_can_edit_workspace_page(client: AsyncClient, pool):
 @pytest.mark.asyncio
 async def test_member_cannot_manage_workspace_shares(client: AsyncClient, pool):
     """Sharing is an owner power: a member must not be able to share (leak)
-    the tenant KB to outsiders."""
+    the team KB to outsiders."""
     domain = _domain()
     key, body = await _register_with_email(client, f"editor@{domain}")
     await _verify_email(pool, uuid.UUID(body["id"]))
@@ -253,16 +253,16 @@ async def test_scope_header_reroots_overview_for_members_only(client: AsyncClien
     await _verify_email(pool, uuid.UUID(member["id"]))
     outsider_key, _ = await _register_with_email(client, f"{unique_name('o')}@other.io")
     ws = await _create_workspace(client, domain)
-    await _workspace_page(pool, ws["scope_user_id"], name="tenant-only-page")
+    await _workspace_page(pool, ws["scope_user_id"], name="team-only-page")
 
     scoped = {**_auth(member_key), "X-Stash-Scope": ws["scope_user_id"]}
     resp = await client.get("/api/v1/me/overview", headers=scoped)
     assert resp.status_code == 200
-    assert "tenant-only-page" in [p["name"] for p in resp.json()["files"]["pages"]]
+    assert "team-only-page" in [p["name"] for p in resp.json()["files"]["pages"]]
 
-    # Personal view stays personal — the tenant page is not merged in.
+    # Personal view stays personal — the team page is not merged in.
     resp = await client.get("/api/v1/me/overview", headers=_auth(member_key))
-    assert "tenant-only-page" not in [p["name"] for p in resp.json()["files"]["pages"]]
+    assert "team-only-page" not in [p["name"] for p in resp.json()["files"]["pages"]]
 
     resp = await client.get(
         "/api/v1/me/overview", headers={**_auth(outsider_key), "X-Stash-Scope": ws["scope_user_id"]}
@@ -327,7 +327,7 @@ async def test_member_creates_page_owned_by_workspace(client: AsyncClient, pool)
         "SELECT owner_user_id, created_by FROM pages WHERE id = $1",
         uuid.UUID(resp.json()["id"]),
     )
-    # Content belongs to the tenant; the action belongs to the human.
+    # Content belongs to the team; the action belongs to the human.
     assert row["owner_user_id"] == uuid.UUID(ws["scope_user_id"])
     assert row["created_by"] == member_id
 
@@ -377,7 +377,7 @@ async def test_workspace_key_endpoint_rejects_unknown_access(client: AsyncClient
 # --- Workspace sources: members read the hopper, only the owner wires it ---
 
 
-async def _connect_workspace_drive(scope_user_id: str, name: str = "Tenant KB") -> None:
+async def _connect_workspace_drive(scope_user_id: str, name: str = "Team KB") -> None:
     from backend.services import source_service
 
     await source_service.create_source(
@@ -390,7 +390,7 @@ async def _connect_workspace_drive(scope_user_id: str, name: str = "Tenant KB") 
 
 @pytest.mark.asyncio
 async def test_member_sees_workspace_sources_in_scope(client: AsyncClient, pool):
-    """The tenant hopper (a Drive source connected on the workspace) is visible to
+    """The team hopper (a Drive source connected on the workspace) is visible to
     members in workspace scope — sources list, tree, and native entries all
     root on the scope, not the caller."""
     domain = _domain()
@@ -398,17 +398,17 @@ async def test_member_sees_workspace_sources_in_scope(client: AsyncClient, pool)
     await _verify_email(pool, uuid.UUID(body["id"]))
     ws = await _create_workspace(client, domain)
     await _connect_workspace_drive(ws["scope_user_id"])
-    await _workspace_page(pool, ws["scope_user_id"], name="tenant-doc")
+    await _workspace_page(pool, ws["scope_user_id"], name="team-doc")
 
     scoped = {**_auth(key), "X-Stash-Scope": ws["scope_user_id"]}
     resp = await client.get("/api/v1/me/sources", headers=scoped)
     assert resp.status_code == 200
-    assert "Tenant KB" in [s["display_name"] for s in resp.json()["sources"]]
+    assert "Team KB" in [s["display_name"] for s in resp.json()["sources"]]
 
     # Native 'files' entries re-root on the workspace too.
     resp = await client.get("/api/v1/me/sources/files/entries", headers=scoped)
     assert resp.status_code == 200
-    assert "tenant-doc" in [e["name"] for e in resp.json()["entries"]]
+    assert "team-doc" in [e["name"] for e in resp.json()["entries"]]
 
     # An outsider sending the scope header is rejected outright.
     outsider_key, _ = await _register_with_email(client, f"{unique_name('o')}@other.io")
@@ -578,7 +578,7 @@ async def test_member_publishes_workspace_skill_and_teammate_manages_it(client: 
 
 @pytest.mark.asyncio
 async def test_member_forks_public_skill_into_workspace(client: AsyncClient, pool):
-    """Fork honors the workspace as a target scope: the copy lands in the tenant
+    """Fork honors the workspace as a target scope: the copy lands in the team
     KB, and non-members cannot fork into it."""
     domain = _domain()
     key, body = await _register_with_email(client, f"m@{domain}")

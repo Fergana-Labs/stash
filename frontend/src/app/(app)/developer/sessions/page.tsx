@@ -57,9 +57,9 @@ function Sessions() {
                   {s.event_count === 1 ? "" : "s"}
                 </span>
               </span>
-              {s.tenant_id ? (
+              {s.user_id ? (
                 <span className="shrink-0 rounded-full bg-brand-500/10 px-2.5 py-0.5 text-[12px] font-medium text-brand-600">
-                  {s.tenant_name}
+                  {s.user_name}
                 </span>
               ) : (
                 <span className="shrink-0 rounded-full bg-raised px-2.5 py-0.5 text-[12px] text-dim">

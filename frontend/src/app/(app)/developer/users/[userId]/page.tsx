@@ -9,13 +9,13 @@ import DeveloperGate from "@/components/developer/DeveloperGate";
 import { Code, PageHeading, SectionHeading } from "@/components/developer/DocsPrimitives";
 import WikiToggle from "@/components/developer/WikiToggle";
 import {
-  getTenant,
-  type TenantFile,
-  type TenantNotepadPage,
-  type TenantSession,
-  type TenantSource,
+  getUser,
+  type EndUserFile,
+  type EndUserSession,
+  type EndUserSource,
+  type EndUserWikiPage,
 } from "@/lib/api";
-import type { Tenant } from "@/lib/types";
+import type { EndUser } from "@/lib/types";
 
 export default function UserDetailRoute() {
   return (
@@ -27,18 +27,18 @@ export default function UserDetailRoute() {
 
 function UserDetail() {
   const userId = String(useParams().userId);
-  const [user, setUser] = useState<Tenant | null>(null);
-  const [sessions, setSessions] = useState<TenantSession[]>([]);
-  const [files, setFiles] = useState<TenantFile[]>([]);
-  const [wikiPages, setWikiPages] = useState<TenantNotepadPage[]>([]);
-  const [sources, setSources] = useState<TenantSource[]>([]);
+  const [user, setUser] = useState<EndUser | null>(null);
+  const [sessions, setSessions] = useState<EndUserSession[]>([]);
+  const [files, setFiles] = useState<EndUserFile[]>([]);
+  const [wikiPages, setWikiPages] = useState<EndUserWikiPage[]>([]);
+  const [sources, setSources] = useState<EndUserSource[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(() => {
     setError(null);
-    getTenant(userId)
+    getUser(userId)
       .then((res) => {
-        setUser(res.tenant);
+        setUser(res.user);
         setSessions(res.sessions);
         setFiles(res.files);
         setWikiPages(res.notepad_pages);
@@ -69,7 +69,7 @@ function UserDetail() {
       </Link>
 
       <PageHeading title={user.name}>
-        <Code>{user.external_id}</Code> — the <Code>tenant_id</Code> your backend asserts on
+        <Code>{user.external_id}</Code> — the <Code>user_id</Code> your backend asserts on
         every call for this user.
       </PageHeading>
 
@@ -88,7 +88,7 @@ function UserDetail() {
                 : "Their sessions stay in their own wiki. Anything already written to the shared wiki stays — an opt-out is not a retraction."}
             </p>
           </div>
-          <WikiToggle tenant={user} onChanged={refresh} />
+          <WikiToggle user={user} onChanged={refresh} />
         </div>
       </section>
 
@@ -165,13 +165,13 @@ function UserDetail() {
         <SectionHeading>Files</SectionHeading>
         <p className="mt-2 text-[13.5px] leading-6 text-muted-foreground">
           Everything this user&apos;s agent can read besides the wikis: files your backend
-          uploaded with their <Code>tenant_id</Code>, and integrations connected for them
+          uploaded with their <Code>user_id</Code>, and integrations connected for them
           alone. Your other users never see any of it.
         </p>
         {files.length === 0 ? (
           <Empty>
             No files yet. Files arrive when your backend uploads one with this user&apos;s{" "}
-            <Code>tenant_id</Code>.
+            <Code>user_id</Code>.
           </Empty>
         ) : (
           <div className="mt-4 overflow-hidden rounded border border-border bg-surface">
@@ -196,7 +196,7 @@ function UserDetail() {
         </div>
         {sources.length === 0 ? (
           <Empty>
-            None connected. Add one with this user&apos;s <Code>tenant_id</Code> to scope it
+            None connected. Add one with this user&apos;s <Code>user_id</Code> to scope it
             here.
           </Empty>
         ) : (

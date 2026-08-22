@@ -1,8 +1,8 @@
 """The whole Stash integration for an external agent: two calls.
 
-Write a turn with the customer's tenant id; read back with the same tenant id.
-That is the entire External Multiplayer contract — everything else (per-tenant
-notepads, the anonymized cross-tenant wiki, isolation) is Stash's job.
+Write a turn with your own id for the user; read back with the same id.
+That is the entire External Multiplayer contract — everything else (per-user
+notepads, the anonymized cross-user wiki, isolation) is Stash's job.
 """
 
 from datetime import datetime, timedelta, timezone
@@ -18,24 +18,24 @@ class Stash:
             timeout=60,
         )
 
-    def read(self, tenant: str, script: str) -> str:
-        """Run a read against this customer's view of the stash. They see the
+    def read(self, user: str, script: str) -> str:
+        """Run a read against this user's view of the stash. They see the
         shared wiki at /memory, their own notepad and files under /files, and
         only their own transcripts under /sessions."""
-        resp = self._http.post("/api/v1/me/vfs", json={"script": script, "tenant_id": tenant})
+        resp = self._http.post("/api/v1/me/vfs", json={"script": script, "user_id": user})
         resp.raise_for_status()
         return resp.json()["stdout"]
 
     def record(
         self,
-        tenant: str,
-        tenant_name: str,
+        user: str,
+        user_name: str,
         session: str,
         events: list[tuple],
         max_event_chars: int = 20_000,
     ) -> dict:
-        """Append turns to this customer's session. First sight of a tenant id
-        creates the tenant.
+        """Append turns to this user's session. First sight of a user id
+        creates the user.
 
         Each event is (event_type, content) or (event_type, content, datetime)
         — pass the datetime when uploading later than the conversation
@@ -66,8 +66,8 @@ class Stash:
                     "event_type": kind,
                     "content": text,
                     "session_id": session,
-                    "tenant_id": tenant,
-                    "tenant_name": tenant_name,
+                    "user_id": user,
+                    "user_name": user_name,
                     "created_at": stamp.isoformat(),
                 }
             )

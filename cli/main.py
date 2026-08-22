@@ -1312,7 +1312,7 @@ _UPLOAD_TEXT_EXTENSIONS = {
     ".lua",
     ".md",
     ".mdx",
-    ".tenant",
+    ".org",
     ".pl",
     ".py",
     ".r",

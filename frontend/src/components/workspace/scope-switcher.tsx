@@ -170,7 +170,7 @@ function WorkspaceScopes({
           key={`console-${w.id}`}
           icon={<TerminalSquare className="h-4 w-4 text-brand-500" />}
           label={`${w.name} Platform`}
-          detail="Tenants, memory, API keys"
+          detail="Users, memory, API keys"
           selected={scope?.scope_user_id === w.scope_user_id && scope?.view === "developer"}
           onSelect={() => onEnterPlatform(w)}
         />

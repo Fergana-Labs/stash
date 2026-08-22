@@ -214,50 +214,50 @@ def _error_detail(response: httpx.Response) -> str:
     return f"HTTP {response.status_code}"
 
 
-class TenantVfsClient(InProcessVfsClient):
-    """External Multiplayer: the caller's Stash narrowed to one tenant.
+class EndUserVfsClient(InProcessVfsClient):
+    """External Multiplayer: the caller's Stash narrowed to one end user.
 
     `/memory` becomes the workspace's shared external wiki (the memory-folder
     call answers with the wiki folder, and the model re-roots whatever that
-    returns), `/files` holds the tenant's notepad and the tenant's own uploads,
-    `/sessions` only the tenant's transcripts, and `/sources` the sources
-    connected for this tenant. Skills and tables are developer-side surfaces and
-    don't exist in a tenant's view.
+    returns), `/files` holds the user's notepad and the user's own uploads,
+    `/sessions` only the user's transcripts, and `/sources` the sources
+    connected for this user. Skills and tables are developer-side surfaces and
+    don't exist in a user's view.
     """
 
-    def __init__(self, http, loop, tenant_ctx: dict) -> None:
+    def __init__(self, http, loop, end_user_ctx: dict) -> None:
         super().__init__(http, loop)
-        self._org = tenant_ctx
+        self._end_user = end_user_ctx
 
     def get_memory_folder(self) -> dict:
-        return {"id": self._org["wiki_folder_id"]}
+        return {"id": self._end_user["wiki_folder_id"]}
 
     def list_tables(self) -> list:
         return []
 
     def list_sources(self) -> list:
-        """Only the sources connected for this tenant — a customer's Drive folder
+        """Only the sources connected for this user — a customer's Drive folder
         belongs to that customer, never to the developer's other customers."""
-        allowed = self._org["source_ids"]
+        allowed = self._end_user["source_ids"]
         return [s for s in super().list_sources() if s.get("source") in allowed]
 
     def get_overview(self) -> dict:
         overview = super().get_overview()
-        external_id = self._org["external_id"]
+        external_id = self._end_user["external_id"]
         tree = overview.get("files", {})
         folders = tree.get("folders", [])
 
         # Descendant closure of the wiki and notepad roots. Everything else in
-        # the workspace — other tenants' notepads included — is invisible.
+        # the workspace — other users' notepads included — is invisible.
         children: dict[str | None, list[dict]] = {}
         for folder in folders:
             children.setdefault(folder["parent_folder_id"], []).append(folder)
         kept_ids: set[str] = set()
         # A customer with no notepad yet has not been written for — they still
         # read the shared wiki, they just own nothing.
-        frontier = [self._org["wiki_folder_id"]]
-        if self._org["notepad_folder_id"]:
-            frontier.append(self._org["notepad_folder_id"])
+        frontier = [self._end_user["wiki_folder_id"]]
+        if self._end_user["notepad_folder_id"]:
+            frontier.append(self._end_user["notepad_folder_id"])
         while frontier:
             folder_id = frontier.pop()
             if folder_id in kept_ids:
@@ -269,8 +269,8 @@ class TenantVfsClient(InProcessVfsClient):
         for folder in folders:
             if folder["id"] not in kept_ids:
                 continue
-            if folder["id"] == self._org["notepad_folder_id"]:
-                # The notepad root's parent (the workspace's "Tenant Notepads"
+            if folder["id"] == self._end_user["notepad_folder_id"]:
+                # The notepad root's parent (the workspace's "User Notepads"
                 # container) is filtered out, so mount it at /files/notepad.
                 folder = {**folder, "parent_folder_id": None, "name": "notepad"}
             kept_folders.append(folder)
@@ -280,7 +280,7 @@ class TenantVfsClient(InProcessVfsClient):
             "sessions": [
                 s
                 for s in overview.get("sessions", [])
-                if s.get("tenant_external_id") == external_id
+                if s.get("end_user_external_id") == external_id
             ],
             "skills": [],
             "files": {
@@ -289,18 +289,18 @@ class TenantVfsClient(InProcessVfsClient):
                 "files": [
                     f
                     for f in tree.get("files", [])
-                    if f.get("tenant_external_id") == external_id or f["folder_id"] in kept_ids
+                    if f.get("end_user_external_id") == external_id or f["folder_id"] in kept_ids
                 ],
             },
         }
 
 
 def _build_model(
-    http: httpx.AsyncClient, loop: asyncio.AbstractEventLoop, tenant_ctx: dict | None
+    http: httpx.AsyncClient, loop: asyncio.AbstractEventLoop, end_user_ctx: dict | None
 ) -> StashVfsModel:
-    if tenant_ctx is None:
+    if end_user_ctx is None:
         return StashVfsModel(InProcessVfsClient(http, loop), include_computer=False)
-    return StashVfsModel(TenantVfsClient(http, loop, tenant_ctx), include_computer=False)
+    return StashVfsModel(EndUserVfsClient(http, loop, end_user_ctx), include_computer=False)
 
 
 def _run_script(
@@ -308,12 +308,12 @@ def _run_script(
     loop: asyncio.AbstractEventLoop,
     script: str,
     cwd: str,
-    tenant_ctx: dict | None,
+    end_user_ctx: dict | None,
 ) -> dict:
     """Blocking: the model and shell are synchronous, and their lazy loaders reach
     back into `loop` to issue their requests. Runs in a worker thread for that
     reason — see `run_vfs_script`."""
-    model = _build_model(http, loop, tenant_ctx)
+    model = _build_model(http, loop, end_user_ctx)
     model.refresh()
     result = SkillAppVfsShell(model, cwd=cwd).run(script)
     return {
@@ -325,14 +325,14 @@ def _run_script(
 
 
 async def run_vfs_script(
-    app, authorization: str, script: str, cwd: str, tenant_ctx: dict | None = None
+    app, authorization: str, script: str, cwd: str, end_user_ctx: dict | None = None
 ) -> dict:
     """Execute one read-only shell script against the caller's Stash.
 
     `authorization` is forwarded verbatim onto every nested request, so the VFS
     sees precisely what that credential sees anywhere else in the API.
-    `tenant_ctx` (External Multiplayer) narrows the tree to one tenant — see
-    TenantVfsClient.
+    `end_user_ctx` (External Multiplayer) narrows the tree to one end user —
+    see EndUserVfsClient.
     """
     loop = asyncio.get_running_loop()
     transport = httpx.ASGITransport(app=app)
@@ -345,7 +345,7 @@ async def run_vfs_script(
         timeout=None,
     ) as http:
         return await anyio.to_thread.run_sync(
-            functools.partial(_run_script, http, loop, script, cwd, tenant_ctx)
+            functools.partial(_run_script, http, loop, script, cwd, end_user_ctx)
         )
 
 

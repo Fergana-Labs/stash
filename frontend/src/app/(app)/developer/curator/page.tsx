@@ -15,7 +15,7 @@ import {
   runCuratorNow,
   updateCuratorInstructions,
   type CuratorRun,
-  type TenantRef,
+  type EndUserRef,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -332,7 +332,7 @@ function UserColumn({
   accent,
 }: {
   title: string;
-  users: TenantRef[];
+  users: EndUserRef[];
   empty: string;
   accent?: boolean;
 }) {

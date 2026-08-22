@@ -9,7 +9,7 @@ import {
   listDeveloperFiles,
   type DeveloperFileRow,
   type DeveloperPageRow,
-  type DeveloperTenantFiles,
+  type DeveloperUserFiles,
 } from "@/lib/api";
 
 export default function DeveloperFiles() {
@@ -78,17 +78,17 @@ function Files() {
 
       <section>
         <SectionHeading>Per-user files</SectionHeading>
-        {data.tenants.length === 0 ? (
+        {data.users.length === 0 ? (
           <Empty>No users yet, so no per-user files.</Empty>
         ) : (
-          data.tenants.map((user) => <UserFiles key={user.id} user={user} />)
+          data.users.map((user) => <UserFiles key={user.id} user={user} />)
         )}
       </section>
     </>
   );
 }
 
-function UserFiles({ user }: { user: DeveloperTenantFiles }) {
+function UserFiles({ user }: { user: DeveloperUserFiles }) {
   const empty = user.notepad_pages.length === 0 && user.files.length === 0;
   return (
     <div className="mt-6">

@@ -5,8 +5,8 @@ import { useCallback, useEffect, useState } from "react";
 import DeveloperGate from "@/components/developer/DeveloperGate";
 import { PageHeading } from "@/components/developer/DocsPrimitives";
 import UserTable from "@/components/developer/UserTable";
-import { listTenants } from "@/lib/api";
-import type { Tenant } from "@/lib/types";
+import { listUsers } from "@/lib/api";
+import type { EndUser } from "@/lib/types";
 
 export default function DeveloperUsers() {
   return (
@@ -17,13 +17,13 @@ export default function DeveloperUsers() {
 }
 
 function Users() {
-  const [users, setUsers] = useState<Tenant[] | null>(null);
+  const [users, setUsers] = useState<EndUser[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(() => {
     setError(null);
-    listTenants()
-      .then((res) => setUsers(res.tenants))
+    listUsers()
+      .then((res) => setUsers(res.users))
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load users"));
   }, []);
 
@@ -43,7 +43,7 @@ function Users() {
       ) : users === null ? (
         <p className="text-[15px] text-muted-foreground">Loading…</p>
       ) : (
-        <UserTable tenants={users} onChanged={refresh} />
+        <UserTable users={users} onChanged={refresh} />
       )}
     </>
   );

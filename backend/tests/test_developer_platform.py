@@ -4,15 +4,15 @@ What matters here:
 - Activation is self-serve and idempotent: a solo developer gets a one-man,
   invite-only (NULL-domain) workspace with the wiki and notepads folders; the
   creator is an explicit member, since no domain rule will ever cover them.
-- The tenant contract: `tenant_id` on an events upload names the developer's own
-  customer id. First sight creates the tenant and its notepad folder; the
-  session row is stamped set-once, so a tenant session can never migrate to
-  another tenant later.
-- Tenant ids only work on developer workspace scopes — a personal upload
-  carrying tenant_id fails loud, it never silently drops the tenant.
-- The tenant-scoped VFS shows one tenant's world and nothing else's: the shared
-  wiki at /memory, that tenant's notepad and files under /files, that tenant's
-  transcripts under /sessions. Another tenant's material must be invisible —
+- The user contract: `user_id` on an events upload names the developer's own
+  id for their end user. First sight creates the user and their notepad folder;
+  the session row is stamped set-once, so a user's session can never migrate to
+  another user later.
+- User ids only work on developer workspace scopes — a personal upload
+  carrying user_id fails loud, it never silently drops the user.
+- The user-scoped VFS shows one user's world and nothing else's: the shared
+  wiki at /memory, that user's notepad and files under /files, that user's
+  transcripts under /sessions. Another user's material must be invisible —
   that is the entire product promise to the developer's customers.
 """
 
@@ -45,17 +45,17 @@ async def _mint_workspace_key(client: AsyncClient, api_key: str, workspace: dict
     return resp.json()["api_key"]
 
 
-def _event(session_id: str, tenant_id: str | None = None, tenant_name: str | None = None) -> dict:
+def _event(session_id: str, user_id: str | None = None, user_name: str | None = None) -> dict:
     event = {
         "agent_name": "heavi-chat",
         "event_type": "user_message",
         "content": f"hello from {session_id}",
         "session_id": session_id,
     }
-    if tenant_id is not None:
-        event["tenant_id"] = tenant_id
-    if tenant_name is not None:
-        event["tenant_name"] = tenant_name
+    if user_id is not None:
+        event["user_id"] = user_id
+    if user_name is not None:
+        event["user_name"] = user_name
     return event
 
 
@@ -75,7 +75,7 @@ async def test_activate_creates_one_man_workspace(client: AsyncClient, pool):
 
     assert workspace["domain"] is None
     assert workspace["external_wiki_folder_id"] is not None
-    assert workspace["tenant_notepads_folder_id"] is not None
+    assert workspace["end_user_notepads_folder_id"] is not None
 
     # The creator is an explicit member: the workspace scope works for them.
     resp = await client.get(
@@ -106,38 +106,38 @@ async def test_activate_is_idempotent(client: AsyncClient):
     assert again["external_wiki_folder_id"] == workspace["external_wiki_folder_id"]
 
 
-# --- The tenant write contract ---
+# --- The user write contract ---
 
 
 @pytest.mark.asyncio
-async def test_tenant_upload_creates_tenant_and_stamps_session(client: AsyncClient, pool):
+async def test_user_upload_creates_end_user_and_stamps_session(client: AsyncClient, pool):
     api_key, _, workspace = await _developer(client)
     machine_key = await _mint_workspace_key(client, api_key, workspace)
 
     await _push(
         client,
         machine_key,
-        [_event("sess-riverside-1", tenant_id="org_riverside", tenant_name="Riverside Truck")],
+        [_event("sess-riverside-1", user_id="org_riverside", user_name="Riverside Truck")],
     )
 
-    tenant = await pool.fetchrow(
-        "SELECT * FROM tenants WHERE workspace_id = $1 AND external_id = 'org_riverside'",
+    end_user = await pool.fetchrow(
+        "SELECT * FROM end_users WHERE workspace_id = $1 AND external_id = 'org_riverside'",
         uuid.UUID(workspace["id"]),
     )
-    assert tenant is not None
-    assert tenant["name"] == "Riverside Truck"
-    assert tenant["share_wiki"] is True
-    assert tenant["notepad_folder_id"] is not None
+    assert end_user is not None
+    assert end_user["name"] == "Riverside Truck"
+    assert end_user["share_wiki"] is True
+    assert end_user["notepad_folder_id"] is not None
 
     session = await pool.fetchrow(
-        "SELECT tenant_id FROM sessions WHERE owner_user_id = $1 AND session_id = 'sess-riverside-1'",
+        "SELECT end_user_id FROM sessions WHERE owner_user_id = $1 AND session_id = 'sess-riverside-1'",
         uuid.UUID(workspace["scope_user_id"]),
     )
-    assert session["tenant_id"] == tenant["id"]
+    assert session["end_user_id"] == end_user["id"]
 
 
 @pytest.mark.asyncio
-async def test_one_tenant_appends_to_its_session_across_batches(client: AsyncClient, pool):
+async def test_one_user_appends_to_their_session_across_batches(client: AsyncClient, pool):
     """The ordinary case the collision guard must not break: a customer's agent
     pushes turn after turn under the same session id, and they accumulate in one
     session belonging to that customer."""
@@ -145,12 +145,10 @@ async def test_one_tenant_appends_to_its_session_across_batches(client: AsyncCli
     machine_key = await _mint_workspace_key(client, api_key, workspace)
 
     for _ in range(3):
-        await _push(
-            client, machine_key, [_event("sess-sticky", tenant_id="org_a", tenant_name="A")]
-        )
+        await _push(client, machine_key, [_event("sess-sticky", user_id="org_a", user_name="A")])
 
     rows = await pool.fetch(
-        "SELECT o.external_id FROM sessions s JOIN tenants o ON o.id = s.tenant_id "
+        "SELECT eu.external_id FROM sessions s JOIN end_users eu ON eu.id = s.end_user_id "
         "WHERE s.owner_user_id = $1 AND s.session_id = 'sess-sticky'",
         uuid.UUID(workspace["scope_user_id"]),
     )
@@ -163,22 +161,22 @@ async def test_one_tenant_appends_to_its_session_across_batches(client: AsyncCli
 
 
 @pytest.mark.asyncio
-async def test_tenant_upload_on_personal_scope_fails_loud(client: AsyncClient):
+async def test_user_upload_on_personal_scope_fails_loud(client: AsyncClient):
     api_key, _ = await _register_with_email(client, f"{unique_name('solo')}@example.com")
     resp = await client.post(
         "/api/v1/me/sessions/events/batch",
-        json={"events": [_event("sess-1", tenant_id="org_x")]},
+        json={"events": [_event("sess-1", user_id="org_x")]},
         headers=_auth(api_key),
     )
     assert resp.status_code == 400
     assert "workspace" in resp.json()["detail"]
 
 
-# --- The tenant read contract (VFS) ---
+# --- The user read contract (VFS) ---
 
 
 @pytest.mark.asyncio
-async def test_tenant_vfs_isolates_orgs(client: AsyncClient, pool):
+async def test_user_vfs_isolates_users(client: AsyncClient, pool):
     api_key, _, workspace = await _developer(client)
     machine_key = await _mint_workspace_key(client, api_key, workspace)
 
@@ -186,25 +184,25 @@ async def test_tenant_vfs_isolates_orgs(client: AsyncClient, pool):
         client,
         machine_key,
         [
-            _event("sess-acme-1", tenant_id="org_acme", tenant_name="Acme"),
-            _event("sess-beta-1", tenant_id="org_beta", tenant_name="Beta"),
+            _event("sess-acme-1", user_id="org_acme", user_name="Acme"),
+            _event("sess-beta-1", user_id="org_beta", user_name="Beta"),
             _event("sess-internal"),
         ],
     )
 
-    # Seed a wiki page (shared) and a page in each tenant's notepad.
-    tenants = {
+    # Seed a wiki page (shared) and a page in each user's notepad.
+    end_users = {
         r["external_id"]: r
         for r in await pool.fetch(
-            "SELECT external_id, notepad_folder_id FROM tenants WHERE workspace_id = $1",
+            "SELECT external_id, notepad_folder_id FROM end_users WHERE workspace_id = $1",
             uuid.UUID(workspace["id"]),
         )
     }
     scope_id = uuid.UUID(workspace["scope_user_id"])
     for name, folder_id in [
         ("Fault codes", uuid.UUID(workspace["external_wiki_folder_id"])),
-        ("Acme notes", tenants["org_acme"]["notepad_folder_id"]),
-        ("Beta notes", tenants["org_beta"]["notepad_folder_id"]),
+        ("Acme notes", end_users["org_acme"]["notepad_folder_id"]),
+        ("Beta notes", end_users["org_beta"]["notepad_folder_id"]),
     ]:
         await pool.execute(
             "INSERT INTO pages (owner_user_id, name, content_markdown, folder_id, created_by) "
@@ -216,7 +214,7 @@ async def test_tenant_vfs_isolates_orgs(client: AsyncClient, pool):
 
     resp = await client.post(
         "/api/v1/me/vfs",
-        json={"script": "find / -type f", "tenant_id": "org_acme"},
+        json={"script": "find / -type f", "user_id": "org_acme"},
         headers=_auth(machine_key),
     )
     assert resp.status_code == 200, resp.text
@@ -234,10 +232,10 @@ async def test_tenant_vfs_isolates_orgs(client: AsyncClient, pool):
 
 
 @pytest.mark.asyncio
-async def test_new_tenant_reads_the_shared_wiki_before_it_has_written(client: AsyncClient, pool):
+async def test_new_user_reads_the_shared_wiki_before_they_have_written(client: AsyncClient, pool):
     """A customer's agent reads context before it records anything, so its very
-    first call names a tenant that has no row yet. That has to work, and it has to
-    return the shared wiki: the accumulated cross-tenant knowledge is exactly what
+    first call names a user that has no row yet. That has to work, and it has to
+    return the shared wiki: the accumulated cross-user knowledge is exactly what
     a brand-new customer benefits from on day one. Failing here would mean a
     customer can only read the wiki after contributing to it."""
     api_key, _, workspace = await _developer(client)
@@ -251,7 +249,7 @@ async def test_new_tenant_reads_the_shared_wiki_before_it_has_written(client: As
 
     resp = await client.post(
         "/api/v1/me/vfs",
-        json={"script": "find / -type f", "tenant_id": "org_never_seen"},
+        json={"script": "find / -type f", "user_id": "org_never_seen"},
         headers=_auth(machine_key),
     )
     assert resp.status_code == 200, resp.text
@@ -272,7 +270,7 @@ async def test_session_id_with_a_slash_is_refused(client: AsyncClient):
 
     resp = await client.post(
         "/api/v1/me/sessions/events/batch",
-        json={"events": [_event("acme/conv-1", tenant_id="org_a", tenant_name="A")]},
+        json={"events": [_event("acme/conv-1", user_id="org_a", user_name="A")]},
         headers=_auth(machine_key),
     )
     assert resp.status_code == 422
@@ -280,14 +278,14 @@ async def test_session_id_with_a_slash_is_refused(client: AsyncClient):
 
     ok = await client.post(
         "/api/v1/me/sessions/events/batch",
-        json={"events": [_event("acme:conv-1", tenant_id="org_a", tenant_name="A")]},
+        json={"events": [_event("acme:conv-1", user_id="org_a", user_name="A")]},
         headers=_auth(machine_key),
     )
     assert ok.status_code == 201
 
 
 @pytest.mark.asyncio
-async def test_two_orgs_cannot_share_a_session_id(client: AsyncClient, pool):
+async def test_two_users_cannot_share_a_session_id(client: AsyncClient, pool):
     """Session ids come from the developer's own app, so two of their customers
     picking the same one is ordinary. Sessions are unique on (owner, session_id)
     and the owner is the workspace, so appending regardless files one customer's
@@ -296,11 +294,11 @@ async def test_two_orgs_cannot_share_a_session_id(client: AsyncClient, pool):
     api_key, _, workspace = await _developer(client)
     machine_key = await _mint_workspace_key(client, api_key, workspace)
 
-    await _push(client, machine_key, [_event("conv-1", tenant_id="org_one", tenant_name="One")])
+    await _push(client, machine_key, [_event("conv-1", user_id="org_one", user_name="One")])
 
     collision = await client.post(
         "/api/v1/me/sessions/events/batch",
-        json={"events": [_event("conv-1", tenant_id="org_two", tenant_name="Two")]},
+        json={"events": [_event("conv-1", user_id="org_two", user_name="Two")]},
         headers=_auth(machine_key),
     )
     assert collision.status_code == 400
@@ -309,7 +307,7 @@ async def test_two_orgs_cannot_share_a_session_id(client: AsyncClient, pool):
     # Refused before anything was stored: the first customer's session holds
     # only its own turn, and the second customer has no session at all.
     rows = await pool.fetch(
-        "SELECT o.external_id FROM sessions s JOIN tenants o ON o.id = s.tenant_id "
+        "SELECT eu.external_id FROM sessions s JOIN end_users eu ON eu.id = s.end_user_id "
         "WHERE s.session_id = 'conv-1'"
     )
     assert [r["external_id"] for r in rows] == ["org_one"]
@@ -326,40 +324,40 @@ async def test_two_orgs_cannot_share_a_session_id(client: AsyncClient, pool):
 
 
 @pytest.mark.asyncio
-async def test_console_lists_orgs_with_counts(client: AsyncClient):
+async def test_console_lists_users_with_counts(client: AsyncClient):
     api_key, _, workspace = await _developer(client)
     machine_key = await _mint_workspace_key(client, api_key, workspace)
     await _push(
         client,
         machine_key,
         [
-            _event("s1", tenant_id="org_acme", tenant_name="Acme"),
-            _event("s2", tenant_id="org_acme", tenant_name="Acme"),
+            _event("s1", user_id="org_acme", user_name="Acme"),
+            _event("s2", user_id="org_acme", user_name="Acme"),
         ],
     )
 
     resp = await client.get(
-        "/api/v1/me/tenants",
+        "/api/v1/me/users",
         headers={**_auth(api_key), "X-Stash-Scope": workspace["scope_user_id"]},
     )
     assert resp.status_code == 200, resp.text
-    tenants = resp.json()["tenants"]
-    assert len(tenants) == 1
-    assert tenants[0]["external_id"] == "org_acme"
-    assert tenants[0]["session_count"] == 2
+    users = resp.json()["users"]
+    assert len(users) == 1
+    assert users[0]["external_id"] == "org_acme"
+    assert users[0]["session_count"] == 2
 
 
 @pytest.mark.asyncio
 async def test_console_wiki_opt_out(client: AsyncClient):
     api_key, _, workspace = await _developer(client)
     machine_key = await _mint_workspace_key(client, api_key, workspace)
-    await _push(client, machine_key, [_event("s1", tenant_id="org_acme", tenant_name="Acme")])
+    await _push(client, machine_key, [_event("s1", user_id="org_acme", user_name="Acme")])
 
     scope = {**_auth(api_key), "X-Stash-Scope": workspace["scope_user_id"]}
-    tenant = (await client.get("/api/v1/me/tenants", headers=scope)).json()["tenants"][0]
+    end_user = (await client.get("/api/v1/me/users", headers=scope)).json()["users"][0]
 
     resp = await client.patch(
-        f"/api/v1/me/tenants/{tenant['id']}", json={"share_wiki": False}, headers=scope
+        f"/api/v1/me/users/{end_user['id']}", json={"share_wiki": False}, headers=scope
     )
     assert resp.status_code == 200
     assert resp.json()["share_wiki"] is False
@@ -367,7 +365,7 @@ async def test_console_wiki_opt_out(client: AsyncClient):
     # A member of a different workspace can't touch it.
     other_key, _, other_ws = await _developer(client)
     resp = await client.patch(
-        f"/api/v1/me/tenants/{tenant['id']}",
+        f"/api/v1/me/users/{end_user['id']}",
         json={"share_wiki": True},
         headers={**_auth(other_key), "X-Stash-Scope": other_ws["scope_user_id"]},
     )
@@ -375,9 +373,9 @@ async def test_console_wiki_opt_out(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_console_sessions_labelled_by_tenant(client: AsyncClient):
-    """The console's sessions list is the cross-tenant view: every session the
-    workspace recorded, each carrying its tenant label — and tenant-less rows
+async def test_console_sessions_labelled_by_user(client: AsyncClient):
+    """The console's sessions list is the cross-user view: every session the
+    workspace recorded, each carrying its user label — and user-less rows
     (the workspace's own agents) still listed rather than hidden."""
     api_key, _, workspace = await _developer(client)
     machine_key = await _mint_workspace_key(client, api_key, workspace)
@@ -385,8 +383,8 @@ async def test_console_sessions_labelled_by_tenant(client: AsyncClient):
         client,
         machine_key,
         [
-            _event("s-acme", tenant_id="org_acme", tenant_name="Acme"),
-            _event("s-beta", tenant_id="org_beta", tenant_name="Beta"),
+            _event("s-acme", user_id="org_acme", user_name="Acme"),
+            _event("s-beta", user_id="org_beta", user_name="Beta"),
             _event("s-internal"),
         ],
     )
@@ -397,37 +395,37 @@ async def test_console_sessions_labelled_by_tenant(client: AsyncClient):
     )
     assert resp.status_code == 200, resp.text
     rows = {r["session_id"]: r for r in resp.json()["sessions"]}
-    assert rows["s-acme"]["tenant_name"] == "Acme"
-    assert rows["s-beta"]["tenant_external_id"] == "org_beta"
-    assert rows["s-internal"]["tenant_id"] is None
+    assert rows["s-acme"]["user_name"] == "Acme"
+    assert rows["s-beta"]["user_external_id"] == "org_beta"
+    assert rows["s-internal"]["user_id"] is None
     assert rows["s-acme"]["event_count"] == 1
 
 
 @pytest.mark.asyncio
-async def test_console_files_split_by_wiki_and_tenant(client: AsyncClient, pool):
+async def test_console_files_split_by_wiki_and_user(client: AsyncClient, pool):
     """The files view answers 'whose is this?' by construction: shared wiki
-    material in one pile, each tenant's own pages in theirs — never mixed."""
+    material in one pile, each user's own pages in theirs — never mixed."""
     api_key, _, workspace = await _developer(client)
     machine_key = await _mint_workspace_key(client, api_key, workspace)
     await _push(
         client,
         machine_key,
         [
-            _event("s-acme", tenant_id="org_acme", tenant_name="Acme"),
-            _event("s-beta", tenant_id="org_beta", tenant_name="Beta"),
+            _event("s-acme", user_id="org_acme", user_name="Acme"),
+            _event("s-beta", user_id="org_beta", user_name="Beta"),
         ],
     )
-    tenants = {
+    end_users = {
         r["external_id"]: r
         for r in await pool.fetch(
-            "SELECT external_id, notepad_folder_id FROM tenants WHERE workspace_id = $1",
+            "SELECT external_id, notepad_folder_id FROM end_users WHERE workspace_id = $1",
             uuid.UUID(workspace["id"]),
         )
     }
     scope_id = uuid.UUID(workspace["scope_user_id"])
     for name, folder_id in [
         ("Fault codes", uuid.UUID(workspace["external_wiki_folder_id"])),
-        ("Acme notes", tenants["org_acme"]["notepad_folder_id"]),
+        ("Acme notes", end_users["org_acme"]["notepad_folder_id"]),
     ]:
         await pool.execute(
             "INSERT INTO pages (owner_user_id, name, content_markdown, folder_id, created_by) "
@@ -444,9 +442,9 @@ async def test_console_files_split_by_wiki_and_tenant(client: AsyncClient, pool)
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert [p["name"] for p in body["wiki_pages"]] == ["Fault codes"]
-    by_tenant = {t["external_id"]: t for t in body["tenants"]}
-    assert [p["name"] for p in by_tenant["org_acme"]["notepad_pages"]] == ["Acme notes"]
-    assert by_tenant["org_beta"]["notepad_pages"] == []
+    by_user = {u["external_id"]: u for u in body["users"]}
+    assert [p["name"] for p in by_user["org_acme"]["notepad_pages"]] == ["Acme notes"]
+    assert by_user["org_beta"]["notepad_pages"] == []
 
 
 @pytest.mark.asyncio
@@ -464,14 +462,14 @@ async def test_curator_instructions_roundtrip(client: AsyncClient):
 
     resp = await client.patch(
         "/api/v1/me/developer/curator",
-        json={"instructions": "Never share pricing between tenants."},
+        json={"instructions": "Never share pricing between users."},
         headers=scope,
     )
     assert resp.status_code == 200, resp.text
-    assert resp.json()["instructions"] == "Never share pricing between tenants."
+    assert resp.json()["instructions"] == "Never share pricing between users."
 
     resp = await client.get("/api/v1/me/developer/curator", headers=scope)
-    assert resp.json()["instructions"] == "Never share pricing between tenants."
+    assert resp.json()["instructions"] == "Never share pricing between users."
 
     resp = await client.patch(
         "/api/v1/me/developer/curator", json={"instructions": ""}, headers=scope

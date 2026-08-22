@@ -10,7 +10,7 @@ from . import security_audit_service
 
 _SELECT_COLS = (
     "id, owner_user_id, session_id, agent_name, cwd, files_touched, "
-    "started_at, finished_at, created_by, tenant_id"
+    "started_at, finished_at, created_by, end_user_id"
 )
 
 
@@ -21,7 +21,7 @@ async def upsert_session(
     agent_name: str = "",
     cwd: str | None = None,
     created_by: UUID | None = None,
-    tenant_id: UUID | None = None,
+    end_user_id: UUID | None = None,
     started_at: datetime | None = None,
 ) -> dict:
     """Idempotent: return the session row, creating it if missing.
@@ -35,13 +35,13 @@ async def upsert_session(
     pass nothing. It is set at insert only: a later event stream must never
     restamp an imported session to now().
 
-    `tenant_id` (External Multiplayer) is set at insert only: the tenant a session
+    `end_user_id` (External Multiplayer) is set at insert only: the end user a session
     was born into is its privacy boundary and never changes.
     """
     pool = get_pool()
     row = await pool.fetchrow(
         "INSERT INTO sessions "
-        "  (owner_user_id, session_id, agent_name, cwd, created_by, tenant_id, started_at) "
+        "  (owner_user_id, session_id, agent_name, cwd, created_by, end_user_id, started_at) "
         "VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7, now())) "
         "ON CONFLICT (owner_user_id, session_id) DO UPDATE SET "
         "  agent_name = COALESCE(NULLIF(EXCLUDED.agent_name, ''), sessions.agent_name), "
@@ -53,7 +53,7 @@ async def upsert_session(
         agent_name,
         cwd,
         created_by,
-        tenant_id,
+        end_user_id,
         started_at,
     )
     return dict(row)

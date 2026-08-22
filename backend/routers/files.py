@@ -28,13 +28,13 @@ from ..models import (
     UploadResponse,
 )
 from ..services import (
+    end_user_service,
     files_service,
     files_tree_service,
     permission_service,
     security_audit_service,
     storage_service,
     table_service,
-    tenant_service,
     user_scope_service,
 )
 from ..services.csv_inference import coerce_value, infer_column_type
@@ -160,7 +160,7 @@ async def _download_storage_file_or_502(storage_key: str, operation: str) -> byt
 async def upload_my_file(
     file: UploadFile,
     folder_id: UUID | None = Form(None),
-    tenant_id: str | None = Form(None),
+    user_id: str | None = Form(None),
     current_user: dict = Depends(get_current_user),
     scope_user_id: UUID = Depends(get_scope),
 ):
@@ -192,10 +192,10 @@ async def upload_my_file(
 
     content_type = file.content_type or "application/octet-stream"
     filename = file.filename or "upload"
-    tenant = None
-    if tenant_id is not None:
+    end_user = None
+    if user_id is not None:
         try:
-            tenant = await tenant_service.resolve_tenant_for_scope(owner_user_id, tenant_id)
+            end_user = await end_user_service.resolve_end_user_for_scope(owner_user_id, user_id)
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
     return await ingest_bytes(
@@ -205,7 +205,7 @@ async def upload_my_file(
         content=content,
         content_type=content_type,
         folder_id=folder_id,
-        tenant_row_id=tenant["id"] if tenant else None,
+        end_user_id=end_user["id"] if end_user else None,
     )
 
 
@@ -217,7 +217,7 @@ async def ingest_bytes(
     content: bytes,
     content_type: str,
     folder_id: UUID | None,
-    tenant_row_id: UUID | None = None,
+    end_user_id: UUID | None = None,
 ) -> UploadResponse:
     """The single ingest path: bytes become a page (markdown/html) or an
     S3-backed file. Used by the upload endpoint and by save-to-Stash from the
@@ -226,13 +226,12 @@ async def ingest_bytes(
     # support comments, and live in the same VFS tree as binary files.
     # Anything else is a binary upload (S3-backed file row). Frontend, CLI,
     # and MCP all hit this single path and get the routing for free.
-    # A tenant's uploads are raw data by definition: markdown that would normally
-    # become an editable page stays a file when it belongs to a customer, since
-    # pages are the memory substrate (wiki, notepad) and those are curated, not
-    # uploaded. Text a tenant should *remember* goes to its notepad folder.
-    page_kind = (
-        None if tenant_row_id else files_tree_service.detect_page_kind(filename, content_type)
-    )
+    # An end user's uploads are raw data by definition: markdown that would
+    # normally become an editable page stays a file when it belongs to a
+    # customer, since pages are the memory substrate (wiki, notepad) and those
+    # are curated, not uploaded. Text a user should *remember* goes to their
+    # notepad folder.
+    page_kind = None if end_user_id else files_tree_service.detect_page_kind(filename, content_type)
     if page_kind is not None:
         if folder_id is not None:
             pool = get_pool()
@@ -310,7 +309,7 @@ async def ingest_bytes(
         if not owns:
             raise HTTPException(status_code=400, detail="folder_id does not belong to scope")
     row = await pool.fetchrow(
-        "INSERT INTO files (owner_user_id, name, content_type, size_bytes, storage_key, uploaded_by, folder_id, tenant_id) "
+        "INSERT INTO files (owner_user_id, name, content_type, size_bytes, storage_key, uploaded_by, folder_id, end_user_id) "
         "VALUES ($1, $2, $3, $4, $5, $6, $7, $8) "
         "RETURNING id, owner_user_id, folder_id, owner_page_id, name, content_type, size_bytes, storage_key, uploaded_by, created_at",
         owner_user_id,
@@ -320,7 +319,7 @@ async def ingest_bytes(
         storage_key,
         user_id,
         folder_id,
-        tenant_row_id,
+        end_user_id,
     )
     from ..tasks.extraction import extract_file_text
 

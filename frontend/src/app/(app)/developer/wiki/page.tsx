@@ -5,8 +5,8 @@ import Link from "next/link";
 
 import DeveloperGate from "@/components/developer/DeveloperGate";
 import WikiGraph from "@/components/memory/WikiGraph";
-import { getDeveloperWikiGraph, listTenants, type WikiGraph as WikiGraphData } from "@/lib/api";
-import type { Tenant } from "@/lib/types";
+import { getDeveloperWikiGraph, listUsers, type WikiGraph as WikiGraphData } from "@/lib/api";
+import type { EndUser } from "@/lib/types";
 import FolderDetailPage from "../../folders/[folderId]/FolderClient";
 
 export default function DeveloperWiki() {
@@ -24,17 +24,17 @@ export default function DeveloperWiki() {
 function SharedWiki() {
   const [graph, setGraph] = useState<WikiGraphData | null>(null);
   const [folderId, setFolderId] = useState<string | null>(null);
-  const [users, setUsers] = useState<Tenant[]>([]);
+  const [users, setUsers] = useState<EndUser[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     getDeveloperWikiGraph()
       .then(setGraph)
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load the wiki graph"));
-    listTenants()
+    listUsers()
       .then((res) => {
         setFolderId(res.workspace.external_wiki_folder_id);
-        setUsers(res.tenants);
+        setUsers(res.users);
       })
       .catch(() => setFolderId(null));
   }, []);

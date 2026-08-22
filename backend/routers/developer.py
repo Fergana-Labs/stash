@@ -1,11 +1,11 @@
 """Developer platform: the console API for External Multiplayer.
 
-Self-serve counterpart to the admin workspace endpoints. A user activates the
-platform (creating a one-man, invite-only workspace when they have none),
-mints machine keys on the workspace's scope user, and manages the tenants their
-product's sessions create. Tenant listing and editing are scope-based like every
-other surface: the console sends X-Stash-Scope with the workspace's scope
-user id.
+Self-serve counterpart to the admin workspace endpoints. A developer activates
+the platform (creating a one-man, invite-only workspace when they have none),
+mints machine keys on the workspace's scope user, and manages the end users
+their product's sessions create. User listing and editing are scope-based like
+every other surface: the console sends X-Stash-Scope with the workspace's
+scope user id.
 """
 
 from uuid import UUID
@@ -15,11 +15,11 @@ from pydantic import BaseModel, Field
 
 from ..auth import API_KEY_ACCESS_LEVELS, create_api_key, get_current_user, get_scope
 from ..database import get_pool
-from ..services import agent_service, permission_service, tenant_service, workspace_service
+from ..services import agent_service, end_user_service, permission_service, workspace_service
 from .curator_log import curator_runs
 
 router = APIRouter(prefix="/api/v1/me/developer", tags=["developer"])
-tenants_router = APIRouter(prefix="/api/v1/me/tenants", tags=["developer"])
+users_router = APIRouter(prefix="/api/v1/me/users", tags=["developer"])
 
 
 class ActivateRequest(BaseModel):
@@ -36,7 +36,7 @@ class DeveloperKeyRequest(BaseModel):
     access: str = "read"
 
 
-class TenantUpdateRequest(BaseModel):
+class EndUserUpdateRequest(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=255)
     share_wiki: bool | None = None
 
@@ -55,7 +55,7 @@ async def _require_member_workspace(workspace_id: UUID, user_id: UUID) -> dict:
 
 
 async def _require_active_workspace(scope_user_id: UUID) -> dict:
-    workspace = await tenant_service.workspace_for_scope(scope_user_id)
+    workspace = await end_user_service.workspace_for_scope(scope_user_id)
     if workspace is None or workspace["external_wiki_folder_id"] is None:
         raise HTTPException(
             status_code=400,
@@ -78,7 +78,7 @@ async def activate_developer_platform(
         workspace = await workspace_service.create_workspace(
             name, domain=None, created_by=current_user["id"]
         )
-    return await tenant_service.activate(workspace["id"], current_user["id"])
+    return await end_user_service.activate(workspace["id"], current_user["id"])
 
 
 @router.post("/keys")
@@ -149,18 +149,18 @@ async def get_developer_wiki_graph(
 @router.get("/sessions")
 async def list_developer_sessions(scope_user_id: UUID = Depends(get_scope)):
     """Every session the workspace has recorded, newest first, each labelled
-    with its tenant. Tenant-less rows are the workspace's own agents — the
+    with its end user. User-less rows are the workspace's own agents — the
     curator's runs, mostly."""
     workspace = await _require_active_workspace(scope_user_id)
-    return {"sessions": await tenant_service.workspace_sessions(workspace)}
+    return {"sessions": await end_user_service.workspace_sessions(workspace)}
 
 
 @router.get("/files")
 async def list_developer_files(scope_user_id: UUID = Depends(get_scope)):
     """The two kinds of files the platform holds: the shared wiki's pages, and
-    each tenant's own material (notepad pages plus uploaded files)."""
+    each user's own material (notepad pages plus uploaded files)."""
     workspace = await _require_active_workspace(scope_user_id)
-    return await tenant_service.workspace_files(workspace)
+    return await end_user_service.workspace_files(workspace)
 
 
 @router.get("/curator")
@@ -169,20 +169,20 @@ async def get_curator(
     scope_user_id: UUID = Depends(get_scope),
 ):
     """Everything about the external curator: when it next runs, the exact
-    prompt that run will use, which tenants feed the shared wiki, and how the
+    prompt that run will use, which users feed the shared wiki, and how the
     recent runs went.
 
     The prompt is rendered from live state rather than stored, so what this
-    shows is literally what the next run sends — including the tenant list and
-    each tenant's wiki opt-out.
+    shows is literally what the next run sends — including the user list and
+    each user's wiki opt-out.
     """
     workspace = await _require_active_workspace(scope_user_id)
     curator = await agent_service.get_or_create_curator(scope_user_id, wiki="external")
-    # Every tenant, for the overview columns; the prompt names only those with
+    # Every user, for the overview columns; the prompt names only those with
     # material since the watermark, which is all a run can write for.
-    tenants = await tenant_service.list_tenants(workspace["id"])
+    end_users = await end_user_service.list_end_users(workspace["id"])
     since = curator["curated_through"]
-    prompt = await tenant_service.external_curator_prompt(workspace, since)
+    prompt = await end_user_service.external_curator_prompt(workspace, since)
 
     return {
         "curator": curator,
@@ -190,17 +190,17 @@ async def get_curator(
         "prompt": prompt,
         # What a backfill would send instead: the same prompt with no
         # watermark, so the run bootstraps from the full history.
-        "backfill_prompt": await tenant_service.external_curator_prompt(workspace, None),
+        "backfill_prompt": await end_user_service.external_curator_prompt(workspace, None),
         "instructions": curator["system_prompt"],
         "feeding": [
-            {"id": str(o["id"]), "name": o["name"], "external_id": o["external_id"]}
-            for o in tenants
-            if o["share_wiki"]
+            {"id": str(u["id"]), "name": u["name"], "external_id": u["external_id"]}
+            for u in end_users
+            if u["share_wiki"]
         ],
         "opted_out": [
-            {"id": str(o["id"]), "name": o["name"], "external_id": o["external_id"]}
-            for o in tenants
-            if not o["share_wiki"]
+            {"id": str(u["id"]), "name": u["name"], "external_id": u["external_id"]}
+            for u in end_users
+            if not u["share_wiki"]
         ],
         "runs": await curator_runs(scope_user_id, curator),
     }
@@ -285,45 +285,45 @@ async def backfill_curator(
     return {"status": "started", "agent_id": curator["id"]}
 
 
-@tenants_router.get("")
-async def list_tenants(
+@users_router.get("")
+async def list_users(
     current_user: dict = Depends(get_current_user),
     scope_user_id: UUID = Depends(get_scope),
 ):
     workspace = await _require_active_workspace(scope_user_id)
     return {
         "workspace": workspace,
-        "tenants": await tenant_service.list_tenants(workspace["id"]),
-        "stats": await tenant_service.workspace_stats(workspace),
+        "users": await end_user_service.list_end_users(workspace["id"]),
+        "stats": await end_user_service.workspace_stats(workspace),
     }
 
 
-async def _tenant_in_scope(tenant_id: UUID, scope_user_id: UUID) -> dict:
-    tenant = await tenant_service.get_tenant(tenant_id)
-    if tenant is None:
-        raise HTTPException(status_code=404, detail="Tenant not found")
-    workspace = await workspace_service.get_workspace(tenant["workspace_id"])
+async def _end_user_in_scope(user_id: UUID, scope_user_id: UUID) -> dict:
+    end_user = await end_user_service.get_end_user(user_id)
+    if end_user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    workspace = await workspace_service.get_workspace(end_user["workspace_id"])
     if workspace["scope_user_id"] != scope_user_id:
-        raise HTTPException(status_code=403, detail="Tenant is not in this scope")
-    return tenant
+        raise HTTPException(status_code=403, detail="User is not in this scope")
+    return end_user
 
 
-@tenants_router.get("/{tenant_id}")
-async def get_tenant_detail(
-    tenant_id: UUID,
+@users_router.get("/{user_id}")
+async def get_user_detail(
+    user_id: UUID,
     current_user: dict = Depends(get_current_user),
     scope_user_id: UUID = Depends(get_scope),
 ):
-    """One customer's world: their sessions, their files, their wiki setting."""
-    return await tenant_service.tenant_detail(await _tenant_in_scope(tenant_id, scope_user_id))
+    """One end user's world: their sessions, their files, their wiki setting."""
+    return await end_user_service.end_user_detail(await _end_user_in_scope(user_id, scope_user_id))
 
 
-@tenants_router.patch("/{tenant_id}")
-async def update_tenant(
-    tenant_id: UUID,
-    req: TenantUpdateRequest,
+@users_router.patch("/{user_id}")
+async def update_user(
+    user_id: UUID,
+    req: EndUserUpdateRequest,
     current_user: dict = Depends(get_current_user),
     scope_user_id: UUID = Depends(get_scope),
 ):
-    await _tenant_in_scope(tenant_id, scope_user_id)
-    return await tenant_service.update_tenant(tenant_id, name=req.name, share_wiki=req.share_wiki)
+    await _end_user_in_scope(user_id, scope_user_id)
+    return await end_user_service.update_end_user(user_id, name=req.name, share_wiki=req.share_wiki)

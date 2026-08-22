@@ -329,7 +329,7 @@ export interface TrashListing {
 
 // A workspace the signed-in user belongs to. `scope_user_id` is the synthetic
 // user that owns the workspace's shared content; requests carrying it as
-// X-Stash-Scope read and write the tenant knowledge base instead of the personal one.
+// X-Stash-Scope read and write the workspace knowledge base instead of the personal one.
 export interface Workspace {
   id: string;
   name: string;
@@ -341,7 +341,9 @@ export interface Workspace {
 }
 
 /** External Multiplayer: one customer of a developer workspace. */
-export interface Tenant {
+// One end user of a developer's product — "user" on the wire and in the
+// console; EndUser here because User is a Stash account.
+export interface EndUser {
   id: string;
   workspace_id: string;
   external_id: string;

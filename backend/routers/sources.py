@@ -2,7 +2,7 @@
 
 A source belongs to the scope that connected it (`owner_user_id`). Reads run
 in the active scope (the X-Stash-Scope header): a workspace member browsing
-the workspace sees the workspace's connections — the tenant Drive hopper — while
+the workspace sees the workspace's connections — the team Drive hopper — while
 personal scope shows their own. Mutations (connect, sync, remove, history)
 stay owner-only: members read the hopper, only the scope owner wires it up.
 The agent reaches a source's indexed content through the source tools; these
@@ -30,10 +30,10 @@ from ..integrations import storage as integration_storage
 from ..integrations.google import indexer as google_indexer
 from ..integrations.registry import get_provider
 from ..services import (
+    end_user_service,
     security_audit_service,
     source_service,
     task_service,
-    tenant_service,
     user_scope_service,
 )
 
@@ -60,9 +60,9 @@ class AddSourceRequest(BaseModel):
     external_ref: str | None = None
     display_name: str | None = None
     settings: dict | None = None
-    # External Multiplayer: scope this source to one customer, named by the
-    # developer's own tenant id. Omitted, the source belongs to the workspace.
-    tenant_id: str | None = Field(None, max_length=128)
+    # External Multiplayer: scope this source to one end user, named by the
+    # developer's own user id. Omitted, the source belongs to the workspace.
+    user_id: str | None = Field(None, max_length=128)
 
 
 async def _resolve_slack_source(user_id) -> tuple[str, str]:
@@ -393,10 +393,12 @@ async def add_source(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-    tenant = None
-    if body.tenant_id is not None:
+    end_user = None
+    if body.user_id is not None:
         try:
-            tenant = await tenant_service.resolve_tenant_for_scope(owner_user_id, body.tenant_id)
+            end_user = await end_user_service.resolve_end_user_for_scope(
+                owner_user_id, body.user_id
+            )
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
 
@@ -435,7 +437,7 @@ async def add_source(
             external_ref=external_ref,
             display_name=display_name or external_ref,
             settings=source_settings,
-            tenant_id=tenant["id"] if tenant else None,
+            end_user_id=end_user["id"] if end_user else None,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
