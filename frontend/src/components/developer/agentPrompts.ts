@@ -9,7 +9,9 @@
 // real key (minted on the API Keys page) before pasting. Backfill alone is
 // the advanced path, for a stash that is already wired and missing history.
 
-export const INSTALL_PROMPT = `MY API KEY IS [INSERT API KEY HERE]
+export const KEY_PLACEHOLDER = "[INSERT API KEY HERE]";
+
+export const INSTALL_PROMPT = `MY API KEY IS ${KEY_PLACEHOLDER}
 
 Wire Stash (https://api.joinstash.ai) into this app so our agent has
 per-user memory: every user's agent reads a shared knowledge wiki plus
