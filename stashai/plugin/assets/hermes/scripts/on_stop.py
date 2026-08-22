@@ -26,11 +26,8 @@ def main():
     state = load_state(DATA_DIR)
     event = adapt_stop(get_stdin_data())
     cfg = get_config()
-    try:
-        with get_client() as client:
-            stream_assistant_message(client, cfg, state, event)
-    except Exception:
-        pass
+    with get_client() as client:
+        stream_assistant_message(client, cfg, state, event)
     warning = upload_health_warning(cfg, state, event, DATA_DIR)
     if warning:
         print(color_upload_health_warning(warning), file=sys.stderr)

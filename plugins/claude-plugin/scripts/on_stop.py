@@ -28,11 +28,8 @@ def main():
     event = adapt_stop(get_stdin_data())
     cfg = get_config()
 
-    try:
-        with get_client() as client:
-            stream_assistant_message(client, cfg, state, event)
-    except Exception:
-        pass
+    with get_client() as client:
+        stream_assistant_message(client, cfg, state, event)
     warning = upload_health_warning(cfg, state, event, DATA_DIR)
     if warning:
         # Claude Code only shows a Stop hook's `systemMessage`; bare stdout

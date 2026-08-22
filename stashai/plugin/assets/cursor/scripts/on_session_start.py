@@ -31,11 +31,10 @@ def main():
     reset_stats(DATA_DIR)
     state = load_state(DATA_DIR)
 
-    try:
-        with get_client() as client:
-            create_session_record(client, cfg, state, event, DATA_DIR)
-    except Exception:
-        pass
+    with get_client() as client:
+        create_session_record(client, cfg, state, event, DATA_DIR)
+
+    spawn_self_upgrade()
 
     spawn_self_upgrade()
 

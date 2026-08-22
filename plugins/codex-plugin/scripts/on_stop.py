@@ -31,11 +31,8 @@ def main():
     event = adapt_stop(get_stdin_data())
     remember_transcript_path(state, event, DATA_DIR)
     cfg = get_config()
-    try:
-        with get_client() as client:
-            stream_assistant_message(client, cfg, state, event)
-    except Exception:
-        pass
+    with get_client() as client:
+        stream_assistant_message(client, cfg, state, event)
 
     spawn_transcript_upload(
         data_dir=DATA_DIR,

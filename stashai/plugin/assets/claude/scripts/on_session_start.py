@@ -41,7 +41,7 @@ CONTEXT = (
     " - You're publishing a curated bundle people should see together → "
     '`stash upload <path> --skill "<title>" --json` (or `stash skills '
     "create` to compose from existing items).\n"
-    " - Sharing a coding session → `stash share` (or `--session \"<title>\"` for another) wraps the "
+    " - Sharing a coding session → `stash share <session_id>` wraps the "
     "transcript and touched files in one Skill. Don't ALSO mint a Skill "
     "for each file in that session.\n"
     " - Using a public Skill locally → `stash skills install <slug>` "
@@ -90,13 +90,10 @@ def main():
     state = load_state(DATA_DIR)
 
     session_context = ""
-    try:
-        from config import get_client
+    from config import get_client
 
-        with get_client() as client:
-            session_url = create_session_record(client, cfg, state, event, DATA_DIR)
-    except Exception:
-        session_url = None
+    with get_client() as client:
+        session_url = create_session_record(client, cfg, state, event, DATA_DIR)
 
     # The CLI upgrade runs from scripts/ensure_cli.sh before this script is
     # reached: an upgrade invoked here cannot run on the stale CLIs that need it.
