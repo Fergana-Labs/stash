@@ -1,7 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { Copy } from "lucide-react";
+import { ChevronRight, Copy } from "lucide-react";
+
+import { cn } from "@/lib/utils";
 
 import DeveloperGate from "@/components/developer/DeveloperGate";
 import { CodeBlock, PageHeading, SectionHeading } from "@/components/developer/DocsPrimitives";
@@ -23,18 +25,37 @@ export default function DeveloperPrompts() {
         prompt={INSTALL_PROMPT}
       />
 
-      <div className="mb-6 border-t border-border pt-8 font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
-        Advanced
-      </div>
-
-      <PromptSection
-        title="Backfill only"
-        blurb="For a stash that is already installed. Install covers your history on the way
-          in — reach for this only when there is history left to load: you skipped it
-          during install, or you've since imported another database."
-        prompt={BACKFILL_PROMPT}
-      />
+      <Advanced>
+        <PromptSection
+          title="Backfill only"
+          blurb="For a stash that is already installed. Install covers your history on the way
+            in — reach for this only when there is history left to load: you skipped it
+            during install, or you've since imported another database."
+          prompt={BACKFILL_PROMPT}
+        />
+      </Advanced>
     </DeveloperGate>
+  );
+}
+
+/** Collapsed by default: most developers never need what's inside. */
+function Advanced({ children }: { children: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="border-t border-border pt-8">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground transition-colors hover:text-foreground"
+      >
+        <ChevronRight
+          className={cn("h-3 w-3 transition-transform", open && "rotate-90")}
+        />
+        Advanced
+      </button>
+      {open && <div className="mt-6">{children}</div>}
+    </div>
   );
 }
 
