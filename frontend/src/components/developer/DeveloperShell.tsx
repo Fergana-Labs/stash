@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 
 import ScopeSwitcher from "@/components/workspace/scope-switcher";
 import { StashIcon } from "@/components/SkillIcons";
+import AccountMenu from "@/components/workspace/account-menu";
 import { cn } from "@/lib/utils";
 import type { User } from "@/lib/types";
 
@@ -109,15 +110,7 @@ export default function DeveloperShell({
             >
               Docs
             </a>
-            <button onClick={onLogout} className="hover:text-foreground">
-              Sign out
-            </button>
-            <span
-              title={user.email ?? user.name}
-              className="flex h-7 w-7 items-center justify-center rounded-full bg-brand-500 font-mono text-[11px] font-medium text-white"
-            >
-              {user.display_name[0].toUpperCase()}
-            </span>
+            <AccountMenu user={user} onLogout={onLogout} placement="header" />
           </nav>
         </div>
       </header>
