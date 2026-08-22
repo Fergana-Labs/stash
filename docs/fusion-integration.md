@@ -1,11 +1,22 @@
-# Fusion Agent Integration with Stash
+# Stash for Fusion agents (MCP)
 
-> **Stash** — shared memory for AI coding agents.
-> This guide shows a Fusion operator how to initialize a Fusion agent so it can
-> talk to Stash through two complementary surfaces: the **Stash MCP server**
-> (robust tool calling for search, VFS browsing, and memory) and the
-> **`FusionSession` logging SDK** (reliable auto-syncing of session transcripts
-> to Stash without the agent self-reporting).
+This document is the authoritative guide for how a Fusion (or any MCP-capable)
+agent initializes and uses Stash's MCP capabilities. It documents the surfaces
+that **actually ship** in this repository:
+
+- **Part 1** — the CLI `stdio` MCP server in `cli/mcp_server.py`
+  (the `stash-mcp` binary): a 69-tool local server covering the full Stash
+  API, plus the per-user backend MCP registry that surfaces through the
+  `stash tools` CLI.
+- **Part 2** — the hosted SSE MCP server in `backend/services/mcp_service.py`
+  (mounted at `/api/v1/mcp`): an 8-tool remote surface for search, VFS,
+  and memory.
+- **Part 3** — the `FusionSession` logging SDK: auto-syncs session
+  transcripts to Stash without the agent self-reporting.
+
+Everything here reflects the real implementation in this repository. If you run
+into a cross-referenced symbol that does not match what you see in your tree,
+trust the source file over this document and file a task.
 
 A companion, client-agnostic walkthrough lives at
 [`docs/stash-mcp-integration.md`](stash-mcp-integration.md). That doc covers
@@ -14,32 +25,392 @@ Code). This guide is specifically about **Fusion**, goes deeper on the tool
 reference and the logger, and should be read alongside it — it does not repeat
 or contradict it.
 
----
+## What Stash is
 
-## 1. Overview
+Stash is shared memory for AI coding agents. Your agent sessions, memory pages,
+connected sources, skills, and tables live in a single account-scoped knowledge
+base that any of your coding agents — including Fusion — can read from and write
+to through the same MCP endpoint.
 
-Fusion agents get two ways to use Stash:
-
-1. **MCP server (call tools).** Fusion connects to Stash's hosted SSE MCP
-   server at `https://joinstash.ai/api/v1/mcp/sse` and authenticates with a
-   Stash API key (`st_…` / `mc_…`). The server exposes tools for full-text
-   search (`stash_search`, `stash_session_search`, `stash_memory_search`),
-   VFS browsing and reading connected sources (`stash_vfs_ls`, `stash_vfs_cat`),
-   uploading a session transcript (`stash_session_upload`), appending to the
-   persistent Memory wiki (`stash_memory_append`), and verifying the connection
-   (`get_stash_info`). The server module is
-   [`backend/services/mcp_service.py`](../backend/services/mcp_service.py),
-   mounted in [`backend/main.py`](../backend/main.py) with `app.mount`.
-
-2. **Logger (record the run).** A Fusion agent wraps its run with the
-   `FusionSession` context manager to auto-capture user / assistant / tool
-   messages into a Stash session and upload a transcript on exit. This is the
-   "don't make the agent self-report" path — the wrapper does the bookkeeping
-   for you.
+Stash exposes MCP capabilities through two servers: a **local CLI `stdio`
+server** (Part 1) that serves the full 69-tool surface over standard
+input/output, and a **hosted SSE server** (Part 2) that serves an 8-tool core
+over the network. A Fusion agent picks one: launch the `stash-mcp` process
+as a child for the full local surface, or point its MCP client at the hosted
+SSE endpoint for the remote core. The `FusionSession` logger (Part 3) works
+with either — it records the run directly to the Stash API.
 
 ---
 
-## 2. Prerequisites
+## Part 1 — The CLI `stdio` MCP server (`stash-mcp`)
+
+The full-surface, local option: a `stash-mcp` child process over standard
+input/output. All 69 tools are served over that one connection.
+
+### 1. Config loading
+
+The MCP server resolves its credentials through `cli/config.py`'s
+`load_config()`. The precedence, from lowest to highest, is:
+
+1. **Built-in defaults** — `cli/config.py` defines `DEFAULT_CONFIG` with
+   `base_url = "https://api.joinstash.ai"`.
+2. **User config file** — `~/.stash/config.json`. The keys it understands are
+   `base_url`, `api_key`, `username`, and `scope`. This file is written by
+   `save_config()` (e.g. after you run `stash login`).
+3. **Environment variables** — `STASH_URL`, `STASH_API_KEY`, and `STASH_SCOPE`
+   override the corresponding config keys.
+
+When the MCP server creates a client (`_client()` in `cli/mcp_server.py`), it
+reads the config and builds a `StashClient` with it:
+
+```python
+def _client() -> StashClient:
+    cfg = load_config()
+    return StashClient(cfg["base_url"], cfg.get("api_key", ""), scope=cfg.get("scope", ""))
+```
+
+#### Resulting request headers
+
+Every outbound request carries the headers produced by `StashClient._headers()`
+in `cli/client.py`:
+
+- `Authorization: Bearer <api_key>` — always sent when an API key is present.
+- `X-Stash-Scope: <scope>` — sent only when a `scope` is set. The `scope` is a
+  workspace identity; an **empty string or missing scope means your personal
+  (default) scope** — sessions/events/searches read and write there.
+
+So a Fusion agent can authenticate either by having a valid `~/.stash/config.json`
+on the machine (the common case after `stash login`), or by exporting
+`STASH_API_KEY` (and optionally `STASH_URL` / `STASH_SCOPE`) in the environment
+of the `stash-mcp` subprocess.
+
+---
+
+### 2. CLI MCP server entry point
+
+The MCP server lives in **`cli/mcp_server.py`**. It constructs the server as:
+
+```python
+mcp = FastMCP("stash", instructions="Stash — shared memory for AI coding agents")
+```
+
+The console-script entry point is defined in `pyproject.toml`:
+
+```
+stash-mcp = "cli.mcp_server:main"
+```
+
+and `main()` simply runs the stdio transport:
+
+```python
+def main():
+    mcp.run(transport="stdio")
+```
+
+#### Running it from a Fusion agent
+
+A Fusion agent launches the server as a stdio subprocess by invoking the
+`stash-mcp` binary:
+
+```bash
+stash-mcp
+```
+
+Once launched, the agent speaks the MCP `initialize` handshake and then calls
+tools. All 69 tools are served over that stdio connection. Because the server
+reads `.mcp.json` wiring (see §4), a Claude Code–style agent can also pick it up
+automatically when the registry entry is installed into a project's `.mcp.json`.
+
+#### The 69 tools
+
+`cli/mcp_server.py` registers 69 tools via `@mcp.tool()`. They are grouped
+below for navigation. Function names match the shipped `stash_*` functions
+exactly.
+
+**Sources, search & VFS**
+
+| Tool | Purpose |
+|------|---------|
+| `stash_search` | Full-text search across native files, session transcripts, and connected sources |
+| `stash_vfs` | Run a read-only shell-shaped script over the whole Stash |
+| `stash_list_sources` | List your sources (files, sessions, connected providers) |
+| `stash_browse_source` | Browse a source's paths |
+| `stash_read_source` | Read one document from a source at a ref |
+| `stash_add_source` | Connect a new source |
+| `stash_sync_source` | Re-sync a source |
+| `stash_remove_source` | Disconnect a source |
+| `stash_snapshot_source` | Snapshot a source path into a skill |
+
+**Workspace & session**
+
+| Tool | Purpose |
+|------|---------|
+| `stash_whoami` | Identify the authenticated user and scope |
+| `stash_list_workspaces` | List workspaces and the active scope |
+| `stash_switch_workspace` | Switch the active scope (persists to the CLI/plugins) |
+| `stash_session_transcript` | Read a session transcript |
+| `stash_delete_session` | Delete a session |
+
+**Memory, folders & pages**
+
+| Tool | Purpose |
+|------|---------|
+| `stash_memory_tree` | Memory wiki as a nested folder/page tree |
+| `stash_list_folders` | List folders |
+| `stash_create_folder` | Create a folder |
+| `stash_edit_folder` | Rename/reparent a folder |
+| `stash_delete_folder` | Delete a folder |
+| `stash_tree` | The full files tree |
+| `stash_list_pages` | List pages |
+| `stash_read_page` | Read a page |
+| `stash_create_page` | Create a page |
+| `stash_edit_page` | Edit a page |
+| `stash_delete_page` | Delete a page |
+| `stash_copy_page` | Copy a page |
+| `stash_copy_folder` | Copy a folder |
+| `stash_copy_file` | Copy a file |
+| `stash_batch_move` | Move multiple items in one call |
+| `stash_batch_delete` | Delete multiple items in one call |
+| `stash_batch_restore` | Restore multiple items in one call |
+
+**Tables**
+
+| Tool | Purpose |
+|------|---------|
+| `stash_list_tables` | List tables |
+| `stash_create_table` | Create a table |
+| `stash_delete_table` | Delete a table |
+| `stash_table_schema` | Read a table's schema |
+| `stash_query_table` | Query a table |
+| `stash_insert_row` | Insert a row |
+| `stash_update_row` | Update a row |
+| `stash_delete_row` | Delete a row |
+| `stash_add_column` | Add a column |
+| `stash_delete_column` | Delete a column |
+| `stash_update_table` | Update table metadata |
+| `stash_export_table` | Export a table |
+
+**Skills**
+
+| Tool | Purpose |
+|------|---------|
+| `stash_list_skills` | List your skills |
+| `stash_read_skill` | Read a skill |
+| `stash_create_skill` | Create a skill |
+| `stash_update_skill` | Update a skill |
+| `stash_publish_skill` | Publish a skill |
+| `stash_unpublish_skill` | Unpublish a skill |
+| `stash_get_shared_skill` | Get a shared skill by slug |
+| `stash_fork_skill` | Fork a skill by slug |
+| `stash_search_public_skills` | Search public skills |
+| `stash_read_public_skill` | Read a public skill by slug |
+
+**Files**
+
+| Tool | Purpose |
+|------|---------|
+| `stash_list_files` | List files |
+| `stash_file_text` | Read a file's text |
+| `stash_upload_file` | Upload a file |
+| `stash_edit_file` | Edit a file |
+| `stash_delete_file` | Delete a file |
+
+**Publishing**
+
+| Tool | Purpose |
+|------|---------|
+| `stash_publish_html` | Publish an HTML document |
+| `stash_publish_markdown` | Publish a markdown document |
+
+**Events & agents**
+
+| Tool | Purpose |
+|------|---------|
+| `stash_query_events` | Query events |
+| `stash_push_event` | Push an event |
+| `stash_list_agents` | List your agents |
+
+**Trash, shares & restore**
+
+| Tool | Purpose |
+|------|---------|
+| `stash_list_trash` | List items in the trash |
+| `stash_restore` | Restore a trashed item |
+| `stash_purge` | Permanently purge a trashed item |
+| `stash_share_object` | Share an object |
+| `stash_unshare_object` | Unshare an object |
+| `stash_list_shares` | List an object's shares |
+
+> Note: the table above is the complete 69-tool roster as shipped. If you spot a
+> `stash_*` tool in this document's list that does not exist in your tree's
+> `cli/mcp_server.py`, trust the source file and file a task.
+
+---
+
+### 3. Key tool examples
+
+Three tools deserve a closer look because they are the primary entry points a
+Fusion agent will use day-to-day. Signatures and return shapes below are taken
+verbatim from their docstrings in `cli/mcp_server.py` and the underlying
+`StashClient` methods in `cli/client.py`.
+
+#### `stash_search`
+
+```python
+stash_search(
+    query: str,
+    source: str = "",
+    include_sources: str = "",
+    exclude_sources: str = "",
+    limit: int = 20,
+    modified_after: str = "",
+    modified_before: str = "",
+) -> str
+```
+
+Searches across all your sources — native files + session transcripts +
+connected sources (GitHub/Drive/Gmail/Notion/Slack/Granola) — merged onto one
+relevance scale. Returns a JSON-encoded `{"results": [...], "has_more": bool}`.
+`has_more` means more matched than `limit` — raise `limit` to see them.
+
+**Source scoping**
+
+- Pass `source` to scope to one source (a handle from `stash_list_sources`:
+  `'files'`, `'sessions'`, or a connected-source id); omit it to search
+  everything.
+- Or filter with comma-separated `include_sources`/`exclude_sources` (native
+  handles + provider names, e.g. `"files,gmail"`); not combinable with `source`.
+- Comma-separated filter strings are split into token lists by
+  `split_source_tokens()` in `cli/client.py` (blank input → no filter).
+- Pass `modified_after`/`modified_before` (ISO-8601) to restrict to a
+  last-modified window; results with no known modification time are excluded
+  whenever a bound is set.
+
+The underlying call is `StashClient.search_sources(...)`, which issues
+`GET /api/v1/me/sources/search` and returns the same envelope.
+
+#### `stash_vfs`
+
+```python
+stash_vfs(script: str, cwd: str = "/") -> str
+```
+
+Runs one read-only shell-shaped script over your whole Stash — `ls`, `cat`,
+`find`, `grep`/`rg`, `tree`, pipes — exactly like `stash vfs` in a terminal.
+Roots include `/files`, `/sessions`, `/skills`, `/memory`, `/sources`.
+
+Returns a JSON-encoded `{"stdout": ..., "stderr": ..., "exit_code": ...}` from
+`StashClient.run_vfs` (`POST /api/v1/me/vfs`). **A non-zero `exit_code` is a
+shell result (e.g. grep found nothing), not an error** — read `stdout`/`stderr`
+like a terminal would show them.
+
+The script is executed server-side by the `stashvfs/` package, which exports
+`VfsClient`, `StashVfsModel`, `MachineVfsClient`, `VfsClientError`,
+`VfsCommandResult`, `VfsScanBudget`, `SkillAppVfsShell`, and `MountError`.
+
+#### `stash_memory_tree`
+
+```python
+stash_memory_tree() -> str
+```
+
+Returns the Memory wiki as a nested folder/page tree, rooted at your Memory
+folder, as a JSON-encoded structure from `StashClient.get_memory_tree`
+(`GET /api/v1/me/memory-tree`).
+
+The Files tree (`stash_tree`) deliberately hides this subtree, so this is how
+you discover memory pages; read one with `stash_read_page`. (The related
+`StashClient.get_memory_folder()` → `GET /api/v1/me/memory-folder` returns just
+the memory folder root object.)
+
+#### Suggested flow for a Fusion agent
+
+1. **Authenticate** — ensure either `~/.stash/config.json` has a valid
+   `api_key`, or export `STASH_API_KEY` (optionally `STASH_URL` / `STASH_SCOPE`).
+2. **Launch** `stash-mcp` as a stdio subprocess.
+3. **Call tools** — e.g. `stash_search` to find relevant context, `stash_vfs`
+   to inspect the tree with shell scripts, `stash_memory_tree` to discover and
+   then `stash_read_page` to read memory pages.
+
+---
+
+### 4. Backend registry contract
+
+Stash maintains a **per-user MCP-server registry** in the backend. This is a
+private registry — there is no sharing surface; each entry belongs to its
+owner.
+
+#### REST API
+
+The registry is served by `backend/routers/mcp_servers.py`, mounted as
+`app.include_router(mcp_servers.router)` in `backend/main.py`. The router uses
+`APIRouter(prefix="/api/v1/me", tags=["mcp-servers"])` and exposes:
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/v1/me/mcp-servers` | List the current user's registered MCP servers |
+| `POST` | `/api/v1/me/mcp-servers` | Create an MCP server (returns `201`) |
+| `DELETE` | `/api/v1/me/mcp-servers/{server_id}` | Delete an MCP server (returns `204`) |
+
+The `POST` body is the `McpServerCreate` model:
+
+```python
+name: str      # length 1..100, matches ^[a-zA-Z0-9][a-zA-Z0-9_-]*$; becomes the mcpServers key
+transport: Literal["stdio", "http"]
+command: str | None   # stdio launch command
+url: str | None       # http endpoint URL
+headers: dict[str, str] = {}
+env: dict[str, str] = {}
+```
+
+A `model_validator` (`check_transport_fields`) enforces the transport contract:
+
+- **stdio** requires `command`; `url`/`headers` are rejected (takes `command`/`env` only).
+- **http** requires a `url` starting with `http://` or `https://`; `command`/`env` are rejected (takes `url`/`headers` only).
+
+#### The `stash tools` CLI surface
+
+The registry is surfaced through the `stash tools` CLI subcommand group in
+`cli/main.py` (`stash tools add|list|install|remove`):
+
+- `stash tools add <name> --command ...` (stdio) or `stash tools add <name> --url ...` (http, with repeatable `--header KEY=VAL`, and `--env KEY=VAL` for stdio). Registers the server in the backend.
+- `stash tools list` — lists your registered servers.
+- `stash tools install <name>` — writes the registered server into this project's `.mcp.json` so Claude Code / Fusion agents pick it up.
+- `stash tools remove <name>` — removes a registered server.
+
+#### How `.mcp.json` gets written
+
+`stash tools install <name>` reads the registered server and builds a Claude
+Code–compatible `mcpServers` entry via `_mcp_json_entry()` in `cli/main.py`:
+
+- **stdio:** `{ "type": "stdio", "command": <argv[0]>, "args": <remaining argv>, "env": {...} }`
+- **http:** `{ "type": "http", "url": <url>, "headers": {...} }`
+
+`_merge_mcp_server()` merges the entry into `Path.cwd() / ".mcp.json"` under the
+`mcpServers` key. Ownership is tracked in a top-level marker key,
+`stashManagedServers` — `stash tools install` sweeps and rewrites only entries
+stash manages, and never touches user-added ones (a name collision with a
+user-defined server is a conflict, not a clobber).
+
+Because a Fusion agent reads the project's `.mcp.json` for its stdio servers,
+installing the registered `stash-mcp` entry into the project wires the agent to
+Stash automatically.
+
+#### The Tools page
+
+The product's Tools page also reads this same per-user registry
+(`GET /api/v1/me/mcp-servers`), so a server added via the CLI appears there and
+vice versa — same backing store, two surfaces.
+
+---
+
+## Part 2 — The hosted SSE MCP server
+
+The remote option: Stash's hosted SSE MCP server — an 8-tool core surface
+for search, VFS, and memory, served over the network at
+`https://joinstash.ai/api/v1/mcp`.
+
+### 5. Prerequisites
 
 - A Stash account on [joinstash.ai](https://joinstash.ai) (free tier works).
 - A Stash **API key** with the `full` (read + write) access level for tool
@@ -52,9 +423,7 @@ Fusion agents get two ways to use Stash:
 
 ---
 
-## Part A — Connect to the Stash MCP Server
-
-### 3. Transport and server endpoints
+### 6. Transport and server endpoints
 
 Stash's MCP server speaks **Server-Sent Events (SSE)** transport only — there
 is no stdio transport for the hosted server. (The standalone local/CLI server
@@ -70,7 +439,9 @@ the hosted server this section configures.)
 | Authentication | `Authorization: Bearer st_…` header |
 | Token prefix | `st_` or `mc_` |
 
-### 4. Fusion MCP config JSON
+---
+
+### 7. Fusion MCP config JSON
 
 In your Fusion project's MCP configuration, register a `stash` server. The
 exact JSON shape matches Fusion's standard `mcpServers` block:
@@ -94,7 +465,9 @@ token goes in the `Authorization` header — it is **never** placed in the URL.
 Fusion's client opens the SSE stream, receives the message endpoint from the
 server, and POSTs tool invocations to `/api/v1/mcp/messages/`.
 
-### 5. Verifying the connection
+---
+
+### 8. Verifying the connection
 
 Give the Fusion agent these instructions so it can confirm the link and use the
 tools correctly:
@@ -113,7 +486,9 @@ Use `stash_session_upload` to push an already-recorded session transcript.
 Every tool returns a JSON string; parse it before acting on the result.
 ```
 
-### 6. Tool Reference
+---
+
+### 9. Tool reference
 
 All eight tools below are registered in the MCP server at
 [`backend/services/mcp_service.py`](../backend/services/mcp_service.py). Each
@@ -131,7 +506,9 @@ function signatures in that module.
 | `stash_session_upload` | Upload a session transcript to Stash (session metadata + a JSON array of events), making it searchable; supports idempotent `replace` | `session_id` (string) | `agent_name` (string), `cwd` (string), `events` (JSON string, default `"[]"`), `replace` (bool, default false) |
 | `stash_memory_append` | Append Markdown content to the authenticated user's persistent Memory wiki page for a `(scope, layer)` pair (e.g. `project-long-term`); creates the page if it does not exist | `scope` (`"agent"` / `"project"`), `layer` (`"long-term"` / `"daily"`), `content` (string) | — |
 
-### 7. VFS path format
+---
+
+### 10. VFS path format
 
 The virtual filesystem organizes content under these top-level paths (used by
 `stash_vfs_ls` / `stash_vfs_cat`):
@@ -148,7 +525,7 @@ The virtual filesystem organizes content under these top-level paths (used by
 
 ---
 
-## Part B — Initialize the `FusionSession` Logger
+## Part 3 — The `FusionSession` logger
 
 The logger is a Python context manager delivered by the **`stash-sdk`** package
 (module `sdk/src/stash_sdk/session_store.py`). It wraps a Fusion run so that
@@ -163,7 +540,7 @@ transcript is uploaded when the run exits — the agent never has to self-report
 > version already exports `FusionSession`, the exact signatures below apply;
 > otherwise the API is the one specified here.
 
-### 8. Basic usage
+### 11. Basic usage
 
 ```python
 from stash_sdk import Stash, FusionSession
@@ -196,7 +573,9 @@ crash-safe local JSONL backstop file, then flushes the buffer via
 time has elapsed since the last flush. On exit it uploads the backstop file as
 the gzipped transcript.
 
-### 9. Session lifecycle and the `EventKind` model
+---
+
+### 12. Session lifecycle and the `EventKind` model
 
 The logger's events mirror Stash's canonical lifecycle, defined by the
 `EventKind` literal in `stashai/plugin/event.py`:
@@ -218,7 +597,9 @@ logger reuses the same endpoints: `POST /api/v1/me/sessions` to create the row,
 `POST /api/v1/me/sessions/events/batch` to flush buffered events, and
 `POST /api/v1/me/transcripts` to upload the transcript.
 
-### 10. Error handling
+---
+
+### 13. Error handling
 
 The logger is deliberately **crash-safe** and **best-effort**:
 
@@ -239,9 +620,9 @@ The logger is deliberately **crash-safe** and **best-effort**:
 
 ---
 
-## Configuration Reference
+## Configuration reference
 
-### 11. Where values come from
+### 14. Where values come from
 
 Fusion agents and the logger read the same configuration sources the rest of
 Stash uses:
@@ -272,7 +653,7 @@ server and the logger.
 
 ---
 
-## Local Development
+## Local development
 
 To point a Fusion agent or the logger at a **local** Stash backend instead of
 the hosted one:
@@ -290,11 +671,35 @@ the hosted one:
 
 ---
 
+## What did NOT ship (disambiguation)
+
+- **The hosted SSE server postdates this document's original write-up.**
+  Part 1 was written against `origin/main` @ `10d06d55` (STAS-097), when the
+  CLI `stdio` server was the only shipped MCP surface; at that time there was
+  no hosted remote endpoint, and hosted-SSE documentation reflected an
+  unshipped design. That surface has since shipped on `main`
+  (`backend/services/mcp_service.py`, mounted at `/api/v1/mcp`), so Part 2 is
+  now accurate and the older "no hosted endpoint" guidance is obsolete.
+- **Session-folder tools are gone.** `stash_list_session_folders`,
+  `stash_create_session_folder`, and `stash_assign_session` were removed from
+  `cli/mcp_server.py` when session folders were retired; the roster in §2 is
+  the current 69-tool list.
+- **STAS-007 tool names never shipped.** If you encounter documentation
+  referencing tools named `stash_vfs_list` / `stash_vfs_read` /
+  `stash_memory_store` / `stash_memory_retrieve`, those reflect a *planned*,
+  never-shipped design and should be ignored in favor of this document.
+- **The registry is a registry, not a proxy.** The per-user MCP-server
+  registry (`/api/v1/me/mcp-servers`) stores launch configuration for MCP
+  servers; it is not itself a remote MCP server, and it does not proxy calls
+  to Stash.
+
 ## See also
 
 - [`docs/stash-mcp-integration.md`](stash-mcp-integration.md) — the generic,
   client-agnostic MCP guide (endpoint/auth facts, other clients, `uvx mcp-remote`
   bridge).
+- [`cli/mcp_server.py`](../cli/mcp_server.py) — the CLI `stdio` MCP server:
+  the authoritative 69-tool roster and its config loading.
 - [`backend/services/mcp_service.py`](../backend/services/mcp_service.py) — the
   hosted MCP server, its auth model, and the authoritative tool listing.
 - `stashai/plugin/hooks.py` and `stashai/plugin/stash_client.py` — the
