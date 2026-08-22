@@ -25,7 +25,7 @@ Context:
   boundary: a read scoped to one user can never see another user's
   material. First sight of a new user_id creates the user in Stash.
 
-Step 1 — READ.Step 1 — READ. When composing the agent's context for a turn, fetch that
+Step 1 — READ. When composing the agent's context for a turn, fetch that
 user's memory and put it in the system prompt:
    POST /api/v1/me/vfs
    Header "Authorization: Bearer $STASH_API_KEY", body
