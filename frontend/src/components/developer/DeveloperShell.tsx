@@ -45,6 +45,23 @@ const NAV: { title: string; items: NavItem[] }[] = [
     ],
   },
   {
+    // Copy-paste prompts for the developer's own coding agent — the agent-era
+    // equivalent of a quickstart snippet.
+    title: "Prompts",
+    items: [
+      {
+        href: "/developer/prompts/install",
+        label: "Install",
+        match: (p) => p.startsWith("/developer/prompts/install"),
+      },
+      {
+        href: "/developer/prompts/backfill",
+        label: "Backfill",
+        match: (p) => p.startsWith("/developer/prompts/backfill"),
+      },
+    ],
+  },
+  {
     title: "Access",
     items: [
       { href: "/developer/keys", label: "API Keys", match: (p) => p.startsWith("/developer/keys") },
