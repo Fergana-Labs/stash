@@ -198,13 +198,19 @@ async def end_users_with_activity_since(workspace_id: UUID, since) -> list[dict]
     pool = get_pool()
     rows = await pool.fetch(
         f"SELECT {_END_USER_COLS} FROM end_users eu "
-        "WHERE eu.workspace_id = $1 AND EXISTS ("
+        "WHERE eu.workspace_id = $1 AND (EXISTS ("
         "  SELECT 1 FROM sessions s "
         "  JOIN history_events he ON he.owner_user_id = s.owner_user_id "
         "    AND he.session_id = s.session_id "
         "  WHERE s.end_user_id = eu.id AND s.deleted_at IS NULL "
         "    AND ($2::timestamptz IS NULL OR he.created_at > $2)"
-        ") ORDER BY eu.created_at",
+        # A file upload is work for its user too — a user whose only delta is
+        # files would otherwise never be named in the prompt.
+        ") OR EXISTS ("
+        "  SELECT 1 FROM files f WHERE f.end_user_id = eu.id "
+        "    AND f.deleted_at IS NULL "
+        "    AND ($2::timestamptz IS NULL OR f.created_at > $2)"
+        ")) ORDER BY eu.created_at",
         workspace_id,
         since,
     )
@@ -263,18 +269,16 @@ async def workspace_sessions(workspace: dict, limit: int = 200) -> list[dict]:
     can see when their users' sessions were read."""
     pool = get_pool()
     rows = await pool.fetch(
-        "SELECT s.session_id, s.agent_name, s.started_at, st.title, "
+        "SELECT s.session_id, s.agent_name, s.started_at, s.title, "
         "       eu.id AS user_id, eu.name AS user_name, eu.external_id AS user_external_id, "
         "       COUNT(he.id)::int AS event_count, "
         "       COALESCE(MAX(he.created_at), s.started_at) AS last_event_at "
         "FROM sessions s "
         "LEFT JOIN end_users eu ON eu.id = s.end_user_id "
-        "LEFT JOIN session_titles st "
-        "  ON st.owner_user_id = s.owner_user_id AND st.session_id = s.session_id "
         "LEFT JOIN history_events he "
         "  ON he.owner_user_id = s.owner_user_id AND he.session_id = s.session_id "
         "WHERE s.owner_user_id = $1 AND s.deleted_at IS NULL "
-        "GROUP BY s.session_id, s.agent_name, s.started_at, st.title, eu.id, eu.name, eu.external_id "
+        "GROUP BY s.session_id, s.agent_name, s.started_at, s.title, eu.id, eu.name, eu.external_id "
         "ORDER BY last_event_at DESC LIMIT $2",
         workspace["scope_user_id"],
         limit,
@@ -301,10 +305,13 @@ async def workspace_files(workspace: dict) -> dict:
     )
     users = []
     for end_user in await list_end_users(workspace["id"]):
+        notepad_ids = list(
+            await files_tree_service.folder_subtree_ids(end_user["notepad_folder_id"])
+        )
         notepad_pages = await pool.fetch(
             "SELECT id, name, updated_at FROM pages "
-            "WHERE folder_id = $1 AND deleted_at IS NULL ORDER BY updated_at DESC",
-            end_user["notepad_folder_id"],
+            "WHERE folder_id = ANY($1) AND deleted_at IS NULL ORDER BY updated_at DESC",
+            notepad_ids,
         )
         files = await pool.fetch(
             "SELECT id, name, size_bytes, created_at FROM files "
@@ -360,16 +367,14 @@ async def end_user_detail(end_user: dict) -> dict:
     files their uploads carried, and the notepad the curator writes for them."""
     pool = get_pool()
     sessions = await pool.fetch(
-        "SELECT s.session_id, s.agent_name, s.started_at, st.title, "
+        "SELECT s.session_id, s.agent_name, s.started_at, s.title, "
         "       COUNT(he.id)::int AS event_count, "
         "       COALESCE(MAX(he.created_at), s.started_at) AS last_event_at "
         "FROM sessions s "
-        "LEFT JOIN session_titles st "
-        "  ON st.owner_user_id = s.owner_user_id AND st.session_id = s.session_id "
         "LEFT JOIN history_events he "
         "  ON he.owner_user_id = s.owner_user_id AND he.session_id = s.session_id "
         "WHERE s.end_user_id = $1 AND s.deleted_at IS NULL "
-        "GROUP BY s.session_id, s.agent_name, s.started_at, st.title "
+        "GROUP BY s.session_id, s.agent_name, s.started_at, s.title "
         "ORDER BY last_event_at DESC",
         end_user["id"],
     )
@@ -381,8 +386,8 @@ async def end_user_detail(end_user: dict) -> dict:
     )
     notepad_pages = await pool.fetch(
         "SELECT id, name, updated_at FROM pages "
-        "WHERE folder_id = $1 AND deleted_at IS NULL ORDER BY updated_at DESC",
-        end_user["notepad_folder_id"],
+        "WHERE folder_id = ANY($1) AND deleted_at IS NULL ORDER BY updated_at DESC",
+        list(await files_tree_service.folder_subtree_ids(end_user["notepad_folder_id"])),
     )
     workspace = await workspace_service.get_workspace(end_user["workspace_id"])
     sources = await source_service.list_connected_sources(

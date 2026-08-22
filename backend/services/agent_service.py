@@ -161,25 +161,6 @@ async def get_or_create_curator(user_id: UUID, wiki: str = "internal") -> dict:
             wiki,
         )
     return _row(row)
-    row = await pool.fetchrow(
-        f"""
-        INSERT INTO agents (user_id, name, run_mode, schedule_cron, is_curator,
-                            last_run_at, curated_through)
-        SELECT $1, 'Memory curator', 'scheduled', $2, true, backfill, backfill
-        FROM (SELECT greatest((SELECT created_at FROM users WHERE id = $1),
-                              now() - make_interval(days => $3)) AS backfill) seed
-        ON CONFLICT (user_id) WHERE is_curator DO NOTHING
-        RETURNING {_COLUMNS}
-        """,
-        user_id,
-        _staggered_nightly_cron(user_id),
-        CURATOR_BACKFILL_DAYS,
-    )
-    if row is None:  # lost the race — read the winner.
-        row = await pool.fetchrow(
-            f"SELECT {_COLUMNS} FROM agents WHERE user_id = $1 AND is_curator", user_id
-        )
-    return _row(row)
 
 
 def _validate(model_provider, run_mode, schedule_cron) -> None:

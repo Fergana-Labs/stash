@@ -19,14 +19,14 @@ backend on every call — Stash isolates between developers, not between one
 developer's orgs. Each org owns a notepad folder (`notepad_folder_id`) for
 non-anonymized per-org memory.
 
-Revision ID: 0188
-Revises: 0187
+Revision ID: 0189
+Revises: 0188
 """
 
 from alembic import op
 
-revision = "0188"
-down_revision = "0187"
+revision = "0189"
+down_revision = "0188"
 branch_labels = None
 depends_on = None
 

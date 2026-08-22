@@ -323,6 +323,9 @@ async def create_source(
             settings = coalesce(user_sources.settings, '{}'::jsonb) || EXCLUDED.settings,
             -- A disconnected-with-data source resumes syncing on reconnect.
             sync_enabled = EXCLUDED.sync_enabled,
+            -- The connect call's scoping wins: reconnecting for a different
+            -- end user (or none) must not keep the old row's scope.
+            end_user_id = EXCLUDED.end_user_id,
             updated_at = now()
         RETURNING *
         """,
@@ -2255,13 +2258,17 @@ async def source_document(
             else None
         )
     elif source == NATIVE_SESSIONS:
+        from . import session_ref_service
         from .memory_service import read_session_events
 
-        events = await read_session_events(owner_user_id, ref, user_id)
+        # Search names session hits by title and the VFS lists them by title,
+        # so a ref arriving here is as likely to be a title as an id.
+        session_id = (await session_ref_service.resolve(owner_user_id, user_id, ref))["session_id"]
+        events = await read_session_events(owner_user_id, session_id, user_id)
         transcript = "\n".join(
             f"[{e.get('event_type')}] {(e.get('content') or '')[:2000]}" for e in events
         )
-        doc = {"session": ref, "transcript": transcript[:8000]}
+        doc = {"session": session_id, "transcript": transcript[:8000]}
     else:
         connected = await _resolve_connected(source, owner_user_id, user_id)
         if connected is None:
@@ -2639,6 +2646,9 @@ async def _gather_search_candidates(
             return None
 
     async def session_hits() -> tuple[list[dict], list[dict]]:
+        from stashvfs import safe_name
+
+        from . import session_title_service
         from .memory_service import search_scope_events
 
         events = await search_scope_events(
@@ -2649,10 +2659,16 @@ async def _gather_search_candidates(
             modified_after=modified_after,
             modified_before=modified_before,
         )
+        # Session hits carry `name` — the session's display title in the VFS's
+        # spelling, so a hit can be followed straight into /sessions/<name>/.
+        # `ref` stays the raw session id; the web search page links with it.
+        ids = [sid for sid in {e.get("session_id") for e in events} if sid]
+        titles = await session_title_service.titles_for_session_ids(owner_user_id, ids)
         return [
             {
                 "source": NATIVE_SESSIONS,
                 "ref": e.get("session_id"),
+                "name": safe_name(titles.get(e.get("session_id"), e.get("session_id"))),
                 "snippet": _centered_window(e.get("content") or "", query, SEARCH_SNIPPET_CHARS),
                 "date_modified": e.get("created_at"),
             }

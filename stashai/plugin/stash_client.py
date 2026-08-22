@@ -20,6 +20,7 @@ from pathlib import Path
 import httpx
 from filelock import FileLock
 
+from stashai import release
 from stashai.plugin.upload_status import (
     record_upload_attempt,
     record_upload_failure,
@@ -117,6 +118,7 @@ class StashClient:
         headers = kwargs.pop("headers", {})
         headers.update(self._headers())
         resp = self._http.request(method, path, headers=headers, **kwargs)
+        release.note_latest(resp.headers.get(release.LATEST_VERSION_HEADER, ""))
         if not resp.is_success:
             try:
                 payload = resp.json()

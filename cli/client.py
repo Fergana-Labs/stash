@@ -12,6 +12,7 @@ from pathlib import Path
 
 import httpx
 
+from stashai import release
 from stashvfs import VfsClientError
 
 
@@ -101,6 +102,7 @@ class StashClient:
         headers = kwargs.pop("headers", {})
         headers.update(self._headers())
         resp = self._http.request(method, path, headers=headers, **kwargs)
+        release.note_latest(resp.headers.get(release.LATEST_VERSION_HEADER, ""))
         if not resp.is_success:
             detail = ""
             try:
@@ -852,14 +854,23 @@ class StashClient:
 
     # --- Sessions ---
 
+    def resolve_session(self, ref: str, trashed: bool = False) -> dict:
+        """What session a handle names — a title, a VFS name, or an id.
+
+        `matched` is false when the handle names no title; `session_id` and
+        `id` then echo the handle, so callers need no branch.
+        """
+        return self._get("/api/v1/me/sessions/resolve", ref=ref, trashed=trashed)
+
     def delete_session(self, session_row_id: str) -> None:
         self._delete(f"/api/v1/me/sessions/{session_row_id}")
 
-    def get_transcript_events(self, session_id: str) -> list:
+    def get_transcript_events(self, session_id: str, limit: int, offset: int = 0) -> dict:
         # session_id is a query param, not a path segment — developers' ids may
         # contain slashes.
-        data = self._get("/api/v1/me/transcripts/events", session_id=session_id)
-        return data.get("events", []) if isinstance(data, dict) else data
+        return self._get(
+            "/api/v1/me/transcripts/events", session_id=session_id, limit=limit, offset=offset
+        )
 
     def export_transcript_jsonl(self, session_id: str) -> str:
         return self._request(

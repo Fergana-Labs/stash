@@ -311,7 +311,7 @@ async def test_session_id_with_a_slash_round_trips(client: AsyncClient):
 
     events = await client.get(
         "/api/v1/me/transcripts/events",
-        params={"session_id": "acme/conv-1"},
+        params={"session_id": "acme/conv-1", "limit": 100},
         headers=_auth(machine_key),
     )
     assert events.status_code == 200, events.text
@@ -513,14 +513,20 @@ async def test_curator_instructions_roundtrip(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_backfill_clears_watermark_and_dispatches(client: AsyncClient, monkeypatch):
-    """Backfill means 'read everything again': the watermark must clear so the
-    dispatched run renders the full-history prompt."""
+async def test_backfill_dispatches_full_history_without_touching_watermark(
+    client: AsyncClient, monkeypatch
+):
+    """Backfill means 'read everything again' — but only the run itself works
+    from the empty watermark. The stored watermark must survive the dispatch
+    untouched: a failed or lost backfill run must not have thrown away the
+    incremental position."""
     from backend.tasks import agent_schedules
 
-    dispatched: list[str] = []
+    dispatched: list[tuple] = []
     monkeypatch.setattr(
-        agent_schedules.run_curator_now, "delay", lambda agent_id: dispatched.append(agent_id)
+        agent_schedules.run_curator_now,
+        "delay",
+        lambda *args, **kwargs: dispatched.append((args, kwargs)),
     )
 
     api_key, _, workspace = await _developer(client)
@@ -528,14 +534,16 @@ async def test_backfill_clears_watermark_and_dispatches(client: AsyncClient, mon
 
     # Creating the curator seeds a bounded-backfill watermark.
     resp = await client.get("/api/v1/me/developer/curator", headers=scope)
-    assert resp.json()["curator"]["curated_through"] is not None
+    watermark = resp.json()["curator"]["curated_through"]
+    assert watermark is not None
 
     resp = await client.post("/api/v1/me/developer/curator/backfill", headers=scope)
     assert resp.status_code == 202, resp.text
     assert len(dispatched) == 1
+    assert dispatched[0][1] == {"full_history": True}
 
     resp = await client.get("/api/v1/me/developer/curator", headers=scope)
-    assert resp.json()["curator"]["curated_through"] is None
+    assert resp.json()["curator"]["curated_through"] == watermark
 
 
 @pytest.mark.asyncio

@@ -55,8 +55,10 @@ async def titles_for_sessions(
     pool = get_pool()
     session_ids = [s["session_id"] for s in sessions]
     rows = await pool.fetch(
-        "SELECT session_id, title, source_hash, user_set FROM session_titles "
-        "WHERE owner_user_id = $1 AND session_id = ANY($2::text[])",
+        "SELECT session_id, title, title_source_hash AS source_hash, "
+        "       title_user_set AS user_set "
+        "FROM sessions "
+        "WHERE owner_user_id = $1 AND session_id = ANY($2::text[]) AND title IS NOT NULL",
         owner_user_id,
         session_ids,
     )
@@ -88,7 +90,8 @@ async def titles_for_sessions(
 async def title_for_events(owner_user_id: UUID, session_id: str, events: list[dict]) -> str:
     pool = get_pool()
     row = await pool.fetchrow(
-        "SELECT title FROM session_titles WHERE owner_user_id = $1 AND session_id = $2",
+        "SELECT title FROM sessions "
+        "WHERE owner_user_id = $1 AND session_id = $2 AND title IS NOT NULL",
         owner_user_id,
         session_id,
     )
@@ -108,19 +111,21 @@ async def set_user_title(owner_user_id: UUID, session_id: str, title: str) -> st
     if not cleaned:
         raise ValueError("Title cannot be empty")
     pool = get_pool()
-    await pool.execute(
+    status = await pool.execute(
         """
-        INSERT INTO session_titles (owner_user_id, session_id, title, source_hash, user_set)
-        VALUES ($1, $2, $3, '', TRUE)
-        ON CONFLICT (owner_user_id, session_id) DO UPDATE SET
-          title = EXCLUDED.title,
-          user_set = TRUE,
-          updated_at = now()
+        UPDATE sessions SET
+          title = $3,
+          title_source_hash = '',
+          title_user_set = TRUE,
+          title_updated_at = now()
+        WHERE owner_user_id = $1 AND session_id = $2
         """,
         owner_user_id,
         session_id,
         cleaned,
     )
+    if status == "UPDATE 0":
+        raise ValueError("Session not found")
     return cleaned
 
 
@@ -132,6 +137,32 @@ def _enqueue_title_generation(owner_user_id: UUID, session_ids: list[str]) -> No
 
     for session_id in session_ids:
         generate_session_title.delay(str(owner_user_id), session_id)
+
+
+async def titles_for_session_ids(owner_user_id: UUID, session_ids: list[str]) -> dict[str, str]:
+    """Display titles for a bounded set of session ids — cached titles where
+    they exist, otherwise the same first-event fallback the overview computes,
+    so callers (e.g. search results) name sessions exactly as the sidebar and
+    VFS do. Never enqueues title generation."""
+    if not session_ids:
+        return {}
+    rows = await get_pool().fetch(
+        "SELECT DISTINCT ON (ht.session_id) "
+        "  ht.session_id, LEFT(ht.content, 240) AS title_source "
+        "FROM history_events ht "
+        "WHERE ht.owner_user_id = $1 AND ht.session_id = ANY($2::text[]) "
+        "  AND NULLIF(BTRIM(ht.content), '') IS NOT NULL "
+        "ORDER BY ht.session_id, CASE "
+        "  WHEN ht.event_type IN ('user_message', 'user_prompt', 'prompt', 'message', 'user') THEN 0 "
+        "  WHEN ht.event_type IN ('assistant_message', 'assistant') THEN 1 "
+        "  ELSE 2 "
+        "END, ht.created_at, ht.id",
+        owner_user_id,
+        session_ids,
+    )
+    sources = {r["session_id"]: r["title_source"] for r in rows}
+    sessions = [{"session_id": sid, "title_source": sources.get(sid)} for sid in session_ids]
+    return await titles_for_sessions(owner_user_id, sessions, enqueue_missing=False)
 
 
 def title_from_text(text: str | None, session_id: str) -> str:

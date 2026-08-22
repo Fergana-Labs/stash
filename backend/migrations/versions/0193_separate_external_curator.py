@@ -17,14 +17,14 @@ wiki) or 'external' (the workspace's cross-org wiki). Existing curators are
 internal — the external one is provisioned when a workspace activates the
 developer platform.
 
-Revision ID: 0192
-Revises: 0191
+Revision ID: 0193
+Revises: 0192
 """
 
 from alembic import op
 
-revision = "0192"
-down_revision = "0191"
+revision = "0193"
+down_revision = "0192"
 branch_labels = None
 depends_on = None
 
@@ -36,6 +36,27 @@ def upgrade() -> None:
     op.execute(
         "CREATE UNIQUE INDEX one_curator_per_user_per_wiki "
         "ON agents (user_id, curator_wiki) WHERE is_curator"
+    )
+    # Workspaces 0190 activated (Heavi's session-folder migration) never went
+    # through the activate endpoint, so nothing provisioned their external
+    # curator — without this their tenants' sessions would never be curated
+    # until someone happened to open the console. The stagger doesn't need to
+    # match the service's hash, only to land inside the nightly window.
+    op.execute(
+        """
+        INSERT INTO agents (user_id, name, run_mode, schedule_cron, is_curator,
+                            curator_wiki, last_run_at, curated_through)
+        SELECT w.scope_user_id, 'External wiki curator', 'scheduled',
+               (abs(hashtext(w.scope_user_id::text)) % 60)::text || ' ' ||
+               (8 + (abs(hashtext(w.scope_user_id::text)) / 60) % 4)::text || ' * * *',
+               true, 'external',
+               greatest(u.created_at, now() - interval '90 days'),
+               greatest(u.created_at, now() - interval '90 days')
+        FROM workspaces w
+        JOIN users u ON u.id = w.scope_user_id
+        WHERE w.external_wiki_folder_id IS NOT NULL
+        ON CONFLICT (user_id, curator_wiki) WHERE is_curator DO NOTHING
+        """
     )
 
 

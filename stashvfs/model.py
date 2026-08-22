@@ -14,6 +14,7 @@ from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import datetime
+from urllib.parse import quote
 
 from .client import MachineVfsClient, VfsClient, VfsClientError, VfsScanBudget
 
@@ -23,6 +24,12 @@ BytesLoader = Callable[[], bytes]
 # gets a truncation warning from the listing commands rather than an
 # ever-growing tree walk.
 SOURCE_ENTRIES_MAX = 10_000
+
+# How many of a session's events `transcript.md` and `events.json` render.
+# A transcript has no natural size bound, so the rendered body takes a slice
+# and says loudly what it left out; `grep` still searches the whole thing (see
+# VfsNode.scan_loader). Same page size `_load_all_table_rows` walks tables in.
+TRANSCRIPT_EVENTS_PAGE = 1000
 
 # How many file bodies `prefetch` loads at once. Each load is one request to the
 # backend, and for an index-only source (Drive, Notion, Gmail) the backend then
@@ -51,6 +58,14 @@ class VfsNode:
     # `cat` shows — the provider document behind a connected-source text, the
     # uploaded binary behind a sidecar. None means the content IS the original.
     raw_loader: BytesLoader | None = None
+    # The body `grep` searches, when searching all of something is worth more
+    # than searching only what `cat` prints. A transcript renders a bounded
+    # slice but is searched whole, so grep can match text — and report a line
+    # number — that the rendered file does not contain. That divergence is
+    # deliberate; the shell warns whenever it happens. None means the content
+    # IS what gets searched.
+    scan_loader: BytesLoader | None = None
+    scan_content: bytes | None = None
     # Stash id of the connected source this node is the root of. It's the object
     # id `shares add source <id>` takes, so `stat` surfaces it for sharing.
     source_id: str | None = None
@@ -87,11 +102,16 @@ class StashVfsModel:
         # Source-root path -> entries shown, for sources the server truncated.
         # Lets listing commands warn that the tree is incomplete.
         self._truncated: dict[str, int] = {}
+        # Transcript path -> (events rendered, events that exist). Written by
+        # whichever transcript loader runs first; read by the shell so a cat or
+        # a grep of a shortened transcript can say so.
+        self._truncated_transcripts: dict[str, tuple[int, int]] = {}
 
     def refresh(self) -> None:
         self.nodes = {}
         self._expanders = {}
         self._truncated = {}
+        self._truncated_transcripts = {}
         self._add_dir("/")
         # Lazy loaders and source expanders fire later, outside this block, so
         # reads and descents the user actually drives still count.
@@ -173,7 +193,23 @@ class StashVfsModel:
             return node.raw_loader()
         return self.read_file(path)
 
-    def prefetch(self, paths: list[str]) -> None:
+    def read_for_scan(self, path: str) -> bytes:
+        """The body `grep` searches. For most nodes this is exactly what `cat`
+        prints. A transcript is the exception: it renders a bounded slice but
+        is searched in full, so a sweep does not quietly miss the back half of
+        a long session. The shell warns when the two differ."""
+        node = self._get_node(path)
+        if not node.is_file:
+            raise IsADirectoryError(path)
+        if node.scan_loader is None:
+            return self.read_file(path)
+        if node.error is not None:
+            raise node.error
+        if node.scan_content is None:
+            node.scan_content = node.scan_loader()
+        return node.scan_content
+
+    def prefetch(self, paths: list[str], *, for_scan: bool = False) -> None:
         """Load these files' bodies concurrently, so a later `read_file` on each
         is a cache hit. A whole-directory `grep` reads every file it walks; done
         one at a time that is a round trip per file, and for Drive a round trip
@@ -188,13 +224,24 @@ class StashVfsModel:
         back to the provider. Fetching a failed file a second time would hit the
         provider twice and, server-side, spend two units of the document budget
         for one document — enough to abort a command that was within its ceiling."""
+
+        def loader_of(node: VfsNode) -> BytesLoader | None:
+            if for_scan and node.scan_loader is not None:
+                return node.scan_loader
+            return node.loader
+
+        def loaded(node: VfsNode) -> bool:
+            if for_scan and node.scan_loader is not None:
+                return node.scan_content is not None
+            return node.content is not None
+
         pending: list[VfsNode] = []
         seen: set[int] = set()
         for path in paths:
             node = self._get_node(path)
-            if not (node.is_file and node.content is None and node.error is None):
+            if not (node.is_file and not loaded(node) and node.error is None):
                 continue
-            if node.loader is None or id(node) in seen:
+            if loader_of(node) is None or id(node) in seen:
                 continue
             seen.add(id(node))
             pending.append(node)
@@ -203,7 +250,7 @@ class StashVfsModel:
 
         def load(node: VfsNode) -> tuple[VfsNode, bytes | VfsClientError | VfsScanBudget]:
             try:
-                return node, node.loader()
+                return node, loader_of(node)()
             except (VfsClientError, VfsScanBudget) as e:
                 return node, e
 
@@ -212,6 +259,9 @@ class StashVfsModel:
             for node, result in pool.map(load, pending):
                 if isinstance(result, (VfsClientError, VfsScanBudget)):
                     node.error = result
+                    continue
+                if for_scan and node.scan_loader is not None:
+                    node.scan_content = result
                     continue
                 node.content = result
                 node.size_hint = len(result)
@@ -453,37 +503,40 @@ class StashVfsModel:
         sessions_path = "/sessions"
         self._add_dir(sessions_path)
         self._add_jsonl_file(f"{sessions_path}/_index.jsonl", sessions)
-        ambiguous = _ambiguous_basenames(
-            [_safe_name(session.get("title") or str(session["session_id"])) for session in sessions]
-        )
-        for session in sessions:
+        for session, name in zip(sessions, session_dir_names(sessions)):
             session_id = str(session["session_id"])
-            row_id = str(session.get("id") or session_id)
             updated_at = session.get("updated_at")
-            name = _dir_display_name(session.get("title") or session_id, row_id, ambiguous)
             session_path = self._add_dir_child(sessions_path, name, updated_at=updated_at)
             self._add_json_file(f"{session_path}/metadata.json", session, updated_at=updated_at)
+            events_path = f"{session_path}/events.json"
             self._add_file(
-                f"{session_path}/events.json",
-                loader=lambda sid=session_id: _json_bytes(
-                    {"events": self.client.get_transcript_events(sid)}
+                events_path,
+                loader=lambda sid=session_id, path=events_path: _json_bytes(
+                    self._transcript_page(sid, path)
+                ),
+                scan_loader=lambda sid=session_id, path=events_path: _json_bytes(
+                    self._all_transcript_events_payload(sid, path)
                 ),
                 updated_at=updated_at,
-                app_url=f"/sessions/{session_id}",
+                app_url=f"/sessions/{quote(str(session_id), safe='')}",
             )
             self._add_file(
                 f"{session_path}/transcript.jsonl",
                 loader=lambda sid=session_id: _text_bytes(self.client.export_transcript_jsonl(sid)),
                 updated_at=updated_at,
-                app_url=f"/sessions/{session_id}",
+                app_url=f"/sessions/{quote(str(session_id), safe='')}",
             )
+            transcript_path = f"{session_path}/transcript.md"
             self._add_file(
-                f"{session_path}/transcript.md",
-                loader=lambda sid=session_id: _text_bytes(
-                    _session_markdown(self.client.get_transcript_events(sid))
+                transcript_path,
+                loader=lambda sid=session_id, path=transcript_path: _text_bytes(
+                    self._transcript_markdown(sid, path)
+                ),
+                scan_loader=lambda sid=session_id, path=transcript_path: _text_bytes(
+                    _session_markdown(self._all_transcript_events(sid, path))
                 ),
                 updated_at=updated_at,
-                app_url=f"/sessions/{session_id}",
+                app_url=f"/sessions/{quote(str(session_id), safe='')}",
             )
 
     def _add_sources(self) -> None:
@@ -549,6 +602,11 @@ class StashVfsModel:
             for s, shown in self._truncated.items()
             if s == root or s.startswith(root.rstrip("/") + "/") or root.startswith(s + "/")
         )
+
+    def truncated_transcript(self, path: str) -> tuple[int, int] | None:
+        """(rendered, total) for a transcript whose rendered body is short of
+        the session, or None. Only known once one of its bodies has loaded."""
+        return self._truncated_transcripts.get(path)
 
     def truncated_root_containing(self, path: str) -> tuple[str, int] | None:
         """The truncated source root that CONTAINS `path` (path is at or below
@@ -623,6 +681,56 @@ class StashVfsModel:
             return _text_bytes(page.get("content_html") or "")
         return _text_bytes(page.get("content_markdown") or "")
 
+    def _transcript_page(self, session_id: str, path: str) -> dict:
+        """The bounded slice a session's rendered bodies show, plus the count
+        of what it left out. Records the shortfall so the shell can warn."""
+        page = self.client.get_transcript_events(session_id, limit=TRANSCRIPT_EVENTS_PAGE)
+        events = page.get("events", [])
+        total = int(page.get("total", len(events)))
+        if total > len(events):
+            self._truncated_transcripts[path] = (len(events), total)
+        return {
+            "events": events,
+            "shown": len(events),
+            "total": total,
+            "truncated": total > len(events),
+        }
+
+    def _transcript_markdown(self, session_id: str, path: str) -> str:
+        page = self._transcript_page(session_id, path)
+        return _session_markdown(page["events"], page["total"])
+
+    def _all_transcript_events(self, session_id: str, path: str) -> list[dict]:
+        """Every event in the session, walked a page at a time — the body
+        `grep` searches. A sweep may never load the rendered body, so this
+        records the shortfall too; otherwise a grep that matched past the
+        rendered slice would have nothing to warn from."""
+        events: list[dict] = []
+        while True:
+            page = self.client.get_transcript_events(
+                session_id, limit=TRANSCRIPT_EVENTS_PAGE, offset=len(events)
+            )
+            page_events = page.get("events", [])
+            events.extend(page_events)
+            if not page_events or not page.get("has_more"):
+                break
+        if len(events) > TRANSCRIPT_EVENTS_PAGE:
+            self._truncated_transcripts[path] = (TRANSCRIPT_EVENTS_PAGE, len(events))
+        return events
+
+    def _all_transcript_events_payload(self, session_id: str, path: str) -> dict:
+        """The scan body of events.json: the same shape the rendered body has,
+        holding every event. Keeping the keys identical means a grep for one of
+        them behaves the same whether or not the session was long enough to be
+        cut short."""
+        events = self._all_transcript_events(session_id, path)
+        return {
+            "events": events,
+            "shown": len(events),
+            "total": len(events),
+            "truncated": False,
+        }
+
     def _load_all_table_rows(self, table_id: str) -> dict:
         limit = 1000
         offset = 0
@@ -681,6 +789,7 @@ class StashVfsModel:
         updated_at: str | None = None,
         external_ref: str | None = None,
         raw_loader: BytesLoader | None = None,
+        scan_loader: BytesLoader | None = None,
         app_url: str | None = None,
     ) -> str:
         path = self._clean_path(path)
@@ -701,6 +810,7 @@ class StashVfsModel:
             updated_at=_parse_iso(updated_at),
             external_ref=external_ref,
             raw_loader=raw_loader,
+            scan_loader=scan_loader,
             app_url=app_url,
         )
         self.nodes[parent].children[name] = path
@@ -770,7 +880,40 @@ def _inode_for_path(path: str) -> int:
     return int.from_bytes(digest[:8], "big") & 0x7FFFFFFFFFFFFFFF
 
 
+def safe_name(value: str) -> str:
+    """The VFS spelling of a display name — what `ls` shows and paths use.
+
+    Public so other surfaces (e.g. search results) can name objects exactly
+    as the VFS does; a name that differs only in shell-hostile punctuation
+    sends agents down unfollowable paths."""
+    return _safe_name(value)
+
+
+def session_dir_names(sessions: list[dict]) -> list[str]:
+    """The `/sessions/<name>` directory name of each session, in order.
+
+    This is the name an agent reads out of `ls /sessions`, so it is the name
+    it hands back to `stash share`/`rm`/`restore` — including the `--<id>`
+    suffix that separates two sessions sharing a title. Resolution and the
+    filesystem both spell it here rather than each deriving it, so the name
+    shown is always a name that resolves."""
+    ambiguous = _ambiguous_basenames([_safe_name(_session_title(s)) for s in sessions])
+    return [_dir_display_name(_session_title(s), _session_row_id(s), ambiguous) for s in sessions]
+
+
+def _session_title(session: dict) -> str:
+    return session.get("title") or str(session["session_id"])
+
+
+def _session_row_id(session: dict) -> str:
+    return str(session.get("id") or session["session_id"])
+
+
 def _safe_name(value: str) -> str:
+    # Quotes, backticks, and `$` make paths hostile to shell-quote — agents
+    # drive the VFS through `stash vfs "<script>"`, where names pass two
+    # layers of shell parsing.
+    value = re.sub(r"['\"`$]", "", value)
     value = re.sub(r"[\x00/\\:]", "-", value.strip())
     value = re.sub(r"\s+", " ", value)
     value = value.strip(". ")
@@ -896,10 +1039,29 @@ def _jsonl_bytes(rows: list[dict]) -> bytes:
     return _text_bytes("".join(f"{json.dumps(row, sort_keys=True, default=str)}\n" for row in rows))
 
 
-def _session_markdown(events: list[dict]) -> str:
+def _truncation_banner(shown: int, total: int) -> str:
+    """Shouted, because the failure it prevents is a silent one. Matches the
+    register the shell uses for incomplete listings, and names the sibling file
+    that is always whole."""
+    return (
+        f"> \u26a0\ufe0f TRUNCATED \u2014 this file shows the FIRST {shown:,} of {total:,} events.\n"
+        f"> {total - shown:,} MORE events exist and are NOT below. This transcript is\n"
+        "> INCOMPLETE \u2014 do not treat it as the full session.\n"
+        "> Complete session: ./transcript.jsonl"
+    )
+
+
+def _session_markdown(events: list[dict], total: int | None = None) -> str:
+    """Render events as markdown. `total` is how many the session actually has;
+    when it exceeds what was handed in, the body is banner-wrapped top AND
+    bottom, so a reader who takes the first screenful and one who reads to the
+    end both learn the file is partial."""
     if not events:
         return "_No events in this session._\n"
+    truncated = total is not None and total > len(events)
     parts: list[str] = []
+    if truncated:
+        parts.extend([_truncation_banner(len(events), total), ""])
     for event in events:
         role = event.get("role") or event.get("event_type") or "event"
         created_at = event.get("created_at") or ""
@@ -914,4 +1076,6 @@ def _session_markdown(events: list[dict]) -> str:
         if content:
             parts.append(content)
         parts.append("")
+    if truncated:
+        parts.extend([_truncation_banner(len(events), total), ""])
     return "\n".join(parts)

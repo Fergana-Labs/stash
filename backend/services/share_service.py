@@ -383,10 +383,8 @@ async def list_shared_with_user(user_id: UUID) -> list[dict]:
                  (SELECT name FROM pages           WHERE id = s.object_id AND s.object_type = 'page'),
                  (SELECT name FROM files           WHERE id = s.object_id AND s.object_type = 'file'),
                  (SELECT name FROM tables          WHERE id = s.object_id AND s.object_type = 'table'),
-                 (SELECT COALESCE(st.title, sess.session_id)
+                 (SELECT COALESCE(sess.title, sess.session_id)
                     FROM sessions sess
-                    LEFT JOIN session_titles st
-                      ON st.owner_user_id = sess.owner_user_id AND st.session_id = sess.session_id
                     WHERE sess.id = s.object_id AND s.object_type = 'session')
                ) AS name
         FROM shares s

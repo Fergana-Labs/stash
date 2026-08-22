@@ -164,9 +164,15 @@ class FakeClient:
         assert source == "src-gmail-1"
         return f"RAW BYTES of {ref}".encode()
 
-    def get_transcript_events(self, session_id):
+    def get_transcript_events(self, session_id, limit, offset=0):
         assert session_id == "session-abc"
-        return [{"role": "user", "content": "hello", "created_at": "2026-05-19T10:00:00Z"}]
+        events = [{"role": "user", "content": "hello", "created_at": "2026-05-19T10:00:00Z"}]
+        window = events[offset : offset + limit]
+        return {
+            "events": window,
+            "total": len(events),
+            "has_more": offset + len(window) < len(events),
+        }
 
     def export_transcript_jsonl(self, session_id):
         assert session_id == "session-abc"
@@ -446,6 +452,32 @@ def test_vfs_suffixes_only_colliding_names():
     assert "Untitled table--aaaaaaaa" in entries
     assert "Untitled table--bbbbbbbb" in entries
     assert "Untitled table" not in entries
+
+
+class QuotedTitleClient(FakeClient):
+    """A session titled with quotes — agents drive the VFS through
+    `stash vfs "<script>"`, so quotes in a path must survive two layers of
+    shell parsing. Sanitizing them out of the projected name is what keeps
+    session dirs addressable from a shell one-liner."""
+
+    def get_overview(self):
+        overview = super().get_overview()
+        overview["sessions"] = [
+            {
+                "id": "dddddddd-4444",
+                "session_id": "sess-1",
+                "title": 'Buy the "best" product from Bob\'s $5 `deals`',
+            }
+        ]
+        return overview
+
+
+def test_vfs_strips_shell_hostile_chars_from_names():
+    model = StashVfsModel(QuotedTitleClient(), include_computer=True)
+    model.refresh()
+
+    (name,) = [n for n in model.list_dir("/sessions") if n != "_index.jsonl"]
+    assert name == "Buy the best product from Bobs 5 deals"
 
 
 class SkillFolderTableClient(FakeClient):

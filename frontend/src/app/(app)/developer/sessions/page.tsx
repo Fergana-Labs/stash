@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import DeveloperGate from "@/components/developer/DeveloperGate";
@@ -60,8 +61,14 @@ function Sessions() {
                   onClick={() => router.push(`/sessions/${encodeURIComponent(s.session_id)}`)}
                   className="cursor-pointer border-b border-border transition-colors last:border-b-0 hover:bg-raised"
                 >
-                  <td className="max-w-[360px] truncate px-4 py-3 text-[14px] text-foreground">
-                    {s.title || s.session_id}
+                  <td className="max-w-[360px] truncate px-4 py-3 text-[14px]">
+                    <Link
+                      href={`/sessions/${encodeURIComponent(s.session_id)}`}
+                      onClick={(e) => e.stopPropagation()}
+                      className="text-foreground hover:underline"
+                    >
+                      {s.title || s.session_id}
+                    </Link>
                   </td>
                   <td className="whitespace-nowrap px-4 py-3 text-[13.5px]">
                     {s.user_id ? (

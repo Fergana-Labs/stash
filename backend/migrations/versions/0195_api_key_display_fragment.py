@@ -6,15 +6,15 @@ the name — no Anthropic-style "st_z6apB…IX3g" fragment to tell two
 at mint time; the hash remains the only full record of the key. Rows minted
 before this migration stay NULL and render without a fragment.
 
-Revision ID: 0194
-Revises: 0193
+Revision ID: 0195
+Revises: 0194
 """
 
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0194"
-down_revision = "0193"
+revision = "0195"
+down_revision = "0194"
 branch_labels = None
 depends_on = None
 

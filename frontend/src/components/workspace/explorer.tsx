@@ -318,8 +318,10 @@ export default function Explorer({ section }: { section: ExplorerSection }) {
 
   if (section === "agents") return <AgentsExplorer />;
 
-  // Files docks the same browser the /files page shows full-screen.
-  if (section === "files")
+  // Files docks the same browser the /files page shows full-screen. The
+  // atRoot guard is what makes its Home crumb work — without it the click
+  // set state nothing consumed.
+  if (section === "files" && !atRoot)
     return <FilesExplorer onRoot={() => setAtRoot(true)} rootLabel="Files" rootFolderId={null} />;
 
   // Skills & Sessions are file managers (own breadcrumb/toolbar).

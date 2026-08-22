@@ -17,14 +17,14 @@ ON DELETE CASCADE, matching sources and for the same reason: a page holding
 one customer's non-anonymized detail must not survive that org as an
 ownerless page in the workspace.
 
-Revision ID: 0191
-Revises: 0190
+Revision ID: 0192
+Revises: 0191
 """
 
 from alembic import op
 
-revision = "0191"
-down_revision = "0190"
+revision = "0192"
+down_revision = "0191"
 branch_labels = None
 depends_on = None
 

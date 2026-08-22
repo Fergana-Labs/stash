@@ -12,7 +12,7 @@ class DeadTranscriptClient(FakeClient):
     """A session whose transcript bodies 404 on fetch — the backend lists it
     but can no longer serve it. Mirrors the inconsistency that crashed grep."""
 
-    def get_transcript_events(self, session_id):
+    def get_transcript_events(self, session_id, limit, offset=0):
         raise StashError(404, "Transcript not found")
 
     def export_transcript_jsonl(self, session_id):
@@ -36,9 +36,9 @@ class CountingClient(FakeClient):
         self.lazy_loads += 1
         return super().get_skill_text(slug)
 
-    def get_transcript_events(self, session_id):
+    def get_transcript_events(self, session_id, limit, offset=0):
         self.lazy_loads += 1
-        return super().get_transcript_events(session_id)
+        return super().get_transcript_events(session_id, limit, offset)
 
     def export_transcript_jsonl(self, session_id):
         self.lazy_loads += 1

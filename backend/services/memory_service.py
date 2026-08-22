@@ -260,8 +260,17 @@ async def reject_cross_user_sessions(owner_user_id: UUID, events: list[dict]) ->
     asserted: dict[str, str | None] = {}
     for event in events:
         session_id = event.get("session_id")
-        if session_id:
-            asserted.setdefault(session_id, event.get("user_id"))
+        if not session_id:
+            continue
+        incoming = event.get("user_id")
+        if session_id in asserted and asserted[session_id] != incoming:
+            raise ValueError(
+                f"session {session_id!r} carries two different users in one "
+                f"batch ({asserted[session_id] or 'no user'} and "
+                f"{incoming or 'no user'}). Session ids must be unique across "
+                "your users."
+            )
+        asserted.setdefault(session_id, incoming)
     if not asserted:
         return
     rows = await get_pool().fetch(
@@ -411,16 +420,13 @@ async def read_session_events(
 async def read_session_events_page(
     owner_user_id: UUID,
     session_id: str,
-    limit: int | None,
+    limit: int,
     offset: int,
 ) -> tuple[list[dict], int]:
     """One page of renderable session events (oldest first) plus the total
     renderable count, for the lazily-loaded transcript viewer. Filtering to
     renderable event types keeps the offset aligned with the turn ordinal the
-    viewer shows. Callers enforce readability.
-
-    A None limit reads the session whole: Postgres treats LIMIT NULL as
-    LIMIT ALL, so the unpaged read stays on this one codepath."""
+    viewer shows. Callers enforce readability."""
     pool = get_pool()
     total = await pool.fetchval(
         "SELECT COUNT(*) FROM history_events "

@@ -182,9 +182,11 @@ class InProcessVfsClient:
             .get("combined", "")
         )
 
-    def get_transcript_events(self, session_id: str) -> list:
+    def get_transcript_events(self, session_id: str, limit: int, offset: int = 0) -> dict:
+        # main's pagination contract over our query-param addressing: the id
+        # is the developer's own string, slashes included.
         path = f"/api/v1/me/transcripts/events?session_id={quote(session_id, safe='')}"
-        return self._read_document("GET", path).json()["events"]
+        return self._read_document("GET", path, limit=limit, offset=offset).json()
 
     def export_transcript_jsonl(self, session_id: str) -> str:
         path = f"/api/v1/me/transcripts/export.jsonl?session_id={quote(session_id, safe='')}"

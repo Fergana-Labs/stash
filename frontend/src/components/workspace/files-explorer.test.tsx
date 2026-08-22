@@ -31,6 +31,8 @@ vi.mock("@/components/share/ResourceShareButton", () => ({
 vi.mock("@/lib/api", () => ({
   getTree: vi.fn(),
   getFolderContents: vi.fn(),
+  listFiles: vi.fn().mockResolvedValue([]),
+  listTables: vi.fn().mockResolvedValue({ tables: [] }),
   createPage: vi.fn(),
   createFolder: vi.fn(),
   createTable: vi.fn(),

@@ -5,14 +5,14 @@ working. An expired key is refused at auth time like a revoked one, but the
 row keeps its timestamp so the console can say "expired" instead of the key
 just vanishing.
 
-Revision ID: 0196
-Revises: 0195
+Revision ID: 0197
+Revises: 0196
 """
 
 from alembic import op
 
-revision = "0196"
-down_revision = "0195"
+revision = "0197"
+down_revision = "0196"
 branch_labels = None
 depends_on = None
 

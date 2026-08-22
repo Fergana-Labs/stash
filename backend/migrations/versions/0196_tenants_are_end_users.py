@@ -9,14 +9,14 @@ Mostly a pure rename (Postgres carries indexes and foreign keys across it).
 The one data change: each workspace's "Tenant Notepads" folder — a
 user-visible name — becomes "User Notepads".
 
-Revision ID: 0195
-Revises: 0194
+Revision ID: 0196
+Revises: 0195
 """
 
 from alembic import op
 
-revision = "0195"
-down_revision = "0194"
+revision = "0196"
+down_revision = "0195"
 branch_labels = None
 depends_on = None
 

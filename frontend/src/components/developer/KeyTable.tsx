@@ -28,7 +28,10 @@ export default function KeyTable({ refresh }: { refresh: number }) {
 
   const load = useCallback(() => {
     listDeveloperKeys()
-      .then((res) => setKeys(res.keys))
+      .then((res) => {
+        setKeys(res.keys);
+        setError(null);
+      })
       .catch((e) => setError(e instanceof Error ? e.message : "Could not load keys"));
   }, []);
 
@@ -50,7 +53,7 @@ export default function KeyTable({ refresh }: { refresh: number }) {
     }
   }
 
-  if (error) return <p className="text-[14px] text-error">{error}</p>;
+  if (error && keys === null) return <p className="text-[14px] text-error">{error}</p>;
   if (keys === null) return <p className="text-[14px] text-muted-foreground">Loading…</p>;
   if (keys.length === 0) {
     return (
@@ -61,7 +64,9 @@ export default function KeyTable({ refresh }: { refresh: number }) {
   }
 
   return (
-    <div className="overflow-hidden rounded border border-border bg-surface">
+    <div>
+      {error && <p className="mb-2 text-[13px] text-error">{error}</p>}
+      <div className="overflow-hidden rounded border border-border bg-surface">
       {keys.map((key) => (
         <div
           key={key.id}
@@ -121,6 +126,7 @@ export default function KeyTable({ refresh }: { refresh: number }) {
           )}
         </div>
       ))}
+      </div>
     </div>
   );
 }

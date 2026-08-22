@@ -72,8 +72,10 @@ class Stash:
                 }
             )
         report["recorded"] = len(wire)
-        if wire:
+        # Chunked: a replayed conversation can outgrow one request body.
+        for start in range(0, len(wire), 200):
             self._http.post(
-                "/api/v1/me/sessions/events/batch", json={"events": wire}
+                "/api/v1/me/sessions/events/batch",
+                json={"events": wire[start : start + 200]},
             ).raise_for_status()
         return report

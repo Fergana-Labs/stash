@@ -9,7 +9,7 @@ import {
   ExternalLink, Share2, Users,
 } from "lucide-react";
 import {
-  getTree, getFolderContents, createPage, createFolder, createTable, updateFolder, updatePage,
+  getTree, getFolderContents, createPage, createFolder, createTable, listFiles, listTables, updateFolder, updatePage,
   updateFile, updateTable, trashItem, deleteFolder, deleteTable,
   uploadFileOrPage, importGithubRepo, inspectGithubImport, listGithubImportRepos,
   type FolderBreadcrumb, type GithubImportRepo,
@@ -168,11 +168,25 @@ export default function FilesExplorer({
         setCrumbs([]);
         setItems([...(await loadRoot()), ...(await sharedNode())]);
       } else if (folderId === null) {
-        const tree = await getTree();
+        // The root shows what lives AT the root — every kind of item, same as
+        // a folder's contents. The tree endpoint carries the whole nested set
+        // of folders/pages (and no files or tables), so filter to the root
+        // level and fetch the other two kinds alongside.
+        const [tree, files, { tables }] = await Promise.all([getTree(), listFiles(), listTables()]);
         setCrumbs([]);
         setItems([
-          ...tree.folders.map((f) => ({ kind: "folder" as const, id: f.id, name: f.name, ts: f.updated_at, readOnly: f.is_protected })),
-          ...tree.pages.map((p) => ({ kind: "page" as const, id: p.id, name: p.name || "Untitled", ts: p.updated_at })),
+          ...tree.folders
+            .filter((f) => f.parent_folder_id == null)
+            .map((f) => ({ kind: "folder" as const, id: f.id, name: f.name, ts: f.updated_at, readOnly: f.is_protected })),
+          ...tree.pages
+            .filter((p) => p.folder_id == null)
+            .map((p) => ({ kind: "page" as const, id: p.id, name: p.name || "Untitled", ts: p.updated_at })),
+          ...files
+            .filter((f) => !f.folder_id && !f.owner_page_id)
+            .map((f) => ({ kind: "file" as const, id: f.id, name: f.name, ts: f.created_at })),
+          ...tables
+            .filter((t) => !t.folder_id)
+            .map((t) => ({ kind: "table" as const, id: t.id, name: t.name, ts: t.created_at })),
           ...(await sharedNode()),
         ]);
       } else if (loadFolder) {

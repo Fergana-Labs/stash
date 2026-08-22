@@ -38,6 +38,8 @@ COPY docs/skills/ ./docs/skills/
 COPY stashvfs/ ./stashvfs/
 COPY backend/entrypoint.sh ./entrypoint.sh
 COPY alembic.ini ./alembic.ini
+# The CLI release number clients are told about (backend/cli_release.py).
+COPY pyproject.toml ./pyproject.toml
 
 RUN mkdir -p /app/.secrets && \
     chmod 700 /app/.secrets && \
@@ -48,4 +50,8 @@ USER stash
 EXPOSE 3456
 
 ENTRYPOINT ["/app/entrypoint.sh"]
-CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "3456", "--proxy-headers", "--forwarded-allow-ips", "*"]
+# Two workers so one request wedging its event loop (CPU-bound work, a stuck
+# call) can't take the whole instance's /health down with it — a single-worker
+# instance froze and was killed by Render's health check on 2026-08-19.
+# Celery services override this CMD, so this only affects the web service.
+CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "3456", "--workers", "2", "--proxy-headers", "--forwarded-allow-ips", "*"]

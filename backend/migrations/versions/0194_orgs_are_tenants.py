@@ -7,14 +7,14 @@ of what this is for and made the per-person case read as a misuse.
 Pure rename — no behaviour change. Postgres carries indexes and foreign keys
 across a table rename, so only the names move.
 
-Revision ID: 0193
-Revises: 0192
+Revision ID: 0194
+Revises: 0193
 """
 
 from alembic import op
 
-revision = "0193"
-down_revision = "0192"
+revision = "0194"
+down_revision = "0193"
 branch_labels = None
 depends_on = None
 

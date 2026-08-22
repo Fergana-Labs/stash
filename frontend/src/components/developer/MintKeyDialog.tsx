@@ -41,16 +41,16 @@ export default function MintKeyDialog({ onMinted }: { onMinted: () => void }) {
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Cleared on every transition — open or close, trigger or Done button —
+  // so no path can reopen onto a stale minted key.
   function reset(nextOpen: boolean) {
     setOpen(nextOpen);
-    if (nextOpen) {
-      setName("");
-      setExpiryDays(0);
-      setMinted(null);
-      setExpiresAt(null);
-      setCopied(false);
-      setError(null);
-    }
+    setName("");
+    setExpiryDays(0);
+    setMinted(null);
+    setExpiresAt(null);
+    setCopied(false);
+    setError(null);
   }
 
   async function mint(e: React.FormEvent) {
@@ -118,7 +118,7 @@ export default function MintKeyDialog({ onMinted }: { onMinted: () => void }) {
                 {copied ? "Copied" : "Copy key"}
               </button>
               <button
-                onClick={() => setOpen(false)}
+                onClick={() => reset(false)}
                 className="rounded-lg bg-brand-500 px-5 py-2.5 text-[14px] font-medium text-white transition-colors hover:bg-brand-600"
               >
                 Done

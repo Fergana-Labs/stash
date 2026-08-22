@@ -46,7 +46,9 @@ class EndUserUpdateRequest(BaseModel):
 
 
 class CuratorUpdateRequest(BaseModel):
-    instructions: str | None = Field(None, max_length=20_000)
+    # Required: a PATCH that omits the field must 422, not silently clear.
+    # The empty string is how instructions are cleared on purpose.
+    instructions: str = Field(..., max_length=20_000)
 
 
 async def _require_member_workspace(workspace_id: UUID, user_id: UUID) -> dict:
@@ -284,18 +286,17 @@ async def backfill_curator(
 ):
     """Re-run the curator over the workspace's full history.
 
-    Clears the delta watermark and dispatches a run, so the prompt bootstraps
-    from everything ever uploaded instead of the delta since last night. Pages
-    are updated in place — the curator merges rather than duplicates — so this
-    is safe to use after changing the instructions or onboarding real traffic.
-    The credential check runs first: a backfill that cannot run must not have
-    already thrown the watermark away.
+    The run reads with no watermark, so the prompt bootstraps from everything
+    ever uploaded instead of the delta since last night. Pages are updated in
+    place — the curator merges rather than duplicates — so this is safe after
+    changing the instructions or onboarding real traffic. The stored watermark
+    is untouched until the run succeeds: a failed backfill must not have
+    thrown away the incremental position.
     """
     from ..tasks.agent_schedules import run_curator_now as dispatch
 
     curator = await _runnable_curator(scope_user_id, current_user["id"])
-    await agent_service.mark_curated(UUID(curator["id"]), None)
-    dispatch.delay(curator["id"])
+    dispatch.delay(curator["id"], full_history=True)
     return {"status": "started", "agent_id": curator["id"]}
 
 
