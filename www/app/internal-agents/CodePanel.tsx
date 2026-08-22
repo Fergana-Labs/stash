@@ -2,10 +2,9 @@
 
 import { useState } from "react";
 
-type Pane = "prompt" | "cli" | "mcp";
+type Pane = "cli" | "mcp";
 
 const TABS: [Pane, string, string][] = [
-  ["prompt", "One prompt", "claude code"],
   ["cli", "CLI", "terminal"],
   ["mcp", "MCP", "json"],
 ];
@@ -16,7 +15,7 @@ const OK = "text-[#6FCF97]";
 const P = "text-brand";
 
 export default function CodePanel() {
-  const [pane, setPane] = useState<Pane>("prompt");
+  const [pane, setPane] = useState<Pane>("cli");
   const lang = TABS.find(([id]) => id === pane)![2];
 
   return (
@@ -54,24 +53,6 @@ export default function CodePanel() {
           </span>
         </div>
         <pre className="overflow-x-auto px-[22px] py-5 text-left font-mono text-[13px] leading-[1.95] text-[rgba(250,248,245,0.7)]">
-          {pane === "prompt" && (
-            <>
-              <span className={C}># paste this into any coding agent</span>
-              {"\n"}
-              <span className={P}>›</span> <span className={W}>Install Stash, import my past sessions,</span>
-              {"\n  "}
-              <span className={W}>and refine them into skills.</span>
-              {"\n\n"}
-              <span className={OK}>✓</span> plugin installed <span className={C}>· capture is on</span>
-              {"\n"}
-              <span className={OK}>✓</span> 412 past sessions imported
-              {"\n"}
-              <span className={OK}>✓</span> 6 skills written{" "}
-              <span className={C}>· auth-patterns, deploy-runbook…</span>
-              {"\n"}
-              <span className={OK}>✓</span> memory serving on MCP
-            </>
-          )}
           {pane === "cli" && (
             <>
               <span className={P}>$</span> <span className={W}>stash plugin install</span>

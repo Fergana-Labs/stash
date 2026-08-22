@@ -125,8 +125,15 @@ python -m alembic upgrade head
 #    → backend/tests/test_migrations.py`}</CodeBlock>
 
       <Callout type="info">
-        Questions? Open a GitHub Discussion or send us a note. We
-        review PRs on a best-effort basis and aim to respond within 48 hours on weekdays.
+        Questions? Join our{" "}
+        <a
+          href="https://discord.gg/PVFdcQx2u3"
+          className="text-brand underline underline-offset-2"
+        >
+          Discord
+        </a>{" "}
+        or open a GitHub Discussion. We review PRs on a best-effort basis and aim to
+        respond within 48 hours on weekdays.
       </Callout>
     </>
   );

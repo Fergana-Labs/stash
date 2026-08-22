@@ -2,6 +2,7 @@ import logging
 import secrets
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from pydantic import BaseModel
 
 from ..auth import create_api_key, get_current_user, hash_api_key
 from ..config import settings
@@ -167,6 +168,52 @@ async def update_me(req: UserUpdateRequest, current_user: dict = Depends(get_cur
         except Exception as exc:
             logger.warning("enterprise lead email failed exception_type=%s", type(exc).__name__)
     return UserProfile(**updated)
+
+
+class RedeemCodeRequest(BaseModel):
+    code: str
+
+
+@router.post("/me/redeem-code")
+@limiter.limit("10/minute")
+async def redeem_code(
+    request: Request, req: RedeemCodeRequest, current_user: dict = Depends(get_current_user)
+):
+    """Redeem an access code (e.g. a hackathon code): grants the code's plan.
+
+    The use is consumed atomically, so a shared code with max_uses can't be
+    over-redeemed by a race."""
+    code = req.code.strip().lower()
+    if not code:
+        raise HTTPException(status_code=400, detail="Enter a code")
+    pool = get_pool()
+    already = await pool.fetchval(
+        "SELECT redeemed_code FROM users WHERE id = $1", current_user["id"]
+    )
+    if already:
+        raise HTTPException(status_code=409, detail="This account already redeemed a code")
+    plan = await pool.fetchval(
+        """
+        UPDATE redeem_codes SET use_count = use_count + 1
+        WHERE code = $1
+          AND (expires_at IS NULL OR expires_at > now())
+          AND (max_uses IS NULL OR use_count < max_uses)
+        RETURNING plan
+        """,
+        code,
+    )
+    if plan is None:
+        exists = await pool.fetchval("SELECT 1 FROM redeem_codes WHERE code = $1", code)
+        if exists:
+            raise HTTPException(status_code=410, detail="This code has expired or is used up")
+        raise HTTPException(status_code=404, detail="Unknown code")
+    await pool.execute(
+        "UPDATE users SET plan = $2, redeemed_code = $3 WHERE id = $1",
+        current_user["id"],
+        plan,
+        code,
+    )
+    return {"plan": plan}
 
 
 # ---------------------------------------------------------------------------

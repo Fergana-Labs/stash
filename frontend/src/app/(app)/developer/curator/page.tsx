@@ -81,6 +81,43 @@ function Curator() {
       )}
 
       <section className="mb-12">
+        <SectionHeading>When does the curator run?</SectionHeading>
+        <div className="mt-4 overflow-hidden rounded border border-border bg-surface">
+          <table className="w-full text-left text-[13.5px]">
+            <thead>
+              <tr className="border-b border-border font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+                <th className="px-5 py-3 font-normal">Trigger</th>
+                <th className="px-5 py-3 font-normal">When</th>
+                <th className="px-5 py-3 font-normal">What it reads</th>
+              </tr>
+            </thead>
+            <tbody className="text-foreground">
+              <ScheduleRow
+                trigger="Nightly"
+                when={`${describeSchedule(data.curator.schedule_cron)} — a fixed slot picked for your workspace`}
+                reads="Everything uploaded since its last run"
+              />
+              <ScheduleRow
+                trigger="First day"
+                when="After every conversation uploaded during your workspace's first 24 hours"
+                reads="Everything uploaded since its last run"
+              />
+              <ScheduleRow
+                trigger="Run now"
+                when="Immediately — the button under Recent runs below"
+                reads="Everything uploaded since its last run"
+              />
+              <ScheduleRow
+                trigger="Backfill"
+                when="Immediately, after you confirm it"
+                reads="The full history, watermark cleared"
+              />
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="mb-12">
         <SectionHeading>Feeding the shared wiki</SectionHeading>
         <p className="mt-2 text-[13.5px] leading-6 text-muted-foreground">
           Every user gets their own wiki regardless. This is who also contributes to the
@@ -307,6 +344,16 @@ function Runs({ runs, onStarted }: { runs: CuratorRun[]; onStarted: () => void }
         </div>
       )}
     </section>
+  );
+}
+
+function ScheduleRow({ trigger, when, reads }: { trigger: string; when: string; reads: string }) {
+  return (
+    <tr className="border-b border-border last:border-b-0">
+      <td className="whitespace-nowrap px-5 py-3 align-top font-medium">{trigger}</td>
+      <td className="px-5 py-3 align-top leading-5">{when}</td>
+      <td className="px-5 py-3 align-top leading-5 text-muted-foreground">{reads}</td>
+    </tr>
   );
 }
 

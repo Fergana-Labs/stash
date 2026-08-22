@@ -27,6 +27,7 @@ from ..services import (
     transcript_import,
     user_scope_service,
 )
+from ..tasks.agent_schedules import first_day_curator_tick
 
 router = APIRouter(prefix="/api/v1/me/transcripts", tags=["transcripts"])
 
@@ -153,6 +154,8 @@ async def upload_transcript(
             e["metadata"] = {**(e.get("metadata") or {}), "cwd": cwd}
 
     inserted = await memory_service.push_events_batch(owner_user_id, current_user["id"], events)
+    if inserted:
+        first_day_curator_tick.delay(str(owner_user_id))
     return {
         "session_id": session_id,
         "imported": len(inserted),

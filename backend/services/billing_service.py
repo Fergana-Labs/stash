@@ -49,6 +49,26 @@ async def get_subscription(user_id: UUID) -> dict | None:
     return dict(row) if row else None
 
 
+async def plan_label(user_id: UUID) -> str:
+    """The plan the UI names: 'enterprise' (granted by an admin or a redeemed
+    code — no Stripe row), 'pro' (paid or internal), else 'free'. Gates use
+    `is_pro`; this exists so a granted account isn't rendered as a $20
+    subscription it doesn't have."""
+    row = await get_pool().fetchrow(
+        "SELECT u.email, u.plan, s.status FROM users u "
+        "LEFT JOIN user_subscriptions s ON s.user_id = u.id "
+        "WHERE u.id = $1",
+        user_id,
+    )
+    if row is None:
+        return "free"
+    if row["plan"] == "enterprise":
+        return "enterprise"
+    if is_internal_email(row["email"]) or row["status"] in ACTIVE_STATUSES:
+        return "pro"
+    return "free"
+
+
 async def is_pro(user_id: UUID) -> bool:
     row = await get_pool().fetchrow(
         "SELECT u.email, u.plan, s.status FROM users u "
