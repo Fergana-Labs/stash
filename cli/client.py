@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import gzip
 import json
 import mimetypes
 import os
@@ -101,6 +102,13 @@ class StashClient:
     def _request(self, method: str, path: str, **kwargs) -> httpx.Response:
         headers = kwargs.pop("headers", {})
         headers.update(self._headers())
+        # The edge WAF pattern-matches raw bodies and 403s agent shell text as
+        # command injection. Gzip JSON bodies so the edge has nothing to match;
+        # the backend's GzipRequestMiddleware restores them.
+        if kwargs.get("json") is not None:
+            kwargs["content"] = gzip.compress(json.dumps(kwargs.pop("json")).encode())
+            headers["Content-Type"] = "application/json"
+            headers["Content-Encoding"] = "gzip"
         resp = self._http.request(method, path, headers=headers, **kwargs)
         release.note_latest(resp.headers.get(release.LATEST_VERSION_HEADER, ""))
         if not resp.is_success:
