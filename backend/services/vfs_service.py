@@ -18,7 +18,6 @@ import asyncio
 import functools
 import threading
 from contextlib import contextmanager
-from urllib.parse import quote
 
 import anyio
 import anyio.to_thread
@@ -183,14 +182,20 @@ class InProcessVfsClient:
         )
 
     def get_transcript_events(self, session_id: str, limit: int, offset: int = 0) -> dict:
-        # main's pagination contract over our query-param addressing: the id
-        # is the developer's own string, slashes included.
-        path = f"/api/v1/me/transcripts/events?session_id={quote(session_id, safe='')}"
-        return self._read_document("GET", path, limit=limit, offset=offset).json()
+        # session_id must ride in params with the rest: _request passes params
+        # to httpx, which REPLACES any query string embedded in the path.
+        return self._read_document(
+            "GET",
+            "/api/v1/me/transcripts/events",
+            session_id=session_id,
+            limit=limit,
+            offset=offset,
+        ).json()
 
     def export_transcript_jsonl(self, session_id: str) -> str:
-        path = f"/api/v1/me/transcripts/export.jsonl?session_id={quote(session_id, safe='')}"
-        return self._read_document("GET", path).text
+        return self._read_document(
+            "GET", "/api/v1/me/transcripts/export.jsonl", session_id=session_id
+        ).text
 
     def get_table(self, table_id: str) -> dict:
         return self._read_document("GET", f"/api/v1/me/tables/{table_id}").json()

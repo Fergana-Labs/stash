@@ -89,8 +89,8 @@ async def test_upload_inserts_events_and_events_roundtrip(client: AsyncClient):
     assert meta.json()["event_count"] == 2
 
     events_resp = await client.get(
-        "/api/v1/me/transcripts/events?session_id=sess-1",
-        params={"limit": 100},
+        "/api/v1/me/transcripts/events",
+        params={"session_id": "sess-1", "limit": 100},
         headers=headers,
     )
     assert events_resp.status_code == 200
@@ -140,8 +140,8 @@ async def test_events_endpoint_requires_an_explicit_limit(client: AsyncClient):
     # A limit past the end of the session is not an error — it is how a caller
     # asks for the whole thing and learns that it got it.
     whole = await client.get(
-        "/api/v1/me/transcripts/events?session_id=sess-unpaged",
-        params={"limit": turns * 2},
+        "/api/v1/me/transcripts/events",
+        params={"session_id": "sess-unpaged", "limit": turns * 2},
         headers=headers,
     )
     assert whole.status_code == 200
@@ -182,8 +182,8 @@ async def test_events_endpoint_paginates(client: AsyncClient):
     assert up.status_code == 201, up.text
 
     first = await client.get(
-        "/api/v1/me/transcripts/events?session_id=sess-page",
-        params={"limit": 2, "offset": 0},
+        "/api/v1/me/transcripts/events",
+        params={"session_id": "sess-page", "limit": 2, "offset": 0},
         headers=headers,
     )
     assert first.status_code == 200
@@ -193,8 +193,8 @@ async def test_events_endpoint_paginates(client: AsyncClient):
     assert [e["content"] for e in page["events"]] == ["msg-0", "msg-1"]
 
     last = await client.get(
-        "/api/v1/me/transcripts/events?session_id=sess-page",
-        params={"limit": 2, "offset": 4},
+        "/api/v1/me/transcripts/events",
+        params={"session_id": "sess-page", "limit": 2, "offset": 4},
         headers=headers,
     )
     assert last.status_code == 200
@@ -329,8 +329,8 @@ async def test_replace_reimports_existing_session(client: AsyncClient):
     assert second.json()["imported"] == 1
 
     events_resp = await client.get(
-        "/api/v1/me/transcripts/events?session_id=sess-replace",
-        params={"limit": 100},
+        "/api/v1/me/transcripts/events",
+        params={"session_id": "sess-replace", "limit": 100},
         headers=headers,
     )
     assert events_resp.status_code == 200
@@ -743,8 +743,8 @@ async def test_transcript_viewer_includes_streamed_legacy_event_types(client: As
     assert pushed.status_code == 201
 
     events_resp = await client.get(
-        "/api/v1/me/transcripts/events?session_id=sess-streamed",
-        params={"limit": 100},
+        "/api/v1/me/transcripts/events",
+        params={"session_id": "sess-streamed", "limit": 100},
         headers=headers,
     )
     assert events_resp.status_code == 200
