@@ -186,6 +186,22 @@ function InstallSection() {
         </pre>
       </div>
 
+      {selectedKey && !usingMinted && (
+        <p className="mt-2 max-w-2xl text-[12.5px] leading-5 text-muted-foreground">
+          <span className="font-medium text-foreground">Heads up:</span> Stash never stores
+          key secrets, so an existing key can&apos;t be embedded here — this prompt names{" "}
+          <span className="font-mono">{selectedKey.name}</span> and expects it in your
+          app&apos;s env. Want the key carried inside the prompt? Pick{" "}
+          <button
+            onClick={() => setMinting(true)}
+            className="font-medium text-brand-600 underline underline-offset-2 hover:text-brand-500"
+          >
+            Create API key
+          </button>{" "}
+          in the chip instead.
+        </p>
+      )}
+
       <MintKeyDialog
         open={minting}
         onOpenChange={setMinting}
