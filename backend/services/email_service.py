@@ -107,40 +107,18 @@ def send_welcome_email(user_email: str, first_name: str | None = None) -> None:
     html = f"""
 <p>{greeting}</p>
 
-<p>Thanks for signing up for Stash. It's one place your agents connect to all
-your data &mdash; and a Drive they can read and write natively.</p>
+<p>Thanks for signing up for Stash. Stash helps your agents to learn across
+trajectories.</p>
 
-<p><strong>Start here. Any one of these is a real first win:</strong></p>
+<p><strong>Getting started. There are two ways to get started:</strong></p>
 
 <ol>
-  <li><a href="{app_url}"><strong>Connect a source</strong></a> (Tools, in the sidebar) &mdash; GitHub, Google Drive, Gmail, Slack, Notion, Linear, Jira, Asana, Granola, PostHog, or X. Whatever you connect becomes searchable by every agent you point at Stash.</li>
-  <li><a href="{app_url}"><strong>Give your coding agent memory</strong></a> &mdash; run <code>uv tool install stashai</code> then <code>stash signin</code>. It finds the agents on your machine, wires them up, and from then on your sessions land in Stash automatically. Then ask one something only Stash would know.</li>
-  <li><a href="{app_url}/agents"><strong>Chat with the agent in the app</strong></a> &mdash; it already has everything above, and it's a real coding agent on its own cloud box, so it can read, write, and run things rather than just answer. Connect your Claude, Codex, or OpenRouter key in settings to point it at your own account.</li>
+  <li><a href="https://joinstash.ai/docs/quickstart"><strong>Install Stash for your Coding Agent</strong></a> &mdash; Just run a cURL command and it will walk you through how to install Stash. You&rsquo;ll start uploading transcripts, and your agent will get access to Skills created from those transcripts (eg if you tell your agent &ldquo;never use useEffect&rdquo;, it will make a skill called &ldquo;don&rsquo;t use useEffect&rdquo;)</li>
+  <li><a href="{app_url}/developer"><strong>Install Stash for your Product</strong></a> &mdash; You can do the same operation for your product. If you&rsquo;re building an agent, copy an API key and copy the prompt provided to give your agent learning across rollouts in minutes! A cool feature here is we let your agent merge learnings across multiple end users with anonymization</li>
 </ol>
 
-<p><strong>What's in your Stash:</strong></p>
-
-<ul>
-  <li><strong>Files</strong> &mdash; pages, documents, and tables. Markdown, HTML, PDFs, spreadsheets, decks. Your agents read and edit pages alongside you, with conflict-safe saves.</li>
-  <li><strong>Sessions</strong> &mdash; every conversation with your coding agents, pushed and indexed automatically.</li>
-  <li><strong>Memory</strong> &mdash; a wiki an agent maintains for you. It runs nightly over whatever is new and compiles it into linked pages you can actually read.</li>
-  <li><strong>Skills</strong> &mdash; a folder with a <code>SKILL.md</code> in it. Put related work in one folder and it becomes a unit you can share, publish, or install into an agent. We've put four in your account already.</li>
-</ul>
-
-<p><strong>A few things worth knowing:</strong></p>
-
-<ul>
-  <li>One search covers your pages, sessions, and every source you've connected.</li>
-  <li>Your agent can reach Stash through the CLI, MCP, a filesystem-style shell, or the API.</li>
-  <li>You can reach <em>your</em> agent from Slack and Telegram too, not just the app.</li>
-  <li>Give an agent a schedule and it runs on its own &mdash; a standup summary, a nightly digest, whatever you'd otherwise forget.</li>
-  <li><a href="{app_url}/discover"><strong>Discover</strong></a> &mdash; browse what others have published and fork it into your Stash in one click.</li>
-</ul>
-
-<p>The free plan covers two connected accounts and ten Memory runs a month,
-which is enough to know whether this is for you.</p>
-
-<p>Hit reply if anything&rsquo;s broken or confusing. It lands in my inbox directly.</p>
+<p>Please reply to this email if you have any questions, or even if you just
+want to chat. I personally read every reply!</p>
 
 <p>Sam<br>CEO, Stash</p>
 """.strip()
@@ -149,7 +127,7 @@ which is enough to know whether this is for you.</p>
         {
             "From": FOUNDER_FROM,
             "To": user_email,
-            "ReplyTo": "sam@joinstash.ai",
+            "ReplyTo": "sam@joinstash.ai, henry@joinstash.ai",
             "Subject": "Welcome to Stash — let's get your agents connected",
             "HtmlBody": html,
         }
