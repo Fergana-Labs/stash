@@ -13,12 +13,16 @@ slowapi>=0.1.9
 alembic>=1.14.0
 sqlalchemy[asyncio]>=2.0.0
 umap-learn>=0.5.0
+sentence-transformers==5.7.0
 python-jose[cryptography]>=3.3.0
 pypdf>=4.0
 anthropic>=0.40.0
 nh3>=0.2
 claude-agent-sdk>=0.1.50
-mcp>=1.23.0,<2
+# FNXC:RUFU-132 2026-08-21-06:40: mcp 2.0.0 dropped the mcp.server.fastmcp import that
+# backend/main.py (mcp_service) uses at boot, so the unpinned >=1.23.0 resolved to a
+# boot-breaking 2.x on the rufu132-semantic rebuild. Cap the major: 1.x keeps FastMCP.
+mcp>=1.23.0,<2.0
 celery[redis]>=5.4
 duckdb>=1.1
 redis>=5.0

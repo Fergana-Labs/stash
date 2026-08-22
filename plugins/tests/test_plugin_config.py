@@ -31,6 +31,9 @@ def _load_config(path: Path):
     return module
 
 
+PI_CONFIG_PATH = ROOT / "plugins/pi-plugin/scripts/config.py"
+
+
 @pytest.fixture(autouse=True)
 def _clear_claude_env(monkeypatch, tmp_path):
     for key in (
@@ -40,6 +43,50 @@ def _clear_claude_env(monkeypatch, tmp_path):
     ):
         monkeypatch.delenv(key, raising=False)
     monkeypatch.setenv("CLAUDE_PLUGIN_DATA", str(tmp_path / "plugin-data"))
+
+
+def test_is_fusion_managed_detects_fusion_project(tmp_path, monkeypatch):
+    """A cwd inside a directory containing `.fusion/` is Fusion-managed."""
+    home = tmp_path / "home"
+    repo = tmp_path / "repo"
+    (repo / ".fusion").mkdir(parents=True)
+    (repo / "app").mkdir()
+    monkeypatch.setenv("HOME", str(home))
+
+    cfg = _load_config(PI_CONFIG_PATH)
+
+    assert cfg.is_fusion_managed(str(repo / "app")) is True
+    assert cfg.is_fusion_managed(str(repo)) is True
+
+
+def test_is_fusion_managed_ignores_home_fusion_dir(tmp_path, monkeypatch):
+    """$HOME/.fusion (global Fusion config) must never silence recording."""
+    home = tmp_path / "home"
+    (home / ".fusion").mkdir(parents=True)
+    inner = home / "work" / "proj"
+    inner.mkdir(parents=True)
+    monkeypatch.setenv("HOME", str(home))
+
+    cfg = _load_config(PI_CONFIG_PATH)
+
+    assert cfg.is_fusion_managed(str(inner)) is False
+    assert cfg.is_fusion_managed(str(home)) is False
+
+
+def test_is_fusion_managed_standalone_and_invalid(tmp_path, monkeypatch):
+    """Standalone projects are never Fusion-managed; empty cwd fails loud."""
+    home = tmp_path / "home"
+    standalone = tmp_path / "standalone"
+    standalone.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+
+    cfg = _load_config(PI_CONFIG_PATH)
+
+    assert cfg.is_fusion_managed(str(standalone)) is False
+    with pytest.raises(ValueError):
+        cfg.is_fusion_managed("")
+    with pytest.raises(ValueError):
+        cfg.is_fusion_managed(None)
 
 
 @pytest.mark.parametrize("config_path", CONFIG_PATHS, ids=lambda p: str(p.relative_to(ROOT)))

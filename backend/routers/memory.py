@@ -162,6 +162,44 @@ async def search_events(
     )
 
 
+@me_router.get("/events/semantic-search", response_model=HistoryEventListResponse)
+async def semantic_search_events(
+    q: str = Query(..., min_length=1),
+    limit: int = Query(10, ge=1, le=100),
+    current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
+):
+    """Semantic (vector) search over scope events.
+
+    The session-events counterpart of /me/pages/semantic-search: same
+    scope-membership auth as search_events, same error contract (503 while
+    the embedding service is unconfigured, 500 if the query cannot be
+    embedded). Results are similarity-ranked; each row's `similarity`
+    (1 - cosine distance, 0..1) is mapped into HistoryEventResponse.rank
+    so the envelope stays HistoryEventListResponse. Defined before
+    /events/{event_id} so the literal path wins route matching.
+    """
+    owner_user_id = scope_user_id
+    await _check_member(owner_user_id, current_user["id"])
+    from ..services import embeddings as embedding_service
+
+    if not embedding_service.is_configured():
+        raise HTTPException(status_code=503, detail="Embedding service not configured")
+    query_embedding = await embedding_service.embed_text(q)
+    if query_embedding is None:
+        raise HTTPException(status_code=500, detail="Failed to embed query")
+    events = await memory_service.search_scope_events_vector(
+        owner_user_id,
+        current_user["id"],
+        query_embedding,
+        limit=limit,
+    )
+    return HistoryEventListResponse(
+        events=[HistoryEventResponse(**{**e, "rank": e.get("similarity")}) for e in events],
+        has_more=False,
+    )
+
+
 @me_router.get("/events/{event_id}", response_model=HistoryEventResponse)
 async def get_event(
     event_id: UUID,

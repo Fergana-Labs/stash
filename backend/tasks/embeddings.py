@@ -227,3 +227,55 @@ async def _reconcile() -> int:
 @celery.task(name="backend.tasks.embeddings.reconcile")
 def reconcile() -> int:
     return run_async(_reconcile())
+
+
+async def _backfill_history_events() -> int:
+    """One-shot backfill for history_events rows that were never embedded.
+
+    The periodic reconciler only retries rows with `embed_stale = TRUE`;
+    rows written while no embedding provider was configured (or before the
+    write-time pipeline existed) sit at `embedding IS NULL, embed_stale
+    FALSE` and would stay invisible to vector search forever. This task
+    embeds those rows in bounded batches with the same TEXT_LIMIT/
+    content-hash gating as the reconciler. Idempotent: a success clears the
+    row out of the WHERE clause (embedding set); a provider failure hands
+    the batch to the 60s reconciler (embed_stale = TRUE) so this task
+    neither loops forever nor double-processes reconciler-owned rows.
+    """
+    pool = get_pool()
+    total = 0
+    while True:
+        rows = await pool.fetch(
+            "SELECT id, LEFT(content, $2) AS content FROM history_events "
+            "WHERE embedding IS NULL AND embed_stale = FALSE "
+            "AND content IS NOT NULL AND content <> '' LIMIT $1",
+            BATCH_SIZE,
+            TEXT_LIMIT,
+        )
+        if not rows:
+            break
+        ids = [r["id"] for r in rows]
+        texts = [r["content"] for r in rows]
+        hashes = [_text_hash(t) for t in texts]
+        vecs = await embedding_service.embed_batch(texts)
+        if not vecs:
+            # Provider failed after retries: hand this batch to the
+            # reconciler instead of spinning on it.
+            await pool.executemany(
+                "UPDATE history_events SET content_hash = $1, embed_stale = TRUE WHERE id = $2",
+                list(zip(hashes, ids)),
+            )
+            break
+        await pool.executemany(
+            "UPDATE history_events SET embedding = $1, content_hash = $2, embed_stale = FALSE WHERE id = $3",
+            [(v, h, eid) for eid, v, h in zip(ids, vecs, hashes)],
+        )
+        total += len(ids)
+    if total:
+        logger.info("history event embedding backfill: embedded %d row(s)", total)
+    return total
+
+
+@celery.task(name="backend.tasks.embeddings.backfill_history_event_embeddings")
+def backfill_history_event_embeddings() -> int:
+    return run_async(_backfill_history_events())
