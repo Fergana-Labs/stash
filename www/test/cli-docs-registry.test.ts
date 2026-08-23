@@ -123,8 +123,13 @@ describe("cli-docs-registry", () => {
     ]);
     expect([...registry.groups.get("sessions")!.members].sort()).toEqual([
       "agents",
+      "assign",
+      "delete-folder",
+      "folders",
       "import",
+      "new-folder",
       "push",
+      "rename-folder",
     ]);
     expect([...registry.groups.get("sources")!.members].sort()).toEqual(["add", "rm", "sync"]);
     expect([...registry.groups.get("tables")!.members].sort()).toEqual([

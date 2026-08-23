@@ -275,6 +275,91 @@ stash vfs --cwd "/me/sources" "rg 'incident' ."`}</CodeBlock>
       </Callout>
 
       <CommandRef
+        command="stash sessions folders"
+        args="[--json]"
+        description="List session folders — shareable groupings of sessions."
+        params={[
+          { name: "--json", type: "flag", desc: "Machine-readable output." },
+        ]}
+      />
+
+      <CommandRef
+        command="stash sessions new-folder"
+        args="<name> [--public] [--discoverable] [--json]"
+        description="Create a session folder. Its sessions inherit the folder's access."
+        params={[
+          { name: "<name>", type: "string", desc: "Folder name.", required: true },
+          {
+            name: "--public",
+            type: "flag",
+            desc: "Anyone with the share link can read the folder and its sessions.",
+          },
+          {
+            name: "--discoverable",
+            type: "flag",
+            desc: "List the folder on the public discover page. Requires --public.",
+          },
+          { name: "--json", type: "flag", desc: "Machine-readable output." },
+        ]}
+      />
+
+      <CommandRef
+        command="stash sessions rename-folder"
+        args="<ref> --name <name> [--json]"
+        description="Rename a session folder."
+        params={[
+          {
+            name: "<ref>",
+            type: "string",
+            desc: "Folder ID or slug, as printed by stash sessions folders.",
+            required: true,
+          },
+          { name: "--name", type: "string", desc: "New folder name.", required: true },
+          { name: "--json", type: "flag", desc: "Machine-readable output." },
+        ]}
+      />
+
+      <CommandRef
+        command="stash sessions delete-folder"
+        args="<ref> [--json]"
+        description="Delete a session folder. Sessions inside it become unfiled, not deleted."
+        params={[
+          {
+            name: "<ref>",
+            type: "string",
+            desc: "Folder ID or slug, as printed by stash sessions folders. The Default folder can't be deleted.",
+            required: true,
+          },
+          { name: "--json", type: "flag", desc: "Machine-readable output." },
+        ]}
+      />
+
+      <CommandRef
+        command="stash sessions assign"
+        args="<session...> --folder <ref> | --unassign [--json]"
+        description="Move one or more sessions into a folder, or unfile them. All-or-nothing: every session moves or the call fails."
+        params={[
+          {
+            name: "<session...>",
+            type: "string",
+            desc: "Session handles — a title, a VFS name, or a row ID (repeatable). Resolved like the session refs of stash rm session:<...>.",
+            required: true,
+          },
+          {
+            name: "--folder",
+            type: "string",
+            desc: "Target folder ID or slug. Filing into a public folder is owner-only — it publishes the sessions to the folder's share link.",
+          },
+          {
+            name: "--unassign",
+            type: "flag",
+            desc: "Unfile the sessions (clear their folder). Exactly one of --folder or --unassign is required.",
+          },
+          { name: "--json", type: "flag", desc: "Machine-readable output." },
+        ]}
+      />
+
+      <CommandRef
         command="stash sessions agents"
         args=""
         description="List distinct agent names that have logged events in your Stash."
@@ -313,8 +398,7 @@ stash vfs --cwd "/me/sources" "rg 'incident' ."`}</CodeBlock>
 
       <Callout>
         Sessions can be assigned to folders. The web app shows a session&apos;s
-        folder when one is set — a filing lane written by installed clients
-        — and there is no CLI command for folder management yet.
+        folder when one is set — a filing lane written by installed clients.
       </Callout>
 
       <H2>Cloud agents</H2>

@@ -901,6 +901,35 @@ class StashClient:
     def purge_session(self, session_row_id: str) -> None:
         self._delete(f"/api/v1/me/sessions/{session_row_id}/purge")
 
+    # Session folders — the shareable filing unit for sessions.
+
+    def list_session_folders(self) -> dict:
+        return self._get("/api/v1/me/session-folders")
+
+    def create_session_folder(
+        self, name: str, public: bool = False, discoverable: bool = False
+    ) -> dict:
+        return self._post(
+            "/api/v1/me/session-folders",
+            json={
+                "name": name,
+                "public_permission": "read" if public else "none",
+                "discoverable": discoverable,
+            },
+        )
+
+    def update_session_folder(self, folder_id: str, name: str | None = None) -> dict:
+        return self._patch(f"/api/v1/me/session-folders/{folder_id}", json={"name": name})
+
+    def delete_session_folder(self, folder_id: str) -> None:
+        self._delete(f"/api/v1/me/session-folders/{folder_id}")
+
+    def assign_sessions(self, session_row_ids: list[str], folder_id: str | None) -> dict:
+        return self._post(
+            "/api/v1/me/session-folders/assign",
+            json={"session_row_ids": session_row_ids, "folder_id": folder_id},
+        )
+
     # --- MCP servers (`stash tools`) ---
 
     def list_mcp_servers(self) -> list:

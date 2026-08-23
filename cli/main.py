@@ -2979,7 +2979,8 @@ def files_edit_page(
 # ===========================================================================
 
 hist_app = typer.Typer(
-    help="Sessions — agent transcripts and event logs.", invoke_without_command=True
+    help="Sessions — agent transcripts, event logs, and session folders.",
+    invoke_without_command=True,
 )
 app.add_typer(hist_app, name="sessions")
 
@@ -2990,7 +2991,7 @@ def hist_default(
     limit: int = typer.Option(20, "-n", "--limit"),
     as_json: bool = typer.Option(False, "--json"),
 ):
-    """Sessions — agent transcripts and event logs."""
+    """Sessions — agent transcripts, event logs, and session folders."""
     if ctx.invoked_subcommand is not None:
         return
     with _client() as c:
@@ -3216,6 +3217,161 @@ def hist_import(
             console.print(
                 f"[yellow]{errors} failed (likely already imported or too large).[/yellow]"
             )
+
+
+def _resolve_session_folder_ref(c: StashClient, ref: str) -> dict:
+    """The folder row an id-or-slug ref names — list once, match exactly.
+
+    Folder names are not refs: names are not unique, slugs are."""
+    try:
+        folders = c.list_session_folders()["folders"]
+    except StashError as e:
+        _err(e)
+    for folder in folders:
+        if folder["id"] == ref or folder["slug"] == ref:
+            return folder
+    console.print(f"[red]No session folder '{ref}'. List them with `stash sessions folders`.[/red]")
+    raise typer.Exit(1)
+
+
+@hist_app.command("folders")
+def hist_folders(as_json: bool = typer.Option(False, "--json")):
+    """List session folders — the shareable groupings of sessions."""
+    with _client() as c:
+        try:
+            data = c.list_session_folders()
+        except StashError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(data)
+        return
+    folders = data["folders"]
+    if not folders:
+        console.print("[dim]No session folders.[/dim]")
+        return
+    for f in folders:
+        markers = []
+        if f["is_default"]:
+            markers.append("default")
+        if f["access"] == "public":
+            markers.append("public")
+        if f["discoverable"]:
+            markers.append("discoverable")
+        suffix = f"  [dim]({', '.join(markers)})[/dim]" if markers else ""
+        console.print(
+            f"  {f['name']}  [dim]{f['slug']}[/dim]  {f['session_count']} sessions{suffix}"
+        )
+
+
+@hist_app.command("new-folder")
+def hist_new_folder(
+    name: str = typer.Argument(...),
+    public: bool = typer.Option(
+        False, "--public", help="Anyone with the share link can read the folder and its sessions."
+    ),
+    discoverable: bool = typer.Option(
+        False,
+        "--discoverable",
+        help="List the folder on the public discover page (needs --public).",
+    ),
+    as_json: bool = typer.Option(False, "--json"),
+):
+    """Create a session folder. Its sessions inherit the folder's access."""
+    if discoverable and not public:
+        console.print("[red]--discoverable requires --public.[/red]")
+        raise typer.Exit(1)
+    with _client() as c:
+        try:
+            data = c.create_session_folder(name, public=public, discoverable=discoverable)
+        except StashError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(data)
+    else:
+        console.print(
+            f"[green]Folder '{data['name']}' created.[/green]  ID: {data['id']}  [dim]{data['slug']}[/dim]"
+        )
+
+
+@hist_app.command("rename-folder")
+def hist_rename_folder(
+    ref: str = typer.Argument(
+        ..., help="Folder id or slug, as printed by `stash sessions folders`."
+    ),
+    name: str = typer.Option(..., "--name", help="New folder name."),
+    as_json: bool = typer.Option(False, "--json"),
+):
+    """Rename a session folder."""
+    with _client() as c:
+        try:
+            folder = _resolve_session_folder_ref(c, ref)
+            data = c.update_session_folder(folder["id"], name=name)
+        except StashError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(data)
+    else:
+        console.print(f"[green]Folder renamed.[/green] {data['name']}  [dim]{data['id']}[/dim]")
+
+
+@hist_app.command("delete-folder")
+def hist_delete_folder(
+    ref: str = typer.Argument(
+        ..., help="Folder id or slug, as printed by `stash sessions folders`."
+    ),
+    as_json: bool = typer.Option(False, "--json"),
+):
+    """Delete a session folder. Sessions inside it become unfiled, not deleted."""
+    with _client() as c:
+        try:
+            folder = _resolve_session_folder_ref(c, ref)
+            c.delete_session_folder(folder["id"])
+        except StashError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json({"ok": True})
+    else:
+        console.print(
+            f"[green]Folder '{folder['name']}' deleted.[/green]  Its sessions are now unfiled."
+        )
+
+
+@hist_app.command("assign")
+def hist_assign(
+    sessions: list[str] = typer.Argument(
+        ...,
+        help="Session handles — a title, a VFS name, or a row id (repeatable).",
+    ),
+    folder: str = typer.Option(
+        None, "--folder", help="Target folder id or slug, as printed by `stash sessions folders`."
+    ),
+    unassign: bool = typer.Option(
+        False, "--unassign", help="Unfile the sessions (clear their folder)."
+    ),
+    as_json: bool = typer.Option(False, "--json"),
+):
+    """Move one or more sessions into a folder, or unfile them.
+
+    All-or-nothing: every session moves or the call fails. Filing into a
+    public folder is owner-only server-side — it publishes the sessions to
+    the folder's share link.
+    """
+    if (folder is None and not unassign) or (folder is not None and unassign):
+        console.print("[red]Pass exactly one of --folder <id-or-slug> or --unassign.[/red]")
+        raise typer.Exit(1)
+    row_ids = [_resolve_session(ref, field="id") for ref in sessions]
+    with _client() as c:
+        try:
+            target = _resolve_session_folder_ref(c, folder) if folder else None
+            data = c.assign_sessions(row_ids, target["id"] if target else None)
+        except StashError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(data)
+    elif target:
+        console.print(f"[green]{data['moved']} session(s) filed into '{target['name']}'.[/green]")
+    else:
+        console.print(f"[green]{data['moved']} session(s) unfiled.[/green]")
 
 
 # ===========================================================================
