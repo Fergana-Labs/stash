@@ -31,6 +31,11 @@ export default function CLIPage() {
       <H2>Install</H2>
       <CodeBlock>{`uv tool install stashai`}</CodeBlock>
 
+      <CommandRef
+        command="stash upgrade"
+        description="Upgrade the stash CLI to the latest version on PyPI."
+      />
+
       <H2>First-time setup</H2>
       <P>
         Run the setup wizard. It authenticates you through the browser, turns on session
@@ -65,6 +70,11 @@ export default function CLIPage() {
         ]}
       />
 
+      <CommandRef
+        command="stash welcome"
+        description="Show the post-install welcome splash."
+      />
+
       <H2>Virtual filesystem</H2>
       <P>
         Use <Code>stash vfs</Code> when an agent needs to browse Stash through one
@@ -85,6 +95,16 @@ stash vfs --cwd "/me/sources" "rg 'incident' ."`}</CodeBlock>
         params={[
           { name: "--cwd", type: "string", desc: "Virtual working directory. Defaults to /." },
           { name: "command", type: "string", desc: "Bash-shaped command such as ls, find, rg, cat, sed, tee, or redirection." },
+        ]}
+      />
+
+      <CommandRef
+        command="stash download"
+        args="<path> [--output PATH]"
+        description="Download the original bytes behind a VFS path. `stash vfs cat` shows a document's extracted text; this fetches the file itself — download the document, then read it with your own file tools to see figures, diagrams, scans, and table layout."
+        params={[
+          { name: "<path>", type: "string", desc: "VFS path (e.g. /sources/google/Part Catalogs/bendix.pdf).", required: true },
+          { name: "--output", type: "path", desc: "Destination path. Defaults to the file's name in cwd." },
         ]}
       />
 
@@ -116,9 +136,23 @@ stash vfs --cwd "/me/sources" "rg 'incident' ."`}</CodeBlock>
       />
 
       <CommandRef
+        command="stash verify-email"
+        description="Email yourself a verification link. Verifying your email is what joins you to your company's workspace, if one exists for your email domain."
+      />
+
+      <CommandRef
+        command="stash logout"
+        args="[--json]"
+        description="Sign out and clear credentials. Hooks go inert until you `stash signin` again."
+        params={[
+          { name: "--json", type: "flag", desc: "Machine-readable output." },
+        ]}
+      />
+
+      <CommandRef
         command="stash disconnect"
         args="[--json]"
-        description="Disconnect this repo from Stash: removes the .stash file (session recording and streaming keep running — stash stop halts those). Idempotent: a repo without .stash exits 0 and reports the no-op."
+        description="Disconnect this repo from Stash — removes the .stash file, the marker `stash connect` wrote. Session recording and streaming keep running — stash stop halts those. This is not sign-out: credentials stay; use `stash logout` for that. Idempotent: a repo without .stash exits 0 and reports the no-op."
         params={[
           { name: "--json", type: "flag", desc: 'Machine-readable output: prints {"ok": true, "changed": true|false}; the human message goes to stderr.' },
         ]}
@@ -187,6 +221,36 @@ stash vfs --cwd "/me/sources" "rg 'incident' ."`}</CodeBlock>
         ]}
       />
 
+      <CommandRef
+        command="stash files edit-folder"
+        args="<folder_id> --name NEW_NAME"
+        description="Rename a folder. Use `stash mv` to relocate it."
+        params={[
+          { name: "<folder_id>", type: "string", desc: "ID of the folder.", required: true },
+          { name: "--name", type: "string", desc: "New folder name.", required: true },
+        ]}
+      />
+
+      <CommandRef
+        command="stash files edit-file"
+        args="<file_id> --name NEW_NAME"
+        description="Rename a file. Use `stash mv` to relocate it."
+        params={[
+          { name: "<file_id>", type: "string", desc: "ID of the file.", required: true },
+          { name: "--name", type: "string", desc: "New file name.", required: true },
+        ]}
+      />
+
+      <CommandRef
+        command="stash files download"
+        args="<file_ref> [--output PATH]"
+        description="Download a file's bytes to a local path. Files a page embeds don't appear in the files tree — the page's markdown links them. Read the page, then download a linked file only when you need its contents."
+        params={[
+          { name: "<file_ref>", type: "string", desc: "File id, or the embed link from a page (/api/v1/me/files/<id>/download).", required: true },
+          { name: "--output", type: "path", desc: "Destination path. Defaults to the file's name in cwd." },
+        ]}
+      />
+
       <H2>Sessions</H2>
 
       <CommandRef
@@ -217,11 +281,107 @@ stash vfs --cwd "/me/sources" "rg 'incident' ."`}</CodeBlock>
         params={[]}
       />
 
+      <CommandRef
+        command="stash sessions import"
+        args="[--agent NAME] [-n LIMIT] [--replace] [--yes] [--json]"
+        description="Import historical conversations from coding agents on this machine. Discovers conversations from Claude Code, Cursor, and Codex, then uploads them as transcripts. The same importer the setup wizard's `stash import-history` runs, exposed on the sessions group."
+        params={[
+          { name: "--agent", type: "string", desc: "Only import from this agent." },
+          { name: "-n, --limit", type: "number", desc: "Max conversations to import (0 = all). Defaults to 0." },
+          { name: "--replace", type: "flag", desc: "Replace sessions that already exist." },
+          { name: "--yes", type: "flag", desc: "Skip confirmation prompt." },
+          { name: "--json", type: "flag", desc: "Machine-readable output." },
+        ]}
+      />
+
+      <CommandRef
+        command="stash share"
+        args="[--title TITLE] [--session ID-OR-TITLE] [--file PATH...]"
+        description="Share a session as a public Skill. Publishes a focused summary (the question + finding), the full conversation transcript, and any attached files as a single public Skill. The session is auto-detected if omitted. Distinct from the `stash shares` access grants in the Shares section."
+        params={[
+          { name: "--title", type: "string", desc: "Title for the shared Skill." },
+          { name: "--session", type: "string", desc: "Session ID or title. Auto-detected if omitted." },
+          { name: "--file", type: "path", desc: "Files to attach (repeatable)." },
+        ]}
+      />
+
       <Callout type="tip">
         Transcripts are read through the VFS, by title:{" "}
         <Code>{`stash vfs "cat '/sessions/<title>/transcript.md'"`}</Code>. List the titles with{" "}
         <Code>{`stash vfs "ls /sessions"`}</Code>.
       </Callout>
+
+      <Callout>
+        Sessions can be assigned to folders. The web app shows a session&apos;s
+        folder when one is set — a filing lane written by installed clients
+        — and there is no CLI command for folder management yet.
+      </Callout>
+
+      <H2>Cloud agents</H2>
+      <P>
+        Configured agents are cloud personas — each with its own model and
+        optional schedule. Chat streams a turn live from the box; watch
+        follows turns started anywhere (web, Slack, a schedule, another
+        terminal); stop kills the turn currently running in a session.
+      </P>
+
+      <CommandRef
+        command="stash agent list"
+        args="[--json]"
+        description="List your configured agents (personas, models, schedules)."
+        params={[
+          { name: "--json", type: "flag", desc: "Machine-readable output." },
+        ]}
+      />
+
+      <CommandRef
+        command="stash agent chat"
+        args="<message> [--session ID] [--agent NAME]"
+        description="Start (or continue) a cloud agent chat and stream the turn live. Ctrl-C disconnects the stream, which stops the turn on the box."
+        params={[
+          { name: "<message>", type: "string", desc: "The message to send.", required: true },
+          { name: "--session", type: "string", desc: "Continue an existing chat session (id or title)." },
+          { name: "--agent", type: "string", desc: "Agent name or id. Default agent if omitted." },
+        ]}
+      />
+
+      <CommandRef
+        command="stash agent run"
+        args="<agent>"
+        description="Run a prompt-scheduled agent now and stream the run live."
+        params={[
+          { name: "<agent>", type: "string", desc: "Scheduled agent name or id.", required: true },
+        ]}
+      />
+
+      <CommandRef
+        command="stash agent status"
+        args="<session_id> [--json]"
+        description="Whether a turn is currently running in a chat session."
+        params={[
+          { name: "<session_id>", type: "string", desc: "The chat session (id or title) to check.", required: true },
+          { name: "--json", type: "flag", desc: "Machine-readable output." },
+        ]}
+      />
+
+      <CommandRef
+        command="stash agent watch"
+        args="<session_id> [--poll SECONDS]"
+        description="Follow a chat session live — works for turns started anywhere (web, Slack, a schedule, or another terminal). Exits when the turn ends."
+        params={[
+          { name: "<session_id>", type: "string", desc: "The chat session (id or title) to follow.", required: true },
+          { name: "--poll", type: "number", desc: "Poll interval in seconds. Defaults to 2.0." },
+        ]}
+      />
+
+      <CommandRef
+        command="stash agent stop"
+        args="<session_id>"
+        description="Stop the turn running in a chat session (kills the run on the box)."
+        params={[
+          { name: "<session_id>", type: "string", desc: "The chat session (id or title) whose turn to stop.", required: true },
+        ]}
+      />
 
       <H2>Memory</H2>
       <P>
@@ -255,6 +415,16 @@ stash vfs --cwd "/me/sources" "rg 'incident' ."`}</CodeBlock>
         args="[--json]"
         description="Print the Memory wiki tree with folder and page ids."
         params={[
+          { name: "--json", type: "flag", desc: "Machine-readable output." },
+        ]}
+      />
+
+      <CommandRef
+        command="stash changes"
+        args="[--since ISO] [--json]"
+        description="What changed since a timestamp — history, pages, files, saves, sources. Feeds the Memory curator's incremental pass."
+        params={[
+          { name: "--since", type: "string", desc: "ISO timestamp; omit for everything." },
           { name: "--json", type: "flag", desc: "Machine-readable output." },
         ]}
       />
@@ -485,6 +655,15 @@ stash vfs --cwd "/me/sources" "rg 'incident' ."`}</CodeBlock>
       />
 
       <CommandRef
+        command="stash trash list"
+        args="[--json]"
+        description="List trashed pages, files, and sessions."
+        params={[
+          { name: "--json", type: "flag", desc: "Machine-readable output." },
+        ]}
+      />
+
+      <CommandRef
         command="stash mv"
         args="<type:id>... (--to-folder ID | --to-root)"
         description="Move pages, files, folders, tables, or sessions into a folder, or to the root."
@@ -502,6 +681,20 @@ stash vfs --cwd "/me/sources" "rg 'incident' ."`}</CodeBlock>
         params={[
           { name: "<type:id>", type: "string", desc: "Items to copy.", required: true },
           { name: "--to-folder", type: "string", desc: "Target folder id for the copies." },
+        ]}
+      />
+
+      <H2>Backup &amp; export</H2>
+      <P>
+        Portability: your entire Stash as standard files you keep.
+      </P>
+
+      <CommandRef
+        command="stash export"
+        args="[--output PATH]"
+        description="Download your entire Stash as a zip of standard files. Folders become directories, pages become plain .md/.html files, and uploads keep their original bytes — no proprietary formats, no lock-in."
+        params={[
+          { name: "--output", type: "path", desc: "Path for the zip. Defaults to stash-export-<timestamp>.zip in the current directory." },
         ]}
       />
 
@@ -532,12 +725,34 @@ stash vfs --cwd "/me/sources" "rg 'incident' ."`}</CodeBlock>
       />
 
       <CommandRef
+        command="stash skills add"
+        args="<folder>"
+        description="Upload a local skill folder (must contain a SKILL.md) into your Files."
+        params={[
+          { name: "<folder>", type: "path", desc: "Local folder containing a SKILL.md file.", required: true },
+        ]}
+      />
+
+      <CommandRef
         command="stash skills publish"
         args="<folder_id> [--discover]"
         description="Publish an existing skill folder: mint its share record and print the public URL."
         params={[
           { name: "<folder_id>", type: "string", desc: "The skill folder to publish.", required: true },
           { name: "--discover", type: "flag", desc: "List the public Skill in Discover." },
+        ]}
+      />
+
+      <CommandRef
+        command="stash skills update"
+        args="<skill_id> [--title TEXT] [--description TEXT] [--discover/--no-discover] [--json]"
+        description="Update a published skill's metadata or Discover flag."
+        params={[
+          { name: "<skill_id>", type: "string", desc: "ID of the published Skill.", required: true },
+          { name: "--title", type: "string", desc: "New title." },
+          { name: "--description", type: "string", desc: "New description." },
+          { name: "--discover/--no-discover", type: "flag", desc: "Whether a public Skill appears in Discover." },
+          { name: "--json", type: "flag", desc: "Machine-readable output." },
         ]}
       />
 
@@ -558,6 +773,15 @@ stash vfs --cwd "/me/sources" "rg 'incident' ."`}</CodeBlock>
         description="Fork a public Skill: deep-copy its folder into your Stash."
         params={[
           { name: "<slug>", type: "string", desc: "Public Skill slug.", required: true },
+        ]}
+      />
+
+      <CommandRef
+        command="stash read"
+        args="<url-or-slug>"
+        description="Read a public Skill and print its contents."
+        params={[
+          { name: "<url-or-slug>", type: "string", desc: "Skill URL or slug.", required: true },
         ]}
       />
 
@@ -600,10 +824,25 @@ stash vfs --cwd "/me/sources" "rg 'incident' ."`}</CodeBlock>
       />
 
       <CommandRef
+        command="stash skills unfollow"
+        args="[--project] [--dir PATH]"
+        description="Stop auto-installing newly shared skills (already-installed ones stay)."
+        params={[
+          { name: "--project", type: "flag", desc: "Stop following for ./.claude/skills." },
+          { name: "--dir", type: "path", desc: "Skills directory to stop following into." },
+        ]}
+      />
+
+      <CommandRef
         command="stash skills sync"
         args="[--project] [--dir PATH]"
         description="Two-way sync between the local skills directory and your Stash: your own skills three-way sync (conflicts are skipped loudly), installed skills refresh from their cloud copy. The plugin runs this automatically at session start."
         params={[]}
+      />
+
+      <CommandRef
+        command="stash prompts agent-guidance"
+        description="Print the canonical 'what is a Skill + when to create one' prompt. Intended for coding agents (Claude Code, Codex, Cursor, etc.) to re-inject when they want to remember the model mid-session."
       />
 
       <H2>MCP servers</H2>
@@ -613,6 +852,15 @@ stash vfs --cwd "/me/sources" "rg 'incident' ."`}</CodeBlock>
         writes an entry into a local repo&apos;s <Code>.mcp.json</Code>. Header and env secrets
         are stored encrypted.
       </P>
+
+      <CommandRef
+        command="stash tools list"
+        args="[--json]"
+        description="List your registered MCP servers."
+        params={[
+          { name: "--json", type: "flag", desc: "Machine-readable output." },
+        ]}
+      />
 
       <CommandRef
         command="stash tools add"
@@ -747,6 +995,15 @@ stash vfs --cwd "/me/sources" "rg 'incident' ."`}</CodeBlock>
       <CommandRef
         command="stash stop"
         description="Stop streaming transcripts globally."
+      />
+
+      <CommandRef
+        command="stash status"
+        args="[--json]"
+        description="Show local Stash upload health."
+        params={[
+          { name: "--json", type: "flag", desc: "Machine-readable output." },
+        ]}
       />
 
       <CommandRef

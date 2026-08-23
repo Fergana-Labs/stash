@@ -213,8 +213,8 @@ export default function DocsOverview() {
             <div className="px-4 py-1 space-y-3">
               <div className="text-zinc-600">
                 <span className="text-zinc-400">●</span>{" "}
-                <span className="text-zinc-500">stash sessions query</span>{" "}
-                <span className="text-blue-600">--since today</span>
+                <span className="text-zinc-500">stash search</span>{" "}
+                <span className="text-blue-600">&quot;what did I get done today&quot;</span>
               </div>
               <div className="pl-3 border-l border-zinc-300 text-zinc-600 space-y-1">
                 <div className="text-zinc-400 text-[11px]">Found 14 sessions across git, ops, and collaboration</div>
