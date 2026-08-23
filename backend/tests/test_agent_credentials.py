@@ -55,10 +55,14 @@ async def test_connect_local_without_key(client: AsyncClient):
     assert r.status_code == 200, r.text
     assert "local" in r.json()["connected"]
     doc = json.loads(await _stored_secret(client, key, "local"))
+    # Size fields are absent from the request → stored as null (the documented
+    # constants resolve at auth time, not connect time).
     assert doc == {
         "base_url": "http://my-host:11434/v1",
         "model": "llama3.1:8b",
         "api_key": None,
+        "context_window": None,
+        "max_tokens": None,
     }
 
 
@@ -103,6 +107,90 @@ async def test_connect_local_requires_model(client: AsyncClient):
     )
     assert r.status_code == 400
     assert "model" in r.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_connect_local_with_custom_sizes_stores_them(client: AsyncClient):
+    key = await _register(client)
+    r = await client.post(
+        "/api/v1/me/agent-credentials",
+        json={
+            "provider": "local",
+            "base_url": "http://my-host:11434/v1",
+            "model": "llama3.1:8b",
+            "context_window": 32768,
+            "max_tokens": 4096,
+        },
+        headers=_auth(key),
+    )
+    assert r.status_code == 200, r.text
+    assert "local" in r.json()["connected"]
+    doc = json.loads(await _stored_secret(client, key, "local"))
+    assert doc["context_window"] == 32768
+    assert doc["max_tokens"] == 4096
+
+
+@pytest.mark.asyncio
+async def test_connect_local_rejects_non_positive_sizes(client: AsyncClient):
+    key = await _register(client)
+    for bad in (
+        {"context_window": 0},
+        {"context_window": -1},
+        {"max_tokens": 0},
+        {"max_tokens": -5},
+    ):
+        r = await client.post(
+            "/api/v1/me/agent-credentials",
+            json={"provider": "local", "base_url": "http://host:11434/v1", "model": "m", **bad},
+            headers=_auth(key),
+        )
+        assert r.status_code == 400, f"{bad} should be rejected: {r.text}"
+        assert r.json()["detail"] == "context_window and max_tokens must be positive integers"
+
+
+@pytest.mark.asyncio
+async def test_connect_local_rejects_output_budget_not_fitting_context(client: AsyncClient):
+    key = await _register(client)
+    # The effective pair (provided value, else the documented constant) must
+    # keep the output budget strictly inside the context window.
+    cases = (
+        (
+            {"context_window": 8192, "max_tokens": 8192},
+            "max_tokens (8192) must be less than context_window (8192)",
+        ),
+        (
+            {"context_window": 4096, "max_tokens": 8192},
+            "max_tokens (8192) must be less than context_window (4096)",
+        ),
+        # context_window only: the 8192 default output budget doesn't fit 4096.
+        ({"context_window": 4096}, "max_tokens (8192) must be less than context_window (4096)"),
+        # max_tokens only: 200000 is above the 131072 default context window.
+        ({"max_tokens": 200000}, "max_tokens (200000) must be less than context_window (131072)"),
+    )
+    for extra, needle in cases:
+        r = await client.post(
+            "/api/v1/me/agent-credentials",
+            json={"provider": "local", "base_url": "http://host:11434/v1", "model": "m", **extra},
+            headers=_auth(key),
+        )
+        assert r.status_code == 400, f"{extra} should be rejected: {r.text}"
+        assert needle in r.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_connect_local_rejects_non_integer_size(client: AsyncClient):
+    key = await _register(client)
+    r = await client.post(
+        "/api/v1/me/agent-credentials",
+        json={
+            "provider": "local",
+            "base_url": "http://host:11434/v1",
+            "model": "m",
+            "context_window": "wide",
+        },
+        headers=_auth(key),
+    )
+    assert r.status_code == 422
 
 
 @pytest.mark.asyncio

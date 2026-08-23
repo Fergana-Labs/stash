@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from backend.config import settings
-from backend.services import agent_auth, billing_service, sprite_service
+from backend.services import agent_auth, billing_service, model_provider, sprite_service
 from backend.services import harness as h
 
 
@@ -219,6 +219,58 @@ def test_local_auth_missing_field_fails_loud():
                 "secret": json.dumps({"base_url": "http://x"}),
             }
         )
+
+
+def _local_models_entry(doc: dict) -> dict:
+    """Run _local_auth against a credential doc; return its models.json entry."""
+    cred = {"provider": "local", "kind": "endpoint", "secret": json.dumps(doc)}
+    auth = agent_auth._local_auth(cred)
+    models = json.loads(auth.files["/home/sprite/.pi/agent/models.json"])
+    return models["providers"]["local"]["models"][0]
+
+
+def test_local_auth_custom_sizes_thread_into_models_entry():
+    entry = _local_models_entry(
+        {
+            "base_url": "http://tunnel.example/v1",
+            "model": "llama3.1:8b",
+            "context_window": 32768,
+            "max_tokens": 4096,
+        }
+    )
+    assert entry == {"id": "llama3.1:8b", "contextWindow": 32768, "maxTokens": 4096}
+
+
+def test_local_auth_null_sizes_resolve_to_documented_constants():
+    # The stored shape when the user left both fields unset at connect time.
+    entry = _local_models_entry(
+        {
+            "base_url": "http://tunnel.example/v1",
+            "model": "llama3.1:8b",
+            "context_window": None,
+            "max_tokens": None,
+        }
+    )
+    assert entry == {
+        "id": "llama3.1:8b",
+        "contextWindow": model_provider.LOCAL_DEFAULT_CONTEXT_WINDOW,
+        "maxTokens": model_provider.LOCAL_DEFAULT_MAX_TOKENS,
+    }
+
+
+def test_local_auth_partial_sizes_mix_custom_and_constant():
+    entry = _local_models_entry(
+        {
+            "base_url": "http://tunnel.example/v1",
+            "model": "llama3.1:8b",
+            "context_window": 65536,
+        }
+    )
+    assert entry == {
+        "id": "llama3.1:8b",
+        "contextWindow": 65536,
+        "maxTokens": model_provider.LOCAL_DEFAULT_MAX_TOKENS,
+    }
 
 
 @pytest.mark.asyncio

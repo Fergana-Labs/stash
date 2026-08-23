@@ -47,10 +47,66 @@ describe("AgentModelSection", () => {
     fireEvent.change(screen.getByPlaceholderText("llama3.1:8b"), {
       target: { value: "llama3.1:8b" },
     });
-    // Key left empty.
+    // Key and size fields left empty → null.
     fireEvent.click(screen.getByRole("button", { name: "Connect" }));
 
-    expect(connectLocalEndpoint).toHaveBeenCalledWith("http://my-host:11434/v1", "llama3.1:8b", null);
+    expect(connectLocalEndpoint).toHaveBeenCalledWith(
+      "http://my-host:11434/v1",
+      "llama3.1:8b",
+      null,
+      null,
+      null,
+    );
+  });
+
+  it("submits custom sizes via connectLocalEndpoint", async () => {
+    render(<AgentModelSection />);
+    await screen.findByText("Cloud agent model");
+
+    fireEvent.click(screen.getByRole("button", { name: "Connect endpoint" }));
+    fireEvent.change(screen.getByPlaceholderText("http://your-host:11434/v1"), {
+      target: { value: "http://my-host:11434/v1" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("llama3.1:8b"), {
+      target: { value: "llama3.1:8b" },
+    });
+    fireEvent.change(screen.getByLabelText("Context window"), { target: { value: "32768" } });
+    fireEvent.change(screen.getByLabelText("Max output tokens"), { target: { value: "4096" } });
+    fireEvent.click(screen.getByRole("button", { name: "Connect" }));
+
+    expect(connectLocalEndpoint).toHaveBeenCalledWith(
+      "http://my-host:11434/v1",
+      "llama3.1:8b",
+      null,
+      32768,
+      4096,
+    );
+  });
+
+  it("disables Connect when a filled size field is not a positive integer", async () => {
+    render(<AgentModelSection />);
+    await screen.findByText("Cloud agent model");
+
+    fireEvent.click(screen.getByRole("button", { name: "Connect endpoint" }));
+    fireEvent.change(screen.getByPlaceholderText("http://your-host:11434/v1"), {
+      target: { value: "http://my-host:11434/v1" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("llama3.1:8b"), {
+      target: { value: "llama3.1:8b" },
+    });
+    fireEvent.change(screen.getByLabelText("Context window"), { target: { value: "0" } });
+
+    expect(screen.getByRole("button", { name: "Connect" })).toBeDisabled();
+  });
+
+  it("surfaces the documented size defaults in the form help text", async () => {
+    render(<AgentModelSection />);
+    await screen.findByText("Cloud agent model");
+
+    fireEvent.click(screen.getByRole("button", { name: "Connect endpoint" }));
+    const help = await screen.findByText(/Leave blank for the documented defaults/);
+    expect(help.textContent).toContain("131072");
+    expect(help.textContent).toContain("8192");
   });
 
   it("shows Connected + Disconnect once the local endpoint is in the list", async () => {

@@ -2,8 +2,10 @@
 
 A user pastes an API key for Claude (anthropic), Codex (openai), or
 OpenRouter, or connects their own OpenAI-compatible local model (base URL +
-model, key optional), and the agent runs their harness with it. OAuth connect
-flows are separate.
+model, key optional, context window and max output tokens optional — the
+stored doc carries context_window/max_tokens, null when unset, and the
+documented model_provider.LOCAL_DEFAULT_* constants apply), and the agent
+runs their harness with it. OAuth connect flows are separate.
 """
 
 from __future__ import annotations
@@ -15,7 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from ..auth import get_current_user
-from ..services import agent_auth, agent_oauth
+from ..services import agent_auth, agent_oauth, model_provider
 
 router = APIRouter(prefix="/api/v1/me/agent-credentials", tags=["agent-credentials"])
 
@@ -29,6 +31,12 @@ class ConnectRequest(BaseModel):
         None  # local only: OpenAI-compatible endpoint your cloud computer can reach
     )
     model: str | None = None  # local only: the model id on that endpoint
+    context_window: int | None = (
+        None  # local only: pi model-entry context window; unset → model_provider.LOCAL_DEFAULT_CONTEXT_WINDOW
+    )
+    max_tokens: int | None = (
+        None  # local only: pi model-entry max output tokens; unset → model_provider.LOCAL_DEFAULT_MAX_TOKENS
+    )
 
 
 class OAuthStartRequest(BaseModel):
@@ -65,10 +73,37 @@ async def connect(req: ConnectRequest, current_user: dict = Depends(get_current_
             )
         if not (req.model or "").strip():
             raise HTTPException(status_code=400, detail="model is required for the local endpoint")
+        # Validate the effective pair: each value as provided, or the
+        # documented constant when the user left the field unset.
+        context_window = (
+            req.context_window
+            if req.context_window is not None
+            else model_provider.LOCAL_DEFAULT_CONTEXT_WINDOW
+        )
+        max_tokens = (
+            req.max_tokens
+            if req.max_tokens is not None
+            else model_provider.LOCAL_DEFAULT_MAX_TOKENS
+        )
+        if context_window <= 0 or max_tokens <= 0:
+            raise HTTPException(
+                status_code=400,
+                detail="context_window and max_tokens must be positive integers",
+            )
+        if max_tokens >= context_window:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"max_tokens ({max_tokens}) must be less than context_window ({context_window}) "
+                    "— the output budget must fit inside the context"
+                ),
+            )
         doc = {
             "base_url": req.base_url.strip(),
             "model": req.model.strip(),
             "api_key": (req.api_key or "").strip() or None,  # keyless endpoints are common
+            "context_window": req.context_window,  # null when unset → documented constant at auth time
+            "max_tokens": req.max_tokens,  # null when unset → documented constant at auth time
         }
         await agent_auth.store_credential(current_user["id"], "local", "endpoint", json.dumps(doc))
         return {"ok": True, "connected": await agent_auth.list_connected(current_user["id"])}

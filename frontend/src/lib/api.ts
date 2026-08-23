@@ -2389,11 +2389,20 @@ export async function connectLocalEndpoint(
   baseUrl: string,
   model: string,
   apiKey?: string | null,
+  contextWindow?: number | null,
+  maxTokens?: number | null,
 ): Promise<string[]> {
   const data = await apiFetch<{ connected: string[] }>("/api/v1/me/agent-credentials", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ provider: "local", base_url: baseUrl, model, api_key: apiKey ?? null }),
+    body: JSON.stringify({
+      provider: "local",
+      base_url: baseUrl,
+      model,
+      api_key: apiKey ?? null,
+      context_window: contextWindow ?? null,
+      max_tokens: maxTokens ?? null,
+    }),
   });
   return data.connected;
 }

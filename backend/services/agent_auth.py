@@ -220,9 +220,15 @@ _SPRITE_HOME = "/home/sprite"
 
 def _local_auth(cred: dict, home: str = _SPRITE_HOME) -> RunAuth:
     """Local model: the credential is a JSON doc describing the user's own
-    OpenAI-compatible endpoint (base_url, model, optional api_key). pi reads a
-    provider config file; the key, when set, rides only in the STASH_LOCAL_KEY
-    env var that the file's $STASH_LOCAL_KEY interpolation expands.
+    OpenAI-compatible endpoint (base_url, model, optional api_key, optional
+    context_window, optional max_tokens). pi reads a provider config file; the
+    key, when set, rides only in the STASH_LOCAL_KEY env var that the file's
+    $STASH_LOCAL_KEY interpolation expands.
+
+    context_window / max_tokens are absent (or null) when the user left the
+    field unset at connect time — they resolve to the documented constants
+    model_provider.LOCAL_DEFAULT_CONTEXT_WINDOW / LOCAL_DEFAULT_MAX_TOKENS.
+    Validation of provided values happens at the connect boundary, not here.
 
     The key is never in argv, and a keyless endpoint gets a literal dummy so
     the file shape stays one codepath.
@@ -237,6 +243,12 @@ def _local_auth(cred: dict, home: str = _SPRITE_HOME) -> RunAuth:
     model = doc.get("model")
     if not base_url or not model:
         raise ValueError("local credential is missing base_url or model")
+    context_window = doc.get("context_window")
+    if context_window is None:  # unset on the credential → documented constant
+        context_window = model_provider.LOCAL_DEFAULT_CONTEXT_WINDOW
+    max_tokens = doc.get("max_tokens")
+    if max_tokens is None:  # unset on the credential → documented constant
+        max_tokens = model_provider.LOCAL_DEFAULT_MAX_TOKENS
     env = {"PI_OFFLINE": "1", "HOME": home}  # no pi startup network calls
     api_key = doc.get("api_key")
     if api_key:
@@ -257,7 +269,9 @@ def _local_auth(cred: dict, home: str = _SPRITE_HOME) -> RunAuth:
                         "supportsDeveloperRole": False,
                         "supportsReasoningEffort": False,
                     },
-                    "models": [{"id": model, "contextWindow": 131072, "maxTokens": 8192}],
+                    "models": [
+                        {"id": model, "contextWindow": context_window, "maxTokens": max_tokens}
+                    ],
                 }
             }
         },

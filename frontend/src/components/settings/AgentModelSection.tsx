@@ -13,7 +13,8 @@ import {
 
 // The provider a user connects for their cloud agent. Claude and Codex support
 // OAuth (sign in with your subscription) or an API key; OpenRouter is key-only;
-// the local model is an endpoint (base URL + model, key optional).
+// the local model is an endpoint (base URL + model, key optional, plus optional
+// context window / max output tokens — unset → the documented 131072 / 8192).
 type Provider = {
   id: string;
   label: string;
@@ -100,6 +101,15 @@ export default function AgentModelSection() {
   );
 }
 
+// Parses an optional size field: "" is unset (null → the documented default
+// applies); a filled field must be a positive integer, else NaN — which
+// disables Connect instead of silently dropping the user's input.
+function parseSizeField(value: string): number | null {
+  if (value.trim() === "") return null;
+  const n = Number(value);
+  return Number.isInteger(n) && n > 0 ? n : NaN;
+}
+
 function ProviderRow({
   provider,
   connected,
@@ -114,6 +124,10 @@ function ProviderRow({
   const [baseUrl, setBaseUrl] = useState("");
   const [modelId, setModelId] = useState("");
   const [localKey, setLocalKey] = useState("");
+  const [contextWindow, setContextWindow] = useState("");
+  const [maxTokens, setMaxTokens] = useState("");
+  const contextWindowValue = parseSizeField(contextWindow);
+  const maxTokensValue = parseSizeField(maxTokens);
   const [oauthState, setOauthState] = useState<string | null>(null);
   const [pasted, setPasted] = useState("");
   const [busy, setBusy] = useState(false);
@@ -147,12 +161,20 @@ function ProviderRow({
     setError(null);
     try {
       onChange(
-        await connectLocalEndpoint(baseUrl.trim(), modelId.trim(), localKey.trim() || null),
+        await connectLocalEndpoint(
+          baseUrl.trim(),
+          modelId.trim(),
+          localKey.trim() || null,
+          contextWindowValue,
+          maxTokensValue,
+        ),
       );
       setMode("idle");
       setBaseUrl("");
       setModelId("");
       setLocalKey("");
+      setContextWindow("");
+      setMaxTokens("");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not connect endpoint");
     } finally {
@@ -266,6 +288,9 @@ function ProviderRow({
           <p className="text-[12.5px] text-muted-foreground">
             The base URL must be reachable from your cloud computer (a tunnel or a
             self-hosted server), and the model id is the one that endpoint serves.
+            Optional: the context window and max output tokens written into the
+            model entry pi reads. Leave blank for the documented defaults (131072 /
+            8192); max output must be below the context window.
           </p>
           <div className="flex flex-col gap-2 sm:flex-row">
             <input
@@ -282,6 +307,26 @@ function ProviderRow({
               className="flex-1 rounded-md border border-border bg-surface px-2.5 py-1.5 font-mono text-[12.5px] text-foreground"
             />
           </div>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <input
+              type="number"
+              min={1}
+              aria-label="Context window"
+              value={contextWindow}
+              onChange={(e) => setContextWindow(e.target.value)}
+              placeholder="131072"
+              className="flex-1 rounded-md border border-border bg-surface px-2.5 py-1.5 font-mono text-[12.5px] text-foreground"
+            />
+            <input
+              type="number"
+              min={1}
+              aria-label="Max output tokens"
+              value={maxTokens}
+              onChange={(e) => setMaxTokens(e.target.value)}
+              placeholder="8192"
+              className="flex-1 rounded-md border border-border bg-surface px-2.5 py-1.5 font-mono text-[12.5px] text-foreground"
+            />
+          </div>
           <div className="flex gap-2">
             <input
               type="password"
@@ -293,7 +338,13 @@ function ProviderRow({
             <button
               type="button"
               onClick={saveEndpoint}
-              disabled={busy || !baseUrl.trim() || !modelId.trim()}
+              disabled={
+                busy ||
+                !baseUrl.trim() ||
+                !modelId.trim() ||
+                Number.isNaN(contextWindowValue) ||
+                Number.isNaN(maxTokensValue)
+              }
               className="rounded-md bg-brand px-3 py-1.5 text-[12.5px] font-medium text-white disabled:opacity-60"
             >
               Connect

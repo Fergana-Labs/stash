@@ -25,3 +25,7 @@ GEMINI = Provider("gemini", "GEMINI_API_KEY")
 # set, rides in STASH_LOCAL_KEY which pi's models.json $STASH_LOCAL_KEY
 # interpolation reads.
 LOCAL = Provider("local", "STASH_LOCAL_KEY")
+# Documented fixed behavior (STAS-105): what pi's models.json entry gets for a
+# local model when the user leaves the field unset on the endpoint credential.
+LOCAL_DEFAULT_CONTEXT_WINDOW = 131072
+LOCAL_DEFAULT_MAX_TOKENS = 8192

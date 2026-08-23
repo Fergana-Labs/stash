@@ -228,7 +228,7 @@ Stash is built for engineering teams working in private repos.
 ## FAQ
 
 **What LLMs does Stash use?**
-An Anthropic key covers ask-the-stash, session titles, and scanned-PDF OCR. The chat agent is separate and runs whichever harness you point it at — Claude Code, Codex, opencode, or pi — against your own Anthropic, OpenAI, OpenRouter, or local-model endpoint. Embeddings are a third, independent choice (OpenAI, HuggingFace, or a local model). All of it is optional; without any keys the rest of Stash works and those features are disabled.
+An Anthropic key covers ask-the-stash, session titles, and scanned-PDF OCR. The chat agent is separate and runs whichever harness you point it at — Claude Code, Codex, opencode, or pi — against your own Anthropic, OpenAI, OpenRouter, or local-model endpoint. On a local-model endpoint you can set the model's context window and max output tokens when connecting; left blank, the model entry pi gets uses 131072 / 8192. Embeddings are a third, independent choice (OpenAI, HuggingFace, or a local model). All of it is optional; without any keys the rest of Stash works and those features are disabled.
 
 **What writes to my Stash on its own?**
 One thing by default: the Memory curator, a scheduled agent that compiles your Memory wiki from new sessions and files. It only writes inside the reserved Memory folder, and it only reads what's new since its last run. Turn the nightly run off or on with `stash memory --curator off|on` (on-demand runs keep working). Beyond that, nothing runs unless you create it — any agent you give a cron to becomes a scheduled agent, and those have the same reach you do.
