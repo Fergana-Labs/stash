@@ -112,24 +112,28 @@ search(query, source?)          FTS + vector across sources, owner/share scoped<
   </table>
 
   <h2>6. Surfaces &amp; client support</h2>
-  <p>Five ways data flows in and out. The product is deliberately client-agnostic: the same MCP tools + AGENTS.md context work in any agent, and <code>stash install</code> wires them up per client.</p>
+  <p>Five ways data flows in and out. The product is deliberately client-agnostic: the same MCP tools + AGENTS.md context work in any agent, and <code>stash setup</code> wires them up per client.</p>
   <h3>The five surfaces</h3>
   <table>
     <tr><th>Surface</th><th>What it is</th><th>Auth</th><th>Primary user</th></tr>
     <tr><td><b>MCP</b></td><td>70+ <code>stash_*</code> tools served by the CLI's MCP server (<code>cli/mcp_server.py</code>): <code>list_sources</code>, <code>browse_source</code>, <code>add_source</code>, <code>list_skills</code>, <code>read_skill</code>, pages, tables, skills…</td><td>CLI signin</td><td>agents, in any MCP client</td></tr>
-    <tr><td><b>CLI</b></td><td><code>stash</code> binary: <code>signin</code>, <code>install</code>, <code>hist import</code>, source/files/sessions/skills/tables verbs, hidden FUSE <code>mount</code> of the source VFS</td><td>device consent</td><td>setup, scripting, history import</td></tr>
+    <tr><td><b>CLI</b></td><td><code>stash</code> binary: <code>signin</code>, <code>setup</code>, <code>connect</code>, <code>sessions import</code>, source/files/sessions/skills/tables verbs, hidden FUSE <code>mount</code> of the source VFS</td><td>device consent</td><td>setup, scripting, history import</td></tr>
     <tr><td><b>REST API</b></td><td><code>/api/v1/…</code> — the same endpoints the UI uses</td><td>personal API key</td><td>direct programmatic access</td></tr>
     <tr><td><b>UI</b></td><td>browser: Agents chat tabs, Files, Sessions, Skills</td><td>session login</td><td>humans</td></tr>
-    <tr><td><b>Plugins</b></td><td>per-client packages that wire MCP + AGENTS.md + hooks in one <code>stash install</code></td><td>inherits CLI signin</td><td>one-command setup inside a specific agent</td></tr>
+    <tr><td><b>Plugins</b></td><td>per-client packages that wire MCP + AGENTS.md + hooks in one <code>stash setup</code></td><td>inherits CLI signin</td><td>one-command setup inside a specific agent</td></tr>
   </table>
   <h3>Per-client integration</h3>
-  <p><code>stash install</code> autodetects which agents are present (<code>_SUPPORTED_AGENTS = claude, cursor, codex, opencode</code>) and writes a marker-fenced, idempotent block into each. Every client reaches the same MCP tools; they differ in how the plugin is wired and whether we can import their past transcripts as Sessions.</p>
+  <p><code>stash setup</code> autodetects which agents are present (<code>_SUPPORTED_AGENTS = claude, cursor, codex, opencode, gemini, openclaw, hermes, pi</code>) and wires each idempotently — marker-fenced config blocks where the client format allows, plugin or extension installs where it doesn't. Clients whose plugins wire MCP reach the same MCP tools; the others stream sessions via hooks. They differ in how the plugin is wired and whether we can import their past transcripts as Sessions.</p>
   <table>
     <tr><th>Client</th><th>How the plugin installs</th><th>MCP</th><th>Context file</th><th>Hooks</th><th>Session import</th></tr>
     <tr><td><b>Claude Code</b></td><td><code>claude plugin install stash@stash-plugins</code> (marketplace <code>Fergana-Labs/stash</code>)</td><td class="ok">yes</td><td><code>CLAUDE.md</code> block</td><td class="ok">yes</td><td class="ok">yes — <code>~/.claude/*.jsonl</code></td></tr>
-    <tr><td><b>Codex</b></td><td><code>~/.codex/config.toml</code> + <code>hooks.json</code> (prompts to allow bash network access)</td><td class="ok">yes</td><td><code>~/.codex/AGENTS.md</code></td><td class="ok">yes</td><td class="ok">yes — <code>~/.codex/sessions</code></td></tr>
     <tr><td><b>Cursor</b></td><td><code>~/.cursor/hooks.json</code></td><td class="ok">yes</td><td>— (hooks only)</td><td class="ok">yes</td><td class="ok">yes — <code>cursorDiskKV</code> sqlite</td></tr>
-    <tr><td><b>OpenCode</b></td><td><code>~/.config/opencode/opencode.json</code> + <code>plugin.ts</code></td><td class="ok">yes</td><td>AGENTS.md</td><td>via <code>plugin.ts</code></td><td class="todo">not yet</td></tr>
+    <tr><td><b>Codex</b></td><td><code>~/.codex/config.toml</code> + <code>hooks.json</code> (prompts to allow bash network access)</td><td class="ok">yes</td><td><code>~/.codex/AGENTS.md</code></td><td class="ok">yes</td><td class="ok">yes — <code>~/.codex/sessions</code></td></tr>
+    <tr><td><b>opencode</b></td><td><code>~/.config/opencode/opencode.json</code> + <code>plugin.ts</code></td><td class="ok">yes</td><td>AGENTS.md</td><td>via <code>plugin.ts</code></td><td class="todo">not yet</td></tr>
+    <tr><td><b>Gemini CLI</b></td><td><code>~/.gemini/settings.json</code> (hook entries merged in)</td><td>—</td><td><code>~/.gemini/GEMINI.md</code> block</td><td class="ok">yes</td><td class="todo">not yet</td></tr>
+    <tr><td><b>Openclaw</b></td><td><code>openclaw plugins install</code> → <code>~/.openclaw/extensions/stash</code> (needs openclaw ≥ 2026.4.0; restart gateway to load)</td><td>—</td><td>—</td><td class="ok">yes</td><td class="todo">not yet</td></tr>
+    <tr><td><b>Hermes</b></td><td><code>~/.hermes/config.yaml</code> marker-fenced hooks block (per-hook first-use approval)</td><td>—</td><td>— (project-level HERMES.md/AGENTS.md only)</td><td class="ok">yes</td><td class="todo">not yet</td></tr>
+    <tr><td><b>Pi</b></td><td>self-contained hook runtime copied into <code>~/.pi/</code> (no symlinks)</td><td>—</td><td><code>~/.pi/AGENTS.md</code> block</td><td class="ok">yes</td><td class="todo">not yet</td></tr>
     <tr><td>Any other MCP client</td><td>manual MCP config</td><td class="ok">yes</td><td>—</td><td>—</td><td>—</td></tr>
   </table>
   <p class="note">Skills are themselves a portable plugin format: a Files folder whose immediate child is a <code>SKILL.md</code> (the same convention Claude Code uses) is exposed over MCP (<code>stash_list_skills</code>/<code>stash_read_skill</code>) and drops straight into any agent's <code>~/.claude/skills/</code>. AGENTS.md is the cross-tool context file — Codex, OpenCode, and Cursor read it the way Claude Code reads CLAUDE.md.</p>
