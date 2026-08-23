@@ -142,17 +142,9 @@ stash vfs --cwd "/me/sources" "rg 'incident' ."`}</CodeBlock>
       <H2>Files</H2>
 
       <CommandRef
-        command="stash files pages"
-        args=""
-        description="List pages in your Stash."
-        params={[]}
-      />
-
-      <CommandRef
-        command="stash files tree"
-        args=""
-        description="Show the folder and page tree for your Stash."
-        params={[]}
+        command="stash ls"
+        args="[<path>] [-L <depth>]"
+        description="Everything Stash can reach, as one filesystem — files, session transcripts, and every connected integration. Omit the path to list every source with its stable directory name; pass a path to drill in. -L sets how many levels deep to render (default 2)."
       />
 
       <CommandRef
@@ -212,38 +204,11 @@ stash vfs --cwd "/me/sources" "rg 'incident' ."`}</CodeBlock>
         ]}
       />
 
-      <CommandRef
-        command="stash sessions query"
-        args="[--agent X] [--type Y] [-n 50]"
-        description="Query recent session events with optional filters."
-        params={[
-          { name: "--agent", type: "string", desc: "Filter by agent identifier." },
-          { name: "--type", type: "string", desc: "Filter by event type." },
-          { name: "-n, --limit", type: "number", desc: "Maximum number of results. Defaults to 50." },
-        ]}
-      />
-
       <Callout type="tip">
         To search sessions, use the unified <Code>stash search</Code> with{" "}
         <Code>--source sessions</Code> (see <strong>Sources &amp; search</strong> below). It replaces
         the old per-resource search commands.
       </Callout>
-
-      <CommandRef
-        command="stash sessions folders"
-        args=""
-        description="List session folders — shareable groupings of sessions."
-        params={[]}
-      />
-
-      <CommandRef
-        command="stash sessions new-folder"
-        args="<name>"
-        description="Create a session folder."
-        params={[
-          { name: "<name>", type: "string", desc: "Folder name.", required: true },
-        ]}
-      />
 
       <CommandRef
         command="stash sessions agents"
@@ -298,16 +263,11 @@ stash vfs --cwd "/me/sources" "rg 'incident' ."`}</CodeBlock>
       <P>
         A <strong>source</strong> is anything the agent can read, exposed as a virtual file
         system: the two native sources — <Code>files</Code> and <Code>sessions</Code> — plus your
-        connected sources (GitHub, Google Drive, Gmail, Notion, Slack, Granola). Pick a source like a
-        drive, browse it by path, read a document, or search one source — or everything at once.
+        connected sources (GitHub, Google Drive, Gmail, Notion, Slack, Granola). List every source
+        with <Code>stash ls</Code>, browse and read documents by path through the VFS
+        (the <Code>/sources</Code> tree — see Virtual filesystem above), and search one source —
+        or everything at once — with <Code>stash search</Code>.
       </P>
-
-      <CommandRef
-        command="stash sources ls"
-        args=""
-        description="List every source you can read here: the native files and sessions sources plus your connected sources. Each row prints a source handle to use with the other commands."
-        params={[]}
-      />
 
       <CommandRef
         command="stash sources add"
@@ -317,26 +277,6 @@ stash vfs --cwd "/me/sources" "rg 'incident' ."`}</CodeBlock>
           { name: "<source_type>", type: "string", desc: "github_repo | google_drive | gmail | notion | slack | granola.", required: true },
           { name: "--ref", type: "string", desc: "External reference, e.g. a repo 'owner/name' or Gmail address." },
           { name: "--name", type: "string", desc: "Display name for the source." },
-        ]}
-      />
-
-      <CommandRef
-        command="stash sources browse"
-        args="<source> [path]"
-        description="List a source's entries like a file system."
-        params={[
-          { name: "<source>", type: "string", desc: "A source handle from stash sources ls.", required: true },
-          { name: "path", type: "string", desc: "Path prefix (connected sources only)." },
-        ]}
-      />
-
-      <CommandRef
-        command="stash sources read"
-        args="<source> <ref>"
-        description="Read one document from a source."
-        params={[
-          { name: "<source>", type: "string", desc: "A source handle from stash sources ls.", required: true },
-          { name: "<ref>", type: "string", desc: "Page id (files), session id (sessions), or document path (connected sources).", required: true },
         ]}
       />
 
@@ -364,7 +304,7 @@ stash vfs --cwd "/me/sources" "rg 'incident' ."`}</CodeBlock>
         description="Search across everything you can see — files, sessions, and connected sources. Pass --source to scope to one; omit it to search everything."
         params={[
           { name: "<query>", type: "string", desc: "Search query.", required: true },
-          { name: "--source", type: "string", desc: "Scope to one source handle (from stash sources ls). Omit to search everything." },
+          { name: "--source", type: "string", desc: "Scope to one source handle (from stash ls). Omit to search everything." },
           { name: "--modified-after", type: "string", desc: "Only results last modified after this ISO timestamp (e.g. 2026-01-01). Results with no known modification time are excluded." },
           { name: "--modified-before", type: "string", desc: "Only results last modified before this ISO timestamp. Results with no known modification time are excluded." },
           { name: "-n, --limit", type: "number", desc: "Maximum number of results. Defaults to 20." },
@@ -372,13 +312,9 @@ stash vfs --cwd "/me/sources" "rg 'incident' ."`}</CodeBlock>
       />
 
       <H2>Tables</H2>
-
-      <CommandRef
-        command="stash tables list"
-        args=""
-        description="List tables in your Stash."
-        params={[]}
-      />
+      <P>
+        List your tables with <Code>{`stash vfs "ls /tables"`}</Code>.
+      </P>
 
       <CommandRef
         command="stash tables create"
@@ -402,23 +338,9 @@ stash vfs --cwd "/me/sources" "rg 'incident' ."`}</CodeBlock>
       />
 
       <CommandRef
-        command="stash tables schema"
-        args="<table_id>"
-        description="Show a table's column schema."
-        params={[
-          { name: "<table_id>", type: "string", desc: "ID of the table.", required: true },
-        ]}
-      />
-
-      <CommandRef
-        command="stash tables rows"
-        args="<table_id> [--sort COL] [--filter COL]"
-        description="Fetch rows from a table. Sort and filter accept column names, which are auto-resolved."
-        params={[
-          { name: "<table_id>", type: "string", desc: "ID of the table.", required: true },
-          { name: "--sort", type: "string", desc: "Column name to sort by." },
-          { name: "--filter", type: "string", desc: "Column name to filter on." },
-        ]}
+        command="stash sql"
+        args="<query>"
+        description="Query your tables with read-only SQL (DuckDB's Postgres-flavored dialect). A table is addressable by bare name when unique and always by its folder path as the schema. Explore with information_schema.tables and information_schema.columns."
       />
 
       <CommandRef
@@ -526,13 +448,6 @@ stash vfs --cwd "/me/sources" "rg 'incident' ."`}</CodeBlock>
       />
 
       <CommandRef
-        command="stash files list"
-        args=""
-        description="List your files."
-        params={[]}
-      />
-
-      <CommandRef
         command="stash files text"
         args="<file_id>"
         description="Print extracted text for a file (PDF, image OCR, or plain text)."
@@ -632,7 +547,7 @@ stash vfs --cwd "/me/sources" "rg 'incident' ."`}</CodeBlock>
         description="Copy a point-in-time snapshot of one connected-source document into the Skill as a page, so the skill stays self-contained."
         params={[
           { name: "<skill_id>", type: "string", desc: "ID of the Skill.", required: true },
-          { name: "--source", type: "string", desc: "Connected-source id (from stash sources ls).", required: true },
+          { name: "--source", type: "string", desc: "Connected-source id (from stash ls).", required: true },
           { name: "--path", type: "string", desc: "Document path within the source.", required: true },
         ]}
       />
@@ -813,23 +728,25 @@ stash vfs --cwd "/me/sources" "rg 'incident' ."`}</CodeBlock>
 
       <H2>Streaming & hooks</H2>
       <P>
-        Install Stash hooks for all supported coding agents on your <Code>$PATH</Code>,
-        then enable or disable streaming per repo.
+        The setup wizard — or a headless re-run of <Code>stash setup</Code> — installs Stash
+        hooks for the coding agents it detects on this machine. Once the hooks are in,
+        streaming is a single machine-wide toggle: <Code>stash start</Code> and <Code>stash stop</Code>
+        apply everywhere on the machine, not per repo.
       </P>
 
       <CommandRef
-        command="stash install"
-        description="Install hook plugins for all supported coding agents on your PATH."
+        command="stash setup"
+        description="Install hook plugins for the coding agents it detects on this machine, along with session recording and folder context. It's an interactive wizard in a terminal; headless runs pass every decision as a flag. See First-time setup above."
       />
 
       <CommandRef
-        command="stash enable"
-        description="Re-enable activity streaming for the current repository."
+        command="stash start"
+        description="Resume streaming transcripts globally (undoes `stash stop`)."
       />
 
       <CommandRef
-        command="stash disable"
-        description="Stop streaming for this repo without touching the committed manifest."
+        command="stash stop"
+        description="Stop streaming transcripts globally."
       />
 
       <CommandRef
