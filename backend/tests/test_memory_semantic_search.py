@@ -71,8 +71,8 @@ async def _register(client) -> dict:
 
 async def _ensure_session(pool, owner_id, user_id, session_id: str):
     await pool.execute(
-        "INSERT INTO sessions (id, owner_user_id, session_id, agent_name, created_by) "
-        "VALUES (gen_random_uuid(), $1, $2, 'fusion', $3) "
+        "INSERT INTO sessions (id, owner_user_id, session_id, agent_name, created_by, last_event_at) "
+        "VALUES (gen_random_uuid(), $1, $2, 'fusion', $3, now()) "
         "ON CONFLICT (owner_user_id, session_id) DO NOTHING",
         owner_id,
         session_id,
