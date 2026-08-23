@@ -11,13 +11,17 @@ STAS-083's pi entries in the no-swallow sweep (``plugins/tests``) and
 guards the specific merge-revert shape on the CLI wiring: the list membership
 ``"pi" in _SUPPORTED_AGENTS`` is the intentional sentinel that catches pi being
 dropped from the tuple, the binary map, and the installers all at once.
+The data-dir sentinel ``"pi" in PLUGIN_DATA_DIRS`` catches the STAS-100
+partial-port shape that the ``_SUPPORTED_AGENTS`` sentinel misses: the port
+kept the other 7 pi wiring rows but dropped the data-dir entry, so
+status/settings/upload-health listings silently omitted pi.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from cli.main import _SUPPORTED_AGENTS
+from cli.main import _SUPPORTED_AGENTS, PLUGIN_DATA_DIRS
 
 # The guard lives next to test_install_pi.py in cli/tests; parents[1] is the
 # cli/ package dir, so cli/tests/test_install_pi.py is parents[1]/tests/....
@@ -36,6 +40,22 @@ def test_pi_present_in_supported_agents():
         f"(got {_SUPPORTED_AGENTS!r}). A merge reverted the STAS-072-style pi "
         "CLI wiring; restore it from STAS-085 (023094b5) rather than silencing "
         "this check."
+    )
+
+
+def test_pi_present_in_plugin_data_dirs():
+    """A port that drops pi from PLUGIN_DATA_DIRS must fail loudly.
+
+    STAS-100's port kept the other 7 pi wiring rows but dropped the data-dir
+    entry, so status/settings/upload-health listings silently omitted pi even
+    while the plugin recorded. Membership only: the guard is not coupled to
+    the concrete dir scheme.
+    """
+    assert "pi" in PLUGIN_DATA_DIRS, (
+        '"pi" was dropped from cli.main.PLUGIN_DATA_DIRS '
+        f"(got {sorted(PLUGIN_DATA_DIRS)!r}). STAS-100's partial port kept the "
+        "other 7 pi wiring rows but dropped the data-dir entry; restore the "
+        "row from STAS-085 (023094b5) rather than silencing this check."
     )
 
 

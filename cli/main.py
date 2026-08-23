@@ -6296,6 +6296,7 @@ PLUGIN_DATA_DIRS = {
     "opencode": Path.home() / ".stash/plugins/opencode",
     "openclaw": Path.home() / ".stash/plugins/openclaw",
     "hermes": Path.home() / ".stash/plugins/hermes",
+    "pi": Path.home() / ".stash" / "plugins" / "pi",
 }
 
 
