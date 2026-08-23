@@ -1551,6 +1551,61 @@ export async function deleteSession(sessionRowId: string): Promise<void> {
   });
 }
 
+// Session folders are the shareable unit for sessions. The server returns
+// more fields than the UI renders; this narrow type keeps the UI honest.
+export interface SessionFolder {
+  id: string;
+  slug: string;
+  name: string;
+  access: "private" | "public";
+  discoverable: boolean;
+  is_default: boolean;
+  session_count: number;
+  share_count: number;
+}
+
+export async function listSessionFolders(): Promise<SessionFolder[]> {
+  const data = await apiFetch<{ folders: SessionFolder[] }>(
+    `${ME}/session-folders`
+  );
+  return data.folders;
+}
+
+// Private is the server default; v1 create takes no visibility fields.
+export async function createSessionFolder(name: string): Promise<SessionFolder> {
+  return apiFetch(`${ME}/session-folders`, {
+    method: "POST",
+    body: JSON.stringify({ name }),
+  });
+}
+
+export async function renameSessionFolder(
+  folderId: string,
+  name: string
+): Promise<SessionFolder> {
+  return apiFetch(`${ME}/session-folders/${folderId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ name }),
+  });
+}
+
+export async function deleteSessionFolder(folderId: string): Promise<void> {
+  await apiFetch(`${ME}/session-folders/${folderId}`, {
+    method: "DELETE",
+  });
+}
+
+// A null folder_id unfiles the sessions.
+export async function assignSessionsToFolder(
+  sessionRowIds: string[],
+  folderId: string | null
+): Promise<{ ok: boolean; moved: number }> {
+  return apiFetch(`${ME}/session-folders/assign`, {
+    method: "POST",
+    body: JSON.stringify({ session_row_ids: sessionRowIds, folder_id: folderId }),
+  });
+}
+
 // Freeze a session transcript into a markdown page inside a folder — how
 // sessions travel into skills (sessions can't live in folders directly).
 export async function materializeSession(

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useBreadcrumbs } from "@/components/BreadcrumbContext";
 import { useConfirm } from "@/components/ConfirmDialog";
 import CopyableCommandBlock from "@/components/CopyableCommandBlock";
@@ -10,10 +10,17 @@ import SessionUpload from "@/components/SessionUpload";
 import { SessionsListSkeleton } from "@/components/SkeletonStates";
 import { PinIcon } from "@/components/SkillIcons";
 import { SelectBox } from "@/components/content/file-browser/ItemsList";
+import { useEscapeKey } from "@/hooks/useEscapeKey";
 import { useAuth } from "@/hooks/useAuth";
 import {
+  assignSessionsToFolder,
+  createSessionFolder,
   deleteSession,
+  deleteSessionFolder,
   listMySessions,
+  listSessionFolders,
+  renameSessionFolder,
+  type SessionFolder,
   type SessionSummary,
 } from "@/lib/api";
 import { usePins } from "@/lib/pins";
@@ -59,6 +66,8 @@ export default function SkillSessionsPage() {
   const [view, setView] = useState<ViewKey>("list");
   const [sort, setSort] = useState<SortKey>("recent");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [folders, setFolders] = useState<SessionFolder[] | null>(null);
+  const [foldersOpen, setFoldersOpen] = useState(false);
 
   function toggleSelect(sessionId: string) {
     setSelectedIds((current) => {
@@ -88,13 +97,24 @@ export default function SkillSessionsPage() {
     }
   }, []);
 
+  // Folders load in parallel with sessions: a folders failure surfaces in the
+  // error banner but never blocks the session list.
+  const loadFolders = useCallback(async () => {
+    try {
+      setFolders(await listSessionFolders());
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load folders");
+    }
+  }, []);
+
   // Fire on mount, in parallel with useAuth's /users/me — apiFetch resolves
   // its own token, and serializing behind auth doubled time-to-content. A
   // signed-out visitor's 401 is invisible: the !user guard below keeps the
   // error from rendering while the login redirect happens.
   useEffect(() => {
     load();
-  }, [load]);
+    loadFolders();
+  }, [load, loadFolders]);
 
   useEffect(() => {
     if (!loading && !user) router.push("/login");
@@ -142,6 +162,63 @@ export default function SkillSessionsPage() {
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Delete failed");
+    }
+  }
+
+  async function createFolder() {
+    const raw = window.prompt("Folder name?");
+    const name = (raw ?? "").trim();
+    if (!name) return;
+    try {
+      await createSessionFolder(name);
+      await loadFolders();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to create folder");
+    }
+  }
+
+  async function renameFolder(folder: SessionFolder) {
+    const raw = window.prompt("Folder name:", folder.name);
+    const name = (raw ?? "").trim();
+    if (!name) return;
+    try {
+      await renameSessionFolder(folder.id, name);
+      // The Folder column shows the name, so the sessions re-fetch too.
+      await load();
+      await loadFolders();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to rename folder");
+    }
+  }
+
+  async function deleteFolder(folder: SessionFolder) {
+    const ok = await confirm({
+      title: `Delete folder "${folder.name}"?`,
+      body: "Sessions in it become unfiled.",
+      confirmLabel: "Delete",
+    });
+    if (!ok) return;
+    try {
+      await deleteSessionFolder(folder.id);
+      await load();
+      await loadFolders();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to delete folder");
+    }
+  }
+
+  // A null folder_id unfiles the sessions. Selection is kept on failure so
+  // the user can retry; a success clears it and refreshes both lists.
+  async function assignSelected(folderId: string | null) {
+    const targets = selectedSessions.filter((s) => s.id);
+    if (targets.length === 0) return;
+    try {
+      await assignSessionsToFolder(targets.map((s) => s.id!), folderId);
+      clearSelection();
+      await load();
+      await loadFolders();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to move sessions");
     }
   }
 
@@ -196,7 +273,93 @@ export default function SkillSessionsPage() {
             options={SORTS}
             onChange={(v) => setSort(v as SortKey)}
           />
+          <button
+            type="button"
+            onClick={() => setFoldersOpen((o) => !o)}
+            aria-expanded={foldersOpen}
+            className={
+              "cursor-pointer rounded-full border border-border px-2.5 py-1 text-[12px] shadow-sm transition-colors " +
+              (foldersOpen
+                ? "bg-base font-semibold text-foreground"
+                : "bg-surface/60 text-muted-foreground hover:bg-raised/70 hover:text-foreground")
+            }
+          >
+            Folders
+          </button>
         </div>
+
+        {foldersOpen && (
+          <div className="mb-4 overflow-hidden rounded-lg border border-border bg-surface">
+            <div className="flex items-center justify-between border-b border-border px-3 py-2">
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Session folders
+              </span>
+              <button
+                type="button"
+                onClick={() => void createFolder()}
+                className="cursor-pointer rounded-md border border-border bg-base px-2 py-0.5 text-[12px] font-semibold hover:bg-raised"
+              >
+                New folder
+              </button>
+            </div>
+            {folders === null ? (
+              <div className="px-3 py-2 text-[12px] text-muted-foreground">
+                Loading folders…
+              </div>
+            ) : folders.length === 0 ? (
+              <div className="px-3 py-2 text-[12px] text-muted-foreground">
+                No session folders.
+              </div>
+            ) : (
+              folders.map((f) => (
+                <div
+                  key={f.id}
+                  className="flex min-w-0 items-center gap-2 border-b border-border px-3 py-2 text-[13px] last:border-b-0"
+                >
+                  <span className="min-w-0 truncate font-medium text-foreground">
+                    {f.name}
+                  </span>
+                  {/* The Default folder ships named "Default"; the chip only
+                      earns its place once the name no longer says it. */}
+                  {f.is_default && f.name !== "Default" && (
+                    <span className="sys-label shrink-0" style={{ fontSize: 10 }}>
+                      Default
+                    </span>
+                  )}
+                  {f.access === "public" && (
+                    <span className="sys-label shrink-0" style={{ fontSize: 10 }}>
+                      Public
+                    </span>
+                  )}
+                  {f.discoverable && (
+                    <span className="sys-label shrink-0" style={{ fontSize: 10 }}>
+                      Discoverable
+                    </span>
+                  )}
+                  <span className="ml-auto shrink-0 text-[11px] text-muted-foreground">
+                    {f.session_count} session{f.session_count === 1 ? "" : "s"}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => void renameFolder(f)}
+                    className="shrink-0 cursor-pointer text-[12px] text-muted-foreground hover:text-foreground"
+                  >
+                    Rename
+                  </button>
+                  {!f.is_default && (
+                    <button
+                      type="button"
+                      onClick={() => void deleteFolder(f)}
+                      className="shrink-0 cursor-pointer text-[12px] text-red-600 hover:text-red-500"
+                    >
+                      Delete
+                    </button>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+        )}
 
         <SessionsView
           view={view}
@@ -212,6 +375,10 @@ export default function SkillSessionsPage() {
         <div className="pointer-events-none fixed inset-x-0 bottom-6 z-50 flex justify-center">
           <div className="pointer-events-auto flex items-center gap-3 rounded-lg border border-border bg-foreground px-4 py-2 text-[13px] text-background shadow-lg">
             <span className="font-medium">{selectedSessions.length} selected</span>
+            <MoveToFolderMenu
+              folders={folders}
+              onPick={(id) => void assignSelected(id)}
+            />
             <button
               type="button"
               onClick={() => void bulkDeleteSessions()}
@@ -236,6 +403,75 @@ export default function SkillSessionsPage() {
 }
 
 const PLUGIN_INSTALL_COMMANDS = "uv tool install stashai\nstash signin";
+
+function MoveToFolderMenu({
+  folders,
+  onPick,
+}: {
+  folders: SessionFolder[] | null;
+  onPick: (folderId: string | null) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEscapeKey(open, () => setOpen(false));
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+    };
+  }, [open]);
+
+  return (
+    <div ref={ref} className="relative inline-block">
+      <button
+        type="button"
+        disabled={folders === null}
+        onClick={() => setOpen((o) => !o)}
+        className="cursor-pointer rounded-md border border-background/40 px-2 py-0.5 text-[12px] font-semibold hover:bg-background/10 disabled:cursor-default disabled:opacity-50"
+      >
+        Move to folder
+      </button>
+      {open && folders && (
+        // The bar sits at the viewport bottom, so the menu opens upward.
+        <div className="absolute bottom-full right-0 z-30 mb-1 max-h-64 w-52 overflow-y-auto rounded-md border border-border bg-base py-1 text-[12.5px] text-foreground shadow-lg">
+          {folders.map((f) => (
+            <button
+              key={f.id}
+              type="button"
+              onClick={() => {
+                setOpen(false);
+                onPick(f.id);
+              }}
+              className="flex w-full cursor-pointer items-center justify-between gap-2 px-3 py-1.5 text-left hover:bg-raised"
+            >
+              <span className="min-w-0 truncate">{f.name}</span>
+              <span className="shrink-0 text-[11px] text-muted-foreground">
+                {f.session_count}
+              </span>
+            </button>
+          ))}
+          <div className="my-1 border-t border-border" />
+          <button
+            type="button"
+            onClick={() => {
+              setOpen(false);
+              onPick(null);
+            }}
+            className="block w-full cursor-pointer px-3 py-1.5 text-left text-muted-foreground hover:bg-raised hover:text-foreground"
+          >
+            Unfile
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
 
 // Empty state that sells the plugin: sessions arrive via the agent hooks the
 // CLI installs, so an empty list usually means that setup hasn't happened yet.

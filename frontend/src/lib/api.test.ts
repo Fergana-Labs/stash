@@ -247,3 +247,118 @@ describe("workspace scope header", () => {
     });
   });
 });
+
+describe("session folders", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    localStorage.clear();
+    vi.stubGlobal("fetch", vi.fn());
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  function okJson(body: unknown, status = 200) {
+    return { ok: true, status, json: () => Promise.resolve(body) } as Response;
+  }
+
+  it("listSessionFolders unwraps the folders envelope", async () => {
+    const { listSessionFolders } = await import("./api");
+    vi.mocked(fetch).mockResolvedValue(
+      okJson({
+        folders: [
+          { id: "f-1", name: "Default", access: "private", is_default: true },
+          { id: "f-2", name: "Work", access: "public", is_default: false },
+        ],
+      })
+    );
+
+    const folders = await listSessionFolders();
+
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/v1/me/session-folders",
+      expect.objectContaining({ headers: expect.any(Object) })
+    );
+    expect(folders.map((f) => f.name)).toEqual(["Default", "Work"]);
+  });
+
+  it("createSessionFolder POSTs the name only (private is the server default)", async () => {
+    const { createSessionFolder } = await import("./api");
+    vi.mocked(fetch).mockResolvedValue(okJson({ id: "f-3", name: "Ideas" }));
+
+    const folder = await createSessionFolder("Ideas");
+
+    expect(fetch).toHaveBeenCalledWith("/api/v1/me/session-folders", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Ideas" }),
+    });
+    expect(folder.name).toBe("Ideas");
+  });
+
+  it("renameSessionFolder PATCHes the folder by id with the new name", async () => {
+    const { renameSessionFolder } = await import("./api");
+    vi.mocked(fetch).mockResolvedValue(okJson({ id: "f-work", name: "Projects" }));
+
+    const folder = await renameSessionFolder("f-work", "Projects");
+
+    expect(fetch).toHaveBeenCalledWith("/api/v1/me/session-folders/f-work", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Projects" }),
+    });
+    expect(folder.name).toBe("Projects");
+  });
+
+  it("deleteSessionFolder resolves on a 204 response", async () => {
+    const { deleteSessionFolder } = await import("./api");
+    vi.mocked(fetch).mockResolvedValue(okJson(undefined, 204));
+
+    const result = await deleteSessionFolder("f-work");
+
+    expect(fetch).toHaveBeenCalledWith("/api/v1/me/session-folders/f-work", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+    });
+    expect(result).toBeUndefined();
+  });
+
+  it("assignSessionsToFolder POSTs the row ids and folder id", async () => {
+    const { assignSessionsToFolder } = await import("./api");
+    vi.mocked(fetch).mockResolvedValue(okJson({ ok: true, moved: 2 }));
+
+    const result = await assignSessionsToFolder(["row-1", "row-2"], "f-work");
+
+    expect(fetch).toHaveBeenCalledWith("/api/v1/me/session-folders/assign", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ session_row_ids: ["row-1", "row-2"], folder_id: "f-work" }),
+    });
+    expect(result).toEqual({ ok: true, moved: 2 });
+  });
+
+  it("assignSessionsToFolder sends a null folder_id to unfile", async () => {
+    const { assignSessionsToFolder } = await import("./api");
+    vi.mocked(fetch).mockResolvedValue(okJson({ ok: true, moved: 1 }));
+
+    await assignSessionsToFolder(["row-1"], null);
+
+    const body = (vi.mocked(fetch).mock.calls[0][1] as { body: string }).body;
+    expect(JSON.parse(body)).toEqual({ session_row_ids: ["row-1"], folder_id: null });
+  });
+
+  it("rejects with the server detail on 404", async () => {
+    const { assignSessionsToFolder } = await import("./api");
+    vi.mocked(fetch).mockResolvedValue({
+      ok: false,
+      status: 404,
+      statusText: "Not Found",
+      json: () => Promise.resolve({ detail: "Session or folder not found" }),
+    } as Response);
+
+    await expect(
+      assignSessionsToFolder(["row-1"], "f-gone")
+    ).rejects.toThrow("Session or folder not found");
+  });
+});
