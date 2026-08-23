@@ -12,6 +12,7 @@ Required env vars (defaults work against the Docker Compose postgres):
 
 import asyncio
 import os
+import tempfile
 import uuid
 
 import asyncpg
@@ -26,6 +27,16 @@ _TEST_DB_URL = os.getenv(
 )
 os.environ["TEST_DATABASE_URL"] = _TEST_DB_URL
 os.environ["DATABASE_URL"] = _TEST_DB_URL
+
+# /tmp is a shared 63G tmpfs that intermittently fills — on 2026-08-23 ENOSPC
+# crashed pytest temp-file creation (STAS-118). Default verification temp
+# files to the /home volume unless the operator set TMPDIR.
+if not os.environ.get("TMPDIR"):
+    _home_tmp = os.path.join(os.environ["HOME"], ".tmp", "pytest")
+    os.makedirs(_home_tmp, exist_ok=True)
+    os.environ["TMPDIR"] = _home_tmp
+    # Force re-resolution: a plugin may have cached /tmp from an earlier gettempdir() call.
+    tempfile.tempdir = None
 
 from backend import database as db_module  # noqa: E402
 from backend.main import app  # noqa: E402 — must come after env override

@@ -123,6 +123,25 @@ By default `stash` is the released PyPI build (`uv tool` install, self-updating)
 - App ports are fixed and exclusive per machine: backend 3456, frontend 3457. OAuth redirect URIs are registered against 3456, so there is no way to run the stack on other ports. If a port is taken, `start.sh` fails and prints the holding process: one local stack at a time — kill the holder only if it's yours or a zombie, otherwise wait. Tests, lint, and most dev work don't need the live stack.
 - There is no dev docker compose. `./start.sh` is the only local dev path; `docker-compose.prod.yml` is for self-hosters only.
 
+### Temp files for verification runs (TMPDIR)
+
+/tmp is a shared 63G tmpfs and it intermittently fills — on 2026-08-23 it
+caused ENOSPC crashes in pytest temp-file creation during verification and a
+code-review run died without a verdict. /home (nvme1n1, 1.8T) has the headroom.
+
+For every verification run in a worktree (pytest, npm test, npm run build,
+starting a server to check behavior), point temp files at /home first:
+
+    export TMPDIR=$HOME/.tmp
+    mkdir -p "$TMPDIR"
+
+- Backend pytest already defaults to this mechanically (the TMPDIR block in
+  backend/tests/conftest.py). The export covers npm/node runs and anything
+  pytest doesn't own.
+- Clean up your own scratch in /tmp when done. Stale artifacts from finished
+  work get deleted (policy: no live open handle and older than 48h).
+- Do not fill /tmp with large test fixtures or build artifacts.
+
 ### Deployment (hosted prod — joinstash.ai)
 **Merging to `main` deploys to production. There is no separate release step for the hosted app.**
 
