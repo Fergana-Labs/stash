@@ -17,7 +17,13 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 dependencies = [
-    "typer>=0.12.0",
+    # STAS-116: typer >= 0.25 vendors a private click (typer._click), whose
+    # MissingParameter is not a click.exceptions.UsageError, so it escapes the
+    # cli.main main() boundary catch and prints a raw traceback on a missing arg.
+    # Exact-pinned to the validated vendor-free lineage; click is declared
+    # because cli/main.py imports it directly (was satisfied only transitively).
+    "typer==0.24.1",
+    "click==8.3.2",
     "httpx>=0.27.0",
     "rich>=13.0.0",
     "questionary>=2.0.0",
