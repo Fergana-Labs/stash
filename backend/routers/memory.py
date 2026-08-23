@@ -18,6 +18,7 @@ from ..models import (
     HistoryEventResponse,
 )
 from ..services import memory_service, user_scope_service
+from ..tasks.agent_schedules import first_day_curator_tick
 from ..tasks.session_titles import generate_session_title
 
 me_router = APIRouter(prefix="/api/v1/me/sessions", tags=["sessions"])
@@ -73,6 +74,8 @@ async def push_event(
         raise HTTPException(status_code=400, detail=str(e))
     if settings.ANTHROPIC_API_KEY and req.session_id and req.event_type in _TITLE_EVENT_TYPES:
         generate_session_title.delay(str(owner_user_id), req.session_id)
+    if req.event_type in _TITLE_EVENT_TYPES:
+        first_day_curator_tick.delay(str(owner_user_id))
     return HistoryEventResponse(**event)
 
 
@@ -102,6 +105,8 @@ async def push_events_batch(
     if settings.ANTHROPIC_API_KEY:
         for session_id in title_session_ids:
             generate_session_title.delay(str(owner_user_id), session_id)
+    if title_session_ids:
+        first_day_curator_tick.delay(str(owner_user_id))
     return [HistoryEventResponse(**e) for e in events]
 
 

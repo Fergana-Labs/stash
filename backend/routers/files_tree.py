@@ -257,12 +257,13 @@ async def recompute_memory(
     if not await curation_service.has_changes_since(user_id, user_id, curator["curated_through"]):
         raise HTTPException(status_code=409, detail="Nothing new to curate since the last run.")
     if agent_service.month_runs_used(curator) >= settings.FREE_CURATOR_RUNS_PER_MONTH:
-        plan = await get_pool().fetchval("SELECT plan FROM users WHERE id = $1", user_id)
-        if plan != "enterprise":
+        from ..services import billing_service
+
+        if not await billing_service.is_pro(user_id):
             raise HTTPException(
                 status_code=402,
                 detail=f"Free accounts get {settings.FREE_CURATOR_RUNS_PER_MONTH} sleep-time "
-                "curator runs per month; the enterprise plan is unlimited.",
+                "curator runs per month; Pro is unlimited.",
             )
     try:
         await agent_auth.resolve(user_id, curator["model_provider"])

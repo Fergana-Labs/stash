@@ -174,6 +174,7 @@ async def push_event(
             created_by=created_by,
             end_user_id=end_user["id"] if end_user else None,
             session_folder_id=session_folder_id,
+            last_event_at=ts,
         )
         if linear_ticket_service.has_ticket_hint([content]):
             await linear_ticket_service.sync_session_labels(
@@ -241,7 +242,7 @@ async def push_events_batch(
         timestamps,
     )
     results = [dict(r) for r in rows]
-    await _upsert_sessions_for_events(owner_user_id, created_by, events)
+    await _upsert_sessions_for_events(owner_user_id, created_by, events, timestamps)
     if embedding_service.is_configured() and results:
         ids = [r["id"] for r in results]
         contents_for_embed = [r["content"] for r in results]
@@ -316,14 +317,22 @@ async def _upsert_sessions_for_events(
     owner_user_id: UUID | None,
     created_by: UUID,
     events: list[dict],
+    timestamps: list[datetime],
 ) -> None:
+    """`timestamps` is the stored created_at per event, aligned with `events`
+    — the session's last_event_at must reflect what actually landed, not the
+    caller's possibly-absent created_at fields."""
     if owner_user_id is None:
         return
 
     sessions: dict[str, dict] = {}
-    for event in events:
+    for event, ts in zip(events, timestamps):
         session_id = event.get("session_id")
-        if not session_id or session_id in sessions:
+        if not session_id:
+            continue
+        if session_id in sessions:
+            existing = sessions[session_id]
+            existing["last_event_at"] = max(existing["last_event_at"], ts)
             continue
         metadata = event.get("metadata") or {}
         sessions[session_id] = {
@@ -332,6 +341,7 @@ async def _upsert_sessions_for_events(
             "user_id": event.get("user_id"),
             "user_name": event.get("user_name"),
             "session_folder_id": event.get("session_folder_id"),
+            "last_event_at": ts,
         }
 
     end_user_rows = await _resolve_event_end_users(owner_user_id, sessions.values())
@@ -346,6 +356,7 @@ async def _upsert_sessions_for_events(
             created_by=created_by,
             end_user_id=end_user["id"] if end_user else None,
             session_folder_id=session["session_folder_id"],
+            last_event_at=session["last_event_at"],
         )
         contents = [
             event.get("content") or "" for event in events if event.get("session_id") == session_id

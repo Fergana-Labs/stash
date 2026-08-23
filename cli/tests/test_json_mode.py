@@ -19,6 +19,7 @@ import pytest
 from typer.testing import CliRunner
 
 from cli import main
+from cli.config import MANIFEST_FILE
 
 runner = CliRunner()
 
@@ -184,9 +185,7 @@ def test_rm_json_emits_result_object(monkeypatch):
     result = runner.invoke(main.app, ["rm", "page:p1", "--json"])
     assert result.exit_code == 0
     payload = json.loads(result.stdout)
-    assert payload["ok"] is True
-    assert payload["items"] == 1
-    assert payload["action"] == "moved to trash"
+    assert payload == {"ok": True, "changed": True}
 
 
 def test_rm_json_trash_vs_permanent(monkeypatch):
@@ -194,8 +193,12 @@ def test_rm_json_trash_vs_permanent(monkeypatch):
     result = runner.invoke(main.app, ["rm", "page:p1", "--permanent", "--json"])
     assert result.exit_code == 0
     payload = json.loads(result.stdout)
-    assert payload["action"] == "permanently deleted"
-    assert payload["permanent"] is True
+    assert payload == {"ok": True, "changed": True}
+    # The trash-vs-permanent distinction now lives in the stderr summary.
+    assert "permanently deleted" in result.stderr
+    result = runner.invoke(main.app, ["rm", "page:p1", "--json"])
+    assert json.loads(result.stdout) == {"ok": True, "changed": True}
+    assert "moved to trash" in result.stderr
 
 
 def test_restore_json_emits_result_object(monkeypatch):
@@ -203,8 +206,7 @@ def test_restore_json_emits_result_object(monkeypatch):
     result = runner.invoke(main.app, ["restore", "page:p1", "--json"])
     assert result.exit_code == 0
     payload = json.loads(result.stdout)
-    assert payload["ok"] is True
-    assert payload["items"] == 1
+    assert payload == {"ok": True, "changed": True}
 
 
 def test_mv_json_emits_result_object(monkeypatch):
@@ -297,8 +299,9 @@ def test_delete_json_stdout_has_no_human_text(monkeypatch):
     # The default-mode human summary line never leaks onto stdout in JSON mode.
     assert "item(s)" not in result.stdout
     # stdout is exactly one parseable JSON document.
-    assert json.loads(result.stdout)["ok"] is True
-    assert result.stderr == ""
+    assert json.loads(result.stdout) == {"ok": True, "changed": True}
+    # The human summary is reported on stderr, where status is allowed to live.
+    assert "item(s) moved to trash" in result.stderr
 
 
 def test_default_output_unchanged_for_start(monkeypatch):
@@ -945,7 +948,7 @@ def test_connect_json_stdout_is_single_json_doc(monkeypatch, tmp_path):
 
     assert result.exit_code == 0, result.output
     payload = json.loads(result.stdout)  # raises if human text leaked onto stdout
-    assert payload == {"ok": True}
+    assert payload == {"ok": True, "changed": True}
     # The helper status lines went to stderr, the only place they may land.
     assert "Wrote" in result.stderr
     assert "Appended Stash context" in result.stderr
@@ -962,13 +965,22 @@ def test_connect_json_global_and_after_are_identical(monkeypatch, tmp_path):
     monkeypatch.setattr(main, "_git_toplevel", lambda *a: None)
 
     global_res = runner.invoke(main.app, ["--json", "connect"])
+    # Reset to the identical starting state: the first call wrote the
+    # manifest, so without this the second call is a genuine no-op and
+    # correctly reports changed:false. Both positions must be compared
+    # from the same "not connected" state to prove parity.
+    (tmp_path / MANIFEST_FILE).unlink()
     per_cmd_res = runner.invoke(main.app, ["connect", "--json"])
 
     assert global_res.exit_code == 0, global_res.output
     assert per_cmd_res.exit_code == 0, per_cmd_res.output
-    assert json.loads(global_res.stdout) == json.loads(per_cmd_res.stdout) == {"ok": True}
+    assert (
+        json.loads(global_res.stdout)
+        == json.loads(per_cmd_res.stdout)
+        == {"ok": True, "changed": True}
+    )
     # No human/progress text on stdout in either position.
-    assert global_res.stdout == per_cmd_res.stdout == '{"ok": true}\n'
+    assert global_res.stdout == per_cmd_res.stdout == '{"ok": true, "changed": true}\n'
 
 
 def test_setup_json_connect_stdout_is_single_json_doc(monkeypatch, tmp_path):

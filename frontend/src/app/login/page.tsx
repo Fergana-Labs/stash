@@ -55,17 +55,19 @@ function LoginPageInner() {
   const [cliApproved, setCliApproved] = useState(false);
   const [justRegistered, setJustRegistered] = useState(false);
 
-  // Normal redirect for non-CLI logins
+  // Normal redirect for non-CLI logins. A registration carrying ?next= (e.g.
+  // the landing page's developer funnel with next=/developer) skips onboarding
+  // and goes straight there — onboarding is for personal signups only.
   useEffect(() => {
     if (loading || !user || cliSession) return;
 
-    if (justRegistered || FORCE_ONBOARDING) {
-      router.push("/onboarding");
+    if (nextPath) {
+      router.push(nextPath);
       return;
     }
 
-    if (nextPath) {
-      router.push(nextPath);
+    if (justRegistered || FORCE_ONBOARDING) {
+      router.push("/onboarding");
       return;
     }
 
@@ -92,6 +94,7 @@ function LoginPageInner() {
         user={user}
         logout={logout}
         cliSession={cliSession}
+        nextPath={nextPath}
         onCliApproved={() => setCliApproved(true)}
       />
     );
@@ -306,10 +309,11 @@ type Auth0PanelProps = {
   user: ReturnType<typeof useAuth>["user"];
   logout: ReturnType<typeof useAuth>["logout"];
   cliSession: string | null;
+  nextPath: string;
   onCliApproved: () => void;
 };
 
-function Auth0LoginPanel({ user, logout, cliSession, onCliApproved }: Auth0PanelProps) {
+function Auth0LoginPanel({ user, logout, cliSession, nextPath, onCliApproved }: Auth0PanelProps) {
   const [hasSession, setHasSession] = useState<boolean | null>(null);
 
   useEffect(() => {
@@ -341,7 +345,7 @@ function Auth0LoginPanel({ user, logout, cliSession, onCliApproved }: Auth0Panel
     ) : hasSession ? (
       <Auth0Exchange cliSession={cliSession} onCliApproved={onCliApproved} />
     ) : (
-      <Auth0LoginButton cliSession={cliSession} />
+      <Auth0LoginButton cliSession={cliSession} nextPath={nextPath} />
     );
 
   if (cliSession) {
@@ -364,13 +368,16 @@ function Auth0LoginPanel({ user, logout, cliSession, onCliApproved }: Auth0Panel
 }
 
 // Lazy re-exports so the managed/ code is never loaded in OSS builds.
-function Auth0LoginButton(props: { cliSession: string | null }) {
-  const [Comp, setComp] = useState<React.ComponentType<{ cliSession: string | null }> | null>(null);
+function Auth0LoginButton(props: { cliSession: string | null; nextPath: string }) {
+  const [Comp, setComp] = useState<React.ComponentType<{
+    cliSession: string | null;
+    nextPath?: string;
+  }> | null>(null);
   useEffect(() => {
     import("@managed/auth0/LoginButton").then((m) => setComp(() => m.default));
   }, []);
   if (!Comp) return <SkeletonBlock className="h-10 w-full rounded-xl" />;
-  return <Comp cliSession={props.cliSession} />;
+  return <Comp cliSession={props.cliSession} nextPath={props.nextPath} />;
 }
 
 function Auth0Exchange(props: { cliSession: string | null; onCliApproved: () => void }) {

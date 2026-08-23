@@ -297,6 +297,37 @@ async def mint_workspace_key(workspace_id: UUID, req: WorkspaceKeyRequest):
     return {"workspace_id": str(workspace_id), "api_key": key, "access": req.access}
 
 
+class RedeemCodeCreateRequest(BaseModel):
+    code: str
+    plan: str = "enterprise"
+    max_uses: int | None = None
+    expires_at: str | None = None  # ISO timestamp
+
+
+@router.post("/redeem-codes", dependencies=[Depends(require_admin_token)])
+async def create_redeem_code(req: RedeemCodeCreateRequest):
+    """Mint an access code (e.g. for a hackathon). Users redeem it at
+    POST /api/v1/users/me/redeem-code and get the code's plan."""
+    if req.plan not in ("free", "enterprise"):
+        raise HTTPException(status_code=400, detail=f"unknown plan: {req.plan}")
+    from datetime import datetime
+
+    from ..database import get_pool
+
+    expires_at = datetime.fromisoformat(req.expires_at) if req.expires_at else None
+    code = req.code.strip().lower()
+    if not code:
+        raise HTTPException(status_code=400, detail="code is required")
+    await get_pool().execute(
+        "INSERT INTO redeem_codes (code, plan, max_uses, expires_at) VALUES ($1, $2, $3, $4)",
+        code,
+        req.plan,
+        req.max_uses,
+        expires_at,
+    )
+    return {"code": code, "plan": req.plan, "max_uses": req.max_uses, "expires_at": req.expires_at}
+
+
 class PlanRequest(BaseModel):
     plan: str
 

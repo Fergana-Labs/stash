@@ -87,8 +87,8 @@ async def _make_page(
 
 async def _make_session(pool, owner_user_id, created_by, session_id="session-1"):
     row = await pool.fetchrow(
-        "INSERT INTO sessions (owner_user_id, session_id, agent_name, created_by) "
-        "VALUES ($1, $2, 'codex', $3) RETURNING id",
+        "INSERT INTO sessions (owner_user_id, session_id, agent_name, created_by, last_event_at) "
+        "VALUES ($1, $2, 'codex', $3, now()) RETURNING id",
         owner_user_id,
         session_id,
         created_by,

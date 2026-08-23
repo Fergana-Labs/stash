@@ -10,6 +10,7 @@ import {
   PublicSkillSkeleton,
 } from "@/components/SkeletonStates";
 import { useAuth } from "@/hooks/useAuth";
+import { loginPathWithNext } from "@/lib/loginRedirect";
 
 // Shared chrome for the signed-in app. Hosting AppShell here (rather than
 // inside each subtree's layout or page) keeps the sidebar mounted as you move
@@ -42,8 +43,10 @@ export default function AppGroupLayout({ children }: { children: ReactNode }) {
     if (loading) return;
     if (user) return;
     if (isPublicSkillRoute) return;
-    router.push("/login");
-  }, [user, loading, isPublicSkillRoute, router]);
+    // Carry the destination so sign-in lands back here (e.g. a signed-out
+    // visit to /developer from the landing page's funnel).
+    router.push(loginPathWithNext(pathname));
+  }, [user, loading, isPublicSkillRoute, pathname, router]);
 
   if (loading) {
     return isPublicSkillRoute ? <PublicSkillSkeleton /> : <AppShellSkeleton />;

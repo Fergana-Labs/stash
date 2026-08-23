@@ -416,6 +416,14 @@ export async function updateUser(
   });
 }
 
+// A hackathon (or other) access code: grants the code's plan to this account.
+export async function redeemCode(code: string): Promise<{ plan: string }> {
+  return apiFetch("/api/v1/users/me/redeem-code", {
+    method: "POST",
+    body: JSON.stringify({ code }),
+  });
+}
+
 export async function updateMe(data: {
   display_name?: string;
   description?: string;
@@ -475,7 +483,7 @@ export async function searchUsers(query: string): Promise<UserSearchResult[]> {
 
 export interface BillingInfo {
   billing_enabled: boolean;
-  plan?: "free" | "pro";
+  plan?: "free" | "pro" | "enterprise";
   status?: string | null;
   connection_count?: number;
   connection_limit?: number;

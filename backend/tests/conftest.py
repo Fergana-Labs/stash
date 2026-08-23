@@ -91,6 +91,16 @@ async def pool(_db_pool):
     yield _db_pool
 
 
+@pytest.fixture(autouse=True)
+def _no_first_day_curator_dispatch(monkeypatch):
+    """Every event/transcript ingest fires a first-day curator check via
+    Celery, and tests have no broker — neutralize the dispatch by default.
+    Tests that assert on it monkeypatch their own capture over this."""
+    from backend.tasks.agent_schedules import first_day_curator_tick
+
+    monkeypatch.setattr(first_day_curator_tick, "delay", lambda *a, **k: None)
+
+
 @pytest_asyncio.fixture(autouse=True)
 async def _cleanup(_db_pool):
     """Truncate all user-data tables after each test for full isolation."""

@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import AppRedirectForSignedInUsers from "./AppRedirectForSignedInUsers";
+import GetStartedMenu from "./GetStartedMenu";
 import SiteFooter from "./SiteFooter";
 import SiteHeader from "./SiteHeader";
 
@@ -59,18 +60,7 @@ export default function HomePage() {
           handcrafted evals or RL environments.
         </p>
         <div className="mt-8 flex flex-wrap gap-3">
-          <Link
-            href="/internal-agents"
-            className="inline-flex h-[46px] items-center rounded-[10px] bg-brand px-5 text-[15px] font-medium text-white transition hover:bg-brand-hover"
-          >
-            For internal agents
-          </Link>
-          <Link
-            href="/external-agents"
-            className="inline-flex h-[46px] items-center rounded-[10px] border border-border px-5 text-[15px] font-medium text-ink transition hover:border-ink"
-          >
-            For external agents
-          </Link>
+          <GetStartedMenu appUrl={APP_URL} />
         </div>
       </section>
 
@@ -109,7 +99,7 @@ export default function HomePage() {
             <Door
               kicker="Internal agents"
               title="The agents your team runs"
-              body="Coding agents that keep what they learn. One prompt imports the logs you already have."
+              body="Coding agents that keep what they learn. Import the logs you already have and stop repeating yourself."
               cta="See the product →"
               href="/internal-agents"
             />

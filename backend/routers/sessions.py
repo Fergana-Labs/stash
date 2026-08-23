@@ -113,79 +113,80 @@ async def list_my_sessions(
         owner_user_id = scope_user_id
     pool = get_pool()
     args: list = [current_user["id"]]
+    # Sessions rows are the unit here, not events: pick the page of sessions
+    # first (ordered by the last_event_at column ingest maintains), then read
+    # only that page's events for counts and title previews. The old shape
+    # aggregated every accessible history_events row before applying the
+    # limit, so an empty page still paid for the user's whole event history.
     accessible_ws = permission_service.accessible_scope_ids_sql(1)
-    title_where = [
-        "he_title.session_id IS NOT NULL",
-        f"(he_title.owner_user_id IN {accessible_ws} "
-        "OR (he_title.owner_user_id IS NULL AND he_title.created_by = $1))",
-        f"(he_title.owner_user_id IS NULL OR {memory_service.readable_session_event_condition('he_title', 1)})",
-        "NULLIF(BTRIM(he_title.content), '') IS NOT NULL",
-    ]
     where = [
-        "he.session_id IS NOT NULL",
-        f"(he.owner_user_id IN {accessible_ws} "
-        "OR (he.owner_user_id IS NULL AND he.created_by = $1))",
-        f"(he.owner_user_id IS NULL OR {memory_service.readable_session_event_condition('he', 1)})",
+        "s.deleted_at IS NULL",
+        # An empty session shell (row created, no events yet) stays hidden
+        # until its first event lands — same behavior the event-driven query
+        # had for free. One index probe per candidate row.
+        "EXISTS (SELECT 1 FROM history_events shell_he "
+        "        WHERE shell_he.owner_user_id = s.owner_user_id "
+        "          AND shell_he.session_id = s.session_id)",
+        f"s.owner_user_id IN {accessible_ws}",
+        permission_service.readable_content_condition("session", "s", 1),
     ]
     if owner_user_id is not None:
         args.append(owner_user_id)
-        where.append(f"he.owner_user_id = ${len(args)}")
-        title_where.append(f"he_title.owner_user_id = ${len(args)}")
+        where.append(f"s.owner_user_id = ${len(args)}")
     if session_id_prefix is not None:
         args.append(session_id_prefix)
         # starts_with, not LIKE: the prefix is caller-supplied and LIKE would
         # read '%' and '_' in it as wildcards.
-        where.append(f"starts_with(he.session_id, ${len(args)})")
-        title_where.append(f"starts_with(he_title.session_id, ${len(args)})")
+        where.append(f"starts_with(s.session_id, ${len(args)})")
 
     rows = await pool.fetch(
         f"""
-        WITH title_sources AS (
-          SELECT DISTINCT ON (he_title.owner_user_id, he_title.session_id)
-            he_title.owner_user_id,
-            he_title.session_id,
-            LEFT(he_title.content, 240) AS title_source
-          FROM history_events he_title
-          WHERE {" AND ".join(title_where)}
-          ORDER BY
-            he_title.owner_user_id,
-            he_title.session_id,
-            CASE
-              WHEN he_title.event_type IN ('user_message', 'user_prompt', 'prompt', 'message', 'user') THEN 0
-              WHEN he_title.event_type IN ('assistant_message', 'assistant') THEN 1
-              ELSE 2
-            END,
-            he_title.created_at,
-            he_title.id
+        WITH page AS (
+          SELECT s.id, s.owner_user_id, s.session_id, s.agent_name, s.created_by,
+                 s.session_folder_id, s.started_at, s.last_event_at
+          FROM sessions s
+          WHERE {" AND ".join(where)}
+          ORDER BY s.last_event_at DESC, s.session_id ASC, s.owner_user_id ASC
+          LIMIT {int(limit)} OFFSET {int(offset)}
         )
         SELECT
-          he.session_id,
-          s.id AS id,
-          he.owner_user_id,
+          p.session_id,
+          p.id AS id,
+          p.owner_user_id,
           owner.display_name AS owner_name,
-          {linear_ticket_service.sql_json_agg("s")} AS linear_tickets,
-          (ARRAY_AGG(NULLIF(u.display_name, '') ORDER BY he.created_at)
-           FILTER (WHERE NULLIF(u.display_name, '') IS NOT NULL))[1] AS user_name,
-          MAX(he.agent_name) AS agent_name,
+          {linear_ticket_service.sql_json_agg("p")} AS linear_tickets,
+          NULLIF(author.display_name, '') AS user_name,
+          p.agent_name,
           sf.name AS session_folder_name,
-          title_sources.title_source,
-          COUNT(*)::INT AS event_count,
-          MIN(he.created_at) AS started_at,
-          MAX(he.created_at) AS last_event_at
-        FROM history_events he
-        LEFT JOIN title_sources ON title_sources.session_id = he.session_id
-          AND title_sources.owner_user_id IS NOT DISTINCT FROM he.owner_user_id
-        LEFT JOIN users owner ON owner.id = he.owner_user_id
-        LEFT JOIN users u ON u.id = he.created_by
-        LEFT JOIN sessions s ON s.owner_user_id IS NOT DISTINCT FROM he.owner_user_id
-          AND s.session_id = he.session_id
-          AND s.deleted_at IS NULL
-        LEFT JOIN session_folders sf ON sf.id = s.session_folder_id
-        WHERE {" AND ".join(where)}
-        GROUP BY he.session_id, he.owner_user_id, owner.display_name, s.id,
-          sf.name, title_sources.title_source
-        ORDER BY last_event_at DESC, user_name ASC, session_id ASC
-        LIMIT {int(limit)} OFFSET {int(offset)}
+          title.title_source,
+          counts.event_count,
+          p.started_at,
+          p.last_event_at
+        FROM page p
+        LEFT JOIN users owner ON owner.id = p.owner_user_id
+        LEFT JOIN users author ON author.id = p.created_by
+        LEFT JOIN session_folders sf ON sf.id = p.session_folder_id
+        LEFT JOIN LATERAL (
+          SELECT COUNT(*)::INT AS event_count
+          FROM history_events he
+          WHERE he.owner_user_id = p.owner_user_id AND he.session_id = p.session_id
+        ) counts ON TRUE
+        LEFT JOIN LATERAL (
+          SELECT LEFT(he.content, 240) AS title_source
+          FROM history_events he
+          WHERE he.owner_user_id = p.owner_user_id AND he.session_id = p.session_id
+            AND NULLIF(BTRIM(he.content), '') IS NOT NULL
+          ORDER BY
+            CASE
+              WHEN he.event_type IN ('user_message', 'user_prompt', 'prompt', 'message', 'user') THEN 0
+              WHEN he.event_type IN ('assistant_message', 'assistant') THEN 1
+              ELSE 2
+            END,
+            he.created_at,
+            he.id
+          LIMIT 1
+        ) title ON TRUE
+        ORDER BY p.last_event_at DESC, user_name ASC, p.session_id ASC
         """,
         *args,
     )

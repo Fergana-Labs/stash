@@ -62,14 +62,20 @@ export default function ExchangeAndRedirect({ cliSession, onCliApproved }: Props
         return;
       }
       if (cancelled) return;
+      // A sign-up carrying ?next= (e.g. the landing page's developer funnel
+      // with next=/developer) goes straight there — onboarding is for
+      // personal signups only.
+      if (nextPath) {
+        router.push(nextPath);
+        return;
+      }
       // First-time sign-in goes through onboarding, same as the password
       // register flow. The exchange already provisioned their account.
       if (created) {
         router.push("/onboarding");
         return;
       }
-      // Returning user: back to whatever they were opening, else their home.
-      if (!cancelled) router.push(nextPath || "/");
+      router.push("/");
     })();
     return () => {
       cancelled = true;

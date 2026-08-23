@@ -12,6 +12,7 @@ const GITHUB_URL = "https://github.com/Fergana-Labs/stash";
 const NAV = [
   ["Internal agents", "/internal-agents"],
   ["External agents", "/external-agents"],
+  ["Pricing", "/pricing"],
   ["Blog", "/blog"],
   ["GitHub", GITHUB_URL],
 ];

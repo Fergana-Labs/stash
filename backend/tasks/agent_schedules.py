@@ -45,25 +45,30 @@ def run_scheduled_agent(agent_id: str, stamp: str) -> None:
 
 
 @celery.task(name="backend.tasks.agent_schedules.run_curator_now")
-def run_curator_now(agent_id: str, full_history: bool = False) -> None:
-    run_async(_run_curator_now(UUID(agent_id), full_history))
+def run_curator_now(agent_id: str, full_history: bool = False, metered: bool = True) -> None:
+    run_async(_run_curator_now(UUID(agent_id), full_history, metered))
 
 
-async def _run_curator_now(agent_id: UUID, full_history: bool = False) -> None:
+async def _run_curator_now(
+    agent_id: UUID, full_history: bool = False, metered: bool = True
+) -> None:
     """A user-requested curator run: same execution as the daily tick, minus
     the due-check — the user is the trigger. The router already enforced the
     free-tier allowance and resolved credentials.
 
     `full_history` is the backfill: the run reads with no watermark, but the
     stored watermark is only advanced after success — a failed backfill must
-    not have thrown away the incremental position."""
+    not have thrown away the incremental position.
+
+    `metered=False` is for runs the platform initiates on its own (the
+    first-day curator): they must not eat the user's free monthly allowance."""
     from ..services import agent_service, curation_service, sprite_agent_service
 
     agent = await agent_service.get_agent_by_id(agent_id)
     if full_history:
         agent = {**agent, "curated_through": None}
     now = datetime.now(UTC)
-    await agent_service.mark_run(agent_id)
+    await agent_service.mark_run(agent_id, metered=metered)
     try:
         # Seconds-resolution stamp so a manual run never shares a session with
         # the beat's minute-stamped run.
@@ -74,14 +79,59 @@ async def _run_curator_now(agent_id: UUID, full_history: bool = False) -> None:
         await agent_service.mark_curated(agent_id, through)
         await agent_service.mark_run_succeeded(agent_id)
     except Exception as e:
-        await agent_service.mark_run_failed(agent_id, str(e))
+        await agent_service.mark_run_failed(agent_id, str(e), metered=metered)
         raise
+
+
+# During a workspace's first day the external wiki updates after every
+# conversation, not just on the nightly tick — a developer who just activated
+# the platform watches the wiki grow while they integrate. Debounced so a
+# stream of event batches coalesces into at most one run per window; the
+# agent's Redis turn lock already prevents overlapping runs.
+FIRST_DAY_HOURS = 24
+FIRST_DAY_DEBOUNCE = timedelta(minutes=10)
+
+
+@celery.task(name="backend.tasks.agent_schedules.first_day_curator_tick")
+def first_day_curator_tick(scope_user_id: str) -> None:
+    run_async(_first_day_curator_tick(UUID(scope_user_id)))
+
+
+async def _first_day_curator_tick(scope_user_id: UUID) -> None:
+    from ..services import agent_auth, agent_service, curation_service, end_user_service
+
+    workspace = await end_user_service.workspace_for_scope(scope_user_id)
+    if workspace is None or workspace["external_wiki_folder_id"] is None:
+        return
+    now = datetime.now(UTC)
+    if workspace["created_at"] < now - timedelta(hours=FIRST_DAY_HOURS):
+        return
+    agent = await agent_service.get_or_create_curator(scope_user_id, wiki="external")
+    # A curator that has never run skips the debounce: its seeded last_run_at
+    # is the backfill point (~account creation), which would otherwise mute
+    # the very first conversations after signup.
+    if (
+        agent["last_run_outcome"] is not None
+        and agent["last_run_at"]
+        and agent["last_run_at"] > now - FIRST_DAY_DEBOUNCE
+    ):
+        return
+    try:
+        await agent_auth.resolve(scope_user_id, agent["model_provider"])
+    except (agent_auth.NeedsAuth, agent_auth.ProviderNotConfigured):
+        return
+    if not await curation_service.has_changes_since(
+        scope_user_id, scope_user_id, agent["curated_through"]
+    ):
+        return
+    # Unmetered: the platform is the trigger, so the run must not eat the
+    # workspace's free monthly curator allowance.
+    run_curator_now.delay(str(agent["id"]), metered=False)
 
 
 async def _run_due() -> int:
     from ..config import settings
-    from ..database import get_pool
-    from ..services import agent_auth, agent_service, curation_service
+    from ..services import agent_auth, agent_service, billing_service, curation_service
 
     now = datetime.now(UTC)
     stamp = now.strftime("%Y%m%d%H%M")
@@ -96,15 +146,15 @@ async def _run_due() -> int:
         # skipped or failed run never discards un-curated changes.
         month_runs = await agent_service.mark_run(agent["id"])
         # Sleep-time compute is metered: free accounts get a monthly curator
-        # allowance; the enterprise plan is unlimited.
-        if agent["is_curator"] and month_runs > settings.FREE_CURATOR_RUNS_PER_MONTH:
-            plan = await get_pool().fetchval("SELECT plan FROM users WHERE id = $1", user_id)
-            if plan != "enterprise":
-                logger.info(
-                    "agent schedule: curator credits exhausted for user %s — skipping", user_id
-                )
-                await agent_service.mark_run_skipped(agent["id"], "credits")
-                continue
+        # allowance; Pro and enterprise are unlimited.
+        if (
+            agent["is_curator"]
+            and month_runs > settings.FREE_CURATOR_RUNS_PER_MONTH
+            and not await billing_service.is_pro(user_id)
+        ):
+            logger.info("agent schedule: curator credits exhausted for user %s — skipping", user_id)
+            await agent_service.mark_run_skipped(agent["id"], "credits")
+            continue
         # No runnable credential (unconnected free user) → nothing can run.
         try:
             await agent_auth.resolve(user_id, agent["model_provider"])

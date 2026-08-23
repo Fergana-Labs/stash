@@ -88,9 +88,13 @@ export default function SkillSessionsPage() {
     }
   }, []);
 
+  // Fire on mount, in parallel with useAuth's /users/me — apiFetch resolves
+  // its own token, and serializing behind auth doubled time-to-content. A
+  // signed-out visitor's 401 is invisible: the !user guard below keeps the
+  // error from rendering while the login redirect happens.
   useEffect(() => {
-    if (user) load();
-  }, [user, load]);
+    load();
+  }, [load]);
 
   useEffect(() => {
     if (!loading && !user) router.push("/login");
@@ -106,8 +110,9 @@ export default function SkillSessionsPage() {
     return copy;
   }, [sessions, sort]);
 
-  if (loading) return <SessionsListSkeleton />;
-  if (!user) return null;
+  // Render as soon as the sessions themselves land — don't hold a finished
+  // list (or the empty state) hostage to the slower /users/me round trip.
+  if (!loading && !user) return null;
   if (sorted === null) return <SessionsListSkeleton />;
 
   const pinnedSessions = (sorted ?? []).filter((s) =>

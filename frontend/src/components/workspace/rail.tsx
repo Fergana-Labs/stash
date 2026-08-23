@@ -8,6 +8,7 @@ import AccountMenu from "@/components/workspace/account-menu";
 import { cn } from "@/lib/utils";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
 import { useWorkspace, type RailSection } from "@/lib/workspace-store";
+import { showToolsAndChat } from "@/lib/flags";
 import type { User } from "@/lib/types";
 
 type RailItem = { key: RailSection; label: string; icon: typeof Bot; match: (p: string) => boolean };
@@ -66,6 +67,9 @@ export default function Rail({ user, onLogout }: { user: User; onLogout: () => v
   const searchParams = useSearchParams();
   const setRailSection = useWorkspace((s) => s.setRailSection);
   const requestedSection = searchParams.get("section");
+  const items = PRIMARY.filter(
+    (item) => (item.key !== "tools" && item.key !== "agents") || showToolsAndChat(user),
+  );
 
   function selectSection(section: RailSection) {
     // VFS resumes where the user left off; clicking it while already in the
@@ -91,7 +95,7 @@ export default function Rail({ user, onLogout }: { user: User; onLogout: () => v
 
   return (
     <div className="flex w-[74px] shrink-0 flex-col items-center gap-1 border-r border-sidebar-border bg-rail px-1.5 py-2.5">
-      {PRIMARY.map((item, i) => (
+      {items.map((item, i) => (
         <Fragment key={item.key}>
           <RailButton
             item={item}

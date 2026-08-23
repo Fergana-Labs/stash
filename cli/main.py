@@ -216,6 +216,30 @@ def _exit_internal_error(message: str) -> None:
     raise typer.Exit(EXIT_INTERNAL_ERROR)
 
 
+def _report_mutation(
+    use_json: bool, changed: bool, message: str, markup: str | None = None
+) -> None:
+    """Report a mutating command's outcome under the idempotent no-op contract.
+
+    Re-running a mutation on an already-done state is a no-op, not an error:
+    this always ends with exit 0, and the no-op is reported explicitly. In
+    --json mode stdout carries exactly one stable document
+    {"ok": true, "changed": <bool>}; the human `message` goes to stderr so the
+    re-run is visible without polluting stdout. Outside --json, a no-op prints
+    `message` to stderr (a silent skip would mislead an agent into re-doing
+    work); a changed run prints `markup`, or nothing when the command's own
+    status lines already reported success (connect)."""
+    if use_json:
+        output_json({"ok": True, "changed": changed})
+        echo_stderr(message)
+        return
+    if not changed:
+        echo_stderr(message)
+        return
+    if markup:
+        console.print(markup)
+
+
 # ===========================================================================
 # Auth
 # ===========================================================================
@@ -2307,15 +2331,24 @@ def skills_follow(
 
     New shared skills land at the next `stash skills sync` (the plugin runs
     one at every session start) and update like any installed skill.
+
+    Idempotent: if this root already follows, the command exits 0 and reports
+    the no-op without re-writing the installed manifest.
     """
     root = _skills_root(directory, project)
+    use_json = _use_json(as_json)
     manifest = _load_installed_manifest()
+    if _installed_entry(manifest, root).get("follow_shared"):
+        _report_mutation(use_json, False, f"Already following shared skills → {root}.")
+        return
     _installed_entry(manifest, root)["follow_shared"] = True
     _save_installed_manifest(manifest)
-    if _use_json(as_json):
-        output_json({"ok": True, "follow": True, "root": str(root)})
-        return
-    console.print(f"[green]Following[/green] skills shared with you → {root}")
+    _report_mutation(
+        use_json,
+        True,
+        f"Following skills shared with you → {root}.",
+        markup=f"[green]Following[/green] skills shared with you → {root}",
+    )
 
 
 @skills_app.command("unfollow")
@@ -2324,15 +2357,25 @@ def skills_unfollow(
     project: bool = typer.Option(False, "--project", help="Stop following for ./.claude/skills."),
     as_json: bool = typer.Option(False, "--json"),
 ):
-    """Stop auto-installing newly shared skills (already-installed ones stay)."""
+    """Stop auto-installing newly shared skills (already-installed ones stay).
+
+    Idempotent: a root that does not follow already has nothing to stop —
+    the command exits 0 and reports the no-op.
+    """
     root = _skills_root(directory, project)
+    use_json = _use_json(as_json)
     manifest = _load_installed_manifest()
+    if not _installed_entry(manifest, root).get("follow_shared"):
+        _report_mutation(use_json, False, f"Not following shared skills → {root}.")
+        return
     _installed_entry(manifest, root)["follow_shared"] = False
     _save_installed_manifest(manifest)
-    if _use_json(as_json):
-        output_json({"ok": True, "follow": False, "root": str(root)})
-        return
-    console.print(f"[green]Unfollowed[/green] shared skills for {root}")
+    _report_mutation(
+        use_json,
+        True,
+        f"Unfollowed shared skills for {root}.",
+        markup=f"[green]Unfollowed[/green] shared skills for {root}",
+    )
 
 
 # --- skills sync: two-way local <-> Stash skill sync ---
@@ -3985,6 +4028,9 @@ def rm_cmd(
 ):
     """Move pages, files, or sessions to trash. Pass --permanent to wipe immediately.
 
+    Idempotent: an item already in trash (or already gone) is a no-op — the
+    command exits 0 and reports it instead of erroring on the 404.
+
     Example: stash rm page:<id> file:<id> session:<id>
     """
     trash = {
@@ -3993,6 +4039,9 @@ def rm_cmd(
         "session": (lambda c, i: c.delete_session(i), lambda c, i: c.purge_session(i)),
     }
     items = _resolve_session_refs(_parse_refs(refs))
+    use_json = _use_json(as_json)
+    changed = 0
+    noops = 0
     with _client() as c:
         for object_type, object_id in items:
             if object_type not in trash:
@@ -4002,13 +4051,27 @@ def rm_cmd(
                 delete(c, object_id)
                 if permanent:
                     purge(c, object_id)
+                changed += 1
             except StashError as e:
-                _err(e)
+                # A 404 means the item is already in the end state rm wants
+                # (in trash or permanently gone): re-running is an idempotent
+                # no-op, not an error. Any other status is a real failure.
+                if e.status_code != 404:
+                    _err(e)
+                noops += 1
     verb = "permanently deleted" if permanent else "moved to trash"
-    if _use_json(as_json):
-        output_json({"ok": True, "items": len(items), "action": verb, "permanent": permanent})
+    state = "already permanently deleted" if permanent else "already in trash"
+    if changed and noops:
+        echo_stderr(f"  {noops} item(s) {state} — skipped.")
+    if changed:
+        _report_mutation(
+            use_json,
+            True,
+            f"{len(items)} item(s) {verb}.",
+            markup=f"[green]{len(items)} item(s) {verb}.[/green]",
+        )
         return
-    console.print(f"[green]{len(items)} item(s) {verb}.[/green]")
+    _report_mutation(use_json, False, f"All {len(items)} item(s) {state} — nothing to do.")
 
 
 @app.command("restore")
@@ -4023,6 +4086,9 @@ def restore_cmd(
 
     A session may be named by its title, as `stash trash list` prints it:
     stash restore page:<id> session:"<title>"
+
+    Idempotent: an item already restored is a no-op — the command exits 0 and
+    reports it instead of erroring on the 404.
     """
     restore = {
         "page": lambda c, i: c.restore_page(i),
@@ -4030,6 +4096,9 @@ def restore_cmd(
         "session": lambda c, i: c.restore_session(i),
     }
     items = _resolve_session_refs(_parse_refs(refs), trashed=True)
+    use_json = _use_json(as_json)
+    changed = 0
+    noops = 0
     with _client() as c:
         for object_type, object_id in items:
             if object_type not in restore:
@@ -4038,12 +4107,24 @@ def restore_cmd(
                 )
             try:
                 restore[object_type](c, object_id)
+                changed += 1
             except StashError as e:
-                _err(e)
-    if _use_json(as_json):
-        output_json({"ok": True, "items": len(items)})
+                # A 404 means the item is no longer in trash — it is already
+                # restored: re-running is an idempotent no-op, not an error.
+                if e.status_code != 404:
+                    _err(e)
+                noops += 1
+    if changed and noops:
+        echo_stderr(f"  {noops} item(s) already restored — skipped.")
+    if changed:
+        _report_mutation(
+            use_json,
+            True,
+            f"{len(items)} item(s) restored.",
+            markup=f"[green]{len(items)} item(s) restored.[/green]",
+        )
         return
-    console.print(f"[green]{len(items)} item(s) restored.[/green]")
+    _report_mutation(use_json, False, f"All {len(items)} item(s) already restored — nothing to do.")
 
 
 @app.command("mv")
@@ -5619,16 +5700,24 @@ def verify_email_cmd(as_json: bool = typer.Option(False, "--json")):
 
 @app.command("connect")
 def connect_cmd(as_json: bool = typer.Option(False, "--json")):
-    """Add Stash instructions to this folder's CLAUDE.md and enable session uploads."""
+    """Add Stash instructions to this folder's CLAUDE.md and enable session uploads.
+
+    Idempotent: if this folder is already connected (a `.stash` manifest
+    exists), the command exits 0 and reports the no-op instead of re-writing.
+    """
     cfg = _require_auth()
     telemetry.record("connect")
 
     use_json = _use_json(as_json)
     repo_root = _git_toplevel() or Path.cwd()
-    _auto_connect_repo(repo_root, cfg, use_json=use_json)
+    already = (repo_root / MANIFEST_FILE).is_file()
+    if not already:
+        _auto_connect_repo(repo_root, cfg, use_json=use_json)
     start_streaming()
-    if use_json:
-        output_json({"ok": True})
+    if already:
+        _report_mutation(use_json, False, "Already connected — nothing to do.")
+        return
+    _report_mutation(use_json, True, "Connected — Stash context written and streaming enabled.")
 
 
 @app.command("start")
@@ -6558,25 +6647,30 @@ def logout_cmd(as_json: bool = typer.Option(False, "--json")):
 
 @app.command("disconnect")
 def disconnect_cmd(as_json: bool = typer.Option(False, "--json")):
-    """Disconnect this repo from Stash. Removes the .stash file."""
+    """Disconnect this repo from Stash. Removes the .stash file.
+
+    Idempotent: a repo with no `.stash` file is already disconnected — the
+    command exits 0 and reports the no-op.
+    """
     repo_root = _git_toplevel()
     if not repo_root:
         _exit_user_error("Not inside a git repo.")
 
+    use_json = _use_json(as_json)
     manifest_path = repo_root / MANIFEST_FILE
     if not manifest_path.is_file():
-        echo_stderr("No .stash file found — this repo isn't connected.")
-        if _use_json(as_json):
-            output_json({"ok": True, "disconnected": False})
+        _report_mutation(use_json, False, "Not connected — nothing to remove.")
         return
 
     # Streaming is global to the user's scope, so disconnecting one repo leaves it
     # untouched — run `stash stop` to halt streaming everywhere.
     manifest_path.unlink()
-    if _use_json(as_json):
-        output_json({"ok": True, "disconnected": True})
-        return
-    console.print(f"  [green]✓[/green] Removed [cyan]{MANIFEST_FILE}[/cyan] — repo disconnected.")
+    _report_mutation(
+        use_json,
+        True,
+        f"Removed {MANIFEST_FILE} — repo disconnected.",
+        markup=f"  [green]✓[/green] Removed [cyan]{MANIFEST_FILE}[/cyan] — repo disconnected.",
+    )
 
 
 @app.command("vfs", context_settings={"allow_extra_args": True, "ignore_unknown_options": True})

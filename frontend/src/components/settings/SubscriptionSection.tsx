@@ -6,6 +6,7 @@ import {
   BillingInfo,
   getBilling,
   openBillingPortal,
+  redeemCode,
   startCheckout,
 } from "../../lib/api";
 
@@ -24,6 +25,7 @@ export default function SubscriptionSection() {
   if (!billing?.billing_enabled) return null;
 
   const isPro = billing.plan === "pro";
+  const isEnterprise = billing.plan === "enterprise";
 
   async function redirectTo(action: () => Promise<{ url: string }>) {
     setBusy(true);
@@ -57,15 +59,17 @@ export default function SubscriptionSection() {
       <div className="flex items-center justify-between gap-4">
         <div>
           <div className="text-sm font-medium text-foreground">
-            {isPro ? "Pro — $20/month" : "Free"}
+            {isEnterprise ? "Enterprise" : isPro ? "Pro — $20/month" : "Free"}
           </div>
           <div className="text-xs text-muted-foreground mt-0.5">
-            {isPro
+            {isEnterprise
+              ? "Granted plan — integrations and curator runs are unlimited."
+              : isPro
               ? `Subscription ${billing.status}.`
               : `${billing.connection_count} of ${billing.connection_limit} connected accounts used.`}
           </div>
         </div>
-        {isPro ? (
+        {isEnterprise ? null : isPro ? (
           <button
             type="button"
             disabled={busy}
@@ -96,10 +100,77 @@ export default function SubscriptionSection() {
         )}
       </div>
 
+      {!isPro && !isEnterprise && (
+        <RedeemCodeRow onRedeemed={() => getBilling().then(setBilling).catch(() => {})} />
+      )}
+
       {error && <p className="text-xs text-error">{error}</p>}
       <p className="text-[11px] text-muted-foreground">
         Plan changes can take a few seconds to apply after checkout.
       </p>
     </section>
+  );
+}
+
+// A hackathon (or other) access code unlocks the granted plan without a card.
+function RedeemCodeRow({ onRedeemed }: { onRedeemed: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [code, setCode] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+
+  async function apply() {
+    if (!code.trim()) return;
+    setSubmitting(true);
+    setError("");
+    try {
+      await redeemCode(code.trim());
+      onRedeemed();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "That code didn't work");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="cursor-pointer text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
+      >
+        Have a hackathon or access code?
+      </button>
+    );
+  }
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex gap-2">
+        <input
+          value={code}
+          onChange={(e) => setCode(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              void apply();
+            }
+          }}
+          placeholder="Access code"
+          autoFocus
+          className="w-48 rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-foreground placeholder:text-muted-foreground/70 focus:border-brand focus:outline-none"
+        />
+        <button
+          type="button"
+          onClick={() => void apply()}
+          disabled={submitting || !code.trim()}
+          className="cursor-pointer rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground hover:bg-raised disabled:opacity-60"
+        >
+          {submitting ? "Applying…" : "Apply"}
+        </button>
+      </div>
+      {error && <p className="text-xs text-error">{error}</p>}
+    </div>
   );
 }

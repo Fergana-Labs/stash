@@ -19,7 +19,13 @@ export default function CLIPage() {
       </Subtitle>
 
       <Callout type="tip">
-        Most commands accept <Code>--json</Code> for machine-readable output.
+        Most commands accept <Code>--json</Code> for machine-readable output. Mutating
+        commands (<Code>rm</Code>, <Code>restore</Code>, <Code>connect</Code>,
+        <Code>disconnect</Code>, <Code>skills follow</Code>) are idempotent: re-running one
+        whose work is already done exits 0, notes the no-op on stderr, and prints
+        <Code>{'"ok": true, "changed": false'}</Code> in <Code>--json</Code> mode — only a
+        real change reports <Code>{'"changed": true'}</Code>. Genuine errors still fail with
+        a non-zero exit code and never report <Code>{'"ok": true'}</Code>.
       </Callout>
 
       <H2>Install</H2>
@@ -44,7 +50,11 @@ export default function CLIPage() {
       />
       <CommandRef
         command="stash connect"
-        description="Set up the current folder for Stash: writes .stash and adds Stash instructions to CLAUDE.md so agents working there use your Stash. Works in any folder — a git repo is not required."
+        args="[--json]"
+        description="Set up the current folder for Stash: writes .stash and adds Stash instructions to CLAUDE.md so agents working there use your Stash. Works in any folder — a git repo is not required. Idempotent: a folder that is already connected exits 0 and reports the no-op."
+        params={[
+          { name: "--json", type: "flag", desc: 'Machine-readable output: prints {"ok": true, "changed": true|false}; the human message goes to stderr.' },
+        ]}
       />
       <CommandRef
         command="stash import-history"
@@ -107,7 +117,11 @@ stash vfs --cwd "/me/sources" "rg 'incident' ."`}</CodeBlock>
 
       <CommandRef
         command="stash disconnect"
-        description="Sign out and clear all stored credentials so the next stash signin starts fresh."
+        args="[--json]"
+        description="Disconnect this repo from Stash: removes the .stash file (session recording and streaming keep running — stash stop halts those). Idempotent: a repo without .stash exits 0 and reports the no-op."
+        params={[
+          { name: "--json", type: "flag", desc: 'Machine-readable output: prints {"ok": true, "changed": true|false}; the human message goes to stderr.' },
+        ]}
       />
 
       <CommandRef
@@ -536,20 +550,22 @@ stash vfs --cwd "/me/sources" "rg 'incident' ."`}</CodeBlock>
 
       <CommandRef
         command="stash rm"
-        args="<type:id>... [--permanent]"
-        description="Move pages, files, or sessions to trash. Pass --permanent to skip the trash window and delete immediately."
+        args="<type:id>... [--permanent] [--json]"
+        description="Move pages, files, or sessions to trash. Pass --permanent to skip the trash window and delete immediately. Idempotent: items already in the trash (or already permanently gone) are reported as no-ops and the command still exits 0."
         params={[
           { name: "<type:id>", type: "string", desc: 'Items to delete, e.g. page:<id> session:"<title>". A session may be named by its title as well as its id.', required: true },
           { name: "--permanent", type: "flag", desc: "Delete immediately instead of trashing." },
+          { name: "--json", type: "flag", desc: 'Machine-readable output: prints {"ok": true, "changed": true|false}; the human message goes to stderr.' },
         ]}
       />
 
       <CommandRef
         command="stash restore"
-        args="<type:id>..."
-        description="Restore pages, files, or sessions from trash."
+        args="<type:id>... [--json]"
+        description="Restore pages, files, or sessions from trash. Idempotent: items already restored are reported as no-ops and the command still exits 0."
         params={[
           { name: "<type:id>", type: "string", desc: 'Items to restore, e.g. page:<id> session:"<title>", naming a session as `stash trash list` prints it.', required: true },
+          { name: "--json", type: "flag", desc: 'Machine-readable output: prints {"ok": true, "changed": true|false}; the human message goes to stderr.' },
         ]}
       />
 
@@ -661,9 +677,11 @@ stash vfs --cwd "/me/sources" "rg 'incident' ."`}</CodeBlock>
 
       <CommandRef
         command="stash skills follow"
-        args="[--project] [--dir PATH]"
-        description="Auto-install skills people share with you. New shared skills land at the next skills sync and update like any installed skill; stash skills unfollow turns it off (already-installed skills stay)."
-        params={[]}
+        args="[--project] [--dir PATH] [--json]"
+        description="Auto-install skills people share with you. New shared skills land at the next skills sync and update like any installed skill; stash skills unfollow turns it off (already-installed skills stay). Idempotent: following when already following (or unfollowing when already off) exits 0 and reports the no-op."
+        params={[
+          { name: "--json", type: "flag", desc: 'Machine-readable output: prints {"ok": true, "changed": true|false}; the human message goes to stderr.' },
+        ]}
       />
 
       <CommandRef

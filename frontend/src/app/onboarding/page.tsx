@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Header from "../../components/Header";
 import { useAuth } from "../../hooks/useAuth";
 import { track } from "../../lib/analytics";
-import { updateMe } from "../../lib/api";
+import { redeemCode, updateMe } from "../../lib/api";
 
 // The whole flow: a few questions about the user, then one instruction —
 // connect your agent. Everything else Stash does grows out of the
@@ -242,6 +242,77 @@ function AboutStep({
           className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-[13.5px] text-foreground placeholder:text-muted-foreground/70 focus:border-brand focus:outline-none"
         />
       </Field>
+      <HackathonCode />
+    </div>
+  );
+}
+
+function HackathonCode() {
+  const [open, setOpen] = useState(false);
+  const [code, setCode] = useState("");
+  const [state, setState] = useState<"idle" | "submitting" | "redeemed">("idle");
+  const [error, setError] = useState("");
+
+  async function apply() {
+    if (!code.trim()) return;
+    setState("submitting");
+    setError("");
+    try {
+      await redeemCode(code.trim());
+      setState("redeemed");
+      track("onboarding.code_redeemed");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "That code didn't work");
+      setState("idle");
+    }
+  }
+
+  if (state === "redeemed") {
+    return (
+      <p className="text-[13px] text-brand">
+        Hackathon code applied — your account is unlocked.
+      </p>
+    );
+  }
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="cursor-pointer text-[13px] text-dim underline-offset-2 hover:text-foreground hover:underline"
+      >
+        Have a hackathon code?
+      </button>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex gap-2">
+        <input
+          value={code}
+          onChange={(e) => setCode(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              void apply();
+            }
+          }}
+          placeholder="Hackathon code"
+          autoFocus
+          className="w-56 rounded-lg border border-border bg-surface px-3 py-2 text-[13.5px] text-foreground placeholder:text-muted-foreground/70 focus:border-brand focus:outline-none"
+        />
+        <button
+          type="button"
+          onClick={() => void apply()}
+          disabled={state === "submitting" || !code.trim()}
+          className="rounded-lg bg-brand px-4 py-2 text-[13.5px] font-medium text-white transition-colors hover:bg-brand-hover disabled:opacity-50"
+        >
+          {state === "submitting" ? "Applying…" : "Apply"}
+        </button>
+      </div>
+      {error && <p className="text-[13px] text-error">{error}</p>}
     </div>
   );
 }

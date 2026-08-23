@@ -7,13 +7,12 @@ import CodePanel from "./CodePanel";
 
 const APP_URL = process.env.MANAGED_APP_URL || "https://app.joinstash.ai";
 const SIGNUP_URL = `${APP_URL}/login?mode=register`;
-const GITHUB_URL = "https://github.com/Fergana-Labs/stash";
 
 export const metadata: Metadata = {
   alternates: { canonical: "/internal-agents" },
   title: "Internal agents · Stash",
   description:
-    "Stash is memory for your agents that starts working with one prompt. Import your existing agent logs, and stop repeating yourself immediately.",
+    "Stash is memory for your agents. Import your existing agent logs, and stop repeating yourself immediately.",
 };
 
 const GAINS = [
@@ -53,18 +52,12 @@ export default function InternalAgentsPage() {
 
       <section className="px-5 pb-8 pt-14 text-center sm:px-7 md:pt-24">
         <div className="mx-auto max-w-[780px]">
-          <a
-            href={GITHUB_URL}
-            className="inline-block border-b border-border pb-0.5 text-[14.5px] text-dim transition hover:border-brand hover:text-brand"
-          >
-            Open source · MIT licensed
-          </a>
-          <h1 className="mt-6 font-display text-[clamp(38px,5.4vw,64px)] font-medium leading-[1.05] tracking-[-0.03em] text-ink">
+          <h1 className="font-display text-[clamp(38px,5.4vw,64px)] font-medium leading-[1.05] tracking-[-0.03em] text-ink">
             Stop babysitting your <span className="text-brand">agents.</span>
           </h1>
           <p className="mx-auto mt-[22px] max-w-[52ch] text-[18px] leading-[1.6] text-dim">
-            Stash is memory for your agents that starts working with one prompt. Import your
-            existing agent logs, and stop repeating yourself immediately.
+            Stash is memory for your agents. Import your existing agent logs, and stop
+            repeating yourself immediately.
           </p>
           <div className="mt-[30px] flex flex-wrap justify-center gap-3">
             <Link
@@ -206,10 +199,10 @@ export default function InternalAgentsPage() {
       <section className="border-t border-border-subtle py-20 text-center md:py-32">
         <div className="mx-auto max-w-[1180px] px-5 sm:px-7">
           <h2 className="mx-auto max-w-[16ch] font-display text-[clamp(32px,4.4vw,54px)] font-medium leading-[1.06] tracking-[-0.028em] text-ink">
-            One prompt to start.
+            Start in minutes.
           </h2>
           <p className="mx-auto mt-[18px] max-w-[56ch] text-[17px] text-dim">
-            Your agent will know you better in minutes.
+            Your agent will know you better today.
           </p>
           <div className="mt-7 flex flex-wrap justify-center gap-3">
             <Link
