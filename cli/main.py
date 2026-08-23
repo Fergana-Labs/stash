@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import difflib
 import hashlib
 import json
 import posixpath
@@ -17,10 +18,12 @@ import click
 import httpx
 import questionary
 import typer
+import typer.main
 from rich.align import Align
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
+from typer import rich_utils
 
 from stashai.plugin.doctor import shadow_install_warning
 from stashai.plugin.upload_status import read_upload_status
@@ -57,6 +60,7 @@ from .formatting import (
     console,
     console_err,
     echo_error,
+    echo_hint,
     echo_stderr,
     output_json,
     print_empty_state,
@@ -7075,24 +7079,138 @@ def tools_install(name: str = typer.Argument(...), as_json: bool = typer.Option(
     console.print(f"{verb} [bold]{name}[/bold] → {dest}")
 
 
+# --- Contextual usage hints (AXI §8/§9) --------------------------------------
+#
+# Convention: every invocation failure (unknown command, unknown option,
+# missing or invalid argument) raises a click.UsageError subclass — in
+# Click 8.3 there is no separate NoSuchCommand class. main() renders
+# typer's unchanged Rich error panel to stderr, then appends exactly one
+# `Hint:` line via echo_hint. Hints are guidance, not data: they never
+# write to stdout, so they can never enter the --json data channel, and
+# they are never suppressed. The exit code stays Click's usage-error code
+# (2); the panel stays typer's rich_format_error output, unmodified.
+
+
+def _collect_command_vocabulary() -> tuple[set[str], dict[str, set[str]]]:
+    """The user-facing command vocabulary for usage hints.
+
+    Returns (top-level names, group name -> subcommand names) derived from
+    the compiled Click command tree — the authoritative set of what `stash`
+    actually accepts.
+    """
+    tree = typer.main.get_command(app)
+    top_names = set(tree.commands)
+    group_subs = {
+        name: set(sub.commands)
+        for name, sub in tree.commands.items()
+        if isinstance(sub, click.Group)
+    }
+    return top_names, group_subs
+
+
+def _hint_tokens(args: list[str]) -> list[str]:
+    """argv minus a leading global --json flag (the only global option that
+    can precede the command path)."""
+    if args and args[0] == "--json":
+        return args[1:]
+    return list(args)
+
+
+def _derive_command_path(args: list[str]) -> list[str]:
+    """Longest prefix of args that walks the command tree, e.g.
+    ['skills', 'add', 'x.md'] -> ['skills', 'add'], ['browse', '--sort'] ->
+    ['browse'], ['skil', 'list'] -> []. An option or unknown token ends the
+    path; a plain command is a leaf.
+    """
+    top_names, group_subs = _collect_command_vocabulary()
+    path: list[str] = []
+    level_names: set[str] = top_names
+    for token in _hint_tokens(args):
+        if token.startswith("-") or token not in level_names:
+            break
+        path.append(token)
+        if token not in group_subs:
+            break
+        level_names = group_subs[token]
+    return path
+
+
+def _near_miss_suggestion(args: list[str]) -> str | None:
+    """Full runnable suggestion for a `No such command` failure, or None
+    when difflib finds no close match at the failing level.
+
+    ['skills', 'lst'] -> 'stash skills list' (a group's subcommand); ['skil',
+    'list'] -> 'stash skills' (a top-level command). The failing token is
+    args[1] when args[0] is a known group, else args[0] at the top level —
+    exactly the level where Click's group resolution raised.
+    """
+    tokens = _hint_tokens(args)
+    top_names, group_subs = _collect_command_vocabulary()
+    if not tokens or tokens[0].startswith("-"):
+        return None
+    first = tokens[0]
+    if first in group_subs and len(tokens) >= 2 and not tokens[1].startswith("-"):
+        token, names, prefix = tokens[1], group_subs[first], [first]
+    else:
+        token, names, prefix = first, top_names, []
+    matches = difflib.get_close_matches(token, sorted(names), n=1, cutoff=0.6)
+    if not matches:
+        return None
+    return " ".join(["stash", *prefix, matches[0]])
+
+
+def _emit_usage_hint(args: list[str], err: click.UsageError) -> None:
+    """Append the one contextual help hint for a usage failure, on stderr.
+
+    Only called from main()'s click.UsageError handler, so this renders
+    exactly one `Hint:` line per invocation failure: a near-miss command
+    name gets a concrete runnable suggestion (`Did you mean `stash skills
+    list`?`) — the specific fix, per AXI §9 — with the root --help pointer
+    as the no-close-match fallback; any other usage error (missing
+    argument, no such option, option requiring an argument, invalid value)
+    gets the --help pointer for the command being run, or for `stash`
+    itself when the path can't be resolved. Never writes to stdout (the
+    hint can therefore never reach the --json data channel); never raises.
+    """
+    if err.message.startswith("No such command"):
+        suggestion = _near_miss_suggestion(args)
+        if suggestion is not None:
+            echo_hint(f"Did you mean `{suggestion}`?")
+            return
+        echo_hint("Run `stash --help` to see all commands.")
+        return
+    path = _derive_command_path(args)
+    if path:
+        echo_hint(f"Pass `stash {' '.join(path)} --help` to see this command's options.")
+    else:
+        echo_hint("Pass `stash --help` to see all commands and options.")
+
+
 def main() -> None:
     """Top-level entry boundary for the `stash` console script.
 
-    Invokes the Typer app with ``standalone_mode=False`` so exceptions are not
-    swallowed by Click's default handler; the returned exit code becomes the
-    process exit code. Any ``StashError`` that escapes a command body (e.g. a
-    wrapped transport error re-raised by a share/page-create site, or a raw
-    ``httpx.TransportError`` off the request layer) is routed through the same
-    classification and stderr emission as ``_err``, so a backend-delivery
-    failure exits with the internal-error code (2) and never leaks to stdout.
-    A Click usage error (missing/extra required argument or option) raised
-    during parsing is rendered by Click's own ``show()`` (its canonical
-    stderr formatter, which ``standalone_mode=False`` otherwise bypasses) and
-    exits with Click's usage-error code (2). Any other exception re-raises so
-    genuine bugs still show a traceback.
+    Invokes the compiled Typer command with ``standalone_mode=False`` so
+    exceptions surface here instead of being rendered by Click's default
+    handler; the returned code (a ``typer.Exit(N)`` value) becomes the
+    process exit code. Error routing — all stderr, none of it ever touches
+    stdout:
+
+    - ``click.UsageError`` (every invocation failure — unknown command,
+      unknown option, missing/invalid argument; there is no separate
+      NoSuchCommand class in Click 8.3) renders typer's unchanged Rich
+      error panel, appends one contextual ``Hint:`` line (see
+      ``_emit_usage_hint``), and exits with Click's usage-error code (2).
+    - ``StashError`` escaping a command body routes through the same
+      classification and stderr emission as ``_err`` (user error 1, internal
+      error 2).
+    - A raw ``httpx.TransportError`` off the request layer exits with the
+      internal-error code (2).
+    - Any other exception re-raises so genuine bugs still show a traceback.
     """
+    args = sys.argv[1:]
+    command = typer.main.get_command(app)
     try:
-        code = app(standalone_mode=False)
+        code = command.main(args, prog_name="stash", standalone_mode=False)
     except StashError as e:
         _emit_cli_error(
             e.status_code, e.detail, is_internal=classify_error(e) == EXIT_INTERNAL_ERROR
@@ -7101,10 +7219,12 @@ def main() -> None:
     except httpx.TransportError as e:
         _emit_cli_error(TRANSPORT_ERROR_STATUS, str(e), is_internal=True)
         raise SystemExit(EXIT_INTERNAL_ERROR)
-    except click.exceptions.UsageError as e:
-        e.show()
+    except click.UsageError as e:
+        rich_utils.rich_format_error(e)
+        _emit_usage_hint(args, e)
         raise SystemExit(e.exit_code)
-    raise SystemExit(code or 0)
+    if code is not None:
+        raise SystemExit(code)
 
 
 if __name__ == "__main__":

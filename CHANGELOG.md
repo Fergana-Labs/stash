@@ -5,6 +5,13 @@ everything before it is captured in git history (`git log`), not here.
 
 ## Unreleased
 
+- The `stash` CLI now surfaces contextual help hints when an invocation
+  fails: a near-miss command name gets a Did-you-mean suggestion with the
+  full runnable path (e.g. `stash skills list`), and a wrong or missing
+  argument or option gets a pointer to the affected command's `--help`.
+  Hints render on stderr after the existing error — stdout and `--json`
+  output are never affected, and exit codes are unchanged (2 for usage
+  errors).
 - CLI onboarding redesigned (#940). `stash signin` walks a first-run wizard
   that can be re-run anytime with the new `stash setup` — no answer is final.
   Session recording is framed as private-by-default and on by default

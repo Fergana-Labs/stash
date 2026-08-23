@@ -62,6 +62,21 @@ def echo_error(message: str) -> None:
     _err_console.print(f"[red]{message}[/red]")
 
 
+def echo_hint(message: str) -> None:
+    """Emit a contextual help hint to stderr. Never suppressed.
+
+    Usage-failure hints (a near-miss command suggestion or a --help pointer)
+    are guidance for whoever just mistyped, not data and not errors: they
+    ride on stderr so they can never enter stdout or the --json data
+    channel, and they are deliberately NOT gated on
+    set_progress_suppressed() — a caller who just hit a usage error needs
+    the hint even in quiet/JSON mode. The full convention (when hints
+    render, their wording, exit-code preservation) lives in
+    _emit_usage_hint in cli/main.py.
+    """
+    _err_console.print(f"[dim]Hint:[/dim] {message}")
+
+
 def output_json(data) -> None:
     """Print data as JSON for machine consumption."""
     print(json.dumps(data, default=str))

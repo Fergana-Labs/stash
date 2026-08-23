@@ -4,10 +4,11 @@ Commands that route through `_err` classify transport failures to exit 2 (see
 `test_axi_exit_codes.py`). But the re-raise call sites in share/page-create
 intentionally re-raise a non-409 StashError, and any raw httpx.TransportError
 that escapes the request layer — neither of which `_err` (a `StashError`-only
-router) sees. The `main()` entry boundary catches these escaped errors with
-`app(standalone_mode=False)` and routes them through the same classification
-and stderr emission, so *any* API-backed failure surfaces as the classified
-exit code with stderr (never stdout) and no raw traceback.
+router) sees. The `main()` entry boundary catches these escaped errors when it
+invokes the compiled Typer command with `standalone_mode=False` and routes
+them through the same classification and stderr emission, so *any* API-backed
+failure surfaces as the classified exit code with stderr (never stdout) and no
+raw traceback.
 """
 
 from __future__ import annotations
@@ -16,6 +17,7 @@ from pathlib import Path
 
 import httpx
 import pytest
+import typer
 
 from cli import main
 from cli.client import StashError
@@ -27,23 +29,26 @@ from cli.exit_codes import (
 )
 
 
-class _EscapingApp:
-    """Stand-in for the Typer app that raises the escaped error `main` must
-    catch — exactly what a command body that re-raises a StashError produces
-    when its error escapes through `app(standalone_mode=False)`."""
+def _making_app(exc: Exception) -> typer.Typer:
+    """Stand-in for the Typer app `main` compiles: a single command that
+    raises the escaped error `main` must catch — exactly what a command body
+    that re-raises a StashError produces when the error escapes the entry."""
+    t = typer.Typer()
 
-    def __init__(self, exc):
-        self._exc = exc
+    @t.command()
+    def boom() -> None:
+        raise exc
 
-    def __call__(self, standalone_mode=False):
-        raise self._exc
+    return t
 
 
 def _run_main(monkeypatch, capsys, argv, app_override=None, client=None) -> tuple:
     """Invoke `main()` with the given argv and capture (exit_code, out, err).
 
     Keeps the boundary test deterministic: the app is either the real `main.app`
-    (pass a `client`) or an override that raises the escaped error directly.
+    (pass a `client`) or a stand-in Typer app whose single command raises the
+    escaped error directly. A `main()` return without SystemExit is the
+    success path (exit 0); a SystemExit carries the exit code.
     """
     monkeypatch.setattr(main, "_require_auth", lambda: None)
     if client is not None:
@@ -51,10 +56,13 @@ def _run_main(monkeypatch, capsys, argv, app_override=None, client=None) -> tupl
     if app_override is not None:
         monkeypatch.setattr(main, "app", app_override)
     monkeypatch.setattr("sys.argv", list(argv))
-    with pytest.raises(SystemExit) as excinfo:
+    try:
         main.main()
+        code = EXIT_SUCCESS
+    except SystemExit as e:
+        code = e.code if isinstance(e.code, int) else EXIT_SUCCESS
     captured = capsys.readouterr()
-    return excinfo.value.code, captured.out, captured.err
+    return code, captured.out, captured.err
 
 
 # --- Escaped-error routing through the boundary (deterministic) --------------
@@ -62,7 +70,7 @@ def _run_main(monkeypatch, capsys, argv, app_override=None, client=None) -> tupl
 
 def test_escaped_transport_stasherror_surfaces_exit_2(monkeypatch, capsys) -> None:
     """A re-raised transport StashError escaping a command body exits 2."""
-    app_override = _EscapingApp(StashError(TRANSPORT_ERROR_STATUS, "connection refused"))
+    app_override = _making_app(StashError(TRANSPORT_ERROR_STATUS, "connection refused"))
     code, out, err = _run_main(monkeypatch, capsys, ["stash"], app_override=app_override)
 
     assert code == EXIT_INTERNAL_ERROR
@@ -72,7 +80,7 @@ def test_escaped_transport_stasherror_surfaces_exit_2(monkeypatch, capsys) -> No
 
 def test_escaped_4xx_stasherror_still_exits_1(monkeypatch, capsys) -> None:
     """An HTTP 4xx StashError escaping to the boundary still exits 1."""
-    app_override = _EscapingApp(StashError(404, "not found"))
+    app_override = _making_app(StashError(404, "not found"))
     code, out, err = _run_main(monkeypatch, capsys, ["stash"], app_override=app_override)
 
     assert code == EXIT_USER_ERROR
@@ -82,7 +90,7 @@ def test_escaped_4xx_stasherror_still_exits_1(monkeypatch, capsys) -> None:
 
 def test_escaped_raw_transport_exits_internal(monkeypatch, capsys) -> None:
     """A raw httpx.TransportError escaping to the boundary exits 2."""
-    app_override = _EscapingApp(
+    app_override = _making_app(
         httpx.ConnectError("refused", request=httpx.Request("GET", "http://x"))
     )
     code, out, err = _run_main(monkeypatch, capsys, ["stash"], app_override=app_override)
@@ -98,7 +106,7 @@ def test_non_stash_or_transport_error_reraises(monkeypatch, capsys) -> None:
     class Boom(Exception):
         pass
 
-    monkeypatch.setattr(main, "app", _EscapingApp(Boom("splat")))
+    monkeypatch.setattr(main, "app", _making_app(Boom("splat")))
     monkeypatch.setattr("sys.argv", ["stash"])
     with pytest.raises(Boom):
         main.main()
@@ -124,7 +132,7 @@ class _FakeSearchClient:
 
 
 def test_real_search_transport_through_entry_exits_internal(monkeypatch, capsys) -> None:
-    """The real `app(standalone_mode=False)` + `_err` path closes at the same
+    """The real compiled-command invocation + `_err` path closes at the same
     exit code: a wrapped transport failure on `stash search` exits 2 via the
     entry function, with clean stdout."""
     client = _FakeSearchClient(StashError(TRANSPORT_ERROR_STATUS, "connection refused"))
@@ -146,21 +154,23 @@ def test_real_search_success_through_entry_exits_zero(monkeypatch, capsys) -> No
 
 
 def test_missing_argument_usage_error_stays_clean(monkeypatch, capsys) -> None:
-    """A missing required argument exits with Click's clean usage message, not
-    a raw traceback.
+    """A missing required argument exits with Click's clean usage error and
+    the contextual hint, not a raw traceback.
 
     ``stash search`` requires a positional ``query``. With ``main()``'s
-    ``app(standalone_mode=False)``, Click raises a ``MissingParameter``
+    ``standalone_mode=False`` invocation, Click raises a ``MissingParameter``
     (a ``UsageError`` subclass) during parsing — before any command body or
     client call runs — instead of rendering the error itself. The boundary
-    catch must route that through Click's ``show()`` (stderr) and exit 2, the
-    same exit a dependencyless success invocation would, so a missing arg
-    never surfaces as an unhandled Click traceback.
+    catch must route that through typer's Rich error panel plus the
+    ``Hint:`` line (both stderr) and exit 2, the same exit a dependencyless
+    success invocation would, so a missing arg never surfaces as an unhandled
+    Click traceback.
     """
     code, out, err = _run_main(monkeypatch, capsys, ["stash", "search"])
 
     assert code == EXIT_INTERNAL_ERROR
     assert "Missing argument" in err
+    assert "Hint:" in err
     assert out == ""
 
 
