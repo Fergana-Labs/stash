@@ -47,7 +47,7 @@ SPRITE_PATH = (
 # Bump whenever _seed_script changes: boxes provisioned under an older
 # version re-run the (idempotent) seed on their next acquire, so additions
 # like a new harness CLI reach existing sprites, not just new ones.
-SEED_VERSION = 3
+SEED_VERSION = 5
 
 # Pinned because the installer's "latest" lookup hits the unauthenticated
 # GitHub API, whose per-IP rate limit the sprites' shared egress IP exhausts —
@@ -260,6 +260,20 @@ def _seed_script(stash_key: str) -> str:
     managed agent and BYO users run — so the seed installs them into
     ~/.local/bin (on the harness PATH alongside claude/codex).
 
+    The opencode install pipes the installer through curl, which the base
+    image is assumed to ship — production-proven since seed v1 (every box
+    ever provisioned installed opencode through it) — but nothing guarantees.
+    A missing curl fails the seed with a precise, self-describing message
+    ("curl is not present on this sprite base image") rather than a bare
+    "curl: command not found" — a seed failure rolls back the box or loops
+    reseed failures, so that message is all an operator gets.
+
+    The pi install requires npm, which the base image is assumed to ship but
+    nothing guarantees. A missing npm fails the seed with a precise,
+    self-describing message ("npm is not present on this sprite base image")
+    rather than a bare "npm: command not found" — a seed failure rolls back
+    the box or loops reseed failures, so that message is all an operator gets.
+
     Skills are synced here (not via a polling service) on purpose: a periodic
     daemon would count as activity and keep the box awake 24/7, defeating the
     sleep-to-zero cost model. Live skill re-sync is a fast-follow (sync at
@@ -273,8 +287,35 @@ set -euo pipefail
 export PATH="{SPRITE_PATH}"
 command -v stash > /dev/null || python3 -m pip install --user --break-system-packages stashai
 mkdir -p ~/.local/bin
-command -v opencode > /dev/null || {{ curl -fsSL https://opencode.ai/install | VERSION={OPENCODE_VERSION} bash; ln -sf ~/.opencode/bin/opencode ~/.local/bin/opencode; }}
-command -v pi > /dev/null || {{ npm install -g --ignore-scripts @earendil-works/pi-coding-agent@{PI_VERSION}; ln -sf "$(npm prefix -g)/bin/pi" ~/.local/bin/pi; }}
+install_opencode() {{
+  # curl is assumed to ship in the base image — production-proven since
+  # seed v1 (every box ever provisioned installed opencode through it) —
+  # but is still an unverified assumption. A missing curl must fail the
+  # seed with a precise message, not a bare "curl: command not found"
+  # (exit 127): a seed failure rolls back the whole box, so the error
+  # text is all an operator gets.
+  if ! command -v curl > /dev/null; then
+    echo "sprite seed failed: curl is not present on this sprite base image; the opencode harness ({OPENCODE_VERSION}) cannot be installed without it. Ship curl in the sprite base image." >&2
+    exit 1
+  fi
+  curl -fsSL https://opencode.ai/install | VERSION={OPENCODE_VERSION} bash
+  ln -sf ~/.opencode/bin/opencode ~/.local/bin/opencode
+}}
+command -v opencode > /dev/null || install_opencode
+install_pi() {{
+  # npm is an unverified base-image assumption (claude/codex are preinstalled;
+  # their presence does not guarantee npm). A missing npm must fail the seed
+  # with a precise message, not a bare "npm: command not found" (exit 127):
+  # a seed failure rolls back the whole box, so the error text is all an
+  # operator gets.
+  if ! command -v npm > /dev/null; then
+    echo "sprite seed failed: npm is not present on this sprite base image; the pi coding agent (@earendil-works/pi-coding-agent@{PI_VERSION}) cannot be installed without it. Ship Node.js/npm in the sprite base image." >&2
+    exit 1
+  fi
+  npm install -g --ignore-scripts @earendil-works/pi-coding-agent@{PI_VERSION}
+  ln -sf "$(npm prefix -g)/bin/pi" ~/.local/bin/pi
+}}
+command -v pi > /dev/null || install_pi
 mkdir -p ~/.stash
 cat > ~/.stash/config.json << 'STASH_CONFIG'
 {config}

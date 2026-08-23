@@ -78,7 +78,7 @@ def test_seed_script_installs_pinned_pi():
     transcript contract (and with it the whole local-model feature)."""
     script = sprite_service._seed_script("k")
     assert f"@earendil-works/pi-coding-agent@{sprite_service.PI_VERSION}" in script
-    assert sprite_service.SEED_VERSION == 3  # bumped for the pi seed line
+    assert sprite_service.SEED_VERSION >= 3  # 3 bumped for the pi seed line; 4 for the npm guard
 
 
 @pytest.mark.asyncio
