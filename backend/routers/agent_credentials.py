@@ -1,10 +1,15 @@
 """Connect / list / disconnect the model credential the cloud agent runs on.
 
-A user pastes an API key for Claude (anthropic), Codex (openai), or OpenRouter,
-and the agent runs their harness with it. OAuth connect flows are separate.
+A user pastes an API key for Claude (anthropic), Codex (openai), or
+OpenRouter, or connects their own OpenAI-compatible local model (base URL +
+model, key optional), and the agent runs their harness with it. OAuth connect
+flows are separate.
 """
 
 from __future__ import annotations
+
+import json
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -14,12 +19,16 @@ from ..services import agent_auth, agent_oauth
 
 router = APIRouter(prefix="/api/v1/me/agent-credentials", tags=["agent-credentials"])
 
-_PROVIDERS = {"anthropic", "openai", "openrouter"}
+_PROVIDERS = {"anthropic", "openai", "openrouter", "local"}
 
 
 class ConnectRequest(BaseModel):
     provider: str
-    api_key: str
+    api_key: str | None = None  # required for the three key providers; optional for local
+    base_url: str | None = (
+        None  # local only: OpenAI-compatible endpoint your cloud computer can reach
+    )
+    model: str | None = None  # local only: the model id on that endpoint
 
 
 class OAuthStartRequest(BaseModel):
@@ -42,7 +51,28 @@ async def list_credentials(current_user: dict = Depends(get_current_user)):
 async def connect(req: ConnectRequest, current_user: dict = Depends(get_current_user)):
     if req.provider not in _PROVIDERS:
         raise HTTPException(status_code=400, detail=f"unknown provider: {req.provider}")
-    if not req.api_key.strip():
+    if req.provider == "local":
+        # The credential is an endpoint, not a key: an absolute http(s) base
+        # URL the SPRITE can reach (the backend never dials it) plus a model id.
+        parsed = urlparse((req.base_url or "").strip())
+        if parsed.scheme not in ("http", "https") or not parsed.netloc:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "base_url must be an absolute http(s) URL your cloud computer can reach "
+                    "(e.g. http://your-host:11434/v1)"
+                ),
+            )
+        if not (req.model or "").strip():
+            raise HTTPException(status_code=400, detail="model is required for the local endpoint")
+        doc = {
+            "base_url": req.base_url.strip(),
+            "model": req.model.strip(),
+            "api_key": (req.api_key or "").strip() or None,  # keyless endpoints are common
+        }
+        await agent_auth.store_credential(current_user["id"], "local", "endpoint", json.dumps(doc))
+        return {"ok": True, "connected": await agent_auth.list_connected(current_user["id"])}
+    if not req.api_key or not req.api_key.strip():
         raise HTTPException(status_code=400, detail="api_key is required")
     await agent_auth.store_credential(
         current_user["id"], req.provider, "api_key", req.api_key.strip()

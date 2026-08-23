@@ -61,6 +61,7 @@ async def test_stale_seed_reruns_once_on_acquire(client: AsyncClient, sprites_mo
     assert sprite.name == f"stash-u-{user_id.hex}"
     assert len(sprites_mode) == 1
     assert "opencode" in sprites_mode[0][2]  # the seed script installs opencode
+    assert "pi-coding-agent" in sprites_mode[0][2]  # and the pi harness (local models)
 
     row = await get_pool().fetchrow(
         "SELECT seed_version FROM user_sprites WHERE user_id = $1", user_id
@@ -70,6 +71,14 @@ async def test_stale_seed_reruns_once_on_acquire(client: AsyncClient, sprites_mo
     # Now current: acquiring again must not seed a second time.
     await sprite_service.acquire(user_id)
     assert len(sprites_mode) == 1
+
+
+def test_seed_script_installs_pinned_pi():
+    """The pi harness is pinned: a floating npm install would change the
+    transcript contract (and with it the whole local-model feature)."""
+    script = sprite_service._seed_script("k")
+    assert f"@earendil-works/pi-coding-agent@{sprite_service.PI_VERSION}" in script
+    assert sprite_service.SEED_VERSION == 3  # bumped for the pi seed line
 
 
 @pytest.mark.asyncio

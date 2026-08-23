@@ -117,6 +117,8 @@ trajectories.</p>
   <li><a href="{app_url}/developer"><strong>Install Stash for your Product</strong></a> &mdash; You can do the same operation for your product. If you&rsquo;re building an agent, copy an API key and copy the prompt provided to give your agent learning across rollouts in minutes! A cool feature here is we let your agent merge learnings across multiple end users with anonymization</li>
 </ol>
 
+<p>There's also an agent in the app itself (Chat, in the sidebar) &mdash; point it at your own Claude, Codex, or OpenRouter key, or a local model, in settings.</p>
+
 <p>Please reply to this email if you have any questions, or even if you just
 want to chat. I personally read every reply!</p>
 

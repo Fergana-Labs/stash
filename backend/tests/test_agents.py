@@ -71,6 +71,27 @@ async def test_create_update_delete_agent(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_local_model_provider_accepted(client: AsyncClient):
+    key = await _register(client)
+    created = (
+        await client.post(
+            "/api/v1/me/agents",
+            json={"name": "Local", "model_provider": "local"},
+            headers=_auth(key),
+        )
+    ).json()
+    assert created["model_provider"] == "local"
+    updated = (
+        await client.patch(
+            f"/api/v1/me/agents/{created['id']}",
+            json={"model_provider": "openrouter"},
+            headers=_auth(key),
+        )
+    ).json()
+    assert updated["model_provider"] == "openrouter"
+
+
+@pytest.mark.asyncio
 async def test_cannot_delete_default(client: AsyncClient):
     key = await _register(client)
     default = (await client.get("/api/v1/me/agents", headers=_auth(key))).json()["agents"][0]

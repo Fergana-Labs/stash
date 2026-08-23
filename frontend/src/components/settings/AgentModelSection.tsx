@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import {
   connectAgentKey,
+  connectLocalEndpoint,
   disconnectAgentCredential,
   finishAgentOAuth,
   listAgentCredentials,
@@ -11,12 +12,14 @@ import {
 } from "@/lib/api";
 
 // The provider a user connects for their cloud agent. Claude and Codex support
-// OAuth (sign in with your subscription) or an API key; OpenRouter is key-only.
+// OAuth (sign in with your subscription) or an API key; OpenRouter is key-only;
+// the local model is an endpoint (base URL + model, key optional).
 type Provider = {
   id: string;
   label: string;
   blurb: string;
   oauth: boolean;
+  endpoint: boolean;
   keyHint: string;
 };
 
@@ -26,6 +29,7 @@ const PROVIDERS: Provider[] = [
     label: "Claude Code",
     blurb: "Sign in with your Claude subscription, or paste an Anthropic API key.",
     oauth: true,
+    endpoint: false,
     keyHint: "sk-ant-…",
   },
   {
@@ -33,6 +37,7 @@ const PROVIDERS: Provider[] = [
     label: "Codex",
     blurb: "Sign in with ChatGPT, or paste an OpenAI API key.",
     oauth: true,
+    endpoint: false,
     keyHint: "sk-…",
   },
   {
@@ -40,7 +45,17 @@ const PROVIDERS: Provider[] = [
     label: "OpenRouter",
     blurb: "Run any model on your own OpenRouter key.",
     oauth: false,
+    endpoint: false,
     keyHint: "sk-or-…",
+  },
+  {
+    id: "local",
+    label: "Local model",
+    blurb:
+      "Ollama or any OpenAI-compatible endpoint your cloud computer can reach — expose it with a tunnel (cloudflared, ngrok) or self-host it.",
+    oauth: false,
+    endpoint: true,
+    keyHint: "optional key…",
   },
 ];
 
@@ -62,8 +77,9 @@ export default function AgentModelSection() {
       <div>
         <h2 className="text-lg font-semibold text-foreground">Cloud agent model</h2>
         <p className="text-sm text-muted-foreground mt-1">
-          Connect Claude, Codex, or OpenRouter to run the agent on your own account. Pro
-          members without a connection use the managed agent (OpenRouter GLM&nbsp;5.2).
+          Connect Claude, Codex, OpenRouter, or a local model to run the agent on your own
+          account. Pro members without a connection use the managed agent (OpenRouter
+          GLM&nbsp;5.2).
         </p>
       </div>
       {loading ? (
@@ -93,8 +109,11 @@ function ProviderRow({
   connected: boolean;
   onChange: (c: string[]) => void;
 }) {
-  const [mode, setMode] = useState<"idle" | "key" | "oauth">("idle");
+  const [mode, setMode] = useState<"idle" | "key" | "endpoint" | "oauth">("idle");
   const [apiKey, setApiKey] = useState("");
+  const [baseUrl, setBaseUrl] = useState("");
+  const [modelId, setModelId] = useState("");
+  const [localKey, setLocalKey] = useState("");
   const [oauthState, setOauthState] = useState<string | null>(null);
   const [pasted, setPasted] = useState("");
   const [busy, setBusy] = useState(false);
@@ -118,6 +137,24 @@ function ProviderRow({
       setApiKey("");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not save key");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function saveEndpoint() {
+    setBusy(true);
+    setError(null);
+    try {
+      onChange(
+        await connectLocalEndpoint(baseUrl.trim(), modelId.trim(), localKey.trim() || null),
+      );
+      setMode("idle");
+      setBaseUrl("");
+      setModelId("");
+      setLocalKey("");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not connect endpoint");
     } finally {
       setBusy(false);
     }
@@ -191,10 +228,14 @@ function ProviderRow({
             )}
             <button
               type="button"
-              onClick={() => setMode(mode === "key" ? "idle" : "key")}
+              onClick={() =>
+                setMode(
+                  mode === (provider.endpoint ? "endpoint" : "key") ? "idle" : provider.endpoint ? "endpoint" : "key",
+                )
+              }
               className="rounded-md border border-border px-3 py-1.5 text-[12.5px] text-foreground hover:bg-raised"
             >
-              API key
+              {provider.endpoint ? "Connect endpoint" : "API key"}
             </button>
           </div>
         )}
@@ -217,6 +258,47 @@ function ProviderRow({
           >
             Save
           </button>
+        </div>
+      )}
+
+      {mode === "endpoint" && !connected && provider.endpoint && (
+        <div className="mt-3 space-y-2">
+          <p className="text-[12.5px] text-muted-foreground">
+            The base URL must be reachable from your cloud computer (a tunnel or a
+            self-hosted server), and the model id is the one that endpoint serves.
+          </p>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <input
+              type="url"
+              value={baseUrl}
+              onChange={(e) => setBaseUrl(e.target.value)}
+              placeholder="http://your-host:11434/v1"
+              className="flex-1 rounded-md border border-border bg-surface px-2.5 py-1.5 font-mono text-[12.5px] text-foreground"
+            />
+            <input
+              value={modelId}
+              onChange={(e) => setModelId(e.target.value)}
+              placeholder="llama3.1:8b"
+              className="flex-1 rounded-md border border-border bg-surface px-2.5 py-1.5 font-mono text-[12.5px] text-foreground"
+            />
+          </div>
+          <div className="flex gap-2">
+            <input
+              type="password"
+              value={localKey}
+              onChange={(e) => setLocalKey(e.target.value)}
+              placeholder={provider.keyHint}
+              className="flex-1 rounded-md border border-border bg-surface px-2.5 py-1.5 font-mono text-[12.5px] text-foreground"
+            />
+            <button
+              type="button"
+              onClick={saveEndpoint}
+              disabled={busy || !baseUrl.trim() || !modelId.trim()}
+              className="rounded-md bg-brand px-3 py-1.5 text-[12.5px] font-medium text-white disabled:opacity-60"
+            >
+              Connect
+            </button>
+          </div>
         </div>
       )}
 

@@ -2385,6 +2385,19 @@ export async function connectAgentKey(provider: string, apiKey: string): Promise
   return data.connected;
 }
 
+export async function connectLocalEndpoint(
+  baseUrl: string,
+  model: string,
+  apiKey?: string | null,
+): Promise<string[]> {
+  const data = await apiFetch<{ connected: string[] }>("/api/v1/me/agent-credentials", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ provider: "local", base_url: baseUrl, model, api_key: apiKey ?? null }),
+  });
+  return data.connected;
+}
+
 export async function disconnectAgentCredential(provider: string): Promise<string[]> {
   const data = await apiFetch<{ connected: string[] }>(
     `/api/v1/me/agent-credentials/${provider}`,

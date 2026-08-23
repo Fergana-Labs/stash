@@ -247,6 +247,126 @@ async def test_harness_emitted_error_is_redacted(monkeypatch):
     assert "sk-live-secret" not in state.error
 
 
+# --- pi (LOCAL) ---
+
+PI_FIXTURE = Path(__file__).parent / "fixtures" / "pi_stream.jsonl"
+
+
+def _map_pi_fixture() -> tuple[list[dict], h.TurnState]:
+    state = h.TurnState()
+    events: list[dict] = []
+    for line in PI_FIXTURE.read_text().splitlines():
+        events.extend(h.map_line(h.PI, line, state))
+    return events, state
+
+
+def test_pi_argv_is_the_verified_one_shot_form():
+    argv = h.build_argv(
+        h.PI,
+        "Run the bash command echo hi",
+        session_key=None,
+        resume=False,
+        system_prompt="sys",
+        model="mock-1",
+    )
+    assert argv == [
+        "pi",
+        "--mode",
+        "json",
+        "--model",
+        "local/mock-1",
+        "-p",
+        "Run the bash command echo hi",
+        "--append-system-prompt",
+        "sys",
+        "--no-extensions",
+    ]
+
+
+def test_pi_resume_argv_appends_session_flag_only():
+    resumed = h.build_argv(
+        h.PI,
+        "more",
+        session_key="01a02a53-f82f-76bf-9d88-38759358c244",
+        resume=True,
+        system_prompt="sys",
+        model="mock-1",
+    )
+    assert resumed[-2:] == ["--session", "01a02a53-f82f-76bf-9d88-38759358c244"]
+    assert "--session-id" not in resumed
+
+
+def test_pi_argv_without_model_fails_loud():
+    with pytest.raises(ValueError):
+        h.build_argv(h.PI, "hi", session_key=None, resume=False, system_prompt="sys")
+
+
+def test_pi_fixture_maps_to_contract_events():
+    events, state = _map_pi_fixture()
+
+    text = "".join(e["delta"] for e in events if e["type"] == "text")
+    assert "second-turn-ok saw-4-messages" in text
+
+    tools = [e for e in events if e["type"] == "tool"]
+    assert len(tools) == 1 and tools[0]["name"] == "bash"
+    assert tools[0]["args"] == {"command": "echo hi-from-mock"}
+
+    results = [e for e in events if e["type"] == "tool_result"]
+    assert len(results) == 1 and results[0]["ok"] is True
+    assert results[0]["id"] == tools[0]["id"] and results[0]["name"] == "bash"
+
+    # Final answer comes from the last text message_end, not the tool turn.
+    assert state.result_text == "second-turn-ok saw-4-messages"
+    assert state.error is None
+    # Resume key captured from the first-line session header.
+    assert state.native_id == "01a02a53-f82f-76bf-9d88-38759358c244"
+
+
+def test_pi_message_end_error_sets_state_error():
+    # Verbatim message_end line from the recorded dead-endpoint turn (turn 4):
+    # pi exits 0 here, so this mapping — not the exit code — is the error path.
+    state = h.TurnState()
+    h.map_line(
+        h.PI,
+        '{"type":"message_end","message":{"role":"assistant","content":[],'
+        '"api":"openai-completions","provider":"local","model":"mock-1",'
+        '"usage":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,'  # noqa: E501
+        '"totalTokens":0,"cost":{"input":0,"output":0,"cacheRead":0,'
+        '"cacheWrite":0,"total":0}},"stopReason":"error",'
+        '"timestamp":1787416676209,"errorMessage":"Connection error."}}',
+        state,
+    )
+    assert state.error == "Connection error."
+
+
+def test_pi_auto_retry_end_failure_sets_state_error():
+    state = h.TurnState()
+    h.map_line(
+        h.PI,
+        '{"type":"auto_retry_end","success":false,"attempt":3,"finalError":"Connection error."}',
+        state,
+    )
+    assert state.error == "Connection error."
+
+    ok = h.TurnState()
+    h.map_line(h.PI, '{"type":"auto_retry_end","success":true,"attempt":1}', ok)
+    assert ok.error is None
+
+
+def test_pi_resume_missing_marker_sets_resume_missing():
+    state = h.TurnState()
+    h.map_line(h.PI, "No session found matching '01a00000-0000-4000-8000-000000000000'", state)
+    assert state.resume_missing is True
+
+
+def test_opencode_resume_missing_marker_still_detected():
+    # Regression: extending RESUME_MISSING_RE for pi must keep the opencode
+    # marker working (the non-JSON path is shared by all harnesses).
+    state = h.TurnState()
+    h.map_line(h.OPENCODE, "No conversation found for session sess_abc", state)
+    assert state.resume_missing is True
+
+
 # --- turn env + redaction (sprite_agent_service) ---
 
 
@@ -254,6 +374,19 @@ def test_redaction_strips_injected_key_and_sk_ant():
     env = {"ANTHROPIC_API_KEY": "sk-ant-api03-secret123"}
     assert "secret123" not in svc._redact("leaked sk-ant-api03-secret123 here", env)
     assert "sk-ant-other" not in svc._redact("also sk-ant-other-key", env)
+
+
+def test_redaction_pi_env_does_not_redact_flag_values():
+    """pi's provider env carries PI_OFFLINE=1 and HOME next to the real key.
+    Redacting every env VALUE would replace each "1" in the streamed
+    transcript (line 12, port 11434, llama3.1) with [redacted] — and the
+    HOME value would mangle every workspace path in the answer
+    (/home/sprite/work/… → [redacted]/work/…). The key is stripped; the flag
+    and the paths are not."""
+    env = {"PI_OFFLINE": "1", "HOME": "/home/sprite", "STASH_LOCAL_KEY": "my-local-secret"}
+    text = "I created 3 files, first at /home/sprite/work/a.md, line 12 on port 11434."
+    assert svc._redact(text, env) == text
+    assert "my-local-secret" not in svc._redact("the key was my-local-secret", env)
 
 
 def test_reseed_prompt_replays_history_capped():
