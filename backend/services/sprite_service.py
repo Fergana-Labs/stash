@@ -47,12 +47,14 @@ SPRITE_PATH = (
 # Bump whenever _seed_script changes: boxes provisioned under an older
 # version re-run the (idempotent) seed on their next acquire, so additions
 # like a new harness CLI reach existing sprites, not just new ones.
-SEED_VERSION = 2
+SEED_VERSION = 3
 
 # Pinned because the installer's "latest" lookup hits the unauthenticated
 # GitHub API, whose per-IP rate limit the sprites' shared egress IP exhausts —
 # a pinned version downloads straight from the release CDN instead.
 OPENCODE_VERSION = "1.17.18"
+# npm package version (the pi binary's own `--version` prints 0.1.0 internally).
+PI_VERSION = "0.84.2"
 
 # A first-ever provision creates the VM and seeds it (~10-30s).
 PROVISION_TIMEOUT_S = 180
@@ -250,11 +252,12 @@ async def _wait_until_ready(user_id: UUID) -> Sprite:
 
 
 def _seed_script(stash_key: str) -> str:
-    """Idempotent first-boot setup: stash CLI, the opencode harness, headless
-    auth, the Claude Code plugin (session upload), skills, and the workspace.
+    """Idempotent first-boot setup: stash CLI, the opencode and pi harnesses,
+    headless auth, the Claude Code plugin (session upload), skills, and the
+    workspace.
 
-    The base image ships claude and codex but not opencode, which the managed
-    agent and BYO-OpenRouter users run — so the seed installs it into
+    The base image ships claude and codex but not opencode or pi, which the
+    managed agent and BYO users run — so the seed installs them into
     ~/.local/bin (on the harness PATH alongside claude/codex).
 
     Skills are synced here (not via a polling service) on purpose: a periodic
@@ -271,6 +274,7 @@ export PATH="{SPRITE_PATH}"
 command -v stash > /dev/null || python3 -m pip install --user --break-system-packages stashai
 mkdir -p ~/.local/bin
 command -v opencode > /dev/null || {{ curl -fsSL https://opencode.ai/install | VERSION={OPENCODE_VERSION} bash; ln -sf ~/.opencode/bin/opencode ~/.local/bin/opencode; }}
+command -v pi > /dev/null || {{ npm install -g --ignore-scripts @earendil-works/pi-coding-agent@{PI_VERSION}; ln -sf "$(npm prefix -g)/bin/pi" ~/.local/bin/pi; }}
 mkdir -p ~/.stash
 cat > ~/.stash/config.json << 'STASH_CONFIG'
 {config}
@@ -416,8 +420,38 @@ async def local_agent_env(user_id: UUID) -> dict[str, str]:
     return {"STASH_API_KEY": key, "STASH_URL": f"http://localhost:{settings.PORT}"}
 
 
+def local_box_home() -> Path:
+    """The simulated box's home dir in local exec mode; the workdir is a
+    child. Harness config files (e.g. pi's models.json) resolve against it,
+    and a locally exec'd harness gets HOME pointed here so it reads the
+    simulated box's config, not the developer's machine config."""
+    return Path.home() / ".stash-dev-sprite"
+
+
 def _local_workdir() -> Path:
-    return Path.home() / ".stash-dev-sprite" / "work"
+    return local_box_home() / "work"
+
+
+# Vars that must not leak from the backend into a locally exec'd harness.
+# ANTHROPIC_API_KEY: the backend's key (loaded into os.environ by dotenv) would
+# override the developer's local Claude login, which local mode deliberately
+# relies on. The PI_* set: pi treats these as session-private — its own bash
+# tool strips the same session vars from its children — and the backend can
+# itself run inside a pi-hosted agent, where an inherited PI_PACKAGE_DIR points
+# the child pi at the host's staging dir and it crashes on startup.
+_LOCAL_ENV_BLOCKED = {
+    "ANTHROPIC_API_KEY",
+    "PI_PACKAGE_DIR",
+    "PI_SESSION_ID",
+    "PI_SESSION_FILE",
+    "PI_PROVIDER",
+    "PI_MODEL",
+    "PI_REASONING_LEVEL",
+}
+
+
+def _local_inherited_env() -> dict[str, str]:
+    return {k: v for k, v in os.environ.items() if k not in _LOCAL_ENV_BLOCKED}
 
 
 async def _local_exec_stream(
@@ -429,16 +463,13 @@ async def _local_exec_stream(
     # Callers name box paths; the simulated box's workdir lives under $HOME.
     local_cwd = _local_workdir() if cwd in (None, SPRITE_WORKDIR) else Path(cwd)
     local_cwd.mkdir(parents=True, exist_ok=True)
-    # Local mode means "this machine's own claude login" — the backend's
-    # ANTHROPIC_API_KEY (loaded into os.environ by dotenv) must not leak into
-    # the child, or it overrides that login. Explicit `env` still wins.
-    inherited = {k: v for k, v in os.environ.items() if k != "ANTHROPIC_API_KEY"}
+    # Explicit `env` still wins over the inherited environment.
     proc = await asyncio.create_subprocess_exec(
         *argv,
         stdin=asyncio.subprocess.DEVNULL,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
-        env={**inherited, **env},
+        env={**_local_inherited_env(), **env},
         cwd=str(local_cwd),
     )
     assert proc.stdout is not None and proc.stderr is not None

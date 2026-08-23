@@ -27,7 +27,7 @@ from uuid import UUID
 from ..config import settings
 from ..database import get_pool
 from ..integrations.storage import _decrypt, _encrypt
-from . import billing_service, model_provider
+from . import billing_service, model_provider, sprite_service
 from . import harness as harness_mod
 
 
@@ -44,9 +44,10 @@ _PROVIDER_HARNESS = {
     "anthropic": harness_mod.CLAUDE,  # Claude Code
     "openai": harness_mod.CODEX,  # Codex
     "openrouter": harness_mod.OPENCODE,  # opencode on the user's OpenRouter key
+    "local": harness_mod.PI,  # pi on the user's own OpenAI-compatible endpoint
 }
-# OpenRouter has no OAuth — API key only.
-_API_KEY_ONLY = {"openrouter"}
+# OpenRouter and local have no OAuth — API key only (local's key is optional).
+_API_KEY_ONLY = {"openrouter", "local"}
 
 # The managed agent: opencode driving OpenRouter's GLM 5.2, on our key.
 MANAGED_HARNESS = harness_mod.OPENCODE
@@ -76,6 +77,10 @@ class RunAuth:
     env: dict[str, str] = field(default_factory=dict)
     # Files to write on the box before the turn: {path: contents}. For OAuth.
     files: dict[str, str] = field(default_factory=dict)
+    # Local model only: the OpenAI-compatible base URL the harness dials and
+    # the model id within it (both set only for the LOCAL provider's PI run).
+    endpoint: str | None = None
+    model: str | None = None
 
 
 async def _get_credential(user_id: UUID, provider: str | None = None) -> dict | None:
@@ -102,10 +107,14 @@ async def _get_credential(user_id: UUID, provider: str | None = None) -> dict | 
 async def store_credential(user_id: UUID, provider: str, kind: str, secret: str) -> None:
     if provider not in _PROVIDER_HARNESS:
         raise ValueError(f"unknown provider: {provider}")
-    if kind not in ("api_key", "oauth"):
+    if kind not in ("api_key", "oauth", "endpoint"):
         raise ValueError(f"unknown credential kind: {kind}")
     if kind == "oauth" and provider in _API_KEY_ONLY:
         raise ValueError(f"{provider} does not support OAuth")
+    # An endpoint credential is the local model's base URL + model doc — nothing
+    # else has that shape.
+    if kind == "endpoint" and provider != "local":
+        raise ValueError(f"{provider} does not support endpoint credentials")
     await get_pool().execute(
         "INSERT INTO user_agent_credentials (user_id, provider, kind, secret_enc) "
         "VALUES ($1, $2, $3, $4) "
@@ -139,9 +148,17 @@ async def resolve(user_id: UUID, prefer_provider: str | None = None) -> RunAuth:
     `prefer_provider` is an agent's model override: if the user has that
     provider's credential, run it; a managed OpenRouter preference on Pro uses
     the managed GLM. Falls back to the user's default resolution otherwise.
+
+    In local exec mode a connected local endpoint still resolves to pi: its
+    credential is self-contained (base URL + model), so no sprite is needed —
+    and the turn runs against the simulated box's home, isolated from the
+    developer's own pi config.
     """
     # Local dev: the machine's own harness login; inject nothing.
     if settings.AGENT_EXEC_MODE == "local":
+        local_cred = await _get_credential(user_id, "local")
+        if local_cred is not None and prefer_provider in (None, "local"):
+            return _local_auth(local_cred, home=str(sprite_service.local_box_home()))
         return RunAuth(harness=harness_mod.CLAUDE)
 
     if prefer_provider:
@@ -176,6 +193,8 @@ async def _managed(user_id: UUID) -> RunAuth:
 
 
 def _byo_auth(cred: dict) -> RunAuth:
+    if cred["provider"] == "local":
+        return _local_auth(cred)
     harness = _PROVIDER_HARNESS[cred["provider"]]
     if cred["kind"] == "api_key":
         return RunAuth(harness=harness, env={harness.provider.env_var: cred["secret"]})
@@ -197,6 +216,60 @@ def _byo_auth(cred: dict) -> RunAuth:
 
 
 _SPRITE_HOME = "/home/sprite"
+
+
+def _local_auth(cred: dict, home: str = _SPRITE_HOME) -> RunAuth:
+    """Local model: the credential is a JSON doc describing the user's own
+    OpenAI-compatible endpoint (base_url, model, optional api_key). pi reads a
+    provider config file; the key, when set, rides only in the STASH_LOCAL_KEY
+    env var that the file's $STASH_LOCAL_KEY interpolation expands.
+
+    The key is never in argv, and a keyless endpoint gets a literal dummy so
+    the file shape stays one codepath.
+
+    `home` is the box's home dir: the real /home/sprite on a sprites box, or
+    the simulated box home in local exec mode. pi resolves its config from
+    $HOME, so the HOME override keeps a locally exec'd turn on the box config
+    that carries this endpoint — never the developer's machine config.
+    """
+    doc = json.loads(cred["secret"])
+    base_url = doc.get("base_url")
+    model = doc.get("model")
+    if not base_url or not model:
+        raise ValueError("local credential is missing base_url or model")
+    env = {"PI_OFFLINE": "1", "HOME": home}  # no pi startup network calls
+    api_key = doc.get("api_key")
+    if api_key:
+        env[model_provider.LOCAL.env_var] = api_key
+        key_ref = "$STASH_LOCAL_KEY"
+    else:
+        key_ref = "local"
+    models_json = json.dumps(
+        {
+            "providers": {
+                "local": {
+                    "baseUrl": base_url,
+                    "api": "openai-completions",
+                    "apiKey": key_ref,
+                    # Ollama-style servers reject OpenAI's developer role and
+                    # reasoning_effort; these flags keep pi off both.
+                    "compat": {
+                        "supportsDeveloperRole": False,
+                        "supportsReasoningEffort": False,
+                    },
+                    "models": [{"id": model, "contextWindow": 131072, "maxTokens": 8192}],
+                }
+            }
+        },
+        indent=2,
+    )
+    return RunAuth(
+        harness=harness_mod.PI,
+        env=env,
+        files={f"{home}/.pi/agent/models.json": models_json},
+        endpoint=base_url,
+        model=model,
+    )
 
 
 def _codex_auth_json(secret: str) -> str:

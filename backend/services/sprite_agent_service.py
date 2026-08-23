@@ -55,9 +55,14 @@ def _sse(event: dict) -> str:
 
 def _redact(text: str, provider_env: dict[str, str]) -> str:
     """Strip the injected provider key (and sk-ant-shaped tokens) from output —
-    a failed command echoes its env prefix."""
-    for value in provider_env.values():
-        if value:
+    a failed command echoes its env prefix.
+
+    Only values of credential-named vars are candidates: pi's env also carries
+    flag and path values (PI_OFFLINE=1, HOME) next to the key, and replacing
+    those would turn every "1" — or every workspace path under the box's
+    home (/home/sprite/work/…) — in the transcript into [redacted]."""
+    for name, value in provider_env.items():
+        if value and "KEY" in name:
             text = text.replace(value, "[redacted]")
     return re.sub(r"sk-ant-[A-Za-z0-9_-]+", "[redacted]", text)
 
@@ -228,6 +233,24 @@ async def _turn_events(
     for path, contents in auth.files.items():
         await sprite_service.write_file(sprite, path, contents)
 
+    if harness is harness_mod.PI:
+        # Turn-start preflight: the sprite (never the backend) probes the
+        # user's endpoint. A dead endpoint must fail here, loudly, instead of
+        # letting pi retry internally and report success on an empty turn.
+        if not auth.endpoint:
+            raise RuntimeError("PI turn resolved without an endpoint credential")
+        if not await _endpoint_reachable(sprite, auth.endpoint):
+            yield {
+                "type": "error",
+                "message": (
+                    f"Your local model endpoint ({auth.endpoint}) is not reachable from "
+                    "your cloud computer. Expose it with a tunnel (cloudflared, ngrok, ssh) "
+                    "or run it on a server your cloud computer can reach, then try again."
+                ),
+            }
+            yield {"type": "end", "_result_text": ""}
+            return
+
     native_id = await harness_mod.get_native_id(session_id, harness.id)
     key = harness_mod.session_key(harness, session_id, native_id)
     # Claude resumes when the conversation has prior turns (its id is
@@ -245,6 +268,7 @@ async def _turn_events(
         resume=resume,
         system_prompt=system_prompt,
         disallowed_tools=disallowed_tools,
+        model=auth.model,
     )
     async for event in _run_harness(harness, sprite, argv, state, provider_env):
         yield event
@@ -264,6 +288,7 @@ async def _turn_events(
             resume=False,
             system_prompt=system_prompt,
             disallowed_tools=disallowed_tools,
+            model=auth.model,
         )
         async for event in _run_harness(harness, sprite, argv, state, provider_env):
             yield event
@@ -278,6 +303,20 @@ async def _turn_events(
 
 class TurnInProgress(RuntimeError):
     """Another turn is already running in this session."""
+
+
+async def _endpoint_reachable(sprite: sprite_service.Sprite, base_url: str) -> bool:
+    """Sprite-side probe of the user's local endpoint: any HTTP response
+    (even 401/404) proves the server is up; connection failure, DNS, and
+    timeout (curl exit 6/7/28) mean unreachable."""
+    _, exit_code = await sprite_service.exec_collect(
+        sprite,
+        ["curl", "-s", "-o", "/dev/null", "--max-time", "5", base_url.rstrip("/") + "/models"],
+        env={},
+        timeout_s=20,
+        stdout_only=True,
+    )
+    return exit_code == 0
 
 
 class TurnStopped(Exception):

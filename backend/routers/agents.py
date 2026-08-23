@@ -16,7 +16,7 @@ router = APIRouter(prefix="/api/v1/me/agents", tags=["agents"])
 
 class AgentFields(BaseModel):
     name: str | None = None
-    model_provider: str | None = None  # anthropic | openai | openrouter | null(auto)
+    model_provider: str | None = None  # anthropic | openai | openrouter | local | null(auto)
     system_prompt: str | None = None
     run_mode: str = "chat"
     schedule_cron: str | None = None

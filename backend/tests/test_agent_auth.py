@@ -2,17 +2,23 @@
 
 import json
 import uuid
+from pathlib import Path
 
 import pytest
 
 from backend.config import settings
-from backend.services import agent_auth, billing_service
+from backend.services import agent_auth, billing_service, sprite_service
 from backend.services import harness as h
 
 
 @pytest.mark.asyncio
 async def test_local_mode_uses_claude_no_injection(monkeypatch):
     monkeypatch.setattr(settings, "AGENT_EXEC_MODE", "local")
+
+    async def no_cred(_uid, _provider=None):
+        return None
+
+    monkeypatch.setattr(agent_auth, "_get_credential", no_cred)
     auth = await agent_auth.resolve(uuid.uuid4())
     assert auth.harness is h.CLAUDE and auth.env == {} and auth.files == {}
 
@@ -135,6 +141,120 @@ def test_openrouter_rejects_oauth():
 
 
 @pytest.mark.asyncio
+async def test_endpoint_kind_rejected_for_non_local_provider():
+    with pytest.raises(ValueError):
+        await agent_auth.store_credential(uuid.uuid4(), "openrouter", "endpoint", "http://x")
+
+
+@pytest.mark.asyncio
+async def test_local_endpoint_with_key_runs_pi(monkeypatch):
+    monkeypatch.setattr(settings, "AGENT_EXEC_MODE", "sprites")
+
+    async def cred(_uid):
+        return {
+            "provider": "local",
+            "kind": "endpoint",
+            "secret": json.dumps(
+                {
+                    "base_url": "http://tunnel.example/v1",
+                    "model": "llama3.1:8b",
+                    "api_key": "my-secret-key",
+                }
+            ),
+        }
+
+    monkeypatch.setattr(agent_auth, "_get_credential", cred)
+    auth = await agent_auth.resolve(uuid.uuid4())
+    assert auth.harness is h.PI
+    assert auth.env == {
+        "PI_OFFLINE": "1",
+        "HOME": "/home/sprite",
+        "STASH_LOCAL_KEY": "my-secret-key",
+    }
+    assert auth.endpoint == "http://tunnel.example/v1"
+    assert auth.model == "llama3.1:8b"
+
+    models = json.loads(auth.files["/home/sprite/.pi/agent/models.json"])
+    local = models["providers"]["local"]
+    # The key rides ONLY via env interpolation — never inline in the file.
+    assert local["apiKey"] == "$STASH_LOCAL_KEY"
+    assert "my-secret-key" not in json.dumps(models)
+    assert local["api"] == "openai-completions"
+    assert local["baseUrl"] == "http://tunnel.example/v1"
+    assert local["compat"] == {"supportsDeveloperRole": False, "supportsReasoningEffort": False}
+    assert local["models"] == [{"id": "llama3.1:8b", "contextWindow": 131072, "maxTokens": 8192}]
+
+
+@pytest.mark.asyncio
+async def test_local_endpoint_keyless_has_no_key_env(monkeypatch):
+    monkeypatch.setattr(settings, "AGENT_EXEC_MODE", "sprites")
+
+    async def cred(_uid):
+        return {
+            "provider": "local",
+            "kind": "endpoint",
+            "secret": json.dumps({"base_url": "http://host:11434/v1", "model": "qwen2:7b"}),
+        }
+
+    monkeypatch.setattr(agent_auth, "_get_credential", cred)
+    auth = await agent_auth.resolve(uuid.uuid4())
+    assert auth.harness is h.PI
+    assert "STASH_LOCAL_KEY" not in auth.env
+    assert auth.env == {"PI_OFFLINE": "1", "HOME": "/home/sprite"}
+    models = json.loads(auth.files["/home/sprite/.pi/agent/models.json"])
+    # Keyless endpoints get the literal dummy so the file shape is one codepath.
+    assert models["providers"]["local"]["apiKey"] == "local"
+
+
+def test_local_auth_missing_field_fails_loud():
+    with pytest.raises(ValueError):
+        agent_auth._local_auth(
+            {"provider": "local", "kind": "endpoint", "secret": json.dumps({"model": "m"})}
+        )
+    with pytest.raises(ValueError):
+        agent_auth._local_auth(
+            {
+                "provider": "local",
+                "kind": "endpoint",
+                "secret": json.dumps({"base_url": "http://x"}),
+            }
+        )
+
+
+@pytest.mark.asyncio
+async def test_prefer_local_with_local_credential_runs_pi(monkeypatch):
+    monkeypatch.setattr(settings, "AGENT_EXEC_MODE", "sprites")
+
+    async def cred(user_id, provider=None):
+        assert provider == "local"
+        return {
+            "provider": "local",
+            "kind": "endpoint",
+            "secret": json.dumps({"base_url": "http://x/v1", "model": "m"}),
+        }
+
+    monkeypatch.setattr(agent_auth, "_get_credential", cred)
+    auth = await agent_auth.resolve(uuid.uuid4(), "local")
+    assert auth.harness is h.PI and auth.model == "m"
+
+
+@pytest.mark.asyncio
+async def test_prefer_local_without_local_credential_fails_loud(monkeypatch):
+    """Picking the local model with only OpenRouter connected must NOT silently
+    run opencode — fail loud (no cross-provider fallback)."""
+    monkeypatch.setattr(settings, "AGENT_EXEC_MODE", "sprites")
+
+    async def only_openrouter(user_id, provider=None):
+        if provider == "local":
+            return None
+        return {"provider": "openrouter", "kind": "api_key", "secret": "sk-or"}
+
+    monkeypatch.setattr(agent_auth, "_get_credential", only_openrouter)
+    with pytest.raises(agent_auth.NeedsAuth):
+        await agent_auth.resolve(uuid.uuid4(), "local")
+
+
+@pytest.mark.asyncio
 async def test_prefer_unconnected_model_fails_loud(monkeypatch):
     """An agent that picks Claude when only OpenAI is connected must NOT silently
     run Codex — it fails loud (no-fallback rule)."""
@@ -148,3 +268,65 @@ async def test_prefer_unconnected_model_fails_loud(monkeypatch):
     monkeypatch.setattr(agent_auth, "_get_credential", only_openai)
     with pytest.raises(agent_auth.NeedsAuth):
         await agent_auth.resolve(uuid.uuid4(), "anthropic")
+
+
+@pytest.mark.asyncio
+async def test_local_mode_local_credential_runs_pi(monkeypatch):
+    """Local exec mode (self-hosters, no sprites): a connected local endpoint
+    still runs on this machine's pi — the credential is self-contained — and
+    the turn is isolated on the simulated box's home, not the developer's
+    machine pi config."""
+    monkeypatch.setattr(settings, "AGENT_EXEC_MODE", "local")
+    monkeypatch.setattr(sprite_service, "local_box_home", lambda: Path("/tmp/fake-box-home"))
+
+    async def cred(_uid, _provider=None):
+        return {
+            "provider": "local",
+            "kind": "endpoint",
+            "secret": json.dumps({"base_url": "http://127.0.0.1:11434/v1", "model": "llama3.1:8b"}),
+        }
+
+    monkeypatch.setattr(agent_auth, "_get_credential", cred)
+    auth = await agent_auth.resolve(uuid.uuid4())
+    assert auth.harness is h.PI
+    assert auth.endpoint == "http://127.0.0.1:11434/v1"
+    assert auth.model == "llama3.1:8b"
+    assert auth.env["HOME"] == "/tmp/fake-box-home"
+    assert auth.env["PI_OFFLINE"] == "1"
+    assert "/tmp/fake-box-home/.pi/agent/models.json" in auth.files
+
+
+@pytest.mark.asyncio
+async def test_local_mode_prefer_local_with_credential_runs_pi(monkeypatch):
+    monkeypatch.setattr(settings, "AGENT_EXEC_MODE", "local")
+
+    async def cred(user_id, provider=None):
+        assert provider == "local"
+        return {
+            "provider": "local",
+            "kind": "endpoint",
+            "secret": json.dumps({"base_url": "http://x/v1", "model": "m"}),
+        }
+
+    monkeypatch.setattr(agent_auth, "_get_credential", cred)
+    auth = await agent_auth.resolve(uuid.uuid4(), "local")
+    assert auth.harness is h.PI and auth.model == "m"
+
+
+@pytest.mark.asyncio
+async def test_local_mode_other_pin_keeps_machine_login(monkeypatch):
+    """An agent pinned to another provider in local exec mode keeps the
+    machine-login default — the local endpoint credential is not a
+    cross-provider fallback."""
+    monkeypatch.setattr(settings, "AGENT_EXEC_MODE", "local")
+
+    async def local_only(_uid, _provider=None):
+        return {
+            "provider": "local",
+            "kind": "endpoint",
+            "secret": json.dumps({"base_url": "http://x/v1", "model": "m"}),
+        }
+
+    monkeypatch.setattr(agent_auth, "_get_credential", local_only)
+    auth = await agent_auth.resolve(uuid.uuid4(), "anthropic")
+    assert auth.harness is h.CLAUDE and auth.env == {} and auth.files == {}

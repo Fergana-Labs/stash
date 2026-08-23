@@ -20,3 +20,8 @@ ANTHROPIC = Provider("anthropic", "ANTHROPIC_API_KEY")
 OPENAI = Provider("openai", "OPENAI_API_KEY")
 OPENROUTER = Provider("openrouter", "OPENROUTER_API_KEY")
 GEMINI = Provider("gemini", "GEMINI_API_KEY")
+# The user's own OpenAI-compatible endpoint (Ollama, vLLM, ...), reached by
+# the pi harness through a base URL stored as a credential — the key, when
+# set, rides in STASH_LOCAL_KEY which pi's models.json $STASH_LOCAL_KEY
+# interpolation reads.
+LOCAL = Provider("local", "STASH_LOCAL_KEY")
