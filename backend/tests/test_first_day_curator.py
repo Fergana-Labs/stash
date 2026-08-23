@@ -145,3 +145,64 @@ async def test_personal_scope_with_nothing_new_does_not_dispatch(client: AsyncCl
     _, body = await _register_with_email(client, f"{unique_name('solo')}@example.com")
     await _first_day_curator_tick(UUID(body["id"]))
     assert dispatched == []
+
+
+async def _push_historical_event(client: AsyncClient, api_key: str, created_at: datetime) -> None:
+    resp = await client.post(
+        "/api/v1/me/sessions/events",
+        json={
+            "agent_name": "claude-code",
+            "event_type": "assistant_message",
+            "content": "an old conversation",
+            "session_id": "s-imported-1",
+            "created_at": created_at.isoformat(),
+        },
+        headers={"Authorization": f"Bearer {api_key}"},
+    )
+    assert resp.status_code == 201
+
+
+@pytest.mark.asyncio
+async def test_imported_pre_signup_history_dispatches(client: AsyncClient, pool, dispatched):
+    """Imported sessions keep their original timestamps, which predate the
+    curator's seeded curated_through. The import must pull curated_through
+    back so the first-day run actually reads the history."""
+    api_key, body = await _register_with_email(client, f"{unique_name('solo')}@example.com")
+    user_id = UUID(body["id"])
+    old = datetime.now(UTC) - timedelta(days=10)
+    await _push_historical_event(client, api_key, old)
+    curated_through = await pool.fetchval(
+        "SELECT curated_through FROM agents WHERE user_id = $1 AND is_curator", user_id
+    )
+    assert curated_through < old
+    await _first_day_curator_tick(user_id)
+    assert await _dispatched_wikis(pool, dispatched) == {"internal"}
+
+
+@pytest.mark.asyncio
+async def test_late_import_reopens_curation(client: AsyncClient, pool, dispatched):
+    """A curator that already ran has curated_through at its last run; an
+    import of older sessions after that must still pull it back."""
+    api_key, body = await _register_with_email(client, f"{unique_name('solo')}@example.com")
+    user_id = UUID(body["id"])
+    await pool.execute(
+        "UPDATE users SET created_at = now() - interval '2 days' WHERE id = $1", user_id
+    )
+    await pool.execute(
+        "UPDATE agents SET last_run_outcome = 'ran', last_run_at = now(), curated_through = now() "
+        "WHERE user_id = $1 AND is_curator",
+        user_id,
+    )
+    old = datetime.now(UTC) - timedelta(days=10)
+    await _push_historical_event(client, api_key, old)
+    curated_through = await pool.fetchval(
+        "SELECT curated_through FROM agents WHERE user_id = $1 AND is_curator", user_id
+    )
+    assert curated_through < old
+    # Past the first day nothing dispatches immediately — the nightly run
+    # picks the import up, because the pending-changes gate now sees it.
+    await _first_day_curator_tick(user_id)
+    assert dispatched == []
+    from backend.services import curation_service
+
+    assert await curation_service.has_changes_since(user_id, user_id, curated_through)
