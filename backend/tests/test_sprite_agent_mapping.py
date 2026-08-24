@@ -5,6 +5,7 @@ transcript (one turn with a Bash tool call), so these break if the mapper
 drifts from what the CLI actually emits.
 """
 
+import json
 from pathlib import Path
 
 import pytest
@@ -312,17 +313,80 @@ def test_pi_channel_disallowed_tools_appends_exclude_tools():
     assert argv[-2:] == ["--exclude-tools", "write,edit,bash"]
 
 
+def test_codex_channel_disallowed_tools_appends_sandbox_tail():
+    # Channel turns swap the bypass flag for the verified read-only sandbox
+    # tail (verified against 0.146.1: the sandbox blocks exec_command's
+    # filesystem writes at execution; the exec-mode approval policy is
+    # already Never, so no approval override is carried).
+    argv = h.build_argv(
+        h.CODEX,
+        "hi",
+        session_key=None,
+        resume=False,
+        system_prompt="s",
+        disallowed_tools=h.CODEX.channel_disallowed,
+    )
+    assert argv[-2:] == ["--sandbox", "read-only"]
+    assert "--dangerously-bypass-approvals-and-sandbox" not in argv
+
+    # The resume shape carries the channel tail too.
+    resumed = h.build_argv(
+        h.CODEX,
+        "hi",
+        session_key="thread_abc",
+        resume=True,
+        system_prompt="s",
+        disallowed_tools=h.CODEX.channel_disallowed,
+    )
+    assert resumed[1:4] == ["exec", "resume", "thread_abc"]
+    assert resumed[-2:] == ["--sandbox", "read-only"]
+    assert "--dangerously-bypass-approvals-and-sandbox" not in resumed
+
+    # No denylist → the bypass flag, byte-identical to the scheduled argv.
+    scheduled = h.build_argv(h.CODEX, "hi", session_key=None, resume=False, system_prompt="s")
+    assert scheduled[-1] == "--dangerously-bypass-approvals-and-sandbox"
+
+
+def test_opencode_channel_env_declares_permission_deny():
+    # opencode's channel restriction rides on env, not argv: the env JSON
+    # parses, its denies cover exactly the channel denylist, and the argv is
+    # byte-identical for channel and scheduled turns.
+    env = h.OPENCODE.channel_env
+    assert env is not None
+    permissions = json.loads(env["OPENCODE_CONFIG_CONTENT"])["permission"]
+    assert permissions == {t: "deny" for t in h.OPENCODE.channel_disallowed}
+
+    channel_argv = h.build_argv(
+        h.OPENCODE,
+        "hi",
+        session_key=None,
+        resume=False,
+        system_prompt="s",
+        disallowed_tools=h.OPENCODE.channel_disallowed,
+    )
+    scheduled_argv = h.build_argv(
+        h.OPENCODE, "hi", session_key=None, resume=False, system_prompt="s"
+    )
+    assert channel_argv == scheduled_argv
+
+
 def test_channel_disallowed_per_harness():
     # Per-harness channel denylists — the single source of truth for the
     # channel-toolset invariant (a channel message must not mutate the box).
     # CLAUDE's is the old SLACK_DISALLOWED_TOOLS values, byte-identical.
     # PI is read-only: no command-granularity bash rule, so bash is excluded
-    # wholesale. CODEX/OPENCODE: tracked gap (follow-up task) — no verified
-    # headless restriction flag yet, so their channel turns are unrestricted.
+    # wholesale. CODEX: channel turns run under the read-only sandbox (the
+    # sandbox tail is applied in build_argv when the denylist is provided);
+    # exec_command stays model-visible, its writes are blocked at execution.
+    # OPENCODE: channel turns ride a per-turn permission-deny env
+    # (harness.channel_env); the denylist names exactly what that env denies.
     assert h.CLAUDE.channel_disallowed == ("Write", "Edit", "NotebookEdit", "Bash(rm:*)")
     assert h.PI.channel_disallowed == ("write", "edit", "bash")
-    assert h.CODEX.channel_disallowed is None
-    assert h.OPENCODE.channel_disallowed is None
+    assert h.CODEX.channel_disallowed == ("exec_command",)
+    assert h.OPENCODE.channel_disallowed == ("bash", "edit", "write")
+    assert h.OPENCODE.channel_env is not None
+    permissions = json.loads(h.OPENCODE.channel_env["OPENCODE_CONFIG_CONTENT"])["permission"]
+    assert permissions == {t: "deny" for t in h.OPENCODE.channel_disallowed}
 
 
 def test_pi_argv_without_model_fails_loud():

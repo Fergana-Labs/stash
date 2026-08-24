@@ -77,8 +77,13 @@ class Harness:
     # Channel (Slack/Telegram) denylist in this harness's own tool-name
     # spelling — the single source of truth for the channel toolset. run_chat
     # passes it as disallowed_tools on channel turns only. None = no verified
-    # headless restriction flag yet (tracked gap for that harness).
+    # headless restriction yet (tracked gap for that harness).
+    # The mechanism is harness-specific: a CLI flag (claude/pi), an argv tail
+    # (codex's sandbox), or an env var (opencode's permission config below).
     channel_disallowed: tuple[str, ...] | None = None
+    # Extra env for channel turns only, merged over the provider env by
+    # _turn_events. Never set for scheduled/web turns.
+    channel_env: dict[str, str] | None = None
 
 
 # Claude's channel denylist — byte-identical to the old SLACK_DISALLOWED_TOOLS.
@@ -88,9 +93,34 @@ CLAUDE = Harness(
     model_provider.ANTHROPIC,
     channel_disallowed=("Write", "Edit", "NotebookEdit", "Bash(rm:*)"),
 )
-CODEX = Harness("codex", "codex", model_provider.OPENAI)
+CODEX = Harness(
+    "codex",
+    "codex",
+    model_provider.OPENAI,
+    # Channel turns swap the bypass flag for --sandbox read-only in
+    # build_argv: the read-only sandbox blocks exec_command's filesystem
+    # writes at execution time and rejects escalation, while reads stay
+    # (verified on 0.146.1 — docs/agent-routes.md). exec_command remains
+    # model-visible, so it is named here for the record.
+    channel_disallowed=("exec_command",),
+)
 # opencode drives OpenRouter's many models; GLM is the default hosted pick.
-OPENCODE = Harness("opencode", "opencode", model_provider.OPENROUTER, default_model="z-ai/glm-5.2")
+OPENCODE = Harness(
+    "opencode",
+    "opencode",
+    model_provider.OPENROUTER,
+    default_model="z-ai/glm-5.2",
+    # Channel turns ride a per-turn permission-deny config (env, not argv —
+    # the argv stays byte-identical). Verified on the pinned 1.17.18: the
+    # deny strips bash/edit/write from the model's tools and refuses forced
+    # calls at execution, while read/glob/grep stay (docs/agent-routes.md).
+    channel_disallowed=("bash", "edit", "write"),
+    channel_env={
+        "OPENCODE_CONFIG_CONTENT": json.dumps(
+            {"permission": {"bash": "deny", "edit": "deny", "write": "deny"}}
+        )
+    },
+)
 # pi drives the user's own OpenAI-compatible endpoint (the LOCAL provider);
 # the model id rides on argv because each endpoint has its own catalog.
 PI = Harness(
@@ -166,13 +196,15 @@ def build_argv(
         base = ["codex", "exec"]
         if resume and session_key:
             base += ["resume", session_key]
-        return [
-            *base,
-            full,
-            "--json",
-            "--skip-git-repo-check",
-            "--dangerously-bypass-approvals-and-sandbox",
-        ]
+        # Channel turns (denylist provided) run under the read-only sandbox
+        # instead of the bypass flag: verified on 0.146.1, the sandbox blocks
+        # exec_command's writes at execution and rejects escalation requests,
+        # while reads and the rest of the turn are unaffected.
+        if disallowed_tools:
+            tail = ["--sandbox", "read-only"]
+        else:
+            tail = ["--dangerously-bypass-approvals-and-sandbox"]
+        return [*base, full, "--json", "--skip-git-repo-check", *tail]
 
     if harness is OPENCODE:
         full = f"{system_prompt}\n\n{prompt}"

@@ -224,11 +224,16 @@ async def _turn_events(
     session_id: str,
     system_prompt: str,
     disallowed_tools: Sequence[str] | None = None,
+    channel_env: dict[str, str] | None = None,
 ) -> AsyncIterator[dict]:
     """One full agent turn: resume the harness session, reseeding from stored
     history if the box has lost it. Ends with exactly one end/error event."""
     harness = auth.harness
     provider_env = auth.env
+    # Channel turns ride a per-harness env restriction (opencode's
+    # permission-deny config) on top of the provider env; scheduled/web turns
+    # pass None and get the provider env as-is.
+    env = {**provider_env, **(channel_env or {})}
     # OAuth harnesses read a credential file, not an env var — write it first.
     for path, contents in auth.files.items():
         await sprite_service.write_file(sprite, path, contents)
@@ -270,7 +275,7 @@ async def _turn_events(
         disallowed_tools=disallowed_tools,
         model=auth.model,
     )
-    async for event in _run_harness(harness, sprite, argv, state, provider_env):
+    async for event in _run_harness(harness, sprite, argv, state, env):
         yield event
 
     if state.resume_missing:
@@ -290,7 +295,7 @@ async def _turn_events(
             disallowed_tools=disallowed_tools,
             model=auth.model,
         )
-        async for event in _run_harness(harness, sprite, argv, state, provider_env):
+        async for event in _run_harness(harness, sprite, argv, state, env):
             yield event
 
     if state.native_id:
@@ -667,6 +672,10 @@ async def run_chat(
             # yet). Scheduled runs (curator included) execute a trusted prompt
             # and need their full toolset.
             disallowed_tools=auth.harness.channel_disallowed if channel else None,
+            # Env-based channel restriction (opencode's per-turn
+            # permission-deny config); argv-based harnesses keep None and get
+            # the provider env untouched.
+            channel_env=auth.harness.channel_env if channel else None,
         )
         try:
             async for event in _stoppable(turn, session_id):
