@@ -249,7 +249,7 @@ async def _feed_events(
 
     Each event carries its session's end user (name and wiki opt-out) when it
     has one — the external curator routes by it: every user's material feeds
-    that user's notepad, and only share_wiki users feed the shared anonymized
+    that user's own wiki, and only share_wiki users feed the shared anonymized
     wiki."""
     pool = get_pool()
     args: list = [owner_user_id]

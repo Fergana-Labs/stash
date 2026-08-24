@@ -45,7 +45,7 @@ function UserDetail() {
         setUser(res.user);
         setSessions(res.sessions);
         setFiles(res.files);
-        setWikiPages(res.notepad_pages);
+        setWikiPages(res.wiki_pages);
         setSources(res.sources);
       })
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load the user"));
@@ -104,7 +104,7 @@ function UserDetail() {
         <div className="flex items-baseline justify-between gap-4">
           <SectionHeading>This user&apos;s wiki</SectionHeading>
           <Link
-            href={`/folders/${user.notepad_folder_id}`}
+            href={`/folders/${user.wiki_folder_id}`}
             className="text-[13px] text-muted-foreground transition-colors hover:text-foreground"
           >
             Open folder

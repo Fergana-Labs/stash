@@ -31,7 +31,7 @@ class VfsRequest(BaseModel):
         None,
         max_length=128,
         description="External Multiplayer: narrow the tree to this end user — "
-        "shared wiki at /memory, the user's notepad and files under /files, "
+        "shared wiki at /memory, the user's own wiki and files under /files, "
         "the user's transcripts under /sessions",
     )
 
@@ -59,8 +59,8 @@ async def _end_user_ctx(current_user: dict, user_id: str | None) -> dict | None:
     if end_user is None:
         return {
             "external_id": user_id,
-            "wiki_folder_id": str(workspace["external_wiki_folder_id"]),
-            "notepad_folder_id": None,
+            "shared_wiki_folder_id": str(workspace["external_wiki_folder_id"]),
+            "wiki_folder_id": None,
             "source_ids": set(),
         }
     connected = await source_service.list_connected_sources(
@@ -68,8 +68,8 @@ async def _end_user_ctx(current_user: dict, user_id: str | None) -> dict | None:
     )
     return {
         "external_id": end_user["external_id"],
-        "wiki_folder_id": str(workspace["external_wiki_folder_id"]),
-        "notepad_folder_id": str(end_user["notepad_folder_id"]),
+        "shared_wiki_folder_id": str(workspace["external_wiki_folder_id"]),
+        "wiki_folder_id": str(end_user["wiki_folder_id"]),
         "source_ids": {s["id"] for s in connected},
     }
 

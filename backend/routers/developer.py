@@ -174,7 +174,7 @@ async def list_developer_sessions(scope_user_id: UUID = Depends(get_scope)):
 @router.get("/files")
 async def list_developer_files(scope_user_id: UUID = Depends(get_scope)):
     """The two kinds of files the platform holds: the shared wiki's pages, and
-    each user's own material (notepad pages plus uploaded files)."""
+    each user's own material (their wiki's pages plus uploaded files)."""
     workspace = await _require_active_workspace(scope_user_id)
     return await end_user_service.workspace_files(workspace)
 
@@ -340,12 +340,12 @@ async def get_user_wiki_graph(
     scope_user_id: UUID = Depends(get_scope),
 ):
     """One user's own wiki as a graph — the same rendering the shared wiki
-    gets, rooted at their notepad folder."""
+    gets, rooted at their own wiki folder."""
     from ..services import files_tree_service
 
     end_user = await _end_user_in_scope(user_id, scope_user_id)
     return await files_tree_service.wiki_graph(
-        await files_tree_service.folder_subtree_ids(end_user["notepad_folder_id"])
+        await files_tree_service.folder_subtree_ids(end_user["wiki_folder_id"])
     )
 
 

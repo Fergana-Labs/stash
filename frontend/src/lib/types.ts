@@ -349,7 +349,7 @@ export interface EndUser {
   external_id: string;
   name: string;
   share_wiki: boolean;
-  notepad_folder_id: string;
+  wiki_folder_id: string;
   created_at: string;
   session_count: number;
   last_session_at: string | null;

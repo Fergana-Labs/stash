@@ -2,7 +2,7 @@
 
 Write a turn with your own id for the user; read back with the same id.
 That is the entire External Multiplayer contract — everything else (per-user
-notepads, the anonymized cross-user wiki, isolation) is Stash's job.
+wikis, the anonymized cross-user wiki, isolation) is Stash's job.
 """
 
 from datetime import datetime, timedelta, timezone
@@ -20,7 +20,7 @@ class Stash:
 
     def read(self, user: str, script: str) -> str:
         """Run a read against this user's view of the stash. They see the
-        shared wiki at /memory, their own notepad and files under /files, and
+        shared wiki at /memory, their own wiki and files under /files, and
         only their own transcripts under /sessions."""
         resp = self._http.post("/api/v1/me/vfs", json={"script": script, "user_id": user})
         resp.raise_for_status()
