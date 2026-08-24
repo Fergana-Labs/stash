@@ -227,7 +227,7 @@ class EndUserVfsClient(InProcessVfsClient):
 
     `/memory` becomes the workspace's shared external wiki (the memory-folder
     call answers with the wiki folder, and the model re-roots whatever that
-    returns), `/files` holds the user's notepad and the user's own uploads,
+    returns), `/files` holds the user's own wiki and the user's own uploads,
     `/sessions` only the user's transcripts, and `/sources` the sources
     connected for this user. Skills and tables are developer-side surfaces and
     don't exist in a user's view.
@@ -238,7 +238,7 @@ class EndUserVfsClient(InProcessVfsClient):
         self._end_user = end_user_ctx
 
     def get_memory_folder(self) -> dict:
-        return {"id": self._end_user["wiki_folder_id"]}
+        return {"id": self._end_user["shared_wiki_folder_id"]}
 
     def list_tables(self) -> list:
         return []
@@ -255,17 +255,17 @@ class EndUserVfsClient(InProcessVfsClient):
         tree = overview.get("files", {})
         folders = tree.get("folders", [])
 
-        # Descendant closure of the wiki and notepad roots. Everything else in
-        # the workspace — other users' notepads included — is invisible.
+        # Descendant closure of the shared-wiki and user-wiki roots. Everything
+        # else in the workspace — other users' wikis included — is invisible.
         children: dict[str | None, list[dict]] = {}
         for folder in folders:
             children.setdefault(folder["parent_folder_id"], []).append(folder)
         kept_ids: set[str] = set()
-        # A customer with no notepad yet has not been written for — they still
+        # A customer with no wiki folder yet has not been written for — they still
         # read the shared wiki, they just own nothing.
-        frontier = [self._end_user["wiki_folder_id"]]
-        if self._end_user["notepad_folder_id"]:
-            frontier.append(self._end_user["notepad_folder_id"])
+        frontier = [self._end_user["shared_wiki_folder_id"]]
+        if self._end_user["wiki_folder_id"]:
+            frontier.append(self._end_user["wiki_folder_id"])
         while frontier:
             folder_id = frontier.pop()
             if folder_id in kept_ids:
@@ -277,10 +277,10 @@ class EndUserVfsClient(InProcessVfsClient):
         for folder in folders:
             if folder["id"] not in kept_ids:
                 continue
-            if folder["id"] == self._end_user["notepad_folder_id"]:
-                # The notepad root's parent (the workspace's "User Notepads"
-                # container) is filtered out, so mount it at /files/notepad.
-                folder = {**folder, "parent_folder_id": None, "name": "notepad"}
+            if folder["id"] == self._end_user["wiki_folder_id"]:
+                # The user-wiki root's parent (the workspace's "User Wikis"
+                # container) is filtered out, so mount it at /files/wiki.
+                folder = {**folder, "parent_folder_id": None, "name": "wiki"}
             kept_folders.append(folder)
 
         return {

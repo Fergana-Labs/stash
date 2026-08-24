@@ -228,9 +228,9 @@ async def ingest_bytes(
     # and MCP all hit this single path and get the routing for free.
     # An end user's uploads are raw data by definition: markdown that would
     # normally become an editable page stays a file when it belongs to a
-    # customer, since pages are the memory substrate (wiki, notepad) and those
+    # customer, since pages are the memory substrate (shared wiki, per-user wiki) and those
     # are curated, not uploaded. Text a user should *remember* goes to their
-    # notepad folder.
+    # wiki folder.
     page_kind = None if end_user_id else files_tree_service.detect_page_kind(filename, content_type)
     if page_kind is not None:
         if folder_id is not None:

@@ -42,7 +42,7 @@ the lesson without learning that Acme exists.
 
 ## What to look at in the console
 
-- **Users** — each customer, their sessions, files, connected sources, notepad.
+- **Users** — each customer, their sessions, files, connected sources, their own wiki.
 - **Curator** — when it next runs, the exact prompt it will send, and which
   users feed the shared wiki.
 - **Shared Wiki** — what every customer's agent reads. No user named anywhere.
