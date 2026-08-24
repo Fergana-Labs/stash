@@ -174,7 +174,7 @@ function UserWikiCard({ user }: { user: EndUser }) {
           {user.external_id}
         </span>
         <Link
-          href={`/folders/${user.notepad_folder_id}`}
+          href={`/folders/${user.wiki_folder_id}`}
           className="shrink-0 text-[13px] text-muted-foreground transition-colors hover:text-foreground"
         >
           Open wiki

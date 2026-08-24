@@ -35,7 +35,7 @@ user's memory and put it in the system prompt:
    stdout is markdown: the shared wiki every user's agent reads. Wiki
    categories are subfolders — "ls /memory" lists them,
    "cat /memory/<category>/*.md" reads one.
-   Also on the same call: "cat /files/notepad/*.md" (this user's own
+   Also on the same call: "cat /files/wiki/*.md" (this user's own
    wiki — it exists once the curator has run over their sessions),
    "ls /sessions" and raw transcripts under /sessions. Reading has
    nothing to do with which conversation you are in — no session id

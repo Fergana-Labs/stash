@@ -17,7 +17,7 @@ name — you do not know who they are."""
 
 def answer(stash, anthropic_key: str, org: str, org_name: str, session: str, question: str) -> str:
     # Read this customer's world before answering: the shared wiki everyone's
-    # agent reads, plus this customer's own notepad.
+    # agent reads, plus this customer's own wiki.
     context = _context(stash, org)
     reply = _claude(anthropic_key, context, question)
     stash.record(org, org_name, session, [("user_message", question), ("assistant_message", reply)])
@@ -26,11 +26,11 @@ def answer(stash, anthropic_key: str, org: str, org_name: str, session: str, que
 
 def _context(stash, org: str) -> str:
     """Everything this customer is allowed to know: the shared wiki, and their
-    own notepad. `find` lists every page in the tree (wiki categories are
+    own wiki. `find` lists every page in the tree (shared-wiki categories are
     subfolders, so a root glob would miss them); each page is cat'd on its
     own because the VFS cat fails the whole command on any bad path."""
     parts = []
-    for root in ("/memory", "/files/notepad"):
+    for root in ("/memory", "/files/wiki"):
         listing = stash.read(org, f"find {root} -type f -name '*.md'").strip()
         for path in listing.splitlines():
             parts.append(stash.read(org, f"cat '{path}'"))

@@ -64,7 +64,7 @@ async def create_workspace(name: str, domain: str | None, created_by: UUID | Non
         "INSERT INTO workspaces (name, domain, scope_user_id, created_by) "
         "VALUES ($1, $2, $3, $4) "
         "RETURNING id, name, domain, scope_user_id, created_by, "
-        "         external_wiki_folder_id, end_user_notepads_folder_id, created_at",
+        "         external_wiki_folder_id, end_user_wikis_folder_id, created_at",
         name,
         domain,
         scope_user["id"],
@@ -82,7 +82,7 @@ async def get_workspace(workspace_id: UUID) -> dict | None:
     pool = get_pool()
     row = await pool.fetchrow(
         "SELECT id, name, domain, scope_user_id, created_by, "
-        "       external_wiki_folder_id, end_user_notepads_folder_id, created_at "
+        "       external_wiki_folder_id, end_user_wikis_folder_id, created_at "
         "FROM workspaces WHERE id = $1",
         workspace_id,
     )

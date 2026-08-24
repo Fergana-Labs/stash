@@ -89,7 +89,7 @@ function Files() {
 }
 
 function UserFiles({ user }: { user: DeveloperUserFiles }) {
-  const empty = user.notepad_pages.length === 0 && user.files.length === 0;
+  const empty = user.wiki_pages.length === 0 && user.files.length === 0;
   return (
     <div className="mt-6">
       <Link
@@ -107,7 +107,7 @@ function UserFiles({ user }: { user: DeveloperUserFiles }) {
         </p>
       ) : (
         <div className="mt-2 overflow-hidden rounded border border-border bg-surface">
-          {user.notepad_pages.map((page) => (
+          {user.wiki_pages.map((page) => (
             <PageLine key={page.id} page={page} />
           ))}
           {user.files.map((file) => (
