@@ -3447,12 +3447,18 @@ def memory_ls(as_json: bool = typer.Option(False, "--json")):
 @app.command("changes")
 def changes(
     since: str = typer.Option(None, "--since", help="ISO timestamp; omit for everything."),
+    include_end_users: bool = typer.Option(
+        False,
+        "--include-end-users",
+        help="Include end-user material (External Multiplayer customers' "
+        "sessions, pages, files). Only the external curator wants this.",
+    ),
     as_json: bool = typer.Option(False, "--json"),
 ):
     """What changed since a timestamp — history, pages, files, saves, sources.
     Feeds the Memory curator's incremental pass."""
     with _client() as c:
-        data = c.get_changes(since or None)
+        data = c.get_changes(since or None, include_end_users=include_end_users)
     if _use_json(as_json):
         output_json(data)
         return
