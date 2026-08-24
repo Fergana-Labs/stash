@@ -260,52 +260,6 @@ async def test_new_user_reads_the_shared_wiki_before_they_have_written(client: A
 
 
 @pytest.mark.asyncio
-async def test_change_feed_excludes_end_user_material_by_default(client: AsyncClient, pool):
-    """The internal curator (and any bare `stash changes` caller) must never
-    receive customer material — exclusion happens in the feed, not by asking
-    a model to ignore what it was shown. Only the external curator opts in
-    with include_end_users."""
-    api_key, _, workspace = await _developer(client)
-    machine_key = await _mint_workspace_key(client, api_key, workspace)
-    scope = {**_auth(api_key), "X-Stash-Scope": workspace["scope_user_id"]}
-
-    await _push(
-        client,
-        machine_key,
-        [
-            _event("sess-cust-1", user_id="org_acme", user_name="Acme"),
-            _event("sess-own-1"),
-        ],
-    )
-    # A page in the customer's own wiki — end-user material too.
-    end_user = await pool.fetchrow(
-        "SELECT id, wiki_folder_id FROM end_users WHERE workspace_id = $1",
-        uuid.UUID(workspace["id"]),
-    )
-    await pool.execute(
-        "INSERT INTO pages (owner_user_id, name, content_markdown, folder_id, "
-        "                   created_by, end_user_id) "
-        "VALUES ($1, 'Acme secrets', 'body', $2, $1, $3)",
-        uuid.UUID(workspace["scope_user_id"]),
-        end_user["wiki_folder_id"],
-        end_user["id"],
-    )
-
-    resp = await client.get("/api/v1/me/changes", headers=scope)
-    assert resp.status_code == 200, resp.text
-    feed = resp.json()
-    assert "sess-own-1" in str(feed["history"])
-    assert "sess-cust-1" not in str(feed)
-    assert "Acme secrets" not in str(feed)
-
-    resp = await client.get("/api/v1/me/changes?include_end_users=true", headers=scope)
-    assert resp.status_code == 200
-    feed = resp.json()
-    assert "sess-cust-1" in str(feed["history"])
-    assert "Acme secrets" in str(feed["pages"])
-
-
-@pytest.mark.asyncio
 async def test_user_scoped_source_is_visible_to_that_user_only(client: AsyncClient, pool):
     """A developer can connect a source (e.g. a customer's Drive folder) FOR
     one end user: `user_id` on the connect call stamps the source, that user's

@@ -7,12 +7,6 @@ and the user's connected sources as pointers (the agent pulls source
 specifics with `stash search`) — the curator never sees its own output.
 `has_changes_since` is the cheap EXISTS the beat task uses to skip idle users
 without waking a sprite.
-
-End-user material — sessions, pages, files, and Drive documents belonging to
-a developer's customers — is excluded unless the caller passes
-`include_end_users`: only the external curator reads customer content, and
-it opts in explicitly. Everything else (the internal curator foremost) never
-receives it at all.
 """
 
 from __future__ import annotations
@@ -35,52 +29,28 @@ _MAX_SOURCE_DOCS = 100
 _SNIPPET = 280
 
 
-async def has_changes_since(
-    owner_user_id: UUID,
-    user_id: UUID,
-    since: datetime | None,
-    include_end_users: bool = False,
-) -> bool:
+async def has_changes_since(owner_user_id: UUID, user_id: UUID, since: datetime | None) -> bool:
     """True if anything the curator cares about changed after `since`. A cheap
     gate — the beat task skips a curator run (and the sprite wake) when False."""
     if since is None:
         return True  # never curated → bootstrap.
     pool = get_pool()
     memory_ids = await files_tree_service.memory_subtree_folder_ids(owner_user_id)
-    end_user_events = (
-        ""
-        if include_end_users
-        else (
-            " AND NOT EXISTS (SELECT 1 FROM sessions s"
-            "                 WHERE s.owner_user_id = he.owner_user_id"
-            "                   AND s.session_id = he.session_id"
-            "                   AND s.end_user_id IS NOT NULL)"
-        )
-    )
-    own = "" if include_end_users else " AND end_user_id IS NULL"
-    end_user_docs = (
-        ""
-        if include_end_users
-        else (
-            " AND NOT EXISTS (SELECT 1 FROM user_sources us"
-            "                 WHERE us.id = dd.source_id AND us.end_user_id IS NOT NULL)"
-        )
-    )
     exists = await pool.fetchval(
-        f"""
+        """
         SELECT
-          EXISTS (SELECT 1 FROM history_events he
+          EXISTS (SELECT 1 FROM history_events
                   WHERE owner_user_id = $1 AND created_at > $2
-                    AND (session_id IS NULL OR session_id NOT LIKE 'agent-curate-%'){end_user_events})
+                    AND (session_id IS NULL OR session_id NOT LIKE 'agent-curate-%'))
           OR EXISTS (SELECT 1 FROM pages
                      WHERE owner_user_id = $1 AND updated_at > $2
                        AND ($3::uuid[] IS NULL OR folder_id IS NULL
-                            OR folder_id <> ALL($3)){own})
+                            OR folder_id <> ALL($3)))
           OR EXISTS (SELECT 1 FROM files
-                     WHERE owner_user_id = $1 AND created_at > $2{own})
-          OR EXISTS (SELECT 1 FROM drive_documents dd
+                     WHERE owner_user_id = $1 AND created_at > $2)
+          OR EXISTS (SELECT 1 FROM drive_documents
                      WHERE owner_user_id = $1 AND updated_at > $2
-                       AND extraction_status = 'done' AND deleted_at IS NULL{end_user_docs})
+                       AND extraction_status = 'done' AND deleted_at IS NULL)
           OR EXISTS (SELECT 1 FROM x_save_docs
                      WHERE owner_user_id = $1 AND updated_at > $2
                        AND hydration_status = 'done' AND deleted_at IS NULL)
@@ -96,23 +66,15 @@ async def has_changes_since(
     return bool(exists)
 
 
-async def changes_since(
-    owner_user_id: UUID,
-    user_id: UUID,
-    since: datetime | None,
-    include_end_users: bool = False,
-) -> dict:
+async def changes_since(owner_user_id: UUID, user_id: UUID, since: datetime | None) -> dict:
     """The delta the curator reads: history events, changed pages (excl. Memory),
     new files, changed Drive-folder documents, newly hydrated X/Instagram
     saves, and connected-source pointers."""
     pool = get_pool()
     memory_ids = await files_tree_service.memory_subtree_folder_ids(owner_user_id)
     exclude = list(memory_ids) or None
-    own = "" if include_end_users else " AND end_user_id IS NULL"
 
-    events, history_has_more = await _feed_events(
-        owner_user_id, since, None, _MAX_EVENTS, include_end_users=include_end_users
-    )
+    events, history_has_more = await _feed_events(owner_user_id, since, None, _MAX_EVENTS)
     history = [
         {
             "session_id": e.get("session_id"),
@@ -127,13 +89,13 @@ async def changes_since(
     ]
 
     page_rows = await pool.fetch(
-        f"""
+        """
         SELECT id, name, folder_id, updated_at,
                left(coalesce(content_markdown, ''), $4) AS snippet
         FROM pages
         WHERE owner_user_id = $1
           AND ($5::uuid[] IS NULL OR folder_id IS NULL OR folder_id <> ALL($5))
-          AND ($2::timestamptz IS NULL OR updated_at > $2){own}
+          AND ($2::timestamptz IS NULL OR updated_at > $2)
         ORDER BY updated_at DESC LIMIT $3
         """,
         owner_user_id,
@@ -154,10 +116,10 @@ async def changes_since(
     ]
 
     file_rows = await pool.fetch(
-        f"""
+        """
         SELECT id, name, created_at, left(coalesce(extracted_text, ''), $4) AS snippet
         FROM files
-        WHERE owner_user_id = $1 AND ($2::timestamptz IS NULL OR created_at > $2){own}
+        WHERE owner_user_id = $1 AND ($2::timestamptz IS NULL OR created_at > $2)
         ORDER BY created_at DESC LIMIT $3
         """,
         owner_user_id,
@@ -181,21 +143,13 @@ async def changes_since(
     # `updated_at` moves only on a real change: the sync upsert bumps it when
     # Drive's modifiedTime differs, and extraction bumps it when the new body
     # lands. Gating on 'done' presents a doc only once its text is readable.
-    end_user_docs = (
-        ""
-        if include_end_users
-        else (
-            " AND NOT EXISTS (SELECT 1 FROM user_sources us"
-            "                 WHERE us.id = dd.source_id AND us.end_user_id IS NOT NULL)"
-        )
-    )
     source_doc_rows = await pool.fetch(
-        f"""
+        """
         SELECT path, name, updated_at, left(coalesce(content, ''), $4) AS snippet
-        FROM drive_documents dd
+        FROM drive_documents
         WHERE owner_user_id = $1
           AND ($2::timestamptz IS NULL OR updated_at > $2)
-          AND extraction_status = 'done' AND deleted_at IS NULL{end_user_docs}
+          AND extraction_status = 'done' AND deleted_at IS NULL
         ORDER BY updated_at DESC LIMIT $3
         """,
         owner_user_id,
@@ -258,7 +212,6 @@ async def changes_since(
         {"source": s.get("source"), "type": s.get("type"), "display_name": s.get("display_name")}
         for s in all_sources
         if not str(s.get("type", "")).startswith("native_")
-        and (include_end_users or not s.get("end_user_id"))
     ]
 
     return {
@@ -286,7 +239,6 @@ async def _feed_events(
     since: datetime | None,
     until: datetime | None,
     limit: int,
-    include_end_users: bool = False,
 ) -> tuple[list[dict], bool]:
     """The curator's event feed, oldest first. Returns (events, has_more).
 
@@ -302,8 +254,6 @@ async def _feed_events(
     pool = get_pool()
     args: list = [owner_user_id]
     where = "he.owner_user_id = $1 AND (he.session_id IS NULL OR he.session_id NOT LIKE 'agent-curate-%')"
-    if not include_end_users:
-        where += " AND s.end_user_id IS NULL"
     if since is not None:
         args.append(since)
         where += f" AND he.created_at > ${len(args)}"
@@ -326,10 +276,7 @@ async def _feed_events(
 
 
 async def complete_through(
-    owner_user_id: UUID,
-    since: datetime | None,
-    until: datetime,
-    include_end_users: bool = False,
+    owner_user_id: UUID, since: datetime | None, until: datetime
 ) -> datetime:
     """How far the curator's watermark may advance after a successful run.
 
@@ -338,9 +285,7 @@ async def complete_through(
     microsecond, so events sharing that exact timestamp are re-presented next
     run rather than skipped. Overflow therefore drains run by run and no event
     is ever silently dropped from curation."""
-    events, has_more = await _feed_events(
-        owner_user_id, since, until, _MAX_EVENTS, include_end_users=include_end_users
-    )
+    events, has_more = await _feed_events(owner_user_id, since, until, _MAX_EVENTS)
     if not has_more:
         return until
     return events[-1]["created_at"] - timedelta(microseconds=1)

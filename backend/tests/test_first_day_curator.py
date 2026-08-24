@@ -27,31 +27,10 @@ def dispatched(monkeypatch):
 
 
 async def _workspace_with_conversation(client: AsyncClient) -> UUID:
-    """A fresh developer workspace with both kinds of day-one activity: a
-    customer conversation (external material) and the developer's own
-    session (internal material)."""
-    api_key, _, workspace = await _developer(client)
-    ws_key = await _mint_workspace_key(client, api_key, workspace)
-    await _push(
-        client,
-        ws_key,
-        [_event("s-1", user_id="cust-1", user_name="Cust"), _event("s-own")],
-    )
-    return UUID(workspace["scope_user_id"])
-
-
-@pytest.mark.asyncio
-async def test_customer_only_activity_feeds_only_the_external_curator(
-    client: AsyncClient, pool, dispatched
-):
-    """Customer material never reaches the internal curator — its gate, like
-    its feed, excludes end-user activity, so a workspace whose only day-one
-    events are customers' dispatches the external pass alone."""
     api_key, _, workspace = await _developer(client)
     ws_key = await _mint_workspace_key(client, api_key, workspace)
     await _push(client, ws_key, [_event("s-1", user_id="cust-1", user_name="Cust")])
-    await _first_day_curator_tick(UUID(workspace["scope_user_id"]))
-    assert await _dispatched_wikis(pool, dispatched) == {"external"}
+    return UUID(workspace["scope_user_id"])
 
 
 async def _dispatched_wikis(pool, dispatched) -> set[str]:

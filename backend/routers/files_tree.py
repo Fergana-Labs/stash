@@ -219,24 +219,17 @@ async def get_local_curator_prompt(
 @router.get("/changes")
 async def get_changes(
     since: str | None = None,
-    include_end_users: bool = False,
     current_user: dict = Depends(get_current_user),
     scope_user_id: UUID = Depends(get_scope),
 ):
     """The incremental change feed the Memory curator reads: history, changed
-    pages (excl. Memory), new files, and connected sources since `since`.
-
-    End-user material (a developer's customers' sessions, pages, files, and
-    per-user Drive documents) is excluded by default — only the external
-    curator reads customer content, and it opts in with include_end_users."""
+    pages (excl. Memory), new files, and connected sources since `since`."""
     from datetime import datetime
 
     from ..services import curation_service
 
     since_dt = datetime.fromisoformat(since) if since else None
-    return await curation_service.changes_since(
-        scope_user_id, current_user["id"], since_dt, include_end_users=include_end_users
-    )
+    return await curation_service.changes_since(scope_user_id, current_user["id"], since_dt)
 
 
 @router.post("/memory/recompute", status_code=202)

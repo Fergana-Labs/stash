@@ -183,7 +183,7 @@ async def test_run_bookkeeping_failure_sends_alert(client: AsyncClient, monkeypa
     async def fake_run_scheduled(agent, stamp):
         return ""
 
-    async def boom(user_id, curated_through, now, include_end_users=False):
+    async def boom(user_id, curated_through, now):
         raise RuntimeError("watermark write failed")
 
     monkeypatch.setattr(sprite_agent_service, "run_scheduled", fake_run_scheduled)
@@ -215,7 +215,7 @@ async def test_run_due_records_no_changes_skip(client: AsyncClient, monkeypatch)
     async def fake_resolve(user_id, prefer_provider=None):
         return None
 
-    async def no_changes(owner_user_id, user_id, since, include_end_users=False):
+    async def no_changes(owner_user_id, user_id, since):
         return False
 
     monkeypatch.setattr(agent_auth, "resolve", fake_resolve)

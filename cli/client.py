@@ -380,10 +380,8 @@ class StashClient:
         Returns {stdout, stderr, exit_code} like a shell would."""
         return self._post("/api/v1/me/vfs", json={"script": script, "cwd": cwd})
 
-    def get_changes(self, since: str | None = None, include_end_users: bool = False) -> dict:
-        params: dict = {"since": since} if since else {}
-        if include_end_users:
-            params["include_end_users"] = "true"
+    def get_changes(self, since: str | None = None) -> dict:
+        params = {"since": since} if since else {}
         return self._get("/api/v1/me/changes", **params)
 
     def recompute_memory(self) -> dict:
