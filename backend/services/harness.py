@@ -22,6 +22,7 @@ import json
 import re
 import uuid
 from collections import deque
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 from ..database import get_pool
@@ -73,15 +74,35 @@ class Harness:
     provider: model_provider.Provider
     # opencode addresses models as provider/model; the others don't need it.
     default_model: str | None = None
+    # Channel (Slack/Telegram) denylist in this harness's own tool-name
+    # spelling — the single source of truth for the channel toolset. run_chat
+    # passes it as disallowed_tools on channel turns only. None = no verified
+    # headless restriction flag yet (tracked gap for that harness).
+    channel_disallowed: tuple[str, ...] | None = None
 
 
-CLAUDE = Harness("claude-code", "claude", model_provider.ANTHROPIC)
+# Claude's channel denylist — byte-identical to the old SLACK_DISALLOWED_TOOLS.
+CLAUDE = Harness(
+    "claude-code",
+    "claude",
+    model_provider.ANTHROPIC,
+    channel_disallowed=("Write", "Edit", "NotebookEdit", "Bash(rm:*)"),
+)
 CODEX = Harness("codex", "codex", model_provider.OPENAI)
 # opencode drives OpenRouter's many models; GLM is the default hosted pick.
 OPENCODE = Harness("opencode", "opencode", model_provider.OPENROUTER, default_model="z-ai/glm-5.2")
 # pi drives the user's own OpenAI-compatible endpoint (the LOCAL provider);
 # the model id rides on argv because each endpoint has its own catalog.
-PI = Harness("pi", "pi", model_provider.LOCAL)
+PI = Harness(
+    "pi",
+    "pi",
+    model_provider.LOCAL,
+    # pi has no command-granularity bash rule, so bash is excluded wholesale;
+    # read-only is the only way to close the mutation vector. Verified on the
+    # pinned 0.84.2: the flag trims the model's tools and rejected excluded
+    # calls come back isError at execution (no side effect).
+    channel_disallowed=("write", "edit", "bash"),
+)
 
 _BY_ID = {h.id: h for h in (CLAUDE, CODEX, OPENCODE, PI)}
 
@@ -111,7 +132,7 @@ def build_argv(
     session_key: str | None,
     resume: bool,
     system_prompt: str,
-    disallowed_tools: list[str] | None = None,
+    disallowed_tools: Sequence[str] | None = None,
     model: str | None = None,
 ) -> list[str]:
     """`session_key` is the id for this conversation (see session_key());
@@ -188,6 +209,10 @@ def build_argv(
         ]
         if resume and session_key:
             argv += ["--session", session_key]
+        if disallowed_tools:
+            # Headless denylist for untrusted (channel) turns; the pair is the
+            # final argv entries so it rides the reseed path too.
+            argv += ["--exclude-tools", ",".join(disallowed_tools)]
         return argv
 
     raise ValueError(f"unhandled harness: {harness.id}")

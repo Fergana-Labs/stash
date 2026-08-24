@@ -21,7 +21,7 @@ import json
 import logging
 import re
 import secrets
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 from uuid import UUID
 
 import redis.asyncio as aioredis
@@ -223,7 +223,7 @@ async def _turn_events(
     message: str,
     session_id: str,
     system_prompt: str,
-    disallowed_tools: list[str] | None = None,
+    disallowed_tools: Sequence[str] | None = None,
 ) -> AsyncIterator[dict]:
     """One full agent turn: resume the harness session, reseeding from stored
     history if the box has lost it. Ends with exactly one end/error event."""
@@ -606,12 +606,6 @@ async def stream_chat(
         yield _sse(event)
 
 
-# Slack messages are an untrusted surface: strip the harness's own mutating
-# tools so a prompt-injected message can't edit the box or the Stash through
-# them. (The stash CLI via Bash remains — hardening tracked as follow-up.)
-SLACK_DISALLOWED_TOOLS = ["Write", "Edit", "NotebookEdit", "Bash(rm:*)"]
-
-
 class NeedsAuth(Exception):
     """Surfaced to a channel (Slack/Telegram) so it can prompt the user to
     connect a key or upgrade, instead of failing silently."""
@@ -668,9 +662,11 @@ async def run_chat(
             message,
             session_id,
             _system_prompt(owner_name, persona),
-            # Channel messages are untrusted input; scheduled runs (curator
-            # included) execute a trusted prompt and need their full toolset.
-            disallowed_tools=SLACK_DISALLOWED_TOOLS if channel else None,
+            # Channel messages are untrusted input: each harness's own channel
+            # denylist (harness.channel_disallowed; None = no verified flag
+            # yet). Scheduled runs (curator included) execute a trusted prompt
+            # and need their full toolset.
+            disallowed_tools=auth.harness.channel_disallowed if channel else None,
         )
         try:
             async for event in _stoppable(turn, session_id):

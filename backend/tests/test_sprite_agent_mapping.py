@@ -87,7 +87,7 @@ def test_claude_disallowed_tools():
         session_key="k",
         resume=False,
         system_prompt="s",
-        disallowed_tools=["Write", "Edit"],
+        disallowed_tools=("Write", "Edit"),
     )
     assert argv[argv.index("--disallowedTools") + 1] == "Write,Edit"
 
@@ -294,6 +294,35 @@ def test_pi_resume_argv_appends_session_flag_only():
     )
     assert resumed[-2:] == ["--session", "01a02a53-f82f-76bf-9d88-38759358c244"]
     assert "--session-id" not in resumed
+
+
+def test_pi_channel_disallowed_tools_appends_exclude_tools():
+    # Channel turns get pi's verified headless denylist as the final flag pair
+    # (verified against pinned 0.84.2: reduces the model's tools to read,
+    # and excluded calls are rejected at execution).
+    argv = h.build_argv(
+        h.PI,
+        "hi",
+        session_key=None,
+        resume=False,
+        system_prompt="s",
+        disallowed_tools=("write", "edit", "bash"),
+        model="mock-1",
+    )
+    assert argv[-2:] == ["--exclude-tools", "write,edit,bash"]
+
+
+def test_channel_disallowed_per_harness():
+    # Per-harness channel denylists — the single source of truth for the
+    # channel-toolset invariant (a channel message must not mutate the box).
+    # CLAUDE's is the old SLACK_DISALLOWED_TOOLS values, byte-identical.
+    # PI is read-only: no command-granularity bash rule, so bash is excluded
+    # wholesale. CODEX/OPENCODE: tracked gap (follow-up task) — no verified
+    # headless restriction flag yet, so their channel turns are unrestricted.
+    assert h.CLAUDE.channel_disallowed == ("Write", "Edit", "NotebookEdit", "Bash(rm:*)")
+    assert h.PI.channel_disallowed == ("write", "edit", "bash")
+    assert h.CODEX.channel_disallowed is None
+    assert h.OPENCODE.channel_disallowed is None
 
 
 def test_pi_argv_without_model_fails_loud():
