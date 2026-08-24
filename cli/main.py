@@ -13,6 +13,7 @@ import tempfile
 import textwrap
 import time
 from pathlib import Path
+from typing import Literal
 
 import click
 import httpx
@@ -1142,7 +1143,10 @@ def _skill_url(skill: dict) -> str:
 @app.command("browse")
 def browse(
     query: str = typer.Argument("", help="Optional search query."),
-    sort: str = typer.Option("trending", "--sort", help="trending | newest | popular"),
+    # Mirrors the sort pattern in backend/routers/discover.py (kept in lockstep).
+    sort: Literal["trending", "newest", "popular"] = typer.Option(
+        "trending", "--sort", help="trending | newest | popular"
+    ),
     pick: bool = typer.Option(
         True, "--pick/--no-pick", help="Open an interactive picker (default) or print a flat list."
     ),
@@ -3923,8 +3927,29 @@ def changes(
 
 @sources_app.command("add")
 def sources_add(
-    source_type: str = typer.Argument(
-        ..., help="github_repo | google_drive | gmail | notion | slack | granola"
+    # Mirrors SOURCE_CAPABILITY in backend/services/source_service.py (kept in
+    # lockstep) — all 15 types, not just the six the help used to list.
+    source_type: Literal[
+        "github_repo",
+        "gmail",
+        "google_drive",
+        "google_drive_folder",
+        "notion",
+        "slack",
+        "granola",
+        "jira_project",
+        "asana_project",
+        "linear",
+        "posthog_project",
+        "gong_calls",
+        "heavi_learnings",
+        "instagram_saves",
+        "x_saves",
+    ] = typer.Argument(
+        ...,
+        help="github_repo | gmail | google_drive | google_drive_folder | notion | "
+        "slack | granola | jira_project | asana_project | linear | posthog_project | "
+        "gong_calls | heavi_learnings | instagram_saves | x_saves",
     ),
     ref: str = typer.Option(
         "", "--ref", help="external_ref, e.g. a repo 'owner/name' or Gmail address."
@@ -4357,12 +4382,16 @@ def cp_cmd(
 shares_app = typer.Typer(help="Shares — grant people access to an object by email.")
 app.add_typer(shares_app, name="shares")
 
-_SHARE_OBJECT_TYPES = "folder | page | file | session | table | source"
+# Mirrors _SHAREABLE in backend/services/share_service.py (kept in lockstep);
+# "source" and "session_folder" are not email-shareable (the server rejects them).
+_SHARE_OBJECT_TYPES = "folder | page | file | session | table"
 
 
 @shares_app.command("ls")
 def shares_ls(
-    object_type: str = typer.Argument(..., help=_SHARE_OBJECT_TYPES),
+    object_type: Literal["folder", "page", "file", "session", "table"] = typer.Argument(
+        ..., help=_SHARE_OBJECT_TYPES
+    ),
     object_id: str = typer.Argument(...),
     as_json: bool = typer.Option(False, "--json"),
 ):
@@ -4384,10 +4413,14 @@ def shares_ls(
 
 @shares_app.command("add")
 def shares_add(
-    object_type: str = typer.Argument(..., help=_SHARE_OBJECT_TYPES),
+    object_type: Literal["folder", "page", "file", "session", "table"] = typer.Argument(
+        ..., help=_SHARE_OBJECT_TYPES
+    ),
     object_id: str = typer.Argument(...),
     email: str = typer.Argument(..., help="Recipient email (pending until they sign up)."),
-    permission: str = typer.Option("read", "--permission", help="read | comment | write"),
+    permission: Literal["read", "comment", "write"] = typer.Option(
+        "read", "--permission", help="read | comment | write"
+    ),
     expires: str = typer.Option(
         None, "--expires", help="ISO-8601 expiry, e.g. 2026-12-31T00:00:00Z (omit = never)."
     ),
@@ -4414,7 +4447,9 @@ def shares_add(
 
 @shares_app.command("rm")
 def shares_rm(
-    object_type: str = typer.Argument(..., help=_SHARE_OBJECT_TYPES),
+    object_type: Literal["folder", "page", "file", "session", "table"] = typer.Argument(
+        ..., help=_SHARE_OBJECT_TYPES
+    ),
     object_id: str = typer.Argument(...),
     principal_id: str = typer.Argument(..., help="The user id to revoke (from `shares ls`)."),
     principal_type: str = typer.Option("user", "--principal-type"),
@@ -4754,7 +4789,19 @@ def tables_delete_row(
 def tables_add_column(
     table_id: str = typer.Argument(...),
     name: str = typer.Argument(...),
-    col_type: str = typer.Option("text", "--type"),
+    # Mirrors the ColumnAddRequest.type pattern in backend/models.py (kept in lockstep).
+    col_type: Literal[
+        "text",
+        "number",
+        "boolean",
+        "date",
+        "datetime",
+        "url",
+        "email",
+        "select",
+        "multiselect",
+        "json",
+    ] = typer.Option("text", "--type"),
     options: str = typer.Option(
         "", "--options", help="Comma-separated options for select/multiselect"
     ),
@@ -4827,7 +4874,7 @@ def tables_export(
     file: str = typer.Option(None, "--file", "-f", help="Output file (default: stdout)"),
     filters: str = typer.Option("", "--filter"),
     sort_by: str = typer.Option("", "--sort"),
-    sort_order: str = typer.Option("asc", "--order"),
+    sort_order: Literal["asc", "desc"] = typer.Option("asc", "--order"),
     as_json: bool = typer.Option(False, "--json"),
 ):
     """Export table as CSV."""

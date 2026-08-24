@@ -5,6 +5,17 @@ everything before it is captured in git history (`git log`), not here.
 
 ## Unreleased
 
+- CLI parameters whose allowed set the backend enforces (`browse --sort`,
+  the object type for `shares ls|add|rm`, `shares add --permission`, the
+  source type for `sources add`, `tables add-column --type`, and
+  `tables export --order`) are now validated at parse time: a typo fails
+  instantly with the full allowed set, a contextual hint, and exit code 2 —
+  no backend call is made, and every previously-valid value keeps working,
+  including the nine source types (`google_drive_folder`, `jira_project`,
+  `asana_project`, `linear`, `posthog_project`, `gong_calls`,
+  `heavi_learnings`, `instagram_saves`, `x_saves`) the `sources add` help
+  previously omitted. The `shares` help no longer advertises `source`,
+  which the server always rejected with a 400.
 - The `stash` CLI now surfaces contextual help hints when an invocation
   fails: a near-miss command name gets a Did-you-mean suggestion with the
   full runnable path (e.g. `stash skills list`), and a wrong or missing

@@ -528,7 +528,7 @@ stash vfs --cwd "/me/sources" "rg 'incident' ."`}</CodeBlock>
         args="<source_type> [--ref REF] [--name NAME]"
         description="Connect a source. Slack and Granola resolve their reference from your connected token; Gmail uses the mailbox email as --ref; the others need a --ref (e.g. a repo 'owner/name')."
         params={[
-          { name: "<source_type>", type: "string", desc: "github_repo | google_drive | gmail | notion | slack | granola.", required: true },
+          { name: "<source_type>", type: "string", desc: "github_repo | gmail | google_drive | google_drive_folder | notion | slack | granola | jira_project | asana_project | linear | posthog_project | gong_calls | heavi_learnings | instagram_saves | x_saves.", required: true },
           { name: "--ref", type: "string", desc: "External reference, e.g. a repo 'owner/name' or Gmail address." },
           { name: "--name", type: "string", desc: "Display name for the source." },
         ]}
@@ -1026,7 +1026,7 @@ stash vfs --cwd "/me/sources" "rg 'incident' ."`}</CodeBlock>
           { name: "<object_type>", type: "string", desc: "folder | page | file | session | table.", required: true },
           { name: "<object_id>", type: "string", desc: "ID of the object, or a session's title.", required: true },
           { name: "<email>", type: "string", desc: "Recipient email (pending until they sign up).", required: true },
-          { name: "--permission", type: "string", desc: "read | write | admin. Defaults to read." },
+          { name: "--permission", type: "string", desc: "read | comment | write. Defaults to read." },
         ]}
       />
 
