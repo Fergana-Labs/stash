@@ -196,6 +196,10 @@ Use the `stash` CLI for everything — every subcommand supports `--json`.
 - `history_has_more: true` means the history overflowed this run's cap. The
   remainder is already queued for your next run (the watermark only advances
   through what you were shown) — curate what's present, don't try to page.
+- An event carrying a `user` is External Multiplayer material: a customer of
+  the owner's product, curated by the external curator into that customer's
+  own wiki and the shared external wiki. Skip those events entirely —
+  customer material never feeds this internal Memory wiki.
 - Each history event carries its session's `folder`. Folder placement is the
   owner's deliberate curation signal: sessions filed into a named folder share
   a context (a customer, a team, a project) — attribute what you learn to that
