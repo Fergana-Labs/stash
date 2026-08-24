@@ -83,11 +83,11 @@ async def _run_curator_now(
         raise
 
 
-# During a workspace's first day the external wiki updates after every
-# conversation, not just on the nightly tick — a developer who just activated
-# the platform watches the wiki grow while they integrate. Debounced so a
-# stream of event batches coalesces into at most one run per window; the
-# agent's Redis turn lock already prevents overlapping runs.
+# During a scope's first day its wiki updates after every conversation, not
+# just on the nightly tick — a user who just signed up (or a developer who
+# just activated the platform) watches the wiki grow while they get set up.
+# Debounced so a stream of event batches coalesces into at most one run per
+# window; the agent's Redis turn lock already prevents overlapping runs.
 FIRST_DAY_HOURS = 24
 FIRST_DAY_DEBOUNCE = timedelta(minutes=10)
 
@@ -97,16 +97,35 @@ def first_day_curator_tick(scope_user_id: str) -> None:
     run_async(_first_day_curator_tick(UUID(scope_user_id)))
 
 
-async def _first_day_curator_tick(scope_user_id: UUID) -> None:
-    from ..services import agent_auth, agent_service, curation_service, end_user_service
+def _within_first_day(created_at: datetime, now: datetime) -> bool:
+    return created_at >= now - timedelta(hours=FIRST_DAY_HOURS)
 
-    workspace = await end_user_service.workspace_for_scope(scope_user_id)
-    if workspace is None or workspace["external_wiki_folder_id"] is None:
-        return
+
+async def _first_day_curator_tick(scope_user_id: UUID) -> None:
+    from ..services import agent_service, end_user_service, user_service
+
     now = datetime.now(UTC)
-    if workspace["created_at"] < now - timedelta(hours=FIRST_DAY_HOURS):
-        return
-    agent = await agent_service.get_or_create_curator(scope_user_id, wiki="external")
+
+    # Personal (and workspace-internal) Memory wiki, anchored to signup time.
+    scope_user = await user_service.get_user_by_id(scope_user_id)
+    if scope_user is not None and _within_first_day(scope_user["created_at"], now):
+        agent = await agent_service.get_or_create_curator(scope_user_id)
+        await _maybe_dispatch_first_day_run(scope_user_id, agent, now)
+
+    # External cross-user wiki, anchored to developer-platform activation.
+    workspace = await end_user_service.workspace_for_scope(scope_user_id)
+    if (
+        workspace is not None
+        and workspace["external_wiki_folder_id"] is not None
+        and _within_first_day(workspace["created_at"], now)
+    ):
+        agent = await agent_service.get_or_create_curator(scope_user_id, wiki="external")
+        await _maybe_dispatch_first_day_run(scope_user_id, agent, now)
+
+
+async def _maybe_dispatch_first_day_run(scope_user_id: UUID, agent: dict, now: datetime) -> None:
+    from ..services import agent_auth, curation_service
+
     # A curator that has never run skips the debounce: its seeded last_run_at
     # is the backfill point (~account creation), which would otherwise mute
     # the very first conversations after signup.
@@ -125,7 +144,7 @@ async def _first_day_curator_tick(scope_user_id: UUID) -> None:
     ):
         return
     # Unmetered: the platform is the trigger, so the run must not eat the
-    # workspace's free monthly curator allowance.
+    # scope's free monthly curator allowance.
     run_curator_now.delay(str(agent["id"]), metered=False)
 
 

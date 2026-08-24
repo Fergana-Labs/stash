@@ -8,7 +8,7 @@ import asyncio
 import hashlib
 import json
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 import numpy as np
@@ -113,6 +113,20 @@ async def _embed_events_batch(event_ids: list[UUID], contents: list[str]) -> Non
 # --- Event CRUD ---
 
 
+async def _rewind_curated_through(owner_user_id: UUID, oldest_event_at: datetime) -> None:
+    """Imported sessions keep their original event times, which can predate a
+    curator's curated_through — its delta runs would never read them. Pull
+    curated_through back so the next run does. A no-op for live events, whose
+    timestamps are newer than any curator's position."""
+    pool = get_pool()
+    await pool.execute(
+        "UPDATE agents SET curated_through = $2 "
+        "WHERE user_id = $1 AND is_curator AND curated_through > $2",
+        owner_user_id,
+        oldest_event_at - timedelta(microseconds=1),
+    )
+
+
 async def push_event(
     owner_user_id: UUID | None,
     agent_name: str,
@@ -159,6 +173,8 @@ async def push_event(
         ts,
     )
     event = dict(row)
+    if owner_user_id is not None:
+        await _rewind_curated_through(owner_user_id, ts)
     if embedding_service.is_configured():
         _schedule_event_embed(event["id"], content, _text_hash(content))
     if owner_user_id is not None and session_id:
@@ -242,6 +258,8 @@ async def push_events_batch(
         timestamps,
     )
     results = [dict(r) for r in rows]
+    if owner_user_id is not None:
+        await _rewind_curated_through(owner_user_id, min(timestamps))
     await _upsert_sessions_for_events(owner_user_id, created_by, events, timestamps)
     if embedding_service.is_configured() and results:
         ids = [r["id"] for r in results]
