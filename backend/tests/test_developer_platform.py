@@ -260,6 +260,79 @@ async def test_new_user_reads_the_shared_wiki_before_they_have_written(client: A
 
 
 @pytest.mark.asyncio
+async def test_user_scoped_source_is_visible_to_that_user_only(client: AsyncClient, pool):
+    """A developer can connect a source (e.g. a customer's Drive folder) FOR
+    one end user: `user_id` on the connect call stamps the source, that user's
+    VFS lists it under /sources, and no other user ever sees it — a customer's
+    Drive folder belongs to that customer, never to the developer's other
+    customers."""
+    api_key, _, workspace = await _developer(client)
+    machine_key = await _mint_workspace_key(client, api_key, workspace)
+
+    # The users exist once something is written for them.
+    await _push(
+        client,
+        machine_key,
+        [
+            _event("sess-acme-1", user_id="org_acme", user_name="Acme"),
+            _event("sess-beta-1", user_id="org_beta", user_name="Beta"),
+        ],
+    )
+
+    # Connecting is a write, so it comes from the developer's own key in
+    # workspace scope — the read machine key is for the agent's reads.
+    # external_ref + display_name given directly: the Drive folder-name
+    # lookup is the only part that needs a live Google token.
+    scope = {**_auth(api_key), "X-Stash-Scope": workspace["scope_user_id"]}
+    resp = await client.post(
+        "/api/v1/me/sources",
+        json={
+            "source_type": "google_drive_folder",
+            "external_ref": "drive-folder-acme",
+            "display_name": "Acme fleet records",
+            "user_id": "org_acme",
+        },
+        headers=scope,
+    )
+    assert resp.status_code == 200, resp.text
+
+    # Connecting for a user the workspace has never seen fails loud.
+    resp = await client.post(
+        "/api/v1/me/sources",
+        json={
+            "source_type": "google_drive_folder",
+            "external_ref": "drive-folder-nobody",
+            "display_name": "Nobody's folder",
+            "user_id": "org_never_written",
+        },
+        headers=scope,
+    )
+    assert resp.status_code == 400
+
+    # The source row is stamped to Acme.
+    row = await pool.fetchrow(
+        "SELECT eu.external_id FROM user_sources us JOIN end_users eu ON eu.id = us.end_user_id "
+        "WHERE us.owner_user_id = $1 AND us.display_name = 'Acme fleet records'",
+        uuid.UUID(workspace["scope_user_id"]),
+    )
+    assert row and row["external_id"] == "org_acme"
+
+    # /sources mounts by provider: the connected Drive shows up in Acme's
+    # view and is absent from Beta's — the isolation the feature is for.
+    async def sources_listing(user_id: str) -> str:
+        resp = await client.post(
+            "/api/v1/me/vfs",
+            json={"script": "ls /sources", "user_id": user_id},
+            headers=_auth(machine_key),
+        )
+        assert resp.status_code == 200, resp.text
+        return resp.json()["stdout"]
+
+    assert "google" in await sources_listing("org_acme")
+    assert "google" not in await sources_listing("org_beta")
+
+
+@pytest.mark.asyncio
 async def test_event_uploads_tolerate_unknown_fields(client: AsyncClient):
     """Event uploads come from installed clients and customer backends we
     don't control, so an unknown field must be ignored, never rejected —
