@@ -74,7 +74,10 @@ async def _run_curator_now(
         # the beat's minute-stamped run.
         await sprite_agent_service.run_scheduled(agent, now.strftime("%Y%m%d%H%M%S"))
         through = await curation_service.complete_through(
-            UUID(str(agent["user_id"])), agent["curated_through"], now
+            UUID(str(agent["user_id"])),
+            agent["curated_through"],
+            now,
+            include_end_users=agent.get("curator_wiki") == "external",
         )
         await agent_service.mark_curated(agent_id, through)
         await agent_service.mark_run_succeeded(agent_id)
@@ -140,7 +143,10 @@ async def _maybe_dispatch_first_day_run(scope_user_id: UUID, agent: dict, now: d
     except (agent_auth.NeedsAuth, agent_auth.ProviderNotConfigured):
         return
     if not await curation_service.has_changes_since(
-        scope_user_id, scope_user_id, agent["curated_through"]
+        scope_user_id,
+        scope_user_id,
+        agent["curated_through"],
+        include_end_users=agent.get("curator_wiki") == "external",
     ):
         return
     # Unmetered: the platform is the trigger, so the run must not eat the
@@ -184,7 +190,10 @@ async def _run_due() -> int:
         # Cost gate: skip the curator (and the sprite wake) when nothing changed
         # since its watermark. Idle users cost one EXISTS per day.
         if agent["is_curator"] and not await curation_service.has_changes_since(
-            user_id, user_id, agent["curated_through"]
+            user_id,
+            user_id,
+            agent["curated_through"],
+            include_end_users=agent.get("curator_wiki") == "external",
         ):
             await agent_service.mark_run_skipped(agent["id"], "no_changes")
             continue
@@ -216,7 +225,10 @@ async def _run_scheduled_agent(agent_id: UUID, stamp: str) -> None:
             # failures share the run's try so they also record last_run_error
             # and alert, instead of dying as a bare task error.
             through = await curation_service.complete_through(
-                user_id, agent["curated_through"], now
+                user_id,
+                agent["curated_through"],
+                now,
+                include_end_users=agent.get("curator_wiki") == "external",
             )
             await agent_service.mark_curated(agent_id, through)
         await agent_service.mark_run_succeeded(agent_id)
@@ -252,7 +264,8 @@ async def _alert_stale_curators() -> int:
     cutoff = datetime.now(UTC) - timedelta(hours=STALE_CURATOR_HOURS)
     rows = await get_pool().fetch(
         """
-        SELECT a.user_id, a.curated_through, a.last_run_error, a.last_run_outcome, u.email
+        SELECT a.user_id, a.curated_through, a.last_run_error, a.last_run_outcome,
+               a.curator_wiki, u.email
         FROM agents a JOIN users u ON u.id = a.user_id
         WHERE a.is_curator AND a.run_mode = 'scheduled'
           AND a.curated_through IS NOT NULL AND a.curated_through < $1
@@ -264,7 +277,10 @@ async def _alert_stale_curators() -> int:
         r
         for r in rows
         if await curation_service.has_changes_since(
-            r["user_id"], r["user_id"], r["curated_through"]
+            r["user_id"],
+            r["user_id"],
+            r["curated_through"],
+            include_end_users=r["curator_wiki"] == "external",
         )
     ]
     if not stale:

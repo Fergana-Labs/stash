@@ -600,7 +600,7 @@ async def test_manual_recompute_bookkeeping_failure_records_failed_outcome(
     _key, uid = await _register(client)
     curator = await agent_service.get_or_create_curator(uid)
 
-    async def boom(user_id, curated_through, now):
+    async def boom(user_id, curated_through, now, include_end_users=False):
         raise RuntimeError("watermark write failed")
 
     monkeypatch.setattr(curation_service, "complete_through", boom)
