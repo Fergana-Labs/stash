@@ -21,6 +21,16 @@ from ._celery_helpers import run_async
 
 logger = logging.getLogger(__name__)
 
+# A harness agent run (PI curation) routinely takes 13+ minutes and can
+# exceed 25 minutes on a large delta — the global 1500s soft / 1800s hard
+# ceiling (celery_app.py) was killing them mid-run: partial wiki writes
+# survive, but the run is marked failed and the watermark does not advance,
+# so the next run re-reads the same delta. These two tasks are the only
+# Celery tasks that run a harness agent; they carry their own limits so the
+# global stays the ceiling for everything else.
+HARNESS_SOFT_TIME_LIMIT = 5400  # 90 min
+HARNESS_TIME_LIMIT = 5700  # 95 min
+
 
 def _is_due(cron: str, last_run: datetime | None, now: datetime) -> bool:
     """True if a cron tick falls in (last_run, now]. Never fires on the very
@@ -39,12 +49,20 @@ def run_due() -> int:
     return run_async(_run_due())
 
 
-@celery.task(name="backend.tasks.agent_schedules.run_scheduled_agent")
+@celery.task(
+    name="backend.tasks.agent_schedules.run_scheduled_agent",
+    soft_time_limit=HARNESS_SOFT_TIME_LIMIT,
+    time_limit=HARNESS_TIME_LIMIT,
+)
 def run_scheduled_agent(agent_id: str, stamp: str) -> None:
     run_async(_run_scheduled_agent(UUID(agent_id), stamp))
 
 
-@celery.task(name="backend.tasks.agent_schedules.run_curator_now")
+@celery.task(
+    name="backend.tasks.agent_schedules.run_curator_now",
+    soft_time_limit=HARNESS_SOFT_TIME_LIMIT,
+    time_limit=HARNESS_TIME_LIMIT,
+)
 def run_curator_now(agent_id: str, full_history: bool = False, metered: bool = True) -> None:
     run_async(_run_curator_now(UUID(agent_id), full_history, metered))
 
