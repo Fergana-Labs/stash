@@ -297,8 +297,8 @@ export interface DeveloperUserFiles {
   id: string;
   name: string;
   external_id: string;
-  notepad_folder_id: string;
-  notepad_pages: DeveloperPageRow[];
+  wiki_folder_id: string;
+  wiki_pages: DeveloperPageRow[];
   files: DeveloperFileRow[];
 }
 
@@ -400,7 +400,7 @@ export async function getUser(userId: string): Promise<{
   user: EndUser;
   sessions: EndUserSession[];
   files: EndUserFile[];
-  notepad_pages: EndUserWikiPage[];
+  wiki_pages: EndUserWikiPage[];
   sources: EndUserSource[];
 }> {
   return apiFetch(`${ME}/users/${userId}`);

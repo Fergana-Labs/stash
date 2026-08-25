@@ -21,6 +21,16 @@ from ._celery_helpers import run_async
 
 logger = logging.getLogger(__name__)
 
+# A harness agent run (PI curation) routinely takes 13+ minutes and can
+# exceed 25 minutes on a large delta — the global 1500s soft / 1800s hard
+# ceiling (celery_app.py) was killing them mid-run: partial wiki writes
+# survive, but the run is marked failed and the watermark does not advance,
+# so the next run re-reads the same delta. These two tasks are the only
+# Celery tasks that run a harness agent; they carry their own limits so the
+# global stays the ceiling for everything else.
+HARNESS_SOFT_TIME_LIMIT = 5400  # 90 min
+HARNESS_TIME_LIMIT = 5700  # 95 min
+
 
 def _is_due(cron: str, last_run: datetime | None, now: datetime) -> bool:
     """True if a cron tick falls in (last_run, now]. Never fires on the very
@@ -39,12 +49,20 @@ def run_due() -> int:
     return run_async(_run_due())
 
 
-@celery.task(name="backend.tasks.agent_schedules.run_scheduled_agent")
+@celery.task(
+    name="backend.tasks.agent_schedules.run_scheduled_agent",
+    soft_time_limit=HARNESS_SOFT_TIME_LIMIT,
+    time_limit=HARNESS_TIME_LIMIT,
+)
 def run_scheduled_agent(agent_id: str, stamp: str) -> None:
     run_async(_run_scheduled_agent(UUID(agent_id), stamp))
 
 
-@celery.task(name="backend.tasks.agent_schedules.run_curator_now")
+@celery.task(
+    name="backend.tasks.agent_schedules.run_curator_now",
+    soft_time_limit=HARNESS_SOFT_TIME_LIMIT,
+    time_limit=HARNESS_TIME_LIMIT,
+)
 def run_curator_now(agent_id: str, full_history: bool = False, metered: bool = True) -> None:
     run_async(_run_curator_now(UUID(agent_id), full_history, metered))
 
@@ -83,11 +101,11 @@ async def _run_curator_now(
         raise
 
 
-# During a workspace's first day the external wiki updates after every
-# conversation, not just on the nightly tick — a developer who just activated
-# the platform watches the wiki grow while they integrate. Debounced so a
-# stream of event batches coalesces into at most one run per window; the
-# agent's Redis turn lock already prevents overlapping runs.
+# During a scope's first day its wiki updates after every conversation, not
+# just on the nightly tick — a user who just signed up (or a developer who
+# just activated the platform) watches the wiki grow while they get set up.
+# Debounced so a stream of event batches coalesces into at most one run per
+# window; the agent's Redis turn lock already prevents overlapping runs.
 FIRST_DAY_HOURS = 24
 FIRST_DAY_DEBOUNCE = timedelta(minutes=10)
 
@@ -97,16 +115,35 @@ def first_day_curator_tick(scope_user_id: str) -> None:
     run_async(_first_day_curator_tick(UUID(scope_user_id)))
 
 
-async def _first_day_curator_tick(scope_user_id: UUID) -> None:
-    from ..services import agent_auth, agent_service, curation_service, end_user_service
+def _within_first_day(created_at: datetime, now: datetime) -> bool:
+    return created_at >= now - timedelta(hours=FIRST_DAY_HOURS)
 
-    workspace = await end_user_service.workspace_for_scope(scope_user_id)
-    if workspace is None or workspace["external_wiki_folder_id"] is None:
-        return
+
+async def _first_day_curator_tick(scope_user_id: UUID) -> None:
+    from ..services import agent_service, end_user_service, user_service
+
     now = datetime.now(UTC)
-    if workspace["created_at"] < now - timedelta(hours=FIRST_DAY_HOURS):
-        return
-    agent = await agent_service.get_or_create_curator(scope_user_id, wiki="external")
+
+    # Personal (and workspace-internal) Memory wiki, anchored to signup time.
+    scope_user = await user_service.get_user_by_id(scope_user_id)
+    if scope_user is not None and _within_first_day(scope_user["created_at"], now):
+        agent = await agent_service.get_or_create_curator(scope_user_id)
+        await _maybe_dispatch_first_day_run(scope_user_id, agent, now)
+
+    # External cross-user wiki, anchored to developer-platform activation.
+    workspace = await end_user_service.workspace_for_scope(scope_user_id)
+    if (
+        workspace is not None
+        and workspace["external_wiki_folder_id"] is not None
+        and _within_first_day(workspace["created_at"], now)
+    ):
+        agent = await agent_service.get_or_create_curator(scope_user_id, wiki="external")
+        await _maybe_dispatch_first_day_run(scope_user_id, agent, now)
+
+
+async def _maybe_dispatch_first_day_run(scope_user_id: UUID, agent: dict, now: datetime) -> None:
+    from ..services import agent_auth, curation_service
+
     # A curator that has never run skips the debounce: its seeded last_run_at
     # is the backfill point (~account creation), which would otherwise mute
     # the very first conversations after signup.
@@ -125,7 +162,7 @@ async def _first_day_curator_tick(scope_user_id: UUID) -> None:
     ):
         return
     # Unmetered: the platform is the trigger, so the run must not eat the
-    # workspace's free monthly curator allowance.
+    # scope's free monthly curator allowance.
     run_curator_now.delay(str(agent["id"]), metered=False)
 
 

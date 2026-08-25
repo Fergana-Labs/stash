@@ -14,11 +14,11 @@ this module say end_user. Nothing anywhere says tenant.
 Two memory surfaces hang off this table:
 - the workspace's external wiki (`workspaces.external_wiki_folder_id`) —
   cross-user, anonymized by the curator, opt-out per user via `share_wiki`;
-- a per-user notepad folder (`end_users.notepad_folder_id`) — non-anonymized,
+- a per-user wiki folder (`end_users.wiki_folder_id`) — non-anonymized,
   visible only through that user's own reads and the developer console.
 
 Activating the developer platform on a workspace creates the wiki and
-notepads folders; `external_wiki_folder_id IS NOT NULL` is the "developer
+user-wikis folders; `external_wiki_folder_id IS NOT NULL` is the "developer
 platform is active" marker.
 """
 
@@ -27,18 +27,16 @@ from uuid import UUID
 from ..database import get_pool
 from . import files_tree_service, source_service, workspace_service
 
-_END_USER_COLS_PLAIN = (
-    "id, workspace_id, external_id, name, share_wiki, notepad_folder_id, created_at"
-)
+_END_USER_COLS_PLAIN = "id, workspace_id, external_id, name, share_wiki, wiki_folder_id, created_at"
 _END_USER_COLS = (
     "eu.id, eu.workspace_id, eu.external_id, eu.name, eu.share_wiki, "
-    "eu.notepad_folder_id, eu.created_at"
+    "eu.wiki_folder_id, eu.created_at"
 )
 
 
 async def activate(workspace_id: UUID, created_by: UUID) -> dict:
     """Turn on the developer platform for a workspace: create the external
-    wiki and user-notepads folders and stamp them on the row. Idempotent."""
+    wiki and user-wikis folders and stamp them on the row. Idempotent."""
     pool = get_pool()
     workspace = await workspace_service.get_workspace(workspace_id)
     if workspace is None:
@@ -49,18 +47,18 @@ async def activate(workspace_id: UUID, created_by: UUID) -> dict:
     wiki = await files_tree_service.create_folder(
         owner, "External Wiki", created_by, protected=True
     )
-    notepads = await files_tree_service.create_folder(
-        owner, "User Notepads", created_by, protected=True
+    user_wikis = await files_tree_service.create_folder(
+        owner, "User Wikis", created_by, protected=True
     )
     row = await pool.fetchrow(
         "UPDATE workspaces "
-        "SET external_wiki_folder_id = $2, end_user_notepads_folder_id = $3 "
+        "SET external_wiki_folder_id = $2, end_user_wikis_folder_id = $3 "
         "WHERE id = $1 AND external_wiki_folder_id IS NULL "
         "RETURNING id, name, domain, scope_user_id, created_by, "
-        "         external_wiki_folder_id, end_user_notepads_folder_id, created_at",
+        "         external_wiki_folder_id, end_user_wikis_folder_id, created_at",
         workspace_id,
         wiki["id"],
-        notepads["id"],
+        user_wikis["id"],
     )
     if row is None:
         # Lost an activation race — the other winner's folders stand.
@@ -77,7 +75,7 @@ async def workspace_for_scope(scope_user_id: UUID) -> dict | None:
     pool = get_pool()
     row = await pool.fetchrow(
         "SELECT id, name, domain, scope_user_id, created_by, "
-        "       external_wiki_folder_id, end_user_notepads_folder_id, created_at "
+        "       external_wiki_folder_id, end_user_wikis_folder_id, created_at "
         "FROM workspaces WHERE scope_user_id = $1",
         scope_user_id,
     )
@@ -88,7 +86,7 @@ async def get_or_create_end_user(
     workspace: dict, external_id: str, name: str | None = None
 ) -> dict:
     """Resolve an end user by the developer's own id, creating them (and their
-    notepad folder) on first sight. The name defaults to the external id and is
+    wiki folder) on first sight. The name defaults to the external id and is
     only a display label — identity lives on (workspace_id, external_id)."""
     if workspace["external_wiki_folder_id"] is None:
         raise ValueError("developer platform is not active on this workspace — activate it first")
@@ -118,24 +116,24 @@ async def get_or_create_end_user(
             # The folder is named by external_id, not the display name: folders
             # are unique on (owner, parent, name), and two of a developer's
             # users may well share a display name.
-            notepad = await conn.fetchrow(
+            wiki_folder = await conn.fetchrow(
                 "INSERT INTO folders "
                 "  (owner_user_id, parent_folder_id, name, created_by, is_protected) "
                 "VALUES ($1, $2, $3, $4, true) RETURNING id",
                 workspace["scope_user_id"],
-                workspace["end_user_notepads_folder_id"],
+                workspace["end_user_wikis_folder_id"],
                 external_id,
                 workspace["scope_user_id"],
             )
             row = await conn.fetchrow(
                 f"INSERT INTO end_users "
-                "  (workspace_id, external_id, name, notepad_folder_id) "
+                "  (workspace_id, external_id, name, wiki_folder_id) "
                 "VALUES ($1, $2, $3, $4) "
                 f"RETURNING {_END_USER_COLS_PLAIN}",
                 workspace["id"],
                 external_id,
                 name or external_id,
-                notepad["id"],
+                wiki_folder["id"],
             )
             return dict(row)
 
@@ -232,7 +230,7 @@ async def external_curator_prompt(workspace: dict, since) -> str:
         [
             {
                 "name": end_user["name"],
-                "notepad_folder_id": str(end_user["notepad_folder_id"]),
+                "wiki_folder_id": str(end_user["wiki_folder_id"]),
                 "share_wiki": end_user["share_wiki"],
             }
             for end_user in end_users
@@ -288,7 +286,7 @@ async def workspace_sessions(workspace: dict, limit: int = 200) -> list[dict]:
 
 async def workspace_files(workspace: dict) -> dict:
     """The console's files view: the shared wiki's pages and files, and each
-    user's own material (notepad pages plus uploaded files)."""
+    user's own material (their wiki's pages plus uploaded files)."""
     pool = get_pool()
     wiki_ids = list(
         await files_tree_service.folder_subtree_ids(workspace["external_wiki_folder_id"])
@@ -305,13 +303,13 @@ async def workspace_files(workspace: dict) -> dict:
     )
     users = []
     for end_user in await list_end_users(workspace["id"]):
-        notepad_ids = list(
-            await files_tree_service.folder_subtree_ids(end_user["notepad_folder_id"])
+        user_wiki_ids = list(
+            await files_tree_service.folder_subtree_ids(end_user["wiki_folder_id"])
         )
-        notepad_pages = await pool.fetch(
+        user_wiki_pages = await pool.fetch(
             "SELECT id, name, updated_at FROM pages "
             "WHERE folder_id = ANY($1) AND deleted_at IS NULL ORDER BY updated_at DESC",
-            notepad_ids,
+            user_wiki_ids,
         )
         files = await pool.fetch(
             "SELECT id, name, size_bytes, created_at FROM files "
@@ -323,8 +321,8 @@ async def workspace_files(workspace: dict) -> dict:
                 "id": str(end_user["id"]),
                 "name": end_user["name"],
                 "external_id": end_user["external_id"],
-                "notepad_folder_id": str(end_user["notepad_folder_id"]),
-                "notepad_pages": [dict(r) for r in notepad_pages],
+                "wiki_folder_id": str(end_user["wiki_folder_id"]),
+                "wiki_pages": [dict(r) for r in user_wiki_pages],
                 "files": [dict(r) for r in files],
             }
         )
@@ -364,7 +362,7 @@ async def update_end_user(
 
 async def end_user_detail(end_user: dict) -> dict:
     """Everything the console shows about one user: their transcripts, the
-    files their uploads carried, and the notepad the curator writes for them."""
+    files their uploads carried, and the wiki the curator writes for them."""
     pool = get_pool()
     sessions = await pool.fetch(
         "SELECT s.session_id, s.agent_name, s.started_at, s.title, "
@@ -384,10 +382,10 @@ async def end_user_detail(end_user: dict) -> dict:
         "ORDER BY created_at DESC",
         end_user["id"],
     )
-    notepad_pages = await pool.fetch(
+    wiki_pages = await pool.fetch(
         "SELECT id, name, updated_at FROM pages "
         "WHERE folder_id = ANY($1) AND deleted_at IS NULL ORDER BY updated_at DESC",
-        list(await files_tree_service.folder_subtree_ids(end_user["notepad_folder_id"])),
+        list(await files_tree_service.folder_subtree_ids(end_user["wiki_folder_id"])),
     )
     workspace = await workspace_service.get_workspace(end_user["workspace_id"])
     sources = await source_service.list_connected_sources(
@@ -397,6 +395,6 @@ async def end_user_detail(end_user: dict) -> dict:
         "user": end_user,
         "sessions": [dict(r) for r in sessions],
         "files": [dict(r) for r in files],
-        "notepad_pages": [dict(r) for r in notepad_pages],
+        "wiki_pages": [dict(r) for r in wiki_pages],
         "sources": sources,
     }

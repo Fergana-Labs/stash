@@ -427,7 +427,7 @@ async def build_scheduled_turn(agent: dict, run_stamp: str) -> tuple[str, str]:
         since = agent["curated_through"].isoformat() if agent.get("curated_through") else None
         # Which wiki this curator writes decides its prompt. A developer
         # workspace runs both: the internal pass over its own Memory wiki, and
-        # the external pass compiling the cross-user wiki plus per-user notepads.
+        # the external pass compiling the cross-user wiki plus per-user wikis.
         if agent.get("curator_wiki") == "external":
             workspace = await end_user_service.workspace_for_scope(user_id)
             if workspace is None or workspace["external_wiki_folder_id"] is None:

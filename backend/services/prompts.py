@@ -196,6 +196,10 @@ Use the `stash` CLI for everything — every subcommand supports `--json`.
 - `history_has_more: true` means the history overflowed this run's cap. The
   remainder is already queued for your next run (the watermark only advances
   through what you were shown) — curate what's present, don't try to page.
+- An event carrying a `user` is External Multiplayer material: a customer of
+  the owner's product, curated by the external curator into that customer's
+  own wiki and the shared external wiki. Skip those events entirely —
+  customer material never feeds this internal Memory wiki.
 - Each history event carries its session's `folder`. Folder placement is the
   owner's deliberate curation signal: sessions filed into a named folder share
   a context (a customer, a team, a project) — attribute what you learn to that
@@ -309,7 +313,7 @@ Begin now.
 
 
 # ---------------------------------------------------------------------------
-# External Multiplayer curator (developer workspaces: cross-user wiki + notepads)
+# External Multiplayer curator (developer workspaces: shared wiki + per-user wikis)
 # ---------------------------------------------------------------------------
 
 
@@ -321,10 +325,10 @@ def render_external_curator_prompt(
     A developer workspace serves many end users — one user of the developer's
     product each, whether that is a repair shop or one person. This prompt
     compiles the same delta feed into two artifacts with opposite privacy
-    rules: a per-user notepad (non-anonymized, one folder per user) and the
+    rules: a per-user wiki (non-anonymized, one folder per user) and the
     shared external wiki (cross-user, anonymized — user identities never
-    appear). Users opt out of the wiki with share_wiki=false; their material
-    still feeds their own notepad.
+    appear). Users opt out of the shared wiki with share_wiki=false; their
+    material still feeds their own wiki.
     """
     window = (
         f"the changes since {since}"
@@ -333,7 +337,7 @@ def render_external_curator_prompt(
     )
     changes_cmd = f"stash changes --since {since} --json" if since else "stash changes --json"
     user_lines = "\n".join(
-        f"- `{end_user['name']}` — notepad folder id `{end_user['notepad_folder_id']}`"
+        f"- `{end_user['name']}` — wiki folder id `{end_user['wiki_folder_id']}`"
         + ("" if end_user["share_wiki"] else " — **opted out of the shared wiki**")
         for end_user in end_users
     )
@@ -344,7 +348,7 @@ each end **user** of it is a company, or one person. You compile
 {window} into two
 artifacts with opposite privacy rules:
 
-1. **Per-user notepads** — one folder per user (ids below). Non-anonymized
+1. **Per-user wikis** — one folder per user (ids below). Non-anonymized
    working memory for that user alone: their machines, their part numbers,
    their people, their history. Detail is the point.
 2. **The shared external wiki** (folder id `{wiki_folder_id}`) — general
@@ -352,7 +356,7 @@ artifacts with opposite privacy rules:
    must never appear here: no user names, no customer names, no people, no
    identifiable specifics (a one-of-a-kind machine identifies its owner).
    Cite anonymously: "a peer user found...". When in doubt whether a detail
-   identifies a user, it goes in the notepad, not the wiki.
+   identifies a user, it goes in that user's own wiki, not the shared wiki.
 
 ## The users
 {user_lines}
@@ -360,37 +364,37 @@ artifacts with opposite privacy rules:
 ## Read the inputs
 - `{changes_cmd}` — the delta. Each history event carries its session's
   `user` (name) and `user_share_wiki`. Events with no user are the developer's
-  own activity — wiki-eligible, never notepad material.
+  own activity — eligible for the shared wiki, never for any user's own wiki.
 - `history_has_more: true` means the feed overflowed this run's cap; curate
   what's present, the remainder is queued for your next run.
 - `stash ls /files --json` and `stash files read-page <page_id>` to inspect
   what's already written.
 
 ## Routing rules (hard)
-- Every user's material feeds THAT user's notepad, never another user's.
-- Only events from users WITHOUT the opt-out marker may inform the wiki.
-  Opted-out users' material goes in their notepad and stops there.
-- The wiki gets the anonymized general lesson; the notepad gets the specifics.
-  One event routinely produces both: "User X's Cascadia needed part P for
-  fault F" → notepad line for user X verbatim; wiki page on fault F → part P
-  with no mention of X.
-- Files in the delta already inside the wiki folder are developer-curated
-  raw material for the wiki — fold them in like any source, they are already
-  cleared for cross-user use.
+- Every user's material feeds THAT user's wiki, never another user's.
+- Only events from users WITHOUT the opt-out marker may inform the shared
+  wiki. Opted-out users' material goes in their own wiki and stops there.
+- The shared wiki gets the anonymized general lesson; the user's own wiki
+  gets the specifics. One event routinely produces both: "User X's Cascadia
+  needed part P for fault F" → a line in user X's wiki verbatim; shared-wiki
+  page on fault F → part P with no mention of X.
+- Files in the delta already inside the shared wiki folder are
+  developer-curated raw material for it — fold them in like any source, they
+  are already cleared for cross-user use.
 
 ## Write
 - Create a page: `stash files add-page "<Title>" --folder <folder_id> --content "<markdown>" --json`
 - Update a page: `stash files edit-page <page_id> --content "<markdown>"`
 - Create structure: `stash files create-folder "<Name>" --parent <folder_id> --json`
-- The wiki keeps a root `Wiki Index` page cataloging every page with a
-  one-line summary, and an append-only `Log` page:
+- The shared wiki keeps a root `Wiki Index` page cataloging every page with
+  a one-line summary, and an append-only `Log` page:
   `- [YYYY-MM-DD] created|updated|merged|skipped <page> — <detail>` per action.
-- There is exactly ONE `Wiki Index` and ONE `Log` in the whole wiki. Find and
-  edit the existing pages (`stash ls`); creating a second of either is always
-  wrong, even on a bootstrap run over history that already has them.
-- Each notepad is a small set of topic pages plus a `Notes` page for
-  everything else — notepads are working memory, not wikis: favor updating
-  one page over minting many.
+- There is exactly ONE `Wiki Index` and ONE `Log` in the whole shared wiki.
+  Find and edit the existing pages (`stash ls`); creating a second of either
+  is always wrong, even on a bootstrap run over history that already has them.
+- Each user's wiki is a small set of topic pages plus a `Notes` page for
+  everything else — user wikis are working memory: favor updating one page
+  over minting many.
 
 ## Ingest principles
 - Maintain, don't regenerate. Scope by diff, not by corpus.
