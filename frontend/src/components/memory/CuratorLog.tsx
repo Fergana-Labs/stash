@@ -101,15 +101,20 @@ function LogEntry({ entry }: { entry: CuratorLogEntry }) {
         <span className="sys-label" style={{ fontSize: 10.5 }}>
           {entryDate(entry)}
         </span>
-        <Link
-          href={`/sessions/${encodeURIComponent(entry.session_id)}`}
-          className="text-[11.5px] text-dim hover:text-foreground"
-        >
-          View run →
-        </Link>
+        {/* A skipped night has no run to view — its session is just this note. */}
+        {entry.status !== "skipped" && (
+          <Link
+            href={`/sessions/${encodeURIComponent(entry.session_id)}`}
+            className="text-[11.5px] text-dim hover:text-foreground"
+          >
+            View run →
+          </Link>
+        )}
       </div>
 
-      {entry.status === "failed" ? (
+      {entry.status === "skipped" ? (
+        <p className="mt-1.5 text-[13px] text-muted-foreground">{entry.summary}</p>
+      ) : entry.status === "failed" ? (
         <p className="mt-1.5 text-[13px] text-muted-foreground">
           Run failed{entry.error ? `: ${entry.error}` : "."}
         </p>

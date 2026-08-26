@@ -179,18 +179,6 @@ class StashClient:
     def revoke_api_key(self, key_id: str) -> None:
         self._delete(f"/api/v1/users/me/keys/{key_id}")
 
-    # --- Discover (public catalog, no auth required) ---
-
-    def list_discover_skills(
-        self,
-        query: str = "",
-        sort: str = "trending",
-    ) -> dict:
-        params: dict = {"sort": sort}
-        if query:
-            params["q"] = query
-        return self._get("/api/v1/discover/skills", **params)
-
     # --- Skills (publishable subsets) ---
 
     def list_skills(self) -> list:
@@ -518,6 +506,14 @@ class StashClient:
     def push_events_batch(self, events: list[dict]) -> list:
         body: dict = {"events": events}
         return self._post("/api/v1/me/sessions/events/batch", json=body)
+
+    def report_import_progress(self, total: int, done: int, errors: int, finished: bool) -> dict:
+        """Mirror the local history-import status to the server so the web app
+        can show live import progress."""
+        return self._put(
+            "/api/v1/me/transcripts/import-progress",
+            json={"total": total, "done": done, "errors": errors, "finished": finished},
+        )
 
     def upload_transcript(
         self,

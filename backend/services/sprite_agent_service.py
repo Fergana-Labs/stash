@@ -211,6 +211,33 @@ async def _record_run_failure(
     )
 
 
+# Stored marker for a scheduled run the dispatcher skipped — the runs API reads
+# it back so the curator log can say why a night's run didn't happen instead of
+# showing nothing.
+RUN_SKIPPED_PREFIX = "⏭ Run skipped:"
+
+
+async def record_run_skipped(agent: dict, run_stamp: str, reason: str) -> None:
+    """Store a skipped scheduled run as a single log message where the run's
+    entry would have been, so the log shows the skip and its reason.
+
+    A bare insert on purpose — not push_event: a skip is not a session (no
+    sessions row, so it never appears in the Sessions list) and its note must
+    not touch the curator's watermark."""
+    from ..database import get_pool
+
+    session_id = f"{scheduled_session_prefix(agent)}{run_stamp}"
+    await get_pool().execute(
+        "INSERT INTO history_events "
+        "(owner_user_id, created_by, agent_name, event_type, content, session_id) "
+        "VALUES ($1, $1, $2, 'assistant_message', $3, $4)",
+        UUID(str(agent["user_id"])),
+        agent["name"],
+        f"{RUN_SKIPPED_PREFIX} {reason}",
+        session_id,
+    )
+
+
 async def _turn_events(
     auth: agent_auth.RunAuth,
     sprite: sprite_service.Sprite,

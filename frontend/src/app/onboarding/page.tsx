@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Header from "../../components/Header";
 import { useAuth } from "../../hooks/useAuth";
 import { track } from "../../lib/analytics";
-import { redeemCode, updateMe } from "../../lib/api";
+import { updateMe } from "../../lib/api";
 
 // The whole flow: a few questions about the user, then one instruction —
 // connect your agent. Everything else Stash does grows out of the
@@ -242,77 +242,6 @@ function AboutStep({
           className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-[13.5px] text-foreground placeholder:text-muted-foreground/70 focus:border-brand focus:outline-none"
         />
       </Field>
-      <HackathonCode />
-    </div>
-  );
-}
-
-function HackathonCode() {
-  const [open, setOpen] = useState(false);
-  const [code, setCode] = useState("");
-  const [state, setState] = useState<"idle" | "submitting" | "redeemed">("idle");
-  const [error, setError] = useState("");
-
-  async function apply() {
-    if (!code.trim()) return;
-    setState("submitting");
-    setError("");
-    try {
-      await redeemCode(code.trim());
-      setState("redeemed");
-      track("onboarding.code_redeemed");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "That code didn't work");
-      setState("idle");
-    }
-  }
-
-  if (state === "redeemed") {
-    return (
-      <p className="text-[13px] text-brand">
-        Hackathon code applied — your account is unlocked.
-      </p>
-    );
-  }
-
-  if (!open) {
-    return (
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="cursor-pointer text-[13px] text-dim underline-offset-2 hover:text-foreground hover:underline"
-      >
-        Have a hackathon code?
-      </button>
-    );
-  }
-
-  return (
-    <div className="space-y-2">
-      <div className="flex gap-2">
-        <input
-          value={code}
-          onChange={(e) => setCode(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              void apply();
-            }
-          }}
-          placeholder="Hackathon code"
-          autoFocus
-          className="w-56 rounded-lg border border-border bg-surface px-3 py-2 text-[13.5px] text-foreground placeholder:text-muted-foreground/70 focus:border-brand focus:outline-none"
-        />
-        <button
-          type="button"
-          onClick={() => void apply()}
-          disabled={state === "submitting" || !code.trim()}
-          className="rounded-lg bg-brand px-4 py-2 text-[13.5px] font-medium text-white transition-colors hover:bg-brand-hover disabled:opacity-50"
-        >
-          {state === "submitting" ? "Applying…" : "Apply"}
-        </button>
-      </div>
-      {error && <p className="text-[13px] text-error">{error}</p>}
     </div>
   );
 }
@@ -395,6 +324,16 @@ function OtherInput({
   );
 }
 
+// What the installer actually does, in order — mirrors install.sh and the
+// `stash signin` setup wizard. Claim nothing the code doesn't do.
+const INSTALLER_STEPS = [
+  "Installs the stash CLI (a small command-line tool; safe to re-run).",
+  "Opens your browser to sign you in — the terminal never sees your password.",
+  "Asks which folders to record agent sessions from: everywhere, or only ones you pick.",
+  "Asks which coding agents (Claude Code, Codex, Cursor, …) should record — only checked agents upload anything.",
+  "Uploads those agents' session transcripts to your Stash. They're private to you unless you share them, and you can pause recording anytime with stash stop.",
+];
+
 /** The whole second step: one instruction. The installer signs you in and
  *  runs the setup wizard, so this screen never needs a second command. */
 function ConnectAgentStep() {
@@ -406,11 +345,25 @@ function ConnectAgentStep() {
         </h1>
         <p className="text-sm text-dim max-w-lg">
           Run this in your terminal — the installer signs you in and sets up session
-          recording. Transcripts are private to you, and you choose which folders they
-          come from.
+          recording.
         </p>
       </div>
       <CommandBlock command={CLI_INSTALL_COMMAND} />
+      <div className="space-y-2">
+        <p className="text-[13px] font-medium text-foreground">What this does</p>
+        <ul className="max-w-lg space-y-1.5">
+          {INSTALLER_STEPS.map((step) => (
+            <li key={step} className="flex gap-2 text-[13px] leading-5 text-dim">
+              <span className="mt-[7px] h-1 w-1 shrink-0 rounded-full bg-brand" />
+              {step}
+            </li>
+          ))}
+        </ul>
+        <p className="text-[12.5px] text-muted-foreground max-w-lg">
+          It also offers — and asks first — to import your past agent conversations and
+          to add Stash usage instructions to your repo&rsquo;s CLAUDE.md.
+        </p>
+      </div>
     </div>
   );
 }

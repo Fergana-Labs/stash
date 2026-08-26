@@ -17,12 +17,14 @@ import CopyableCommandBlock from "@/components/CopyableCommandBlock";
 import { StashIcon } from "@/components/SkillIcons";
 import {
   getEmbeddingProjection,
+  getHistoryImportProgress,
   getMe,
   getMemoryFolder,
   getMeOverview,
   getMemoryGraph,
   listFileActivity,
   type ActivityEvent,
+  type HistoryImportProgress,
   type MeOverview,
   type WikiGraph as WikiGraphData,
 } from "@/lib/api";
@@ -63,6 +65,7 @@ export default function BrainDashboard() {
   const [vitals, setVitals] = useState<MeOverview | null>(null);
   const [vitalsError, setVitalsError] = useState<string | null>(null);
   const [vitalsLoaded, setVitalsLoaded] = useState(false);
+  const [importing, setImporting] = useState<HistoryImportProgress | null>(null);
 
   // The vitals decide whether this stash is brand new, so losing them isn't
   // cosmetic: without them Home would drop a first-run user into a grid of
@@ -75,7 +78,47 @@ export default function BrainDashboard() {
       })
       .catch((e) => setVitalsError(e instanceof Error ? e.message : "Failed to load your stash"))
       .finally(() => setVitalsLoaded(true));
+    // One initial look at the CLI's history import; the watcher below keeps
+    // polling only while one is running. Decorative — a blip must not error
+    // the dashboard.
+    getHistoryImportProgress()
+      .then(({ progress }) => setImporting(progress && !progress.finished ? progress : null))
+      .catch(() => {});
   }, []);
+
+  const stashEmpty =
+    vitalsLoaded &&
+    vitals !== null &&
+    vitals.pages === 0 &&
+    vitals.files === 0 &&
+    vitals.sessions === 0;
+
+  // While the stash is empty or a history import is running, keep watching:
+  // the CLI's background import fills the stash, and Home should move from
+  // setup → import progress → dashboard without a manual refresh.
+  const watching = stashEmpty || importing !== null;
+  useEffect(() => {
+    if (!watching) return;
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const [{ progress }, overview] = await Promise.all([
+          getHistoryImportProgress(),
+          getMeOverview(),
+        ]);
+        if (cancelled) return;
+        setImporting(progress && !progress.finished ? progress : null);
+        setVitals(overview);
+      } catch {
+        // Transient — the next tick retries.
+      }
+    };
+    const timer = setInterval(tick, 5000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [watching]);
 
   useEffect(() => {
     let cancelled = false;
@@ -174,10 +217,11 @@ export default function BrainDashboard() {
     );
   }
 
-  // A brand-new stash has nothing to dashboard. Until the first transcripts
-  // arrive, Home is a single instruction: upload your agent transcripts.
-  if (vitalsLoaded && vitals && vitals.pages === 0 && vitals.files === 0 && vitals.sessions === 0) {
-    return <EmptyStashSetup />;
+  // A brand-new stash has nothing to dashboard. While a history import is
+  // filling it, Home is the import's progress bar; otherwise it's a single
+  // instruction: upload your agent transcripts.
+  if (stashEmpty) {
+    return importing ? <ImportingStash progress={importing} /> : <EmptyStashSetup />;
   }
 
   if (!ready) {
@@ -194,6 +238,12 @@ export default function BrainDashboard() {
         <h1 className="font-display text-[22px] font-semibold tracking-tight text-foreground">
           Welcome back{firstName ? `, ${firstName}` : ""}
         </h1>
+        {importing && (
+          <p className="mt-1 text-[12.5px] text-muted-foreground">
+            Importing your history — {importing.done.toLocaleString()} of{" "}
+            {importing.total.toLocaleString()} past conversations in so far.
+          </p>
+        )}
 
         {/* Dashboard grid: wiki graph with the curator log beneath it on
             the left, knowledge map + file activity on the right. */}
@@ -376,6 +426,38 @@ function EventGlyph({ kind }: { kind: string }) {
       </span>
     );
   return null;
+}
+
+/** Full-screen first-run state while `stash import-history` is running: the
+ *  import's live progress, front and center — not setup instructions the
+ *  user already followed. */
+function ImportingStash({ progress }: { progress: HistoryImportProgress }) {
+  const pct =
+    progress.total > 0 ? Math.min(100, Math.round((progress.done / progress.total) * 100)) : 0;
+  return (
+    <div className="flex h-full min-h-0 items-center justify-center overflow-y-auto">
+      <div className="w-full max-w-xl px-8 py-10 text-center">
+        <StashIcon className="mx-auto text-[44px]" />
+        <h1 className="mt-5 font-display text-[26px] font-semibold tracking-tight text-foreground">
+          Importing your history
+        </h1>
+        <p className="mx-auto mt-2 max-w-md text-[14px] leading-6 text-dim">
+          {progress.done.toLocaleString()} of {progress.total.toLocaleString()} past
+          conversations imported. This page becomes your agents&apos; shared memory as
+          they land.
+        </p>
+        <div className="mx-auto mt-6 h-2 max-w-md overflow-hidden rounded-full bg-border">
+          <div
+            className="h-full rounded-full bg-brand transition-[width] duration-700"
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+        <p className="mt-3 font-mono text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
+          {pct}%
+        </p>
+      </div>
+    </div>
+  );
 }
 
 /** Full-screen first-run state: one instruction, upload your agent

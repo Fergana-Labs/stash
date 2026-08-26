@@ -230,6 +230,34 @@ async def test_reupload_is_noop_when_events_exist(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_import_progress_roundtrip(client: AsyncClient, monkeypatch):
+    """The web app's only window into the CLI's detached history import: the
+    CLI reports counts, Home reads them back; no report means no progress."""
+    from backend.routers import transcripts as transcripts_router
+
+    from .conftest import FakeRedis
+
+    fake_redis = FakeRedis()
+    monkeypatch.setattr(transcripts_router, "_get_redis", lambda: fake_redis)
+    key = await _register(client)
+    headers = {"Authorization": f"Bearer {key}"}
+
+    r = await client.get("/api/v1/me/transcripts/import-progress", headers=headers)
+    assert r.status_code == 200
+    assert r.json() == {"progress": None}
+
+    r = await client.put(
+        "/api/v1/me/transcripts/import-progress",
+        json={"total": 882, "done": 125, "errors": 2, "finished": False},
+        headers=headers,
+    )
+    assert r.status_code == 200
+
+    r = await client.get("/api/v1/me/transcripts/import-progress", headers=headers)
+    assert r.json()["progress"] == {"total": 882, "done": 125, "errors": 2, "finished": False}
+
+
+@pytest.mark.asyncio
 async def test_empty_session_shell_is_hidden_from_default_views(client: AsyncClient):
     key = await _register(client)
     scope = await _scope(client, key)

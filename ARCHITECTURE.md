@@ -72,8 +72,6 @@ of the current architecture. Privacy is mediated by Skills.
 - `backend/routers/skills.py`: skill listing, publish records, public
   rendering, fork (folder copy), session materialization.
 - `backend/routers/publish.py`: Skill publish flow + public Skill URLs.
-- `backend/routers/discover.py`: public Skill catalog (search, trending,
-  fork-into-account).
 - `backend/routers/memory.py`: per-session event push, query, search.
 - `backend/routers/tables.py`: structured table CRUD + row search.
 - `backend/routers/shares.py`: person-to-person folder shares.

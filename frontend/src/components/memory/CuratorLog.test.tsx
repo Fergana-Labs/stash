@@ -65,6 +65,23 @@ describe("CuratorLog", () => {
     expect(await screen.findByText(/Run failed: credential expired/)).toBeTruthy();
   });
 
+  // A skipped night is an explicit answer, not a missing run — it shows its
+  // reason, and there is no run transcript to link to.
+  it("shows a skipped run's reason without a View run link", async () => {
+    vi.mocked(getCuratorLog).mockResolvedValue({
+      entries: [
+        entry({
+          status: "skipped",
+          summary: "Nothing new to process since the last run.",
+          error: null,
+        }),
+      ],
+    });
+    render(<CuratorLog />);
+    expect(await screen.findByText("Nothing new to process since the last run.")).toBeTruthy();
+    expect(screen.queryByText("View run →")).toBeNull();
+  });
+
   it("stays honest when no run has happened yet", async () => {
     vi.mocked(getCuratorLog).mockResolvedValue({ entries: [] });
     render(<CuratorLog />);

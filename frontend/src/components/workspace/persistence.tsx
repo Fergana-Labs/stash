@@ -2,8 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { useWorkspace, titleKey, type WorkspaceState } from "@/lib/workspace-store";
-
-const KEY = "moltchat_workspace";
+import { WORKSPACE_STORAGE_KEY as KEY } from "@/lib/account-local-state";
 
 /** The layout slice we persist — references + pane arrangement only, no content.
  *  `titles` rides along because only the active tab's body mounts: without the

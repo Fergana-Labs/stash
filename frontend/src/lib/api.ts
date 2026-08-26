@@ -337,7 +337,7 @@ export interface EndUserWikiPage {
 export interface CuratorRun {
   session_id: string;
   started_at: string;
-  status: "completed" | "failed" | "running" | "stopped" | "interrupted";
+  status: "completed" | "failed" | "running" | "stopped" | "interrupted" | "skipped";
   summary: string | null;
   error: string | null;
 }
@@ -727,41 +727,6 @@ export async function fetchSourceHistory(
   });
 }
 
-// --- Discover (public catalog, no auth required) ---
-
-// A public page from the pastebin (joinstash.ai/pages) — community docs/pages.
-export interface PublicPageCard {
-  slug: string;
-  title: string;
-  content_type: "markdown" | "html";
-  view_count: number;
-  created_at: string;
-}
-
-export async function listPublicPages(): Promise<PublicPageCard[]> {
-  const res = await fetch(`${API_BASE}/api/v1/pastes`);
-  if (!res.ok) return [];
-  return (await res.json()).pastes ?? [];
-}
-
-export interface PublicSkillCard {
-  id: string;
-  slug: string;
-  title: string;
-  description: string;
-  discoverable: boolean;
-  cover_image_url: string | null;
-  source_github_url: string | null;
-  view_count: number;
-  install_count: number;
-  owner_name: string;
-  owner_display_name: string;
-  owner_user_id: string;
-  item_count: number;
-  created_at: string;
-  updated_at: string;
-}
-
 // Skills imported from GitHub are owned by the curator account, but credit
 // belongs to the repo owner — derive it from the attribution URL.
 export function githubOwner(sourceGithubUrl: string): string {
@@ -812,17 +777,35 @@ export async function getUserWikiGraph(userId: string): Promise<WikiGraph> {
 // --- Curator log ---
 
 // One curator run: what the night's curation learned — the run's stored
-// final message, one sentence by prompt contract.
+// final message, one sentence by prompt contract. A "skipped" entry's summary
+// is the reason the run didn't happen (e.g. nothing new since the last run).
 export interface CuratorLogEntry {
   session_id: string;
   started_at: string;
-  status: "completed" | "failed" | "stopped" | "interrupted" | "running";
+  status: "completed" | "failed" | "stopped" | "interrupted" | "running" | "skipped";
   summary: string | null;
   error: string | null;
 }
 
 export async function getCuratorLog(): Promise<{ entries: CuratorLogEntry[] }> {
   return apiFetch(`${ME}/curator-log`);
+}
+
+// --- History import (CLI `stash import-history`) ---
+
+// Counts the CLI reports as it uploads past conversations; null when no
+// import is running.
+export interface HistoryImportProgress {
+  total: number;
+  done: number;
+  errors: number;
+  finished: boolean;
+}
+
+export async function getHistoryImportProgress(): Promise<{
+  progress: HistoryImportProgress | null;
+}> {
+  return apiFetch(`${ME}/transcripts/import-progress`);
 }
 
 export async function createFolder(
@@ -1730,7 +1713,6 @@ export async function publishSkillFolder(
   body: {
     title?: string;
     description?: string;
-    discoverable?: boolean;
     cover_image_url?: string | null;
     icon_url?: string | null;
   } = {}
@@ -1826,7 +1808,6 @@ export async function updateSkill(
   data: {
     title?: string;
     description?: string;
-    discoverable?: boolean;
     cover_image_url?: string | null;
     icon_url?: string | null;
   }
