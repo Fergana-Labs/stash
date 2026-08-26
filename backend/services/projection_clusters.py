@@ -45,28 +45,53 @@ _HEXISH = re.compile(r"[0-9a-f]{7,}")
 _TIMESTAMPISH = re.compile(r"(?=[0-9tz]*[0-9])[0-9tz]+")
 
 
-def cluster_points(coords: np.ndarray) -> list[int]:
-    """Deterministic k-means over the projected 3D coords.
-
-    Centroids seed from evenly-strided points (the input is recency-ordered,
-    so the stride spreads seeds across the data) — no randomness, so the same
-    projection always clusters the same way. Cluster indices are compacted:
-    every returned index is 0..m-1 with at least one member.
-    """
-    n = len(coords)
-    k = max(1, min(MAX_CLUSTERS, round(math.sqrt(n / 2))))
-    centroids = coords[[(c * n) // k for c in range(k)]].astype(float)
-    assignments = np.zeros(n, dtype=int)
-
-    for _ in range(12):
-        distances = ((coords[:, None, :] - centroids[None, :, :]) ** 2).sum(axis=2)
+def _kmeans(vectors: np.ndarray, k: int) -> np.ndarray:
+    centroids = [vectors[0]]
+    while len(centroids) < k:
+        distances = ((vectors[:, None, :] - np.stack(centroids)[None, :, :]) ** 2).sum(axis=2)
+        centroids.append(vectors[int(np.argmax(distances.min(axis=1)))])
+    centroids = np.stack(centroids).astype(float)
+    assignments = np.zeros(len(vectors), dtype=int)
+    for _ in range(20):
+        distances = ((vectors[:, None, :] - centroids[None, :, :]) ** 2).sum(axis=2)
         assignments = distances.argmin(axis=1)
-        for c in range(k):
-            members = coords[assignments == c]
-            if len(members) > 0:
-                centroids[c] = members.mean(axis=0)
+        for cluster in range(k):
+            members = vectors[assignments == cluster]
+            if len(members):
+                centroid = members.mean(axis=0)
+                norm = np.linalg.norm(centroid)
+                centroids[cluster] = centroid / norm if norm else centroid
+    return assignments
 
-    # Compact away clusters that lost every member.
+
+def _silhouette(vectors: np.ndarray, assignments: np.ndarray) -> float:
+    distances = 1 - np.clip(vectors @ vectors.T, -1, 1)
+    scores = []
+    clusters = set(assignments.tolist())
+    for i, cluster in enumerate(assignments):
+        own = np.flatnonzero(assignments == cluster)
+        if len(own) == 1:
+            scores.append(0.0)
+            continue
+        a = float(distances[i, own[own != i]].mean())
+        b = min(float(distances[i, assignments == other].mean()) for other in clusters - {cluster})
+        scores.append((b - a) / max(a, b) if max(a, b) else 0.0)
+    return float(np.mean(scores))
+
+
+def cluster_points(embeddings: np.ndarray) -> list[int]:
+    """Cluster normalized original embeddings and infer the cluster count."""
+    n = len(embeddings)
+    if n < 4:
+        return [0] * n
+    norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
+    vectors = embeddings / np.where(norms == 0, 1, norms)
+    candidates = range(2, min(MAX_CLUSTERS, round(math.sqrt(n))) + 1)
+    scored = []
+    for k in candidates:
+        candidate = _kmeans(vectors, k)
+        scored.append((k, candidate, _silhouette(vectors, candidate)))
+    _k, assignments, _score = max(scored, key=lambda item: (item[2], -item[0]))
     occupied = sorted(set(assignments.tolist()))
     remap = {old: new for new, old in enumerate(occupied)}
     return [remap[int(a)] for a in assignments]

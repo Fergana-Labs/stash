@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 from httpx import AsyncClient
 
-from backend.services import analytics_service
+from backend.services import analytics_service, embeddings
 
 from .conftest import unique_name
 
@@ -39,12 +39,13 @@ async def _event(
     session_id: str,
     agent_name: str = "tester",
     created_at: str = "2026-01-02T00:00:00Z",
+    event_type: str = "assistant_message",
 ) -> None:
     resp = await client.post(
         "/api/v1/me/sessions/events",
         json={
             "agent_name": agent_name,
-            "event_type": "assistant_message",
+            "event_type": event_type,
             "content": session_id,
             "session_id": session_id,
             "created_at": created_at,
@@ -199,7 +200,8 @@ async def test_user_wide_embedding_projection_serves_cache_while_access_unchange
 ):
     """The memory page's embeddings map must come from the cache, not an
     inline UMAP fit — recomputing per load is the minute-long-render bug.
-    The row is only trusted while its scope signature still matches."""
+    The row is only trusted while its scope and embedding-space signatures
+    still match."""
     resp = await client.post(
         "/api/v1/users/register",
         json={"name": unique_name("cached_projection"), "password": "securepassword1"},
@@ -222,12 +224,13 @@ async def test_user_wide_embedding_projection_serves_cache_while_access_unchange
     await pool.execute(
         "INSERT INTO embedding_projections "
         "(user_id, source_type, owner_user_id, points, clusters, "
-        " embedding_count, scope_signature, computed_at) "
-        "VALUES ($1, '_all', NULL, $2, $3, 0, $4, now())",
+        " embedding_count, scope_signature, embedding_space, computed_at) "
+        "VALUES ($1, '_all', NULL, $2, $3, 0, $4, $5, now())",
         user_id,
         [point],
         clusters,
         await analytics_service.scope_signature(user_id),
+        embeddings.space_id(),
     )
 
     projection = await client.get(
@@ -250,11 +253,9 @@ async def test_embedding_projection_plots_one_point_per_session(
     pool,
     monkeypatch,
 ):
-    """The knowledge map plots sessions, not individual transcript events —
-    per-event points clustered by raw command text (content type), not by
-    concept. Each session point averages its event embeddings, is labeled by
-    the session title (or the same excerpt title the sessions list shows),
-    and carries an honest event-count detail."""
+    """Session themes plot one point per transcript and represent it only by
+    user prompts. Assistant prose and tool output describe execution rather
+    than intent, so including them makes clusters reflect harness behavior."""
 
     async def keyword_names_only(labels_per_cluster, keyword_names):
         return keyword_names
@@ -264,9 +265,17 @@ async def test_embedding_projection_plots_one_point_per_session(
     api_key = await _register(client, "session_points")
     scope = await _scope(client, api_key)
 
-    await _event(client, api_key, scope["id"], "session-a")
-    await _event(client, api_key, scope["id"], "session-a", created_at="2026-01-02T01:00:00Z")
-    await _event(client, api_key, scope["id"], "session-b")
+    await _event(client, api_key, scope["id"], "session-a", event_type="user_message")
+    await _event(
+        client,
+        api_key,
+        scope["id"],
+        "session-a",
+        created_at="2026-01-02T01:00:00Z",
+        event_type="user_message",
+    )
+    await _event(client, api_key, scope["id"], "session-b", event_type="user_message")
+    await _event(client, api_key, scope["id"], "session-b", event_type="assistant_message")
 
     await pool.execute(
         "UPDATE history_events SET embedding = $1 WHERE session_id = 'session-a'",
@@ -289,13 +298,11 @@ async def test_embedding_projection_plots_one_point_per_session(
     assert set(points) == {"session-a", "session-b"}
     assert all(p["source"] == "sessions" for p in points.values())
 
-    # Titled session: title as label, "N events · agent" detail.
+    # Detail counts prompts, not every transcript event.
     assert points["session-a"]["label"] == "Billing webhook fixes"
-    assert points["session-a"]["detail"] == "2 events · tester"
-    # Untitled session: the sessions-list excerpt title (its content is the
-    # session id, per the _event helper).
+    assert points["session-a"]["detail"] == "2 prompts · tester"
     assert points["session-b"]["label"] == "session-b"
-    assert points["session-b"]["detail"] == "1 event · tester"
+    assert points["session-b"]["detail"] == "1 prompt · tester"
 
 
 @pytest.mark.asyncio

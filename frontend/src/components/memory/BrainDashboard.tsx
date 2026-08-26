@@ -179,7 +179,7 @@ export default function BrainDashboard() {
   // endpoint hold the whole dashboard in skeletons.
   useEffect(() => {
     let cancelled = false;
-    getEmbeddingProjection(2000)
+    getEmbeddingProjection(2000, "sessions")
       .then((p) => {
         if (!cancelled) setProjection(p);
       })
@@ -282,8 +282,7 @@ export default function BrainDashboard() {
           </div>
 
           <div className="flex min-h-0 min-w-0 flex-col gap-4">
-            {/* Brain map — the knowledge the brain holds, laid out in space. (Decorative.) */}
-            <VizCard label="Knowledge map">
+            <VizCard label="Session themes">
               {!projectionLoaded ? (
                 <SkeletonBlock className="h-[240px] w-full" />
               ) : projection && projection.points.length > 0 ? (
@@ -292,8 +291,7 @@ export default function BrainDashboard() {
                 </div>
               ) : (
                 <div className="flex h-[240px] items-center justify-center px-2 text-center text-[12.5px] text-muted-foreground">
-                  No embeddings indexed yet. Pages, table rows, and session events
-                  get embedded as they&apos;re added.
+                  No session prompts have been embedded yet.
                 </div>
               )}
             </VizCard>

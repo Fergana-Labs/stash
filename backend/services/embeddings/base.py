@@ -24,6 +24,10 @@ class BaseEmbedder(ABC):
             name = "my-custom"
             dims = 768
 
+            @property
+            def space_id(self):
+                return "my-custom:model-name:768:v1"
+
             async def embed_batch(self, texts):
                 return [my_model.encode(t) for t in texts]
 
@@ -32,6 +36,12 @@ class BaseEmbedder(ABC):
 
     name: str = "base"
     dims: int = 384
+
+    @property
+    @abstractmethod
+    def space_id(self) -> str:
+        """Stable identity for vectors that may be compared with each other."""
+        ...
 
     @abstractmethod
     async def embed_batch(self, texts: list[str]) -> list[np.ndarray] | None:

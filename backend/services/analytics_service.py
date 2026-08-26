@@ -12,7 +12,8 @@ import numpy as np
 
 from ..database import get_pool
 from . import memory_service, permission_service, session_title_service
-from .projection_clusters import cluster_points, concept_names, name_clusters
+from .embeddings import space_id as embedding_space_id
+from .projection_clusters import cluster_points, concept_names
 
 # Numba's default threading layer aborts the whole process on concurrent
 # entry, so UMAP runs strictly one-at-a-time per process.
@@ -88,13 +89,14 @@ async def _store_projection(
     await pool.execute(
         "INSERT INTO embedding_projections "
         "(user_id, source_type, owner_user_id, points, clusters, "
-        " embedding_count, scope_signature, computed_at) "
-        "VALUES ($1, $2, $3, $4, $5, $6, $7, NOW()) "
+        " embedding_count, scope_signature, embedding_space, computed_at) "
+        "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW()) "
         "ON CONFLICT (user_id, source_type, owner_user_id) "
         "DO UPDATE SET points = EXCLUDED.points, "
         "              clusters = EXCLUDED.clusters, "
         "              embedding_count = EXCLUDED.embedding_count, "
         "              scope_signature = EXCLUDED.scope_signature, "
+        "              embedding_space = EXCLUDED.embedding_space, "
         "              computed_at = NOW()",
         user_id,
         source_key,
@@ -103,6 +105,7 @@ async def _store_projection(
         clusters,
         total_count,
         signature,
+        embedding_space_id(),
     )
 
 
@@ -936,7 +939,7 @@ async def get_embedding_projection(
     cache = None
     if not refresh:
         cache = await pool.fetchrow(
-            "SELECT points, clusters, embedding_count, scope_signature, computed_at "
+            "SELECT points, clusters, embedding_count, scope_signature, embedding_space, computed_at "
             "FROM embedding_projections "
             "WHERE user_id = $1 AND source_type = $2 "
             "AND owner_user_id IS NOT DISTINCT FROM $3",
@@ -976,14 +979,22 @@ async def get_embedding_projection(
         total_count += row or 0
 
     if source is None or source == "sessions":
+        session_access = permission_service.readable_content_condition("session", "s", 1)
+        scope_filter = f"s.owner_user_id = ${event_scope_idx}" if event_scope_idx else "TRUE"
         row = await pool.fetchval(
-            _accessible_events_cte(scope_idx=event_scope_idx)
-            + """
-            SELECT COUNT(DISTINCT (me.owner_user_id, me.session_id))
-            FROM history_events me
-            JOIN accessible_events a ON a.event_id = me.id
-            WHERE me.embedding IS NOT NULL
-              AND me.session_id IS NOT NULL
+            f"""
+            SELECT COUNT(*) FROM sessions s
+            WHERE s.deleted_at IS NULL
+              AND {scope_filter}
+              AND {session_access}
+              AND EXISTS (
+                  SELECT 1 FROM history_events he
+                  WHERE he.owner_user_id = s.owner_user_id
+                    AND he.session_id = s.session_id
+                    AND he.embedding IS NOT NULL
+                    AND he.event_type IN
+                        ('user_message', 'user_prompt', 'prompt', 'message', 'user')
+              )
             """,
             *event_count_args,
         )
@@ -1007,6 +1018,7 @@ async def get_embedding_projection(
         cache
         and cache["computed_at"] > fresh_cutoff
         and cache["scope_signature"] == current_signature
+        and cache["embedding_space"] == embedding_space_id()
     ):
         count_diff = abs(total_count - cache["embedding_count"])
         if count_diff / max(cache["embedding_count"], 1) < 0.1:
@@ -1046,7 +1058,8 @@ async def get_embedding_projection(
         rows = await pool.fetch(
             _accessible_pages_cte(scope_idx=content_fetch_scope_idx)
             + """
-            SELECT np.id, np.name AS label, np.embedding, np.created_at
+            SELECT np.id, np.name AS label, np.content_markdown AS concept_text,
+                   np.embedding, np.created_at
             FROM pages np
             WHERE np.id IN (SELECT page_id FROM accessible_pages)
               AND np.embedding IS NOT NULL
@@ -1062,6 +1075,7 @@ async def get_embedding_projection(
                 {
                     "id": str(r["id"]),
                     "label": r["label"],
+                    "concept_text": r["concept_text"],
                     "source": "pages",
                     "created_at": r["created_at"].isoformat() if r["created_at"] else None,
                     "embedding": np.array(r["embedding"]),
@@ -1072,7 +1086,8 @@ async def get_embedding_projection(
         rows = await pool.fetch(
             _accessible_tables_cte(scope_idx=content_fetch_scope_idx)
             + """
-            SELECT tr.id, t.name AS table_name, tr.embedding, tr.created_at
+            SELECT tr.id, t.name AS table_name, tr.data::text AS concept_text,
+                   tr.embedding, tr.created_at
             FROM table_rows tr
             JOIN tables t ON t.id = tr.table_id
             WHERE tr.table_id IN (SELECT table_id FROM accessible_tables)
@@ -1087,6 +1102,7 @@ async def get_embedding_projection(
                 {
                     "id": str(r["id"]),
                     "label": r["table_name"],
+                    "concept_text": r["concept_text"],
                     "source": "table_rows",
                     "created_at": r["created_at"].isoformat() if r["created_at"] else None,
                     "embedding": np.array(r["embedding"]),
@@ -1094,71 +1110,77 @@ async def get_embedding_projection(
             )
 
     if source is None or source == "sessions":
-        # One point per session, not per event: the mean of a session's event
-        # embeddings places it by what the session was about, so clusters read
-        # as concepts instead of raw command/tool-call text. Untitled sessions
-        # get the same first-content excerpt title the sessions list shows.
+        # Select the recent working set before aggregating transcript events.
+        # Large accounts can have tens of thousands of sessions, while the map
+        # has a hard 2,000-point display budget. Only user prompts represent the
+        # session: assistant prose and tool output describe execution, not intent.
+        session_access = permission_service.readable_content_condition("session", "s", 1)
+        scope_filter = (
+            f"s.owner_user_id = ${event_fetch_scope_idx}" if event_fetch_scope_idx else "TRUE"
+        )
         rows = await pool.fetch(
-            _accessible_events_cte(scope_idx=event_fetch_scope_idx)
-            + """
-            , session_points AS (
-                SELECT me.owner_user_id, me.session_id,
-                       AVG(me.embedding) AS embedding,
-                       COUNT(*) AS event_count,
-                       MAX(me.created_at) AS last_event_at
-                FROM history_events me
-                JOIN accessible_events a ON a.event_id = me.id
-                WHERE me.embedding IS NOT NULL
-                  AND me.session_id IS NOT NULL
-                GROUP BY me.owner_user_id, me.session_id
-                ORDER BY MAX(me.created_at) DESC
+            f"""
+            WITH recent_sessions AS (
+                SELECT s.owner_user_id, s.session_id
+                FROM sessions s
+                WHERE s.deleted_at IS NULL
+                  AND {scope_filter}
+                  AND {session_access}
+                  AND EXISTS (
+                      SELECT 1 FROM history_events candidate
+                      WHERE candidate.owner_user_id = s.owner_user_id
+                        AND candidate.session_id = s.session_id
+                        AND candidate.embedding IS NOT NULL
+                        AND candidate.event_type IN
+                            ('user_message', 'user_prompt', 'prompt', 'message', 'user')
+                  )
+                ORDER BY s.last_event_at DESC
                 LIMIT $2
+            ), session_points AS (
+                SELECT rs.owner_user_id, rs.session_id,
+                       AVG(me.embedding) AS embedding,
+                       COUNT(*) AS prompt_count,
+                       LEFT(STRING_AGG(LEFT(me.content, 1000), E'\n' ORDER BY me.created_at), 6000)
+                           AS concept_text
+                FROM recent_sessions rs
+                JOIN history_events me
+                  ON me.owner_user_id = rs.owner_user_id AND me.session_id = rs.session_id
+                WHERE me.embedding IS NOT NULL
+                  AND me.event_type IN
+                      ('user_message', 'user_prompt', 'prompt', 'message', 'user')
+                GROUP BY rs.owner_user_id, rs.session_id
             )
-            SELECT sp.session_id, sp.embedding, sp.event_count, sp.last_event_at,
-                   s.title,
+            SELECT sp.session_id, sp.embedding, sp.prompt_count, sp.concept_text,
+                   s.last_event_at, s.title, s.files_touched,
                    -- The CLI plugin historically defaulted agent_name to the
                    -- author's login handle; that value is a person, not an
                    -- agent — suppress it (same rule as the sessions list).
-                   NULLIF(s.agent_name, author.name) AS agent_name,
-                   fallback.title_source
+                   NULLIF(s.agent_name, author.name) AS agent_name
             FROM session_points sp
-            LEFT JOIN sessions s ON s.owner_user_id = sp.owner_user_id
+            JOIN sessions s ON s.owner_user_id = sp.owner_user_id
                 AND s.session_id = sp.session_id
             LEFT JOIN users author ON author.id = s.created_by
-            LEFT JOIN LATERAL (
-                SELECT LEFT(he.content, 240) AS title_source
-                FROM history_events he
-                WHERE s.title IS NULL
-                  AND he.owner_user_id IS NOT DISTINCT FROM sp.owner_user_id
-                  AND he.session_id = sp.session_id
-                  AND NULLIF(BTRIM(he.content), '') IS NOT NULL
-                ORDER BY
-                  CASE
-                    WHEN he.event_type IN
-                        ('user_message', 'user_prompt', 'prompt', 'message', 'user') THEN 0
-                    WHEN he.event_type IN ('assistant_message', 'assistant') THEN 1
-                    ELSE 2
-                  END,
-                  he.created_at,
-                  he.id
-                LIMIT 1
-            ) fallback ON TRUE
-            ORDER BY sp.last_event_at DESC
+            ORDER BY s.last_event_at DESC
             """,
             *event_fetch_args,
         )
         for r in rows:
             label = r["title"] or session_title_service.title_from_text(
-                r["title_source"], r["session_id"]
+                r["concept_text"], r["session_id"]
             )
-            n = r["event_count"]
-            detail = f"{n} event" if n == 1 else f"{n} events"
+            n = r["prompt_count"]
+            detail = f"{n} prompt" if n == 1 else f"{n} prompts"
             if r["agent_name"]:
                 detail += f" · {r['agent_name']}"
+            files = r["files_touched"] or []
+            concept_text = f"{label}\n{r['concept_text']}"
+            if files:
+                concept_text += "\nFiles: " + ", ".join(files)
             all_items.append(
                 {
                     "id": r["session_id"],
                     "label": label,
+                    "concept_text": concept_text,
                     "source": "sessions",
                     "created_at": r["last_event_at"].isoformat() if r["last_event_at"] else None,
                     "detail": detail,
@@ -1170,7 +1192,8 @@ async def get_embedding_projection(
         rows = await pool.fetch(
             _accessible_files_cte(scope_idx=content_fetch_scope_idx)
             + """
-            SELECT f.id, f.name AS label, f.embedding, f.created_at
+            SELECT f.id, f.name AS label, f.extracted_text AS concept_text,
+                   f.embedding, f.created_at
             FROM files f
             WHERE f.id IN (SELECT file_id FROM accessible_files)
               AND f.embedding IS NOT NULL
@@ -1184,6 +1207,7 @@ async def get_embedding_projection(
                 {
                     "id": str(r["id"]),
                     "label": r["label"],
+                    "concept_text": r["concept_text"],
                     "source": "files",
                     "created_at": r["created_at"].isoformat() if r["created_at"] else None,
                     "embedding": np.array(r["embedding"]),
@@ -1217,14 +1241,33 @@ async def get_embedding_projection(
     else:
         coords = np.zeros((len(all_items), 3))
 
-    # Split the cloud into semantic islands and name each from its labels.
-    assignments = cluster_points(coords)
-    labels_per_cluster: list[list[str]] = [[] for _ in range(max(assignments) + 1)]
-    for i, item in enumerate(all_items):
-        labels_per_cluster[assignments[i]].append(item["label"])
-    cluster_names = await concept_names(labels_per_cluster, name_clusters(labels_per_cluster))
+    # Cluster in the original semantic space. UMAP is only a display layout:
+    # its three dimensions intentionally distort global distances.
+    assignments = cluster_points(embeddings_matrix)
+    concept_examples: list[list[str]] = [[] for _ in range(max(assignments) + 1)]
+    medoid_names: list[str] = [""] * len(concept_examples)
+    norms = np.linalg.norm(embeddings_matrix, axis=1, keepdims=True)
+    normalized = embeddings_matrix / np.where(norms == 0, 1, norms)
+    assignment_array = np.array(assignments)
+    for cluster in range(len(concept_examples)):
+        indices = np.flatnonzero(assignment_array == cluster)
+        centroid = normalized[indices].mean(axis=0)
+        representatives = indices[np.argsort(-(normalized[indices] @ centroid))]
+        descriptive = max(
+            (all_items[i]["label"] for i in representatives[:6]),
+            key=lambda label: len(re.findall(r"[A-Za-z0-9]+", label)),
+        )
+        shortened = descriptive.strip()
+        if len(shortened) > 40:
+            boundary = shortened.rfind(" ", 0, 40)
+            shortened = shortened[: boundary if boundary > 0 else 40]
+        medoid_names[cluster] = shortened
+        concept_examples[cluster] = [
+            f"{all_items[i]['label']}: {all_items[i]['concept_text']}" for i in representatives[:12]
+        ]
+    cluster_names = await concept_names(concept_examples, medoid_names)
     clusters = [
-        {"index": c, "name": cluster_names[c], "size": len(labels_per_cluster[c])}
+        {"index": c, "name": cluster_names[c], "size": assignments.count(c)}
         for c in range(len(cluster_names))
     ]
 

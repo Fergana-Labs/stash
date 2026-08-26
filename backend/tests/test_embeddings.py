@@ -12,6 +12,10 @@ from backend.tasks.embeddings import _reconcile_pages
 class CapturingEmbedder(BaseEmbedder):
     name = "capturing"
 
+    @property
+    def space_id(self) -> str:
+        return "capturing:test:v1"
+
     def __init__(self):
         self.batches: list[list[str]] = []
 

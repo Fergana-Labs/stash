@@ -27,6 +27,13 @@ interface Props {
   onPointClick?: (point: EmbeddingProjectionPoint) => void;
 }
 
+function truncateLabel(name: string): string {
+  if (name.length <= 28) return name;
+  const prefix = name.slice(0, 27);
+  const boundary = prefix.lastIndexOf(" ");
+  return `${prefix.slice(0, boundary > 0 ? boundary : 27)}…`;
+}
+
 // Rotate a 3D point around the Y axis, then X axis
 function rotatePoint(
   px: number,
@@ -164,25 +171,59 @@ export default function EmbeddingSpaceExplorer({ data, onPointClick }: Props) {
       ctx.fill();
     }
 
-    // One name per island, drawn at its centroid, so each blob of color says
-    // what it's about.
+    // Place labels near their centroids without letting their text boxes
+    // collide. A short leader line preserves the centroid association when a
+    // label must move.
     ctx.font = "10.5px ui-monospace, Menlo, monospace";
     ctx.textBaseline = "middle";
+    const occupied: { left: number; right: number; top: number; bottom: number }[] = [];
     for (const { index, name } of data.clusters) {
       const [cx, cy, cz] = centroids[index];
       const { sx, sy, depth } = project(cx, cy, cz, containerWidth, containerHeight);
       const depthNorm = Math.max(0, Math.min(1, (depth + 1) / 2));
-      const label = name.length > 28 ? `${name.slice(0, 27)}…` : name;
-      // Flip to the left side near the right edge so labels never clip.
+      const label = truncateLabel(name);
       const left = sx > containerWidth - 150;
       ctx.textAlign = left ? "right" : "left";
       const lx = left ? sx - 7 : sx + 7;
-      // Halo so the label survives crossing other points.
+      const width = ctx.measureText(label).width;
+      const offsets = [0, -16, 16, -32, 32, -48, 48];
+      const ly = offsets
+        .map((offset) => Math.max(10, Math.min(containerHeight - 10, sy + offset)))
+        .find((candidate) => {
+          const box = {
+            left: left ? lx - width : lx,
+            right: left ? lx : lx + width,
+            top: candidate - 7,
+            bottom: candidate + 7,
+          };
+          return !occupied.some(
+            (other) =>
+              box.left < other.right + 4 &&
+              box.right > other.left - 4 &&
+              box.top < other.bottom + 4 &&
+              box.bottom > other.top - 4,
+          );
+        });
+      if (ly === undefined) continue;
+      occupied.push({
+        left: left ? lx - width : lx,
+        right: left ? lx : lx + width,
+        top: ly - 7,
+        bottom: ly + 7,
+      });
+      if (ly !== sy) {
+        ctx.beginPath();
+        ctx.moveTo(sx, sy);
+        ctx.lineTo(left ? lx + 3 : lx - 3, ly);
+        ctx.strokeStyle = "rgba(26,23,20,0.25)";
+        ctx.lineWidth = 0.75;
+        ctx.stroke();
+      }
       ctx.lineWidth = 3;
       ctx.strokeStyle = "rgba(255,255,255,0.85)";
-      ctx.strokeText(label, lx, sy);
+      ctx.strokeText(label, lx, ly);
       ctx.fillStyle = `rgba(26,23,20,${0.4 + depthNorm * 0.5})`;
-      ctx.fillText(label, lx, sy);
+      ctx.fillText(label, lx, ly);
     }
   }, [data, prep, project]);
 

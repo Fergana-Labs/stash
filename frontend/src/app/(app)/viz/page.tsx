@@ -33,7 +33,7 @@ export default function VizPage() {
       .then((g) => { if (!cancelled) setGraph(g); })
       .catch((error) => { if (!cancelled) setGraphError(String(error)); })
       .finally(() => { if (!cancelled) setGraphLoaded(true); });
-    getEmbeddingProjection(2000)
+    getEmbeddingProjection(2000, "sessions")
       .then((p) => { if (!cancelled) setProjection(p); })
       .catch((error) => { if (!cancelled) setProjectionError(String(error)); })
       .finally(() => { if (!cancelled) setProjectionLoaded(true); });
@@ -59,8 +59,8 @@ export default function VizPage() {
 
         <div className="mt-5 flex flex-col gap-5">
           <VizCard
-            label="Knowledge map"
-            description="Everything in your stash embedded and laid out in space — nearby points are about similar things. Drag to rotate."
+            label="Session themes"
+            description="Themes across your recent agent sessions. Each point is one session; nearby points began with similar user intent."
           >
             {!projectionLoaded ? (
               <SkeletonBlock className="h-[420px] w-full" />
@@ -72,8 +72,7 @@ export default function VizPage() {
               </div>
             ) : (
               <EmptyState height={180}>
-                No embeddings indexed yet. Pages, table rows, and session events get
-                embedded as they&apos;re added.
+                No session prompts have been embedded yet.
               </EmptyState>
             )}
           </VizCard>
