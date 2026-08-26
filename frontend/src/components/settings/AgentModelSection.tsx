@@ -60,10 +60,17 @@ export default function AgentModelSection() {
   return (
     <section className="rounded-2xl border border-border bg-surface p-6 space-y-4">
       <div>
-        <h2 className="text-lg font-semibold text-foreground">Cloud agent model</h2>
+        <h2 className="text-lg font-semibold text-foreground">Agent model</h2>
         <p className="text-sm text-muted-foreground mt-1">
-          Connect Claude, Codex, or OpenRouter to run the agent on your own account. Pro
-          members without a connection use the managed agent (OpenRouter GLM&nbsp;5.2).
+          Stash runs an agent in the cloud for you — it compiles your Memory wiki (the
+          nightly curator), answers agent chats, and runs scheduled tasks. That agent
+          needs an AI model to run on.
+        </p>
+        <p className="text-sm text-muted-foreground mt-1">
+          Connect your own Claude, ChatGPT, or OpenRouter account and the agent runs on
+          it, billed to that account. Without a connection, Pro accounts run on
+          Stash&apos;s managed model (OpenRouter GLM&nbsp;5.2); free accounts need to
+          connect one of the three.
         </p>
       </div>
       {loading ? (
