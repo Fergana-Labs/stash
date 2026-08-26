@@ -172,6 +172,7 @@ async def _provision(user_id: UUID) -> Sprite:
     if won is None:
         return await _wait_until_ready(user_id)
 
+    stash_key: str | None = None
     try:
         stash_key = await auth.create_api_key(user_id, name="cloud computer", key_type="machine")
         await _sprites_api("POST", "/v1/sprites", json={"name": name})
@@ -185,13 +186,16 @@ async def _provision(user_id: UUID) -> Sprite:
         if code != 0:
             raise SpriteError(f"sprite seed script exited {code}: {output[-2000:]}")
     except BaseException:
-        # Fail loud and leave nothing half-made: the sprite (if created) and
-        # the row both go, so the next attempt starts clean.
+        # Fail loud and leave nothing half-made: the sprite (if created), the
+        # row, and the minted key all go, so the next attempt starts clean.
         with contextlib.suppress(httpx.HTTPError, SpriteError):
             await _sprites_api("DELETE", f"/v1/sprites/{name}")
         await pool.execute("DELETE FROM user_sprites WHERE user_id = $1", user_id)
+        if stash_key is not None:
+            await _revoke_box_key(user_id, stash_key)
         raise
 
+    await _revoke_other_box_keys(user_id, stash_key)
     await pool.execute(
         "UPDATE user_sprites SET status = 'ready', seed_version = $2, last_active_at = now() "
         "WHERE user_id = $1",
@@ -218,6 +222,7 @@ async def _reseed(user_id: UUID, sprite: Sprite) -> None:
     if won is None:
         return
 
+    stash_key: str | None = None
     try:
         stash_key = await auth.create_api_key(user_id, name="cloud computer", key_type="machine")
         output, code = await exec_collect(
@@ -229,8 +234,14 @@ async def _reseed(user_id: UUID, sprite: Sprite) -> None:
         if code != 0:
             raise SpriteError(f"sprite reseed exited {code}: {output[-2000:]}")
     except BaseException:
+        # The box keeps whatever key its last good seed baked in; the one
+        # minted for this attempt goes with the attempt.
         await pool.execute("UPDATE user_sprites SET seed_version = 0 WHERE user_id = $1", user_id)
+        if stash_key is not None:
+            await _revoke_box_key(user_id, stash_key)
         raise
+
+    await _revoke_other_box_keys(user_id, stash_key)
 
 
 async def _wait_until_ready(user_id: UUID) -> Sprite:
@@ -247,6 +258,28 @@ async def _wait_until_ready(user_id: UUID) -> Sprite:
             return Sprite(name=row["sprite_name"])
         await asyncio.sleep(1)
     raise SpriteError("timed out waiting for sprite provisioning")
+
+
+async def _revoke_box_key(user_id: UUID, raw_key: str) -> None:
+    """Revoke one just-minted box key after a failed provision/reseed."""
+    await get_pool().execute(
+        "UPDATE user_api_keys SET revoked_at = now() WHERE user_id = $1 AND key_hash = $2",
+        user_id,
+        auth.hash_api_key(raw_key),
+    )
+
+
+async def _revoke_other_box_keys(user_id: UUID, current_key: str) -> None:
+    """A successful seed bakes exactly one key into the box, so every other
+    'cloud computer' key is a leftover from an earlier provision or reseed —
+    dead weight that shows up in the user's API-key list."""
+    await get_pool().execute(
+        "UPDATE user_api_keys SET revoked_at = now() "
+        "WHERE user_id = $1 AND key_type = 'machine' AND name = 'cloud computer' "
+        "  AND revoked_at IS NULL AND key_hash != $2",
+        user_id,
+        auth.hash_api_key(current_key),
+    )
 
 
 def _seed_script(stash_key: str) -> str:
