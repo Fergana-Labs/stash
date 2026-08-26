@@ -61,9 +61,11 @@ export default function DeveloperGate({ children }: { children: React.ReactNode 
     setActivateError(null);
     try {
       enter(await activateDeveloperPlatform());
+      // Stay disabled: enter() navigates, and every activate call creates a
+      // fresh workspace — re-enabling mid-navigation invited a second click
+      // and a duplicate "<name> (Developer)" workspace.
     } catch (e) {
       setActivateError(e instanceof Error ? e.message : "Could not set up the platform");
-    } finally {
       setActivating(false);
     }
   }
