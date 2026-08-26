@@ -728,3 +728,111 @@ async def test_memory_tree_nests_folders_and_scopes_to_memory(client: AsyncClien
     files_tree = (await client.get("/api/v1/me/tree", headers=_auth(key))).json()
     assert [p["name"] for p in files_tree["pages"]] == ["Outside"]
     assert all(f["id"] != mem["id"] for f in files_tree["folders"])
+
+
+async def _file_session_into_folder(
+    client: AsyncClient, key: str, uid: UUID, pool, session_id: str
+) -> str:
+    """Create the "Acme Corp" folder, push one event for `session_id`, and
+    file that session into the folder through the production assign route.
+    Returns the folder id."""
+    r = await client.post(
+        "/api/v1/me/session-folders", json={"name": "Acme Corp"}, headers=_auth(key)
+    )
+    assert r.status_code == 200
+    folder = r.json()
+
+    await _push_events(
+        client,
+        key,
+        [
+            {
+                "agent_name": "heavi-chat",
+                "event_type": "user_message",
+                "content": "filing the session",
+                "session_id": session_id,
+                "created_at": datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC).isoformat(),
+            }
+        ],
+    )
+    row_id = await pool.fetchval(
+        "SELECT id FROM sessions WHERE owner_user_id = $1 AND session_id = $2",
+        uid,
+        session_id,
+    )
+    r = await client.post(
+        "/api/v1/me/session-folders/assign",
+        json={"session_row_ids": [str(row_id)], "folder_id": str(folder["id"])},
+        headers=_auth(key),
+    )
+    assert r.status_code == 200
+    assert r.json() == {"ok": True, "moved": 1}
+    return folder["id"]
+
+
+@pytest.mark.asyncio
+async def test_feed_carries_session_folder(client: AsyncClient, _db_pool):
+    """The personal curator prompt tells the curator that each history event
+    carries its session's folder — folder placement is the owner's deliberate
+    curation signal. The feed must actually deliver it: a filed session
+    presents its folder name (plus the id at row level), a bare session
+    presents null, and the pre-existing keys stay untouched."""
+    key, uid = await _register(client)
+    old = datetime(2020, 1, 1, tzinfo=UTC)
+
+    folder_id = await _file_session_into_folder(client, key, uid, _db_pool, "conv-folder")
+    await _push_events(
+        client,
+        key,
+        [
+            {
+                "agent_name": "heavi-chat",
+                "event_type": "user_message",
+                "content": "no folder here",
+                "session_id": "conv-bare",
+                "created_at": datetime(2026, 1, 1, 12, 5, 0, tzinfo=UTC).isoformat(),
+            }
+        ],
+    )
+
+    feed = await curation_service.changes_since(uid, uid, old)
+    by_session = {h["session_id"]: h for h in feed["history"]}
+    filed, bare = by_session["conv-folder"], by_session["conv-bare"]
+    assert filed["session_folder"] == "Acme Corp"
+    assert bare["session_folder"] is None
+    # The pre-existing contract is untouched: same keys, same values.
+    for h in (filed, bare):
+        assert h["agent_name"] == "heavi-chat"
+        assert h["event_type"] == "user_message"
+        assert h["content"]
+        assert h["created_at"]
+        assert h["user"] is None
+        assert h["user_share_wiki"] is None
+
+    # Row level carries the id too — 1:1, so no fan-out and no missing row.
+    rows, has_more = await curation_service._feed_events(uid, old, None, 100)
+    assert has_more is False
+    rows_by_session = {r["session_id"]: r for r in rows}
+    assert rows_by_session["conv-folder"]["session_folder"] == "Acme Corp"
+    assert rows_by_session["conv-folder"]["session_folder_id"] == UUID(folder_id)
+    assert rows_by_session["conv-bare"]["session_folder"] is None
+    assert rows_by_session["conv-bare"]["session_folder_id"] is None
+
+
+@pytest.mark.asyncio
+async def test_changes_endpoint_exposes_session_folder(client: AsyncClient, _db_pool):
+    """GET /api/v1/me/changes is the exact JSON `stash changes --json` passes
+    through — the curator's actual input must carry the session's folder,
+    since the prompt's folder rules are dead text without it."""
+    key, uid = await _register(client)
+    old = datetime(2020, 1, 1, tzinfo=UTC)
+
+    await _file_session_into_folder(client, key, uid, _db_pool, "conv-folder")
+
+    r = await client.get(
+        "/api/v1/me/changes", params={"since": old.isoformat()}, headers=_auth(key)
+    )
+    assert r.status_code == 200
+    body = r.json()
+    entry = next(h for h in body["history"] if h["session_id"] == "conv-folder")
+    assert entry["session_folder"] == "Acme Corp"
