@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useBreadcrumbs } from "@/components/BreadcrumbContext";
 import { useConfirm } from "@/components/ConfirmDialog";
 import CopyableCommandBlock from "@/components/CopyableCommandBlock";
+import CustomSelect from "@/components/CustomSelect";
 import SessionUpload from "@/components/SessionUpload";
 import { SessionsListSkeleton } from "@/components/SkeletonStates";
 import { PinIcon } from "@/components/SkillIcons";
@@ -32,18 +33,18 @@ type SortKey = "recent" | "oldest" | "events" | "name";
 const VIEW_STORAGE_KEY = "stash_sessions_view";
 
 
-const VIEWS: { key: ViewKey; label: string }[] = [
-  { key: "list", label: "List" },
-  { key: "day", label: "By day" },
-  { key: "user", label: "By user" },
-  { key: "agent", label: "By agent" },
+const VIEWS: { value: ViewKey; label: string }[] = [
+  { value: "list", label: "List" },
+  { value: "day", label: "By day" },
+  { value: "user", label: "By person" },
+  { value: "agent", label: "By agent" },
 ];
 
-const SORTS: { key: SortKey; label: string }[] = [
-  { key: "recent", label: "Recent" },
-  { key: "oldest", label: "Oldest" },
-  { key: "events", label: "Most events" },
-  { key: "name", label: "Name" },
+const SORTS: { value: SortKey; label: string }[] = [
+  { value: "recent", label: "Recent" },
+  { value: "oldest", label: "Oldest" },
+  { value: "events", label: "Most events" },
+  { value: "name", label: "Name" },
 ];
 
 export default function SkillSessionsPage() {
@@ -56,6 +57,7 @@ export default function SkillSessionsPage() {
   const [error, setError] = useState("");
   const [view, setView] = useState<ViewKey>("list");
   const [sort, setSort] = useState<SortKey>("recent");
+  const [showImport, setShowImport] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   function toggleSelect(sessionId: string) {
@@ -75,7 +77,7 @@ export default function SkillSessionsPage() {
   useEffect(() => {
     if (typeof window === "undefined") return;
     const saved = window.localStorage.getItem(VIEW_STORAGE_KEY) as ViewKey | null;
-    if (saved && VIEWS.some((v) => v.key === saved)) setView(saved);
+    if (saved && VIEWS.some((v) => v.value === saved)) setView(saved);
   }, []);
 
   const load = useCallback(async () => {
@@ -161,10 +163,6 @@ export default function SkillSessionsPage() {
           </div>
         )}
 
-        <div className="mt-5 mb-4">
-          <SessionUpload onUploaded={load} />
-        </div>
-
         {pinnedSessions.length > 0 && (
           <section className="mb-5">
             <h2 className="m-0 mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
@@ -181,20 +179,38 @@ export default function SkillSessionsPage() {
           </section>
         )}
 
-        <div className="mb-3 flex flex-wrap items-center gap-3 border-b border-border pb-2.5">
-          <SegmentedControl
-            label="View"
+        <div className="mt-5 mb-3 flex flex-wrap items-center gap-2 border-b border-border pb-2.5">
+          <span className="sys-label" style={{ fontSize: 10 }}>
+            View
+          </span>
+          <CustomSelect
+            ariaLabel="View"
             value={view}
             options={VIEWS}
             onChange={(v) => setViewPersisted(v as ViewKey)}
           />
-          <SegmentedControl
-            label="Sort"
+          <span className="sys-label ml-2" style={{ fontSize: 10 }}>
+            Sort
+          </span>
+          <CustomSelect
+            ariaLabel="Sort"
             value={sort}
             options={SORTS}
             onChange={(v) => setSort(v as SortKey)}
           />
+          <div className="ml-auto">
+            <PageOverflowMenu
+              importOpen={showImport}
+              onToggleImport={() => setShowImport((v) => !v)}
+            />
+          </div>
         </div>
+
+        {showImport && (
+          <div className="mb-4">
+            <SessionUpload onUploaded={load} />
+          </div>
+        )}
 
         <SessionsView
           view={view}
@@ -414,42 +430,49 @@ function FlatGroup({
   );
 }
 
-function SegmentedControl<T extends string>({
-  label,
-  value,
-  options,
-  onChange,
+// Advanced/rarely-used page actions live behind this control so the page
+// header stays calm — manual transcript import foremost.
+function PageOverflowMenu({
+  importOpen,
+  onToggleImport,
 }: {
-  label: string;
-  value: T;
-  options: { key: T; label: string }[];
-  onChange: (next: T) => void;
+  importOpen: boolean;
+  onToggleImport: () => void;
 }) {
+  const [open, setOpen] = useState(false);
   return (
-    <div className="inline-flex items-center gap-1.5 text-[12px]">
-      <span className="sys-label" style={{ fontSize: 10 }}>
-        {label}
-      </span>
-      <div className="inline-flex gap-1 rounded-full border border-border bg-surface/60 p-1 shadow-sm">
-        {options.map((opt) => {
-          const active = value === opt.key;
-          return (
+    <div className="relative">
+      <button
+        type="button"
+        aria-label="More actions"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+        className="cursor-pointer rounded-md border border-border bg-surface px-2 py-1 text-[13px] leading-none text-muted-foreground hover:bg-raised hover:text-foreground"
+      >
+        &#8943;
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-[60]" onClick={() => setOpen(false)} />
+          <div
+            role="menu"
+            className="absolute right-0 top-full z-[70] mt-1 w-56 rounded-md border border-border bg-surface py-1 text-[12.5px] shadow-lg"
+          >
             <button
-              key={opt.key}
               type="button"
-              onClick={() => onChange(opt.key)}
-              className={
-                "cursor-pointer rounded-full px-2.5 py-1 text-[12px] leading-none transition-colors " +
-                (active
-                  ? "bg-base font-semibold text-foreground shadow-sm"
-                  : "text-muted-foreground hover:bg-raised/70 hover:text-foreground")
-              }
+              role="menuitem"
+              onClick={() => {
+                onToggleImport();
+                setOpen(false);
+              }}
+              className="block w-full cursor-pointer px-3 py-1.5 text-left text-foreground hover:bg-raised"
             >
-              {opt.label}
+              {importOpen ? "Hide transcript import" : "Import a .jsonl transcript…"}
             </button>
-          );
-        })}
-      </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -493,33 +516,35 @@ function SessionsTable({
   const showFolder = sessions.some((s) => s.session_folder_name);
 
   return (
-    <div className="overflow-hidden rounded-lg border border-border bg-surface">
-      <div
-        className={
-          "hidden gap-3 border-b border-border bg-base/70 px-3 py-2 text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground md:grid " +
-          (showFolder ? GRID_COLS_WITH_FOLDER : GRID_COLS)
-        }
-      >
-        <span>User</span>
-        <span>Session</span>
-        {showFolder && <span>Folder</span>}
-        <span>Events</span>
-        <span>Agent</span>
-        <span>Date</span>
-        <span>Updated</span>
-        <span />
+    <div className="scroll-thin overflow-x-auto rounded-lg border border-border bg-surface">
+      <div className={showFolder ? "md:min-w-[900px]" : "md:min-w-[820px]"}>
+        <div
+          className={
+            "hidden gap-3 border-b border-border bg-base/70 px-3 py-2 text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground md:grid " +
+            (showFolder ? GRID_COLS_WITH_FOLDER : GRID_COLS)
+          }
+        >
+          <span>User</span>
+          <span>Session</span>
+          {showFolder && <span>Folder</span>}
+          <span>Events</span>
+          <span>Agent</span>
+          <span>Date</span>
+          <span>Updated</span>
+          <span />
+        </div>
+        {sessions.map((session) => (
+          <SessionTableRow
+            key={session.session_id}
+            session={session}
+            showFolder={showFolder}
+            pinned={isPinned(session.session_id)}
+            onTogglePin={onTogglePin}
+            selected={selectedIds.has(session.session_id)}
+            onToggleSelect={onToggleSelect}
+          />
+        ))}
       </div>
-      {sessions.map((session) => (
-        <SessionTableRow
-          key={session.session_id}
-          session={session}
-          showFolder={showFolder}
-          pinned={isPinned(session.session_id)}
-          onTogglePin={onTogglePin}
-          selected={selectedIds.has(session.session_id)}
-          onToggleSelect={onToggleSelect}
-        />
-      ))}
     </div>
   );
 }
@@ -545,7 +570,6 @@ function SessionTableRow({
   onToggleSelect: (sessionId: string) => void;
 }) {
   const user = requireSessionUserName(session.user_name);
-  const agent = session.agent_name || "agent";
   const avatar = avatarFor(user);
 
   return (
@@ -583,7 +607,7 @@ function SessionTableRow({
           {[
             user,
             session.session_folder_name,
-            agent,
+            session.agent_name,
             formatRelative(session.last_event_at),
           ]
             .filter(Boolean)
@@ -599,7 +623,9 @@ function SessionTableRow({
         <MessageIcon />
         {session.event_count}
       </span>
-      <span className="hidden truncate text-muted-foreground md:block">{agent}</span>
+      <span className="hidden truncate text-muted-foreground md:block">
+        {session.agent_name || "\u2014"}
+      </span>
       <span className="hidden whitespace-nowrap text-[12px] text-muted-foreground md:block">
         {formatDate(session.last_event_at || session.started_at)}
       </span>

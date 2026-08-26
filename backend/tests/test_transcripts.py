@@ -401,6 +401,43 @@ async def test_sidebar_sessions_include_human_author(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_agent_name_matching_author_handle_is_suppressed(client: AsyncClient):
+    """The CLI plugin historically defaulted agent_name to the author's login
+    handle, so those rows name a person, not an agent. The session lists must
+    not present a person as the agent — the value is suppressed instead."""
+    key = await _register(client)
+    scope = await _scope(client, key)
+    headers = {"Authorization": f"Bearer {key}"}
+    me = await client.get("/api/v1/users/me", headers=headers)
+    handle = me.json()["name"]
+
+    pushed = await client.post(
+        "/api/v1/me/sessions/events/batch",
+        json={
+            "events": [
+                {
+                    "agent_name": handle,
+                    "event_type": "user_message",
+                    "content": "Plan the release",
+                    "session_id": "sess-handle-agent",
+                }
+            ]
+        },
+        headers=headers,
+    )
+    assert pushed.status_code == 201
+
+    mine = await client.get(f"/api/v1/me/sessions?owner_user_id={scope}", headers=headers)
+    assert mine.status_code == 200
+    assert mine.json()["sessions"][0]["agent_name"] is None
+
+    overview = await client.get("/api/v1/me/overview", headers=headers)
+    assert overview.status_code == 200
+    [overview_session] = overview.json()["sessions"]
+    assert overview_session["agent_name"] == ""
+
+
+@pytest.mark.asyncio
 async def test_sidebar_etag_changes_after_generated_title(
     client: AsyncClient,
     pool,

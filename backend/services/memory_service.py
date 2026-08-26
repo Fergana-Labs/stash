@@ -503,7 +503,10 @@ async def list_scope_sessions(owner_user_id: UUID, user_id: UUID) -> list[dict]:
         ") "
         "SELECT h.session_id, "
         "       rs.id::text AS id, "
-        "       MAX(h.agent_name) AS agent_name, "
+        # The CLI plugin historically defaulted agent_name to the author's
+        # login handle (users.name); a value equal to it is that default, not
+        # an agent name, so it is suppressed rather than shown as an agent.
+        "       NULLIF(MAX(h.agent_name), MAX(u.name)) AS agent_name, "
         "       (ARRAY_AGG(NULLIF(u.display_name, '') ORDER BY h.created_at) "
         "        FILTER (WHERE NULLIF(u.display_name, '') IS NOT NULL))[1] AS user_name, "
         "       title_sources.title_source, "

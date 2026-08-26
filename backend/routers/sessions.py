@@ -153,7 +153,11 @@ async def list_my_sessions(
           p.owner_user_id,
           owner.display_name AS owner_name,
           NULLIF(author.display_name, '') AS user_name,
-          p.agent_name,
+          -- The CLI plugin historically defaulted agent_name to the author's
+          -- login handle (users.name), so many rows carry a person, not an
+          -- agent. A value equal to the author's handle is that default, not
+          -- an agent name — suppress it rather than display a user as one.
+          NULLIF(p.agent_name, author.name) AS agent_name,
           sf.name AS session_folder_name,
           title.title_source,
           counts.event_count,
