@@ -2,9 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Bot, ChevronRight, File, Folder, Loader2, MessagesSquare, GraduationCap, Monitor, Plus, Settings, FolderTree, Plug, SquareTerminal } from "lucide-react";
-import { ApiError, listMySessions, listSkillsSharedWithMe, listSkills, listSources, machineFsList, listAgents, createAgent, type Agent as AgentRow, type MachineEntry, type SessionSummary, type Source } from "@/lib/api";
-import { requestAgentConfigView } from "@/lib/agent-tab-view";
+import { ChevronRight, File, Folder, Loader2, MessagesSquare, GraduationCap, Monitor, FolderTree, Plug, SquareTerminal } from "lucide-react";
+import { ApiError, listMySessions, listSkillsSharedWithMe, listSkills, listSources, machineFsList, type MachineEntry, type SessionSummary, type Source } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { useWorkspace, type TabKind } from "@/lib/workspace-store";
 import { urlForTab, hasPermanentUrl } from "@/lib/workspace-routes";
@@ -13,16 +12,16 @@ import { INTEGRATIONS_CHANGED_EVENT, listIntegrations } from "@/lib/integrations
 import { opensNewTab } from "@/lib/tab-nav";
 import FilesExplorer, { type Item } from "./files-explorer";
 
-export type ExplorerSection = "files" | "sessions" | "skills" | "agents" | "tools" | "computer";
+export type ExplorerSection = "files" | "sessions" | "skills" | "tools" | "computer";
 
 const SECTIONS: { key: ExplorerSection; label: string; route: string; icon: React.ReactNode }[] = [
   { key: "files", label: "Files", route: "/files", icon: <FolderTree className="h-4 w-4 text-chart-4" /> },
   { key: "skills", label: "Skills", route: "/skills", icon: <GraduationCap className="h-4 w-4 text-chart-4" /> },
   { key: "sessions", label: "Sessions", route: "/sessions", icon: <MessagesSquare className="h-4 w-4 text-chart-4" /> },
   { key: "tools", label: "Tools", route: "/tools", icon: <Plug className="h-4 w-4 text-chart-4" /> },
-  { key: "computer", label: "VM", route: "/agents", icon: <Monitor className="h-4 w-4 text-chart-4" /> },
+  { key: "computer", label: "VM", route: "/files?section=computer", icon: <Monitor className="h-4 w-4 text-chart-4" /> },
 ];
-const LABEL: Record<ExplorerSection, string> = { files: "Files", skills: "Skills", sessions: "Sessions", tools: "Tools", agents: "Agents", computer: "VM" };
+const LABEL: Record<ExplorerSection, string> = { files: "Files", skills: "Skills", sessions: "Sessions", tools: "Tools", computer: "VM" };
 
 /** Open any item as a workbench tab and sync the URL. A plain click navigates
  *  the current tab; cmd/ctrl-click (or an explicit newTab) opens a new one. */
@@ -205,67 +204,10 @@ function RootSection() {
   );
 }
 
-// ── Agents: one row per named agent. Clicking opens the agent's single
-// conversation — a chat agent's persistent session, or a scheduled agent's
-// runs feed. Past ad-hoc sessions live in the Sessions view. ──
-function AgentsExplorer() {
-  const open = useOpenTab();
-  const [agents, setAgents] = useState<AgentRow[] | null>(null);
-  const reloadAgents = useCallback(() => { listAgents().then(setAgents).catch(() => setAgents([])); }, []);
-  useEffect(() => { reloadAgents(); }, [reloadAgents]);
-  // Keep the list fresh when the config panel saves/deletes an agent.
-  useEffect(() => {
-    const onChange = () => reloadAgents();
-    window.addEventListener("agents-changed", onChange);
-    return () => window.removeEventListener("agents-changed", onChange);
-  }, [reloadAgents]);
-
-  async function newAgent() {
-    const a = await createAgent({ name: "New agent" });
-    reloadAgents();
-    // A fresh agent wants configuring first — open its tab on the Config side.
-    requestAgentConfigView(a.id);
-    open("agent", `agent-${a.id}`, a.name, { newTab: true });
-  }
-
-  function openSettings(a: AgentRow) {
-    requestAgentConfigView(a.id);
-    open("agent", `agent-${a.id}`, a.name);
-  }
-
-  return (
-    <div className="flex h-full flex-col bg-sidebar">
-      <div className="flex h-9 shrink-0 items-center justify-between border-b border-sidebar-border px-3 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-        <span>Agents</span>
-        <button onClick={() => void newAgent()} className="cursor-pointer text-muted-foreground hover:text-foreground" title="New agent">
-          <Plus className="h-3.5 w-3.5" />
-        </button>
-      </div>
-      <div className="min-h-0 flex-1 overflow-y-auto py-1">
-        {(agents ?? []).map((a) => (
-          <div key={a.id} className="group flex items-center gap-1 rounded px-2 py-1.5 text-[13px] text-sidebar-foreground hover:bg-sidebar-accent">
-            <button
-              onClick={() => open("agent", `agent-${a.id}`, a.name)}
-              className="flex min-w-0 flex-1 cursor-pointer items-center gap-1 text-left"
-              title={a.run_mode === "scheduled" ? "Open runs" : "Open chat"}
-            >
-              <Bot className="h-4 w-4 shrink-0 text-muted-foreground" />
-              <span className="min-w-0 flex-1 truncate">{a.name}</span>
-            </button>
-            <button onClick={() => openSettings(a)} className="cursor-pointer text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-foreground" title="Settings">
-              <Settings className="h-3.5 w-3.5" />
-            </button>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-/** The left panel. Agents is a chat list. Every other section is shown fully
- *  (no accordion) with a breadcrumb up to Home, which lists the sections. Files
- *  is a VFS file manager (breadcrumbs, context menu, drag, upload); the
- *  reserved Memory folder lives in it like any other folder. */
+/** The left panel. Every section is shown fully (no accordion) with a
+ *  breadcrumb up to Home, which lists the sections. Files is a VFS file
+ *  manager (breadcrumbs, context menu, drag, upload); the reserved Memory
+ *  folder lives in it like any other folder. */
 export default function Explorer({ section }: { section: ExplorerSection }) {
   const router = useRouter();
   const open = useOpenTab();
@@ -315,8 +257,6 @@ export default function Explorer({ section }: { section: ExplorerSection }) {
       ts: s.last_event_at,
     }));
   }, []);
-
-  if (section === "agents") return <AgentsExplorer />;
 
   // Files docks the same browser the /files page shows full-screen. The
   // atRoot guard is what makes its Home crumb work — without it the click

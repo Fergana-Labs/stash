@@ -16,13 +16,12 @@ import Workbench from "./workbench";
 const WIDTH_KEY = "moltchat_explorer_width";
 const MIN_W = 220;
 const MAX_W = 600;
-const EXPLORER_SECTIONS: ExplorerSection[] = ["files", "sessions", "skills", "agents", "tools", "computer"];
+const EXPLORER_SECTIONS: ExplorerSection[] = ["files", "sessions", "skills", "tools", "computer"];
 
 // Experiment (2026-08-10): only the VFS keeps the tree sidebar. Sessions,
-// Skills, Tools, and Agents render full-width — the explorers were a second
-// nav axis over the same content as the rail, and the two looked independent.
-// Agents brings its own ChatGPT-style chat list; the VM (browser) keeps its
-// panel because that content lives nowhere else.
+// Skills, and Tools render full-width — the explorers were a second nav axis
+// over the same content as the rail, and the two looked independent. The VM
+// (browser) keeps its panel because that content lives nowhere else.
 const PANELLED_SECTIONS: ExplorerSection[] = ["files", "computer"];
 
 /** Resizable explorer panel — drag the right edge to set width (persisted). */
@@ -76,7 +75,6 @@ function sectionForPath(pathname: string): ExplorerSection | null {
   if (pathname === "/files" || /^\/(p|f|folders|tables)\//.test(pathname)) return "files";
   if (pathname === "/sessions" || pathname.startsWith("/sessions/")) return "sessions";
   if (pathname === "/skills" || pathname.startsWith("/skills/folder")) return "skills";
-  if (pathname === "/agents") return "agents";
   if (pathname === "/tools" || pathname.startsWith("/integrations")) return "tools";
   return null;
 }
@@ -98,15 +96,13 @@ export function rendersRouteContent(
   // path: /skills/folder/<id> is a skill you opened, which belongs in a tab.
   if (pathname === "/skills") return true;
   // The MCP-server registry is a management page like /sessions.
-  if (pathname === "/tools") return true;
-  // /agents is the ChatGPT-style chat page — its own sidebar, no workbench.
-  return pathname === "/agents";
+  return pathname === "/tools";
 }
 
 
 /**
  * The app shell — icon rail + top bar + main area. Each primary rail section
- * (Files/Sessions/Skills/Agents/Tools) shows its own explorer panel. The Files
+ * (Files/Sessions/Skills/Tools) shows its own explorer panel. The Files
  * section drives the tab workbench; other sections render their route content
  * beside the explorer. Secondary routes (Index/Settings) render full.
  */

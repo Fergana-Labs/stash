@@ -2,9 +2,8 @@
 
 import { useEffect } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { X, SplitSquareHorizontal, PanelRightClose, Plus, Bot, Plug, FileText } from "lucide-react";
+import { X, SplitSquareHorizontal, PanelRightClose, Plus, Plug } from "lucide-react";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
-import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { createPage } from "@/lib/api";
 import { useWorkspace, titleKey, type WorkbenchTab } from "@/lib/workspace-store";
@@ -22,12 +21,11 @@ function TabIcon({ kind }: { kind: WorkbenchTab["kind"] }) {
   if (kind === "table") return <TableIcon className={cls} />;
   if (kind === "folder") return <FolderIcon className={cls} />;
   if (kind === "session" || kind === "sessions-home") return <SessionsIcon className={cls} />;
-  if (kind === "agent") return <Bot className="h-[13px] w-[13px]" />;
   if (kind === "tool") return <Plug className="h-[13px] w-[13px]" />;
   return <SkillIcon className={cls} />;
 }
 
-/** The "+" new-tab menu in the tab strip — create a page or start a chat. */
+/** The "+" button in the tab strip — creates a page in a new tab. */
 function NewTabMenu() {
   const router = useRouter();
   const openTab = useWorkspace((s) => s.openTab);
@@ -37,27 +35,15 @@ function NewTabMenu() {
     openTab("page", page.id, { title: page.name || "Untitled" });
     router.replace(urlForTab({ kind: "page", refId: page.id }));
   }
-  // Chat is not a tab — it lives on the ChatGPT-style /agents page.
-  function newChat() {
-    router.push("/agents");
-  }
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <button className="flex h-9 w-9 items-center justify-center text-muted-foreground hover:bg-raised hover:text-foreground" title="New tab">
-          <Plus className="h-4 w-4" />
-        </button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        <DropdownMenuItem onClick={newPage}>
-          <FileText className="h-4 w-4" /> New page
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={newChat}>
-          <Bot className="h-4 w-4" /> New chat
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <button
+      onClick={newPage}
+      className="flex h-9 w-9 items-center justify-center text-muted-foreground hover:bg-raised hover:text-foreground"
+      title="New page"
+    >
+      <Plus className="h-4 w-4" />
+    </button>
   );
 }
 

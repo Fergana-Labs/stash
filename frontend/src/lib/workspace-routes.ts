@@ -23,7 +23,7 @@ export const WORKBENCH_TAB_KINDS: TabKind[] = [
 /** Tabs that live only inside the workbench: the cloud box's terminal and its
  *  files exist on the box, not at an address. Opening or refocusing one must
  *  leave the URL alone — ask urlForTab for one and it throws, by design. */
-const WORKBENCH_ONLY_KINDS: TabKind[] = ["machine-file", "terminal", "agent-config"];
+const WORKBENCH_ONLY_KINDS: TabKind[] = ["machine-file", "terminal"];
 
 export function hasPermanentUrl(kind: TabKind): boolean {
   return !WORKBENCH_ONLY_KINDS.includes(kind);
@@ -46,20 +46,13 @@ export function urlForTab(tab: Pick<WorkbenchTab, "kind" | "refId">): string {
       return `/skills/folder/${tab.refId}`;
     case "folder":
       return `/folders/${tab.refId}`;
-    case "agent":
-      // Chat left the workbench: a conversation's address is now the chat
-      // page's ?chat= ref, the same one the skill launcher pushes.
-      return `/agents?chat=${encodeURIComponent(tab.refId)}`;
     case "tool":
       // A provider slug deep-links to its manager; the legacy list stays /tools.
       return tab.refId === "integrations" ? `/tools` : `/integrations/${tab.refId}`;
     case "machine-file":
     case "terminal":
-    case "agent-config":
-      // These exist only inside the workbench — nothing routes to them. They
-      // used to borrow /agents, which worked only while /agents rendered the
-      // workbench; it is the chat page now, so borrowing it evicts the user
-      // from the strip. There is no honest URL to hand back.
+      // These exist only inside the workbench — nothing routes to them, so
+      // there is no honest URL to hand back.
       throw new Error(`${tab.kind} tabs have no permanent URL`);
   }
 }

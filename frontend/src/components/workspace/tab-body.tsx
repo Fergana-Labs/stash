@@ -7,13 +7,11 @@ import SessionsPage from "@/app/(app)/sessions/page";
 import SessionClient from "@/app/(app)/sessions/[sessionId]/SessionClient";
 import SkillFolderClient from "@/app/(app)/skills/folder/[folderId]/SkillFolderClient";
 import FolderClient from "@/app/(app)/folders/[folderId]/FolderClient";
-import AgentChatView from "@/components/agents/AgentChatView";
 import IntegrationsSettings from "@/components/integrations/IntegrationsSettings";
 import { IntegrationDetail } from "@/app/(app)/integrations/[provider]/page";
 import { connectorForProvider } from "@/components/integrations/connectors";
 import MachineFileView from "@/components/workspace/machine-file-view";
-import TerminalPanel from "@/components/agents/TerminalPanel";
-import AgentConfigPanel from "@/components/agents/AgentConfigPanel";
+import TerminalPanel from "@/components/workspace/TerminalPanel";
 import type { WorkbenchTab } from "@/lib/workspace-store";
 
 /** Renders a tab's content by (kind, refId). Each kind reuses the same client
@@ -28,9 +26,8 @@ export default function TabBody({ tab }: { tab: WorkbenchTab }) {
   if (tab.kind === "session") return <SessionClient sessionId={tab.refId} />;
   if (tab.kind === "skill") return <SkillFolderClient folderId={tab.refId} />;
   if (tab.kind === "folder") return <FolderClient folderId={tab.refId} />;
-  if (tab.kind === "agent") return <AgentChatView refId={tab.refId} />;
-  // Tool + agent-config bodies are plain document flows with no height or
-  // scroller of their own, so the tab gives them one.
+  // The tool body is a plain document flow with no height or scroller of its
+  // own, so the tab gives it one.
   if (tab.kind === "tool")
     return (
       <div className="min-h-0 flex-1 overflow-y-auto">
@@ -43,12 +40,6 @@ export default function TabBody({ tab }: { tab: WorkbenchTab }) {
             <IntegrationsSettings embedded />
           </div>
         )}
-      </div>
-    );
-  if (tab.kind === "agent-config")
-    return (
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        <AgentConfigPanel agentId={tab.refId} />
       </div>
     );
   if (tab.kind === "machine-file") return <MachineFileView path={tab.refId} />;

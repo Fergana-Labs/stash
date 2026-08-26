@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { Globe, Plus, Terminal } from "lucide-react";
 import { toast } from "sonner";
 import { useBreadcrumbs } from "@/components/BreadcrumbContext";
-import ToolsAndChatGate from "@/components/ToolsAndChatGate";
+import ToolsGate from "@/components/ToolsGate";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -328,9 +328,9 @@ function ServerRow({ server, onRemoved }: { server: McpServer; onRemoved: () => 
 
 export default function ToolsPage() {
   return (
-    <ToolsAndChatGate>
+    <ToolsGate>
       <ToolsPageInner />
-    </ToolsAndChatGate>
+    </ToolsGate>
   );
 }
 

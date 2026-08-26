@@ -42,8 +42,6 @@ vi.mock("@/lib/api", () => ({
   listSharedWithMe: vi.fn(),
   listSkills: vi.fn().mockResolvedValue([]),
   listSources: vi.fn().mockResolvedValue([]),
-  listAgents: vi.fn().mockResolvedValue([]),
-  createAgent: vi.fn(),
   machineFsList: vi.fn().mockResolvedValue([]),
   getTree: vi.fn(),
   getFolderContents: vi.fn(),

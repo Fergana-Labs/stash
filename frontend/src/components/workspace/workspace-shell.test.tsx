@@ -6,7 +6,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { rendersRouteContent } from "./workspace-shell";
 import { WORKBENCH_TAB_KINDS, urlForTab, hasPermanentUrl } from "@/lib/workspace-routes";
-import { useWorkspace } from "@/lib/workspace-store";
+import { useWorkspace, type WorkbenchTab } from "@/lib/workspace-store";
 
 describe("rendersRouteContent", () => {
   it("renders management pages beside the explorer", () => {
@@ -25,10 +25,6 @@ describe("rendersRouteContent", () => {
     expect(rendersRouteContent("/skills/folder/abc", null, null)).toBe(false);
   });
 
-  it("the chat page owns /agents — no workbench there", () => {
-    expect(rendersRouteContent("/agents", null, null)).toBe(true);
-  });
-
   it("an explicit explorer section always wins", () => {
     expect(rendersRouteContent("/tools", "files", null)).toBe(false);
     expect(rendersRouteContent("/sessions", "skills", null)).toBe(false);
@@ -42,9 +38,7 @@ describe("rendersRouteContent", () => {
 // The workbench pushes urlForTab on every tab click, and the shell decides off
 // that URL whether to draw the workbench at all. A tab kind whose URL is a
 // full page is therefore a tab you can never click back into — clicking it
-// replaces the strip with that page. Chat tabs became exactly that when
-// /agents turned into its own page, and pre-revamp localStorage is full of
-// them, so the two rules below have to agree.
+// replaces the strip with that page — so the two rules below have to agree.
 describe("tabs the workbench can host", () => {
   it("every hostable kind's URL still lands on the workbench", () => {
     for (const kind of WORKBENCH_TAB_KINDS) {
@@ -56,11 +50,6 @@ describe("tabs the workbench can host", () => {
     }
   });
 
-  it("chat is not a hostable kind — its URL is the chat page", () => {
-    expect(WORKBENCH_TAB_KINDS).not.toContain("agent");
-    expect(rendersRouteContent("/agents", null, null)).toBe(true);
-  });
-
   it("kinds with no route at all refuse to invent one", () => {
     expect(() => urlForTab({ kind: "terminal", refId: "terminal" })).toThrow();
     expect(() => urlForTab({ kind: "machine-file", refId: "notes.md" })).toThrow();
@@ -70,7 +59,7 @@ describe("tabs the workbench can host", () => {
   // them. Both ask hasPermanentUrl first, so the throw above stays a
   // programmer-error guard instead of a crash on a real click.
   it("marks the kinds that throw as having no permanent URL", () => {
-    for (const kind of ["terminal", "machine-file", "agent-config"] as const) {
+    for (const kind of ["terminal", "machine-file"] as const) {
       expect(hasPermanentUrl(kind)).toBe(false);
       expect(() => urlForTab({ kind, refId: "x" })).toThrow();
     }
@@ -80,21 +69,21 @@ describe("tabs the workbench can host", () => {
   });
 });
 
-// Users who had tabs open before the revamp deploy hydrate that state on their
-// next visit. A chat tab among them is unclickable and takes the workbench down
-// with it, so hydrate carries the layout forward without those tabs rather than
+// Users who had tabs open before chat was removed hydrate that state on their
+// next visit. A persisted "agent" (chat) tab is a kind the workbench no longer
+// knows, so hydrate carries the layout forward without those tabs rather than
 // leaving the user to find the wreck.
-describe("hydrate migrates pre-revamp tabs", () => {
+describe("hydrate migrates persisted tabs of removed kinds", () => {
   beforeEach(() => {
     useWorkspace.setState({ tabs: [], activeTabId: null, activeTab1: null, split: false, paneOf: {}, focusedPane: 0 });
   });
 
   it("drops chat tabs and keeps the content tabs beside them", () => {
+    // localStorage from before the chat removal still holds kind "agent" —
+    // the string survives even though the TabKind type no longer has it.
+    const chatTab = { id: "t1", kind: "agent", refId: "agent-abc" } as unknown as WorkbenchTab;
     useWorkspace.getState().hydrate({
-      tabs: [
-        { id: "t1", kind: "agent", refId: "agent-abc" },
-        { id: "t2", kind: "page", refId: "p1" },
-      ],
+      tabs: [chatTab, { id: "t2", kind: "page", refId: "p1" }],
       paneOf: { t1: 0, t2: 0 },
       activeTabId: "t1",
     });
@@ -106,7 +95,7 @@ describe("hydrate migrates pre-revamp tabs", () => {
     expect(s.activeTabId).toBe("t2");
   });
 
-  it("closes the split when its only tab was a chat tab", () => {
+  it("closes the split when its only tab was an unhostable tab", () => {
     useWorkspace.getState().hydrate({
       tabs: [
         { id: "t1", kind: "page", refId: "p1" },
