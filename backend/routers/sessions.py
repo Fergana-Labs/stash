@@ -269,7 +269,18 @@ async def _session_detail_payload(
     )
     payload["linear_tickets"] = await linear_ticket_service.list_session_labels(session["id"])
     payload["artifacts"] = await _session_artifacts(session["id"])
+    payload["created_by_display_name"] = await _created_by_display_name(session.get("created_by"))
     return payload
+
+
+async def _created_by_display_name(created_by: UUID | None) -> str | None:
+    """Display name of the person whose session this is, for labelling their
+    turns in the viewer. Sessions with no author (a workspace's own agents)
+    have no human turns to label."""
+    if not created_by:
+        return None
+    pool = get_pool()
+    return await pool.fetchval("SELECT display_name FROM users WHERE id = $1", created_by)
 
 
 @router.get("/me/sessions/resolve")

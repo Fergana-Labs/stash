@@ -401,6 +401,39 @@ async def test_sidebar_sessions_include_human_author(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_session_detail_names_the_author(client: AsyncClient):
+    """The trace view labels human turns with the author's display name, so
+    the detail payload must carry it — 'user' tells a reader nothing."""
+    key = await _register(client)
+    headers = {"Authorization": f"Bearer {key}"}
+    me = await client.get("/api/v1/users/me", headers=headers)
+    author = me.json()["display_name"]
+
+    pushed = await client.post(
+        "/api/v1/me/sessions/events/batch",
+        json={
+            "events": [
+                {
+                    "agent_name": "claude",
+                    "event_type": "user_message",
+                    "content": "hi",
+                    "session_id": "sess-author-name",
+                }
+            ]
+        },
+        headers=headers,
+    )
+    assert pushed.status_code == 201
+
+    detail = await client.get(
+        "/api/v1/me/sessions/detail?session_id=sess-author-name",
+        headers=headers,
+    )
+    assert detail.status_code == 200
+    assert detail.json()["created_by_display_name"] == author
+
+
+@pytest.mark.asyncio
 async def test_session_linear_ticket_labels_are_extracted(client: AsyncClient):
     key = await _register(client)
     scope = await _scope(client, key)

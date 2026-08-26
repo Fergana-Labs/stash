@@ -1527,6 +1527,7 @@ export interface SessionDetail {
   started_at: string | null;
   finished_at: string | null;
   created_by: string | null;
+  created_by_display_name: string | null;
   artifacts: SessionArtifact[];
 }
 
