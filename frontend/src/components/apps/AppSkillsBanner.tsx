@@ -4,27 +4,24 @@ import { useCallback, useEffect, useState } from "react";
 import { Sparkles } from "lucide-react";
 
 import { installSkill, listAppSkills, listSkills, type Skill } from "@/lib/api";
-import type { CuratedSkill, LaunchableSkill } from "@/lib/types";
-import SkillLauncher from "@/components/skill/SkillLauncher";
+import type { CuratedSkill } from "@/lib/types";
 
 // What your agent can do with everything in this app. A saved library is inert
 // until something reads it, and nothing in the app itself says an agent can —
 // so the skills built for this table are listed here.
 //
-// A skill you haven't added shows Add, not Run. Adding is the user's decision:
-// an agent only ever runs what is in your Skills, and running one would have
-// meant putting it there on your behalf.
+// A skill you haven't added shows Add; one you hold shows as a plain chip —
+// your agents pick it up from your Skills, there is no in-app run.
 //
 // Renders nothing when no such skill is published: an empty strip would be
 // worse than no strip, and this is the honest signal that the library skills
 // aren't in Discover yet.
 export default function AppSkillsBanner({ slug }: { slug: string }) {
   const [curated, setCurated] = useState<CuratedSkill[]>([]);
-  // Held skills by frontmatter name, so a Run opens the launcher on the real
-  // skill — its own description and when_to_use, not the catalog blurb.
+  // Held skills by frontmatter name, so a chip reflects whether you already
+  // hold the real skill rather than the catalog blurb.
   const [held, setHeld] = useState<Map<string, Skill>>(new Map());
   const [adding, setAdding] = useState<string | null>(null);
-  const [launching, setLaunching] = useState<LaunchableSkill | null>(null);
   const [error, setError] = useState("");
 
   const loadHeld = useCallback(async () => {
@@ -78,38 +75,33 @@ export default function AppSkillsBanner({ slug }: { slug: string }) {
         <div className="flex flex-wrap items-center gap-1.5">
           {curated.map((skill) => {
             const mine = held.get(skill.name);
+            if (mine) {
+              return (
+                <span
+                  key={skill.name}
+                  title={skill.description}
+                  className="rounded-full border border-border bg-base px-2.5 py-0.5 text-[12px] text-foreground"
+                >
+                  {skill.name}
+                </span>
+              );
+            }
             return (
               <button
                 key={skill.name}
                 type="button"
                 title={skill.description}
                 disabled={adding === skill.name}
-                onClick={() =>
-                  mine
-                    ? setLaunching({
-                        name: mine.name,
-                        description: mine.description,
-                        when_to_use: mine.when_to_use,
-                      })
-                    : void add(skill)
-                }
-                className={
-                  "cursor-pointer rounded-full border px-2.5 py-0.5 text-[12px] transition-colors disabled:opacity-50 " +
-                  (mine
-                    ? "border-border bg-base text-foreground hover:border-[var(--color-brand-300)] hover:bg-[var(--color-brand-50)] hover:text-[var(--color-brand-700)]"
-                    : "border-dashed border-border bg-transparent text-muted-foreground hover:border-[var(--color-brand-300)] hover:text-foreground")
-                }
+                onClick={() => void add(skill)}
+                className="cursor-pointer rounded-full border border-dashed border-border bg-transparent px-2.5 py-0.5 text-[12px] text-muted-foreground transition-colors hover:border-[var(--color-brand-300)] hover:text-foreground disabled:opacity-50"
               >
-                {mine ? skill.name : `+ ${skill.name}`}
+                {`+ ${skill.name}`}
               </button>
             );
           })}
         </div>
         {error && <span className="text-[12px] text-red-500">{error}</span>}
       </div>
-      {launching && (
-        <SkillLauncher skill={launching} onClose={() => setLaunching(null)} />
-      )}
     </>
   );
 }

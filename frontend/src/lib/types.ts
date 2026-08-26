@@ -154,19 +154,8 @@ export interface MiniProgramApp {
   row_count: number;
 }
 
-/** A skill the launcher can run: the name to invoke plus the frontmatter that
- *  says what it does. Only skills in your own Skills are launchable — an agent
- *  reads its scope, not the public catalog — so this is always built from a
- *  Skill you hold. */
-export interface LaunchableSkill {
-  name: string;
-  description: string;
-  when_to_use: string;
-}
-
 /** A published skill an app's table is built for. Carries a slug because you
- *  may not hold it yet: the strip that lists these offers Add for those, and
- *  Run only once the skill is actually in your Skills. */
+ *  may not hold it yet: the strip that lists these offers Add for those. */
 export interface CuratedSkill {
   name: string;
   slug: string;
