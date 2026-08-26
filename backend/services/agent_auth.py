@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
+from urllib.parse import urlparse
 from uuid import UUID
 
 from ..config import settings
@@ -81,6 +82,34 @@ class RunAuth:
     # the model id within it (both set only for the LOCAL provider's PI run).
     endpoint: str | None = None
     model: str | None = None
+
+
+def local_endpoint_secret(base_url: str, model: str, api_key: str | None = None) -> str:
+    """The stored doc for a local endpoint credential: the base URL the
+    SPRITE dials (the backend never dials it), the model id, and an optional
+    key. Shared by the personal and the workspace connect endpoints so both
+    validate and store one shape.
+
+    Raises ValueError with a user-facing detail on bad input; the endpoints
+    map it to a 400.
+    """
+    base_url = base_url.strip()
+    model = model.strip()
+    parsed = urlparse(base_url)
+    if parsed.scheme not in ("http", "https") or not parsed.netloc:
+        raise ValueError(
+            "base_url must be an absolute http(s) URL your cloud computer can reach "
+            "(e.g. http://your-host:11434/v1)"
+        )
+    if not model:
+        raise ValueError("model is required for the local endpoint")
+    return json.dumps(
+        {
+            "base_url": base_url,
+            "model": model,
+            "api_key": (api_key or "").strip() or None,  # keyless endpoints are common
+        }
+    )
 
 
 async def _get_credential(user_id: UUID, provider: str | None = None) -> dict | None:

@@ -8,9 +8,6 @@ flows are separate.
 
 from __future__ import annotations
 
-import json
-from urllib.parse import urlparse
-
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
@@ -54,23 +51,13 @@ async def connect(req: ConnectRequest, current_user: dict = Depends(get_current_
     if req.provider == "local":
         # The credential is an endpoint, not a key: an absolute http(s) base
         # URL the SPRITE can reach (the backend never dials it) plus a model id.
-        parsed = urlparse((req.base_url or "").strip())
-        if parsed.scheme not in ("http", "https") or not parsed.netloc:
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    "base_url must be an absolute http(s) URL your cloud computer can reach "
-                    "(e.g. http://your-host:11434/v1)"
-                ),
+        try:
+            secret = agent_auth.local_endpoint_secret(
+                req.base_url or "", req.model or "", req.api_key
             )
-        if not (req.model or "").strip():
-            raise HTTPException(status_code=400, detail="model is required for the local endpoint")
-        doc = {
-            "base_url": req.base_url.strip(),
-            "model": req.model.strip(),
-            "api_key": (req.api_key or "").strip() or None,  # keyless endpoints are common
-        }
-        await agent_auth.store_credential(current_user["id"], "local", "endpoint", json.dumps(doc))
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        await agent_auth.store_credential(current_user["id"], "local", "endpoint", secret)
         return {"ok": True, "connected": await agent_auth.list_connected(current_user["id"])}
     if not req.api_key or not req.api_key.strip():
         raise HTTPException(status_code=400, detail="api_key is required")
