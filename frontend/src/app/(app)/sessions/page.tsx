@@ -581,7 +581,7 @@ function SessionTableRow({
         >
           {initialsFor(user)}
         </span>
-        <span className="truncate text-foreground">{user}</span>
+        <span title={user} className="truncate text-foreground">{user}</span>
       </div>
       <div className="min-w-0">
         <div className="flex min-w-0 items-center gap-2">
@@ -616,7 +616,7 @@ function SessionTableRow({
         <MessageIcon />
         {session.event_count}
       </span>
-      <span className="hidden truncate text-muted-foreground md:block">{agent}</span>
+      <span title={agent} className="hidden truncate text-muted-foreground md:block">{agent}</span>
       <span className="hidden whitespace-nowrap text-[12px] text-muted-foreground md:block">
         {formatDate(session.last_event_at || session.started_at)}
       </span>
