@@ -38,6 +38,7 @@ from .routers import (
     mcp_servers,
     memory,
     mini_programs,
+    onboarding,
     pins,
     publish,
     security_audit,
@@ -133,6 +134,7 @@ app.include_router(curator_log.router)
 app.include_router(mini_programs.router)
 app.include_router(batch.router)
 app.include_router(transcripts.router)
+app.include_router(onboarding.router)
 app.include_router(aggregate.router)
 app.include_router(agent_docs.router)
 app.include_router(admin.router)
