@@ -318,9 +318,7 @@ def _local_auth(cred: dict, home: str = _SPRITE_HOME) -> RunAuth:
         key_ref = "local"
     override = cred.get("models_json")
     models_json = (
-        override
-        if override is not None
-        else _synthesized_models_json(base_url, model, key_ref)
+        override if override is not None else _synthesized_models_json(base_url, model, key_ref)
     )
     return RunAuth(
         harness=harness_mod.PI,

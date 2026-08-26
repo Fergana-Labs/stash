@@ -265,9 +265,7 @@ async def test_put_local_models_json_roundtrip_verbatim(client: AsyncClient):
 async def test_put_rejects_unparseable(client: AsyncClient):
     key = await _register(client)
     await _connect_local(client, key)
-    r = await client.put(
-        MODELS_JSON_URL, json={"models_json": "{"}, headers=_auth(key)
-    )
+    r = await client.put(MODELS_JSON_URL, json={"models_json": "{"}, headers=_auth(key))
     assert r.status_code == 400
     assert "not valid JSON" in r.json()["detail"]
     # The failed save leaves the previous (absent) value untouched.
@@ -315,9 +313,7 @@ async def test_put_replaces_previous_override(client: AsyncClient):
 async def test_reset_returns_to_synthesized_default(client: AsyncClient):
     key = await _register(client)
     await _connect_local(client, key, "http://tunnel.example/v1", "llama3.1:8b", "my-secret-key")
-    await client.put(
-        MODELS_JSON_URL, json={"models_json": CUSTOM_MODELS_JSON}, headers=_auth(key)
-    )
+    await client.put(MODELS_JSON_URL, json={"models_json": CUSTOM_MODELS_JSON}, headers=_auth(key))
     r = await client.delete(MODELS_JSON_URL, headers=_auth(key))
     assert r.status_code == 200, r.text
     assert r.json() == {"ok": True, "stored": False}
@@ -342,9 +338,7 @@ async def test_disconnect_clears_override(client: AsyncClient):
     so a later GET is 404, not a stale override."""
     key = await _register(client)
     await _connect_local(client, key)
-    await client.put(
-        MODELS_JSON_URL, json={"models_json": CUSTOM_MODELS_JSON}, headers=_auth(key)
-    )
+    await client.put(MODELS_JSON_URL, json={"models_json": CUSTOM_MODELS_JSON}, headers=_auth(key))
     d = await client.delete("/api/v1/me/agent-credentials/local", headers=_auth(key))
     assert d.status_code == 200
     g = await client.get(MODELS_JSON_URL, headers=_auth(key))
@@ -357,9 +351,7 @@ async def test_reconnect_preserves_override(client: AsyncClient):
     with a different model/key keeps the user's models.json."""
     key = await _register(client)
     await _connect_local(client, key, "http://tunnel.example/v1", "llama3.1:8b", "my-secret-key")
-    await client.put(
-        MODELS_JSON_URL, json={"models_json": CUSTOM_MODELS_JSON}, headers=_auth(key)
-    )
+    await client.put(MODELS_JSON_URL, json={"models_json": CUSTOM_MODELS_JSON}, headers=_auth(key))
     await _connect_local(client, key, "http://other.example/v1", "qwen2:7b", None)
     g = await client.get(MODELS_JSON_URL, headers=_auth(key))
     assert g.json() == {"models_json": CUSTOM_MODELS_JSON, "stored": True}
