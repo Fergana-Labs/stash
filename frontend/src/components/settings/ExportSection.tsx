@@ -30,10 +30,11 @@ export default function ExportSection() {
   return (
     <section className="rounded-2xl border border-border bg-surface p-6 space-y-4">
       <div>
-        <h2 className="text-base font-semibold text-foreground">Export everything</h2>
+        <h2 className="text-base font-semibold text-foreground">Export your memories</h2>
         <p className="text-xs text-muted-foreground mt-0.5">
-          Download your whole Stash as a zip of standard files — pages as Markdown/HTML,
-          uploads as their original bytes. Your data is never locked in.
+          Download everything in your Stash as a zip: your Memory wiki and other pages as
+          plain Markdown/HTML, and your uploaded files as their original bytes. Your data
+          is never locked in.
         </p>
       </div>
       {error && <p className="text-xs text-error">{error}</p>}
