@@ -1,6 +1,6 @@
 """Box key hygiene: provisioning never leaks "cloud computer" API keys.
 
-Every provision and reseed mints a machine key and bakes it into the box, but
+Every provision and reseed mints an internal key and bakes it into the box, but
 the box only ever holds one — so a successful seed must revoke the keys it
 supersedes, and a failed attempt must revoke the key it minted. Without this,
 identical "cloud computer" keys pile up in the user's API-key list (Heavi's
@@ -32,7 +32,7 @@ async def _register(client: AsyncClient) -> UUID:
 async def _box_keys(user_id: UUID) -> list[dict]:
     rows = await get_pool().fetch(
         "SELECT key_hash, revoked_at FROM user_api_keys "
-        "WHERE user_id = $1 AND key_type = 'machine' AND name = 'cloud computer' "
+        "WHERE user_id = $1 AND key_type = 'internal' AND name = 'cloud computer' "
         "ORDER BY created_at",
         user_id,
     )
@@ -80,7 +80,7 @@ def _failing_exec(monkeypatch):
 async def test_reseed_revokes_the_superseded_key(client: AsyncClient, sprites_mode):
     user_id = await _register(client)
     await _stale_ready_row(user_id)
-    old_key = await auth.create_api_key(user_id, name="cloud computer", key_type="machine")
+    old_key = await auth.create_api_key(user_id, name="cloud computer", key_type="internal")
 
     await sprite_service.acquire(user_id)
 
@@ -97,7 +97,7 @@ async def test_failed_reseed_revokes_its_key_and_keeps_the_live_one(
 ):
     user_id = await _register(client)
     await _stale_ready_row(user_id)
-    live_key = await auth.create_api_key(user_id, name="cloud computer", key_type="machine")
+    live_key = await auth.create_api_key(user_id, name="cloud computer", key_type="internal")
     _failing_exec(sprites_mode)
 
     with pytest.raises(sprite_service.SpriteError, match="reseed exited 6"):

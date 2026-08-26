@@ -174,7 +174,7 @@ async def _provision(user_id: UUID) -> Sprite:
 
     stash_key: str | None = None
     try:
-        stash_key = await auth.create_api_key(user_id, name="cloud computer", key_type="machine")
+        stash_key = await auth.create_api_key(user_id, name="cloud computer", key_type="internal")
         await _sprites_api("POST", "/v1/sprites", json={"name": name})
         sprite = Sprite(name=name)
         output, code = await exec_collect(
@@ -224,7 +224,7 @@ async def _reseed(user_id: UUID, sprite: Sprite) -> None:
 
     stash_key: str | None = None
     try:
-        stash_key = await auth.create_api_key(user_id, name="cloud computer", key_type="machine")
+        stash_key = await auth.create_api_key(user_id, name="cloud computer", key_type="internal")
         output, code = await exec_collect(
             sprite,
             ["bash", "-c", _seed_script(stash_key)],
@@ -275,7 +275,7 @@ async def _revoke_other_box_keys(user_id: UUID, current_key: str) -> None:
     dead weight that shows up in the user's API-key list."""
     await get_pool().execute(
         "UPDATE user_api_keys SET revoked_at = now() "
-        "WHERE user_id = $1 AND key_type = 'machine' AND name = 'cloud computer' "
+        "WHERE user_id = $1 AND key_type = 'internal' AND name = 'cloud computer' "
         "  AND revoked_at IS NULL AND key_hash != $2",
         user_id,
         auth.hash_api_key(current_key),
@@ -419,7 +419,7 @@ async def _sprites_exec_stream(
     raise SpriteError("sprite exec stream closed without an exit frame")
 
 
-# One machine key per user per process. `create_api_key` returns the secret
+# One internal key per user per process. `create_api_key` returns the secret
 # only at creation, so it cannot be re-read from the row later.
 _LOCAL_KEYS: dict[UUID, str] = {}
 
@@ -444,7 +444,7 @@ async def local_agent_env(user_id: UUID) -> dict[str, str]:
     if key is None:
         from ..auth import create_api_key
 
-        key = await create_api_key(user_id, name="local sprite", key_type="machine")
+        key = await create_api_key(user_id, name="local sprite", key_type="internal")
         _LOCAL_KEYS[user_id] = key
     return {"STASH_API_KEY": key, "STASH_URL": f"http://localhost:{settings.PORT}"}
 

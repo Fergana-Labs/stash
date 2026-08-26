@@ -21,6 +21,8 @@ import uuid
 import pytest
 from httpx import AsyncClient
 
+from backend import auth
+
 from .conftest import unique_name
 from .test_permissions import _auth, _register_with_email
 
@@ -280,7 +282,7 @@ async def test_user_scoped_source_is_visible_to_that_user_only(client: AsyncClie
     )
 
     # Connecting is a write, so it comes from the developer's own key in
-    # workspace scope — the read machine key is for the agent's reads.
+    # workspace scope — the read developer key is for the agent's reads.
     # external_ref + display_name given directly: the Drive folder-name
     # lookup is the only part that needs a live Google token.
     scope = {**_auth(api_key), "X-Stash-Scope": workspace["scope_user_id"]}
@@ -728,3 +730,27 @@ async def test_key_list_and_revoke(client: AsyncClient, pool):
     # Revoking an already-revoked key is a 404, not a silent success.
     again = await client.delete(f"/api/v1/me/developer/keys/{keys[0]['id']}", headers=scope)
     assert again.status_code == 404
+
+
+async def test_internal_key_is_inaccessible_from_developer_key_api(client: AsyncClient, pool):
+    api_key, _, workspace = await _developer(client)
+    scope = {**_auth(api_key), "X-Stash-Scope": workspace["scope_user_id"]}
+    internal_key = await auth.create_api_key(
+        uuid.UUID(workspace["scope_user_id"]),
+        name="cloud computer",
+        key_type="internal",
+    )
+    internal_id = await pool.fetchval(
+        "SELECT id FROM user_api_keys WHERE key_hash = $1",
+        auth.hash_api_key(internal_key),
+    )
+
+    listed = await client.get("/api/v1/me/developer/keys", headers=scope)
+    assert listed.status_code == 200
+    assert listed.json()["keys"] == []
+
+    revoke = await client.delete(f"/api/v1/me/developer/keys/{internal_id}", headers=scope)
+    assert revoke.status_code == 404
+
+    still_live = await client.get("/api/v1/users/me", headers=_auth(internal_key))
+    assert still_live.status_code == 200
