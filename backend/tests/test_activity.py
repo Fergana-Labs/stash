@@ -2,6 +2,7 @@ import json
 from datetime import UTC, datetime, time, timedelta
 from uuid import UUID
 
+import numpy as np
 import pytest
 from httpx import AsyncClient
 
@@ -241,6 +242,60 @@ async def test_user_wide_embedding_projection_serves_cache_while_access_unchange
         "stats": {"total_embeddings": 0, "projected": 1},
         "cached": True,
     }
+
+
+@pytest.mark.asyncio
+async def test_embedding_projection_plots_one_point_per_session(
+    client: AsyncClient,
+    pool,
+    monkeypatch,
+):
+    """The knowledge map plots sessions, not individual transcript events —
+    per-event points clustered by raw command text (content type), not by
+    concept. Each session point averages its event embeddings, is labeled by
+    the session title (or the same excerpt title the sessions list shows),
+    and carries an honest event-count detail."""
+
+    async def keyword_names_only(labels_per_cluster, keyword_names):
+        return keyword_names
+
+    monkeypatch.setattr(analytics_service, "concept_names", keyword_names_only)
+
+    api_key = await _register(client, "session_points")
+    scope = await _scope(client, api_key)
+
+    await _event(client, api_key, scope["id"], "session-a")
+    await _event(client, api_key, scope["id"], "session-a", created_at="2026-01-02T01:00:00Z")
+    await _event(client, api_key, scope["id"], "session-b")
+
+    await pool.execute(
+        "UPDATE history_events SET embedding = $1 WHERE session_id = 'session-a'",
+        np.full(384, 0.5, dtype=np.float32),
+    )
+    await pool.execute(
+        "UPDATE history_events SET embedding = $1 WHERE session_id = 'session-b'",
+        np.full(384, -0.5, dtype=np.float32),
+    )
+    await pool.execute(
+        "UPDATE sessions SET title = 'Billing webhook fixes' WHERE session_id = 'session-a'"
+    )
+
+    resp = await client.get("/api/v1/me/embedding-projection", headers=_auth(api_key))
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["stats"]["total_embeddings"] == 2
+    points = {p["id"]: p for p in body["points"]}
+    assert set(points) == {"session-a", "session-b"}
+    assert all(p["source"] == "sessions" for p in points.values())
+
+    # Titled session: title as label, "N events · agent" detail.
+    assert points["session-a"]["label"] == "Billing webhook fixes"
+    assert points["session-a"]["detail"] == "2 events · tester"
+    # Untitled session: the sessions-list excerpt title (its content is the
+    # session id, per the _event helper).
+    assert points["session-b"]["label"] == "session-b"
+    assert points["session-b"]["detail"] == "1 event · tester"
 
 
 @pytest.mark.asyncio

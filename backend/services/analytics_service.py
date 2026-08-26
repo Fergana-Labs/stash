@@ -11,8 +11,8 @@ from uuid import UUID
 import numpy as np
 
 from ..database import get_pool
-from . import memory_service, permission_service
-from .projection_clusters import cluster_points, name_clusters
+from . import memory_service, permission_service, session_title_service
+from .projection_clusters import cluster_points, concept_names, name_clusters
 
 # Numba's default threading layer aborts the whole process on concurrent
 # entry, so UMAP runs strictly one-at-a-time per process.
@@ -873,13 +873,15 @@ async def get_embedding_projection(
         )
         total_count += row or 0
 
-    if source is None or source == "history_events":
+    if source is None or source == "sessions":
         row = await pool.fetchval(
             _accessible_events_cte(scope_idx=event_scope_idx)
             + """
-            SELECT COUNT(*) FROM history_events me
+            SELECT COUNT(DISTINCT (me.owner_user_id, me.session_id))
+            FROM history_events me
             JOIN accessible_events a ON a.event_id = me.id
             WHERE me.embedding IS NOT NULL
+              AND me.session_id IS NOT NULL
             """,
             *event_count_args,
         )
@@ -989,37 +991,78 @@ async def get_embedding_projection(
                 }
             )
 
-    if source is None or source == "history_events":
+    if source is None or source == "sessions":
+        # One point per session, not per event: the mean of a session's event
+        # embeddings places it by what the session was about, so clusters read
+        # as concepts instead of raw command/tool-call text. Untitled sessions
+        # get the same first-content excerpt title the sessions list shows.
         rows = await pool.fetch(
             _accessible_events_cte(scope_idx=event_fetch_scope_idx)
             + """
-            SELECT me.id, me.content, me.embedding, me.created_at, s.title AS session_title
-            FROM history_events me
-            JOIN accessible_events a ON a.event_id = me.id
-            LEFT JOIN sessions s ON s.owner_user_id = me.owner_user_id
-                AND s.session_id = me.session_id
-            WHERE me.embedding IS NOT NULL
-            ORDER BY me.created_at DESC
-            LIMIT $2
+            , session_points AS (
+                SELECT me.owner_user_id, me.session_id,
+                       AVG(me.embedding) AS embedding,
+                       COUNT(*) AS event_count,
+                       MAX(me.created_at) AS last_event_at
+                FROM history_events me
+                JOIN accessible_events a ON a.event_id = me.id
+                WHERE me.embedding IS NOT NULL
+                  AND me.session_id IS NOT NULL
+                GROUP BY me.owner_user_id, me.session_id
+                ORDER BY MAX(me.created_at) DESC
+                LIMIT $2
+            )
+            SELECT sp.session_id, sp.embedding, sp.event_count, sp.last_event_at,
+                   s.title,
+                   -- The CLI plugin historically defaulted agent_name to the
+                   -- author's login handle; that value is a person, not an
+                   -- agent — suppress it (same rule as the sessions list).
+                   NULLIF(s.agent_name, author.name) AS agent_name,
+                   fallback.title_source
+            FROM session_points sp
+            LEFT JOIN sessions s ON s.owner_user_id = sp.owner_user_id
+                AND s.session_id = sp.session_id
+            LEFT JOIN users author ON author.id = s.created_by
+            LEFT JOIN LATERAL (
+                SELECT LEFT(he.content, 240) AS title_source
+                FROM history_events he
+                WHERE s.title IS NULL
+                  AND he.owner_user_id IS NOT DISTINCT FROM sp.owner_user_id
+                  AND he.session_id = sp.session_id
+                  AND NULLIF(BTRIM(he.content), '') IS NOT NULL
+                ORDER BY
+                  CASE
+                    WHEN he.event_type IN
+                        ('user_message', 'user_prompt', 'prompt', 'message', 'user') THEN 0
+                    WHEN he.event_type IN ('assistant_message', 'assistant') THEN 1
+                    ELSE 2
+                  END,
+                  he.created_at,
+                  he.id
+                LIMIT 1
+            ) fallback ON TRUE
+            ORDER BY sp.last_event_at DESC
             """,
             *event_fetch_args,
         )
         for r in rows:
-            # Label with the session's title so the map reads as topics, not
-            # raw tool-call content. An event whose session has no title keeps
-            # the content excerpt as its label; the excerpt always survives in
-            # ``detail`` for the hover tooltip.
-            excerpt = " ".join(r["content"].split())[:80]
-            item = {
-                "id": str(r["id"]),
-                "label": r["session_title"] or excerpt,
-                "source": "history_events",
-                "created_at": r["created_at"].isoformat() if r["created_at"] else None,
-                "embedding": np.array(r["embedding"]),
-            }
-            if r["session_title"]:
-                item["detail"] = excerpt
-            all_items.append(item)
+            label = r["title"] or session_title_service.title_from_text(
+                r["title_source"], r["session_id"]
+            )
+            n = r["event_count"]
+            detail = f"{n} event" if n == 1 else f"{n} events"
+            if r["agent_name"]:
+                detail += f" · {r['agent_name']}"
+            all_items.append(
+                {
+                    "id": r["session_id"],
+                    "label": label,
+                    "source": "sessions",
+                    "created_at": r["last_event_at"].isoformat() if r["last_event_at"] else None,
+                    "detail": detail,
+                    "embedding": np.array(r["embedding"]),
+                }
+            )
 
     if source is None or source == "files":
         rows = await pool.fetch(
@@ -1077,7 +1120,7 @@ async def get_embedding_projection(
     labels_per_cluster: list[list[str]] = [[] for _ in range(max(assignments) + 1)]
     for i, item in enumerate(all_items):
         labels_per_cluster[assignments[i]].append(item["label"])
-    cluster_names = name_clusters(labels_per_cluster)
+    cluster_names = await concept_names(labels_per_cluster, name_clusters(labels_per_cluster))
     clusters = [
         {"index": c, "name": cluster_names[c], "size": len(labels_per_cluster[c])}
         for c in range(len(cluster_names))

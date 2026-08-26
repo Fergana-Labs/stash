@@ -252,9 +252,9 @@ export interface EmbeddingProjectionPoint {
   x: number;
   y: number;
   z: number;
-  source: "pages" | "table_rows" | "history_events" | "files";
+  source: "pages" | "table_rows" | "sessions" | "files";
   label: string;
-  /** For history events labeled by session title: the event's own content excerpt. */
+  /** For sessions: event count and agent, e.g. "12 events · claude". */
   detail?: string;
   created_at: string | null;
   cluster: number;
