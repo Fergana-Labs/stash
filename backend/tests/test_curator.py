@@ -370,6 +370,10 @@ async def test_idle_curator_skipped_by_beat(client: AsyncClient, sprite_exec, _d
     # Tick consumed — the next beat won't re-check until the next cron tick.
     assert row["last_run_at"] > datetime.now(UTC) - timedelta(minutes=1)
     assert row["last_run_outcome"] == "skipped_no_changes"
+    # The skip is explicit in the curator log — a silent no-op reads as broken.
+    entries = (await client.get("/api/v1/me/curator-log", headers=_auth(key))).json()["entries"]
+    assert entries[0]["status"] == "skipped"
+    assert entries[0]["summary"] == "Nothing new to process since the last run."
 
 
 @pytest.mark.asyncio

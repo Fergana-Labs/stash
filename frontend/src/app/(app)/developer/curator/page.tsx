@@ -427,6 +427,7 @@ const RUN_LABEL: Record<CuratorRun["status"], string> = {
   running: "running",
   stopped: "stopped",
   interrupted: "interrupted",
+  skipped: "skipped",
 };
 
 function Run({ run }: { run: CuratorRun }) {

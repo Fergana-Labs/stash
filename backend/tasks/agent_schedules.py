@@ -150,7 +150,13 @@ async def _maybe_dispatch_first_day_run(scope_user_id: UUID, agent: dict, now: d
 
 async def _run_due() -> int:
     from ..config import settings
-    from ..services import agent_auth, agent_service, billing_service, curation_service
+    from ..services import (
+        agent_auth,
+        agent_service,
+        billing_service,
+        curation_service,
+        sprite_agent_service,
+    )
 
     now = datetime.now(UTC)
     stamp = now.strftime("%Y%m%d%H%M")
@@ -173,6 +179,11 @@ async def _run_due() -> int:
         ):
             logger.info("agent schedule: curator credits exhausted for user %s — skipping", user_id)
             await agent_service.mark_run_skipped(agent["id"], "credits")
+            # A skipped curator night still gets a log entry — a silent no-op
+            # on Home reads as "the curator is broken", not "nothing to do".
+            await sprite_agent_service.record_run_skipped(
+                agent, stamp, "Free monthly curator runs are used up — upgrade for unlimited runs."
+            )
             continue
         # No runnable credential (unconnected free user) → nothing can run.
         try:
@@ -180,6 +191,10 @@ async def _run_due() -> int:
         except (agent_auth.NeedsAuth, agent_auth.ProviderNotConfigured):
             logger.info("agent schedule: no credential for agent %s — skipping", agent["id"])
             await agent_service.mark_run_skipped(agent["id"], "no_credential")
+            if agent["is_curator"]:
+                await sprite_agent_service.record_run_skipped(
+                    agent, stamp, "No AI model credential is connected to run with."
+                )
             continue
         # Cost gate: skip the curator (and the sprite wake) when nothing changed
         # since its watermark. Idle users cost one EXISTS per day.
@@ -187,6 +202,9 @@ async def _run_due() -> int:
             user_id, user_id, agent["curated_through"]
         ):
             await agent_service.mark_run_skipped(agent["id"], "no_changes")
+            await sprite_agent_service.record_run_skipped(
+                agent, stamp, "Nothing new to process since the last run."
+            )
             continue
         run_scheduled_agent.delay(str(agent["id"]), stamp)
         dispatched += 1

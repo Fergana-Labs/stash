@@ -337,7 +337,7 @@ export interface EndUserWikiPage {
 export interface CuratorRun {
   session_id: string;
   started_at: string;
-  status: "completed" | "failed" | "running" | "stopped" | "interrupted";
+  status: "completed" | "failed" | "running" | "stopped" | "interrupted" | "skipped";
   summary: string | null;
   error: string | null;
 }
@@ -811,11 +811,12 @@ export async function getUserWikiGraph(userId: string): Promise<WikiGraph> {
 // --- Curator log ---
 
 // One curator run: what the night's curation learned — the run's stored
-// final message, one sentence by prompt contract.
+// final message, one sentence by prompt contract. A "skipped" entry's summary
+// is the reason the run didn't happen (e.g. nothing new since the last run).
 export interface CuratorLogEntry {
   session_id: string;
   started_at: string;
-  status: "completed" | "failed" | "stopped" | "interrupted" | "running";
+  status: "completed" | "failed" | "stopped" | "interrupted" | "running" | "skipped";
   summary: string | null;
   error: string | null;
 }
