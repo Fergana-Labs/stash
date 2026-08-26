@@ -13,9 +13,9 @@ import { WORKBENCH_TAB_KINDS } from "@/lib/workspace-routes";
  * components/workspace/persistence.tsx (localStorage).
  */
 
-export type RailSection = "home" | "files" | "agents" | "sessions" | "skills" | "tools" | "computer";
+export type RailSection = "home" | "files" | "sessions" | "skills" | "tools" | "computer";
 
-export type TabKind = "page" | "file" | "table" | "session" | "sessions-home" | "skill" | "folder" | "agent" | "agent-config" | "tool" | "machine-file" | "terminal";
+export type TabKind = "page" | "file" | "table" | "session" | "sessions-home" | "skill" | "folder" | "tool" | "machine-file" | "terminal";
 
 export interface WorkbenchTab {
   id: string;
@@ -79,11 +79,11 @@ function placeTab(s: WorkspaceState, tab: WorkbenchTab): Partial<WorkspaceState>
   };
 }
 
-/** Pre-revamp state holds tabs the workbench can no longer host: chat became a
- *  page of its own, so focusing one of its tabs navigates out of the strip
- *  instead of into it, and the whole workbench disappears. Carry the layout
- *  forward once, on hydrate, minus those tabs — the conversations themselves
- *  are not lost, they are listed on /agents. */
+/** Persisted state can hold tabs the workbench can no longer host — kinds a
+ *  past version supported (chat tabs, most notably) and the workbench-only
+ *  kinds that never survive a reload. Carry the layout forward on hydrate,
+ *  minus those tabs — the content itself is not lost (chat conversations
+ *  still exist as sessions under /sessions). */
 function dropUnhostableTabs(data: Partial<WorkspaceState>): Partial<WorkspaceState> {
   if (!data.tabs) return data;
   const tabs = data.tabs.filter((t) => WORKBENCH_TAB_KINDS.includes(t.kind));

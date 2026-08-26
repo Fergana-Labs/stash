@@ -44,7 +44,7 @@ describe("openTab: navigate current tab vs open new tab", () => {
     expect(s.activeTabId).toBe(s.tabs[1].id);
   });
 
-  it("default (no opts) keeps opening new tabs — deep-links / new chat", () => {
+  it("default (no opts) keeps opening new tabs — deep-links", () => {
     useWorkspace.getState().openTab("page", "a");
     useWorkspace.getState().openTab("file", "b");
     expect(useWorkspace.getState().tabs).toHaveLength(2);

@@ -3,15 +3,15 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Bot, FolderTree, MessagesSquare, GraduationCap, Home, Wrench, Settings } from "lucide-react";
+import { FolderTree, MessagesSquare, GraduationCap, Home, Wrench, Settings } from "lucide-react";
 import AccountMenu from "@/components/workspace/account-menu";
 import { cn } from "@/lib/utils";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
 import { useWorkspace, type RailSection } from "@/lib/workspace-store";
-import { showToolsAndChat } from "@/lib/flags";
+import { showTools } from "@/lib/flags";
 import type { User } from "@/lib/types";
 
-type RailItem = { key: RailSection; label: string; icon: typeof Bot; match: (p: string) => boolean };
+type RailItem = { key: RailSection; label: string; icon: typeof Home; match: (p: string) => boolean };
 
 // Primary sections — each opens its own explorer panel (see workspace-shell).
 const PRIMARY: RailItem[] = [
@@ -20,12 +20,10 @@ const PRIMARY: RailItem[] = [
   { key: "sessions", label: "Sessions", icon: MessagesSquare, match: (p) => p.startsWith("/sessions") },
   { key: "skills", label: "Skills", icon: GraduationCap, match: (p) => p.startsWith("/skills") },
   { key: "tools", label: "Tools", icon: Wrench, match: (p) => p.startsWith("/tools") || p.startsWith("/integrations") },
-  { key: "agents", label: "Chat", icon: Bot, match: (p) => p.startsWith("/agents") },
 ];
 
 // Home is the memory dashboard — the divider separates it from the VFS
-// sections. Chat sits last: it's a lens over the stash, not a place in it.
-// Apps lives at /apps. The VM has NO entry point since it left this rail: the
+// sections. Apps lives at /apps. The VM has NO entry point since it left this rail: the
 // explorer's Home root is the only thing that lists it, and that root only
 // renders once you are already inside the VM section (?section=computer).
 const DIVIDER_AFTER_INDEX = 0;
@@ -67,9 +65,7 @@ export default function Rail({ user, onLogout }: { user: User; onLogout: () => v
   const searchParams = useSearchParams();
   const setRailSection = useWorkspace((s) => s.setRailSection);
   const requestedSection = searchParams.get("section");
-  const items = PRIMARY.filter(
-    (item) => (item.key !== "tools" && item.key !== "agents") || showToolsAndChat(user),
-  );
+  const items = PRIMARY.filter((item) => item.key !== "tools" || showTools(user));
 
   function selectSection(section: RailSection) {
     // VFS resumes where the user left off; clicking it while already in the
@@ -84,7 +80,6 @@ export default function Rail({ user, onLogout }: { user: User; onLogout: () => v
     // Every other section is a page; the rail is pure navigation.
     const LANDING: Record<Exclude<RailSection, "files" | "computer">, string> = {
       home: "/",
-      agents: "/agents",
       sessions: "/sessions",
       skills: "/skills",
       tools: "/tools",
