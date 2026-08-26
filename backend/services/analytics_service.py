@@ -570,6 +570,108 @@ async def get_overview_counts(user_id: UUID) -> dict:
     return {"pages": row["pages"], "files": row["files"], "sessions": row["sessions"]}
 
 
+async def get_sessions_analytics(
+    user_id: UUID,
+    owner_user_id: UUID | None = None,
+    days: int = 60,
+) -> dict:
+    """Session counts for the analytics dashboard: totals, sessions per day,
+    and breakdowns by agent and by person. Uses the same access scoping as the
+    sessions list (accessible scopes + readable rows, empty shells hidden), and
+    the same agent-name suppression: an agent_name equal to the author's login
+    handle is the CLI's old default, not an agent — it counts toward the person
+    only."""
+    pool = get_pool()
+    accessible_scopes = permission_service.accessible_scope_ids_sql(1)
+    readable_sessions = permission_service.readable_content_condition("session", "s", 1)
+    where = [
+        "s.deleted_at IS NULL",
+        "EXISTS (SELECT 1 FROM history_events shell_he "
+        "        WHERE shell_he.owner_user_id = s.owner_user_id "
+        "          AND shell_he.session_id = s.session_id)",
+        f"s.owner_user_id IN {accessible_scopes}",
+        readable_sessions,
+    ]
+    args: list = [user_id]
+    if owner_user_id is not None:
+        args.append(owner_user_id)
+        where.append(f"s.owner_user_id = ${len(args)}")
+
+    accessible = f"""
+        WITH accessible AS (
+            SELECT s.owner_user_id, s.session_id, s.last_event_at,
+                   NULLIF(NULLIF(s.agent_name, ''), author.name) AS agent_name,
+                   NULLIF(author.display_name, '') AS person_name
+            FROM sessions s
+            LEFT JOIN users author ON author.id = s.created_by
+            WHERE {" AND ".join(where)}
+        )
+    """
+
+    totals = await pool.fetchrow(
+        accessible
+        + """
+        SELECT
+            (SELECT COUNT(*)::INT FROM accessible) AS sessions,
+            (SELECT COUNT(*)::INT FROM history_events he
+             JOIN accessible a ON a.owner_user_id = he.owner_user_id
+                              AND a.session_id = he.session_id) AS events
+        """,
+        *args,
+    )
+
+    since = datetime.now(UTC).date() - timedelta(days=days - 1)
+    day_rows = await pool.fetch(
+        accessible
+        + f"""
+        SELECT (last_event_at AT TIME ZONE 'UTC')::date AS day, COUNT(*)::INT AS sessions
+        FROM accessible
+        WHERE last_event_at >= ${len(args) + 1}
+        GROUP BY 1
+        """,
+        *args,
+        datetime.combine(since, datetime.min.time(), tzinfo=UTC),
+    )
+    by_day = {r["day"]: r["sessions"] for r in day_rows}
+    per_day = [
+        {
+            "day": (since + timedelta(days=i)).isoformat(),
+            "sessions": by_day.get(since + timedelta(days=i), 0),
+        }
+        for i in range(days)
+    ]
+
+    agent_rows = await pool.fetch(
+        accessible
+        + """
+        SELECT agent_name, COUNT(*)::INT AS sessions
+        FROM accessible
+        WHERE agent_name IS NOT NULL
+        GROUP BY agent_name
+        ORDER BY sessions DESC, agent_name ASC
+        """,
+        *args,
+    )
+    person_rows = await pool.fetch(
+        accessible
+        + """
+        SELECT person_name, COUNT(*)::INT AS sessions
+        FROM accessible
+        WHERE person_name IS NOT NULL
+        GROUP BY person_name
+        ORDER BY sessions DESC, person_name ASC
+        """,
+        *args,
+    )
+
+    return {
+        "totals": {"sessions": totals["sessions"], "events": totals["events"]},
+        "per_day": per_day,
+        "by_agent": [{"agent": r["agent_name"], "sessions": r["sessions"]} for r in agent_rows],
+        "by_person": [{"name": r["person_name"], "sessions": r["sessions"]} for r in person_rows],
+    }
+
+
 def _signature(counts: dict) -> int:
     """Pack (pages, rows, events) into a single BIGINT for cheap drift checks."""
     p = min(counts["pages"], 2**20 - 1)

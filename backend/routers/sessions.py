@@ -18,6 +18,7 @@ from ..auth import get_current_user, get_scope
 from ..config import settings
 from ..database import get_pool
 from ..services import (
+    analytics_service,
     memory_service,
     permission_service,
     security_audit_service,
@@ -207,6 +208,18 @@ async def list_my_sessions(
             session["title"] = titles[session["session_id"]]
             session.pop("title_source", None)
     return {"sessions": sessions}
+
+
+@router.get("/me/sessions/analytics")
+async def my_sessions_analytics(
+    current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
+):
+    """Aggregates for the Session Analytics page: totals, sessions per day for
+    the last 60 days, and breakdowns by agent and by person. Same access
+    scoping as the sessions list above."""
+    owner_user_id = scope_user_id if scope_user_id != current_user["id"] else None
+    return await analytics_service.get_sessions_analytics(current_user["id"], owner_user_id)
 
 
 @router.post("/me/sessions", status_code=201)
