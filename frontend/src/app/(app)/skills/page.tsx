@@ -4,11 +4,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useConfirm } from "@/components/ConfirmDialog";
-import CopyableCommandBlock from "@/components/CopyableCommandBlock";
-import {
-  CardGridSkeleton,
-  SkillsGridSkeleton,
-} from "@/components/SkeletonStates";
+import { SkillsGridSkeleton } from "@/components/SkeletonStates";
 import { PinIcon, SkillIcon } from "@/components/SkillIcons";
 import SkillCard, {
   DraftBadge,
@@ -17,13 +13,11 @@ import SkillCard, {
 } from "@/components/skill/SkillCard";
 import { SkillComposer } from "@/components/skill/SkillComposer";
 import ResyncSourceButton from "@/components/skill/ResyncSourceButton";
-import ForkSkillCardButton from "@/components/skill/ForkSkillCardButton";
 import { SelectBox } from "@/components/content/file-browser/ItemsList";
 import {
   addSource,
   forkSkill,
   ApiError,
-  API_BASE,
   createSkill,
   deleteFolder,
   listSkills,
@@ -33,7 +27,6 @@ import {
   syncSource,
   type FolderBackedSkill,
   type Skill,
-  type PublicSkillCard,
 } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { usePins } from "@/lib/pins";
@@ -42,21 +35,10 @@ import { parseDriveFolderId } from "@/components/integrations/pickers";
 import { refreshSidebar } from "@/lib/skillNavigationCache";
 
 type ViewKey = "grid" | "list";
-// The primary axis: your Skills, or the public library. Skills other people
-// shared with you are not in your VFS — they live in the owner's scope, so they
-// are indexed under the explorer's "Shared with me" node, the same place shared
-// files and session folders appear. Each row carries its own
-// Private/Shared/Public badge — there's no visibility filter to learn.
-type Tab = "yours" | "discover";
 
 const VIEW_STORAGE_KEY = "stash_skills_view";
 
 const COVERS = ["cover-1", "cover-2", "cover-3", "cover-4", "cover-5", "cover-6"];
-
-const TAB_COPY: Record<Tab, string> = {
-  yours: "Your Skill folders. Open one to edit, share, and publish.",
-  discover: "Public skills from the community — fork one into your Skills.",
-};
 
 export default function SkillsPage() {
   const router = useRouter();
@@ -65,7 +47,6 @@ export default function SkillsPage() {
   const confirm = useConfirm();
 
   const [skills, setSkills] = useState<Skill[] | null>(null);
-  const [tab, setTab] = useState<Tab>("yours");
   const [view, setView] = useState<ViewKey>("grid");
   const [error, setError] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -218,13 +199,11 @@ export default function SkillsPage() {
           </div>
         )}
 
-        {/* The primary selector: Yours / Discover. */}
-        <SkillTabs tab={tab} onChange={setTab} yoursCount={skills.length} />
-        <p className="mt-2 text-[12.5px] text-muted-foreground">{TAB_COPY[tab]}</p>
+        <p className="mt-2 text-[12.5px] text-muted-foreground">
+          Your Skill folders. Open one to edit, share, and publish.
+        </p>
 
-        {/* Quick-access + the view toolbar belong to your held Skills, so
-            they sit under Yours, not Discover. */}
-        {tab === "yours" && (pinnedSkills.length > 0 || recentSkills.length > 0) && (
+        {(pinnedSkills.length > 0 || recentSkills.length > 0) && (
           <SkillQuickAccess
             pinned={pinnedSkills}
             recent={recentSkills}
@@ -233,32 +212,26 @@ export default function SkillsPage() {
           />
         )}
 
-        {tab === "yours" && (
-          <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
-            <SkillViewToggle view={view} onChange={setViewPersisted} />
-          </div>
-        )}
+        <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
+          <SkillViewToggle view={view} onChange={setViewPersisted} />
+        </div>
 
-        {tab === "yours" && (
-          <div className="mt-4">
-            {visible.length > 0 ? (
-              <SkillCollection
-                skills={visible}
-                view={view}
-                isPinned={isPinned}
-                onTogglePin={(s) => pins.toggle(skillKey(s))}
-                selectedIds={selectedIds}
-                onToggleSelect={toggleSelect}
-                onRefresh={load}
-              />
-            ) : (
-              <NoSkillsYet onBrowseDiscover={() => setTab("discover")} />
-            )}
-            <ExternalSkillLinkForm onAdded={() => void load()} />
-          </div>
-        )}
-
-        {tab === "discover" && <DiscoverSection />}
+        <div className="mt-4">
+          {visible.length > 0 ? (
+            <SkillCollection
+              skills={visible}
+              view={view}
+              isPinned={isPinned}
+              onTogglePin={(s) => pins.toggle(skillKey(s))}
+              selectedIds={selectedIds}
+              onToggleSelect={toggleSelect}
+              onRefresh={load}
+            />
+          ) : (
+            <NoSkillsYet onCreate={showComposer} />
+          )}
+          <ExternalSkillLinkForm onAdded={() => void load()} />
+        </div>
       </div>
 
       {selectedSkills.length > 0 && (
@@ -426,222 +399,25 @@ function PlusGlyph() {
   );
 }
 
-// The primary selector as an underline tab bar. Yours/Shared carry a live count;
-// Discover is the public library (no owned count).
-function SkillTabs({
-  tab,
-  onChange,
-  yoursCount,
-}: {
-  tab: Tab;
-  onChange: (next: Tab) => void;
-  yoursCount: number;
-}) {
-  const tabs: { key: Tab; label: string; count?: number }[] = [
-    { key: "yours", label: "Yours", count: yoursCount },
-    { key: "discover", label: "Discover" },
-  ];
-  return (
-    <div className="mt-5 flex gap-1 border-b border-border">
-      {tabs.map((t) => {
-        const active = tab === t.key;
-        return (
-          <button
-            key={t.key}
-            type="button"
-            onClick={() => onChange(t.key)}
-            className={
-              "-mb-px cursor-pointer border-b-2 px-3 py-2 text-[13px] transition-colors " +
-              (active
-                ? "border-[var(--color-brand-600)] font-semibold text-foreground"
-                : "border-transparent text-muted-foreground hover:text-foreground")
-            }
-          >
-            {t.label}
-            {t.count !== undefined && (
-              <span className="ml-1.5 text-[11px] text-muted-foreground">{t.count}</span>
-            )}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-// Empty state for the Yours tab: point at the CLI create command and the
-// public library instead of dead-ending.
-function NoSkillsYet({ onBrowseDiscover }: { onBrowseDiscover: () => void }) {
+// Empty state: skill creation happens right here in the page's composer —
+// never a dead end pointing at the terminal.
+function NoSkillsYet({ onCreate }: { onCreate: () => void }) {
   return (
     <div className="rounded-lg border border-dashed border-border bg-surface/30 px-4 py-10 text-center text-[12.5px] text-muted-foreground">
       <p className="m-0">No skills yet.</p>
-      <p className="m-0 mt-1.5">Create one from your terminal:</p>
-      <div className="mt-3">
-        <CopyableCommandBlock commands={'stash skills create "<name>"'} />
-      </div>
-      <p className="m-0 mt-3">
-        Or{" "}
-        <button
-          type="button"
-          onClick={onBrowseDiscover}
-          className="cursor-pointer text-[var(--color-brand-600)] underline underline-offset-2 hover:text-[var(--color-brand-700)]"
-        >
-          browse Discover
-        </button>{" "}
-        and fork a public skill into your Skills.
+      <p className="m-0 mt-1.5">
+        A Skill is a folder of instructions and files your agents can use.
       </p>
+      <button
+        type="button"
+        onClick={onCreate}
+        className="mt-4 inline-flex cursor-pointer items-center gap-1.5 rounded-md bg-[var(--color-brand-600)] px-3 py-2 text-[12.5px] font-medium text-white hover:bg-[var(--color-brand-700)]"
+      >
+        <PlusGlyph /> Create your first Skill
+      </button>
     </div>
   );
 }
-
-// --- Discover (public library), inline ---
-
-const DISCOVER_SORTS = ["trending", "newest", "popular"] as const;
-type DiscoverSort = (typeof DISCOVER_SORTS)[number];
-
-function discoverSortLabel(sort: DiscoverSort): string {
-  if (sort === "popular") return "Most viewed";
-  if (sort === "trending") return "Trending";
-  return "Newest";
-}
-
-async function fetchPublicSkills(params: {
-  q?: string;
-  sort: DiscoverSort;
-}): Promise<PublicSkillCard[]> {
-  const qs = new URLSearchParams();
-  for (const [key, value] of Object.entries(params)) {
-    if (value) qs.set(key, value);
-  }
-  const res = await fetch(`${API_BASE}/api/v1/discover/skills${qs.size ? `?${qs}` : ""}`);
-  if (!res.ok) return [];
-  const data = await res.json();
-  return data.skills ?? [];
-}
-
-// The public marketplace as a section of the Skills page. Self-contained:
-// owns its own search/sort/fetch and isn't touched by the page's view
-// toggle, pins, or selection (those are for Skills you hold).
-function DiscoverSection() {
-  const [sort, setSort] = useState<DiscoverSort>("trending");
-  const [query, setQuery] = useState("");
-  const [skills, setSkills] = useState<PublicSkillCard[]>([]);
-  const [fetching, setFetching] = useState(true);
-
-  useEffect(() => {
-    let cancelled = false;
-    setFetching(true);
-    const handle = setTimeout(() => {
-      fetchPublicSkills({ q: query || undefined, sort })
-        .then((list) => {
-          if (!cancelled) setSkills(list);
-        })
-        .finally(() => {
-          if (!cancelled) setFetching(false);
-        });
-    }, 200);
-    return () => {
-      cancelled = true;
-      clearTimeout(handle);
-    };
-  }, [query, sort]);
-
-  return (
-    <section className="mt-4">
-      <div className="mb-3 flex flex-wrap items-center justify-end gap-2">
-        <div className="mr-auto flex items-baseline gap-2">
-          <span className="sys-label" style={{ fontSize: 10.5 }}>
-            public library
-          </span>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="flex w-[220px] items-center gap-2 rounded-lg border border-border bg-base px-2.5 py-1.5">
-            <SearchGlyph />
-            <input
-              type="text"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search public Skills…"
-              className="min-w-0 flex-1 border-0 bg-transparent text-[12.5px] text-foreground placeholder:text-muted-foreground focus:outline-none"
-            />
-          </div>
-          <div className="inline-flex gap-0.5 rounded-lg border border-border bg-base p-[3px]">
-            {DISCOVER_SORTS.map((option) => (
-              <button
-                key={option}
-                type="button"
-                onClick={() => setSort(option)}
-                className={
-                  "cursor-pointer rounded-md px-2.5 py-[3px] text-[12px] " +
-                  (sort === option
-                    ? "bg-raised font-semibold text-foreground"
-                    : "text-muted-foreground hover:text-foreground")
-                }
-              >
-                {discoverSortLabel(option)}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {fetching ? (
-        <CardGridSkeleton />
-      ) : skills.length === 0 ? (
-        <p className="rounded-lg border border-dashed border-border bg-surface/30 px-4 py-6 text-center text-[12px] text-muted-foreground">
-          No public Skills match.
-        </p>
-      ) : (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {skills.map((skill, i) => {
-            const trending = sort === "trending" && i < 2;
-            return (
-              <SkillCard
-                key={skill.id}
-                href={`/skills/${skill.slug}`}
-                skill={{
-                  title: skill.title,
-                  description: skill.description,
-                  cover_image_url: skill.cover_image_url,
-                  file_count: skill.item_count,
-                  updated_at: skill.updated_at,
-                }}
-                cover={COVERS[i % COVERS.length]}
-                badge={
-                  trending ? (
-                    <span className="absolute left-3 top-2.5 inline-flex items-center gap-1 rounded-full bg-black/80 px-2 py-0.5 font-mono text-[10.5px] uppercase tracking-[0.04em] text-white">
-                      ↗ trending
-                    </span>
-                  ) : undefined
-                }
-                cornerAction={<ForkSkillCardButton slug={skill.slug} />}
-                footer={
-                  <>
-                    <span className="min-w-0 truncate">
-                      {skill.owner_display_name}
-                    </span>
-                    <span className="inline-flex flex-shrink-0 items-center gap-1 rounded-md border border-border bg-base px-2 py-0.5 text-[11.5px] font-medium text-foreground group-hover:border-[var(--color-brand-300)] group-hover:bg-[var(--color-brand-50)] group-hover:text-[var(--color-brand-700)]">
-                      Open →
-                    </span>
-                  </>
-                }
-              />
-            );
-          })}
-        </div>
-      )}
-    </section>
-  );
-}
-
-function SearchGlyph() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-muted-foreground">
-      <circle cx="11" cy="11" r="8" />
-      <path d="m21 21-4.3-4.3" />
-    </svg>
-  );
-}
-
 
 // Both kinds open — a folder skill into its browsable folder, a source-backed
 // one into a read-only view of the document behind it. Read-only is about
@@ -665,12 +441,6 @@ function ShelfBadge({ shelf }: { shelf: string }) {
       {shelf}
     </span>
   );
-}
-
-// Publish badge state: null = Private, otherwise Published (+ Discover dot).
-function skillPublishBadge(skill: Skill): { discoverable: boolean } | null {
-  if (!skill.published) return null;
-  return { discoverable: skill.published.discoverable };
 }
 
 // The primary action on a Skill anywhere it's listed: hand it to an agent.
@@ -754,7 +524,7 @@ function SkillCollection({
               description: skill.description,
               cover_image_url: skill.published?.cover_image_url ?? null,
               icon_url: skill.published?.icon_url ?? null,
-              published: skillPublishBadge(skill),
+              published: Boolean(skill.published),
               updated_at: skill.updated_at,
               file_count: skill.file_count,
               draft: !skill.has_instructions,
@@ -847,7 +617,7 @@ function SkillListRow({
         {skill.updated_at && `, ${relativeTime(skill.updated_at)}`}
       </span>
       <span className="inline-flex items-center gap-1.5">
-        <PublishBadge published={skillPublishBadge(skill)} />
+        <PublishBadge published={Boolean(skill.published)} />
         {!skill.has_instructions && <DraftBadge />}
       </span>
       <span className="inline-flex items-center gap-1.5">

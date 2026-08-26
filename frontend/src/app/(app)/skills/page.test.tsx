@@ -182,16 +182,17 @@ describe("SkillsPage", () => {
     }
   });
 
-  it("sells the CLI create command and Discover when there are no skills", async () => {
+  // The empty state opens the in-app composer — never a terminal command:
+  // nobody should have to leave the app to create their first skill.
+  it("offers in-app creation when there are no skills", async () => {
     vi.mocked(listSkills).mockResolvedValue([]);
 
     render(<SkillsPage />);
 
     expect(await screen.findByText("No skills yet.")).toBeInTheDocument();
-    expect(screen.getByText('stash skills create "<name>"')).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: /browse Discover/ }),
-    ).toBeInTheDocument();
+    expect(screen.queryByText(/stash skills create/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Create your first Skill/ }));
+    expect(screen.getByPlaceholderText("e.g. Release notes drafting")).toBeInTheDocument();
   });
 
   it("creates the skill through the inline composer and navigates to it", async () => {

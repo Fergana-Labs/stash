@@ -726,41 +726,6 @@ export async function fetchSourceHistory(
   });
 }
 
-// --- Discover (public catalog, no auth required) ---
-
-// A public page from the pastebin (joinstash.ai/pages) — community docs/pages.
-export interface PublicPageCard {
-  slug: string;
-  title: string;
-  content_type: "markdown" | "html";
-  view_count: number;
-  created_at: string;
-}
-
-export async function listPublicPages(): Promise<PublicPageCard[]> {
-  const res = await fetch(`${API_BASE}/api/v1/pastes`);
-  if (!res.ok) return [];
-  return (await res.json()).pastes ?? [];
-}
-
-export interface PublicSkillCard {
-  id: string;
-  slug: string;
-  title: string;
-  description: string;
-  discoverable: boolean;
-  cover_image_url: string | null;
-  source_github_url: string | null;
-  view_count: number;
-  install_count: number;
-  owner_name: string;
-  owner_display_name: string;
-  owner_user_id: string;
-  item_count: number;
-  created_at: string;
-  updated_at: string;
-}
-
 // Skills imported from GitHub are owned by the curator account, but credit
 // belongs to the repo owner — derive it from the attribution URL.
 export function githubOwner(sourceGithubUrl: string): string {
@@ -1764,7 +1729,6 @@ export async function publishSkillFolder(
   body: {
     title?: string;
     description?: string;
-    discoverable?: boolean;
     cover_image_url?: string | null;
     icon_url?: string | null;
   } = {}
@@ -1860,7 +1824,6 @@ export async function updateSkill(
   data: {
     title?: string;
     description?: string;
-    discoverable?: boolean;
     cover_image_url?: string | null;
     icon_url?: string | null;
   }

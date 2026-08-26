@@ -179,18 +179,6 @@ class StashClient:
     def revoke_api_key(self, key_id: str) -> None:
         self._delete(f"/api/v1/users/me/keys/{key_id}")
 
-    # --- Discover (public catalog, no auth required) ---
-
-    def list_discover_skills(
-        self,
-        query: str = "",
-        sort: str = "trending",
-    ) -> dict:
-        params: dict = {"sort": sort}
-        if query:
-            params["q"] = query
-        return self._get("/api/v1/discover/skills", **params)
-
     # --- Skills (publishable subsets) ---
 
     def list_skills(self) -> list:

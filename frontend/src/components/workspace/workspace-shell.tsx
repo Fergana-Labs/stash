@@ -69,7 +69,7 @@ function ExplorerPanel({ section }: { section: ExplorerSection }) {
 }
 
 /** Which workspace section a path belongs to (null = full-page route: Home,
- *  the wiki, Discover, Settings, published skill pages, …). Most sections
+ *  the wiki, Settings, published skill pages, …). Most sections
  *  render the tab workbench; `/sessions` keeps its full management page
  *  beside the Sessions explorer. */
 function sectionForPath(pathname: string): ExplorerSection | null {
@@ -108,7 +108,7 @@ export function rendersRouteContent(
  * The app shell — icon rail + top bar + main area. Each primary rail section
  * (Files/Sessions/Skills/Agents/Tools) shows its own explorer panel. The Files
  * section drives the tab workbench; other sections render their route content
- * beside the explorer. Secondary routes (Index/Discover/Settings) render full.
+ * beside the explorer. Secondary routes (Index/Settings) render full.
  */
 export default function WorkspaceShell({
   user,

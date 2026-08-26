@@ -537,13 +537,10 @@ def stash_create_skill(
 
 
 @mcp.tool()
-def stash_publish_skill(
-    folder_id: str,
-    discoverable: bool = False,
-) -> str:
+def stash_publish_skill(folder_id: str) -> str:
     """Publish a skill folder: make it publicly readable at /skills/<slug>.
     To share privately with a person instead, share the folder (stash_share_object)."""
-    return _json(_client().publish_skill_folder(folder_id, discoverable=discoverable))
+    return _json(_client().publish_skill_folder(folder_id))
 
 
 @mcp.tool()
@@ -551,16 +548,13 @@ def stash_update_skill(
     skill_id: str,
     title: str = "",
     description: str = "",
-    discoverable: str = "",
 ) -> str:
-    """Update a published skill's metadata or Discover flag."""
+    """Update a published skill's metadata."""
     fields: dict = {}
     if title:
         fields["title"] = title
     if description:
         fields["description"] = description
-    if discoverable:
-        fields["discoverable"] = discoverable.lower() in {"1", "true", "yes", "on"}
     if not fields:
         raise ValueError("Pass at least one field to update")
     return _json(_client().update_skill(skill_id, **fields))
@@ -644,18 +638,7 @@ def stash_publish_markdown(
     )
 
 
-# ── Discover (public Skill catalog) ───────────────────────────────
-
-
-@mcp.tool()
-def stash_search_public_skills(query: str = "", sort: str = "trending") -> str:
-    """Search the public Skill catalog (Discover).
-
-    sort: trending | newest | popular. Pass an empty query to browse by
-    sort order. Returns the catalog entries — fork into your scope with
-    stash_fork_skill to follow up.
-    """
-    return _json(_client().list_discover_skills(query=query, sort=sort))
+# ── Public Skills ─────────────────────────────────────────────────
 
 
 @mcp.tool()

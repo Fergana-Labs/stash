@@ -17,7 +17,7 @@ import SkillLauncher from "@/components/skill/SkillLauncher";
 //
 // Renders nothing when no such skill is published: an empty strip would be
 // worse than no strip, and this is the honest signal that the library skills
-// aren't in Discover yet.
+// aren't published yet.
 export default function AppSkillsBanner({ slug }: { slug: string }) {
   const [curated, setCurated] = useState<CuratedSkill[]>([]);
   // Held skills by frontmatter name, so a Run opens the launcher on the real

@@ -6,7 +6,6 @@ import { useConfirm } from "../ConfirmDialog";
 import {
   publishSkillFolder,
   unpublishSkill,
-  updateSkill,
   type PublishedSkill,
   type SkillPublishInfo,
 } from "../../lib/api";
@@ -26,9 +25,9 @@ function publishInfoFromRecord(record: PublishedSkill): SkillPublishInfo {
 }
 
 // Publish button for a skill folder. Published = publicly readable: the
-// popover mints the publish record, then manages the public URL, the
-// Discover listing, and unpublishing. Person-to-person sharing is the
-// folder's generic ResourceShareButton, rendered next to this one.
+// popover mints the publish record, then manages the public URL and
+// unpublishing. Person-to-person sharing is the folder's generic
+// ResourceShareButton, rendered next to this one.
 export default function SkillShareButton({
   folderId,
   publish: publishProp,
@@ -131,20 +130,6 @@ export default function SkillShareButton({
     }
   }
 
-  async function toggleDiscoverable(nextDiscoverable: boolean) {
-    if (!publish) return;
-    setBusy(true);
-    setMessage("");
-    try {
-      const updated = await updateSkill(publish.id, { discoverable: nextDiscoverable });
-      applyPublish(publishInfoFromRecord(updated));
-    } catch (e) {
-      setMessage(e instanceof Error ? e.message : "Could not update Discover.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
   async function unpublish() {
     if (!publish) return;
     const ok = await confirm({
@@ -235,16 +220,6 @@ export default function SkillShareButton({
                   {copied ? "Copied" : "Copy"}
                 </button>
               </div>
-
-              <label className="mt-3 flex cursor-pointer items-center gap-2 rounded-md border border-border bg-surface px-2 py-1.5">
-                <input
-                  type="checkbox"
-                  checked={publish.discoverable}
-                  disabled={busy}
-                  onChange={(e) => void toggleDiscoverable(e.target.checked)}
-                />
-                <span className="text-[12px] text-foreground">List on Discover</span>
-              </label>
 
               <div className="mt-3 flex items-center justify-between gap-2">
                 <span className="text-[11.5px] text-muted-foreground">

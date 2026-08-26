@@ -221,20 +221,6 @@ export function HomeSkeleton() {
   );
 }
 
-export function DiscoverSkeleton() {
-  return (
-    <div className="mx-auto max-w-[1180px] px-12 pb-20 pt-9">
-      <div className="flex items-center gap-3">
-        <SkeletonBlock className="h-9 max-w-[460px] flex-1 rounded-lg" />
-        <SkeletonBlock className="h-8 w-56 rounded-lg" />
-        <span className="flex-1" />
-        <SkeletonLine className="w-20" />
-      </div>
-      <CardGridSkeleton className="mt-6" />
-    </div>
-  );
-}
-
 export function ActivitySkeleton() {
   return (
     <div className="mx-auto max-w-[920px] px-12 pb-20 pt-9">

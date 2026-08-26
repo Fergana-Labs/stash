@@ -937,7 +937,7 @@ def whoami(as_json: bool = typer.Option(False, "--json")):
 
 
 # ===========================================================================
-# Discover (public catalog of Skills)
+# Web-app URLs
 # ===========================================================================
 
 
@@ -953,102 +953,6 @@ def _web_app_url() -> str:
 
 def _skill_url(skill: dict) -> str:
     return f"{_web_app_url()}/skills/{skill['slug']}"
-
-
-@app.command("browse")
-def browse(
-    query: str = typer.Argument("", help="Optional search query."),
-    sort: str = typer.Option("trending", "--sort", help="trending | newest | popular"),
-    pick: bool = typer.Option(
-        True, "--pick/--no-pick", help="Open an interactive picker (default) or print a flat list."
-    ),
-    as_json: bool = typer.Option(False, "--json"),
-):
-    """Browse the public Skill catalog."""
-    with _client() as c:
-        try:
-            data = c.list_discover_skills(query=query, sort=sort)
-        except StashError as e:
-            _err(e)
-
-    skills = data.get("skills", [])
-    if as_json:
-        output_json(skills)
-        return
-
-    if not skills:
-        console.print("[yellow]No public Skills match your filters.[/yellow]")
-        return
-
-    if not pick:
-        for skill in skills:
-            owner = skill.get("owner_display_name") or skill.get("owner_name") or "unknown"
-            console.print(
-                f"[bold]{skill['title']}[/bold]  [dim]by {owner}[/dim]  "
-                f"{skill['item_count']} items, {skill['view_count']} views"
-            )
-            if skill.get("description"):
-                console.print(f"  [dim]{skill['description']}[/dim]")
-        return
-
-    choices = []
-    for skill in skills:
-        owner = skill.get("owner_display_name") or skill.get("owner_name") or "unknown"
-        label = (
-            f"{skill['title']:<32} by {owner:<14} "
-            f"({skill['item_count']} items, {skill['view_count']} views)"
-        )
-        choices.append(questionary.Choice(label, value=skill))
-    choices.append(questionary.Choice("(quit)", value=None))
-
-    picked = questionary.select("Pick a Skill:", choices=choices).ask()
-    if not picked:
-        return
-
-    summary = picked.get("description") or "(no description)"
-    console.print(
-        Panel(
-            Text.assemble(
-                (picked["title"] + "\n", "bold"),
-                (summary + "\n\n", ""),
-                (f"by {picked.get('owner_display_name') or picked['owner_name']}  ", "dim"),
-                (
-                    f"{picked['item_count']} items, {picked['view_count']} views",
-                    "dim",
-                ),
-            ),
-            title="Skill",
-            border_style="cyan",
-        )
-    )
-
-    action = questionary.select(
-        "What now?",
-        choices=[
-            questionary.Choice("Open in browser", value="open"),
-            questionary.Choice("Add to your Skills", value="add"),
-            questionary.Choice("Print share URL", value="url"),
-            questionary.Choice("Cancel", value=None),
-        ],
-    ).ask()
-    if not action:
-        return
-
-    url = f"{_web_app_url()}/skills/{picked['slug']}"
-    if action == "open":
-        import webbrowser
-
-        webbrowser.open(url)
-        console.print(f"[green]Opened[/green] {url}")
-    elif action == "url":
-        console.print(url)
-    elif action == "add":
-        with _client() as c:
-            try:
-                c.fork_skill(picked["slug"])
-            except StashError as e:
-                _err(e)
-        console.print(f"[green]Added[/green] {picked['title']} to your Skills")
 
 
 # ===========================================================================
@@ -1709,13 +1613,9 @@ def skills_create(
     name: str = typer.Argument(..., help="Skill name (becomes the folder name)."),
     description: str = typer.Option(..., "--description"),
     public: bool = typer.Option(False, "--public", help="Publish immediately."),
-    discover: bool = typer.Option(False, "--discover", help="List the public Skill in Discover."),
     as_json: bool = typer.Option(False, "--json"),
 ):
     """Create a skill: a folder with a SKILL.md template. Pass --public to publish."""
-    if discover and not public:
-        console.print("[red]--discover requires --public.[/red]")
-        raise typer.Exit(1)
     name = name.strip()
     description = description.strip()
     if not name or len(name) > 64:
@@ -1741,10 +1641,7 @@ def skills_create(
             c.convert_folder_to_skill(folder["id"])
             skill = None
             if public:
-                skill = c.publish_skill_folder(
-                    folder["id"],
-                    discoverable=discover,
-                )
+                skill = c.publish_skill_folder(folder["id"])
         except StashError as e:
             _err(e)
     if _use_json(as_json):
@@ -1758,24 +1655,19 @@ def skills_create(
 @skills_app.command("publish")
 def skills_publish(
     folder_id: str = typer.Argument(..., help="Skill folder ID to publish."),
-    discover: bool = typer.Option(False, "--discover", help="List the public Skill in Discover."),
     as_json: bool = typer.Option(False, "--json"),
 ):
     """Publish a skill folder: mint its share record and print the public URL."""
     with _client() as c:
         try:
-            skill = c.publish_skill_folder(
-                folder_id,
-                discoverable=discover,
-            )
+            skill = c.publish_skill_folder(folder_id)
         except StashError as e:
             _err(e)
     if _use_json(as_json):
         output_json(skill)
         return
-    label = "Published to Discover" if skill.get("discoverable") else "Published"
     console.print(
-        f"[green]{label}[/green] '{skill['title']}' -> "
+        f"[green]Published[/green] '{skill['title']}' -> "
         f"[cyan]{_web_app_url()}/skills/{skill['slug']}[/cyan]"
     )
 
@@ -1785,21 +1677,14 @@ def skills_update(
     skill_id: str = typer.Argument(...),
     title: str | None = typer.Option(None, "--title"),
     description: str | None = typer.Option(None, "--description"),
-    discover: bool | None = typer.Option(
-        None,
-        "--discover/--no-discover",
-        help="Whether a public Skill appears in Discover.",
-    ),
     as_json: bool = typer.Option(False, "--json"),
 ):
-    """Update a published skill's metadata or Discover flag."""
+    """Update a published skill's metadata."""
     fields = {}
     if title is not None:
         fields["title"] = title
     if description is not None:
         fields["description"] = description
-    if discover is not None:
-        fields["discoverable"] = discover
     if not fields:
         console.print("[red]Pass at least one field to update.[/red]")
         raise typer.Exit(1)
@@ -1812,8 +1697,7 @@ def skills_update(
     if _use_json(as_json):
         output_json(skill)
         return
-    flag = "[cyan]discover[/cyan]" if skill.get("discoverable") else "[cyan]public[/cyan]"
-    console.print(f"[green]Updated Skill[/green] '{skill['title']}'  {flag}")
+    console.print(f"[green]Updated Skill[/green] '{skill['title']}'")
 
 
 @skills_app.command("unpublish")
@@ -4628,7 +4512,7 @@ project writeup with its supporting files, a research thread with its sources, a
 transcript frozen as a page plus the files it produced.
 
 A Skill is **not** a wrapper to slap on every single file you happen to share. One-item Skills
-clutter Discover and defeat the model. Pick the right tool:
+clutter your Skills and defeat the model. Pick the right tool:
 
 - Share a single file or a folder/project → `stash upload <path> --json`, hand over `app_url` (no Skill).
 - Publishing a curated bundle → `stash upload <path> --skill "<title>" --json`.
@@ -6311,8 +6195,8 @@ Commands to reach for
   touched) into a Skill folder; `--session "<title>"` picks another one
   by the title search and the VFS show. Sessions are inherently a
   collection, so this is the right unit.
-- `stash skills install <slug>` — install a public Skill (e.g. from
-  Discover) into ~/.claude/skills so the local agent loads it next
+- `stash skills install <slug>` — install a public Skill by slug
+  into ~/.claude/skills so the local agent loads it next
   session. `--project` targets ./.claude/skills instead.
 - `stash skills sync` — two-way sync between the local skills directory
   and your skills: your skills materialize locally, local edits to synced
@@ -6340,7 +6224,7 @@ virtual Stash tree:
 
 Anti-pattern: minting one Stash per file you happen to share. Skills
 exist to group related things; one item per Stash defeats the model and
-clutters Discover.
+clutters your Skills.
 """
 
 

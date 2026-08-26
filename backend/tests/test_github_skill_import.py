@@ -124,13 +124,15 @@ async def test_import_publishes_discoverable_skills(client: AsyncClient, pool, m
     results = await _import_repo("https://github.com/acme/skills")
     assert results == ["created", "created"]
 
-    resp = await client.get("/api/v1/discover/skills", params={"sort": "newest"})
-    assert resp.status_code == 200
-    by_title = {s["title"]: s for s in resp.json()["skills"]}
+    rows = await pool.fetch(
+        "SELECT id, title, description, source_github_url, folder_id, discoverable FROM skills"
+    )
+    by_title = {r["title"]: dict(r) for r in rows}
 
     cooking = by_title["Cooking Wizard"]
     assert cooking["description"] == "Plan and cook a full menu."
     assert cooking["source_github_url"] == "https://github.com/acme/skills/tree/main/cooking"
+    assert cooking["discoverable"] is True
     baking = by_title["baking"]
     assert baking["source_github_url"] == "https://github.com/acme/skills/tree/main/baking"
 
@@ -157,8 +159,11 @@ async def test_reimport_updates_in_place(client: AsyncClient, pool, monkeypatch)
     _fake_github(monkeypatch, FAKE_REPO)
     await _import_repo("https://github.com/acme/skills")
 
-    resp = await client.get("/api/v1/discover/skills", params={"q": "Cooking"})
-    first = next(s for s in resp.json()["skills"] if s["title"] == "Cooking Wizard")
+    first = dict(
+        await pool.fetchrow(
+            "SELECT id, slug, title, description FROM skills WHERE title = 'Cooking Wizard'"
+        )
+    )
 
     updated_repo = {
         "cooking/SKILL.md": b"---\nname: Cooking Pro\ndescription: New blurb.\n---\nBody.\n",
@@ -169,8 +174,11 @@ async def test_reimport_updates_in_place(client: AsyncClient, pool, monkeypatch)
     results = await _import_repo("https://github.com/acme/skills")
     assert results == ["updated", "updated"]
 
-    resp = await client.get("/api/v1/discover/skills", params={"q": "Cooking"})
-    second = next(s for s in resp.json()["skills"] if "Cooking" in s["title"])
+    second = dict(
+        await pool.fetchrow(
+            "SELECT id, slug, title, description FROM skills WHERE title ILIKE '%Cooking%'"
+        )
+    )
     assert second["id"] == first["id"]
     assert second["slug"] == first["slug"]
     assert second["title"] == "Cooking Pro"

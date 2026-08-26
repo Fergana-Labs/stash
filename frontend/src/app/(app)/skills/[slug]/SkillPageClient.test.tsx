@@ -213,18 +213,6 @@ describe("SkillPageClient", () => {
     );
   });
 
-  it("toggles the Discover listing from the publish popover", async () => {
-    renderSkill(<SkillPageClient slug="shared-skill" />);
-
-    fireEvent.click(await screen.findByRole("button", { name: "Published" }));
-    const dialog = await screen.findByRole("dialog", { name: "Publish skill" });
-    fireEvent.click(within(dialog).getByLabelText("List on Discover"));
-
-    await waitFor(() =>
-      expect(updateSkill).toHaveBeenCalledWith("skill-1", { discoverable: true }),
-    );
-  });
-
   it("unpublishes from the publish popover", async () => {
     vi.mocked(unpublishSkill).mockResolvedValue(undefined);
 
