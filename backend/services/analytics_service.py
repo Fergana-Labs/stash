@@ -12,6 +12,7 @@ import numpy as np
 
 from ..database import get_pool
 from . import memory_service, permission_service
+from .projection_clusters import cluster_points, name_clusters
 
 # Numba's default threading layer aborts the whole process on concurrent
 # entry, so UMAP runs strictly one-at-a-time per process.
@@ -77,6 +78,7 @@ async def _store_projection(
     source_key: str,
     owner_user_id: UUID | None,
     points: list[dict],
+    clusters: list[dict],
     total_count: int,
     signature: str | None,
 ) -> None:
@@ -85,10 +87,12 @@ async def _store_projection(
     pool = get_pool()
     await pool.execute(
         "INSERT INTO embedding_projections "
-        "(user_id, source_type, owner_user_id, points, embedding_count, scope_signature, computed_at) "
-        "VALUES ($1, $2, $3, $4, $5, $6, NOW()) "
+        "(user_id, source_type, owner_user_id, points, clusters, "
+        " embedding_count, scope_signature, computed_at) "
+        "VALUES ($1, $2, $3, $4, $5, $6, $7, NOW()) "
         "ON CONFLICT (user_id, source_type, owner_user_id) "
         "DO UPDATE SET points = EXCLUDED.points, "
+        "              clusters = EXCLUDED.clusters, "
         "              embedding_count = EXCLUDED.embedding_count, "
         "              scope_signature = EXCLUDED.scope_signature, "
         "              computed_at = NOW()",
@@ -96,6 +100,7 @@ async def _store_projection(
         source_key,
         owner_user_id,
         points,
+        clusters,
         total_count,
         signature,
     )
@@ -829,7 +834,7 @@ async def get_embedding_projection(
     cache = None
     if not refresh:
         cache = await pool.fetchrow(
-            "SELECT points, embedding_count, scope_signature, computed_at "
+            "SELECT points, clusters, embedding_count, scope_signature, computed_at "
             "FROM embedding_projections "
             "WHERE user_id = $1 AND source_type = $2 "
             "AND owner_user_id IS NOT DISTINCT FROM $3",
@@ -903,13 +908,19 @@ async def get_embedding_projection(
         if count_diff / max(cache["embedding_count"], 1) < 0.1:
             return {
                 "points": cache["points"],
+                "clusters": cache["clusters"],
                 "stats": {"total_embeddings": total_count, "projected": len(cache["points"])},
                 "cached": True,
             }
 
     if total_count == 0:
-        await _store_projection(user_id, source_key, owner_user_id, [], 0, current_signature)
-        return {"points": [], "stats": {"total_embeddings": 0, "projected": 0}, "cached": False}
+        await _store_projection(user_id, source_key, owner_user_id, [], [], 0, current_signature)
+        return {
+            "points": [],
+            "clusters": [],
+            "stats": {"total_embeddings": 0, "projected": 0},
+            "cached": False,
+        }
 
     # Fetch up to the full budget from each source — splitting it evenly
     # starved accounts that live in one source. The union is downsampled to
@@ -982,9 +993,11 @@ async def get_embedding_projection(
         rows = await pool.fetch(
             _accessible_events_cte(scope_idx=event_fetch_scope_idx)
             + """
-            SELECT me.id, me.content, me.embedding, me.created_at
+            SELECT me.id, me.content, me.embedding, me.created_at, s.title AS session_title
             FROM history_events me
             JOIN accessible_events a ON a.event_id = me.id
+            LEFT JOIN sessions s ON s.owner_user_id = me.owner_user_id
+                AND s.session_id = me.session_id
             WHERE me.embedding IS NOT NULL
             ORDER BY me.created_at DESC
             LIMIT $2
@@ -992,18 +1005,21 @@ async def get_embedding_projection(
             *event_fetch_args,
         )
         for r in rows:
-            # Label with the content the embedding was computed from, not the
-            # event-type enum — every tool call labeled "user: tool_use" made
-            # the map unreadable.
-            all_items.append(
-                {
-                    "id": str(r["id"]),
-                    "label": " ".join(r["content"].split())[:80],
-                    "source": "history_events",
-                    "created_at": r["created_at"].isoformat() if r["created_at"] else None,
-                    "embedding": np.array(r["embedding"]),
-                }
-            )
+            # Label with the session's title so the map reads as topics, not
+            # raw tool-call content. An event whose session has no title keeps
+            # the content excerpt as its label; the excerpt always survives in
+            # ``detail`` for the hover tooltip.
+            excerpt = " ".join(r["content"].split())[:80]
+            item = {
+                "id": str(r["id"]),
+                "label": r["session_title"] or excerpt,
+                "source": "history_events",
+                "created_at": r["created_at"].isoformat() if r["created_at"] else None,
+                "embedding": np.array(r["embedding"]),
+            }
+            if r["session_title"]:
+                item["detail"] = excerpt
+            all_items.append(item)
 
     if source is None or source == "files":
         rows = await pool.fetch(
@@ -1031,10 +1047,11 @@ async def get_embedding_projection(
 
     if not all_items:
         await _store_projection(
-            user_id, source_key, owner_user_id, [], total_count, current_signature
+            user_id, source_key, owner_user_id, [], [], total_count, current_signature
         )
         return {
             "points": [],
+            "clusters": [],
             "stats": {"total_embeddings": total_count, "projected": 0},
             "cached": False,
         }
@@ -1055,27 +1072,40 @@ async def get_embedding_projection(
     else:
         coords = np.zeros((len(all_items), 3))
 
-    # Build points
+    # Split the cloud into semantic islands and name each from its labels.
+    assignments = cluster_points(coords)
+    labels_per_cluster: list[list[str]] = [[] for _ in range(max(assignments) + 1)]
+    for i, item in enumerate(all_items):
+        labels_per_cluster[assignments[i]].append(item["label"])
+    cluster_names = name_clusters(labels_per_cluster)
+    clusters = [
+        {"index": c, "name": cluster_names[c], "size": len(labels_per_cluster[c])}
+        for c in range(len(cluster_names))
+    ]
+
     points = []
     for i, item in enumerate(all_items):
-        points.append(
-            {
-                "id": item["id"],
-                "x": round(float(coords[i, 0]), 4),
-                "y": round(float(coords[i, 1]), 4),
-                "z": round(float(coords[i, 2]), 4),
-                "source": item["source"],
-                "label": item["label"],
-                "created_at": item["created_at"],
-            }
-        )
+        point = {
+            "id": item["id"],
+            "x": round(float(coords[i, 0]), 4),
+            "y": round(float(coords[i, 1]), 4),
+            "z": round(float(coords[i, 2]), 4),
+            "source": item["source"],
+            "label": item["label"],
+            "created_at": item["created_at"],
+            "cluster": assignments[i],
+        }
+        if "detail" in item:
+            point["detail"] = item["detail"]
+        points.append(point)
 
     await _store_projection(
-        user_id, source_key, owner_user_id, points, total_count, current_signature
+        user_id, source_key, owner_user_id, points, clusters, total_count, current_signature
     )
 
     return {
         "points": points,
+        "clusters": clusters,
         "stats": {"total_embeddings": total_count, "projected": len(points)},
         "cached": False,
     }

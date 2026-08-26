@@ -185,6 +185,7 @@ async def test_user_wide_embedding_projection_ignores_stale_cache_without_curren
     assert projection.status_code == 200
     assert projection.json() == {
         "points": [],
+        "clusters": [],
         "stats": {"total_embeddings": 0, "projected": 0},
         "cached": False,
     }
@@ -214,13 +215,17 @@ async def test_user_wide_embedding_projection_serves_cache_while_access_unchange
         "source": "pages",
         "label": "Roadmap",
         "created_at": "2026-07-01T00:00:00Z",
+        "cluster": 0,
     }
+    clusters = [{"index": 0, "name": "Roadmap", "size": 1}]
     await pool.execute(
         "INSERT INTO embedding_projections "
-        "(user_id, source_type, owner_user_id, points, embedding_count, scope_signature, computed_at) "
-        "VALUES ($1, '_all', NULL, $2, 0, $3, now())",
+        "(user_id, source_type, owner_user_id, points, clusters, "
+        " embedding_count, scope_signature, computed_at) "
+        "VALUES ($1, '_all', NULL, $2, $3, 0, $4, now())",
         user_id,
         [point],
+        clusters,
         await analytics_service.scope_signature(user_id),
     )
 
@@ -232,6 +237,7 @@ async def test_user_wide_embedding_projection_serves_cache_while_access_unchange
     assert projection.status_code == 200
     assert projection.json() == {
         "points": [point],
+        "clusters": clusters,
         "stats": {"total_embeddings": 0, "projected": 1},
         "cached": True,
     }
