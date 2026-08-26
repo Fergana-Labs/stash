@@ -13,12 +13,16 @@ Read side returns events as a JSON array. We don't reserialize to JSONL
 just to have the client parse it back — the rows are the source of truth.
 """
 
+import json
 from uuid import UUID
 
+import redis.asyncio as aioredis
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, UploadFile
 from fastapi.responses import PlainTextResponse
+from pydantic import BaseModel
 
 from ..auth import get_current_user, get_scope
+from ..config import settings
 from ..database import get_pool
 from ..services import (
     memory_service,
@@ -32,6 +36,15 @@ from ..tasks.agent_schedules import first_day_curator_tick
 router = APIRouter(prefix="/api/v1/me/transcripts", tags=["transcripts"])
 
 MAX_TRANSCRIPT_SIZE = 50 * 1024 * 1024
+
+_redis: aioredis.Redis | None = None
+
+
+def _get_redis() -> aioredis.Redis:
+    global _redis
+    if _redis is None:
+        _redis = aioredis.from_url(settings.REDIS_URL)
+    return _redis
 
 
 def _is_jsonl(filename: str | None) -> bool:
@@ -328,6 +341,50 @@ async def export_transcript_jsonl(
         media_type="application/jsonl",
         headers={"Content-Disposition": f'attachment; filename="session-{session_id}.jsonl"'},
     )
+
+
+# --- History-import progress ------------------------------------------------
+# `stash import-history` runs as a detached local process; these two endpoints
+# are how the web app sees it. The CLI reports counts as it uploads, and Home
+# polls until the import finishes. State is a single Redis value per scope with
+# a TTL, so a dead importer stops reading as "importing" within the hour.
+
+IMPORT_PROGRESS_TTL_SECONDS = 3600
+
+
+class ImportProgressReport(BaseModel):
+    total: int
+    done: int
+    errors: int
+    finished: bool
+
+
+@router.put("/import-progress")
+async def report_import_progress(
+    report: ImportProgressReport,
+    current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
+):
+    await _check_write(scope_user_id, current_user["id"])
+    await _get_redis().set(
+        f"history-import:{scope_user_id}",
+        report.model_dump_json(),
+        ex=IMPORT_PROGRESS_TTL_SECONDS,
+    )
+    return {"ok": True}
+
+
+@router.get("/import-progress")
+async def get_import_progress(
+    current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
+) -> dict:
+    """The scope's current history import, or {"progress": null} if none is
+    running (never reported, finished long ago, or the TTL expired)."""
+    raw = await _get_redis().get(f"history-import:{scope_user_id}")
+    if raw is None:
+        return {"progress": None}
+    return {"progress": json.loads(raw)}
 
 
 # --- LEGACY path shapes -----------------------------------------------------

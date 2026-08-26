@@ -825,6 +825,23 @@ export async function getCuratorLog(): Promise<{ entries: CuratorLogEntry[] }> {
   return apiFetch(`${ME}/curator-log`);
 }
 
+// --- History import (CLI `stash import-history`) ---
+
+// Counts the CLI reports as it uploads past conversations; null when no
+// import is running.
+export interface HistoryImportProgress {
+  total: number;
+  done: number;
+  errors: number;
+  finished: boolean;
+}
+
+export async function getHistoryImportProgress(): Promise<{
+  progress: HistoryImportProgress | null;
+}> {
+  return apiFetch(`${ME}/transcripts/import-progress`);
+}
+
 export async function createFolder(
   name: string,
   parentFolderId?: string | null

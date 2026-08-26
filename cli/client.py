@@ -519,6 +519,14 @@ class StashClient:
         body: dict = {"events": events}
         return self._post("/api/v1/me/sessions/events/batch", json=body)
 
+    def report_import_progress(self, total: int, done: int, errors: int, finished: bool) -> dict:
+        """Mirror the local history-import status to the server so the web app
+        can show live import progress."""
+        return self._put(
+            "/api/v1/me/transcripts/import-progress",
+            json={"total": total, "done": done, "errors": errors, "finished": finished},
+        )
+
     def upload_transcript(
         self,
         session_id: str,

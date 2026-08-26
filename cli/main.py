@@ -5475,14 +5475,26 @@ def _write_import_status(total: int, done: int, errors: int, finished: bool) -> 
     os.replace(tmp, IMPORT_STATUS_FILE)
 
 
+def _report_import_progress(c: StashClient, total: int, done: int, errors: int, finished: bool):
+    """Mirror the status to the server so the web app can show the import.
+    Best-effort: a failed progress ping must never kill the import itself."""
+    try:
+        c.report_import_progress(total=total, done=done, errors=errors, finished=finished)
+    except (StashError, httpx.HTTPError):
+        pass
+
+
 def _spawn_history_import(count: int) -> None:
     """Kick off the history import as a detached `stash import-history`
     process — thousands of uploads must not hold setup hostage."""
     import subprocess as _sp
 
-    # Seed the status file so the setup-complete splash can show the import
-    # immediately; the spawned process takes over updating it.
+    # Seed the status file (and the server) so the setup-complete splash and
+    # the web app can show the import immediately; the spawned process takes
+    # over updating both.
     _write_import_status(total=count, done=0, errors=0, finished=False)
+    with _client() as c:
+        _report_import_progress(c, total=count, done=0, errors=0, finished=False)
 
     IMPORT_LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
     with open(IMPORT_LOG_FILE, "ab") as log:
@@ -5617,6 +5629,7 @@ def import_history_cmd(
     # httpx.Client is thread-safe; sequential uploads were taking >1h for a
     # machine with a few thousand conversations.
     with _client() as c, Progress(console=console) as progress:
+        _report_import_progress(c, total=total, done=0, errors=0, finished=False)
         task = progress.add_task("Importing…", total=total)
         with ThreadPoolExecutor(max_workers=8) as pool:
             futures = [pool.submit(upload_conversation, c, conv) for conv in conversations]
@@ -5631,6 +5644,9 @@ def import_history_cmd(
                 if done % 25 == 0 or done == total:
                     _write_import_status(
                         total=total, done=done, errors=errors, finished=done == total
+                    )
+                    _report_import_progress(
+                        c, total=total, done=done, errors=errors, finished=done == total
                     )
 
     console.print(f"  [green]✓[/green] Imported {done - errors} conversations")
