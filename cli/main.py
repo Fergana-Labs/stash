@@ -4727,6 +4727,21 @@ def signin(
 
     cfg = load_config()
 
+    # Two explicit entry contexts. A user arriving from the web onboarding
+    # page has unconsumed choices stored server-side — apply those and print
+    # each one instead of asking the wizard's questions. Everyone else keeps
+    # today's behavior: returning users just re-auth, first-timers get the
+    # interactive wizard.
+    try:
+        with StashClient(base_url=base_url, api_key=cfg["api_key"]) as c:
+            prefs = c.get_onboarding_preferences()
+    except StashError as e:
+        console.print(f"[red]Could not check your web onboarding choices: {e.detail}[/red]")
+        raise typer.Exit(1)
+    if prefs is not None and prefs["consumed_at"] is None:
+        _apply_web_onboarding(prefs, cfg)
+        return
+
     # Returning user — just re-auth, no wizard
     if has_key:
         _install_all_hooks(load_enabled_agents())
@@ -4972,6 +4987,68 @@ def _run_setup_wizard() -> None:
 
     # --- Import historical conversations ---
     _onboarding_import_history(detected)
+
+    _show_setup_complete_splash()
+
+
+def _apply_web_onboarding(prefs: dict, cfg: dict) -> None:
+    """Apply the setup choices the user already made on the web onboarding
+    page, printing one line per choice — transparent, but not interactive.
+
+    The one exception is folder scope: a browser can't see local folders, so
+    when the stored scope is "selected_folders" the folder picker still runs.
+    Afterwards the choices are marked consumed on the server, so a later
+    standalone `stash signin` runs the wizard instead of re-applying them."""
+    console.print("\n[bold]Applying the setup choices you made on the web:[/bold]\n")
+
+    if prefs["record_scope"] == "selected_folders":
+        # The one local question. Ctrl-C aborts before anything is applied or
+        # consumed, so the next signin starts over from the stored choices.
+        picked = _pick_record_folder(Path.cwd())
+        if picked is None:
+            raise typer.Exit(1)
+        save_recorded_paths([str(picked)])
+        console.print(f"  [green]✓[/green] Recording sessions only in {_pretty_path(picked)}")
+    else:
+        save_recorded_paths([])
+        console.print("  [green]✓[/green] Recording sessions everywhere on this machine")
+    start_streaming()
+
+    detected = _detected_agents()
+    chosen = prefs["enabled_agents"]
+    selected = [a for a in detected if a in chosen]
+    save_enabled_agents(selected)
+    _install_all_hooks(selected)
+    for agent in selected:
+        console.print(f"  [green]✓[/green] Recording {_AGENT_LABEL.get(agent, agent)}")
+    for agent in (a for a in chosen if a not in detected):
+        console.print(
+            f"  [dim]– {_AGENT_LABEL.get(agent, agent)} isn't on this machine — skipped[/dim]"
+        )
+    if not selected:
+        console.print(
+            "  [yellow]None of the agents you picked are installed here, so nothing\n"
+            "  will be recorded yet. Re-run [bold]stash setup[/bold] after installing one.[/yellow]"
+        )
+
+    if prefs["claude_md_opt_in"]:
+        repo_root = _git_toplevel() or Path.cwd()
+        console.print(f"  [green]✓[/green] Adding Stash instructions to CLAUDE.md in {repo_root}")
+        _auto_connect_repo(repo_root, cfg)
+    else:
+        console.print("  [green]✓[/green] Leaving CLAUDE.md untouched")
+
+    if prefs["import_history"]:
+        conversations = _conversations_to_import(detected or None)
+        if conversations:
+            _spawn_history_import(len(conversations))
+        else:
+            console.print("  No historical conversations found to import.")
+    else:
+        console.print("  [green]✓[/green] Skipping history import")
+
+    with _client() as c:
+        c.consume_onboarding_preferences()
 
     _show_setup_complete_splash()
 

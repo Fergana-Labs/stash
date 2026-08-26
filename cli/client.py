@@ -507,6 +507,16 @@ class StashClient:
         body: dict = {"events": events}
         return self._post("/api/v1/me/sessions/events/batch", json=body)
 
+    def get_onboarding_preferences(self) -> dict | None:
+        """Setup choices made on the web onboarding page, or None when the
+        user never made any. A consumed set comes back with `consumed_at` set."""
+        return self._get("/api/v1/me/onboarding-preferences")["preferences"]
+
+    def consume_onboarding_preferences(self) -> dict:
+        """Stamp the stored web-onboarding choices as applied, so a later
+        standalone `stash signin` runs the wizard instead of re-applying them."""
+        return self._post("/api/v1/me/onboarding-preferences/consume")
+
     def report_import_progress(self, total: int, done: int, errors: int, finished: bool) -> dict:
         """Mirror the local history-import status to the server so the web app
         can show live import progress."""
