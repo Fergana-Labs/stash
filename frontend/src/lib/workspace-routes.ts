@@ -68,7 +68,9 @@ export function tabFromPath(pathname: string): { kind: TabKind; refId: string } 
   const table = pathname.match(/^\/tables\/([^/?#]+)/);
   if (table) return { kind: "table", refId: decodeURIComponent(table[1]) };
   const session = pathname.match(/^\/sessions\/([^/?#]+)/);
-  if (session) return { kind: "session", refId: decodeURIComponent(session[1]) };
+  // /sessions/analytics is the analytics dashboard, not a session deep link.
+  if (session && session[1] !== "analytics")
+    return { kind: "session", refId: decodeURIComponent(session[1]) };
   const skillFolder = pathname.match(/^\/skills\/folder\/([^/?#]+)/);
   if (skillFolder) return { kind: "skill", refId: decodeURIComponent(skillFolder[1]) };
   const folder = pathname.match(/^\/folders\/([^/?#]+)/);

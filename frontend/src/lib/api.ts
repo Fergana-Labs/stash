@@ -1504,6 +1504,17 @@ export async function listMySessions(
   return data.sessions;
 }
 
+export interface SessionsAnalytics {
+  totals: { sessions: number; events: number };
+  per_day: { day: string; sessions: number }[];
+  by_agent: { agent: string; sessions: number }[];
+  by_person: { name: string; sessions: number }[];
+}
+
+export async function getSessionsAnalytics(): Promise<SessionsAnalytics> {
+  return apiFetch(`${ME}/sessions/analytics`);
+}
+
 export interface SessionArtifact {
   id: string;
   file_path: string;

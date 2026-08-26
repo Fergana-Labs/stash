@@ -73,6 +73,8 @@ function ExplorerPanel({ section }: { section: ExplorerSection }) {
  *  beside the Sessions explorer. */
 function sectionForPath(pathname: string): ExplorerSection | null {
   if (pathname === "/files" || /^\/(p|f|folders|tables)\//.test(pathname)) return "files";
+  // The analytics dashboard is its own rail section, not a session.
+  if (pathname === "/sessions/analytics") return null;
   if (pathname === "/sessions" || pathname.startsWith("/sessions/")) return "sessions";
   if (pathname === "/skills" || pathname.startsWith("/skills/folder")) return "skills";
   if (pathname === "/tools" || pathname.startsWith("/integrations")) return "tools";
