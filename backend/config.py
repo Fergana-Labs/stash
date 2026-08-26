@@ -221,8 +221,6 @@ class Settings:
     LINEAR_OAUTH_REDIRECT_URI: str | None = parse_oauth_redirect_uri(
         "LINEAR_OAUTH_REDIRECT_URI", AUTH0_ENABLED
     )
-    # Verifies inbound Linear webhook signatures (Linear-Signature header).
-    LINEAR_WEBHOOK_SECRET: str | None = os.getenv("LINEAR_WEBHOOK_SECRET")
 
     # --- Integrations (OAuth + per-user token storage) ---
     # Comma-separated Fernet keyring for encrypting access/refresh tokens at

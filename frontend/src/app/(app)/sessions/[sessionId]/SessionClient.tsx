@@ -309,13 +309,6 @@ export default function SessionViewerPage({ sessionId }: { sessionId: string }) 
             </Link>
           )}
           <div className="mb-2 border-b border-border pb-3.5">
-            {(sessionDetail?.linear_tickets.length ?? 0) > 0 && (
-              <div className="mb-1.5 flex items-center gap-2">
-                {sessionDetail?.linear_tickets.map((ticket) => (
-                  <LinearTicketPill key={ticket.ticket_identifier} ticket={ticket} />
-                ))}
-              </div>
-            )}
             <h1 className="font-display text-[28px] font-bold leading-tight tracking-[-0.02em]">
               <EditableTitle
                 value={sessionHeading(sessionDetail, sessionId)}
@@ -474,22 +467,10 @@ function SaveToSkillButton({
 function SessionAside({ detail }: { detail: SessionDetail | null }) {
   const filesTouched = normalizeStringList(detail?.files_touched);
   const artifacts = detail?.artifacts ?? [];
-  const tickets = detail?.linear_tickets ?? [];
 
   return (
     <aside className="hidden lg:block">
       <div className="sticky top-16 flex flex-col gap-3">
-        {tickets.length > 0 && (
-          <div className="card-soft p-3.5">
-            <div className="sys-label">Linear</div>
-            <div className="mt-2 flex flex-col gap-1.5">
-              {tickets.map((ticket) => (
-                <LinearTicketAsideRow key={ticket.ticket_identifier} ticket={ticket} />
-              ))}
-            </div>
-          </div>
-        )}
-
         <div className="card-soft p-3.5">
           <div className="sys-label">Artifacts</div>
           {filesTouched.length > 0 && (
@@ -532,69 +513,6 @@ function SessionAside({ detail }: { detail: SessionDetail | null }) {
         </div>
       </div>
     </aside>
-  );
-}
-
-function LinearTicketAsideRow({
-  ticket,
-}: {
-  ticket: NonNullable<SessionDetail["linear_tickets"][number]>;
-}) {
-  const metadata = ticketMetadata(ticket);
-  const content = (
-    <>
-      <LinearTicketPill ticket={ticket} />
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-[12.5px] font-medium text-foreground">
-          {ticket.ticket_title || ticket.ticket_identifier}
-        </span>
-        {metadata && (
-          <span className="block truncate text-[11px] text-muted-foreground">
-            {metadata}
-          </span>
-        )}
-      </span>
-    </>
-  );
-
-  if (!ticket.ticket_url) {
-    return <div className="linkrow px-2 py-1.5">{content}</div>;
-  }
-
-  return (
-    <a
-      href={ticket.ticket_url}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="linkrow px-2 py-1.5"
-    >
-      {content}
-    </a>
-  );
-}
-
-function ticketMetadata(ticket: NonNullable<SessionDetail["linear_tickets"][number]>): string {
-  return [
-    ticket.ticket_status,
-    ticket.ticket_assignee_name,
-    ticket.ticket_project_name,
-  ]
-    .filter(Boolean)
-    .join(", ");
-}
-
-function LinearTicketPill({
-  ticket,
-}: {
-  ticket: NonNullable<SessionDetail["linear_tickets"][number]>;
-}) {
-  return (
-    <span
-      className="inline-flex max-w-full shrink-0 items-center rounded border border-[var(--color-brand-200)] bg-[var(--color-brand-50)] px-2 py-0.5 font-mono text-[11px] font-semibold text-[var(--color-brand-700)]"
-      title={ticket.ticket_title || ticket.ticket_identifier}
-    >
-      {ticket.ticket_identifier}
-    </span>
   );
 }
 

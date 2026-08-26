@@ -20,14 +20,13 @@ import { usePins } from "@/lib/pins";
 import {
   groupSessionsByAgent,
   groupSessionsByDayAndUser,
-  groupSessionsByLinearTicket,
   groupSessionsByUser,
   requireSessionUserName,
   type SessionDayGroup,
   type SessionFlatGroup,
 } from "@/lib/sessionGrouping";
 
-type ViewKey = "list" | "day" | "user" | "agent" | "ticket";
+type ViewKey = "list" | "day" | "user" | "agent";
 type SortKey = "recent" | "oldest" | "events" | "name";
 
 const VIEW_STORAGE_KEY = "stash_sessions_view";
@@ -38,7 +37,6 @@ const VIEWS: { key: ViewKey; label: string }[] = [
   { key: "day", label: "By day" },
   { key: "user", label: "By user" },
   { key: "agent", label: "By agent" },
-  { key: "ticket", label: "By ticket" },
 ];
 
 const SORTS: { key: SortKey; label: string }[] = [
@@ -305,11 +303,7 @@ function SessionsView({
   }
 
   const groups =
-    view === "user"
-      ? groupSessionsByUser(sessions)
-      : view === "ticket"
-      ? groupSessionsByLinearTicket(sessions)
-      : groupSessionsByAgent(sessions);
+    view === "user" ? groupSessionsByUser(sessions) : groupSessionsByAgent(sessions);
   return (
     <div className="flex flex-col gap-4">
       {groups.map((group, i) => (
@@ -509,7 +503,6 @@ function SessionsTable({
         <span>User</span>
         <span>Session</span>
         {showFolder && <span>Folder</span>}
-        <span>Ticket</span>
         <span>Events</span>
         <span>Agent</span>
         <span>Date</span>
@@ -532,9 +525,9 @@ function SessionsTable({
 }
 
 const GRID_COLS =
-  "md:grid-cols-[minmax(128px,0.68fr)_minmax(240px,1.7fr)_86px_58px_minmax(104px,0.62fr)_94px_88px_28px]";
+  "md:grid-cols-[minmax(128px,0.68fr)_minmax(240px,1.7fr)_58px_minmax(104px,0.62fr)_94px_88px_28px]";
 const GRID_COLS_WITH_FOLDER =
-  "md:grid-cols-[minmax(128px,0.68fr)_minmax(200px,1.4fr)_minmax(110px,0.6fr)_86px_58px_minmax(104px,0.62fr)_94px_88px_28px]";
+  "md:grid-cols-[minmax(128px,0.68fr)_minmax(200px,1.4fr)_minmax(110px,0.6fr)_58px_minmax(104px,0.62fr)_94px_88px_28px]";
 
 function SessionTableRow({
   session,
@@ -554,7 +547,6 @@ function SessionTableRow({
   const user = requireSessionUserName(session.user_name);
   const agent = session.agent_name || "agent";
   const avatar = avatarFor(user);
-  const ticket = primaryTicket(session);
 
   return (
     <Link
@@ -586,17 +578,11 @@ function SessionTableRow({
       <div className="min-w-0">
         <div className="flex min-w-0 items-center gap-2">
           <div className="min-w-0 flex-1 truncate font-medium text-foreground">{sessionTitle(session)}</div>
-          {ticket && (
-            <span className="md:hidden">
-              <LinearTicketPill ticket={ticket} compact />
-            </span>
-          )}
         </div>
         <div className="mt-0.5 truncate text-[11px] text-muted-foreground md:hidden">
           {[
             user,
             session.session_folder_name,
-            ticket?.ticket_identifier,
             agent,
             formatRelative(session.last_event_at),
           ]
@@ -609,9 +595,6 @@ function SessionTableRow({
           {session.session_folder_name ?? "—"}
         </span>
       )}
-      <span className="hidden min-w-0 md:block">
-        {ticket ? <LinearTicketPill ticket={ticket} /> : <span className="text-[11px] text-muted-foreground">None</span>}
-      </span>
       <span className="hidden items-center gap-1 text-[12px] text-muted-foreground md:flex">
         <MessageIcon />
         {session.event_count}
@@ -651,30 +634,6 @@ function SessionTableRow({
         <PinIcon className="text-[15px]" />
       </span>
     </Link>
-  );
-}
-
-function primaryTicket(session: SessionSummary) {
-  return session.linear_tickets[0] ?? null;
-}
-
-function LinearTicketPill({
-  ticket,
-  compact = false,
-}: {
-  ticket: NonNullable<ReturnType<typeof primaryTicket>>;
-  compact?: boolean;
-}) {
-  return (
-    <span
-      className={
-        "inline-flex max-w-full shrink-0 items-center rounded border border-[var(--color-brand-200)] bg-[var(--color-brand-50)] font-mono font-semibold text-[var(--color-brand-700)] " +
-        (compact ? "px-1.5 py-0 text-[10px]" : "px-2 py-0.5 text-[11px]")
-      }
-      title={ticket.ticket_title || ticket.ticket_identifier}
-    >
-      {ticket.ticket_identifier}
-    </span>
   );
 }
 

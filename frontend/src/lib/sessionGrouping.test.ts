@@ -3,7 +3,6 @@ import type { SessionSummary } from "./api";
 import {
   groupSessionsByAgent,
   groupSessionsByDayAndUser,
-  groupSessionsByLinearTicket,
   groupSessionsByUser,
   requireSessionUserName,
 } from "./sessionGrouping";
@@ -13,7 +12,6 @@ function session(fields: Partial<SessionSummary> & { session_id: string }): Sess
     session_id: fields.session_id,
     id: fields.id ?? fields.session_id,
     title: fields.title ?? fields.session_id,
-    linear_tickets: fields.linear_tickets ?? [],
     owner_user_id: "user-1",
     user_name: fields.user_name ?? "Test User",
     agent_name: fields.agent_name ?? null,
@@ -88,56 +86,3 @@ describe("groupSessionsByAgent", () => {
   });
 });
 
-describe("groupSessionsByLinearTicket", () => {
-  it("groups by the primary Linear ticket and keeps unlabeled sessions visible", () => {
-    const grouped = groupSessionsByLinearTicket([
-      session({
-        session_id: "fer-19-a",
-        linear_tickets: [
-          {
-            ticket_identifier: "FER-19",
-            ticket_title: "Customize Skill homepage cover",
-            ticket_url: "https://linear.app/ferganalabs/issue/FER-19/customize-skill-homepage-cover",
-            source: "linear_preamble",
-            confidence: 1,
-            linear_issue_id: null,
-            ticket_status: null,
-            ticket_assignee_name: null,
-            ticket_team_key: null,
-            ticket_team_name: null,
-            ticket_project_name: null,
-            linear_updated_at: null,
-            enriched_at: null,
-          },
-        ],
-      }),
-      session({
-        session_id: "fer-19-b",
-        linear_tickets: [
-          {
-            ticket_identifier: "FER-19",
-            ticket_title: "Customize Skill homepage cover",
-            ticket_url: "https://linear.app/ferganalabs/issue/FER-19/customize-skill-homepage-cover",
-            source: "linear_preamble",
-            confidence: 1,
-            linear_issue_id: null,
-            ticket_status: null,
-            ticket_assignee_name: null,
-            ticket_team_key: null,
-            ticket_team_name: null,
-            ticket_project_name: null,
-            linear_updated_at: null,
-            enriched_at: null,
-          },
-        ],
-      }),
-      session({ session_id: "unlabeled" }),
-    ]);
-
-    expect(grouped.map((g) => g.key)).toEqual([
-      "FER-19: Customize Skill homepage cover",
-      "Unlabeled",
-    ]);
-    expect(grouped[0].count).toBe(2);
-  });
-});

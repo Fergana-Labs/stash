@@ -1450,7 +1450,6 @@ export interface SessionSummary {
   // delete is keyed by this id.
   id: string | null;
   title: string;
-  linear_tickets: LinearTicketLabel[];
   owner_user_id: string | null;
   user_name: string;
   agent_name: string | null;
@@ -1474,22 +1473,6 @@ export function displayVisibility(
 ): DisplayVisibility {
   if (access === "public") return "public";
   return shareCount > 0 ? "shared" : "private";
-}
-
-export interface LinearTicketLabel {
-  ticket_identifier: string;
-  ticket_title: string | null;
-  ticket_url: string | null;
-  source: string;
-  confidence: number;
-  linear_issue_id: string | null;
-  ticket_status: string | null;
-  ticket_assignee_name: string | null;
-  ticket_team_key: string | null;
-  ticket_team_name: string | null;
-  ticket_project_name: string | null;
-  linear_updated_at: string | null;
-  enriched_at: string | null;
 }
 
 export async function listMySessions(
@@ -1523,7 +1506,6 @@ export interface SessionDetail {
   agent_name: string;
   cwd: string | null;
   files_touched: string[] | string;
-  linear_tickets: LinearTicketLabel[];
   started_at: string | null;
   finished_at: string | null;
   created_by: string | null;
@@ -2084,7 +2066,6 @@ export interface SidebarSession {
   id: string | null;
   session_id: string;
   title: string;
-  linear_tickets: LinearTicketLabel[];
   user_name: string;
   agent_name: string;
   size_bytes: number;

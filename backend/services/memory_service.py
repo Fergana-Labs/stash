@@ -17,8 +17,6 @@ from ..database import get_pool
 from . import embeddings as embedding_service
 from . import (
     end_user_service,
-    github_pr_service,
-    linear_ticket_service,
     permission_service,
     session_service,
 )
@@ -182,7 +180,7 @@ async def push_event(
             owner_user_id, [{"user_id": user_id, "user_name": user_name}]
         )
         end_user = end_user_rows.get(user_id) if user_id else None
-        session = await session_service.upsert_session(
+        await session_service.upsert_session(
             owner_user_id,
             session_id,
             agent_name=agent_name,
@@ -192,12 +190,6 @@ async def push_event(
             session_folder_id=session_folder_id,
             last_event_at=ts,
         )
-        if linear_ticket_service.has_ticket_hint([content]):
-            await linear_ticket_service.sync_session_labels(
-                owner_user_id, session["id"], session_id
-            )
-        if github_pr_service.has_pull_request_hint([content]):
-            github_pr_service.enqueue_session_discovery(session["id"])
     return event
 
 
@@ -366,7 +358,7 @@ async def _upsert_sessions_for_events(
 
     for session_id, session in sessions.items():
         end_user = end_user_rows.get(session["user_id"]) if session["user_id"] else None
-        row = await session_service.upsert_session(
+        await session_service.upsert_session(
             owner_user_id,
             session_id,
             agent_name=session["agent_name"],
@@ -376,13 +368,6 @@ async def _upsert_sessions_for_events(
             session_folder_id=session["session_folder_id"],
             last_event_at=session["last_event_at"],
         )
-        contents = [
-            event.get("content") or "" for event in events if event.get("session_id") == session_id
-        ]
-        if linear_ticket_service.has_ticket_hint(contents):
-            await linear_ticket_service.sync_session_labels(owner_user_id, row["id"], session_id)
-        if github_pr_service.has_pull_request_hint(contents):
-            github_pr_service.enqueue_session_discovery(row["id"])
 
 
 def readable_session_event_condition(event_alias: str, user_arg: int) -> str:
@@ -518,7 +503,6 @@ async def list_scope_sessions(owner_user_id: UUID, user_id: UUID) -> list[dict]:
         ") "
         "SELECT h.session_id, "
         "       rs.id::text AS id, "
-        f"       {linear_ticket_service.sql_json_agg('rs')} AS linear_tickets, "
         "       MAX(h.agent_name) AS agent_name, "
         "       (ARRAY_AGG(NULLIF(u.display_name, '') ORDER BY h.created_at) "
         "        FILTER (WHERE NULLIF(u.display_name, '') IS NOT NULL))[1] AS user_name, "
