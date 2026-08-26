@@ -2406,6 +2406,24 @@ export async function disconnectAgentCredential(provider: string): Promise<strin
   return data.connected;
 }
 
+export async function getLocalModelsJson(): Promise<{ models_json: string; stored: boolean }> {
+  return apiFetch("/api/v1/me/agent-credentials/local/models-json");
+}
+
+export async function saveLocalModelsJson(
+  modelsJson: string,
+): Promise<{ ok: boolean; stored: boolean }> {
+  return apiFetch("/api/v1/me/agent-credentials/local/models-json", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ models_json: modelsJson }),
+  });
+}
+
+export async function resetLocalModelsJson(): Promise<{ ok: boolean; stored: boolean }> {
+  return apiFetch("/api/v1/me/agent-credentials/local/models-json", { method: "DELETE" });
+}
+
 export async function startAgentOAuth(
   provider: string,
 ): Promise<{ authorize_url: string; state: string }> {

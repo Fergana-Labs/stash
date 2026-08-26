@@ -7,7 +7,10 @@ import {
   connectLocalEndpoint,
   disconnectAgentCredential,
   finishAgentOAuth,
+  getLocalModelsJson,
   listAgentCredentials,
+  resetLocalModelsJson,
+  saveLocalModelsJson,
   startAgentOAuth,
 } from "@/lib/api";
 
@@ -118,6 +121,7 @@ function ProviderRow({
   const [pasted, setPasted] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [modelsOpen, setModelsOpen] = useState(false);
 
   async function disconnect() {
     setBusy(true);
@@ -206,14 +210,26 @@ function ProviderRow({
           <p className="mt-0.5 text-[12.5px] text-muted-foreground">{provider.blurb}</p>
         </div>
         {connected ? (
-          <button
-            type="button"
-            onClick={disconnect}
-            disabled={busy}
-            className="shrink-0 rounded-md border border-border px-3 py-1.5 text-[12.5px] text-dim hover:text-error"
-          >
-            Disconnect
-          </button>
+          <div className="flex shrink-0 gap-2">
+            {provider.endpoint && (
+              <button
+                type="button"
+                onClick={() => setModelsOpen(!modelsOpen)}
+                disabled={busy}
+                className="rounded-md border border-border px-3 py-1.5 text-[12.5px] text-foreground hover:bg-raised disabled:opacity-60"
+              >
+                Edit models.json
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={disconnect}
+              disabled={busy}
+              className="rounded-md border border-border px-3 py-1.5 text-[12.5px] text-dim hover:text-error"
+            >
+              Disconnect
+            </button>
+          </div>
         ) : (
           <div className="flex shrink-0 gap-2">
             {provider.oauth && (
@@ -326,7 +342,112 @@ function ProviderRow({
         </div>
       )}
 
+      {connected && provider.endpoint && modelsOpen && <ModelsJsonEditor />}
+
       {error && <p className="mt-2 text-[12px] text-error">{error}</p>}
+    </div>
+  );
+}
+
+function ModelsJsonEditor() {
+  const [text, setText] = useState<string | null>(null);
+  const [stored, setStored] = useState<boolean | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function load() {
+    setBusy(true);
+    setError(null);
+    try {
+      const { models_json, stored: s } = await getLocalModelsJson();
+      setText(models_json);
+      setStored(s);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not load models.json");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function save() {
+    if (text === null) return;
+    setBusy(true);
+    setError(null);
+    try {
+      // Sent verbatim — the backend is the single validation surface.
+      await saveLocalModelsJson(text);
+      setStored(true);
+    } catch (e) {
+      // Keep the user's text; the last-good server value is untouched.
+      setError(e instanceof Error ? e.message : "Could not save models.json");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function reset() {
+    setBusy(true);
+    setError(null);
+    try {
+      await resetLocalModelsJson();
+      const { models_json, stored: s } = await getLocalModelsJson();
+      setText(models_json);
+      setStored(s);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not reset models.json");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="mt-3 space-y-2">
+      <div className="flex items-center justify-between">
+        <span className="text-[12.5px] font-medium text-foreground">models.json</span>
+        <span className="rounded-full bg-[var(--color-success)]/15 px-2 py-0.5 text-[11px] font-medium text-[var(--color-success)]">
+          {stored === true ? "Custom" : "Default"}
+        </span>
+      </div>
+      <textarea
+        aria-label="models.json"
+        value={text ?? ""}
+        onChange={(e) => setText(e.target.value)}
+        rows={12}
+        spellCheck={false}
+        className="w-full rounded-md border border-border bg-surface px-2.5 py-1.5 font-mono text-[12px] text-foreground"
+      />
+      <div className="flex flex-col gap-2 sm:flex-row">
+        <button
+          type="button"
+          onClick={load}
+          disabled={busy}
+          className="rounded-md border border-border px-3 py-1.5 text-[12.5px] text-foreground hover:bg-raised disabled:opacity-60"
+        >
+          Load
+        </button>
+        <button
+          type="button"
+          onClick={save}
+          disabled={busy || !(text ?? "").trim()}
+          className="rounded-md bg-brand px-3 py-1.5 text-[12.5px] font-medium text-white disabled:opacity-60"
+        >
+          Save
+        </button>
+        <button
+          type="button"
+          onClick={reset}
+          disabled={busy}
+          className="rounded-md border border-border px-3 py-1.5 text-[12.5px] text-dim hover:text-error disabled:opacity-60"
+        >
+          Reset to default
+        </button>
+      </div>
+      {error && <p className="text-[12px] text-error">{error}</p>}
     </div>
   );
 }

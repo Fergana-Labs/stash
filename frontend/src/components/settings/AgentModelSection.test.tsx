@@ -6,6 +6,9 @@ import AgentModelSection from "./AgentModelSection";
 const listAgentCredentials = vi.fn();
 const connectLocalEndpoint = vi.fn();
 const disconnectAgentCredential = vi.fn();
+const getLocalModelsJson = vi.fn();
+const saveLocalModelsJson = vi.fn();
+const resetLocalModelsJson = vi.fn();
 
 vi.mock("@/lib/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api")>();
@@ -14,8 +17,32 @@ vi.mock("@/lib/api", async (importOriginal) => {
     listAgentCredentials: (...args: unknown[]) => listAgentCredentials(...args),
     connectLocalEndpoint: (...args: unknown[]) => connectLocalEndpoint(...args),
     disconnectAgentCredential: (...args: unknown[]) => disconnectAgentCredential(...args),
+    getLocalModelsJson: (...args: unknown[]) => getLocalModelsJson(...args),
+    saveLocalModelsJson: (...args: unknown[]) => saveLocalModelsJson(...args),
+    resetLocalModelsJson: (...args: unknown[]) => resetLocalModelsJson(...args),
   };
 });
+
+const DEFAULT_MODELS_JSON = `{
+  "providers": {
+    "local": {
+      "baseUrl": "http://tunnel.example/v1",
+      "api": "openai-completions",
+      "apiKey": "$STASH_LOCAL_KEY"
+    }
+  }
+}`;
+
+const CUSTOM_MODELS_JSON = `{
+  "providers": {
+    "local": {
+      "baseUrl": "http://tunnel.example/v1",
+      "api": "openai-completions",
+      "apiKey": "$STASH_LOCAL_KEY",
+      "models": [{"id": "extra", "contextWindow": 65536, "maxTokens": 4096}]
+    }
+  }
+}`;
 
 describe("AgentModelSection", () => {
   beforeEach(() => {
@@ -23,7 +50,15 @@ describe("AgentModelSection", () => {
     listAgentCredentials.mockResolvedValue([]);
     connectLocalEndpoint.mockResolvedValue(["local"]);
     disconnectAgentCredential.mockResolvedValue([]);
+    getLocalModelsJson.mockResolvedValue({ models_json: DEFAULT_MODELS_JSON, stored: false });
+    saveLocalModelsJson.mockResolvedValue({ ok: true, stored: true });
+    resetLocalModelsJson.mockResolvedValue({ ok: true, stored: false });
   });
+
+  function connectLocal(): void {
+    // The local row shows its connected branch (Disconnect + Edit models.json).
+    listAgentCredentials.mockResolvedValueOnce(["local"]);
+  }
 
   it("renders four provider rows including Local model", async () => {
     render(<AgentModelSection />);
@@ -69,5 +104,106 @@ describe("AgentModelSection", () => {
     await waitFor(() => expect(screen.getByText("Connected")).toBeDefined());
     fireEvent.click(screen.getByRole("button", { name: "Disconnect" }));
     expect(disconnectAgentCredential).toHaveBeenCalledWith("local");
+  });
+
+  it("shows Edit models.json only on the connected local row", async () => {
+    connectLocal();
+    render(<AgentModelSection />);
+    await screen.findByText("Local model");
+    await waitFor(() => expect(screen.getByText("Connected")).toBeDefined());
+    // Exactly one editor affordance — on the local row; the other three
+    // (unconnected) rows have none.
+    expect(screen.getAllByRole("button", { name: "Edit models.json" })).toHaveLength(1);
+  });
+
+  it("loads the effective models.json on open with a Default indicator", async () => {
+    connectLocal();
+    render(<AgentModelSection />);
+    await screen.findByText("Local model");
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit models.json" }));
+
+    const textarea = await screen.findByRole("textbox", { name: "models.json" });
+    await waitFor(() => expect(textarea).toHaveValue(DEFAULT_MODELS_JSON));
+    expect(getLocalModelsJson).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("Default")).toBeDefined();
+    expect(screen.queryByText("Custom")).toBeNull();
+  });
+
+  it("shows a Custom indicator for a stored override", async () => {
+    connectLocal();
+    getLocalModelsJson.mockResolvedValue({ models_json: CUSTOM_MODELS_JSON, stored: true });
+    render(<AgentModelSection />);
+    await screen.findByText("Local model");
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit models.json" }));
+
+    const textarea = await screen.findByRole("textbox", { name: "models.json" });
+    await waitFor(() => expect(textarea).toHaveValue(CUSTOM_MODELS_JSON));
+    expect(screen.getByText("Custom")).toBeDefined();
+  });
+
+  it("save submits the textarea text verbatim", async () => {
+    connectLocal();
+    render(<AgentModelSection />);
+    await screen.findByText("Local model");
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit models.json" }));
+    const textarea = await screen.findByRole("textbox", { name: "models.json" });
+    await waitFor(() => expect(textarea).toHaveValue(DEFAULT_MODELS_JSON));
+
+    fireEvent.change(textarea, { target: { value: CUSTOM_MODELS_JSON } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(saveLocalModelsJson).toHaveBeenCalledTimes(1));
+    expect(saveLocalModelsJson).toHaveBeenCalledWith(CUSTOM_MODELS_JSON);
+    expect(saveLocalModelsJson).toHaveBeenLastCalledWith(CUSTOM_MODELS_JSON);
+    expect(screen.queryByText(/error/i)).toBeNull();
+  });
+
+  it("shows the parse error on bad save and keeps the user's text", async () => {
+    connectLocal();
+    render(<AgentModelSection />);
+    await screen.findByText("Local model");
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit models.json" }));
+    const textarea = await screen.findByRole("textbox", { name: "models.json" });
+    await waitFor(() => expect(textarea).toHaveValue(DEFAULT_MODELS_JSON));
+
+    const userText = '{"providers": {';
+    fireEvent.change(textarea, { target: { value: userText } });
+    saveLocalModelsJson.mockRejectedValueOnce(
+      new Error("models.json is not valid JSON: Expecting value: line 1 column 1 (char 0)"),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await screen.findByText(
+      "models.json is not valid JSON: Expecting value: line 1 column 1 (char 0)",
+    );
+    // The user's text stays in the editor — last-good server value untouched,
+    // and no re-fetch happened after the failed save.
+    expect(textarea).toHaveValue(userText);
+    expect(getLocalModelsJson).toHaveBeenCalledTimes(1);
+  });
+
+  it("reset deletes the override and reloads the default", async () => {
+    connectLocal();
+    // Open with the stored override, then the reset re-fetch returns the default.
+    getLocalModelsJson
+      .mockResolvedValueOnce({ models_json: CUSTOM_MODELS_JSON, stored: true })
+      .mockResolvedValueOnce({ models_json: DEFAULT_MODELS_JSON, stored: false });
+    render(<AgentModelSection />);
+    await screen.findByText("Local model");
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit models.json" }));
+    const textarea = await screen.findByRole("textbox", { name: "models.json" });
+    await waitFor(() => expect(textarea).toHaveValue(CUSTOM_MODELS_JSON));
+    expect(screen.getByText("Custom")).toBeDefined();
+
+    fireEvent.click(screen.getByRole("button", { name: "Reset to default" }));
+
+    await waitFor(() => expect(resetLocalModelsJson).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(textarea).toHaveValue(DEFAULT_MODELS_JSON));
+    expect(screen.getByText("Default")).toBeDefined();
   });
 });
