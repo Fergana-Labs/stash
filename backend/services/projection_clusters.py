@@ -10,6 +10,7 @@ names.
 """
 
 import json
+import logging
 import math
 import re
 from collections import Counter
@@ -17,6 +18,8 @@ from collections import Counter
 import numpy as np
 
 from ..config import settings
+
+logger = logging.getLogger(__name__)
 
 MAX_CLUSTERS = 8  # matches the frontend's per-cluster color palette
 
@@ -153,9 +156,18 @@ async def concept_names(labels_per_cluster: list[list[str]], keyword_names: list
     if not settings.ANTHROPIC_API_KEY:
         return keyword_names
 
+    from anthropic import APIError
+
     prompt = _concept_prompt(labels_per_cluster, keyword_names)
     for _ in range(2):
-        text = await _call_fast_model(prompt)
+        # The viz must render even when the model can't be reached (bad key,
+        # outage) — the deterministic keyword names stand, and the error is
+        # logged so a misconfigured key doesn't fail silently.
+        try:
+            text = await _call_fast_model(prompt)
+        except APIError as e:
+            logger.error("Concept naming call failed; keeping keyword names: %s", e)
+            return keyword_names
         names = _parse_concept_names(text, len(labels_per_cluster))
         if names is not None:
             return names
