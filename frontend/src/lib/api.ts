@@ -808,6 +808,36 @@ export async function getHistoryImportProgress(): Promise<{
   return apiFetch(`${ME}/transcripts/import-progress`);
 }
 
+// --- Web onboarding choices, applied by `stash signin` ---
+
+export interface OnboardingPreferences {
+  enabled_agents: string[];
+  record_scope: "everything" | "selected_folders";
+  import_history: boolean;
+  claude_md_opt_in: boolean;
+}
+
+export async function getOnboardingPreferences(): Promise<{
+  preferences: (OnboardingPreferences & { consumed_at: string | null }) | null;
+}> {
+  return apiFetch(`${ME}/onboarding-preferences`);
+}
+
+export async function putOnboardingPreferences(
+  prefs: OnboardingPreferences,
+): Promise<{ ok: boolean }> {
+  return apiFetch(`${ME}/onboarding-preferences`, {
+    method: "PUT",
+    body: JSON.stringify(prefs),
+  });
+}
+
+// The exact CLAUDE.md block the CLI appends, served by the backend so the
+// onboarding preview can't drift from what `stash connect` writes.
+export async function getClaudeMdBlock(): Promise<{ block: string }> {
+  return apiFetch("/api/v1/claude-md-block");
+}
+
 export async function createFolder(
   name: string,
   parentFolderId?: string | null
