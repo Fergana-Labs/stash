@@ -252,13 +252,23 @@ export interface EmbeddingProjectionPoint {
   x: number;
   y: number;
   z: number;
-  source: "pages" | "table_rows" | "history_events";
+  source: "pages" | "table_rows" | "history_events" | "files";
   label: string;
+  /** For history events labeled by session title: the event's own content excerpt. */
+  detail?: string;
   created_at: string | null;
+  cluster: number;
+}
+
+export interface EmbeddingProjectionCluster {
+  index: number;
+  name: string;
+  size: number;
 }
 
 export interface EmbeddingProjection {
   points: EmbeddingProjectionPoint[];
+  clusters: EmbeddingProjectionCluster[];
   stats: { total_embeddings: number; projected: number };
   cached: boolean;
 }
