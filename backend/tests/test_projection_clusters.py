@@ -2,12 +2,17 @@
 
 Cluster names caption the map's islands, so they must surface the terms that
 distinguish a cluster — never stopwords, path fragments, or UUID junk, and
-never an invented name for a cluster whose labels yield nothing.
+never an invented name for a cluster whose labels yield nothing. The concept
+naming pass mirrors session-title generation: no API key means no model call,
+and malformed model output (after one retry) keeps the keyword names.
 """
 
 import numpy as np
+import pytest
 
-from backend.services.projection_clusters import cluster_points, name_clusters
+from backend.config import settings
+from backend.services import projection_clusters
+from backend.services.projection_clusters import cluster_points, concept_names, name_clusters
 
 
 def test_distinguishing_terms_beat_globally_common_ones():
@@ -52,6 +57,29 @@ def test_stopwords_and_junk_never_appear():
     assert "Backend" in names[0]
 
 
+def test_singular_and_plural_never_both_appear():
+    # "skill" and "skills" tie for the top terms; the name must fold them.
+    names = name_clusters([["skill skills publish", "skill skills publish"]])
+    assert names[0] == "Publish · Skill"
+
+
+def test_number_words_timestamp_fragments_and_generic_verbs_are_dropped():
+    names = name_clusters(
+        [
+            [
+                "Ran one memory curation at 2026-08-25T20:01:22Z",
+                "Read and edited memory curation notes",
+                "Added memory curation across sessions using vfs",
+            ]
+        ]
+    )
+    terms = names[0].split(" · ")
+    for junk in ["Ran", "One", "20t01", "22z", "Read", "Edited", "Added", "Using", "Across"]:
+        assert junk not in terms
+    assert "Memory" in terms
+    assert "Curation" in terms
+
+
 def test_cluster_with_no_usable_terms_gets_positional_name():
     names = name_clusters([["sessions search"], ["/a/b/c 123 ab -- of the"]])
     assert names[1] == "Cluster 2"
@@ -86,3 +114,80 @@ def test_kmeans_indices_are_compact():
 
 def test_kmeans_single_point():
     assert cluster_points(np.zeros((1, 3))) == [0]
+
+
+def _fake_model(monkeypatch, responses: list[str]) -> list[str]:
+    """Route _call_fast_model to canned responses; returns the prompts sent."""
+    monkeypatch.setattr(settings, "ANTHROPIC_API_KEY", "test-key")
+    prompts: list[str] = []
+
+    async def fake_call(prompt: str) -> str:
+        prompts.append(prompt)
+        return responses[len(prompts) - 1]
+
+    monkeypatch.setattr(projection_clusters, "_call_fast_model", fake_call)
+    return prompts
+
+
+@pytest.mark.asyncio
+async def test_concept_names_replace_keyword_names(monkeypatch):
+    prompts = _fake_model(monkeypatch, ['["Memory curation runs", "CLI onboarding work"]'])
+
+    names = await concept_names(
+        [["curator run 12", "curator run 13"], ["stash init flow", "cli login"]],
+        ["Curator · Runs", "Init · Login"],
+    )
+
+    assert names == ["Memory curation runs", "CLI onboarding work"]
+    assert len(prompts) == 1
+    # One batched call carries every cluster's labels and its keyword hint.
+    assert "Curator · Runs" in prompts[0]
+    assert "cli login" in prompts[0]
+
+
+@pytest.mark.asyncio
+async def test_concept_names_are_sanitized_and_length_capped(monkeypatch):
+    long_name = "An extremely long cluster name that goes on far past forty characters"
+    _fake_model(monkeypatch, [f'[" \\"{long_name}\\" "]'])
+
+    names = await concept_names([["a"]], ["Kw"])
+
+    assert len(names[0]) <= 40
+    assert not names[0].startswith('"')
+    assert names[0] == long_name[:40].strip()
+
+
+@pytest.mark.asyncio
+async def test_concept_names_retry_once_on_malformed_output(monkeypatch):
+    # First reply has the wrong shape (one name for two clusters); the retry
+    # is well-formed and wins.
+    prompts = _fake_model(monkeypatch, ['["only one"]', '["Billing work", "Search work"]'])
+
+    names = await concept_names([["a"], ["b"]], ["Kw A", "Kw B"])
+
+    assert names == ["Billing work", "Search work"]
+    assert len(prompts) == 2
+
+
+@pytest.mark.asyncio
+async def test_concept_names_keep_keyword_names_after_two_malformed_replies(monkeypatch):
+    prompts = _fake_model(monkeypatch, ["not json at all", '{"still": "wrong"}'])
+
+    names = await concept_names([["a"], ["b"]], ["Kw A", "Kw B"])
+
+    assert names == ["Kw A", "Kw B"]
+    assert len(prompts) == 2
+
+
+@pytest.mark.asyncio
+async def test_concept_names_skip_the_model_without_api_key(monkeypatch):
+    monkeypatch.setattr(settings, "ANTHROPIC_API_KEY", None)
+
+    async def must_not_call(prompt: str) -> str:
+        raise AssertionError("no API key: the model must not be called")
+
+    monkeypatch.setattr(projection_clusters, "_call_fast_model", must_not_call)
+
+    names = await concept_names([["a"]], ["Kw"])
+
+    assert names == ["Kw"]
