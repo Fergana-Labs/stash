@@ -44,9 +44,6 @@ vi.mock("@/lib/api", () => ({
   deleteFolder: vi.fn(),
   deleteTable: vi.fn(),
   uploadFileOrPage: vi.fn(),
-  importGithubRepo: vi.fn(),
-  inspectGithubImport: vi.fn().mockResolvedValue({ skill_dirs: [] }),
-  listGithubImportRepos: vi.fn().mockResolvedValue({ connected: false, repos: [] }),
 }));
 
 const MEMORY_FOLDER = "memory-folder-1";
@@ -133,7 +130,7 @@ describe("FilesExplorer shared node", () => {
     expect(await screen.findByText("Q3 plan (Henry)")).toBeInTheDocument();
   });
 
-  it("offers no create or import actions inside the shared index", async () => {
+  it("offers no create actions inside the shared index", async () => {
     // Every write here targets someone else's scope, so the only outcome the
     // buttons could have is a 403.
     renderFiles(async () => [
@@ -145,7 +142,6 @@ describe("FilesExplorer shared node", () => {
 
     expect(screen.queryByLabelText("New file")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("New folder")).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("Import from GitHub")).not.toBeInTheDocument();
   });
 
   it("cannot itself be renamed, deleted, moved, or shared", async () => {

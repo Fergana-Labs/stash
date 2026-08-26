@@ -5,16 +5,14 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
   Loader2, FilePlus, FolderPlus, Upload, Trash2, Pencil, FolderInput,
-  Plus, ArrowDownAZ, Clock, FileText, Code2, Table2, GitBranch, GraduationCap, MessagesSquare,
+  Plus, ArrowDownAZ, Clock, FileText, Code2, Table2, GraduationCap, MessagesSquare,
   ExternalLink, Share2, Users,
 } from "lucide-react";
 import {
   getTree, getFolderContents, createPage, createFolder, createTable, listFiles, listTables, updateFolder, updatePage,
   updateFile, updateTable, trashItem, deleteFolder, deleteTable,
-  uploadFileOrPage, importGithubRepo, inspectGithubImport, listGithubImportRepos,
-  type FolderBreadcrumb, type GithubImportRepo,
+  uploadFileOrPage, type FolderBreadcrumb,
 } from "@/lib/api";
-import { useConfirm } from "@/components/ConfirmDialog";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { useWorkspace } from "@/lib/workspace-store";
@@ -23,9 +21,6 @@ import { opensNewTab } from "@/lib/tab-nav";
 import { ResourceShareDialog } from "@/components/share/ResourceShareButton";
 import { FolderIcon, PageIcon, FileIcon, TableIcon } from "@/components/SkillIcons";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
 
 type Kind =
   | "folder"
@@ -80,8 +75,6 @@ export default function FilesExplorer({
   loadShared,
   newRootItem,
   openRootTab,
-  showImport = true,
-  importIntent = "files",
   vfsWritable = true,
   tabSection,
 }: {
@@ -108,19 +101,12 @@ export default function FilesExplorer({
   newRootItem?: { label: string; run: () => Promise<Item | void> };
   /** Double-clicking the root crumb can open a native overview tab. */
   openRootTab?: () => void;
-  /** Show the GitHub import button. Default true. */
-  showImport?: boolean;
-  /** Where the user expects a GitHub import to surface. Content decides where
-   *  it actually lands (SKILL.md folders derive as skills), so a mismatch
-   *  gets a confirmation first. */
-  importIntent?: "files" | "skills";
   /** This section can create VFS items (new file/folder/upload). Default true;
    *  Sessions is a read-through view, so false. */
   vfsWritable?: boolean;
 }) {
   const router = useRouter();
   const { user } = useAuth();
-  const confirm = useConfirm();
   const openTab = useWorkspace((s) => s.openTab);
   const [folderId, setFolderId] = useState<string | null>(rootFolderId);
   // Item being shared from the context menu, anchored at the menu's position.
@@ -138,13 +124,6 @@ export default function FilesExplorer({
   // long list. Cleared on a timer.
   const [highlightId, setHighlightId] = useState<string | null>(null);
   const [sort, setSort] = useState<Sort>("name");
-  const [importOpen, setImportOpen] = useState(false);
-  const [repoUrl, setRepoUrl] = useState("");
-  const [importing, setImporting] = useState(false);
-  // Repos from the user's GitHub connection (null until loaded; [] = connected
-  // but empty; stays null when GitHub isn't connected → URL paste only).
-  const [githubRepos, setGithubRepos] = useState<GithubImportRepo[] | null>(null);
-  const [repoFilter, setRepoFilter] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
   const clickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -343,54 +322,9 @@ export default function FilesExplorer({
     if (files.length === 0) return;
     void uploadFiles(files, folderId);
   }
-  async function doImport(url?: string) {
-    const target = (url ?? repoUrl).trim();
-    if (!target) return;
-    setImporting(true);
-    try {
-      // Content decides where the import surfaces (SKILL.md folders derive as
-      // skills) — when that won't match the section the user is importing
-      // from, say so before copying anything.
-      const { skill_dirs } = await inspectGithubImport(target);
-      if (importIntent === "skills" && skill_dirs.length === 0) {
-        const ok = await confirm({
-          title: "No SKILL.md in this repo",
-          body: "It will be imported as a plain folder under Files, not Skills. You can add a SKILL.md afterwards to turn it into a skill.",
-          confirmLabel: "Import to Files",
-        });
-        if (!ok) return;
-      }
-      if (importIntent === "files" && skill_dirs.length > 0) {
-        const ok = await confirm({
-          title: "This repo contains skills",
-          body: `${skill_dirs.length} folder${skill_dirs.length !== 1 ? "s" : ""} with a SKILL.md will show up under Skills instead of Files. Everything else lands in Files as usual.`,
-          confirmLabel: "Import",
-        });
-        if (!ok) return;
-      }
-      const r = await importGithubRepo(target);
-      toast.success(`Imported ${r.name} (${r.files} file${r.files !== 1 ? "s" : ""})`);
-      setImportOpen(false);
-      setRepoUrl("");
-      await load();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Import failed");
-    } finally {
-      setImporting(false);
-    }
-  }
-  function openImport() {
-    setImportOpen(true);
-    setRepoFilter("");
-    // Repo picker only lights up for users with a GitHub connection.
-    listGithubImportRepos()
-      .then((r) => setGithubRepos(r.connected ? r.repos : null))
-      .catch(() => setGithubRepos(null));
-  }
-
   // A virtual root (Skills list) has no folder to create loose files into.
   const atVirtualRoot = !!loadRoot && folderId === rootFolderId;
-  // The shared index is someone else's scope. Offering New/Upload/Import here
+  // The shared index is someone else's scope. Offering New/Upload here
   // would offer actions whose only possible outcome is a 403.
   const inSharedIndex = folderId === SHARED_ROOT_ID;
 
@@ -449,7 +383,6 @@ export default function FilesExplorer({
               <ToolBtn icon={<Upload className="h-4 w-4" />} label="Upload" onClick={() => fileRef.current?.click()} />
             </>
           ) : null}
-          {showImport && !inSharedIndex && <ToolBtn icon={<GitBranch className="h-4 w-4" />} label="Import from GitHub" onClick={openImport} />}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button title="Sort" aria-label="Sort" className="flex h-7 w-7 items-center justify-center rounded text-sidebar-foreground hover:bg-sidebar-accent">
@@ -548,44 +481,6 @@ export default function FilesExplorer({
         </div>
       )}
 
-      <Dialog open={importOpen} onOpenChange={setImportOpen}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Import from GitHub</DialogTitle></DialogHeader>
-          <p className="text-[13px] text-muted-foreground">
-            Copies the repo into a new folder. Folders with a <code>SKILL.md</code> show up as Skills.
-          </p>
-          <Input placeholder="https://github.com/owner/repo" value={repoUrl} onChange={(e) => setRepoUrl(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void doImport(); }} />
-          {githubRepos && (
-            <div className="space-y-1.5">
-              <Input placeholder="Or pick one of your repos…" value={repoFilter} onChange={(e) => setRepoFilter(e.target.value)} />
-              <div className="max-h-52 overflow-y-auto rounded-md border border-border">
-                {githubRepos
-                  .filter((r) => r.full_name.toLowerCase().includes(repoFilter.toLowerCase()))
-                  .map((r) => (
-                    <button
-                      key={r.full_name}
-                      type="button"
-                      disabled={importing}
-                      onClick={() => void doImport(r.html_url)}
-                      className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[13px] hover:bg-raised disabled:opacity-50"
-                    >
-                      <GitBranch className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                      <span className="min-w-0 flex-1 truncate">{r.full_name}</span>
-                      {r.private && <span className="shrink-0 rounded bg-surface px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">private</span>}
-                    </button>
-                  ))}
-                {githubRepos.length === 0 && (
-                  <div className="px-3 py-2 text-[12.5px] text-muted-foreground">No repos on your GitHub connection.</div>
-                )}
-              </div>
-            </div>
-          )}
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setImportOpen(false)}>Cancel</Button>
-            <Button onClick={() => void doImport()} disabled={importing}>{importing ? "Importing…" : "Import"}</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

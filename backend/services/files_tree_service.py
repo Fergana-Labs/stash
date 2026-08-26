@@ -1836,7 +1836,7 @@ async def find_or_create_root_folder(
         return dict(row)
 
 
-# --- Bulk folder-content replacement (skill sync + GitHub import) ---
+# --- Bulk folder-content replacement (skill sync + curator import) ---
 
 _SUBTREE = (
     "WITH RECURSIVE subtree AS ("

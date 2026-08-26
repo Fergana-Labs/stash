@@ -58,9 +58,6 @@ vi.mock("@/lib/api", () => ({
   deleteFolder: vi.fn(),
   deleteTable: vi.fn(),
   uploadFileOrPage: vi.fn(),
-  importGithubRepo: vi.fn(),
-  inspectGithubImport: vi.fn().mockResolvedValue({ skill_dirs: [] }),
-  listGithubImportRepos: vi.fn().mockResolvedValue({ connected: false, repos: [] }),
   ApiError: class ApiError extends Error {},
 }));
 
