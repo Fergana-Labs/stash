@@ -4586,20 +4586,30 @@ def _auto_connect_repo(repo_root: Path, cfg: dict) -> None:
         )
 
 
+_CLAUDE_MD_MARKER = "<!-- stash-context -->"
+
+
 def _append_claude_md(repo_root: Path) -> None:
     """Append Stash context block to CLAUDE.md in the repo."""
     claude_md = repo_root / "CLAUDE.md"
-    marker = "<!-- stash-context -->"
 
     if claude_md.exists():
         existing = claude_md.read_text()
-        if marker in existing:
+        if _CLAUDE_MD_MARKER in existing:
             return
     else:
         existing = ""
 
-    block = f"""
-{marker}
+    claude_md.write_text(existing.rstrip() + "\n" + _claude_md_block())
+    console.print("  Appended Stash context to [cyan]CLAUDE.md[/cyan]")
+
+
+def _claude_md_block() -> str:
+    """The exact block `_append_claude_md` appends — also printed as the setup
+    wizard's preview, so what the user reads is byte-for-byte what lands in
+    their CLAUDE.md."""
+    return f"""
+{_CLAUDE_MD_MARKER}
 ## Stash
 
 This repo uses [Stash](https://joinstash.ai) for shared agent sessions.
@@ -4647,8 +4657,6 @@ Common writes:
 - `stash share --title "..."` — share this session as a public Skill
 - `stash read <url>` — read a public Skill URL
 """
-    claude_md.write_text(existing.rstrip() + "\n" + block)
-    console.print("  Appended Stash context to [cyan]CLAUDE.md[/cyan]")
 
 
 _AGENT_LABEL = {
@@ -4685,7 +4693,8 @@ def _pick_agents(message: str, agents: list[str], checked: list[str]) -> list[st
             (
                 "class:instruction",
                 "   [x] = uploads its sessions to your Stash. Unchecked agents upload "
-                "nothing\n   but can still use the stash CLI — anyone can use a CLI.\n",
+                "nothing,\n   but can still read your Stash with the stash CLI "
+                "(search, browse, download).\n",
             ),
         ]
         for i, agent in enumerate(agents):
@@ -5101,14 +5110,21 @@ def _run_setup_wizard() -> None:
     # --- Folder context (any folder works — git repo not required) ---
     repo_root = _git_toplevel() or Path.cwd()
     _reserve_bottom_padding(4)
-    connect = questionary.confirm(
-        f"Add Stash instructions to CLAUDE.md in {repo_root.name}, so agents "
-        "working there know how to use Stash?",
-        default=True,
-    ).ask()
-    if connect is None:
-        raise typer.Exit(1)
-    if connect:
+    # Appending to someone's CLAUDE.md is a write into their repo — the exact
+    # block is one keypress away, so nobody has to say yes to unseen text.
+    show_choice = "Show me exactly what gets appended"
+    while True:
+        answer = questionary.select(
+            f"Add Stash instructions to CLAUDE.md in {repo_root.name}, so agents "
+            "working there know how to use Stash?",
+            choices=["Yes", show_choice, "No"],
+        ).ask()
+        if answer is None:
+            raise typer.Exit(1)
+        if answer != show_choice:
+            break
+        console.print(_claude_md_block(), markup=False, highlight=False, style="dim")
+    if answer == "Yes":
         _auto_connect_repo(repo_root, cfg)
     else:
         console.print("  [dim]Run stash connect from any project folder later.[/dim]")
