@@ -9,6 +9,7 @@ import {
   PageHeading,
   SectionHeading,
 } from "@/components/developer/DocsPrimitives";
+import LocalModelSection from "@/components/developer/LocalModelSection";
 import {
   backfillCurator,
   getCurator,
@@ -116,6 +117,8 @@ function Curator() {
           </table>
         </div>
       </section>
+
+      <LocalModelSection />
 
       <section className="mb-12">
         <SectionHeading>Feeding the shared wiki</SectionHeading>
