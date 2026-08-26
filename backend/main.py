@@ -57,6 +57,7 @@ from .routers import (
     users,
     vfs,
     webhooks,
+    workspace_agent_credentials,
 )
 from .services import demo_service
 from .services.row_validation import RowValidationError
@@ -157,6 +158,7 @@ app.include_router(sources.saved_items_router)
 app.include_router(vfs.router)
 app.include_router(developer.router)
 app.include_router(developer.users_router)
+app.include_router(workspace_agent_credentials.router)
 app.include_router(agent_chat.router)
 app.include_router(agent_credentials.router)
 app.include_router(agents.router)
