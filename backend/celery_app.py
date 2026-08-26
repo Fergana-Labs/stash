@@ -33,7 +33,6 @@ celery = Celery(
         "backend.tasks.embeddings",
         "backend.tasks.enrichment",
         "backend.tasks.link_check",
-        "backend.tasks.linear_tickets",
         "backend.tasks.session_titles",
         "backend.tasks.viz",
         "backend.tasks.demo_janitor",
@@ -128,14 +127,6 @@ celery.conf.update(
         "session-title-reconcile": {
             "task": "backend.tasks.session_titles.reconcile_missing",
             "schedule": 60.0,
-        },
-        "linear-ticket-reconcile": {
-            "task": "backend.tasks.linear_tickets.reconcile",
-            "schedule": 300.0,
-        },
-        "github-pr-linear-ticket-reconcile": {
-            "task": "backend.tasks.linear_tickets.reconcile_github_prs",
-            "schedule": 300.0,
         },
         "demo-janitor-purge-orphans": {
             "task": "backend.tasks.demo_janitor.purge_orphans",

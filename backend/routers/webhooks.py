@@ -21,8 +21,6 @@ router = APIRouter(prefix="/api/v1/integrations", tags=["webhooks"])
 
 # Reject replays / stale deliveries beyond Slack's recommended 5-minute window.
 SLACK_MAX_SKEW_S = 60 * 5
-# Linear stamps each delivery with webhookTimestamp; reject anything older.
-LINEAR_MAX_SKEW_S = 60
 
 
 # --- BEGIN Slack agent (talk-to-Stash bot) — removable feature block ---
@@ -45,12 +43,6 @@ async def _already_handled(event_id: str | None) -> bool:
         return False
     # SET NX returns True only the first time we see this event_id.
     first = await _get_redis().set(f"slack:evt:{event_id}", "1", nx=True, ex=_SLACK_EVENT_TTL_S)
-    return not first
-
-
-async def _seen_before(key: str) -> bool:
-    """True if we've already processed this dedup key within the TTL window."""
-    first = await _get_redis().set(key, "1", nx=True, ex=_SLACK_EVENT_TTL_S)
     return not first
 
 
@@ -146,44 +138,3 @@ async def telegram_webhook(request: Request):
 
 
 # --- END Telegram agent ---
-
-
-def _verify_linear_signature(body: bytes, signature: str) -> bool:
-    secret = settings.LINEAR_WEBHOOK_SECRET
-    if not secret or not signature:
-        return False
-    digest = hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
-    return hmac.compare_digest(digest, signature)
-
-
-@router.post("/linear/events")
-async def linear_events(request: Request):
-    """Linear delivers one app-level webhook for every tenant that installs the
-    OAuth app. On an Issue change we re-enrich the ticket's labels so a
-    status/assignee edit shows up without waiting for the periodic reconcile."""
-    body = await request.body()
-    if not _verify_linear_signature(body, request.headers.get("Linear-Signature", "")):
-        raise HTTPException(status_code=401, detail="bad signature")
-
-    payload = await request.json()
-    ts = payload.get("webhookTimestamp")
-    if isinstance(ts, (int, float)) and abs(time.time() - ts / 1000) > LINEAR_MAX_SKEW_S:
-        raise HTTPException(status_code=401, detail="stale delivery")
-
-    if payload.get("type") != "Issue":
-        return {"ok": True}
-
-    data = payload.get("data") or {}
-    identifier = data.get("identifier")
-    if not identifier:
-        return {"ok": True}
-
-    # Linear retries on a non-200; dedupe on the issue revision so a retry
-    # doesn't re-enqueue the same enrichment.
-    dedup_key = f"linear:evt:{data.get('id')}:{data.get('updatedAt')}"
-    if not await _seen_before(dedup_key):
-        celery.send_task(
-            "backend.tasks.linear_tickets.enrich_ticket",
-            kwargs={"ticket_identifier": identifier},
-        )
-    return {"ok": True}

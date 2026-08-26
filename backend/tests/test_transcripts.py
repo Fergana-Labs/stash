@@ -434,29 +434,25 @@ async def test_session_detail_names_the_author(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_session_linear_ticket_labels_are_extracted(client: AsyncClient):
+async def test_agent_name_matching_author_handle_is_suppressed(client: AsyncClient):
+    """The CLI plugin historically defaulted agent_name to the author's login
+    handle, so those rows name a person, not an agent. The session lists must
+    not present a person as the agent — the value is suppressed instead."""
     key = await _register(client)
     scope = await _scope(client, key)
     headers = {"Authorization": f"Bearer {key}"}
-
-    linear_prompt = """You are working on a Linear ticket `FER-19`
-
-Issue context:
-Identifier: FER-19
-Title: We should be able to update the top background color gradient/image on the homepage of a Stash
-Current status: In Progress
-URL: https://linear.app/ferganalabs/issue/FER-19/we-should-be-able-to-update-the-top-background-color-gradientimage-on
-"""
+    me = await client.get("/api/v1/users/me", headers=headers)
+    handle = me.json()["name"]
 
     pushed = await client.post(
         "/api/v1/me/sessions/events/batch",
         json={
             "events": [
                 {
-                    "agent_name": "codex",
+                    "agent_name": handle,
                     "event_type": "user_message",
-                    "content": linear_prompt,
-                    "session_id": "sess-linear",
+                    "content": "Plan the release",
+                    "session_id": "sess-handle-agent",
                 }
             ]
         },
@@ -464,46 +460,14 @@ URL: https://linear.app/ferganalabs/issue/FER-19/we-should-be-able-to-update-the
     )
     assert pushed.status_code == 201
 
+    mine = await client.get(f"/api/v1/me/sessions?owner_user_id={scope}", headers=headers)
+    assert mine.status_code == 200
+    assert mine.json()["sessions"][0]["agent_name"] is None
+
     overview = await client.get("/api/v1/me/overview", headers=headers)
     assert overview.status_code == 200
     [overview_session] = overview.json()["sessions"]
-    assert overview_session["linear_tickets"] == [
-        {
-            "ticket_identifier": "FER-19",
-            "ticket_title": (
-                "We should be able to update the top background color gradient/image "
-                "on the homepage of a Stash"
-            ),
-            "ticket_url": (
-                "https://linear.app/ferganalabs/issue/FER-19/"
-                "we-should-be-able-to-update-the-top-background-color-gradientimage-on"
-            ),
-            "source": "linear_preamble",
-            "confidence": 1.0,
-            "linear_issue_id": None,
-            "ticket_status": None,
-            "ticket_assignee_name": None,
-            "ticket_team_key": None,
-            "ticket_team_name": None,
-            "ticket_project_name": None,
-            "linear_updated_at": None,
-            "enriched_at": None,
-        }
-    ]
-
-    detail = await client.get(
-        "/api/v1/me/sessions/detail?session_id=sess-linear",
-        headers=headers,
-    )
-    assert detail.status_code == 200
-    assert detail.json()["linear_tickets"][0]["ticket_identifier"] == "FER-19"
-
-    mine = await client.get(
-        f"/api/v1/me/sessions?owner_user_id={scope}",
-        headers=headers,
-    )
-    assert mine.status_code == 200
-    assert mine.json()["sessions"][0]["linear_tickets"][0]["ticket_identifier"] == "FER-19"
+    assert overview_session["agent_name"] == ""
 
 
 @pytest.mark.asyncio

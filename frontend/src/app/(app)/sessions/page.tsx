@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useBreadcrumbs } from "@/components/BreadcrumbContext";
 import { useConfirm } from "@/components/ConfirmDialog";
 import CopyableCommandBlock from "@/components/CopyableCommandBlock";
+import CustomSelect from "@/components/CustomSelect";
 import SessionUpload from "@/components/SessionUpload";
 import { SessionsListSkeleton } from "@/components/SkeletonStates";
 import { PinIcon } from "@/components/SkillIcons";
@@ -20,32 +21,30 @@ import { usePins } from "@/lib/pins";
 import {
   groupSessionsByAgent,
   groupSessionsByDayAndUser,
-  groupSessionsByLinearTicket,
   groupSessionsByUser,
   requireSessionUserName,
   type SessionDayGroup,
   type SessionFlatGroup,
 } from "@/lib/sessionGrouping";
 
-type ViewKey = "list" | "day" | "user" | "agent" | "ticket";
+type ViewKey = "list" | "day" | "user" | "agent";
 type SortKey = "recent" | "oldest" | "events" | "name";
 
 const VIEW_STORAGE_KEY = "stash_sessions_view";
 
 
-const VIEWS: { key: ViewKey; label: string }[] = [
-  { key: "list", label: "List" },
-  { key: "day", label: "By day" },
-  { key: "user", label: "By user" },
-  { key: "agent", label: "By agent" },
-  { key: "ticket", label: "By ticket" },
+const VIEWS: { value: ViewKey; label: string }[] = [
+  { value: "list", label: "List" },
+  { value: "day", label: "By day" },
+  { value: "user", label: "By person" },
+  { value: "agent", label: "By agent" },
 ];
 
-const SORTS: { key: SortKey; label: string }[] = [
-  { key: "recent", label: "Recent" },
-  { key: "oldest", label: "Oldest" },
-  { key: "events", label: "Most events" },
-  { key: "name", label: "Name" },
+const SORTS: { value: SortKey; label: string }[] = [
+  { value: "recent", label: "Recent" },
+  { value: "oldest", label: "Oldest" },
+  { value: "events", label: "Most events" },
+  { value: "name", label: "Name" },
 ];
 
 export default function SkillSessionsPage() {
@@ -58,6 +57,7 @@ export default function SkillSessionsPage() {
   const [error, setError] = useState("");
   const [view, setView] = useState<ViewKey>("list");
   const [sort, setSort] = useState<SortKey>("recent");
+  const [showImport, setShowImport] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   function toggleSelect(sessionId: string) {
@@ -77,7 +77,7 @@ export default function SkillSessionsPage() {
   useEffect(() => {
     if (typeof window === "undefined") return;
     const saved = window.localStorage.getItem(VIEW_STORAGE_KEY) as ViewKey | null;
-    if (saved && VIEWS.some((v) => v.key === saved)) setView(saved);
+    if (saved && VIEWS.some((v) => v.value === saved)) setView(saved);
   }, []);
 
   const load = useCallback(async () => {
@@ -163,10 +163,6 @@ export default function SkillSessionsPage() {
           </div>
         )}
 
-        <div className="mt-5 mb-4">
-          <SessionUpload onUploaded={load} />
-        </div>
-
         {pinnedSessions.length > 0 && (
           <section className="mb-5">
             <h2 className="m-0 mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
@@ -183,20 +179,38 @@ export default function SkillSessionsPage() {
           </section>
         )}
 
-        <div className="mb-3 flex flex-wrap items-center gap-3 border-b border-border pb-2.5">
-          <SegmentedControl
-            label="View"
+        <div className="mt-5 mb-3 flex flex-wrap items-center gap-2 border-b border-border pb-2.5">
+          <span className="sys-label" style={{ fontSize: 10 }}>
+            View
+          </span>
+          <CustomSelect
+            ariaLabel="View"
             value={view}
             options={VIEWS}
             onChange={(v) => setViewPersisted(v as ViewKey)}
           />
-          <SegmentedControl
-            label="Sort"
+          <span className="sys-label ml-2" style={{ fontSize: 10 }}>
+            Sort
+          </span>
+          <CustomSelect
+            ariaLabel="Sort"
             value={sort}
             options={SORTS}
             onChange={(v) => setSort(v as SortKey)}
           />
+          <div className="ml-auto">
+            <PageOverflowMenu
+              importOpen={showImport}
+              onToggleImport={() => setShowImport((v) => !v)}
+            />
+          </div>
         </div>
+
+        {showImport && (
+          <div className="mb-4">
+            <SessionUpload onUploaded={load} />
+          </div>
+        )}
 
         <SessionsView
           view={view}
@@ -305,11 +319,7 @@ function SessionsView({
   }
 
   const groups =
-    view === "user"
-      ? groupSessionsByUser(sessions)
-      : view === "ticket"
-      ? groupSessionsByLinearTicket(sessions)
-      : groupSessionsByAgent(sessions);
+    view === "user" ? groupSessionsByUser(sessions) : groupSessionsByAgent(sessions);
   return (
     <div className="flex flex-col gap-4">
       {groups.map((group, i) => (
@@ -420,42 +430,49 @@ function FlatGroup({
   );
 }
 
-function SegmentedControl<T extends string>({
-  label,
-  value,
-  options,
-  onChange,
+// Advanced/rarely-used page actions live behind this control so the page
+// header stays calm — manual transcript import foremost.
+function PageOverflowMenu({
+  importOpen,
+  onToggleImport,
 }: {
-  label: string;
-  value: T;
-  options: { key: T; label: string }[];
-  onChange: (next: T) => void;
+  importOpen: boolean;
+  onToggleImport: () => void;
 }) {
+  const [open, setOpen] = useState(false);
   return (
-    <div className="inline-flex items-center gap-1.5 text-[12px]">
-      <span className="sys-label" style={{ fontSize: 10 }}>
-        {label}
-      </span>
-      <div className="inline-flex gap-1 rounded-full border border-border bg-surface/60 p-1 shadow-sm">
-        {options.map((opt) => {
-          const active = value === opt.key;
-          return (
+    <div className="relative">
+      <button
+        type="button"
+        aria-label="More actions"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+        className="cursor-pointer rounded-md border border-border bg-surface px-2 py-1 text-[13px] leading-none text-muted-foreground hover:bg-raised hover:text-foreground"
+      >
+        &#8943;
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-[60]" onClick={() => setOpen(false)} />
+          <div
+            role="menu"
+            className="absolute right-0 top-full z-[70] mt-1 w-56 rounded-md border border-border bg-surface py-1 text-[12.5px] shadow-lg"
+          >
             <button
-              key={opt.key}
               type="button"
-              onClick={() => onChange(opt.key)}
-              className={
-                "cursor-pointer rounded-full px-2.5 py-1 text-[12px] leading-none transition-colors " +
-                (active
-                  ? "bg-base font-semibold text-foreground shadow-sm"
-                  : "text-muted-foreground hover:bg-raised/70 hover:text-foreground")
-              }
+              role="menuitem"
+              onClick={() => {
+                onToggleImport();
+                setOpen(false);
+              }}
+              className="block w-full cursor-pointer px-3 py-1.5 text-left text-foreground hover:bg-raised"
             >
-              {opt.label}
+              {importOpen ? "Hide transcript import" : "Import a .jsonl transcript…"}
             </button>
-          );
-        })}
-      </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -499,42 +516,43 @@ function SessionsTable({
   const showFolder = sessions.some((s) => s.session_folder_name);
 
   return (
-    <div className="overflow-hidden rounded-lg border border-border bg-surface">
-      <div
-        className={
-          "hidden gap-3 border-b border-border bg-base/70 px-3 py-2 text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground md:grid " +
-          (showFolder ? GRID_COLS_WITH_FOLDER : GRID_COLS)
-        }
-      >
-        <span>User</span>
-        <span>Session</span>
-        {showFolder && <span>Folder</span>}
-        <span>Ticket</span>
-        <span>Events</span>
-        <span>Agent</span>
-        <span>Date</span>
-        <span>Updated</span>
-        <span />
+    <div className="scroll-thin overflow-x-auto rounded-lg border border-border bg-surface">
+      <div className={showFolder ? "md:min-w-[900px]" : "md:min-w-[820px]"}>
+        <div
+          className={
+            "hidden gap-3 border-b border-border bg-base/70 px-3 py-2 text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground md:grid " +
+            (showFolder ? GRID_COLS_WITH_FOLDER : GRID_COLS)
+          }
+        >
+          <span>User</span>
+          <span>Session</span>
+          {showFolder && <span>Folder</span>}
+          <span>Events</span>
+          <span>Agent</span>
+          <span>Date</span>
+          <span>Updated</span>
+          <span />
+        </div>
+        {sessions.map((session) => (
+          <SessionTableRow
+            key={session.session_id}
+            session={session}
+            showFolder={showFolder}
+            pinned={isPinned(session.session_id)}
+            onTogglePin={onTogglePin}
+            selected={selectedIds.has(session.session_id)}
+            onToggleSelect={onToggleSelect}
+          />
+        ))}
       </div>
-      {sessions.map((session) => (
-        <SessionTableRow
-          key={session.session_id}
-          session={session}
-          showFolder={showFolder}
-          pinned={isPinned(session.session_id)}
-          onTogglePin={onTogglePin}
-          selected={selectedIds.has(session.session_id)}
-          onToggleSelect={onToggleSelect}
-        />
-      ))}
     </div>
   );
 }
 
 const GRID_COLS =
-  "md:grid-cols-[minmax(128px,0.68fr)_minmax(240px,1.7fr)_86px_58px_minmax(104px,0.62fr)_94px_88px_28px]";
+  "md:grid-cols-[minmax(128px,0.68fr)_minmax(240px,1.7fr)_58px_minmax(104px,0.62fr)_94px_88px_28px]";
 const GRID_COLS_WITH_FOLDER =
-  "md:grid-cols-[minmax(128px,0.68fr)_minmax(200px,1.4fr)_minmax(110px,0.6fr)_86px_58px_minmax(104px,0.62fr)_94px_88px_28px]";
+  "md:grid-cols-[minmax(128px,0.68fr)_minmax(200px,1.4fr)_minmax(110px,0.6fr)_58px_minmax(104px,0.62fr)_94px_88px_28px]";
 
 function SessionTableRow({
   session,
@@ -552,9 +570,7 @@ function SessionTableRow({
   onToggleSelect: (sessionId: string) => void;
 }) {
   const user = requireSessionUserName(session.user_name);
-  const agent = session.agent_name || "agent";
   const avatar = avatarFor(user);
-  const ticket = primaryTicket(session);
 
   return (
     <Link
@@ -586,18 +602,12 @@ function SessionTableRow({
       <div className="min-w-0">
         <div className="flex min-w-0 items-center gap-2">
           <div className="min-w-0 flex-1 truncate font-medium text-foreground">{sessionTitle(session)}</div>
-          {ticket && (
-            <span className="md:hidden">
-              <LinearTicketPill ticket={ticket} compact />
-            </span>
-          )}
         </div>
         <div className="mt-0.5 truncate text-[11px] text-muted-foreground md:hidden">
           {[
             user,
             session.session_folder_name,
-            ticket?.ticket_identifier,
-            agent,
+            session.agent_name,
             formatRelative(session.last_event_at),
           ]
             .filter(Boolean)
@@ -609,14 +619,16 @@ function SessionTableRow({
           {session.session_folder_name ?? "—"}
         </span>
       )}
-      <span className="hidden min-w-0 md:block">
-        {ticket ? <LinearTicketPill ticket={ticket} /> : <span className="text-[11px] text-muted-foreground">None</span>}
-      </span>
       <span className="hidden items-center gap-1 text-[12px] text-muted-foreground md:flex">
         <MessageIcon />
         {session.event_count}
       </span>
-      <span title={agent} className="hidden truncate text-muted-foreground md:block">{agent}</span>
+      <span
+        title={session.agent_name || undefined}
+        className="hidden truncate text-muted-foreground md:block"
+      >
+        {session.agent_name || "\u2014"}
+      </span>
       <span className="hidden whitespace-nowrap text-[12px] text-muted-foreground md:block">
         {formatDate(session.last_event_at || session.started_at)}
       </span>
@@ -651,30 +663,6 @@ function SessionTableRow({
         <PinIcon className="text-[15px]" />
       </span>
     </Link>
-  );
-}
-
-function primaryTicket(session: SessionSummary) {
-  return session.linear_tickets[0] ?? null;
-}
-
-function LinearTicketPill({
-  ticket,
-  compact = false,
-}: {
-  ticket: NonNullable<ReturnType<typeof primaryTicket>>;
-  compact?: boolean;
-}) {
-  return (
-    <span
-      className={
-        "inline-flex max-w-full shrink-0 items-center rounded border border-[var(--color-brand-200)] bg-[var(--color-brand-50)] font-mono font-semibold text-[var(--color-brand-700)] " +
-        (compact ? "px-1.5 py-0 text-[10px]" : "px-2 py-0.5 text-[11px]")
-      }
-      title={ticket.ticket_title || ticket.ticket_identifier}
-    >
-      {ticket.ticket_identifier}
-    </span>
   );
 }
 

@@ -18,7 +18,6 @@ from ..auth import get_current_user, get_scope
 from ..config import settings
 from ..database import get_pool
 from ..services import (
-    linear_ticket_service,
     memory_service,
     permission_service,
     security_audit_service,
@@ -63,7 +62,6 @@ def _session_response(row: dict, title: str | None = None) -> dict:
             row.get("title_source"),
             row["session_id"],
         ),
-        "linear_tickets": linear_ticket_service.tickets_response(row.get("linear_tickets")),
         "agent_name": row.get("agent_name") or "",
         "cwd": row.get("cwd"),
         "files_touched": files_touched,
@@ -154,9 +152,12 @@ async def list_my_sessions(
           p.id AS id,
           p.owner_user_id,
           owner.display_name AS owner_name,
-          {linear_ticket_service.sql_json_agg("p")} AS linear_tickets,
           NULLIF(author.display_name, '') AS user_name,
-          p.agent_name,
+          -- The CLI plugin historically defaulted agent_name to the author's
+          -- login handle (users.name), so many rows carry a person, not an
+          -- agent. A value equal to the author's handle is that default, not
+          -- an agent name — suppress it rather than display a user as one.
+          NULLIF(p.agent_name, author.name) AS agent_name,
           sf.name AS session_folder_name,
           title.title_source,
           counts.event_count,
@@ -205,9 +206,6 @@ async def list_my_sessions(
         for session in session_group:
             session["title"] = titles[session["session_id"]]
             session.pop("title_source", None)
-            session["linear_tickets"] = linear_ticket_service.tickets_response(
-                session.get("linear_tickets")
-            )
     return {"sessions": sessions}
 
 
@@ -267,7 +265,6 @@ async def _session_detail_payload(
         session,
         title=await session_title_service.title_for_events(owner_user_id, session_id, events),
     )
-    payload["linear_tickets"] = await linear_ticket_service.list_session_labels(session["id"])
     payload["artifacts"] = await _session_artifacts(session["id"])
     payload["created_by_display_name"] = await _created_by_display_name(session.get("created_by"))
     return payload
