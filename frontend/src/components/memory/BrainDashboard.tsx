@@ -18,6 +18,7 @@ import { StashIcon } from "@/components/SkillIcons";
 import {
   getEmbeddingProjection,
   getMe,
+  getMemoryFolder,
   getMeOverview,
   getMemoryGraph,
   listFileActivity,
@@ -55,6 +56,7 @@ export default function BrainDashboard() {
   const sentinelRef = useRef<HTMLDivElement>(null);
   const [projection, setProjection] = useState<EmbeddingProjection | null>(null);
   const [graph, setGraph] = useState<WikiGraphData | null>(null);
+  const [memoryFolderId, setMemoryFolderId] = useState<string | null>(null);
   const [projectionLoaded, setProjectionLoaded] = useState(false);
   const [graphLoaded, setGraphLoaded] = useState(false);
   const [firstName, setFirstName] = useState<string | null>(null);
@@ -150,6 +152,13 @@ export default function BrainDashboard() {
       .finally(() => {
         if (!cancelled) setGraphLoaded(true);
       });
+    // The Memory folder backs the card's "Browse your memories" link — the
+    // wiki lives in the filesystem, this is its front door.
+    getMemoryFolder()
+      .then((f) => {
+        if (!cancelled) setMemoryFolderId(f.id);
+      })
+      .catch(() => {});
     return () => {
       cancelled = true;
     };
@@ -192,7 +201,19 @@ export default function BrainDashboard() {
           <div className="flex min-w-0 flex-col gap-4 lg:col-span-2">
             {/* Wiki graph — the curated context graph of linked pages, obsidian
                 style. The centerpiece: click a node to open its page. */}
-            <VizCard label="Memory wiki">
+            <VizCard
+              label="Memory wiki"
+              action={
+                memoryFolderId && (
+                  <Link
+                    href={`/folders/${memoryFolderId}`}
+                    className="text-[12px] font-medium text-[var(--color-brand-600)] hover:underline"
+                  >
+                    Browse your memories →
+                  </Link>
+                )
+              }
+            >
               {!graphLoaded ? (
                 <SkeletonBlock className="h-[560px] w-full" />
               ) : graph && graph.nodes.length > 0 ? (
@@ -269,18 +290,24 @@ export default function BrainDashboard() {
 // by the map, topics, and timeline sections.
 function VizCard({
   label,
+  action,
   className,
   scroll,
   children,
 }: {
   label: string;
+  /** Right-aligned affordance on the label row (e.g. a browse link). */
+  action?: ReactNode;
   className?: string;
   scroll?: boolean;
   children: ReactNode;
 }) {
   return (
     <section className={className}>
-      <div className="sys-label mb-1.5">{label}</div>
+      <div className="mb-1.5 flex items-baseline justify-between">
+        <div className="sys-label">{label}</div>
+        {action}
+      </div>
       <div className={`card-soft p-3${scroll ? " overflow-x-auto" : ""}`}>{children}</div>
     </section>
   );
@@ -295,7 +322,7 @@ function FeedCard({ event }: { event: ActivityEvent }) {
       <div className="flex flex-wrap items-baseline gap-2 text-[12.5px] text-dim">
         <span>
           <strong className="font-medium text-foreground">
-            {event.agent_name ?? "Stash admin"}
+            {event.agent_name ?? event.actor.display_name}
           </strong>{" "}
           {verb}
         </span>

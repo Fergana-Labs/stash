@@ -487,6 +487,7 @@ export interface BillingInfo {
   status?: string | null;
   connection_count?: number;
   connection_limit?: number;
+  free_curator_runs_per_month?: number;
 }
 
 export async function getBilling(): Promise<BillingInfo> {

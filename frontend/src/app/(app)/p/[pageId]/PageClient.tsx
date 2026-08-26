@@ -20,6 +20,9 @@ import HtmlPageView, {
   extractCommentIdsFromHtml,
   type HtmlSelectionInfo,
 } from "@/components/content/HtmlPageView";
+import HtmlPageEditor, {
+  type HtmlPageEditorHandle,
+} from "@/components/content/HtmlPageEditor";
 import ExportDeckButton from "@/components/export/ExportDeckButton";
 import ResourceShareButton from "@/components/share/ResourceShareButton";
 import FileViewerHeader from "@/components/content/FileViewerHeader";
@@ -152,6 +155,7 @@ export default function SkillPageView({ pageId }: { pageId: string }) {
     selection: HtmlSelectionInfo;
   } | null>(null);
   const [htmlEditMode, setHtmlEditMode] = useState(false);
+  const htmlEditorRef = useRef<HtmlPageEditorHandle | null>(null);
   const iframeBoxRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     htmlSelectionRef.current = htmlSelection;
@@ -367,6 +371,16 @@ export default function SkillPageView({ pageId }: { pageId: string }) {
       }
     },
     [pageId, reconcileAfterSave]
+  );
+
+  // Source-editor saves also bump contentVersion: the read view pins its
+  // iframe to the html it mounted with, so without the bump, leaving edit
+  // mode would show the pre-save document until a full reload.
+  const handleHtmlEditorSave = useCallback(
+    (nextHtml: string) => {
+      void handleHtmlMutated(nextHtml).then(() => setContentVersion((v) => v + 1));
+    },
+    [handleHtmlMutated]
   );
 
   const handleAddCommentMarkdown = useCallback(
@@ -639,7 +653,7 @@ export default function SkillPageView({ pageId }: { pageId: string }) {
         }
         tags={isHtml ? [{ label: "html", tone: "brand" }] : undefined}
         meta={metaItems.length ? metaItems : undefined}
-        saveStatus={page && !isHtml ? saveStatus : null}
+        saveStatus={page && (!isHtml || htmlEditMode) ? saveStatus : null}
         rightExtras={
           page ? (
             <div className="flex items-center gap-2">
@@ -654,7 +668,12 @@ export default function SkillPageView({ pageId }: { pageId: string }) {
               {isHtml && (
                 <button
                   type="button"
-                  onClick={() => setHtmlEditMode((v) => !v)}
+                  onClick={() => {
+                    // Leaving edit mode saves the buffer now — the debounce
+                    // timer must not outlive the editor.
+                    if (htmlEditMode) htmlEditorRef.current?.flush();
+                    setHtmlEditMode((v) => !v);
+                  }}
                   className="cursor-pointer rounded-md border border-border-subtle bg-raised px-2.5 py-1 text-[12px] font-medium text-foreground hover:bg-raised-2"
                 >
                   {htmlEditMode ? "Done" : "Edit"}
@@ -771,7 +790,14 @@ export default function SkillPageView({ pageId }: { pageId: string }) {
 
           <article ref={articleRef} className="text-[15px] leading-relaxed text-foreground">
             {page ? (
-              isHtml ? (
+              isHtml && htmlEditMode ? (
+                <HtmlPageEditor
+                  ref={htmlEditorRef}
+                  file={page}
+                  onSave={handleHtmlEditorSave}
+                  onSaveStatusChange={setSaveStatus}
+                />
+              ) : isHtml ? (
                 <div ref={iframeBoxRef} className="relative">
                   <HtmlPageView
                     key={`${page.id}:${contentVersion}`}
@@ -786,9 +812,8 @@ export default function SkillPageView({ pageId }: { pageId: string }) {
                     onWrapComplete={() => setPendingWrapId(null)}
                     onHtmlMutated={handleHtmlMutated}
                     stripCommentToken={stripCommentToken}
-                    editable={htmlEditMode}
                   />
-                  {htmlSelection && !htmlComposer && !htmlEditMode && (
+                  {htmlSelection && !htmlComposer && (
                     <button
                       type="button"
                       onMouseDown={(e) => e.preventDefault()}

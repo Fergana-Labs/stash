@@ -437,48 +437,46 @@ async def test_file_activity_excludes_files_inside_the_memory_subtree(client: As
 
 
 @pytest.mark.asyncio
-async def test_file_activity_excludes_memory_shared_from_another_scope(client: AsyncClient, pool):
-    """Memory belongs to the curator log whoever's Memory it is. The feed spans
-    every scope the caller can read, so excluding only the caller's Memory lets
-    a teammate's nightly curation churn land in the caller's Home."""
+async def test_file_activity_stays_in_the_active_scope_even_for_shared_content(
+    client: AsyncClient, pool
+):
+    """Home's feed answers "what landed in THIS stash", so a page another user
+    shared with the caller — readable everywhere else — must not appear: it is
+    that scope's activity, not the caller's."""
     owner_key = await _register(client, "activity_mem_owner")
     friend_key = await _register(client, "activity_mem_friend")
     owner = UUID((await _scope(client, owner_key))["id"])
     friend = UUID((await _scope(client, friend_key))["id"])
 
-    memory_id = (await client.get("/api/v1/me/memory-folder", headers=_auth(owner_key))).json()[
-        "id"
-    ]
-    wiki = await client.post(
-        "/api/v1/me/pages/new",
-        json={"name": "Their wiki page", "content": "curated", "folder_id": memory_id},
-        headers=_auth(owner_key),
-    )
-    assert wiki.status_code == 201
     plain = await client.post(
         "/api/v1/me/pages/new",
         json={"name": "Their shared page", "content": "hello"},
         headers=_auth(owner_key),
     )
     assert plain.status_code == 201
-    for page_id in (wiki.json()["id"], plain.json()["id"]):
-        await pool.execute(
-            "INSERT INTO shares (owner_user_id, object_type, object_id, principal_type, "
-            "principal_id, permission, created_by) VALUES ($1,'page',$2,'user',$3,'read',$1)",
-            owner,
-            UUID(page_id),
-            friend,
-        )
+    await pool.execute(
+        "INSERT INTO shares (owner_user_id, object_type, object_id, principal_type, "
+        "principal_id, permission, created_by) VALUES ($1,'page',$2,'user',$3,'read',$1)",
+        owner,
+        UUID(plain.json()["id"]),
+        friend,
+    )
+    mine = await client.post(
+        "/api/v1/me/pages/new",
+        json={"name": "My own page", "content": "hi"},
+        headers=_auth(friend_key),
+    )
+    assert mine.status_code == 201
 
     resp = await client.get(
         "/api/v1/me/file-activity", params={"limit": 200}, headers=_auth(friend_key)
     )
     assert resp.status_code == 200
     labels = [e["target_label"] for e in resp.json()["events"]]
-    # The plain share proves the feed does surface another scope's content —
-    # so the wiki page's absence is the Memory rule, not a missing share.
-    assert "Their shared page" in labels
-    assert "Their wiki page" not in labels
+    # The share is readable (that's what shares do) — it just isn't this
+    # scope's activity.
+    assert "My own page" in labels
+    assert "Their shared page" not in labels
 
 
 @pytest.mark.asyncio

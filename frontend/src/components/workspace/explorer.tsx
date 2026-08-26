@@ -347,8 +347,7 @@ export default function Explorer({ section }: { section: ExplorerSection }) {
             undefined
           }
           openRootTab={isSessions ? () => open("sessions-home", "sessions", "Sessions") : undefined}
-          showImport={!isSessions}
-          importIntent={section === "skills" ? "skills" : "files"}
+          showImport={section === "skills"}
           vfsWritable={!isSessions}
         />
       </div>

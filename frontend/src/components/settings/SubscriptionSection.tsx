@@ -44,8 +44,11 @@ export default function SubscriptionSection() {
       <div>
         <h2 className="text-base font-semibold text-foreground">Subscription</h2>
         <p className="text-xs text-muted-foreground mt-0.5">
-          The free plan includes {billing.connection_limit} connected accounts. Pro is $20/month
-          for unlimited integrations.
+          Free includes {billing.connection_limit} connected source accounts and{" "}
+          {billing.free_curator_runs_per_month} Memory-curator runs per month. Pro
+          ($20/month) includes unlimited connected sources, unlimited curator runs, and
+          the managed agent model — your agent runs without connecting a Claude, ChatGPT,
+          or OpenRouter account of your own.
         </p>
         <p className="text-xs text-muted-foreground mt-0.5">
           Want a shared team workspace? Email{" "}

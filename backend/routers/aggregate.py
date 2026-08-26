@@ -5,7 +5,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
 
-from ..auth import get_current_user
+from ..auth import get_current_user, get_scope
 from ..database import get_pool
 from ..models import UserPageEntry, UserPageListResponse
 from ..services import (
@@ -76,28 +76,23 @@ async def list_my_recents(current_user: dict = Depends(get_current_user)):
 async def list_file_activity(
     limit: int = Query(50, ge=1, le=200),
     before: datetime | None = Query(None),
-    owner_user_id: UUID | None = Query(None),
     current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
 ):
-    """New and edited files and pages across accessible scopes, cursor-paginated
-    by ts. Memory subtrees are excluded: curation output is the curator log's
-    story, not file activity. Every scope's Memory is excluded, not just the
-    caller's — a workspace scope's nightly curation churn would otherwise flood
-    the feed of every member who can read it."""
+    """New and edited files and pages in the active scope (personal, or the
+    workspace named by X-Stash-Scope), cursor-paginated by ts. Only the scope's
+    own rows appear — content shared from other scopes belongs to those scopes'
+    Homes, not this one's. The Memory subtree is excluded: curation output is
+    the curator log's story, not file activity."""
     pool = get_pool()
     events = await pool.fetch(
         """
         WITH RECURSIVE accessible_scopes AS (
-          -- The user's own scope plus any scope that has shared content with
-          -- the user. Page/file rows still pass readable_content_condition, so
-          -- a share only surfaces the specific shared rows — never the whole
-          -- scope.
+          -- The active scope only. Page/file rows still pass
+          -- readable_content_condition, the row-level access predicate.
           SELECT u.id, u.name
           FROM users u
-          WHERE u.id IN """
-        + permission_service.accessible_scope_ids_sql(1)
-        + """
-          AND ($3::uuid IS NULL OR u.id = $3)
+          WHERE u.id = $3
         ),
         memory_folders AS (
           SELECT mf.id FROM folders mf
@@ -149,7 +144,7 @@ async def list_file_activity(
         """,
         current_user["id"],
         limit + 1,
-        owner_user_id,
+        scope_user_id,
         before,
     )
     has_more = len(events) > limit

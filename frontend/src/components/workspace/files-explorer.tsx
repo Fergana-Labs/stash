@@ -80,8 +80,7 @@ export default function FilesExplorer({
   loadShared,
   newRootItem,
   openRootTab,
-  showImport = true,
-  importIntent = "files",
+  showImport = false,
   vfsWritable = true,
   tabSection,
 }: {
@@ -108,12 +107,9 @@ export default function FilesExplorer({
   newRootItem?: { label: string; run: () => Promise<Item | void> };
   /** Double-clicking the root crumb can open a native overview tab. */
   openRootTab?: () => void;
-  /** Show the GitHub import button. Default true. */
+  /** Show the GitHub repo import button (Skills only — repos whose folders
+   *  carry a SKILL.md land as skills). Default false. */
   showImport?: boolean;
-  /** Where the user expects a GitHub import to surface. Content decides where
-   *  it actually lands (SKILL.md folders derive as skills), so a mismatch
-   *  gets a confirmation first. */
-  importIntent?: "files" | "skills";
   /** This section can create VFS items (new file/folder/upload). Default true;
    *  Sessions is a read-through view, so false. */
   vfsWritable?: boolean;
@@ -349,22 +345,14 @@ export default function FilesExplorer({
     setImporting(true);
     try {
       // Content decides where the import surfaces (SKILL.md folders derive as
-      // skills) — when that won't match the section the user is importing
-      // from, say so before copying anything.
+      // skills) — when that won't match the Skills section the user is
+      // importing from, say so before copying anything.
       const { skill_dirs } = await inspectGithubImport(target);
-      if (importIntent === "skills" && skill_dirs.length === 0) {
+      if (skill_dirs.length === 0) {
         const ok = await confirm({
           title: "No SKILL.md in this repo",
           body: "It will be imported as a plain folder under Files, not Skills. You can add a SKILL.md afterwards to turn it into a skill.",
           confirmLabel: "Import to Files",
-        });
-        if (!ok) return;
-      }
-      if (importIntent === "files" && skill_dirs.length > 0) {
-        const ok = await confirm({
-          title: "This repo contains skills",
-          body: `${skill_dirs.length} folder${skill_dirs.length !== 1 ? "s" : ""} with a SKILL.md will show up under Skills instead of Files. Everything else lands in Files as usual.`,
-          confirmLabel: "Import",
         });
         if (!ok) return;
       }
