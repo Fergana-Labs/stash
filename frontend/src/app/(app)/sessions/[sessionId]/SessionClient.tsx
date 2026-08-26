@@ -17,49 +17,25 @@ import { useEscapeKey } from "@/hooks/useEscapeKey";
 import {
   fetchAuthed,
   getSessionDetail,
+  getSessionEvents,
   getSessionEventsPage,
+  listFiles,
   listSkills,
   materializeSession,
   renameSession,
   trashItem,
   type FolderBackedSkill,
   type SessionDetail,
-  type SessionEvent,
 } from "@/lib/api";
+import type { FileInfo } from "@/lib/types";
 import EditableTitle from "@/components/content/EditableTitle";
 import { getScope } from "@/lib/scope-store";
 import { useTabTitle } from "@/lib/workspace-store";
+import { eventToTurn, toolDisplay, type MessageTurn } from "./transcript";
 
 // One transcript page. The viewer loads this many turns at a time and fetches
 // more on scroll, so long sessions don't load every event up front.
 const TRANSCRIPT_PAGE_SIZE = 100;
-
-interface MessageTurn {
-  kind: "message";
-  id: string;
-  who: "user" | "assistant";
-  name: string;
-  time?: string;
-  dateKey?: string;
-  dateLabel?: string;
-  content: string;
-  toolName?: string | null;
-}
-
-function formatDateKey(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
-function formatSessionDate(date: Date): string {
-  return date.toLocaleDateString(undefined, {
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-  });
-}
 
 function cleanSessionTitle(title: string): string {
   return title
@@ -85,52 +61,6 @@ function transcriptFilename(detail: SessionDetail, sessionId: string): string {
     .trim()
     .slice(0, 80);
   return `${name}.jsonl`;
-}
-
-function eventToTurn(ev: SessionEvent): MessageTurn {
-  const createdAt = ev.created_at ? new Date(ev.created_at) : null;
-
-  return {
-    kind: "message",
-    id: ev.id,
-    who: ev.role,
-    name: ev.role === "assistant" ? "agent" : "user",
-    time: createdAt
-      ? createdAt.toLocaleTimeString(undefined, {
-          hour: "numeric",
-          minute: "2-digit",
-        })
-      : undefined,
-    dateKey: createdAt ? formatDateKey(createdAt) : undefined,
-    dateLabel: createdAt ? formatSessionDate(createdAt) : undefined,
-    content: ev.content,
-    toolName: ev.tool_name,
-  };
-}
-
-const AVATAR_PALETTE: { bg: string; fg: string }[] = [
-  { bg: "bg-rose-200", fg: "text-rose-800" },
-  { bg: "bg-orange-200", fg: "text-orange-800" },
-  { bg: "bg-emerald-200", fg: "text-emerald-800" },
-  { bg: "bg-amber-200", fg: "text-amber-900" },
-  { bg: "bg-sky-200", fg: "text-sky-800" },
-  { bg: "bg-teal-200", fg: "text-teal-800" },
-];
-
-function avatarFor(name: string) {
-  // Deterministic color per author (no hardcoded names). djb2-ish hash.
-  let h = 5381;
-  for (let i = 0; i < name.length; i++) h = (h * 33 + name.charCodeAt(i)) >>> 0;
-  return AVATAR_PALETTE[h % AVATAR_PALETTE.length];
-}
-
-function initials(name: string): string {
-  return name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((p) => p[0]?.toUpperCase() ?? "")
-    .join("");
 }
 
 export default function SessionViewerPage({ sessionId }: { sessionId: string }) {
@@ -243,7 +173,9 @@ export default function SessionViewerPage({ sessionId }: { sessionId: string }) 
         detail.agent_name || page.events.find((event) => event.agent_name)?.agent_name || ""
       );
       setSessionDetail(detail);
-      setTurns(page.events.map(eventToTurn));
+      setTurns(
+        page.events.map((ev) => eventToTurn(ev, sessionId, detail.created_by_display_name))
+      );
       setTotalTurns(page.total);
       setHasMore(page.has_more);
     } catch (e) {
@@ -255,19 +187,91 @@ export default function SessionViewerPage({ sessionId }: { sessionId: string }) 
     if (user) load();
   }, [user, load]);
 
+  const humanName = sessionDetail?.created_by_display_name ?? null;
+
   const loadMore = useCallback(async () => {
     if (loadingMore || !hasMore) return;
     setLoadingMore(true);
     try {
       const page = await getSessionEventsPage(sessionId, TRANSCRIPT_PAGE_SIZE, turns.length);
-      setTurns((prev) => [...prev, ...page.events.map(eventToTurn)]);
+      setTurns((prev) => [
+        ...prev,
+        ...page.events.map((ev) => eventToTurn(ev, sessionId, humanName)),
+      ]);
       setHasMore(page.has_more);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load more messages");
     } finally {
       setLoadingMore(false);
     }
-  }, [sessionId, loadingMore, hasMore, turns.length]);
+  }, [sessionId, loadingMore, hasMore, turns.length, humanName]);
+
+  // --- In-session search + human-turn navigation -------------------------
+  const [query, setQuery] = useState("");
+  const [focusIndex, setFocusIndex] = useState<number | null>(null);
+  const [loadingAll, setLoadingAll] = useState(false);
+
+  // Searching only what's paged in would silently miss the rest of a long
+  // session, so the first keystroke drains the full transcript once.
+  useEffect(() => {
+    if (!query.trim() || !hasMore || loadingAll) return;
+    setLoadingAll(true);
+    getSessionEvents(sessionId)
+      .then((events) => {
+        setTurns(events.map((ev) => eventToTurn(ev, sessionId, humanName)));
+        setHasMore(false);
+      })
+      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load transcript"))
+      .finally(() => setLoadingAll(false));
+  }, [query, hasMore, loadingAll, sessionId, humanName]);
+
+  const matches = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return [];
+    const hits: number[] = [];
+    turns.forEach((turn, i) => {
+      const haystack = `${turn.name} ${turn.toolName ?? ""} ${turn.content}`.toLowerCase();
+      if (haystack.includes(q)) hits.push(i);
+    });
+    return hits;
+  }, [turns, query]);
+
+  const humanTurnIndices = useMemo(
+    () => turns.flatMap((turn, i) => (turn.who === "user" ? [i] : [])),
+    [turns]
+  );
+
+  const jumpTo = useCallback((index: number) => {
+    setFocusIndex(index);
+    document.getElementById(`turn-${index}`)?.scrollIntoView({ block: "center" });
+  }, []);
+
+  const jumpToMatch = useCallback(
+    (direction: 1 | -1) => {
+      if (matches.length === 0) return;
+      const pos = matches.indexOf(focusIndex ?? -1);
+      const nextPos =
+        pos === -1
+          ? direction === 1
+            ? 0
+            : matches.length - 1
+          : (pos + direction + matches.length) % matches.length;
+      jumpTo(matches[nextPos]);
+    },
+    [matches, focusIndex, jumpTo]
+  );
+
+  const jumpToHuman = useCallback(
+    (direction: 1 | -1) => {
+      const from = focusIndex ?? (direction === 1 ? -1 : turns.length);
+      const next =
+        direction === 1
+          ? humanTurnIndices.find((i) => i > from)
+          : [...humanTurnIndices].reverse().find((i) => i < from);
+      if (next !== undefined) jumpTo(next);
+    },
+    [focusIndex, turns.length, humanTurnIndices, jumpTo]
+  );
 
   // Auto-load the next page when the sentinel scrolls into view; the button it
   // wraps is the manual fallback if the observer can't fire.
@@ -326,7 +330,7 @@ export default function SessionViewerPage({ sessionId }: { sessionId: string }) 
                 }}
               />
             </h1>
-            {(sessionDate || totalTurns > 0 || agentName) && (
+            {(sessionDate || totalTurns > 0 || agentName || sessionDetail?.cwd) && (
               <div className="mt-1.5 flex flex-wrap items-center gap-2.5 text-[12px] text-muted-foreground">
                 {sessionDate && <span>{sessionDate}</span>}
                 {totalTurns > 0 && (
@@ -334,10 +338,56 @@ export default function SessionViewerPage({ sessionId }: { sessionId: string }) 
                     {totalTurns} message{totalTurns === 1 ? "" : "s"}
                   </span>
                 )}
-                {agentName && <span>{agentName}</span>}
+                {agentName && <span title="Agent that ran this session">{agentName}</span>}
+                {sessionDetail?.cwd && (
+                  <span className="font-mono text-[11px]" title="Working directory">
+                    {sessionDetail.cwd}
+                  </span>
+                )}
               </div>
             )}
           </div>
+
+          {totalTurns > 0 && (
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              <input
+                type="search"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") jumpToMatch(e.shiftKey ? -1 : 1);
+                }}
+                placeholder="Search this session…"
+                className="w-56 rounded-md border border-border bg-base px-2.5 py-1.5 text-[12.5px] text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-[var(--color-brand-600)]"
+              />
+              {query.trim() && (
+                <>
+                  <span className="text-[12px] text-muted-foreground">
+                    {loadingAll
+                      ? "Loading full transcript…"
+                      : `${matches.length} match${matches.length === 1 ? "" : "es"}`}
+                  </span>
+                  <JumpButton label="Previous match" onClick={() => jumpToMatch(-1)} disabled={matches.length === 0}>
+                    ↑
+                  </JumpButton>
+                  <JumpButton label="Next match" onClick={() => jumpToMatch(1)} disabled={matches.length === 0}>
+                    ↓
+                  </JumpButton>
+                </>
+              )}
+              {humanTurnIndices.length > 0 && (
+                <>
+                  <span className="flex-1" />
+                  <JumpButton label="Previous human message" onClick={() => jumpToHuman(-1)}>
+                    ↑ human
+                  </JumpButton>
+                  <JumpButton label="Next human message" onClick={() => jumpToHuman(1)}>
+                    ↓ human
+                  </JumpButton>
+                </>
+              )}
+            </div>
+          )}
 
           {error && (
             <div className="mb-4 rounded-lg border border-red-300/40 bg-red-500/10 px-4 py-2 text-[13px] text-red-500">
@@ -347,16 +397,18 @@ export default function SessionViewerPage({ sessionId }: { sessionId: string }) 
 
           <div className="flex flex-col">
             {turns.map((turn, i) => {
+              // The header already names the session's date, so the first
+              // message needs no divider — only an actual date change does.
               const previousTurn = turns[i - 1];
               const dateDividerLabel =
-                turn.dateLabel && turn.dateKey !== previousTurn?.dateKey
+                i > 0 && turn.dateLabel && turn.dateKey !== previousTurn?.dateKey
                   ? turn.dateLabel
                   : null;
 
               return (
                 <div key={i}>
                   {dateDividerLabel ? <DateDivider label={dateDividerLabel} /> : null}
-                  <MessageRow turn={turn} index={i} />
+                  <MessageRow turn={turn} index={i} focused={focusIndex === i} />
                 </div>
               );
             })}
@@ -371,6 +423,11 @@ export default function SessionViewerPage({ sessionId }: { sessionId: string }) 
                   {loadingMore ? "Loading…" : "Load more"}
                 </button>
               </div>
+            )}
+            {!hasMore && turns.length > 0 && (
+              <DateDivider
+                label={`End of session · ${totalTurns} message${totalTurns === 1 ? "" : "s"}`}
+              />
             )}
             {!error && totalTurns === 0 && (
               <div className="rounded-lg border border-dashed border-border bg-surface/30 px-4 py-6 text-center text-[12.5px] text-muted-foreground">
@@ -441,6 +498,7 @@ function SaveToSkillButton({
         onClick={() => setOpen((o) => !o)}
         aria-haspopup="menu"
         aria-expanded={open}
+        title="Save this session's transcript as a page inside a skill you pick"
         className="cursor-pointer rounded-md border border-border bg-base px-2.5 py-1.5 text-[12.5px] font-medium text-foreground hover:bg-raised"
       >
         Save to Skill <span aria-hidden className="text-[10px]">▾</span>
@@ -476,6 +534,21 @@ function SessionAside({ detail }: { detail: SessionDetail | null }) {
   const artifacts = detail?.artifacts ?? [];
   const tickets = detail?.linear_tickets ?? [];
 
+  // Paths the session touched are only local paths; a path becomes a link
+  // when a file with that name exists in the viewer's stash.
+  const [stashFiles, setStashFiles] = useState<FileInfo[]>([]);
+  useEffect(() => {
+    if (filesTouched.length === 0) return;
+    listFiles()
+      .then(setStashFiles)
+      .catch(() => setStashFiles([]));
+  }, [filesTouched.length]);
+
+  const stashFileFor = (path: string): FileInfo | undefined => {
+    const basename = path.split("/").pop();
+    return stashFiles.find((f) => f.name === basename);
+  };
+
   return (
     <aside className="hidden lg:block">
       <div className="sticky top-16 flex flex-col gap-3">
@@ -491,22 +564,38 @@ function SessionAside({ detail }: { detail: SessionDetail | null }) {
         )}
 
         <div className="card-soft p-3.5">
-          <div className="sys-label">Artifacts</div>
+          <div className="sys-label">Files referenced in this session</div>
           {filesTouched.length > 0 && (
             <div className="mt-2 flex flex-col gap-1.5">
-              {filesTouched.map((file) => (
-                <div
-                  key={file}
-                  className="flex items-center gap-1.5 rounded-md border border-border-subtle bg-base px-2 py-1.5 font-mono text-[11px] text-foreground"
-                >
-                  <FileGlyph />
-                  <span className="truncate">{file}</span>
-                </div>
-              ))}
+              {filesTouched.map((file) => {
+                const stashFile = stashFileFor(file);
+                if (!stashFile) {
+                  return (
+                    <div
+                      key={file}
+                      className="flex items-center gap-1.5 rounded-md border border-border-subtle bg-base px-2 py-1.5 font-mono text-[11px] text-foreground"
+                    >
+                      <FileGlyph />
+                      <span className="truncate">{file}</span>
+                    </div>
+                  );
+                }
+                return (
+                  <Link
+                    key={file}
+                    href={`/f/${stashFile.id}`}
+                    title={file}
+                    className="linkrow px-2 py-1.5 font-mono text-[11px]"
+                  >
+                    <FileGlyph />
+                    <span className="min-w-0 flex-1 truncate">{file}</span>
+                  </Link>
+                );
+              })}
             </div>
           )}
           {artifacts.length > 0 && (
-            <div className={"flex flex-col gap-1.5 " + (filesTouched.length > 0 ? "mt-2" : "mt-2")}>
+            <div className="mt-2 flex flex-col gap-1.5">
               {artifacts.map((artifact) => (
                 <a
                   key={artifact.id}
@@ -526,7 +615,7 @@ function SessionAside({ detail }: { detail: SessionDetail | null }) {
           )}
           {filesTouched.length === 0 && artifacts.length === 0 && (
             <div className="mt-2 text-[12px] leading-relaxed text-muted-foreground">
-              No artifacts recorded.
+              No files recorded for this session.
             </div>
           )}
         </div>
@@ -630,54 +719,106 @@ function DateDivider({ label }: { label: string }) {
   );
 }
 
-function MessageRow({ turn, index }: { turn: MessageTurn; index: number }) {
-  const isAgent = turn.who === "assistant";
-  const avatar = avatarFor(turn.name);
-  const rowId = turn.toolName ? `tool-call-${index}` : undefined;
+function JumpButton({
+  label,
+  onClick,
+  disabled,
+  children,
+}: {
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+  children: React.ReactNode;
+}) {
   return (
-    <div id={rowId} className="msg-row group scroll-mt-16 rounded-md px-2 py-2">
-      <div className="flex gap-3">
-        <span
-          className={
-            "inline-flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-[10px] font-semibold " +
-            avatar.bg +
-            " " +
-            avatar.fg
-          }
-        >
-          {initials(turn.name)}
-        </span>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-baseline gap-2 text-[12.5px]">
-            <span className="font-semibold text-foreground">{turn.name}</span>
-            {isAgent ? (
-              <span className="tag tag-agent">agent</span>
-            ) : (
-              <span className="tag tag-human">human</span>
-            )}
-            {turn.toolName && (
-              <span className="rounded bg-surface px-1.5 py-0 font-mono text-[10.5px] text-dim ring-1 ring-border">
-                {turn.toolName}
-              </span>
-            )}
-            <span className="flex-1" />
-            {turn.time && (
-              <span className="sys-label" style={{ fontSize: 10 }}>
-                {turn.time}
-              </span>
-            )}
-          </div>
-          {turn.toolName ? (
-            <div className="mt-1 whitespace-pre-wrap rounded-md border border-border-subtle bg-surface px-2.5 py-2 font-mono text-[12px] leading-relaxed text-foreground">
-              {turn.content}
-            </div>
-          ) : (
-            <div className="markdown-content mt-1 text-[13.5px] leading-relaxed text-foreground">
-              <Markdown remarkPlugins={[remarkGfm]}>{turn.content}</Markdown>
-            </div>
+    <button
+      type="button"
+      title={label}
+      aria-label={label}
+      onClick={onClick}
+      disabled={disabled}
+      className="cursor-pointer rounded-md border border-border px-2 py-1 text-[12px] text-muted-foreground hover:text-foreground disabled:cursor-default disabled:opacity-50"
+    >
+      {children}
+    </button>
+  );
+}
+
+function MessageRow({
+  turn,
+  index,
+  focused,
+}: {
+  turn: MessageTurn;
+  index: number;
+  focused: boolean;
+}) {
+  const isSystem = turn.who === "system";
+  return (
+    <div
+      id={`turn-${index}`}
+      className={
+        "msg-row group scroll-mt-16 rounded-md px-2 py-2" +
+        (focused ? " ring-2 ring-[var(--color-brand-300)]" : "")
+      }
+    >
+      <div className="min-w-0">
+        <div className="flex items-baseline gap-2 text-[12.5px]">
+          <span
+            className={
+              "font-semibold " + (isSystem ? "text-muted-foreground" : "text-foreground")
+            }
+          >
+            {turn.name}
+          </span>
+          {turn.who === "assistant" && <span className="tag tag-agent">agent</span>}
+          {turn.toolName && (
+            <span className="rounded bg-surface px-1.5 py-0 font-mono text-[10.5px] text-dim ring-1 ring-border">
+              {turn.toolName}
+            </span>
+          )}
+          <span className="flex-1" />
+          {turn.time && (
+            <span className="sys-label" style={{ fontSize: 10 }}>
+              {turn.time}
+            </span>
           )}
         </div>
+        {turn.toolName ? (
+          <ToolTurn content={turn.content} />
+        ) : (
+          <div className="markdown-content mt-1 text-[13.5px] leading-relaxed text-foreground">
+            <Markdown remarkPlugins={[remarkGfm]}>{turn.content}</Markdown>
+          </div>
+        )}
       </div>
+    </div>
+  );
+}
+
+// Tool calls collapse to a one-line summary so a wall of tool use scrolls
+// past in a few rows; the full input is one click away.
+function ToolTurn({ content }: { content: string }) {
+  const [open, setOpen] = useState(false);
+  const { summary, body } = toolDisplay(content);
+  return (
+    <div className="mt-1">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        className="flex w-full cursor-pointer items-center gap-1.5 rounded-md border border-border-subtle bg-surface px-2.5 py-1.5 text-left font-mono text-[11.5px] text-muted-foreground hover:text-foreground"
+      >
+        <span aria-hidden className="text-[9px]">
+          {open ? "▾" : "▸"}
+        </span>
+        <span className="min-w-0 flex-1 truncate">{summary}</span>
+      </button>
+      {open && (
+        <pre className="mt-1 overflow-x-auto whitespace-pre-wrap rounded-md border border-border-subtle bg-surface px-2.5 py-2 font-mono text-[12px] leading-relaxed text-foreground">
+          {body}
+        </pre>
+      )}
     </div>
   );
 }
