@@ -32,6 +32,8 @@ import EditableTitle from "@/components/content/EditableTitle";
 import { getScope } from "@/lib/scope-store";
 import { useTabTitle } from "@/lib/workspace-store";
 import { eventToTurn, toolDisplay, type MessageTurn } from "./transcript";
+import MinimapStrip from "./MinimapStrip";
+import { MINIMAP_MIN_TURNS } from "./minimap";
 
 // One transcript page. The viewer loads this many turns at a time and fetches
 // more on scroll, so long sessions don't load every event up front.
@@ -189,8 +191,13 @@ export default function SessionViewerPage({ sessionId }: { sessionId: string }) 
 
   const humanName = sessionDetail?.created_by_display_name ?? null;
 
+  // True while the full-transcript drain is in flight (see drainTranscript).
+  const [loadingAll, setLoadingAll] = useState(false);
+
   const loadMore = useCallback(async () => {
-    if (loadingMore || !hasMore) return;
+    // A drain in flight will replace the whole list; appending a page on top
+    // of it would duplicate turns.
+    if (loadingMore || !hasMore || loadingAll) return;
     setLoadingMore(true);
     try {
       const page = await getSessionEventsPage(sessionId, TRANSCRIPT_PAGE_SIZE, turns.length);
@@ -204,17 +211,16 @@ export default function SessionViewerPage({ sessionId }: { sessionId: string }) 
     } finally {
       setLoadingMore(false);
     }
-  }, [sessionId, loadingMore, hasMore, turns.length, humanName]);
+  }, [sessionId, loadingMore, hasMore, loadingAll, turns.length, humanName]);
 
   // --- In-session search + human-turn navigation -------------------------
   const [query, setQuery] = useState("");
   const [focusIndex, setFocusIndex] = useState<number | null>(null);
-  const [loadingAll, setLoadingAll] = useState(false);
 
-  // Searching only what's paged in would silently miss the rest of a long
-  // session, so the first keystroke drains the full transcript once.
-  useEffect(() => {
-    if (!query.trim() || !hasMore || loadingAll) return;
+  // The one full-transcript drain, shared by search (matches must cover the
+  // whole session) and the minimap (its blocks map the whole session).
+  const drainTranscript = useCallback(() => {
+    if (!hasMore || loadingAll) return;
     setLoadingAll(true);
     getSessionEvents(sessionId)
       .then((events) => {
@@ -223,7 +229,30 @@ export default function SessionViewerPage({ sessionId }: { sessionId: string }) 
       })
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load transcript"))
       .finally(() => setLoadingAll(false));
-  }, [query, hasMore, loadingAll, sessionId, humanName]);
+  }, [hasMore, loadingAll, sessionId, humanName]);
+
+  // Searching only what's paged in would silently miss the rest of a long
+  // session, so the first keystroke drains the full transcript once.
+  useEffect(() => {
+    if (query.trim()) drainTranscript();
+  }, [query, drainTranscript]);
+
+  // The minimap only earns its gutter on a wide viewport and a session long
+  // enough that scrolling blind hurts. Resolved via matchMedia (not a CSS
+  // hidden class) so narrow viewports never pay for the full-transcript drain.
+  const [wideViewport, setWideViewport] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 1024px)");
+    const update = () => setWideViewport(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
+  const showMinimap = wideViewport && totalTurns >= MINIMAP_MIN_TURNS;
+
+  useEffect(() => {
+    if (showMinimap) drainTranscript();
+  }, [showMinimap, drainTranscript]);
 
   const matches = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -276,6 +305,8 @@ export default function SessionViewerPage({ sessionId }: { sessionId: string }) 
   // Auto-load the next page when the sentinel scrolls into view; the button it
   // wraps is the manual fallback if the observer can't fire.
   const sentinelRef = useRef<HTMLDivElement | null>(null);
+  // The transcript's scroll container; the minimap reads it to place its lens.
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     const el = sentinelRef.current;
     if (!el || !hasMore) return;
@@ -300,137 +331,148 @@ export default function SessionViewerPage({ sessionId }: { sessionId: string }) 
   const sessionDate = turns.find((turn) => turn.dateLabel)?.dateLabel;
 
   return (
-    <div className="scroll-thin flex-1 overflow-y-auto">
-      <div className="mx-auto grid max-w-[1100px] gap-7 px-12 pb-20 pt-7 lg:grid-cols-[minmax(0,1fr)_260px]">
-        <main className="min-w-0">
-          {inDeveloperConsole && (
-            <Link
-              href="/developer/sessions"
-              className="mb-4 inline-flex items-center gap-1.5 text-[13px] text-muted-foreground transition-colors hover:text-foreground"
-            >
-              <ArrowLeft className="h-3.5 w-3.5" />
-              All sessions
-            </Link>
-          )}
-          <div className="mb-2 border-b border-border pb-3.5">
-            <h1 className="font-display text-[28px] font-bold leading-tight tracking-[-0.02em]">
-              <EditableTitle
-                value={sessionHeading(sessionDetail, sessionId)}
-                onSave={async (next) => {
-                  const { title } = await renameSession(sessionId, next);
-                  setSessionDetail((prev) => (prev ? { ...prev, title } : prev));
-                  return title;
-                }}
-              />
-            </h1>
-            {(sessionDate || totalTurns > 0 || agentName || sessionDetail?.cwd) && (
-              <div className="mt-1.5 flex flex-wrap items-center gap-2.5 text-[12px] text-muted-foreground">
-                {sessionDate && <span>{sessionDate}</span>}
-                {totalTurns > 0 && (
-                  <span>
-                    {totalTurns} message{totalTurns === 1 ? "" : "s"}
-                  </span>
-                )}
-                {agentName && <span title="Agent that ran this session">{agentName}</span>}
-                {sessionDetail?.cwd && (
-                  <span className="font-mono text-[11px]" title="Working directory">
-                    {sessionDetail.cwd}
-                  </span>
-                )}
-              </div>
+    <div className="flex min-h-0 flex-1">
+      <div ref={scrollContainerRef} className="scroll-thin min-w-0 flex-1 overflow-y-auto">
+        <div className="mx-auto grid max-w-[1100px] gap-7 px-12 pb-20 pt-7 lg:grid-cols-[minmax(0,1fr)_260px]">
+          <main className="min-w-0">
+            {inDeveloperConsole && (
+              <Link
+                href="/developer/sessions"
+                className="mb-4 inline-flex items-center gap-1.5 text-[13px] text-muted-foreground transition-colors hover:text-foreground"
+              >
+                <ArrowLeft className="h-3.5 w-3.5" />
+                All sessions
+              </Link>
             )}
-          </div>
-
-          {totalTurns > 0 && (
-            <div className="mb-3 flex flex-wrap items-center gap-2">
-              <input
-                type="search"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") jumpToMatch(e.shiftKey ? -1 : 1);
-                }}
-                placeholder="Search this session…"
-                className="w-56 rounded-md border border-border bg-base px-2.5 py-1.5 text-[12.5px] text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-[var(--color-brand-600)]"
-              />
-              {query.trim() && (
-                <>
-                  <span className="text-[12px] text-muted-foreground">
-                    {loadingAll
-                      ? "Loading full transcript…"
-                      : `${matches.length} match${matches.length === 1 ? "" : "es"}`}
-                  </span>
-                  <JumpButton label="Previous match" onClick={() => jumpToMatch(-1)} disabled={matches.length === 0}>
-                    ↑
-                  </JumpButton>
-                  <JumpButton label="Next match" onClick={() => jumpToMatch(1)} disabled={matches.length === 0}>
-                    ↓
-                  </JumpButton>
-                </>
-              )}
-              {humanTurnIndices.length > 0 && (
-                <>
-                  <span className="flex-1" />
-                  <JumpButton label="Previous human message" onClick={() => jumpToHuman(-1)}>
-                    ↑ human
-                  </JumpButton>
-                  <JumpButton label="Next human message" onClick={() => jumpToHuman(1)}>
-                    ↓ human
-                  </JumpButton>
-                </>
-              )}
-            </div>
-          )}
-
-          {error && (
-            <div className="mb-4 rounded-lg border border-red-300/40 bg-red-500/10 px-4 py-2 text-[13px] text-red-500">
-              {error}
-            </div>
-          )}
-
-          <div className="flex flex-col">
-            {turns.map((turn, i) => {
-              // The header already names the session's date, so the first
-              // message needs no divider — only an actual date change does.
-              const previousTurn = turns[i - 1];
-              const dateDividerLabel =
-                i > 0 && turn.dateLabel && turn.dateKey !== previousTurn?.dateKey
-                  ? turn.dateLabel
-                  : null;
-
-              return (
-                <div key={i}>
-                  {dateDividerLabel ? <DateDivider label={dateDividerLabel} /> : null}
-                  <MessageRow turn={turn} index={i} focused={focusIndex === i} />
+            <div className="mb-2 border-b border-border pb-3.5">
+              <h1 className="font-display text-[28px] font-bold leading-tight tracking-[-0.02em]">
+                <EditableTitle
+                  value={sessionHeading(sessionDetail, sessionId)}
+                  onSave={async (next) => {
+                    const { title } = await renameSession(sessionId, next);
+                    setSessionDetail((prev) => (prev ? { ...prev, title } : prev));
+                    return title;
+                  }}
+                />
+              </h1>
+              {(sessionDate || totalTurns > 0 || agentName || sessionDetail?.cwd) && (
+                <div className="mt-1.5 flex flex-wrap items-center gap-2.5 text-[12px] text-muted-foreground">
+                  {sessionDate && <span>{sessionDate}</span>}
+                  {totalTurns > 0 && (
+                    <span>
+                      {totalTurns} message{totalTurns === 1 ? "" : "s"}
+                    </span>
+                  )}
+                  {agentName && <span title="Agent that ran this session">{agentName}</span>}
+                  {sessionDetail?.cwd && (
+                    <span className="font-mono text-[11px]" title="Working directory">
+                      {sessionDetail.cwd}
+                    </span>
+                  )}
                 </div>
-              );
-            })}
-            {hasMore && (
-              <div ref={sentinelRef} className="flex justify-center py-4">
-                <button
-                  type="button"
-                  onClick={loadMore}
-                  disabled={loadingMore}
-                  className="cursor-pointer rounded-md border border-border px-3 py-1.5 text-[12.5px] text-muted-foreground hover:text-foreground disabled:cursor-default disabled:opacity-60"
-                >
-                  {loadingMore ? "Loading…" : "Load more"}
-                </button>
+              )}
+            </div>
+
+            {totalTurns > 0 && (
+              <div className="mb-3 flex flex-wrap items-center gap-2">
+                <input
+                  type="search"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") jumpToMatch(e.shiftKey ? -1 : 1);
+                  }}
+                  placeholder="Search this session…"
+                  className="w-56 rounded-md border border-border bg-base px-2.5 py-1.5 text-[12.5px] text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-[var(--color-brand-600)]"
+                />
+                {query.trim() && (
+                  <>
+                    <span className="text-[12px] text-muted-foreground">
+                      {loadingAll
+                        ? "Loading full transcript…"
+                        : `${matches.length} match${matches.length === 1 ? "" : "es"}`}
+                    </span>
+                    <JumpButton label="Previous match" onClick={() => jumpToMatch(-1)} disabled={matches.length === 0}>
+                      ↑
+                    </JumpButton>
+                    <JumpButton label="Next match" onClick={() => jumpToMatch(1)} disabled={matches.length === 0}>
+                      ↓
+                    </JumpButton>
+                  </>
+                )}
+                {humanTurnIndices.length > 0 && (
+                  <>
+                    <span className="flex-1" />
+                    <JumpButton label="Previous human message" onClick={() => jumpToHuman(-1)}>
+                      ↑ human
+                    </JumpButton>
+                    <JumpButton label="Next human message" onClick={() => jumpToHuman(1)}>
+                      ↓ human
+                    </JumpButton>
+                  </>
+                )}
               </div>
             )}
-            {!hasMore && turns.length > 0 && (
-              <DateDivider
-                label={`End of session · ${totalTurns} message${totalTurns === 1 ? "" : "s"}`}
-              />
-            )}
-            {!error && totalTurns === 0 && (
-              <div className="rounded-lg border border-dashed border-border bg-surface/30 px-4 py-6 text-center text-[12.5px] text-muted-foreground">
-                No transcript events yet.
+
+            {error && (
+              <div className="mb-4 rounded-lg border border-red-300/40 bg-red-500/10 px-4 py-2 text-[13px] text-red-500">
+                {error}
               </div>
             )}
-          </div>
-        </main>
-        <SessionAside detail={sessionDetail} />
+
+            <div className="flex flex-col">
+              {turns.map((turn, i) => {
+                // The header already names the session's date, so the first
+                // message needs no divider — only an actual date change does.
+                const previousTurn = turns[i - 1];
+                const dateDividerLabel =
+                  i > 0 && turn.dateLabel && turn.dateKey !== previousTurn?.dateKey
+                    ? turn.dateLabel
+                    : null;
+
+                return (
+                  <div key={i}>
+                    {dateDividerLabel ? <DateDivider label={dateDividerLabel} /> : null}
+                    <MessageRow turn={turn} index={i} focused={focusIndex === i} />
+                  </div>
+                );
+              })}
+              {hasMore && (
+                <div ref={sentinelRef} className="flex justify-center py-4">
+                  <button
+                    type="button"
+                    onClick={loadMore}
+                    disabled={loadingMore}
+                    className="cursor-pointer rounded-md border border-border px-3 py-1.5 text-[12.5px] text-muted-foreground hover:text-foreground disabled:cursor-default disabled:opacity-60"
+                  >
+                    {loadingMore ? "Loading…" : "Load more"}
+                  </button>
+                </div>
+              )}
+              {!hasMore && turns.length > 0 && (
+                <DateDivider
+                  label={`End of session · ${totalTurns} message${totalTurns === 1 ? "" : "s"}`}
+                />
+              )}
+              {!error && totalTurns === 0 && (
+                <div className="rounded-lg border border-dashed border-border bg-surface/30 px-4 py-6 text-center text-[12.5px] text-muted-foreground">
+                  No transcript events yet.
+                </div>
+              )}
+            </div>
+          </main>
+          <SessionAside detail={sessionDetail} />
+        </div>
       </div>
+      {showMinimap && (
+        <MinimapStrip
+          turns={turns}
+          loaded={!hasMore}
+          scrollRef={scrollContainerRef}
+          matches={matches}
+          onJump={jumpTo}
+        />
+      )}
     </div>
   );
 }
