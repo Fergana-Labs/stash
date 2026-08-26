@@ -1,11 +1,12 @@
 # Skills
 
-A Skill is a folder containing `SKILL.md`. Public Skills appear in Discover,
-and users explicitly install the ones they want.
+A Skill is a folder containing `SKILL.md`. Published Skills are publicly
+readable at their `/skills/<slug>` URL, and users explicitly install the ones
+they want.
 
 Stash does not seed Skills into user accounts. The Stash-authored skills in
-`docs/skills/` reach users only through Discover, and no runtime task copies
-them into an account.
+`docs/skills/` reach users only through the mini-programs strip and their
+public URLs, and no runtime task copies them into an account.
 
 ## The library
 
@@ -37,7 +38,7 @@ Publication must not add a signup seed, startup hook, or periodic backfill.
 
 ## Adding and running
 
-An agent resolves skills from its own scope, never from the Discover catalog,
+An agent resolves skills from its own scope, never from anyone else's,
 so a published skill has to be added before anything can run it. `POST
 /api/v1/me/skills/install` does that, idempotently by skill name, so pressing
 Add twice can't leave a user picking between `brief` and `brief (2)`.
