@@ -63,8 +63,8 @@ export default function AgentModelSection() {
         <h2 className="text-lg font-semibold text-foreground">Agent model</h2>
         <p className="text-sm text-muted-foreground mt-1">
           Stash runs an agent in the cloud for you — it compiles your Memory wiki (the
-          nightly curator), answers agent chats, and runs scheduled tasks. That agent
-          needs an AI model to run on.
+          nightly curator) and runs scheduled tasks. That agent needs an AI model to
+          run on.
         </p>
         <p className="text-sm text-muted-foreground mt-1">
           Connect your own Claude, ChatGPT, or OpenRouter account and the agent runs on
