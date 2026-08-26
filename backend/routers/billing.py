@@ -30,6 +30,7 @@ async def my_billing(current_user: dict = Depends(get_current_user)):
         "status": status,
         "connection_count": await billing_service.connection_count(current_user["id"]),
         "connection_limit": billing_service.FREE_CONNECTION_LIMIT,
+        "free_curator_runs_per_month": settings.FREE_CURATOR_RUNS_PER_MONTH,
     }
 
 
