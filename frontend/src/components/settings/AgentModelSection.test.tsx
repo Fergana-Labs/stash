@@ -62,7 +62,9 @@ describe("AgentModelSection", () => {
 
   it("renders four provider rows including Local model", async () => {
     render(<AgentModelSection />);
-    await screen.findByText("Cloud agent model");
+    // Gate on the row label (renders in the same commit as its buttons),
+    // not the section heading, which renders before the credential fetch.
+    await screen.findByText("Local model");
     expect(screen.getByText("Claude Code")).toBeDefined();
     expect(screen.getByText("Codex")).toBeDefined();
     expect(screen.getByText("OpenRouter")).toBeDefined();
@@ -73,7 +75,7 @@ describe("AgentModelSection", () => {
 
   it("submits URL + model via connectLocalEndpoint, key omitted as null", async () => {
     render(<AgentModelSection />);
-    await screen.findByText("Cloud agent model");
+    await screen.findByText("Local model");
 
     fireEvent.click(screen.getByRole("button", { name: "Connect endpoint" }));
     fireEvent.change(screen.getByPlaceholderText("http://your-host:11434/v1"), {
@@ -90,7 +92,9 @@ describe("AgentModelSection", () => {
 
   it("shows Connected + Disconnect once the local endpoint is in the list", async () => {
     render(<AgentModelSection />);
-    await screen.findByText("Cloud agent model");
+    // Wait for the fetched row (same commit as its Connect endpoint button),
+    // not the pre-fetch heading.
+    await screen.findByText("Local model");
 
     fireEvent.click(screen.getByRole("button", { name: "Connect endpoint" }));
     fireEvent.change(screen.getByPlaceholderText("http://your-host:11434/v1"), {
