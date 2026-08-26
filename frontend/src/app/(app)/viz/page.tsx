@@ -19,69 +19,79 @@ import type { EmbeddingProjection, KnowledgeDensity } from "@/lib/types";
 export default function VizPage() {
   const [graph, setGraph] = useState<WikiGraphData | null>(null);
   const [graphLoaded, setGraphLoaded] = useState(false);
+  const [graphError, setGraphError] = useState<string | null>(null);
   const [projection, setProjection] = useState<EmbeddingProjection | null>(null);
   const [projectionLoaded, setProjectionLoaded] = useState(false);
+  const [projectionError, setProjectionError] = useState<string | null>(null);
   const [density, setDensity] = useState<KnowledgeDensity | null>(null);
   const [densityLoaded, setDensityLoaded] = useState(false);
+  const [densityError, setDensityError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     getMemoryGraph()
       .then((g) => { if (!cancelled) setGraph(g); })
-      .catch(() => {})
+      .catch((error) => { if (!cancelled) setGraphError(String(error)); })
       .finally(() => { if (!cancelled) setGraphLoaded(true); });
     getEmbeddingProjection(2000)
       .then((p) => { if (!cancelled) setProjection(p); })
-      .catch(() => {})
+      .catch((error) => { if (!cancelled) setProjectionError(String(error)); })
       .finally(() => { if (!cancelled) setProjectionLoaded(true); });
     getKnowledgeDensity()
       .then((d) => { if (!cancelled) setDensity(d); })
-      .catch(() => {})
+      .catch((error) => { if (!cancelled) setDensityError(String(error)); })
       .finally(() => { if (!cancelled) setDensityLoaded(true); });
     return () => { cancelled = true; };
   }, []);
 
   return (
-    <div className="h-full min-h-0 overflow-y-auto">
+    <div
+      className="h-full min-h-0 overflow-y-auto focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-400"
+      tabIndex={0}
+    >
       <div className="mx-auto max-w-[1100px] px-8 pb-10 pt-7">
         <h1 className="font-display text-[22px] font-semibold tracking-tight text-foreground">
           Viz
         </h1>
-        <p className="mt-1 text-[12.5px] text-muted-foreground">
+        <p className="mt-1 text-[12.5px] text-foreground/75">
           Visualizations of everything in your stash.
         </p>
 
         <div className="mt-5 flex flex-col gap-5">
-          <VizCard
-            label="Memory wiki"
-            description="The curator's context graph — your wiki pages and the links between them. Click a node to open its page."
-          >
-            {!graphLoaded ? (
-              <SkeletonBlock className="h-[560px] w-full" />
-            ) : graph && graph.nodes.length > 0 ? (
-              <WikiGraph data={graph} />
-            ) : (
-              <EmptyState height={560}>
-                No wiki pages yet. The Memory curator&apos;s nightly run compiles your
-                history into a context graph of linked pages.
-              </EmptyState>
-            )}
-          </VizCard>
-
           <VizCard
             label="Knowledge map"
             description="Everything in your stash embedded and laid out in space — nearby points are about similar things. Drag to rotate."
           >
             {!projectionLoaded ? (
               <SkeletonBlock className="h-[420px] w-full" />
+            ) : projectionError ? (
+              <VisualizationError message={projectionError} />
             ) : projection && projection.points.length > 0 ? (
               <div className="h-[420px]">
                 <EmbeddingSpaceExplorer data={projection} />
               </div>
             ) : (
-              <EmptyState height={420}>
+              <EmptyState height={180}>
                 No embeddings indexed yet. Pages, table rows, and session events get
                 embedded as they&apos;re added.
+              </EmptyState>
+            )}
+          </VizCard>
+
+          <VizCard
+            label="Memory wiki"
+            description="The curator's context graph — your wiki pages and the links between them. Click a node to open its page."
+          >
+            {!graphLoaded ? (
+              <SkeletonBlock className="h-[560px] w-full" />
+            ) : graphError ? (
+              <VisualizationError message={graphError} />
+            ) : graph && graph.nodes.length > 0 ? (
+              <WikiGraph data={graph} />
+            ) : (
+              <EmptyState height={180}>
+                No wiki pages yet. The Memory curator&apos;s nightly run compiles your
+                history into a context graph of linked pages.
               </EmptyState>
             )}
           </VizCard>
@@ -92,6 +102,8 @@ export default function VizPage() {
           >
             {!densityLoaded ? (
               <SkeletonBlock className="h-[320px] w-full" />
+            ) : densityError ? (
+              <VisualizationError message={densityError} />
             ) : density && density.clusters.length > 0 ? (
               <KnowledgeDensityMap data={density} />
             ) : (
@@ -118,8 +130,8 @@ function VizCard({
   return (
     <section>
       <div className="mb-1.5 flex flex-wrap items-baseline gap-x-3">
-        <div className="sys-label">{label}</div>
-        <p className="text-[12px] text-muted-foreground">{description}</p>
+        <div className="font-mono text-[11.5px] font-medium text-foreground">{label}</div>
+        <p className="text-[12px] text-foreground/75">{description}</p>
       </div>
       <div className="card-soft p-3">{children}</div>
     </section>
@@ -129,10 +141,23 @@ function VizCard({
 function EmptyState({ height, children }: { height: number; children: ReactNode }) {
   return (
     <div
-      className="flex items-center justify-center px-2 text-center text-[12.5px] text-muted-foreground"
+      className="flex items-center justify-center px-2 text-center text-[12.5px] text-foreground/75"
       style={{ height }}
     >
       {children}
+    </div>
+  );
+}
+
+function VisualizationError({ message }: { message: string }) {
+  return (
+    <div className="flex min-h-40 items-center justify-center px-6 text-center">
+      <div>
+        <p className="text-[12.5px] font-medium text-destructive">
+          Couldn&apos;t load this visualization.
+        </p>
+        <p className="mt-1 max-w-xl text-[11px] text-muted-foreground">{message}</p>
+      </div>
     </div>
   );
 }

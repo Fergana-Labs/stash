@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { CloudUpload, Database, LockKeyhole } from "lucide-react";
 import { useConfirm } from "../../components/ConfirmDialog";
 import WorkspaceShell from "@/components/workspace/workspace-shell";
 import IntegrationsSettings from "../../components/integrations/IntegrationsSettings";
@@ -10,6 +11,7 @@ import AgentModelSection from "../../components/settings/AgentModelSection";
 import ExportSection from "../../components/settings/ExportSection";
 import { AccountSettingsSkeleton, ApiKeysSkeleton } from "../../components/SkeletonStates";
 import { useAuth } from "../../hooks/useAuth";
+import { useScope } from "@/lib/scope-store";
 import {
   ApiError,
   ApiKeyAccess,
@@ -27,6 +29,7 @@ const AUTH0_ENABLED = process.env.NEXT_PUBLIC_AUTH0_ENABLED === "true";
 export default function SettingsPage() {
   const router = useRouter();
   const { user, loading, logout, refresh } = useAuth();
+  const scope = useScope();
 
   useEffect(() => {
     if (!loading && !user) router.replace("/login");
@@ -54,6 +57,7 @@ export default function SettingsPage() {
               data export.
             </p>
           </div>
+          <DataAndPrivacy scopeName={scope?.name ?? null} />
           <Profile user={user} onUpdated={refresh} />
           <SubscriptionSection />
           <AgentModelSection />
@@ -64,6 +68,55 @@ export default function SettingsPage() {
         </div>
       </main>
     </WorkspaceShell>
+  );
+}
+
+function DataAndPrivacy({ scopeName }: { scopeName: string | null }) {
+  const destination = scopeName ? `the ${scopeName} workspace` : "your personal Stash";
+  const audience = scopeName
+    ? `Members of the ${scopeName} workspace can access content uploaded there.`
+    : "Content in your personal Stash is visible only to you.";
+
+  const details = [
+    {
+      icon: CloudUpload,
+      title: "What uploads",
+      body: "The Stash agent plugin streams coding-session transcripts. Files and folders upload only when you add or share them, and connected sources sync only after you connect them.",
+    },
+    {
+      icon: Database,
+      title: "Where it goes",
+      body: `New content goes to ${destination}, where Stash stores and indexes it for search, agent context, and visualizations. Your working directory is not uploaded automatically.`,
+    },
+    {
+      icon: LockKeyhole,
+      title: "Who can see it",
+      body: `${audience} A person outside that scope gets access only when you share an item with them, create a public link, or publish a Skill.`,
+    },
+  ];
+
+  return (
+    <section className="rounded-2xl border border-border bg-surface p-6">
+      <div>
+        <h2 className="text-base font-semibold text-foreground">Data and privacy</h2>
+        <p className="mt-0.5 text-xs text-muted-foreground">
+          What Stash collects, where it lands, and when someone else can access it.
+        </p>
+      </div>
+      <div className="mt-5 grid gap-5 sm:grid-cols-3">
+        {details.map(({ icon: Icon, title, body }) => (
+          <div key={title} className="min-w-0">
+            <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand-500/10 text-brand-600">
+                <Icon className="h-4 w-4" />
+              </span>
+              {title}
+            </div>
+            <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{body}</p>
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 

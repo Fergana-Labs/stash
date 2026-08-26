@@ -20,5 +20,5 @@ export default function FilesPage() {
   if (loading) return <FileBrowserSkeleton />;
   if (!user) return null;
 
-  return <FilesExplorer onRoot={() => {}} rootLabel="Files" rootFolderId={null} />;
+  return <FilesExplorer flat onRoot={() => {}} rootLabel="Files" rootFolderId={null} />;
 }

@@ -1,14 +1,12 @@
 "use client";
 
-import { Fragment, useEffect, useRef, useState } from "react";
+import { Fragment } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { FolderTree, MessagesSquare, GraduationCap, Home, Wrench, Settings } from "lucide-react";
+import { BarChart3, FolderTree, MessagesSquare, GraduationCap, Home, Orbit, Settings } from "lucide-react";
 import AccountMenu from "@/components/workspace/account-menu";
 import { cn } from "@/lib/utils";
-import { useEscapeKey } from "@/hooks/useEscapeKey";
 import { useWorkspace, type RailSection } from "@/lib/workspace-store";
-import { showTools } from "@/lib/flags";
 import type { User } from "@/lib/types";
 
 type RailItem = { key: RailSection; label: string; icon: typeof Home; match: (p: string) => boolean };
@@ -16,10 +14,11 @@ type RailItem = { key: RailSection; label: string; icon: typeof Home; match: (p:
 // Primary sections — each opens its own explorer panel (see workspace-shell).
 const PRIMARY: RailItem[] = [
   { key: "home", label: "Home", icon: Home, match: (p) => p === "/" },
-  { key: "files", label: "Files", icon: FolderTree, match: (p) => p === "/files" || p.startsWith("/f/") || p.startsWith("/p/") || p.startsWith("/folders/") || p.startsWith("/tables/") },
-  { key: "sessions", label: "Sessions", icon: MessagesSquare, match: (p) => p.startsWith("/sessions") },
   { key: "skills", label: "Skills", icon: GraduationCap, match: (p) => p.startsWith("/skills") },
-  { key: "tools", label: "Tools", icon: Wrench, match: (p) => p.startsWith("/tools") || p.startsWith("/integrations") },
+  { key: "sessions", label: "Sessions", icon: MessagesSquare, match: (p) => p.startsWith("/sessions") && p !== "/sessions/analytics" },
+  { key: "analytics", label: "Session Analytics", icon: BarChart3, match: (p) => p === "/sessions/analytics" },
+  { key: "files", label: "Files", icon: FolderTree, match: (p) => p === "/files" || p.startsWith("/f/") || p.startsWith("/p/") || p.startsWith("/folders/") || p.startsWith("/tables/") },
+  { key: "viz", label: "Viz", icon: Orbit, match: (p) => p === "/viz" },
 ];
 
 // Home is the memory dashboard — the divider separates it from the VFS
@@ -65,24 +64,23 @@ export default function Rail({ user, onLogout }: { user: User; onLogout: () => v
   const searchParams = useSearchParams();
   const setRailSection = useWorkspace((s) => s.setRailSection);
   const requestedSection = searchParams.get("section");
-  const items = PRIMARY.filter((item) => item.key !== "tools" || showTools(user));
+  const items = PRIMARY;
 
   function selectSection(section: RailSection) {
-    // VFS resumes where the user left off; clicking it while already in the
-    // VFS zooms out to the full-screen lens.
+    // Files is the flat, full-stash index. Item routes still use the VFS
+    // workbench, but the primary navigation always returns to that index.
     if (section === "files") {
-      const filesItem = PRIMARY.find((i) => i.key === "files")!;
-      const alreadyInVfs = requestedSection === "files" || (!requestedSection && filesItem.match(pathname));
       setRailSection(section);
-      router.replace(alreadyInVfs ? "/files" : useWorkspace.getState().lastVfsUrl ?? "/files");
+      router.replace("/files");
       return;
     }
     // Every other section is a page; the rail is pure navigation.
-    const LANDING: Record<Exclude<RailSection, "files" | "computer">, string> = {
+    const LANDING: Record<Exclude<RailSection, "files" | "computer" | "tools">, string> = {
       home: "/",
-      sessions: "/sessions",
       skills: "/skills",
-      tools: "/tools",
+      sessions: "/sessions",
+      analytics: "/sessions/analytics",
+      viz: "/viz",
     };
     setRailSection(section);
     router.replace(LANDING[section as keyof typeof LANDING]);

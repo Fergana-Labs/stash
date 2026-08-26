@@ -18,6 +18,8 @@ describe("rendersRouteContent", () => {
 
   it("home is a full-page route, not a management page", () => {
     expect(rendersRouteContent("/", null, null)).toBe(false);
+    expect(rendersRouteContent("/sessions/analytics", null, null)).toBe(false);
+    expect(rendersRouteContent("/viz", null, null)).toBe(false);
   });
 
   it("workbench sections do not render route content", () => {

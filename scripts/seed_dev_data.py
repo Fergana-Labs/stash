@@ -503,12 +503,12 @@ async def _ensure_pages(
         else:
             parent_id = folders[folder_key]["id"] if folder_key in folders else None
 
+        # Name-only lookup: _ensure_skills later moves seeded pages into skill
+        # folders, so a folder-scoped check would recreate them on re-runs.
         existing = await database.get_pool().fetchrow(
-            "SELECT id FROM pages WHERE owner_user_id = $1 AND name = $2 "
-            "AND folder_id IS NOT DISTINCT FROM $3",
+            "SELECT id FROM pages WHERE owner_user_id = $1 AND name = $2",
             owner_user_id,
             spec["name"],
-            parent_id,
         )
         if existing:
             out[spec["name"]] = {"id": existing["id"]}
@@ -642,22 +642,29 @@ async def _ensure_files(
             spec["content"].encode("utf-8"),
             spec["content_type"],
         )
+        # This branch has no unique index on files.storage_key (that arrives
+        # with stash-revamp-3), so idempotency is by owner + name instead.
         row = await database.get_pool().fetchrow(
-            "INSERT INTO files (owner_user_id, name, content_type, size_bytes, storage_key, uploaded_by, folder_id, "
-            "extracted_text, extraction_status, extraction_attempts) "
-            "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'done', 1) "
-            "ON CONFLICT (storage_key) DO UPDATE SET "
-            "name = EXCLUDED.name, size_bytes = EXCLUDED.size_bytes "
-            "RETURNING id, name, size_bytes, content_type, folder_id, created_at, linked_table_id",
+            "SELECT id, name, size_bytes, content_type, folder_id, created_at, linked_table_id "
+            "FROM files WHERE owner_user_id = $1 AND name = $2",
             owner_user_id,
             spec["name"],
-            spec["content_type"],
-            len(spec["content"].encode("utf-8")),
-            storage_key,
-            creator_id,
-            parent_id,
-            spec["content"],
         )
+        if row is None:
+            row = await database.get_pool().fetchrow(
+                "INSERT INTO files (owner_user_id, name, content_type, size_bytes, storage_key, uploaded_by, folder_id, "
+                "extracted_text, extraction_status, extraction_attempts) "
+                "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'done', 1) "
+                "RETURNING id, name, size_bytes, content_type, folder_id, created_at, linked_table_id",
+                owner_user_id,
+                spec["name"],
+                spec["content_type"],
+                len(spec["content"].encode("utf-8")),
+                storage_key,
+                creator_id,
+                parent_id,
+                spec["content"],
+            )
         out[spec["name"]] = dict(row)
     # Link one seeded CSV-like file to a table to show richer table/file flow.
     csv_file = out.get("service-matrix.csv")
@@ -739,8 +746,8 @@ async def _ensure_skills(
                 await pool.execute(
                     "UPDATE tables SET folder_id = $1 WHERE id = $2", folder["id"], table["id"]
                 )
-        await shared_skill_service._ensure_skill_md(
-            owner_user_id, folder["id"], user["id"], spec["title"]
+        await shared_skill_service.ensure_skill_md(
+            owner_user_id, folder["id"], user["id"], spec["title"], spec["description"]
         )
         if spec["publish"]:
             await shared_skill_service.publish_folder(
@@ -760,16 +767,40 @@ async def _ensure_skills(
         story_title,
     )
     if not exists and sessions:
-        folder = await files_tree_service.create_folder(owner_user_id, story_title, user["id"])
+        # A prior partial run may have created the folder without the skill row.
+        folder = await pool.fetchrow(
+            "SELECT id FROM folders WHERE owner_user_id = $1 AND name = $2 "
+            "AND parent_folder_id IS NULL",
+            owner_user_id,
+            story_title,
+        )
+        if folder is None:
+            folder = await files_tree_service.create_folder(
+                owner_user_id, story_title, user["id"]
+            )
         for session_key in sorted(sessions)[:3]:
+            session_id = sessions[session_key]["session_id"]
+            already = await pool.fetchrow(
+                "SELECT id FROM pages WHERE owner_user_id = $1 AND folder_id = $2 "
+                "AND name = $3",
+                owner_user_id,
+                folder["id"],
+                f"Session {session_id}.md",
+            )
+            if already:
+                continue
             await shared_skill_service.materialize_session_page(
                 owner_user_id,
-                sessions[session_key]["session_id"],
+                session_id,
                 folder["id"],
                 user["id"],
             )
-        await shared_skill_service._ensure_skill_md(
-            owner_user_id, folder["id"], user["id"], story_title
+        await shared_skill_service.ensure_skill_md(
+            owner_user_id,
+            folder["id"],
+            user["id"],
+            story_title,
+            "Sessions frozen into pages for sharing.",
         )
 
 
