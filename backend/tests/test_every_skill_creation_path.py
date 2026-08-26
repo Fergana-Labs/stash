@@ -100,7 +100,7 @@ async def test_forking_into_another_scope(scope, _db_pool):
 
 @pytest.mark.asyncio
 async def test_bulk_file_write(scope, _db_pool):
-    """GitHub import and `stash skills sync` push both write a file set that
+    """Curator imports and `stash skills sync` both write a file set that
     carries a SKILL.md — the folder must come out marked."""
     folder = await files_tree_service.create_folder(scope, "imported", scope)
     await files_tree_service.write_folder_files(

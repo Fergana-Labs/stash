@@ -1697,37 +1697,6 @@ export async function listSkills(): Promise<Skill[]> {
   return data.skills;
 }
 
-// Import a public GitHub repo's SKILL.md folders as private skills in your scope.
-// Straight copy of a whole repo into a new root folder; folders containing a
-// SKILL.md derive as skills automatically.
-export async function importGithubRepo(
-  repoUrl: string,
-): Promise<{ folder_id: string; name: string; files: number }> {
-  return apiFetch(`${ME}/import/github`, {
-    method: "POST",
-    body: JSON.stringify({ repo_url: repoUrl }),
-  });
-}
-
-// Tree-only pre-import look: which repo folders are skills ('' = repo root).
-export async function inspectGithubImport(repoUrl: string): Promise<{ skill_dirs: string[] }> {
-  return apiFetch(`${ME}/import/github/inspect?repo_url=${encodeURIComponent(repoUrl)}`);
-}
-
-export interface GithubImportRepo {
-  full_name: string;
-  html_url: string;
-  private: boolean;
-  description: string;
-}
-
-export async function listGithubImportRepos(): Promise<{
-  connected: boolean;
-  repos: GithubImportRepo[];
-}> {
-  return apiFetch(`${ME}/import/github/repos`);
-}
-
 // The full publish record, as returned by publish/update.
 export interface PublishedSkill {
   id: string;
