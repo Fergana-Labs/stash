@@ -115,6 +115,11 @@ def save_config(
     }
     if any(v is not None for v in updates.values()):
         _write_to(USER_CONFIG_FILE, updates)
+    # A fresh credential can belong to a different account, and a stale
+    # workspace scope from the previous account is sent as X-Stash-Scope on
+    # every request — the server 403s it and every upload silently fails.
+    if api_key is not None:
+        save_scope(None)
 
 
 def _migrate_legacy_scope(cfg: dict) -> None:

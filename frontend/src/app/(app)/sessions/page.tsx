@@ -113,7 +113,21 @@ export default function SkillSessionsPage() {
   // Render as soon as the sessions themselves land — don't hold a finished
   // list (or the empty state) hostage to the slower /users/me round trip.
   if (!loading && !user) return null;
-  if (sorted === null) return <SessionsListSkeleton />;
+  if (sorted === null) {
+    // A failed load must say so — an eternal skeleton is indistinguishable
+    // from a slow one. Waits for auth so a signed-out 401 still redirects
+    // silently instead of flashing its error.
+    if (error && !loading) {
+      return (
+        <div className="flex flex-1 items-center justify-center px-8">
+          <p className="max-w-md text-center text-[13px] text-red-500">
+            Couldn&apos;t load sessions: {error}
+          </p>
+        </div>
+      );
+    }
+    return <SessionsListSkeleton />;
+  }
 
   const pinnedSessions = (sorted ?? []).filter((s) =>
     pins.pinnedSet.has(s.session_id),
