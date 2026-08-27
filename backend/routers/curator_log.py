@@ -11,6 +11,7 @@ from ..auth import get_current_user
 from ..database import get_pool
 from ..services import agent_service
 from ..services.sprite_agent_service import (
+    CURATOR_RUN_STATS_EVENT,
     RUN_FAILED_PREFIX,
     RUN_SKIPPED_PREFIX,
     STOPPED_NOTE,
@@ -40,7 +41,9 @@ async def curator_runs(user_id, curator: dict, limit: int = 14) -> list[dict]:
         """
         SELECT session_id, MIN(created_at) AS started_at,
                (ARRAY_AGG(content ORDER BY created_at DESC, id DESC)
-                  FILTER (WHERE event_type = 'assistant_message'))[1] AS final_text
+                  FILTER (WHERE event_type = 'assistant_message'))[1] AS final_text,
+               (ARRAY_AGG(metadata ORDER BY created_at DESC, id DESC)
+                  FILTER (WHERE event_type = $4))[1] AS processed
         FROM history_events
         WHERE owner_user_id = $1 AND session_id LIKE $2
         GROUP BY session_id
@@ -50,6 +53,7 @@ async def curator_runs(user_id, curator: dict, limit: int = 14) -> list[dict]:
         user_id,
         f"{prefix}%",
         limit,
+        CURATOR_RUN_STATS_EVENT,
     )
     return [await _entry(dict(run)) for run in runs]
 
@@ -80,4 +84,5 @@ async def _entry(run: dict) -> dict:
         "status": status,
         "summary": summary,
         "error": error,
+        "processed": run["processed"],
     }

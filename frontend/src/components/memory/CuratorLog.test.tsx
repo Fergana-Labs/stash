@@ -17,6 +17,15 @@ function entry(overrides: Partial<CuratorLogEntry>): CuratorLogEntry {
     status: "completed",
     summary: "The eval-harness theme now spans three separate projects.",
     error: null,
+    processed: {
+      traces: 3,
+      activity_events: 0,
+      pages: 0,
+      files: 1,
+      source_docs: 0,
+      saves: 0,
+      more_queued: false,
+    },
     ...overrides,
   };
 }
@@ -40,6 +49,8 @@ describe("CuratorLog", () => {
     });
     render(<CuratorLog />);
     const entries = await screen.findAllByRole("article");
+    expect(entries[0].textContent).toContain("Processed 3 traces and 1 file.");
+    expect(entries[0].textContent).toContain("Learned: Newest learning.");
     expect(entries[0].textContent).toContain("Newest learning.");
     expect(entries[1].textContent).toContain("Older learning.");
   });
@@ -63,6 +74,34 @@ describe("CuratorLog", () => {
     });
     render(<CuratorLog />);
     expect(await screen.findByText(/Run failed: credential expired/)).toBeTruthy();
+  });
+
+  it("labels a currently running pass", async () => {
+    vi.mocked(getCuratorLog).mockResolvedValue({
+      entries: [entry({ status: "running", summary: null, processed: null })],
+    });
+    render(<CuratorLog />);
+    expect(await screen.findByText("Processing new activity now…")).toBeTruthy();
+  });
+
+  it("marks historical runs whose processing totals were not recorded", async () => {
+    vi.mocked(getCuratorLog).mockResolvedValue({
+      entries: [entry({ processed: null })],
+    });
+    render(<CuratorLog />);
+    expect(
+      await screen.findByText("Completed before processing totals were recorded.")
+    ).toBeTruthy();
+  });
+
+  it("says when more activity is queued", async () => {
+    vi.mocked(getCuratorLog).mockResolvedValue({
+      entries: [
+        entry({ processed: { ...entry({}).processed!, more_queued: true } }),
+      ],
+    });
+    render(<CuratorLog />);
+    expect(await screen.findByText("More activity is queued for the next run.")).toBeTruthy();
   });
 
   // A skipped night is an explicit answer, not a missing run — it shows its

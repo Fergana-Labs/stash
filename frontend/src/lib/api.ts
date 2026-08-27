@@ -785,6 +785,15 @@ export interface CuratorLogEntry {
   status: "completed" | "failed" | "stopped" | "interrupted" | "running" | "skipped";
   summary: string | null;
   error: string | null;
+  processed: {
+    traces: number;
+    activity_events: number;
+    pages: number;
+    files: number;
+    source_docs: number;
+    saves: number;
+    more_queued: boolean;
+  } | null;
 }
 
 export async function getCuratorLog(): Promise<{ entries: CuratorLogEntry[] }> {

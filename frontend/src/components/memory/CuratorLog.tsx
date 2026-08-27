@@ -120,15 +120,64 @@ function LogEntry({ entry }: { entry: CuratorLogEntry }) {
         </p>
       ) : entry.status === "stopped" ? (
         <p className="mt-1.5 text-[13px] text-muted-foreground">Run stopped mid-pass.</p>
-      ) : entry.summary ? (
-        <p className="mt-1.5 whitespace-pre-line text-[13.5px] leading-[1.6] text-foreground">
-          {entry.summary}
+      ) : entry.status === "running" ? (
+        <p className="mt-1.5 text-[13px] text-muted-foreground">
+          Processing new activity now…
+        </p>
+      ) : entry.status === "interrupted" ? (
+        <p className="mt-1.5 text-[13px] text-muted-foreground">
+          Run ended before the curator wrote a takeaway.
         </p>
       ) : (
-        <p className="mt-1.5 text-[13px] text-muted-foreground">
-          Run ended without a log entry.
-        </p>
+        <CompletedRun entry={entry} />
       )}
     </article>
   );
+}
+
+function CompletedRun({ entry }: { entry: CuratorLogEntry }) {
+  return (
+    <div className="mt-1.5 space-y-1.5">
+      <p className="text-[13.5px] font-medium text-foreground">
+        {entry.processed
+          ? processedSummary(entry.processed)
+          : "Completed before processing totals were recorded."}
+      </p>
+      {entry.processed?.more_queued && (
+        <p className="text-[12.5px] text-muted-foreground">
+          More activity is queued for the next run.
+        </p>
+      )}
+      {entry.summary ? (
+        <p className="line-clamp-2 text-[13px] leading-[1.55] text-muted-foreground">
+          <span className="font-medium text-foreground">Learned:</span> {entry.summary}
+        </p>
+      ) : (
+        <p className="text-[13px] text-muted-foreground">Run ended without a takeaway.</p>
+      )}
+    </div>
+  );
+}
+
+type Processed = NonNullable<CuratorLogEntry["processed"]>;
+
+function processedSummary(processed: Processed): string {
+  const items = [
+    countLabel(processed.traces, "trace"),
+    countLabel(processed.activity_events, "activity event"),
+    countLabel(processed.files, "file"),
+    countLabel(processed.pages, "page"),
+    countLabel(processed.source_docs, "source document"),
+    countLabel(processed.saves, "save"),
+  ].filter((item): item is string => item !== null);
+
+  if (items.length === 0) return "Processed 0 new items.";
+  if (items.length === 1) return `Processed ${items[0]}.`;
+  if (items.length === 2) return `Processed ${items[0]} and ${items[1]}.`;
+  return `Processed ${items.slice(0, -1).join(", ")}, and ${items.at(-1)}.`;
+}
+
+function countLabel(count: number, singular: string): string | null {
+  if (count === 0) return null;
+  return `${count} ${singular}${count === 1 ? "" : "s"}`;
 }

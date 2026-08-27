@@ -308,6 +308,43 @@ async def test_changes_endpoint(client: AsyncClient):
     assert "counts" in body and "history" in body and "pages" in body
 
 
+@pytest.mark.asyncio
+async def test_curator_run_stats_count_the_bounded_internal_delta(monkeypatch):
+    from backend.services import curation_service, sprite_agent_service
+
+    async def changes_since(*_args):
+        return {
+            "history": [
+                {"session_id": "trace-1", "user": None},
+                {"session_id": "trace-1", "user": None},
+                {"session_id": "trace-2", "user": None},
+                {"session_id": None, "user": None},
+                {"session_id": "external-trace", "user": {"id": "customer"}},
+            ],
+            "counts": {"pages": 2, "files": 1, "source_docs": 3, "saves": 4},
+            "history_has_more": True,
+        }
+
+    monkeypatch.setattr(curation_service, "changes_since", changes_since)
+    stats = await sprite_agent_service._curator_run_stats(
+        {
+            "user_id": UUID("00000000-0000-0000-0000-000000000001"),
+            "curated_through": None,
+            "curator_wiki": "internal",
+        }
+    )
+
+    assert stats == {
+        "traces": 2,
+        "activity_events": 1,
+        "pages": 2,
+        "files": 1,
+        "source_docs": 3,
+        "saves": 4,
+        "more_queued": True,
+    }
+
+
 def test_curator_prompt_demands_a_curator_log():
     """The run's final message is the home page's log entry — the prompt must
     demand it in log form, with the quiet-night escape hatch so empty deltas

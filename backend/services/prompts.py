@@ -294,7 +294,7 @@ in `Log` so a future run picks it up.
 ## Curator log (your final message)
 Your final message is the night's log entry, shown on the user's home page
 beside stats the app computes itself — sessions read, files added, pages
-updated. Never restate those numbers. Write ONE sentence distilling what the
+updated. Never restate those numbers or say "Curation complete." Write ONE sentence distilling what the
 new material taught: the learning, not the mechanics ("The judge-panel eval
 pattern now spans three separate projects" — not "I updated 3 pages").
 A quiet night is reported as quiet: "Nothing new worth recording." is a
@@ -411,7 +411,8 @@ This pass is the privacy guarantee — never skip it.
 
 ## Curator log (your final message)
 ONE sentence distilling what the new material taught across users — the
-learning, not the mechanics, with no user named. A quiet night is reported
+learning, not the mechanics, with no user named. The app supplies the processed
+counts, so never restate them or say "Curation complete." A quiet night is reported
 as quiet: "Nothing new worth recording." is a complete entry.
 
 Begin now.

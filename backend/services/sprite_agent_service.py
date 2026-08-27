@@ -215,6 +215,7 @@ async def _record_run_failure(
 # it back so the curator log can say why a night's run didn't happen instead of
 # showing nothing.
 RUN_SKIPPED_PREFIX = "⏭ Run skipped:"
+CURATOR_RUN_STATS_EVENT = "curator_run_stats"
 
 
 async def record_run_skipped(agent: dict, run_stamp: str, reason: str) -> None:
@@ -235,6 +236,42 @@ async def record_run_skipped(agent: dict, run_stamp: str, reason: str) -> None:
         agent["name"],
         f"{RUN_SKIPPED_PREFIX} {reason}",
         session_id,
+    )
+
+
+async def _curator_run_stats(agent: dict) -> dict:
+    """Count the bounded delta this curator is about to receive."""
+    from . import curation_service
+
+    user_id = UUID(str(agent["user_id"]))
+    delta = await curation_service.changes_since(user_id, user_id, agent.get("curated_through"))
+    external = agent.get("curator_wiki") == "external"
+    history = [event for event in delta["history"] if bool(event.get("user")) == external]
+    trace_ids = {event["session_id"] for event in history if event.get("session_id")}
+    return {
+        "traces": len(trace_ids),
+        "activity_events": sum(not event.get("session_id") for event in history),
+        "pages": delta["counts"]["pages"],
+        "files": delta["counts"]["files"],
+        "source_docs": delta["counts"]["source_docs"],
+        "saves": delta["counts"]["saves"],
+        "more_queued": delta["history_has_more"],
+    }
+
+
+async def _record_curator_run_stats(agent: dict, session_id: str, stats: dict) -> None:
+    """Attach deterministic input totals to a completed curator run."""
+    from ..database import get_pool
+
+    await get_pool().execute(
+        "INSERT INTO history_events "
+        "(owner_user_id, created_by, agent_name, event_type, content, session_id, metadata) "
+        "VALUES ($1, $1, $2, $3, '', $4, $5::jsonb)",
+        UUID(str(agent["user_id"])),
+        agent["name"],
+        CURATOR_RUN_STATS_EVENT,
+        session_id,
+        json.dumps(stats),
     )
 
 
@@ -435,7 +472,8 @@ async def run_scheduled(agent: dict, run_stamp: str) -> str:
     owner_name = user["display_name"] or user["name"]
 
     session_id, message = await build_scheduled_turn(agent, run_stamp)
-    return await run_chat(
+    stats = await _curator_run_stats(agent) if agent.get("is_curator") else None
+    result = await run_chat(
         user_id,
         owner_name,
         user_id,
@@ -445,6 +483,9 @@ async def run_scheduled(agent: dict, run_stamp: str) -> str:
         persona=agent["system_prompt"],
         agent_name=agent["name"],
     )
+    if stats is not None:
+        await _record_curator_run_stats(agent, session_id, stats)
+    return result
 
 
 # Detached turn tasks need a strong reference until they finish — asyncio
