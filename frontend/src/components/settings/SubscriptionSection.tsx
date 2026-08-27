@@ -40,6 +40,10 @@ export default function SubscriptionSection() {
   const plan = previewPlan ?? billing.plan;
   const isPro = plan === "pro";
   const isEnterprise = plan === "enterprise";
+  const curatedTraces = Math.min(
+    billing.curated_trace_count,
+    billing.free_curated_trace_limit,
+  );
 
   async function redirectTo(action: () => Promise<{ url: string }>) {
     setBusy(true);
@@ -86,13 +90,12 @@ export default function SubscriptionSection() {
         <p className="text-xs text-muted-foreground mt-0.5">
           {isEnterprise ? (
             <>
-              Enterprise includes unlimited curator runs and the managed agent model.
+              Enterprise includes automatic curation of every new trace.
             </>
           ) : (
             <>
-              Free includes {billing.free_curator_runs_per_month} Memory-curator runs per
-              month. Pro ($20/month) includes unlimited curator runs and the managed agent
-              model.
+              Stash&apos;s core trace-and-Skills product is free. Pro is $20/month for
+              automatic curation of every new trace using Stash-managed inference.
             </>
           )}
         </p>
@@ -114,10 +117,10 @@ export default function SubscriptionSection() {
           </div>
           <div className="text-xs text-muted-foreground mt-0.5">
             {isEnterprise
-              ? "Granted plan — curator runs are unlimited."
+              ? "Granted plan — every new trace is curated automatically."
               : isPro
-              ? `Subscription ${canPreview ? "active" : billing.status}.`
-              : `${billing.free_curator_runs_per_month} Memory-curator runs included each month.`}
+              ? `Automatic curation is active. Subscription ${canPreview ? "active" : billing.status}.`
+              : `${curatedTraces.toLocaleString()} of ${billing.free_curated_trace_limit.toLocaleString()} free traces curated.`}
           </div>
         </div>
         {isEnterprise ? null : canPreview ? (

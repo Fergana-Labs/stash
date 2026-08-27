@@ -180,7 +180,8 @@ async def test_billing_me_reflects_plan(client, pool, billing_on):
         "status": None,
         "connection_count": 1,
         "connection_limit": billing_service.FREE_CONNECTION_LIMIT,
-        "free_curator_runs_per_month": settings.FREE_CURATOR_RUNS_PER_MONTH,
+        "curated_trace_count": 0,
+        "free_curated_trace_limit": settings.FREE_CURATED_TRACES,
     }
 
     await pool.execute(
@@ -204,7 +205,8 @@ async def test_billing_me_still_returns_plan_when_checkout_is_disabled(client, m
         "status": None,
         "connection_count": 0,
         "connection_limit": billing_service.FREE_CONNECTION_LIMIT,
-        "free_curator_runs_per_month": settings.FREE_CURATOR_RUNS_PER_MONTH,
+        "curated_trace_count": 0,
+        "free_curated_trace_limit": settings.FREE_CURATED_TRACES,
     }
 
 

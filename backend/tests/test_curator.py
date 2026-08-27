@@ -502,12 +502,8 @@ async def test_failed_curator_run_preserves_watermark(
 
 
 @pytest.mark.asyncio
-async def test_failed_run_records_error_and_refunds_credit(
-    client: AsyncClient, sprite_exec, _db_pool, monkeypatch
-):
-    """A failed run must be visible (last_run_error) and must not eat the
-    free monthly allowance — an infra outage would otherwise silently burn
-    all credits."""
+async def test_failed_run_records_error(client: AsyncClient, sprite_exec, _db_pool, monkeypatch):
+    """A failed run must be visible through last_run_error."""
     from backend.services import sprite_agent_service
     from backend.tasks.agent_schedules import _run_due, _run_scheduled_agent, run_scheduled_agent
 
@@ -529,11 +525,10 @@ async def test_failed_run_records_error_and_refunds_credit(
     await _run_scheduled_agent(UUID(dispatched[0][0]), dispatched[0][1])
 
     row = await _db_pool.fetchrow(
-        "SELECT last_run_error, month_run_count FROM agents WHERE id = $1",
+        "SELECT last_run_error FROM agents WHERE id = $1",
         UUID(curator["id"]),
     )
     assert "sprite exploded" in row["last_run_error"]
-    assert row["month_run_count"] == 0  # consumed by mark_run, refunded on failure
 
     # The next successful run clears the error. Re-patch the real function
     # rather than monkeypatch.undo() — the fixture is shared with sprite_exec,
@@ -544,11 +539,10 @@ async def test_failed_run_records_error_and_refunds_credit(
     assert await _run_due() == 1
     await _run_scheduled_agent(UUID(dispatched[1][0]), dispatched[1][1])
     row = await _db_pool.fetchrow(
-        "SELECT last_run_error, month_run_count FROM agents WHERE id = $1",
+        "SELECT last_run_error FROM agents WHERE id = $1",
         UUID(curator["id"]),
     )
     assert row["last_run_error"] is None
-    assert row["month_run_count"] == 1
 
 
 # --- Manual recompute (POST /me/memory/recompute) ---
@@ -617,11 +611,10 @@ async def test_failed_manual_recompute_records_error(
         await _run_curator_now(UUID(curator["id"]))
 
     row = await _db_pool.fetchrow(
-        "SELECT last_run_error, month_run_count FROM agents WHERE id = $1",
+        "SELECT last_run_error FROM agents WHERE id = $1",
         UUID(curator["id"]),
     )
     assert "harness missing" in row["last_run_error"]
-    assert row["month_run_count"] == 0
 
     # The error is visible through the API the CLI reads.
     r = await client.get("/api/v1/me/agents", headers=_auth(key))
@@ -666,34 +659,6 @@ async def test_recompute_409_when_nothing_changed(client: AsyncClient, _db_pool)
     )
     r = await client.post("/api/v1/me/memory/recompute", headers=_auth(key))
     assert r.status_code == 409
-
-
-@pytest.mark.asyncio
-async def test_recompute_metered_like_the_scheduler(client: AsyncClient, _db_pool):
-    """Manual runs draw from the same monthly sleep-time allowance: free
-    accounts stop at the cap, enterprise is unlimited."""
-    from backend.config import settings
-    from backend.tasks.agent_schedules import run_curator_now
-
-    key, uid = await _register(client)
-    curator = await agent_service.get_or_create_curator(uid)
-    await client.post(
-        "/api/v1/me/pages/new", json={"name": "N", "content": "x"}, headers=_auth(key)
-    )
-    await _db_pool.execute(
-        "UPDATE agents SET month_run_count = $2, "
-        "month_run_anchor = date_trunc('month', now())::date WHERE id = $1",
-        UUID(curator["id"]),
-        settings.FREE_CURATOR_RUNS_PER_MONTH,
-    )
-
-    r = await client.post("/api/v1/me/memory/recompute", headers=_auth(key))
-    assert r.status_code == 402
-
-    await _db_pool.execute("UPDATE users SET plan = 'enterprise' WHERE id = $1", uid)
-    run_curator_now.delay = lambda agent_id: None
-    r = await client.post("/api/v1/me/memory/recompute", headers=_auth(key))
-    assert r.status_code == 202
 
 
 # --- Memory wiki graph (GET /me/memory-graph) ---

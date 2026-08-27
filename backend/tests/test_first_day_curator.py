@@ -43,17 +43,13 @@ async def _dispatched_wikis(pool, dispatched) -> set[str]:
 
 
 @pytest.mark.asyncio
-async def test_first_day_conversation_dispatches_unmetered_runs(
-    client: AsyncClient, pool, dispatched
-):
+async def test_first_day_conversation_dispatches_runs(client: AsyncClient, pool, dispatched):
     scope_id = await _workspace_with_conversation(client)
     await _first_day_curator_tick(scope_id)
     # Both of the workspace's wikis update eagerly on day one: its own Memory
     # wiki and the cross-user external wiki.
     assert await _dispatched_wikis(pool, dispatched) == {"internal", "external"}
-    # The platform is the trigger, so the runs must not eat the workspace's
-    # free monthly curator allowance.
-    assert all(kwargs == {"metered": False} for _, kwargs in dispatched)
+    assert all(kwargs == {} for _, kwargs in dispatched)
 
 
 @pytest.mark.asyncio
@@ -121,13 +117,13 @@ async def _personal_user_with_conversation(client: AsyncClient) -> UUID:
 
 
 @pytest.mark.asyncio
-async def test_personal_first_day_conversation_dispatches_an_unmetered_run(
+async def test_personal_first_day_conversation_dispatches_a_run(
     client: AsyncClient, pool, dispatched
 ):
     user_id = await _personal_user_with_conversation(client)
     await _first_day_curator_tick(user_id)
     assert await _dispatched_wikis(pool, dispatched) == {"internal"}
-    assert dispatched[0][1] == {"metered": False}
+    assert dispatched[0][1] == {}
 
 
 @pytest.mark.asyncio

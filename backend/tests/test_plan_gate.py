@@ -76,30 +76,10 @@ async def test_admin_grants_and_revokes_plan(client: AsyncClient, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_mark_run_meters_per_calendar_month(client: AsyncClient, _db_pool):
-    """The counter must reset when the month rolls over, or long-lived free
-    accounts would permanently exhaust their allowance."""
-    _key, uid = await _register(client)
-    curator = await agent_service.get_or_create_curator(uid)
-
-    assert await agent_service.mark_run(UUID(curator["id"])) == 1
-    assert await agent_service.mark_run(UUID(curator["id"])) == 2
-
-    # Simulate the anchor pointing at last month → next run restarts at 1.
-    await _db_pool.execute(
-        "UPDATE agents SET month_run_anchor = (date_trunc('month', now()) - interval '1 month')::date "
-        "WHERE id = $1",
-        UUID(curator["id"]),
-    )
-    assert await agent_service.mark_run(UUID(curator["id"])) == 1
-
-
-@pytest.mark.asyncio
 async def test_free_curator_credits_exhausted_skips_run(
     client: AsyncClient, sprite_exec, _db_pool, monkeypatch
 ):
-    """Free accounts get a monthly curator allowance; past it the beat must not
-    wake the sprite. Enterprise is unlimited — same state runs after the grant."""
+    """Free curation stops after 1,000 useful traces; Enterprise is unlimited."""
     from backend.tasks.agent_schedules import _run_due, _run_scheduled_agent, run_scheduled_agent
 
     key, uid = await _register(client)
@@ -110,12 +90,44 @@ async def test_free_curator_credits_exhausted_skips_run(
     )
     watermark = datetime.now(UTC) - timedelta(minutes=2)
     await _make_due(_db_pool, curator["id"], watermark)
-    # Allowance already spent this month.
+    # Every quota trace has an assistant message; empty sessions do not count.
     await _db_pool.execute(
-        "UPDATE agents SET month_run_count = $2, month_run_anchor = date_trunc('month', now())::date "
-        "WHERE id = $1",
-        UUID(curator["id"]),
-        settings.FREE_CURATOR_RUNS_PER_MONTH,
+        """
+        INSERT INTO sessions
+            (owner_user_id, session_id, agent_name, created_by, started_at, last_event_at)
+        SELECT $1, 'quota-' || n, 'codex', $1,
+               $2::timestamptz - interval '1 hour', $2::timestamptz
+        FROM generate_series(1, $3) n
+        """,
+        uid,
+        watermark,
+        settings.FREE_CURATED_TRACES,
+    )
+    await _db_pool.execute(
+        """
+        INSERT INTO sessions
+            (owner_user_id, session_id, agent_name, created_by, started_at, last_event_at)
+        VALUES ($1, 'empty-session', 'codex', $1, $2, $2)
+        """,
+        uid,
+        watermark,
+    )
+    await _db_pool.execute(
+        """
+        INSERT INTO history_events
+            (owner_user_id, created_by, agent_name, event_type, content, session_id, created_at)
+        SELECT $1, $1, 'codex', 'assistant_message', 'done',
+               'quota-' || n, $2::timestamptz
+        FROM generate_series(1, $3) n
+        """,
+        uid,
+        watermark,
+        settings.FREE_CURATED_TRACES,
+    )
+    from backend.services import curation_service
+
+    assert (
+        await curation_service.curated_trace_count(uid, watermark) == settings.FREE_CURATED_TRACES
     )
 
     ran = await _run_due()
@@ -142,7 +154,7 @@ async def test_free_curator_credits_exhausted_skips_run(
 @pytest.mark.asyncio
 async def test_on_demand_curator_run_refused_on_sse_route(client: AsyncClient, _db_pool):
     """The curator's "Run now" enqueues on the worker via /memory/recompute
-    (metered there — see test_recompute_metered_like_the_scheduler). The SSE
+    (with the same trace allowance as the scheduler). The SSE
     route refuses curators outright: a curation pass takes minutes, and an
     SSE run dies silently when the browser tab closes."""
     key, uid = await _register(client)

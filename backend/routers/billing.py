@@ -14,7 +14,7 @@ from pydantic import BaseModel
 
 from ..auth import get_current_user, get_scope
 from ..config import settings
-from ..services import billing_service
+from ..services import billing_service, curation_service
 
 router = APIRouter(prefix="/api/v1/billing", tags=["billing"])
 
@@ -31,7 +31,8 @@ async def my_billing(
         "status": status,
         "connection_count": await billing_service.connection_count(scope_user_id),
         "connection_limit": billing_service.FREE_CONNECTION_LIMIT,
-        "free_curator_runs_per_month": settings.FREE_CURATOR_RUNS_PER_MONTH,
+        "curated_trace_count": await curation_service.account_curated_trace_count(scope_user_id),
+        "free_curated_trace_limit": settings.FREE_CURATED_TRACES,
     }
 
 

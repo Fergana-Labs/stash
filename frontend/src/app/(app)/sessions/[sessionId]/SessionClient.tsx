@@ -18,17 +18,16 @@ import {
   getSessionDetail,
   getSessionEvents,
   getSessionEventsPage,
-  listFiles,
   renameSession,
   trashItem,
   type SessionDetail,
 } from "@/lib/api";
-import type { FileInfo } from "@/lib/types";
 import EditableTitle from "@/components/content/EditableTitle";
 import { getScope } from "@/lib/scope-store";
 import { eventToTurn, toolDisplay, type MessageTurn } from "./transcript";
 import MinimapStrip from "./MinimapStrip";
 import { MINIMAP_MIN_TURNS } from "./minimap";
+import { sessionFileRows } from "./sessionFiles";
 
 // One transcript page. The viewer loads this many turns at a time and fetches
 // more on scroll, so long sessions don't load every event up front.
@@ -192,7 +191,7 @@ export default function SessionViewerPage({ sessionId }: { sessionId: string }) 
     }
   }, [sessionId, loadingMore, hasMore, loadingAll, turns.length, humanName]);
 
-  // --- In-session search + human-turn navigation -------------------------
+  // --- In-session search --------------------------------------------------
   const [query, setQuery] = useState("");
   const [focusIndex, setFocusIndex] = useState<number | null>(null);
 
@@ -244,11 +243,6 @@ export default function SessionViewerPage({ sessionId }: { sessionId: string }) 
     return hits;
   }, [turns, query]);
 
-  const humanTurnIndices = useMemo(
-    () => turns.flatMap((turn, i) => (turn.who === "user" ? [i] : [])),
-    [turns]
-  );
-
   const jumpTo = useCallback((index: number) => {
     setFocusIndex(index);
     document.getElementById(`turn-${index}`)?.scrollIntoView({ block: "center" });
@@ -267,18 +261,6 @@ export default function SessionViewerPage({ sessionId }: { sessionId: string }) 
       jumpTo(matches[nextPos]);
     },
     [matches, focusIndex, jumpTo]
-  );
-
-  const jumpToHuman = useCallback(
-    (direction: 1 | -1) => {
-      const from = focusIndex ?? (direction === 1 ? -1 : turns.length);
-      const next =
-        direction === 1
-          ? humanTurnIndices.find((i) => i > from)
-          : [...humanTurnIndices].reverse().find((i) => i < from);
-      if (next !== undefined) jumpTo(next);
-    },
-    [focusIndex, turns.length, humanTurnIndices, jumpTo]
   );
 
   // Auto-load the next page when the sentinel scrolls into view; the button it
@@ -388,17 +370,6 @@ export default function SessionViewerPage({ sessionId }: { sessionId: string }) 
                     </JumpButton>
                   </>
                 )}
-                {humanTurnIndices.length > 0 && (
-                  <>
-                    <span className="flex-1" />
-                    <JumpButton label="Previous human message" onClick={() => jumpToHuman(-1)}>
-                      ↑ human
-                    </JumpButton>
-                    <JumpButton label="Next human message" onClick={() => jumpToHuman(1)}>
-                      ↓ human
-                    </JumpButton>
-                  </>
-                )}
               </div>
             )}
 
@@ -468,76 +439,47 @@ export default function SessionViewerPage({ sessionId }: { sessionId: string }) 
 function SessionAside({ detail }: { detail: SessionDetail | null }) {
   const filesTouched = normalizeStringList(detail?.files_touched);
   const artifacts = detail?.artifacts ?? [];
-
-  // Paths the session touched are only local paths; a path becomes a link
-  // when a file with that name exists in the viewer's stash.
-  const [stashFiles, setStashFiles] = useState<FileInfo[]>([]);
-  useEffect(() => {
-    if (filesTouched.length === 0) return;
-    listFiles()
-      .then(setStashFiles)
-      .catch(() => setStashFiles([]));
-  }, [filesTouched.length]);
-
-  const stashFileFor = (path: string): FileInfo | undefined => {
-    const basename = path.split("/").pop();
-    return stashFiles.find((f) => f.name === basename);
-  };
+  const files = sessionFileRows(filesTouched, artifacts, detail?.cwd ?? null);
 
   return (
     <aside className="hidden lg:block">
       <div className="sticky top-16 flex flex-col gap-3">
         <div className="card-soft p-3.5">
-          <div className="sys-label">Files referenced in this session</div>
-          {filesTouched.length > 0 && (
+          <div className="sys-label">Files used in this session</div>
+          {files.length > 0 && (
             <div className="mt-2 flex flex-col gap-1.5">
-              {filesTouched.map((file) => {
-                const stashFile = stashFileFor(file);
-                if (!stashFile) {
+              {files.map(({ path, artifact }) => {
+                if (!artifact) {
                   return (
                     <div
-                      key={file}
-                      className="flex items-center gap-1.5 rounded-md border border-border-subtle bg-base px-2 py-1.5 font-mono text-[11px] text-foreground"
+                      key={path}
+                      className="flex items-center gap-1.5 px-0.5 py-1 font-mono text-[11px] text-muted-foreground"
                     >
                       <FileGlyph />
-                      <span className="truncate">{file}</span>
+                      <span className="min-w-0 flex-1 truncate" title={path}>{path}</span>
                     </div>
                   );
                 }
                 return (
-                  <Link
-                    key={file}
-                    href={`/f/${stashFile.id}`}
-                    title={file}
+                  <a
+                    key={path}
+                    href={artifact.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title={`Open archived copy of ${path}`}
                     className="linkrow px-2 py-1.5 font-mono text-[11px]"
                   >
                     <FileGlyph />
-                    <span className="min-w-0 flex-1 truncate">{file}</span>
-                  </Link>
+                    <span className="min-w-0 flex-1 truncate">{path}</span>
+                    <span className="sys-label" style={{ fontSize: 10 }}>
+                      {formatBytes(artifact.size_bytes)}
+                    </span>
+                  </a>
                 );
               })}
             </div>
           )}
-          {artifacts.length > 0 && (
-            <div className="mt-2 flex flex-col gap-1.5">
-              {artifacts.map((artifact) => (
-                <a
-                  key={artifact.id}
-                  href={artifact.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="linkrow px-2 py-1.5 font-mono text-[11px]"
-                >
-                  <FileGlyph />
-                  <span className="min-w-0 flex-1 truncate">{artifact.file_path}</span>
-                  <span className="sys-label" style={{ fontSize: 10 }}>
-                    {formatBytes(artifact.size_bytes)}
-                  </span>
-                </a>
-              ))}
-            </div>
-          )}
-          {filesTouched.length === 0 && artifacts.length === 0 && (
+          {files.length === 0 && (
             <div className="mt-2 text-[12px] leading-relaxed text-muted-foreground">
               No files recorded for this session.
             </div>
@@ -632,7 +574,6 @@ function MessageRow({
           >
             {turn.name}
           </span>
-          {turn.who === "assistant" && <span className="tag tag-agent">agent</span>}
           {turn.toolName && (
             <span className="rounded bg-surface px-1.5 py-0 font-mono text-[10.5px] text-dim ring-1 ring-border">
               {turn.toolName}

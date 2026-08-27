@@ -22,6 +22,7 @@ import logging
 import re
 import secrets
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime
 from uuid import UUID
 
 import redis.asyncio as aioredis
@@ -244,7 +245,11 @@ async def _curator_run_stats(agent: dict) -> dict:
     from . import curation_service
 
     user_id = UUID(str(agent["user_id"]))
-    delta = await curation_service.changes_since(user_id, user_id, agent.get("curated_through"))
+    now = datetime.now(UTC)
+    until = await curation_service.entitled_through(user_id, agent.get("curated_through"), now)
+    delta = await curation_service.changes_since(
+        user_id, user_id, agent.get("curated_through"), until
+    )
     external = agent.get("curator_wiki") == "external"
     history = [event for event in delta["history"] if bool(event.get("user")) == external]
     trace_ids = {event["session_id"] for event in history if event.get("session_id")}

@@ -809,7 +809,6 @@ details > summary::-webkit-details-marker {
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
-.tag-agent { background: #FFEDD5; color: #C2410C; }
 .tag-brand { background: #FFEDD5; color: #C2410C; }
 .tag-success { background: rgba(34,197,94,0.12); color: #15803D; }
 .tag-warning { background: rgba(234,179,8,0.18); color: #854D0E; }
