@@ -181,7 +181,10 @@ async def test_billing_me_reflects_plan(client, pool, billing_on):
         "connection_count": 1,
         "connection_limit": billing_service.FREE_CONNECTION_LIMIT,
         "curated_trace_count": 0,
+        "curated_trace_limit": settings.FREE_CURATED_TRACES,
+        "curated_trace_period": "lifetime",
         "free_curated_trace_limit": settings.FREE_CURATED_TRACES,
+        "pro_curated_trace_limit": settings.PRO_CURATED_TRACES_PER_MONTH,
     }
 
     await pool.execute(
@@ -192,6 +195,9 @@ async def test_billing_me_reflects_plan(client, pool, billing_on):
     me = (await client.get("/api/v1/billing/me", headers=_auth(api_key))).json()
     assert me["plan"] == "pro"
     assert me["status"] == "active"
+    assert me["curated_trace_count"] == 0
+    assert me["curated_trace_limit"] == settings.PRO_CURATED_TRACES_PER_MONTH
+    assert me["curated_trace_period"] == "month"
 
 
 @pytest.mark.asyncio
@@ -206,7 +212,10 @@ async def test_billing_me_still_returns_plan_when_checkout_is_disabled(client, m
         "connection_count": 0,
         "connection_limit": billing_service.FREE_CONNECTION_LIMIT,
         "curated_trace_count": 0,
+        "curated_trace_limit": settings.FREE_CURATED_TRACES,
+        "curated_trace_period": "lifetime",
         "free_curated_trace_limit": settings.FREE_CURATED_TRACES,
+        "pro_curated_trace_limit": settings.PRO_CURATED_TRACES_PER_MONTH,
     }
 
 

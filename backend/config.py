@@ -352,6 +352,7 @@ class Settings:
     # Free accounts receive managed curation for this many useful coding
     # sessions over the lifetime of the account.
     FREE_CURATED_TRACES: int = int(os.getenv("FREE_CURATED_TRACES", "1000"))
+    PRO_CURATED_TRACES_PER_MONTH: int = int(os.getenv("PRO_CURATED_TRACES_PER_MONTH", "10000"))
     # Where enterprise-intent signups are sent as sales leads.
     SALES_NOTIFY_EMAIL: str = os.getenv("SALES_NOTIFY_EMAIL", "henry@ferganalabs.com")
 

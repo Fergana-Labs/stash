@@ -248,16 +248,15 @@ async def changes_since(
     }
 
 
-async def curated_trace_count(owner_user_id: UUID, through: datetime | None) -> int:
-    if through is None:
-        return 0
+async def curated_trace_count(owner_user_id: UUID, curated_since: datetime | None = None) -> int:
     return int(
         await get_pool().fetchval(
             """
             SELECT count(*) FROM sessions s
             WHERE s.owner_user_id = $1 AND s.deleted_at IS NULL
               AND s.session_id NOT LIKE 'agent-curate-%'
-              AND s.last_event_at <= $2
+              AND s.curated_at IS NOT NULL
+              AND ($2::timestamptz IS NULL OR s.curated_at >= $2)
               AND EXISTS (
                   SELECT 1 FROM history_events he
                   WHERE he.owner_user_id = s.owner_user_id
@@ -266,33 +265,45 @@ async def curated_trace_count(owner_user_id: UUID, through: datetime | None) -> 
               )
             """,
             owner_user_id,
-            through,
+            curated_since,
         )
     )
 
 
-async def account_curated_trace_count(owner_user_id: UUID) -> int:
-    through = await get_pool().fetchval(
-        "SELECT curated_through FROM agents "
-        "WHERE user_id = $1 AND is_curator AND curator_wiki = 'internal'",
-        owner_user_id,
-    )
-    return await curated_trace_count(owner_user_id, through)
+async def curation_allowance(owner_user_id: UUID, now: datetime) -> dict | None:
+    from ..config import settings
+    from . import billing_service
+
+    plan = await billing_service.plan_label(owner_user_id)
+    if plan == "enterprise":
+        return None
+    if plan == "pro":
+        period_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        limit = settings.PRO_CURATED_TRACES_PER_MONTH
+        period = "month"
+    else:
+        period_start = None
+        limit = settings.FREE_CURATED_TRACES
+        period = "lifetime"
+    return {
+        "plan": plan,
+        "used": await curated_trace_count(owner_user_id, period_start),
+        "limit": limit,
+        "period": period,
+    }
 
 
-async def free_curation_through(
+async def limited_curation_through(
     owner_user_id: UUID,
     since: datetime | None,
     requested_until: datetime,
-    trace_limit: int,
+    remaining: int,
 ) -> datetime | None:
-    """The end of the free user's remaining trace allowance.
+    """The end of the user's remaining trace allowance.
 
     None means the requested window fits. A timestamp bounds every input in
     the run at the completion time of the final included trace.
     """
-    used = await curated_trace_count(owner_user_id, since)
-    remaining = trace_limit - used
     if remaining <= 0:
         return since
     boundary = await get_pool().fetchval(
@@ -300,6 +311,7 @@ async def free_curation_through(
         SELECT s.last_event_at FROM sessions s
         WHERE s.owner_user_id = $1 AND s.deleted_at IS NULL
           AND s.session_id NOT LIKE 'agent-curate-%'
+          AND s.curated_at IS NULL
           AND ($2::timestamptz IS NULL OR s.last_event_at > $2)
           AND s.last_event_at <= $3
           AND EXISTS (
@@ -324,13 +336,14 @@ async def free_curation_through(
 async def entitled_through(
     owner_user_id: UUID, since: datetime | None, requested_until: datetime
 ) -> datetime:
-    from ..config import settings
-    from . import billing_service
-
-    if await billing_service.is_pro(owner_user_id):
+    allowance = await curation_allowance(owner_user_id, requested_until)
+    if allowance is None:
         return requested_until
-    boundary = await free_curation_through(
-        owner_user_id, since, requested_until, settings.FREE_CURATED_TRACES
+    boundary = await limited_curation_through(
+        owner_user_id,
+        since,
+        requested_until,
+        allowance["limit"] - allowance["used"],
     )
     return requested_until if boundary is None else boundary
 

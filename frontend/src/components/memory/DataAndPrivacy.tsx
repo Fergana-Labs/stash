@@ -38,7 +38,6 @@ export default function DataAndPrivacy() {
     };
   }, [scope?.scope_user_id]);
 
-  const destination = scope ? `the ${scope.name} workspace` : "your personal Stash";
   return (
     <section className="mt-5 rounded-2xl border border-border bg-surface p-6">
       <div>
@@ -51,9 +50,6 @@ export default function DataAndPrivacy() {
       </div>
 
       <div className="mt-5">
-        <div className="mb-2 text-[13px] font-medium text-foreground">
-          Uploading to {destination}
-        </div>
         <UploadSourceList sources={sources} error={error} />
       </div>
     </section>

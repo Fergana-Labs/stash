@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { TEAMS_CONTACT_EMAIL } from "../../lib/contact";
 import {
   BillingInfo,
   getBilling,
@@ -40,10 +39,10 @@ export default function SubscriptionSection() {
   const plan = previewPlan ?? billing.plan;
   const isPro = plan === "pro";
   const isEnterprise = plan === "enterprise";
-  const curatedTraces = Math.min(
-    billing.curated_trace_count,
-    billing.free_curated_trace_limit,
-  );
+  const curatedTraces = billing.curated_trace_count ?? 0;
+  const traceLimit = isPro
+    ? billing.pro_curated_trace_limit
+    : billing.free_curated_trace_limit;
 
   async function redirectTo(action: () => Promise<{ url: string }>) {
     setBusy(true);
@@ -88,26 +87,12 @@ export default function SubscriptionSection() {
       <div>
         <h2 className="text-base font-semibold text-foreground">Plan</h2>
         <p className="text-xs text-muted-foreground mt-0.5">
-          {isEnterprise ? (
-            <>
-              Enterprise includes automatic curation of every new trace.
-            </>
-          ) : (
-            <>
-              Stash&apos;s core trace-and-Skills product is free. Pro is $20/month for
-              automatic curation of every new trace using Stash-managed inference.
-            </>
-          )}
+          {isEnterprise
+            ? "Enterprise includes uncapped Skill creation."
+            : isPro
+              ? "Stash supports Skill creation from up to 10,000 traces per month on the Pro plan."
+              : "Stash supports Skill creation from up to 1,000 traces on the free plan."}
         </p>
-        {!isEnterprise && (
-          <p className="text-xs text-muted-foreground mt-0.5">
-            Want a shared team workspace? Email{" "}
-            <a className="underline" href={`mailto:${TEAMS_CONTACT_EMAIL}`}>
-              {TEAMS_CONTACT_EMAIL}
-            </a>
-            .
-          </p>
-        )}
       </div>
 
       <div className="flex items-center justify-between gap-4">
@@ -117,10 +102,10 @@ export default function SubscriptionSection() {
           </div>
           <div className="text-xs text-muted-foreground mt-0.5">
             {isEnterprise
-              ? "Granted plan — every new trace is curated automatically."
+              ? "Granted plan — Skill creation is uncapped."
               : isPro
-              ? `Automatic curation is active. Subscription ${canPreview ? "active" : billing.status}.`
-              : `${curatedTraces.toLocaleString()} of ${billing.free_curated_trace_limit.toLocaleString()} free traces curated.`}
+                ? `${curatedTraces.toLocaleString()} of ${traceLimit.toLocaleString()} traces curated this month.`
+                : `${curatedTraces.toLocaleString()} of ${traceLimit.toLocaleString()} free traces curated.`}
           </div>
         </div>
         {isEnterprise ? null : canPreview ? (

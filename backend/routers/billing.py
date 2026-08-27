@@ -5,6 +5,7 @@ signature, mirroring the Slack webhook pattern in webhooks.py."""
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 from typing import Literal
 from uuid import UUID
 
@@ -25,14 +26,18 @@ async def my_billing(
 ):
     subscription = await billing_service.get_subscription(scope_user_id)
     status = subscription["status"] if subscription else None
+    allowance = await curation_service.curation_allowance(scope_user_id, datetime.now(UTC))
     return {
         "billing_enabled": billing_service.billing_enabled(),
         "plan": await billing_service.plan_label(scope_user_id),
         "status": status,
         "connection_count": await billing_service.connection_count(scope_user_id),
         "connection_limit": billing_service.FREE_CONNECTION_LIMIT,
-        "curated_trace_count": await curation_service.account_curated_trace_count(scope_user_id),
+        "curated_trace_count": allowance["used"] if allowance else None,
+        "curated_trace_limit": allowance["limit"] if allowance else None,
+        "curated_trace_period": allowance["period"] if allowance else None,
         "free_curated_trace_limit": settings.FREE_CURATED_TRACES,
+        "pro_curated_trace_limit": settings.PRO_CURATED_TRACES_PER_MONTH,
     }
 
 

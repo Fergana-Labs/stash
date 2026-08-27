@@ -148,11 +148,9 @@ async def _maybe_dispatch_first_day_run(scope_user_id: UUID, agent: dict, now: d
 
 
 async def _run_due() -> int:
-    from ..config import settings
     from ..services import (
         agent_auth,
         agent_service,
-        billing_service,
         curation_service,
         sprite_agent_service,
     )
@@ -169,19 +167,17 @@ async def _run_due() -> int:
         # (curated_through) and only advances after a successful run, so a
         # skipped or failed run never discards un-curated changes.
         await agent_service.mark_run(agent["id"])
-        if (
-            agent["is_curator"]
-            and not await billing_service.is_pro(user_id)
-            and await curation_service.curated_trace_count(user_id, agent["curated_through"])
-            >= settings.FREE_CURATED_TRACES
-        ):
-            logger.info("agent schedule: free trace allowance exhausted for user %s", user_id)
+        allowance = (
+            await curation_service.curation_allowance(user_id, now) if agent["is_curator"] else None
+        )
+        if allowance is not None and allowance["used"] >= allowance["limit"]:
+            logger.info("agent schedule: trace allowance exhausted for user %s", user_id)
             await agent_service.mark_run_skipped(agent["id"], "credits")
+            period = " this month" if allowance["period"] == "month" else ""
             await sprite_agent_service.record_run_skipped(
                 agent,
                 stamp,
-                f"The first {settings.FREE_CURATED_TRACES:,} traces have been curated — "
-                "upgrade to Pro to curate every new trace.",
+                f"The plan's {allowance['limit']:,}-trace allowance{period} is used up.",
             )
             continue
         # No runnable credential (unconnected free user) → nothing can run.

@@ -322,9 +322,31 @@ async def mark_run_succeeded(agent_id: UUID) -> None:
 
 async def mark_curated(agent_id: UUID, through) -> None:
     """Advance the curator's delta watermark — only after a successful run, so
-    a failed run's window is re-covered next time."""
+    a failed run's window is re-covered next time. Internal curators also mark
+    every useful trace completed through that watermark as consumed."""
     await get_pool().execute(
-        "UPDATE agents SET curated_through = $2 WHERE id = $1", agent_id, through
+        """
+        WITH curator AS (
+            UPDATE agents SET curated_through = $2 WHERE id = $1
+            RETURNING user_id, curator_wiki
+        )
+        UPDATE sessions s SET curated_at = now()
+        FROM curator c
+        WHERE c.curator_wiki = 'internal'
+          AND s.owner_user_id = c.user_id
+          AND s.curated_at IS NULL
+          AND s.deleted_at IS NULL
+          AND s.session_id NOT LIKE 'agent-curate-%'
+          AND s.last_event_at <= $2
+          AND EXISTS (
+              SELECT 1 FROM history_events he
+              WHERE he.owner_user_id = s.owner_user_id
+                AND he.session_id = s.session_id
+                AND he.event_type = 'assistant_message'
+          )
+        """,
+        agent_id,
+        through,
     )
 
 

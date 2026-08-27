@@ -450,8 +450,11 @@ export interface BillingInfo {
   billing_enabled: boolean;
   plan: "free" | "pro" | "enterprise";
   status: string | null;
-  curated_trace_count: number;
+  curated_trace_count: number | null;
+  curated_trace_limit: number | null;
+  curated_trace_period: "lifetime" | "month" | null;
   free_curated_trace_limit: number;
+  pro_curated_trace_limit: number;
 }
 
 export async function getBilling(): Promise<BillingInfo> {

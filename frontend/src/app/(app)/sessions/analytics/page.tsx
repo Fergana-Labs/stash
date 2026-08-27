@@ -37,7 +37,7 @@ export default function SessionAnalyticsPage() {
           Usage
         </h1>
         <p className="mt-1 text-[12.5px] text-muted-foreground">
-          Every session you can see — your own plus what&apos;s shared with you.
+          View stats about your session traces uploaded to Stash.
         </p>
 
         <div className="mt-5 grid grid-cols-2 gap-4 sm:max-w-xs">

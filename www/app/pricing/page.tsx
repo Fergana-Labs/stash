@@ -11,7 +11,7 @@ export const metadata: Metadata = {
   alternates: { canonical: "/pricing" },
   title: "Pricing · Stash",
   description:
-    "Trace ingestion, search, and Skills are free. Pro is $20/month for automatic curation of every new trace.",
+    "Trace ingestion, search, and Skills are free. Pro supports Skill creation from up to 10,000 traces per month.",
 };
 
 // Every claim on this page mirrors what the backend actually enforces
@@ -43,12 +43,12 @@ const TIERS: {
     name: "Pro",
     price: "$20/month",
     priceDetail: "or $200/year — 2 months free",
-    blurb: "Automatic curation keeps going as your trace history grows.",
+    blurb: "Ten times the trace capacity for automatic Skill creation.",
     features: [
       "Everything in Free",
-      "Automatic curation of every new trace",
-      "Immediate processing of your uncurated backlog after upgrade",
-      "Stash-managed inference with no per-trace overages",
+      "Skill creation from up to 10,000 traces each month",
+      "Paused backlog resumes when your allowance resets",
+      "Stash-managed inference — no model key required",
     ],
     cta: { label: "Start with Pro", href: SIGNUP_URL },
     featured: true,
@@ -77,8 +77,8 @@ export default function PricingPage() {
           Simple pricing.
         </h1>
         <p className="mx-auto mt-5 max-w-[52ch] text-[17px] leading-[1.6] text-dim">
-          Trace ingestion, search, and Skills stay free. Pro keeps automatic curation
-          running after your first 1,000 useful traces.
+          Trace ingestion, search, and Skills stay free. Pro supports ten times as many
+          traces for automatic Skill creation.
         </p>
       </section>
 

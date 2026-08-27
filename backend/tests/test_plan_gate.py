@@ -94,9 +94,10 @@ async def test_free_curator_credits_exhausted_skips_run(
     await _db_pool.execute(
         """
         INSERT INTO sessions
-            (owner_user_id, session_id, agent_name, created_by, started_at, last_event_at)
+            (owner_user_id, session_id, agent_name, created_by, started_at,
+             last_event_at, curated_at)
         SELECT $1, 'quota-' || n, 'codex', $1,
-               $2::timestamptz - interval '1 hour', $2::timestamptz
+               $2::timestamptz - interval '1 hour', $2::timestamptz, $2::timestamptz
         FROM generate_series(1, $3) n
         """,
         uid,
@@ -106,8 +107,9 @@ async def test_free_curator_credits_exhausted_skips_run(
     await _db_pool.execute(
         """
         INSERT INTO sessions
-            (owner_user_id, session_id, agent_name, created_by, started_at, last_event_at)
-        VALUES ($1, 'empty-session', 'codex', $1, $2, $2)
+            (owner_user_id, session_id, agent_name, created_by, started_at,
+             last_event_at, curated_at)
+        VALUES ($1, 'empty-session', 'codex', $1, $2, $2, $2)
         """,
         uid,
         watermark,
@@ -126,9 +128,7 @@ async def test_free_curator_credits_exhausted_skips_run(
     )
     from backend.services import curation_service
 
-    assert (
-        await curation_service.curated_trace_count(uid, watermark) == settings.FREE_CURATED_TRACES
-    )
+    assert await curation_service.curated_trace_count(uid) == settings.FREE_CURATED_TRACES
 
     ran = await _run_due()
 
@@ -149,6 +149,55 @@ async def test_free_curator_credits_exhausted_skips_run(
     assert await _run_due() == 1
     await _run_scheduled_agent(UUID(dispatched[0][0]), dispatched[0][1])
     assert sprite_exec.calls != []
+
+
+@pytest.mark.asyncio
+async def test_pro_curator_allowance_resets_each_month(client: AsyncClient, _db_pool, monkeypatch):
+    from backend.tasks.agent_schedules import _run_due, run_scheduled_agent
+
+    monkeypatch.setattr(settings, "PRO_CURATED_TRACES_PER_MONTH", 1)
+    key, uid = await _register(client)
+    await _db_pool.execute(
+        "INSERT INTO user_subscriptions (user_id, stripe_customer_id, status) "
+        "VALUES ($1, 'cus-pro-cap', 'active')",
+        uid,
+    )
+    curator = await agent_service.get_or_create_curator(uid)
+    watermark = datetime.now(UTC) - timedelta(minutes=2)
+    await _make_due(_db_pool, curator["id"], watermark)
+    await _db_pool.execute(
+        """
+        INSERT INTO sessions
+            (owner_user_id, session_id, agent_name, created_by, started_at,
+             last_event_at, curated_at)
+        VALUES ($1, 'pro-used', 'codex', $1, $2, $2, now())
+        """,
+        uid,
+        watermark,
+    )
+    await _db_pool.execute(
+        "INSERT INTO history_events "
+        "(owner_user_id, created_by, agent_name, event_type, content, session_id, created_at) "
+        "VALUES ($1, $1, 'codex', 'assistant_message', 'done', 'pro-used', $2)",
+        uid,
+        watermark,
+    )
+    await client.post(
+        "/api/v1/me/pages/new", json={"name": "Pending", "content": "x"}, headers=_auth(key)
+    )
+
+    assert await _run_due() == 0
+
+    await _db_pool.execute(
+        "UPDATE sessions SET curated_at = date_trunc('month', now()) - interval '1 second' "
+        "WHERE owner_user_id = $1 AND session_id = 'pro-used'",
+        uid,
+    )
+    await _make_due(_db_pool, curator["id"], watermark)
+    dispatched = []
+    monkeypatch.setattr(run_scheduled_agent, "delay", lambda *args: dispatched.append(args))
+    assert await _run_due() == 1
+    assert len(dispatched) == 1
 
 
 @pytest.mark.asyncio

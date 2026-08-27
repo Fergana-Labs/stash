@@ -241,8 +241,9 @@ async def recompute_memory(
     """Run the Memory curator now instead of waiting for the daily tick — the
     onboarding flow: connect sources, upload documents, watch the wiki build.
     Enforces the same free-tier sleep-time allowance as the scheduler."""
-    from ..config import settings
-    from ..services import agent_auth, agent_service, billing_service, curation_service
+    from datetime import UTC, datetime
+
+    from ..services import agent_auth, agent_service, curation_service
     from ..tasks.agent_schedules import run_curator_now
 
     # A workspace's curator runs on the workspace's own credentials and
@@ -257,15 +258,12 @@ async def recompute_memory(
     curator = await agent_service.get_or_create_curator(user_id)
     if not await curation_service.has_changes_since(user_id, user_id, curator["curated_through"]):
         raise HTTPException(status_code=409, detail="Nothing new to curate since the last run.")
-    if (
-        not await billing_service.is_pro(user_id)
-        and await curation_service.curated_trace_count(user_id, curator["curated_through"])
-        >= settings.FREE_CURATED_TRACES
-    ):
+    allowance = await curation_service.curation_allowance(user_id, datetime.now(UTC))
+    if allowance is not None and allowance["used"] >= allowance["limit"]:
+        period = " this month" if allowance["period"] == "month" else ""
         raise HTTPException(
             status_code=402,
-            detail=f"Your first {settings.FREE_CURATED_TRACES:,} traces have been curated. "
-            "Upgrade to Pro for automatic curation of every new trace.",
+            detail=f"Your plan's {allowance['limit']:,}-trace allowance{period} is used up.",
         )
     try:
         await agent_auth.resolve(user_id, curator["model_provider"], allow_free_managed=True)
