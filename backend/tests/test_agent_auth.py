@@ -12,15 +12,20 @@ from backend.services import harness as h
 
 
 @pytest.mark.asyncio
-async def test_local_mode_uses_claude_no_injection(monkeypatch):
+async def test_local_mode_without_local_credential_raises_needs_auth(monkeypatch):
+    """Local exec mode with nothing connected must fail loud. The silent
+    machine-CLAUDE fallback died mid-stream on boxes without a claude binary
+    and masked the missing credential row (STAS-131); the clean contract is
+    NeedsAuth → the 402 "connect a local model"."""
     monkeypatch.setattr(settings, "AGENT_EXEC_MODE", "local")
 
-    async def no_cred(_uid, _provider=None):
+    async def no_cred(user_id, provider=None):
+        assert provider == "local"
         return None
 
     monkeypatch.setattr(agent_auth, "_get_credential", no_cred)
-    auth = await agent_auth.resolve(uuid.uuid4())
-    assert auth.harness is h.CLAUDE and auth.env == {} and auth.files == {}
+    with pytest.raises(agent_auth.NeedsAuth):
+        await agent_auth.resolve(uuid.uuid4())
 
 
 @pytest.mark.asyncio

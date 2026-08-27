@@ -8,7 +8,9 @@ The rule (mirrors Fleet's resolveUserKey, adapted to per-user sprites):
      billed to us. No Anthropic key involved.
   3. Neither: raise NeedsAuth — connect a key or upgrade.
 
-Local dev short-circuits to the machine's own harness login (no injection).
+Local exec mode: a connected local endpoint runs the machine's own pi (no
+injection); none connected raises NeedsAuth; a connected endpoint under a
+foreign pin keeps the machine's own harness login (no injection).
 
 Credential injection differs by kind:
   - api_key → an env var the CLI reads (ANTHROPIC_API_KEY / OPENAI_API_KEY).
@@ -189,10 +191,17 @@ async def resolve(user_id: UUID, prefer_provider: str | None = None) -> RunAuth:
     and the turn runs against the simulated box's home, isolated from the
     developer's own pi config.
     """
-    # Local dev: the machine's own harness login; inject nothing.
+    # Local mode: a connected local endpoint runs on the machine's own pi —
+    # its credential is self-contained. With nothing connected, fail loud
+    # (STAS-131) instead of riding the machine's unauthenticated login; a
+    # connected local endpoint under a foreign pin keeps that machine login.
     if settings.AGENT_EXEC_MODE == "local":
         local_cred = await _get_credential(user_id, "local")
-        if local_cred is not None and prefer_provider in (None, "local"):
+        if local_cred is None:
+            # The old silent CLAUDE fallback crashed on boxes without the
+            # binary and masked the missing credential row (STAS-131).
+            raise NeedsAuth
+        if prefer_provider in (None, "local"):
             return _local_auth(local_cred, home=str(sprite_service.local_box_home()))
         return RunAuth(harness=harness_mod.CLAUDE)
 

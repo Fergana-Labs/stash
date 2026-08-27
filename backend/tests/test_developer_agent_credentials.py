@@ -268,10 +268,10 @@ async def test_workspace_credential_resolves_to_pi(client: AsyncClient):
     api_key, _, workspace = await _developer(client)
     scope = UUID(workspace["scope_user_id"])
 
-    # Before-state: a scope account with no credential runs the local exec
-    # default (Claude) — what the developer-wiki curator was doing.
-    auth = await agent_auth.resolve(scope)
-    assert auth.harness is h.CLAUDE
+    # Before-state: a scope account with no credential fails loud — the
+    # silent machine-login default was the STAS-131 bug.
+    with pytest.raises(agent_auth.NeedsAuth):
+        await agent_auth.resolve(scope)
 
     r = await _connect(client, api_key, str(scope), "llama3.1:8b")
     assert r.status_code == 200, r.text

@@ -125,7 +125,7 @@ def unique_name(prefix: str = "user") -> str:
 import json as _json  # noqa: E402
 
 from backend.config import settings  # noqa: E402
-from backend.services import sprite_agent_service, sprite_service  # noqa: E402
+from backend.services import agent_auth, sprite_agent_service, sprite_service  # noqa: E402
 
 
 class FakeRedis:
@@ -167,12 +167,26 @@ def stream_json_reply(text: str) -> list[str]:
 @pytest.fixture
 def sprite_exec(monkeypatch):
     """Mock the sprite seam: capture exec argv, reply via a queue of canned
-    transcripts (default: echo the prompt back)."""
+    transcripts (default: echo the prompt back).
+
+    The fixture models a developer with a connected Claude key: STAS-131
+    removed the no-credential local-mode CLAUDE fallback, so resolution must
+    find a real credential to reach the exec seam at all."""
     calls: list[list[str]] = []
     replies: list = []
 
     async def fake_acquire(user_id):
         return sprite_service.Sprite(name="test-sprite")
+
+    async def fake_credential(user_id, provider=None):
+        if provider in (None, "anthropic"):
+            return {
+                "provider": "anthropic",
+                "kind": "api_key",
+                "secret": "sk-ant-test-key",
+                "models_json": None,
+            }
+        return None
 
     async def fake_exec_stream(sprite, argv, *, env, cwd=None):
         calls.append(argv)
@@ -197,6 +211,8 @@ def sprite_exec(monkeypatch):
     fake_redis = FakeRedis()
     monkeypatch.setattr(sprite_agent_service, "_get_redis", lambda: fake_redis)
     monkeypatch.setattr(settings, "ANTHROPIC_API_KEY", "sk-ant-test-key")
+    monkeypatch.setattr(settings, "AGENT_EXEC_MODE", "sprites")
+    monkeypatch.setattr(agent_auth, "_get_credential", fake_credential)
 
     class Seam:
         pass

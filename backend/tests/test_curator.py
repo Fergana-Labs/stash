@@ -628,11 +628,26 @@ async def test_recompute_409_when_nothing_changed(client: AsyncClient, _db_pool)
 
 
 @pytest.mark.asyncio
-async def test_recompute_metered_like_the_scheduler(client: AsyncClient, _db_pool):
+async def test_recompute_metered_like_the_scheduler(client: AsyncClient, _db_pool, monkeypatch):
     """Manual runs draw from the same monthly sleep-time allowance: free
     accounts stop at the cap, enterprise is unlimited."""
     from backend.config import settings
+    from backend.services import agent_auth
     from backend.tasks.agent_schedules import run_curator_now
+
+    # The recompute trigger resolves the user's credentials up front; a fresh
+    # user has none, so give them a connected local endpoint to test the
+    # metering in isolation (STAS-131 removed the no-credential fallback).
+    async def local_cred(user_id, provider=None):
+        if provider == "local":
+            return {
+                "provider": "local",
+                "kind": "endpoint",
+                "secret": '{"base_url": "http://127.0.0.1:11434/v1", "model": "m"}',
+            }
+        return None
+
+    monkeypatch.setattr(agent_auth, "_get_credential", local_cred)
 
     key, uid = await _register(client)
     curator = await agent_service.get_or_create_curator(uid)
