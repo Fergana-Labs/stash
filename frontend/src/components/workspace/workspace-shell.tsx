@@ -18,11 +18,10 @@ const MIN_W = 220;
 const MAX_W = 600;
 const EXPLORER_SECTIONS: ExplorerSection[] = ["files", "sessions", "skills", "tools", "computer"];
 
-// Experiment (2026-08-10): only the VFS keeps the tree sidebar. Sessions,
-// Skills, and Tools render full-width — the explorers were a second nav axis
-// over the same content as the rail, and the two looked independent. The VM
-// (browser) keeps its panel because that content lives nowhere else.
-const PANELLED_SECTIONS: ExplorerSection[] = ["files", "computer"];
+// The VM keeps its browser because that content lives nowhere else. Every
+// Stash surface renders full-width; a second Files tree duplicated navigation
+// and made tabs appear subordinate to whichever folder happened to be open.
+const PANELLED_SECTIONS: ExplorerSection[] = ["computer"];
 
 /** Resizable explorer panel — drag the right edge to set width (persisted). */
 function ExplorerPanel({ section }: { section: ExplorerSection }) {
@@ -102,13 +101,9 @@ export function rendersRouteContent(
 }
 
 export function showsExplorer(
-  pathname: string,
   section: ExplorerSection | null,
-  selectedSection: ExplorerSection | null,
 ): boolean {
-  if (section === null || !PANELLED_SECTIONS.includes(section)) return false;
-  if (/^\/(p|f)\//.test(pathname)) return false;
-  return pathname !== "/files" || selectedSection !== null;
+  return section !== null && PANELLED_SECTIONS.includes(section);
 }
 
 
@@ -148,10 +143,9 @@ export default function WorkspaceShell({
     setLastVfsUrl(query ? `${pathname}?${query}` : pathname);
   }, [section, pathname, searchParams, setLastVfsUrl]);
 
-  // /files is already the complete upload index. Opened pages and files also
-  // use the full content width; their own headers provide the route back.
+  // /files is already the complete upload index.
   const isFilesHome = pathname === "/files" && !selectedSection;
-  const showExplorer = showsExplorer(pathname, section, selectedSection);
+  const showExplorer = showsExplorer(section);
 
   // A Developer Console context gets its own chrome — the infra-dashboard
   // shell, not the consumer app's rail and workbench.

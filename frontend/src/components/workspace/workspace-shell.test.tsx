@@ -38,19 +38,16 @@ describe("rendersRouteContent", () => {
 });
 
 describe("showsExplorer", () => {
-  it("keeps opened uploads full-width", () => {
-    expect(showsExplorer("/p/page-1", "files", null)).toBe(false);
-    expect(showsExplorer("/f/file-1", "files", null)).toBe(false);
-    expect(showsExplorer("/p/page-1", "files", "files")).toBe(false);
+  it("keeps every Files view full-width", () => {
+    expect(showsExplorer("files")).toBe(false);
   });
 
-  it("keeps the panel where it is still the primary browser", () => {
-    expect(showsExplorer("/folders/folder-1", "files", null)).toBe(true);
-    expect(showsExplorer("/files", "computer", "computer")).toBe(true);
+  it("keeps the panel only for the VM browser", () => {
+    expect(showsExplorer("computer")).toBe(true);
   });
 
-  it("does not duplicate the Files index", () => {
-    expect(showsExplorer("/files", "files", null)).toBe(false);
+  it("does not show a panel without a section", () => {
+    expect(showsExplorer(null)).toBe(false);
   });
 });
 
