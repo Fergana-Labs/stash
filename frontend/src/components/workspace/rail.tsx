@@ -4,6 +4,7 @@ import { Fragment } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { BarChart3, FolderTree, MessagesSquare, GraduationCap, Home, Orbit, Settings } from "lucide-react";
+import { useBreadcrumbsValue } from "@/components/BreadcrumbContext";
 import AccountMenu from "@/components/workspace/account-menu";
 import { cn } from "@/lib/utils";
 import type { User } from "@/lib/types";
@@ -16,7 +17,7 @@ const PRIMARY: RailItem[] = [
   { key: "skills", label: "Skills", icon: GraduationCap, match: (p) => p.startsWith("/skills") },
   { key: "sessions", label: "Sessions", icon: MessagesSquare, match: (p) => p.startsWith("/sessions") && p !== "/sessions/analytics" },
   { key: "analytics", label: "Usage", icon: BarChart3, match: (p) => p === "/sessions/analytics" },
-  { key: "files", label: "Files", icon: FolderTree, match: (p) => p === "/files" || p.startsWith("/f/") || p.startsWith("/p/") || p.startsWith("/folders/") || p.startsWith("/tables/") },
+  { key: "files", label: "Files", icon: FolderTree, match: (p) => p === "/files" },
   { key: "viz", label: "Themes", icon: Orbit, match: (p) => p === "/viz" },
 ];
 
@@ -53,6 +54,10 @@ function RailButton({
 export default function Rail({ user, onLogout }: { user: User; onLogout: () => void }) {
   const router = useRouter();
   const pathname = usePathname();
+  const breadcrumbs = useBreadcrumbsValue();
+  const contentArea = /^\/(f|p|folders|tables)\//.test(pathname)
+    ? breadcrumbs?.[0]?.area
+    : undefined;
   const items = PRIMARY;
 
   function selectSection(section: RailSection) {
@@ -73,7 +78,11 @@ export default function Rail({ user, onLogout }: { user: User; onLogout: () => v
         <Fragment key={item.key}>
           <RailButton
             item={item}
-            active={item.match(pathname)}
+            active={
+              item.match(pathname) ||
+              (item.key === "home" && contentArea === "memory") ||
+              (item.key === "files" && contentArea === "files")
+            }
             onClick={() => selectSection(item.key)}
           />
           {i === DIVIDER_AFTER_INDEX && (

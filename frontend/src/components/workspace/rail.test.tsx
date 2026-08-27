@@ -4,7 +4,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { User } from "@/lib/types";
 import Rail from "./rail";
 
-const route = vi.hoisted(() => ({ pathname: "/", replace: vi.fn() }));
+const route = vi.hoisted(() => ({
+  pathname: "/",
+  replace: vi.fn(),
+  crumbs: null as { label: string; area?: "memory" | "files" }[] | null,
+}));
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ replace: route.replace }),
@@ -26,6 +30,10 @@ vi.mock("next/link", () => ({
   ),
 }));
 
+vi.mock("@/components/BreadcrumbContext", () => ({
+  useBreadcrumbsValue: () => route.crumbs,
+}));
+
 vi.mock("@/components/workspace/account-menu", () => ({
   default: () => <button aria-label="Account" />,
 }));
@@ -35,6 +43,8 @@ const user = { display_name: "Henry", name: "henry" } as User;
 afterEach(() => {
   cleanup();
   route.replace.mockClear();
+  route.pathname = "/";
+  route.crumbs = null;
 });
 
 describe("Rail", () => {
@@ -72,5 +82,15 @@ describe("Rail", () => {
     fireEvent.click(screen.getByLabelText("Files"));
 
     expect(route.replace).toHaveBeenLastCalledWith("/files");
+  });
+
+  it("identifies Memory content with Home instead of Files", () => {
+    route.pathname = "/folders/memory";
+    route.crumbs = [{ label: "Memory", area: "memory" }];
+
+    render(<Rail user={user} onLogout={vi.fn()} />);
+
+    expect(screen.getByLabelText("Home").className).toContain("text-brand-600");
+    expect(screen.getByLabelText("Files").className).not.toContain("text-brand-600");
   });
 });

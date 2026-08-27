@@ -3,7 +3,9 @@ import { sectionCrumbs } from "./memory-folder";
 
 describe("sectionCrumbs", () => {
   it("roots uploaded content at Files", () => {
-    expect(sectionCrumbs([])).toEqual([{ label: "Files", href: "/files" }]);
+    expect(sectionCrumbs([])).toEqual([
+      { label: "Files", href: "/files", area: "files" },
+    ]);
   });
 
   it("roots curator content at Memory instead of Files", () => {
@@ -13,7 +15,7 @@ describe("sectionCrumbs", () => {
         { id: "platform", name: "Platform & Data", is_skill: false, is_memory: false },
       ]),
     ).toEqual([
-      { label: "Memory", href: "/" },
+      { label: "Memory", href: "/", area: "memory" },
       { label: "Platform & Data", href: "/folders/platform" },
     ]);
   });

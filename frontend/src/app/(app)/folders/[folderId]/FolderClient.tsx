@@ -43,10 +43,12 @@ export default function FolderDetailPage({ folderId: folderIdProp }: { folderId?
   } | null>(null);
   const crumbs = useMemo(() => {
     if (!chain) return [{ label: "Folder" }];
-    return [
-      ...sectionCrumbs(chain.breadcrumbs.slice(0, -1)),
-      { label: chain.name },
-    ];
+    const fullChain = sectionCrumbs(chain.breadcrumbs);
+    return fullChain.map((crumb, index) =>
+      index === fullChain.length - 1
+        ? { ...crumb, label: chain.name, href: undefined }
+        : crumb,
+    );
   }, [chain]);
   const [folderName, setFolderName] = useState<string | null>(null);
   const [skillFallback, setSkillFallback] = useState<{
@@ -126,7 +128,7 @@ export default function FolderDetailPage({ folderId: folderIdProp }: { folderId?
 
   useBreadcrumbs(
     crumbs,
-    `files/${folderId}/${crumbs.map((c) => c.label).join("/")}`
+    `folder/${folderId}/${crumbs.map((c) => c.label).join("/")}`
   );
 
   const convertToSkill = useCallback(

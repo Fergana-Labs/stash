@@ -2,6 +2,7 @@ import { cleanup, render, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import FolderClient from "./FolderClient";
 import { getFolderContents } from "@/lib/api";
+import { useBreadcrumbs } from "@/components/BreadcrumbContext";
 
 const router = vi.hoisted(() => ({
   push: vi.fn(),
@@ -31,11 +32,6 @@ vi.mock("@/lib/localSkill", () => ({
   findInSkillContents: vi.fn(() => null),
 }));
 
-vi.mock("@/lib/memory-folder", () => ({
-  sectionCrumbs: () => [],
-  useMemoryFolderId: () => null,
-}));
-
 vi.mock("@/components/BreadcrumbContext", () => ({
   useBreadcrumbs: vi.fn(),
 }));
@@ -56,20 +52,24 @@ vi.mock("@/hooks/useAuth", () => ({
   useAuth: () => ({ user: { id: "user-1", name: "henry" }, loading: false }),
 }));
 
-function contents(folderIsSkill: boolean, breadcrumbIsSkill = false) {
+function contents(
+  folderIsSkill: boolean,
+  breadcrumbIsSkill = false,
+  isMemory = false,
+) {
   return {
     folder: {
       id: "folder-root",
-      name: "Brake Shoes",
+      name: isMemory ? "Memory" : "Brake Shoes",
       parent_folder_id: null,
       is_skill: folderIsSkill,
     },
     breadcrumbs: [
       {
         id: "folder-root",
-        name: "Brake Shoes",
+        name: isMemory ? "Memory" : "Brake Shoes",
         is_skill: breadcrumbIsSkill,
-        is_memory: false,
+        is_memory: isMemory,
       },
     ],
     subfolders: [],
@@ -111,5 +111,18 @@ describe("FolderClient skill redirect", () => {
 
     await waitFor(() => expect(getFolderContents).toHaveBeenCalled());
     expect(router.replace).not.toHaveBeenCalled();
+  });
+
+  it("roots the reserved Memory folder at Memory instead of Files", async () => {
+    vi.mocked(getFolderContents).mockResolvedValue(contents(false, false, true));
+
+    render(<FolderClient folderId="folder-root" />);
+
+    await waitFor(() => {
+      const crumbs = vi.mocked(useBreadcrumbs).mock.calls.at(-1)?.[0];
+      expect(crumbs).toEqual([
+        { label: "Memory", href: undefined, area: "memory" },
+      ]);
+    });
   });
 });
