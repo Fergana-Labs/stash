@@ -25,6 +25,7 @@ from .test_permissions import _register_with_email
 def dispatched(monkeypatch):
     calls: list[tuple] = []
     monkeypatch.setattr(run_curator_now, "delay", lambda *a, **k: calls.append((a, k)))
+
     # STAS-131 removed the no-credential local-mode CLAUDE fallback, so the
     # first-day dispatch needs a connected credential to reach the seam at
     # all. Same pin as the sprite_exec fixture: sprites mode with a connected
