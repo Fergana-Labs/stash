@@ -356,7 +356,9 @@ async def list_skills_shared_with_user(user_id: UUID) -> list[dict]:
     )
     out = []
     for r in rows:
-        meta, _body = skill_service.parse_frontmatter(r["skill_md"] or "")
+        skill_md = r["skill_md"] or ""
+        skill_service.validate_skill_md(skill_md)
+        meta, _body = skill_service.parse_frontmatter(skill_md)
         out.append(
             {
                 "folder_id": str(r["folder_id"]),

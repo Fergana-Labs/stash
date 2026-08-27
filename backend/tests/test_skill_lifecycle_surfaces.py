@@ -24,9 +24,8 @@ async def scope(_db_pool):
     return uid
 
 
-async def _draft_skill(scope, pool, name):
-    """A skill whose instructions are missing — the draft state the flag makes
-    representable. Forced at the data layer, since the routes refuse it."""
+async def _corrupt_skill(scope, pool, name):
+    """Simulate pre-migration storage so recovery paths remain covered."""
     folder = await files_tree_service.create_skill(
         scope, scope, name, "Use when testing skill lifecycle surfaces."
     )
@@ -39,19 +38,19 @@ async def _draft_skill(scope, pool, name):
 
 @pytest.mark.asyncio
 async def test_publishing_a_draft_gives_it_instructions(scope, _db_pool):
-    folder = await _draft_skill(scope, _db_pool, "Draft to publish")
+    folder = await _corrupt_skill(scope, _db_pool, "Draft to publish")
 
     await shared_skill_service.publish_folder(
         scope, scope, folder["id"], title="Draft to publish", description="d"
     )
 
     [published] = await skill_service.list_skills(scope, scope)
-    assert published["has_instructions"] is True
+    assert published["name"] == "Draft to publish"
 
 
 @pytest.mark.asyncio
 async def test_forking_carries_membership_into_the_new_scope(scope, _db_pool):
-    folder = await _draft_skill(scope, _db_pool, "Draft to fork")
+    folder = await _corrupt_skill(scope, _db_pool, "Draft to fork")
     pub = await shared_skill_service.publish_folder(
         scope, scope, folder["id"], title="Draft to fork", description="d"
     )

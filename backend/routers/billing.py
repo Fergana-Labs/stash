@@ -6,12 +6,13 @@ from __future__ import annotations
 
 import json
 from typing import Literal
+from uuid import UUID
 
 import stripe
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
-from ..auth import get_current_user
+from ..auth import get_current_user, get_scope
 from ..config import settings
 from ..services import billing_service
 
@@ -19,16 +20,16 @@ router = APIRouter(prefix="/api/v1/billing", tags=["billing"])
 
 
 @router.get("/me")
-async def my_billing(current_user: dict = Depends(get_current_user)):
-    if not billing_service.billing_enabled():
-        return {"billing_enabled": False}
-    subscription = await billing_service.get_subscription(current_user["id"])
+async def my_billing(
+    scope_user_id: UUID = Depends(get_scope),
+):
+    subscription = await billing_service.get_subscription(scope_user_id)
     status = subscription["status"] if subscription else None
     return {
-        "billing_enabled": True,
-        "plan": await billing_service.plan_label(current_user["id"]),
+        "billing_enabled": billing_service.billing_enabled(),
+        "plan": await billing_service.plan_label(scope_user_id),
         "status": status,
-        "connection_count": await billing_service.connection_count(current_user["id"]),
+        "connection_count": await billing_service.connection_count(scope_user_id),
         "connection_limit": billing_service.FREE_CONNECTION_LIMIT,
         "free_curator_runs_per_month": settings.FREE_CURATOR_RUNS_PER_MONTH,
     }

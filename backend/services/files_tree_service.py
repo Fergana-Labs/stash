@@ -691,9 +691,13 @@ async def create_page(
 ) -> dict:
     pool = get_pool()
     if folder_id is not None:
-        folder = await pool.fetchrow("SELECT owner_user_id FROM folders WHERE id = $1", folder_id)
+        folder = await pool.fetchrow(
+            "SELECT owner_user_id, is_skill FROM folders WHERE id = $1", folder_id
+        )
         if not folder or folder["owner_user_id"] != owner_user_id:
             raise ValueError("folder_id does not belong to scope")
+        if folder["is_skill"] and name == skill_service.SKILL_MD_NAME:
+            skill_service.validate_skill_md(content)
     content_html = _sanitize_html(content_html)
     active = _active_content(content_type, content, content_html)
     ch = _content_hash(active)
@@ -1916,6 +1920,10 @@ async def write_folder_files(
     caller, unlike a user editing files inside an existing folder. Protected
     folders are never promoted."""
     import mimetypes
+
+    for rel_path, blob in files:
+        if rel_path.rpartition("/")[2] == skill_service.SKILL_MD_NAME:
+            skill_service.validate_skill_md(blob.decode("utf-8", errors="replace"))
 
     from . import storage_service
 

@@ -10,22 +10,36 @@ import {
   startCheckout,
 } from "../../lib/api";
 
-// Renders nothing on self-hosted instances (billing_enabled false).
 export default function SubscriptionSection() {
   const [billing, setBilling] = useState<BillingInfo | null>(null);
+  const [previewPlan, setPreviewPlan] = useState<BillingInfo["plan"] | null>(null);
+  const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
     getBilling()
       .then(setBilling)
-      .catch((e) => setError(e instanceof Error ? e.message : "Could not load billing"));
+      .catch((e) => setError(e instanceof Error ? e.message : "Could not load billing"))
+      .finally(() => setLoaded(true));
   }, []);
 
-  if (!billing?.billing_enabled) return null;
+  if (!loaded) {
+    return <p className="text-sm text-muted-foreground">Loading subscription…</p>;
+  }
 
-  const isPro = billing.plan === "pro";
-  const isEnterprise = billing.plan === "enterprise";
+  if (error && !billing) {
+    return <p className="text-sm text-error">{error}</p>;
+  }
+
+  if (!billing) {
+    throw new Error("Billing settings loaded without billing information");
+  }
+
+  const canPreview = !billing.billing_enabled && process.env.NODE_ENV === "development";
+  const plan = previewPlan ?? billing.plan;
+  const isPro = plan === "pro";
+  const isEnterprise = plan === "enterprise";
 
   async function redirectTo(action: () => Promise<{ url: string }>) {
     setBusy(true);
@@ -40,23 +54,57 @@ export default function SubscriptionSection() {
   }
 
   return (
-    <section className="rounded-2xl border border-border bg-surface p-6 space-y-4">
+    <section className="space-y-3 rounded-lg border border-border bg-surface p-5">
+      {canPreview && (
+        <div className="flex items-center justify-between gap-4 border-b border-border pb-3">
+          <div>
+            <div className="text-xs font-medium text-foreground">Local plan preview</div>
+            <div className="mt-0.5 text-[11px] text-muted-foreground">
+              This UI is so you can debug the plan screen even when running stash locally.
+            </div>
+          </div>
+          <div className="flex rounded-md border border-border bg-background p-0.5">
+            {(["free", "pro", "enterprise"] as const).map((option) => (
+              <button
+                key={option}
+                type="button"
+                onClick={() => setPreviewPlan(option)}
+                className={`cursor-pointer rounded px-2.5 py-1 text-xs capitalize ${
+                  plan === option
+                    ? "bg-raised font-medium text-foreground"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {option}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       <div>
-        <h2 className="text-base font-semibold text-foreground">Subscription</h2>
+        <h2 className="text-base font-semibold text-foreground">Plan</h2>
         <p className="text-xs text-muted-foreground mt-0.5">
-          Free includes {billing.connection_limit} connected source accounts and{" "}
-          {billing.free_curator_runs_per_month} Memory-curator runs per month. Pro
-          ($20/month) includes unlimited connected sources, unlimited curator runs, and
-          the managed agent model — your agent runs without connecting a Claude, ChatGPT,
-          or OpenRouter account of your own.
+          {isEnterprise ? (
+            <>
+              Enterprise includes unlimited curator runs and the managed agent model.
+            </>
+          ) : (
+            <>
+              Free includes {billing.free_curator_runs_per_month} Memory-curator runs per
+              month. Pro ($20/month) includes unlimited curator runs and the managed agent
+              model.
+            </>
+          )}
         </p>
-        <p className="text-xs text-muted-foreground mt-0.5">
-          Want a shared team workspace? Email{" "}
-          <a className="underline" href={`mailto:${TEAMS_CONTACT_EMAIL}`}>
-            {TEAMS_CONTACT_EMAIL}
-          </a>
-          .
-        </p>
+        {!isEnterprise && (
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Want a shared team workspace? Email{" "}
+            <a className="underline" href={`mailto:${TEAMS_CONTACT_EMAIL}`}>
+              {TEAMS_CONTACT_EMAIL}
+            </a>
+            .
+          </p>
+        )}
       </div>
 
       <div className="flex items-center justify-between gap-4">
@@ -66,18 +114,24 @@ export default function SubscriptionSection() {
           </div>
           <div className="text-xs text-muted-foreground mt-0.5">
             {isEnterprise
-              ? "Granted plan — integrations and curator runs are unlimited."
+              ? "Granted plan — curator runs are unlimited."
               : isPro
-              ? `Subscription ${billing.status}.`
-              : `${billing.connection_count} of ${billing.connection_limit} connected accounts used.`}
+              ? `Subscription ${canPreview ? "active" : billing.status}.`
+              : `${billing.free_curator_runs_per_month} Memory-curator runs included each month.`}
           </div>
         </div>
-        {isEnterprise ? null : isPro ? (
+        {isEnterprise ? null : canPreview ? (
+          <PlanActionPreview isPro={isPro} />
+        ) : !billing.billing_enabled ? (
+          <span className="text-xs text-muted-foreground">
+            Billing is not configured for this installation.
+          </span>
+        ) : isPro ? (
           <button
             type="button"
             disabled={busy}
             onClick={() => redirectTo(openBillingPortal)}
-            className="cursor-pointer text-sm font-semibold px-4 py-2 rounded-lg border border-border text-foreground hover:bg-raised disabled:opacity-60 transition-colors"
+            className="cursor-pointer rounded-md border border-border px-3 py-1.5 text-[13px] font-medium text-foreground transition-colors hover:bg-raised disabled:opacity-60"
           >
             {busy ? "Opening…" : "Manage subscription"}
           </button>
@@ -87,7 +141,7 @@ export default function SubscriptionSection() {
               type="button"
               disabled={busy}
               onClick={() => redirectTo(() => startCheckout("month"))}
-              className="cursor-pointer bg-brand hover:bg-brand-hover disabled:opacity-60 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
+              className="cursor-pointer rounded-md border border-border bg-background px-3 py-1.5 text-[13px] font-medium text-foreground transition-colors hover:bg-raised disabled:opacity-60"
             >
               {busy ? "Redirecting…" : "Upgrade — $20/month"}
             </button>
@@ -108,10 +162,37 @@ export default function SubscriptionSection() {
       )}
 
       {error && <p className="text-xs text-error">{error}</p>}
-      <p className="text-[11px] text-muted-foreground">
-        Plan changes can take a few seconds to apply after checkout.
-      </p>
+      {billing.billing_enabled && (
+        <p className="text-[11px] text-muted-foreground">
+          Plan changes can take a few seconds to apply after checkout.
+        </p>
+      )}
     </section>
+  );
+}
+
+function PlanActionPreview({ isPro }: { isPro: boolean }) {
+  if (isPro) {
+    return (
+      <div className="flex flex-col items-end gap-1">
+        <span className="rounded-md border border-border px-3 py-1.5 text-[13px] font-medium text-foreground">
+          Manage subscription
+        </span>
+        <span className="text-[11px] text-muted-foreground">Preview only</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col items-end gap-1.5">
+      <span className="rounded-md border border-border bg-background px-3 py-1.5 text-[13px] font-medium text-foreground">
+        Upgrade — $20/month
+      </span>
+      <span className="text-xs text-muted-foreground underline">
+        or $200/year — 2 months free
+      </span>
+      <span className="text-[11px] text-muted-foreground no-underline">Preview only</span>
+    </div>
   );
 }
 
@@ -162,13 +243,13 @@ function RedeemCodeRow({ onRedeemed }: { onRedeemed: () => void }) {
           }}
           placeholder="Access code"
           autoFocus
-          className="w-48 rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-foreground placeholder:text-muted-foreground/70 focus:border-brand focus:outline-none"
+          className="w-48 rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground placeholder:text-muted-foreground/70 focus:border-brand focus:outline-none"
         />
         <button
           type="button"
           onClick={() => void apply()}
           disabled={submitting || !code.trim()}
-          className="cursor-pointer rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground hover:bg-raised disabled:opacity-60"
+          className="cursor-pointer rounded-md border border-border px-3 py-1.5 text-sm font-medium text-foreground hover:bg-raised disabled:opacity-60"
         >
           {submitting ? "Applying…" : "Apply"}
         </button>

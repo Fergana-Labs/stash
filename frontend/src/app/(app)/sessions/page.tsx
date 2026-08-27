@@ -23,8 +23,11 @@ import {
   groupSessionsByDayAndUser,
   groupSessionsByUser,
   requireSessionUserName,
+  sortSessionsByColumn,
   type SessionDayGroup,
   type SessionFlatGroup,
+  type SessionSortColumn,
+  type SessionSortDirection,
 } from "@/lib/sessionGrouping";
 
 type ViewKey = "list" | "day" | "user" | "agent";
@@ -520,6 +523,11 @@ function SessionsTable({
   selectedIds: Set<string>;
   onToggleSelect: (sessionId: string) => void;
 }) {
+  const [columnSort, setColumnSort] = useState<{
+    column: SessionSortColumn;
+    direction: SessionSortDirection;
+  } | null>(null);
+
   if (sessions.length === 0) {
     return <SessionsEmptyState />;
   }
@@ -528,6 +536,21 @@ function SessionsTable({
   // API calls. The column appears only when something here is actually filed,
   // so accounts that never used folders keep the plain layout.
   const showFolder = sessions.some((s) => s.session_folder_name);
+  const visibleSessions = columnSort
+    ? sortSessionsByColumn(sessions, columnSort.column, columnSort.direction)
+    : sessions;
+
+  function changeSort(column: SessionSortColumn) {
+    setColumnSort((current) => {
+      if (current?.column === column) {
+        return {
+          column,
+          direction: current.direction === "ascending" ? "descending" : "ascending",
+        };
+      }
+      return { column, direction: defaultSortDirection(column) };
+    });
+  }
 
   return (
     <div className="scroll-thin overflow-x-auto rounded-lg border border-border bg-surface">
@@ -538,16 +561,18 @@ function SessionsTable({
             (showFolder ? GRID_COLS_WITH_FOLDER : GRID_COLS)
           }
         >
-          <span>User</span>
-          <span>Session</span>
-          {showFolder && <span>Folder</span>}
-          <span>Events</span>
-          <span>Agent</span>
-          <span>Date</span>
-          <span>Updated</span>
+          <SessionSortHeader label="User" column="user" sort={columnSort} onSort={changeSort} />
+          <SessionSortHeader label="Session" column="session" sort={columnSort} onSort={changeSort} />
+          {showFolder && (
+            <SessionSortHeader label="Folder" column="folder" sort={columnSort} onSort={changeSort} />
+          )}
+          <SessionSortHeader label="Events" column="events" sort={columnSort} onSort={changeSort} />
+          <SessionSortHeader label="Agent" column="agent" sort={columnSort} onSort={changeSort} />
+          <SessionSortHeader label="Date" column="date" sort={columnSort} onSort={changeSort} />
+          <SessionSortHeader label="Updated" column="updated" sort={columnSort} onSort={changeSort} />
           <span />
         </div>
-        {sessions.map((session) => (
+        {visibleSessions.map((session) => (
           <SessionTableRow
             key={session.session_id}
             session={session}
@@ -560,6 +585,43 @@ function SessionsTable({
         ))}
       </div>
     </div>
+  );
+}
+
+function defaultSortDirection(column: SessionSortColumn): SessionSortDirection {
+  if (column === "events" || column === "date" || column === "updated") {
+    return "descending";
+  }
+  return "ascending";
+}
+
+function SessionSortHeader({
+  label,
+  column,
+  sort,
+  onSort,
+}: {
+  label: string;
+  column: SessionSortColumn;
+  sort: { column: SessionSortColumn; direction: SessionSortDirection } | null;
+  onSort: (column: SessionSortColumn) => void;
+}) {
+  const active = sort?.column === column;
+  const ariaSort = active ? sort.direction : "none";
+
+  return (
+    <span role="columnheader" aria-sort={ariaSort}>
+      <button
+        type="button"
+        onClick={() => onSort(column)}
+        className="flex cursor-pointer items-center gap-1 hover:text-foreground"
+      >
+        {label}
+        <span aria-hidden className={active ? "text-foreground" : "opacity-0"}>
+          {sort?.direction === "ascending" ? "↑" : "↓"}
+        </span>
+      </button>
+    </span>
   );
 }
 
@@ -644,7 +706,7 @@ function SessionTableRow({
         {session.agent_name || "\u2014"}
       </span>
       <span className="hidden whitespace-nowrap text-[12px] text-muted-foreground md:block">
-        {formatDate(session.last_event_at || session.started_at)}
+        {formatDate(session.started_at)}
       </span>
       <span className="justify-self-end whitespace-nowrap text-[12px] text-muted-foreground">
         {formatRelative(session.last_event_at)}
@@ -743,5 +805,3 @@ function formatDate(iso: string | null): string {
     day: "numeric",
   });
 }
-
-

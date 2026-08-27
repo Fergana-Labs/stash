@@ -48,7 +48,6 @@ const enabledSkill: Skill = {
   mcp_exposed: false,
   file_count: 3,
   updated_at: "2026-06-01T00:00:00Z",
-  has_instructions: true,
   published: null,
   agent_enabled: true,
 };

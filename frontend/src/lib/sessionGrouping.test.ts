@@ -5,6 +5,7 @@ import {
   groupSessionsByDayAndUser,
   groupSessionsByUser,
   requireSessionUserName,
+  sortSessionsByColumn,
 } from "./sessionGrouping";
 
 function session(fields: Partial<SessionSummary> & { session_id: string }): SessionSummary {
@@ -86,3 +87,39 @@ describe("groupSessionsByAgent", () => {
   });
 });
 
+describe("sortSessionsByColumn", () => {
+  const rows = [
+    session({
+      session_id: "codex-new",
+      title: "Zebra fix",
+      user_name: "Ada",
+      agent_name: "codex",
+      event_count: 8,
+      started_at: "2026-05-14T10:00:00Z",
+      last_event_at: "2026-05-14T12:00:00Z",
+    }),
+    session({
+      session_id: "claude-old",
+      title: "API cleanup",
+      user_name: "Ben",
+      agent_name: "claude-code",
+      event_count: 3,
+      started_at: "2026-05-13T10:00:00Z",
+      last_event_at: "2026-05-13T12:00:00Z",
+    }),
+  ];
+
+  it("sorts text columns alphabetically in either direction", () => {
+    expect(sortSessionsByColumn(rows, "session", "ascending").map((row) => row.session_id))
+      .toEqual(["claude-old", "codex-new"]);
+    expect(sortSessionsByColumn(rows, "user", "descending").map((row) => row.session_id))
+      .toEqual(["claude-old", "codex-new"]);
+  });
+
+  it("sorts numeric and date columns by their underlying values", () => {
+    expect(sortSessionsByColumn(rows, "events", "descending").map((row) => row.session_id))
+      .toEqual(["codex-new", "claude-old"]);
+    expect(sortSessionsByColumn(rows, "updated", "ascending").map((row) => row.session_id))
+      .toEqual(["claude-old", "codex-new"]);
+  });
+});

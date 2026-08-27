@@ -440,41 +440,6 @@ export async function updateMe(data: {
   });
 }
 
-// 'read' keys can read/search everything and upload session transcripts,
-// nothing else — intended for production agents.
-export type ApiKeyAccess = "read" | "full";
-
-export interface ApiKeyInfo {
-  id: string;
-  name: string;
-  access: ApiKeyAccess;
-  created_at: string;
-  last_used_at: string | null;
-}
-
-export async function listMyKeys(): Promise<ApiKeyInfo[]> {
-  return apiFetch("/api/v1/users/me/keys");
-}
-
-export async function revokeMyKey(keyId: string): Promise<void> {
-  await apiFetch(`/api/v1/users/me/keys/${keyId}`, { method: "DELETE" });
-}
-
-export interface ApiKeyCreated {
-  id: string;
-  name: string;
-  access: ApiKeyAccess;
-  api_key: string; // raw key — shown exactly once
-  created_at: string;
-}
-
-export async function createMyKey(name: string, access: ApiKeyAccess): Promise<ApiKeyCreated> {
-  return apiFetch("/api/v1/users/me/keys", {
-    method: "POST",
-    body: JSON.stringify({ name, access }),
-  });
-}
-
 export async function searchUsers(query: string): Promise<UserSearchResult[]> {
   return apiFetch(`/api/v1/users/search?q=${encodeURIComponent(query)}`);
 }
@@ -483,11 +448,9 @@ export async function searchUsers(query: string): Promise<UserSearchResult[]> {
 
 export interface BillingInfo {
   billing_enabled: boolean;
-  plan?: "free" | "pro" | "enterprise";
-  status?: string | null;
-  connection_count?: number;
-  connection_limit?: number;
-  free_curator_runs_per_month?: number;
+  plan: "free" | "pro" | "enterprise";
+  status: string | null;
+  free_curator_runs_per_month: number;
 }
 
 export async function getBilling(): Promise<BillingInfo> {
@@ -1659,9 +1622,6 @@ interface SkillCommon {
   mcp_exposed: boolean;
   file_count: number;
   updated_at: string;
-  // False = a draft: named and declared, but with no instructions for an
-  // agent to load. Agents refuse to run one, so every surface must say so.
-  has_instructions: boolean;
   published: SkillPublishInfo | null;
   agent_enabled: boolean;
 }
@@ -1703,7 +1663,6 @@ export interface SourceSkillRead {
   name: string;
   description: string;
   source_name: string;
-  has_instructions: boolean;
   body: string;
   files: { id: string; name: string; updated_at: string; content: string }[];
 }
@@ -2388,56 +2347,6 @@ export async function machineSaveToStash(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ path, folder_id: folderId ?? null }),
   });
-}
-
-// ── Cloud-agent model credentials (BYO key / OAuth; see routers/agent_credentials) ──
-
-export async function listAgentCredentials(): Promise<string[]> {
-  const data = await apiFetch<{ connected: string[] }>("/api/v1/me/agent-credentials");
-  return data.connected;
-}
-
-export async function connectAgentKey(provider: string, apiKey: string): Promise<string[]> {
-  const data = await apiFetch<{ connected: string[] }>("/api/v1/me/agent-credentials", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ provider, api_key: apiKey }),
-  });
-  return data.connected;
-}
-
-export async function disconnectAgentCredential(provider: string): Promise<string[]> {
-  const data = await apiFetch<{ connected: string[] }>(
-    `/api/v1/me/agent-credentials/${provider}`,
-    { method: "DELETE" },
-  );
-  return data.connected;
-}
-
-export async function startAgentOAuth(
-  provider: string,
-): Promise<{ authorize_url: string; state: string }> {
-  return apiFetch("/api/v1/me/agent-credentials/oauth/start", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ provider }),
-  });
-}
-
-export async function finishAgentOAuth(
-  provider: string,
-  code: string,
-  state: string,
-): Promise<string[]> {
-  const data = await apiFetch<{ connected: string[] }>(
-    "/api/v1/me/agent-credentials/oauth/finish",
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ provider, code, state }),
-    },
-  );
-  return data.connected;
 }
 
 // --- Bulk URL imports (extension bookmark/tab imports) ---

@@ -46,7 +46,14 @@ async def _assert_is_a_usable_skill(scope, folder_id, _db_pool, *, via: str):
         s for s in await skill_service.list_skills(scope, scope) if s["folder_id"] == str(folder_id)
     ]
     assert listed, f"{via}: skill does not appear in the skills listing"
-    assert listed[0]["has_instructions"] is True, f"{via}: skill has no SKILL.md"
+    skill_service.validate_skill_md(
+        await _db_pool.fetchval(
+            "SELECT content_markdown FROM pages WHERE folder_id = $1 AND name = 'SKILL.md' "
+            "AND deleted_at IS NULL",
+            folder_id,
+        )
+        or ""
+    )
 
 
 @pytest.mark.asyncio

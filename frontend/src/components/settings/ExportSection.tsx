@@ -28,9 +28,9 @@ export default function ExportSection() {
   }
 
   return (
-    <section className="rounded-2xl border border-border bg-surface p-6 space-y-4">
+    <section className="space-y-3 rounded-lg border border-border bg-surface p-5">
       <div>
-        <h2 className="text-base font-semibold text-foreground">Export your memories</h2>
+        <h2 className="text-base font-semibold text-foreground">Export your traces</h2>
         <p className="text-xs text-muted-foreground mt-0.5">
           Download everything in your Stash as a zip: your Memory wiki and other pages as
           plain Markdown/HTML, and your uploaded files as their original bytes. Your data
@@ -42,7 +42,7 @@ export default function ExportSection() {
         type="button"
         onClick={handleExport}
         disabled={exporting}
-        className="cursor-pointer bg-brand hover:bg-brand-hover disabled:opacity-60 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
+        className="cursor-pointer rounded-md border border-border bg-background px-3 py-1.5 text-[13px] font-medium text-foreground transition-colors hover:bg-raised disabled:opacity-60"
       >
         {exporting ? "Packaging…" : "Download export"}
       </button>

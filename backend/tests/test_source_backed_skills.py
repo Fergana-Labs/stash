@@ -127,7 +127,6 @@ async def test_a_document_declares_itself_a_skill_through_its_frontmatter(
     assert [s["name"] for s in skills] == ["Turbochargers"]
     assert skills[0]["description"] == "Use when a customer reports boost loss."
     assert skills[0]["backing"] == "source"
-    assert skills[0]["has_instructions"] is True
 
 
 @pytest.mark.asyncio

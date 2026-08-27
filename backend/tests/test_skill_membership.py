@@ -7,7 +7,6 @@ stray SKILL.md could promote Memory into a wipeable "skill". Membership now
 changes only through deliberate verbs.
 """
 
-import json
 from uuid import UUID, uuid4
 
 import pytest
@@ -64,10 +63,7 @@ async def test_convert_verbs_are_the_only_way_membership_changes(scope, _db_pool
 
 
 @pytest.mark.asyncio
-async def test_deleting_skill_md_leaves_a_draft_skill_not_a_silent_demotion(scope, _db_pool):
-    """The customer's exact move. Before: the skill vanished from every
-    surface with no warning. Now: the delete is refused outright, and even
-    forced at the data layer the skill still lists — as a draft."""
+async def test_deleting_or_emptying_skill_md_is_refused(scope, _db_pool):
     folder = await files_tree_service.create_skill(
         scope, scope, "Brake Shoes", "Use this skill to service brake shoes."
     )
@@ -80,10 +76,13 @@ async def test_deleting_skill_md_leaves_a_draft_skill_not_a_silent_demotion(scop
     with pytest.raises(ValueError, match="can't be deleted, renamed, or moved"):
         await files_tree_service.update_page(page_id, scope, scope, name="notes.md")
 
-    await _db_pool.execute("UPDATE pages SET deleted_at = now() WHERE id = $1", page_id)
-    [skill] = await skill_service.list_skills(scope, scope, include_disabled=True)
-    assert skill["folder_id"] == str(folder["id"])
-    assert skill["has_instructions"] is False
+    with pytest.raises(ValueError, match="requires instructions"):
+        await files_tree_service.update_page(
+            page_id,
+            scope,
+            scope,
+            content='---\nname: "Brake Shoes"\ndescription: "Service brakes."\n---\n',
+        )
 
 
 @pytest.mark.asyncio
@@ -150,7 +149,6 @@ async def test_convert_endpoint_leaves_a_loadable_skill(client, _db_pool):
 
     listed = (await client.get("/api/v1/me/skills", headers=headers)).json()["skills"]
     [skill] = [s for s in listed if s["folder_id"] == folder_id]
-    assert skill["has_instructions"] is True
 
     # And back again: demotion is equally explicit, contents untouched.
     back = await client.post(f"/api/v1/me/folders/{folder_id}/convert-to-folder", headers=headers)
@@ -207,10 +205,7 @@ async def test_folder_plus_skill_md_plus_convert_is_the_cli_recipe(client, _db_p
 
 
 @pytest.mark.asyncio
-async def test_shared_skill_without_instructions_still_lists(client, _db_pool):
-    """A skill shared with you shows up even as a draft. The listing used to
-    inner-join SKILL.md, so a shared skill missing instructions vanished
-    instead of appearing with has_instructions false."""
+async def test_corrupt_shared_skill_fails_loudly(client, _db_pool):
     owner = await client.post(
         "/api/v1/users/register",
         json={"name": f"own_{uuid4().hex[:8]}", "password": "securepassword1"},
@@ -220,8 +215,6 @@ async def test_shared_skill_without_instructions_still_lists(client, _db_pool):
         "/api/v1/users/register",
         json={"name": f"fr_{uuid4().hex[:8]}", "password": "securepassword1"},
     )
-    friend_h = {"Authorization": f"Bearer {friend.json()['api_key']}"}
-
     made = await client.post(
         "/api/v1/me/skills/new",
         json={"name": "Shared draft", "description": "Draft to share"},
@@ -242,8 +235,8 @@ async def test_shared_skill_without_instructions_still_lists(client, _db_pool):
         UUID(friend.json()["id"]),
     )
 
-    listed = (await client.get("/api/v1/me/shared-skills", headers=friend_h)).json()
-    assert folder_id in [s["folder_id"] for s in listed["skills"]]
+    with pytest.raises(ValueError, match="requires a nonblank name"):
+        await shared_skill_service.list_skills_shared_with_user(UUID(friend.json()["id"]))
 
 
 @pytest.mark.asyncio
@@ -292,10 +285,7 @@ async def test_convert_to_folder_keeps_the_files_and_needs_no_deletion(client, _
 
 
 @pytest.mark.asyncio
-async def test_agent_read_skill_refuses_a_draft_rather_than_returning_emptiness(scope, _db_pool):
-    """A skill with no SKILL.md is a draft. Returning its (empty) document to
-    an agent would let the model act as though it had guidance; the boundary
-    says so instead."""
+async def test_agent_read_skill_fails_loudly_if_storage_is_corrupt(scope, _db_pool):
     from backend.services import agent_runtime
 
     folder = await files_tree_service.create_skill(
@@ -309,15 +299,11 @@ async def test_agent_read_skill_refuses_a_draft_rather_than_returning_emptiness(
     scope_token = agent_runtime._scope_ctx.set(scope)
     user_token = agent_runtime._user_ctx.set(scope)
     try:
-        result = json.loads(
-            (await agent_runtime._read_skill.handler({"name": "Draft skill"}))["content"][0]["text"]
-        )
+        with pytest.raises(ValueError, match="requires a nonblank name"):
+            await agent_runtime._read_skill.handler({"name": "Draft skill"})
     finally:
         agent_runtime._user_ctx.reset(user_token)
         agent_runtime._scope_ctx.reset(scope_token)
-
-    assert result["error"] == "no_instructions"
-    assert result["name"] == "Draft skill"
 
 
 @pytest.mark.asyncio
@@ -351,7 +337,7 @@ async def test_skill_md_cannot_be_moved_out_of_its_skill(scope, _db_pool):
     edited = await files_tree_service.update_page(page_id, scope, scope, content=edited_content)
     assert edited is not None
     [skill] = await skill_service.list_skills(scope, scope)
-    assert skill["has_instructions"] is True
+    assert skill["name"] == "Movable"
 
 
 @pytest.mark.asyncio

@@ -14,7 +14,6 @@ import {
   getUserWikiGraph,
   type EndUserFile,
   type EndUserSession,
-  type EndUserSource,
   type EndUserWikiPage,
   type WikiGraph as WikiGraphData,
 } from "@/lib/api";
@@ -35,7 +34,6 @@ function UserDetail() {
   const [files, setFiles] = useState<EndUserFile[]>([]);
   const [wikiPages, setWikiPages] = useState<EndUserWikiPage[]>([]);
   const [wikiGraph, setWikiGraph] = useState<WikiGraphData | null>(null);
-  const [sources, setSources] = useState<EndUserSource[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(() => {
@@ -46,7 +44,6 @@ function UserDetail() {
         setSessions(res.sessions);
         setFiles(res.files);
         setWikiPages(res.wiki_pages);
-        setSources(res.sources);
       })
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load the user"));
     // The graph is decoration over the list — its failure shouldn't blank the page.
@@ -179,9 +176,8 @@ function UserDetail() {
       <section>
         <SectionHeading>Files</SectionHeading>
         <p className="mt-2 text-[13.5px] leading-6 text-muted-foreground">
-          Everything this user&apos;s agent can read besides the wikis: files your backend
-          uploaded with their <Code>user_id</Code>, and integrations connected for them
-          alone. Your other users never see any of it.
+          Files your backend uploaded with this user&apos;s <Code>user_id</Code>. Your other
+          users never see them.
         </p>
         {files.length === 0 ? (
           <Empty>
@@ -201,33 +197,6 @@ function UserDetail() {
                 </span>
                 <span className="shrink-0 font-mono text-[12px] text-muted-foreground">
                   {formatBytes(f.size_bytes)} · {formatDate(f.created_at)}
-                </span>
-              </Link>
-            ))}
-          </div>
-        )}
-        <div className="mt-6 font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
-          Connected sources
-        </div>
-        {sources.length === 0 ? (
-          <Empty>
-            None connected. Add one with this user&apos;s <Code>user_id</Code> to scope it
-            here.
-          </Empty>
-        ) : (
-          <div className="mt-3 overflow-hidden rounded border border-border bg-surface">
-            {sources.map((source) => (
-              <Link
-                key={source.id}
-                href={`/integrations/${source.provider}?source=${source.id}`}
-                className="flex items-center gap-4 border-b border-border px-5 py-3.5 transition-colors last:border-b-0 hover:bg-raised"
-              >
-                <span className="min-w-0 flex-1 truncate text-[14.5px] text-foreground">
-                  {source.display_name}
-                </span>
-                <span className="shrink-0 font-mono text-[12px] text-muted-foreground">
-                  {source.type}
-                  {source.last_synced_at ? ` · synced ${formatDate(source.last_synced_at)}` : ""}
                 </span>
               </Link>
             ))}

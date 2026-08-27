@@ -148,7 +148,6 @@ function SkillRow({
         </div>
         <div className="mt-0.5 truncate text-[12.5px] text-muted-foreground">
           {skill.description || "No description"}
-          {!skill.has_instructions && " · No instructions yet"}
         </div>
       </Link>
       <SkillToggle skill={skill} onChanged={onChanged} />

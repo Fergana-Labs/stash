@@ -25,12 +25,8 @@ vi.mock("../../hooks/useAuth", () => ({
 }));
 
 vi.mock("../../components/Header", () => ({ default: () => null }));
-vi.mock("../../components/integrations/SourceConnectorList", () => ({
-  default: () => null,
-}));
 vi.mock("../../lib/analytics", () => ({ track: vi.fn() }));
 vi.mock("../../lib/api", () => ({
-  createMyKey: vi.fn(),
   createPage: vi.fn(),
   getAgentApiKey: vi.fn(),
   getClaudeMdBlock: vi.fn(async () => ({ block: "<!-- stash-context -->\n## Stash\n…" })),

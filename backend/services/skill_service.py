@@ -2,9 +2,9 @@
 
 Membership is stored, never derived: it changes only through deliberate
 verbs (create a skill, convert a folder, import a repo), so editing files
-inside a folder can never reclassify it. SKILL.md still holds the skill's
-instructions and frontmatter metadata — a skill missing it is a draft that
-says so, not a folder that quietly stopped being a skill.
+inside a folder can never reclassify it. SKILL.md holds the skill's
+instructions and frontmatter metadata. A folder cannot become a skill unless
+that document is valid and nonempty.
 
 Files and Skills are MECE: skill subtrees are filtered out of every Files
 surface (see ``skill_subtree_folder_ids``) and surfaced in the Skills area
@@ -266,7 +266,6 @@ async def list_source_skills(
             "mcp_exposed": bool(meta.get("mcp_exposed", False)),
             "file_count": 1,
             "updated_at": r["updated_at"],
-            "has_instructions": True,
             # Publishing attaches a `skills` row to a folder id, which a
             # source-backed skill does not have. It is managed upstream.
             "published": None,
@@ -283,9 +282,9 @@ async def list_skills(
     """List every skill folder in the scope: folder + SKILL.md frontmatter,
     plus the publish record when the skill has been shared.
 
-    LEFT JOIN on SKILL.md, not INNER: membership is the flag, so a skill
-    whose instructions are missing still lists — as a draft, with
-    has_instructions false — instead of vanishing from every surface."""
+    Every skill must have a valid, nonempty SKILL.md. The migration that
+    introduced this invariant repaired older rows; fail loudly if storage is
+    ever corrupted again."""
     pool = get_pool()
     readable = permission_service.readable_content_condition("folder", "f", 2)
     rows = await pool.fetch(
@@ -306,9 +305,10 @@ async def list_skills(
     )
     out = []
     for r in rows:
-        meta, _body = parse_frontmatter(r["skill_md"] or "")
-        has_instructions = bool(skill_instruction_body(r["skill_md"] or ""))
-        if not include_disabled and (not r["agent_enabled"] or not has_instructions):
+        skill_md = r["skill_md"] or ""
+        validate_skill_md(skill_md)
+        meta, _body = parse_frontmatter(skill_md)
+        if not include_disabled and not r["agent_enabled"]:
             continue
         published = None
         if r["publish_id"]:
@@ -334,11 +334,8 @@ async def list_skills(
                 "mcp_exposed": bool(meta.get("mcp_exposed", False)),
                 "file_count": int(r["file_count"]),
                 "updated_at": r["updated_at"] or r["folder_updated_at"],
-                # False = a draft skill: it exists and is named, but has no
-                # instructions for an agent to load yet. Surfaces say so.
-                "has_instructions": has_instructions,
                 "published": published,
-                "agent_enabled": bool(r["agent_enabled"] and has_instructions),
+                "agent_enabled": bool(r["agent_enabled"]),
             }
         )
     out.extend(await list_source_skills(owner_user_id, user_id, include_disabled=include_disabled))
@@ -392,7 +389,6 @@ async def read_source_skill(owner_user_id: UUID, source_ref: str, user_id: UUID)
         "name": meta["name"],
         "description": meta["description"],
         "when_to_use": meta.get("when_to_use", ""),
-        "has_instructions": bool(skill_instruction_body(row["content"] or "")),
         "body": body,
         "files": [
             {
@@ -464,12 +460,6 @@ async def read_skill(owner_user_id: UUID, name: str, user_id: UUID) -> dict | No
         "name": match["name"],
         "description": match["description"],
         "when_to_use": match["when_to_use"],
-        # A draft skill loads with no instructions. Callers that need them
-        # (agent load, publish, install) refuse on this rather than handing
-        # an agent an empty document and calling it a skill.
-        "has_instructions": bool(
-            skill_md and skill_instruction_body(skill_md["content_markdown"] or "")
-        ),
         "body": body,
         "files": [
             {
