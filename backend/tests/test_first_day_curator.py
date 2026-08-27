@@ -12,6 +12,8 @@ from uuid import UUID
 import pytest
 from httpx import AsyncClient
 
+from backend.config import settings
+from backend.services import agent_auth
 from backend.tasks.agent_schedules import _first_day_curator_tick, run_curator_now
 
 from .conftest import unique_name
@@ -23,6 +25,22 @@ from .test_permissions import _register_with_email
 def dispatched(monkeypatch):
     calls: list[tuple] = []
     monkeypatch.setattr(run_curator_now, "delay", lambda *a, **k: calls.append((a, k)))
+    # STAS-131 removed the no-credential local-mode CLAUDE fallback, so the
+    # first-day dispatch needs a connected credential to reach the seam at
+    # all. Same pin as the sprite_exec fixture: sprites mode with a connected
+    # Claude key.
+    async def fake_credential(user_id, provider=None):
+        if provider in (None, "anthropic"):
+            return {
+                "provider": "anthropic",
+                "kind": "api_key",
+                "secret": "sk-ant-test-key",
+                "models_json": None,
+            }
+        return None
+
+    monkeypatch.setattr(settings, "AGENT_EXEC_MODE", "sprites")
+    monkeypatch.setattr(agent_auth, "_get_credential", fake_credential)
     return calls
 
 
