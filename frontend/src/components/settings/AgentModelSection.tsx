@@ -12,6 +12,10 @@ import {
   resetLocalModelsJson,
   saveLocalModelsJson,
   startAgentOAuth,
+  testLocalEndpoint,
+  type AgentCredentials,
+  type LocalCredential,
+  type LocalEndpointTest,
 } from "@/lib/api";
 
 // The provider a user connects for their cloud agent. Claude and Codex support
@@ -62,13 +66,25 @@ const PROVIDERS: Provider[] = [
   },
 ];
 
+// The user's own key, shown back to them only ever masked: enough of both
+// ends to tell two keys apart, never the middle that would work in a request.
+export function maskKey(key: string): string {
+  return key.length >= 8 ? `${key.slice(0, 4)}…${key.slice(-4)}` : "••••";
+}
+
 export default function AgentModelSection() {
-  const [connected, setConnected] = useState<string[]>([]);
+  const [creds, setCreds] = useState<AgentCredentials>({ connected: [], local: null });
+  // The last local doc seen this session — after a disconnect the form
+  // prefills base URL and model from it, so reconnecting is one key entry.
+  const [lastLocal, setLastLocal] = useState<LocalCredential | null>(null);
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(() => {
     listAgentCredentials()
-      .then(setConnected)
+      .then((data) => {
+        setCreds(data);
+        if (data.local) setLastLocal(data.local);
+      })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
@@ -93,8 +109,9 @@ export default function AgentModelSection() {
             <ProviderRow
               key={p.id}
               provider={p}
-              connected={connected.includes(p.id)}
-              onChange={setConnected}
+              connected={creds.connected.includes(p.id)}
+              refresh={refresh}
+              localDoc={creds.local ?? lastLocal}
             />
           ))}
         </div>
@@ -106,11 +123,13 @@ export default function AgentModelSection() {
 function ProviderRow({
   provider,
   connected,
-  onChange,
+  refresh,
+  localDoc,
 }: {
   provider: Provider;
   connected: boolean;
-  onChange: (c: string[]) => void;
+  refresh: () => void;
+  localDoc: LocalCredential | null;
 }) {
   const [mode, setMode] = useState<"idle" | "key" | "endpoint" | "oauth">("idle");
   const [apiKey, setApiKey] = useState("");
@@ -122,11 +141,34 @@ function ProviderRow({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [modelsOpen, setModelsOpen] = useState(false);
+  const [revealed, setRevealed] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [test, setTest] = useState<LocalEndpointTest | null>(null);
+
+  function openForm() {
+    const target = provider.endpoint ? "endpoint" : "key";
+    if (mode === target) {
+      setMode("idle");
+      return;
+    }
+    if (provider.endpoint) {
+      // Reconnecting is one key entry, not three fields re-typed — and the
+      // key input always starts empty: it is never remembered client-side.
+      setBaseUrl(localDoc?.base_url ?? "");
+      setModelId(localDoc?.model ?? "");
+      setLocalKey("");
+      setTest(null);
+      setRevealed(false);
+    }
+    setMode(target);
+  }
 
   async function disconnect() {
     setBusy(true);
     try {
-      onChange(await disconnectAgentCredential(provider.id));
+      await disconnectAgentCredential(provider.id);
+      setRevealed(false);
+      refresh();
     } finally {
       setBusy(false);
     }
@@ -136,9 +178,10 @@ function ProviderRow({
     setBusy(true);
     setError(null);
     try {
-      onChange(await connectAgentKey(provider.id, apiKey));
+      await connectAgentKey(provider.id, apiKey);
       setMode("idle");
       setApiKey("");
+      refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not save key");
     } finally {
@@ -150,17 +193,31 @@ function ProviderRow({
     setBusy(true);
     setError(null);
     try {
-      onChange(
-        await connectLocalEndpoint(baseUrl.trim(), modelId.trim(), localKey.trim() || null),
-      );
+      await connectLocalEndpoint(baseUrl.trim(), modelId.trim(), localKey.trim() || null);
       setMode("idle");
       setBaseUrl("");
       setModelId("");
       setLocalKey("");
+      setTest(null);
+      setRevealed(false);
+      refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not connect endpoint");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function testConnection() {
+    setTesting(true);
+    setError(null);
+    setTest(null);
+    try {
+      setTest(await testLocalEndpoint(baseUrl.trim(), modelId.trim(), localKey.trim() || null));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not test the endpoint");
+    } finally {
+      setTesting(false);
     }
   }
 
@@ -184,10 +241,11 @@ function ProviderRow({
     setBusy(true);
     setError(null);
     try {
-      onChange(await finishAgentOAuth(provider.id, pasted, oauthState));
+      await finishAgentOAuth(provider.id, pasted, oauthState);
       setMode("idle");
       setPasted("");
       setOauthState(null);
+      refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not complete sign-in");
     } finally {
@@ -208,6 +266,33 @@ function ProviderRow({
             )}
           </div>
           <p className="mt-0.5 text-[12.5px] text-muted-foreground">{provider.blurb}</p>
+          {connected && provider.endpoint && localDoc && (
+            <div className="mt-1.5 flex flex-wrap items-center gap-2">
+              <span className="rounded-full bg-raised px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+                {localDoc.api_key ? "key set" : "no key"}
+              </span>
+              {localDoc.api_key && (
+                <span className="flex items-center gap-1.5">
+                  <span
+                    className={
+                      revealed
+                        ? "select-text font-mono text-[12px] text-foreground"
+                        : "font-mono text-[12px] text-muted-foreground"
+                    }
+                  >
+                    {revealed ? localDoc.api_key : maskKey(localDoc.api_key)}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setRevealed(!revealed)}
+                    className="text-[11px] font-medium text-brand hover:underline"
+                  >
+                    {revealed ? "Hide" : "Show"}
+                  </button>
+                </span>
+              )}
+            </div>
+          )}
         </div>
         {connected ? (
           <div className="flex shrink-0 gap-2">
@@ -244,11 +329,7 @@ function ProviderRow({
             )}
             <button
               type="button"
-              onClick={() =>
-                setMode(
-                  mode === (provider.endpoint ? "endpoint" : "key") ? "idle" : provider.endpoint ? "endpoint" : "key",
-                )
-              }
+              onClick={openForm}
               className="rounded-md border border-border px-3 py-1.5 text-[12.5px] text-foreground hover:bg-raised"
             >
               {provider.endpoint ? "Connect endpoint" : "API key"}
@@ -287,13 +368,19 @@ function ProviderRow({
             <input
               type="url"
               value={baseUrl}
-              onChange={(e) => setBaseUrl(e.target.value)}
+              onChange={(e) => {
+                setBaseUrl(e.target.value);
+                setTest(null);
+              }}
               placeholder="http://your-host:11434/v1"
               className="flex-1 rounded-md border border-border bg-surface px-2.5 py-1.5 font-mono text-[12.5px] text-foreground"
             />
             <input
               value={modelId}
-              onChange={(e) => setModelId(e.target.value)}
+              onChange={(e) => {
+                setModelId(e.target.value);
+                setTest(null);
+              }}
               placeholder="llama3.1:8b"
               className="flex-1 rounded-md border border-border bg-surface px-2.5 py-1.5 font-mono text-[12.5px] text-foreground"
             />
@@ -302,10 +389,21 @@ function ProviderRow({
             <input
               type="password"
               value={localKey}
-              onChange={(e) => setLocalKey(e.target.value)}
+              onChange={(e) => {
+                setLocalKey(e.target.value);
+                setTest(null);
+              }}
               placeholder={provider.keyHint}
               className="flex-1 rounded-md border border-border bg-surface px-2.5 py-1.5 font-mono text-[12.5px] text-foreground"
             />
+            <button
+              type="button"
+              onClick={testConnection}
+              disabled={testing || busy || !baseUrl.trim()}
+              className="rounded-md border border-border px-3 py-1.5 text-[12.5px] text-foreground hover:bg-raised disabled:opacity-60"
+            >
+              Test connection
+            </button>
             <button
               type="button"
               onClick={saveEndpoint}
@@ -315,6 +413,25 @@ function ProviderRow({
               Connect
             </button>
           </div>
+          {test &&
+            (test.ok ? (
+              <div className="space-y-1">
+                <p className="text-[12px] text-[var(--color-success)]">
+                  HTTP {test.http_status} · {test.models.length} models
+                </p>
+                {modelId.trim() && !test.models.includes(modelId.trim()) && (
+                  <p className="text-[12px] text-[var(--color-warning)]">
+                    {`Model '${modelId.trim()}' is not in the endpoint's model list.`}
+                  </p>
+                )}
+              </div>
+            ) : (
+              <p className="text-[12px] text-error">
+                {test.http_status === null
+                  ? `Connection failed: ${test.error_detail}`
+                  : `HTTP ${test.http_status}: ${test.error_detail}`}
+              </p>
+            ))}
         </div>
       )}
 

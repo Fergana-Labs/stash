@@ -2371,9 +2371,28 @@ export async function machineSaveToStash(
 
 // ── Cloud-agent model credentials (BYO key / OAuth; see routers/agent_credentials) ──
 
-export async function listAgentCredentials(): Promise<string[]> {
-  const data = await apiFetch<{ connected: string[] }>("/api/v1/me/agent-credentials");
-  return data.connected;
+// The user's own local endpoint doc — the one credential the API returns, since
+// it is the user's own server config the Settings form must show and prefill.
+export type LocalCredential = {
+  base_url: string;
+  model: string;
+  api_key: string | null;
+};
+
+export type AgentCredentials = {
+  connected: string[];
+  local: LocalCredential | null;
+};
+
+// The backend's answer to Test connection: the endpoint's model list, or the
+// endpoint's own words for why it is not working (http_status null = never got
+// an HTTP answer — connection refused, DNS, or timeout).
+export type LocalEndpointTest =
+  | { ok: true; http_status: number; models: string[] }
+  | { ok: false; http_status: number | null; error_detail: string };
+
+export async function listAgentCredentials(): Promise<AgentCredentials> {
+  return apiFetch<AgentCredentials>("/api/v1/me/agent-credentials");
 }
 
 export async function connectAgentKey(provider: string, apiKey: string): Promise<string[]> {
@@ -2404,6 +2423,18 @@ export async function disconnectAgentCredential(provider: string): Promise<strin
     { method: "DELETE" },
   );
   return data.connected;
+}
+
+export async function testLocalEndpoint(
+  baseUrl: string,
+  model: string,
+  apiKey?: string | null,
+): Promise<LocalEndpointTest> {
+  return apiFetch<LocalEndpointTest>("/api/v1/me/agent-credentials/local/test", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ base_url: baseUrl, model, api_key: apiKey ?? null }),
+  });
 }
 
 export async function getLocalModelsJson(): Promise<{ models_json: string; stored: boolean }> {

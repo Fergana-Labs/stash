@@ -1,11 +1,12 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import AgentModelSection from "./AgentModelSection";
+import AgentModelSection, { maskKey } from "./AgentModelSection";
 
 const listAgentCredentials = vi.fn();
 const connectLocalEndpoint = vi.fn();
 const disconnectAgentCredential = vi.fn();
+const testLocalEndpoint = vi.fn();
 const getLocalModelsJson = vi.fn();
 const saveLocalModelsJson = vi.fn();
 const resetLocalModelsJson = vi.fn();
@@ -17,11 +18,20 @@ vi.mock("@/lib/api", async (importOriginal) => {
     listAgentCredentials: (...args: unknown[]) => listAgentCredentials(...args),
     connectLocalEndpoint: (...args: unknown[]) => connectLocalEndpoint(...args),
     disconnectAgentCredential: (...args: unknown[]) => disconnectAgentCredential(...args),
+    testLocalEndpoint: (...args: unknown[]) => testLocalEndpoint(...args),
     getLocalModelsJson: (...args: unknown[]) => getLocalModelsJson(...args),
     saveLocalModelsJson: (...args: unknown[]) => saveLocalModelsJson(...args),
     resetLocalModelsJson: (...args: unknown[]) => resetLocalModelsJson(...args),
   };
 });
+
+const EMPTY = { connected: [], local: null };
+const DOC = {
+  base_url: "http://my-host:11434/v1",
+  model: "llama3.1:8b",
+  api_key: "sk-local-abcdef",
+};
+const CONNECTED = { connected: ["local"], local: DOC };
 
 const DEFAULT_MODELS_JSON = `{
   "providers": {
@@ -47,7 +57,7 @@ const CUSTOM_MODELS_JSON = `{
 describe("AgentModelSection", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    listAgentCredentials.mockResolvedValue([]);
+    listAgentCredentials.mockResolvedValue(EMPTY);
     connectLocalEndpoint.mockResolvedValue(["local"]);
     disconnectAgentCredential.mockResolvedValue([]);
     getLocalModelsJson.mockResolvedValue({ models_json: DEFAULT_MODELS_JSON, stored: false });
@@ -56,8 +66,13 @@ describe("AgentModelSection", () => {
   });
 
   function connectLocal(): void {
-    // The local row shows its connected branch (Disconnect + Edit models.json).
-    listAgentCredentials.mockResolvedValueOnce(["local"]);
+    // The local row shows its connected branch (Disconnect + Edit models.json
+    // + the key status line), and stays connected for any later refresh.
+    listAgentCredentials.mockResolvedValue(CONNECTED);
+  }
+
+  function openEndpointForm(): void {
+    fireEvent.click(screen.getByRole("button", { name: "Connect endpoint" }));
   }
 
   it("renders four provider rows including Local model", async () => {
@@ -77,9 +92,9 @@ describe("AgentModelSection", () => {
     render(<AgentModelSection />);
     await screen.findByText("Local model");
 
-    fireEvent.click(screen.getByRole("button", { name: "Connect endpoint" }));
+    openEndpointForm();
     fireEvent.change(screen.getByPlaceholderText("http://your-host:11434/v1"), {
-      target: { value: "http://my-host:11434/v1" },
+      target: { value: DOC.base_url },
     });
     fireEvent.change(screen.getByPlaceholderText("llama3.1:8b"), {
       target: { value: "llama3.1:8b" },
@@ -87,18 +102,21 @@ describe("AgentModelSection", () => {
     // Key left empty.
     fireEvent.click(screen.getByRole("button", { name: "Connect" }));
 
-    expect(connectLocalEndpoint).toHaveBeenCalledWith("http://my-host:11434/v1", "llama3.1:8b", null);
+    expect(connectLocalEndpoint).toHaveBeenCalledWith(DOC.base_url, "llama3.1:8b", null);
   });
 
   it("shows Connected + Disconnect once the local endpoint is in the list", async () => {
+    // Mount sees nothing; the connect's refresh sees the doc; the disconnect's
+    // refresh sees nothing again — the GET is the single source of truth.
+    listAgentCredentials.mockResolvedValueOnce(EMPTY).mockResolvedValueOnce(CONNECTED);
     render(<AgentModelSection />);
     // Wait for the fetched row (same commit as its Connect endpoint button),
     // not the pre-fetch heading.
     await screen.findByText("Local model");
 
-    fireEvent.click(screen.getByRole("button", { name: "Connect endpoint" }));
+    openEndpointForm();
     fireEvent.change(screen.getByPlaceholderText("http://your-host:11434/v1"), {
-      target: { value: "http://my-host:11434/v1" },
+      target: { value: DOC.base_url },
     });
     fireEvent.change(screen.getByPlaceholderText("llama3.1:8b"), {
       target: { value: "qwen2:7b" },
@@ -106,8 +124,7 @@ describe("AgentModelSection", () => {
     fireEvent.click(screen.getByRole("button", { name: "Connect" }));
 
     await waitFor(() => expect(screen.getByText("Connected")).toBeDefined());
-    fireEvent.click(screen.getByRole("button", { name: "Disconnect" }));
-    expect(disconnectAgentCredential).toHaveBeenCalledWith("local");
+    expect(screen.getByRole("button", { name: "Disconnect" })).toBeDefined();
   });
 
   it("shows Edit models.json only on the connected local row", async () => {
@@ -119,6 +136,147 @@ describe("AgentModelSection", () => {
     // (unconnected) rows have none.
     expect(screen.getAllByRole("button", { name: "Edit models.json" })).toHaveLength(1);
   });
+
+  // ── Key visibility on the connected row (STAS-126) ───────────────────────
+
+  it("shows the connected key masked, with a reveal toggle", async () => {
+    connectLocal();
+    render(<AgentModelSection />);
+    await screen.findByText("key set");
+    expect(screen.getByText("sk-l…cdef")).toBeDefined();
+
+    fireEvent.click(screen.getByRole("button", { name: "Show" }));
+    expect(screen.getByText(DOC.api_key)).toBeDefined();
+    expect(screen.queryByText("sk-l…cdef")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Hide" }));
+    expect(screen.getByText("sk-l…cdef")).toBeDefined();
+  });
+
+  it("shows a no key chip with no toggle for a keyless endpoint", async () => {
+    listAgentCredentials.mockResolvedValue({ connected: ["local"], local: { ...DOC, api_key: null } });
+    render(<AgentModelSection />);
+    await screen.findByText("no key");
+    expect(screen.queryByText("key set")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Show" })).toBeNull();
+  });
+
+  // ── Reconnect prefill (STAS-126) ─────────────────────────────────────────
+
+  it("prefills base URL and model after disconnect, with the key left blank", async () => {
+    listAgentCredentials.mockResolvedValueOnce(CONNECTED).mockResolvedValue(EMPTY);
+    render(<AgentModelSection />);
+    await screen.findByText("Connected");
+
+    fireEvent.click(screen.getByRole("button", { name: "Disconnect" }));
+    expect(disconnectAgentCredential).toHaveBeenCalledWith("local");
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Connect endpoint" })).toBeDefined(),
+    );
+    openEndpointForm();
+
+    expect(screen.getByPlaceholderText("http://your-host:11434/v1")).toHaveValue(DOC.base_url);
+    expect(screen.getByPlaceholderText("llama3.1:8b")).toHaveValue(DOC.model);
+    // The key is never remembered client-side: reconnect is one fresh entry.
+    expect(screen.getByPlaceholderText("optional key…")).toHaveValue("");
+  });
+
+  // ── Test connection (STAS-126) ───────────────────────────────────────────
+
+  it("test connection reports the model count on success", async () => {
+    testLocalEndpoint.mockResolvedValue({
+      ok: true,
+      http_status: 200,
+      models: ["mock-model-1", "llama3.1:8b"],
+    });
+    render(<AgentModelSection />);
+    await screen.findByText("Local model");
+    openEndpointForm();
+    fireEvent.change(screen.getByPlaceholderText("http://your-host:11434/v1"), {
+      target: { value: DOC.base_url },
+    });
+    fireEvent.change(screen.getByPlaceholderText("llama3.1:8b"), {
+      target: { value: "llama3.1:8b" },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Test connection" }));
+
+    await screen.findByText("HTTP 200 · 2 models");
+    expect(testLocalEndpoint).toHaveBeenCalledWith(DOC.base_url, "llama3.1:8b", null);
+    expect(screen.queryByText(/not in the endpoint's model list/)).toBeNull();
+  });
+
+  it("warns when the chosen model is not in the tested endpoint's list", async () => {
+    testLocalEndpoint.mockResolvedValue({ ok: true, http_status: 200, models: ["mock-model-1"] });
+    render(<AgentModelSection />);
+    await screen.findByText("Local model");
+    openEndpointForm();
+    fireEvent.change(screen.getByPlaceholderText("http://your-host:11434/v1"), {
+      target: { value: DOC.base_url },
+    });
+    fireEvent.change(screen.getByPlaceholderText("llama3.1:8b"), {
+      target: { value: "llama3.1:8b" },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Test connection" }));
+
+    await screen.findByText("Model 'llama3.1:8b' is not in the endpoint's model list.");
+  });
+
+  it("test connection surfaces the provider's error body", async () => {
+    testLocalEndpoint.mockResolvedValue({
+      ok: false,
+      http_status: 401,
+      error_detail: '{"error": {"message": "token_not_found_in_db: no token with that hash"}}',
+    });
+    render(<AgentModelSection />);
+    await screen.findByText("Local model");
+    openEndpointForm();
+    fireEvent.change(screen.getByPlaceholderText("http://your-host:11434/v1"), {
+      target: { value: DOC.base_url },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Test connection" }));
+
+    await screen.findByText(/token_not_found_in_db/);
+  });
+
+  it("test connection reports a transport failure without an HTTP status", async () => {
+    testLocalEndpoint.mockResolvedValue({
+      ok: false,
+      http_status: null,
+      error_detail: "connection failed: all connection attempts failed",
+    });
+    render(<AgentModelSection />);
+    await screen.findByText("Local model");
+    openEndpointForm();
+    fireEvent.change(screen.getByPlaceholderText("http://your-host:11434/v1"), {
+      target: { value: DOC.base_url },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Test connection" }));
+
+    await screen.findByText("Connection failed: connection failed: all connection attempts failed");
+  });
+
+  it("clears the previous test result when an input changes", async () => {
+    testLocalEndpoint.mockResolvedValue({ ok: true, http_status: 200, models: ["mock-model-1"] });
+    render(<AgentModelSection />);
+    await screen.findByText("Local model");
+    openEndpointForm();
+    fireEvent.change(screen.getByPlaceholderText("http://your-host:11434/v1"), {
+      target: { value: DOC.base_url },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Test connection" }));
+    await screen.findByText("HTTP 200 · 1 models");
+
+    fireEvent.change(screen.getByPlaceholderText("http://your-host:11434/v1"), {
+      target: { value: "http://other-host:11434/v1" },
+    });
+    expect(screen.queryByText("HTTP 200 · 1 models")).toBeNull();
+  });
+
+  // ── models.json editor (STAS-124) ────────────────────────────────────────
 
   it("loads the effective models.json on open with a Default indicator", async () => {
     connectLocal();
@@ -209,5 +367,19 @@ describe("AgentModelSection", () => {
     await waitFor(() => expect(resetLocalModelsJson).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(textarea).toHaveValue(DEFAULT_MODELS_JSON));
     expect(screen.getByText("Default")).toBeDefined();
+  });
+});
+
+describe("maskKey", () => {
+  it("keeps the first four and last four of a long key", () => {
+    expect(maskKey("sk-abcdef123456")).toBe("sk-a…3456");
+  });
+
+  it("masks even the shortest maskable key", () => {
+    expect(maskKey("abcdefgh")).toBe("abcd…efgh");
+  });
+
+  it("shows no characters of a too-short key", () => {
+    expect(maskKey("abcde")).toBe("••••");
   });
 });
