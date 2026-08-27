@@ -325,7 +325,7 @@ export default function SessionViewerPage({ sessionId }: { sessionId: string }) 
                   }}
                 />
               </h1>
-              {(sessionDate || totalTurns > 0 || agentName || sessionDetail?.cwd) && (
+              {(sessionDate || totalTurns > 0 || agentName) && (
                 <div className="mt-1.5 flex flex-wrap items-center gap-2.5 text-[12px] text-muted-foreground">
                   {sessionDate && <span>{sessionDate}</span>}
                   {totalTurns > 0 && (
@@ -334,11 +334,6 @@ export default function SessionViewerPage({ sessionId }: { sessionId: string }) 
                     </span>
                   )}
                   {agentName && <span title="Agent that ran this session">{agentName}</span>}
-                  {sessionDetail?.cwd && (
-                    <span className="font-mono text-[11px]" title="Working directory">
-                      {sessionDetail.cwd}
-                    </span>
-                  )}
                 </div>
               )}
             </div>
