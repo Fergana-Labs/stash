@@ -4,7 +4,7 @@
 // route → content mapping so a new management page failing to register fails a
 // test instead of failing in prod.
 import { beforeEach, describe, expect, it } from "vitest";
-import { rendersRouteContent } from "./workspace-shell";
+import { rendersRouteContent, showsExplorer } from "./workspace-shell";
 import { WORKBENCH_TAB_KINDS, urlForTab, hasPermanentUrl } from "@/lib/workspace-routes";
 import { useWorkspace, type WorkbenchTab } from "@/lib/workspace-store";
 
@@ -34,6 +34,23 @@ describe("rendersRouteContent", () => {
 
   it("sessions workspace view keeps the workbench", () => {
     expect(rendersRouteContent("/sessions", null, "1")).toBe(false);
+  });
+});
+
+describe("showsExplorer", () => {
+  it("keeps opened uploads full-width", () => {
+    expect(showsExplorer("/p/page-1", "files", null)).toBe(false);
+    expect(showsExplorer("/f/file-1", "files", null)).toBe(false);
+    expect(showsExplorer("/p/page-1", "files", "files")).toBe(false);
+  });
+
+  it("keeps the panel where it is still the primary browser", () => {
+    expect(showsExplorer("/folders/folder-1", "files", null)).toBe(true);
+    expect(showsExplorer("/files", "computer", "computer")).toBe(true);
+  });
+
+  it("does not duplicate the Files index", () => {
+    expect(showsExplorer("/files", "files", null)).toBe(false);
   });
 });
 

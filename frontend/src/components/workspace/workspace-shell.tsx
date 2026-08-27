@@ -101,6 +101,16 @@ export function rendersRouteContent(
   return pathname === "/tools";
 }
 
+export function showsExplorer(
+  pathname: string,
+  section: ExplorerSection | null,
+  selectedSection: ExplorerSection | null,
+): boolean {
+  if (section === null || !PANELLED_SECTIONS.includes(section)) return false;
+  if (/^\/(p|f)\//.test(pathname)) return false;
+  return pathname !== "/files" || selectedSection !== null;
+}
+
 
 /**
  * The app shell — icon rail + top bar + main area. Each primary rail section
@@ -138,10 +148,10 @@ export default function WorkspaceShell({
     setLastVfsUrl(query ? `${pathname}?${query}` : pathname);
   }, [section, pathname, searchParams, setLastVfsUrl]);
 
-  // /files IS a file tree — showing the explorer's tree beside it would be
-  // the same thing twice. An explicit ?section= still summons the panel.
+  // /files is already the complete upload index. Opened pages and files also
+  // use the full content width; their own headers provide the route back.
   const isFilesHome = pathname === "/files" && !selectedSection;
-  const showExplorer = section !== null && PANELLED_SECTIONS.includes(section) && !isFilesHome;
+  const showExplorer = showsExplorer(pathname, section, selectedSection);
 
   // A Developer Console context gets its own chrome — the infra-dashboard
   // shell, not the consumer app's rail and workbench.
