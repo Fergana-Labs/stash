@@ -353,18 +353,23 @@ async def get_folder_contents(
     ancestry_rows = await pool.fetch(
         """
         WITH RECURSIVE chain AS (
-          SELECT id, name, parent_folder_id, is_skill, 0 AS depth
+          SELECT id, name, parent_folder_id, is_skill, is_memory, 0 AS depth
           FROM folders WHERE id = $1
           UNION ALL
-          SELECT f.id, f.name, f.parent_folder_id, f.is_skill, c.depth + 1
+          SELECT f.id, f.name, f.parent_folder_id, f.is_skill, f.is_memory, c.depth + 1
           FROM folders f JOIN chain c ON c.parent_folder_id = f.id
         )
-        SELECT id, name, is_skill FROM chain ORDER BY depth DESC
+        SELECT id, name, is_skill, is_memory FROM chain ORDER BY depth DESC
         """,
         folder_id,
     )
     breadcrumbs = [
-        {"id": str(r["id"]), "name": r["name"], "is_skill": bool(r["is_skill"])}
+        {
+            "id": str(r["id"]),
+            "name": r["name"],
+            "is_skill": bool(r["is_skill"]),
+            "is_memory": bool(r["is_memory"]),
+        }
         for r in ancestry_rows
     ]
 

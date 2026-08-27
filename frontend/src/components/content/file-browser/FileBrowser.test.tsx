@@ -111,7 +111,7 @@ describe("FileBrowser folder links", () => {
         parent_folder_id: null,
         is_skill: true,
       },
-      breadcrumbs: [{ id: "folder-1", name: "Skill folder", is_skill: true }],
+      breadcrumbs: [{ id: "folder-1", name: "Skill folder", is_skill: true, is_memory: false }],
       subfolders: [
         { id: "folder-2", name: "Nested", page_count: 0, file_count: 0, created_at: createdAt },
       ],

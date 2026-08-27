@@ -5,9 +5,14 @@ export interface SectionCrumb {
   href: string;
 }
 
-/** Ancestor crumbs for a folder chain, rooted at Files. The reserved Memory
- *  folder is an ordinary crumb in the chain — memory lives in the filesystem. */
 export function sectionCrumbs(chain: FolderBreadcrumb[]): SectionCrumb[] {
+  if (chain[0]?.is_memory) {
+    return chain.map((breadcrumb, index) => ({
+      label: breadcrumb.name,
+      href: index === 0 ? "/" : `/folders/${breadcrumb.id}`,
+    }));
+  }
+
   return [
     { label: "Files", href: "/files" },
     ...chain.map((b) => ({ label: b.name, href: `/folders/${b.id}` })),

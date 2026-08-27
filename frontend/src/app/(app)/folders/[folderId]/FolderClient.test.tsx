@@ -64,7 +64,14 @@ function contents(folderIsSkill: boolean, breadcrumbIsSkill = false) {
       parent_folder_id: null,
       is_skill: folderIsSkill,
     },
-    breadcrumbs: [{ id: "folder-root", name: "Brake Shoes", is_skill: breadcrumbIsSkill }],
+    breadcrumbs: [
+      {
+        id: "folder-root",
+        name: "Brake Shoes",
+        is_skill: breadcrumbIsSkill,
+        is_memory: false,
+      },
+    ],
     subfolders: [],
     pages: [],
     files: [],

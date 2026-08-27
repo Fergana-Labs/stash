@@ -2164,6 +2164,7 @@ export interface FolderBreadcrumb {
   id: string;
   name: string;
   is_skill: boolean;
+  is_memory: boolean;
 }
 export interface FolderSubfolder {
   id: string;

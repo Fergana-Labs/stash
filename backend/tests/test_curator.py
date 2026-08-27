@@ -721,6 +721,17 @@ async def test_memory_tree_nests_folders_and_scopes_to_memory(client: AsyncClien
     # A Files page is not part of the wiki tree.
     await add_page("Outside", None)
 
+    contents = (
+        await client.get(
+            f"/api/v1/me/folders/{sub['id']}/contents",
+            headers=_auth(key),
+        )
+    ).json()
+    assert contents["breadcrumbs"] == [
+        {"id": mem["id"], "name": "Memory", "is_skill": False, "is_memory": True},
+        {"id": sub["id"], "name": "Research", "is_skill": False, "is_memory": False},
+    ]
+
     r = await client.get("/api/v1/me/memory-tree", headers=_auth(key))
     assert r.status_code == 200
     tree = r.json()
