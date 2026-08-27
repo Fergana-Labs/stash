@@ -641,8 +641,8 @@ async def _fork_folder(
     # Forking a skill is an explicit "give me this skill" — membership travels
     # with the copy, exactly like its files do.
     new_folder = await conn.fetchrow(
-        "INSERT INTO folders (owner_user_id, parent_folder_id, name, created_by, is_skill) "
-        "VALUES ($1, $2, $3, $4, $5) RETURNING id",
+        "INSERT INTO folders (owner_user_id, parent_folder_id, name, created_by, is_skill, "
+        "skill_created_at) VALUES ($1, $2, $3, $4, $5, CASE WHEN $5 THEN now() END) RETURNING id",
         owner_user_id,
         parent_folder_id,
         name_override or folder["name"],

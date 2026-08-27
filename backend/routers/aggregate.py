@@ -1,6 +1,7 @@
 """Aggregate router: cross-scope indexes for the authenticated user."""
 
 from datetime import datetime
+from urllib.parse import quote
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
@@ -12,7 +13,7 @@ from ..services import (
     analytics_service,
     files_tree_service,
     memory_service,
-    permission_service,
+    session_title_service,
     table_service,
 )
 
@@ -72,109 +73,75 @@ async def list_my_recents(current_user: dict = Depends(get_current_user)):
     ]
 
 
-@router.get("/file-activity")
-async def list_file_activity(
-    limit: int = Query(50, ge=1, le=200),
-    before: datetime | None = Query(None),
+@router.get("/recent-activity")
+async def list_recent_activity(
+    limit: int = Query(20, ge=1, le=50),
     current_user: dict = Depends(get_current_user),
     scope_user_id: UUID = Depends(get_scope),
 ):
-    """New and edited files and pages in the active scope (personal, or the
-    workspace named by X-Stash-Scope), cursor-paginated by ts. Only the scope's
-    own rows appear — content shared from other scopes belongs to those scopes'
-    Homes, not this one's. The Memory subtree is excluded: curation output is
-    the curator log's story, not file activity."""
+    """The active scope's latest agent sessions and newly-created Skills."""
     pool = get_pool()
-    events = await pool.fetch(
-        """
-        WITH RECURSIVE accessible_scopes AS (
-          -- The active scope only. Page/file rows still pass
-          -- readable_content_condition, the row-level access predicate.
-          SELECT u.id, u.name
-          FROM users u
-          WHERE u.id = $3
-        ),
-        memory_folders AS (
-          SELECT mf.id FROM folders mf
-          JOIN accessible_scopes aw ON aw.id = mf.owner_user_id
-          WHERE mf.is_memory
-          UNION
-          SELECT mf.id FROM folders mf
-          JOIN memory_folders m ON m.id = mf.parent_folder_id
+    sessions = [
+        dict(row)
+        for row in await pool.fetch(
+            """
+        WITH recent_sessions AS (
+          SELECT session_id, last_event_at, created_by
+          FROM sessions
+          WHERE owner_user_id = $1 AND deleted_at IS NULL
+          ORDER BY last_event_at DESC
+          LIMIT $2
         )
-        SELECT * FROM (
-        (
-          SELECT 'page.updated' AS kind,
-                 p.updated_at AS ts,
-                 COALESCE(p.updated_by, p.created_by) AS actor_id,
-                 p.id::text AS target_id,
-                 p.name AS target_label,
-                 p.last_edit_agent_name AS agent_name,
-                 aw.id AS owner_user_id,
-                 aw.name AS owner_name
-          FROM pages p
-          JOIN accessible_scopes aw ON aw.id = p.owner_user_id
-          WHERE p.deleted_at IS NULL
-            AND NOT EXISTS (SELECT 1 FROM memory_folders m WHERE m.id = p.folder_id)
-            AND """
-        + permission_service.readable_content_condition("page", "p", 1)
-        + """
-        )
-        UNION ALL
-        (
-          SELECT 'file.uploaded' AS kind,
-                 f.created_at AS ts,
-                 f.uploaded_by AS actor_id,
-                 f.id::text AS target_id,
-                 f.name AS target_label,
-                 NULL::text AS agent_name,
-                 aw.id AS owner_user_id,
-                 aw.name AS owner_name
-          FROM files f
-          JOIN accessible_scopes aw ON aw.id = f.owner_user_id
-          WHERE f.deleted_at IS NULL
-            AND NOT EXISTS (SELECT 1 FROM memory_folders m WHERE m.id = f.folder_id)
-            AND """
-        + permission_service.readable_content_condition("file", "f", 1)
-        + """
-        )
-        ) ev
-        WHERE ($4::timestamptz IS NULL OR ev.ts < $4)
-        ORDER BY ts DESC LIMIT $2
+        SELECT s.session_id, s.last_event_at, author.display_name AS author_name,
+               COUNT(he.id)::int AS event_count,
+               (ARRAY_AGG(NULLIF(he.metadata->>'model', '') ORDER BY he.created_at DESC)
+                FILTER (WHERE NULLIF(he.metadata->>'model', '') IS NOT NULL))[1] AS model,
+               (ARRAY_AGG(LEFT(he.content, 240) ORDER BY
+                 CASE WHEN he.event_type IN ('user_message','user_prompt','prompt','message','user')
+                      THEN 0 ELSE 1 END, he.created_at, he.id)
+                FILTER (WHERE NULLIF(BTRIM(he.content), '') IS NOT NULL))[1] AS title_source
+        FROM recent_sessions s
+        JOIN history_events he ON he.owner_user_id = $1 AND he.session_id = s.session_id
+        JOIN users author ON author.id = s.created_by
+        GROUP BY s.session_id, s.last_event_at, author.display_name
+        ORDER BY s.last_event_at DESC
         """,
-        current_user["id"],
-        limit + 1,
-        scope_user_id,
-        before,
-    )
-    has_more = len(events) > limit
-    if has_more:
-        events = events[:limit]
-    user_ids = list({r["actor_id"] for r in events if r["actor_id"]})
-    users = {}
-    if user_ids:
-        rows = await pool.fetch(
-            "SELECT id, name, display_name FROM users WHERE id = ANY($1::uuid[])",
-            user_ids,
+            scope_user_id,
+            limit,
         )
-        users = {r["id"]: {"name": r["name"], "display_name": r["display_name"]} for r in rows}
-
-    return {
-        "events": [
-            {
-                "kind": r["kind"],
-                "ts": r["ts"],
-                "actor": users[r["actor_id"]],
-                "target_id": r["target_id"],
-                "target_label": r["target_label"],
-                "agent_name": r["agent_name"],
-                "owner_user_id": r["owner_user_id"],
-                "owner_name": r["owner_name"],
-            }
-            for r in events
-        ],
-        "has_more": has_more,
-    }
+    ]
+    titles = await session_title_service.titles_for_sessions(scope_user_id, sessions)
+    skills = await pool.fetch(
+        "SELECT id, name, skill_created_at FROM folders "
+        "WHERE owner_user_id = $1 AND is_skill ORDER BY skill_created_at DESC LIMIT $2",
+        scope_user_id,
+        limit,
+    )
+    events = [
+        {
+            "kind": "session",
+            "ts": row["last_event_at"],
+            "title": titles[row["session_id"]],
+            "subtitle": (
+                f"{row['author_name']}'s {row['model']}"
+                if row["model"]
+                else f"{row['author_name']} · model unavailable"
+            ),
+            "href": f"/sessions/{quote(row['session_id'], safe='')}",
+        }
+        for row in sessions
+    ] + [
+        {
+            "kind": "skill.created",
+            "ts": row["skill_created_at"],
+            "title": row["name"],
+            "subtitle": "New Skill",
+            "href": f"/skills/folder/{row['id']}",
+        }
+        for row in skills
+    ]
+    events.sort(key=lambda event: event["ts"], reverse=True)
+    return {"events": events[:limit]}
 
 
 @router.get("/tables")

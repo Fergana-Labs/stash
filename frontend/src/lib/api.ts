@@ -1946,32 +1946,22 @@ export async function listAgentNames(): Promise<string[]> {
   return data.agent_names;
 }
 
-// --- File activity feed ---
+// --- Recent activity feed ---
 
-// A page edit or file upload in the filesystem (the Memory subtree is
-// excluded server-side — curation output is the curator log's story).
-export interface ActivityEvent {
-  kind: string;
+export interface RecentActivityEvent {
+  kind: "session" | "skill.created";
   ts: string;
-  actor: { name: string; display_name: string };
-  target_id: string;
-  target_label: string;
-  /** Agent that made the edit (e.g. the Memory curator); null = the edit
-   *  didn't come through an agent session (a person, or setup/API writes). */
-  agent_name: string | null;
+  title: string;
+  subtitle: string | null;
+  href: string;
 }
 
-export interface ActivityFeed {
-  events: ActivityEvent[];
-  has_more: boolean;
+export interface RecentActivityFeed {
+  events: RecentActivityEvent[];
 }
 
-export async function listFileActivity(
-  opts: { limit?: number; before?: string } = {}
-): Promise<ActivityFeed> {
-  const qs = new URLSearchParams({ limit: String(opts.limit ?? 50) });
-  if (opts.before) qs.set("before", opts.before);
-  return apiFetch(`${ME}/file-activity?${qs}`);
+export async function listRecentActivity(limit = 20): Promise<RecentActivityFeed> {
+  return apiFetch(`${ME}/recent-activity?limit=${limit}`);
 }
 
 // --- Session transcripts ---

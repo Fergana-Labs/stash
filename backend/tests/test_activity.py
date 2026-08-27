@@ -40,6 +40,7 @@ async def _event(
     agent_name: str = "tester",
     created_at: str = "2026-01-02T00:00:00Z",
     event_type: str = "assistant_message",
+    model: str = "claude-sonnet-4-6",
 ) -> None:
     resp = await client.post(
         "/api/v1/me/sessions/events",
@@ -49,6 +50,7 @@ async def _event(
             "content": session_id,
             "session_id": session_id,
             "created_at": created_at,
+            "metadata": {"model": model},
         },
         headers=_auth(api_key),
     )
@@ -429,37 +431,34 @@ async def test_activity_timeline_normalizes_claude_code_agent_names(client: Asyn
 
 
 @pytest.mark.asyncio
-async def test_file_activity_is_scoped_and_excludes_memory(client: AsyncClient):
+async def test_recent_activity_contains_sessions_and_new_skills_not_page_edits(client: AsyncClient):
     owner_key = await _register(client, "activity_owner")
-    other_key = await _register(client, "activity_other")
-
-    page = await client.post(
-        "/api/v1/me/pages/new",
-        json={"name": "Visible page", "content": "hello"},
-        headers=_auth(owner_key),
-    )
-    assert page.status_code == 201
+    scope = await _scope(client, owner_key)
     await client.post(
         "/api/v1/me/pages/new",
-        json={"name": "Hidden page", "content": "other scope"},
-        headers=_auth(other_key),
-    )
-    # A page in the Memory subtree is curation output, not file activity.
-    mem = (await client.get("/api/v1/me/memory-folder", headers=_auth(owner_key))).json()
-    await client.post(
-        "/api/v1/me/pages/new",
-        json={"name": "Wiki page", "content": "curated", "folder_id": mem["id"]},
+        json={"name": "Not Home activity", "content": "hello"},
         headers=_auth(owner_key),
     )
+    await _event(client, owner_key, scope["id"], "recent-session", agent_name="codex")
+    skill = await client.post(
+        "/api/v1/me/skills/new",
+        json={"name": "Recent Skill", "description": "Use for recent activity tests."},
+        headers=_auth(owner_key),
+    )
+    assert skill.status_code == 201
 
     resp = await client.get(
-        "/api/v1/me/file-activity", params={"limit": 200}, headers=_auth(owner_key)
+        "/api/v1/me/recent-activity", params={"limit": 20}, headers=_auth(owner_key)
     )
     assert resp.status_code == 200
-    labels = [e["target_label"] for e in resp.json()["events"]]
-    assert "Visible page" in labels
-    assert "Hidden page" not in labels
-    assert "Wiki page" not in labels
+    events = resp.json()["events"]
+    assert {event["kind"] for event in events} == {"session", "skill.created"}
+    assert {event["title"] for event in events} == {"recent-session", "Recent Skill"}
+    session = next(event for event in events if event["kind"] == "session")
+    skill_event = next(event for event in events if event["kind"] == "skill.created")
+    assert session["subtitle"].endswith("'s claude-sonnet-4-6")
+    assert skill_event["subtitle"] == "New Skill"
+    assert all("Not Home activity" not in event["title"] for event in events)
 
 
 async def _file_row(pool, owner_user_id: UUID, name: str, folder_id: UUID | None) -> None:
@@ -473,7 +472,7 @@ async def _file_row(pool, owner_user_id: UUID, name: str, folder_id: UUID | None
 
 
 @pytest.mark.asyncio
-async def test_file_activity_excludes_files_inside_the_memory_subtree(client: AsyncClient, pool):
+async def test_recent_activity_ignores_file_uploads(client: AsyncClient, pool):
     """The Memory exclusion is about what the curator churns through, and the
     curator writes files as well as pages — a filter that only covers pages
     leaks half of that churn into Home. Nested folders count too: Memory's
@@ -495,19 +494,14 @@ async def test_file_activity_excludes_files_inside_the_memory_subtree(client: As
     await _file_row(pool, scope, "Nested memory file", nested_id)
 
     resp = await client.get(
-        "/api/v1/me/file-activity", params={"limit": 200}, headers=_auth(api_key)
+        "/api/v1/me/recent-activity", params={"limit": 20}, headers=_auth(api_key)
     )
     assert resp.status_code == 200
-    labels = [e["target_label"] for e in resp.json()["events"]]
-    assert "Loose file" in labels
-    assert "Memory file" not in labels
-    assert "Nested memory file" not in labels
+    assert resp.json()["events"] == []
 
 
 @pytest.mark.asyncio
-async def test_file_activity_stays_in_the_active_scope_even_for_shared_content(
-    client: AsyncClient, pool
-):
+async def test_recent_activity_ignores_page_sharing(client: AsyncClient, pool):
     """Home's feed answers "what landed in THIS stash", so a page another user
     shared with the caller — readable everywhere else — must not appear: it is
     that scope's activity, not the caller's."""
@@ -537,43 +531,27 @@ async def test_file_activity_stays_in_the_active_scope_even_for_shared_content(
     assert mine.status_code == 201
 
     resp = await client.get(
-        "/api/v1/me/file-activity", params={"limit": 200}, headers=_auth(friend_key)
+        "/api/v1/me/recent-activity", params={"limit": 20}, headers=_auth(friend_key)
     )
     assert resp.status_code == 200
-    labels = [e["target_label"] for e in resp.json()["events"]]
-    # The share is readable (that's what shares do) — it just isn't this
-    # scope's activity.
-    assert "My own page" in labels
-    assert "Their shared page" not in labels
+    assert resp.json()["events"] == []
 
 
 @pytest.mark.asyncio
-async def test_file_activity_paginates_with_before_cursor(client: AsyncClient):
+async def test_recent_activity_returns_only_the_requested_latest_sessions(client: AsyncClient):
     api_key = await _register(client, "activity_paged")
+    scope = await _scope(client, api_key)
     for n in (1, 2, 3):
-        r = await client.post(
-            "/api/v1/me/pages/new",
-            json={"name": f"paged-{n}", "content": "x"},
-            headers=_auth(api_key),
+        await _event(
+            client,
+            api_key,
+            scope["id"],
+            f"session-{n}",
+            created_at=f"2026-01-0{n}T00:00:00Z",
         )
-        assert r.status_code == 201
 
-    # Page through one event at a time using the last event's ts as the cursor.
-    seen: list[tuple[str, str, str]] = []
-    before: str | None = None
-    has_more = True
-    while has_more:
-        params: dict = {"limit": 1}
-        if before:
-            params["before"] = before
-        resp = await client.get("/api/v1/me/file-activity", params=params, headers=_auth(api_key))
-        assert resp.status_code == 200
-        body = resp.json()
-        assert len(body["events"]) == 1
-        seen.extend((e["kind"], e["target_id"], e["ts"]) for e in body["events"])
-        before = body["events"][-1]["ts"]
-        has_more = body["has_more"]
-        assert len(seen) <= 10, "cursor failed to advance"
-
-    assert len(seen) == len(set(seen)), "an event repeated across pages"
-    assert len(seen) == 3
+    resp = await client.get(
+        "/api/v1/me/recent-activity", params={"limit": 2}, headers=_auth(api_key)
+    )
+    assert resp.status_code == 200
+    assert [event["title"] for event in resp.json()["events"]] == ["session-3", "session-2"]

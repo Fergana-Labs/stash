@@ -35,9 +35,12 @@ async def scope(_db_pool):
 
 
 async def _assert_is_a_usable_skill(scope, folder_id, _db_pool, *, via: str):
-    """The two halves of a skill: marked as one, and holding instructions."""
-    flagged = await _db_pool.fetchval("SELECT is_skill FROM folders WHERE id = $1", folder_id)
-    assert flagged is True, f"{via}: folder was not marked a skill"
+    """A skill is marked, timestamped for Home, and holds instructions."""
+    row = await _db_pool.fetchrow(
+        "SELECT is_skill, skill_created_at FROM folders WHERE id = $1", folder_id
+    )
+    assert row["is_skill"] is True, f"{via}: folder was not marked a skill"
+    assert row["skill_created_at"] is not None, f"{via}: skill has no creation timestamp"
 
     listed = [
         s for s in await skill_service.list_skills(scope, scope) if s["folder_id"] == str(folder_id)

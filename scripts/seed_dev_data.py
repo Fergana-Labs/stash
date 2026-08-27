@@ -194,6 +194,7 @@ SAMPLE_SESSIONS = [
     {
         "session_id": "session-design-architecture",
         "agent_name": "claude",
+        "model": "claude-sonnet-4-6",
         "cwd": "/scope/product",
         "created_by": "demo_aria",
         "files_touched": ["docs/architecture.md", "product/vision.md"],
@@ -210,6 +211,7 @@ SAMPLE_SESSIONS = [
     {
         "session_id": "session-dashboard-overhaul",
         "agent_name": "copilot",
+        "model": "gpt-5.4",
         "cwd": "/scope/frontend",
         "created_by": "demo_maya",
         "files_touched": ["frontend/src/AppSidebar.tsx", "frontend/src/styles.css"],
@@ -223,6 +225,7 @@ SAMPLE_SESSIONS = [
     {
         "session_id": "session-file-pipeline",
         "agent_name": "assistant",
+        "model": "gpt-5.5",
         "cwd": "/scope/backend",
         "created_by": "demo_devon",
         "files_touched": ["backend/routers/files.py", "backend/services/files_tree_service.py"],
@@ -238,6 +241,7 @@ SAMPLE_SESSIONS = [
     {
         "session_id": "session-session-index",
         "agent_name": "agent",
+        "model": "gpt-5.5",
         "cwd": "/scope/backend",
         "created_by": "demo_aria",
         "files_touched": [
@@ -254,6 +258,7 @@ SAMPLE_SESSIONS = [
     {
         "session_id": "session-permissions-path",
         "agent_name": "claude",
+        "model": "claude-opus-4-6",
         "cwd": "/scope/backend",
         "created_by": "demo_devon",
         "files_touched": [
@@ -270,6 +275,7 @@ SAMPLE_SESSIONS = [
     {
         "session_id": "session-documenting-practices",
         "agent_name": "assistant",
+        "model": "gpt-5.4",
         "cwd": "/scope/docs",
         "created_by": "demo_maya",
         "files_touched": ["README.md", "docs/notes.md", "notes/session-ops.md"],
@@ -282,6 +288,7 @@ SAMPLE_SESSIONS = [
     {
         "session_id": "session-query-quality",
         "agent_name": "copilot",
+        "model": "gpt-5.4",
         "cwd": "/scope/backend",
         "created_by": "demo_aria",
         "files_touched": [
@@ -298,6 +305,7 @@ SAMPLE_SESSIONS = [
     {
         "session_id": "session-observability",
         "agent_name": "assistant",
+        "model": "gpt-5.5",
         "cwd": "/scope/ops",
         "created_by": "demo_devon",
         "files_touched": ["ops/checks.md", "ops/incident-template.md"],
@@ -310,6 +318,7 @@ SAMPLE_SESSIONS = [
     {
         "session_id": "session-qa-sanity",
         "agent_name": "claude",
+        "model": "claude-sonnet-4-6",
         "cwd": "/scope/tests",
         "created_by": "demo_maya",
         "files_touched": [
@@ -325,6 +334,7 @@ SAMPLE_SESSIONS = [
     {
         "session_id": "session-product-feedback",
         "agent_name": "assistant",
+        "model": "gpt-5.4",
         "cwd": "/scope/product",
         "created_by": "demo_aria",
         "files_touched": ["product/feedback.md", "docs/roadmap.md"],
@@ -337,6 +347,7 @@ SAMPLE_SESSIONS = [
     {
         "session_id": "session-oncall-playbook",
         "agent_name": "agent",
+        "model": "gpt-5.5",
         "cwd": "/scope/ops",
         "created_by": "demo_devon",
         "files_touched": ["ops/oncall.md", "ops/status-template.md"],
@@ -349,6 +360,7 @@ SAMPLE_SESSIONS = [
     {
         "session_id": "session-release-triage",
         "agent_name": "assistant",
+        "model": "gpt-5.5",
         "cwd": "/scope/backend",
         "created_by": "demo_maya",
         "files_touched": [
@@ -605,7 +617,7 @@ async def _ensure_sessions(
                     "tool_name": tool,
                     "created_by": created_by["id"],
                     "session_id": spec["session_id"],
-                    "metadata": {"cwd": spec["cwd"]},
+                    "metadata": {"cwd": spec["cwd"], "model": spec["model"]},
                     "created_at": await _session_time_offset(i, event_offset),
                     "attachments": [],
                 }
@@ -733,7 +745,9 @@ async def _ensure_skills(
             spec["title"],
         )
         if folder is None:
-            folder = await files_tree_service.create_folder(owner_user_id, spec["title"], user["id"])
+            folder = await files_tree_service.create_folder(
+                owner_user_id, spec["title"], user["id"]
+            )
         for page_name in spec["pages"]:
             page = pages.get(page_name)
             if page:
@@ -775,14 +789,11 @@ async def _ensure_skills(
             story_title,
         )
         if folder is None:
-            folder = await files_tree_service.create_folder(
-                owner_user_id, story_title, user["id"]
-            )
+            folder = await files_tree_service.create_folder(owner_user_id, story_title, user["id"])
         for session_key in sorted(sessions)[:3]:
             session_id = sessions[session_key]["session_id"]
             already = await pool.fetchrow(
-                "SELECT id FROM pages WHERE owner_user_id = $1 AND folder_id = $2 "
-                "AND name = $3",
+                "SELECT id FROM pages WHERE owner_user_id = $1 AND folder_id = $2 AND name = $3",
                 owner_user_id,
                 folder["id"],
                 f"Session {session_id}.md",

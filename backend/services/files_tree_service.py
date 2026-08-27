@@ -1392,7 +1392,8 @@ async def set_folder_is_skill(folder_id: UUID, owner_user_id: UUID, is_skill: bo
                 "then convert it back to a folder."
             )
     updated = await pool.fetchrow(
-        "UPDATE folders SET is_skill = $3, updated_at = now() "
+        "UPDATE folders SET is_skill = $3, skill_created_at = CASE WHEN $3 THEN now() END, "
+        "updated_at = now() "
         "WHERE id = $1 AND owner_user_id = $2 "
         "RETURNING id, owner_user_id, parent_folder_id, name, is_skill, created_by, "
         "  created_at, updated_at",
@@ -1956,7 +1957,7 @@ async def write_folder_files(
         written += 1
     if promote:
         await get_pool().execute(
-            "UPDATE folders SET is_skill = true "
+            "UPDATE folders SET is_skill = true, skill_created_at = now() "
             "WHERE id = ANY($1::uuid[]) AND owner_user_id = $2 AND NOT is_protected",
             list(promote),
             owner_user_id,
