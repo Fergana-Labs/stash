@@ -2,16 +2,15 @@
 
 import { Fragment } from "react";
 import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { BarChart3, FolderTree, MessagesSquare, GraduationCap, Home, Orbit, Settings } from "lucide-react";
 import AccountMenu from "@/components/workspace/account-menu";
 import { cn } from "@/lib/utils";
-import { useWorkspace, type RailSection } from "@/lib/workspace-store";
 import type { User } from "@/lib/types";
 
+type RailSection = "home" | "skills" | "sessions" | "analytics" | "files" | "viz";
 type RailItem = { key: RailSection; label: string; icon: typeof Home; match: (p: string) => boolean };
 
-// Primary sections — each opens its own explorer panel (see workspace-shell).
 const PRIMARY: RailItem[] = [
   { key: "home", label: "Home", icon: Home, match: (p) => p === "/" },
   { key: "skills", label: "Skills", icon: GraduationCap, match: (p) => p.startsWith("/skills") },
@@ -21,10 +20,6 @@ const PRIMARY: RailItem[] = [
   { key: "viz", label: "Viz", icon: Orbit, match: (p) => p === "/viz" },
 ];
 
-// Home is the memory dashboard — the divider separates it from the VFS
-// sections. Apps lives at /apps. The VM has NO entry point since it left this rail: the
-// explorer's Home root is the only thing that lists it, and that root only
-// renders once you are already inside the VM section (?section=computer).
 const DIVIDER_AFTER_INDEX = 0;
 
 function RailButton({
@@ -55,35 +50,21 @@ function RailButton({
   );
 }
 
-/** The icon rail — the workspace's primary nav. Icon + label per section; each
- *  primary section shows its own explorer. Search lives in the top bar; account
- *  actions live on the bottom-left avatar. */
 export default function Rail({ user, onLogout }: { user: User; onLogout: () => void }) {
   const router = useRouter();
   const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const setRailSection = useWorkspace((s) => s.setRailSection);
-  const requestedSection = searchParams.get("section");
   const items = PRIMARY;
 
   function selectSection(section: RailSection) {
-    // Files is the flat, full-stash index. Item routes still use the VFS
-    // workbench, but the primary navigation always returns to that index.
-    if (section === "files") {
-      setRailSection(section);
-      router.replace("/files");
-      return;
-    }
-    // Every other section is a page; the rail is pure navigation.
-    const LANDING: Record<Exclude<RailSection, "files" | "computer" | "tools">, string> = {
+    const landing: Record<RailSection, string> = {
       home: "/",
       skills: "/skills",
       sessions: "/sessions",
       analytics: "/sessions/analytics",
+      files: "/files",
       viz: "/viz",
     };
-    setRailSection(section);
-    router.replace(LANDING[section as keyof typeof LANDING]);
+    router.replace(landing[section]);
   }
 
   return (
@@ -92,7 +73,7 @@ export default function Rail({ user, onLogout }: { user: User; onLogout: () => v
         <Fragment key={item.key}>
           <RailButton
             item={item}
-            active={requestedSection === item.key || (!requestedSection && item.match(pathname))}
+            active={item.match(pathname)}
             onClick={() => selectSection(item.key)}
           />
           {i === DIVIDER_AFTER_INDEX && (

@@ -23,13 +23,12 @@ import { findInSkillContents } from "@/lib/localSkill";
 import { loginPathWithNext } from "@/lib/loginRedirect";
 import { sectionCrumbs } from "@/lib/memory-folder";
 import { refreshSidebar } from "@/lib/skillNavigationCache";
-import { useTabTitle } from "@/lib/workspace-store";
 
 export default function FolderDetailPage({ folderId: folderIdProp }: { folderId?: string }) {
   const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
-  // Prop wins (workbench tab); otherwise read the route param (deep link).
+  // An explicit id is useful for embedded views; routed views read the URL.
   const folderId = folderIdProp ?? (params.folderId as string);
   const { user, loading } = useAuth();
   const skillSlug = folderIdProp ? null : searchParams.get("skill");
@@ -50,7 +49,6 @@ export default function FolderDetailPage({ folderId: folderIdProp }: { folderId?
     ];
   }, [chain]);
   const [folderName, setFolderName] = useState<string | null>(null);
-  useTabTitle("folder", folderId, folderName);
   const [skillFallback, setSkillFallback] = useState<{
     skillSlug: string;
     skillTitle: string;

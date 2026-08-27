@@ -47,8 +47,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { routes } from "@/lib/workspace-routes";
-import { useTabTitle } from "@/lib/workspace-store";
 
 // How often a row re-checks a source that is mid-sync, and how many times before
 // it gives up. A sync that hasn't settled in ~5 minutes is wedged; polling it for
@@ -63,9 +61,8 @@ export default function IntegrationRoute() {
   return <IntegrationDetail provider={params.provider as string} />;
 }
 
-// The integration manager for one provider. Rendered both as the
-// /integrations/[provider] route and inside a workbench "tool" tab (clicking
-// a connector in the Tools sidebar), so the provider comes in as a prop.
+// The integration manager for one provider. The provider is passed explicitly
+// so the route only handles URL parsing.
 export function IntegrationDetail({ provider }: { provider: string }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -82,7 +79,6 @@ export function IntegrationDetail({ provider }: { provider: string }) {
   const confirm = useConfirm();
 
   const connector = connectorForProvider(provider);
-  useTabTitle("tool", provider, connector?.label);
 
   const [status, setStatus] = useState<IntegrationStatus | null>(null);
   // null until the server list loads; false when the server omitted this
@@ -335,7 +331,7 @@ export function IntegrationDetail({ provider }: { provider: string }) {
                     : null}
                 </span>
                 {!connected && (
-                  <Link href={routes.extension} className="text-[12.5px] font-semibold text-brand hover:underline">
+                  <Link href="/extension" className="text-[12.5px] font-semibold text-brand hover:underline">
                     Get the extension
                   </Link>
                 )}
@@ -420,7 +416,7 @@ export function IntegrationDetail({ provider }: { provider: string }) {
                 extensionLastPush!,
               ).toLocaleDateString()} — check that it's installed and that you're signed in to ${connector.label}.`}
             </span>
-            <Link href={routes.extension} className={secondaryButton()}>
+            <Link href="/extension" className={secondaryButton()}>
               Extension setup
             </Link>
           </div>
@@ -566,7 +562,7 @@ export function IntegrationDetail({ provider }: { provider: string }) {
             <div className="py-3 text-[12.5px] text-muted-foreground">
               {isExtension ? (
                 <>
-                  <Link href={routes.extension} className="font-semibold text-brand hover:underline">
+                  <Link href="/extension" className="font-semibold text-brand hover:underline">
                     Install the Stash browser extension
                   </Link>{" "}
                   and save on {connector.label} — your items will appear here.

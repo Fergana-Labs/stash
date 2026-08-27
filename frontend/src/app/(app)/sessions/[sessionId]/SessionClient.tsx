@@ -30,7 +30,6 @@ import {
 import type { FileInfo } from "@/lib/types";
 import EditableTitle from "@/components/content/EditableTitle";
 import { getScope } from "@/lib/scope-store";
-import { useTabTitle } from "@/lib/workspace-store";
 import { eventToTurn, toolDisplay, type MessageTurn } from "./transcript";
 import MinimapStrip from "./MinimapStrip";
 import { MINIMAP_MIN_TURNS } from "./minimap";
@@ -79,7 +78,6 @@ export default function SessionViewerPage({ sessionId }: { sessionId: string }) 
   useEffect(() => {
     setInDeveloperConsole(getScope()?.view === "developer");
   }, []);
-  useTabTitle("session", sessionId, sessionDetail && sessionHeading(sessionDetail, sessionId));
   const [turns, setTurns] = useState<MessageTurn[]>([]);
   const [totalTurns, setTotalTurns] = useState(0);
   const [hasMore, setHasMore] = useState(false);
@@ -94,7 +92,7 @@ export default function SessionViewerPage({ sessionId }: { sessionId: string }) 
     `session/${sessionId}`
   );
 
-  // All session actions live in the workbench header row, next to Share —
+  // All session actions live in the shell header row, next to Share —
   // the transcript itself stays chrome-free.
   const headerActions = useMemo(() => {
     if (!sessionDetail || !user) return null;

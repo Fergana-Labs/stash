@@ -4,15 +4,9 @@ import { listUploadedItems, uploadFileOrPage } from "@/lib/api";
 import UploadedFilesList from "./uploaded-files-list";
 
 const replace = vi.fn();
-const openTab = vi.fn();
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ replace }),
-}));
-
-vi.mock("@/lib/workspace-store", () => ({
-  useWorkspace: (selector: (state: { openTab: typeof openTab }) => unknown) =>
-    selector({ openTab }),
 }));
 
 vi.mock("sonner", () => ({
@@ -69,7 +63,6 @@ describe("UploadedFilesList", () => {
 
     fireEvent.click(await screen.findByText("brief.md"));
 
-    expect(openTab).toHaveBeenCalledWith("page", "page-1", { title: "brief.md" });
     expect(replace).toHaveBeenCalledWith("/p/page-1");
   });
 

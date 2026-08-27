@@ -9,7 +9,6 @@ const route = vi.hoisted(() => ({ pathname: "/", replace: vi.fn() }));
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ replace: route.replace }),
   usePathname: () => route.pathname,
-  useSearchParams: () => new URLSearchParams(),
 }));
 
 vi.mock("next/link", () => ({
@@ -24,14 +23,6 @@ vi.mock("next/link", () => ({
     <a href={href} {...props}>
       {children}
     </a>
-  ),
-}));
-
-vi.mock("@/lib/workspace-store", () => ({
-  useWorkspace: Object.assign(
-    (selector: (state: { setRailSection: () => void }) => unknown) =>
-      selector({ setRailSection: vi.fn() }),
-    { getState: () => ({ lastVfsUrl: null }) },
   ),
 }));
 

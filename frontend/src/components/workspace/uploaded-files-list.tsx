@@ -11,13 +11,11 @@ import {
   type UploadedItem,
 } from "@/lib/api";
 import { timeAgo } from "@/lib/utils";
-import { useWorkspace } from "@/lib/workspace-store";
 
 type Sort = "name" | "date";
 
 export default function UploadedFilesList() {
   const router = useRouter();
-  const openTab = useWorkspace((state) => state.openTab);
   const inputRef = useRef<HTMLInputElement>(null);
   const [items, setItems] = useState<UploadedItem[] | null>(null);
   const [sort, setSort] = useState<Sort>("date");
@@ -56,7 +54,6 @@ export default function UploadedFilesList() {
   }
 
   function open(item: UploadedItem) {
-    openTab(item.kind, item.id, { title: item.name });
     router.replace(item.app_url);
   }
 

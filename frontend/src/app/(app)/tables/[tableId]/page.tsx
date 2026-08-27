@@ -27,9 +27,6 @@ export async function generateMetadata({
   });
 }
 
-// Signed-in visits never render this body: the (app) layout shows the tab
-// workbench for /tables/ routes, which mounts TableClient inside a tab. This
-// body only reaches the screen bare, for `?skill=` public views.
 export default async function TableRoute({ params }: PageProps) {
   const { tableId } = await params;
   return <TableClient tableId={tableId} />;
