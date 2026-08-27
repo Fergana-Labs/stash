@@ -190,12 +190,11 @@ async def test_personal_and_workspace_credentials_stay_separate(client: AsyncCli
     ).json() == {"connected": []}
     assert await _stored_doc(scope) is None
 
-    # The workspace connect leaves the personal endpoint untouched.
+    # The workspace connect leaves the personal endpoint untouched — and the
+    # personal GET returns that same stored doc (the local doc is the one
+    # credential the API hands back).
     r = await _connect(client, api_key, scope, "ws-model")
     assert r.status_code == 200, r.text
-    assert (
-        await client.get("/api/v1/me/agent-credentials", headers=_auth(personal_key))
-    ).json() == {"connected": ["local"]}
     personal_doc = json.loads(
         (await agent_auth._get_credential(UUID(personal_body["id"]), "local"))["secret"]
     )
@@ -204,6 +203,9 @@ async def test_personal_and_workspace_credentials_stay_separate(client: AsyncCli
         "model": "personal-model",
         "api_key": None,
     }
+    assert (
+        await client.get("/api/v1/me/agent-credentials", headers=_auth(personal_key))
+    ).json() == {"connected": ["local"], "local": personal_doc}
     assert (await _stored_doc(scope))["model"] == "ws-model"
 
 

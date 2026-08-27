@@ -42,10 +42,21 @@ class ModelsJsonRequest(BaseModel):
     models_json: str  # the user's pi models.json, stored verbatim
 
 
+class LocalTestRequest(BaseModel):
+    base_url: str
+    model: str
+    api_key: str | None = None
+
+
 @router.get("")
 async def list_credentials(current_user: dict = Depends(get_current_user)):
-    """Which providers this user has connected (never returns the secrets)."""
-    return {"connected": await agent_auth.list_connected(current_user["id"])}
+    """Which providers this user has connected, plus their own local endpoint doc
+    so the Settings form can show the key it holds and prefill a reconnect. The
+    key providers' secrets are never returned."""
+    return {
+        "connected": await agent_auth.list_connected(current_user["id"]),
+        "local": await agent_auth.local_credential(current_user["id"]),
+    }
 
 
 @router.post("")
@@ -53,8 +64,9 @@ async def connect(req: ConnectRequest, current_user: dict = Depends(get_current_
     if req.provider not in _PROVIDERS:
         raise HTTPException(status_code=400, detail=f"unknown provider: {req.provider}")
     if req.provider == "local":
-        # The credential is an endpoint, not a key: an absolute http(s) base
-        # URL the SPRITE can reach (the backend never dials it) plus a model id.
+        # The credential is an endpoint, not a key: an absolute http(s) base URL
+        # the sprite dials at turn time plus a model id. The backend only dials
+        # it itself when the user presses Test connection below.
         try:
             secret = agent_auth.local_endpoint_secret(
                 req.base_url or "", req.model or "", req.api_key
@@ -69,6 +81,31 @@ async def connect(req: ConnectRequest, current_user: dict = Depends(get_current_
         current_user["id"], req.provider, "api_key", req.api_key.strip()
     )
     return {"ok": True, "connected": await agent_auth.list_connected(current_user["id"])}
+
+
+@router.post("/local/test")
+async def test_local_endpoint(
+    req: LocalTestRequest, current_user: dict = Depends(get_current_user)
+):
+    """Dial the endpoint from here and hand back what it answered, so a key can be
+    verified before it is stored — the turn-time preflight on the user's cloud
+    computer can only prove reachability, one turn too late. Tests exactly the
+    values sent: this route never reads or writes a stored credential.
+
+    Dialing a user-supplied URL from the server is a deliberate, bounded SSRF
+    trade-off. It is bounded rather than filtered because the primary use case is
+    a self-hosted or tunnelled endpoint — the help text's own example is
+    http://your-host:11434/v1 — so an IP/hostname blocklist would break the
+    feature. The bounds: absolute http(s) only (same check as connect), no
+    redirect following, one request under the probe's 5s cap, a capped error
+    body, and an authenticated caller who can only reach what their own agent
+    would dial anyway.
+    """
+    try:
+        doc = agent_auth.local_endpoint_doc(req.base_url, req.model, req.api_key)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return await agent_auth.probe_local_endpoint(doc["base_url"], doc["api_key"])
 
 
 @router.post("/oauth/start")

@@ -435,3 +435,45 @@ async def test_local_mode_other_pin_keeps_machine_login(monkeypatch):
     monkeypatch.setattr(agent_auth, "_get_credential", local_only)
     auth = await agent_auth.resolve(uuid.uuid4(), "anthropic")
     assert auth.harness is h.CLAUDE and auth.env == {} and auth.files == {}
+
+
+@pytest.mark.asyncio
+async def test_local_credential_returns_the_stored_doc(monkeypatch):
+    """The Settings form reads base URL, model, and the user's own key out of
+    this doc — it is the one place the local row's secret is handed back."""
+
+    async def cred(_uid, _provider=None):
+        return {
+            "provider": "local",
+            "kind": "endpoint",
+            "secret": json.dumps({"base_url": "http://x/v1", "model": "m", "api_key": "sk-local"}),
+        }
+
+    monkeypatch.setattr(agent_auth, "_get_credential", cred)
+    assert await agent_auth.local_credential(uuid.uuid4()) == {
+        "base_url": "http://x/v1",
+        "model": "m",
+        "api_key": "sk-local",
+    }
+
+
+@pytest.mark.asyncio
+async def test_local_credential_none_when_absent(monkeypatch):
+    async def no_cred(_uid, _provider=None):
+        return None
+
+    monkeypatch.setattr(agent_auth, "_get_credential", no_cred)
+    assert await agent_auth.local_credential(uuid.uuid4()) is None
+
+
+@pytest.mark.asyncio
+async def test_local_credential_rejects_a_non_endpoint_row(monkeypatch):
+    """A local row that is not an endpoint doc means the store is corrupt —
+    say so instead of returning a half-parsed doc."""
+
+    async def wrong_kind(_uid, _provider=None):
+        return {"provider": "local", "kind": "api_key", "secret": "sk-surprise"}
+
+    monkeypatch.setattr(agent_auth, "_get_credential", wrong_kind)
+    with pytest.raises(ValueError):
+        await agent_auth.local_credential(uuid.uuid4())

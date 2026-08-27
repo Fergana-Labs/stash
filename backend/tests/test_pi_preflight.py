@@ -2,8 +2,10 @@
 is launched — pi itself exits 0 on connection errors, so the only early
 signal is a sprite-side curl probe of the endpoint.
 
-The probe runs on the sprite (the backend never dials the user's URL):
-curl --max-time 5 {base_url}/models; any HTTP response = reachable.
+The probe runs on the sprite: curl --max-time 5 {base_url}/models; any HTTP
+response = reachable. The URL and the time budget are agent_auth's, shared with
+the Settings test-connection — which dials the same listing from the backend,
+before any sprite exists to run this probe.
 """
 
 import pytest

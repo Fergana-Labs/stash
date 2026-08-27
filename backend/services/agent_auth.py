@@ -27,6 +27,8 @@ from dataclasses import dataclass, field
 from urllib.parse import urlparse
 from uuid import UUID
 
+import httpx
+
 from ..config import settings
 from ..database import get_pool
 from ..integrations.storage import _decrypt, _encrypt
@@ -86,32 +88,128 @@ class RunAuth:
     model: str | None = None
 
 
-def local_endpoint_secret(base_url: str, model: str, api_key: str | None = None) -> str:
-    """The stored doc for a local endpoint credential: the base URL the
-    SPRITE dials (the backend never dials it), the model id, and an optional
-    key. Shared by the personal and the workspace connect endpoints so both
-    validate and store one shape.
+# What a user typed into the base URL field, refused. The test-connection route
+# answers with this same string so the form cannot learn two different messages
+# for one mistake.
+LOCAL_BASE_URL_HINT = (
+    "base_url must be an absolute http(s) URL your cloud computer can reach "
+    "(e.g. http://your-host:11434/v1)"
+)
 
-    Raises ValueError with a user-facing detail on bad input; the endpoints
-    map it to a 400.
+# The local endpoint probe: one GET of the endpoint's own model listing proves
+# the server answers and, with a key attached, that the key is accepted. Both
+# probes — the sprite's turn-time preflight and the Settings pre-save test —
+# share this URL shape and this time budget.
+LOCAL_PROBE_SUFFIX = "/models"
+LOCAL_PROBE_TIMEOUT_S = 5.0
+
+
+def local_probe_url(base_url: str) -> str:
+    """The model listing for a base URL (http://host:11434/v1 → …/v1/models)."""
+    return base_url.rstrip("/") + LOCAL_PROBE_SUFFIX
+
+
+def local_endpoint_doc(base_url: str, model: str, api_key: str | None = None) -> dict:
+    """The validated local endpoint form as a doc: the base URL the box dials,
+    the model id on it, and an optional key.
+
+    One validation surface for every place that takes these values — the
+    personal connect, the workspace connect, and the pre-save test — so all of
+    them refuse bad input with the same words.
+
+    Raises ValueError with a user-facing detail on bad input; the endpoints map
+    it to a 400.
     """
     base_url = base_url.strip()
     model = model.strip()
     parsed = urlparse(base_url)
     if parsed.scheme not in ("http", "https") or not parsed.netloc:
-        raise ValueError(
-            "base_url must be an absolute http(s) URL your cloud computer can reach "
-            "(e.g. http://your-host:11434/v1)"
-        )
+        raise ValueError(LOCAL_BASE_URL_HINT)
     if not model:
         raise ValueError("model is required for the local endpoint")
-    return json.dumps(
-        {
-            "base_url": base_url,
-            "model": model,
-            "api_key": (api_key or "").strip() or None,  # keyless endpoints are common
+    return {
+        "base_url": base_url,
+        "model": model,
+        "api_key": (api_key or "").strip() or None,  # keyless endpoints are common
+    }
+
+
+def local_endpoint_secret(base_url: str, model: str, api_key: str | None = None) -> str:
+    """The stored doc for a local endpoint credential — an endpoint, not a bare
+    key. Shared by the personal and the workspace connect endpoints so both
+    validate and store one shape.
+    """
+    return json.dumps(local_endpoint_doc(base_url, model, api_key))
+
+
+def _probe_models(body: str) -> list[str] | None:
+    """The model ids of an OpenAI-shaped /models body, or None when the body is
+    not that shape — a proxy's HTML landing page answers 200 and must not be
+    reported as a working endpoint."""
+    try:
+        payload = json.loads(body)
+    except ValueError:
+        return None
+    data = payload.get("data") if isinstance(payload, dict) else None
+    if not isinstance(data, list):
+        return None
+    return [m["id"] for m in data if isinstance(m, dict) and isinstance(m.get("id"), str)]
+
+
+def _probe_snippet(text: str, limit: int) -> str:
+    """The provider's answer, whitespace-collapsed and capped, so a proxy's full
+    HTML page never lands in the Settings form."""
+    return " ".join(text.split())[:limit] or "(empty body)"
+
+
+async def probe_local_endpoint(base_url: str, api_key: str | None) -> dict:
+    """Dial the user's endpoint from the backend and report what it answered.
+
+    The same request the sprite's turn-time preflight makes, with the candidate
+    key attached — which is why it exists: the preflight can only prove reachability
+    after a sprite exists, one turn too late. The endpoint's own words are returned
+    because they are the only part that names the failure (LiteLLM says
+    token_not_found_in_db where the HTTP layer says merely 401).
+
+    Never reads or writes a stored credential: it tests exactly what it is given.
+    """
+    headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+    try:
+        async with httpx.AsyncClient(timeout=LOCAL_PROBE_TIMEOUT_S, follow_redirects=False) as http:
+            response = await http.get(local_probe_url(base_url), headers=headers)
+    except httpx.TimeoutException:
+        return {
+            "ok": False,
+            "http_status": None,
+            "error_detail": f"timed out after {LOCAL_PROBE_TIMEOUT_S:g}s",
         }
-    )
+    except httpx.HTTPError as e:
+        return {
+            "ok": False,
+            "http_status": None,
+            "error_detail": f"connection failed: {e}",
+        }
+
+    status = response.status_code
+    body = response.text
+    if 300 <= status < 400:
+        return {
+            "ok": False,
+            "http_status": status,
+            "error_detail": f"redirected to {response.headers.get('location', '?')} — a "
+            "model endpoint must answer directly",
+        }
+    if 200 <= status < 300:
+        models = _probe_models(body)
+        if models is not None:
+            return {"ok": True, "http_status": status, "models": models}
+        return {
+            "ok": False,
+            "http_status": status,
+            "error_detail": 'expected an OpenAI model list ({"data": [...]}), got: '
+            + _probe_snippet(body, 400),
+        }
+    return {"ok": False, "http_status": status, "error_detail": _probe_snippet(body, 500)}
 
 
 async def _get_credential(user_id: UUID, provider: str | None = None) -> dict | None:
@@ -169,6 +267,22 @@ async def list_connected(user_id: UUID) -> list[str]:
         "SELECT provider FROM user_agent_credentials WHERE user_id = $1", user_id
     )
     return [r["provider"] for r in rows]
+
+
+async def local_credential(user_id: UUID) -> dict | None:
+    """The user's stored local endpoint doc, or None when none is connected.
+
+    The one credential the API hands back: the doc is the user's own endpoint
+    config — base URL, model id, and the key to their own server — which the
+    Settings form needs to show the key it holds and to prefill a reconnect.
+    Another provider's secret never travels this path.
+    """
+    cred = await _get_credential(user_id, "local")
+    if cred is None:
+        return None
+    if cred["kind"] != "endpoint":
+        raise ValueError(f"local credential has unexpected kind: {cred['kind']}")
+    return _local_credential_doc(cred)
 
 
 async def delete_credential(user_id: UUID, provider: str) -> None:

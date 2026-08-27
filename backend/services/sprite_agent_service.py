@@ -308,10 +308,22 @@ class TurnInProgress(RuntimeError):
 async def _endpoint_reachable(sprite: sprite_service.Sprite, base_url: str) -> bool:
     """Sprite-side probe of the user's local endpoint: any HTTP response
     (even 401/404) proves the server is up; connection failure, DNS, and
-    timeout (curl exit 6/7/28) mean unreachable."""
+    timeout (curl exit 6/7/28) mean unreachable.
+
+    The URL and the time budget are agent_auth's, shared with the Settings
+    test-connection that dials the same listing from the backend before a sprite
+    exists — one probe shape, two transports."""
     _, exit_code = await sprite_service.exec_collect(
         sprite,
-        ["curl", "-s", "-o", "/dev/null", "--max-time", "5", base_url.rstrip("/") + "/models"],
+        [
+            "curl",
+            "-s",
+            "-o",
+            "/dev/null",
+            "--max-time",
+            f"{agent_auth.LOCAL_PROBE_TIMEOUT_S:g}",
+            agent_auth.local_probe_url(base_url),
+        ],
         env={},
         timeout_s=20,
         stdout_only=True,
