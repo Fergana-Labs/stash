@@ -25,6 +25,7 @@ from ..models import (
     FileUpdateRequest,
     TableListResponse,
     TableResponse,
+    UploadedItemListResponse,
     UploadResponse,
 )
 from ..services import (
@@ -261,6 +262,12 @@ async def ingest_bytes(
                 content=text if page_kind == "markdown" else "",
                 content_html=text if page_kind == "html" else "",
                 content_type=page_kind,
+                metadata={
+                    "upload": {
+                        "filename": filename,
+                        "size_bytes": len(content),
+                    }
+                },
             )
         except files_tree_service.DuplicatePageName as e:
             raise HTTPException(status_code=409, detail=str(e)) from e
@@ -362,6 +369,54 @@ async def list_my_files(
     )
     files = [await _file_to_response(dict(row)) for row in rows]
     return FileListResponse(files=files)
+
+
+@me_router.get("/uploads", response_model=UploadedItemListResponse)
+async def list_my_uploaded_items(
+    current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
+):
+    """List the user's explicit uploads, independent of their storage location."""
+    await _check_member(scope_user_id, current_user["id"])
+    readable_file = permission_service.readable_content_condition("file", "f", 2)
+    readable_page = permission_service.readable_content_condition("page", "p", 2)
+    rows = await get_pool().fetch(
+        f"""
+        SELECT 'file' AS kind,
+               f.id,
+               f.name,
+               f.content_type,
+               f.size_bytes,
+               '/f/' || f.id::text AS app_url,
+               f.uploaded_by,
+               f.created_at
+        FROM files f
+        WHERE f.owner_user_id = $1
+          AND f.end_user_id IS NULL
+          AND f.owner_page_id IS NULL
+          AND f.deleted_at IS NULL
+          AND {readable_file}
+        UNION ALL
+        SELECT 'page' AS kind,
+               p.id,
+               p.metadata->'upload'->>'filename' AS name,
+               p.content_type,
+               (p.metadata->'upload'->>'size_bytes')::bigint AS size_bytes,
+               '/p/' || p.id::text AS app_url,
+               p.created_by AS uploaded_by,
+               p.created_at
+        FROM pages p
+        WHERE p.owner_user_id = $1
+          AND p.end_user_id IS NULL
+          AND p.metadata ? 'upload'
+          AND p.deleted_at IS NULL
+          AND {readable_page}
+        ORDER BY created_at DESC
+        """,
+        scope_user_id,
+        current_user["id"],
+    )
+    return UploadedItemListResponse(items=[dict(row) for row in rows])
 
 
 @canonical_router.get("/{file_id}", response_model=FileResponse)

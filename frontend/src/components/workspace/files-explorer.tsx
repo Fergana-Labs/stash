@@ -77,7 +77,6 @@ export default function FilesExplorer({
   openRootTab,
   vfsWritable = true,
   tabSection,
-  flat = false,
 }: {
   onRoot: () => void;
   rootLabel?: string;
@@ -105,8 +104,6 @@ export default function FilesExplorer({
   /** This section can create VFS items (new file/folder/upload). Default true;
    *  Sessions is a read-through view, so false. */
   vfsWritable?: boolean;
-  /** Show every page, file, and table at the root without folder navigation. */
-  flat?: boolean;
 }) {
   const router = useRouter();
   const { user } = useAuth();
@@ -158,17 +155,16 @@ export default function FilesExplorer({
         setCrumbs([]);
         setItems([
           ...tree.folders
-            .filter(() => !flat)
             .filter((f) => f.parent_folder_id == null)
             .map((f) => ({ kind: "folder" as const, id: f.id, name: f.name, ts: f.updated_at, readOnly: f.is_protected })),
           ...tree.pages
-            .filter((p) => flat || p.folder_id == null)
+            .filter((p) => p.folder_id == null)
             .map((p) => ({ kind: "page" as const, id: p.id, name: p.name || "Untitled", ts: p.updated_at })),
           ...files
-            .filter((f) => !f.owner_page_id && (flat || !f.folder_id))
+            .filter((f) => !f.owner_page_id && !f.folder_id)
             .map((f) => ({ kind: "file" as const, id: f.id, name: f.name, ts: f.created_at })),
           ...tables
-            .filter((t) => flat || !t.folder_id)
+            .filter((t) => !t.folder_id)
             .map((t) => ({ kind: "table" as const, id: t.id, name: t.name, ts: t.created_at })),
           ...(await sharedNode()),
         ]);
@@ -189,7 +185,7 @@ export default function FilesExplorer({
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load");
     }
-  }, [flat, folderId, loadRoot, loadFolder, loadShared, sharedNode]);
+  }, [folderId, loadRoot, loadFolder, loadShared, sharedNode]);
 
   useEffect(() => { setItems(null); load(); }, [load]);
   useEffect(() => {

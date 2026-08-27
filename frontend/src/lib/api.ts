@@ -1427,6 +1427,22 @@ export async function listFiles(): Promise<FileInfo[]> {
   return data.files;
 }
 
+export interface UploadedItem {
+  kind: "file" | "page";
+  id: string;
+  name: string;
+  content_type: string;
+  size_bytes: number;
+  app_url: string;
+  uploaded_by: string;
+  created_at: string;
+}
+
+export async function listUploadedItems(): Promise<UploadedItem[]> {
+  const data = await apiFetch<{ items: UploadedItem[] }>(`${ME}/files/uploads`);
+  return data.items;
+}
+
 export async function getFile(fileId: string): Promise<FileInfo> {
   return apiFetch(`/api/v1/files/${fileId}`);
 }

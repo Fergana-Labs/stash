@@ -636,6 +636,21 @@ class FileListResponse(BaseModel):
     files: list[FileResponse]
 
 
+class UploadedItemResponse(BaseModel):
+    kind: Literal["file", "page"]
+    id: UUID
+    name: str
+    content_type: str
+    size_bytes: int
+    app_url: str
+    uploaded_by: UUID
+    created_at: datetime
+
+
+class UploadedItemListResponse(BaseModel):
+    items: list[UploadedItemResponse]
+
+
 class FileUpdateRequest(BaseModel):
     folder_id: UUID | None = None
     move_to_root: bool = False

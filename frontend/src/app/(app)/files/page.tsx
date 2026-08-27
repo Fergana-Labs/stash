@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { useBreadcrumbs } from "@/components/BreadcrumbContext";
 import { FileBrowserSkeleton } from "@/components/SkeletonStates";
-import FilesExplorer from "@/components/workspace/files-explorer";
+import UploadedFilesList from "@/components/workspace/uploaded-files-list";
 import { useAuth } from "@/hooks/useAuth";
 
 export default function FilesPage() {
@@ -20,5 +20,5 @@ export default function FilesPage() {
   if (loading) return <FileBrowserSkeleton />;
   if (!user) return null;
 
-  return <FilesExplorer flat onRoot={() => {}} rootLabel="Files" rootFolderId={null} />;
+  return <UploadedFilesList />;
 }

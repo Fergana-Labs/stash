@@ -4,8 +4,6 @@ import FilesExplorer, { type Item } from "./files-explorer";
 import {
   getFolderContents,
   getTree,
-  listFiles,
-  listTables,
   updateFolder,
   uploadFileOrPage,
 } from "@/lib/api";
@@ -78,64 +76,6 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
-});
-
-describe("FilesExplorer flat index", () => {
-  it("shows nested content without showing its folders", async () => {
-    vi.mocked(getTree).mockResolvedValue({
-      folders: [
-        {
-          id: "folder-1",
-          name: "Projects",
-          parent_folder_id: null,
-          updated_at: "2026-08-26T00:00:00Z",
-          is_protected: false,
-        },
-      ],
-      pages: [
-        {
-          id: "page-1",
-          name: "Nested brief",
-          folder_id: "folder-1",
-          updated_at: "2026-08-26T00:00:00Z",
-        },
-      ],
-    } as never);
-    vi.mocked(listFiles).mockResolvedValue([
-      {
-        id: "file-1",
-        name: "nested.pdf",
-        folder_id: "folder-1",
-        owner_page_id: null,
-        created_at: "2026-08-26T00:00:00Z",
-      },
-      {
-        id: "asset-1",
-        name: "page-image.png",
-        folder_id: "folder-1",
-        owner_page_id: "page-1",
-        created_at: "2026-08-26T00:00:00Z",
-      },
-    ] as never);
-    vi.mocked(listTables).mockResolvedValue({
-      tables: [
-        {
-          id: "table-1",
-          name: "Nested tracker",
-          folder_id: "folder-1",
-          created_at: "2026-08-26T00:00:00Z",
-        },
-      ],
-    } as never);
-
-    render(<FilesExplorer flat onRoot={() => {}} rootLabel="Files" />);
-
-    expect(await screen.findByText("Nested brief")).toBeInTheDocument();
-    expect(screen.getByText("nested.pdf")).toBeInTheDocument();
-    expect(screen.getByText("Nested tracker")).toBeInTheDocument();
-    expect(screen.queryByText("Projects")).not.toBeInTheDocument();
-    expect(screen.queryByText("page-image.png")).not.toBeInTheDocument();
-  });
 });
 
 // Memory is the curator agent's knowledge base: a human writing into it is
