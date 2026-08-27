@@ -24,7 +24,7 @@ import {
 } from "@/lib/api";
 import EditableTitle from "@/components/content/EditableTitle";
 import { getScope } from "@/lib/scope-store";
-import { eventToTurn, toolDisplay, type MessageTurn } from "./transcript";
+import { eventToTurn, humanMessageJumps, toolDisplay, type MessageTurn } from "./transcript";
 import MinimapStrip from "./MinimapStrip";
 import { MINIMAP_MIN_TURNS } from "./minimap";
 import { sessionFileRows } from "./sessionFiles";
@@ -243,6 +243,8 @@ export default function SessionViewerPage({ sessionId }: { sessionId: string }) 
     return hits;
   }, [turns, query]);
 
+  const humanJumps = useMemo(() => humanMessageJumps(turns), [turns]);
+
   const jumpTo = useCallback((index: number) => {
     setFocusIndex(index);
     document.getElementById(`turn-${index}`)?.scrollIntoView({ block: "center" });
@@ -350,6 +352,24 @@ export default function SessionViewerPage({ sessionId }: { sessionId: string }) 
                   placeholder="Search this session…"
                   className="w-56 rounded-md border border-border bg-base px-2.5 py-1.5 text-[12.5px] text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-[var(--color-brand-600)]"
                 />
+                {humanJumps.length > 1 && (
+                  <select
+                    value=""
+                    aria-label="Jump to a human message"
+                    onFocus={drainTranscript}
+                    onChange={(event) => jumpTo(Number(event.target.value))}
+                    className="max-w-72 cursor-pointer rounded-md border border-border bg-base px-2.5 py-1.5 text-[12.5px] text-muted-foreground focus:outline-none focus:ring-1 focus:ring-[var(--color-brand-600)]"
+                  >
+                    <option value="" disabled>
+                      Jump to a human message…
+                    </option>
+                    {humanJumps.map((jump, index) => (
+                      <option key={jump.turnIndex} value={jump.turnIndex}>
+                        {index + 1}. {jump.label}
+                      </option>
+                    ))}
+                  </select>
+                )}
                 {query.trim() && (
                   <>
                     <span className="text-[12px] text-muted-foreground">

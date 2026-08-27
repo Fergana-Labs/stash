@@ -174,12 +174,14 @@ async def _record_tool_event(
     event: dict,
     provider_env: dict[str, str],
     agent_name: str,
+    record_session: bool = True,
 ) -> None:
     """Persist a harness tool call as a history event. Cloud runs have no
     plugin hooks streaming these, so without this the stored session is just
     prompt + final answer — unauditable."""
     content, metadata = _tool_event_summary(event)
-    await memory_service.push_event(
+    record = memory_service.push_event if record_session else memory_service.push_internal_event
+    await record(
         owner_user_id,
         agent_name,
         "tool_use",
@@ -197,12 +199,18 @@ RUN_FAILED_PREFIX = "⚠️ Agent run failed:"
 
 
 async def _record_run_failure(
-    owner_user_id: UUID, user_id: UUID, session_id: str, agent_name: str, error: str
+    owner_user_id: UUID,
+    user_id: UUID,
+    session_id: str,
+    agent_name: str,
+    error: str,
+    record_session: bool = True,
 ) -> None:
     """Close a failed turn's stored session with the error. Without this a
     crashed run leaves a prompt with no reply — indistinguishable from a run
     that never happened."""
-    await memory_service.push_event(
+    record = memory_service.push_event if record_session else memory_service.push_internal_event
+    await record(
         owner_user_id,
         agent_name,
         "assistant_message",
@@ -487,6 +495,7 @@ async def run_scheduled(agent: dict, run_stamp: str) -> str:
         model_provider=agent["model_provider"],
         persona=agent["system_prompt"],
         agent_name=agent["name"],
+        record_session=not agent.get("is_curator"),
     )
     if stats is not None:
         await _record_curator_run_stats(agent, session_id, stats)
@@ -661,6 +670,7 @@ async def run_chat(
     model_provider: str | None = None,
     persona: str | None = None,
     agent_name: str = AGENT_NAME,
+    record_session: bool = True,
 ) -> str:
     """Non-streaming turn for Slack/Telegram/scheduled: returns the final answer.
     `channel` ('slack'|'telegram') selects the bound agent's model + persona;
@@ -683,7 +693,8 @@ async def run_chat(
     auth.env.update(await sprite_service.local_agent_env(user_id))
     async with _TurnLock(session_id):
         history = await _load_history(owner_user_id, session_id, user_id)
-        await memory_service.push_event(
+        record = memory_service.push_event if record_session else memory_service.push_internal_event
+        await record(
             owner_user_id, agent_name, "user_message", message, user_id, session_id=session_id
         )
         sprite = await sprite_service.acquire(user_id)
@@ -714,7 +725,13 @@ async def run_chat(
                     error = event["message"]
                 elif event["type"] == "tool":
                     await _record_tool_event(
-                        owner_user_id, user_id, session_id, event, auth.env, agent_name
+                        owner_user_id,
+                        user_id,
+                        session_id,
+                        event,
+                        auth.env,
+                        agent_name,
+                        record_session,
                     )
         except TurnStopped:
             final = STOPPED_NOTE
@@ -723,11 +740,13 @@ async def run_chat(
             # like harness errors so the stored session isn't a dangling prompt.
             error, cause = str(e), e
         if error:
-            await _record_run_failure(owner_user_id, user_id, session_id, agent_name, error)
+            await _record_run_failure(
+                owner_user_id, user_id, session_id, agent_name, error, record_session
+            )
             raise RuntimeError(f"agent turn failed: {error}") from cause
 
         if final:
-            await memory_service.push_event(
+            await record(
                 owner_user_id,
                 agent_name,
                 "assistant_message",

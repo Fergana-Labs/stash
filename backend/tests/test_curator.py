@@ -583,12 +583,16 @@ async def test_recompute_runs_curator_now(client: AsyncClient, sprite_exec, _db_
     assert row["curated_through"] >= before - timedelta(seconds=5)
     assert row["last_run_outcome"] == "ran"
 
-    # The run's events carry the curator's own name, so its sessions are
-    # attributable in the Agents/Sessions lists (not generic "Stash Agent").
+    # The curator log keeps its attributed events, but internal processing is
+    # not represented as one of the user's coding sessions.
     names = await _db_pool.fetch(
         "SELECT DISTINCT agent_name FROM history_events WHERE session_id LIKE 'agent-curate-%'"
     )
     assert [n["agent_name"] for n in names] == ["Memory curator"]
+    session_count = await _db_pool.fetchval(
+        "SELECT COUNT(*) FROM sessions WHERE session_id LIKE 'agent-curate-%'"
+    )
+    assert session_count == 0
 
 
 @pytest.mark.asyncio

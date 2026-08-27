@@ -195,6 +195,36 @@ async def push_event(
     return event
 
 
+async def push_internal_event(
+    owner_user_id: UUID,
+    agent_name: str,
+    event_type: str,
+    content: str,
+    created_by: UUID,
+    session_id: str,
+    *,
+    tool_name: str | None = None,
+    metadata: dict | None = None,
+) -> dict:
+    """Store an internal job log event without creating a user Session."""
+    row = await get_pool().fetchrow(
+        "INSERT INTO history_events "
+        "(owner_user_id, created_by, agent_name, event_type, content, session_id, tool_name, metadata) "
+        "VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb) "
+        "RETURNING id, owner_user_id, created_by, agent_name, event_type, session_id, "
+        "tool_name, content, metadata, attachments, created_at",
+        owner_user_id,
+        created_by,
+        _strip_nuls(agent_name),
+        _strip_nuls(event_type),
+        _strip_nuls(content),
+        _strip_nuls(session_id),
+        _strip_nuls(tool_name),
+        _strip_nuls(metadata or {}),
+    )
+    return dict(row)
+
+
 async def push_events_batch(
     owner_user_id: UUID | None,
     created_by: UUID,

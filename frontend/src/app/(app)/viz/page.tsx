@@ -4,18 +4,15 @@ import { useEffect, useState, type ReactNode } from "react";
 import { SkeletonBlock } from "@/components/SkeletonStates";
 import WikiGraph from "@/components/memory/WikiGraph";
 import EmbeddingSpaceExplorer from "@/components/viz/EmbeddingSpaceExplorer";
-import KnowledgeDensityMap from "@/components/viz/KnowledgeDensityMap";
 import {
   getEmbeddingProjection,
-  getKnowledgeDensity,
   getMemoryGraph,
   type WikiGraph as WikiGraphData,
 } from "@/lib/api";
-import type { EmbeddingProjection, KnowledgeDensity } from "@/lib/types";
+import type { EmbeddingProjection } from "@/lib/types";
 
-/** Themes — every knowledge visualization in one place, full-width stacked
- *  cards. Each card fetches and renders independently so one slow endpoint
- *  can't hold the page. */
+/** Themes — knowledge visualizations in full-width stacked cards. Each card
+ *  fetches independently so one slow endpoint can't hold the page. */
 export default function VizPage() {
   const [graph, setGraph] = useState<WikiGraphData | null>(null);
   const [graphLoaded, setGraphLoaded] = useState(false);
@@ -23,9 +20,6 @@ export default function VizPage() {
   const [projection, setProjection] = useState<EmbeddingProjection | null>(null);
   const [projectionLoaded, setProjectionLoaded] = useState(false);
   const [projectionError, setProjectionError] = useState<string | null>(null);
-  const [density, setDensity] = useState<KnowledgeDensity | null>(null);
-  const [densityLoaded, setDensityLoaded] = useState(false);
-  const [densityError, setDensityError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -37,10 +31,6 @@ export default function VizPage() {
       .then((p) => { if (!cancelled) setProjection(p); })
       .catch((error) => { if (!cancelled) setProjectionError(String(error)); })
       .finally(() => { if (!cancelled) setProjectionLoaded(true); });
-    getKnowledgeDensity()
-      .then((d) => { if (!cancelled) setDensity(d); })
-      .catch((error) => { if (!cancelled) setDensityError(String(error)); })
-      .finally(() => { if (!cancelled) setDensityLoaded(true); });
     return () => { cancelled = true; };
   }, []);
 
@@ -91,23 +81,6 @@ export default function VizPage() {
               <EmptyState height={180}>
                 No wiki pages yet. The Memory curator&apos;s nightly run compiles your
                 history into a context graph of linked pages.
-              </EmptyState>
-            )}
-          </VizCard>
-
-          <VizCard
-            label="Knowledge density"
-            description="What your stash knows the most about — each block is a topic, sized by how much you have on it."
-          >
-            {!densityLoaded ? (
-              <SkeletonBlock className="h-[320px] w-full" />
-            ) : densityError ? (
-              <VisualizationError message={densityError} />
-            ) : density && density.clusters.length > 0 ? (
-              <KnowledgeDensityMap data={density} />
-            ) : (
-              <EmptyState height={320}>
-                No topics yet. Topics form as embedded content accumulates.
               </EmptyState>
             )}
           </VizCard>

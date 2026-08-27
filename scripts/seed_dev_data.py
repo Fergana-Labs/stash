@@ -193,8 +193,8 @@ SAMPLE_TABLES = [
 SAMPLE_SESSIONS = [
     {
         "session_id": "session-design-architecture",
-        "agent_name": "claude",
-        "model": "claude-sonnet-4-6",
+        "agent_name": "Claude Code 5 Fable",
+        "model": "claude-5-fable",
         "cwd": "/scope/product",
         "created_by": "demo_aria",
         "files_touched": ["docs/architecture.md", "product/vision.md"],
@@ -210,8 +210,8 @@ SAMPLE_SESSIONS = [
     },
     {
         "session_id": "session-dashboard-overhaul",
-        "agent_name": "copilot",
-        "model": "gpt-5.4",
+        "agent_name": "Codex 5.6 Sol",
+        "model": "gpt-5.6-sol",
         "cwd": "/scope/frontend",
         "created_by": "demo_maya",
         "files_touched": ["frontend/src/AppSidebar.tsx", "frontend/src/styles.css"],
@@ -224,8 +224,8 @@ SAMPLE_SESSIONS = [
     },
     {
         "session_id": "session-file-pipeline",
-        "agent_name": "assistant",
-        "model": "gpt-5.5",
+        "agent_name": "Codex 5.6 Sol",
+        "model": "gpt-5.6-sol",
         "cwd": "/scope/backend",
         "created_by": "demo_devon",
         "files_touched": ["backend/routers/files.py", "backend/services/files_tree_service.py"],
@@ -240,8 +240,8 @@ SAMPLE_SESSIONS = [
     },
     {
         "session_id": "session-session-index",
-        "agent_name": "agent",
-        "model": "gpt-5.5",
+        "agent_name": "Codex 5.6 Sol",
+        "model": "gpt-5.6-sol",
         "cwd": "/scope/backend",
         "created_by": "demo_aria",
         "files_touched": [
@@ -257,8 +257,8 @@ SAMPLE_SESSIONS = [
     },
     {
         "session_id": "session-permissions-path",
-        "agent_name": "claude",
-        "model": "claude-opus-4-6",
+        "agent_name": "Claude Code 5 Fable",
+        "model": "claude-5-fable",
         "cwd": "/scope/backend",
         "created_by": "demo_devon",
         "files_touched": [
@@ -274,8 +274,8 @@ SAMPLE_SESSIONS = [
     },
     {
         "session_id": "session-documenting-practices",
-        "agent_name": "assistant",
-        "model": "gpt-5.4",
+        "agent_name": "Codex 5.6 Sol",
+        "model": "gpt-5.6-sol",
         "cwd": "/scope/docs",
         "created_by": "demo_maya",
         "files_touched": ["README.md", "docs/notes.md", "notes/session-ops.md"],
@@ -287,8 +287,8 @@ SAMPLE_SESSIONS = [
     },
     {
         "session_id": "session-query-quality",
-        "agent_name": "copilot",
-        "model": "gpt-5.4",
+        "agent_name": "Codex 5.6 Sol",
+        "model": "gpt-5.6-sol",
         "cwd": "/scope/backend",
         "created_by": "demo_aria",
         "files_touched": [
@@ -304,8 +304,8 @@ SAMPLE_SESSIONS = [
     },
     {
         "session_id": "session-observability",
-        "agent_name": "assistant",
-        "model": "gpt-5.5",
+        "agent_name": "Claude Code 5 Fable",
+        "model": "claude-5-fable",
         "cwd": "/scope/ops",
         "created_by": "demo_devon",
         "files_touched": ["ops/checks.md", "ops/incident-template.md"],
@@ -317,8 +317,8 @@ SAMPLE_SESSIONS = [
     },
     {
         "session_id": "session-qa-sanity",
-        "agent_name": "claude",
-        "model": "claude-sonnet-4-6",
+        "agent_name": "Claude Code 5 Fable",
+        "model": "claude-5-fable",
         "cwd": "/scope/tests",
         "created_by": "demo_maya",
         "files_touched": [
@@ -333,8 +333,8 @@ SAMPLE_SESSIONS = [
     },
     {
         "session_id": "session-product-feedback",
-        "agent_name": "assistant",
-        "model": "gpt-5.4",
+        "agent_name": "Codex 5.6 Sol",
+        "model": "gpt-5.6-sol",
         "cwd": "/scope/product",
         "created_by": "demo_aria",
         "files_touched": ["product/feedback.md", "docs/roadmap.md"],
@@ -346,8 +346,8 @@ SAMPLE_SESSIONS = [
     },
     {
         "session_id": "session-oncall-playbook",
-        "agent_name": "agent",
-        "model": "gpt-5.5",
+        "agent_name": "Claude Code 5 Fable",
+        "model": "claude-5-fable",
         "cwd": "/scope/ops",
         "created_by": "demo_devon",
         "files_touched": ["ops/oncall.md", "ops/status-template.md"],
@@ -359,8 +359,8 @@ SAMPLE_SESSIONS = [
     },
     {
         "session_id": "session-release-triage",
-        "agent_name": "assistant",
-        "model": "gpt-5.5",
+        "agent_name": "Codex 5.6 Sol",
+        "model": "gpt-5.6-sol",
         "cwd": "/scope/backend",
         "created_by": "demo_maya",
         "files_touched": [
@@ -595,6 +595,21 @@ async def _ensure_sessions(
     for i, spec in enumerate(SAMPLE_SESSIONS):
         existing = await session_service.get_session(owner_user_id, spec["session_id"])
         if existing:
+            await database.get_pool().execute(
+                "UPDATE sessions SET agent_name = $3 WHERE owner_user_id = $1 AND session_id = $2",
+                owner_user_id,
+                spec["session_id"],
+                spec["agent_name"],
+            )
+            await database.get_pool().execute(
+                "UPDATE history_events SET agent_name = $3, "
+                "metadata = jsonb_set(metadata, '{model}', to_jsonb($4::text), true) "
+                "WHERE owner_user_id = $1 AND session_id = $2",
+                owner_user_id,
+                spec["session_id"],
+                spec["agent_name"],
+                spec["model"],
+            )
             created[spec["session_id"]] = existing
             continue
 

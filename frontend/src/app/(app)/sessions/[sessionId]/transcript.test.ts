@@ -5,7 +5,7 @@
  */
 import { describe, expect, it } from "vitest";
 import type { SessionEvent } from "@/lib/api";
-import { eventToTurn, isScheduledRunSession, toolDisplay } from "./transcript";
+import { eventToTurn, humanMessageJumps, isScheduledRunSession, toolDisplay } from "./transcript";
 
 function event(overrides: Partial<SessionEvent>): SessionEvent {
   return {
@@ -89,5 +89,20 @@ describe("toolDisplay", () => {
     const { summary } = toolDisplay("line one\nline two " + "x".repeat(300));
     expect(summary).not.toContain("\n");
     expect(summary.length).toBeLessThanOrEqual(121);
+  });
+});
+
+describe("humanMessageJumps", () => {
+  it("offers only real human turns, with enough text to choose the right one", () => {
+    const turns = [
+      eventToTurn(event({ content: "First question about the rollout" }), "session-1", "Aria"),
+      eventToTurn(event({ role: "assistant", content: "Agent response" }), "session-1", "Aria"),
+      eventToTurn(event({ content: "Follow-up about the rollback plan" }), "session-1", "Aria"),
+    ];
+
+    expect(humanMessageJumps(turns)).toEqual([
+      { turnIndex: 0, label: "First question about the rollout" },
+      { turnIndex: 2, label: "Follow-up about the rollback plan" },
+    ]);
   });
 });
