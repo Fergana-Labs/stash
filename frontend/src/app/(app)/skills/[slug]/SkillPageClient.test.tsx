@@ -275,6 +275,21 @@ describe("SkillPageClient", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("links signed-in viewers back to their Skills list", async () => {
+    renderSkill(<SkillPageClient slug="shared-skill" />);
+
+    expect(await screen.findByRole("link", { name: "← Skills" })).toHaveAttribute(
+      "href",
+      "/skills",
+    );
+
+    cleanup();
+    authState.user = null;
+    renderSkill(<SkillPageClient slug="shared-skill" />);
+    await screen.findByText("Shared Skill");
+    expect(screen.queryByRole("link", { name: "← Skills" })).not.toBeInTheDocument();
+  });
+
   it("shows the CLI install command with a copy affordance", async () => {
     renderSkill(<SkillPageClient slug="shared-skill" />);
 

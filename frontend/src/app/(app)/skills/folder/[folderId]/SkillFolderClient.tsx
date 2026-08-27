@@ -170,6 +170,7 @@ export default function SkillFolderClient({ folderId }: { folderId: string }) {
     <FileBrowser
       folderId={folderId}
       folderHrefBase={`/skills/folder`}
+      breadcrumbs={crumbs}
     />
   );
 }

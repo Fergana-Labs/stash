@@ -126,7 +126,7 @@ export default function SkillPageClient({ slug }: { slug: string }) {
     );
   }
 
-  return <SkillPageBody data={data} onRefresh={load} />;
+  return <SkillPageBody data={data} onRefresh={load} showSkillsBack={!!user} />;
 }
 
 // Stable cover gradient per skill, mirroring the cover-1..6 utilities used
@@ -205,9 +205,11 @@ function contentRows(contents: PublicSkillContents, slug: string): ContentRow[] 
 function SkillPageBody({
   data,
   onRefresh,
+  showSkillsBack,
 }: {
   data: PublicSkillDetail;
   onRefresh: () => Promise<void>;
+  showSkillsBack: boolean;
 }) {
   const { skill, contents, can_write } = data;
 
@@ -243,6 +245,14 @@ function SkillPageBody({
       />
 
       <div className="mx-auto max-w-[920px] px-12 pb-20">
+        {showSkillsBack && (
+          <Link
+            href="/skills"
+            className="mt-4 inline-flex text-[12.5px] text-muted-foreground hover:text-foreground"
+          >
+            ← Skills
+          </Link>
+        )}
         {/* Identity strip: icon overlaps banner, title + meta + actions. */}
         <div className="flex items-start justify-between gap-3 pt-4">
           <div className="flex min-w-0 items-center gap-3">

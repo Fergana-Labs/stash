@@ -307,6 +307,12 @@ export function IntegrationDetail({ provider }: { provider: string }) {
   return (
     <div className="scroll-thin flex-1 overflow-y-auto">
       <div className="mx-auto max-w-3xl px-12 py-9">
+        <Link
+          href="/tools"
+          className="mb-4 inline-flex text-[12.5px] text-muted-foreground hover:text-foreground"
+        >
+          ← Tools
+        </Link>
         {/* Header: icon + label, connected account + quiet Disconnect top-right. */}
         <div className="flex items-center gap-3">
           <span className="grid h-[30px] w-[30px] shrink-0 place-items-center rounded-lg bg-[var(--color-brand-50)] text-[16px]">

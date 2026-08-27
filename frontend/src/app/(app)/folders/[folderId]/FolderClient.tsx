@@ -196,7 +196,7 @@ export default function FolderDetailPage({ folderId: folderIdProp }: { folderId?
           </div>
         </div>
       )}
-      <FileBrowser folderId={folderId} />
+      <FileBrowser folderId={folderId} breadcrumbs={crumbs} />
     </div>
   );
 }

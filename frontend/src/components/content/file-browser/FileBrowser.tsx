@@ -1,7 +1,9 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ChevronRight } from "lucide-react";
 import { useEscapeKey } from "../../../hooks/useEscapeKey";
 import { useConfirm } from "../../ConfirmDialog";
 import {
@@ -47,6 +49,7 @@ interface Props {
   // Base path for folder links. Defaults to the plain Files folder route;
   // the skill browser passes its own route so navigation stays in skill-land.
   folderHrefBase?: string;
+  breadcrumbs?: { label: string; href?: string }[];
 }
 
 // Mime type carried by drag events to identify a file-browser drag. Keeps the
@@ -69,7 +72,7 @@ type Scope = "mine" | "shared";
 
 const VIEW_STORAGE_KEY = "stash_files_view";
 
-export default function FileBrowser({ folderId, folderHrefBase }: Props) {
+export default function FileBrowser({ folderId, folderHrefBase, breadcrumbs }: Props) {
   const router = useRouter();
   const confirm = useConfirm();
 
@@ -645,9 +648,29 @@ export default function FileBrowser({ folderId, folderHrefBase }: Props) {
       )}
       <div className="mx-auto max-w-5xl px-8 py-7">
         {!folderId && <ScopeTabs scope={scope} onChange={setScope} />}
-        {/* Header: the page path lives in AppShell's top-bar breadcrumb, so we
-            only show the current folder name (rename target) or the section
-            title here, alongside the view toggle + create actions. */}
+        {folderId && breadcrumbs && (
+          <nav className="flex min-h-6 items-center gap-1 text-[13px]" aria-label="Folder location">
+            {breadcrumbs.map((crumb, index) => (
+              <span key={`${crumb.label}-${index}`} className="flex min-w-0 items-center gap-1">
+                {index > 0 && (
+                  <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                )}
+                {crumb.href ? (
+                  <Link
+                    href={crumb.href}
+                    className="max-w-48 truncate font-medium text-muted-foreground hover:text-foreground"
+                  >
+                    {crumb.label}
+                  </Link>
+                ) : (
+                  <span className="max-w-48 truncate font-medium text-foreground">
+                    {crumb.label}
+                  </span>
+                )}
+              </span>
+            ))}
+          </nav>
+        )}
         {!showShared && (
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
             {folderId && contents?.folder ? (

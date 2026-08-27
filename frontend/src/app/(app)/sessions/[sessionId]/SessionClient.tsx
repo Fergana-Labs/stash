@@ -322,7 +322,7 @@ export default function SessionViewerPage({ sessionId }: { sessionId: string }) 
       <div ref={scrollContainerRef} className="scroll-thin min-w-0 flex-1 overflow-y-auto">
         <div className="mx-auto grid max-w-[1100px] gap-7 px-12 pb-20 pt-7 lg:grid-cols-[minmax(0,1fr)_260px]">
           <main className="min-w-0">
-            {inDeveloperConsole && (
+            {inDeveloperConsole ? (
               <Link
                 href="/developer/sessions"
                 className="mb-4 inline-flex items-center gap-1.5 text-[13px] text-muted-foreground transition-colors hover:text-foreground"
@@ -330,6 +330,15 @@ export default function SessionViewerPage({ sessionId }: { sessionId: string }) 
                 <ArrowLeft className="h-3.5 w-3.5" />
                 All sessions
               </Link>
+            ) : (
+              <button
+                type="button"
+                onClick={() => router.back()}
+                className="mb-4 inline-flex cursor-pointer items-center gap-1.5 text-[13px] text-muted-foreground transition-colors hover:text-foreground"
+              >
+                <ArrowLeft className="h-3.5 w-3.5" />
+                Back
+              </button>
             )}
             <div className="mb-2 border-b border-border pb-3.5">
               <h1 className="font-display text-[28px] font-bold leading-tight tracking-[-0.02em]">

@@ -145,6 +145,33 @@ describe("FileBrowser folder links", () => {
 
     expect(router.push).toHaveBeenCalledWith("/folders/folder-2");
   });
+
+  it("shows the path back through a nested folder hierarchy", async () => {
+    vi.mocked(getFolderContents).mockResolvedValue(folderContents());
+
+    render(
+      <FileBrowser
+        folderId="folder-1"
+        breadcrumbs={[
+          { label: "Skills", href: "/skills" },
+          { label: "Launch Plan", href: "/skills/folder/folder-root" },
+          { label: "Skill folder" },
+        ]}
+      />
+    );
+
+    await screen.findByText("Nested");
+    const navigation = screen.getByRole("navigation", { name: "Folder location" });
+    expect(within(navigation).getByRole("link", { name: "Skills" })).toHaveAttribute(
+      "href",
+      "/skills",
+    );
+    expect(within(navigation).getByRole("link", { name: "Launch Plan" })).toHaveAttribute(
+      "href",
+      "/skills/folder/folder-root",
+    );
+    expect(within(navigation).getByText("Skill folder")).not.toHaveAttribute("href");
+  });
 });
 
 describe("FileBrowser table creation", () => {
