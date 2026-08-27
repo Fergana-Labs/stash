@@ -62,7 +62,6 @@ async def test_service_create_skill(scope, _db_pool):
 async def test_convert_a_plain_folder(scope, _db_pool):
     """The Convert-to-Skill button on a folder page."""
     folder = await files_tree_service.create_folder(scope, "Plain", scope)
-    await files_tree_service.set_folder_is_skill(folder["id"], scope, True)
     await shared_skill_service.ensure_skill_md(
         scope, folder["id"], scope, "Plain", "Use when testing folder conversion."
     )
@@ -107,7 +106,16 @@ async def test_bulk_file_write(scope, _db_pool):
     carries a SKILL.md — the folder must come out marked."""
     folder = await files_tree_service.create_folder(scope, "imported", scope)
     await files_tree_service.write_folder_files(
-        scope, scope, folder["id"], [("SKILL.md", b"---\nname: imported\n---\n"), ("ref.md", b"x")]
+        scope,
+        scope,
+        folder["id"],
+        [
+            (
+                "SKILL.md",
+                b"---\nname: imported\ndescription: Use imported context.\n---\n\nRead ref.md.",
+            ),
+            ("ref.md", b"x"),
+        ],
     )
     await _assert_is_a_usable_skill(scope, folder["id"], _db_pool, via="write_folder_files")
 
@@ -123,7 +131,13 @@ async def test_agent_create_skill_tool(scope, _db_pool):
         created = json.loads(
             (
                 await agent_runtime._create_skill.handler(
-                    {"name": "Via agent", "skill_md": "---\nname: Via agent\n---\n\n# go\n"}
+                    {
+                        "name": "Via agent",
+                        "skill_md": (
+                            "---\nname: Via agent\ndescription: Use for agent-created work.\n---\n\n"
+                            "Follow the agent workflow."
+                        ),
+                    }
                 )
             )["content"][0]["text"]
         )

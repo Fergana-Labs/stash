@@ -13,18 +13,14 @@ import DownloadMenu from "@/components/DownloadMenu";
 import ResourceShareButton from "@/components/share/ResourceShareButton";
 import { SessionDetailSkeleton } from "@/components/SkeletonStates";
 import { useAuth } from "@/hooks/useAuth";
-import { useEscapeKey } from "@/hooks/useEscapeKey";
 import {
   fetchAuthed,
   getSessionDetail,
   getSessionEvents,
   getSessionEventsPage,
   listFiles,
-  listSkills,
-  materializeSession,
   renameSession,
   trashItem,
-  type FolderBackedSkill,
   type SessionDetail,
 } from "@/lib/api";
 import type { FileInfo } from "@/lib/types";
@@ -98,10 +94,6 @@ export default function SessionViewerPage({ sessionId }: { sessionId: string }) 
     if (!sessionDetail || !user) return null;
     return (
       <>
-        <SaveToSkillButton
-          sessionId={sessionId}
-          onSaved={(pageId) => router.push(`/p/${pageId}`)}
-        />
         <ResourceShareButton
           objectType="session"
           objectId={sessionDetail.id}
@@ -468,93 +460,6 @@ export default function SessionViewerPage({ sessionId }: { sessionId: string }) 
           matches={matches}
           onJump={jumpTo}
         />
-      )}
-    </div>
-  );
-}
-
-// Compact inline picker: choose a skill folder, freeze the transcript into a
-// markdown page inside it.
-function SaveToSkillButton({
-  sessionId,
-  onSaved,
-}: {
-  sessionId: string;
-  onSaved: (pageId: string) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const [skills, setSkills] = useState<FolderBackedSkill[] | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState("");
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEscapeKey(open, () => setOpen(false));
-
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e: MouseEvent) => {
-      if (!ref.current?.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", onDown);
-    return () => document.removeEventListener("mousedown", onDown);
-  }, [open]);
-
-  useEffect(() => {
-    if (!open || skills !== null) return;
-    listSkills()
-      // Saving a session writes a page into the skill's folder, which a
-      // source-backed skill has not got — its content lives in its source.
-      .then((all) => setSkills(all.filter((s) => s.backing === "folder")))
-      .catch(() => setSkills([]));
-  }, [open, skills]);
-
-  async function save(skill: FolderBackedSkill) {
-    setBusy(true);
-    setMessage("");
-    try {
-      const page = await materializeSession(sessionId, skill.folder_id);
-      setOpen(false);
-      onSaved(page.id);
-    } catch (e) {
-      setMessage(e instanceof Error ? e.message : "Save failed");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <div ref={ref} className="relative">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        title="Save this session's transcript as a page inside a skill you pick"
-        className="cursor-pointer rounded-md border border-border bg-base px-2.5 py-1.5 text-[12.5px] font-medium text-foreground hover:bg-raised"
-      >
-        Save to Skill <span aria-hidden className="text-[10px]">▾</span>
-      </button>
-      {open && (
-        <div className="absolute right-0 top-full z-30 mt-1 w-56 overflow-hidden rounded-md border border-border bg-surface py-1 text-[12.5px] shadow-lg">
-          {skills === null && (
-            <div className="px-3 py-1.5 text-muted-foreground">Loading…</div>
-          )}
-          {skills?.length === 0 && (
-            <div className="px-3 py-1.5 text-muted-foreground">No skills yet.</div>
-          )}
-          {skills?.map((skill) => (
-            <button
-              key={skill.folder_id}
-              type="button"
-              disabled={busy}
-              onClick={() => void save(skill)}
-              className="block w-full cursor-pointer truncate px-3 py-1.5 text-left text-foreground hover:bg-raised disabled:opacity-50"
-            >
-              {skill.name}
-            </button>
-          ))}
-          {message && <div className="px-3 py-1.5 text-red-500">{message}</div>}
-        </div>
       )}
     </div>
   );

@@ -859,6 +859,20 @@ async def update_page(
     When `notify` (the default), a content change broadcasts a page-update
     event so open viewers refetch the page."""
     pool = get_pool()
+    if content is not None:
+        skill_page = await pool.fetchrow(
+            "SELECT p.name, f.is_skill FROM pages p "
+            "LEFT JOIN folders f ON f.id = p.folder_id "
+            "WHERE p.id = $1 AND p.owner_user_id = $2",
+            page_id,
+            owner_user_id,
+        )
+        if (
+            skill_page
+            and skill_page["is_skill"]
+            and skill_page["name"] == skill_service.SKILL_MD_NAME
+        ):
+            skill_service.validate_skill_md(content)
     if name is not None:
         await _assert_not_a_skills_instructions(page_id, owner_user_id)
     if folder_id is not None or move_to_root:
@@ -1352,7 +1366,6 @@ async def create_skill(
     )
     skill_md = skill_service.skill_md_template(folder["name"], description)
     skill_service.validate_skill_md(skill_md)
-    await set_folder_is_skill(folder["id"], owner_user_id, True)
     await create_page(
         owner_user_id,
         skill_service.SKILL_MD_NAME,
@@ -1360,6 +1373,7 @@ async def create_skill(
         folder_id=folder["id"],
         content=skill_md,
     )
+    await set_folder_is_skill(folder["id"], owner_user_id, True)
     return {**folder, "is_skill": True}
 
 
@@ -1380,6 +1394,13 @@ async def set_folder_is_skill(folder_id: UUID, owner_user_id: UUID, is_skill: bo
         return None
     if is_skill and row["is_protected"]:
         raise ValueError(f"the {row['name']} folder can't be turned into a skill")
+    if is_skill:
+        skill_md = await pool.fetchval(
+            "SELECT content_markdown FROM pages WHERE folder_id = $1 AND name = 'SKILL.md' "
+            "AND deleted_at IS NULL",
+            folder_id,
+        )
+        skill_service.validate_skill_md(skill_md or "")
     if not is_skill:
         published = await pool.fetchval("SELECT slug FROM skills WHERE folder_id = $1", folder_id)
         if published:
@@ -1955,11 +1976,6 @@ async def write_folder_files(
             owner_id,
         )
         written += 1
-    if promote:
-        await get_pool().execute(
-            "UPDATE folders SET is_skill = true, skill_created_at = now() "
-            "WHERE id = ANY($1::uuid[]) AND owner_user_id = $2 AND NOT is_protected",
-            list(promote),
-            owner_user_id,
-        )
+    for folder_id in promote:
+        await set_folder_is_skill(folder_id, owner_user_id, True)
     return written

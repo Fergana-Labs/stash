@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 from ..auth import get_current_user, get_current_user_optional, get_scope
 from ..config import settings
+from ..database import get_pool
 from ..models import (
     ForkSkillRequest,
     PageResponse,
@@ -43,6 +44,10 @@ class SkillDescriptionRequest(BaseModel):
     description: str = Field(
         ..., min_length=1, max_length=skill_service.MAX_SKILL_DESCRIPTION_LENGTH
     )
+
+
+class SkillAgentEnabledRequest(BaseModel):
+    enabled: bool
 
 
 @me_router.post("/skills/new", status_code=201)
@@ -85,15 +90,25 @@ async def convert_folder_to_skill(
             status_code=400,
             detail="description is required to convert a folder with no SKILL.md",
         )
-    result = await _set_is_skill(folder_id, owner_user_id, current_user["id"], True)
-    await shared_skill_service.ensure_skill_md(
-        owner_user_id,
+    if not await permission_service.check_access(
+        "folder",
         folder_id,
         current_user["id"],
-        result["name"],
-        description,
-    )
-    return result
+        owner_user_id=owner_user_id,
+        require="write",
+    ):
+        raise HTTPException(status_code=403, detail="Not allowed to write this folder")
+    try:
+        await shared_skill_service.ensure_skill_md(
+            owner_user_id,
+            folder_id,
+            current_user["id"],
+            (await files_tree_service.get_folder(folder_id))["name"],
+            description,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error))
+    return await _set_is_skill(folder_id, owner_user_id, current_user["id"], True)
 
 
 @me_router.post("/folders/{folder_id}/convert-to-folder", status_code=200)
@@ -150,12 +165,76 @@ async def publish_skill(
 
 @me_router.get("/skills")
 async def list_skills(
+    include_disabled: bool = Query(False),
     current_user: dict = Depends(get_current_user),
     owner_user_id: UUID = Depends(get_scope),
 ):
     """Every skill folder in the active scope, with publish info when shared."""
-    skills = await skill_service.list_skills(owner_user_id, current_user["id"])
+    skills = await skill_service.list_skills(
+        owner_user_id, current_user["id"], include_disabled=include_disabled
+    )
     return {"skills": skills}
+
+
+@me_router.patch("/skills/{backing}/{skill_ref}/agent-enabled")
+async def set_skill_agent_enabled(
+    backing: str,
+    skill_ref: str,
+    req: SkillAgentEnabledRequest,
+    current_user: dict = Depends(get_current_user),
+    owner_user_id: UUID = Depends(get_scope),
+):
+    if not await user_scope_service.can_write(owner_user_id, current_user["id"]):
+        raise HTTPException(status_code=403, detail="Only the owner can change Skills")
+    pool = get_pool()
+    if backing == "folder":
+        try:
+            folder_id = UUID(skill_ref)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid folder Skill id")
+        if req.enabled:
+            content = await pool.fetchval(
+                "SELECT p.content_markdown FROM pages p JOIN folders f ON f.id = p.folder_id "
+                "WHERE f.id = $1 AND f.owner_user_id = $2 AND f.is_skill "
+                "AND p.name = 'SKILL.md' AND p.deleted_at IS NULL",
+                folder_id,
+                owner_user_id,
+            )
+            try:
+                skill_service.validate_skill_md(content or "")
+            except ValueError as error:
+                raise HTTPException(status_code=400, detail=str(error))
+        updated = await pool.fetchval(
+            "UPDATE folders SET agent_enabled = $3 WHERE id = $1 AND owner_user_id = $2 "
+            "AND is_skill RETURNING id",
+            folder_id,
+            owner_user_id,
+            req.enabled,
+        )
+    elif backing == "source":
+        if req.enabled:
+            content = await pool.fetchval(
+                "SELECT content FROM drive_documents "
+                "WHERE external_ref = $1 AND owner_user_id = $2 AND deleted_at IS NULL",
+                skill_ref,
+                owner_user_id,
+            )
+            try:
+                skill_service.validate_skill_md(content or "")
+            except ValueError as error:
+                raise HTTPException(status_code=400, detail=str(error))
+        updated = await pool.fetchval(
+            "UPDATE drive_documents SET agent_enabled = $3 "
+            "WHERE external_ref = $1 AND owner_user_id = $2 AND deleted_at IS NULL RETURNING id",
+            skill_ref,
+            owner_user_id,
+            req.enabled,
+        )
+    else:
+        raise HTTPException(status_code=400, detail="Unknown Skill backing")
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Skill not found")
+    return {"enabled": req.enabled}
 
 
 @me_router.get("/skills/{name}")

@@ -1,8 +1,14 @@
-import { cleanup, render as renderBase, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render as renderBase,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import SkillFolderClient from "./SkillFolderClient";
-import { getFolderContents, listSkills } from "@/lib/api";
+import { getFolderContents, getPage, updatePage } from "@/lib/api";
 import { useBreadcrumbs } from "@/components/BreadcrumbContext";
 import { useShareAction } from "@/components/ShellChromeContext";
 import { ConfirmDialogProvider } from "@/components/ConfirmDialog";
@@ -27,7 +33,8 @@ vi.mock("next/navigation", () => ({
 
 vi.mock("@/lib/api", () => ({
   getFolderContents: vi.fn(),
-  listSkills: vi.fn(),
+  getPage: vi.fn(),
+  updatePage: vi.fn(),
   trashItem: vi.fn(),
 }));
 
@@ -49,18 +56,31 @@ vi.mock("@/components/share/ResourceShareButton", () => ({
   ),
 }));
 
-vi.mock("@/components/skill/SkillShareButton", () => ({
-  default: () => <button>Share</button>,
+vi.mock("@/components/content/file-browser/FileBrowser", () => ({
+  default: ({
+    folderHrefBase,
+    hiddenItemIds,
+    intro,
+    itemsHeading,
+    supportingFilesMode,
+  }: {
+    folderHrefBase?: string;
+    hiddenItemIds?: readonly string[];
+    intro?: ReactNode;
+    itemsHeading?: string;
+    supportingFilesMode?: boolean;
+  }) => (
+    <div
+      data-testid="file-browser"
+      data-href-base={folderHrefBase}
+      data-hidden-items={hiddenItemIds?.join(",")}
+      data-supporting-files-mode={supportingFilesMode}
+    >
+      {intro}
+      {itemsHeading}
+    </div>
+  ),
 }));
-
-vi.mock(
-  "@/components/content/file-browser/FileBrowser",
-  () => ({
-    default: ({ folderHrefBase }: { folderHrefBase?: string }) => (
-      <div data-testid="file-browser" data-href-base={folderHrefBase} />
-    ),
-  }),
-);
 
 vi.mock("@/hooks/useAuth", () => ({
   useAuth: () => ({
@@ -81,16 +101,30 @@ describe("SkillFolderClient", () => {
         is_skill: false,
       },
       breadcrumbs: [
-        { id: "folder-top", name: "Projects", is_skill: false, is_memory: false },
-        { id: "folder-root", name: "Launch Plan", is_skill: true, is_memory: false },
-        { id: "folder-sub", name: "research", is_skill: false, is_memory: false },
+        {
+          id: "folder-top",
+          name: "Projects",
+          is_skill: false,
+          is_memory: false,
+        },
+        {
+          id: "folder-root",
+          name: "Launch Plan",
+          is_skill: true,
+          is_memory: false,
+        },
+        {
+          id: "folder-sub",
+          name: "research",
+          is_skill: false,
+          is_memory: false,
+        },
       ],
       subfolders: [],
       pages: [],
       files: [],
       tables: [],
     });
-    vi.mocked(listSkills).mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -111,7 +145,9 @@ describe("SkillFolderClient", () => {
       { label: "research" },
     ]);
     // Ancestors above the skill root (plain folders) stay out of the trail.
-    expect(crumbs?.some((c: { label: string }) => c.label === "Projects")).toBe(false);
+    expect(crumbs?.some((c: { label: string }) => c.label === "Projects")).toBe(
+      false,
+    );
   });
 
   it("keeps folder navigation on the skill browse route", async () => {
@@ -158,12 +194,40 @@ describe("SkillFolderClient", () => {
         is_skill: true,
       },
       breadcrumbs: [
-        { id: "folder-root", name: "Launch Plan", is_skill: true, is_memory: false },
+        {
+          id: "folder-root",
+          name: "Launch Plan",
+          is_skill: true,
+          is_memory: false,
+        },
       ],
       subfolders: [],
-      pages: [],
+      pages: [
+        {
+          id: "page-skill",
+          name: "SKILL.md",
+          content_type: "markdown",
+          created_at: "2026-08-26T00:00:00Z",
+        },
+      ],
       files: [],
       tables: [],
+    });
+    vi.mocked(getPage).mockResolvedValue({
+      id: "page-skill",
+      owner_user_id: "user-1",
+      folder_id: "folder-root",
+      name: "SKILL.md",
+      content_type: "markdown",
+      content_markdown: "# Launch Plan",
+      content_html: "",
+      html_layout: "responsive",
+      content_hash: null,
+      can_write: true,
+      created_by: "user-1",
+      updated_by: null,
+      created_at: "2026-08-26T00:00:00Z",
+      updated_at: "2026-08-26T00:00:00Z",
     });
 
     render(<SkillFolderClient folderId="folder-root" />);
@@ -176,5 +240,97 @@ describe("SkillFolderClient", () => {
       "data-share-url",
       "/skills/folder/folder-root",
     );
+  });
+
+  it("leads with rendered SKILL.md instructions and hides that page from the file list", async () => {
+    vi.mocked(getFolderContents).mockResolvedValue({
+      folder: {
+        id: "folder-root",
+        name: "Launch Plan",
+        parent_folder_id: null,
+        is_skill: true,
+      },
+      breadcrumbs: [
+        {
+          id: "folder-root",
+          name: "Launch Plan",
+          is_skill: true,
+          is_memory: false,
+        },
+      ],
+      subfolders: [],
+      pages: [
+        {
+          id: "page-skill",
+          name: "SKILL.md",
+          content_type: "markdown",
+          created_at: "2026-08-26T00:00:00Z",
+        },
+        {
+          id: "page-brief",
+          name: "Brief",
+          content_type: "markdown",
+          created_at: "2026-08-26T00:00:00Z",
+        },
+      ],
+      files: [],
+      tables: [],
+    });
+    vi.mocked(getPage).mockResolvedValue({
+      id: "page-skill",
+      owner_user_id: "user-1",
+      folder_id: "folder-root",
+      name: "SKILL.md",
+      content_type: "markdown",
+      content_markdown:
+        "---\nname: Launch Plan\ndescription: A launch helper\n---\n\n## When to use this\nFollow the checklist.",
+      content_html: "",
+      html_layout: "responsive",
+      content_hash: null,
+      can_write: true,
+      created_by: "user-1",
+      updated_by: null,
+      created_at: "2026-08-26T00:00:00Z",
+      updated_at: "2026-08-26T00:00:00Z",
+    });
+
+    render(<SkillFolderClient folderId="folder-root" />);
+
+    expect(
+      await screen.findByRole("heading", { name: "When to use this" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Follow the checklist.")).toBeInTheDocument();
+    expect(screen.queryByText(/name: Launch Plan/)).not.toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Edit instructions" }),
+    );
+    const editor = screen.getByLabelText("Instructions");
+    expect(editor).toHaveValue(
+      "## When to use this\nFollow the checklist.",
+    );
+
+    vi.mocked(updatePage).mockResolvedValue({
+      ...(await vi.mocked(getPage).mock.results[0].value),
+      content_markdown:
+        "---\nname: Launch Plan\ndescription: A launch helper\n---\n\nUse the revised checklist.\n",
+    });
+    fireEvent.change(editor, { target: { value: "Use the revised checklist." } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() =>
+      expect(updatePage).toHaveBeenCalledWith("page-skill", {
+        content:
+          "---\nname: Launch Plan\ndescription: A launch helper\n---\n\nUse the revised checklist.\n",
+      }),
+    );
+    expect(screen.getByTestId("file-browser")).toHaveAttribute(
+      "data-hidden-items",
+      "page-skill",
+    );
+    expect(screen.getByTestId("file-browser")).toHaveAttribute(
+      "data-supporting-files-mode",
+      "true",
+    );
+    expect(screen.getByText("Supporting files")).toBeInTheDocument();
   });
 });

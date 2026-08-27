@@ -17,8 +17,15 @@ def test_skill_template_round_trips_yaml_sensitive_metadata():
         "name": "Release: web",
         "description": "Use for deploys:\nproduction only.",
     }
-    assert body == "# Release: web\n"
+    assert body == "# Release: web\n\nUse for deploys:\nproduction only.\n"
     skill_service.validate_skill_md(markdown)
+
+
+def test_skill_validation_rejects_a_title_without_instructions():
+    markdown = '---\nname: "Deploy"\ndescription: "Ship production."\n---\n\n# Deploy\n'
+
+    with pytest.raises(ValueError, match="requires instructions"):
+        skill_service.validate_skill_md(markdown)
 
 
 @pytest.mark.parametrize(

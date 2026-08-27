@@ -75,7 +75,17 @@ async def test_skill_folder_is_hidden_from_files_surfaces_until_converted_back(
     docs = await _folder(client, api_key, scope, "Docs")
     skill_folder = await _folder(client, api_key, scope, "my-skill", parent_folder_id=docs)
     nested = await _folder(client, api_key, scope, "refs", parent_folder_id=skill_folder)
-    skill_md = await _page(client, api_key, scope, "SKILL.md", folder_id=skill_folder)
+    skill_md = await _page(
+        client,
+        api_key,
+        scope,
+        "SKILL.md",
+        folder_id=skill_folder,
+        content=(
+            "---\nname: my-skill\ndescription: Use this skill to manage the test folder.\n"
+            "---\n\nFollow the folder workflow."
+        ),
+    )
     # Membership is explicit now: writing SKILL.md no longer promotes.
     promoted = await client.post(
         f"/api/v1/me/folders/{skill_folder}/convert-to-skill",
@@ -439,7 +449,17 @@ async def test_install_ping_counts_adoption_separately_from_views(client: AsyncC
     owner_key, _ = await _register(client)
     scope = await _scope(client, owner_key)
     folder = await _folder(client, owner_key, scope, "pingable")
-    await _page(client, owner_key, scope, "SKILL.md", folder_id=folder, content="# s")
+    await _page(
+        client,
+        owner_key,
+        scope,
+        "SKILL.md",
+        folder_id=folder,
+        content=(
+            "---\nname: Pingable\ndescription: Use when testing installs.\n---\n\n"
+            "Record the installation."
+        ),
+    )
     published = await client.post(
         "/api/v1/me/skills",
         json={"folder_id": folder, "title": "Pingable"},
@@ -523,3 +543,44 @@ async def test_create_skill_rejects_a_name_codex_cannot_load(client: AsyncClient
         headers=_auth(key),
     )
     assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_disabled_skill_stays_in_web_list_but_is_not_provided_to_agents(
+    client: AsyncClient, _db_pool
+):
+    key, _ = await _register(client)
+    created = await client.post(
+        "/api/v1/me/skills/new",
+        json={"name": "Deploy", "description": "Use for deploys."},
+        headers=_auth(key),
+    )
+    folder_id = created.json()["folder_id"]
+
+    disabled = await client.patch(
+        f"/api/v1/me/skills/folder/{folder_id}/agent-enabled",
+        json={"enabled": False},
+        headers=_auth(key),
+    )
+    assert disabled.status_code == 200
+
+    agent_list = await client.get("/api/v1/me/skills", headers=_auth(key))
+    assert agent_list.json()["skills"] == []
+
+    web_list = await client.get("/api/v1/me/skills?include_disabled=true", headers=_auth(key))
+    assert [(skill["name"], skill["agent_enabled"]) for skill in web_list.json()["skills"]] == [
+        ("Deploy", False)
+    ]
+
+    await _db_pool.execute(
+        "UPDATE pages SET content_markdown = $2 WHERE folder_id = $1::uuid AND name = 'SKILL.md'",
+        folder_id,
+        '---\nname: "Deploy"\ndescription: "Use for deploys."\n---\n\n# Deploy',
+    )
+    enable_empty = await client.patch(
+        f"/api/v1/me/skills/folder/{folder_id}/agent-enabled",
+        json={"enabled": True},
+        headers=_auth(key),
+    )
+    assert enable_empty.status_code == 400
+    assert "requires instructions" in enable_empty.json()["detail"]

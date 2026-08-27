@@ -38,7 +38,8 @@ FRONTMATTER_SCAN_BYTES = 8192
 
 def skill_md_template(name: str, description: str) -> str:
     return (
-        f"---\nname: {json.dumps(name)}\ndescription: {json.dumps(description)}\n---\n\n# {name}\n"
+        f"---\nname: {json.dumps(name)}\ndescription: {json.dumps(description)}\n---\n\n"
+        f"# {name}\n\n{description}\n"
     )
 
 
@@ -106,6 +107,17 @@ def validate_skill_md(md: str) -> None:
         raise ValueError(
             f"SKILL.md description must be at most {MAX_SKILL_DESCRIPTION_LENGTH} characters"
         )
+    if not skill_instruction_body(md):
+        raise ValueError("SKILL.md requires instructions below its frontmatter")
+
+
+def skill_instruction_body(md: str) -> str:
+    """The agent instructions, excluding a repeated title heading."""
+    meta, body = parse_frontmatter(md)
+    lines = body.strip().splitlines()
+    if lines and lines[0].strip() == f"# {str(meta.get('name', '')).strip()}":
+        lines = lines[1:]
+    return "\n".join(lines).strip()
 
 
 def declared_skill(content: str | None) -> dict | None:
@@ -147,16 +159,17 @@ def source_document_skill_status(content: str | None, extraction_status: str) ->
         }
 
     head = (content or "")[:FRONTMATTER_SCAN_BYTES]
-    if declared_skill(head) is None:
+    if not head.startswith("---"):
         return {
             "skill_status": "not_skill",
             "skill_status_reason": "At the top, add a name and description between --- lines.",
         }
-
-    if not parse_frontmatter(head)[1].strip():
+    try:
+        validate_skill_md(head)
+    except ValueError as error:
         return {
-            "skill_status": "draft",
-            "skill_status_reason": "Add instructions below the closing --- line.",
+            "skill_status": "not_skill",
+            "skill_status_reason": str(error),
         }
 
     return {
@@ -214,7 +227,9 @@ async def count_shelf_skills(owner_user_id: UUID, source_ids: list[str]) -> dict
     return counts
 
 
-async def list_source_skills(owner_user_id: UUID, user_id: UUID) -> list[dict]:
+async def list_source_skills(
+    owner_user_id: UUID, user_id: UUID, *, include_disabled: bool = False
+) -> list[dict]:
     """Every document in a skill-binding source that declares itself a skill."""
     readable = permission_service.readable_content_condition("source", "src", 2)
     rows = await get_pool().fetch(
@@ -222,7 +237,7 @@ async def list_source_skills(owner_user_id: UUID, user_id: UUID) -> list[dict]:
         # that starts with a delimiter can carry any — so the shelf's bodies
         # stay in the database instead of crossing the wire to be discarded.
         f"SELECT d.external_ref, d.name, left(d.content, {FRONTMATTER_SCAN_BYTES}) AS head, "
-        "  d.updated_at, d.source_id, src.display_name AS source_name "
+        "  d.updated_at, d.source_id, d.agent_enabled, src.display_name AS source_name "
         "FROM drive_documents d "
         "JOIN user_sources src ON src.id = d.source_id "
         "WHERE d.owner_user_id = $1 AND d.deleted_at IS NULL AND src.binds_skills "
@@ -251,20 +266,20 @@ async def list_source_skills(owner_user_id: UUID, user_id: UUID) -> list[dict]:
             "mcp_exposed": bool(meta.get("mcp_exposed", False)),
             "file_count": 1,
             "updated_at": r["updated_at"],
-            # A document can declare itself and then say nothing. Handing an
-            # agent an empty skill is the failure the draft flag exists to
-            # stop, so a frontmatter block with no body below it is a draft.
-            "has_instructions": bool(parse_frontmatter(r["head"])[1].strip()),
+            "has_instructions": True,
             # Publishing attaches a `skills` row to a folder id, which a
             # source-backed skill does not have. It is managed upstream.
             "published": None,
+            "agent_enabled": bool(r["agent_enabled"]),
         }
         for r, meta in declared
-        if meta is not None
+        if meta is not None and (include_disabled or r["agent_enabled"])
     ]
 
 
-async def list_skills(owner_user_id: UUID, user_id: UUID) -> list[dict]:
+async def list_skills(
+    owner_user_id: UUID, user_id: UUID, *, include_disabled: bool = False
+) -> list[dict]:
     """List every skill folder in the scope: folder + SKILL.md frontmatter,
     plus the publish record when the skill has been shared.
 
@@ -275,6 +290,7 @@ async def list_skills(owner_user_id: UUID, user_id: UUID) -> list[dict]:
     readable = permission_service.readable_content_condition("folder", "f", 2)
     rows = await pool.fetch(
         "SELECT f.id AS folder_id, f.name AS folder_name, f.updated_at AS folder_updated_at, "
+        "  f.agent_enabled, "
         "  p.id AS skill_md_id, p.content_markdown AS skill_md, p.updated_at, "
         "  (SELECT COUNT(*) FROM pages p2 WHERE p2.folder_id = f.id "
         "   AND p2.deleted_at IS NULL) AS file_count, "
@@ -291,6 +307,9 @@ async def list_skills(owner_user_id: UUID, user_id: UUID) -> list[dict]:
     out = []
     for r in rows:
         meta, _body = parse_frontmatter(r["skill_md"] or "")
+        has_instructions = bool(skill_instruction_body(r["skill_md"] or ""))
+        if not include_disabled and (not r["agent_enabled"] or not has_instructions):
+            continue
         published = None
         if r["publish_id"]:
             published = {
@@ -317,11 +336,12 @@ async def list_skills(owner_user_id: UUID, user_id: UUID) -> list[dict]:
                 "updated_at": r["updated_at"] or r["folder_updated_at"],
                 # False = a draft skill: it exists and is named, but has no
                 # instructions for an agent to load yet. Surfaces say so.
-                "has_instructions": r["skill_md_id"] is not None,
+                "has_instructions": has_instructions,
                 "published": published,
+                "agent_enabled": bool(r["agent_enabled"] and has_instructions),
             }
         )
-    out.extend(await list_source_skills(owner_user_id, user_id))
+    out.extend(await list_source_skills(owner_user_id, user_id, include_disabled=include_disabled))
     out.sort(key=lambda s: s["name"].lower())
     return out
 
@@ -372,7 +392,7 @@ async def read_source_skill(owner_user_id: UUID, source_ref: str, user_id: UUID)
         "name": meta["name"],
         "description": meta["description"],
         "when_to_use": meta.get("when_to_use", ""),
-        "has_instructions": bool(body.strip()),
+        "has_instructions": bool(skill_instruction_body(row["content"] or "")),
         "body": body,
         "files": [
             {
@@ -391,7 +411,7 @@ async def read_skill(owner_user_id: UUID, name: str, user_id: UUID) -> dict | No
     parsed SKILL.md plus the full text of every sibling file concatenated, so
     an agent can load the whole skill in one call."""
     pool = get_pool()
-    skills = await list_skills(owner_user_id, user_id)
+    skills = await list_skills(owner_user_id, user_id, include_disabled=True)
     match = next(
         (s for s in skills if s["name"] == name or s["folder_id"] == name),
         None,
@@ -447,7 +467,9 @@ async def read_skill(owner_user_id: UUID, name: str, user_id: UUID) -> dict | No
         # A draft skill loads with no instructions. Callers that need them
         # (agent load, publish, install) refuse on this rather than handing
         # an agent an empty document and calling it a skill.
-        "has_instructions": skill_md is not None,
+        "has_instructions": bool(
+            skill_md and skill_instruction_body(skill_md["content_markdown"] or "")
+        ),
         "body": body,
         "files": [
             {

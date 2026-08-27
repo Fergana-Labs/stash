@@ -483,6 +483,7 @@ async def _create_skill(args: dict) -> dict:
     # skill while the model believes it created it. Unlike the web button
     # (placeholder name, can't negotiate), a model can act on a refusal, so
     # a collision returns the existing holder and its real URL instead.
+    skill_service.validate_skill_md(args["skill_md"])
     try:
         folder = await files_tree_service.create_folder(owner_user_id, args["name"], user_id)
     except files_tree_service.DuplicateFolderName:
@@ -511,7 +512,6 @@ async def _create_skill(args: dict) -> dict:
                 }
             )
         )
-    await files_tree_service.set_folder_is_skill(folder["id"], owner_user_id, True)
     await files_tree_service.create_page(
         owner_user_id,
         "SKILL.md",
@@ -520,6 +520,7 @@ async def _create_skill(args: dict) -> dict:
         content=args["skill_md"],
         content_type="markdown",
     )
+    await files_tree_service.set_folder_is_skill(folder["id"], owner_user_id, True)
     for extra in args.get("files") or []:
         await files_tree_service.create_page(
             owner_user_id,

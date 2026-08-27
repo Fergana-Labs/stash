@@ -1663,6 +1663,7 @@ interface SkillCommon {
   // agent to load. Agents refuse to run one, so every surface must say so.
   has_instructions: boolean;
   published: SkillPublishInfo | null;
+  agent_enabled: boolean;
 }
 
 // A skill: SKILL.md frontmatter + stats + publish info.
@@ -1719,8 +1720,16 @@ export function skillKey(skill: Skill): string {
 }
 
 export async function listSkills(): Promise<Skill[]> {
-  const data = await apiFetch<{ skills: Skill[] }>(`${ME}/skills`);
+  const data = await apiFetch<{ skills: Skill[] }>(`${ME}/skills?include_disabled=true`);
   return data.skills;
+}
+
+export async function setSkillAgentEnabled(skill: Skill, enabled: boolean): Promise<void> {
+  const ref = skill.backing === "folder" ? skill.folder_id : skill.source_ref;
+  await apiFetch(
+    `${ME}/skills/${skill.backing}/${encodeURIComponent(ref)}/agent-enabled`,
+    { method: "PATCH", body: JSON.stringify({ enabled }) },
+  );
 }
 
 // The full publish record, as returned by publish/update.

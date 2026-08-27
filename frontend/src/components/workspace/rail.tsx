@@ -3,21 +3,55 @@
 import { Fragment } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { BarChart3, FolderTree, MessagesSquare, GraduationCap, Home, Orbit, Settings } from "lucide-react";
+import {
+  BarChart3,
+  FolderTree,
+  MessagesSquare,
+  GraduationCap,
+  Home,
+  Orbit,
+  Settings,
+} from "lucide-react";
 import { useBreadcrumbsValue } from "@/components/BreadcrumbContext";
 import AccountMenu from "@/components/workspace/account-menu";
 import { cn } from "@/lib/utils";
 import type { User } from "@/lib/types";
 
-type RailSection = "home" | "skills" | "sessions" | "analytics" | "files" | "viz";
-type RailItem = { key: RailSection; label: string; icon: typeof Home; match: (p: string) => boolean };
+type RailSection =
+  "home" | "skills" | "sessions" | "analytics" | "files" | "viz";
+type RailItem = {
+  key: RailSection;
+  label: string;
+  icon: typeof Home;
+  match: (p: string) => boolean;
+};
 
 const PRIMARY: RailItem[] = [
   { key: "home", label: "Home", icon: Home, match: (p) => p === "/" },
-  { key: "skills", label: "Skills", icon: GraduationCap, match: (p) => p.startsWith("/skills") },
-  { key: "sessions", label: "Sessions", icon: MessagesSquare, match: (p) => p.startsWith("/sessions") && p !== "/sessions/analytics" },
-  { key: "analytics", label: "Usage", icon: BarChart3, match: (p) => p === "/sessions/analytics" },
-  { key: "files", label: "Files", icon: FolderTree, match: (p) => p === "/files" },
+  {
+    key: "skills",
+    label: "Skills",
+    icon: GraduationCap,
+    match: (p) => p.startsWith("/skills"),
+  },
+  {
+    key: "sessions",
+    label: "Sessions",
+    icon: MessagesSquare,
+    match: (p) => p.startsWith("/sessions") && p !== "/sessions/analytics",
+  },
+  {
+    key: "analytics",
+    label: "Usage",
+    icon: BarChart3,
+    match: (p) => p === "/sessions/analytics",
+  },
+  {
+    key: "files",
+    label: "Files",
+    icon: FolderTree,
+    match: (p) => p === "/files",
+  },
   { key: "viz", label: "Themes", icon: Orbit, match: (p) => p === "/viz" },
 ];
 
@@ -51,7 +85,13 @@ function RailButton({
   );
 }
 
-export default function Rail({ user, onLogout }: { user: User; onLogout: () => void }) {
+export default function Rail({
+  user,
+  onLogout,
+}: {
+  user: User;
+  onLogout: () => void;
+}) {
   const router = useRouter();
   const pathname = usePathname();
   const breadcrumbs = useBreadcrumbsValue();
@@ -81,6 +121,7 @@ export default function Rail({ user, onLogout }: { user: User; onLogout: () => v
             active={
               item.match(pathname) ||
               (item.key === "home" && contentArea === "memory") ||
+              (item.key === "skills" && contentArea === "skills") ||
               (item.key === "files" && contentArea === "files")
             }
             onClick={() => selectSection(item.key)}

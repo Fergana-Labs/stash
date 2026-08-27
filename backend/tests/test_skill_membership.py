@@ -43,6 +43,15 @@ async def test_dropping_a_skill_md_into_a_folder_does_not_promote_it(scope, _db_
 async def test_convert_verbs_are_the_only_way_membership_changes(scope, _db_pool):
     folder = await files_tree_service.create_folder(scope, "Recipes", scope)
 
+    with pytest.raises(ValueError, match="requires a nonblank name"):
+        await files_tree_service.set_folder_is_skill(folder["id"], scope, True)
+    await files_tree_service.create_page(
+        scope,
+        "SKILL.md",
+        scope,
+        folder_id=folder["id"],
+        content='---\nname: "Recipes"\ndescription: "Cook reliably."\n---\n\nFollow the recipe.',
+    )
     promoted = await files_tree_service.set_folder_is_skill(folder["id"], scope, True)
     assert promoted["is_skill"] is True
     assert [s["folder_id"] for s in await skill_service.list_skills(scope, scope)] == [
@@ -72,7 +81,7 @@ async def test_deleting_skill_md_leaves_a_draft_skill_not_a_silent_demotion(scop
         await files_tree_service.update_page(page_id, scope, scope, name="notes.md")
 
     await _db_pool.execute("UPDATE pages SET deleted_at = now() WHERE id = $1", page_id)
-    [skill] = await skill_service.list_skills(scope, scope)
+    [skill] = await skill_service.list_skills(scope, scope, include_disabled=True)
     assert skill["folder_id"] == str(folder["id"])
     assert skill["has_instructions"] is False
 
@@ -97,7 +106,16 @@ async def test_bulk_write_carrying_a_skill_md_promotes_explicitly(scope, _db_poo
     editing files inside an existing folder."""
     folder = await files_tree_service.create_folder(scope, "imported-repo", scope)
     await files_tree_service.write_folder_files(
-        scope, scope, folder["id"], [("SKILL.md", b"# imported"), ("notes.md", b"context")]
+        scope,
+        scope,
+        folder["id"],
+        [
+            (
+                "SKILL.md",
+                b"---\nname: imported\ndescription: Use imported context.\n---\n\nRead notes.md.",
+            ),
+            ("notes.md", b"context"),
+        ],
     )
 
     assert [s["folder_id"] for s in await skill_service.list_skills(scope, scope)] == [
@@ -162,7 +180,14 @@ async def test_folder_plus_skill_md_plus_convert_is_the_cli_recipe(client, _db_p
     ).json()["id"]
     await client.post(
         "/api/v1/me/pages/new",
-        json={"name": "SKILL.md", "folder_id": folder_id, "content": "---\nname: cli-skill\n---\n"},
+        json={
+            "name": "SKILL.md",
+            "folder_id": folder_id,
+            "content": (
+                "---\nname: cli-skill\ndescription: Use for CLI work.\n---\n\n"
+                "Follow the CLI workflow."
+            ),
+        },
         headers=headers,
     )
 
@@ -312,9 +337,18 @@ async def test_skill_md_cannot_be_moved_out_of_its_skill(scope, _db_pool):
         await files_tree_service.update_page(page_id, scope, scope, folder_id=elsewhere["id"])
     with pytest.raises(ValueError, match="can't be deleted, renamed, or moved"):
         await files_tree_service.update_page(page_id, scope, scope, move_to_root=True)
+    with pytest.raises(ValueError, match="requires instructions"):
+        await files_tree_service.update_page(
+            page_id,
+            scope,
+            scope,
+            content='---\nname: "Movable"\ndescription: "Use for move tests."\n---\n\n# Movable',
+        )
 
-    # Editing its content is untouched — only leaving the skill is refused.
-    edited = await files_tree_service.update_page(page_id, scope, scope, content="# new body")
+    edited_content = (
+        '---\nname: "Movable"\ndescription: "Use for move tests."\n---\n\n# Movable\n\nNew body.'
+    )
+    edited = await files_tree_service.update_page(page_id, scope, scope, content=edited_content)
     assert edited is not None
     [skill] = await skill_service.list_skills(scope, scope)
     assert skill["has_instructions"] is True

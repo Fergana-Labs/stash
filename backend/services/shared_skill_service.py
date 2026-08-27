@@ -118,9 +118,7 @@ def agent_install_pitch(stash_url: str) -> str:
 
 
 def skill_md_template(name: str, description: str) -> str:
-    return (
-        f"---\nname: {json.dumps(name)}\ndescription: {json.dumps(description)}\n---\n\n# {name}\n"
-    )
+    return skill_service.skill_md_template(name, description)
 
 
 async def folder_has_skill_md(folder_id: UUID) -> bool:
@@ -143,13 +141,18 @@ async def ensure_skill_md(
     act by the caller, so it sets membership — unlike a user editing files
     inside a folder, which never reclassifies anything."""
     if await folder_has_skill_md(folder_id):
+        skill_md = await get_pool().fetchval(
+            "SELECT content_markdown FROM pages WHERE folder_id = $1 AND name = 'SKILL.md' "
+            "AND deleted_at IS NULL",
+            folder_id,
+        )
+        skill_service.validate_skill_md(skill_md or "")
         await files_tree_service.set_folder_is_skill(folder_id, owner_user_id, True)
         return
     if not description.strip():
         raise ValueError("description is required when publishing a folder as a skill")
     skill_md = skill_md_template(title, description)
     skill_service.validate_skill_md(skill_md)
-    await files_tree_service.set_folder_is_skill(folder_id, owner_user_id, True)
     await files_tree_service.create_page(
         owner_user_id,
         "SKILL.md",
@@ -158,6 +161,7 @@ async def ensure_skill_md(
         content=skill_md,
         content_type="markdown",
     )
+    await files_tree_service.set_folder_is_skill(folder_id, owner_user_id, True)
 
 
 # --- Publish lifecycle ---

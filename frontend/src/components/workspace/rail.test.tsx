@@ -7,7 +7,8 @@ import Rail from "./rail";
 const route = vi.hoisted(() => ({
   pathname: "/",
   replace: vi.fn(),
-  crumbs: null as { label: string; area?: "memory" | "files" }[] | null,
+  crumbs: null as
+    { label: string; area?: "memory" | "files" | "skills" }[] | null,
 }));
 
 vi.mock("next/navigation", () => ({
@@ -91,6 +92,22 @@ describe("Rail", () => {
     render(<Rail user={user} onLogout={vi.fn()} />);
 
     expect(screen.getByLabelText("Home").className).toContain("text-brand-600");
-    expect(screen.getByLabelText("Files").className).not.toContain("text-brand-600");
+    expect(screen.getByLabelText("Files").className).not.toContain(
+      "text-brand-600",
+    );
+  });
+
+  it("identifies Skill content with Skills instead of Files", () => {
+    route.pathname = "/p/supporting-page";
+    route.crumbs = [{ label: "Skills", area: "skills" }];
+
+    render(<Rail user={user} onLogout={vi.fn()} />);
+
+    expect(screen.getByLabelText("Skills").className).toContain(
+      "text-brand-600",
+    );
+    expect(screen.getByLabelText("Files").className).not.toContain(
+      "text-brand-600",
+    );
   });
 });
