@@ -65,6 +65,11 @@ export default function ScopeSwitcher() {
     window.location.assign("/developer");
   }
 
+  function createPlatform() {
+    setScope(null);
+    window.location.assign("/developer");
+  }
+
   const inWorkspace = scope !== null;
 
   return (
@@ -120,6 +125,7 @@ export default function ScopeSwitcher() {
             scope={scope}
             onSelect={select}
             onEnterPlatform={enterPlatform}
+            onCreatePlatform={createPlatform}
           />
         )}
       </DropdownMenuContent>
@@ -134,11 +140,13 @@ function WorkspaceScopes({
   scope,
   onSelect,
   onEnterPlatform,
+  onCreatePlatform,
 }: {
   workspaces: Workspace[];
   scope: Scope | null;
   onSelect: (next: Scope | null) => void;
   onEnterPlatform: (w: Workspace) => void;
+  onCreatePlatform: () => void;
 }) {
   const consoles = workspaces.filter((w) => w.external_wiki_folder_id !== null);
   // A workspace only earns its internal-knowledge-base row when that face is
@@ -175,17 +183,17 @@ function WorkspaceScopes({
           onSelect={() => onEnterPlatform(w)}
         />
       ))}
-      {consoles.length === 0 && (
-        <ScopeItem
-          icon={<TerminalSquare className="h-4 w-4 text-muted-foreground" />}
-          label="Set up Developer Platform"
-          detail="Run Stash for your product's customers"
-          selected={false}
-          onSelect={() => {
-            window.location.assign("/developer");
-          }}
-        />
-      )}
+      <ScopeItem
+        icon={<TerminalSquare className="h-4 w-4 text-muted-foreground" />}
+        label={consoles.length > 0 ? "Create Developer Platform" : "Set up Developer Platform"}
+        detail={
+          consoles.length > 0
+            ? "Run Stash for another product"
+            : "Run Stash for your product's customers"
+        }
+        selected={false}
+        onSelect={onCreatePlatform}
+      />
     </>
   );
 }

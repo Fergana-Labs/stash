@@ -132,6 +132,7 @@ async def push_event(
     content: str,
     created_by: UUID,
     session_id: str,
+    uploader_key_id: UUID | None = None,
     user_id: str | None = None,
     user_name: str | None = None,
     session_folder_id=None,
@@ -155,8 +156,8 @@ async def push_event(
         ts = _normalize_ts(created_at)
     row = await pool.fetchrow(
         "INSERT INTO history_events "
-        "(owner_user_id, created_by, agent_name, event_type, content, session_id, tool_name, metadata, attachments, created_at) "
-        "VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10) "
+        "(owner_user_id, created_by, agent_name, event_type, content, session_id, tool_name, metadata, attachments, created_at, uploader_key_id) "
+        "VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10, $11) "
         "RETURNING id, owner_user_id, created_by, agent_name, event_type, session_id, "
         "tool_name, content, metadata, attachments, created_at",
         owner_user_id,
@@ -169,6 +170,7 @@ async def push_event(
         meta,
         attachments,
         ts,
+        uploader_key_id,
     )
     event = dict(row)
     if owner_user_id is not None:
@@ -197,6 +199,7 @@ async def push_events_batch(
     owner_user_id: UUID | None,
     created_by: UUID,
     events: list[dict],
+    uploader_key_id: UUID | None = None,
 ) -> list[dict]:
     """Batch push events in a single round-trip.
 
@@ -225,11 +228,11 @@ async def push_events_batch(
         """
         INSERT INTO history_events
             (owner_user_id, created_by, agent_name, event_type, content,
-             session_id, tool_name, metadata, attachments, created_at)
+             session_id, tool_name, metadata, attachments, created_at, uploader_key_id)
         SELECT $1::uuid, $2::uuid, u.an, u.et, u.c,
                u.sid, u.tn, u.md::jsonb,
                CASE WHEN u.att IS NULL THEN NULL ELSE u.att::jsonb END,
-               u.ts
+               u.ts, $11::uuid
         FROM UNNEST(
             $3::varchar[], $4::varchar[], $5::text[],
             $6::varchar[], $7::varchar[],
@@ -248,6 +251,7 @@ async def push_events_batch(
         metadatas,
         attachments,
         timestamps,
+        uploader_key_id,
     )
     results = [dict(r) for r in rows]
     if owner_user_id is not None:

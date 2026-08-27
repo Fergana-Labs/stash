@@ -1973,6 +1973,27 @@ export async function listRecentActivity(limit = 20): Promise<RecentActivityFeed
   return apiFetch(`${ME}/recent-activity?limit=${limit}`);
 }
 
+export interface UploadSource {
+  client: string | null;
+  key_id: string | null;
+  key_name: string | null;
+  session_count: number;
+  last_uploaded_at: string | null;
+  uploads_enabled: boolean | null;
+  can_manage: boolean;
+}
+
+export async function listUploadSources(): Promise<{ sources: UploadSource[] }> {
+  return apiFetch(`${ME}/upload-sources`);
+}
+
+export async function updateUploadSource(keyId: string, uploadsEnabled: boolean): Promise<void> {
+  await apiFetch(`${ME}/upload-sources/${keyId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ uploads_enabled: uploadsEnabled }),
+  });
+}
+
 // --- Session transcripts ---
 
 export interface SessionTranscript {

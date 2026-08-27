@@ -4,7 +4,8 @@ from datetime import datetime
 from urllib.parse import quote
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 
 from ..auth import get_current_user, get_scope
 from ..database import get_pool
@@ -18,6 +19,10 @@ from ..services import (
 )
 
 router = APIRouter(prefix="/api/v1/me", tags=["aggregate"])
+
+
+class UploadSetting(BaseModel):
+    uploads_enabled: bool
 
 
 @router.get("/pages", response_model=UserPageListResponse)
@@ -142,6 +147,93 @@ async def list_recent_activity(
     ]
     events.sort(key=lambda event: event["ts"], reverse=True)
     return {"events": events[:limit]}
+
+
+@router.get("/upload-sources")
+async def list_upload_sources(
+    current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
+):
+    """Coding agents and signed-in computers uploading into the active scope."""
+    rows = await get_pool().fetch(
+        """
+        WITH observed AS (
+          SELECT he.metadata->>'client' AS client,
+                 he.uploader_key_id AS key_id,
+                 k.name AS key_name,
+                 k.uploads_enabled,
+                 COALESCE(k.user_id = $2, FALSE) AS can_manage,
+                 COUNT(DISTINCT he.session_id)::int AS session_count,
+                 MAX(he.created_at) AS last_uploaded_at
+          FROM history_events he
+          LEFT JOIN user_api_keys k ON k.id = he.uploader_key_id
+          WHERE he.owner_user_id = $1
+            AND NULLIF(he.metadata->>'client', '') IS NOT NULL
+          GROUP BY he.metadata->>'client', he.uploader_key_id, k.name,
+                   k.uploads_enabled, k.user_id
+        ), signed_in_computers AS (
+          SELECT NULL::text AS client,
+                 k.id AS key_id,
+                 k.name AS key_name,
+                 k.uploads_enabled,
+                 TRUE AS can_manage,
+                 0::int AS session_count,
+                 NULL::timestamptz AS last_uploaded_at
+          FROM user_api_keys k
+          WHERE k.user_id = $2
+            AND k.key_type = 'cli'
+            AND k.revoked_at IS NULL
+            AND NOT EXISTS (SELECT 1 FROM observed o WHERE o.key_id = k.id)
+        )
+        SELECT client, key_id::text, key_name, uploads_enabled, can_manage,
+               session_count, last_uploaded_at
+        FROM observed
+        UNION ALL
+        SELECT client, key_id::text, key_name, uploads_enabled, can_manage,
+               session_count, last_uploaded_at
+        FROM signed_in_computers
+        ORDER BY last_uploaded_at DESC NULLS LAST, key_name
+        """,
+        scope_user_id,
+        current_user["id"],
+    )
+    return {
+        "sources": [
+            {
+                "client": row["client"],
+                "key_id": row["key_id"],
+                "key_name": row["key_name"],
+                "uploads_enabled": row["uploads_enabled"],
+                "can_manage": row["can_manage"],
+                "session_count": row["session_count"],
+                "last_uploaded_at": row["last_uploaded_at"],
+            }
+            for row in rows
+        ]
+    }
+
+
+@router.patch("/upload-sources/{key_id}")
+async def update_upload_source(
+    key_id: UUID,
+    setting: UploadSetting,
+    current_user: dict = Depends(get_current_user),
+):
+    updated = await get_pool().fetchval(
+        """
+        UPDATE user_api_keys
+        SET uploads_enabled = $3
+        WHERE id = $1 AND user_id = $2 AND key_type IN ('cli', 'machine')
+          AND revoked_at IS NULL
+        RETURNING id
+        """,
+        key_id,
+        current_user["id"],
+        setting.uploads_enabled,
+    )
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Stash installation not found")
+    return {"uploads_enabled": setting.uploads_enabled}
 
 
 @router.get("/tables")

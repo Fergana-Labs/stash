@@ -41,7 +41,11 @@ async def _event(
     created_at: str = "2026-01-02T00:00:00Z",
     event_type: str = "assistant_message",
     model: str = "claude-sonnet-4-6",
+    client_name: str | None = None,
 ) -> None:
+    metadata = {"model": model}
+    if client_name is not None:
+        metadata["client"] = client_name
     resp = await client.post(
         "/api/v1/me/sessions/events",
         json={
@@ -50,7 +54,7 @@ async def _event(
             "content": session_id,
             "session_id": session_id,
             "created_at": created_at,
-            "metadata": {"model": model},
+            "metadata": metadata,
         },
         headers=_auth(api_key),
     )
@@ -555,3 +559,78 @@ async def test_recent_activity_returns_only_the_requested_latest_sessions(client
     )
     assert resp.status_code == 200
     assert [event["title"] for event in resp.json()["events"]] == ["session-3", "session-2"]
+
+
+@pytest.mark.asyncio
+async def test_upload_sources_pair_coding_agent_with_uploader_computer(client: AsyncClient, pool):
+    api_key = await _register(client, "upload_sources")
+    scope = await _scope(client, api_key)
+    await pool.execute(
+        "UPDATE user_api_keys SET name = 'CLI (henrys-macbook-pro)', key_type = 'cli' "
+        "WHERE user_id = $1",
+        UUID(scope["id"]),
+    )
+    await pool.execute(
+        """
+        INSERT INTO user_api_keys (user_id, key_hash, name, key_type)
+        VALUES ($1, 'unused-machine-key', 'CLI (henrys-mac-mini)', 'cli')
+        """,
+        UUID(scope["id"]),
+    )
+    await pool.execute(
+        """
+        INSERT INTO user_api_keys (user_id, key_hash, name, key_type)
+        VALUES ($1, 'unused-sprite-key', 'local sprite', 'machine')
+        """,
+        UUID(scope["id"]),
+    )
+    await _event(
+        client,
+        api_key,
+        scope["id"],
+        "codex-session",
+        client_name="codex_cli",
+    )
+
+    resp = await client.get("/api/v1/me/upload-sources", headers=_auth(api_key))
+    assert resp.status_code == 200
+    sources = resp.json()["sources"]
+    assert len(sources) == 2
+    assert sources[0]["key_id"]
+    assert {key: value for key, value in sources[0].items() if key != "key_id"} == {
+        "client": "codex_cli",
+        "key_name": "CLI (henrys-macbook-pro)",
+        "uploads_enabled": True,
+        "can_manage": True,
+        "session_count": 1,
+        "last_uploaded_at": "2026-01-02T00:00:00+00:00",
+    }
+    assert {key: value for key, value in sources[1].items() if key != "key_id"} == {
+        "client": None,
+        "key_name": "CLI (henrys-mac-mini)",
+        "uploads_enabled": True,
+        "can_manage": True,
+        "session_count": 0,
+        "last_uploaded_at": None,
+    }
+
+    key_id = sources[0]["key_id"]
+    resp = await client.patch(
+        f"/api/v1/me/upload-sources/{key_id}",
+        json={"uploads_enabled": False},
+        headers=_auth(api_key),
+    )
+    assert resp.status_code == 200
+    blocked = await client.post(
+        "/api/v1/me/sessions/events",
+        json={
+            "agent_name": "codex",
+            "event_type": "assistant_message",
+            "content": "blocked",
+            "session_id": "blocked-session",
+            "metadata": {"client": "codex_cli"},
+        },
+        headers=_auth(api_key),
+    )
+    assert blocked.status_code == 403
+    assert blocked.json()["detail"] == "Uploads are disabled for this installation"

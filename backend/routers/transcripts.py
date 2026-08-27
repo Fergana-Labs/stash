@@ -76,6 +76,8 @@ async def upload_transcript(
     Existing sessions are left alone unless the caller explicitly asks to
     replace them.
     """
+    if not current_user["uploads_enabled"]:
+        raise HTTPException(status_code=403, detail="Uploads are disabled for this installation")
     # Transcripts land in the active scope, matching where the session's
     # events were pushed (X-Stash-Scope header, personal when absent).
     owner_user_id = scope_user_id
@@ -166,7 +168,12 @@ async def upload_transcript(
         for e in events:
             e["metadata"] = {**(e.get("metadata") or {}), "cwd": cwd}
 
-    inserted = await memory_service.push_events_batch(owner_user_id, current_user["id"], events)
+    inserted = await memory_service.push_events_batch(
+        owner_user_id,
+        current_user["id"],
+        events,
+        uploader_key_id=current_user["key_id"],
+    )
     if inserted:
         first_day_curator_tick.delay(str(owner_user_id))
     return {
