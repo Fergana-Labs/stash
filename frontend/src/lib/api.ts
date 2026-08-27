@@ -2496,6 +2496,35 @@ export async function finishAgentOAuth(
   return data.connected;
 }
 
+// ── Workspace agent credentials (local endpoint only; see routers/workspace_agent_credentials).
+// The scope header rides along via apiFetch — the console pages always send it.
+
+export async function listWorkspaceAgentCredentials(): Promise<string[]> {
+  const data = await apiFetch<{ connected: string[] }>("/api/v1/me/developer/agent-credentials");
+  return data.connected;
+}
+
+export async function connectWorkspaceLocalEndpoint(
+  baseUrl: string,
+  model: string,
+  apiKey?: string | null,
+): Promise<string[]> {
+  const data = await apiFetch<{ connected: string[] }>("/api/v1/me/developer/agent-credentials", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ base_url: baseUrl, model, api_key: apiKey ?? null }),
+  });
+  return data.connected;
+}
+
+export async function disconnectWorkspaceLocalEndpoint(): Promise<string[]> {
+  const data = await apiFetch<{ connected: string[] }>(
+    "/api/v1/me/developer/agent-credentials/local",
+    { method: "DELETE" },
+  );
+  return data.connected;
+}
+
 // ── Named agents (config: model, persona, schedule, channel binding) ──
 
 export type Agent = {

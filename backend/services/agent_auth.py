@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
+from urllib.parse import urlparse
 from uuid import UUID
 
 from ..config import settings
@@ -81,6 +82,57 @@ class RunAuth:
     # the model id within it (both set only for the LOCAL provider's PI run).
     endpoint: str | None = None
     model: str | None = None
+
+
+def local_endpoint_secret(
+    base_url: str,
+    model: str,
+    api_key: str | None = None,
+    context_window: int | None = None,
+    max_tokens: int | None = None,
+) -> str:
+    """The stored doc for a local endpoint credential: the base URL the
+    SPRITE dials (the backend never dials it), the model id, an optional
+    key, and the pi model-entry sizes (null when the user left the field
+    unset — _local_auth resolves them to the documented constants). Shared
+    by the personal and the workspace connect endpoints so both validate
+    and store one shape.
+
+    Raises ValueError with a user-facing detail on bad input; the endpoints
+    map it to a 400.
+    """
+    base_url = base_url.strip()
+    model = model.strip()
+    parsed = urlparse(base_url)
+    if parsed.scheme not in ("http", "https") or not parsed.netloc:
+        raise ValueError(
+            "base_url must be an absolute http(s) URL your cloud computer can reach "
+            "(e.g. http://your-host:11434/v1)"
+        )
+    if not model:
+        raise ValueError("model is required for the local endpoint")
+    # Validate the effective pair: each value as provided, or the
+    # documented constant when the user left the field unset.
+    default_window = model_provider.LOCAL_DEFAULT_CONTEXT_WINDOW
+    default_tokens = model_provider.LOCAL_DEFAULT_MAX_TOKENS
+    effective_window = context_window if context_window is not None else default_window
+    effective_tokens = max_tokens if max_tokens is not None else default_tokens
+    if effective_window <= 0 or effective_tokens <= 0:
+        raise ValueError("context_window and max_tokens must be positive integers")
+    if effective_tokens >= effective_window:
+        raise ValueError(
+            f"max_tokens ({effective_tokens}) must be less than context_window "
+            f"({effective_window}) — the output budget must fit inside the context"
+        )
+    return json.dumps(
+        {
+            "base_url": base_url,
+            "model": model,
+            "api_key": (api_key or "").strip() or None,  # keyless endpoints are common
+            "context_window": context_window,  # null when unset → documented constant at auth time
+            "max_tokens": max_tokens,  # null when unset → documented constant at auth time
+        }
+    )
 
 
 async def _get_credential(user_id: UUID, provider: str | None = None) -> dict | None:

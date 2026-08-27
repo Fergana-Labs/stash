@@ -10,14 +10,11 @@ runs their harness with it. OAuth connect flows are separate.
 
 from __future__ import annotations
 
-import json
-from urllib.parse import urlparse
-
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from ..auth import get_current_user
-from ..services import agent_auth, agent_oauth, model_provider
+from ..services import agent_auth, agent_oauth
 
 router = APIRouter(prefix="/api/v1/me/agent-credentials", tags=["agent-credentials"])
 
@@ -62,50 +59,19 @@ async def connect(req: ConnectRequest, current_user: dict = Depends(get_current_
     if req.provider == "local":
         # The credential is an endpoint, not a key: an absolute http(s) base
         # URL the SPRITE can reach (the backend never dials it) plus a model id.
-        parsed = urlparse((req.base_url or "").strip())
-        if parsed.scheme not in ("http", "https") or not parsed.netloc:
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    "base_url must be an absolute http(s) URL your cloud computer can reach "
-                    "(e.g. http://your-host:11434/v1)"
-                ),
+        # One shared helper validates and shapes the doc for both the personal
+        # and the workspace connect endpoints.
+        try:
+            secret = agent_auth.local_endpoint_secret(
+                req.base_url or "",
+                req.model or "",
+                req.api_key,
+                req.context_window,
+                req.max_tokens,
             )
-        if not (req.model or "").strip():
-            raise HTTPException(status_code=400, detail="model is required for the local endpoint")
-        # Validate the effective pair: each value as provided, or the
-        # documented constant when the user left the field unset.
-        context_window = (
-            req.context_window
-            if req.context_window is not None
-            else model_provider.LOCAL_DEFAULT_CONTEXT_WINDOW
-        )
-        max_tokens = (
-            req.max_tokens
-            if req.max_tokens is not None
-            else model_provider.LOCAL_DEFAULT_MAX_TOKENS
-        )
-        if context_window <= 0 or max_tokens <= 0:
-            raise HTTPException(
-                status_code=400,
-                detail="context_window and max_tokens must be positive integers",
-            )
-        if max_tokens >= context_window:
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    f"max_tokens ({max_tokens}) must be less than context_window ({context_window}) "
-                    "— the output budget must fit inside the context"
-                ),
-            )
-        doc = {
-            "base_url": req.base_url.strip(),
-            "model": req.model.strip(),
-            "api_key": (req.api_key or "").strip() or None,  # keyless endpoints are common
-            "context_window": req.context_window,  # null when unset → documented constant at auth time
-            "max_tokens": req.max_tokens,  # null when unset → documented constant at auth time
-        }
-        await agent_auth.store_credential(current_user["id"], "local", "endpoint", json.dumps(doc))
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        await agent_auth.store_credential(current_user["id"], "local", "endpoint", secret)
         return {"ok": True, "connected": await agent_auth.list_connected(current_user["id"])}
     if not req.api_key or not req.api_key.strip():
         raise HTTPException(status_code=400, detail="api_key is required")

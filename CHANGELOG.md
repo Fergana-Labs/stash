@@ -100,6 +100,12 @@ everything before it is captured in git history (`git log`), not here.
   Stash with bash-shaped commands and editing existing writable pages.
 - Kept `stash mount` hidden as experimental spike code; the supported
   production path is `stash vfs`.
+- The Developer Platform console can now point a workspace's agents at a local
+  model: the curator page has a "Local model" section that connects an
+  OpenAI-compatible endpoint (Ollama or similar — a tunnel or self-host) on
+  the workspace's behalf. Every agent of that workspace, the nightly wiki
+  curator included, runs on the connected endpoint; the operator's personal
+  model settings stay untouched.
 
 ## v0
 
