@@ -31,9 +31,18 @@ async def test_uploaded_items_exclude_memory_and_embedded_assets(client: AsyncCl
     )
     assert memory.status_code == 201
 
+    folder = (
+        await client.post(
+            "/api/v1/me/folders",
+            json={"name": "Research"},
+            headers=headers,
+        )
+    ).json()
+
     uploaded_page = await client.post(
         "/api/v1/me/files",
         files={"file": ("brief.md", io.BytesIO(b"# User context"), "text/markdown")},
+        data={"folder_id": folder["id"]},
         headers=headers,
     )
     assert uploaded_page.status_code == 201
@@ -61,6 +70,8 @@ async def test_uploaded_items_exclude_memory_and_embedded_assets(client: AsyncCl
         ("page", "brief.md"),
     ]
     assert response.json()["items"][0]["id"] == str(uploaded_file_id)
+    assert response.json()["items"][0]["folder_path"] == []
+    assert response.json()["items"][1]["folder_path"] == [{"id": folder["id"], "name": "Research"}]
 
     page_metadata = await pool.fetchval(
         "SELECT metadata FROM pages WHERE id = $1",

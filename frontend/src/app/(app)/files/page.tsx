@@ -2,7 +2,6 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
-import { useBreadcrumbs } from "@/components/BreadcrumbContext";
 import { FileBrowserSkeleton } from "@/components/SkeletonStates";
 import UploadedFilesList from "@/components/workspace/uploaded-files-list";
 import { useAuth } from "@/hooks/useAuth";
@@ -10,8 +9,6 @@ import { useAuth } from "@/hooks/useAuth";
 export default function FilesPage() {
   const router = useRouter();
   const { user, loading } = useAuth();
-
-  useBreadcrumbs([{ label: "Files" }], "files");
 
   useEffect(() => {
     if (!loading && !user) router.push("/login");

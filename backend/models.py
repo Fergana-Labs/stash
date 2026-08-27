@@ -636,6 +636,11 @@ class FileListResponse(BaseModel):
     files: list[FileResponse]
 
 
+class UploadedFolderResponse(BaseModel):
+    id: UUID
+    name: str
+
+
 class UploadedItemResponse(BaseModel):
     kind: Literal["file", "page"]
     id: UUID
@@ -645,6 +650,7 @@ class UploadedItemResponse(BaseModel):
     app_url: str
     uploaded_by: UUID
     created_at: datetime
+    folder_path: list[UploadedFolderResponse]
 
 
 class UploadedItemListResponse(BaseModel):

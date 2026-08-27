@@ -17,6 +17,6 @@ export function sectionCrumbs(chain: FolderBreadcrumb[]): SectionCrumb[] {
 
   return [
     { label: "Files", href: "/files", area: "files" },
-    ...chain.map((b) => ({ label: b.name, href: `/folders/${b.id}` })),
+    ...chain.map((b) => ({ label: b.name, href: `/files?folder=${b.id}` })),
   ];
 }

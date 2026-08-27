@@ -1436,6 +1436,7 @@ export interface UploadedItem {
   app_url: string;
   uploaded_by: string;
   created_at: string;
+  folder_path: { id: string; name: string }[];
 }
 
 export async function listUploadedItems(): Promise<UploadedItem[]> {
