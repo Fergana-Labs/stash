@@ -7,14 +7,16 @@ import {
   connectLocalEndpoint,
   disconnectAgentCredential,
   finishAgentOAuth,
+  getLocalModelsJson,
   listAgentCredentials,
+  resetLocalModelsJson,
+  saveLocalModelsJson,
   startAgentOAuth,
 } from "@/lib/api";
 
 // The provider a user connects for their cloud agent. Claude and Codex support
 // OAuth (sign in with your subscription) or an API key; OpenRouter is key-only;
-// the local model is an endpoint (base URL + model, key optional, plus optional
-// context window / max output tokens — unset → the documented 131072 / 8192).
+// the local model is an endpoint (base URL + model, key optional).
 type Provider = {
   id: string;
   label: string;
@@ -101,15 +103,6 @@ export default function AgentModelSection() {
   );
 }
 
-// Parses an optional size field: "" is unset (null → the documented default
-// applies); a filled field must be a positive integer, else NaN — which
-// disables Connect instead of silently dropping the user's input.
-function parseSizeField(value: string): number | null {
-  if (value.trim() === "") return null;
-  const n = Number(value);
-  return Number.isInteger(n) && n > 0 ? n : NaN;
-}
-
 function ProviderRow({
   provider,
   connected,
@@ -124,14 +117,11 @@ function ProviderRow({
   const [baseUrl, setBaseUrl] = useState("");
   const [modelId, setModelId] = useState("");
   const [localKey, setLocalKey] = useState("");
-  const [contextWindow, setContextWindow] = useState("");
-  const [maxTokens, setMaxTokens] = useState("");
-  const contextWindowValue = parseSizeField(contextWindow);
-  const maxTokensValue = parseSizeField(maxTokens);
   const [oauthState, setOauthState] = useState<string | null>(null);
   const [pasted, setPasted] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [modelsOpen, setModelsOpen] = useState(false);
 
   async function disconnect() {
     setBusy(true);
@@ -161,20 +151,12 @@ function ProviderRow({
     setError(null);
     try {
       onChange(
-        await connectLocalEndpoint(
-          baseUrl.trim(),
-          modelId.trim(),
-          localKey.trim() || null,
-          contextWindowValue,
-          maxTokensValue,
-        ),
+        await connectLocalEndpoint(baseUrl.trim(), modelId.trim(), localKey.trim() || null),
       );
       setMode("idle");
       setBaseUrl("");
       setModelId("");
       setLocalKey("");
-      setContextWindow("");
-      setMaxTokens("");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not connect endpoint");
     } finally {
@@ -228,14 +210,26 @@ function ProviderRow({
           <p className="mt-0.5 text-[12.5px] text-muted-foreground">{provider.blurb}</p>
         </div>
         {connected ? (
-          <button
-            type="button"
-            onClick={disconnect}
-            disabled={busy}
-            className="shrink-0 rounded-md border border-border px-3 py-1.5 text-[12.5px] text-dim hover:text-error"
-          >
-            Disconnect
-          </button>
+          <div className="flex shrink-0 gap-2">
+            {provider.endpoint && (
+              <button
+                type="button"
+                onClick={() => setModelsOpen(!modelsOpen)}
+                disabled={busy}
+                className="rounded-md border border-border px-3 py-1.5 text-[12.5px] text-foreground hover:bg-raised disabled:opacity-60"
+              >
+                Edit models.json
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={disconnect}
+              disabled={busy}
+              className="rounded-md border border-border px-3 py-1.5 text-[12.5px] text-dim hover:text-error"
+            >
+              Disconnect
+            </button>
+          </div>
         ) : (
           <div className="flex shrink-0 gap-2">
             {provider.oauth && (
@@ -288,9 +282,6 @@ function ProviderRow({
           <p className="text-[12.5px] text-muted-foreground">
             The base URL must be reachable from your cloud computer (a tunnel or a
             self-hosted server), and the model id is the one that endpoint serves.
-            Optional: the context window and max output tokens written into the
-            model entry pi reads. Leave blank for the documented defaults (131072 /
-            8192); max output must be below the context window.
           </p>
           <div className="flex flex-col gap-2 sm:flex-row">
             <input
@@ -307,26 +298,6 @@ function ProviderRow({
               className="flex-1 rounded-md border border-border bg-surface px-2.5 py-1.5 font-mono text-[12.5px] text-foreground"
             />
           </div>
-          <div className="flex flex-col gap-2 sm:flex-row">
-            <input
-              type="number"
-              min={1}
-              aria-label="Context window"
-              value={contextWindow}
-              onChange={(e) => setContextWindow(e.target.value)}
-              placeholder="131072"
-              className="flex-1 rounded-md border border-border bg-surface px-2.5 py-1.5 font-mono text-[12.5px] text-foreground"
-            />
-            <input
-              type="number"
-              min={1}
-              aria-label="Max output tokens"
-              value={maxTokens}
-              onChange={(e) => setMaxTokens(e.target.value)}
-              placeholder="8192"
-              className="flex-1 rounded-md border border-border bg-surface px-2.5 py-1.5 font-mono text-[12.5px] text-foreground"
-            />
-          </div>
           <div className="flex gap-2">
             <input
               type="password"
@@ -338,13 +309,7 @@ function ProviderRow({
             <button
               type="button"
               onClick={saveEndpoint}
-              disabled={
-                busy ||
-                !baseUrl.trim() ||
-                !modelId.trim() ||
-                Number.isNaN(contextWindowValue) ||
-                Number.isNaN(maxTokensValue)
-              }
+              disabled={busy || !baseUrl.trim() || !modelId.trim()}
               className="rounded-md bg-brand px-3 py-1.5 text-[12.5px] font-medium text-white disabled:opacity-60"
             >
               Connect
@@ -377,7 +342,112 @@ function ProviderRow({
         </div>
       )}
 
+      {connected && provider.endpoint && modelsOpen && <ModelsJsonEditor />}
+
       {error && <p className="mt-2 text-[12px] text-error">{error}</p>}
+    </div>
+  );
+}
+
+function ModelsJsonEditor() {
+  const [text, setText] = useState<string | null>(null);
+  const [stored, setStored] = useState<boolean | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function load() {
+    setBusy(true);
+    setError(null);
+    try {
+      const { models_json, stored: s } = await getLocalModelsJson();
+      setText(models_json);
+      setStored(s);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not load models.json");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function save() {
+    if (text === null) return;
+    setBusy(true);
+    setError(null);
+    try {
+      // Sent verbatim — the backend is the single validation surface.
+      await saveLocalModelsJson(text);
+      setStored(true);
+    } catch (e) {
+      // Keep the user's text; the last-good server value is untouched.
+      setError(e instanceof Error ? e.message : "Could not save models.json");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function reset() {
+    setBusy(true);
+    setError(null);
+    try {
+      await resetLocalModelsJson();
+      const { models_json, stored: s } = await getLocalModelsJson();
+      setText(models_json);
+      setStored(s);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not reset models.json");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="mt-3 space-y-2">
+      <div className="flex items-center justify-between">
+        <span className="text-[12.5px] font-medium text-foreground">models.json</span>
+        <span className="rounded-full bg-[var(--color-success)]/15 px-2 py-0.5 text-[11px] font-medium text-[var(--color-success)]">
+          {stored === true ? "Custom" : "Default"}
+        </span>
+      </div>
+      <textarea
+        aria-label="models.json"
+        value={text ?? ""}
+        onChange={(e) => setText(e.target.value)}
+        rows={12}
+        spellCheck={false}
+        className="w-full rounded-md border border-border bg-surface px-2.5 py-1.5 font-mono text-[12px] text-foreground"
+      />
+      <div className="flex flex-col gap-2 sm:flex-row">
+        <button
+          type="button"
+          onClick={load}
+          disabled={busy}
+          className="rounded-md border border-border px-3 py-1.5 text-[12.5px] text-foreground hover:bg-raised disabled:opacity-60"
+        >
+          Load
+        </button>
+        <button
+          type="button"
+          onClick={save}
+          disabled={busy || !(text ?? "").trim()}
+          className="rounded-md bg-brand px-3 py-1.5 text-[12.5px] font-medium text-white disabled:opacity-60"
+        >
+          Save
+        </button>
+        <button
+          type="button"
+          onClick={reset}
+          disabled={busy}
+          className="rounded-md border border-border px-3 py-1.5 text-[12.5px] text-dim hover:text-error disabled:opacity-60"
+        >
+          Reset to default
+        </button>
+      </div>
+      {error && <p className="text-[12px] text-error">{error}</p>}
     </div>
   );
 }

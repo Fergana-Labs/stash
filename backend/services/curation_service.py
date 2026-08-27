@@ -84,6 +84,7 @@ async def changes_since(owner_user_id: UUID, user_id: UUID, since: datetime | No
             "created_at": _iso(e.get("created_at")),
             "user": e.get("user"),
             "user_share_wiki": e.get("user_share_wiki"),
+            "session_folder": e.get("session_folder"),
         }
         for e in events
     ]
@@ -250,7 +251,8 @@ async def _feed_events(
     Each event carries its session's end user (name and wiki opt-out) when it
     has one — the external curator routes by it: every user's material feeds
     that user's own wiki, and only share_wiki users feed the shared anonymized
-    wiki."""
+    wiki. Events also carry the session's folder (name and id) or null — the
+    personal curator attributes learning to that folder's context."""
     pool = get_pool()
     args: list = [owner_user_id]
     where = "he.owner_user_id = $1 AND (he.session_id IS NULL OR he.session_id NOT LIKE 'agent-curate-%')"
@@ -262,11 +264,13 @@ async def _feed_events(
         where += f" AND he.created_at <= ${len(args)}"
     rows = await pool.fetch(
         f"SELECT he.session_id, he.agent_name, he.event_type, he.content, he.created_at, "
-        f"eu.name AS user, eu.share_wiki AS user_share_wiki "
+        f"eu.name AS user, eu.share_wiki AS user_share_wiki, "
+        f"sf.name AS session_folder, sf.id AS session_folder_id "
         f"FROM history_events he "
         f"LEFT JOIN sessions s ON s.owner_user_id = he.owner_user_id "
         f"  AND s.session_id = he.session_id "
         f"LEFT JOIN end_users eu ON eu.id = s.end_user_id "
+        f"LEFT JOIN session_folders sf ON sf.id = s.session_folder_id "
         f"WHERE {where} "
         f"ORDER BY he.created_at, he.id LIMIT {limit + 1}",
         *args,

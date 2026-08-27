@@ -29,11 +29,13 @@ describe("LocalModelSection", () => {
   it("renders the Local model section; Connect endpoint opens the URL/model/key form", async () => {
     render(<LocalModelSection />);
     await screen.findByText("Local model");
-    expect(screen.getByRole("button", { name: "Connect endpoint" })).toBeDefined();
+    // The button mounts only after the async credential fetch resolves, so
+    // await it (getByRole right after the heading is a microtask race).
+    const connectButton = await screen.findByRole("button", { name: "Connect endpoint" });
     // The form stays hidden until asked for.
     expect(screen.queryByPlaceholderText("http://your-host:11434/v1")).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "Connect endpoint" }));
+    fireEvent.click(connectButton);
     expect(screen.getByPlaceholderText("http://your-host:11434/v1")).toBeDefined();
     expect(screen.getByPlaceholderText("llama3.1:8b")).toBeDefined();
     expect(screen.getByPlaceholderText("optional key…")).toBeDefined();
@@ -43,7 +45,7 @@ describe("LocalModelSection", () => {
     render(<LocalModelSection />);
     await screen.findByText("Local model");
 
-    fireEvent.click(screen.getByRole("button", { name: "Connect endpoint" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Connect endpoint" }));
     fireEvent.change(screen.getByPlaceholderText("http://your-host:11434/v1"), {
       target: { value: "http://my-host:11434/v1" },
     });

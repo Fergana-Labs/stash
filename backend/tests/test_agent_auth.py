@@ -7,20 +7,25 @@ from pathlib import Path
 import pytest
 
 from backend.config import settings
-from backend.services import agent_auth, billing_service, model_provider, sprite_service
+from backend.services import agent_auth, billing_service, sprite_service
 from backend.services import harness as h
 
 
 @pytest.mark.asyncio
-async def test_local_mode_uses_claude_no_injection(monkeypatch):
+async def test_local_mode_without_local_credential_raises_needs_auth(monkeypatch):
+    """Local exec mode with nothing connected must fail loud. The silent
+    machine-CLAUDE fallback died mid-stream on boxes without a claude binary
+    and masked the missing credential row (STAS-131); the clean contract is
+    NeedsAuth → the 402 "connect a local model"."""
     monkeypatch.setattr(settings, "AGENT_EXEC_MODE", "local")
 
-    async def no_cred(_uid, _provider=None):
+    async def no_cred(user_id, provider=None):
+        assert provider == "local"
         return None
 
     monkeypatch.setattr(agent_auth, "_get_credential", no_cred)
-    auth = await agent_auth.resolve(uuid.uuid4())
-    assert auth.harness is h.CLAUDE and auth.env == {} and auth.files == {}
+    with pytest.raises(agent_auth.NeedsAuth):
+        await agent_auth.resolve(uuid.uuid4())
 
 
 @pytest.mark.asyncio
@@ -185,6 +190,84 @@ async def test_local_endpoint_with_key_runs_pi(monkeypatch):
     assert local["models"] == [{"id": "llama3.1:8b", "contextWindow": 131072, "maxTokens": 8192}]
 
 
+# Non-default formatting on purpose: 4-space indent, reordered keys, a
+# second model, custom contextWindow/maxTokens — proves the stored override
+# is written byte-for-byte, never re-serialized.
+OVERRIDE_MODELS_JSON = """{
+    "providers": {
+        "local": {
+            "api": "openai-completions",
+            "baseUrl": "http://tunnel.example/v1",
+            "apiKey": "$STASH_LOCAL_KEY",
+            "models": [
+                {"id": "llama3.1:8b", "maxTokens": 4096, "contextWindow": 32768},
+                {"id": "qwen2:7b", "maxTokens": 8192, "contextWindow": 65536}
+            ],
+            "compat": {"supportsDeveloperRole": false, "supportsReasoningEffort": false}
+        }
+    }
+}
+"""
+
+
+@pytest.mark.asyncio
+async def test_local_override_written_verbatim(monkeypatch):
+    """A stored models.json override is written into the box home byte-for-byte
+    (no re-serialization); endpoint/model still come from the connect doc, and
+    the key still rides only via STASH_LOCAL_KEY env interpolation."""
+    monkeypatch.setattr(settings, "AGENT_EXEC_MODE", "sprites")
+
+    async def cred(_uid):
+        return {
+            "provider": "local",
+            "kind": "endpoint",
+            "secret": json.dumps(
+                {
+                    "base_url": "http://tunnel.example/v1",
+                    "model": "llama3.1:8b",
+                    "api_key": "my-secret-key",
+                }
+            ),
+            "models_json": OVERRIDE_MODELS_JSON,
+        }
+
+    monkeypatch.setattr(agent_auth, "_get_credential", cred)
+    auth = await agent_auth.resolve(uuid.uuid4())
+    assert auth.harness is h.PI
+    # The exact stored text — 4-space indent and reordered keys survive.
+    assert auth.files["/home/sprite/.pi/agent/models.json"] == OVERRIDE_MODELS_JSON
+    # Env + endpoint + model stay doc-based; the override's model list does not
+    # leak into RunAuth.
+    assert auth.env == {
+        "PI_OFFLINE": "1",
+        "HOME": "/home/sprite",
+        "STASH_LOCAL_KEY": "my-secret-key",
+    }
+    assert auth.endpoint == "http://tunnel.example/v1"
+    assert auth.model == "llama3.1:8b"
+
+
+@pytest.mark.asyncio
+async def test_local_override_keyless_no_key_env(monkeypatch):
+    """Keyless endpoint + override: no STASH_LOCAL_KEY env (the user's own
+    apiKey value in the override rides in the file, exactly as stored)."""
+    monkeypatch.setattr(settings, "AGENT_EXEC_MODE", "sprites")
+
+    async def cred(_uid):
+        return {
+            "provider": "local",
+            "kind": "endpoint",
+            "secret": json.dumps({"base_url": "http://host:11434/v1", "model": "qwen2:7b"}),
+            "models_json": OVERRIDE_MODELS_JSON,
+        }
+
+    monkeypatch.setattr(agent_auth, "_get_credential", cred)
+    auth = await agent_auth.resolve(uuid.uuid4())
+    assert "STASH_LOCAL_KEY" not in auth.env
+    assert auth.env == {"PI_OFFLINE": "1", "HOME": "/home/sprite"}
+    assert auth.files["/home/sprite/.pi/agent/models.json"] == OVERRIDE_MODELS_JSON
+
+
 @pytest.mark.asyncio
 async def test_local_endpoint_keyless_has_no_key_env(monkeypatch):
     monkeypatch.setattr(settings, "AGENT_EXEC_MODE", "sprites")
@@ -219,58 +302,6 @@ def test_local_auth_missing_field_fails_loud():
                 "secret": json.dumps({"base_url": "http://x"}),
             }
         )
-
-
-def _local_models_entry(doc: dict) -> dict:
-    """Run _local_auth against a credential doc; return its models.json entry."""
-    cred = {"provider": "local", "kind": "endpoint", "secret": json.dumps(doc)}
-    auth = agent_auth._local_auth(cred)
-    models = json.loads(auth.files["/home/sprite/.pi/agent/models.json"])
-    return models["providers"]["local"]["models"][0]
-
-
-def test_local_auth_custom_sizes_thread_into_models_entry():
-    entry = _local_models_entry(
-        {
-            "base_url": "http://tunnel.example/v1",
-            "model": "llama3.1:8b",
-            "context_window": 32768,
-            "max_tokens": 4096,
-        }
-    )
-    assert entry == {"id": "llama3.1:8b", "contextWindow": 32768, "maxTokens": 4096}
-
-
-def test_local_auth_null_sizes_resolve_to_documented_constants():
-    # The stored shape when the user left both fields unset at connect time.
-    entry = _local_models_entry(
-        {
-            "base_url": "http://tunnel.example/v1",
-            "model": "llama3.1:8b",
-            "context_window": None,
-            "max_tokens": None,
-        }
-    )
-    assert entry == {
-        "id": "llama3.1:8b",
-        "contextWindow": model_provider.LOCAL_DEFAULT_CONTEXT_WINDOW,
-        "maxTokens": model_provider.LOCAL_DEFAULT_MAX_TOKENS,
-    }
-
-
-def test_local_auth_partial_sizes_mix_custom_and_constant():
-    entry = _local_models_entry(
-        {
-            "base_url": "http://tunnel.example/v1",
-            "model": "llama3.1:8b",
-            "context_window": 65536,
-        }
-    )
-    assert entry == {
-        "id": "llama3.1:8b",
-        "contextWindow": 65536,
-        "maxTokens": model_provider.LOCAL_DEFAULT_MAX_TOKENS,
-    }
 
 
 @pytest.mark.asyncio
@@ -346,6 +377,28 @@ async def test_local_mode_local_credential_runs_pi(monkeypatch):
     assert auth.env["HOME"] == "/tmp/fake-box-home"
     assert auth.env["PI_OFFLINE"] == "1"
     assert "/tmp/fake-box-home/.pi/agent/models.json" in auth.files
+
+
+@pytest.mark.asyncio
+async def test_local_mode_override_writes_verbatim_to_box_home(monkeypatch):
+    """Local exec mode (self-hosters, no sprites) must honor the stored
+    override the same way sprites mode does — written verbatim to the
+    simulated box home."""
+    monkeypatch.setattr(settings, "AGENT_EXEC_MODE", "local")
+    monkeypatch.setattr(sprite_service, "local_box_home", lambda: Path("/tmp/fake-box-home"))
+
+    async def cred(_uid, _provider=None):
+        return {
+            "provider": "local",
+            "kind": "endpoint",
+            "secret": json.dumps({"base_url": "http://127.0.0.1:11434/v1", "model": "llama3.1:8b"}),
+            "models_json": OVERRIDE_MODELS_JSON,
+        }
+
+    monkeypatch.setattr(agent_auth, "_get_credential", cred)
+    auth = await agent_auth.resolve(uuid.uuid4())
+    assert auth.files["/tmp/fake-box-home/.pi/agent/models.json"] == OVERRIDE_MODELS_JSON
+    assert auth.model == "llama3.1:8b"  # still the connect doc's model
 
 
 @pytest.mark.asyncio

@@ -2,10 +2,8 @@
 
 A user pastes an API key for Claude (anthropic), Codex (openai), or
 OpenRouter, or connects their own OpenAI-compatible local model (base URL +
-model, key optional, context window and max output tokens optional — the
-stored doc carries context_window/max_tokens, null when unset, and the
-documented model_provider.LOCAL_DEFAULT_* constants apply), and the agent
-runs their harness with it. OAuth connect flows are separate.
+model, key optional), and the agent runs their harness with it. OAuth connect
+flows are separate.
 """
 
 from __future__ import annotations
@@ -28,12 +26,6 @@ class ConnectRequest(BaseModel):
         None  # local only: OpenAI-compatible endpoint your cloud computer can reach
     )
     model: str | None = None  # local only: the model id on that endpoint
-    context_window: int | None = (
-        None  # local only: pi model-entry context window; unset → model_provider.LOCAL_DEFAULT_CONTEXT_WINDOW
-    )
-    max_tokens: int | None = (
-        None  # local only: pi model-entry max output tokens; unset → model_provider.LOCAL_DEFAULT_MAX_TOKENS
-    )
 
 
 class OAuthStartRequest(BaseModel):
@@ -44,6 +36,10 @@ class OAuthFinishRequest(BaseModel):
     provider: str
     code: str  # the code (or code#state, or full redirect URL) the user pasted
     state: str
+
+
+class ModelsJsonRequest(BaseModel):
+    models_json: str  # the user's pi models.json, stored verbatim
 
 
 @router.get("")
@@ -59,15 +55,9 @@ async def connect(req: ConnectRequest, current_user: dict = Depends(get_current_
     if req.provider == "local":
         # The credential is an endpoint, not a key: an absolute http(s) base
         # URL the SPRITE can reach (the backend never dials it) plus a model id.
-        # One shared helper validates and shapes the doc for both the personal
-        # and the workspace connect endpoints.
         try:
             secret = agent_auth.local_endpoint_secret(
-                req.base_url or "",
-                req.model or "",
-                req.api_key,
-                req.context_window,
-                req.max_tokens,
+                req.base_url or "", req.model or "", req.api_key
             )
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
@@ -93,6 +83,42 @@ async def oauth_finish(req: OAuthFinishRequest, current_user: dict = Depends(get
     """Exchange the pasted code and store the OAuth credential."""
     await agent_oauth.finish(current_user["id"], req.provider, req.code, req.state)
     return {"ok": True, "connected": await agent_auth.list_connected(current_user["id"])}
+
+
+@router.get("/local/models-json")
+async def get_local_models_json(current_user: dict = Depends(get_current_user)):
+    """The effective pi models.json for the connected local endpoint: the
+    user's stored override, or the synthesized default for the connect doc."""
+    try:
+        return await agent_auth.get_local_models_json(current_user["id"])
+    except LookupError:
+        raise HTTPException(status_code=404, detail="local endpoint is not connected")
+
+
+@router.put("/local/models-json")
+async def put_local_models_json(
+    req: ModelsJsonRequest, current_user: dict = Depends(get_current_user)
+):
+    """Store the user's models.json verbatim. Validation is parse-don't-
+    validate (parses to an object with a top-level "providers" object), a loud
+    400 otherwise — pi is the rest of the validator."""
+    try:
+        await agent_auth.save_local_models_json(current_user["id"], req.models_json)
+    except LookupError:
+        raise HTTPException(status_code=404, detail="local endpoint is not connected")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"ok": True, "stored": True}
+
+
+@router.delete("/local/models-json")
+async def delete_local_models_json(current_user: dict = Depends(get_current_user)):
+    """Delete the stored override; the synthesized default returns."""
+    try:
+        await agent_auth.reset_local_models_json(current_user["id"])
+    except LookupError:
+        raise HTTPException(status_code=404, detail="local endpoint is not connected")
+    return {"ok": True, "stored": False}
 
 
 @router.delete("/{provider}")

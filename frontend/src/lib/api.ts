@@ -2444,20 +2444,11 @@ export async function connectLocalEndpoint(
   baseUrl: string,
   model: string,
   apiKey?: string | null,
-  contextWindow?: number | null,
-  maxTokens?: number | null,
 ): Promise<string[]> {
   const data = await apiFetch<{ connected: string[] }>("/api/v1/me/agent-credentials", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      provider: "local",
-      base_url: baseUrl,
-      model,
-      api_key: apiKey ?? null,
-      context_window: contextWindow ?? null,
-      max_tokens: maxTokens ?? null,
-    }),
+    body: JSON.stringify({ provider: "local", base_url: baseUrl, model, api_key: apiKey ?? null }),
   });
   return data.connected;
 }
@@ -2468,6 +2459,24 @@ export async function disconnectAgentCredential(provider: string): Promise<strin
     { method: "DELETE" },
   );
   return data.connected;
+}
+
+export async function getLocalModelsJson(): Promise<{ models_json: string; stored: boolean }> {
+  return apiFetch("/api/v1/me/agent-credentials/local/models-json");
+}
+
+export async function saveLocalModelsJson(
+  modelsJson: string,
+): Promise<{ ok: boolean; stored: boolean }> {
+  return apiFetch("/api/v1/me/agent-credentials/local/models-json", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ models_json: modelsJson }),
+  });
+}
+
+export async function resetLocalModelsJson(): Promise<{ ok: boolean; stored: boolean }> {
+  return apiFetch("/api/v1/me/agent-credentials/local/models-json", { method: "DELETE" });
 }
 
 export async function startAgentOAuth(

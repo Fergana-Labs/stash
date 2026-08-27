@@ -84,14 +84,11 @@ async def test_connect_keyless_stores_endpoint_doc(client: AsyncClient):
         "/api/v1/me/developer/agent-credentials", headers=_scope_headers(api_key, scope)
     )
     assert r.json() == {"connected": ["local"]}
-    # The stored doc is exactly the personal flow's shape — no key when keyless,
-    # size fields null when the workspace form leaves them unset.
+    # The stored doc is exactly the personal flow's shape — no key when keyless.
     assert await _stored_doc(scope) == {
         "base_url": "http://my-host:11434/v1",
         "model": "llama3.1:8b",
         "api_key": None,
-        "context_window": None,
-        "max_tokens": None,
     }
 
 
@@ -106,8 +103,6 @@ async def test_connect_with_key_round_trips(client: AsyncClient):
         "base_url": "http://my-host:11434/v1",
         "model": "qwen2:7b",
         "api_key": "ws-local-secret",
-        "context_window": None,
-        "max_tokens": None,
     }
 
 
@@ -208,8 +203,6 @@ async def test_personal_and_workspace_credentials_stay_separate(client: AsyncCli
         "base_url": "http://personal-host:11434/v1",
         "model": "personal-model",
         "api_key": None,
-        "context_window": None,
-        "max_tokens": None,
     }
     assert (await _stored_doc(scope))["model"] == "ws-model"
 
@@ -275,10 +268,10 @@ async def test_workspace_credential_resolves_to_pi(client: AsyncClient):
     api_key, _, workspace = await _developer(client)
     scope = UUID(workspace["scope_user_id"])
 
-    # Before-state: a scope account with no credential runs the local exec
-    # default (Claude) — what the developer-wiki curator was doing.
-    auth = await agent_auth.resolve(scope)
-    assert auth.harness is h.CLAUDE
+    # Before-state: a scope account with no credential fails loud — the
+    # silent machine-login default was the STAS-131 bug.
+    with pytest.raises(agent_auth.NeedsAuth):
+        await agent_auth.resolve(scope)
 
     r = await _connect(client, api_key, str(scope), "llama3.1:8b")
     assert r.status_code == 200, r.text
