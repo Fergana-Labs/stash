@@ -15,9 +15,9 @@ const PRIMARY: RailItem[] = [
   { key: "home", label: "Home", icon: Home, match: (p) => p === "/" },
   { key: "skills", label: "Skills", icon: GraduationCap, match: (p) => p.startsWith("/skills") },
   { key: "sessions", label: "Sessions", icon: MessagesSquare, match: (p) => p.startsWith("/sessions") && p !== "/sessions/analytics" },
-  { key: "analytics", label: "Session Analytics", icon: BarChart3, match: (p) => p === "/sessions/analytics" },
+  { key: "analytics", label: "Usage", icon: BarChart3, match: (p) => p === "/sessions/analytics" },
   { key: "files", label: "Files", icon: FolderTree, match: (p) => p === "/files" || p.startsWith("/f/") || p.startsWith("/p/") || p.startsWith("/folders/") || p.startsWith("/tables/") },
-  { key: "viz", label: "Viz", icon: Orbit, match: (p) => p === "/viz" },
+  { key: "viz", label: "Themes", icon: Orbit, match: (p) => p === "/viz" },
 ];
 
 const DIVIDER_AFTER_INDEX = 0;

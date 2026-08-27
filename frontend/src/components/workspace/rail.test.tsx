@@ -48,9 +48,9 @@ describe("Rail", () => {
       "Home",
       "Skills",
       "Sessions",
-      "Session Analytics",
+      "Usage",
       "Files",
-      "Viz",
+      "Themes",
       "Settings",
       "Account",
     ]);
@@ -59,10 +59,10 @@ describe("Rail", () => {
   it("opens analytics and viz as full-page destinations", () => {
     render(<Rail user={user} onLogout={vi.fn()} />);
 
-    fireEvent.click(screen.getByLabelText("Session Analytics"));
+    fireEvent.click(screen.getByLabelText("Usage"));
     expect(route.replace).toHaveBeenLastCalledWith("/sessions/analytics");
 
-    fireEvent.click(screen.getByLabelText("Viz"));
+    fireEvent.click(screen.getByLabelText("Themes"));
     expect(route.replace).toHaveBeenLastCalledWith("/viz");
   });
 

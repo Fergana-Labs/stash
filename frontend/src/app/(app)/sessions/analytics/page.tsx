@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { SkeletonBlock } from "@/components/SkeletonStates";
 import { getSessionsAnalytics, type SessionsAnalytics } from "@/lib/api";
 
-/** Session Analytics — an honest dashboard over the sessions the user can
+/** Usage — an honest dashboard over the sessions the user can
  *  read (same scoping as the Sessions list): totals, sessions per day for the
  *  last 60 days, and breakdowns by agent and by person. Plain CSS bars, no
  *  chart library. */
@@ -34,7 +34,7 @@ export default function SessionAnalyticsPage() {
     <div className="h-full min-h-0 overflow-y-auto">
       <div className="mx-auto max-w-[1100px] px-8 pb-10 pt-7">
         <h1 className="font-display text-[22px] font-semibold tracking-tight text-foreground">
-          Session analytics
+          Usage
         </h1>
         <p className="mt-1 text-[12.5px] text-muted-foreground">
           Every session you can see — your own plus what&apos;s shared with you.

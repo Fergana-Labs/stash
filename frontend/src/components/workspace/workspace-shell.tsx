@@ -38,7 +38,7 @@ export default function WorkspaceShell({
       <div className="flex min-h-0 flex-1">
         <Rail user={user} onLogout={onLogout} />
         <div className="min-w-0 flex-1">
-          <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-tl-2xl border-l border-t border-border bg-base shadow-[-10px_-6px_28px_-16px_rgba(30,25,15,0.10)]">
+          <div className="flex h-full min-h-0 flex-col overflow-hidden border-l border-t border-border bg-base shadow-[-10px_-6px_28px_-16px_rgba(30,25,15,0.10)]">
             {shareAction && (
               <div className="flex h-10 shrink-0 items-center justify-end border-b border-border px-4">
                 {shareAction}

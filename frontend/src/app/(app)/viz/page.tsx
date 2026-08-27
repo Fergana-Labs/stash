@@ -13,7 +13,7 @@ import {
 } from "@/lib/api";
 import type { EmbeddingProjection, KnowledgeDensity } from "@/lib/types";
 
-/** Viz — every visualization of the stash in one place, full-width stacked
+/** Themes — every knowledge visualization in one place, full-width stacked
  *  cards. Each card fetches and renders independently so one slow endpoint
  *  can't hold the page. */
 export default function VizPage() {
@@ -51,10 +51,10 @@ export default function VizPage() {
     >
       <div className="mx-auto max-w-[1100px] px-8 pb-10 pt-7">
         <h1 className="font-display text-[22px] font-semibold tracking-tight text-foreground">
-          Viz
+          Themes
         </h1>
         <p className="mt-1 text-[12.5px] text-foreground/75">
-          Visualizations of everything in your stash.
+          Themes and relationships across your sessions and memory.
         </p>
 
         <div className="mt-5 flex flex-col gap-5">
