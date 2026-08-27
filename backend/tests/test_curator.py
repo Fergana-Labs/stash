@@ -354,6 +354,14 @@ def test_curator_prompt_demands_a_curator_log():
     assert "A quiet night is reported as quiet" in prompt
 
 
+def test_curator_prompt_bootstraps_three_agent_skills_from_five_traces():
+    prompt = prompts.render_curator_prompt("folder-123", None)
+    assert "at least five sessions" in prompt
+    assert "exactly three" in prompt
+    assert "stash skills add <folder>" in prompt
+    assert "Never publish it" in prompt
+
+
 def test_curator_prompt_embeds_folder_and_window():
     boot = prompts.render_curator_prompt("folder-123", None)
     assert "folder-123" in boot and "bootstrap" in boot.lower()

@@ -8,6 +8,8 @@ surface to the caller.
 
 from __future__ import annotations
 
+import gzip
+
 import httpx
 import pytest
 
@@ -68,3 +70,21 @@ def test_upload_transcript_raises_after_persistent_transport_error(monkeypatch, 
         )
 
     assert len(calls) == 3
+
+
+def test_history_import_redacts_transcript_before_upload(monkeypatch, tmp_path):
+    transcript = tmp_path / "session.jsonl"
+    transcript.write_text('{"message":"OPENAI_API_KEY=ordinary-secret-value"}\n')
+    client = StashClient("https://example.test", api_key="k")
+    uploaded = {}
+
+    def fake_request(method, path, **kwargs):
+        uploaded.update(kwargs)
+        return _FakeResponse()
+
+    monkeypatch.setattr(client, "_request", fake_request)
+
+    client.upload_transcript("session-1", transcript, "codex")
+
+    compressed = uploaded["files"]["file"][1]
+    assert gzip.decompress(compressed).decode() == '{"message":"OPENAI_API_KEY=[REDACTED]"}\n'

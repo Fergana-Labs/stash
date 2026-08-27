@@ -28,6 +28,11 @@ _MAX_SAVES = 100
 _MAX_SOURCE_DOCS = 100
 _SNIPPET = 280
 
+# Personal onboarding waits for enough real work to infer useful behavior,
+# then creates a small first set users can understand and inspect.
+SKILL_BOOTSTRAP_TRACE_TARGET = 5
+SKILL_BOOTSTRAP_COUNT = 3
+
 
 async def has_changes_since(owner_user_id: UUID, user_id: UUID, since: datetime | None) -> bool:
     """True if anything the curator cares about changed after `since`. A cheap
@@ -268,6 +273,47 @@ async def curated_trace_count(owner_user_id: UUID, curated_since: datetime | Non
             curated_since,
         )
     )
+
+
+async def curatable_trace_count(owner_user_id: UUID) -> int:
+    """Personal traces with an assistant response: enough substance to learn from."""
+    return int(
+        await get_pool().fetchval(
+            """
+            SELECT count(*) FROM sessions s
+            WHERE s.owner_user_id = $1 AND s.deleted_at IS NULL
+              AND s.session_id NOT LIKE 'agent-curate-%'
+              AND EXISTS (
+                  SELECT 1 FROM history_events he
+                  WHERE he.owner_user_id = s.owner_user_id
+                    AND he.session_id = s.session_id
+                    AND he.event_type = 'assistant_message'
+              )
+            """,
+            owner_user_id,
+        )
+    )
+
+
+async def recent_curatable_trace_ids(owner_user_id: UUID, limit: int) -> list[str]:
+    rows = await get_pool().fetch(
+        """
+        SELECT s.session_id FROM sessions s
+        WHERE s.owner_user_id = $1 AND s.deleted_at IS NULL
+          AND s.session_id NOT LIKE 'agent-curate-%'
+          AND EXISTS (
+              SELECT 1 FROM history_events he
+              WHERE he.owner_user_id = s.owner_user_id
+                AND he.session_id = s.session_id
+                AND he.event_type = 'assistant_message'
+          )
+        ORDER BY s.last_event_at DESC
+        LIMIT $2
+        """,
+        owner_user_id,
+        limit,
+    )
+    return [row["session_id"] for row in rows]
 
 
 async def curation_allowance(owner_user_id: UUID, now: datetime) -> dict | None:

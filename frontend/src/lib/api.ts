@@ -808,6 +808,18 @@ export async function putOnboardingPreferences(
   });
 }
 
+export interface OnboardingStatus {
+  curatable_trace_count: number;
+  curatable_session_ids: string[];
+  skill_count: number;
+  trace_target: number;
+  skill_target: number;
+}
+
+export async function getOnboardingStatus(): Promise<OnboardingStatus> {
+  return apiFetch(`${ME}/onboarding-status`);
+}
+
 // The exact CLAUDE.md block the CLI appends, served by the backend so the
 // onboarding preview can't drift from what `stash connect` writes.
 export async function getClaudeMdBlock(): Promise<{ block: string }> {

@@ -4534,8 +4534,8 @@ def _pick_agents(message: str, agents: list[str], checked: list[str]) -> list[st
             (
                 "class:instruction",
                 "   [x] = uploads its sessions to your Stash. Unchecked agents upload "
-                "nothing,\n   but can still read your Stash with the stash CLI "
-                "(search, browse, download).\n",
+                "nothing.\n   Unchecked agents can still read Stash, but won't write.\n"
+                "   Common API keys and access tokens are automatically redacted before upload.\n",
             ),
         ]
         for i, agent in enumerate(agents):
@@ -4891,6 +4891,14 @@ def _pick_record_folder(start: Path) -> Path | None:
     return Path(picked)
 
 
+def _pick_custom_record_folder(start: Path) -> Path | None:
+    """The setup wizard's explicit custom-folder choice opens the native
+    chooser immediately on macOS. Other platforms use the terminal picker."""
+    if sys.platform == "darwin":
+        return _choose_folder_finder(start)
+    return _pick_record_folder(start)
+
+
 def _run_setup_wizard() -> None:
     """First-run setup: session recording, agent hooks, folder context, history
     import. Re-runnable anytime via `stash setup` — no answer here is final."""
@@ -4933,7 +4941,7 @@ def _run_setup_wizard() -> None:
     if where == everywhere:
         save_recorded_paths([])
     elif where == custom:
-        picked = _pick_record_folder(cwd)
+        picked = _pick_custom_record_folder(cwd)
         if picked is None:
             raise typer.Exit(1)
         save_recorded_paths([str(picked)])
@@ -4991,6 +4999,9 @@ def _run_setup_wizard() -> None:
     _show_setup_complete_splash()
 
 
+ONBOARDING_HISTORY_LIMIT = 5
+
+
 def _apply_web_onboarding(prefs: dict, cfg: dict) -> None:
     """Apply the setup choices the user already made on the web onboarding
     page, printing one line per choice — transparent, but not interactive.
@@ -5039,9 +5050,9 @@ def _apply_web_onboarding(prefs: dict, cfg: dict) -> None:
         console.print("  [green]✓[/green] Leaving CLAUDE.md untouched")
 
     if prefs["import_history"]:
-        conversations = _conversations_to_import(detected or None)
+        conversations = _conversations_to_import(detected or None)[:ONBOARDING_HISTORY_LIMIT]
         if conversations:
-            _spawn_history_import(len(conversations))
+            _spawn_history_import(len(conversations), limit=ONBOARDING_HISTORY_LIMIT)
         else:
             console.print("  No historical conversations found to import.")
     else:
@@ -5402,7 +5413,7 @@ def _report_import_progress(c: StashClient, total: int, done: int, errors: int, 
         pass
 
 
-def _spawn_history_import(count: int) -> None:
+def _spawn_history_import(count: int, *, limit: int | None = None) -> None:
     """Kick off the history import as a detached `stash import-history`
     process — thousands of uploads must not hold setup hostage."""
     import subprocess as _sp
@@ -5415,9 +5426,12 @@ def _spawn_history_import(count: int) -> None:
         _report_import_progress(c, total=count, done=0, errors=0, finished=False)
 
     IMPORT_LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+    command = [sys.argv[0], "import-history"]
+    if limit is not None:
+        command.extend(["--limit", str(limit)])
     with open(IMPORT_LOG_FILE, "ab") as log:
         _sp.Popen(
-            [sys.argv[0], "import-history"],
+            command,
             stdout=log,
             stderr=log,
             start_new_session=True,
@@ -5453,7 +5467,7 @@ def _conversations_to_import(agents: list[str] | None) -> list:
 
 
 def _onboarding_import_history(detected_agents: list[str]) -> None:
-    """Offer to import historical conversations during onboarding."""
+    """Let a new user start small instead of importing their entire history."""
     from .import_history import summarize_discovery
 
     agents = detected_agents or None
@@ -5468,14 +5482,23 @@ def _onboarding_import_history(detected_agents: list[str]) -> None:
         label = f"{sz // 1024 // 1024} MB" if sz > 1024 * 1024 else f"{sz // 1024} KB"
         console.print(f"  {ag:<12} {info['count']:>4} conversations   ({label})")
 
-    _reserve_bottom_padding(4)
-    ok = questionary.confirm(
-        f"Import {len(conversations)} historical conversations? (runs in the background)",
-        default=True,
+    five_recent = "Start with my 5 most recent sessions"
+    import_all = f"Import all {len(conversations)} sessions"
+    skip = "Don't import past sessions"
+    _reserve_bottom_padding(6)
+    choice = questionary.select(
+        "How much history should Stash import to get started?",
+        choices=[five_recent, import_all, skip],
+        default=five_recent,
     ).ask()
-    if not ok:
+    if choice is None:
+        raise typer.Exit(1)
+    if choice == skip:
         return
-
+    if choice == five_recent:
+        count = min(ONBOARDING_HISTORY_LIMIT, len(conversations))
+        _spawn_history_import(count, limit=ONBOARDING_HISTORY_LIMIT)
+        return
     _spawn_history_import(len(conversations))
 
 
@@ -5514,6 +5537,12 @@ def import_history_cmd(
     status: bool = typer.Option(
         False, "--status", help="Show progress of the running or last-finished import."
     ),
+    limit: int | None = typer.Option(
+        None,
+        "--limit",
+        min=1,
+        help="Import only the most recent N conversations.",
+    ),
 ):
     """Import all historical agent conversations into your Stash.
 
@@ -5535,6 +5564,8 @@ def import_history_cmd(
     from .import_history import upload_conversation
 
     conversations = _conversations_to_import(load_enabled_agents() or None)
+    if limit is not None:
+        conversations = conversations[:limit]
     if not conversations:
         console.print("No historical conversations found.")
         return

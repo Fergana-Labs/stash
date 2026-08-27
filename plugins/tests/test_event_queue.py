@@ -114,6 +114,22 @@ def test_successful_push_drains_backlog(tmp_path):
     assert status["last_success_operation"] == "event"
 
 
+def test_backlog_is_redacted_when_it_drains(tmp_path):
+    client = _make_client(tmp_path, fail_first_n=1)
+    with pytest.raises(Exception):
+        client.push_event(
+            agent_name="a",
+            event_type="user_message",
+            content="OPENAI_API_KEY=ordinary-secret-value",
+            session_id="s1",
+        )
+
+    client.push_event(agent_name="a", event_type="user_message", content="safe", session_id="s1")
+
+    drained_body = client._http.calls[-1]["json"]
+    assert drained_body["content"] == "OPENAI_API_KEY=[REDACTED]"
+
+
 def test_drain_stops_on_first_failure(tmp_path):
     """If backend is still down during drain, leftover entries stay queued."""
     client = _make_client(tmp_path, fail_first_n=1)

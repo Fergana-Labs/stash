@@ -11,6 +11,7 @@ from httpx import AsyncClient
 from .conftest import unique_name
 
 PREFS_URL = "/api/v1/me/onboarding-preferences"
+STATUS_URL = "/api/v1/me/onboarding-status"
 
 VALID_PREFS = {
     "enabled_agents": ["claude", "codex"],
@@ -104,6 +105,38 @@ async def test_preferences_require_auth(client: AsyncClient):
     assert (await client.get(PREFS_URL)).status_code == 401
     assert (await client.put(PREFS_URL, json=VALID_PREFS)).status_code == 401
     assert (await client.post(f"{PREFS_URL}/consume")).status_code == 401
+
+
+async def test_status_counts_only_traces_with_assistant_work(client: AsyncClient):
+    key = await _register(client)
+    headers = _auth(key)
+    for session_id, event_type in (("human-only", "user_message"), ("useful", "assistant_message")):
+        response = await client.post(
+            "/api/v1/me/sessions/events",
+            json={
+                "agent_name": "Codex 5.6 Sol",
+                "event_type": event_type,
+                "content": "work",
+                "session_id": session_id,
+            },
+            headers=headers,
+        )
+        assert response.status_code == 201
+    created = await client.post(
+        "/api/v1/me/skills/new",
+        json={"name": "Debug uploads", "description": "Use when an upload fails."},
+        headers=headers,
+    )
+    assert created.status_code == 201
+
+    status = (await client.get(STATUS_URL, headers=headers)).json()
+    assert status == {
+        "curatable_trace_count": 1,
+        "curatable_session_ids": ["useful"],
+        "skill_count": 1,
+        "trace_target": 5,
+        "skill_target": 3,
+    }
 
 
 async def test_claude_md_block_serves_the_cli_file(client: AsyncClient):

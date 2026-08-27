@@ -15,10 +15,14 @@ import {
   getMe,
   getMeOverview,
   getMemoryGraph,
+  getOnboardingStatus,
+  listUploadSources,
   listRecentActivity,
-  type RecentActivityEvent,
   type HistoryImportProgress,
   type MeOverview,
+  type OnboardingStatus,
+  type RecentActivityEvent,
+  type UploadSource,
   type WikiGraph as WikiGraphData,
 } from "@/lib/api";
 import type { EmbeddingProjection } from "@/lib/types";
@@ -57,15 +61,19 @@ export default function BrainDashboard() {
   const [vitalsError, setVitalsError] = useState<string | null>(null);
   const [vitalsLoaded, setVitalsLoaded] = useState(false);
   const [importing, setImporting] = useState<HistoryImportProgress | null>(null);
+  const [onboardingStatus, setOnboardingStatus] = useState<OnboardingStatus | null>(null);
+  const [uploadSources, setUploadSources] = useState<UploadSource[] | null>(null);
 
   // The vitals decide whether this stash is brand new, so losing them isn't
   // cosmetic: without them Home would drop a first-run user into a grid of
   // empty panels instead of the setup instruction.
   useEffect(() => {
-    Promise.all([getMe(), getMeOverview()])
-      .then(([me, overview]) => {
+    Promise.all([getMe(), getMeOverview(), getOnboardingStatus(), listUploadSources()])
+      .then(([me, overview, nextOnboardingStatus, { sources }]) => {
         setFirstName(me.display_name.split(" ")[0]);
         setVitals(overview);
+        setOnboardingStatus(nextOnboardingStatus);
+        setUploadSources(sources);
       })
       .catch((e) => setVitalsError(e instanceof Error ? e.message : "Failed to load your stash"))
       .finally(() => setVitalsLoaded(true));
@@ -83,23 +91,28 @@ export default function BrainDashboard() {
     vitals.pages === 0 &&
     vitals.files === 0 &&
     vitals.sessions === 0;
+  const initialUploadProgress = getInitialUploadProgress(onboardingStatus, uploadSources);
 
   // While the stash is empty or a history import is running, keep watching:
   // the CLI's background import fills the stash, and Home should move from
   // setup → import progress → dashboard without a manual refresh.
-  const watching = stashEmpty || importing !== null;
+  const watching = stashEmpty || importing !== null || initialUploadProgress !== null;
   useEffect(() => {
     if (!watching) return;
     let cancelled = false;
     const tick = async () => {
       try {
-        const [{ progress }, overview] = await Promise.all([
+        const [{ progress }, overview, nextOnboardingStatus, { sources }] = await Promise.all([
           getHistoryImportProgress(),
           getMeOverview(),
+          getOnboardingStatus(),
+          listUploadSources(),
         ]);
         if (cancelled) return;
         setImporting(progress && !progress.finished ? progress : null);
         setVitals(overview);
+        setOnboardingStatus(nextOnboardingStatus);
+        setUploadSources(sources);
       } catch {
         // Transient — the next tick retries.
       }
@@ -179,12 +192,21 @@ export default function BrainDashboard() {
     );
   }
 
-  // A brand-new stash has nothing to dashboard. While a history import is
-  // filling it, Home is the import's progress bar; otherwise it's a single
-  // instruction: upload your agent transcripts.
-  if (stashEmpty) {
-    return importing ? <ImportingStash progress={importing} /> : <EmptyStashSetup />;
+  // The CLI begins the five-session import before Home has all its data. Keep
+  // the progress state visible for the entire import instead of dropping into
+  // the dashboard as soon as its first session arrives.
+  if (importing) return <ImportingStash progress={importing} />;
+
+  if (initialUploadProgress) {
+    return (
+      <UploadingFirstSessions
+        done={initialUploadProgress.done}
+        total={initialUploadProgress.total}
+      />
+    );
   }
+
+  if (stashEmpty) return <EmptyStashSetup />;
 
   if (!ready) {
     return (
@@ -200,12 +222,6 @@ export default function BrainDashboard() {
         <h1 className="font-display text-[22px] font-semibold tracking-tight text-foreground">
           Welcome back{firstName ? `, ${firstName}` : ""}
         </h1>
-        {importing && (
-          <p className="mt-1 text-[12.5px] text-muted-foreground">
-            Importing your history — {importing.done.toLocaleString()} of{" "}
-            {importing.total.toLocaleString()} past conversations in so far.
-          </p>
-        )}
 
         <DataAndPrivacy />
 
@@ -334,19 +350,22 @@ function FeedCard({ event }: { event: RecentActivityEvent }) {
  *  import's live progress, front and center — not setup instructions the
  *  user already followed. */
 function ImportingStash({ progress }: { progress: HistoryImportProgress }) {
+  return <UploadingFirstSessions done={progress.done} total={progress.total} />;
+}
+
+function UploadingFirstSessions({ done, total }: { done: number; total: number }) {
   const pct =
-    progress.total > 0 ? Math.min(100, Math.round((progress.done / progress.total) * 100)) : 0;
+    total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0;
   return (
     <div className="flex h-full min-h-0 items-center justify-center overflow-y-auto">
       <div className="w-full max-w-xl px-8 py-10 text-center">
         <StashIcon className="mx-auto text-[44px]" />
         <h1 className="mt-5 font-display text-[26px] font-semibold tracking-tight text-foreground">
-          Importing your history
+          {total === 5 ? "Uploading your first five sessions" : "Uploading your sessions"}
         </h1>
         <p className="mx-auto mt-2 max-w-md text-[14px] leading-6 text-dim">
-          {progress.done.toLocaleString()} of {progress.total.toLocaleString()} past
-          conversations imported. This page becomes your agents&apos; shared memory as
-          they land.
+          {done.toLocaleString()} of {total.toLocaleString()} sessions uploaded. Stash will use them
+          to create your first three Skills.
         </p>
         <div className="mx-auto mt-6 h-2 max-w-md overflow-hidden rounded-full bg-border">
           <div
@@ -360,6 +379,16 @@ function ImportingStash({ progress }: { progress: HistoryImportProgress }) {
       </div>
     </div>
   );
+}
+
+export function getInitialUploadProgress(
+  status: OnboardingStatus | null,
+  sources: UploadSource[] | null,
+): { done: number; total: number } | null {
+  if (status === null || sources === null) return null;
+  if (!sources.some((source) => source.uploads_enabled === true)) return null;
+  if (status.curatable_trace_count >= status.trace_target) return null;
+  return { done: status.curatable_trace_count, total: status.trace_target };
 }
 
 /** Full-screen first-run state: one instruction, upload your agent

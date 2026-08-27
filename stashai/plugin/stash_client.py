@@ -26,6 +26,7 @@ from stashai.plugin.upload_status import (
     record_upload_failure,
     record_upload_success,
 )
+from stashai.redaction import redact_bytes, redact_data, redact_text
 
 QUEUE_FILENAME = "event_queue.jsonl"
 QUEUE_MAX_ENTRIES = 1000  # cap so a long backend outage doesn't fill the disk
@@ -162,12 +163,12 @@ class StashClient:
         body: dict = {
             "agent_name": agent_name,
             "event_type": event_type,
-            "content": content,
+            "content": redact_text(content),
             "session_id": session_id,
         }
         if tool_name:
             body["tool_name"] = tool_name
-        merged_meta = dict(metadata or {})
+        merged_meta = redact_data(dict(metadata or {}))
         if client:
             merged_meta["client"] = client
         if merged_meta:
@@ -251,7 +252,7 @@ class StashClient:
                         continue
                     try:
                         entry = json.loads(line)
-                        path, body = entry["path"], entry["body"]
+                        path, body = entry["path"], redact_data(entry["body"])
                     except (ValueError, KeyError):
                         # Corrupt line — it can never send, so drop it rather
                         # than wedge the queue behind it forever.
@@ -324,7 +325,7 @@ class StashClient:
     ) -> dict:
         import gzip
 
-        raw = transcript_path.read_bytes()
+        raw = redact_bytes(transcript_path.read_bytes())
         body = gzip.compress(raw)
         name = transcript_path.name
         if not name.endswith(".gz"):

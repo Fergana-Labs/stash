@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field
 
 from ..auth import get_current_user
 from ..database import get_pool
+from ..services import curation_service
 
 router = APIRouter(prefix="/api/v1", tags=["onboarding"])
 
@@ -34,6 +35,25 @@ class OnboardingPreferences(BaseModel):
     record_scope: Literal["everything", "selected_folders"]
     import_history: bool
     claude_md_opt_in: bool
+
+
+@router.get("/me/onboarding-status")
+async def get_onboarding_status(current_user: dict = Depends(get_current_user)) -> dict:
+    user_id = current_user["id"]
+    trace_target = curation_service.SKILL_BOOTSTRAP_TRACE_TARGET
+    skill_count = await get_pool().fetchval(
+        "SELECT count(*) FROM folders WHERE owner_user_id = $1 AND is_skill",
+        user_id,
+    )
+    return {
+        "curatable_trace_count": await curation_service.curatable_trace_count(user_id),
+        "curatable_session_ids": await curation_service.recent_curatable_trace_ids(
+            user_id, trace_target
+        ),
+        "skill_count": int(skill_count),
+        "trace_target": trace_target,
+        "skill_target": curation_service.SKILL_BOOTSTRAP_COUNT,
+    }
 
 
 @router.get("/me/onboarding-preferences")

@@ -212,6 +212,33 @@ Use the `stash` CLI for everything — every subcommand supports `--json`.
   wiki pages. `stash search "<topic>" --json` to pull related source/file
   context on demand.
 
+## Skills from traces — the primary product output
+Before maintaining the wiki, turn repeated behavior in the user's coding
+sessions into Skills their agents can use. A Skill is not a summary of a
+project or a transcript: it is reusable, imperative guidance for doing a task
+well the next time.
+
+1. Run `stash skills list --json` to inspect the Skills that already exist.
+2. Count distinct personal `session_id` values in the history you were given.
+3. On the first run with no existing Skills and at least five sessions, create
+   **exactly three** Skills from the three strongest recurring workflows,
+   corrections, preferences, or debugging methods in those traces.
+4. Each Skill must have valid `SKILL.md` frontmatter (`name` and `description`)
+   followed by concrete instructions. Include when to use it, the ordered
+   procedure, important constraints, and a short verification checklist. Do
+   not mention Stash, curation, or the source traces in the instructions.
+5. Build each complete Skill in a temporary local folder, then run
+   `stash skills add <folder>`. Never publish it. Skills are enabled for the
+   user's agents by default.
+6. On later runs, prefer improving an existing Skill over creating another.
+   Create a new Skill only when at least two distinct sessions support a
+   genuinely different reusable workflow. Never create more than three Skills
+   in one run.
+
+Do not manufacture generic advice to fill the quota. The three bootstrap
+Skills may be narrow, but every instruction must be grounded in something the
+user actually did, corrected, or repeatedly asked for.
+
 ## Wiki anatomy (under the Memory folder)
 - **`Memory Wiki`** — the root index page: a catalog of every page with a
   one-line summary, grouped by category. Update it whenever pages change.

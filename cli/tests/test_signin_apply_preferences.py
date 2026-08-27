@@ -66,9 +66,15 @@ def calls(monkeypatch):
     monkeypatch.setattr(
         main, "_auto_connect_repo", lambda root, cfg: calls.__setitem__("connected", 1)
     )
-    monkeypatch.setattr(main, "_conversations_to_import", lambda agents: ["c1", "c2", "c3"])
     monkeypatch.setattr(
-        main, "_spawn_history_import", lambda n: calls.__setitem__("import_spawned", n)
+        main,
+        "_conversations_to_import",
+        lambda agents: [f"c{i}" for i in range(1, 9)],
+    )
+    monkeypatch.setattr(
+        main,
+        "_spawn_history_import",
+        lambda n, *, limit=None: calls.__setitem__("import_spawned", (n, limit)),
     )
     monkeypatch.setattr(main, "_client", lambda auto=False: _FakeClient(calls))
     monkeypatch.setattr(main, "_show_setup_complete_splash", lambda: None)
@@ -91,7 +97,7 @@ def test_applies_every_choice_without_asking(calls, capsys):
     assert calls["saved_agents"] == ["claude"]
     assert calls["hooks_installed"] == ["claude"]
     assert calls["connected"] == 1
-    assert calls["import_spawned"] == 3
+    assert calls["import_spawned"] == (5, 5)
     assert calls["consumed"] == 1
     assert calls["folder_picker_runs"] == 0
 

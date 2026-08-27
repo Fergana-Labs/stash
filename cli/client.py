@@ -13,6 +13,7 @@ from pathlib import Path
 import httpx
 
 from stashai import release
+from stashai.redaction import redact_bytes, redact_data, redact_text
 from stashvfs import VfsClientError
 
 
@@ -450,15 +451,15 @@ class StashClient:
         body: dict = {
             "agent_name": agent_name,
             "event_type": event_type,
-            "content": content,
+            "content": redact_text(content),
             "session_id": session_id,
         }
         if tool_name:
             body["tool_name"] = tool_name
         if metadata:
-            body["metadata"] = metadata
+            body["metadata"] = redact_data(metadata)
         if attachments:
-            body["attachments"] = attachments
+            body["attachments"] = redact_data(attachments)
         if created_at:
             body["created_at"] = created_at
         return self._post("/api/v1/me/sessions/events", json=body)
@@ -504,7 +505,7 @@ class StashClient:
         return self._list("/api/v1/me/session-events", "events", **params)
 
     def push_events_batch(self, events: list[dict]) -> list:
-        body: dict = {"events": events}
+        body: dict = {"events": redact_data(events)}
         return self._post("/api/v1/me/sessions/events/batch", json=body)
 
     def get_onboarding_preferences(self) -> dict | None:
@@ -536,7 +537,7 @@ class StashClient:
         import gzip as _gzip
 
         with open(transcript_path, "rb") as f:
-            raw = f.read()
+            raw = redact_bytes(f.read())
         body = _gzip.compress(raw)
         name = os.path.basename(transcript_path)
         if not name.endswith(".gz"):
