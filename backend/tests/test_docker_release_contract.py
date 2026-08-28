@@ -16,7 +16,9 @@ weaken the assertion. Those commands are run by the release executor with the
 real exit status recorded.
 """
 
+import json
 import re
+import tomllib
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -24,6 +26,9 @@ PROD_COMPOSE = REPO_ROOT / "docker-compose.prod.yml"
 LOCAL_COMPOSE = REPO_ROOT / "docker-compose.local.yml"
 BACKEND_DOCKERFILE = REPO_ROOT / "backend" / "Dockerfile"
 FRONTEND_DOCKERFILE = REPO_ROOT / "frontend" / "Dockerfile"
+PYPROJECT = REPO_ROOT / "pyproject.toml"
+PLUGIN_MANIFEST = REPO_ROOT / "plugins" / "claude-plugin" / ".claude-plugin" / "plugin.json"
+MARKETPLACE_MANIFEST = REPO_ROOT / ".claude-plugin" / "marketplace.json"
 
 # The operative pi-absence gate. A broad `pi|npm|node` alternation can never
 # return zero: it matches `pip install`, `libatspi2.0-0`, and the mandatory
@@ -77,6 +82,60 @@ def test_compose_files_do_not_mention_collab():
         text = path.read_text()
         assert "collab" not in text, f"{path.name} still mentions collab"
         assert "3458" not in text, f"{path.name} still mentions port 3458"
+
+
+# A GHCR image reference to one of our two release images, capturing its tag.
+# This mirrors the same shape the (currently inert) bump automation rewrites.
+GHCR_PIN = re.compile(r"ghcr\.io/fergana-labs/(stash-[a-z]+):(\S+)")
+
+
+def cli_version() -> str:
+    with PYPROJECT.open("rb") as handle:
+        return tomllib.load(handle)["project"]["version"]
+
+
+def test_compose_pins_track_the_cli_version():
+    """Every GHCR pin in the prod compose file must equal the CLI version.
+
+    Since the bump automation can no longer land its edits, this test is the
+    only surviving enforcement that the five self-host pins and the CLI
+    release version stay in lockstep. Pins are bare (no `v` prefix): the git
+    tag carries the `v`, the published image tags do not.
+    """
+    version = cli_version()
+    pins = GHCR_PIN.findall(PROD_COMPOSE.read_text())
+    assert pins, "prod compose must pin our release images"
+    images = {image for image, _ in pins}
+    assert images == {"stash-backend", "stash-frontend"}, f"unexpected pinned images: {images}"
+    for image, tag in pins:
+        assert not tag.startswith("v"), f"{image} pinned with a v-prefixed tag: {tag}"
+        assert tag == version, f"{image} pinned to {tag}, but CLI version is {version}"
+
+
+def test_plugin_manifests_agree_with_each_other():
+    """The Claude plugin manifest and the marketplace entry must agree.
+
+    This is the invariant the bump automation enforced by copying the plugin
+    number into the marketplace file; keep it asserted now that the
+    automation cannot land edits.
+    """
+    plugin = json.loads(PLUGIN_MANIFEST.read_text())["version"]
+    marketplace = json.loads(MARKETPLACE_MANIFEST.read_text())["plugins"][0]["version"]
+    assert plugin == marketplace, f"plugin.json {plugin} != marketplace {marketplace}"
+
+
+def test_plugin_manifest_is_not_the_cli_version():
+    """The plugin/marketplace pair is an independent, higher sequence.
+
+    It is bumped on its own schedule and is NOT part of the CLI release, so
+    it must not be expected to equal the pyproject version. Asserted so a
+    future hand-bump that conflates the two is caught.
+    """
+    plugin = json.loads(PLUGIN_MANIFEST.read_text())["version"]
+    assert plugin != cli_version(), (
+        f"plugin manifest {plugin} collides with the CLI version; "
+        "the marketplace sequence is independent"
+    )
 
 
 def test_dockerfiles_install_no_pi():
