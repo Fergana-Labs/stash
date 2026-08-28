@@ -21,7 +21,9 @@ from backend.config import settings  # noqa: E402
 config = context.config
 
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    # Mirrors the OSS env: the default would disable every logger alembic.ini does not
+    # name, which for an in-process `upgrade head` means every application logger.
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 # Mirror the OSS env: build an asyncpg URL and strip Neon-style libpq query
 # params (sslmode, channel_binding) that asyncpg rejects, translating

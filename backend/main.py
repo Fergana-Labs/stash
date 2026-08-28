@@ -14,6 +14,7 @@ from . import integrations as _integrations  # noqa: F401 — registers provider
 from .config import settings
 from .database import close_db, init_db
 from .integrations.router import router as integrations_router
+from .logging_setup import setup_app_logging
 from .middleware import limiter
 from .routers import (
     admin,
@@ -79,6 +80,9 @@ async def lifespan(app: FastAPI):
     # precompute, session summarizer) now run in the Celery `worker` and
     # `beat` services — see backend/celery_app.py.
     await init_db()
+    # After init_db(): Alembic reconfigures logging from alembic.ini every time it runs,
+    # so setting up here is what makes the final state the same on both boot shapes.
+    setup_app_logging()
     try:
         await demo_service.seed_demo()
     except Exception:
