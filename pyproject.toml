@@ -38,6 +38,7 @@ include = ["cli*", "stashai*", "stashvfs*"]
 
 [tool.setuptools.package-data]
 stashai = ["plugin/assets/**/*"]
+cli = ["claude_md_block.md"]
 
 [build-system]
 requires = ["setuptools>=68.0"]

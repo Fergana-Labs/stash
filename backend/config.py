@@ -221,8 +221,6 @@ class Settings:
     LINEAR_OAUTH_REDIRECT_URI: str | None = parse_oauth_redirect_uri(
         "LINEAR_OAUTH_REDIRECT_URI", AUTH0_ENABLED
     )
-    # Verifies inbound Linear webhook signatures (Linear-Signature header).
-    LINEAR_WEBHOOK_SECRET: str | None = os.getenv("LINEAR_WEBHOOK_SECRET")
 
     # --- Integrations (OAuth + per-user token storage) ---
     # Comma-separated Fernet keyring for encrypting access/refresh tokens at
@@ -351,9 +349,10 @@ class Settings:
     OPENROUTER_API_KEY: str | None = os.getenv("OPENROUTER_API_KEY")
     MANAGED_GEMINI_API_KEY: str | None = os.getenv("MANAGED_GEMINI_API_KEY")
 
-    # Free accounts get this many scheduled sleep-time curator runs per
-    # calendar month; the enterprise plan is unlimited.
-    FREE_CURATOR_RUNS_PER_MONTH: int = int(os.getenv("FREE_CURATOR_RUNS_PER_MONTH", "10"))
+    # Free accounts receive managed curation for this many useful coding
+    # sessions over the lifetime of the account.
+    FREE_CURATED_TRACES: int = int(os.getenv("FREE_CURATED_TRACES", "1000"))
+    PRO_CURATED_TRACES_PER_MONTH: int = int(os.getenv("PRO_CURATED_TRACES_PER_MONTH", "10000"))
     # Where enterprise-intent signups are sent as sales leads.
     SALES_NOTIFY_EMAIL: str = os.getenv("SALES_NOTIFY_EMAIL", "henry@ferganalabs.com")
 

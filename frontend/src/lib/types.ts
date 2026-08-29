@@ -154,19 +154,8 @@ export interface MiniProgramApp {
   row_count: number;
 }
 
-/** A skill the launcher can run: the name to invoke plus the frontmatter that
- *  says what it does. Only skills in your own Skills are launchable — an agent
- *  reads its scope, not the public catalog — so this is always built from a
- *  Skill you hold. */
-export interface LaunchableSkill {
-  name: string;
-  description: string;
-  when_to_use: string;
-}
-
 /** A published skill an app's table is built for. Carries a slug because you
- *  may not hold it yet: the strip that lists these offers Add for those, and
- *  Run only once the skill is actually in your Skills. */
+ *  may not hold it yet: the strip that lists these offers Add for those. */
 export interface CuratedSkill {
   name: string;
   slug: string;
@@ -263,13 +252,23 @@ export interface EmbeddingProjectionPoint {
   x: number;
   y: number;
   z: number;
-  source: "pages" | "table_rows" | "history_events";
+  source: "pages" | "table_rows" | "sessions" | "files";
   label: string;
+  /** For sessions: event count and agent, e.g. "12 events · claude". */
+  detail?: string;
   created_at: string | null;
+  cluster: number;
+}
+
+export interface EmbeddingProjectionCluster {
+  index: number;
+  name: string;
+  size: number;
 }
 
 export interface EmbeddingProjection {
   points: EmbeddingProjectionPoint[];
+  clusters: EmbeddingProjectionCluster[];
   stats: { total_embeddings: number; projected: number };
   cached: boolean;
 }

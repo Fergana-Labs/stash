@@ -32,6 +32,10 @@ class HuggingFaceEmbedder(BaseEmbedder):
         self.api_url = f"{_HF_BASE}/{self.model}"
         self._client: httpx.AsyncClient | None = None
 
+    @property
+    def space_id(self) -> str:
+        return f"huggingface:{self.model}:{self.dims}:v1"
+
     def _get_client(self) -> httpx.AsyncClient:
         if self._client is None or self._client.is_closed:
             self._client = httpx.AsyncClient(timeout=30.0)

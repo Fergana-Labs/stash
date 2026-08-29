@@ -11,7 +11,7 @@ export const metadata: Metadata = {
   alternates: { canonical: "/pricing" },
   title: "Pricing · Stash",
   description:
-    "Free to start. Pro is $20/month for unlimited integrations and curator runs. The Developer Platform is priced with you.",
+    "Trace ingestion, search, and Skills are free. Pro supports Skill creation from up to 10,000 traces per month.",
 };
 
 // Every claim on this page mirrors what the backend actually enforces
@@ -31,11 +31,11 @@ const TIERS: {
     price: "$0",
     blurb: "Everything you need to give your coding agents memory.",
     features: [
-      "Unlimited sessions, recorded from all 7 supported agents",
-      "Full-text search across everything",
-      "2 connected accounts (GitHub, Drive, Gmail, Notion, Slack…)",
-      "10 curator runs a month, with your own model key",
-      "Skills: publish, share, and install",
+      "Unlimited trace ingestion from supported coding agents",
+      "Browse and search every trace",
+      "Use all of your existing Skills",
+      "Automatic curation of your first 1,000 useful traces",
+      "Stash-managed inference — no model key required",
     ],
     cta: { label: "Sign up free", href: SIGNUP_URL },
   },
@@ -43,12 +43,12 @@ const TIERS: {
     name: "Pro",
     price: "$20/month",
     priceDetail: "or $200/year — 2 months free",
-    blurb: "Limits off. The managed model included, no API key needed.",
+    blurb: "Ten times the trace capacity for automatic Skill creation.",
     features: [
       "Everything in Free",
-      "Unlimited connected accounts",
-      "Unlimited curator runs — your wiki updates every night",
-      "Managed model included: the curator and chat run without your own key",
+      "Skill creation from up to 10,000 traces each month",
+      "Paused backlog resumes when your allowance resets",
+      "Stash-managed inference — no model key required",
     ],
     cta: { label: "Start with Pro", href: SIGNUP_URL },
     featured: true,
@@ -77,8 +77,8 @@ export default function PricingPage() {
           Simple pricing.
         </h1>
         <p className="mx-auto mt-5 max-w-[52ch] text-[17px] leading-[1.6] text-dim">
-          Free to start, one flat price for limits off, and the Developer Platform priced
-          with you.
+          Trace ingestion, search, and Skills stay free. Pro supports ten times as many
+          traces for automatic Skill creation.
         </p>
       </section>
 

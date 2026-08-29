@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { EmbeddingProjection, EmbeddingProjectionPoint } from "../../lib/types";
 
-// One hue per semantic island (k-means cluster of the 3D UMAP coords).
+// One hue per semantic island (server-computed k-means cluster), keyed by
+// cluster index.
 const CLUSTER_COLORS: [number, number, number][] = [
   [249, 115, 22], // orange
   [59, 130, 246], // blue
@@ -24,6 +25,13 @@ interface TooltipInfo {
 interface Props {
   data: EmbeddingProjection;
   onPointClick?: (point: EmbeddingProjectionPoint) => void;
+}
+
+function truncateLabel(name: string): string {
+  if (name.length <= 28) return name;
+  const prefix = name.slice(0, 27);
+  const boundary = prefix.lastIndexOf(" ");
+  return `${prefix.slice(0, boundary > 0 ? boundary : 27)}…`;
 }
 
 // Rotate a 3D point around the Y axis, then X axis
@@ -51,16 +59,15 @@ function rotatePoint(
 interface Prep {
   /** Coordinates rescaled so the cloud fills the unit sphere. */
   coords: [number, number, number][];
-  /** Cluster index per point. */
-  cluster: number[];
-  /** Per cluster, the index of the point closest to its centroid — its label. */
-  representatives: number[];
+  /** Per server cluster index, the centroid of its members' scaled coords —
+   *  where that cluster's name is drawn. */
+  centroids: [number, number, number][];
 }
 
-/** Normalize the cloud to fill the view and split it into semantic islands
- *  (plain k-means on the 3D coords — they're already neighbor-preserving).
- *  Deterministic: centroids seed from evenly-strided points. */
-function prepare(points: EmbeddingProjectionPoint[]): Prep {
+/** Normalize the cloud to fill the view. Cluster assignments come from the
+ *  server (`point.cluster`); only their centroids are derived here, for
+ *  placing the cluster-name labels. */
+function prepare(points: EmbeddingProjectionPoint[], clusterCount: number): Prep {
   const n = points.length;
   // Fill the view from the 90th-percentile radius, not the max — otherwise
   // one far outlier shrinks the whole cloud (it just renders past the edge).
@@ -69,60 +76,19 @@ function prepare(points: EmbeddingProjectionPoint[]): Prep {
   const s = fitR > 0 ? 1 / fitR : 1;
   const coords = points.map((p) => [p.x * s, p.y * s, p.z * s] as [number, number, number]);
 
-  const k = Math.max(1, Math.min(CLUSTER_COLORS.length, Math.round(Math.sqrt(n / 2))));
-  const centroids = Array.from({ length: k }, (_, c) => [...coords[Math.floor((c * n) / k)]]);
-  const cluster = new Array<number>(n).fill(0);
-
-  for (let iter = 0; iter < 12; iter++) {
-    for (let i = 0; i < n; i++) {
-      let best = 0;
-      let bestD = Infinity;
-      for (let c = 0; c < k; c++) {
-        const dx = coords[i][0] - centroids[c][0];
-        const dy = coords[i][1] - centroids[c][1];
-        const dz = coords[i][2] - centroids[c][2];
-        const d = dx * dx + dy * dy + dz * dz;
-        if (d < bestD) {
-          bestD = d;
-          best = c;
-        }
-      }
-      cluster[i] = best;
-    }
-    const sums = Array.from({ length: k }, () => [0, 0, 0, 0]);
-    for (let i = 0; i < n; i++) {
-      const sum = sums[cluster[i]];
-      sum[0] += coords[i][0];
-      sum[1] += coords[i][1];
-      sum[2] += coords[i][2];
-      sum[3] += 1;
-    }
-    for (let c = 0; c < k; c++) {
-      if (sums[c][3] > 0) {
-        centroids[c] = [sums[c][0] / sums[c][3], sums[c][1] / sums[c][3], sums[c][2] / sums[c][3]];
-      }
-    }
+  const sums = Array.from({ length: clusterCount }, () => [0, 0, 0, 0]);
+  for (let i = 0; i < n; i++) {
+    const sum = sums[points[i].cluster];
+    sum[0] += coords[i][0];
+    sum[1] += coords[i][1];
+    sum[2] += coords[i][2];
+    sum[3] += 1;
   }
+  const centroids = sums.map(
+    ([x, y, z, count]) => [x / count, y / count, z / count] as [number, number, number],
+  );
 
-  const representatives: number[] = [];
-  for (let c = 0; c < k; c++) {
-    let best = -1;
-    let bestD = Infinity;
-    for (let i = 0; i < n; i++) {
-      if (cluster[i] !== c) continue;
-      const dx = coords[i][0] - centroids[c][0];
-      const dy = coords[i][1] - centroids[c][1];
-      const dz = coords[i][2] - centroids[c][2];
-      const d = dx * dx + dy * dy + dz * dz;
-      if (d < bestD) {
-        bestD = d;
-        best = i;
-      }
-    }
-    if (best >= 0) representatives.push(best);
-  }
-
-  return { coords, cluster, representatives };
+  return { coords, centroids };
 }
 
 export default function EmbeddingSpaceExplorer({ data, onPointClick }: Props) {
@@ -141,7 +107,7 @@ export default function EmbeddingSpaceExplorer({ data, onPointClick }: Props) {
   const wakeRef = useRef<() => void>(() => {});
   const animRef = useRef<number>(0);
 
-  const prep = useMemo(() => prepare(data.points), [data]);
+  const prep = useMemo(() => prepare(data.points, data.clusters.length), [data]);
 
   // Project a 3D point to 2D screen coordinates with perspective
   const project = useCallback(
@@ -180,7 +146,7 @@ export default function EmbeddingSpaceExplorer({ data, onPointClick }: Props) {
 
     ctx.clearRect(0, 0, containerWidth, containerHeight);
 
-    const { coords, cluster, representatives } = prep;
+    const { coords, centroids } = prep;
     const projected = coords.map(([x, y, z]) => project(x, y, z, containerWidth, containerHeight));
 
     // Points back-to-front for correct overlap; halo pass + core pass per
@@ -191,7 +157,7 @@ export default function EmbeddingSpaceExplorer({ data, onPointClick }: Props) {
       if (sx < -20 || sx > containerWidth + 20 || sy < -20 || sy > containerHeight + 20) continue;
 
       const depthNorm = Math.max(0, Math.min(1, (depth + 1) / 2)); // 0 far, 1 near
-      const [r, g, b] = CLUSTER_COLORS[cluster[i] % CLUSTER_COLORS.length];
+      const [r, g, b] = CLUSTER_COLORS[data.points[i].cluster % CLUSTER_COLORS.length];
       const radius = 1.6 + depthNorm * 2.6;
 
       ctx.beginPath();
@@ -205,25 +171,59 @@ export default function EmbeddingSpaceExplorer({ data, onPointClick }: Props) {
       ctx.fill();
     }
 
-    // One label per island: the page closest to the cluster centroid, so
-    // each blob of color says what it's about.
+    // Place labels near their centroids without letting their text boxes
+    // collide. A short leader line preserves the centroid association when a
+    // label must move.
     ctx.font = "10.5px ui-monospace, Menlo, monospace";
     ctx.textBaseline = "middle";
-    for (const i of representatives) {
-      const { sx, sy, depth } = projected[i];
+    const occupied: { left: number; right: number; top: number; bottom: number }[] = [];
+    for (const { index, name } of data.clusters) {
+      const [cx, cy, cz] = centroids[index];
+      const { sx, sy, depth } = project(cx, cy, cz, containerWidth, containerHeight);
       const depthNorm = Math.max(0, Math.min(1, (depth + 1) / 2));
-      const name = data.points[i].label;
-      const label = name.length > 24 ? `${name.slice(0, 23)}…` : name;
-      // Flip to the left side near the right edge so labels never clip.
+      const label = truncateLabel(name);
       const left = sx > containerWidth - 150;
       ctx.textAlign = left ? "right" : "left";
       const lx = left ? sx - 7 : sx + 7;
-      // Halo so the label survives crossing other points.
+      const width = ctx.measureText(label).width;
+      const offsets = [0, -16, 16, -32, 32, -48, 48];
+      const ly = offsets
+        .map((offset) => Math.max(10, Math.min(containerHeight - 10, sy + offset)))
+        .find((candidate) => {
+          const box = {
+            left: left ? lx - width : lx,
+            right: left ? lx : lx + width,
+            top: candidate - 7,
+            bottom: candidate + 7,
+          };
+          return !occupied.some(
+            (other) =>
+              box.left < other.right + 4 &&
+              box.right > other.left - 4 &&
+              box.top < other.bottom + 4 &&
+              box.bottom > other.top - 4,
+          );
+        });
+      if (ly === undefined) continue;
+      occupied.push({
+        left: left ? lx - width : lx,
+        right: left ? lx : lx + width,
+        top: ly - 7,
+        bottom: ly + 7,
+      });
+      if (ly !== sy) {
+        ctx.beginPath();
+        ctx.moveTo(sx, sy);
+        ctx.lineTo(left ? lx + 3 : lx - 3, ly);
+        ctx.strokeStyle = "rgba(26,23,20,0.25)";
+        ctx.lineWidth = 0.75;
+        ctx.stroke();
+      }
       ctx.lineWidth = 3;
       ctx.strokeStyle = "rgba(255,255,255,0.85)";
-      ctx.strokeText(label, lx, sy);
+      ctx.strokeText(label, lx, ly);
       ctx.fillStyle = `rgba(26,23,20,${0.4 + depthNorm * 0.5})`;
-      ctx.fillText(label, lx, sy);
+      ctx.fillText(label, lx, ly);
     }
   }, [data, prep, project]);
 
@@ -381,6 +381,11 @@ export default function EmbeddingSpaceExplorer({ data, onPointClick }: Props) {
           style={{ left: tooltip.x + 12, top: tooltip.y - 8 }}
         >
           <div className="text-xs font-medium text-foreground">{tooltip.point.label}</div>
+          {tooltip.point.detail && (
+            <div className="mt-0.5 max-w-[260px] text-[11px] text-muted-foreground">
+              {tooltip.point.detail}
+            </div>
+          )}
         </div>
       )}
     </div>

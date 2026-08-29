@@ -194,22 +194,6 @@ export default function SkillSettingsPageClient({ slug }: { slug: string }) {
     }
   }
 
-  async function toggleDiscoverable(nextDiscoverable: boolean) {
-    if (!skill) return;
-
-    setSaving("discover");
-    setError("");
-    try {
-      const updated = await updateSkill(skill.id, { discoverable: nextDiscoverable });
-      setData((current) => (current ? { ...current, skill: updated } : current));
-      resetSkillNavigationCache();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not update Discover");
-    } finally {
-      setSaving("");
-    }
-  }
-
   async function handleStopSharing() {
     if (!skill) return;
     const ok = await confirm({
@@ -297,15 +281,6 @@ export default function SkillSettingsPageClient({ slug }: { slug: string }) {
                 <span className="text-muted-foreground">Views</span>
                 <span>{skill.view_count}</span>
               </div>
-              <label className="mt-3 flex cursor-pointer items-center gap-2 rounded-md border border-border bg-surface px-2 py-1.5">
-                <input
-                  type="checkbox"
-                  checked={skill.discoverable}
-                  disabled={saving === "discover"}
-                  onChange={(e) => void toggleDiscoverable(e.target.checked)}
-                />
-                <span className="text-[12px] text-foreground">List on Discover</span>
-              </label>
             </div>
           </Section>
 

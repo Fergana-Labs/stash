@@ -207,9 +207,38 @@ async def _reconcile_source_documents() -> int:
     return done
 
 
+async def _ensure_embedding_space() -> None:
+    """Hard-cut all stored vectors when their generating model changes."""
+    pool = get_pool()
+    current = embedding_service.space_id()
+    async with pool.acquire() as conn, conn.transaction():
+        await conn.execute("SELECT pg_advisory_xact_lock(183624091)")
+        stored = await conn.fetchval(
+            "SELECT space_id FROM embedding_space_state WHERE singleton = TRUE"
+        )
+        if stored == current:
+            return
+
+        tables = ["pages", "table_rows", "history_events", "files", *_SOURCE_CONTENT_TABLES]
+        for table in tables:
+            await conn.execute(
+                f"UPDATE {table} SET embedding = NULL, embed_stale = TRUE "
+                "WHERE embedding IS NOT NULL"
+            )
+        await conn.execute("TRUNCATE embedding_projections")
+        await conn.execute(
+            "INSERT INTO embedding_space_state (singleton, space_id, updated_at) "
+            "VALUES (TRUE, $1, NOW()) ON CONFLICT (singleton) DO UPDATE "
+            "SET space_id = EXCLUDED.space_id, updated_at = NOW()",
+            current,
+        )
+        logger.info("embedding space changed: all stored vectors queued for replacement")
+
+
 async def _reconcile() -> int:
     if not embedding_service.is_configured():
         return 0
+    await _ensure_embedding_space()
     done = 0
     for fn in (
         _reconcile_pages,

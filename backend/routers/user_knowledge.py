@@ -15,7 +15,6 @@ from ..config import settings
 from ..database import get_pool
 from ..services import (
     ask_service,
-    linear_ticket_service,
     llm,
     memory_service,
     permission_service,
@@ -50,7 +49,6 @@ async def _list_sessions(owner_user_id: UUID, user_id: UUID) -> list[dict]:
             "id": s["id"],
             "session_id": s["session_id"],
             "title": titles[s["session_id"]],
-            "linear_tickets": linear_ticket_service.tickets_response(s.get("linear_tickets")),
             "user_name": s["user_name"],
             "agent_name": s["agent_name"] or "",
             "size_bytes": int(s["size_bytes"] or 0),

@@ -48,6 +48,8 @@ async def push_event(
     current_user: dict = Depends(get_current_user),
     scope_user_id: UUID = Depends(get_scope),
 ):
+    if not current_user["uploads_enabled"]:
+        raise HTTPException(status_code=403, detail="Uploads are disabled for this installation")
     # Events land in the active scope, same as session rows: personal by
     # default, a workspace when the plugin/CLI sends X-Stash-Scope.
     owner_user_id = scope_user_id
@@ -62,6 +64,7 @@ async def push_event(
             content=req.content,
             created_by=current_user["id"],
             session_id=req.session_id,
+            uploader_key_id=current_user["key_id"],
             user_id=req.user_id,
             user_name=req.user_name,
             session_folder_id=req.session_folder_id,
@@ -85,13 +88,18 @@ async def push_events_batch(
     current_user: dict = Depends(get_current_user),
     scope_user_id: UUID = Depends(get_scope),
 ):
+    if not current_user["uploads_enabled"]:
+        raise HTTPException(status_code=403, detail="Uploads are disabled for this installation")
     owner_user_id = scope_user_id
     await _check_write(owner_user_id, current_user["id"])
     events_data = [e.model_dump() for e in req.events]
     try:
         await memory_service.reject_cross_user_sessions(owner_user_id, events_data)
         events = await memory_service.push_events_batch(
-            owner_user_id, current_user["id"], events_data
+            owner_user_id,
+            current_user["id"],
+            events_data,
+            uploader_key_id=current_user["key_id"],
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

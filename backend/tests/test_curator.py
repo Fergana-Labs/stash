@@ -308,6 +308,43 @@ async def test_changes_endpoint(client: AsyncClient):
     assert "counts" in body and "history" in body and "pages" in body
 
 
+@pytest.mark.asyncio
+async def test_curator_run_stats_count_the_bounded_internal_delta(monkeypatch):
+    from backend.services import curation_service, sprite_agent_service
+
+    async def changes_since(*_args):
+        return {
+            "history": [
+                {"session_id": "trace-1", "user": None},
+                {"session_id": "trace-1", "user": None},
+                {"session_id": "trace-2", "user": None},
+                {"session_id": None, "user": None},
+                {"session_id": "external-trace", "user": {"id": "customer"}},
+            ],
+            "counts": {"pages": 2, "files": 1, "source_docs": 3, "saves": 4},
+            "history_has_more": True,
+        }
+
+    monkeypatch.setattr(curation_service, "changes_since", changes_since)
+    stats = await sprite_agent_service._curator_run_stats(
+        {
+            "user_id": UUID("00000000-0000-0000-0000-000000000001"),
+            "curated_through": None,
+            "curator_wiki": "internal",
+        }
+    )
+
+    assert stats == {
+        "traces": 2,
+        "activity_events": 1,
+        "pages": 2,
+        "files": 1,
+        "source_docs": 3,
+        "saves": 4,
+        "more_queued": True,
+    }
+
+
 def test_curator_prompt_demands_a_curator_log():
     """The run's final message is the home page's log entry — the prompt must
     demand it in log form, with the quiet-night escape hatch so empty deltas
@@ -315,6 +352,14 @@ def test_curator_prompt_demands_a_curator_log():
     prompt = prompts.render_curator_prompt("folder-123", "2026-08-01T00:00:00")
     assert "Curator log" in prompt
     assert "A quiet night is reported as quiet" in prompt
+
+
+def test_curator_prompt_bootstraps_three_agent_skills_from_five_traces():
+    prompt = prompts.render_curator_prompt("folder-123", None)
+    assert "at least five sessions" in prompt
+    assert "exactly three" in prompt
+    assert "stash skills add <folder>" in prompt
+    assert "Never publish it" in prompt
 
 
 def test_curator_prompt_embeds_folder_and_window():
@@ -370,6 +415,10 @@ async def test_idle_curator_skipped_by_beat(client: AsyncClient, sprite_exec, _d
     # Tick consumed — the next beat won't re-check until the next cron tick.
     assert row["last_run_at"] > datetime.now(UTC) - timedelta(minutes=1)
     assert row["last_run_outcome"] == "skipped_no_changes"
+    # The skip is explicit in the curator log — a silent no-op reads as broken.
+    entries = (await client.get("/api/v1/me/curator-log", headers=_auth(key))).json()["entries"]
+    assert entries[0]["status"] == "skipped"
+    assert entries[0]["summary"] == "Nothing new to process since the last run."
 
 
 @pytest.mark.asyncio
@@ -461,12 +510,8 @@ async def test_failed_curator_run_preserves_watermark(
 
 
 @pytest.mark.asyncio
-async def test_failed_run_records_error_and_refunds_credit(
-    client: AsyncClient, sprite_exec, _db_pool, monkeypatch
-):
-    """A failed run must be visible (last_run_error) and must not eat the
-    free monthly allowance — an infra outage would otherwise silently burn
-    all credits."""
+async def test_failed_run_records_error(client: AsyncClient, sprite_exec, _db_pool, monkeypatch):
+    """A failed run must be visible through last_run_error."""
     from backend.services import sprite_agent_service
     from backend.tasks.agent_schedules import _run_due, _run_scheduled_agent, run_scheduled_agent
 
@@ -488,11 +533,10 @@ async def test_failed_run_records_error_and_refunds_credit(
     await _run_scheduled_agent(UUID(dispatched[0][0]), dispatched[0][1])
 
     row = await _db_pool.fetchrow(
-        "SELECT last_run_error, month_run_count FROM agents WHERE id = $1",
+        "SELECT last_run_error FROM agents WHERE id = $1",
         UUID(curator["id"]),
     )
     assert "sprite exploded" in row["last_run_error"]
-    assert row["month_run_count"] == 0  # consumed by mark_run, refunded on failure
 
     # The next successful run clears the error. Re-patch the real function
     # rather than monkeypatch.undo() — the fixture is shared with sprite_exec,
@@ -503,11 +547,10 @@ async def test_failed_run_records_error_and_refunds_credit(
     assert await _run_due() == 1
     await _run_scheduled_agent(UUID(dispatched[1][0]), dispatched[1][1])
     row = await _db_pool.fetchrow(
-        "SELECT last_run_error, month_run_count FROM agents WHERE id = $1",
+        "SELECT last_run_error FROM agents WHERE id = $1",
         UUID(curator["id"]),
     )
     assert row["last_run_error"] is None
-    assert row["month_run_count"] == 1
 
 
 # --- Manual recompute (POST /me/memory/recompute) ---
@@ -548,12 +591,16 @@ async def test_recompute_runs_curator_now(client: AsyncClient, sprite_exec, _db_
     assert row["curated_through"] >= before - timedelta(seconds=5)
     assert row["last_run_outcome"] == "ran"
 
-    # The run's events carry the curator's own name, so its sessions are
-    # attributable in the Agents/Sessions lists (not generic "Stash Agent").
+    # The curator log keeps its attributed events, but internal processing is
+    # not represented as one of the user's coding sessions.
     names = await _db_pool.fetch(
         "SELECT DISTINCT agent_name FROM history_events WHERE session_id LIKE 'agent-curate-%'"
     )
     assert [n["agent_name"] for n in names] == ["Memory curator"]
+    session_count = await _db_pool.fetchval(
+        "SELECT COUNT(*) FROM sessions WHERE session_id LIKE 'agent-curate-%'"
+    )
+    assert session_count == 0
 
 
 @pytest.mark.asyncio
@@ -576,11 +623,10 @@ async def test_failed_manual_recompute_records_error(
         await _run_curator_now(UUID(curator["id"]))
 
     row = await _db_pool.fetchrow(
-        "SELECT last_run_error, month_run_count FROM agents WHERE id = $1",
+        "SELECT last_run_error FROM agents WHERE id = $1",
         UUID(curator["id"]),
     )
     assert "harness missing" in row["last_run_error"]
-    assert row["month_run_count"] == 0
 
     # The error is visible through the API the CLI reads.
     r = await client.get("/api/v1/me/agents", headers=_auth(key))
@@ -625,34 +671,6 @@ async def test_recompute_409_when_nothing_changed(client: AsyncClient, _db_pool)
     )
     r = await client.post("/api/v1/me/memory/recompute", headers=_auth(key))
     assert r.status_code == 409
-
-
-@pytest.mark.asyncio
-async def test_recompute_metered_like_the_scheduler(client: AsyncClient, _db_pool):
-    """Manual runs draw from the same monthly sleep-time allowance: free
-    accounts stop at the cap, enterprise is unlimited."""
-    from backend.config import settings
-    from backend.tasks.agent_schedules import run_curator_now
-
-    key, uid = await _register(client)
-    curator = await agent_service.get_or_create_curator(uid)
-    await client.post(
-        "/api/v1/me/pages/new", json={"name": "N", "content": "x"}, headers=_auth(key)
-    )
-    await _db_pool.execute(
-        "UPDATE agents SET month_run_count = $2, "
-        "month_run_anchor = date_trunc('month', now())::date WHERE id = $1",
-        UUID(curator["id"]),
-        settings.FREE_CURATOR_RUNS_PER_MONTH,
-    )
-
-    r = await client.post("/api/v1/me/memory/recompute", headers=_auth(key))
-    assert r.status_code == 402
-
-    await _db_pool.execute("UPDATE users SET plan = 'enterprise' WHERE id = $1", uid)
-    run_curator_now.delay = lambda agent_id: None
-    r = await client.post("/api/v1/me/memory/recompute", headers=_auth(key))
-    assert r.status_code == 202
 
 
 # --- Memory wiki graph (GET /me/memory-graph) ---
@@ -716,6 +734,17 @@ async def test_memory_tree_nests_folders_and_scopes_to_memory(client: AsyncClien
     nested_page = await add_page("Deep Dive", sub["id"])
     # A Files page is not part of the wiki tree.
     await add_page("Outside", None)
+
+    contents = (
+        await client.get(
+            f"/api/v1/me/folders/{sub['id']}/contents",
+            headers=_auth(key),
+        )
+    ).json()
+    assert contents["breadcrumbs"] == [
+        {"id": mem["id"], "name": "Memory", "is_skill": False, "is_memory": True},
+        {"id": sub["id"], "name": "Research", "is_skill": False, "is_memory": False},
+    ]
 
     r = await client.get("/api/v1/me/memory-tree", headers=_auth(key))
     assert r.status_code == 200

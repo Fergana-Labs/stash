@@ -1,20 +1,22 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
+import CopyableCommandBlock from "../../components/CopyableCommandBlock";
 import Header from "../../components/Header";
 import { useAuth } from "../../hooks/useAuth";
 import { track } from "../../lib/analytics";
-import { redeemCode, updateMe } from "../../lib/api";
+import {
+  getOnboardingPreferences,
+  getOnboardingStatus,
+  putOnboardingPreferences,
+  updateMe,
+  type OnboardingStatus,
+} from "../../lib/api";
 
-// The whole flow: a few questions about the user, then one instruction —
-// connect your agent. Everything else Stash does grows out of the
-// transcripts that starts, so onboarding refuses to offer detours.
-const STEP_NAMES = ["about", "connect"] as const;
-
+const REFRESH_MS = 3_000;
 const CLI_INSTALL_COMMAND = `bash -c "$(curl -fsSL https://joinstash.ai/install)"`;
-
 const ROLE_OPTIONS = [
   "Engineer",
   "Eng Manager",
@@ -24,7 +26,6 @@ const ROLE_OPTIONS = [
   "Researcher",
   "Other",
 ];
-
 const REFERRAL_OPTIONS = [
   "Search",
   "X / Twitter",
@@ -34,13 +35,16 @@ const REFERRAL_OPTIONS = [
   "Other",
 ];
 
+const DEFAULT_PREFERENCES = {
+  enabled_agents: ["claude", "codex", "cursor", "opencode", "gemini", "openclaw", "hermes"],
+  record_scope: "everything" as const,
+  import_history: true,
+  claude_md_opt_in: true,
+};
+
 export default function OnboardingPage() {
   return (
-    <Suspense
-      fallback={
-        <div className="min-h-screen flex items-center justify-center text-muted-foreground">Loading…</div>
-      }
-    >
+    <Suspense fallback={<LoadingScreen />}>
       <OnboardingInner />
     </Suspense>
   );
@@ -50,18 +54,11 @@ function OnboardingInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user, loading, logout } = useAuth();
-  // Roles are multi-answer: plenty of people are a founder *and* an engineer.
-  const [roles, setRoles] = useState<string[]>([]);
-  const [roleOther, setRoleOther] = useState("");
-  const [referralSource, setReferralSource] = useState("");
-  const [referralOther, setReferralOther] = useState("");
-  const [useCase, setUseCase] = useState("");
-
-  const stepIdx = useMemo(() => {
-    const raw = searchParams.get("step");
-    const parsed = raw ? parseInt(raw, 10) : 1;
-    return Number.isFinite(parsed) && parsed > 0 ? parsed - 1 : 0;
-  }, [searchParams]);
+  const isConnect = searchParams.get("step") === "connect";
+  const [prepared, setPrepared] = useState(false);
+  const [status, setStatus] = useState<OnboardingStatus | null>(null);
+  const [error, setError] = useState("");
+  const completionTracked = useRef(false);
 
   useEffect(() => {
     if (!loading && !user) router.replace("/login");
@@ -69,250 +66,282 @@ function OnboardingInner() {
 
   useEffect(() => {
     if (loading || !user) return;
-    track("onboarding.viewed", { has_path: false });
+    let cancelled = false;
+
+    async function prepare() {
+      try {
+        const { preferences } = await getOnboardingPreferences();
+        if (preferences === null) await putOnboardingPreferences(DEFAULT_PREFERENCES);
+        if (cancelled) return;
+        setPrepared(true);
+        track("onboarding.viewed", {});
+      } catch (reason) {
+        if (cancelled) return;
+        setError(reason instanceof Error ? reason.message : "Could not prepare Stash setup");
+      }
+    }
+
+    void prepare();
+    return () => {
+      cancelled = true;
+    };
   }, [loading, user]);
 
+  const refresh = useCallback(async () => {
+    try {
+      setStatus(await getOnboardingStatus());
+      setError("");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not check for imported sessions");
+    }
+  }, []);
+
   useEffect(() => {
-    const name = STEP_NAMES[stepIdx];
-    if (name) track("onboarding.step_viewed", { step_idx: stepIdx, step_name: name });
-  }, [stepIdx]);
+    if (!prepared || !isConnect) return;
+    track("onboarding.step_viewed", { step_name: "connect" });
+    void refresh();
+    const timer = window.setInterval(() => void refresh(), REFRESH_MS);
+    return () => window.clearInterval(timer);
+  }, [prepared, isConnect, refresh]);
 
-  const goToStep = useCallback(
-    (idx: number) => {
-      const params = new URLSearchParams(searchParams.toString());
-      params.set("step", String(idx + 1));
-      router.push(`/onboarding?${params.toString()}`);
-    },
-    [router, searchParams],
-  );
+  useEffect(() => {
+    if (!isConnect || status === null || status.curatable_trace_count === 0) return;
+    if (!completionTracked.current) {
+      completionTracked.current = true;
+      track("onboarding.completed", { sessions: status.curatable_trace_count });
+    }
+    router.replace("/");
+  }, [isConnect, status, router]);
 
-  const exitToHome = useCallback(() => {
-    router.push("/");
-  }, [router]);
-
-  const finishAndExit = useCallback(() => {
-    track("onboarding.completed", { total_steps: STEP_NAMES.length });
-    exitToHome();
-  }, [exitToHome]);
-
-  const skip = useCallback(() => {
-    track("onboarding.skipped", { step_idx: stepIdx });
-    exitToHome();
-  }, [exitToHome, stepIdx]);
-
-  if (loading || !user) {
-    return (
-      <div className="min-h-screen flex items-center justify-center text-muted-foreground">Loading…</div>
-    );
+  if (loading || !user || !prepared) return <LoadingScreen />;
+  if (isConnect && status !== null && status.curatable_trace_count > 0) {
+    return <LoadingScreen />;
   }
 
-  // 0 = about, 1 = connect your agent.
-  const isAbout = stepIdx <= 0;
-
-  const continueLabel = isAbout ? "Continue" : "Finish";
-  // "Other" only counts once it's spelled out, so picking it without typing
-  // leaves the question unanswered rather than sending a bare "Other".
-  const otherSpelledOut = !roles.includes("Other") || Boolean(roleOther.trim());
-  const roleAnswer =
-    roles.length > 0 && otherSpelledOut
-      ? roles.map((r) => (r === "Other" ? `Other: ${roleOther.trim()}` : r)).join(", ")
-      : "";
-  const referralAnswer =
-    referralSource === "Other"
-      ? referralOther.trim() && `Other: ${referralOther.trim()}`
-      : referralSource;
-  // About: role + referral are required, and "Other" needs to be spelled out
-  // (use-case is optional).
-  const canContinue = isAbout ? Boolean(roleAnswer && referralAnswer) : true;
-  const onContinue = async () => {
-    if (isAbout) {
-      try {
-        await updateMe({
-          role: roleAnswer,
-          referral_source: referralAnswer,
-          use_case: useCase || undefined,
-        });
-      } catch {
-        // Best-effort — don't block onboarding on a profile write.
-      }
-      track("onboarding.about_submitted", {
-        role: roleAnswer,
-        referral_source: referralAnswer,
-      });
-      return goToStep(stepIdx + 1);
-    }
-    finishAndExit();
-  };
-
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="flex min-h-screen flex-col bg-base">
       <Header user={user} onLogout={logout} />
-      <main className="flex-1 px-4 py-10">
-        <div className="mx-auto w-full max-w-2xl space-y-8">
-          <ProgressBar stepIdx={stepIdx} />
-          {isAbout && (
+      <main className="flex-1 px-6 py-10">
+        <div className="mx-auto w-full max-w-2xl">
+          <StepIndicator connect={isConnect} />
+          {isConnect ? (
+            <ConnectStep
+              error={error}
+              onComplete={() => {
+                track("onboarding.completed", { completion_method: "manual" });
+                router.push("/");
+              }}
+            />
+          ) : (
             <AboutStep
-              roles={roles}
-              roleOther={roleOther}
-              referralSource={referralSource}
-              referralOther={referralOther}
-              useCase={useCase}
-              onToggleRole={(r) =>
-                setRoles((prev) => (prev.includes(r) ? prev.filter((x) => x !== r) : [...prev, r]))
-              }
-              onRoleOther={setRoleOther}
-              onReferral={setReferralSource}
-              onReferralOther={setReferralOther}
-              onUseCase={setUseCase}
+              onContinue={() => router.push("/onboarding?step=connect")}
+              onSkip={() => {
+                track("onboarding.skipped", { step_name: "about" });
+                router.push("/");
+              }}
             />
           )}
-          {!isAbout && <ConnectAgentStep />}
-          <StepControls
-            onContinue={onContinue}
-            onSkip={skip}
-            continueLabel={continueLabel}
-            canContinue={canContinue}
-          />
         </div>
       </main>
     </div>
   );
 }
 
-function AboutStep({
-  roles,
-  roleOther,
-  referralSource,
-  referralOther,
-  useCase,
-  onToggleRole,
-  onRoleOther,
-  onReferral,
-  onReferralOther,
-  onUseCase,
-}: {
-  roles: string[];
-  roleOther: string;
-  referralSource: string;
-  referralOther: string;
-  useCase: string;
-  onToggleRole: (v: string) => void;
-  onRoleOther: (v: string) => void;
-  onReferral: (v: string) => void;
-  onReferralOther: (v: string) => void;
-  onUseCase: (v: string) => void;
-}) {
+function AboutStep({ onContinue, onSkip }: { onContinue: () => void; onSkip: () => void }) {
+  const [roles, setRoles] = useState<string[]>([]);
+  const [roleOther, setRoleOther] = useState("");
+  const [referral, setReferral] = useState("");
+  const [referralOther, setReferralOther] = useState("");
+  const [useCase, setUseCase] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+
+  const roleAnswer = useMemo(() => {
+    if (roles.length === 0 || (roles.includes("Other") && !roleOther.trim())) return "";
+    return roles
+      .map((role) => (role === "Other" ? `Other: ${roleOther.trim()}` : role))
+      .join(", ");
+  }, [roles, roleOther]);
+  const referralAnswer =
+    referral === "Other" ? referralOther.trim() && `Other: ${referralOther.trim()}` : referral;
+  const canContinue = Boolean(roleAnswer && referralAnswer && !submitting);
+
+  async function submit() {
+    if (!canContinue) return;
+    setSubmitting(true);
+    setError("");
+    try {
+      await updateMe({
+        role: roleAnswer,
+        referral_source: referralAnswer,
+        use_case: useCase.trim() || undefined,
+      });
+      track("onboarding.about_submitted", {
+        role: roleAnswer,
+        referral_source: referralAnswer,
+      });
+      onContinue();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not save your answers");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   return (
-    <div className="space-y-6">
-      <div className="space-y-2">
-        <h1 className="font-display text-[28px] leading-[1.1] font-bold tracking-tight text-foreground">
-          First, tell us about you
-        </h1>
-        <p className="text-sm text-dim max-w-lg">
-          A few quick questions so we can tailor Stash to how you&rsquo;ll use it.
-        </p>
-      </div>
-      <Field label="What's your role? Pick as many as fit.">
-        <PillGroup options={ROLE_OPTIONS} selected={roles} onToggle={onToggleRole} />
-        {roles.includes("Other") && (
-          <OtherInput value={roleOther} onChange={onRoleOther} placeholder="What's your role?" />
-        )}
-      </Field>
-      <Field label="How did you hear about us?">
-        <PillGroup
-          options={REFERRAL_OPTIONS}
-          selected={referralSource ? [referralSource] : []}
-          onToggle={(v) => onReferral(referralSource === v ? "" : v)}
-        />
-        {referralSource === "Other" && (
-          <OtherInput
-            value={referralOther}
-            onChange={onReferralOther}
-            placeholder="Where did you hear about us?"
+    <div className="mt-8">
+      <h1 className="font-display text-[28px] font-bold leading-tight tracking-tight text-foreground">
+        First, tell us about you
+      </h1>
+      <p className="mt-2 max-w-lg text-[14px] text-muted-foreground">
+        A few quick questions so we can tailor Stash to how you&apos;ll use it.
+      </p>
+
+      <div className="mt-7 space-y-6">
+        <Field label="What's your role? Pick as many as fit.">
+          <PillGroup
+            options={ROLE_OPTIONS}
+            selected={roles}
+            onToggle={(role) =>
+              setRoles((current) =>
+                current.includes(role)
+                  ? current.filter((candidate) => candidate !== role)
+                  : [...current, role],
+              )
+            }
           />
-        )}
-      </Field>
-      <Field label="What do you want to use Stash for?" optional>
-        <textarea
-          value={useCase}
-          onChange={(e) => onUseCase(e.target.value)}
-          rows={3}
-          maxLength={2000}
-          placeholder="e.g. give my coding agents a shared knowledge base across our repos"
-          className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-[13.5px] text-foreground placeholder:text-muted-foreground/70 focus:border-brand focus:outline-none"
-        />
-      </Field>
-      <HackathonCode />
+          {roles.includes("Other") && (
+            <OtherInput value={roleOther} onChange={setRoleOther} placeholder="What's your role?" />
+          )}
+        </Field>
+
+        <Field label="How did you hear about us?">
+          <PillGroup
+            options={REFERRAL_OPTIONS}
+            selected={referral ? [referral] : []}
+            onToggle={(option) => setReferral(referral === option ? "" : option)}
+          />
+          {referral === "Other" && (
+            <OtherInput
+              value={referralOther}
+              onChange={setReferralOther}
+              placeholder="Where did you hear about us?"
+            />
+          )}
+        </Field>
+
+        <Field label="What do you want to use Stash for?" optional>
+          <textarea
+            value={useCase}
+            onChange={(event) => setUseCase(event.target.value)}
+            rows={3}
+            maxLength={2000}
+            placeholder="e.g. turn my coding-agent sessions into reusable Skills"
+            className="w-full rounded-md border border-border bg-surface px-3 py-2 text-[13.5px] text-foreground placeholder:text-muted-foreground/70 focus:border-brand focus:outline-none"
+          />
+        </Field>
+      </div>
+
+      {error && <p className="mt-4 text-[12.5px] text-error">{error}</p>}
+      <div className="mt-8 flex items-center justify-between">
+        <button
+          type="button"
+          onClick={onSkip}
+          className="cursor-pointer text-[12px] text-muted-foreground hover:text-foreground"
+        >
+          Skip onboarding
+        </button>
+        <button
+          type="button"
+          onClick={() => void submit()}
+          disabled={!canContinue}
+          className="cursor-pointer rounded-md bg-brand px-4 py-2 text-[12px] font-medium text-white hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {submitting ? "Saving…" : "Continue"}
+        </button>
+      </div>
     </div>
   );
 }
 
-function HackathonCode() {
-  const [open, setOpen] = useState(false);
-  const [code, setCode] = useState("");
-  const [state, setState] = useState<"idle" | "submitting" | "redeemed">("idle");
-  const [error, setError] = useState("");
-
-  async function apply() {
-    if (!code.trim()) return;
-    setState("submitting");
-    setError("");
-    try {
-      await redeemCode(code.trim());
-      setState("redeemed");
-      track("onboarding.code_redeemed");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "That code didn't work");
-      setState("idle");
-    }
-  }
-
-  if (state === "redeemed") {
-    return (
-      <p className="text-[13px] text-brand">
-        Hackathon code applied — your account is unlocked.
-      </p>
-    );
-  }
-
-  if (!open) {
-    return (
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="cursor-pointer text-[13px] text-dim underline-offset-2 hover:text-foreground hover:underline"
-      >
-        Have a hackathon code?
-      </button>
-    );
-  }
-
+function ConnectStep({ error, onComplete }: { error: string; onComplete: () => void }) {
   return (
-    <div className="space-y-2">
-      <div className="flex gap-2">
-        <input
-          value={code}
-          onChange={(e) => setCode(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              void apply();
-            }
-          }}
-          placeholder="Hackathon code"
-          autoFocus
-          className="w-56 rounded-lg border border-border bg-surface px-3 py-2 text-[13.5px] text-foreground placeholder:text-muted-foreground/70 focus:border-brand focus:outline-none"
-        />
+    <div className="mt-8">
+      <h1 className="font-display text-[30px] font-bold tracking-tight text-foreground">
+        Turn your traces into Skills
+      </h1>
+      <p className="mt-2 max-w-2xl text-[14px] leading-6 text-muted-foreground">
+        Connect Stash once. It imports your five most recent coding sessions, then creates your
+        first three Skills automatically.
+      </p>
+      {error && <p className="mt-4 text-[12.5px] text-error">{error}</p>}
+      <div className="mt-8 divide-y divide-border border-y border-border">
+        <ProductStep number={1} title="Connect Stash">
+          <p className="text-[13px] leading-5 text-muted-foreground">
+            Run this once in your terminal. Stash finds your coding agents and privately imports
+            only your five most recent sessions to get started. Common API keys and access tokens
+            are automatically redacted before upload.
+          </p>
+          <div className="mt-4 max-w-xl">
+            <CopyableCommandBlock commands={CLI_INSTALL_COMMAND} />
+          </div>
+        </ProductStep>
+        <ProductStep number={2} title="Stash automatically improves your agent">
+          <p className="text-[13px] leading-5 text-muted-foreground">
+            Stash finds reusable patterns in your sessions, turns them into Skills, and keeps them
+            available to your coding agents.
+          </p>
+        </ProductStep>
+        <ProductStep number={3} title="Share with your team">
+          <p className="text-[13px] leading-5 text-muted-foreground">
+            Share the Skills that work so everyone&apos;s agents benefit from what your team learns.
+          </p>
+        </ProductStep>
+      </div>
+      <div className="mt-6 flex justify-end">
         <button
           type="button"
-          onClick={() => void apply()}
-          disabled={state === "submitting" || !code.trim()}
-          className="rounded-lg bg-brand px-4 py-2 text-[13.5px] font-medium text-white transition-colors hover:bg-brand-hover disabled:opacity-50"
+          onClick={onComplete}
+          className="cursor-pointer rounded-md bg-brand px-4 py-2 text-[12px] font-medium text-white hover:bg-brand-hover"
         >
-          {state === "submitting" ? "Applying…" : "Apply"}
+          Complete onboarding
         </button>
       </div>
-      {error && <p className="text-[13px] text-error">{error}</p>}
+    </div>
+  );
+}
+
+function ProductStep({
+  number,
+  title,
+  children,
+}: {
+  number: number;
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="grid gap-4 py-6 sm:grid-cols-[32px_1fr]">
+      <span className="flex h-6 w-6 items-center justify-center rounded-full border border-border text-[11px] font-medium text-muted-foreground">
+        {number}
+      </span>
+      <div className="min-w-0">
+        <h2 className="text-[15px] font-semibold text-foreground">{title}</h2>
+        <div className="mt-2">{children}</div>
+      </div>
+    </section>
+  );
+}
+
+function StepIndicator({ connect }: { connect: boolean }) {
+  return (
+    <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
+      <span className={connect ? "text-muted-foreground" : "font-medium text-foreground"}>
+        {connect ? "✓" : "●"} About you
+      </span>
+      <span className={connect ? "font-medium text-foreground" : "text-muted-foreground/50"}>
+        {connect ? "●" : "○"} Connect Stash
+      </span>
     </div>
   );
 }
@@ -328,18 +357,17 @@ function Field({
 }) {
   return (
     <div className="space-y-2">
-      <label className="text-[13px] font-medium text-foreground">
+      <div className="text-[13px] font-medium text-foreground">
         {label}
-        {optional && <span className="ml-1.5 text-[11px] font-normal text-muted-foreground">optional</span>}
-      </label>
+        {optional && (
+          <span className="ml-1.5 text-[11px] font-normal text-muted-foreground">optional</span>
+        )}
+      </div>
       {children}
     </div>
   );
 }
 
-/** Pills for one question. `selected` carries every chosen answer, so the same
- *  component serves the multi-answer role question and the single-answer
- *  referral one — the caller's onToggle decides which. */
 function PillGroup({
   options,
   selected,
@@ -347,22 +375,22 @@ function PillGroup({
 }: {
   options: string[];
   selected: string[];
-  onToggle: (v: string) => void;
+  onToggle: (value: string) => void;
 }) {
   return (
     <div className="flex flex-wrap gap-2">
       {options.map((option) => {
-        const isSelected = selected.includes(option);
+        const active = selected.includes(option);
         return (
           <button
             key={option}
             type="button"
-            aria-pressed={isSelected}
+            aria-pressed={active}
             onClick={() => onToggle(option)}
             className={`cursor-pointer rounded-full border px-3 py-1.5 text-[12.5px] transition-colors ${
-              isSelected
+              active
                 ? "border-brand bg-brand text-white"
-                : "border-border bg-surface text-dim hover:border-foreground/40 hover:text-foreground"
+                : "border-border bg-surface text-muted-foreground hover:text-foreground"
             }`}
           >
             {option}
@@ -379,119 +407,25 @@ function OtherInput({
   placeholder,
 }: {
   value: string;
-  onChange: (v: string) => void;
+  onChange: (value: string) => void;
   placeholder: string;
 }) {
   return (
     <input
-      type="text"
       value={value}
-      onChange={(e) => onChange(e.target.value)}
+      onChange={(event) => onChange(event.target.value)}
       maxLength={200}
       autoFocus
       placeholder={placeholder}
-      className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-[13.5px] text-foreground placeholder:text-muted-foreground/70 focus:border-brand focus:outline-none"
+      className="w-full rounded-md border border-border bg-surface px-3 py-2 text-[13.5px] text-foreground placeholder:text-muted-foreground/70 focus:border-brand focus:outline-none"
     />
   );
 }
 
-/** The whole second step: one instruction. The installer signs you in and
- *  runs the setup wizard, so this screen never needs a second command. */
-function ConnectAgentStep() {
+function LoadingScreen() {
   return (
-    <div className="space-y-5">
-      <div className="space-y-2">
-        <h1 className="font-display text-[28px] leading-[1.1] font-bold tracking-tight text-foreground">
-          Now connect your agent
-        </h1>
-        <p className="text-sm text-dim max-w-lg">
-          Run this in your terminal — the installer signs you in and sets up session
-          recording. Transcripts are private to you, and you choose which folders they
-          come from.
-        </p>
-      </div>
-      <CommandBlock command={CLI_INSTALL_COMMAND} />
-    </div>
-  );
-}
-
-function CommandBlock({ command }: { command: string }) {
-  const [copied, setCopied] = useState(false);
-  return (
-    <div className="flex items-stretch gap-1.5">
-      <pre className="min-w-0 flex-1 overflow-x-auto rounded-md border border-border bg-surface px-2.5 py-1.5 font-mono text-[11.5px] text-foreground">
-        {command}
-      </pre>
-      <button
-        type="button"
-        onClick={async () => {
-          await navigator.clipboard.writeText(command);
-          setCopied(true);
-          setTimeout(() => setCopied(false), 1500);
-        }}
-        className="shrink-0 cursor-pointer rounded-md border border-border bg-surface px-2.5 text-[11px] text-muted-foreground transition-colors hover:border-brand hover:text-foreground"
-      >
-        {copied ? "Copied" : "Copy"}
-      </button>
-    </div>
-  );
-}
-
-function ProgressBar({ stepIdx }: { stepIdx: number }) {
-  const labels = ["About you", "Connect your agent"];
-  return (
-    <div className="flex items-center gap-2">
-      {labels.map((label, i) => {
-        const isCurrent = i === Math.min(stepIdx, labels.length - 1);
-        const reached = i <= stepIdx;
-        return (
-          <span
-            key={label}
-            className={`flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-[0.18em] ${
-              isCurrent ? "text-foreground" : reached ? "text-muted-foreground" : "text-muted-foreground/50"
-            }`}
-          >
-            <span
-              className={`h-1.5 w-1.5 rounded-full ${
-                isCurrent ? "bg-brand" : reached ? "bg-foreground/40" : "bg-border"
-              }`}
-            />
-            {label}
-          </span>
-        );
-      })}
-    </div>
-  );
-}
-
-function StepControls({
-  onContinue,
-  onSkip,
-  continueLabel,
-  canContinue,
-}: {
-  onContinue: () => void;
-  onSkip: () => void;
-  continueLabel: string;
-  canContinue: boolean;
-}) {
-  return (
-    <div className="flex items-center justify-between pt-2">
-      <button
-        type="button"
-        onClick={onSkip}
-        className="cursor-pointer text-[12px] text-muted-foreground hover:text-foreground transition-colors"
-      >
-        Skip onboarding
-      </button>
-      <button
-        type="button"
-        onClick={onContinue}
-        disabled={!canContinue}
-        className="cursor-pointer rounded-md bg-brand px-4 py-2 text-[12px] font-medium text-white hover:bg-brand-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-      >
-        {continueLabel}
-      </button>
+    <div className="flex min-h-screen items-center justify-center text-muted-foreground">
+      Loading…
     </div>
   );
 }

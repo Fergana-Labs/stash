@@ -1,22 +1,28 @@
 """Aggregate router: cross-scope indexes for the authenticated user."""
 
 from datetime import datetime
+from urllib.parse import quote
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 
-from ..auth import get_current_user
+from ..auth import get_current_user, get_scope
 from ..database import get_pool
 from ..models import UserPageEntry, UserPageListResponse
 from ..services import (
     analytics_service,
     files_tree_service,
     memory_service,
-    permission_service,
+    session_title_service,
     table_service,
 )
 
 router = APIRouter(prefix="/api/v1/me", tags=["aggregate"])
+
+
+class UploadSetting(BaseModel):
+    uploads_enabled: bool
 
 
 @router.get("/pages", response_model=UserPageListResponse)
@@ -72,114 +78,162 @@ async def list_my_recents(current_user: dict = Depends(get_current_user)):
     ]
 
 
-@router.get("/file-activity")
-async def list_file_activity(
-    limit: int = Query(50, ge=1, le=200),
-    before: datetime | None = Query(None),
-    owner_user_id: UUID | None = Query(None),
+@router.get("/recent-activity")
+async def list_recent_activity(
+    limit: int = Query(20, ge=1, le=50),
+    current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
+):
+    """The active scope's latest agent sessions and newly-created Skills."""
+    pool = get_pool()
+    sessions = [
+        dict(row)
+        for row in await pool.fetch(
+            """
+        WITH recent_sessions AS (
+          SELECT session_id, last_event_at, created_by
+          FROM sessions
+          WHERE owner_user_id = $1 AND deleted_at IS NULL
+          ORDER BY last_event_at DESC
+          LIMIT $2
+        )
+        SELECT s.session_id, s.last_event_at, author.display_name AS author_name,
+               COUNT(he.id)::int AS event_count,
+               (ARRAY_AGG(NULLIF(he.metadata->>'model', '') ORDER BY he.created_at DESC)
+                FILTER (WHERE NULLIF(he.metadata->>'model', '') IS NOT NULL))[1] AS model,
+               (ARRAY_AGG(LEFT(he.content, 240) ORDER BY
+                 CASE WHEN he.event_type IN ('user_message','user_prompt','prompt','message','user')
+                      THEN 0 ELSE 1 END, he.created_at, he.id)
+                FILTER (WHERE NULLIF(BTRIM(he.content), '') IS NOT NULL))[1] AS title_source
+        FROM recent_sessions s
+        JOIN history_events he ON he.owner_user_id = $1 AND he.session_id = s.session_id
+        JOIN users author ON author.id = s.created_by
+        GROUP BY s.session_id, s.last_event_at, author.display_name
+        ORDER BY s.last_event_at DESC
+        """,
+            scope_user_id,
+            limit,
+        )
+    ]
+    titles = await session_title_service.titles_for_sessions(scope_user_id, sessions)
+    skills = await pool.fetch(
+        "SELECT id, name, skill_created_at FROM folders "
+        "WHERE owner_user_id = $1 AND is_skill ORDER BY skill_created_at DESC LIMIT $2",
+        scope_user_id,
+        limit,
+    )
+    events = [
+        {
+            "kind": "session",
+            "ts": row["last_event_at"],
+            "title": titles[row["session_id"]],
+            "subtitle": (
+                f"{row['author_name']}'s {row['model']}"
+                if row["model"]
+                else f"{row['author_name']} · model unavailable"
+            ),
+            "href": f"/sessions/{quote(row['session_id'], safe='')}",
+        }
+        for row in sessions
+    ] + [
+        {
+            "kind": "skill.created",
+            "ts": row["skill_created_at"],
+            "title": row["name"],
+            "subtitle": "New Skill",
+            "href": f"/skills/folder/{row['id']}",
+        }
+        for row in skills
+    ]
+    events.sort(key=lambda event: event["ts"], reverse=True)
+    return {"events": events[:limit]}
+
+
+@router.get("/upload-sources")
+async def list_upload_sources(
+    current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
+):
+    """Coding agents and signed-in computers uploading into the active scope."""
+    rows = await get_pool().fetch(
+        """
+        WITH observed AS (
+          SELECT he.metadata->>'client' AS client,
+                 he.uploader_key_id AS key_id,
+                 k.name AS key_name,
+                 k.uploads_enabled,
+                 COALESCE(k.user_id = $2, FALSE) AS can_manage,
+                 COUNT(DISTINCT he.session_id)::int AS session_count,
+                 MAX(he.created_at) AS last_uploaded_at
+          FROM history_events he
+          LEFT JOIN user_api_keys k ON k.id = he.uploader_key_id
+          WHERE he.owner_user_id = $1
+            AND NULLIF(he.metadata->>'client', '') IS NOT NULL
+          GROUP BY he.metadata->>'client', he.uploader_key_id, k.name,
+                   k.uploads_enabled, k.user_id
+        ), signed_in_computers AS (
+          SELECT NULL::text AS client,
+                 k.id AS key_id,
+                 k.name AS key_name,
+                 k.uploads_enabled,
+                 TRUE AS can_manage,
+                 0::int AS session_count,
+                 NULL::timestamptz AS last_uploaded_at
+          FROM user_api_keys k
+          WHERE k.user_id = $2
+            AND k.key_type = 'cli'
+            AND k.revoked_at IS NULL
+            AND NOT EXISTS (SELECT 1 FROM observed o WHERE o.key_id = k.id)
+        )
+        SELECT client, key_id::text, key_name, uploads_enabled, can_manage,
+               session_count, last_uploaded_at
+        FROM observed
+        UNION ALL
+        SELECT client, key_id::text, key_name, uploads_enabled, can_manage,
+               session_count, last_uploaded_at
+        FROM signed_in_computers
+        ORDER BY last_uploaded_at DESC NULLS LAST, key_name
+        """,
+        scope_user_id,
+        current_user["id"],
+    )
+    return {
+        "sources": [
+            {
+                "client": row["client"],
+                "key_id": row["key_id"],
+                "key_name": row["key_name"],
+                "uploads_enabled": row["uploads_enabled"],
+                "can_manage": row["can_manage"],
+                "session_count": row["session_count"],
+                "last_uploaded_at": row["last_uploaded_at"],
+            }
+            for row in rows
+        ]
+    }
+
+
+@router.patch("/upload-sources/{key_id}")
+async def update_upload_source(
+    key_id: UUID,
+    setting: UploadSetting,
     current_user: dict = Depends(get_current_user),
 ):
-    """New and edited files and pages across accessible scopes, cursor-paginated
-    by ts. Memory subtrees are excluded: curation output is the curator log's
-    story, not file activity. Every scope's Memory is excluded, not just the
-    caller's — a workspace scope's nightly curation churn would otherwise flood
-    the feed of every member who can read it."""
-    pool = get_pool()
-    events = await pool.fetch(
+    updated = await get_pool().fetchval(
         """
-        WITH RECURSIVE accessible_scopes AS (
-          -- The user's own scope plus any scope that has shared content with
-          -- the user. Page/file rows still pass readable_content_condition, so
-          -- a share only surfaces the specific shared rows — never the whole
-          -- scope.
-          SELECT u.id, u.name
-          FROM users u
-          WHERE u.id IN """
-        + permission_service.accessible_scope_ids_sql(1)
-        + """
-          AND ($3::uuid IS NULL OR u.id = $3)
-        ),
-        memory_folders AS (
-          SELECT mf.id FROM folders mf
-          JOIN accessible_scopes aw ON aw.id = mf.owner_user_id
-          WHERE mf.is_memory
-          UNION
-          SELECT mf.id FROM folders mf
-          JOIN memory_folders m ON m.id = mf.parent_folder_id
-        )
-        SELECT * FROM (
-        (
-          SELECT 'page.updated' AS kind,
-                 p.updated_at AS ts,
-                 COALESCE(p.updated_by, p.created_by) AS actor_id,
-                 p.id::text AS target_id,
-                 p.name AS target_label,
-                 p.last_edit_agent_name AS agent_name,
-                 aw.id AS owner_user_id,
-                 aw.name AS owner_name
-          FROM pages p
-          JOIN accessible_scopes aw ON aw.id = p.owner_user_id
-          WHERE p.deleted_at IS NULL
-            AND NOT EXISTS (SELECT 1 FROM memory_folders m WHERE m.id = p.folder_id)
-            AND """
-        + permission_service.readable_content_condition("page", "p", 1)
-        + """
-        )
-        UNION ALL
-        (
-          SELECT 'file.uploaded' AS kind,
-                 f.created_at AS ts,
-                 f.uploaded_by AS actor_id,
-                 f.id::text AS target_id,
-                 f.name AS target_label,
-                 NULL::text AS agent_name,
-                 aw.id AS owner_user_id,
-                 aw.name AS owner_name
-          FROM files f
-          JOIN accessible_scopes aw ON aw.id = f.owner_user_id
-          WHERE f.deleted_at IS NULL
-            AND NOT EXISTS (SELECT 1 FROM memory_folders m WHERE m.id = f.folder_id)
-            AND """
-        + permission_service.readable_content_condition("file", "f", 1)
-        + """
-        )
-        ) ev
-        WHERE ($4::timestamptz IS NULL OR ev.ts < $4)
-        ORDER BY ts DESC LIMIT $2
+        UPDATE user_api_keys
+        SET uploads_enabled = $3
+        WHERE id = $1 AND user_id = $2 AND key_type IN ('cli', 'machine')
+          AND revoked_at IS NULL
+        RETURNING id
         """,
+        key_id,
         current_user["id"],
-        limit + 1,
-        owner_user_id,
-        before,
+        setting.uploads_enabled,
     )
-    has_more = len(events) > limit
-    if has_more:
-        events = events[:limit]
-    user_ids = list({r["actor_id"] for r in events if r["actor_id"]})
-    users = {}
-    if user_ids:
-        rows = await pool.fetch(
-            "SELECT id, name, display_name FROM users WHERE id = ANY($1::uuid[])",
-            user_ids,
-        )
-        users = {r["id"]: {"name": r["name"], "display_name": r["display_name"]} for r in rows}
-
-    return {
-        "events": [
-            {
-                "kind": r["kind"],
-                "ts": r["ts"],
-                "actor": users[r["actor_id"]],
-                "target_id": r["target_id"],
-                "target_label": r["target_label"],
-                "agent_name": r["agent_name"],
-                "owner_user_id": r["owner_user_id"],
-                "owner_name": r["owner_name"],
-            }
-            for r in events
-        ],
-        "has_more": has_more,
-    }
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Stash installation not found")
+    return {"uploads_enabled": setting.uploads_enabled}
 
 
 @router.get("/tables")

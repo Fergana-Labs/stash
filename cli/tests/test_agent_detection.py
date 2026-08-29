@@ -132,6 +132,19 @@ def test_finder_cancel_is_told_apart_from_a_real_failure(monkeypatch, tmp_path: 
         run_with(0, "")
 
 
+def test_custom_folder_choice_opens_finder_directly_on_macos(monkeypatch, tmp_path: Path) -> None:
+    chosen = tmp_path / "chosen"
+    monkeypatch.setattr(main.sys, "platform", "darwin")
+    monkeypatch.setattr(main, "_choose_folder_finder", lambda start: chosen)
+    monkeypatch.setattr(
+        main,
+        "_pick_record_folder",
+        lambda start: pytest.fail("the terminal submenu should not open on macOS"),
+    )
+
+    assert main._pick_custom_record_folder(tmp_path) == chosen
+
+
 def test_claude_plugin_freshen_uses_the_resolved_binary(monkeypatch, tmp_path: Path) -> None:
     """The whole point of resolving the binary is the install that parks claude
     outside PATH; a bare "claude" in any one call fails for exactly that user."""

@@ -8,7 +8,7 @@ agent, whose config shapes the turn.
 
 from __future__ import annotations
 
-from datetime import UTC, date, datetime
+from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import HTTPException
@@ -19,7 +19,7 @@ _COLUMNS = (
     "id, user_id, name, model_provider, system_prompt, run_mode, "
     "schedule_cron, schedule_prompt, is_default, is_curator, slack_bound, "
     "telegram_bound, last_run_at, last_run_error, last_run_outcome, curated_through, "
-    "curator_wiki, month_run_count, month_run_anchor, created_at"
+    "curator_wiki, created_at"
 )
 
 
@@ -275,74 +275,31 @@ async def list_scheduled() -> list[dict]:
     return [_row(r) for r in rows]
 
 
-def month_runs_used(agent: dict) -> int:
-    """Scheduled runs consumed in the current calendar month. An anchor from a
-    prior month means the counter is stale; mark_run resets it on the next run."""
-    anchor = agent.get("month_run_anchor")
-    today = date.today()
-    if anchor is None or (anchor.year, anchor.month) != (today.year, today.month):
-        return 0
-    return agent["month_run_count"]
-
-
-async def mark_run(agent_id: UUID, metered: bool = True) -> int:
-    """Consume the cron tick and meter the run against the calendar month.
-    Returns the run count within the current month (including this one) —
-    the free-tier curator credit gate reads it.
-
-    `metered=False` consumes the tick without touching the month counter —
-    for runs the platform initiates on its own (the first-day curator), which
-    must not eat the user's free allowance.
-
-    Also clears last_run_error and stamps the outcome as started. Every path
-    after this call must resolve the outcome as ran, failed, or skipped."""
-    if not metered:
-        return await get_pool().fetchval(
-            """
-            UPDATE agents SET
-                last_run_at = now(),
-                last_run_error = NULL,
-                last_run_outcome = 'started'
-            WHERE id = $1
-            RETURNING month_run_count
-            """,
-            agent_id,
-        )
-    return await get_pool().fetchval(
+async def mark_run(agent_id: UUID) -> None:
+    """Consume a cron tick and mark the run as started."""
+    await get_pool().execute(
         """
         UPDATE agents SET
             last_run_at = now(),
             last_run_error = NULL,
-            last_run_outcome = 'started',
-            month_run_count = CASE
-                WHEN month_run_anchor = date_trunc('month', now())::date
-                THEN month_run_count + 1 ELSE 1 END,
-            month_run_anchor = date_trunc('month', now())::date
+            last_run_outcome = 'started'
         WHERE id = $1
-        RETURNING month_run_count
         """,
         agent_id,
     )
 
 
-async def mark_run_failed(agent_id: UUID, error: str, metered: bool = True) -> None:
-    """Stamp the failure where the API can surface it, and refund the month
-    credit — an outage shouldn't eat the free allowance. An unmetered run
-    (`metered=False`) never charged one, so it has nothing to refund. The tick
-    itself stays consumed (last_run_at), so the beat won't re-fire the same
-    window."""
+async def mark_run_failed(agent_id: UUID, error: str) -> None:
+    """Stamp a failed run where the API can surface it."""
     await get_pool().execute(
         """
         UPDATE agents SET
             last_run_error = left($2, 500),
-            last_run_outcome = 'failed',
-            month_run_count = CASE WHEN $3
-                THEN greatest(month_run_count - 1, 0) ELSE month_run_count END
+            last_run_outcome = 'failed'
         WHERE id = $1
         """,
         agent_id,
         error,
-        metered,
     )
 
 
@@ -365,9 +322,31 @@ async def mark_run_succeeded(agent_id: UUID) -> None:
 
 async def mark_curated(agent_id: UUID, through) -> None:
     """Advance the curator's delta watermark — only after a successful run, so
-    a failed run's window is re-covered next time."""
+    a failed run's window is re-covered next time. Internal curators also mark
+    every useful trace completed through that watermark as consumed."""
     await get_pool().execute(
-        "UPDATE agents SET curated_through = $2 WHERE id = $1", agent_id, through
+        """
+        WITH curator AS (
+            UPDATE agents SET curated_through = $2 WHERE id = $1
+            RETURNING user_id, curator_wiki
+        )
+        UPDATE sessions s SET curated_at = now()
+        FROM curator c
+        WHERE c.curator_wiki = 'internal'
+          AND s.owner_user_id = c.user_id
+          AND s.curated_at IS NULL
+          AND s.deleted_at IS NULL
+          AND s.session_id NOT LIKE 'agent-curate-%'
+          AND s.last_event_at <= $2
+          AND EXISTS (
+              SELECT 1 FROM history_events he
+              WHERE he.owner_user_id = s.owner_user_id
+                AND he.session_id = s.session_id
+                AND he.event_type = 'assistant_message'
+          )
+        """,
+        agent_id,
+        through,
     )
 
 

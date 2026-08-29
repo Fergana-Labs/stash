@@ -36,6 +36,26 @@ def test_parses_user_and_assistant_text():
     assert events[0]["created_at"] == datetime(2026, 5, 10, 0, 0, 0, tzinfo=UTC)
 
 
+def test_parses_cursor_role_lines():
+    """Cursor transcripts name the speaker with a top-level "role" and no
+    "type" key. Dropping them imported every Cursor session as an empty
+    shell — a session list full of contentless rows."""
+    body = (
+        "\n".join(
+            [
+                _line(role="user", message={"content": [{"type": "text", "text": "fix the bug"}]}),
+                _line(role="assistant", message={"content": [{"type": "text", "text": "done"}]}),
+            ]
+        )
+        + "\n"
+    ).encode()
+    events = parse_jsonl_to_events(body, session_id="c1", agent_name="cursor")
+    assert [(e["event_type"], e["content"]) for e in events] == [
+        ("user_message", "fix the bug"),
+        ("assistant_message", "done"),
+    ]
+
+
 def test_handles_gzipped_input():
     body = _line(type="user", message={"content": "compressed"}).encode() + b"\n"
     gz = gzip.compress(body)

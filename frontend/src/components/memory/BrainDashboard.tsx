@@ -1,33 +1,28 @@
 "use client";
 
 import Link from "next/link";
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
-import { ActivitySkeleton, SkeletonBlock } from "@/components/SkeletonStates";
-import { FileIcon, PageIcon } from "@/components/SkillIcons";
-import EmbeddingSpaceExplorer from "@/components/viz/EmbeddingSpaceExplorer";
-import CuratorLog from "@/components/memory/CuratorLog";
-import WikiGraph from "@/components/memory/WikiGraph";
+import { useEffect, useState } from "react";
+import { ActivitySkeleton } from "@/components/SkeletonStates";
+import { SessionsIcon, SkillIcon, StashIcon } from "@/components/SkillIcons";
+import ActiveSkills from "@/components/memory/ActiveSkills";
+import DataAndPrivacy from "@/components/memory/DataAndPrivacy";
 import CopyableCommandBlock from "@/components/CopyableCommandBlock";
-import { StashIcon } from "@/components/SkillIcons";
 import {
-  getEmbeddingProjection,
+  getHistoryImportProgress,
   getMe,
   getMeOverview,
-  getMemoryGraph,
-  listFileActivity,
-  type ActivityEvent,
+  getOnboardingStatus,
+  listUploadSources,
+  listRecentActivity,
+  type HistoryImportProgress,
   type MeOverview,
-  type WikiGraph as WikiGraphData,
+  type OnboardingStatus,
+  type RecentActivityEvent,
+  type UploadSource,
 } from "@/lib/api";
-import type { EmbeddingProjection } from "@/lib/types";
 
-const PAGE_SIZE = 50;
+const ACTIVITY_LIMIT = 20;
+const ACTIVITY_POLL_MS = 10_000;
 
 // The feed pages back indefinitely, so a bare "Mar 3" would read as this
 // year's March once the reader scrolls past the year boundary.
@@ -43,117 +38,111 @@ function editTimestamp(iso: string): string {
   });
 }
 
-/** The home dashboard — the wiki graph, the curator log, the knowledge map,
- *  and the file-activity feed. Renders full-page as the app's home route; the
- *  shell guarantees a signed-in user. Scrolls itself (h-full). Browsing the
- *  Memory folder itself happens in Files. */
+/** The home dashboard — what is switched on right now: the active Skills,
+ *  the Stash installations uploading traces, and the recent-activity feed.
+ *  Renders full-page as the app's home route; the shell guarantees a
+ *  signed-in user. Scrolls itself (h-full). Themes and the curator log live
+ *  on the Usage page. */
 export default function BrainDashboard() {
-  const [events, setEvents] = useState<ActivityEvent[]>([]);
+  const [events, setEvents] = useState<RecentActivityEvent[]>([]);
   const [fetching, setFetching] = useState(true);
-  const [hasMore, setHasMore] = useState(false);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const sentinelRef = useRef<HTMLDivElement>(null);
-  const [projection, setProjection] = useState<EmbeddingProjection | null>(null);
-  const [graph, setGraph] = useState<WikiGraphData | null>(null);
-  const [projectionLoaded, setProjectionLoaded] = useState(false);
-  const [graphLoaded, setGraphLoaded] = useState(false);
+  const [activityError, setActivityError] = useState<string | null>(null);
   const [firstName, setFirstName] = useState<string | null>(null);
   const [vitals, setVitals] = useState<MeOverview | null>(null);
   const [vitalsError, setVitalsError] = useState<string | null>(null);
   const [vitalsLoaded, setVitalsLoaded] = useState(false);
+  const [importing, setImporting] = useState<HistoryImportProgress | null>(null);
+  const [onboardingStatus, setOnboardingStatus] = useState<OnboardingStatus | null>(null);
+  const [uploadSources, setUploadSources] = useState<UploadSource[] | null>(null);
 
   // The vitals decide whether this stash is brand new, so losing them isn't
   // cosmetic: without them Home would drop a first-run user into a grid of
   // empty panels instead of the setup instruction.
   useEffect(() => {
-    Promise.all([getMe(), getMeOverview()])
-      .then(([me, overview]) => {
+    Promise.all([getMe(), getMeOverview(), getOnboardingStatus(), listUploadSources()])
+      .then(([me, overview, nextOnboardingStatus, { sources }]) => {
         setFirstName(me.display_name.split(" ")[0]);
         setVitals(overview);
+        setOnboardingStatus(nextOnboardingStatus);
+        setUploadSources(sources);
       })
       .catch((e) => setVitalsError(e instanceof Error ? e.message : "Failed to load your stash"))
       .finally(() => setVitalsLoaded(true));
+    // One initial look at the CLI's history import; the watcher below keeps
+    // polling only while one is running. Decorative — a blip must not error
+    // the dashboard.
+    getHistoryImportProgress()
+      .then(({ progress }) => setImporting(progress && !progress.finished ? progress : null))
+      .catch(() => {});
   }, []);
+
+  const stashEmpty =
+    vitalsLoaded &&
+    vitals !== null &&
+    vitals.pages === 0 &&
+    vitals.files === 0 &&
+    vitals.sessions === 0;
+  const initialUploadProgress = getInitialUploadProgress(onboardingStatus, uploadSources);
+
+  // While the stash is empty or a history import is running, keep watching:
+  // the CLI's background import fills the stash, and Home should move from
+  // setup → import progress → dashboard without a manual refresh.
+  const watching = stashEmpty || importing !== null || initialUploadProgress !== null;
+  useEffect(() => {
+    if (!watching) return;
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const [{ progress }, overview, nextOnboardingStatus, { sources }] = await Promise.all([
+          getHistoryImportProgress(),
+          getMeOverview(),
+          getOnboardingStatus(),
+          listUploadSources(),
+        ]);
+        if (cancelled) return;
+        setImporting(progress && !progress.finished ? progress : null);
+        setVitals(overview);
+        setOnboardingStatus(nextOnboardingStatus);
+        setUploadSources(sources);
+      } catch {
+        // Transient — the next tick retries.
+      }
+    };
+    const timer = setInterval(tick, 5000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [watching]);
 
   useEffect(() => {
     let cancelled = false;
-    listFileActivity({ limit: PAGE_SIZE })
-      .then((feed) => {
-        if (cancelled) return;
-        setEvents(feed.events);
-        setHasMore(feed.has_more);
-      })
-      .catch(() => {})
-      .finally(() => {
+    const load = async () => {
+      try {
+        const feed = await listRecentActivity(ACTIVITY_LIMIT);
+        if (!cancelled) {
+          setEvents(feed.events);
+          setActivityError(null);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setActivityError(error instanceof Error ? error.message : "Failed to load activity");
+        }
+      } finally {
         if (!cancelled) setFetching(false);
-      });
+      }
+    };
+    void load();
+    const timer = setInterval(() => void load(), ACTIVITY_POLL_MS);
     return () => {
       cancelled = true;
+      clearInterval(timer);
     };
   }, []);
-
-  const loadMore = useCallback(async () => {
-    if (loadingMore || !hasMore || events.length === 0) return;
-    setLoadingMore(true);
-    try {
-      const feed = await listFileActivity({
-        limit: PAGE_SIZE,
-        before: events[events.length - 1].ts,
-      });
-      setEvents((prev) => [...prev, ...feed.events]);
-      setHasMore(feed.has_more);
-    } finally {
-      setLoadingMore(false);
-    }
-  }, [events, hasMore, loadingMore]);
 
   // The dashboard renders only once both the feed and the vitals have
   // settled, in whichever order they arrive.
   const ready = !fetching && vitalsLoaded;
-
-  // The sentinel exists only while the dashboard is rendered, so this has to
-  // re-run when the skeleton clears: if the vitals settle last, `loadMore`
-  // keeps its identity across that render and the observer would never
-  // attach — infinite scroll dead, feed silently capped at one page.
-  useEffect(() => {
-    if (!ready || !sentinelRef.current) return;
-    const obs = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) loadMore();
-      },
-      { rootMargin: "200px" }
-    );
-    obs.observe(sentinelRef.current);
-    return () => obs.disconnect();
-  }, [loadMore, ready]);
-
-  // The brain's vitals + visualizations. All span the user's own content plus
-  // everything shared with them (the /me/* aggregates, called without a
-  // scope, include readable shared rows). Each card renders as soon as its
-  // own fetch settles — gating them together let one slow or failing
-  // endpoint hold the whole dashboard in skeletons.
-  useEffect(() => {
-    let cancelled = false;
-    getEmbeddingProjection(2000)
-      .then((p) => {
-        if (!cancelled) setProjection(p);
-      })
-      .catch(() => {})
-      .finally(() => {
-        if (!cancelled) setProjectionLoaded(true);
-      });
-    getMemoryGraph()
-      .then((g) => {
-        if (!cancelled) setGraph(g);
-      })
-      .catch(() => {})
-      .finally(() => {
-        if (!cancelled) setGraphLoaded(true);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   if (vitalsError) {
     return (
@@ -165,11 +154,21 @@ export default function BrainDashboard() {
     );
   }
 
-  // A brand-new stash has nothing to dashboard. Until the first transcripts
-  // arrive, Home is a single instruction: upload your agent transcripts.
-  if (vitalsLoaded && vitals && vitals.pages === 0 && vitals.files === 0 && vitals.sessions === 0) {
-    return <EmptyStashSetup />;
+  // The CLI begins the five-session import before Home has all its data. Keep
+  // the progress state visible for the entire import instead of dropping into
+  // the dashboard as soon as its first session arrives.
+  if (importing) return <ImportingStash progress={importing} />;
+
+  if (initialUploadProgress) {
+    return (
+      <UploadingFirstSessions
+        done={initialUploadProgress.done}
+        total={initialUploadProgress.total}
+      />
+    );
   }
+
+  if (stashEmpty) return <EmptyStashSetup />;
 
   if (!ready) {
     return (
@@ -186,169 +185,109 @@ export default function BrainDashboard() {
           Welcome back{firstName ? `, ${firstName}` : ""}
         </h1>
 
-        {/* Dashboard grid: wiki graph with the curator log beneath it on
-            the left, knowledge map + file activity on the right. */}
-        <div className="mt-5 grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
           <div className="flex min-w-0 flex-col gap-4 lg:col-span-2">
-            {/* Wiki graph — the curated context graph of linked pages, obsidian
-                style. The centerpiece: click a node to open its page. */}
-            <VizCard label="Memory wiki">
-              {!graphLoaded ? (
-                <SkeletonBlock className="h-[560px] w-full" />
-              ) : graph && graph.nodes.length > 0 ? (
-                <WikiGraph data={graph} />
-              ) : (
-                <div className="flex h-[560px] items-center justify-center px-2 text-center text-[12.5px] text-muted-foreground">
-                  No wiki pages yet. The Memory curator&apos;s nightly run compiles
-                  your history into a context graph of linked pages.
-                </div>
-              )}
-            </VizCard>
-
-            {/* The curator log — the curator's own account of each run,
-                beneath the structure it maintains. */}
-            <CuratorLog />
+            <ActiveSkills />
+            <DataAndPrivacy />
           </div>
 
-          <div className="flex min-h-0 min-w-0 flex-col gap-4">
-            {/* Brain map — the knowledge the brain holds, laid out in space. (Decorative.) */}
-            <VizCard label="Knowledge map">
-              {!projectionLoaded ? (
-                <SkeletonBlock className="h-[240px] w-full" />
-              ) : projection && projection.points.length > 0 ? (
-                <div className="h-[240px]">
-                  <EmbeddingSpaceExplorer data={projection} />
-                </div>
-              ) : (
-                <div className="flex h-[240px] items-center justify-center px-2 text-center text-[12.5px] text-muted-foreground">
-                  No embeddings indexed yet. Pages, table rows, and session events
-                  get embedded as they&apos;re added.
-                </div>
-              )}
-            </VizCard>
-
-            {/* File activity — what's landing in the filesystem, live. The
-                Memory subtree is excluded server-side, so the curator's own
-                writes never echo here. Scrolls in place (hard cap — inside a
-                grid, flex-1 can't bound it) so the panel stays a dashboard,
-                not a page. */}
-            <section className="flex flex-col">
-              <div className="sys-label mb-1.5">File activity</div>
-              <div className="card-soft max-h-[480px] overflow-y-auto p-3">
-                <div className="flex flex-col gap-2.5">
-                  {events.length === 0 ? (
-                    <div className="rounded-[10px] border border-border bg-base px-4 py-6 text-center text-[13px] text-muted-foreground">
-                      Nothing here yet. Upload a file or edit a page and it
-                      shows up here.
-                    </div>
-                  ) : (
-                    events.map((event, i) => (
-                      <FeedCard
-                        key={`${event.kind}-${event.target_id}-${i}`}
-                        event={event}
-                      />
-                    ))
-                  )}
-                  {loadingMore && (
-                    <div className="py-2 text-center text-[12.5px] text-muted-foreground">
-                      Loading more…
-                    </div>
-                  )}
-                  {hasMore && <div ref={sentinelRef} />}
-                </div>
+          <section className="flex min-h-0 min-w-0 flex-col">
+            <div className="sys-label mb-1.5">Recent activity</div>
+            <div className="card-soft max-h-[640px] overflow-y-auto p-3">
+              <div className="flex flex-col gap-2.5">
+                {activityError ? (
+                  <div className="rounded-[10px] border border-destructive/30 bg-destructive/10 px-4 py-6 text-center text-[13px] text-destructive">
+                    {activityError}
+                  </div>
+                ) : events.length === 0 ? (
+                  <div className="rounded-[10px] border border-border bg-base px-4 py-6 text-center text-[13px] text-muted-foreground">
+                    Your latest agent sessions and new Skills will appear here.
+                  </div>
+                ) : (
+                  events.map((event) => (
+                    <FeedCard key={`${event.kind}-${event.href}`} event={event} />
+                  ))
+                )}
               </div>
-            </section>
-          </div>
+            </div>
+          </section>
         </div>
       </div>
     </div>
   );
 }
 
-// A labeled visualization card — the repeated sys-label + card-soft shell used
-// by the map, topics, and timeline sections.
-function VizCard({
-  label,
-  className,
-  scroll,
-  children,
-}: {
-  label: string;
-  className?: string;
-  scroll?: boolean;
-  children: ReactNode;
-}) {
-  return (
-    <section className={className}>
-      <div className="sys-label mb-1.5">{label}</div>
-      <div className={`card-soft p-3${scroll ? " overflow-x-auto" : ""}`}>{children}</div>
-    </section>
-  );
-}
-
-function FeedCard({ event }: { event: ActivityEvent }) {
-  const verb = verbFor(event.kind);
-  const href = hrefFor(event);
-
+function FeedCard({ event }: { event: RecentActivityEvent }) {
+  const isSession = event.kind === "session";
   return (
     <article className="card px-4 py-3.5">
       <div className="flex flex-wrap items-baseline gap-2 text-[12.5px] text-dim">
-        <span>
-          <strong className="font-medium text-foreground">
-            {event.agent_name ?? "Stash admin"}
-          </strong>{" "}
-          {verb}
-        </span>
+        {event.subtitle && <span>{event.subtitle}</span>}
         <span className="sys-label" style={{ fontSize: 10.5 }}>
           {editTimestamp(event.ts)}
         </span>
       </div>
       <h3 className="my-1.5 font-display text-[16px] font-bold leading-tight tracking-[-0.01em]">
         <span className="mr-1.5 inline-flex align-middle text-muted-foreground">
-          <EventGlyph kind={event.kind} />
+          {isSession ? <SessionsIcon /> : <SkillIcon />}
         </span>
-        {event.target_label || event.target_id}
+        {event.title}
       </h3>
-      {href && (
-        <div className="mt-1 flex justify-end">
-          <Link
-            href={href}
-            className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[12px] text-dim hover:bg-raised hover:text-foreground"
-          >
-            Open →
-          </Link>
-        </div>
-      )}
+      <div className="mt-1 flex justify-end">
+        <Link
+          href={event.href}
+          className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[12px] text-dim hover:bg-raised hover:text-foreground"
+        >
+          {isSession ? "Open trace →" : "Open Skill →"}
+        </Link>
+      </div>
     </article>
   );
 }
 
-function verbFor(kind: string): string {
-  if (kind === "page.updated") return "edited a page";
-  if (kind === "file.uploaded") return "uploaded a file";
-  return kind;
+/** Full-screen first-run state while `stash import-history` is running: the
+ *  import's live progress, front and center — not setup instructions the
+ *  user already followed. */
+function ImportingStash({ progress }: { progress: HistoryImportProgress }) {
+  return <UploadingFirstSessions done={progress.done} total={progress.total} />;
 }
 
-function hrefFor(event: ActivityEvent): string | null {
-  if (event.kind === "page.updated") return `/p/${event.target_id}`;
-  if (event.kind === "file.uploaded") return `/f/${event.target_id}`;
-  return null;
+function UploadingFirstSessions({ done, total }: { done: number; total: number }) {
+  const pct =
+    total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0;
+  return (
+    <div className="flex h-full min-h-0 items-center justify-center overflow-y-auto">
+      <div className="w-full max-w-xl px-8 py-10 text-center">
+        <StashIcon className="mx-auto text-[44px]" />
+        <h1 className="mt-5 font-display text-[26px] font-semibold tracking-tight text-foreground">
+          {total === 5 ? "Uploading your first five sessions" : "Uploading your sessions"}
+        </h1>
+        <p className="mx-auto mt-2 max-w-md text-[14px] leading-6 text-dim">
+          {done.toLocaleString()} of {total.toLocaleString()} sessions uploaded. Stash will use them
+          to create your first three Skills.
+        </p>
+        <div className="mx-auto mt-6 h-2 max-w-md overflow-hidden rounded-full bg-border">
+          <div
+            className="h-full rounded-full bg-brand transition-[width] duration-700"
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+        <p className="mt-3 font-mono text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
+          {pct}%
+        </p>
+      </div>
+    </div>
+  );
 }
 
-function EventGlyph({ kind }: { kind: string }) {
-  if (kind === "page.updated")
-    return (
-      <span className="text-muted-foreground">
-        <PageIcon />
-      </span>
-    );
-  if (kind === "file.uploaded")
-    return (
-      <span className="text-muted-foreground">
-        <FileIcon />
-      </span>
-    );
-  return null;
+export function getInitialUploadProgress(
+  status: OnboardingStatus | null,
+  sources: UploadSource[] | null,
+): { done: number; total: number } | null {
+  if (status === null || sources === null) return null;
+  if (!sources.some((source) => source.uploads_enabled === true)) return null;
+  if (status.curatable_trace_count >= status.trace_target) return null;
+  return { done: status.curatable_trace_count, total: status.trace_target };
 }
 
 /** Full-screen first-run state: one instruction, upload your agent

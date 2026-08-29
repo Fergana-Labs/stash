@@ -25,6 +25,7 @@ from ..models import (
     FileUpdateRequest,
     TableListResponse,
     TableResponse,
+    UploadedItemListResponse,
     UploadResponse,
 )
 from ..services import (
@@ -261,6 +262,12 @@ async def ingest_bytes(
                 content=text if page_kind == "markdown" else "",
                 content_html=text if page_kind == "html" else "",
                 content_type=page_kind,
+                metadata={
+                    "upload": {
+                        "filename": filename,
+                        "size_bytes": len(content),
+                    }
+                },
             )
         except files_tree_service.DuplicatePageName as e:
             raise HTTPException(status_code=409, detail=str(e)) from e
@@ -362,6 +369,85 @@ async def list_my_files(
     )
     files = [await _file_to_response(dict(row)) for row in rows]
     return FileListResponse(files=files)
+
+
+@me_router.get("/uploads", response_model=UploadedItemListResponse)
+async def list_my_uploaded_items(
+    current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
+):
+    """List the user's explicit uploads with their organizational folder paths."""
+    await _check_member(scope_user_id, current_user["id"])
+    pool = get_pool()
+    readable_file = permission_service.readable_content_condition("file", "f", 2)
+    readable_page = permission_service.readable_content_condition("page", "p", 2)
+    rows = await get_pool().fetch(
+        f"""
+        SELECT 'file' AS kind,
+               f.id,
+               f.name,
+               f.content_type,
+               f.size_bytes,
+               '/f/' || f.id::text AS app_url,
+               f.uploaded_by,
+               f.created_at,
+               f.folder_id
+        FROM files f
+        WHERE f.owner_user_id = $1
+          AND f.end_user_id IS NULL
+          AND f.owner_page_id IS NULL
+          AND f.deleted_at IS NULL
+          AND {readable_file}
+        UNION ALL
+        SELECT 'page' AS kind,
+               p.id,
+               p.metadata->'upload'->>'filename' AS name,
+               p.content_type,
+               (p.metadata->'upload'->>'size_bytes')::bigint AS size_bytes,
+               '/p/' || p.id::text AS app_url,
+               p.created_by AS uploaded_by,
+               p.created_at,
+               p.folder_id
+        FROM pages p
+        WHERE p.owner_user_id = $1
+          AND p.end_user_id IS NULL
+          AND p.metadata ? 'upload'
+          AND p.deleted_at IS NULL
+          AND {readable_page}
+        ORDER BY created_at DESC
+        """,
+        scope_user_id,
+        current_user["id"],
+    )
+    folder_rows = await pool.fetch(
+        "SELECT id, name, parent_folder_id FROM folders WHERE owner_user_id = $1",
+        scope_user_id,
+    )
+    folders = {str(row["id"]): dict(row) for row in folder_rows}
+
+    def folder_path(folder_id: UUID | None) -> list[dict]:
+        path: list[dict] = []
+        seen: set[str] = set()
+        current_id = str(folder_id) if folder_id else None
+        while current_id:
+            if current_id in seen:
+                raise RuntimeError(f"folder cycle detected at {current_id}")
+            seen.add(current_id)
+            folder = folders.get(current_id)
+            if folder is None:
+                raise RuntimeError(f"uploaded item references missing folder {current_id}")
+            path.append({"id": current_id, "name": folder["name"]})
+            parent_id = folder["parent_folder_id"]
+            current_id = str(parent_id) if parent_id else None
+        path.reverse()
+        return path
+
+    items = []
+    for row in rows:
+        item = dict(row)
+        item["folder_path"] = folder_path(item.pop("folder_id"))
+        items.append(item)
+    return UploadedItemListResponse(items=items)
 
 
 @canonical_router.get("/{file_id}", response_model=FileResponse)

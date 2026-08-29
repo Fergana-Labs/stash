@@ -11,7 +11,9 @@ from uuid import UUID
 import numpy as np
 
 from ..database import get_pool
-from . import memory_service, permission_service
+from . import memory_service, permission_service, session_title_service
+from .embeddings import space_id as embedding_space_id
+from .projection_clusters import cluster_points, concept_names
 
 # Numba's default threading layer aborts the whole process on concurrent
 # entry, so UMAP runs strictly one-at-a-time per process.
@@ -77,6 +79,7 @@ async def _store_projection(
     source_key: str,
     owner_user_id: UUID | None,
     points: list[dict],
+    clusters: list[dict],
     total_count: int,
     signature: str | None,
 ) -> None:
@@ -85,19 +88,24 @@ async def _store_projection(
     pool = get_pool()
     await pool.execute(
         "INSERT INTO embedding_projections "
-        "(user_id, source_type, owner_user_id, points, embedding_count, scope_signature, computed_at) "
-        "VALUES ($1, $2, $3, $4, $5, $6, NOW()) "
+        "(user_id, source_type, owner_user_id, points, clusters, "
+        " embedding_count, scope_signature, embedding_space, computed_at) "
+        "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW()) "
         "ON CONFLICT (user_id, source_type, owner_user_id) "
         "DO UPDATE SET points = EXCLUDED.points, "
+        "              clusters = EXCLUDED.clusters, "
         "              embedding_count = EXCLUDED.embedding_count, "
         "              scope_signature = EXCLUDED.scope_signature, "
+        "              embedding_space = EXCLUDED.embedding_space, "
         "              computed_at = NOW()",
         user_id,
         source_key,
         owner_user_id,
         points,
+        clusters,
         total_count,
         signature,
+        embedding_space_id(),
     )
 
 
@@ -565,6 +573,108 @@ async def get_overview_counts(user_id: UUID) -> dict:
     return {"pages": row["pages"], "files": row["files"], "sessions": row["sessions"]}
 
 
+async def get_sessions_analytics(
+    user_id: UUID,
+    owner_user_id: UUID | None = None,
+    days: int = 60,
+) -> dict:
+    """Session counts for the analytics dashboard: totals, sessions per day,
+    and breakdowns by agent and by person. Uses the same access scoping as the
+    sessions list (accessible scopes + readable rows, empty shells hidden), and
+    the same agent-name suppression: an agent_name equal to the author's login
+    handle is the CLI's old default, not an agent — it counts toward the person
+    only."""
+    pool = get_pool()
+    accessible_scopes = permission_service.accessible_scope_ids_sql(1)
+    readable_sessions = permission_service.readable_content_condition("session", "s", 1)
+    where = [
+        "s.deleted_at IS NULL",
+        "EXISTS (SELECT 1 FROM history_events shell_he "
+        "        WHERE shell_he.owner_user_id = s.owner_user_id "
+        "          AND shell_he.session_id = s.session_id)",
+        f"s.owner_user_id IN {accessible_scopes}",
+        readable_sessions,
+    ]
+    args: list = [user_id]
+    if owner_user_id is not None:
+        args.append(owner_user_id)
+        where.append(f"s.owner_user_id = ${len(args)}")
+
+    accessible = f"""
+        WITH accessible AS (
+            SELECT s.owner_user_id, s.session_id, s.last_event_at,
+                   NULLIF(NULLIF(s.agent_name, ''), author.name) AS agent_name,
+                   NULLIF(author.display_name, '') AS person_name
+            FROM sessions s
+            LEFT JOIN users author ON author.id = s.created_by
+            WHERE {" AND ".join(where)}
+        )
+    """
+
+    totals = await pool.fetchrow(
+        accessible
+        + """
+        SELECT
+            (SELECT COUNT(*)::INT FROM accessible) AS sessions,
+            (SELECT COUNT(*)::INT FROM history_events he
+             JOIN accessible a ON a.owner_user_id = he.owner_user_id
+                              AND a.session_id = he.session_id) AS events
+        """,
+        *args,
+    )
+
+    since = datetime.now(UTC).date() - timedelta(days=days - 1)
+    day_rows = await pool.fetch(
+        accessible
+        + f"""
+        SELECT (last_event_at AT TIME ZONE 'UTC')::date AS day, COUNT(*)::INT AS sessions
+        FROM accessible
+        WHERE last_event_at >= ${len(args) + 1}
+        GROUP BY 1
+        """,
+        *args,
+        datetime.combine(since, datetime.min.time(), tzinfo=UTC),
+    )
+    by_day = {r["day"]: r["sessions"] for r in day_rows}
+    per_day = [
+        {
+            "day": (since + timedelta(days=i)).isoformat(),
+            "sessions": by_day.get(since + timedelta(days=i), 0),
+        }
+        for i in range(days)
+    ]
+
+    agent_rows = await pool.fetch(
+        accessible
+        + """
+        SELECT agent_name, COUNT(*)::INT AS sessions
+        FROM accessible
+        WHERE agent_name IS NOT NULL
+        GROUP BY agent_name
+        ORDER BY sessions DESC, agent_name ASC
+        """,
+        *args,
+    )
+    person_rows = await pool.fetch(
+        accessible
+        + """
+        SELECT person_name, COUNT(*)::INT AS sessions
+        FROM accessible
+        WHERE person_name IS NOT NULL
+        GROUP BY person_name
+        ORDER BY sessions DESC, person_name ASC
+        """,
+        *args,
+    )
+
+    return {
+        "totals": {"sessions": totals["sessions"], "events": totals["events"]},
+        "per_day": per_day,
+        "by_agent": [{"agent": r["agent_name"], "sessions": r["sessions"]} for r in agent_rows],
+        "by_person": [{"name": r["person_name"], "sessions": r["sessions"]} for r in person_rows],
+    }
+
+
 def _signature(counts: dict) -> int:
     """Pack (pages, rows, events) into a single BIGINT for cheap drift checks."""
     p = min(counts["pages"], 2**20 - 1)
@@ -829,7 +939,7 @@ async def get_embedding_projection(
     cache = None
     if not refresh:
         cache = await pool.fetchrow(
-            "SELECT points, embedding_count, scope_signature, computed_at "
+            "SELECT points, clusters, embedding_count, scope_signature, embedding_space, computed_at "
             "FROM embedding_projections "
             "WHERE user_id = $1 AND source_type = $2 "
             "AND owner_user_id IS NOT DISTINCT FROM $3",
@@ -868,13 +978,23 @@ async def get_embedding_projection(
         )
         total_count += row or 0
 
-    if source is None or source == "history_events":
+    if source is None or source == "sessions":
+        session_access = permission_service.readable_content_condition("session", "s", 1)
+        scope_filter = f"s.owner_user_id = ${event_scope_idx}" if event_scope_idx else "TRUE"
         row = await pool.fetchval(
-            _accessible_events_cte(scope_idx=event_scope_idx)
-            + """
-            SELECT COUNT(*) FROM history_events me
-            JOIN accessible_events a ON a.event_id = me.id
-            WHERE me.embedding IS NOT NULL
+            f"""
+            SELECT COUNT(*) FROM sessions s
+            WHERE s.deleted_at IS NULL
+              AND {scope_filter}
+              AND {session_access}
+              AND EXISTS (
+                  SELECT 1 FROM history_events he
+                  WHERE he.owner_user_id = s.owner_user_id
+                    AND he.session_id = s.session_id
+                    AND he.embedding IS NOT NULL
+                    AND he.event_type IN
+                        ('user_message', 'user_prompt', 'prompt', 'message', 'user')
+              )
             """,
             *event_count_args,
         )
@@ -898,18 +1018,25 @@ async def get_embedding_projection(
         cache
         and cache["computed_at"] > fresh_cutoff
         and cache["scope_signature"] == current_signature
+        and cache["embedding_space"] == embedding_space_id()
     ):
         count_diff = abs(total_count - cache["embedding_count"])
         if count_diff / max(cache["embedding_count"], 1) < 0.1:
             return {
                 "points": cache["points"],
+                "clusters": cache["clusters"],
                 "stats": {"total_embeddings": total_count, "projected": len(cache["points"])},
                 "cached": True,
             }
 
     if total_count == 0:
-        await _store_projection(user_id, source_key, owner_user_id, [], 0, current_signature)
-        return {"points": [], "stats": {"total_embeddings": 0, "projected": 0}, "cached": False}
+        await _store_projection(user_id, source_key, owner_user_id, [], [], 0, current_signature)
+        return {
+            "points": [],
+            "clusters": [],
+            "stats": {"total_embeddings": 0, "projected": 0},
+            "cached": False,
+        }
 
     # Fetch up to the full budget from each source — splitting it evenly
     # starved accounts that live in one source. The union is downsampled to
@@ -931,7 +1058,8 @@ async def get_embedding_projection(
         rows = await pool.fetch(
             _accessible_pages_cte(scope_idx=content_fetch_scope_idx)
             + """
-            SELECT np.id, np.name AS label, np.embedding, np.created_at
+            SELECT np.id, np.name AS label, np.content_markdown AS concept_text,
+                   np.embedding, np.created_at
             FROM pages np
             WHERE np.id IN (SELECT page_id FROM accessible_pages)
               AND np.embedding IS NOT NULL
@@ -947,6 +1075,7 @@ async def get_embedding_projection(
                 {
                     "id": str(r["id"]),
                     "label": r["label"],
+                    "concept_text": r["concept_text"],
                     "source": "pages",
                     "created_at": r["created_at"].isoformat() if r["created_at"] else None,
                     "embedding": np.array(r["embedding"]),
@@ -957,7 +1086,8 @@ async def get_embedding_projection(
         rows = await pool.fetch(
             _accessible_tables_cte(scope_idx=content_fetch_scope_idx)
             + """
-            SELECT tr.id, t.name AS table_name, tr.embedding, tr.created_at
+            SELECT tr.id, t.name AS table_name, tr.data::text AS concept_text,
+                   tr.embedding, tr.created_at
             FROM table_rows tr
             JOIN tables t ON t.id = tr.table_id
             WHERE tr.table_id IN (SELECT table_id FROM accessible_tables)
@@ -972,35 +1102,88 @@ async def get_embedding_projection(
                 {
                     "id": str(r["id"]),
                     "label": r["table_name"],
+                    "concept_text": r["concept_text"],
                     "source": "table_rows",
                     "created_at": r["created_at"].isoformat() if r["created_at"] else None,
                     "embedding": np.array(r["embedding"]),
                 }
             )
 
-    if source is None or source == "history_events":
+    if source is None or source == "sessions":
+        # Select the recent working set before aggregating transcript events.
+        # Large accounts can have tens of thousands of sessions, while the map
+        # has a hard 2,000-point display budget. Only user prompts represent the
+        # session: assistant prose and tool output describe execution, not intent.
+        session_access = permission_service.readable_content_condition("session", "s", 1)
+        scope_filter = (
+            f"s.owner_user_id = ${event_fetch_scope_idx}" if event_fetch_scope_idx else "TRUE"
+        )
         rows = await pool.fetch(
-            _accessible_events_cte(scope_idx=event_fetch_scope_idx)
-            + """
-            SELECT me.id, me.content, me.embedding, me.created_at
-            FROM history_events me
-            JOIN accessible_events a ON a.event_id = me.id
-            WHERE me.embedding IS NOT NULL
-            ORDER BY me.created_at DESC
-            LIMIT $2
+            f"""
+            WITH recent_sessions AS (
+                SELECT s.owner_user_id, s.session_id
+                FROM sessions s
+                WHERE s.deleted_at IS NULL
+                  AND {scope_filter}
+                  AND {session_access}
+                  AND EXISTS (
+                      SELECT 1 FROM history_events candidate
+                      WHERE candidate.owner_user_id = s.owner_user_id
+                        AND candidate.session_id = s.session_id
+                        AND candidate.embedding IS NOT NULL
+                        AND candidate.event_type IN
+                            ('user_message', 'user_prompt', 'prompt', 'message', 'user')
+                  )
+                ORDER BY s.last_event_at DESC
+                LIMIT $2
+            ), session_points AS (
+                SELECT rs.owner_user_id, rs.session_id,
+                       AVG(me.embedding) AS embedding,
+                       COUNT(*) AS prompt_count,
+                       LEFT(STRING_AGG(LEFT(me.content, 1000), E'\n' ORDER BY me.created_at), 6000)
+                           AS concept_text
+                FROM recent_sessions rs
+                JOIN history_events me
+                  ON me.owner_user_id = rs.owner_user_id AND me.session_id = rs.session_id
+                WHERE me.embedding IS NOT NULL
+                  AND me.event_type IN
+                      ('user_message', 'user_prompt', 'prompt', 'message', 'user')
+                GROUP BY rs.owner_user_id, rs.session_id
+            )
+            SELECT sp.session_id, sp.embedding, sp.prompt_count, sp.concept_text,
+                   s.last_event_at, s.title, s.files_touched,
+                   -- The CLI plugin historically defaulted agent_name to the
+                   -- author's login handle; that value is a person, not an
+                   -- agent — suppress it (same rule as the sessions list).
+                   NULLIF(s.agent_name, author.name) AS agent_name
+            FROM session_points sp
+            JOIN sessions s ON s.owner_user_id = sp.owner_user_id
+                AND s.session_id = sp.session_id
+            LEFT JOIN users author ON author.id = s.created_by
+            ORDER BY s.last_event_at DESC
             """,
             *event_fetch_args,
         )
         for r in rows:
-            # Label with the content the embedding was computed from, not the
-            # event-type enum — every tool call labeled "user: tool_use" made
-            # the map unreadable.
+            label = r["title"] or session_title_service.title_from_text(
+                r["concept_text"], r["session_id"]
+            )
+            n = r["prompt_count"]
+            detail = f"{n} prompt" if n == 1 else f"{n} prompts"
+            if r["agent_name"]:
+                detail += f" · {r['agent_name']}"
+            files = r["files_touched"] or []
+            concept_text = f"{label}\n{r['concept_text']}"
+            if files:
+                concept_text += "\nFiles: " + ", ".join(files)
             all_items.append(
                 {
-                    "id": str(r["id"]),
-                    "label": " ".join(r["content"].split())[:80],
-                    "source": "history_events",
-                    "created_at": r["created_at"].isoformat() if r["created_at"] else None,
+                    "id": r["session_id"],
+                    "label": label,
+                    "concept_text": concept_text,
+                    "source": "sessions",
+                    "created_at": r["last_event_at"].isoformat() if r["last_event_at"] else None,
+                    "detail": detail,
                     "embedding": np.array(r["embedding"]),
                 }
             )
@@ -1009,7 +1192,8 @@ async def get_embedding_projection(
         rows = await pool.fetch(
             _accessible_files_cte(scope_idx=content_fetch_scope_idx)
             + """
-            SELECT f.id, f.name AS label, f.embedding, f.created_at
+            SELECT f.id, f.name AS label, f.extracted_text AS concept_text,
+                   f.embedding, f.created_at
             FROM files f
             WHERE f.id IN (SELECT file_id FROM accessible_files)
               AND f.embedding IS NOT NULL
@@ -1023,6 +1207,7 @@ async def get_embedding_projection(
                 {
                     "id": str(r["id"]),
                     "label": r["label"],
+                    "concept_text": r["concept_text"],
                     "source": "files",
                     "created_at": r["created_at"].isoformat() if r["created_at"] else None,
                     "embedding": np.array(r["embedding"]),
@@ -1031,10 +1216,11 @@ async def get_embedding_projection(
 
     if not all_items:
         await _store_projection(
-            user_id, source_key, owner_user_id, [], total_count, current_signature
+            user_id, source_key, owner_user_id, [], [], total_count, current_signature
         )
         return {
             "points": [],
+            "clusters": [],
             "stats": {"total_embeddings": total_count, "projected": 0},
             "cached": False,
         }
@@ -1055,27 +1241,59 @@ async def get_embedding_projection(
     else:
         coords = np.zeros((len(all_items), 3))
 
-    # Build points
+    # Cluster in the original semantic space. UMAP is only a display layout:
+    # its three dimensions intentionally distort global distances.
+    assignments = cluster_points(embeddings_matrix)
+    concept_examples: list[list[str]] = [[] for _ in range(max(assignments) + 1)]
+    medoid_names: list[str] = [""] * len(concept_examples)
+    norms = np.linalg.norm(embeddings_matrix, axis=1, keepdims=True)
+    normalized = embeddings_matrix / np.where(norms == 0, 1, norms)
+    assignment_array = np.array(assignments)
+    for cluster in range(len(concept_examples)):
+        indices = np.flatnonzero(assignment_array == cluster)
+        centroid = normalized[indices].mean(axis=0)
+        representatives = indices[np.argsort(-(normalized[indices] @ centroid))]
+        descriptive = max(
+            (all_items[i]["label"] for i in representatives[:6]),
+            key=lambda label: len(re.findall(r"[A-Za-z0-9]+", label)),
+        )
+        shortened = descriptive.strip()
+        if len(shortened) > 40:
+            boundary = shortened.rfind(" ", 0, 40)
+            shortened = shortened[: boundary if boundary > 0 else 40]
+        medoid_names[cluster] = shortened
+        concept_examples[cluster] = [
+            f"{all_items[i]['label']}: {all_items[i]['concept_text']}" for i in representatives[:12]
+        ]
+    cluster_names = await concept_names(concept_examples, medoid_names)
+    clusters = [
+        {"index": c, "name": cluster_names[c], "size": assignments.count(c)}
+        for c in range(len(cluster_names))
+    ]
+
     points = []
     for i, item in enumerate(all_items):
-        points.append(
-            {
-                "id": item["id"],
-                "x": round(float(coords[i, 0]), 4),
-                "y": round(float(coords[i, 1]), 4),
-                "z": round(float(coords[i, 2]), 4),
-                "source": item["source"],
-                "label": item["label"],
-                "created_at": item["created_at"],
-            }
-        )
+        point = {
+            "id": item["id"],
+            "x": round(float(coords[i, 0]), 4),
+            "y": round(float(coords[i, 1]), 4),
+            "z": round(float(coords[i, 2]), 4),
+            "source": item["source"],
+            "label": item["label"],
+            "created_at": item["created_at"],
+            "cluster": assignments[i],
+        }
+        if "detail" in item:
+            point["detail"] = item["detail"]
+        points.append(point)
 
     await _store_projection(
-        user_id, source_key, owner_user_id, points, total_count, current_signature
+        user_id, source_key, owner_user_id, points, clusters, total_count, current_signature
     )
 
     return {
         "points": points,
+        "clusters": clusters,
         "stats": {"total_embeddings": total_count, "projected": len(points)},
         "cached": False,
     }

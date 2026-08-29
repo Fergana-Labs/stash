@@ -17,8 +17,6 @@ from ..database import get_pool
 from . import embeddings as embedding_service
 from . import (
     end_user_service,
-    github_pr_service,
-    linear_ticket_service,
     permission_service,
     session_service,
 )
@@ -134,6 +132,7 @@ async def push_event(
     content: str,
     created_by: UUID,
     session_id: str,
+    uploader_key_id: UUID | None = None,
     user_id: str | None = None,
     user_name: str | None = None,
     session_folder_id=None,
@@ -157,8 +156,8 @@ async def push_event(
         ts = _normalize_ts(created_at)
     row = await pool.fetchrow(
         "INSERT INTO history_events "
-        "(owner_user_id, created_by, agent_name, event_type, content, session_id, tool_name, metadata, attachments, created_at) "
-        "VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10) "
+        "(owner_user_id, created_by, agent_name, event_type, content, session_id, tool_name, metadata, attachments, created_at, uploader_key_id) "
+        "VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10, $11) "
         "RETURNING id, owner_user_id, created_by, agent_name, event_type, session_id, "
         "tool_name, content, metadata, attachments, created_at",
         owner_user_id,
@@ -171,6 +170,7 @@ async def push_event(
         meta,
         attachments,
         ts,
+        uploader_key_id,
     )
     event = dict(row)
     if owner_user_id is not None:
@@ -182,7 +182,7 @@ async def push_event(
             owner_user_id, [{"user_id": user_id, "user_name": user_name}]
         )
         end_user = end_user_rows.get(user_id) if user_id else None
-        session = await session_service.upsert_session(
+        await session_service.upsert_session(
             owner_user_id,
             session_id,
             agent_name=agent_name,
@@ -192,19 +192,44 @@ async def push_event(
             session_folder_id=session_folder_id,
             last_event_at=ts,
         )
-        if linear_ticket_service.has_ticket_hint([content]):
-            await linear_ticket_service.sync_session_labels(
-                owner_user_id, session["id"], session_id
-            )
-        if github_pr_service.has_pull_request_hint([content]):
-            github_pr_service.enqueue_session_discovery(session["id"])
     return event
+
+
+async def push_internal_event(
+    owner_user_id: UUID,
+    agent_name: str,
+    event_type: str,
+    content: str,
+    created_by: UUID,
+    session_id: str,
+    *,
+    tool_name: str | None = None,
+    metadata: dict | None = None,
+) -> dict:
+    """Store an internal job log event without creating a user Session."""
+    row = await get_pool().fetchrow(
+        "INSERT INTO history_events "
+        "(owner_user_id, created_by, agent_name, event_type, content, session_id, tool_name, metadata) "
+        "VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb) "
+        "RETURNING id, owner_user_id, created_by, agent_name, event_type, session_id, "
+        "tool_name, content, metadata, attachments, created_at",
+        owner_user_id,
+        created_by,
+        _strip_nuls(agent_name),
+        _strip_nuls(event_type),
+        _strip_nuls(content),
+        _strip_nuls(session_id),
+        _strip_nuls(tool_name),
+        _strip_nuls(metadata or {}),
+    )
+    return dict(row)
 
 
 async def push_events_batch(
     owner_user_id: UUID | None,
     created_by: UUID,
     events: list[dict],
+    uploader_key_id: UUID | None = None,
 ) -> list[dict]:
     """Batch push events in a single round-trip.
 
@@ -233,11 +258,11 @@ async def push_events_batch(
         """
         INSERT INTO history_events
             (owner_user_id, created_by, agent_name, event_type, content,
-             session_id, tool_name, metadata, attachments, created_at)
+             session_id, tool_name, metadata, attachments, created_at, uploader_key_id)
         SELECT $1::uuid, $2::uuid, u.an, u.et, u.c,
                u.sid, u.tn, u.md::jsonb,
                CASE WHEN u.att IS NULL THEN NULL ELSE u.att::jsonb END,
-               u.ts
+               u.ts, $11::uuid
         FROM UNNEST(
             $3::varchar[], $4::varchar[], $5::text[],
             $6::varchar[], $7::varchar[],
@@ -256,6 +281,7 @@ async def push_events_batch(
         metadatas,
         attachments,
         timestamps,
+        uploader_key_id,
     )
     results = [dict(r) for r in rows]
     if owner_user_id is not None:
@@ -366,7 +392,7 @@ async def _upsert_sessions_for_events(
 
     for session_id, session in sessions.items():
         end_user = end_user_rows.get(session["user_id"]) if session["user_id"] else None
-        row = await session_service.upsert_session(
+        await session_service.upsert_session(
             owner_user_id,
             session_id,
             agent_name=session["agent_name"],
@@ -376,13 +402,6 @@ async def _upsert_sessions_for_events(
             session_folder_id=session["session_folder_id"],
             last_event_at=session["last_event_at"],
         )
-        contents = [
-            event.get("content") or "" for event in events if event.get("session_id") == session_id
-        ]
-        if linear_ticket_service.has_ticket_hint(contents):
-            await linear_ticket_service.sync_session_labels(owner_user_id, row["id"], session_id)
-        if github_pr_service.has_pull_request_hint(contents):
-            github_pr_service.enqueue_session_discovery(row["id"])
 
 
 def readable_session_event_condition(event_alias: str, user_arg: int) -> str:
@@ -518,8 +537,10 @@ async def list_scope_sessions(owner_user_id: UUID, user_id: UUID) -> list[dict]:
         ") "
         "SELECT h.session_id, "
         "       rs.id::text AS id, "
-        f"       {linear_ticket_service.sql_json_agg('rs')} AS linear_tickets, "
-        "       MAX(h.agent_name) AS agent_name, "
+        # The CLI plugin historically defaulted agent_name to the author's
+        # login handle (users.name); a value equal to it is that default, not
+        # an agent name, so it is suppressed rather than shown as an agent.
+        "       NULLIF(MAX(h.agent_name), MAX(u.name)) AS agent_name, "
         "       (ARRAY_AGG(NULLIF(u.display_name, '') ORDER BY h.created_at) "
         "        FILTER (WHERE NULLIF(u.display_name, '') IS NOT NULL))[1] AS user_name, "
         "       title_sources.title_source, "

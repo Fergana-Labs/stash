@@ -118,9 +118,7 @@ def agent_install_pitch(stash_url: str) -> str:
 
 
 def skill_md_template(name: str, description: str) -> str:
-    return (
-        f"---\nname: {json.dumps(name)}\ndescription: {json.dumps(description)}\n---\n\n# {name}\n"
-    )
+    return skill_service.skill_md_template(name, description)
 
 
 async def folder_has_skill_md(folder_id: UUID) -> bool:
@@ -143,13 +141,18 @@ async def ensure_skill_md(
     act by the caller, so it sets membership — unlike a user editing files
     inside a folder, which never reclassifies anything."""
     if await folder_has_skill_md(folder_id):
+        skill_md = await get_pool().fetchval(
+            "SELECT content_markdown FROM pages WHERE folder_id = $1 AND name = 'SKILL.md' "
+            "AND deleted_at IS NULL",
+            folder_id,
+        )
+        skill_service.validate_skill_md(skill_md or "")
         await files_tree_service.set_folder_is_skill(folder_id, owner_user_id, True)
         return
     if not description.strip():
         raise ValueError("description is required when publishing a folder as a skill")
     skill_md = skill_md_template(title, description)
     skill_service.validate_skill_md(skill_md)
-    await files_tree_service.set_folder_is_skill(folder_id, owner_user_id, True)
     await files_tree_service.create_page(
         owner_user_id,
         "SKILL.md",
@@ -158,6 +161,7 @@ async def ensure_skill_md(
         content=skill_md,
         content_type="markdown",
     )
+    await files_tree_service.set_folder_is_skill(folder_id, owner_user_id, True)
 
 
 # --- Publish lifecycle ---
@@ -327,64 +331,6 @@ async def _live_item_count(folder_id: UUID) -> int:
     )
 
 
-async def list_public_skills(
-    *,
-    query: str | None = None,
-    sort: str = "trending",
-    limit: int = 48,
-    offset: int = 0,
-) -> list[dict]:
-    """Discover catalog: public + discoverable skills."""
-    pool = get_pool()
-    where = ["v.discoverable = true"]
-    args: list = []
-    idx = 1
-    if query:
-        where.append(f"(v.title ILIKE ${idx} OR v.description ILIKE ${idx})")
-        args.append(f"%{query}%")
-        idx += 1
-
-    if sort == "newest":
-        order = "v.created_at DESC, v.id DESC"
-    elif sort == "popular":
-        order = "v.view_count DESC, v.updated_at DESC, v.id DESC"
-    else:
-        order = "v.updated_at DESC, v.id DESC"
-
-    rows = await pool.fetch(
-        f"SELECT {_SKILL_COLS}, COALESCE(scope_user.display_name, scope_user.name) AS scope_name "
-        f"{_SKILL_FROM} "
-        f"JOIN users scope_user ON scope_user.id = v.owner_user_id "
-        f"WHERE {' AND '.join(where)} ORDER BY {order} "
-        f"LIMIT {int(limit)} OFFSET {int(offset)}",
-        *args,
-    )
-
-    out: list[dict] = []
-    for r in rows:
-        skill = dict(r)
-        out.append(
-            {
-                "id": str(skill["id"]),
-                "slug": skill["slug"],
-                "title": skill["title"],
-                "description": skill["description"],
-                "discoverable": skill["discoverable"],
-                "cover_image_url": skill["cover_image_url"],
-                "source_github_url": skill["source_github_url"],
-                "view_count": skill["view_count"],
-                "install_count": skill["install_count"],
-                "owner_name": skill.get("scope_name"),
-                "owner_display_name": skill.get("owner_display_name"),
-                "owner_user_id": str(skill["owner_user_id"]),
-                "item_count": int(await _live_item_count(skill["folder_id"]) or 0),
-                "created_at": skill["created_at"].isoformat(),
-                "updated_at": skill["updated_at"].isoformat(),
-            }
-        )
-    return out
-
-
 async def list_skills_shared_with_user(user_id: UUID) -> list[dict]:
     """Skill folders shared with this user via folder shares, with publish
     info when the owner has also published them."""
@@ -410,7 +356,9 @@ async def list_skills_shared_with_user(user_id: UUID) -> list[dict]:
     )
     out = []
     for r in rows:
-        meta, _body = skill_service.parse_frontmatter(r["skill_md"] or "")
+        skill_md = r["skill_md"] or ""
+        skill_service.validate_skill_md(skill_md)
+        meta, _body = skill_service.parse_frontmatter(skill_md)
         out.append(
             {
                 "folder_id": str(r["folder_id"]),
@@ -699,8 +647,8 @@ async def _fork_folder(
     # Forking a skill is an explicit "give me this skill" — membership travels
     # with the copy, exactly like its files do.
     new_folder = await conn.fetchrow(
-        "INSERT INTO folders (owner_user_id, parent_folder_id, name, created_by, is_skill) "
-        "VALUES ($1, $2, $3, $4, $5) RETURNING id",
+        "INSERT INTO folders (owner_user_id, parent_folder_id, name, created_by, is_skill, "
+        "skill_created_at) VALUES ($1, $2, $3, $4, $5, CASE WHEN $5 THEN now() END) RETURNING id",
         owner_user_id,
         parent_folder_id,
         name_override or folder["name"],

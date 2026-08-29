@@ -27,6 +27,10 @@ class LocalEmbedder(BaseEmbedder):
         self.dims = dims or int(os.getenv("EMBEDDING_DIMS", "384"))
         self._model = None
 
+    @property
+    def space_id(self) -> str:
+        return f"local:{self.model_name}:{self.dims}:v1"
+
     def is_configured(self) -> bool:
         try:
             import sentence_transformers  # noqa: F401

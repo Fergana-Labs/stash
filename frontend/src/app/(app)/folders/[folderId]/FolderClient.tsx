@@ -23,13 +23,12 @@ import { findInSkillContents } from "@/lib/localSkill";
 import { loginPathWithNext } from "@/lib/loginRedirect";
 import { sectionCrumbs } from "@/lib/memory-folder";
 import { refreshSidebar } from "@/lib/skillNavigationCache";
-import { useTabTitle } from "@/lib/workspace-store";
 
 export default function FolderDetailPage({ folderId: folderIdProp }: { folderId?: string }) {
   const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
-  // Prop wins (workbench tab); otherwise read the route param (deep link).
+  // An explicit id is useful for embedded views; routed views read the URL.
   const folderId = folderIdProp ?? (params.folderId as string);
   const { user, loading } = useAuth();
   const skillSlug = folderIdProp ? null : searchParams.get("skill");
@@ -44,13 +43,14 @@ export default function FolderDetailPage({ folderId: folderIdProp }: { folderId?
   } | null>(null);
   const crumbs = useMemo(() => {
     if (!chain) return [{ label: "Folder" }];
-    return [
-      ...sectionCrumbs(chain.breadcrumbs.slice(0, -1)),
-      { label: chain.name },
-    ];
+    const fullChain = sectionCrumbs(chain.breadcrumbs);
+    return fullChain.map((crumb, index) =>
+      index === fullChain.length - 1
+        ? { ...crumb, label: chain.name, href: undefined }
+        : crumb,
+    );
   }, [chain]);
   const [folderName, setFolderName] = useState<string | null>(null);
-  useTabTitle("folder", folderId, folderName);
   const [skillFallback, setSkillFallback] = useState<{
     skillSlug: string;
     skillTitle: string;
@@ -128,7 +128,7 @@ export default function FolderDetailPage({ folderId: folderIdProp }: { folderId?
 
   useBreadcrumbs(
     crumbs,
-    `files/${folderId}/${crumbs.map((c) => c.label).join("/")}`
+    `folder/${folderId}/${crumbs.map((c) => c.label).join("/")}`
   );
 
   const convertToSkill = useCallback(
@@ -196,7 +196,7 @@ export default function FolderDetailPage({ folderId: folderIdProp }: { folderId?
           </div>
         </div>
       )}
-      <FileBrowser folderId={folderId} />
+      <FileBrowser folderId={folderId} breadcrumbs={crumbs} />
     </div>
   );
 }

@@ -193,51 +193,55 @@ SAMPLE_TABLES = [
 SAMPLE_SESSIONS = [
     {
         "session_id": "session-design-architecture",
-        "agent_name": "claude",
+        "agent_name": "Claude Code 5 Fable",
+        "model": "claude-5-fable",
         "cwd": "/scope/product",
         "created_by": "demo_aria",
         "files_touched": ["docs/architecture.md", "product/vision.md"],
         "events": [
             ("prompt", "I need a production-safe rollout plan for this UI change."),
-            ("assistant", "I drafted a staged rollout with canary and rollback points."),
+            ("assistant_message", "I drafted a staged rollout with canary and rollback points."),
             ("tool_call", "search_web"),
             (
-                "assistant",
+                "assistant_message",
                 "I found three comparable strategies and picked canary + manual smoke checks.",
             ),
         ],
     },
     {
         "session_id": "session-dashboard-overhaul",
-        "agent_name": "copilot",
+        "agent_name": "Codex 5.6 Sol",
+        "model": "gpt-5.6-sol",
         "cwd": "/scope/frontend",
         "created_by": "demo_maya",
         "files_touched": ["frontend/src/AppSidebar.tsx", "frontend/src/styles.css"],
         "events": [
             ("prompt", "Please implement a cleaner sidebar with fewer duplicates."),
-            ("assistant", "I removed duplicate nav labels and adjusted defaults."),
-            ("assistant", "I added grouping labels for sessions, files, and skills."),
+            ("assistant_message", "I removed duplicate nav labels and adjusted defaults."),
+            ("assistant_message", "I added grouping labels for sessions, files, and skills."),
             ("tool_call", "git_commit"),
         ],
     },
     {
         "session_id": "session-file-pipeline",
-        "agent_name": "assistant",
+        "agent_name": "Codex 5.6 Sol",
+        "model": "gpt-5.6-sol",
         "cwd": "/scope/backend",
         "created_by": "demo_devon",
         "files_touched": ["backend/routers/files.py", "backend/services/files_tree_service.py"],
         "events": [
             ("prompt", "Can we improve local file ingest reliability?"),
-            ("assistant", "I reviewed upload flow and added better status defaults."),
+            ("assistant_message", "I reviewed upload flow and added better status defaults."),
             (
-                "assistant",
+                "assistant_message",
                 "I confirmed file rows remain queryable even before extraction completes.",
             ),
         ],
     },
     {
         "session_id": "session-session-index",
-        "agent_name": "agent",
+        "agent_name": "Codex 5.6 Sol",
+        "model": "gpt-5.6-sol",
         "cwd": "/scope/backend",
         "created_by": "demo_aria",
         "files_touched": [
@@ -246,14 +250,15 @@ SAMPLE_SESSIONS = [
         ],
         "events": [
             ("prompt", "We need stable session list rendering with minimal payload."),
-            ("assistant", "I aligned list query order by most recent activity."),
-            ("assistant", "I verified count and size calculations still render quickly."),
-            ("assistant", "I added title fallback when no final answer exists."),
+            ("assistant_message", "I aligned list query order by most recent activity."),
+            ("assistant_message", "I verified count and size calculations still render quickly."),
+            ("assistant_message", "I added title fallback when no final answer exists."),
         ],
     },
     {
         "session_id": "session-permissions-path",
-        "agent_name": "claude",
+        "agent_name": "Claude Code 5 Fable",
+        "model": "claude-5-fable",
         "cwd": "/scope/backend",
         "created_by": "demo_devon",
         "files_touched": [
@@ -262,26 +267,28 @@ SAMPLE_SESSIONS = [
         ],
         "events": [
             ("prompt", "Can we test scope/private/public access rules for skills?"),
-            ("assistant", "I mapped access checks and identified partition collisions."),
-            ("assistant", "I confirmed private bundles reject cross-level items."),
+            ("assistant_message", "I mapped access checks and identified partition collisions."),
+            ("assistant_message", "I confirmed private bundles reject cross-level items."),
             ("tool_call", "policy_test"),
         ],
     },
     {
         "session_id": "session-documenting-practices",
-        "agent_name": "assistant",
+        "agent_name": "Codex 5.6 Sol",
+        "model": "gpt-5.6-sol",
         "cwd": "/scope/docs",
         "created_by": "demo_maya",
         "files_touched": ["README.md", "docs/notes.md", "notes/session-ops.md"],
         "events": [
             ("prompt", "Write practical onboarding notes for this project."),
-            ("assistant", "I documented common local tasks and gotchas."),
-            ("assistant", "I added a quick start path for seeded sample data."),
+            ("assistant_message", "I documented common local tasks and gotchas."),
+            ("assistant_message", "I added a quick start path for seeded sample data."),
         ],
     },
     {
         "session_id": "session-query-quality",
-        "agent_name": "copilot",
+        "agent_name": "Codex 5.6 Sol",
+        "model": "gpt-5.6-sol",
         "cwd": "/scope/backend",
         "created_by": "demo_aria",
         "files_touched": [
@@ -290,26 +297,31 @@ SAMPLE_SESSIONS = [
         ],
         "events": [
             ("prompt", "Any index changes needed for history session queries?"),
-            ("assistant", "I validated current indexes and query shape with sessions join."),
-            ("assistant", "I highlighted the key path as owner+session_id group by."),
-            ("assistant", "I kept results bounded but complete for overview endpoints."),
+            (
+                "assistant_message",
+                "I validated current indexes and query shape with sessions join.",
+            ),
+            ("assistant_message", "I highlighted the key path as owner+session_id group by."),
+            ("assistant_message", "I kept results bounded but complete for overview endpoints."),
         ],
     },
     {
         "session_id": "session-observability",
-        "agent_name": "assistant",
+        "agent_name": "Claude Code 5 Fable",
+        "model": "claude-5-fable",
         "cwd": "/scope/ops",
         "created_by": "demo_devon",
         "files_touched": ["ops/checks.md", "ops/incident-template.md"],
         "events": [
             ("prompt", "Draft incident response playbook for a failed uploader."),
-            ("assistant", "I captured escalation tiers and ownership boundaries."),
-            ("assistant", "I added rollback checks to reduce MTTR."),
+            ("assistant_message", "I captured escalation tiers and ownership boundaries."),
+            ("assistant_message", "I added rollback checks to reduce MTTR."),
         ],
     },
     {
         "session_id": "session-qa-sanity",
-        "agent_name": "claude",
+        "agent_name": "Claude Code 5 Fable",
+        "model": "claude-5-fable",
         "cwd": "/scope/tests",
         "created_by": "demo_maya",
         "files_touched": [
@@ -318,37 +330,43 @@ SAMPLE_SESSIONS = [
         ],
         "events": [
             ("prompt", "What are the riskiest regressions in this area?"),
-            ("assistant", "I added checks for session list shape and sidebar items."),
-            ("assistant", "I included skills edge cases for private/scope/public mix."),
+            ("assistant_message", "I added checks for session list shape and sidebar items."),
+            ("assistant_message", "I included skills edge cases for private/scope/public mix."),
         ],
     },
     {
         "session_id": "session-product-feedback",
-        "agent_name": "assistant",
+        "agent_name": "Codex 5.6 Sol",
+        "model": "gpt-5.6-sol",
         "cwd": "/scope/product",
         "created_by": "demo_aria",
         "files_touched": ["product/feedback.md", "docs/roadmap.md"],
         "events": [
             ("prompt", "Summarize recurring feedback from internal users."),
-            ("assistant", "I grouped around navigation clarity and data discoverability."),
-            ("assistant", "I prioritized three follow-up experiments."),
+            ("assistant_message", "I grouped around navigation clarity and data discoverability."),
+            ("assistant_message", "I prioritized three follow-up experiments."),
         ],
     },
     {
         "session_id": "session-oncall-playbook",
-        "agent_name": "agent",
+        "agent_name": "Claude Code 5 Fable",
+        "model": "claude-5-fable",
         "cwd": "/scope/ops",
         "created_by": "demo_devon",
         "files_touched": ["ops/oncall.md", "ops/status-template.md"],
         "events": [
             ("prompt", "Draft a standard status update format for on-call shifts."),
-            ("assistant", "I proposed a concise update template with risks and next actions."),
-            ("assistant", "I included checkboxes for validation and unresolved items."),
+            (
+                "assistant_message",
+                "I proposed a concise update template with risks and next actions.",
+            ),
+            ("assistant_message", "I included checkboxes for validation and unresolved items."),
         ],
     },
     {
         "session_id": "session-release-triage",
-        "agent_name": "assistant",
+        "agent_name": "Codex 5.6 Sol",
+        "model": "gpt-5.6-sol",
         "cwd": "/scope/backend",
         "created_by": "demo_maya",
         "files_touched": [
@@ -357,8 +375,8 @@ SAMPLE_SESSIONS = [
         ],
         "events": [
             ("prompt", "Create a release triage list with top three blockers."),
-            ("assistant", "I identified ownership, impact, and fallback plans."),
-            ("assistant", "I added follow-up actions by priority for each blocker."),
+            ("assistant_message", "I identified ownership, impact, and fallback plans."),
+            ("assistant_message", "I added follow-up actions by priority for each blocker."),
         ],
     },
 ]
@@ -503,12 +521,12 @@ async def _ensure_pages(
         else:
             parent_id = folders[folder_key]["id"] if folder_key in folders else None
 
+        # Name-only lookup: _ensure_skills later moves seeded pages into skill
+        # folders, so a folder-scoped check would recreate them on re-runs.
         existing = await database.get_pool().fetchrow(
-            "SELECT id FROM pages WHERE owner_user_id = $1 AND name = $2 "
-            "AND folder_id IS NOT DISTINCT FROM $3",
+            "SELECT id FROM pages WHERE owner_user_id = $1 AND name = $2",
             owner_user_id,
             spec["name"],
-            parent_id,
         )
         if existing:
             out[spec["name"]] = {"id": existing["id"]}
@@ -583,6 +601,21 @@ async def _ensure_sessions(
     for i, spec in enumerate(SAMPLE_SESSIONS):
         existing = await session_service.get_session(owner_user_id, spec["session_id"])
         if existing:
+            await database.get_pool().execute(
+                "UPDATE sessions SET agent_name = $3 WHERE owner_user_id = $1 AND session_id = $2",
+                owner_user_id,
+                spec["session_id"],
+                spec["agent_name"],
+            )
+            await database.get_pool().execute(
+                "UPDATE history_events SET agent_name = $3, "
+                "metadata = jsonb_set(metadata, '{model}', to_jsonb($4::text), true) "
+                "WHERE owner_user_id = $1 AND session_id = $2",
+                owner_user_id,
+                spec["session_id"],
+                spec["agent_name"],
+                spec["model"],
+            )
             created[spec["session_id"]] = existing
             continue
 
@@ -605,7 +638,7 @@ async def _ensure_sessions(
                     "tool_name": tool,
                     "created_by": created_by["id"],
                     "session_id": spec["session_id"],
-                    "metadata": {"cwd": spec["cwd"]},
+                    "metadata": {"cwd": spec["cwd"], "model": spec["model"]},
                     "created_at": await _session_time_offset(i, event_offset),
                     "attachments": [],
                 }
@@ -642,22 +675,29 @@ async def _ensure_files(
             spec["content"].encode("utf-8"),
             spec["content_type"],
         )
+        # This branch has no unique index on files.storage_key (that arrives
+        # with stash-revamp-3), so idempotency is by owner + name instead.
         row = await database.get_pool().fetchrow(
-            "INSERT INTO files (owner_user_id, name, content_type, size_bytes, storage_key, uploaded_by, folder_id, "
-            "extracted_text, extraction_status, extraction_attempts) "
-            "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'done', 1) "
-            "ON CONFLICT (storage_key) DO UPDATE SET "
-            "name = EXCLUDED.name, size_bytes = EXCLUDED.size_bytes "
-            "RETURNING id, name, size_bytes, content_type, folder_id, created_at, linked_table_id",
+            "SELECT id, name, size_bytes, content_type, folder_id, created_at, linked_table_id "
+            "FROM files WHERE owner_user_id = $1 AND name = $2",
             owner_user_id,
             spec["name"],
-            spec["content_type"],
-            len(spec["content"].encode("utf-8")),
-            storage_key,
-            creator_id,
-            parent_id,
-            spec["content"],
         )
+        if row is None:
+            row = await database.get_pool().fetchrow(
+                "INSERT INTO files (owner_user_id, name, content_type, size_bytes, storage_key, uploaded_by, folder_id, "
+                "extracted_text, extraction_status, extraction_attempts) "
+                "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'done', 1) "
+                "RETURNING id, name, size_bytes, content_type, folder_id, created_at, linked_table_id",
+                owner_user_id,
+                spec["name"],
+                spec["content_type"],
+                len(spec["content"].encode("utf-8")),
+                storage_key,
+                creator_id,
+                parent_id,
+                spec["content"],
+            )
         out[spec["name"]] = dict(row)
     # Link one seeded CSV-like file to a table to show richer table/file flow.
     csv_file = out.get("service-matrix.csv")
@@ -726,7 +766,9 @@ async def _ensure_skills(
             spec["title"],
         )
         if folder is None:
-            folder = await files_tree_service.create_folder(owner_user_id, spec["title"], user["id"])
+            folder = await files_tree_service.create_folder(
+                owner_user_id, spec["title"], user["id"]
+            )
         for page_name in spec["pages"]:
             page = pages.get(page_name)
             if page:
@@ -739,8 +781,8 @@ async def _ensure_skills(
                 await pool.execute(
                     "UPDATE tables SET folder_id = $1 WHERE id = $2", folder["id"], table["id"]
                 )
-        await shared_skill_service._ensure_skill_md(
-            owner_user_id, folder["id"], user["id"], spec["title"]
+        await shared_skill_service.ensure_skill_md(
+            owner_user_id, folder["id"], user["id"], spec["title"], spec["description"]
         )
         if spec["publish"]:
             await shared_skill_service.publish_folder(
@@ -760,16 +802,37 @@ async def _ensure_skills(
         story_title,
     )
     if not exists and sessions:
-        folder = await files_tree_service.create_folder(owner_user_id, story_title, user["id"])
+        # A prior partial run may have created the folder without the skill row.
+        folder = await pool.fetchrow(
+            "SELECT id FROM folders WHERE owner_user_id = $1 AND name = $2 "
+            "AND parent_folder_id IS NULL",
+            owner_user_id,
+            story_title,
+        )
+        if folder is None:
+            folder = await files_tree_service.create_folder(owner_user_id, story_title, user["id"])
         for session_key in sorted(sessions)[:3]:
+            session_id = sessions[session_key]["session_id"]
+            already = await pool.fetchrow(
+                "SELECT id FROM pages WHERE owner_user_id = $1 AND folder_id = $2 AND name = $3",
+                owner_user_id,
+                folder["id"],
+                f"Session {session_id}.md",
+            )
+            if already:
+                continue
             await shared_skill_service.materialize_session_page(
                 owner_user_id,
-                sessions[session_key]["session_id"],
+                session_id,
                 folder["id"],
                 user["id"],
             )
-        await shared_skill_service._ensure_skill_md(
-            owner_user_id, folder["id"], user["id"], story_title
+        await shared_skill_service.ensure_skill_md(
+            owner_user_id,
+            folder["id"],
+            user["id"],
+            story_title,
+            "Sessions frozen into pages for sharing.",
         )
 
 

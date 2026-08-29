@@ -1,4 +1,11 @@
-import { cleanup, fireEvent, render as renderBase, screen, waitFor, within } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render as renderBase,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import FileBrowser from "./FileBrowser";
@@ -111,9 +118,22 @@ describe("FileBrowser folder links", () => {
         parent_folder_id: null,
         is_skill: true,
       },
-      breadcrumbs: [{ id: "folder-1", name: "Skill folder", is_skill: true }],
+      breadcrumbs: [
+        {
+          id: "folder-1",
+          name: "Skill folder",
+          is_skill: true,
+          is_memory: false,
+        },
+      ],
       subfolders: [
-        { id: "folder-2", name: "Nested", page_count: 0, file_count: 0, created_at: createdAt },
+        {
+          id: "folder-2",
+          name: "Nested",
+          page_count: 0,
+          file_count: 0,
+          created_at: createdAt,
+        },
       ],
       pages: [],
       files: [],
@@ -124,12 +144,7 @@ describe("FileBrowser folder links", () => {
   it("routes folder navigation through folderHrefBase when provided", async () => {
     vi.mocked(getFolderContents).mockResolvedValue(folderContents());
 
-    render(
-      <FileBrowser
-        folderId="folder-1"
-        folderHrefBase="/skills"
-      />
-    );
+    render(<FileBrowser folderId="folder-1" folderHrefBase="/skills" />);
 
     fireEvent.click(await screen.findByText("Nested"));
 
@@ -145,11 +160,70 @@ describe("FileBrowser folder links", () => {
 
     expect(router.push).toHaveBeenCalledWith("/folders/folder-2");
   });
+
+  it("shows the path back through a nested folder hierarchy", async () => {
+    vi.mocked(getFolderContents).mockResolvedValue(folderContents());
+
+    render(
+      <FileBrowser
+        folderId="folder-1"
+        breadcrumbs={[
+          { label: "Skills", href: "/skills" },
+          { label: "Launch Plan", href: "/skills/folder/folder-root" },
+          { label: "Skill folder" },
+        ]}
+      />,
+    );
+
+    await screen.findByText("Nested");
+    const navigation = screen.getByRole("navigation", {
+      name: "Folder location",
+    });
+    expect(
+      within(navigation).getByRole("link", { name: "Skills" }),
+    ).toHaveAttribute("href", "/skills");
+    expect(
+      within(navigation).getByRole("link", { name: "Launch Plan" }),
+    ).toHaveAttribute("href", "/skills/folder/folder-root");
+    expect(within(navigation).getByText("Skill folder")).not.toHaveAttribute(
+      "href",
+    );
+  });
+
+  it("presents Skill attachments without generic folder controls", async () => {
+    vi.mocked(getFolderContents).mockResolvedValue(folderContents());
+
+    render(
+      <FileBrowser
+        folderId="folder-1"
+        supportingFilesMode
+        itemsHeading="Supporting files"
+      />,
+    );
+
+    expect(
+      await screen.findByRole("button", { name: "Add files" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "List" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Column" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Grid" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /\+ New/ }),
+    ).not.toBeInTheDocument();
+  });
 });
 
 describe("FileBrowser table creation", () => {
   it("creates a blank table from the + New menu", async () => {
-    vi.mocked(createTable).mockResolvedValue(table("table-1", "Untitled table"));
+    vi.mocked(createTable).mockResolvedValue(
+      table("table-1", "Untitled table"),
+    );
 
     render(<FileBrowser folderId={null} />);
 
@@ -157,7 +231,7 @@ describe("FileBrowser table creation", () => {
     fireEvent.click(screen.getByRole("button", { name: "Table" }));
 
     await waitFor(() =>
-      expect(createTable).toHaveBeenCalledWith("Untitled table")
+      expect(createTable).toHaveBeenCalledWith("Untitled table"),
     );
     expect(refreshSidebar).toHaveBeenCalled();
     expect(router.push).toHaveBeenCalledWith("/tables/table-1");
@@ -192,9 +266,7 @@ describe("FileBrowser table creation", () => {
 
     expect(screen.getByText("contacts.csv")).toBeInTheDocument();
     expect(screen.queryByText("Contacts from CSV")).not.toBeInTheDocument();
-    expect(router.push).toHaveBeenCalledWith(
-      "/tables/table-standalone"
-    );
+    expect(router.push).toHaveBeenCalledWith("/tables/table-standalone");
   });
 
   it("deletes standalone tables with the table API", async () => {
@@ -212,11 +284,10 @@ describe("FileBrowser table creation", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
 
     await waitFor(() =>
-      expect(deleteTable).toHaveBeenCalledWith("table-standalone")
+      expect(deleteTable).toHaveBeenCalledWith("table-standalone"),
     );
   });
 });
-
 
 describe("FileBrowser OS-file drop upload", () => {
   function dropEvent(types: string[], files: File[] = []) {
@@ -236,13 +307,15 @@ describe("FileBrowser OS-file drop upload", () => {
     await screen.findByText("+ Upload");
     const root = container.firstElementChild as HTMLElement;
 
-    const pdf = new File(["%PDF-1.7"], "catalog.pdf", { type: "application/pdf" });
+    const pdf = new File(["%PDF-1.7"], "catalog.pdf", {
+      type: "application/pdf",
+    });
     fireEvent.dragEnter(root, dropEvent(["Files"], [pdf]));
     expect(screen.getByText(/Drop to upload/)).toBeTruthy();
     fireEvent.drop(root, dropEvent(["Files"], [pdf]));
 
     await waitFor(() =>
-      expect(uploadFileOrPage).toHaveBeenCalledWith(pdf, undefined)
+      expect(uploadFileOrPage).toHaveBeenCalledWith(pdf, undefined),
     );
     expect(screen.queryByText(/Drop to upload/)).toBeNull();
   });

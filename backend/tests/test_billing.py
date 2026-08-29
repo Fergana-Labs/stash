@@ -19,7 +19,7 @@ from fastapi import HTTPException
 from httpx import AsyncClient
 
 from backend.config import settings
-from backend.services import billing_service
+from backend.services import billing_service, workspace_service
 
 from .conftest import unique_name
 
@@ -180,6 +180,11 @@ async def test_billing_me_reflects_plan(client, pool, billing_on):
         "status": None,
         "connection_count": 1,
         "connection_limit": billing_service.FREE_CONNECTION_LIMIT,
+        "curated_trace_count": 0,
+        "curated_trace_limit": settings.FREE_CURATED_TRACES,
+        "curated_trace_period": "lifetime",
+        "free_curated_trace_limit": settings.FREE_CURATED_TRACES,
+        "pro_curated_trace_limit": settings.PRO_CURATED_TRACES_PER_MONTH,
     }
 
     await pool.execute(
@@ -190,14 +195,46 @@ async def test_billing_me_reflects_plan(client, pool, billing_on):
     me = (await client.get("/api/v1/billing/me", headers=_auth(api_key))).json()
     assert me["plan"] == "pro"
     assert me["status"] == "active"
+    assert me["curated_trace_count"] == 0
+    assert me["curated_trace_limit"] == settings.PRO_CURATED_TRACES_PER_MONTH
+    assert me["curated_trace_period"] == "month"
 
 
 @pytest.mark.asyncio
-async def test_billing_me_when_disabled(client, monkeypatch):
+async def test_billing_me_still_returns_plan_when_checkout_is_disabled(client, monkeypatch):
     monkeypatch.setattr(settings, "STRIPE_SECRET_KEY", None)
     api_key, _ = await _register(client)
     resp = await client.get("/api/v1/billing/me", headers=_auth(api_key))
-    assert resp.json() == {"billing_enabled": False}
+    assert resp.json() == {
+        "billing_enabled": False,
+        "plan": "free",
+        "status": None,
+        "connection_count": 0,
+        "connection_limit": billing_service.FREE_CONNECTION_LIMIT,
+        "curated_trace_count": 0,
+        "curated_trace_limit": settings.FREE_CURATED_TRACES,
+        "curated_trace_period": "lifetime",
+        "free_curated_trace_limit": settings.FREE_CURATED_TRACES,
+        "pro_curated_trace_limit": settings.PRO_CURATED_TRACES_PER_MONTH,
+    }
+
+
+@pytest.mark.asyncio
+async def test_billing_me_reports_the_selected_workspace_plan(client, billing_on):
+    api_key, user_id = await _register(client)
+    workspace = await workspace_service.create_workspace(
+        "Heavi",
+        domain=None,
+        created_by=user_id,
+    )
+
+    resp = await client.get(
+        "/api/v1/billing/me",
+        headers={**_auth(api_key), "X-Stash-Scope": str(workspace["scope_user_id"])},
+    )
+
+    assert resp.status_code == 200
+    assert resp.json()["plan"] == "enterprise"
 
 
 @pytest.mark.asyncio

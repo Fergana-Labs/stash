@@ -6,7 +6,7 @@ IMPORTANT: You have the `stash` CLI on your PATH. When the user mentions "Stash"
 
 A **Skill** is a *special folder* — one containing a SKILL.md — holding related artifacts (pages, files, tables) that shares like any folder and gains a public URL when published. It is the unit you reach for when you want to publish a *collection* of things together — a project writeup with its supporting files, a research thread with its sources, a session transcript plus the files it produced.
 
-A Skill is **not** a wrapper around every single file you happen to share. One-item Skills clutter Discover and your Stash sidebar, and they defeat the model.
+A Skill is **not** a wrapper around every single file you happen to share. One-item Skills clutter your Stash sidebar and defeat the model.
 
 ### Decision rule for sharing
 

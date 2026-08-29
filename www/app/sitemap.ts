@@ -9,7 +9,6 @@ const ROUTES = [
   "/internal-agents",
   "/external-agents",
   "/pricing",
-  "/discover",
   "/security",
   "/docs",
   "/docs/quickstart",

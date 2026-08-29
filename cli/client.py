@@ -13,6 +13,7 @@ from pathlib import Path
 import httpx
 
 from stashai import release
+from stashai.redaction import redact_bytes, redact_data, redact_text
 from stashvfs import VfsClientError
 
 
@@ -178,18 +179,6 @@ class StashClient:
 
     def revoke_api_key(self, key_id: str) -> None:
         self._delete(f"/api/v1/users/me/keys/{key_id}")
-
-    # --- Discover (public catalog, no auth required) ---
-
-    def list_discover_skills(
-        self,
-        query: str = "",
-        sort: str = "trending",
-    ) -> dict:
-        params: dict = {"sort": sort}
-        if query:
-            params["q"] = query
-        return self._get("/api/v1/discover/skills", **params)
 
     # --- Skills (publishable subsets) ---
 
@@ -462,15 +451,15 @@ class StashClient:
         body: dict = {
             "agent_name": agent_name,
             "event_type": event_type,
-            "content": content,
+            "content": redact_text(content),
             "session_id": session_id,
         }
         if tool_name:
             body["tool_name"] = tool_name
         if metadata:
-            body["metadata"] = metadata
+            body["metadata"] = redact_data(metadata)
         if attachments:
-            body["attachments"] = attachments
+            body["attachments"] = redact_data(attachments)
         if created_at:
             body["created_at"] = created_at
         return self._post("/api/v1/me/sessions/events", json=body)
@@ -516,8 +505,26 @@ class StashClient:
         return self._list("/api/v1/me/session-events", "events", **params)
 
     def push_events_batch(self, events: list[dict]) -> list:
-        body: dict = {"events": events}
+        body: dict = {"events": redact_data(events)}
         return self._post("/api/v1/me/sessions/events/batch", json=body)
+
+    def get_onboarding_preferences(self) -> dict | None:
+        """Setup choices made on the web onboarding page, or None when the
+        user never made any. A consumed set comes back with `consumed_at` set."""
+        return self._get("/api/v1/me/onboarding-preferences")["preferences"]
+
+    def consume_onboarding_preferences(self) -> dict:
+        """Stamp the stored web-onboarding choices as applied, so a later
+        standalone `stash signin` runs the wizard instead of re-applying them."""
+        return self._post("/api/v1/me/onboarding-preferences/consume")
+
+    def report_import_progress(self, total: int, done: int, errors: int, finished: bool) -> dict:
+        """Mirror the local history-import status to the server so the web app
+        can show live import progress."""
+        return self._put(
+            "/api/v1/me/transcripts/import-progress",
+            json={"total": total, "done": done, "errors": errors, "finished": finished},
+        )
 
     def upload_transcript(
         self,
@@ -530,7 +537,7 @@ class StashClient:
         import gzip as _gzip
 
         with open(transcript_path, "rb") as f:
-            raw = f.read()
+            raw = redact_bytes(f.read())
         body = _gzip.compress(raw)
         name = os.path.basename(transcript_path)
         if not name.endswith(".gz"):

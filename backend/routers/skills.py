@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 from ..auth import get_current_user, get_current_user_optional, get_scope
 from ..config import settings
+from ..database import get_pool
 from ..models import (
     ForkSkillRequest,
     PageResponse,
@@ -18,12 +19,13 @@ from ..models import (
 )
 from ..services import (
     files_tree_service,
-    github_skill_import,
     permission_service,
     security_audit_service,
     shared_skill_service,
+    skill_request_service,
     skill_service,
     source_service,
+    suggested_skills,
     user_scope_service,
 )
 
@@ -46,6 +48,14 @@ class SkillDescriptionRequest(BaseModel):
     )
 
 
+class SkillAgentEnabledRequest(BaseModel):
+    enabled: bool
+
+
+class SkillRequestRequest(BaseModel):
+    request: str = Field(..., min_length=1, max_length=skill_request_service.MAX_REQUEST_LENGTH)
+
+
 @me_router.post("/skills/new", status_code=201)
 async def create_skill(
     req: SkillCreateRequest,
@@ -61,8 +71,74 @@ async def create_skill(
     if not description:
         raise HTTPException(status_code=400, detail="description must not be blank")
     folder = await files_tree_service.create_skill(
-        owner_user_id, current_user["id"], name, description
+        owner_user_id, current_user["id"], name, description, description
     )
+    return {"folder_id": str(folder["id"]), "name": folder["name"]}
+
+
+@me_router.get("/skills/suggestions")
+async def list_suggested_skills(
+    current_user: dict = Depends(get_current_user),
+    owner_user_id: UUID = Depends(get_scope),
+):
+    """The bootstrap catalog, each entry flagged if a Skill of that name
+    already exists in this scope."""
+    existing = await skill_service.list_skills(
+        owner_user_id, current_user["id"], include_disabled=True
+    )
+    have = {skill["name"].casefold() for skill in existing}
+    return {
+        "suggestions": [
+            {
+                "key": entry["key"],
+                "name": entry["name"],
+                "description": entry["description"],
+                "installed": entry["name"].casefold() in have,
+            }
+            for entry in suggested_skills.catalog()
+        ]
+    }
+
+
+@me_router.post("/skills/suggestions/{key}", status_code=201)
+async def install_suggested_skill(
+    key: str,
+    current_user: dict = Depends(get_current_user),
+    owner_user_id: UUID = Depends(get_scope),
+):
+    if not await user_scope_service.can_write(owner_user_id, current_user["id"]):
+        raise HTTPException(status_code=403, detail="Only the owner can add Skills")
+    try:
+        entry = suggested_skills.find(key)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Unknown suggested Skill")
+    folder = await files_tree_service.create_skill(
+        owner_user_id,
+        current_user["id"],
+        entry["name"],
+        entry["description"],
+        entry["instructions"],
+    )
+    return {"folder_id": str(folder["id"]), "name": folder["name"]}
+
+
+@me_router.post("/skills/request", status_code=201)
+async def request_skill(
+    req: SkillRequestRequest,
+    current_user: dict = Depends(get_current_user),
+    owner_user_id: UUID = Depends(get_scope),
+):
+    """Draft a Skill from a plain-language request and create it."""
+    if not await user_scope_service.can_write(owner_user_id, current_user["id"]):
+        raise HTTPException(status_code=403, detail="Only the owner can add Skills")
+    if not req.request.strip():
+        raise HTTPException(status_code=400, detail="Describe the Skill you want")
+    try:
+        folder = await skill_request_service.create_requested_skill(
+            owner_user_id, current_user["id"], req.request
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=502, detail=str(error))
     return {"folder_id": str(folder["id"]), "name": folder["name"]}
 
 
@@ -86,15 +162,25 @@ async def convert_folder_to_skill(
             status_code=400,
             detail="description is required to convert a folder with no SKILL.md",
         )
-    result = await _set_is_skill(folder_id, owner_user_id, current_user["id"], True)
-    await shared_skill_service.ensure_skill_md(
-        owner_user_id,
+    if not await permission_service.check_access(
+        "folder",
         folder_id,
         current_user["id"],
-        result["name"],
-        description,
-    )
-    return result
+        owner_user_id=owner_user_id,
+        require="write",
+    ):
+        raise HTTPException(status_code=403, detail="Not allowed to write this folder")
+    try:
+        await shared_skill_service.ensure_skill_md(
+            owner_user_id,
+            folder_id,
+            current_user["id"],
+            (await files_tree_service.get_folder(folder_id))["name"],
+            description,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error))
+    return await _set_is_skill(folder_id, owner_user_id, current_user["id"], True)
 
 
 @me_router.post("/folders/{folder_id}/convert-to-folder", status_code=200)
@@ -151,65 +237,76 @@ async def publish_skill(
 
 @me_router.get("/skills")
 async def list_skills(
+    include_disabled: bool = Query(False),
     current_user: dict = Depends(get_current_user),
     owner_user_id: UUID = Depends(get_scope),
 ):
     """Every skill folder in the active scope, with publish info when shared."""
-    skills = await skill_service.list_skills(owner_user_id, current_user["id"])
+    skills = await skill_service.list_skills(
+        owner_user_id, current_user["id"], include_disabled=include_disabled
+    )
     return {"skills": skills}
 
 
-class GithubImportRequest(BaseModel):
-    repo_url: str
-
-
-@me_router.post("/import/github")
-async def import_github_repo(
-    req: GithubImportRequest,
+@me_router.patch("/skills/{backing}/{skill_ref}/agent-enabled")
+async def set_skill_agent_enabled(
+    backing: str,
+    skill_ref: str,
+    req: SkillAgentEnabledRequest,
     current_user: dict = Depends(get_current_user),
     owner_user_id: UUID = Depends(get_scope),
 ):
-    """Copy a whole GitHub repo into the active scope as one new root folder.
-    Folders containing SKILL.md derive as skills automatically. Private repos
-    work when the caller's GitHub connection can read them."""
-    try:
-        return await github_skill_import.import_repo_for_user(
-            owner_user_id, current_user["id"], req.repo_url
+    if not await user_scope_service.can_write(owner_user_id, current_user["id"]):
+        raise HTTPException(status_code=403, detail="Only the owner can change Skills")
+    pool = get_pool()
+    if backing == "folder":
+        try:
+            folder_id = UUID(skill_ref)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid folder Skill id")
+        if req.enabled:
+            content = await pool.fetchval(
+                "SELECT p.content_markdown FROM pages p JOIN folders f ON f.id = p.folder_id "
+                "WHERE f.id = $1 AND f.owner_user_id = $2 AND f.is_skill "
+                "AND p.name = 'SKILL.md' AND p.deleted_at IS NULL",
+                folder_id,
+                owner_user_id,
+            )
+            try:
+                skill_service.validate_skill_md(content or "")
+            except ValueError as error:
+                raise HTTPException(status_code=400, detail=str(error))
+        updated = await pool.fetchval(
+            "UPDATE folders SET agent_enabled = $3 WHERE id = $1 AND owner_user_id = $2 "
+            "AND is_skill RETURNING id",
+            folder_id,
+            owner_user_id,
+            req.enabled,
         )
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
-
-
-@me_router.get("/import/github/inspect")
-async def inspect_github_import(
-    repo_url: str,
-    current_user: dict = Depends(get_current_user),
-):
-    """Tree-only look at a repo before importing: which of its folders are
-    skills ('' = the repo root itself). The dialog uses this to warn when the
-    repo's content won't surface in the section the user imported from."""
-    token = await github_skill_import.user_github_token(current_user["id"])
-    try:
-        skill_dirs = await github_skill_import.inspect_repo(repo_url, token)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
-    return {"skill_dirs": skill_dirs}
-
-
-@me_router.get("/import/github/repos")
-async def list_github_import_repos(
-    current_user: dict = Depends(get_current_user),
-):
-    """Repos the caller's GitHub connection can access, for the import picker.
-    connected=false when GitHub isn't connected — the picker then offers URL
-    paste only."""
-    token = await github_skill_import.user_github_token(current_user["id"])
-    if token is None:
-        return {"connected": False, "repos": []}
-    return {
-        "connected": True,
-        "repos": await github_skill_import.list_user_repos(current_user["id"]),
-    }
+    elif backing == "source":
+        if req.enabled:
+            content = await pool.fetchval(
+                "SELECT content FROM drive_documents "
+                "WHERE external_ref = $1 AND owner_user_id = $2 AND deleted_at IS NULL",
+                skill_ref,
+                owner_user_id,
+            )
+            try:
+                skill_service.validate_skill_md(content or "")
+            except ValueError as error:
+                raise HTTPException(status_code=400, detail=str(error))
+        updated = await pool.fetchval(
+            "UPDATE drive_documents SET agent_enabled = $3 "
+            "WHERE external_ref = $1 AND owner_user_id = $2 AND deleted_at IS NULL RETURNING id",
+            skill_ref,
+            owner_user_id,
+            req.enabled,
+        )
+    else:
+        raise HTTPException(status_code=400, detail="Unknown Skill backing")
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Skill not found")
+    return {"enabled": req.enabled}
 
 
 @me_router.get("/skills/{name}")

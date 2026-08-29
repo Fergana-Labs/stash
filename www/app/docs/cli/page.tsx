@@ -591,22 +591,20 @@ stash vfs --cwd "/me/sources" "rg 'incident' ."`}</CodeBlock>
 
       <CommandRef
         command="stash skills create"
-        args="<name> [--public] [--discover]"
+        args="<name> [--public]"
         description="Create a skill: a folder with a SKILL.md template. Pass --public to publish immediately."
         params={[
           { name: "<name>", type: "string", desc: "Skill name (becomes the folder name).", required: true },
           { name: "--public", type: "flag", desc: "Publish immediately and mint a shareable link." },
-          { name: "--discover", type: "flag", desc: "List the public Skill in the Discover catalog (requires --public)." },
         ]}
       />
 
       <CommandRef
         command="stash skills publish"
-        args="<folder_id> [--discover]"
+        args="<folder_id>"
         description="Publish an existing skill folder: mint its share record and print the public URL."
         params={[
           { name: "<folder_id>", type: "string", desc: "The skill folder to publish.", required: true },
-          { name: "--discover", type: "flag", desc: "List the public Skill in Discover." },
         ]}
       />
 

@@ -28,6 +28,11 @@ _MAX_SAVES = 100
 _MAX_SOURCE_DOCS = 100
 _SNIPPET = 280
 
+# Personal onboarding waits for enough real work to infer useful behavior,
+# then creates a small first set users can understand and inspect.
+SKILL_BOOTSTRAP_TRACE_TARGET = 5
+SKILL_BOOTSTRAP_COUNT = 3
+
 
 async def has_changes_since(owner_user_id: UUID, user_id: UUID, since: datetime | None) -> bool:
     """True if anything the curator cares about changed after `since`. A cheap
@@ -66,7 +71,12 @@ async def has_changes_since(owner_user_id: UUID, user_id: UUID, since: datetime 
     return bool(exists)
 
 
-async def changes_since(owner_user_id: UUID, user_id: UUID, since: datetime | None) -> dict:
+async def changes_since(
+    owner_user_id: UUID,
+    user_id: UUID,
+    since: datetime | None,
+    until: datetime | None = None,
+) -> dict:
     """The delta the curator reads: history events, changed pages (excl. Memory),
     new files, changed Drive-folder documents, newly hydrated X/Instagram
     saves, and connected-source pointers."""
@@ -74,7 +84,7 @@ async def changes_since(owner_user_id: UUID, user_id: UUID, since: datetime | No
     memory_ids = await files_tree_service.memory_subtree_folder_ids(owner_user_id)
     exclude = list(memory_ids) or None
 
-    events, history_has_more = await _feed_events(owner_user_id, since, None, _MAX_EVENTS)
+    events, history_has_more = await _feed_events(owner_user_id, since, until, _MAX_EVENTS)
     history = [
         {
             "session_id": e.get("session_id"),
@@ -96,6 +106,7 @@ async def changes_since(owner_user_id: UUID, user_id: UUID, since: datetime | No
         WHERE owner_user_id = $1
           AND ($5::uuid[] IS NULL OR folder_id IS NULL OR folder_id <> ALL($5))
           AND ($2::timestamptz IS NULL OR updated_at > $2)
+          AND ($6::timestamptz IS NULL OR updated_at <= $6)
         ORDER BY updated_at DESC LIMIT $3
         """,
         owner_user_id,
@@ -103,6 +114,7 @@ async def changes_since(owner_user_id: UUID, user_id: UUID, since: datetime | No
         _MAX_PAGES,
         _SNIPPET,
         exclude,
+        until,
     )
     pages = [
         {
@@ -120,12 +132,14 @@ async def changes_since(owner_user_id: UUID, user_id: UUID, since: datetime | No
         SELECT id, name, created_at, left(coalesce(extracted_text, ''), $4) AS snippet
         FROM files
         WHERE owner_user_id = $1 AND ($2::timestamptz IS NULL OR created_at > $2)
+          AND ($5::timestamptz IS NULL OR created_at <= $5)
         ORDER BY created_at DESC LIMIT $3
         """,
         owner_user_id,
         since,
         _MAX_FILES,
         _SNIPPET,
+        until,
     )
     files = [
         {
@@ -149,6 +163,7 @@ async def changes_since(owner_user_id: UUID, user_id: UUID, since: datetime | No
         FROM drive_documents
         WHERE owner_user_id = $1
           AND ($2::timestamptz IS NULL OR updated_at > $2)
+          AND ($5::timestamptz IS NULL OR updated_at <= $5)
           AND extraction_status = 'done' AND deleted_at IS NULL
         ORDER BY updated_at DESC LIMIT $3
         """,
@@ -156,6 +171,7 @@ async def changes_since(owner_user_id: UUID, user_id: UUID, since: datetime | No
         since,
         _MAX_SOURCE_DOCS,
         _SNIPPET,
+        until,
     )
     source_docs = [
         {
@@ -178,6 +194,7 @@ async def changes_since(owner_user_id: UUID, user_id: UUID, since: datetime | No
             FROM x_save_docs
             WHERE owner_user_id = $1
               AND ($2::timestamptz IS NULL OR updated_at > $2)
+              AND ($5::timestamptz IS NULL OR updated_at <= $5)
               AND hydration_status = 'done' AND deleted_at IS NULL
             UNION ALL
             SELECT 'instagram', kind, name,
@@ -186,6 +203,7 @@ async def changes_since(owner_user_id: UUID, user_id: UUID, since: datetime | No
             FROM instagram_save_docs
             WHERE owner_user_id = $1
               AND ($2::timestamptz IS NULL OR updated_at > $2)
+              AND ($5::timestamptz IS NULL OR updated_at <= $5)
               AND hydration_status = 'done' AND deleted_at IS NULL
         ) all_saves
         ORDER BY updated_at DESC LIMIT $3
@@ -194,6 +212,7 @@ async def changes_since(owner_user_id: UUID, user_id: UUID, since: datetime | No
         since,
         _MAX_SAVES,
         _SNIPPET,
+        until,
     )
     saves = [
         {
@@ -232,6 +251,147 @@ async def changes_since(owner_user_id: UUID, user_id: UUID, since: datetime | No
         "saves": saves,
         "sources": sources,
     }
+
+
+async def curated_trace_count(owner_user_id: UUID, curated_since: datetime | None = None) -> int:
+    return int(
+        await get_pool().fetchval(
+            """
+            SELECT count(*) FROM sessions s
+            WHERE s.owner_user_id = $1 AND s.deleted_at IS NULL
+              AND s.session_id NOT LIKE 'agent-curate-%'
+              AND s.curated_at IS NOT NULL
+              AND ($2::timestamptz IS NULL OR s.curated_at >= $2)
+              AND EXISTS (
+                  SELECT 1 FROM history_events he
+                  WHERE he.owner_user_id = s.owner_user_id
+                    AND he.session_id = s.session_id
+                    AND he.event_type = 'assistant_message'
+              )
+            """,
+            owner_user_id,
+            curated_since,
+        )
+    )
+
+
+async def curatable_trace_count(owner_user_id: UUID) -> int:
+    """Personal traces with an assistant response: enough substance to learn from."""
+    return int(
+        await get_pool().fetchval(
+            """
+            SELECT count(*) FROM sessions s
+            WHERE s.owner_user_id = $1 AND s.deleted_at IS NULL
+              AND s.session_id NOT LIKE 'agent-curate-%'
+              AND EXISTS (
+                  SELECT 1 FROM history_events he
+                  WHERE he.owner_user_id = s.owner_user_id
+                    AND he.session_id = s.session_id
+                    AND he.event_type = 'assistant_message'
+              )
+            """,
+            owner_user_id,
+        )
+    )
+
+
+async def recent_curatable_trace_ids(owner_user_id: UUID, limit: int) -> list[str]:
+    rows = await get_pool().fetch(
+        """
+        SELECT s.session_id FROM sessions s
+        WHERE s.owner_user_id = $1 AND s.deleted_at IS NULL
+          AND s.session_id NOT LIKE 'agent-curate-%'
+          AND EXISTS (
+              SELECT 1 FROM history_events he
+              WHERE he.owner_user_id = s.owner_user_id
+                AND he.session_id = s.session_id
+                AND he.event_type = 'assistant_message'
+          )
+        ORDER BY s.last_event_at DESC
+        LIMIT $2
+        """,
+        owner_user_id,
+        limit,
+    )
+    return [row["session_id"] for row in rows]
+
+
+async def curation_allowance(owner_user_id: UUID, now: datetime) -> dict | None:
+    from ..config import settings
+    from . import billing_service
+
+    plan = await billing_service.plan_label(owner_user_id)
+    if plan == "enterprise":
+        return None
+    if plan == "pro":
+        period_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        limit = settings.PRO_CURATED_TRACES_PER_MONTH
+        period = "month"
+    else:
+        period_start = None
+        limit = settings.FREE_CURATED_TRACES
+        period = "lifetime"
+    return {
+        "plan": plan,
+        "used": await curated_trace_count(owner_user_id, period_start),
+        "limit": limit,
+        "period": period,
+    }
+
+
+async def limited_curation_through(
+    owner_user_id: UUID,
+    since: datetime | None,
+    requested_until: datetime,
+    remaining: int,
+) -> datetime | None:
+    """The end of the user's remaining trace allowance.
+
+    None means the requested window fits. A timestamp bounds every input in
+    the run at the completion time of the final included trace.
+    """
+    if remaining <= 0:
+        return since
+    boundary = await get_pool().fetchval(
+        """
+        SELECT s.last_event_at FROM sessions s
+        WHERE s.owner_user_id = $1 AND s.deleted_at IS NULL
+          AND s.session_id NOT LIKE 'agent-curate-%'
+          AND s.curated_at IS NULL
+          AND ($2::timestamptz IS NULL OR s.last_event_at > $2)
+          AND s.last_event_at <= $3
+          AND EXISTS (
+              SELECT 1 FROM history_events he
+              WHERE he.owner_user_id = s.owner_user_id
+                AND he.session_id = s.session_id
+                AND he.event_type = 'assistant_message'
+          )
+        ORDER BY s.last_event_at, s.id
+        OFFSET $4 LIMIT 1
+        """,
+        owner_user_id,
+        since,
+        requested_until,
+        remaining - 1,
+    )
+    if boundary is None:
+        return None
+    return boundary
+
+
+async def entitled_through(
+    owner_user_id: UUID, since: datetime | None, requested_until: datetime
+) -> datetime:
+    allowance = await curation_allowance(owner_user_id, requested_until)
+    if allowance is None:
+        return requested_until
+    boundary = await limited_curation_through(
+        owner_user_id,
+        since,
+        requested_until,
+        allowance["limit"] - allowance["used"],
+    )
+    return requested_until if boundary is None else boundary
 
 
 async def _feed_events(

@@ -48,7 +48,7 @@ async def test_requires_admin_token(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_import_list_remove_round_trip(client: AsyncClient, monkeypatch):
+async def test_import_list_remove_round_trip(client: AsyncClient, monkeypatch, pool):
     _fake_github(monkeypatch, FAKE_REPO)
     url = "https://github.com/acme/skills"
 
@@ -63,14 +63,16 @@ async def test_import_list_remove_round_trip(client: AsyncClient, monkeypatch):
         "updated": 0,
     }
 
-    # The new skills appear in the public catalog, grouped under the repo here.
+    # The new skills are published (curated flag set), grouped under the repo.
     listed = await client.get("/api/v1/admin/discover-skills", headers=ADMIN)
     repos = listed.json()["repos"]
     assert len(repos) == 1
     assert repos[0]["repo_url"] == url
     assert {s["title"] for s in repos[0]["skills"]} == {"Cooking", "Baking"}
-    catalog = await client.get("/api/v1/discover/skills")
-    assert {s["title"] for s in catalog.json()["skills"]} >= {"Cooking", "Baking"}
+    published = {
+        r["title"] for r in await pool.fetch("SELECT title FROM skills WHERE discoverable = true")
+    }
+    assert published >= {"Cooking", "Baking"}
 
     # Re-import is idempotent: updates in place, nothing new created.
     again = await client.post(
@@ -84,8 +86,8 @@ async def test_import_list_remove_round_trip(client: AsyncClient, monkeypatch):
     )
     assert removed.json() == {"repo_url": url, "removed": 2}
     assert (await client.get("/api/v1/admin/discover-skills", headers=ADMIN)).json()["repos"] == []
-    gone = await client.get("/api/v1/discover/skills")
-    assert {s["title"] for s in gone.json()["skills"]}.isdisjoint({"Cooking", "Baking"})
+    remaining = {r["title"] for r in await pool.fetch("SELECT title FROM skills")}
+    assert remaining.isdisjoint({"Cooking", "Baking"})
 
 
 @pytest.mark.asyncio

@@ -337,7 +337,7 @@ export interface EndUserWikiPage {
 export interface CuratorRun {
   session_id: string;
   started_at: string;
-  status: "completed" | "failed" | "running" | "stopped" | "interrupted";
+  status: "completed" | "failed" | "running" | "stopped" | "interrupted" | "skipped";
   summary: string | null;
   error: string | null;
 }
@@ -440,41 +440,6 @@ export async function updateMe(data: {
   });
 }
 
-// 'read' keys can read/search everything and upload session transcripts,
-// nothing else — intended for production agents.
-export type ApiKeyAccess = "read" | "full";
-
-export interface ApiKeyInfo {
-  id: string;
-  name: string;
-  access: ApiKeyAccess;
-  created_at: string;
-  last_used_at: string | null;
-}
-
-export async function listMyKeys(): Promise<ApiKeyInfo[]> {
-  return apiFetch("/api/v1/users/me/keys");
-}
-
-export async function revokeMyKey(keyId: string): Promise<void> {
-  await apiFetch(`/api/v1/users/me/keys/${keyId}`, { method: "DELETE" });
-}
-
-export interface ApiKeyCreated {
-  id: string;
-  name: string;
-  access: ApiKeyAccess;
-  api_key: string; // raw key — shown exactly once
-  created_at: string;
-}
-
-export async function createMyKey(name: string, access: ApiKeyAccess): Promise<ApiKeyCreated> {
-  return apiFetch("/api/v1/users/me/keys", {
-    method: "POST",
-    body: JSON.stringify({ name, access }),
-  });
-}
-
 export async function searchUsers(query: string): Promise<UserSearchResult[]> {
   return apiFetch(`/api/v1/users/search?q=${encodeURIComponent(query)}`);
 }
@@ -483,10 +448,13 @@ export async function searchUsers(query: string): Promise<UserSearchResult[]> {
 
 export interface BillingInfo {
   billing_enabled: boolean;
-  plan?: "free" | "pro" | "enterprise";
-  status?: string | null;
-  connection_count?: number;
-  connection_limit?: number;
+  plan: "free" | "pro" | "enterprise";
+  status: string | null;
+  curated_trace_count: number | null;
+  curated_trace_limit: number | null;
+  curated_trace_period: "lifetime" | "month" | null;
+  free_curated_trace_limit: number;
+  pro_curated_trace_limit: number;
 }
 
 export async function getBilling(): Promise<BillingInfo> {
@@ -726,41 +694,6 @@ export async function fetchSourceHistory(
   });
 }
 
-// --- Discover (public catalog, no auth required) ---
-
-// A public page from the pastebin (joinstash.ai/pages) — community docs/pages.
-export interface PublicPageCard {
-  slug: string;
-  title: string;
-  content_type: "markdown" | "html";
-  view_count: number;
-  created_at: string;
-}
-
-export async function listPublicPages(): Promise<PublicPageCard[]> {
-  const res = await fetch(`${API_BASE}/api/v1/pastes`);
-  if (!res.ok) return [];
-  return (await res.json()).pastes ?? [];
-}
-
-export interface PublicSkillCard {
-  id: string;
-  slug: string;
-  title: string;
-  description: string;
-  discoverable: boolean;
-  cover_image_url: string | null;
-  source_github_url: string | null;
-  view_count: number;
-  install_count: number;
-  owner_name: string;
-  owner_display_name: string;
-  owner_user_id: string;
-  item_count: number;
-  created_at: string;
-  updated_at: string;
-}
-
 // Skills imported from GitHub are owned by the curator account, but credit
 // belongs to the repo owner — derive it from the attribution URL.
 export function githubOwner(sourceGithubUrl: string): string {
@@ -811,17 +744,86 @@ export async function getUserWikiGraph(userId: string): Promise<WikiGraph> {
 // --- Curator log ---
 
 // One curator run: what the night's curation learned — the run's stored
-// final message, one sentence by prompt contract.
+// final message, one sentence by prompt contract. A "skipped" entry's summary
+// is the reason the run didn't happen (e.g. nothing new since the last run).
 export interface CuratorLogEntry {
   session_id: string;
   started_at: string;
-  status: "completed" | "failed" | "stopped" | "interrupted" | "running";
+  status: "completed" | "failed" | "stopped" | "interrupted" | "running" | "skipped";
   summary: string | null;
   error: string | null;
+  processed: {
+    traces: number;
+    activity_events: number;
+    pages: number;
+    files: number;
+    source_docs: number;
+    saves: number;
+    more_queued: boolean;
+  } | null;
 }
 
 export async function getCuratorLog(): Promise<{ entries: CuratorLogEntry[] }> {
   return apiFetch(`${ME}/curator-log`);
+}
+
+// --- History import (CLI `stash import-history`) ---
+
+// Counts the CLI reports as it uploads past conversations; null when no
+// import is running.
+export interface HistoryImportProgress {
+  total: number;
+  done: number;
+  errors: number;
+  finished: boolean;
+}
+
+export async function getHistoryImportProgress(): Promise<{
+  progress: HistoryImportProgress | null;
+}> {
+  return apiFetch(`${ME}/transcripts/import-progress`);
+}
+
+// --- Web onboarding choices, applied by `stash signin` ---
+
+export interface OnboardingPreferences {
+  enabled_agents: string[];
+  record_scope: "everything" | "selected_folders";
+  import_history: boolean;
+  claude_md_opt_in: boolean;
+}
+
+export async function getOnboardingPreferences(): Promise<{
+  preferences: (OnboardingPreferences & { consumed_at: string | null }) | null;
+}> {
+  return apiFetch(`${ME}/onboarding-preferences`);
+}
+
+export async function putOnboardingPreferences(
+  prefs: OnboardingPreferences,
+): Promise<{ ok: boolean }> {
+  return apiFetch(`${ME}/onboarding-preferences`, {
+    method: "PUT",
+    body: JSON.stringify(prefs),
+  });
+}
+
+export interface OnboardingStatus {
+  curatable_trace_count: number;
+  curatable_session_ids: string[];
+  skill_count: number;
+  trace_target: number;
+  skill_target: number;
+}
+
+export async function getOnboardingStatus(): Promise<OnboardingStatus> {
+  return apiFetch(`${ME}/onboarding-status`);
+}
+
+// The exact CLAUDE.md block the CLI appends, served by the backend so the
+// onboarding preview can't drift from what `stash connect` writes.
+export async function getClaudeMdBlock(): Promise<{ block: string }> {
+  return apiFetch("/api/v1/claude-md-block");
 }
 
 export async function createFolder(
@@ -846,6 +848,36 @@ export async function createSkill(
   return apiFetch(`${ME}/skills/new`, {
     method: "POST",
     body: JSON.stringify({ name, description }),
+  });
+}
+
+// The bootstrap catalog: ready-made Skills a user can switch on before Stash
+// has learned anything from their traces.
+export interface SuggestedSkill {
+  key: string;
+  name: string;
+  description: string;
+  installed: boolean;
+}
+
+export async function listSuggestedSkills(): Promise<SuggestedSkill[]> {
+  const data = await apiFetch<{ suggestions: SuggestedSkill[] }>(`${ME}/skills/suggestions`);
+  return data.suggestions;
+}
+
+export async function installSuggestedSkill(
+  key: string,
+): Promise<{ folder_id: string; name: string }> {
+  return apiFetch(`${ME}/skills/suggestions/${encodeURIComponent(key)}`, { method: "POST" });
+}
+
+// Ask for a Skill in plain language; the server drafts and creates it.
+export async function requestSkill(
+  request: string,
+): Promise<{ folder_id: string; name: string }> {
+  return apiFetch(`${ME}/skills/request`, {
+    method: "POST",
+    body: JSON.stringify({ request }),
   });
 }
 
@@ -1413,6 +1445,23 @@ export async function listFiles(): Promise<FileInfo[]> {
   return data.files;
 }
 
+export interface UploadedItem {
+  kind: "file" | "page";
+  id: string;
+  name: string;
+  content_type: string;
+  size_bytes: number;
+  app_url: string;
+  uploaded_by: string;
+  created_at: string;
+  folder_path: { id: string; name: string }[];
+}
+
+export async function listUploadedItems(): Promise<UploadedItem[]> {
+  const data = await apiFetch<{ items: UploadedItem[] }>(`${ME}/files/uploads`);
+  return data.items;
+}
+
 export async function getFile(fileId: string): Promise<FileInfo> {
   return apiFetch(`/api/v1/files/${fileId}`);
 }
@@ -1450,7 +1499,6 @@ export interface SessionSummary {
   // delete is keyed by this id.
   id: string | null;
   title: string;
-  linear_tickets: LinearTicketLabel[];
   owner_user_id: string | null;
   user_name: string;
   agent_name: string | null;
@@ -1460,7 +1508,11 @@ export interface SessionSummary {
   event_count: number;
   started_at: string;
   last_event_at: string;
+  rating: SessionRating | null;
 }
+
+// The user's own verdict on a session, set while browsing traces.
+export type SessionRating = "good" | "bad";
 
 export type GeneralPermission = "none" | "read" | "comment" | "write";
 // Stored visibility is two-state. "shared" is a derived display state.
@@ -1476,22 +1528,6 @@ export function displayVisibility(
   return shareCount > 0 ? "shared" : "private";
 }
 
-export interface LinearTicketLabel {
-  ticket_identifier: string;
-  ticket_title: string | null;
-  ticket_url: string | null;
-  source: string;
-  confidence: number;
-  linear_issue_id: string | null;
-  ticket_status: string | null;
-  ticket_assignee_name: string | null;
-  ticket_team_key: string | null;
-  ticket_team_name: string | null;
-  ticket_project_name: string | null;
-  linear_updated_at: string | null;
-  enriched_at: string | null;
-}
-
 export async function listMySessions(
   limit = 50,
   offset = 0,
@@ -1505,6 +1541,17 @@ export async function listMySessions(
     `${ME}/sessions?${qs.toString()}`
   );
   return data.sessions;
+}
+
+export interface SessionsAnalytics {
+  totals: { sessions: number; events: number };
+  per_day: { day: string; sessions: number }[];
+  by_agent: { agent: string; sessions: number }[];
+  by_person: { name: string; sessions: number }[];
+}
+
+export async function getSessionsAnalytics(): Promise<SessionsAnalytics> {
+  return apiFetch(`${ME}/sessions/analytics`);
 }
 
 export interface SessionArtifact {
@@ -1523,11 +1570,12 @@ export interface SessionDetail {
   agent_name: string;
   cwd: string | null;
   files_touched: string[] | string;
-  linear_tickets: LinearTicketLabel[];
   started_at: string | null;
   finished_at: string | null;
   created_by: string | null;
+  created_by_display_name: string | null;
   artifacts: SessionArtifact[];
+  rating: SessionRating | null;
 }
 
 export async function getSessionDetail(sessionId: string): Promise<SessionDetail> {
@@ -1625,10 +1673,8 @@ interface SkillCommon {
   mcp_exposed: boolean;
   file_count: number;
   updated_at: string;
-  // False = a draft: named and declared, but with no instructions for an
-  // agent to load. Agents refuse to run one, so every surface must say so.
-  has_instructions: boolean;
   published: SkillPublishInfo | null;
+  agent_enabled: boolean;
 }
 
 // A skill: SKILL.md frontmatter + stats + publish info.
@@ -1668,7 +1714,6 @@ export interface SourceSkillRead {
   name: string;
   description: string;
   source_name: string;
-  has_instructions: boolean;
   body: string;
   files: { id: string; name: string; updated_at: string; content: string }[];
 }
@@ -1685,39 +1730,16 @@ export function skillKey(skill: Skill): string {
 }
 
 export async function listSkills(): Promise<Skill[]> {
-  const data = await apiFetch<{ skills: Skill[] }>(`${ME}/skills`);
+  const data = await apiFetch<{ skills: Skill[] }>(`${ME}/skills?include_disabled=true`);
   return data.skills;
 }
 
-// Import a public GitHub repo's SKILL.md folders as private skills in your scope.
-// Straight copy of a whole repo into a new root folder; folders containing a
-// SKILL.md derive as skills automatically.
-export async function importGithubRepo(
-  repoUrl: string,
-): Promise<{ folder_id: string; name: string; files: number }> {
-  return apiFetch(`${ME}/import/github`, {
-    method: "POST",
-    body: JSON.stringify({ repo_url: repoUrl }),
-  });
-}
-
-// Tree-only pre-import look: which repo folders are skills ('' = repo root).
-export async function inspectGithubImport(repoUrl: string): Promise<{ skill_dirs: string[] }> {
-  return apiFetch(`${ME}/import/github/inspect?repo_url=${encodeURIComponent(repoUrl)}`);
-}
-
-export interface GithubImportRepo {
-  full_name: string;
-  html_url: string;
-  private: boolean;
-  description: string;
-}
-
-export async function listGithubImportRepos(): Promise<{
-  connected: boolean;
-  repos: GithubImportRepo[];
-}> {
-  return apiFetch(`${ME}/import/github/repos`);
+export async function setSkillAgentEnabled(skill: Skill, enabled: boolean): Promise<void> {
+  const ref = skill.backing === "folder" ? skill.folder_id : skill.source_ref;
+  await apiFetch(
+    `${ME}/skills/${skill.backing}/${encodeURIComponent(ref)}/agent-enabled`,
+    { method: "PATCH", body: JSON.stringify({ enabled }) },
+  );
 }
 
 // The full publish record, as returned by publish/update.
@@ -1746,7 +1768,6 @@ export async function publishSkillFolder(
   body: {
     title?: string;
     description?: string;
-    discoverable?: boolean;
     cover_image_url?: string | null;
     icon_url?: string | null;
   } = {}
@@ -1842,7 +1863,6 @@ export async function updateSkill(
   data: {
     title?: string;
     description?: string;
-    discoverable?: boolean;
     cover_image_url?: string | null;
     icon_url?: string | null;
   }
@@ -1954,32 +1974,43 @@ export async function listAgentNames(): Promise<string[]> {
   return data.agent_names;
 }
 
-// --- File activity feed ---
+// --- Recent activity feed ---
 
-// A page edit or file upload in the filesystem (the Memory subtree is
-// excluded server-side — curation output is the curator log's story).
-export interface ActivityEvent {
-  kind: string;
+export interface RecentActivityEvent {
+  kind: "session" | "skill.created";
   ts: string;
-  actor: { name: string; display_name: string };
-  target_id: string;
-  target_label: string;
-  /** Agent that made the edit (e.g. the Memory curator); null = the edit
-   *  didn't come through an agent session (a person, or setup/API writes). */
-  agent_name: string | null;
+  title: string;
+  subtitle: string | null;
+  href: string;
 }
 
-export interface ActivityFeed {
-  events: ActivityEvent[];
-  has_more: boolean;
+export interface RecentActivityFeed {
+  events: RecentActivityEvent[];
 }
 
-export async function listFileActivity(
-  opts: { limit?: number; before?: string } = {}
-): Promise<ActivityFeed> {
-  const qs = new URLSearchParams({ limit: String(opts.limit ?? 50) });
-  if (opts.before) qs.set("before", opts.before);
-  return apiFetch(`${ME}/file-activity?${qs}`);
+export async function listRecentActivity(limit = 20): Promise<RecentActivityFeed> {
+  return apiFetch(`${ME}/recent-activity?limit=${limit}`);
+}
+
+export interface UploadSource {
+  client: string | null;
+  key_id: string | null;
+  key_name: string | null;
+  session_count: number;
+  last_uploaded_at: string | null;
+  uploads_enabled: boolean | null;
+  can_manage: boolean;
+}
+
+export async function listUploadSources(): Promise<{ sources: UploadSource[] }> {
+  return apiFetch(`${ME}/upload-sources`);
+}
+
+export async function updateUploadSource(keyId: string, uploadsEnabled: boolean): Promise<void> {
+  await apiFetch(`${ME}/upload-sources/${keyId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ uploads_enabled: uploadsEnabled }),
+  });
 }
 
 // --- Session transcripts ---
@@ -2000,6 +2031,17 @@ export interface SessionTranscript {
 // string and may contain anything, slashes included.
 export async function getTranscript(sessionId: string): Promise<SessionTranscript> {
   return apiFetch(`${ME}/transcripts?session_id=${encodeURIComponent(sessionId)}`);
+}
+
+export async function rateSession(
+  sessionId: string,
+  rating: SessionRating | null
+): Promise<{ rating: SessionRating | null }> {
+  return apiFetch(`${ME}/sessions/rating?session_id=${encodeURIComponent(sessionId)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ rating }),
+  });
 }
 
 export interface SessionEvent {
@@ -2084,7 +2126,6 @@ export interface SidebarSession {
   id: string | null;
   session_id: string;
   title: string;
-  linear_tickets: LinearTicketLabel[];
   user_name: string;
   agent_name: string;
   size_bytes: number;
@@ -2174,6 +2215,7 @@ export interface FolderBreadcrumb {
   id: string;
   name: string;
   is_skill: boolean;
+  is_memory: boolean;
 }
 export interface FolderSubfolder {
   id: string;
@@ -2367,144 +2409,6 @@ export async function machineSaveToStash(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ path, folder_id: folderId ?? null }),
   });
-}
-
-// ── Cloud-agent model credentials (BYO key / OAuth; see routers/agent_credentials) ──
-
-export async function listAgentCredentials(): Promise<string[]> {
-  const data = await apiFetch<{ connected: string[] }>("/api/v1/me/agent-credentials");
-  return data.connected;
-}
-
-export async function connectAgentKey(provider: string, apiKey: string): Promise<string[]> {
-  const data = await apiFetch<{ connected: string[] }>("/api/v1/me/agent-credentials", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ provider, api_key: apiKey }),
-  });
-  return data.connected;
-}
-
-export async function disconnectAgentCredential(provider: string): Promise<string[]> {
-  const data = await apiFetch<{ connected: string[] }>(
-    `/api/v1/me/agent-credentials/${provider}`,
-    { method: "DELETE" },
-  );
-  return data.connected;
-}
-
-export async function startAgentOAuth(
-  provider: string,
-): Promise<{ authorize_url: string; state: string }> {
-  return apiFetch("/api/v1/me/agent-credentials/oauth/start", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ provider }),
-  });
-}
-
-export async function finishAgentOAuth(
-  provider: string,
-  code: string,
-  state: string,
-): Promise<string[]> {
-  const data = await apiFetch<{ connected: string[] }>(
-    "/api/v1/me/agent-credentials/oauth/finish",
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ provider, code, state }),
-    },
-  );
-  return data.connected;
-}
-
-// ── Named agents (config: model, persona, schedule, channel binding) ──
-
-export type Agent = {
-  id: string;
-  name: string;
-  model_provider: string | null;
-  system_prompt: string | null;
-  run_mode: string;
-  schedule_cron: string | null;
-  schedule_prompt: string | null;
-  is_default: boolean;
-  is_curator: boolean;
-  slack_bound: boolean;
-  telegram_bound: boolean;
-  last_run_at: string | null;
-  last_run_error: string | null;
-  last_run_outcome:
-    | "started"
-    | "ran"
-    | "failed"
-    | "skipped_credits"
-    | "skipped_no_credential"
-    | "skipped_no_changes"
-    | null;
-  curated_through: string | null;
-};
-
-export async function listAgents(): Promise<Agent[]> {
-  const data = await apiFetch<{ agents: Agent[] }>("/api/v1/me/agents");
-  return data.agents;
-}
-
-export async function getAgent(id: string): Promise<Agent> {
-  return apiFetch(`/api/v1/me/agents/${id}`);
-}
-
-export type AgentRun = {
-  session_id: string;
-  started_at: string;
-  finished_at: string | null;
-  duration_seconds: number | null;
-  event_count: number;
-  tool_count: number;
-  status: "completed" | "failed" | "running" | "interrupted" | "stopped";
-  error: string | null;
-  messages: { role: "user" | "assistant"; content: string }[];
-};
-
-/** A scheduled agent's runs, oldest first — each run is its own session
- *  (fresh context), rendered as one feed with reset separators between runs. */
-export async function listAgentRuns(agentId: string): Promise<AgentRun[]> {
-  const data = await apiFetch<{ runs: AgentRun[] }>(`/api/v1/me/agents/${agentId}/runs`);
-  return data.runs;
-}
-
-/** Enqueue a curation pass on the worker — the same path the daily schedule
- *  and the CLI use, so the run survives the browser. 409 = nothing changed
- *  since the watermark. */
-export async function recomputeMemory(): Promise<{ status: string; agent_id: string }> {
-  return apiFetch("/api/v1/me/memory/recompute", { method: "POST" });
-}
-
-export async function createAgent(fields: Partial<Agent>): Promise<Agent> {
-  return apiFetch("/api/v1/me/agents", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(fields),
-  });
-}
-
-export async function updateAgent(id: string, fields: Partial<Agent>): Promise<Agent> {
-  return apiFetch(`/api/v1/me/agents/${id}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(fields),
-  });
-}
-
-export async function deleteAgent(id: string): Promise<void> {
-  await apiFetch(`/api/v1/me/agents/${id}`, { method: "DELETE" });
-}
-
-export type AgentPrompt = { system_prompt: string; run_prompt: string };
-
-export async function getAgentPrompt(id: string): Promise<AgentPrompt> {
-  return apiFetch(`/api/v1/me/agents/${id}/prompt`);
 }
 
 // --- Bulk URL imports (extension bookmark/tab imports) ---

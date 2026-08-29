@@ -691,9 +691,13 @@ async def create_page(
 ) -> dict:
     pool = get_pool()
     if folder_id is not None:
-        folder = await pool.fetchrow("SELECT owner_user_id FROM folders WHERE id = $1", folder_id)
+        folder = await pool.fetchrow(
+            "SELECT owner_user_id, is_skill FROM folders WHERE id = $1", folder_id
+        )
         if not folder or folder["owner_user_id"] != owner_user_id:
             raise ValueError("folder_id does not belong to scope")
+        if folder["is_skill"] and name == skill_service.SKILL_MD_NAME:
+            skill_service.validate_skill_md(content)
     content_html = _sanitize_html(content_html)
     active = _active_content(content_type, content, content_html)
     ch = _content_hash(active)
@@ -859,6 +863,20 @@ async def update_page(
     When `notify` (the default), a content change broadcasts a page-update
     event so open viewers refetch the page."""
     pool = get_pool()
+    if content is not None:
+        skill_page = await pool.fetchrow(
+            "SELECT p.name, f.is_skill FROM pages p "
+            "LEFT JOIN folders f ON f.id = p.folder_id "
+            "WHERE p.id = $1 AND p.owner_user_id = $2",
+            page_id,
+            owner_user_id,
+        )
+        if (
+            skill_page
+            and skill_page["is_skill"]
+            and skill_page["name"] == skill_service.SKILL_MD_NAME
+        ):
+            skill_service.validate_skill_md(content)
     if name is not None:
         await _assert_not_a_skills_instructions(page_id, owner_user_id)
     if folder_id is not None or move_to_root:
@@ -1336,13 +1354,18 @@ async def _create_folder_unique(
 
 
 async def create_skill(
-    owner_user_id: UUID, created_by: UUID, base_name: str, description: str
+    owner_user_id: UUID,
+    created_by: UUID,
+    base_name: str,
+    description: str,
+    instructions: str,
 ) -> dict:
     """Create a skill: a root folder plus its SKILL.md, in one server-side call.
     The folder name is uniquified (' (2)', ' (3)', …) so creation never 409s —
     a plain root folder can hold the wanted name without being visible on the
     Skills surface, and the hard-coded 'New skill' default made that a
-    guaranteed collision on the second create."""
+    guaranteed collision on the second create. `instructions` is the SKILL.md
+    body below the frontmatter."""
     folder = await _create_folder_unique(
         owner_user_id,
         base_name,
@@ -1350,9 +1373,8 @@ async def create_skill(
         None,
         max_length=skill_service.MAX_SKILL_NAME_LENGTH,
     )
-    skill_md = skill_service.skill_md_template(folder["name"], description)
+    skill_md = skill_service.skill_md(folder["name"], description, instructions)
     skill_service.validate_skill_md(skill_md)
-    await set_folder_is_skill(folder["id"], owner_user_id, True)
     await create_page(
         owner_user_id,
         skill_service.SKILL_MD_NAME,
@@ -1360,6 +1382,7 @@ async def create_skill(
         folder_id=folder["id"],
         content=skill_md,
     )
+    await set_folder_is_skill(folder["id"], owner_user_id, True)
     return {**folder, "is_skill": True}
 
 
@@ -1380,6 +1403,13 @@ async def set_folder_is_skill(folder_id: UUID, owner_user_id: UUID, is_skill: bo
         return None
     if is_skill and row["is_protected"]:
         raise ValueError(f"the {row['name']} folder can't be turned into a skill")
+    if is_skill:
+        skill_md = await pool.fetchval(
+            "SELECT content_markdown FROM pages WHERE folder_id = $1 AND name = 'SKILL.md' "
+            "AND deleted_at IS NULL",
+            folder_id,
+        )
+        skill_service.validate_skill_md(skill_md or "")
     if not is_skill:
         published = await pool.fetchval("SELECT slug FROM skills WHERE folder_id = $1", folder_id)
         if published:
@@ -1392,7 +1422,8 @@ async def set_folder_is_skill(folder_id: UUID, owner_user_id: UUID, is_skill: bo
                 "then convert it back to a folder."
             )
     updated = await pool.fetchrow(
-        "UPDATE folders SET is_skill = $3, updated_at = now() "
+        "UPDATE folders SET is_skill = $3, skill_created_at = CASE WHEN $3 THEN now() END, "
+        "updated_at = now() "
         "WHERE id = $1 AND owner_user_id = $2 "
         "RETURNING id, owner_user_id, parent_folder_id, name, is_skill, created_by, "
         "  created_at, updated_at",
@@ -1836,7 +1867,7 @@ async def find_or_create_root_folder(
         return dict(row)
 
 
-# --- Bulk folder-content replacement (skill sync + GitHub import) ---
+# --- Bulk folder-content replacement (skill sync + curator import) ---
 
 _SUBTREE = (
     "WITH RECURSIVE subtree AS ("
@@ -1894,6 +1925,10 @@ async def write_folder_files(
     caller, unlike a user editing files inside an existing folder. Protected
     folders are never promoted."""
     import mimetypes
+
+    for rel_path, blob in files:
+        if rel_path.rpartition("/")[2] == skill_service.SKILL_MD_NAME:
+            skill_service.validate_skill_md(blob.decode("utf-8", errors="replace"))
 
     from . import storage_service
 
@@ -1954,11 +1989,6 @@ async def write_folder_files(
             owner_id,
         )
         written += 1
-    if promote:
-        await get_pool().execute(
-            "UPDATE folders SET is_skill = true "
-            "WHERE id = ANY($1::uuid[]) AND owner_user_id = $2 AND NOT is_protected",
-            list(promote),
-            owner_user_id,
-        )
+    for folder_id in promote:
+        await set_folder_is_skill(folder_id, owner_user_id, True)
     return written

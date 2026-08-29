@@ -5,7 +5,6 @@ import {
   File,
   Table,
   Clock,
-  Compass,
   CircleHelp,
   Settings,
   Bell,
@@ -114,10 +113,6 @@ export function TableIcon(props: IconProps) {
 
 export function ActivityIcon(props: IconProps) {
   return <Icon icon={Clock} {...props} />;
-}
-
-export function DiscoverIcon(props: IconProps) {
-  return <Icon icon={Compass} {...props} />;
 }
 
 export function HelpIcon(props: IconProps) {

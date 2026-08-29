@@ -3,9 +3,8 @@
 Linear migrated all OAuth apps to 24-hour access tokens with rotating refresh
 tokens on 2026-04-01, so supports_refresh is True; storage.get_valid_token
 refreshes on use and COALESCEs the rotated refresh token back in. The
-connected token is what reads issues for ticket enrichment
-(backend/services/linear_ticket_service.py); the inbound webhook in
-backend/routers/webhooks.py keeps those labels fresh.
+connected token is what the source indexer
+(backend/integrations/linear/indexer.py) reads issues with.
 """
 
 from __future__ import annotations
@@ -27,7 +26,7 @@ VIEWER_QUERY = "query { viewer { id name email } }"
 class LinearIntegration(Integration):
     name = "linear"
     display_name = "Linear"
-    # `read` covers issue lookups; app-level webhooks are delivered regardless of scope.
+    # `read` covers issue lookups.
     scopes = ["read"]
     supports_refresh = True
 

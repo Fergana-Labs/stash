@@ -2,10 +2,11 @@ import json
 from datetime import UTC, datetime, time, timedelta
 from uuid import UUID
 
+import numpy as np
 import pytest
 from httpx import AsyncClient
 
-from backend.services import analytics_service
+from backend.services import analytics_service, embeddings
 
 from .conftest import unique_name
 
@@ -38,15 +39,22 @@ async def _event(
     session_id: str,
     agent_name: str = "tester",
     created_at: str = "2026-01-02T00:00:00Z",
+    event_type: str = "assistant_message",
+    model: str = "claude-sonnet-4-6",
+    client_name: str | None = None,
 ) -> None:
+    metadata = {"model": model}
+    if client_name is not None:
+        metadata["client"] = client_name
     resp = await client.post(
         "/api/v1/me/sessions/events",
         json={
             "agent_name": agent_name,
-            "event_type": "assistant_message",
+            "event_type": event_type,
             "content": session_id,
             "session_id": session_id,
             "created_at": created_at,
+            "metadata": metadata,
         },
         headers=_auth(api_key),
     )
@@ -185,6 +193,7 @@ async def test_user_wide_embedding_projection_ignores_stale_cache_without_curren
     assert projection.status_code == 200
     assert projection.json() == {
         "points": [],
+        "clusters": [],
         "stats": {"total_embeddings": 0, "projected": 0},
         "cached": False,
     }
@@ -197,7 +206,8 @@ async def test_user_wide_embedding_projection_serves_cache_while_access_unchange
 ):
     """The memory page's embeddings map must come from the cache, not an
     inline UMAP fit — recomputing per load is the minute-long-render bug.
-    The row is only trusted while its scope signature still matches."""
+    The row is only trusted while its scope and embedding-space signatures
+    still match."""
     resp = await client.post(
         "/api/v1/users/register",
         json={"name": unique_name("cached_projection"), "password": "securepassword1"},
@@ -214,14 +224,19 @@ async def test_user_wide_embedding_projection_serves_cache_while_access_unchange
         "source": "pages",
         "label": "Roadmap",
         "created_at": "2026-07-01T00:00:00Z",
+        "cluster": 0,
     }
+    clusters = [{"index": 0, "name": "Roadmap", "size": 1}]
     await pool.execute(
         "INSERT INTO embedding_projections "
-        "(user_id, source_type, owner_user_id, points, embedding_count, scope_signature, computed_at) "
-        "VALUES ($1, '_all', NULL, $2, 0, $3, now())",
+        "(user_id, source_type, owner_user_id, points, clusters, "
+        " embedding_count, scope_signature, embedding_space, computed_at) "
+        "VALUES ($1, '_all', NULL, $2, $3, 0, $4, $5, now())",
         user_id,
         [point],
+        clusters,
         await analytics_service.scope_signature(user_id),
+        embeddings.space_id(),
     )
 
     projection = await client.get(
@@ -232,9 +247,68 @@ async def test_user_wide_embedding_projection_serves_cache_while_access_unchange
     assert projection.status_code == 200
     assert projection.json() == {
         "points": [point],
+        "clusters": clusters,
         "stats": {"total_embeddings": 0, "projected": 1},
         "cached": True,
     }
+
+
+@pytest.mark.asyncio
+async def test_embedding_projection_plots_one_point_per_session(
+    client: AsyncClient,
+    pool,
+    monkeypatch,
+):
+    """Session themes plot one point per transcript and represent it only by
+    user prompts. Assistant prose and tool output describe execution rather
+    than intent, so including them makes clusters reflect harness behavior."""
+
+    async def keyword_names_only(labels_per_cluster, keyword_names):
+        return keyword_names
+
+    monkeypatch.setattr(analytics_service, "concept_names", keyword_names_only)
+
+    api_key = await _register(client, "session_points")
+    scope = await _scope(client, api_key)
+
+    await _event(client, api_key, scope["id"], "session-a", event_type="user_message")
+    await _event(
+        client,
+        api_key,
+        scope["id"],
+        "session-a",
+        created_at="2026-01-02T01:00:00Z",
+        event_type="user_message",
+    )
+    await _event(client, api_key, scope["id"], "session-b", event_type="user_message")
+    await _event(client, api_key, scope["id"], "session-b", event_type="assistant_message")
+
+    await pool.execute(
+        "UPDATE history_events SET embedding = $1 WHERE session_id = 'session-a'",
+        np.full(384, 0.5, dtype=np.float32),
+    )
+    await pool.execute(
+        "UPDATE history_events SET embedding = $1 WHERE session_id = 'session-b'",
+        np.full(384, -0.5, dtype=np.float32),
+    )
+    await pool.execute(
+        "UPDATE sessions SET title = 'Billing webhook fixes' WHERE session_id = 'session-a'"
+    )
+
+    resp = await client.get("/api/v1/me/embedding-projection", headers=_auth(api_key))
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["stats"]["total_embeddings"] == 2
+    points = {p["id"]: p for p in body["points"]}
+    assert set(points) == {"session-a", "session-b"}
+    assert all(p["source"] == "sessions" for p in points.values())
+
+    # Detail counts prompts, not every transcript event.
+    assert points["session-a"]["label"] == "Billing webhook fixes"
+    assert points["session-a"]["detail"] == "2 prompts · tester"
+    assert points["session-b"]["label"] == "session-b"
+    assert points["session-b"]["detail"] == "1 prompt · tester"
 
 
 @pytest.mark.asyncio
@@ -361,37 +435,34 @@ async def test_activity_timeline_normalizes_claude_code_agent_names(client: Asyn
 
 
 @pytest.mark.asyncio
-async def test_file_activity_is_scoped_and_excludes_memory(client: AsyncClient):
+async def test_recent_activity_contains_sessions_and_new_skills_not_page_edits(client: AsyncClient):
     owner_key = await _register(client, "activity_owner")
-    other_key = await _register(client, "activity_other")
-
-    page = await client.post(
-        "/api/v1/me/pages/new",
-        json={"name": "Visible page", "content": "hello"},
-        headers=_auth(owner_key),
-    )
-    assert page.status_code == 201
+    scope = await _scope(client, owner_key)
     await client.post(
         "/api/v1/me/pages/new",
-        json={"name": "Hidden page", "content": "other scope"},
-        headers=_auth(other_key),
-    )
-    # A page in the Memory subtree is curation output, not file activity.
-    mem = (await client.get("/api/v1/me/memory-folder", headers=_auth(owner_key))).json()
-    await client.post(
-        "/api/v1/me/pages/new",
-        json={"name": "Wiki page", "content": "curated", "folder_id": mem["id"]},
+        json={"name": "Not Home activity", "content": "hello"},
         headers=_auth(owner_key),
     )
+    await _event(client, owner_key, scope["id"], "recent-session", agent_name="codex")
+    skill = await client.post(
+        "/api/v1/me/skills/new",
+        json={"name": "Recent Skill", "description": "Use for recent activity tests."},
+        headers=_auth(owner_key),
+    )
+    assert skill.status_code == 201
 
     resp = await client.get(
-        "/api/v1/me/file-activity", params={"limit": 200}, headers=_auth(owner_key)
+        "/api/v1/me/recent-activity", params={"limit": 20}, headers=_auth(owner_key)
     )
     assert resp.status_code == 200
-    labels = [e["target_label"] for e in resp.json()["events"]]
-    assert "Visible page" in labels
-    assert "Hidden page" not in labels
-    assert "Wiki page" not in labels
+    events = resp.json()["events"]
+    assert {event["kind"] for event in events} == {"session", "skill.created"}
+    assert {event["title"] for event in events} == {"recent-session", "Recent Skill"}
+    session = next(event for event in events if event["kind"] == "session")
+    skill_event = next(event for event in events if event["kind"] == "skill.created")
+    assert session["subtitle"].endswith("'s claude-sonnet-4-6")
+    assert skill_event["subtitle"] == "New Skill"
+    assert all("Not Home activity" not in event["title"] for event in events)
 
 
 async def _file_row(pool, owner_user_id: UUID, name: str, folder_id: UUID | None) -> None:
@@ -405,7 +476,7 @@ async def _file_row(pool, owner_user_id: UUID, name: str, folder_id: UUID | None
 
 
 @pytest.mark.asyncio
-async def test_file_activity_excludes_files_inside_the_memory_subtree(client: AsyncClient, pool):
+async def test_recent_activity_ignores_file_uploads(client: AsyncClient, pool):
     """The Memory exclusion is about what the curator churns through, and the
     curator writes files as well as pages — a filter that only covers pages
     leaks half of that churn into Home. Nested folders count too: Memory's
@@ -427,87 +498,139 @@ async def test_file_activity_excludes_files_inside_the_memory_subtree(client: As
     await _file_row(pool, scope, "Nested memory file", nested_id)
 
     resp = await client.get(
-        "/api/v1/me/file-activity", params={"limit": 200}, headers=_auth(api_key)
+        "/api/v1/me/recent-activity", params={"limit": 20}, headers=_auth(api_key)
     )
     assert resp.status_code == 200
-    labels = [e["target_label"] for e in resp.json()["events"]]
-    assert "Loose file" in labels
-    assert "Memory file" not in labels
-    assert "Nested memory file" not in labels
+    assert resp.json()["events"] == []
 
 
 @pytest.mark.asyncio
-async def test_file_activity_excludes_memory_shared_from_another_scope(client: AsyncClient, pool):
-    """Memory belongs to the curator log whoever's Memory it is. The feed spans
-    every scope the caller can read, so excluding only the caller's Memory lets
-    a teammate's nightly curation churn land in the caller's Home."""
+async def test_recent_activity_ignores_page_sharing(client: AsyncClient, pool):
+    """Home's feed answers "what landed in THIS stash", so a page another user
+    shared with the caller — readable everywhere else — must not appear: it is
+    that scope's activity, not the caller's."""
     owner_key = await _register(client, "activity_mem_owner")
     friend_key = await _register(client, "activity_mem_friend")
     owner = UUID((await _scope(client, owner_key))["id"])
     friend = UUID((await _scope(client, friend_key))["id"])
 
-    memory_id = (await client.get("/api/v1/me/memory-folder", headers=_auth(owner_key))).json()[
-        "id"
-    ]
-    wiki = await client.post(
-        "/api/v1/me/pages/new",
-        json={"name": "Their wiki page", "content": "curated", "folder_id": memory_id},
-        headers=_auth(owner_key),
-    )
-    assert wiki.status_code == 201
     plain = await client.post(
         "/api/v1/me/pages/new",
         json={"name": "Their shared page", "content": "hello"},
         headers=_auth(owner_key),
     )
     assert plain.status_code == 201
-    for page_id in (wiki.json()["id"], plain.json()["id"]):
-        await pool.execute(
-            "INSERT INTO shares (owner_user_id, object_type, object_id, principal_type, "
-            "principal_id, permission, created_by) VALUES ($1,'page',$2,'user',$3,'read',$1)",
-            owner,
-            UUID(page_id),
-            friend,
-        )
+    await pool.execute(
+        "INSERT INTO shares (owner_user_id, object_type, object_id, principal_type, "
+        "principal_id, permission, created_by) VALUES ($1,'page',$2,'user',$3,'read',$1)",
+        owner,
+        UUID(plain.json()["id"]),
+        friend,
+    )
+    mine = await client.post(
+        "/api/v1/me/pages/new",
+        json={"name": "My own page", "content": "hi"},
+        headers=_auth(friend_key),
+    )
+    assert mine.status_code == 201
 
     resp = await client.get(
-        "/api/v1/me/file-activity", params={"limit": 200}, headers=_auth(friend_key)
+        "/api/v1/me/recent-activity", params={"limit": 20}, headers=_auth(friend_key)
     )
     assert resp.status_code == 200
-    labels = [e["target_label"] for e in resp.json()["events"]]
-    # The plain share proves the feed does surface another scope's content —
-    # so the wiki page's absence is the Memory rule, not a missing share.
-    assert "Their shared page" in labels
-    assert "Their wiki page" not in labels
+    assert resp.json()["events"] == []
 
 
 @pytest.mark.asyncio
-async def test_file_activity_paginates_with_before_cursor(client: AsyncClient):
+async def test_recent_activity_returns_only_the_requested_latest_sessions(client: AsyncClient):
     api_key = await _register(client, "activity_paged")
+    scope = await _scope(client, api_key)
     for n in (1, 2, 3):
-        r = await client.post(
-            "/api/v1/me/pages/new",
-            json={"name": f"paged-{n}", "content": "x"},
-            headers=_auth(api_key),
+        await _event(
+            client,
+            api_key,
+            scope["id"],
+            f"session-{n}",
+            created_at=f"2026-01-0{n}T00:00:00Z",
         )
-        assert r.status_code == 201
 
-    # Page through one event at a time using the last event's ts as the cursor.
-    seen: list[tuple[str, str, str]] = []
-    before: str | None = None
-    has_more = True
-    while has_more:
-        params: dict = {"limit": 1}
-        if before:
-            params["before"] = before
-        resp = await client.get("/api/v1/me/file-activity", params=params, headers=_auth(api_key))
-        assert resp.status_code == 200
-        body = resp.json()
-        assert len(body["events"]) == 1
-        seen.extend((e["kind"], e["target_id"], e["ts"]) for e in body["events"])
-        before = body["events"][-1]["ts"]
-        has_more = body["has_more"]
-        assert len(seen) <= 10, "cursor failed to advance"
+    resp = await client.get(
+        "/api/v1/me/recent-activity", params={"limit": 2}, headers=_auth(api_key)
+    )
+    assert resp.status_code == 200
+    assert [event["title"] for event in resp.json()["events"]] == ["session-3", "session-2"]
 
-    assert len(seen) == len(set(seen)), "an event repeated across pages"
-    assert len(seen) == 3
+
+@pytest.mark.asyncio
+async def test_upload_sources_pair_coding_agent_with_uploader_computer(client: AsyncClient, pool):
+    api_key = await _register(client, "upload_sources")
+    scope = await _scope(client, api_key)
+    await pool.execute(
+        "UPDATE user_api_keys SET name = 'CLI (henrys-macbook-pro)', key_type = 'cli' "
+        "WHERE user_id = $1",
+        UUID(scope["id"]),
+    )
+    await pool.execute(
+        """
+        INSERT INTO user_api_keys (user_id, key_hash, name, key_type)
+        VALUES ($1, 'unused-machine-key', 'CLI (henrys-mac-mini)', 'cli')
+        """,
+        UUID(scope["id"]),
+    )
+    await pool.execute(
+        """
+        INSERT INTO user_api_keys (user_id, key_hash, name, key_type)
+        VALUES ($1, 'unused-sprite-key', 'local sprite', 'machine')
+        """,
+        UUID(scope["id"]),
+    )
+    await _event(
+        client,
+        api_key,
+        scope["id"],
+        "codex-session",
+        client_name="codex_cli",
+    )
+
+    resp = await client.get("/api/v1/me/upload-sources", headers=_auth(api_key))
+    assert resp.status_code == 200
+    sources = resp.json()["sources"]
+    assert len(sources) == 2
+    assert sources[0]["key_id"]
+    assert {key: value for key, value in sources[0].items() if key != "key_id"} == {
+        "client": "codex_cli",
+        "key_name": "CLI (henrys-macbook-pro)",
+        "uploads_enabled": True,
+        "can_manage": True,
+        "session_count": 1,
+        "last_uploaded_at": "2026-01-02T00:00:00+00:00",
+    }
+    assert {key: value for key, value in sources[1].items() if key != "key_id"} == {
+        "client": None,
+        "key_name": "CLI (henrys-mac-mini)",
+        "uploads_enabled": True,
+        "can_manage": True,
+        "session_count": 0,
+        "last_uploaded_at": None,
+    }
+
+    key_id = sources[0]["key_id"]
+    resp = await client.patch(
+        f"/api/v1/me/upload-sources/{key_id}",
+        json={"uploads_enabled": False},
+        headers=_auth(api_key),
+    )
+    assert resp.status_code == 200
+    blocked = await client.post(
+        "/api/v1/me/sessions/events",
+        json={
+            "agent_name": "codex",
+            "event_type": "assistant_message",
+            "content": "blocked",
+            "session_id": "blocked-session",
+            "metadata": {"client": "codex_cli"},
+        },
+        headers=_auth(api_key),
+    )
+    assert blocked.status_code == 403
+    assert blocked.json()["detail"] == "Uploads are disabled for this installation"

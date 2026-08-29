@@ -3,8 +3,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
-// Minimum shape required by the card — both your skill folders and the
-// Discover catalog's PublicSkillCard project into this.
+// Minimum shape required by the card — your skill folders project into this.
 export interface SkillCardData {
   title: string;
   description: string;
@@ -12,8 +11,8 @@ export interface SkillCardData {
   icon_url?: string | null;
   owner_name?: string;
   owner_display_name?: string | null;
-  /** Publish state badge: pass null for Private, undefined to hide the badge. */
-  published?: { discoverable: boolean } | null;
+  /** Publish state badge: true Published, false Private, undefined hides it. */
+  published?: boolean;
   updated_at?: string;
   file_count?: number;
   /** A named skill with no instructions yet — agents refuse to run it. */
@@ -37,18 +36,12 @@ interface SkillCardProps {
 
 export const PUBLISH_COLOR = {
   published: "#22C55E",
-  discover: "var(--color-brand-500)",
   private: "#9CA3AF",
 } as const;
 
 // The one way publish state is shown on a Skill: a dot + label pill. Used on
-// card covers and list rows — every row says Published / Private itself, with
-// a second dot when the skill is also listed on Discover.
-export function PublishBadge({
-  published,
-}: {
-  published: { discoverable: boolean } | null;
-}) {
+// card covers and list rows — every row says Published / Private itself.
+export function PublishBadge({ published }: { published: boolean }) {
   return (
     <span className="inline-flex items-center gap-1 rounded-full border border-border bg-base px-1.5 py-0.5 text-[10.5px] text-muted-foreground">
       <span
@@ -58,13 +51,6 @@ export function PublishBadge({
         }}
       />
       {published ? "Published" : "Private"}
-      {published?.discoverable && (
-        <span
-          title="Listed on Discover"
-          className="inline-block h-[7px] w-[7px] rounded-full"
-          style={{ background: PUBLISH_COLOR.discover }}
-        />
-      )}
     </span>
   );
 }

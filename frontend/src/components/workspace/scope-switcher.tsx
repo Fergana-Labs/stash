@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Check, ChevronDown, CircleUser, TerminalSquare } from "lucide-react";
+import { Check, ChevronDown, CircleUser, Plus, TerminalSquare } from "lucide-react";
 import { listMyWorkspaces } from "@/lib/api";
 import { getScope, setScope, useScope } from "@/lib/scope-store";
 import type { Scope, Workspace } from "@/lib/types";
@@ -65,6 +65,11 @@ export default function ScopeSwitcher() {
     window.location.assign("/developer");
   }
 
+  function createPlatform() {
+    setScope(null);
+    window.location.assign("/developer");
+  }
+
   const inWorkspace = scope !== null;
 
   return (
@@ -120,6 +125,7 @@ export default function ScopeSwitcher() {
             scope={scope}
             onSelect={select}
             onEnterPlatform={enterPlatform}
+            onCreatePlatform={createPlatform}
           />
         )}
       </DropdownMenuContent>
@@ -134,11 +140,13 @@ function WorkspaceScopes({
   scope,
   onSelect,
   onEnterPlatform,
+  onCreatePlatform,
 }: {
   workspaces: Workspace[];
   scope: Scope | null;
   onSelect: (next: Scope | null) => void;
   onEnterPlatform: (w: Workspace) => void;
+  onCreatePlatform: () => void;
 }) {
   const consoles = workspaces.filter((w) => w.external_wiki_folder_id !== null);
   // A workspace only earns its internal-knowledge-base row when that face is
@@ -163,29 +171,32 @@ function WorkspaceScopes({
       ))}
       <DropdownMenuSeparator />
       <DropdownMenuLabel className="text-[11px] text-muted-foreground">
-        Developer
+        Developer Platform instances
       </DropdownMenuLabel>
       {consoles.map((w) => (
         <ScopeItem
           key={`console-${w.id}`}
           icon={<TerminalSquare className="h-4 w-4 text-brand-500" />}
           label={`${w.name} Platform`}
-          detail="Users, memory, API keys"
+          detail="Existing instance · Users, memory, API keys"
           selected={scope?.scope_user_id === w.scope_user_id && scope?.view === "developer"}
           onSelect={() => onEnterPlatform(w)}
         />
       ))}
-      {consoles.length === 0 && (
-        <ScopeItem
-          icon={<TerminalSquare className="h-4 w-4 text-muted-foreground" />}
-          label="Set up Developer Platform"
-          detail="Run Stash for your product's customers"
-          selected={false}
-          onSelect={() => {
-            window.location.assign("/developer");
-          }}
-        />
-      )}
+      <DropdownMenuSeparator />
+      <DropdownMenuItem onSelect={onCreatePlatform} className="mx-1 mb-1 gap-2 rounded-md">
+        <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded border border-brand-300 text-brand-600">
+          <Plus className="h-3 w-3" />
+        </span>
+        <span className="flex min-w-0 flex-1 flex-col">
+          <span className="truncate text-[13px] font-medium text-brand-600">
+            Create a Developer Platform
+          </span>
+          <span className="truncate text-[11px] text-muted-foreground">
+            Set up Stash for another product
+          </span>
+        </span>
+      </DropdownMenuItem>
     </>
   );
 }

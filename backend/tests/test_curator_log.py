@@ -11,7 +11,11 @@ import pytest
 from httpx import AsyncClient
 
 from backend.services import agent_service
-from backend.services.sprite_agent_service import RUN_FAILED_PREFIX
+from backend.services.sprite_agent_service import (
+    CURATOR_RUN_STATS_EVENT,
+    RUN_FAILED_PREFIX,
+    RUN_SKIPPED_PREFIX,
+)
 
 from .conftest import unique_name
 
@@ -42,6 +46,19 @@ async def _seed_run(pool, uid: UUID, curator_id: str, stamp: str, at: datetime, 
         at + timedelta(minutes=3),
     )
     return session
+
+
+async def _seed_stats(pool, uid: UUID, session: str, at: datetime, processed: dict) -> None:
+    await pool.execute(
+        "INSERT INTO history_events (owner_user_id, created_by, agent_name, event_type, "
+        "content, session_id, created_at, metadata) "
+        "VALUES ($1, $1, 'Memory curator', $2, '', $3, $4, $5)",
+        uid,
+        CURATOR_RUN_STATS_EVENT,
+        session,
+        at,
+        processed,
+    )
 
 
 async def _seed_started_run(pool, uid: UUID, curator_id: str, stamp: str, at: datetime) -> str:
@@ -77,6 +94,27 @@ async def test_log_lists_runs_newest_first(client: AsyncClient, pool):
 
 
 @pytest.mark.asyncio
+async def test_completed_run_includes_recorded_processing_totals(client: AsyncClient, pool):
+    key, uid = await _register(client)
+    curator = await agent_service.get_or_create_curator(uid)
+    at = datetime(2026, 8, 8, 9, 0, tzinfo=UTC)
+    session = await _seed_run(pool, uid, curator["id"], "n1", at, "A useful takeaway.")
+    processed = {
+        "traces": 12,
+        "activity_events": 0,
+        "pages": 2,
+        "files": 1,
+        "source_docs": 0,
+        "saves": 0,
+        "more_queued": True,
+    }
+    await _seed_stats(pool, uid, session, at + timedelta(minutes=4), processed)
+
+    entries = (await client.get("/api/v1/me/curator-log", headers=_auth(key))).json()["entries"]
+    assert entries[0]["processed"] == processed
+
+
+@pytest.mark.asyncio
 async def test_failed_runs_carry_their_error_not_a_summary(client: AsyncClient, pool):
     key, uid = await _register(client)
     curator = await agent_service.get_or_create_curator(uid)
@@ -92,6 +130,26 @@ async def test_failed_runs_carry_their_error_not_a_summary(client: AsyncClient, 
     assert entries[0]["status"] == "failed"
     assert entries[0]["summary"] is None
     assert entries[0]["error"] == "credential expired"
+
+
+@pytest.mark.asyncio
+async def test_skipped_runs_surface_the_reason(client: AsyncClient, pool):
+    """A night the dispatcher skipped must read as an explicit answer ("nothing
+    new"), not as a missing run — silence looks like a broken curator."""
+    key, uid = await _register(client)
+    curator = await agent_service.get_or_create_curator(uid)
+    await _seed_run(
+        pool,
+        uid,
+        curator["id"],
+        "n1",
+        datetime(2026, 8, 8, 9, 0, tzinfo=UTC),
+        f"{RUN_SKIPPED_PREFIX} Nothing new to process since the last run.",
+    )
+    entries = (await client.get("/api/v1/me/curator-log", headers=_auth(key))).json()["entries"]
+    assert entries[0]["status"] == "skipped"
+    assert entries[0]["summary"] == "Nothing new to process since the last run."
+    assert entries[0]["error"] is None
 
 
 @pytest.mark.asyncio

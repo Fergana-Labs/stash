@@ -13,53 +13,26 @@ import DownloadMenu from "@/components/DownloadMenu";
 import ResourceShareButton from "@/components/share/ResourceShareButton";
 import { SessionDetailSkeleton } from "@/components/SkeletonStates";
 import { useAuth } from "@/hooks/useAuth";
-import { useEscapeKey } from "@/hooks/useEscapeKey";
 import {
   fetchAuthed,
   getSessionDetail,
+  getSessionEvents,
   getSessionEventsPage,
-  listSkills,
-  materializeSession,
   renameSession,
   trashItem,
-  type FolderBackedSkill,
   type SessionDetail,
-  type SessionEvent,
 } from "@/lib/api";
 import EditableTitle from "@/components/content/EditableTitle";
+import SessionRating from "@/components/sessions/SessionRating";
 import { getScope } from "@/lib/scope-store";
-import { useTabTitle } from "@/lib/workspace-store";
+import { eventToTurn, humanMessageJumps, toolDisplay, type MessageTurn } from "./transcript";
+import MinimapStrip from "./MinimapStrip";
+import { MINIMAP_MIN_TURNS } from "./minimap";
+import { sessionFileRows } from "./sessionFiles";
 
 // One transcript page. The viewer loads this many turns at a time and fetches
 // more on scroll, so long sessions don't load every event up front.
 const TRANSCRIPT_PAGE_SIZE = 100;
-
-interface MessageTurn {
-  kind: "message";
-  id: string;
-  who: "user" | "assistant";
-  name: string;
-  time?: string;
-  dateKey?: string;
-  dateLabel?: string;
-  content: string;
-  toolName?: string | null;
-}
-
-function formatDateKey(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
-function formatSessionDate(date: Date): string {
-  return date.toLocaleDateString(undefined, {
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-  });
-}
 
 function cleanSessionTitle(title: string): string {
   return title
@@ -87,52 +60,6 @@ function transcriptFilename(detail: SessionDetail, sessionId: string): string {
   return `${name}.jsonl`;
 }
 
-function eventToTurn(ev: SessionEvent): MessageTurn {
-  const createdAt = ev.created_at ? new Date(ev.created_at) : null;
-
-  return {
-    kind: "message",
-    id: ev.id,
-    who: ev.role,
-    name: ev.role === "assistant" ? "agent" : "user",
-    time: createdAt
-      ? createdAt.toLocaleTimeString(undefined, {
-          hour: "numeric",
-          minute: "2-digit",
-        })
-      : undefined,
-    dateKey: createdAt ? formatDateKey(createdAt) : undefined,
-    dateLabel: createdAt ? formatSessionDate(createdAt) : undefined,
-    content: ev.content,
-    toolName: ev.tool_name,
-  };
-}
-
-const AVATAR_PALETTE: { bg: string; fg: string }[] = [
-  { bg: "bg-rose-200", fg: "text-rose-800" },
-  { bg: "bg-orange-200", fg: "text-orange-800" },
-  { bg: "bg-emerald-200", fg: "text-emerald-800" },
-  { bg: "bg-amber-200", fg: "text-amber-900" },
-  { bg: "bg-sky-200", fg: "text-sky-800" },
-  { bg: "bg-teal-200", fg: "text-teal-800" },
-];
-
-function avatarFor(name: string) {
-  // Deterministic color per author (no hardcoded names). djb2-ish hash.
-  let h = 5381;
-  for (let i = 0; i < name.length; i++) h = (h * 33 + name.charCodeAt(i)) >>> 0;
-  return AVATAR_PALETTE[h % AVATAR_PALETTE.length];
-}
-
-function initials(name: string): string {
-  return name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((p) => p[0]?.toUpperCase() ?? "")
-    .join("");
-}
-
 export default function SessionViewerPage({ sessionId }: { sessionId: string }) {
   const router = useRouter();
   const { user, loading } = useAuth();
@@ -147,7 +74,6 @@ export default function SessionViewerPage({ sessionId }: { sessionId: string }) 
   useEffect(() => {
     setInDeveloperConsole(getScope()?.view === "developer");
   }, []);
-  useTabTitle("session", sessionId, sessionDetail && sessionHeading(sessionDetail, sessionId));
   const [turns, setTurns] = useState<MessageTurn[]>([]);
   const [totalTurns, setTotalTurns] = useState(0);
   const [hasMore, setHasMore] = useState(false);
@@ -162,27 +88,12 @@ export default function SessionViewerPage({ sessionId }: { sessionId: string }) 
     `session/${sessionId}`
   );
 
-  // All session actions live in the workbench header row, next to Share —
+  // All session actions live in the shell header row, next to Share —
   // the transcript itself stays chrome-free.
   const headerActions = useMemo(() => {
     if (!sessionDetail || !user) return null;
     return (
       <>
-        <SaveToSkillButton
-          sessionId={sessionId}
-          onSaved={(pageId) => router.push(`/p/${pageId}`)}
-        />
-        {sessionId.startsWith("agent-") && !/^agent-(curate|sched)-/.test(sessionId) && (
-          // Web chats (started in the Agents tab) can be resumed and
-          // continued server-side from where they left off. Scheduled
-          // runs (curate/sched) aren't conversations — no resume.
-          <Link
-            href={`/agents?resume=${encodeURIComponent(sessionId)}`}
-            className="inline-flex items-center gap-1 rounded-md bg-[var(--color-brand-600)] px-2.5 py-1.5 text-[12.5px] font-medium text-white hover:bg-[var(--color-brand-700)]"
-          >
-            Resume in chat →
-          </Link>
-        )}
         <ResourceShareButton
           objectType="session"
           objectId={sessionDetail.id}
@@ -243,7 +154,9 @@ export default function SessionViewerPage({ sessionId }: { sessionId: string }) 
         detail.agent_name || page.events.find((event) => event.agent_name)?.agent_name || ""
       );
       setSessionDetail(detail);
-      setTurns(page.events.map(eventToTurn));
+      setTurns(
+        page.events.map((ev) => eventToTurn(ev, sessionId, detail.created_by_display_name))
+      );
       setTotalTurns(page.total);
       setHasMore(page.has_more);
     } catch (e) {
@@ -255,23 +168,120 @@ export default function SessionViewerPage({ sessionId }: { sessionId: string }) 
     if (user) load();
   }, [user, load]);
 
+  const humanName = sessionDetail?.created_by_display_name ?? null;
+
+  // True while the full-transcript drain is in flight (see drainTranscript).
+  const [loadingAll, setLoadingAll] = useState(false);
+
   const loadMore = useCallback(async () => {
-    if (loadingMore || !hasMore) return;
+    // A drain in flight will replace the whole list; appending a page on top
+    // of it would duplicate turns.
+    if (loadingMore || !hasMore || loadingAll) return;
     setLoadingMore(true);
     try {
       const page = await getSessionEventsPage(sessionId, TRANSCRIPT_PAGE_SIZE, turns.length);
-      setTurns((prev) => [...prev, ...page.events.map(eventToTurn)]);
+      setTurns((prev) => [
+        ...prev,
+        ...page.events.map((ev) => eventToTurn(ev, sessionId, humanName)),
+      ]);
       setHasMore(page.has_more);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load more messages");
     } finally {
       setLoadingMore(false);
     }
-  }, [sessionId, loadingMore, hasMore, turns.length]);
+  }, [sessionId, loadingMore, hasMore, loadingAll, turns.length, humanName]);
+
+  // --- In-session search --------------------------------------------------
+  const [query, setQuery] = useState("");
+  const [focusIndex, setFocusIndex] = useState<number | null>(null);
+
+  // The one full-transcript drain, shared by search (matches must cover the
+  // whole session) and the minimap (its blocks map the whole session).
+  const drainTranscript = useCallback(() => {
+    if (!hasMore || loadingAll) return;
+    setLoadingAll(true);
+    getSessionEvents(sessionId)
+      .then((events) => {
+        setTurns(events.map((ev) => eventToTurn(ev, sessionId, humanName)));
+        setHasMore(false);
+      })
+      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load transcript"))
+      .finally(() => setLoadingAll(false));
+  }, [hasMore, loadingAll, sessionId, humanName]);
+
+  // Searching only what's paged in would silently miss the rest of a long
+  // session, so the first keystroke drains the full transcript once.
+  useEffect(() => {
+    if (query.trim()) drainTranscript();
+  }, [query, drainTranscript]);
+
+  // The minimap only earns its gutter on a wide viewport and a session long
+  // enough that scrolling blind hurts. Resolved via matchMedia (not a CSS
+  // hidden class) so narrow viewports never pay for the full-transcript drain.
+  const [wideViewport, setWideViewport] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 1024px)");
+    const update = () => setWideViewport(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
+  const showMinimap = wideViewport && totalTurns >= MINIMAP_MIN_TURNS;
+
+  useEffect(() => {
+    if (showMinimap) drainTranscript();
+  }, [showMinimap, drainTranscript]);
+
+  const matches = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return [];
+    const hits: number[] = [];
+    turns.forEach((turn, i) => {
+      const haystack = `${turn.name} ${turn.toolName ?? ""} ${turn.content}`.toLowerCase();
+      if (haystack.includes(q)) hits.push(i);
+    });
+    return hits;
+  }, [turns, query]);
+
+  const humanJumps = useMemo(() => humanMessageJumps(turns), [turns]);
+
+  const jumpTo = useCallback((index: number) => {
+    setFocusIndex(index);
+    document.getElementById(`turn-${index}`)?.scrollIntoView({ block: "center" });
+  }, []);
+
+  // "Latest human message" must mean the whole session's last prompt, not
+  // the last one paged in — so it drains the transcript first and jumps once
+  // every turn is present.
+  const [latestHumanJumpPending, setLatestHumanJumpPending] = useState(false);
+  useEffect(() => {
+    if (!latestHumanJumpPending || hasMore || loadingAll) return;
+    setLatestHumanJumpPending(false);
+    const latest = humanJumps[humanJumps.length - 1];
+    if (latest) jumpTo(latest.turnIndex);
+  }, [latestHumanJumpPending, hasMore, loadingAll, humanJumps, jumpTo]);
+
+  const jumpToMatch = useCallback(
+    (direction: 1 | -1) => {
+      if (matches.length === 0) return;
+      const pos = matches.indexOf(focusIndex ?? -1);
+      const nextPos =
+        pos === -1
+          ? direction === 1
+            ? 0
+            : matches.length - 1
+          : (pos + direction + matches.length) % matches.length;
+      jumpTo(matches[nextPos]);
+    },
+    [matches, focusIndex, jumpTo]
+  );
 
   // Auto-load the next page when the sentinel scrolls into view; the button it
   // wraps is the manual fallback if the observer can't fire.
   const sentinelRef = useRef<HTMLDivElement | null>(null);
+  // The transcript's scroll container; the minimap reads it to place its lens.
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     const el = sentinelRef.current;
     if (!el || !hasMore) return;
@@ -296,37 +306,39 @@ export default function SessionViewerPage({ sessionId }: { sessionId: string }) 
   const sessionDate = turns.find((turn) => turn.dateLabel)?.dateLabel;
 
   return (
-    <div className="scroll-thin flex-1 overflow-y-auto">
-      <div className="mx-auto grid max-w-[1100px] gap-7 px-12 pb-20 pt-7 lg:grid-cols-[minmax(0,1fr)_260px]">
-        <main className="min-w-0">
-          {inDeveloperConsole && (
-            <Link
-              href="/developer/sessions"
-              className="mb-4 inline-flex items-center gap-1.5 text-[13px] text-muted-foreground transition-colors hover:text-foreground"
-            >
-              <ArrowLeft className="h-3.5 w-3.5" />
-              All sessions
-            </Link>
-          )}
-          <div className="mb-2 border-b border-border pb-3.5">
-            {(sessionDetail?.linear_tickets.length ?? 0) > 0 && (
-              <div className="mb-1.5 flex items-center gap-2">
-                {sessionDetail?.linear_tickets.map((ticket) => (
-                  <LinearTicketPill key={ticket.ticket_identifier} ticket={ticket} />
-                ))}
-              </div>
+    <div className="flex min-h-0 flex-1">
+      <div ref={scrollContainerRef} className="scroll-thin min-w-0 flex-1 overflow-y-auto">
+        <div className="mx-auto grid max-w-[1100px] gap-7 px-12 pb-20 pt-7 lg:grid-cols-[minmax(0,1fr)_260px]">
+          <main className="min-w-0">
+            {inDeveloperConsole ? (
+              <Link
+                href="/developer/sessions"
+                className="mb-4 inline-flex items-center gap-1.5 text-[13px] text-muted-foreground transition-colors hover:text-foreground"
+              >
+                <ArrowLeft className="h-3.5 w-3.5" />
+                All sessions
+              </Link>
+            ) : (
+              <button
+                type="button"
+                onClick={() => router.back()}
+                className="mb-4 inline-flex cursor-pointer items-center gap-1.5 text-[13px] text-muted-foreground transition-colors hover:text-foreground"
+              >
+                <ArrowLeft className="h-3.5 w-3.5" />
+                Back
+              </button>
             )}
-            <h1 className="font-display text-[28px] font-bold leading-tight tracking-[-0.02em]">
-              <EditableTitle
-                value={sessionHeading(sessionDetail, sessionId)}
-                onSave={async (next) => {
-                  const { title } = await renameSession(sessionId, next);
-                  setSessionDetail((prev) => (prev ? { ...prev, title } : prev));
-                  return title;
-                }}
-              />
-            </h1>
-            {(sessionDate || totalTurns > 0 || agentName) && (
+            <div className="mb-2 border-b border-border pb-3.5">
+              <h1 className="font-display text-[28px] font-bold leading-tight tracking-[-0.02em]">
+                <EditableTitle
+                  value={sessionHeading(sessionDetail, sessionId)}
+                  onSave={async (next) => {
+                    const { title } = await renameSession(sessionId, next);
+                    setSessionDetail((prev) => (prev ? { ...prev, title } : prev));
+                    return title;
+                  }}
+                />
+              </h1>
               <div className="mt-1.5 flex flex-wrap items-center gap-2.5 text-[12px] text-muted-foreground">
                 {sessionDate && <span>{sessionDate}</span>}
                 {totalTurns > 0 && (
@@ -334,138 +346,137 @@ export default function SessionViewerPage({ sessionId }: { sessionId: string }) 
                     {totalTurns} message{totalTurns === 1 ? "" : "s"}
                   </span>
                 )}
-                {agentName && <span>{agentName}</span>}
+                {agentName && <span title="Agent that ran this session">{agentName}</span>}
+                {sessionDetail && (
+                  <SessionRating
+                    sessionId={sessionId}
+                    rating={sessionDetail.rating}
+                    onChange={(rating) =>
+                      setSessionDetail((prev) => (prev ? { ...prev, rating } : prev))
+                    }
+                  />
+                )}
               </div>
-            )}
-          </div>
-
-          {error && (
-            <div className="mb-4 rounded-lg border border-red-300/40 bg-red-500/10 px-4 py-2 text-[13px] text-red-500">
-              {error}
             </div>
-          )}
 
-          <div className="flex flex-col">
-            {turns.map((turn, i) => {
-              const previousTurn = turns[i - 1];
-              const dateDividerLabel =
-                turn.dateLabel && turn.dateKey !== previousTurn?.dateKey
-                  ? turn.dateLabel
-                  : null;
+            {totalTurns > 0 && (
+              <div className="mb-3 flex flex-wrap items-center gap-2">
+                <input
+                  type="search"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") jumpToMatch(e.shiftKey ? -1 : 1);
+                  }}
+                  placeholder="Search this session…"
+                  className="w-56 rounded-md border border-border bg-base px-2.5 py-1.5 text-[12.5px] text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-[var(--color-brand-600)]"
+                />
+                {humanJumps.length > 0 && (
+                  <JumpButton
+                    label="Jump to latest human message"
+                    onClick={() => {
+                      drainTranscript();
+                      setLatestHumanJumpPending(true);
+                    }}
+                    disabled={latestHumanJumpPending}
+                  >
+                    Latest human message
+                  </JumpButton>
+                )}
+                {humanJumps.length > 1 && (
+                  <select
+                    value=""
+                    aria-label="Jump to a human message"
+                    onFocus={drainTranscript}
+                    onChange={(event) => jumpTo(Number(event.target.value))}
+                    className="max-w-72 cursor-pointer rounded-md border border-border bg-base px-2.5 py-1.5 text-[12.5px] text-muted-foreground focus:outline-none focus:ring-1 focus:ring-[var(--color-brand-600)]"
+                  >
+                    <option value="" disabled>
+                      Jump to a human message…
+                    </option>
+                    {humanJumps.map((jump, index) => (
+                      <option key={jump.turnIndex} value={jump.turnIndex}>
+                        {index + 1}. {jump.label}
+                      </option>
+                    ))}
+                  </select>
+                )}
+                {query.trim() && (
+                  <>
+                    <span className="text-[12px] text-muted-foreground">
+                      {loadingAll
+                        ? "Loading full transcript…"
+                        : `${matches.length} match${matches.length === 1 ? "" : "es"}`}
+                    </span>
+                    <JumpButton label="Previous match" onClick={() => jumpToMatch(-1)} disabled={matches.length === 0}>
+                      ↑
+                    </JumpButton>
+                    <JumpButton label="Next match" onClick={() => jumpToMatch(1)} disabled={matches.length === 0}>
+                      ↓
+                    </JumpButton>
+                  </>
+                )}
+              </div>
+            )}
 
-              return (
-                <div key={i}>
-                  {dateDividerLabel ? <DateDivider label={dateDividerLabel} /> : null}
-                  <MessageRow turn={turn} index={i} />
+            {error && (
+              <div className="mb-4 rounded-lg border border-red-300/40 bg-red-500/10 px-4 py-2 text-[13px] text-red-500">
+                {error}
+              </div>
+            )}
+
+            <div className="flex flex-col">
+              {turns.map((turn, i) => {
+                // The header already names the session's date, so the first
+                // message needs no divider — only an actual date change does.
+                const previousTurn = turns[i - 1];
+                const dateDividerLabel =
+                  i > 0 && turn.dateLabel && turn.dateKey !== previousTurn?.dateKey
+                    ? turn.dateLabel
+                    : null;
+
+                return (
+                  <div key={i}>
+                    {dateDividerLabel ? <DateDivider label={dateDividerLabel} /> : null}
+                    <MessageRow turn={turn} index={i} focused={focusIndex === i} />
+                  </div>
+                );
+              })}
+              {hasMore && (
+                <div ref={sentinelRef} className="flex justify-center py-4">
+                  <button
+                    type="button"
+                    onClick={loadMore}
+                    disabled={loadingMore}
+                    className="cursor-pointer rounded-md border border-border px-3 py-1.5 text-[12.5px] text-muted-foreground hover:text-foreground disabled:cursor-default disabled:opacity-60"
+                  >
+                    {loadingMore ? "Loading…" : "Load more"}
+                  </button>
                 </div>
-              );
-            })}
-            {hasMore && (
-              <div ref={sentinelRef} className="flex justify-center py-4">
-                <button
-                  type="button"
-                  onClick={loadMore}
-                  disabled={loadingMore}
-                  className="cursor-pointer rounded-md border border-border px-3 py-1.5 text-[12.5px] text-muted-foreground hover:text-foreground disabled:cursor-default disabled:opacity-60"
-                >
-                  {loadingMore ? "Loading…" : "Load more"}
-                </button>
-              </div>
-            )}
-            {!error && totalTurns === 0 && (
-              <div className="rounded-lg border border-dashed border-border bg-surface/30 px-4 py-6 text-center text-[12.5px] text-muted-foreground">
-                No transcript events yet.
-              </div>
-            )}
-          </div>
-        </main>
-        <SessionAside detail={sessionDetail} />
-      </div>
-    </div>
-  );
-}
-
-// Compact inline picker: choose a skill folder, freeze the transcript into a
-// markdown page inside it.
-function SaveToSkillButton({
-  sessionId,
-  onSaved,
-}: {
-  sessionId: string;
-  onSaved: (pageId: string) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const [skills, setSkills] = useState<FolderBackedSkill[] | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState("");
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEscapeKey(open, () => setOpen(false));
-
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e: MouseEvent) => {
-      if (!ref.current?.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", onDown);
-    return () => document.removeEventListener("mousedown", onDown);
-  }, [open]);
-
-  useEffect(() => {
-    if (!open || skills !== null) return;
-    listSkills()
-      // Saving a session writes a page into the skill's folder, which a
-      // source-backed skill has not got — its content lives in its source.
-      .then((all) => setSkills(all.filter((s) => s.backing === "folder")))
-      .catch(() => setSkills([]));
-  }, [open, skills]);
-
-  async function save(skill: FolderBackedSkill) {
-    setBusy(true);
-    setMessage("");
-    try {
-      const page = await materializeSession(sessionId, skill.folder_id);
-      setOpen(false);
-      onSaved(page.id);
-    } catch (e) {
-      setMessage(e instanceof Error ? e.message : "Save failed");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <div ref={ref} className="relative">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        className="cursor-pointer rounded-md border border-border bg-base px-2.5 py-1.5 text-[12.5px] font-medium text-foreground hover:bg-raised"
-      >
-        Save to Skill <span aria-hidden className="text-[10px]">▾</span>
-      </button>
-      {open && (
-        <div className="absolute right-0 top-full z-30 mt-1 w-56 overflow-hidden rounded-md border border-border bg-surface py-1 text-[12.5px] shadow-lg">
-          {skills === null && (
-            <div className="px-3 py-1.5 text-muted-foreground">Loading…</div>
-          )}
-          {skills?.length === 0 && (
-            <div className="px-3 py-1.5 text-muted-foreground">No skills yet.</div>
-          )}
-          {skills?.map((skill) => (
-            <button
-              key={skill.folder_id}
-              type="button"
-              disabled={busy}
-              onClick={() => void save(skill)}
-              className="block w-full cursor-pointer truncate px-3 py-1.5 text-left text-foreground hover:bg-raised disabled:opacity-50"
-            >
-              {skill.name}
-            </button>
-          ))}
-          {message && <div className="px-3 py-1.5 text-red-500">{message}</div>}
+              )}
+              {!hasMore && turns.length > 0 && (
+                <DateDivider
+                  label={`End of session · ${totalTurns} message${totalTurns === 1 ? "" : "s"}`}
+                />
+              )}
+              {!error && totalTurns === 0 && (
+                <div className="rounded-lg border border-dashed border-border bg-surface/30 px-4 py-6 text-center text-[12.5px] text-muted-foreground">
+                  No transcript events yet.
+                </div>
+              )}
+            </div>
+          </main>
+          <SessionAside detail={sessionDetail} />
         </div>
+      </div>
+      {showMinimap && (
+        <MinimapStrip
+          turns={turns}
+          loaded={!hasMore}
+          scrollRef={scrollContainerRef}
+          matches={matches}
+          onJump={jumpTo}
+        />
       )}
     </div>
   );
@@ -474,127 +485,54 @@ function SaveToSkillButton({
 function SessionAside({ detail }: { detail: SessionDetail | null }) {
   const filesTouched = normalizeStringList(detail?.files_touched);
   const artifacts = detail?.artifacts ?? [];
-  const tickets = detail?.linear_tickets ?? [];
+  const files = sessionFileRows(filesTouched, artifacts, detail?.cwd ?? null);
 
   return (
     <aside className="hidden lg:block">
       <div className="sticky top-16 flex flex-col gap-3">
-        {tickets.length > 0 && (
-          <div className="card-soft p-3.5">
-            <div className="sys-label">Linear</div>
-            <div className="mt-2 flex flex-col gap-1.5">
-              {tickets.map((ticket) => (
-                <LinearTicketAsideRow key={ticket.ticket_identifier} ticket={ticket} />
-              ))}
-            </div>
-          </div>
-        )}
-
         <div className="card-soft p-3.5">
-          <div className="sys-label">Artifacts</div>
-          {filesTouched.length > 0 && (
+          <div className="sys-label">Files used in this session</div>
+          {files.length > 0 && (
             <div className="mt-2 flex flex-col gap-1.5">
-              {filesTouched.map((file) => (
-                <div
-                  key={file}
-                  className="flex items-center gap-1.5 rounded-md border border-border-subtle bg-base px-2 py-1.5 font-mono text-[11px] text-foreground"
-                >
-                  <FileGlyph />
-                  <span className="truncate">{file}</span>
-                </div>
-              ))}
+              {files.map(({ path, artifact }) => {
+                if (!artifact) {
+                  return (
+                    <div
+                      key={path}
+                      className="flex items-center gap-1.5 px-0.5 py-1 font-mono text-[11px] text-muted-foreground"
+                    >
+                      <FileGlyph />
+                      <span className="min-w-0 flex-1 truncate" title={path}>{path}</span>
+                    </div>
+                  );
+                }
+                return (
+                  <a
+                    key={path}
+                    href={artifact.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title={`Open archived copy of ${path}`}
+                    className="linkrow px-2 py-1.5 font-mono text-[11px]"
+                  >
+                    <FileGlyph />
+                    <span className="min-w-0 flex-1 truncate">{path}</span>
+                    <span className="sys-label" style={{ fontSize: 10 }}>
+                      {formatBytes(artifact.size_bytes)}
+                    </span>
+                  </a>
+                );
+              })}
             </div>
           )}
-          {artifacts.length > 0 && (
-            <div className={"flex flex-col gap-1.5 " + (filesTouched.length > 0 ? "mt-2" : "mt-2")}>
-              {artifacts.map((artifact) => (
-                <a
-                  key={artifact.id}
-                  href={artifact.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="linkrow px-2 py-1.5 font-mono text-[11px]"
-                >
-                  <FileGlyph />
-                  <span className="min-w-0 flex-1 truncate">{artifact.file_path}</span>
-                  <span className="sys-label" style={{ fontSize: 10 }}>
-                    {formatBytes(artifact.size_bytes)}
-                  </span>
-                </a>
-              ))}
-            </div>
-          )}
-          {filesTouched.length === 0 && artifacts.length === 0 && (
+          {files.length === 0 && (
             <div className="mt-2 text-[12px] leading-relaxed text-muted-foreground">
-              No artifacts recorded.
+              No files recorded for this session.
             </div>
           )}
         </div>
       </div>
     </aside>
-  );
-}
-
-function LinearTicketAsideRow({
-  ticket,
-}: {
-  ticket: NonNullable<SessionDetail["linear_tickets"][number]>;
-}) {
-  const metadata = ticketMetadata(ticket);
-  const content = (
-    <>
-      <LinearTicketPill ticket={ticket} />
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-[12.5px] font-medium text-foreground">
-          {ticket.ticket_title || ticket.ticket_identifier}
-        </span>
-        {metadata && (
-          <span className="block truncate text-[11px] text-muted-foreground">
-            {metadata}
-          </span>
-        )}
-      </span>
-    </>
-  );
-
-  if (!ticket.ticket_url) {
-    return <div className="linkrow px-2 py-1.5">{content}</div>;
-  }
-
-  return (
-    <a
-      href={ticket.ticket_url}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="linkrow px-2 py-1.5"
-    >
-      {content}
-    </a>
-  );
-}
-
-function ticketMetadata(ticket: NonNullable<SessionDetail["linear_tickets"][number]>): string {
-  return [
-    ticket.ticket_status,
-    ticket.ticket_assignee_name,
-    ticket.ticket_project_name,
-  ]
-    .filter(Boolean)
-    .join(", ");
-}
-
-function LinearTicketPill({
-  ticket,
-}: {
-  ticket: NonNullable<SessionDetail["linear_tickets"][number]>;
-}) {
-  return (
-    <span
-      className="inline-flex max-w-full shrink-0 items-center rounded border border-[var(--color-brand-200)] bg-[var(--color-brand-50)] px-2 py-0.5 font-mono text-[11px] font-semibold text-[var(--color-brand-700)]"
-      title={ticket.ticket_title || ticket.ticket_identifier}
-    >
-      {ticket.ticket_identifier}
-    </span>
   );
 }
 
@@ -630,54 +568,105 @@ function DateDivider({ label }: { label: string }) {
   );
 }
 
-function MessageRow({ turn, index }: { turn: MessageTurn; index: number }) {
-  const isAgent = turn.who === "assistant";
-  const avatar = avatarFor(turn.name);
-  const rowId = turn.toolName ? `tool-call-${index}` : undefined;
+function JumpButton({
+  label,
+  onClick,
+  disabled,
+  children,
+}: {
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+  children: React.ReactNode;
+}) {
   return (
-    <div id={rowId} className="msg-row group scroll-mt-16 rounded-md px-2 py-2">
-      <div className="flex gap-3">
-        <span
-          className={
-            "inline-flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-[10px] font-semibold " +
-            avatar.bg +
-            " " +
-            avatar.fg
-          }
-        >
-          {initials(turn.name)}
-        </span>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-baseline gap-2 text-[12.5px]">
-            <span className="font-semibold text-foreground">{turn.name}</span>
-            {isAgent ? (
-              <span className="tag tag-agent">agent</span>
-            ) : (
-              <span className="tag tag-human">human</span>
-            )}
-            {turn.toolName && (
-              <span className="rounded bg-surface px-1.5 py-0 font-mono text-[10.5px] text-dim ring-1 ring-border">
-                {turn.toolName}
-              </span>
-            )}
-            <span className="flex-1" />
-            {turn.time && (
-              <span className="sys-label" style={{ fontSize: 10 }}>
-                {turn.time}
-              </span>
-            )}
-          </div>
-          {turn.toolName ? (
-            <div className="mt-1 whitespace-pre-wrap rounded-md border border-border-subtle bg-surface px-2.5 py-2 font-mono text-[12px] leading-relaxed text-foreground">
-              {turn.content}
-            </div>
-          ) : (
-            <div className="markdown-content mt-1 text-[13.5px] leading-relaxed text-foreground">
-              <Markdown remarkPlugins={[remarkGfm]}>{turn.content}</Markdown>
-            </div>
+    <button
+      type="button"
+      title={label}
+      aria-label={label}
+      onClick={onClick}
+      disabled={disabled}
+      className="cursor-pointer rounded-md border border-border px-2 py-1 text-[12px] text-muted-foreground hover:text-foreground disabled:cursor-default disabled:opacity-50"
+    >
+      {children}
+    </button>
+  );
+}
+
+function MessageRow({
+  turn,
+  index,
+  focused,
+}: {
+  turn: MessageTurn;
+  index: number;
+  focused: boolean;
+}) {
+  const isSystem = turn.who === "system";
+  return (
+    <div
+      id={`turn-${index}`}
+      className={
+        "msg-row group scroll-mt-16 rounded-md px-2 py-2" +
+        (focused ? " ring-2 ring-[var(--color-brand-300)]" : "")
+      }
+    >
+      <div className="min-w-0">
+        <div className="flex items-baseline gap-2 text-[12.5px]">
+          <span
+            className={
+              "font-semibold " + (isSystem ? "text-muted-foreground" : "text-foreground")
+            }
+          >
+            {turn.name}
+          </span>
+          {turn.toolName && (
+            <span className="rounded bg-surface px-1.5 py-0 font-mono text-[10.5px] text-dim ring-1 ring-border">
+              {turn.toolName}
+            </span>
+          )}
+          <span className="flex-1" />
+          {turn.time && (
+            <span className="sys-label" style={{ fontSize: 10 }}>
+              {turn.time}
+            </span>
           )}
         </div>
+        {turn.toolName ? (
+          <ToolTurn content={turn.content} />
+        ) : (
+          <div className="markdown-content mt-1 text-[13.5px] leading-relaxed text-foreground">
+            <Markdown remarkPlugins={[remarkGfm]}>{turn.content}</Markdown>
+          </div>
+        )}
       </div>
+    </div>
+  );
+}
+
+// Tool calls collapse to a one-line summary so a wall of tool use scrolls
+// past in a few rows; the full input is one click away.
+function ToolTurn({ content }: { content: string }) {
+  const [open, setOpen] = useState(false);
+  const { summary, body } = toolDisplay(content);
+  return (
+    <div className="mt-1">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        className="flex w-full cursor-pointer items-center gap-1.5 rounded-md border border-border-subtle bg-surface px-2.5 py-1.5 text-left font-mono text-[11.5px] text-muted-foreground hover:text-foreground"
+      >
+        <span aria-hidden className="text-[9px]">
+          {open ? "▾" : "▸"}
+        </span>
+        <span className="min-w-0 flex-1 truncate">{summary}</span>
+      </button>
+      {open && (
+        <pre className="mt-1 overflow-x-auto whitespace-pre-wrap rounded-md border border-border-subtle bg-surface px-2.5 py-2 font-mono text-[12px] leading-relaxed text-foreground">
+          {body}
+        </pre>
+      )}
     </div>
   );
 }

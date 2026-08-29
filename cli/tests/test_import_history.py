@@ -5,7 +5,9 @@ import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
 
-from cli import import_history
+import pytest
+
+from cli import import_history, main
 
 
 def _write_codex_session(
@@ -81,3 +83,69 @@ def test_discovers_codex_sessions_from_other_worktrees_of_same_repo(monkeypatch,
     assert [conversation.session_id for conversation in conversations] == ["same-repo"]
     assert conversations[0].cwd == str(worktree)
     assert conversations[0].timestamp == datetime(2026, 5, 28, 12, 0, tzinfo=UTC)
+
+
+def test_import_limit_uploads_only_the_most_recent_conversations(monkeypatch):
+    imported = []
+
+    class FakeClient:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+    conversations = [f"conversation-{index}" for index in range(8)]
+    monkeypatch.setattr(main, "_require_auth", lambda: {"api_key": "key"})
+    monkeypatch.setattr(main.telemetry, "record", lambda *args, **kwargs: None)
+    monkeypatch.setattr(main, "load_enabled_agents", lambda: ["codex"])
+    monkeypatch.setattr(main, "_conversations_to_import", lambda agents: conversations)
+    monkeypatch.setattr(main, "_client", lambda: FakeClient())
+    monkeypatch.setattr(main, "_write_import_status", lambda **kwargs: None)
+    monkeypatch.setattr(main, "_report_import_progress", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        import_history,
+        "upload_conversation",
+        lambda client, conversation: imported.append(conversation),
+    )
+
+    main.import_history_cmd(status=False, limit=5)
+
+    assert set(imported) == set(conversations[:5])
+
+
+@pytest.mark.parametrize(
+    ("answer", "expected"),
+    [
+        ("Start with my 5 most recent sessions", (5, 5)),
+        ("Import all 12 sessions", (12, None)),
+        ("Don't import past sessions", None),
+    ],
+)
+def test_setup_offers_a_five_session_start(monkeypatch, answer, expected):
+    calls = []
+    conversations = [f"conversation-{index}" for index in range(12)]
+    monkeypatch.setattr(main, "_conversations_to_import", lambda agents: conversations)
+    monkeypatch.setattr(
+        import_history,
+        "summarize_discovery",
+        lambda found: {"codex": {"count": len(found), "total_size_bytes": 1024}},
+    )
+    monkeypatch.setattr(main.questionary, "select", lambda *args, **kwargs: _Answer(answer))
+    monkeypatch.setattr(
+        main,
+        "_spawn_history_import",
+        lambda count, *, limit=None: calls.append((count, limit)),
+    )
+
+    main._onboarding_import_history(["codex"])
+
+    assert calls == ([] if expected is None else [expected])
+
+
+class _Answer:
+    def __init__(self, value):
+        self.value = value
+
+    def ask(self):
+        return self.value

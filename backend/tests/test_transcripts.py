@@ -230,6 +230,34 @@ async def test_reupload_is_noop_when_events_exist(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_import_progress_roundtrip(client: AsyncClient, monkeypatch):
+    """The web app's only window into the CLI's detached history import: the
+    CLI reports counts, Home reads them back; no report means no progress."""
+    from backend.routers import transcripts as transcripts_router
+
+    from .conftest import FakeRedis
+
+    fake_redis = FakeRedis()
+    monkeypatch.setattr(transcripts_router, "_get_redis", lambda: fake_redis)
+    key = await _register(client)
+    headers = {"Authorization": f"Bearer {key}"}
+
+    r = await client.get("/api/v1/me/transcripts/import-progress", headers=headers)
+    assert r.status_code == 200
+    assert r.json() == {"progress": None}
+
+    r = await client.put(
+        "/api/v1/me/transcripts/import-progress",
+        json={"total": 882, "done": 125, "errors": 2, "finished": False},
+        headers=headers,
+    )
+    assert r.status_code == 200
+
+    r = await client.get("/api/v1/me/transcripts/import-progress", headers=headers)
+    assert r.json()["progress"] == {"total": 882, "done": 125, "errors": 2, "finished": False}
+
+
+@pytest.mark.asyncio
 async def test_empty_session_shell_is_hidden_from_default_views(client: AsyncClient):
     key = await _register(client)
     scope = await _scope(client, key)
@@ -401,29 +429,23 @@ async def test_sidebar_sessions_include_human_author(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_session_linear_ticket_labels_are_extracted(client: AsyncClient):
+async def test_session_detail_names_the_author(client: AsyncClient):
+    """The trace view labels human turns with the author's display name, so
+    the detail payload must carry it — 'user' tells a reader nothing."""
     key = await _register(client)
-    scope = await _scope(client, key)
     headers = {"Authorization": f"Bearer {key}"}
-
-    linear_prompt = """You are working on a Linear ticket `FER-19`
-
-Issue context:
-Identifier: FER-19
-Title: We should be able to update the top background color gradient/image on the homepage of a Stash
-Current status: In Progress
-URL: https://linear.app/ferganalabs/issue/FER-19/we-should-be-able-to-update-the-top-background-color-gradientimage-on
-"""
+    me = await client.get("/api/v1/users/me", headers=headers)
+    author = me.json()["display_name"]
 
     pushed = await client.post(
         "/api/v1/me/sessions/events/batch",
         json={
             "events": [
                 {
-                    "agent_name": "codex",
+                    "agent_name": "claude",
                     "event_type": "user_message",
-                    "content": linear_prompt,
-                    "session_id": "sess-linear",
+                    "content": "hi",
+                    "session_id": "sess-author-name",
                 }
             ]
         },
@@ -431,46 +453,49 @@ URL: https://linear.app/ferganalabs/issue/FER-19/we-should-be-able-to-update-the
     )
     assert pushed.status_code == 201
 
-    overview = await client.get("/api/v1/me/overview", headers=headers)
-    assert overview.status_code == 200
-    [overview_session] = overview.json()["sessions"]
-    assert overview_session["linear_tickets"] == [
-        {
-            "ticket_identifier": "FER-19",
-            "ticket_title": (
-                "We should be able to update the top background color gradient/image "
-                "on the homepage of a Stash"
-            ),
-            "ticket_url": (
-                "https://linear.app/ferganalabs/issue/FER-19/"
-                "we-should-be-able-to-update-the-top-background-color-gradientimage-on"
-            ),
-            "source": "linear_preamble",
-            "confidence": 1.0,
-            "linear_issue_id": None,
-            "ticket_status": None,
-            "ticket_assignee_name": None,
-            "ticket_team_key": None,
-            "ticket_team_name": None,
-            "ticket_project_name": None,
-            "linear_updated_at": None,
-            "enriched_at": None,
-        }
-    ]
-
     detail = await client.get(
-        "/api/v1/me/sessions/detail?session_id=sess-linear",
+        "/api/v1/me/sessions/detail?session_id=sess-author-name",
         headers=headers,
     )
     assert detail.status_code == 200
-    assert detail.json()["linear_tickets"][0]["ticket_identifier"] == "FER-19"
+    assert detail.json()["created_by_display_name"] == author
 
-    mine = await client.get(
-        f"/api/v1/me/sessions?owner_user_id={scope}",
+
+@pytest.mark.asyncio
+async def test_agent_name_matching_author_handle_is_suppressed(client: AsyncClient):
+    """The CLI plugin historically defaulted agent_name to the author's login
+    handle, so those rows name a person, not an agent. The session lists must
+    not present a person as the agent — the value is suppressed instead."""
+    key = await _register(client)
+    scope = await _scope(client, key)
+    headers = {"Authorization": f"Bearer {key}"}
+    me = await client.get("/api/v1/users/me", headers=headers)
+    handle = me.json()["name"]
+
+    pushed = await client.post(
+        "/api/v1/me/sessions/events/batch",
+        json={
+            "events": [
+                {
+                    "agent_name": handle,
+                    "event_type": "user_message",
+                    "content": "Plan the release",
+                    "session_id": "sess-handle-agent",
+                }
+            ]
+        },
         headers=headers,
     )
+    assert pushed.status_code == 201
+
+    mine = await client.get(f"/api/v1/me/sessions?owner_user_id={scope}", headers=headers)
     assert mine.status_code == 200
-    assert mine.json()["sessions"][0]["linear_tickets"][0]["ticket_identifier"] == "FER-19"
+    assert mine.json()["sessions"][0]["agent_name"] is None
+
+    overview = await client.get("/api/v1/me/overview", headers=headers)
+    assert overview.status_code == 200
+    [overview_session] = overview.json()["sessions"]
+    assert overview_session["agent_name"] == ""
 
 
 @pytest.mark.asyncio

@@ -22,6 +22,7 @@ import logging
 import re
 import secrets
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime
 from uuid import UUID
 
 import redis.asyncio as aioredis
@@ -173,12 +174,14 @@ async def _record_tool_event(
     event: dict,
     provider_env: dict[str, str],
     agent_name: str,
+    record_session: bool = True,
 ) -> None:
     """Persist a harness tool call as a history event. Cloud runs have no
     plugin hooks streaming these, so without this the stored session is just
     prompt + final answer — unauditable."""
     content, metadata = _tool_event_summary(event)
-    await memory_service.push_event(
+    record = memory_service.push_event if record_session else memory_service.push_internal_event
+    await record(
         owner_user_id,
         agent_name,
         "tool_use",
@@ -196,18 +199,92 @@ RUN_FAILED_PREFIX = "⚠️ Agent run failed:"
 
 
 async def _record_run_failure(
-    owner_user_id: UUID, user_id: UUID, session_id: str, agent_name: str, error: str
+    owner_user_id: UUID,
+    user_id: UUID,
+    session_id: str,
+    agent_name: str,
+    error: str,
+    record_session: bool = True,
 ) -> None:
     """Close a failed turn's stored session with the error. Without this a
     crashed run leaves a prompt with no reply — indistinguishable from a run
     that never happened."""
-    await memory_service.push_event(
+    record = memory_service.push_event if record_session else memory_service.push_internal_event
+    await record(
         owner_user_id,
         agent_name,
         "assistant_message",
         f"{RUN_FAILED_PREFIX} {error}",
         user_id,
         session_id=session_id,
+    )
+
+
+# Stored marker for a scheduled run the dispatcher skipped — the runs API reads
+# it back so the curator log can say why a night's run didn't happen instead of
+# showing nothing.
+RUN_SKIPPED_PREFIX = "⏭ Run skipped:"
+CURATOR_RUN_STATS_EVENT = "curator_run_stats"
+
+
+async def record_run_skipped(agent: dict, run_stamp: str, reason: str) -> None:
+    """Store a skipped scheduled run as a single log message where the run's
+    entry would have been, so the log shows the skip and its reason.
+
+    A bare insert on purpose — not push_event: a skip is not a session (no
+    sessions row, so it never appears in the Sessions list) and its note must
+    not touch the curator's watermark."""
+    from ..database import get_pool
+
+    session_id = f"{scheduled_session_prefix(agent)}{run_stamp}"
+    await get_pool().execute(
+        "INSERT INTO history_events "
+        "(owner_user_id, created_by, agent_name, event_type, content, session_id) "
+        "VALUES ($1, $1, $2, 'assistant_message', $3, $4)",
+        UUID(str(agent["user_id"])),
+        agent["name"],
+        f"{RUN_SKIPPED_PREFIX} {reason}",
+        session_id,
+    )
+
+
+async def _curator_run_stats(agent: dict) -> dict:
+    """Count the bounded delta this curator is about to receive."""
+    from . import curation_service
+
+    user_id = UUID(str(agent["user_id"]))
+    now = datetime.now(UTC)
+    until = await curation_service.entitled_through(user_id, agent.get("curated_through"), now)
+    delta = await curation_service.changes_since(
+        user_id, user_id, agent.get("curated_through"), until
+    )
+    external = agent.get("curator_wiki") == "external"
+    history = [event for event in delta["history"] if bool(event.get("user")) == external]
+    trace_ids = {event["session_id"] for event in history if event.get("session_id")}
+    return {
+        "traces": len(trace_ids),
+        "activity_events": sum(not event.get("session_id") for event in history),
+        "pages": delta["counts"]["pages"],
+        "files": delta["counts"]["files"],
+        "source_docs": delta["counts"]["source_docs"],
+        "saves": delta["counts"]["saves"],
+        "more_queued": delta["history_has_more"],
+    }
+
+
+async def _record_curator_run_stats(agent: dict, session_id: str, stats: dict) -> None:
+    """Attach deterministic input totals to a completed curator run."""
+    from ..database import get_pool
+
+    await get_pool().execute(
+        "INSERT INTO history_events "
+        "(owner_user_id, created_by, agent_name, event_type, content, session_id, metadata) "
+        "VALUES ($1, $1, $2, $3, '', $4, $5::jsonb)",
+        UUID(str(agent["user_id"])),
+        agent["name"],
+        CURATOR_RUN_STATS_EVENT,
+        session_id,
+        json.dumps(stats),
     )
 
 
@@ -408,7 +485,8 @@ async def run_scheduled(agent: dict, run_stamp: str) -> str:
     owner_name = user["display_name"] or user["name"]
 
     session_id, message = await build_scheduled_turn(agent, run_stamp)
-    return await run_chat(
+    stats = await _curator_run_stats(agent) if agent.get("is_curator") else None
+    result = await run_chat(
         user_id,
         owner_name,
         user_id,
@@ -417,7 +495,11 @@ async def run_scheduled(agent: dict, run_stamp: str) -> str:
         model_provider=agent["model_provider"],
         persona=agent["system_prompt"],
         agent_name=agent["name"],
+        record_session=not agent.get("is_curator"),
     )
+    if stats is not None:
+        await _record_curator_run_stats(agent, session_id, stats)
+    return result
 
 
 # Detached turn tasks need a strong reference until they finish — asyncio
@@ -588,6 +670,7 @@ async def run_chat(
     model_provider: str | None = None,
     persona: str | None = None,
     agent_name: str = AGENT_NAME,
+    record_session: bool = True,
 ) -> str:
     """Non-streaming turn for Slack/Telegram/scheduled: returns the final answer.
     `channel` ('slack'|'telegram') selects the bound agent's model + persona;
@@ -610,7 +693,8 @@ async def run_chat(
     auth.env.update(await sprite_service.local_agent_env(user_id))
     async with _TurnLock(session_id):
         history = await _load_history(owner_user_id, session_id, user_id)
-        await memory_service.push_event(
+        record = memory_service.push_event if record_session else memory_service.push_internal_event
+        await record(
             owner_user_id, agent_name, "user_message", message, user_id, session_id=session_id
         )
         sprite = await sprite_service.acquire(user_id)
@@ -641,7 +725,13 @@ async def run_chat(
                     error = event["message"]
                 elif event["type"] == "tool":
                     await _record_tool_event(
-                        owner_user_id, user_id, session_id, event, auth.env, agent_name
+                        owner_user_id,
+                        user_id,
+                        session_id,
+                        event,
+                        auth.env,
+                        agent_name,
+                        record_session,
                     )
         except TurnStopped:
             final = STOPPED_NOTE
@@ -650,11 +740,13 @@ async def run_chat(
             # like harness errors so the stored session isn't a dangling prompt.
             error, cause = str(e), e
         if error:
-            await _record_run_failure(owner_user_id, user_id, session_id, agent_name, error)
+            await _record_run_failure(
+                owner_user_id, user_id, session_id, agent_name, error, record_session
+            )
             raise RuntimeError(f"agent turn failed: {error}") from cause
 
         if final:
-            await memory_service.push_event(
+            await record(
                 owner_user_id,
                 agent_name,
                 "assistant_message",

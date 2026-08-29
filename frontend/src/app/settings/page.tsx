@@ -1,32 +1,45 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useConfirm } from "../../components/ConfirmDialog";
 import WorkspaceShell from "@/components/workspace/workspace-shell";
-import IntegrationsSettings from "../../components/integrations/IntegrationsSettings";
 import SubscriptionSection from "../../components/settings/SubscriptionSection";
-import AgentModelSection from "../../components/settings/AgentModelSection";
 import ExportSection from "../../components/settings/ExportSection";
-import { AccountSettingsSkeleton, ApiKeysSkeleton } from "../../components/SkeletonStates";
+import { AccountSettingsSkeleton } from "../../components/SkeletonStates";
 import { useAuth } from "../../hooks/useAuth";
-import {
-  ApiError,
-  ApiKeyAccess,
-  ApiKeyCreated,
-  ApiKeyInfo,
-  createMyKey,
-  listMyKeys,
-  revokeMyKey,
-  updateMe,
-} from "../../lib/api";
+import { ApiError, updateMe } from "../../lib/api";
 import { User } from "../../lib/types";
 
 const AUTH0_ENABLED = process.env.NEXT_PUBLIC_AUTH0_ENABLED === "true";
 
+type SettingsTab = "account" | "subscription" | "data";
+
+const SETTINGS_TABS: Array<{
+  id: SettingsTab;
+  label: string;
+  description: string;
+}> = [
+  {
+    id: "account",
+    label: "Account",
+    description: "Your profile and sign-in settings.",
+  },
+  {
+    id: "subscription",
+    label: "Subscription",
+    description: "View your plan and manage billing.",
+  },
+  {
+    id: "data",
+    label: "Data export",
+    description: "Download a copy of everything in your Stash.",
+  },
+];
+
 export default function SettingsPage() {
   const router = useRouter();
   const { user, loading, logout, refresh } = useAuth();
+  const [activeTab, setActiveTab] = useState<SettingsTab>("account");
 
   useEffect(() => {
     if (!loading && !user) router.replace("/login");
@@ -38,8 +51,8 @@ export default function SettingsPage() {
 
   return (
     <WorkspaceShell user={user} onLogout={logout}>
-      <main className="flex-1 px-4 py-10">
-        <div className="w-full max-w-2xl mx-auto space-y-8">
+      <main className="flex-1 px-4 py-7">
+        <div className="mx-auto w-full max-w-5xl">
           <button
             type="button"
             onClick={() => router.push("/")}
@@ -47,19 +60,58 @@ export default function SettingsPage() {
           >
             <span aria-hidden>←</span> Home
           </button>
-          <div>
-            <h1 className="text-2xl font-semibold text-foreground">Settings</h1>
-            <p className="text-sm text-muted-foreground mt-1">
-              Your profile, connected sources, sessions, and password.
-            </p>
+          <div className="mt-7 grid gap-7 md:grid-cols-[180px_minmax(0,1fr)]">
+            <aside>
+              <h1 className="text-xl font-semibold text-foreground">
+                Settings
+              </h1>
+              <nav
+                aria-label="Settings sections"
+                className="mt-4 flex gap-1 overflow-x-auto md:flex-col"
+              >
+                {SETTINGS_TABS.map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setActiveTab(tab.id)}
+                    aria-current={activeTab === tab.id ? "page" : undefined}
+                    className={`cursor-pointer whitespace-nowrap rounded-md px-3 py-2 text-left text-[13px] font-medium transition-colors ${
+                      activeTab === tab.id
+                        ? "bg-raised text-foreground"
+                        : "text-muted-foreground hover:bg-raised/60 hover:text-foreground"
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </nav>
+            </aside>
+
+            <div className="min-w-0">
+              <header className="mb-5">
+                <h2 className="text-2xl font-semibold text-foreground">
+                  {SETTINGS_TABS.find((tab) => tab.id === activeTab)?.label}
+                </h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {
+                    SETTINGS_TABS.find((tab) => tab.id === activeTab)
+                      ?.description
+                  }
+                </p>
+              </header>
+
+              <div className="space-y-4">
+                {activeTab === "account" && (
+                  <>
+                    <Profile user={user} onUpdated={refresh} />
+                    {!AUTH0_ENABLED && <ChangePassword />}
+                  </>
+                )}
+                {activeTab === "subscription" && <SubscriptionSection />}
+                {activeTab === "data" && <ExportSection />}
+              </div>
+            </div>
           </div>
-          <Profile user={user} onUpdated={refresh} />
-          <SubscriptionSection />
-          <AgentModelSection />
-          <IntegrationsSettings embedded />
-          <ActiveSessions />
-          <ExportSection />
-          {!AUTH0_ENABLED && <ChangePassword />}
         </div>
       </main>
     </WorkspaceShell>
@@ -70,7 +122,9 @@ function Profile({ user, onUpdated }: { user: User; onUpdated: () => void }) {
   const [displayName, setDisplayName] = useState(user.display_name);
   const [description, setDescription] = useState(user.description || "");
   const [saving, setSaving] = useState(false);
-  const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
+  const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(
+    null,
+  );
 
   useEffect(() => {
     setDisplayName(user.display_name);
@@ -97,277 +151,83 @@ function Profile({ user, onUpdated }: { user: User; onUpdated: () => void }) {
   }
 
   return (
-    <section className="rounded-2xl border border-border bg-surface p-6 space-y-4">
-      <div>
+    <section className="overflow-hidden rounded-lg border border-border bg-surface">
+      <div className="border-b border-border px-5 py-4">
         <h2 className="text-base font-semibold text-foreground">Profile</h2>
         <p className="text-xs text-muted-foreground mt-0.5">
           Signed in as <span className="font-mono">{user.name}</span>.
         </p>
       </div>
-      <form onSubmit={handleSubmit} className="space-y-3">
+      <form onSubmit={handleSubmit} className="divide-y divide-border">
         <TextField
+          label="Display name"
           placeholder="Display name"
           value={displayName}
           onChange={setDisplayName}
         />
         <TextField
+          label="About"
           placeholder="Description"
           value={description}
           onChange={setDescription}
         />
-        {msg && (
-          <p className={`text-xs ${msg.kind === "ok" ? "text-green-500" : "text-error"}`}>
-            {msg.text}
-          </p>
-        )}
-        <button
-          type="submit"
-          disabled={saving}
-          className="cursor-pointer bg-brand hover:bg-brand-hover disabled:opacity-60 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
-        >
-          {saving ? "Saving…" : "Save profile"}
-        </button>
+        <div className="flex min-h-14 items-center justify-between gap-3 px-5 py-3">
+          {msg ? (
+            <p
+              className={`text-xs ${msg.kind === "ok" ? "text-green-500" : "text-error"}`}
+            >
+              {msg.text}
+            </p>
+          ) : (
+            <span />
+          )}
+          <button
+            type="submit"
+            disabled={saving}
+            className="cursor-pointer rounded-md border border-border bg-background px-3 py-1.5 text-[13px] font-medium text-foreground transition-colors hover:bg-raised disabled:opacity-60"
+          >
+            {saving ? "Saving…" : "Save"}
+          </button>
+        </div>
       </form>
     </section>
   );
 }
 
 function TextField({
+  label,
   placeholder,
   value,
   onChange,
 }: {
+  label: string;
   placeholder: string;
   value: string;
   onChange: (v: string) => void;
 }) {
   return (
-    <input
-      type="text"
-      placeholder={placeholder}
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      className="w-full px-3.5 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm placeholder:text-muted-foreground focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all"
-    />
-  );
-}
-
-function ActiveSessions() {
-  const confirm = useConfirm();
-  const [keys, setKeys] = useState<ApiKeyInfo[] | null>(null);
-  const [error, setError] = useState("");
-  const [revoking, setRevoking] = useState<string | null>(null);
-  const [newKeyName, setNewKeyName] = useState("");
-  const [newKeyAccess, setNewKeyAccess] = useState<ApiKeyAccess>("full");
-  const [creating, setCreating] = useState(false);
-  const [minted, setMinted] = useState<ApiKeyCreated | null>(null);
-
-  const load = useCallback(async () => {
-    try {
-      const data = await listMyKeys();
-      setKeys(data);
-      setError("");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not load sessions");
-    }
-  }, []);
-
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  async function handleRevoke(keyId: string) {
-    const ok = await confirm({
-      title: "Revoke this session?",
-      body: "Any CLI or browser using it will be signed out.",
-      confirmLabel: "Revoke",
-    });
-    if (!ok) return;
-    setRevoking(keyId);
-    try {
-      await revokeMyKey(keyId);
-      await load();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not revoke");
-    } finally {
-      setRevoking(null);
-    }
-  }
-
-  async function handleCreate(e: React.FormEvent) {
-    e.preventDefault();
-    setCreating(true);
-    setError("");
-    try {
-      const k = await createMyKey(newKeyName.trim() || "Personal token", newKeyAccess);
-      setMinted(k);
-      setNewKeyName("");
-      setNewKeyAccess("full");
-      await load();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not create key");
-    } finally {
-      setCreating(false);
-    }
-  }
-
-  return (
-    <section className="rounded-2xl border border-border bg-surface p-6 space-y-4">
-      <div className="flex items-baseline justify-between">
-        <div>
-          <h2 className="text-base font-semibold text-foreground">API keys & sessions</h2>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            Each CLI install holds its own revocable key. Create a key to use the API directly
-            (e.g. from a production agent), and revoke anything you don&apos;t recognize.
-          </p>
-        </div>
-        <button
-          onClick={load}
-          className="cursor-pointer text-xs text-muted-foreground hover:text-foreground"
-          type="button"
-        >
-          Refresh
-        </button>
-      </div>
-
-      {minted && <MintedKey minted={minted} onDismiss={() => setMinted(null)} />}
-
-      <form onSubmit={handleCreate} className="space-y-2">
-        <div className="flex gap-2">
-          <input
-            type="text"
-            value={newKeyName}
-            onChange={(e) => setNewKeyName(e.target.value)}
-            placeholder="Key name (e.g. laptop, ci-runner, production-agent)"
-            maxLength={128}
-            className="flex-1 px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm placeholder:text-muted-foreground focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all"
-          />
-          <button
-            type="submit"
-            disabled={creating}
-            className="cursor-pointer bg-brand hover:bg-brand-hover disabled:opacity-60 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors whitespace-nowrap"
-          >
-            {creating ? "Creating…" : "Create key"}
-          </button>
-        </div>
-        <div className="flex gap-4">
-          <label className="flex items-center gap-1.5 text-xs text-foreground cursor-pointer">
-            <input
-              type="radio"
-              name="key-access"
-              checked={newKeyAccess === "full"}
-              onChange={() => setNewKeyAccess("full")}
-              className="accent-brand"
-            />
-            Full access
-          </label>
-          <label className="flex items-center gap-1.5 text-xs text-foreground cursor-pointer">
-            <input
-              type="radio"
-              name="key-access"
-              checked={newKeyAccess === "read"}
-              onChange={() => setNewKeyAccess("read")}
-              className="accent-brand"
-            />
-            Read + transcripts
-            <span className="text-muted-foreground">
-              — for production agents: can search, read, and upload transcripts, nothing else
-            </span>
-          </label>
-        </div>
-      </form>
-
-      {error && <p className="text-xs text-error">{error}</p>}
-      {keys === null ? (
-        <ApiKeysSkeleton />
-      ) : keys.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No active sessions.</p>
-      ) : (
-        <ul className="divide-y divide-border rounded-lg border border-border overflow-hidden">
-          {keys.map((k) => (
-            <li key={k.id} className="flex items-center gap-3 p-3">
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 min-w-0">
-                  <div className="text-sm text-foreground truncate">{k.name || "(unnamed)"}</div>
-                  {k.access === "read" && (
-                    <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground border border-border rounded px-1.5 py-0.5 whitespace-nowrap">
-                      read + transcripts
-                    </span>
-                  )}
-                </div>
-                <div className="text-[11px] text-muted-foreground font-mono">
-                  created {formatDate(k.created_at)}
-                  {k.last_used_at ? `, last used ${formatRelative(k.last_used_at)}` : ", never used"}
-                </div>
-              </div>
-              <button
-                onClick={() => handleRevoke(k.id)}
-                disabled={revoking === k.id}
-                className="cursor-pointer text-xs px-3 py-1.5 rounded-md border border-border hover:border-error hover:text-error disabled:opacity-60 transition-colors"
-                type="button"
-              >
-                {revoking === k.id ? "Revoking…" : "Revoke"}
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
-  );
-}
-
-function MintedKey({
-  minted,
-  onDismiss,
-}: {
-  minted: ApiKeyCreated;
-  onDismiss: () => void;
-}) {
-  const [copied, setCopied] = useState(false);
-
-  async function copy() {
-    await navigator.clipboard.writeText(minted.api_key);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
-  }
-
-  return (
-    <div className="rounded-lg border border-brand/40 bg-brand/10 p-3 space-y-2">
-      <div className="text-xs text-foreground font-semibold">
-        New key “{minted.name}” created
-      </div>
-      <div className="text-[11px] text-muted-foreground">
-        Copy it now — this is the only time the full key will be shown.
-      </div>
-      <div className="flex items-center gap-2">
-        <code className="flex-1 font-mono text-xs text-foreground bg-background border border-border rounded px-2 py-1.5 overflow-x-auto whitespace-nowrap">
-          {minted.api_key}
-        </code>
-        <button
-          onClick={copy}
-          type="button"
-          className="cursor-pointer text-xs px-3 py-1.5 rounded-md border border-border hover:border-brand hover:text-brand transition-colors"
-        >
-          {copied ? "Copied" : "Copy"}
-        </button>
-        <button
-          onClick={onDismiss}
-          type="button"
-          className="cursor-pointer text-xs text-muted-foreground hover:text-foreground px-2"
-        >
-          Dismiss
-        </button>
-      </div>
-    </div>
+    <label className="flex flex-col gap-2 px-5 py-3.5 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
+      <span className="text-[13px] font-medium text-foreground">{label}</span>
+      <input
+        type="text"
+        placeholder={placeholder}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground transition-colors focus:border-brand focus:outline-none sm:max-w-sm"
+      />
+    </label>
   );
 }
 
 function ChangePassword() {
+  const [open, setOpen] = useState(false);
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
   const [confirm, setConfirm] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
+  const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(
+    null,
+  );
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -377,7 +237,10 @@ function ChangePassword() {
       return;
     }
     if (next.length < 8) {
-      setMsg({ kind: "err", text: "New password must be at least 8 characters." });
+      setMsg({
+        kind: "err",
+        text: "New password must be at least 8 characters.",
+      });
       return;
     }
     setSubmitting(true);
@@ -390,8 +253,10 @@ function ChangePassword() {
         kind: "ok",
         text: "Password changed. All other sessions have been signed out.",
       });
+      setOpen(false);
     } catch (e) {
-      const text = e instanceof ApiError ? e.message : "Could not change password";
+      const text =
+        e instanceof ApiError ? e.message : "Could not change password";
       setMsg({ kind: "err", text });
     } finally {
       setSubmitting(false);
@@ -399,30 +264,65 @@ function ChangePassword() {
   }
 
   return (
-    <section className="rounded-2xl border border-border bg-surface p-6 space-y-4">
-      <div>
-        <h2 className="text-base font-semibold text-foreground">Change password</h2>
-        <p className="text-xs text-muted-foreground mt-0.5">
-          Changing your password signs out every other browser and CLI.
-        </p>
-      </div>
-      <form onSubmit={handleSubmit} className="space-y-3">
-        <PasswordField placeholder="Current password" value={current} onChange={setCurrent} autoComplete="current-password" />
-        <PasswordField placeholder="New password" value={next} onChange={setNext} autoComplete="new-password" />
-        <PasswordField placeholder="Confirm new password" value={confirm} onChange={setConfirm} autoComplete="new-password" />
-        {msg && (
-          <p className={`text-xs ${msg.kind === "ok" ? "text-green-500" : "text-error"}`}>
-            {msg.text}
+    <section className="overflow-hidden rounded-lg border border-border bg-surface">
+      <div className="flex items-center justify-between gap-4 px-5 py-4">
+        <div>
+          <h2 className="text-[13px] font-medium text-foreground">Password</h2>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Changing it signs out every other browser and CLI.
           </p>
-        )}
+        </div>
         <button
-          type="submit"
-          disabled={submitting || !current || !next || !confirm}
-          className="cursor-pointer bg-brand hover:bg-brand-hover disabled:opacity-60 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
+          type="button"
+          onClick={() => setOpen((value) => !value)}
+          className="cursor-pointer rounded-md border border-border px-3 py-1.5 text-[13px] font-medium text-foreground hover:bg-raised"
         >
-          {submitting ? "Saving…" : "Change password"}
+          {open ? "Cancel" : "Change password"}
         </button>
-      </form>
+      </div>
+      {open && (
+        <form
+          onSubmit={handleSubmit}
+          className="space-y-2 border-t border-border px-5 py-4"
+        >
+          <PasswordField
+            placeholder="Current password"
+            value={current}
+            onChange={setCurrent}
+            autoComplete="current-password"
+          />
+          <PasswordField
+            placeholder="New password"
+            value={next}
+            onChange={setNext}
+            autoComplete="new-password"
+          />
+          <PasswordField
+            placeholder="Confirm new password"
+            value={confirm}
+            onChange={setConfirm}
+            autoComplete="new-password"
+          />
+          <div className="flex items-center justify-between gap-3 pt-1">
+            {msg ? (
+              <p
+                className={`text-xs ${msg.kind === "ok" ? "text-green-500" : "text-error"}`}
+              >
+                {msg.text}
+              </p>
+            ) : (
+              <span />
+            )}
+            <button
+              type="submit"
+              disabled={submitting || !current || !next || !confirm}
+              className="cursor-pointer rounded-md border border-border bg-background px-3 py-1.5 text-[13px] font-medium text-foreground transition-colors hover:bg-raised disabled:opacity-60"
+            >
+              {submitting ? "Saving…" : "Save password"}
+            </button>
+          </div>
+        </form>
+      )}
     </section>
   );
 }
@@ -445,24 +345,7 @@ function PasswordField({
       value={value}
       onChange={(e) => onChange(e.target.value)}
       autoComplete={autoComplete}
-      className="w-full px-3.5 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm placeholder:text-muted-foreground focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-all"
+      className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground transition-colors focus:border-brand focus:outline-none"
     />
   );
-}
-
-function formatDate(iso: string): string {
-  const d = new Date(iso);
-  return d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
-}
-
-function formatRelative(iso: string): string {
-  const diffMs = Date.now() - new Date(iso).getTime();
-  const mins = Math.floor(diffMs / 60_000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days < 30) return `${days}d ago`;
-  return formatDate(iso);
 }

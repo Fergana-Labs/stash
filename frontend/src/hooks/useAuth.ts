@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { ApiError, clearToken, getMe, getToken, revokeStoredApiKey } from "../lib/api";
+import { clearAccountLocalState } from "../lib/account-local-state";
 import { auth0LogoutUrl, markManualAuth0Logout } from "../lib/authLogout";
 import { markSignedInBefore } from "../lib/returningUser";
 import { User } from "../lib/types";
@@ -65,6 +66,9 @@ export function useAuth() {
     // session cannot be restored by a still-valid API key — this covers the
     // legacy mc_ keys minted by old Auth0 sign-ins too.
     setUser(null);
+    // Account-scoped localStorage (open tabs, selected scope) must not leak
+    // into whoever signs in next on this browser.
+    clearAccountLocalState();
     await revokeStoredApiKey();
     // Hard navigation so module-level caches reset. We intentionally do NOT use
     // `?federated` — that would tell Auth0 to clear the upstream identity provider

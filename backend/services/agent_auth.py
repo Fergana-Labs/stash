@@ -133,7 +133,12 @@ async def delete_credential(user_id: UUID, provider: str) -> None:
     )
 
 
-async def resolve(user_id: UUID, prefer_provider: str | None = None) -> RunAuth:
+async def resolve(
+    user_id: UUID,
+    prefer_provider: str | None = None,
+    *,
+    allow_free_managed: bool = False,
+) -> RunAuth:
     """The harness + credential injection for this user's next turn.
 
     `prefer_provider` is an agent's model override: if the user has that
@@ -148,9 +153,9 @@ async def resolve(user_id: UUID, prefer_provider: str | None = None) -> RunAuth:
         cred = await _get_credential(user_id, prefer_provider)
         if cred is not None:
             return _byo_auth(cred)
-        # Preferred managed OpenRouter with no BYO key → managed GLM (Pro gate).
+        # Preferred managed OpenRouter with no BYO key → managed GLM.
         if prefer_provider == "openrouter":
-            return await _managed(user_id)
+            return await _managed(user_id, allow_free_managed)
         # The agent explicitly picked a model the user hasn't connected — fail
         # loud rather than silently running a different harness.
         raise NeedsAuth
@@ -158,12 +163,12 @@ async def resolve(user_id: UUID, prefer_provider: str | None = None) -> RunAuth:
     cred = await _get_credential(user_id)
     if cred is not None:
         return _byo_auth(cred)
-    return await _managed(user_id)
+    return await _managed(user_id, allow_free_managed)
 
 
-async def _managed(user_id: UUID) -> RunAuth:
-    """The managed agent: opencode on OpenRouter GLM, Pro only."""
-    if not await billing_service.is_pro(user_id):
+async def _managed(user_id: UUID, allow_free: bool) -> RunAuth:
+    """The managed agent: Pro everywhere, plus free curator allowance."""
+    if not allow_free and not await billing_service.is_pro(user_id):
         raise NeedsAuth
     key = settings.OPENROUTER_API_KEY
     if not key:

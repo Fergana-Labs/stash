@@ -10,6 +10,7 @@ import {
   PublicSkillSkeleton,
 } from "@/components/SkeletonStates";
 import { useAuth } from "@/hooks/useAuth";
+import { claimLocalStateForUser } from "@/lib/account-local-state";
 import { loginPathWithNext } from "@/lib/loginRedirect";
 
 // Shared chrome for the signed-in app. Hosting AppShell here (rather than
@@ -62,6 +63,11 @@ export default function AppGroupLayout({ children }: { children: ReactNode }) {
     }
     return null;
   }
+
+  // Synchronous, before the shell and its children mount: a different
+  // account's persisted tabs/scope must be gone before anything hydrates
+  // or fetches with them.
+  claimLocalStateForUser(user.id);
 
   return (
     <WorkspaceShell user={user} onLogout={logout}>

@@ -2,7 +2,6 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import ToolsPage from "./page";
 import { createMcpServer, deleteMcpServer, listMcpServers, type McpServer } from "@/lib/api";
-import { listIntegrations } from "@/lib/integrations";
 
 const router = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn() }));
 
@@ -41,13 +40,6 @@ vi.mock("@/lib/api", () => ({
   listMcpServers: vi.fn(),
   createMcpServer: vi.fn(),
   deleteMcpServer: vi.fn(),
-  // The integrations grid above the MCP registry loads these on mount.
-  listSources: vi.fn().mockResolvedValue([]),
-}));
-
-vi.mock("@/lib/integrations", () => ({
-  INTEGRATIONS_CHANGED_EVENT: "integrations-changed",
-  listIntegrations: vi.fn().mockResolvedValue({ providers: [] }),
 }));
 
 const SERVERS: McpServer[] = [
@@ -139,15 +131,6 @@ describe("ToolsPage", () => {
         command: "npx -y fs-mcp",
       })
     );
-  });
-
-  // A failed integrations load used to leave the grid on skeletons forever,
-  // so the user could never tell that "not connected" was really "unknown".
-  it("surfaces a failed integrations load instead of skeletons", async () => {
-    vi.mocked(listIntegrations).mockRejectedValueOnce(new Error("integrations are down"));
-    render(<ToolsPage />);
-
-    expect(await screen.findByText(/integrations are down/)).toBeTruthy();
   });
 
   it("removes a server", async () => {

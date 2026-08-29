@@ -40,6 +40,9 @@ COPY backend/entrypoint.sh ./entrypoint.sh
 COPY alembic.ini ./alembic.ini
 # The CLI release number clients are told about (backend/cli_release.py).
 COPY pyproject.toml ./pyproject.toml
+# The CLAUDE.md block `stash connect` appends, served to the web onboarding
+# preview (backend/routers/onboarding.py) so it can't drift from the CLI.
+COPY cli/claude_md_block.md ./cli/claude_md_block.md
 
 RUN mkdir -p /app/.secrets && \
     chmod 700 /app/.secrets && \
