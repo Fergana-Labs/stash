@@ -16,6 +16,7 @@ CONFIG_PATHS = [
     ROOT / "plugins/hermes-plugin/scripts/config.py",
     ROOT / "plugins/openclaw-plugin/scripts/config.py",
     ROOT / "plugins/opencode-plugin/scripts/config.py",
+    ROOT / "plugins/pi-plugin/scripts/config.py",
     ROOT / "stashai/plugin/assets/codex/scripts/config.py",
     ROOT / "stashai/plugin/assets/cursor/scripts/config.py",
     ROOT / "stashai/plugin/assets/opencode/scripts/config.py",

@@ -1,6 +1,7 @@
 """Tests for the self-contained Pi hook installer (`_install_pi`).
 
-Pi's hooks are native executable files that each exec ``../_run.sh <event>``;
+Pi's hooks are native executable files that each exec ``../_run.sh <handler>`` —
+the ``on_*.py`` name ``_run.sh`` resolves (e.g. user_message -> on_prompt).
 ``_run.sh`` resolves its handler from its own dir via ``TARGET=$SCRIPT_DIR/$SCRIPT.py``.
 So `_install_pi` copies the whole shipped ``scripts/`` tree onto ``~/.pi/``
 byte-for-byte (never symlinking to the repo), so the install works even after the
@@ -27,6 +28,15 @@ HOOK_EVENTS = {
     "assistant_message": "on_stop",
 }
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
+# The two shipped pi script trees (source plugin + the packaged mirror that
+# _install_pi copies). Both must satisfy the same wrapper->handler contract.
+SHIPPED_SCRIPT_TREES = [
+    REPO_ROOT / "plugins/pi-plugin/scripts",
+    REPO_ROOT / "stashai/plugin/assets/pi/scripts",
+]
+
 RUNTIME_FILES = {
     "_run.sh",
     "config.py",
@@ -44,7 +54,7 @@ def _hook_wrapper(event: str) -> str:
         "#!/usr/bin/env bash\n"
         "set -euo pipefail\n"
         'SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"\n'
-        f'exec "$SCRIPT_DIR/../_run.sh" {event} "$@"\n'
+        f'exec "$SCRIPT_DIR/../_run.sh" {HOOK_EVENTS[event]} "$@"\n'
     )
 
 
@@ -107,7 +117,7 @@ def test_fresh_install_writes_hooks_and_runtime(pi_home: Path, monkeypatch) -> N
         assert not hook.is_symlink(), f"{event} must be a real copy, not a symlink"
         body = hook.read_text()
         assert body.startswith("#!/usr/bin/env bash")
-        assert f'exec "$SCRIPT_DIR/../_run.sh" {event} "$@"' in body
+        assert f'exec "$SCRIPT_DIR/../_run.sh" {HOOK_EVENTS[event]} "$@"' in body
 
     run_sh = pi / "_run.sh"
     assert run_sh.is_file()
@@ -222,3 +232,35 @@ def test_replaces_legacy_symlink_with_real_copy(pi_home: Path, monkeypatch) -> N
     # None of the installed files may leak the old checkout/repo path.
     repo_blob = str(virtual_repo)
     assert all(repo_blob not in p.read_text(errors="replace") for p in hooks_dir.iterdir())
+
+
+@pytest.mark.parametrize(
+    "scripts_dir", SHIPPED_SCRIPT_TREES, ids=lambda p: str(p.relative_to(REPO_ROOT))
+)
+def test_shipped_wrappers_exec_handlers_that_resolve(scripts_dir: Path) -> None:
+    """Read the REAL shipped payload and prove every hook wrapper execs
+    ``_run.sh`` with a handler name whose ``.py`` actually ships beside
+    ``_run.sh``.
+
+    ``_run.sh`` resolves ``TARGET=$SCRIPT_DIR/$SCRIPT.py`` from its first
+    argument, so a wrapper that passes the pi *event* name (``user_message``)
+    instead of the handler (``on_prompt``) dies on every pi event with exit 2
+    (``can't open file .../user_message.py: No such file or directory``) —
+    a permanently dead install that the fixture-driven tests above cannot see.
+    This guard reads both payload trees independently so a wrapper edit to the
+    event name turns CI red instead of shipping it.
+    """
+    assert 'TARGET="$SCRIPT_DIR/$SCRIPT.py"' in (scripts_dir / "_run.sh").read_text()
+
+    hooks_dir = scripts_dir / "hooks"
+    assert sorted(p.name for p in hooks_dir.iterdir()) == sorted(HOOK_EVENTS)
+
+    for event, handler in HOOK_EVENTS.items():
+        body = (hooks_dir / event).read_text()
+        assert f'exec "$SCRIPT_DIR/../_run.sh" {handler} "$@"' in body, (
+            f"{scripts_dir.relative_to(REPO_ROOT)}/hooks/{event} must exec "
+            f"_run.sh {handler} (the name _run.sh resolves), got: {body!r}"
+        )
+        assert (scripts_dir / f"{handler}.py").is_file(), (
+            f"{handler}.py must ship next to _run.sh for {event}'s wrapper to resolve"
+        )

@@ -30,7 +30,7 @@ def _load_fixture(plugin: str, name: str) -> dict:
     return json.loads((FIXTURES / plugin / f"{name}.json").read_text())
 
 
-PLUGINS = ["claude", "cursor", "gemini", "codex", "opencode", "openclaw", "hermes"]
+PLUGINS = ["claude", "cursor", "gemini", "codex", "opencode", "openclaw", "hermes", "pi"]
 
 # Openclaw's gateway has no tool-call visibility (tool_use comes from the
 # delegated coding agent's own plugin), so its adapter intentionally omits
@@ -78,7 +78,9 @@ def test_tool_use(plugin):
     assert isinstance(event.tool_input, dict)
 
 
-@pytest.mark.parametrize("plugin", ["claude", "gemini", "codex", "opencode", "openclaw", "hermes"])
+@pytest.mark.parametrize(
+    "plugin", ["claude", "gemini", "codex", "opencode", "openclaw", "hermes", "pi"]
+)
 def test_stop(plugin):
     # Cursor intentionally has no stop hook — afterAgentResponse + sessionEnd
     # cover what used to be Cursor's `stop`. See cursor-plugin/hooks.json.
@@ -249,9 +251,9 @@ def test_tool_name_normalization():
     for plugin, raw, expected in cases:
         adapt = _load_adapt(plugin)
         event = adapt.adapt_tool_use({"tool_name": raw, "session_id": "x"})
-        assert (
-            event.tool_name == expected
-        ), f"{plugin}: {raw!r} -> {event.tool_name!r}, expected {expected!r}"
+        assert event.tool_name == expected, (
+            f"{plugin}: {raw!r} -> {event.tool_name!r}, expected {expected!r}"
+        )
 
 
 def test_client_facet_flows_through_stream_paths():
@@ -306,9 +308,9 @@ def test_client_facet_flows_through_stream_paths():
         stream_session_end(c, cfg, state, HookEvent(kind="session_end"))
 
         for body in calls:
-            assert (
-                body.get("metadata", {}).get("client") == client_name
-            ), f"{client_name}: missing client facet in {body}"
+            assert body.get("metadata", {}).get("client") == client_name, (
+                f"{client_name}: missing client facet in {body}"
+            )
 
 
 def test_model_metadata_flows_through_stream_paths():
