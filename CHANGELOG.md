@@ -106,6 +106,11 @@ everything before it is captured in git history (`git log`), not here.
   the workspace's behalf. Every agent of that workspace, the nightly wiki
   curator included, runs on the connected endpoint; the operator's personal
   model settings stay untouched.
+- Pi is now a supported agent: `stash setup` installs the Pi hook runtime
+  into `~/.pi` when a `pi` CLI (or `~/.pi`) is present, and `stash status`
+  and `stash settings --json` report Pi upload health like every other
+  agent. Pi sessions stream through the shipped `pi-plugin` payload
+  (session start/stop, prompts, tool uses) once `stash signin` is done.
 
 ## v0
 

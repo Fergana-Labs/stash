@@ -36,6 +36,10 @@ _AGENT_EVENTS = {
     "hermes": ("on_session_start", "on_prompt", "on_tool_use", "on_stop", "on_session_end"),
     "openclaw": ("on_session_start", "on_prompt", "on_stop", "on_session_end"),
     "opencode": ("on_session_start", "on_prompt", "on_tool_use", "on_session_end"),
+    # Pi is not dispatched by `stash hook run` (no _HOOK_EVENTS row — pi reads
+    # executable files from ~/.pi/hooks/ natively), but its handlers are the
+    # same shipped scripts, so they must stay API-conformant: execute them here.
+    "pi": ("on_session_start", "on_prompt", "on_tool_use", "on_stop", "on_session_end"),
 }
 
 # Each agent's DATA_DIR env var (see each plugin's scripts/config.py).
@@ -47,6 +51,7 @@ _DATA_DIR_ENV = {
     "hermes": "STASH_HERMES_DATA",
     "openclaw": "STASH_OPENCLAW_DATA",
     "opencode": "STASH_OPENCODE_DATA",
+    "pi": "STASH_PI_DATA",
 }
 
 _CASES = [(agent, event) for agent, events in _AGENT_EVENTS.items() for event in events]
