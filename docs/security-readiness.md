@@ -84,7 +84,7 @@ The CI workflow includes checks that fail when:
 - Backend Python requirements have known vulnerabilities.
 - The CLI Python package has known vulnerabilities.
 - The SDK Python package has known vulnerabilities.
-- Frontend, www, or collab npm lockfiles contain moderate-or-higher advisories.
+- Frontend and www npm lockfiles contain moderate-or-higher advisories.
 - Backend tests, plugin tests, frontend tests, backend lint, and frontend lint fail.
 
 Run these checks locally before changing dependency versions:
@@ -95,7 +95,6 @@ python -m pip_audit .
 python -m pip_audit sdk
 (cd frontend && npm audit --audit-level=moderate --package-lock-only)
 (cd www && npm audit --audit-level=moderate --package-lock-only)
-(cd collab && npm audit --audit-level=moderate --package-lock-only)
 ```
 
 ## Production Evidence Required Before A High-Trust Customer Demo
