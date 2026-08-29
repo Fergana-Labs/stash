@@ -8,6 +8,7 @@ session viewer can ship a Share button without involving the CLI.
 """
 
 import json
+from typing import Literal
 from urllib.parse import quote
 from uuid import UUID
 
@@ -69,6 +70,7 @@ def _session_response(row: dict, title: str | None = None) -> dict:
         "started_at": row.get("started_at"),
         "finished_at": row.get("finished_at"),
         "created_by": str(row["created_by"]) if row.get("created_by") else None,
+        "rating": row.get("rating"),
     }
 
 
@@ -142,7 +144,7 @@ async def list_my_sessions(
         f"""
         WITH page AS (
           SELECT s.id, s.owner_user_id, s.session_id, s.agent_name, s.created_by,
-                 s.session_folder_id, s.started_at, s.last_event_at
+                 s.session_folder_id, s.started_at, s.last_event_at, s.rating
           FROM sessions s
           WHERE {" AND ".join(where)}
           ORDER BY s.last_event_at DESC, s.session_id ASC, s.owner_user_id ASC
@@ -163,7 +165,8 @@ async def list_my_sessions(
           title.title_source,
           counts.event_count,
           p.started_at,
-          p.last_event_at
+          p.last_event_at,
+          p.rating
         FROM page p
         LEFT JOIN users owner ON owner.id = p.owner_user_id
         LEFT JOIN users author ON author.id = p.created_by
@@ -356,6 +359,10 @@ class SessionTitleRequest(BaseModel):
     title: str = Field(..., min_length=1, max_length=200)
 
 
+class SessionRatingRequest(BaseModel):
+    rating: Literal["good", "bad"] | None
+
+
 @router.patch("/me/sessions/title")
 async def rename_my_session(
     session_id: str,
@@ -386,6 +393,36 @@ async def rename_my_session(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
     return {"title": title}
+
+
+@router.patch("/me/sessions/rating")
+async def rate_my_session(
+    session_id: str,
+    body: SessionRatingRequest,
+    current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
+):
+    """The user's good/bad verdict on a session. Same write gate as renaming."""
+    owner_user_id = scope_user_id
+    if not await memory_service.can_read_session(owner_user_id, session_id, current_user["id"]):
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    session = await session_service.get_session(owner_user_id, session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    can_write = await permission_service.check_access(
+        "session",
+        session["id"],
+        current_user["id"],
+        owner_user_id=owner_user_id,
+        require="write",
+    )
+    if not can_write:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    await session_service.set_rating(owner_user_id, session_id, body.rating)
+    return {"rating": body.rating}
 
 
 async def _check_session_write(

@@ -1,22 +1,49 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { SkeletonBlock } from "@/components/SkeletonStates";
-import { getSessionsAnalytics, type SessionsAnalytics } from "@/lib/api";
+import CuratorLog from "@/components/memory/CuratorLog";
+import WikiGraph from "@/components/memory/WikiGraph";
+import EmbeddingSpaceExplorer from "@/components/viz/EmbeddingSpaceExplorer";
+import {
+  getEmbeddingProjection,
+  getMemoryGraph,
+  getSessionsAnalytics,
+  type SessionsAnalytics,
+  type WikiGraph as WikiGraphData,
+} from "@/lib/api";
+import type { EmbeddingProjection } from "@/lib/types";
 
 /** Usage — an honest dashboard over the sessions the user can
  *  read (same scoping as the Sessions list): totals, sessions per day for the
- *  last 60 days, and breakdowns by agent and by person. Plain CSS bars, no
- *  chart library. */
+ *  last 60 days, breakdowns by agent and by person, then the theme
+ *  visualizations (session embedding map, memory wiki graph) and the
+ *  curator log. Plain CSS bars for the stats, no chart library. Each
+ *  visualization fetches independently so one slow endpoint can't hold the
+ *  page. */
 export default function SessionAnalyticsPage() {
   const [data, setData] = useState<SessionsAnalytics | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [graph, setGraph] = useState<WikiGraphData | null>(null);
+  const [graphLoaded, setGraphLoaded] = useState(false);
+  const [graphError, setGraphError] = useState<string | null>(null);
+  const [projection, setProjection] = useState<EmbeddingProjection | null>(null);
+  const [projectionLoaded, setProjectionLoaded] = useState(false);
+  const [projectionError, setProjectionError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     getSessionsAnalytics()
       .then((d) => { if (!cancelled) setData(d); })
       .catch((e) => { if (!cancelled) setError(e instanceof Error ? e.message : String(e)); });
+    getMemoryGraph()
+      .then((g) => { if (!cancelled) setGraph(g); })
+      .catch((reason) => { if (!cancelled) setGraphError(String(reason)); })
+      .finally(() => { if (!cancelled) setGraphLoaded(true); });
+    getEmbeddingProjection(2000, "sessions")
+      .then((p) => { if (!cancelled) setProjection(p); })
+      .catch((reason) => { if (!cancelled) setProjectionError(String(reason)); })
+      .finally(() => { if (!cancelled) setProjectionLoaded(true); });
     return () => { cancelled = true; };
   }, []);
 
@@ -37,7 +64,7 @@ export default function SessionAnalyticsPage() {
           Usage
         </h1>
         <p className="mt-1 text-[12.5px] text-muted-foreground">
-          View stats about your session traces uploaded to Stash.
+          Stats and themes across the session traces uploaded to Stash.
         </p>
 
         <div className="mt-5 grid grid-cols-2 gap-4 sm:max-w-xs">
@@ -64,6 +91,73 @@ export default function SessionAnalyticsPage() {
             emptyText="No sessions yet."
           />
         </div>
+
+        <section className="mt-5">
+          <div className="sys-label mb-1.5">Session themes</div>
+          <p className="mb-1.5 text-[12px] text-foreground/75">
+            Each point is one session; nearby points began with similar user intent.
+          </p>
+          <div className="card-soft p-3">
+            {!projectionLoaded ? (
+              <SkeletonBlock className="h-[420px] w-full" />
+            ) : projectionError ? (
+              <VisualizationError message={projectionError} />
+            ) : projection && projection.points.length > 0 ? (
+              <div className="h-[420px]">
+                <EmbeddingSpaceExplorer data={projection} />
+              </div>
+            ) : (
+              <EmptyState>No session prompts have been embedded yet.</EmptyState>
+            )}
+          </div>
+        </section>
+
+        <section className="mt-5">
+          <div className="sys-label mb-1.5">Memory wiki</div>
+          <p className="mb-1.5 text-[12px] text-foreground/75">
+            The curator&apos;s context graph — your wiki pages and the links between them.
+            Click a node to open its page.
+          </p>
+          <div className="card-soft p-3">
+            {!graphLoaded ? (
+              <SkeletonBlock className="h-[560px] w-full" />
+            ) : graphError ? (
+              <VisualizationError message={graphError} />
+            ) : graph && graph.nodes.length > 0 ? (
+              <WikiGraph data={graph} />
+            ) : (
+              <EmptyState>
+                No wiki pages yet. The Memory curator&apos;s nightly run compiles your
+                history into a context graph of linked pages.
+              </EmptyState>
+            )}
+          </div>
+        </section>
+
+        <div className="mt-5">
+          <CuratorLog />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EmptyState({ children }: { children: ReactNode }) {
+  return (
+    <div className="flex h-[180px] items-center justify-center px-2 text-center text-[12.5px] text-foreground/75">
+      {children}
+    </div>
+  );
+}
+
+function VisualizationError({ message }: { message: string }) {
+  return (
+    <div className="flex min-h-40 items-center justify-center px-6 text-center">
+      <div>
+        <p className="text-[12.5px] font-medium text-destructive">
+          Couldn&apos;t load this visualization.
+        </p>
+        <p className="mt-1 max-w-xl text-[11px] text-muted-foreground">{message}</p>
       </div>
     </div>
   );

@@ -55,6 +55,7 @@ def calls(monkeypatch):
         "consumed": 0,
     }
     monkeypatch.setattr(main, "_detected_agents", lambda: ["claude", "codex"])
+    monkeypatch.setattr(main, "_onboarding_import_skills", lambda: None)
     monkeypatch.setattr(
         main, "save_recorded_paths", lambda p: calls.__setitem__("recorded_paths", p)
     )

@@ -39,7 +39,7 @@ export default function DataAndPrivacy() {
   }, [scope?.scope_user_id]);
 
   return (
-    <section className="mt-5 rounded-2xl border border-border bg-surface p-6">
+    <section className="rounded-2xl border border-border bg-surface p-6">
       <div>
         <h2 className="font-display text-[16px] font-semibold text-foreground">
           Your Stash installations

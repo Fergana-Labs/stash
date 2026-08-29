@@ -22,8 +22,10 @@ from ..services import (
     permission_service,
     security_audit_service,
     shared_skill_service,
+    skill_request_service,
     skill_service,
     source_service,
+    suggested_skills,
     user_scope_service,
 )
 
@@ -50,6 +52,10 @@ class SkillAgentEnabledRequest(BaseModel):
     enabled: bool
 
 
+class SkillRequestRequest(BaseModel):
+    request: str = Field(..., min_length=1, max_length=skill_request_service.MAX_REQUEST_LENGTH)
+
+
 @me_router.post("/skills/new", status_code=201)
 async def create_skill(
     req: SkillCreateRequest,
@@ -65,8 +71,74 @@ async def create_skill(
     if not description:
         raise HTTPException(status_code=400, detail="description must not be blank")
     folder = await files_tree_service.create_skill(
-        owner_user_id, current_user["id"], name, description
+        owner_user_id, current_user["id"], name, description, description
     )
+    return {"folder_id": str(folder["id"]), "name": folder["name"]}
+
+
+@me_router.get("/skills/suggestions")
+async def list_suggested_skills(
+    current_user: dict = Depends(get_current_user),
+    owner_user_id: UUID = Depends(get_scope),
+):
+    """The bootstrap catalog, each entry flagged if a Skill of that name
+    already exists in this scope."""
+    existing = await skill_service.list_skills(
+        owner_user_id, current_user["id"], include_disabled=True
+    )
+    have = {skill["name"].casefold() for skill in existing}
+    return {
+        "suggestions": [
+            {
+                "key": entry["key"],
+                "name": entry["name"],
+                "description": entry["description"],
+                "installed": entry["name"].casefold() in have,
+            }
+            for entry in suggested_skills.catalog()
+        ]
+    }
+
+
+@me_router.post("/skills/suggestions/{key}", status_code=201)
+async def install_suggested_skill(
+    key: str,
+    current_user: dict = Depends(get_current_user),
+    owner_user_id: UUID = Depends(get_scope),
+):
+    if not await user_scope_service.can_write(owner_user_id, current_user["id"]):
+        raise HTTPException(status_code=403, detail="Only the owner can add Skills")
+    try:
+        entry = suggested_skills.find(key)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Unknown suggested Skill")
+    folder = await files_tree_service.create_skill(
+        owner_user_id,
+        current_user["id"],
+        entry["name"],
+        entry["description"],
+        entry["instructions"],
+    )
+    return {"folder_id": str(folder["id"]), "name": folder["name"]}
+
+
+@me_router.post("/skills/request", status_code=201)
+async def request_skill(
+    req: SkillRequestRequest,
+    current_user: dict = Depends(get_current_user),
+    owner_user_id: UUID = Depends(get_scope),
+):
+    """Draft a Skill from a plain-language request and create it."""
+    if not await user_scope_service.can_write(owner_user_id, current_user["id"]):
+        raise HTTPException(status_code=403, detail="Only the owner can add Skills")
+    if not req.request.strip():
+        raise HTTPException(status_code=400, detail="Describe the Skill you want")
+    try:
+        folder = await skill_request_service.create_requested_skill(
+            owner_user_id, current_user["id"], req.request
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=502, detail=str(error))
     return {"folder_id": str(folder["id"]), "name": folder["name"]}
 
 

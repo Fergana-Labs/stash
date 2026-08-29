@@ -200,10 +200,10 @@ SAMPLE_SESSIONS = [
         "files_touched": ["docs/architecture.md", "product/vision.md"],
         "events": [
             ("prompt", "I need a production-safe rollout plan for this UI change."),
-            ("assistant", "I drafted a staged rollout with canary and rollback points."),
+            ("assistant_message", "I drafted a staged rollout with canary and rollback points."),
             ("tool_call", "search_web"),
             (
-                "assistant",
+                "assistant_message",
                 "I found three comparable strategies and picked canary + manual smoke checks.",
             ),
         ],
@@ -217,8 +217,8 @@ SAMPLE_SESSIONS = [
         "files_touched": ["frontend/src/AppSidebar.tsx", "frontend/src/styles.css"],
         "events": [
             ("prompt", "Please implement a cleaner sidebar with fewer duplicates."),
-            ("assistant", "I removed duplicate nav labels and adjusted defaults."),
-            ("assistant", "I added grouping labels for sessions, files, and skills."),
+            ("assistant_message", "I removed duplicate nav labels and adjusted defaults."),
+            ("assistant_message", "I added grouping labels for sessions, files, and skills."),
             ("tool_call", "git_commit"),
         ],
     },
@@ -231,9 +231,9 @@ SAMPLE_SESSIONS = [
         "files_touched": ["backend/routers/files.py", "backend/services/files_tree_service.py"],
         "events": [
             ("prompt", "Can we improve local file ingest reliability?"),
-            ("assistant", "I reviewed upload flow and added better status defaults."),
+            ("assistant_message", "I reviewed upload flow and added better status defaults."),
             (
-                "assistant",
+                "assistant_message",
                 "I confirmed file rows remain queryable even before extraction completes.",
             ),
         ],
@@ -250,9 +250,9 @@ SAMPLE_SESSIONS = [
         ],
         "events": [
             ("prompt", "We need stable session list rendering with minimal payload."),
-            ("assistant", "I aligned list query order by most recent activity."),
-            ("assistant", "I verified count and size calculations still render quickly."),
-            ("assistant", "I added title fallback when no final answer exists."),
+            ("assistant_message", "I aligned list query order by most recent activity."),
+            ("assistant_message", "I verified count and size calculations still render quickly."),
+            ("assistant_message", "I added title fallback when no final answer exists."),
         ],
     },
     {
@@ -267,8 +267,8 @@ SAMPLE_SESSIONS = [
         ],
         "events": [
             ("prompt", "Can we test scope/private/public access rules for skills?"),
-            ("assistant", "I mapped access checks and identified partition collisions."),
-            ("assistant", "I confirmed private bundles reject cross-level items."),
+            ("assistant_message", "I mapped access checks and identified partition collisions."),
+            ("assistant_message", "I confirmed private bundles reject cross-level items."),
             ("tool_call", "policy_test"),
         ],
     },
@@ -281,8 +281,8 @@ SAMPLE_SESSIONS = [
         "files_touched": ["README.md", "docs/notes.md", "notes/session-ops.md"],
         "events": [
             ("prompt", "Write practical onboarding notes for this project."),
-            ("assistant", "I documented common local tasks and gotchas."),
-            ("assistant", "I added a quick start path for seeded sample data."),
+            ("assistant_message", "I documented common local tasks and gotchas."),
+            ("assistant_message", "I added a quick start path for seeded sample data."),
         ],
     },
     {
@@ -297,9 +297,12 @@ SAMPLE_SESSIONS = [
         ],
         "events": [
             ("prompt", "Any index changes needed for history session queries?"),
-            ("assistant", "I validated current indexes and query shape with sessions join."),
-            ("assistant", "I highlighted the key path as owner+session_id group by."),
-            ("assistant", "I kept results bounded but complete for overview endpoints."),
+            (
+                "assistant_message",
+                "I validated current indexes and query shape with sessions join.",
+            ),
+            ("assistant_message", "I highlighted the key path as owner+session_id group by."),
+            ("assistant_message", "I kept results bounded but complete for overview endpoints."),
         ],
     },
     {
@@ -311,8 +314,8 @@ SAMPLE_SESSIONS = [
         "files_touched": ["ops/checks.md", "ops/incident-template.md"],
         "events": [
             ("prompt", "Draft incident response playbook for a failed uploader."),
-            ("assistant", "I captured escalation tiers and ownership boundaries."),
-            ("assistant", "I added rollback checks to reduce MTTR."),
+            ("assistant_message", "I captured escalation tiers and ownership boundaries."),
+            ("assistant_message", "I added rollback checks to reduce MTTR."),
         ],
     },
     {
@@ -327,8 +330,8 @@ SAMPLE_SESSIONS = [
         ],
         "events": [
             ("prompt", "What are the riskiest regressions in this area?"),
-            ("assistant", "I added checks for session list shape and sidebar items."),
-            ("assistant", "I included skills edge cases for private/scope/public mix."),
+            ("assistant_message", "I added checks for session list shape and sidebar items."),
+            ("assistant_message", "I included skills edge cases for private/scope/public mix."),
         ],
     },
     {
@@ -340,8 +343,8 @@ SAMPLE_SESSIONS = [
         "files_touched": ["product/feedback.md", "docs/roadmap.md"],
         "events": [
             ("prompt", "Summarize recurring feedback from internal users."),
-            ("assistant", "I grouped around navigation clarity and data discoverability."),
-            ("assistant", "I prioritized three follow-up experiments."),
+            ("assistant_message", "I grouped around navigation clarity and data discoverability."),
+            ("assistant_message", "I prioritized three follow-up experiments."),
         ],
     },
     {
@@ -353,8 +356,11 @@ SAMPLE_SESSIONS = [
         "files_touched": ["ops/oncall.md", "ops/status-template.md"],
         "events": [
             ("prompt", "Draft a standard status update format for on-call shifts."),
-            ("assistant", "I proposed a concise update template with risks and next actions."),
-            ("assistant", "I included checkboxes for validation and unresolved items."),
+            (
+                "assistant_message",
+                "I proposed a concise update template with risks and next actions.",
+            ),
+            ("assistant_message", "I included checkboxes for validation and unresolved items."),
         ],
     },
     {
@@ -369,8 +375,8 @@ SAMPLE_SESSIONS = [
         ],
         "events": [
             ("prompt", "Create a release triage list with top three blockers."),
-            ("assistant", "I identified ownership, impact, and fallback plans."),
-            ("assistant", "I added follow-up actions by priority for each blocker."),
+            ("assistant_message", "I identified ownership, impact, and fallback plans."),
+            ("assistant_message", "I added follow-up actions by priority for each blocker."),
         ],
     },
 ]

@@ -1354,13 +1354,18 @@ async def _create_folder_unique(
 
 
 async def create_skill(
-    owner_user_id: UUID, created_by: UUID, base_name: str, description: str
+    owner_user_id: UUID,
+    created_by: UUID,
+    base_name: str,
+    description: str,
+    instructions: str,
 ) -> dict:
     """Create a skill: a root folder plus its SKILL.md, in one server-side call.
     The folder name is uniquified (' (2)', ' (3)', …) so creation never 409s —
     a plain root folder can hold the wanted name without being visible on the
     Skills surface, and the hard-coded 'New skill' default made that a
-    guaranteed collision on the second create."""
+    guaranteed collision on the second create. `instructions` is the SKILL.md
+    body below the frontmatter."""
     folder = await _create_folder_unique(
         owner_user_id,
         base_name,
@@ -1368,7 +1373,7 @@ async def create_skill(
         None,
         max_length=skill_service.MAX_SKILL_NAME_LENGTH,
     )
-    skill_md = skill_service.skill_md_template(folder["name"], description)
+    skill_md = skill_service.skill_md(folder["name"], description, instructions)
     skill_service.validate_skill_md(skill_md)
     await create_page(
         owner_user_id,

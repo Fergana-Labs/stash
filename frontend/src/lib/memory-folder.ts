@@ -3,7 +3,7 @@ import type { FolderBreadcrumb } from "@/lib/api";
 export interface SectionCrumb {
   label: string;
   href: string;
-  area?: "memory" | "files" | "skills";
+  area?: "memory" | "skills";
 }
 
 export function sectionCrumbs(chain: FolderBreadcrumb[]): SectionCrumb[] {
@@ -26,8 +26,5 @@ export function sectionCrumbs(chain: FolderBreadcrumb[]): SectionCrumb[] {
     ];
   }
 
-  return [
-    { label: "Files", href: "/files", area: "files" },
-    ...chain.map((b) => ({ label: b.name, href: `/files?folder=${b.id}` })),
-  ];
+  return chain.map((b) => ({ label: b.name, href: `/folders/${b.id}` }));
 }

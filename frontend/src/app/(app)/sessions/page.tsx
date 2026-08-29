@@ -678,6 +678,7 @@ function SessionTableRow({
       <div className="min-w-0">
         <div className="flex min-w-0 items-center gap-2">
           <div className="min-w-0 flex-1 truncate font-medium text-foreground">{sessionTitle(session)}</div>
+          {session.rating && <RatingBadge rating={session.rating} />}
         </div>
         <div className="mt-0.5 truncate text-[11px] text-muted-foreground md:hidden">
           {[
@@ -739,6 +740,22 @@ function SessionTableRow({
         <PinIcon className="text-[15px]" />
       </span>
     </Link>
+  );
+}
+
+function RatingBadge({ rating }: { rating: "good" | "bad" }) {
+  return (
+    <span
+      title={rating === "good" ? "Rated good" : "Rated bad"}
+      className={
+        "inline-flex shrink-0 items-center rounded px-1.5 py-0.5 text-[10.5px] font-medium " +
+        (rating === "good"
+          ? "bg-emerald-500/10 text-emerald-700"
+          : "bg-rose-500/10 text-rose-700")
+      }
+    >
+      {rating === "good" ? "Good" : "Bad"}
+    </span>
   );
 }
 

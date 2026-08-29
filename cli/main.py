@@ -947,7 +947,7 @@ def _web_app_url() -> str:
     if api.startswith("https://api."):
         return api.replace("https://api.", "https://app.", 1)
     if "localhost" in api or "127.0.0.1" in api:
-        return "http://localhost:3000"
+        return "http://localhost:3457"
     return api
 
 
@@ -2215,6 +2215,120 @@ def _sync_installed(c, root: Path, entry: dict, fetch_bytes) -> tuple[list[str],
         skills[target.name] = {**rec, "remote_hash": remote_hash}
         updated.append(target.name)
     return updated, notes
+
+
+# Where coding agents keep the user's own skills. Codex, Gemini, and OpenCode
+# all read the cross-agent ~/.agents/skills; Claude Code has its own. Cursor is
+# project-only (.cursor/skills) and has no global location to scan.
+_LOCAL_SKILL_ROOTS = (
+    "~/.claude/skills",
+    "~/.agents/skills",
+    "~/.openclaw/skills",
+    "~/.hermes/skills",
+)
+
+
+def _discover_local_skills() -> dict[str, tuple[Path, Path]]:
+    """Every local skill dir by name, with the root it lives in. When two
+    roots hold the same name the first root in _LOCAL_SKILL_ROOTS wins."""
+    found: dict[str, tuple[Path, Path]] = {}
+    for root_str in _LOCAL_SKILL_ROOTS:
+        root = Path(root_str).expanduser()
+        for name, skill_dir in _local_skill_dirs(root).items():
+            if name not in found:
+                found[name] = (root, skill_dir)
+    return found
+
+
+def _import_local_skills(c, found: dict[str, tuple[Path, Path]], fetch_bytes) -> dict:
+    """Push each local skill that Stash does not already have, then record it
+    in that root's sync state so the next `stash skills sync` treats the two
+    copies as in step instead of flagging a never-synced conflict.
+
+    Returns {"imported": [...], "skipped": [...], "failed": [...]}, where a
+    skipped entry names a skill Stash already holds and a failed one carries
+    the reason."""
+    remote_names = {s["name"].casefold() for s in c.list_skills()}
+    summary: dict = {"imported": [], "skipped": [], "failed": []}
+    state_by_root: dict[Path, dict] = {}
+
+    for name, (root, skill_dir) in sorted(found.items()):
+        if name.casefold() in remote_names:
+            summary["skipped"].append(name)
+            continue
+        try:
+            _validate_skill_markdown((skill_dir / "SKILL.md").read_text())
+            folder_id = c.create_folder(name)["id"]
+            c.replace_skill_contents(folder_id, _collect_local_files(skill_dir))
+            detail = c.get_skill_contents(folder_id)
+        except (StashError, ValueError) as e:
+            reason = e.detail if isinstance(e, StashError) else str(e)
+            summary["failed"].append(f"{name} ({reason})")
+            continue
+        if root not in state_by_root:
+            state_path = _sync_state_path(root)
+            state_by_root[root] = json.loads(state_path.read_text()) if state_path.exists() else {}
+        state_by_root[root][name] = {
+            "folder_id": folder_id,
+            "local_hash": _hash_local_skill(skill_dir),
+            "remote_hash": _hash_remote_contents(detail["contents"]),
+        }
+        summary["imported"].append(name)
+
+    for root, state in state_by_root.items():
+        state_path = _sync_state_path(root)
+        state_path.parent.mkdir(parents=True, exist_ok=True)
+        state_path.write_text(json.dumps(state, indent=2))
+    return summary
+
+
+def _print_skill_import_summary(summary: dict) -> None:
+    for name in summary["imported"]:
+        console.print(f"  [green]✓[/green] Imported skill {name}")
+    for name in summary["skipped"]:
+        console.print(f"  [dim]– {name} is already in your Stash[/dim]")
+    for line in summary["failed"]:
+        console.print(f"  [yellow]! Could not import {line}[/yellow]")
+
+
+def _onboarding_import_skills() -> None:
+    """Bring the skills a new user already has into Stash, so the Skills
+    page shows what they brought alongside what Stash creates."""
+    found = _discover_local_skills()
+    if not found:
+        return
+    roots = sorted({str(root) for root, _ in found.values()})
+    console.print(
+        f"\n[bold]Importing {len(found)} local skill{'s' if len(found) != 1 else ''}[/bold] "
+        f"from {', '.join(roots)}"
+    )
+    with _client(auto=True) as c:
+        try:
+            summary = _import_local_skills(c, found, _fetch_bytes)
+        except StashError as e:
+            _err(e)
+    _print_skill_import_summary(summary)
+
+
+@skills_app.command("import")
+def skills_import(
+    as_json: bool = typer.Option(False, "--json"),
+):
+    """Import every local skill (~/.claude/skills, ~/.agents/skills, …) that
+    Stash does not already have. Skills already in Stash are left alone."""
+    found = _discover_local_skills()
+    with _client() as c:
+        try:
+            summary = _import_local_skills(c, found, _fetch_bytes)
+        except StashError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(summary)
+        return
+    if not found:
+        console.print("No local skills found.")
+        return
+    _print_skill_import_summary(summary)
 
 
 @skills_app.command("sync")
@@ -4993,6 +5107,9 @@ def _run_setup_wizard() -> None:
     else:
         console.print("  [dim]Run stash connect from any project folder later.[/dim]")
 
+    # --- Bring in the skills the user already has ---
+    _onboarding_import_skills()
+
     # --- Import historical conversations ---
     _onboarding_import_history(detected)
 
@@ -5048,6 +5165,8 @@ def _apply_web_onboarding(prefs: dict, cfg: dict) -> None:
         _auto_connect_repo(repo_root, cfg)
     else:
         console.print("  [green]✓[/green] Leaving CLAUDE.md untouched")
+
+    _onboarding_import_skills()
 
     if prefs["import_history"]:
         conversations = _conversations_to_import(detected or None)[:ONBOARDING_HISTORY_LIMIT]
@@ -5167,6 +5286,8 @@ def _run_setup_headless(
         _auto_connect_repo(_git_toplevel() or Path.cwd(), cfg)
     else:
         console.print("  [green]✓[/green] Folder context skipped")
+
+    _onboarding_import_skills()
 
     if import_history:
         conversations = _conversations_to_import(selected)

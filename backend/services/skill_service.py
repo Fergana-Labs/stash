@@ -37,9 +37,13 @@ FRONTMATTER_SCAN_BYTES = 8192
 
 
 def skill_md_template(name: str, description: str) -> str:
+    return skill_md(name, description, description)
+
+
+def skill_md(name: str, description: str, instructions: str) -> str:
     return (
         f"---\nname: {json.dumps(name)}\ndescription: {json.dumps(description)}\n---\n\n"
-        f"# {name}\n\n{description}\n"
+        f"# {name}\n\n{instructions.strip()}\n"
     )
 
 

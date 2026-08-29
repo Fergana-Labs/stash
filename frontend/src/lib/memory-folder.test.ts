@@ -2,13 +2,16 @@ import { describe, expect, it } from "vitest";
 import { sectionCrumbs } from "./memory-folder";
 
 describe("sectionCrumbs", () => {
-  it("roots uploaded content at Files", () => {
-    expect(sectionCrumbs([])).toEqual([
-      { label: "Files", href: "/files", area: "files" },
-    ]);
+  it("walks plain uploaded folders without a section root", () => {
+    expect(sectionCrumbs([])).toEqual([]);
+    expect(
+      sectionCrumbs([
+        { id: "imports", name: "Imports", is_skill: false, is_memory: false },
+      ]),
+    ).toEqual([{ label: "Imports", href: "/folders/imports" }]);
   });
 
-  it("roots curator content at Memory instead of Files", () => {
+  it("roots curator content at Memory", () => {
     expect(
       sectionCrumbs([
         { id: "memory", name: "Memory", is_skill: false, is_memory: true },

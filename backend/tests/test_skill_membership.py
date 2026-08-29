@@ -65,7 +65,11 @@ async def test_convert_verbs_are_the_only_way_membership_changes(scope, _db_pool
 @pytest.mark.asyncio
 async def test_deleting_or_emptying_skill_md_is_refused(scope, _db_pool):
     folder = await files_tree_service.create_skill(
-        scope, scope, "Brake Shoes", "Use this skill to service brake shoes."
+        scope,
+        scope,
+        "Brake Shoes",
+        "Use this skill to service brake shoes.",
+        "Follow this skill's steps.",
     )
     page_id = await _db_pool.fetchval(
         "SELECT id FROM pages WHERE folder_id = $1 AND name = 'SKILL.md'", folder["id"]
@@ -289,7 +293,7 @@ async def test_agent_read_skill_fails_loudly_if_storage_is_corrupt(scope, _db_po
     from backend.services import agent_runtime
 
     folder = await files_tree_service.create_skill(
-        scope, scope, "Draft skill", "Use when testing draft skills."
+        scope, scope, "Draft skill", "Use when testing draft skills.", "Follow this skill's steps."
     )
     await _db_pool.execute(
         "UPDATE pages SET deleted_at = now() WHERE folder_id = $1 AND name = 'SKILL.md'",
@@ -312,7 +316,7 @@ async def test_skill_md_cannot_be_moved_out_of_its_skill(scope, _db_pool):
     into another folder still demoted a skill silently — the same hole through
     a different door."""
     folder = await files_tree_service.create_skill(
-        scope, scope, "Movable", "Use when testing SKILL.md moves."
+        scope, scope, "Movable", "Use when testing SKILL.md moves.", "Follow this skill's steps."
     )
     elsewhere = await files_tree_service.create_folder(scope, "Elsewhere", scope)
     page_id = await _db_pool.fetchval(
@@ -346,7 +350,11 @@ async def test_a_published_skill_refuses_demotion_until_unpublished(scope, _db_p
     while its public URL kept serving it — and the confirm dialog told the
     user the share link would stop working. Refuse rather than lie."""
     folder = await files_tree_service.create_skill(
-        scope, scope, "Public thing", "Use when testing published skills."
+        scope,
+        scope,
+        "Public thing",
+        "Use when testing published skills.",
+        "Follow this skill's steps.",
     )
     published = await shared_skill_service.publish_folder(
         scope, scope, folder["id"], title="Public thing", description="d"

@@ -1,20 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState, type ReactNode } from "react";
-import { ActivitySkeleton, SkeletonBlock } from "@/components/SkeletonStates";
+import { useEffect, useState } from "react";
+import { ActivitySkeleton } from "@/components/SkeletonStates";
 import { SessionsIcon, SkillIcon, StashIcon } from "@/components/SkillIcons";
-import EmbeddingSpaceExplorer from "@/components/viz/EmbeddingSpaceExplorer";
-import CuratorLog from "@/components/memory/CuratorLog";
+import ActiveSkills from "@/components/memory/ActiveSkills";
 import DataAndPrivacy from "@/components/memory/DataAndPrivacy";
-import WikiGraph from "@/components/memory/WikiGraph";
 import CopyableCommandBlock from "@/components/CopyableCommandBlock";
 import {
-  getEmbeddingProjection,
   getHistoryImportProgress,
   getMe,
   getMeOverview,
-  getMemoryGraph,
   getOnboardingStatus,
   listUploadSources,
   listRecentActivity,
@@ -23,9 +19,7 @@ import {
   type OnboardingStatus,
   type RecentActivityEvent,
   type UploadSource,
-  type WikiGraph as WikiGraphData,
 } from "@/lib/api";
-import type { EmbeddingProjection } from "@/lib/types";
 
 const ACTIVITY_LIMIT = 20;
 const ACTIVITY_POLL_MS = 10_000;
@@ -44,18 +38,15 @@ function editTimestamp(iso: string): string {
   });
 }
 
-/** The home dashboard — the wiki graph, the curator log, the knowledge map,
- *  and the recent-activity feed. Renders full-page as the app's home route; the
- *  shell guarantees a signed-in user. Scrolls itself (h-full). Browsing the
- *  Memory folder itself happens in Files. */
+/** The home dashboard — what is switched on right now: the active Skills,
+ *  the Stash installations uploading traces, and the recent-activity feed.
+ *  Renders full-page as the app's home route; the shell guarantees a
+ *  signed-in user. Scrolls itself (h-full). Themes and the curator log live
+ *  on the Usage page. */
 export default function BrainDashboard() {
   const [events, setEvents] = useState<RecentActivityEvent[]>([]);
   const [fetching, setFetching] = useState(true);
   const [activityError, setActivityError] = useState<string | null>(null);
-  const [projection, setProjection] = useState<EmbeddingProjection | null>(null);
-  const [graph, setGraph] = useState<WikiGraphData | null>(null);
-  const [projectionLoaded, setProjectionLoaded] = useState(false);
-  const [graphLoaded, setGraphLoaded] = useState(false);
   const [firstName, setFirstName] = useState<string | null>(null);
   const [vitals, setVitals] = useState<MeOverview | null>(null);
   const [vitalsError, setVitalsError] = useState<string | null>(null);
@@ -153,35 +144,6 @@ export default function BrainDashboard() {
   // settled, in whichever order they arrive.
   const ready = !fetching && vitalsLoaded;
 
-
-  // The brain's vitals + visualizations. All span the user's own content plus
-  // everything shared with them (the /me/* aggregates, called without a
-  // scope, include readable shared rows). Each card renders as soon as its
-  // own fetch settles — gating them together let one slow or failing
-  // endpoint hold the whole dashboard in skeletons.
-  useEffect(() => {
-    let cancelled = false;
-    getEmbeddingProjection(2000, "sessions")
-      .then((p) => {
-        if (!cancelled) setProjection(p);
-      })
-      .catch(() => {})
-      .finally(() => {
-        if (!cancelled) setProjectionLoaded(true);
-      });
-    getMemoryGraph()
-      .then((g) => {
-        if (!cancelled) setGraph(g);
-      })
-      .catch(() => {})
-      .finally(() => {
-        if (!cancelled) setGraphLoaded(true);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
   if (vitalsError) {
     return (
       <div className="flex h-full min-h-0 items-center justify-center px-8">
@@ -223,98 +185,35 @@ export default function BrainDashboard() {
           Welcome back{firstName ? `, ${firstName}` : ""}
         </h1>
 
-        <DataAndPrivacy />
-
-        {/* Dashboard grid: wiki graph with the curator log beneath it on
-            the left, knowledge map + file activity on the right. */}
         <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
           <div className="flex min-w-0 flex-col gap-4 lg:col-span-2">
-            {/* Wiki graph — the curated context graph of linked pages, obsidian
-                style. The centerpiece: click a node to open its page. */}
-            <VizCard label="Memory wiki">
-              {!graphLoaded ? (
-                <SkeletonBlock className="h-[560px] w-full" />
-              ) : graph && graph.nodes.length > 0 ? (
-                <WikiGraph data={graph} />
-              ) : (
-                <div className="flex h-[560px] items-center justify-center px-2 text-center text-[12.5px] text-muted-foreground">
-                  No wiki pages yet. The Memory curator&apos;s nightly run compiles
-                  your history into a context graph of linked pages.
-                </div>
-              )}
-            </VizCard>
-
-            {/* The curator log — the curator's own account of each run,
-                beneath the structure it maintains. */}
-            <CuratorLog />
+            <ActiveSkills />
+            <DataAndPrivacy />
           </div>
 
-          <div className="flex min-h-0 min-w-0 flex-col gap-4">
-            <VizCard label="Session themes">
-              {!projectionLoaded ? (
-                <SkeletonBlock className="h-[240px] w-full" />
-              ) : projection && projection.points.length > 0 ? (
-                <div className="h-[240px]">
-                  <EmbeddingSpaceExplorer data={projection} />
-                </div>
-              ) : (
-                <div className="flex h-[240px] items-center justify-center px-2 text-center text-[12.5px] text-muted-foreground">
-                  No session prompts have been embedded yet.
-                </div>
-              )}
-            </VizCard>
-
-            <section className="flex flex-col">
-              <div className="sys-label mb-1.5">Recent activity</div>
-              <div className="card-soft max-h-[480px] overflow-y-auto p-3">
-                <div className="flex flex-col gap-2.5">
-                  {activityError ? (
-                    <div className="rounded-[10px] border border-destructive/30 bg-destructive/10 px-4 py-6 text-center text-[13px] text-destructive">
-                      {activityError}
-                    </div>
-                  ) : events.length === 0 ? (
-                    <div className="rounded-[10px] border border-border bg-base px-4 py-6 text-center text-[13px] text-muted-foreground">
-                      Your latest agent sessions and new Skills will appear here.
-                    </div>
-                  ) : (
-                    events.map((event) => (
-                      <FeedCard key={`${event.kind}-${event.href}`} event={event} />
-                    ))
-                  )}
-                </div>
+          <section className="flex min-h-0 min-w-0 flex-col">
+            <div className="sys-label mb-1.5">Recent activity</div>
+            <div className="card-soft max-h-[640px] overflow-y-auto p-3">
+              <div className="flex flex-col gap-2.5">
+                {activityError ? (
+                  <div className="rounded-[10px] border border-destructive/30 bg-destructive/10 px-4 py-6 text-center text-[13px] text-destructive">
+                    {activityError}
+                  </div>
+                ) : events.length === 0 ? (
+                  <div className="rounded-[10px] border border-border bg-base px-4 py-6 text-center text-[13px] text-muted-foreground">
+                    Your latest agent sessions and new Skills will appear here.
+                  </div>
+                ) : (
+                  events.map((event) => (
+                    <FeedCard key={`${event.kind}-${event.href}`} event={event} />
+                  ))
+                )}
               </div>
-            </section>
-          </div>
+            </div>
+          </section>
         </div>
       </div>
     </div>
-  );
-}
-
-// A labeled visualization card — the repeated sys-label + card-soft shell used
-// by the map, topics, and timeline sections.
-function VizCard({
-  label,
-  action,
-  className,
-  scroll,
-  children,
-}: {
-  label: string;
-  /** Right-aligned affordance on the label row (e.g. a browse link). */
-  action?: ReactNode;
-  className?: string;
-  scroll?: boolean;
-  children: ReactNode;
-}) {
-  return (
-    <section className={className}>
-      <div className="mb-1.5 flex items-baseline justify-between">
-        <div className="sys-label">{label}</div>
-        {action}
-      </div>
-      <div className={`card-soft p-3${scroll ? " overflow-x-auto" : ""}`}>{children}</div>
-    </section>
   );
 }
 

@@ -10,8 +10,10 @@ from . import security_audit_service
 
 _SELECT_COLS = (
     "id, owner_user_id, session_id, agent_name, cwd, files_touched, "
-    "started_at, finished_at, created_by, end_user_id, last_event_at"
+    "started_at, finished_at, created_by, end_user_id, last_event_at, rating"
 )
+
+SESSION_RATINGS = ("good", "bad")
 
 
 async def upsert_session(
@@ -84,6 +86,20 @@ async def get_session(owner_user_id: UUID, session_id: str) -> dict | None:
         session_id,
     )
     return dict(row) if row else None
+
+
+async def set_rating(owner_user_id: UUID, session_id: str, rating: str | None) -> None:
+    """Record the user's verdict on a session; None clears it."""
+    if rating is not None and rating not in SESSION_RATINGS:
+        raise ValueError(f"rating must be one of {', '.join(SESSION_RATINGS)}")
+    pool = get_pool()
+    await pool.execute(
+        "UPDATE sessions SET rating = $3 "
+        "WHERE owner_user_id = $1 AND session_id = $2 AND deleted_at IS NULL",
+        owner_user_id,
+        session_id,
+        rating,
+    )
 
 
 async def list_sessions_for_session_id(session_id: str) -> list[dict]:

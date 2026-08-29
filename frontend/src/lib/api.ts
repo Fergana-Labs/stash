@@ -851,6 +851,36 @@ export async function createSkill(
   });
 }
 
+// The bootstrap catalog: ready-made Skills a user can switch on before Stash
+// has learned anything from their traces.
+export interface SuggestedSkill {
+  key: string;
+  name: string;
+  description: string;
+  installed: boolean;
+}
+
+export async function listSuggestedSkills(): Promise<SuggestedSkill[]> {
+  const data = await apiFetch<{ suggestions: SuggestedSkill[] }>(`${ME}/skills/suggestions`);
+  return data.suggestions;
+}
+
+export async function installSuggestedSkill(
+  key: string,
+): Promise<{ folder_id: string; name: string }> {
+  return apiFetch(`${ME}/skills/suggestions/${encodeURIComponent(key)}`, { method: "POST" });
+}
+
+// Ask for a Skill in plain language; the server drafts and creates it.
+export async function requestSkill(
+  request: string,
+): Promise<{ folder_id: string; name: string }> {
+  return apiFetch(`${ME}/skills/request`, {
+    method: "POST",
+    body: JSON.stringify({ request }),
+  });
+}
+
 // Promote a plain folder to a skill (and give it starter instructions if it
 // has none). Membership is a stored flag now — writing a SKILL.md into a
 // folder no longer promotes it.
@@ -1478,7 +1508,11 @@ export interface SessionSummary {
   event_count: number;
   started_at: string;
   last_event_at: string;
+  rating: SessionRating | null;
 }
+
+// The user's own verdict on a session, set while browsing traces.
+export type SessionRating = "good" | "bad";
 
 export type GeneralPermission = "none" | "read" | "comment" | "write";
 // Stored visibility is two-state. "shared" is a derived display state.
@@ -1541,6 +1575,7 @@ export interface SessionDetail {
   created_by: string | null;
   created_by_display_name: string | null;
   artifacts: SessionArtifact[];
+  rating: SessionRating | null;
 }
 
 export async function getSessionDetail(sessionId: string): Promise<SessionDetail> {
@@ -1996,6 +2031,17 @@ export interface SessionTranscript {
 // string and may contain anything, slashes included.
 export async function getTranscript(sessionId: string): Promise<SessionTranscript> {
   return apiFetch(`${ME}/transcripts?session_id=${encodeURIComponent(sessionId)}`);
+}
+
+export async function rateSession(
+  sessionId: string,
+  rating: SessionRating | null
+): Promise<{ rating: SessionRating | null }> {
+  return apiFetch(`${ME}/sessions/rating?session_id=${encodeURIComponent(sessionId)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ rating }),
+  });
 }
 
 export interface SessionEvent {

@@ -9,12 +9,15 @@ import { useShareAction } from "@/components/ShellChromeContext";
 import { FileBrowserSkeleton } from "@/components/SkeletonStates";
 import ResourceShareButton from "@/components/share/ResourceShareButton";
 import FileBrowser from "@/components/content/file-browser/FileBrowser";
+import SkillEnabledToggle from "@/components/skill/SkillEnabledToggle";
 import { useAuth } from "@/hooks/useAuth";
 import {
   getFolderContents,
   getPage,
+  listSkills,
   updatePage,
   type FolderContents,
+  type Skill,
 } from "@/lib/api";
 import { SKILL_MD, stripFrontmatter } from "@/lib/localSkill";
 import type { Page } from "@/lib/types";
@@ -27,6 +30,7 @@ export default function SkillFolderClient({ folderId }: { folderId: string }) {
   const userId = user?.id;
 
   const [contents, setContents] = useState<FolderContents | null>(null);
+  const [skill, setSkill] = useState<Skill | null>(null);
   const [instructions, setInstructions] = useState<Page | null>(null);
   const [editingInstructions, setEditingInstructions] = useState(false);
   const [instructionDraft, setInstructionDraft] = useState("");
@@ -53,11 +57,18 @@ export default function SkillFolderClient({ folderId }: { folderId: string }) {
           const skillPage = c.pages.find((page) => page.name === SKILL_MD);
           if (!skillPage)
             throw new Error("This Skill is missing its SKILL.md instructions");
-          const page = await getPage(skillPage.id);
+          const [page, listed] = await Promise.all([
+            getPage(skillPage.id),
+            listSkills(),
+          ]);
           if (cancelled) return;
+          const match = listed.find((entry) => entry.folder_id === folderId);
+          if (!match) throw new Error("This Skill is not in your Skills list");
           setInstructions(page);
+          setSkill(match);
         } else {
           setInstructions(null);
+          setSkill(null);
         }
         setContents(c);
       })
@@ -154,8 +165,61 @@ export default function SkillFolderClient({ folderId }: { folderId: string }) {
     }
   }
 
-  const skillIntro = instructions ? (
-    <section className="mt-8 border-b border-border-subtle pb-8">
+  async function reloadSkill() {
+    const listed = await listSkills();
+    const match = listed.find((entry) => entry.folder_id === folderId);
+    if (!match) throw new Error("This Skill is not in your Skills list");
+    setSkill(match);
+  }
+
+  // The Skill root reads like a repository page: a header with the
+  // description, the enabled switch and the vitals, then the SKILL.md
+  // rendered like a README with its own title bar, then the supporting files.
+  const skillIntro = instructions && skill ? (
+    <section className="mt-6 border-b border-border-subtle pb-8">
+      <header className="flex flex-wrap items-start justify-between gap-4">
+        <div className="min-w-0 flex-1">
+          <h1 className="font-display text-[24px] font-bold tracking-tight text-foreground">
+            {skill.name}
+          </h1>
+          <p className="mt-1.5 max-w-2xl text-[14px] leading-relaxed text-dim">
+            {skill.description || "No description"}
+          </p>
+          {skill.when_to_use && (
+            <p className="mt-2 max-w-2xl text-[13px] leading-relaxed text-muted-foreground">
+              <span className="font-medium text-foreground">When to use:</span>{" "}
+              {skill.when_to_use}
+            </p>
+          )}
+        </div>
+        <SkillEnabledToggle skill={skill} onChanged={reloadSkill} />
+      </header>
+      <dl className="mt-4 flex flex-wrap gap-x-5 gap-y-1 text-[12px] text-muted-foreground">
+        <SkillStat label="Files" value={String(skill.file_count)} />
+        <SkillStat label="Updated" value={formatSkillDate(skill.updated_at)} />
+        {skill.version && <SkillStat label="Version" value={skill.version} />}
+        <SkillStat
+          label="Visibility"
+          value={skill.published ? "Published" : "Private to you"}
+        />
+      </dl>
+
+      <div className="mt-6 overflow-hidden rounded-lg border border-border">
+        <div className="flex items-center justify-between border-b border-border bg-raised px-4 py-2">
+          <span className="font-mono text-[12px] font-medium text-foreground">
+            SKILL.md
+          </span>
+          {!editingInstructions && (
+            <button
+              type="button"
+              onClick={beginEditingInstructions}
+              className="cursor-pointer text-[12.5px] font-medium text-muted-foreground hover:text-foreground"
+            >
+              Edit instructions
+            </button>
+          )}
+        </div>
+        <div className="px-5 py-4">
       {editingInstructions ? (
         <div>
           <label
@@ -191,36 +255,16 @@ export default function SkillFolderClient({ folderId }: { folderId: string }) {
           </div>
         </div>
       ) : instructionBody ? (
-        <>
-          <div className="flex justify-end">
-            <button
-              type="button"
-              onClick={beginEditingInstructions}
-              className="cursor-pointer text-[12.5px] font-medium text-muted-foreground hover:text-foreground"
-            >
-              Edit instructions
-            </button>
-          </div>
-          <div className="markdown-content mt-2">
-            <Markdown remarkPlugins={[remarkGfm]}>{instructionBody}</Markdown>
-          </div>
-        </>
-      ) : (
-        <div>
-          <div className="flex justify-end">
-            <button
-              type="button"
-              onClick={beginEditingInstructions}
-              className="cursor-pointer text-[12.5px] font-medium text-muted-foreground hover:text-foreground"
-            >
-              Edit instructions
-            </button>
-          </div>
-          <p className="mt-2 text-[14px] text-muted-foreground">
-            No instructions have been written yet.
-          </p>
+        <div className="markdown-content">
+          <Markdown remarkPlugins={[remarkGfm]}>{instructionBody}</Markdown>
         </div>
+      ) : (
+        <p className="text-[14px] text-muted-foreground">
+          No instructions have been written yet.
+        </p>
       )}
+        </div>
+      </div>
     </section>
   ) : null;
 
@@ -235,6 +279,23 @@ export default function SkillFolderClient({ folderId }: { folderId: string }) {
       supportingFilesMode={!!instructions}
     />
   );
+}
+
+function SkillStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-baseline gap-1">
+      <dt className="text-muted-foreground/80">{label}</dt>
+      <dd className="font-medium text-foreground">{value}</dd>
+    </div>
+  );
+}
+
+function formatSkillDate(iso: string): string {
+  return new Date(iso).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
 }
 
 function withoutRepeatedTitle(markdown: string, skillName: string): string {

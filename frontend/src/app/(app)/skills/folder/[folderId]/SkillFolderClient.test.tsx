@@ -8,7 +8,7 @@ import {
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import SkillFolderClient from "./SkillFolderClient";
-import { getFolderContents, getPage, updatePage } from "@/lib/api";
+import { getFolderContents, getPage, listSkills, updatePage } from "@/lib/api";
 import { useBreadcrumbs } from "@/components/BreadcrumbContext";
 import { useShareAction } from "@/components/ShellChromeContext";
 import { ConfirmDialogProvider } from "@/components/ConfirmDialog";
@@ -34,9 +34,28 @@ vi.mock("next/navigation", () => ({
 vi.mock("@/lib/api", () => ({
   getFolderContents: vi.fn(),
   getPage: vi.fn(),
+  listSkills: vi.fn(),
+  setSkillAgentEnabled: vi.fn(),
   updatePage: vi.fn(),
   trashItem: vi.fn(),
 }));
+
+const launchPlanSkill = {
+  backing: "folder" as const,
+  folder_id: "folder-root",
+  source_ref: null,
+  source_id: null,
+  source_name: null,
+  name: "Launch Plan",
+  description: "A launch helper",
+  when_to_use: "Use when planning a launch.",
+  version: "1.2",
+  mcp_exposed: false,
+  file_count: 3,
+  updated_at: "2026-08-26T00:00:00Z",
+  published: null,
+  agent_enabled: true,
+};
 
 vi.mock("@/lib/skillNavigationCache", () => ({
   refreshSidebar: vi.fn(() => Promise.resolve()),
@@ -92,6 +111,7 @@ vi.mock("@/hooks/useAuth", () => ({
 describe("SkillFolderClient", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(listSkills).mockResolvedValue([launchPlanSkill]);
     params.folderId = "folder-sub";
     vi.mocked(getFolderContents).mockResolvedValue({
       folder: {
@@ -300,6 +320,15 @@ describe("SkillFolderClient", () => {
       await screen.findByRole("heading", { name: "When to use this" }),
     ).toBeInTheDocument();
     expect(screen.getByText("Follow the checklist.")).toBeInTheDocument();
+    // The repository-style header: description, when-to-use, vitals, switch.
+    expect(screen.getByRole("heading", { name: "Launch Plan" })).toBeInTheDocument();
+    expect(screen.getByText("A launch helper")).toBeInTheDocument();
+    expect(screen.getByText("Use when planning a launch.")).toBeInTheDocument();
+    expect(screen.getByText("SKILL.md")).toBeInTheDocument();
+    expect(screen.getByRole("switch", { name: "Enabled" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
     expect(screen.queryByText(/name: Launch Plan/)).not.toBeInTheDocument();
     fireEvent.click(
       screen.getByRole("button", { name: "Edit instructions" }),

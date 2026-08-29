@@ -27,7 +27,11 @@ async def scope(_db_pool):
 async def _corrupt_skill(scope, pool, name):
     """Simulate pre-migration storage so recovery paths remain covered."""
     folder = await files_tree_service.create_skill(
-        scope, scope, name, "Use when testing skill lifecycle surfaces."
+        scope,
+        scope,
+        name,
+        "Use when testing skill lifecycle surfaces.",
+        "Follow this skill's steps.",
     )
     await pool.execute(
         "UPDATE pages SET deleted_at = now() WHERE folder_id = $1 AND name = 'SKILL.md'",
@@ -87,7 +91,7 @@ async def test_restoring_a_page_does_not_resurrect_a_deleted_skill(scope, _db_po
     """Deleting a skill hard-deletes the folder row; its pages land in trash
     with a null folder. Restoring one must not bring the skill back."""
     folder = await files_tree_service.create_skill(
-        scope, scope, "Doomed", "Use when testing skill deletion."
+        scope, scope, "Doomed", "Use when testing skill deletion.", "Follow this skill's steps."
     )
     page_id = await _db_pool.fetchval(
         "SELECT id FROM pages WHERE folder_id = $1 AND name = 'SKILL.md'", folder["id"]

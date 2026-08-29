@@ -5,11 +5,9 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   BarChart3,
-  FolderTree,
   MessagesSquare,
   GraduationCap,
   Home,
-  Orbit,
   Settings,
 } from "lucide-react";
 import { useBreadcrumbsValue } from "@/components/BreadcrumbContext";
@@ -17,8 +15,7 @@ import AccountMenu from "@/components/workspace/account-menu";
 import { cn } from "@/lib/utils";
 import type { User } from "@/lib/types";
 
-type RailSection =
-  "home" | "skills" | "sessions" | "analytics" | "files" | "viz";
+type RailSection = "home" | "skills" | "sessions" | "analytics";
 type RailItem = {
   key: RailSection;
   label: string;
@@ -46,13 +43,6 @@ const PRIMARY: RailItem[] = [
     icon: BarChart3,
     match: (p) => p === "/sessions/analytics",
   },
-  {
-    key: "files",
-    label: "Files",
-    icon: FolderTree,
-    match: (p) => p === "/files",
-  },
-  { key: "viz", label: "Themes", icon: Orbit, match: (p) => p === "/viz" },
 ];
 
 const DIVIDER_AFTER_INDEX = 0;
@@ -106,8 +96,6 @@ export default function Rail({
       skills: "/skills",
       sessions: "/sessions",
       analytics: "/sessions/analytics",
-      files: "/files",
-      viz: "/viz",
     };
     router.replace(landing[section]);
   }
@@ -121,8 +109,7 @@ export default function Rail({
             active={
               item.match(pathname) ||
               (item.key === "home" && contentArea === "memory") ||
-              (item.key === "skills" && contentArea === "skills") ||
-              (item.key === "files" && contentArea === "files")
+              (item.key === "skills" && contentArea === "skills")
             }
             onClick={() => selectSection(item.key)}
           />

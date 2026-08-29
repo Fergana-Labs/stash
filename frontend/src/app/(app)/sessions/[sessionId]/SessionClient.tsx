@@ -23,6 +23,7 @@ import {
   type SessionDetail,
 } from "@/lib/api";
 import EditableTitle from "@/components/content/EditableTitle";
+import SessionRating from "@/components/sessions/SessionRating";
 import { getScope } from "@/lib/scope-store";
 import { eventToTurn, humanMessageJumps, toolDisplay, type MessageTurn } from "./transcript";
 import MinimapStrip from "./MinimapStrip";
@@ -250,6 +251,17 @@ export default function SessionViewerPage({ sessionId }: { sessionId: string }) 
     document.getElementById(`turn-${index}`)?.scrollIntoView({ block: "center" });
   }, []);
 
+  // "Latest human message" must mean the whole session's last prompt, not
+  // the last one paged in — so it drains the transcript first and jumps once
+  // every turn is present.
+  const [latestHumanJumpPending, setLatestHumanJumpPending] = useState(false);
+  useEffect(() => {
+    if (!latestHumanJumpPending || hasMore || loadingAll) return;
+    setLatestHumanJumpPending(false);
+    const latest = humanJumps[humanJumps.length - 1];
+    if (latest) jumpTo(latest.turnIndex);
+  }, [latestHumanJumpPending, hasMore, loadingAll, humanJumps, jumpTo]);
+
   const jumpToMatch = useCallback(
     (direction: 1 | -1) => {
       if (matches.length === 0) return;
@@ -327,17 +339,24 @@ export default function SessionViewerPage({ sessionId }: { sessionId: string }) 
                   }}
                 />
               </h1>
-              {(sessionDate || totalTurns > 0 || agentName) && (
-                <div className="mt-1.5 flex flex-wrap items-center gap-2.5 text-[12px] text-muted-foreground">
-                  {sessionDate && <span>{sessionDate}</span>}
-                  {totalTurns > 0 && (
-                    <span>
-                      {totalTurns} message{totalTurns === 1 ? "" : "s"}
-                    </span>
-                  )}
-                  {agentName && <span title="Agent that ran this session">{agentName}</span>}
-                </div>
-              )}
+              <div className="mt-1.5 flex flex-wrap items-center gap-2.5 text-[12px] text-muted-foreground">
+                {sessionDate && <span>{sessionDate}</span>}
+                {totalTurns > 0 && (
+                  <span>
+                    {totalTurns} message{totalTurns === 1 ? "" : "s"}
+                  </span>
+                )}
+                {agentName && <span title="Agent that ran this session">{agentName}</span>}
+                {sessionDetail && (
+                  <SessionRating
+                    sessionId={sessionId}
+                    rating={sessionDetail.rating}
+                    onChange={(rating) =>
+                      setSessionDetail((prev) => (prev ? { ...prev, rating } : prev))
+                    }
+                  />
+                )}
+              </div>
             </div>
 
             {totalTurns > 0 && (
@@ -352,6 +371,18 @@ export default function SessionViewerPage({ sessionId }: { sessionId: string }) 
                   placeholder="Search this session…"
                   className="w-56 rounded-md border border-border bg-base px-2.5 py-1.5 text-[12.5px] text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-[var(--color-brand-600)]"
                 />
+                {humanJumps.length > 0 && (
+                  <JumpButton
+                    label="Jump to latest human message"
+                    onClick={() => {
+                      drainTranscript();
+                      setLatestHumanJumpPending(true);
+                    }}
+                    disabled={latestHumanJumpPending}
+                  >
+                    Latest human message
+                  </JumpButton>
+                )}
                 {humanJumps.length > 1 && (
                   <select
                     value=""

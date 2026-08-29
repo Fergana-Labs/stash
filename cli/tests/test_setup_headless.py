@@ -38,6 +38,7 @@ def calls(monkeypatch):
     monkeypatch.setattr(main.telemetry, "record", lambda *a, **kw: None)
     monkeypatch.setattr(main, "load_config", lambda: {"api_key": "k"})
     monkeypatch.setattr(main, "_detected_agents", lambda: ["claude", "codex"])
+    monkeypatch.setattr(main, "_onboarding_import_skills", lambda: None)
     monkeypatch.setattr(main, "start_streaming", lambda: calls.__setitem__("start_streaming", 1))
     monkeypatch.setattr(main, "stop_streaming", lambda: calls.__setitem__("stop_streaming", 1))
     monkeypatch.setattr(main, "save_enabled_agents", lambda a: calls.__setitem__("saved_agents", a))

@@ -8,7 +8,7 @@ const route = vi.hoisted(() => ({
   pathname: "/",
   replace: vi.fn(),
   crumbs: null as
-    { label: string; area?: "memory" | "files" | "skills" }[] | null,
+    { label: string; area?: "memory" | "skills" }[] | null,
 }));
 
 vi.mock("next/navigation", () => ({
@@ -60,44 +60,31 @@ describe("Rail", () => {
       "Skills",
       "Sessions",
       "Usage",
-      "Files",
-      "Themes",
       "Settings",
       "Account",
     ]);
   });
 
-  it("opens analytics and viz as full-page destinations", () => {
+  it("opens Usage as a full-page destination", () => {
     render(<Rail user={user} onLogout={vi.fn()} />);
 
     fireEvent.click(screen.getByLabelText("Usage"));
     expect(route.replace).toHaveBeenLastCalledWith("/sessions/analytics");
-
-    fireEvent.click(screen.getByLabelText("Themes"));
-    expect(route.replace).toHaveBeenLastCalledWith("/viz");
   });
 
-  it("always opens Files at the flat index", () => {
-    render(<Rail user={user} onLogout={vi.fn()} />);
-
-    fireEvent.click(screen.getByLabelText("Files"));
-
-    expect(route.replace).toHaveBeenLastCalledWith("/files");
-  });
-
-  it("identifies Memory content with Home instead of Files", () => {
+  it("identifies Memory content with Home", () => {
     route.pathname = "/folders/memory";
     route.crumbs = [{ label: "Memory", area: "memory" }];
 
     render(<Rail user={user} onLogout={vi.fn()} />);
 
     expect(screen.getByLabelText("Home").className).toContain("text-brand-600");
-    expect(screen.getByLabelText("Files").className).not.toContain(
+    expect(screen.getByLabelText("Skills").className).not.toContain(
       "text-brand-600",
     );
   });
 
-  it("identifies Skill content with Skills instead of Files", () => {
+  it("identifies Skill content with Skills", () => {
     route.pathname = "/p/supporting-page";
     route.crumbs = [{ label: "Skills", area: "skills" }];
 
@@ -106,7 +93,7 @@ describe("Rail", () => {
     expect(screen.getByLabelText("Skills").className).toContain(
       "text-brand-600",
     );
-    expect(screen.getByLabelText("Files").className).not.toContain(
+    expect(screen.getByLabelText("Home").className).not.toContain(
       "text-brand-600",
     );
   });

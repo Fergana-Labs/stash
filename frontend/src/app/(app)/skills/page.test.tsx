@@ -7,11 +7,20 @@ import {
 } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { listSkills, setSkillAgentEnabled, type Skill } from "@/lib/api";
+import {
+  installSuggestedSkill,
+  listSkills,
+  listSuggestedSkills,
+  requestSkill,
+  setSkillAgentEnabled,
+  type Skill,
+} from "@/lib/api";
 import SkillsPage from "./page";
 
+const router = vi.hoisted(() => ({ push: vi.fn() }));
+
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: vi.fn() }),
+  useRouter: () => router,
   useSearchParams: () => new URLSearchParams(),
 }));
 
@@ -23,6 +32,9 @@ vi.mock("next/link", () => ({
 
 vi.mock("@/lib/api", () => ({
   listSkills: vi.fn(),
+  listSuggestedSkills: vi.fn(),
+  installSuggestedSkill: vi.fn(),
+  requestSkill: vi.fn(),
   setSkillAgentEnabled: vi.fn(),
   createSkill: vi.fn(),
   getToken: vi.fn(() => null),
@@ -63,6 +75,20 @@ const disabledSkill: Skill = {
 describe("SkillsPage", () => {
   beforeEach(() => {
     vi.mocked(listSkills).mockResolvedValue([enabledSkill, disabledSkill]);
+    vi.mocked(listSuggestedSkills).mockResolvedValue([
+      {
+        key: "company-glossary",
+        name: "Glossary of your company",
+        description: "Keep a glossary.",
+        installed: false,
+      },
+      {
+        key: "slide-deck-builder",
+        name: "Slide deck builder",
+        description: "Build decks.",
+        installed: true,
+      },
+    ]);
     vi.mocked(setSkillAgentEnabled).mockResolvedValue();
   });
 
@@ -97,6 +123,45 @@ describe("SkillsPage", () => {
     fireEvent.click(await screen.findByRole("switch", { name: "Enabled" }));
     await waitFor(() =>
       expect(setSkillAgentEnabled).toHaveBeenCalledWith(enabledSkill, false),
+    );
+  });
+
+  it("offers only the suggested Skills the user does not have yet", async () => {
+    vi.mocked(installSuggestedSkill).mockResolvedValue({
+      folder_id: "folder-glossary",
+      name: "Glossary of your company",
+    });
+    render(<SkillsPage />);
+
+    expect(await screen.findByText("Glossary of your company")).toBeInTheDocument();
+    expect(screen.queryByText("Slide deck builder")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Add Skill" }));
+    await waitFor(() =>
+      expect(installSuggestedSkill).toHaveBeenCalledWith("company-glossary"),
+    );
+    await waitFor(() =>
+      expect(router.push).toHaveBeenCalledWith("/skills/folder/folder-glossary"),
+    );
+  });
+
+  it("drafts a requested Skill and opens it", async () => {
+    vi.mocked(requestSkill).mockResolvedValue({
+      folder_id: "folder-req",
+      name: "Release summary",
+    });
+    render(<SkillsPage />);
+
+    const box = await screen.findByLabelText("Describe the Skill you want");
+    expect(screen.getByRole("button", { name: "Draft this Skill" })).toBeDisabled();
+    fireEvent.change(box, { target: { value: "Write my Friday release summary" } });
+    fireEvent.click(screen.getByRole("button", { name: "Draft this Skill" }));
+
+    await waitFor(() =>
+      expect(requestSkill).toHaveBeenCalledWith("Write my Friday release summary"),
+    );
+    await waitFor(() =>
+      expect(router.push).toHaveBeenCalledWith("/skills/folder/folder-req"),
     );
   });
 
