@@ -1,10 +1,13 @@
-// Dead-CSS contract for the landing page (STAS-146).
+// Dead-CSS contract for the landing page (STAS-146, STAS-147).
 //
 // www/app/globals.css once styled the /pages markdown pastebin: a Tiptap
 // editor surface whose routes were deleted in ef6027d7 (#1065) while its
 // styling text survived. Two halves are pinned here — editor styling must not
 // outlive an editor, and the `.prose` typography the blog actually renders
 // must survive the deletion.
+//
+// STAS-147 added the second tranche: styling for spans and carets a script used
+// to inject at runtime, plus a legal-page class hook that was never defined.
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -19,6 +22,18 @@ const DEAD_EDITOR_SELECTORS = [
   ".is-editor-empty",
   ".file-page-body",
   ".ProseMirror",
+];
+
+// Nothing in www can ever put these names on an element: the collaboration
+// server was deleted in #982, the comment-anchor span is injected only by the
+// product app (which styles it in its own stylesheet), and no www code animates
+// anything. Bare names rather than selectors so the keyframes are covered too.
+const DEAD_RUNTIME_TOKENS = [
+  "collaboration-cursor",
+  "data-comment-id",
+  "rise-in",
+  "live-pulse",
+  "cursor-blink",
 ];
 
 function sourcesUnder(dir) {
@@ -82,4 +97,26 @@ test("server-fetched content cannot arrive as raw HTML", () => {
     /rehype-raw|rehypeRaw/.test(readFileSync(file, "utf8")),
   );
   assert.equal(injectsRawHtml, false);
+});
+
+test("runtime-only styling never outlives the runtime that injected it", () => {
+  for (const token of DEAD_RUNTIME_TOKENS) {
+    assert.ok(
+      !CSS.includes(token),
+      `globals.css still ships ${token} styling for a surface www cannot render`,
+    );
+  }
+});
+
+test("legal pages carry no style hook that no stylesheet defines", () => {
+  // Defining the class is a legitimate answer to the hook; silently ignoring it
+  // is not. Only a stylesheet that never defines it makes the markup dishonest.
+  if (CSS.includes(".legal-prose")) return;
+
+  for (const file of wwwSources) {
+    assert.ok(
+      !readFileSync(file, "utf8").includes("legal-prose"),
+      `${file} applies legal-prose, which no stylesheet defines`,
+    );
+  }
 });
