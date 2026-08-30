@@ -69,10 +69,10 @@ html, body {
 }
 
 /* ---------------------------------------------------------------
- * Markdown typography for /pages — same approach as the product app:
+ * Markdown typography — same approach as the product app:
  * `@tailwindcss/typography` (the `prose` class) is the base, with its
- * CSS-variable palette pinned to www's tokens so rendered pastes and
- * the Tiptap editor match the site's look.
+ * CSS-variable palette pinned to www's tokens so the blog's rendered
+ * markdown matches the site's look.
  * --------------------------------------------------------------- */
 .prose {
   --tw-prose-body: var(--text);
@@ -114,44 +114,6 @@ html, body {
   border-radius: 0 6px 6px 0;
   padding: 0.4em 1em;
   font-style: italic;
-}
-
-/* Tiptap editor (the markdown edit page) */
-.tiptap p.is-editor-empty:first-child::before {
-  color: var(--text-muted);
-  content: attr(data-placeholder);
-  float: left;
-  height: 0;
-  pointer-events: none;
-}
-
-/* Page body — readable but compact, matching the app's page editor. */
-.file-page-body {
-  font-size: 16px;
-  line-height: 1.55;
-  color: var(--text);
-}
-
-/* Editor rhythm: prose-sm's ~1.14em paragraph margins read as
-   double-spacing while typing; tighten to match the rendered view. */
-.ProseMirror.file-page-body p {
-  margin: 0.3em 0;
-}
-.ProseMirror.file-page-body ul,
-.ProseMirror.file-page-body ol {
-  margin: 0.35em 0;
-}
-.ProseMirror.file-page-body li {
-  margin: 0.15em 0;
-}
-.ProseMirror.file-page-body blockquote {
-  margin: 0.5em 0;
-}
-.ProseMirror.file-page-body > :first-child {
-  margin-top: 0;
-}
-.ProseMirror.file-page-body > :last-child {
-  margin-bottom: 0;
 }
 
 /* Comment anchors — wraps the quoted range a comment is attached to,

@@ -97,3 +97,32 @@ checked the wrong branch while forking a real `uv tool install` on the host.
   `/usr/local/bin/uv`), which a `PATH` sandbox cannot neutralise. `_run` asserts those are
   absent rather than relaxing the assertion; if that guard fires, the fix belongs in
   `find_uv()`'s candidate list.
+
+---
+
+## Landing page (`www`)
+
+- **Framework:** Vitest for the `www/test/*.test.ts` docs gates; the CSS guard below runs on Node's built-in runner (`node:test`), so it adds no dependency of its own
+- **Config:** `vitest.config.ts` scopes Vitest to `test/**/*.test.ts`, which keeps the `node:test` guard out of the Vitest run
+
+### Running tests
+
+```bash
+cd www
+npm test                                 # the Vitest suites
+node --test test/globals-css.test.mjs    # the CSS guard
+```
+
+Name the file rather than the directory — Node 26's runner does not accept the bare directory form here.
+
+### What the tests guard
+
+`www/test/globals-css.test.mjs` pins the boundary left by the removal of the `/pages` markdown pastebin (deleted in `ef6027d7`, #1065), whose editor styling survived in the landing page's stylesheet:
+
+| Test | Guards |
+|------|--------|
+| `editor styling never outlives an editor` | `globals.css` carries no `.tiptap`, `.is-editor-empty`, `.file-page-body` or `.ProseMirror` rules while nothing in `www` imports an editor. It returns early the moment `www` does import one, so it never blocks a real editor. |
+| `the prose typography the blog renders survives` | The `.prose` palette, the Tailwind typography plugin import and the `blockquote` rule are still present, and no blog post references a removed editor class. |
+| `server-fetched content cannot arrive as raw HTML` | Nothing in `www` renders backend content through `rehype-raw`, so backend HTML cannot reintroduce those class names at runtime. |
+
+`www` has no browser or end-to-end suite. The site's behaviour is covered by `npm run build` plus `npm run lint`; there is no Playwright config and the only frontend E2E tooling in the repo belongs to the product app.
