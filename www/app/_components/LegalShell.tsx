@@ -36,7 +36,7 @@ export default function LegalShell({ title, updated, children }: Props) {
         <h1 className="mt-3 font-display text-[clamp(36px,4.6vw,56px)] font-bold leading-[1.05] tracking-[-0.03em] text-ink">
           {title}
         </h1>
-        <div className="legal-prose mt-10 space-y-6 text-[16px] leading-[1.7] text-foreground">
+        <div className="mt-10 space-y-6 text-[16px] leading-[1.7] text-foreground">
           {children}
         </div>
         <p className="mt-16 border-t border-border-subtle pt-6 text-[14px] text-dim">
