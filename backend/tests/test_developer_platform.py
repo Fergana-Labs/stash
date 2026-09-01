@@ -16,6 +16,8 @@ What matters here:
   that is the entire product promise to the developer's customers.
 """
 
+import io
+import json
 import uuid
 
 import pytest
@@ -394,6 +396,124 @@ async def test_user_scoped_source_is_visible_to_that_user_only(client: AsyncClie
     )
     assert resp.status_code == 200, resp.text
     assert "google" not in resp.json()["stdout"]
+
+
+# --- Manual per-user material (console) ---
+
+_TRANSCRIPT = (
+    json.dumps({"type": "user", "message": {"content": "hi"}, "timestamp": "2026-05-10T20:00:00Z"})
+    + "\n"
+    + json.dumps(
+        {
+            "type": "assistant",
+            "message": {"content": [{"type": "text", "text": "hello"}]},
+            "timestamp": "2026-05-10T20:00:01Z",
+        }
+    )
+    + "\n"
+).encode()
+
+
+async def _developer_with_user(client: AsyncClient) -> tuple[dict, dict]:
+    """An activated workspace with one end user (org_acme).
+    Returns (scope_headers, workspace)."""
+    api_key, _, workspace = await _developer(client)
+    machine_key = await _mint_workspace_key(client, api_key, workspace)
+    await _push(client, machine_key, [_event("sess-seed", user_id="org_acme", user_name="Acme")])
+    return {**_auth(api_key), "X-Stash-Scope": workspace["scope_user_id"]}, workspace
+
+
+@pytest.mark.asyncio
+async def test_transcript_upload_with_user_files_session_under_them(client: AsyncClient, pool):
+    """The console can hand a user a session by uploading its transcript —
+    it must land inside that user's privacy boundary exactly as if their
+    product's backend had streamed it."""
+    scope, workspace = await _developer_with_user(client)
+
+    resp = await client.post(
+        "/api/v1/me/transcripts",
+        files={"file": ("s.jsonl", io.BytesIO(_TRANSCRIPT), "application/jsonl")},
+        data={"session_id": "sess-manual-1", "agent_name": "support-bot", "user_id": "org_acme"},
+        headers=scope,
+    )
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["imported"] == 2
+
+    row = await pool.fetchrow(
+        "SELECT eu.external_id FROM sessions s JOIN end_users eu ON eu.id = s.end_user_id "
+        "WHERE s.owner_user_id = $1 AND s.session_id = 'sess-manual-1'",
+        uuid.UUID(workspace["scope_user_id"]),
+    )
+    assert row and row["external_id"] == "org_acme"
+
+
+@pytest.mark.asyncio
+async def test_transcript_upload_for_unknown_user_fails_loud(client: AsyncClient):
+    scope, _ = await _developer_with_user(client)
+    resp = await client.post(
+        "/api/v1/me/transcripts",
+        files={"file": ("s.jsonl", io.BytesIO(_TRANSCRIPT), "application/jsonl")},
+        data={"session_id": "sess-x", "agent_name": "support-bot", "user_id": "org_never_seen"},
+        headers=scope,
+    )
+    assert resp.status_code == 400
+    assert "unknown user" in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_transcript_upload_cannot_move_a_session_between_users(client: AsyncClient):
+    """sess-seed was born into org_acme's boundary; re-uploading it under
+    another user must refuse rather than migrate or cross-file events."""
+    scope, workspace = await _developer_with_user(client)
+    machine_key_scope = scope
+
+    resp = await client.post(
+        "/api/v1/me/sessions/events/batch",
+        json={"events": [_event("sess-b", user_id="org_beta", user_name="Beta")]},
+        headers=machine_key_scope,
+    )
+    assert resp.status_code == 201, resp.text
+
+    resp = await client.post(
+        "/api/v1/me/transcripts",
+        files={"file": ("s.jsonl", io.BytesIO(_TRANSCRIPT), "application/jsonl")},
+        data={"session_id": "sess-seed", "agent_name": "support-bot", "user_id": "org_beta"},
+        headers=scope,
+    )
+    assert resp.status_code == 400
+    assert "already belongs" in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_file_upload_with_user_scopes_the_file(client: AsyncClient, pool, monkeypatch):
+    """The console's manual file upload rides the existing user_id form
+    field: the file row is stamped to the user, so only their agent sees it."""
+    from backend.services import storage_service
+    from backend.tasks import extraction
+
+    async def _upload(owner_user_id, filename, content, content_type):
+        return f"test/{owner_user_id}/{filename}"
+
+    monkeypatch.setattr(storage_service, "is_configured", lambda: True)
+    monkeypatch.setattr(storage_service, "upload_file", _upload)
+    monkeypatch.setattr(extraction.extract_file_text, "delay", lambda *a, **k: None)
+
+    scope, workspace = await _developer_with_user(client)
+
+    resp = await client.post(
+        "/api/v1/me/files",
+        files={"file": ("coverage.pdf", io.BytesIO(b"%PDF-1.4 test"), "application/pdf")},
+        data={"user_id": "org_acme"},
+        headers=scope,
+    )
+    assert resp.status_code == 201, resp.text
+
+    row = await pool.fetchrow(
+        "SELECT eu.external_id FROM files f JOIN end_users eu ON eu.id = f.end_user_id "
+        "WHERE f.owner_user_id = $1 AND f.name = 'coverage.pdf'",
+        uuid.UUID(workspace["scope_user_id"]),
+    )
+    assert row and row["external_id"] == "org_acme"
 
 
 @pytest.mark.asyncio

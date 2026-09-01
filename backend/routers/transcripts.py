@@ -21,6 +21,7 @@ from fastapi.responses import PlainTextResponse
 from ..auth import get_current_user, get_scope
 from ..database import get_pool
 from ..services import (
+    end_user_service,
     memory_service,
     security_audit_service,
     session_service,
@@ -52,6 +53,9 @@ async def upload_transcript(
     session_id: str = Form(...),
     agent_name: str = Form(...),
     cwd: str | None = Form(None),
+    # External Multiplayer: file the session under this end user (the
+    # developer's own id for them). The user must already exist.
+    user_id: str | None = Form(None),
     # LEGACY filing lane for installed clients: honored when sent.
     session_folder_id: UUID | None = Form(None),
     replace: bool = Form(False),
@@ -74,6 +78,20 @@ async def upload_transcript(
     body = await file.read()
     if len(body) > MAX_TRANSCRIPT_SIZE:
         raise HTTPException(status_code=413, detail="Transcript too large (max 50 MB)")
+
+    # end_user_id is set at session insert only (the user a session is born
+    # into is its privacy boundary), so the end user must resolve before any
+    # session row is written — and a session already born into a different
+    # user (or none) must refuse the upload rather than migrate.
+    end_user = None
+    if user_id is not None:
+        try:
+            end_user = await end_user_service.resolve_end_user_for_scope(owner_user_id, user_id)
+            await memory_service.reject_cross_user_sessions(
+                owner_user_id, [{"session_id": session_id, "user_id": user_id}]
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
 
     pool = get_pool()
     existing = await pool.fetchval(
@@ -119,6 +137,7 @@ async def upload_transcript(
                 agent_name=agent_name,
                 cwd=cwd,
                 created_by=current_user["id"],
+                end_user_id=end_user["id"] if end_user else None,
                 session_folder_id=session_folder_id,
             )
             return {
@@ -146,6 +165,7 @@ async def upload_transcript(
             agent_name=agent_name,
             cwd=cwd,
             created_by=current_user["id"],
+            end_user_id=end_user["id"] if end_user else None,
             session_folder_id=session_folder_id,
             started_at=transcript_started_at,
         )
