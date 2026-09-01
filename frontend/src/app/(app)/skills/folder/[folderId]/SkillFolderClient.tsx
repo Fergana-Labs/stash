@@ -2,6 +2,8 @@
 
 import {
   ArrowLeft,
+  ChevronDown,
+  ChevronRight,
   File,
   FilePlus2,
   FileText,
@@ -20,7 +22,6 @@ import { useConfirm } from "@/components/ConfirmDialog";
 import { useShareAction } from "@/components/ShellChromeContext";
 import { FileBrowserSkeleton } from "@/components/SkeletonStates";
 import ResourceShareButton from "@/components/share/ResourceShareButton";
-import FileBrowser from "@/components/content/file-browser/FileBrowser";
 import MarkdownEditor from "@/components/content/MarkdownEditor";
 import SkillEnabledToggle from "@/components/skill/SkillEnabledToggle";
 import {
@@ -46,8 +47,7 @@ import { SKILL_MD, stripFrontmatter } from "@/lib/localSkill";
 import { refreshSidebar } from "@/lib/skillNavigationCache";
 import type { Page } from "@/lib/types";
 
-// The Skill root presents instructions plus supporting files. Subfolders use
-// the ordinary browser, but their links stay inside the Skill route.
+// A Skill and all of its supporting folders share one editor workspace.
 export default function SkillFolderClient({ folderId }: { folderId: string }) {
   const router = useRouter();
   const confirm = useConfirm();
@@ -57,6 +57,8 @@ export default function SkillFolderClient({ folderId }: { folderId: string }) {
   const userId = user?.id;
 
   const [contents, setContents] = useState<FolderContents | null>(null);
+  const [nestedContents, setNestedContents] = useState<Record<string, FolderContents>>({});
+  const [expandedFolderIds, setExpandedFolderIds] = useState<Set<string>>(new Set());
   const [skill, setSkill] = useState<Skill | null>(null);
   const [instructions, setInstructions] = useState<Page | null>(null);
   const [skillInstructionsId, setSkillInstructionsId] = useState<string | null>(null);
@@ -76,38 +78,73 @@ export default function SkillFolderClient({ folderId }: { folderId: string }) {
   useEffect(() => {
     if (!userId) return;
     let cancelled = false;
-    setContents(null);
     getFolderContents(folderId)
       .then(async (c) => {
         if (cancelled) return;
-        // A non-skill folder doesn't belong on this route — bounce to Files.
-        if (!c.folder.is_skill && !c.breadcrumbs.some((b) => b.is_skill)) {
+        if (!c.folder.is_skill) {
+          const skillAncestor = c.breadcrumbs.find((breadcrumb) => breadcrumb.is_skill);
+          if (skillAncestor) {
+            router.replace(`/skills/folder/${skillAncestor.id}`);
+            return;
+          }
           router.replace(`/folders/${folderId}`);
           return;
         }
-        if (c.folder.is_skill) {
-          const skillPage = c.pages.find((page) => page.name === SKILL_MD);
-          if (!skillPage)
-            throw new Error("This Skill is missing its SKILL.md instructions");
-          const selectedPage = selectedPageId
-            ? c.pages.find((page) => page.id === selectedPageId)
-            : skillPage;
-          if (!selectedPage)
+
+        const skillPage = c.pages.find((page) => page.name === SKILL_MD);
+        if (!skillPage)
+          throw new Error("This Skill is missing its SKILL.md instructions");
+
+        const pageId = selectedPageId ?? skillPage.id;
+        const [page, listed] = await Promise.all([getPage(pageId), listSkills()]);
+        if (!page.folder_id)
+          throw new Error("This file does not belong to this Skill");
+        const loadedNestedContents: Record<string, FolderContents> = {};
+        const expandedIds = new Set<string>();
+
+        if (page.folder_id === folderId) {
+          if (!c.pages.some((candidate) => candidate.id === page.id))
             throw new Error("This file does not belong to this Skill");
-          const [page, listed] = await Promise.all([
-            getPage(selectedPage.id),
-            listSkills(),
-          ]);
-          if (cancelled) return;
-          const match = listed.find((entry) => entry.folder_id === folderId);
-          if (!match) throw new Error("This Skill is not in your Skills list");
-          setInstructions(page);
-          setSkillInstructionsId(skillPage.id);
-          setSkill(match);
         } else {
-          setInstructions(null);
-          setSkillInstructionsId(null);
-          setSkill(null);
+          const selectedFolder = await getFolderContents(page.folder_id);
+          const skillIndex = selectedFolder.breadcrumbs.findIndex(
+            (breadcrumb) => breadcrumb.id === folderId && breadcrumb.is_skill,
+          );
+          if (skillIndex === -1)
+            throw new Error("This file does not belong to this Skill");
+
+          const folderIds = selectedFolder.breadcrumbs
+            .slice(skillIndex + 1)
+            .map((breadcrumb) => breadcrumb.id);
+          const folders = await Promise.all(
+            folderIds.map((id) =>
+              id === selectedFolder.folder.id
+                ? Promise.resolve(selectedFolder)
+                : getFolderContents(id),
+            ),
+          );
+          for (const folderContents of folders) {
+            loadedNestedContents[folderContents.folder.id] = folderContents;
+            expandedIds.add(folderContents.folder.id);
+          }
+        }
+
+        if (cancelled) return;
+        const match = listed.find((entry) => entry.folder_id === folderId);
+        if (!match) throw new Error("This Skill is not in your Skills list");
+        setInstructions(page);
+        setSkillInstructionsId(skillPage.id);
+        setSkill(match);
+        if (Object.keys(loadedNestedContents).length > 0) {
+          setNestedContents((current) => ({
+            ...current,
+            ...loadedNestedContents,
+          }));
+        }
+        if (expandedIds.size > 0) {
+          setExpandedFolderIds((current) =>
+            new Set([...current, ...expandedIds]),
+          );
         }
         setContents(c);
       })
@@ -141,7 +178,6 @@ export default function SkillFolderClient({ folderId }: { folderId: string }) {
     `skills/${folderId}/${crumbs.map((c) => c.label).join("/")}`,
   );
 
-  // Skill actions live on the skill root; subfolders are plain browsing.
   const isSkillRoot = !!contents?.folder.is_skill;
   const folderName = contents?.folder.name ?? "";
   // Skill sharing lives beside the Skill itself. Registering it in the shell
@@ -216,7 +252,46 @@ export default function SkillFolderClient({ folderId }: { folderId: string }) {
     }
   }
 
-  async function deleteSupportingPage(page: { id: string; name: string }) {
+  async function refreshFolder(targetFolderId: string) {
+    const refreshed = await getFolderContents(targetFolderId);
+    if (targetFolderId === folderId) {
+      setContents(refreshed);
+      return;
+    }
+    setNestedContents((current) => ({
+      ...current,
+      [targetFolderId]: refreshed,
+    }));
+  }
+
+  async function toggleFolder(targetFolderId: string) {
+    if (expandedFolderIds.has(targetFolderId)) {
+      setExpandedFolderIds((current) => {
+        const next = new Set(current);
+        next.delete(targetFolderId);
+        return next;
+      });
+      return;
+    }
+
+    setError("");
+    try {
+      if (!nestedContents[targetFolderId]) {
+        const loaded = await getFolderContents(targetFolderId);
+        if (!loaded.breadcrumbs.some((breadcrumb) => breadcrumb.id === folderId))
+          throw new Error("This folder does not belong to this Skill");
+        setNestedContents((current) => ({ ...current, [targetFolderId]: loaded }));
+      }
+      setExpandedFolderIds((current) => new Set(current).add(targetFolderId));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to open folder");
+    }
+  }
+
+  async function deleteSupportingPage(
+    page: { id: string; name: string },
+    parentFolderId: string,
+  ) {
     const confirmed = await confirm({
       title: `Delete "${page.name}"?`,
       body: "This page will be moved to Trash.",
@@ -226,7 +301,7 @@ export default function SkillFolderClient({ folderId }: { folderId: string }) {
     setError("");
     try {
       await trashItem("page", page.id);
-      setContents(await getFolderContents(folderId));
+      await refreshFolder(parentFolderId);
       if (instructions?.id === page.id) {
         router.push(`/skills/folder/${folderId}`);
       }
@@ -240,7 +315,10 @@ export default function SkillFolderClient({ folderId }: { folderId: string }) {
     setRenameTarget({ pageId: page.id, location, value: page.name });
   }
 
-  async function finishRenaming(page: { id: string; name: string }) {
+  async function finishRenaming(
+    page: { id: string; name: string },
+    parentFolderId: string,
+  ) {
     if (renameTarget?.pageId !== page.id) return;
     const name = renameTarget.value.trim();
     setRenameTarget(null);
@@ -249,14 +327,94 @@ export default function SkillFolderClient({ folderId }: { folderId: string }) {
     try {
       const updated = await updatePage(page.id, { name });
       if (instructions?.id === page.id) setInstructions(updated);
-      setContents(await getFolderContents(folderId));
+      await refreshFolder(parentFolderId);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to rename page");
     }
   }
 
   if (isSkillRoot && instructions && skill && skillInstructionsId) {
+    if (!instructions.folder_id)
+      throw new Error("This file does not belong to this Skill");
+    const instructionsFolderId = instructions.folder_id;
     const showingSkillInstructions = instructions.id === skillInstructionsId;
+
+    const renderSupportingPage = (
+      page: FolderContents["pages"][number],
+      parentFolderId: string,
+      depth: number,
+    ) => (
+      <SkillFileRow
+        key={page.id}
+        active={page.id === instructions.id}
+        depth={depth}
+        href={`/skills/folder/${folderId}?page=${page.id}`}
+        icon={<FileText />}
+        label={page.name}
+        onDelete={() => void deleteSupportingPage(page, parentFolderId)}
+        onRenameStart={() => startRenaming(page, "sidebar")}
+        rename={
+          renameTarget?.pageId === page.id && renameTarget.location === "sidebar"
+            ? {
+                value: renameTarget.value,
+                onChange: (value) =>
+                  setRenameTarget((target) =>
+                    target ? { ...target, value } : target,
+                  ),
+                onCommit: () => void finishRenaming(page, parentFolderId),
+                onCancel: () => setRenameTarget(null),
+              }
+            : undefined
+        }
+      />
+    );
+
+    const renderFolder = (
+      folder: FolderContents["subfolders"][number],
+      depth: number,
+    ): React.ReactNode => {
+      const expanded = expandedFolderIds.has(folder.id);
+      const childContents = nestedContents[folder.id];
+      return (
+        <div key={folder.id}>
+          <SkillFolderRow
+            depth={depth}
+            expanded={expanded}
+            label={folder.name}
+            onToggle={() => void toggleFolder(folder.id)}
+          />
+          {expanded && childContents && (
+            <>
+              {childContents.pages.map((page) =>
+                renderSupportingPage(page, childContents.folder.id, depth + 1),
+              )}
+              {childContents.subfolders.map((child) =>
+                renderFolder(child, depth + 1),
+              )}
+              {childContents.files.map((file) => (
+                <SkillFileRow
+                  key={file.id}
+                  depth={depth + 1}
+                  href={fileDownloadUrl(file.id)}
+                  icon={<File />}
+                  label={file.name}
+                />
+              ))}
+              {childContents.tables.map((table) => (
+                <SkillFileRow
+                  key={table.id}
+                  depth={depth + 1}
+                  href={`/tables/${table.id}`}
+                  icon={<Table2 />}
+                  label={table.name}
+                />
+              ))}
+            </>
+          )}
+        </div>
+      );
+    };
+
     return (
       <div className="flex min-h-0 flex-1 overflow-hidden bg-background">
         <aside className="scroll-thin flex w-64 shrink-0 flex-col overflow-y-auto border-r border-border-subtle bg-surface/40">
@@ -304,39 +462,8 @@ export default function SkillFolderClient({ folderId }: { folderId: string }) {
             />
             {contents.pages
               .filter((page) => page.id !== skillInstructionsId)
-              .map((page) => (
-                <SkillFileRow
-                  key={page.id}
-                  active={page.id === instructions.id}
-                  href={`/skills/folder/${folderId}?page=${page.id}`}
-                  icon={<FileText />}
-                  label={page.name}
-                  onDelete={() => void deleteSupportingPage(page)}
-                  onRenameStart={() => startRenaming(page, "sidebar")}
-                  rename={
-                    renameTarget?.pageId === page.id &&
-                    renameTarget.location === "sidebar"
-                      ? {
-                          value: renameTarget.value,
-                          onChange: (value) =>
-                            setRenameTarget((target) =>
-                              target ? { ...target, value } : target,
-                            ),
-                          onCommit: () => void finishRenaming(page),
-                          onCancel: () => setRenameTarget(null),
-                        }
-                      : undefined
-                  }
-                />
-              ))}
-            {contents.subfolders.map((folder) => (
-              <SkillFileRow
-                key={folder.id}
-                href={`/skills/folder/${folder.id}`}
-                icon={<Folder />}
-                label={folder.name}
-              />
-            ))}
+              .map((page) => renderSupportingPage(page, folderId, 0))}
+            {contents.subfolders.map((folder) => renderFolder(folder, 0))}
             {contents.files.map((file) => (
               <SkillFileRow
                 key={file.id}
@@ -379,7 +506,7 @@ export default function SkillFolderClient({ folderId }: { folderId: string }) {
                         target ? { ...target, value } : target,
                       )
                     }
-                    onCommit={() => void finishRenaming(instructions)}
+                    onCommit={() => void finishRenaming(instructions, instructionsFolderId)}
                     onCancel={() => setRenameTarget(null)}
                   />
                 ) : showingSkillInstructions ? (
@@ -436,17 +563,12 @@ export default function SkillFolderClient({ folderId }: { folderId: string }) {
     );
   }
 
-  return (
-    <FileBrowser
-      folderId={folderId}
-      folderHrefBase={`/skills/folder`}
-      breadcrumbs={crumbs}
-    />
-  );
+  return <FileBrowserSkeleton />;
 }
 
 function SkillFileRow({
   active = false,
+  depth = 0,
   href,
   icon,
   label,
@@ -455,6 +577,7 @@ function SkillFileRow({
   rename,
 }: {
   active?: boolean;
+  depth?: number;
   href?: string;
   icon: React.ReactElement;
   label: string;
@@ -469,7 +592,10 @@ function SkillFileRow({
 }) {
   if (rename) {
     return (
-      <div className="flex items-center gap-2 rounded-md bg-raised px-2 py-1 text-[12.5px] text-foreground">
+      <div
+        className="flex items-center gap-2 rounded-md bg-raised py-1 pr-2 text-[12.5px] text-foreground"
+        style={{ paddingLeft: 8 + depth * 16 }}
+      >
         <span className="[&>svg]:h-3.5 [&>svg]:w-3.5">{icon}</span>
         <RenameInput
           value={rename.value}
@@ -502,7 +628,8 @@ function SkillFileRow({
       <div className={`group flex items-center rounded-md pr-1 text-[12.5px] ${stateClass}`}>
         <Link
           href={href}
-          className="flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5"
+          className="flex min-w-0 flex-1 items-center gap-2 py-1.5 pr-2"
+          style={{ paddingLeft: 8 + depth * 16 }}
         >
           {content}
         </Link>
@@ -528,9 +655,40 @@ function SkillFileRow({
     );
   }
   return (
-    <Link href={href} className={className}>
+    <Link
+      href={href}
+      className={className}
+      style={{ paddingLeft: 8 + depth * 16 }}
+    >
       {content}
     </Link>
+  );
+}
+
+function SkillFolderRow({
+  depth,
+  expanded,
+  label,
+  onToggle,
+}: {
+  depth: number;
+  expanded: boolean;
+  label: string;
+  onToggle: () => void;
+}) {
+  const Chevron = expanded ? ChevronDown : ChevronRight;
+  return (
+    <button
+      type="button"
+      aria-expanded={expanded}
+      onClick={onToggle}
+      className="flex w-full cursor-pointer items-center gap-1 rounded-md py-1.5 pr-2 text-left text-[12.5px] text-muted-foreground hover:bg-raised hover:text-foreground"
+      style={{ paddingLeft: 4 + depth * 16 }}
+    >
+      <Chevron className="h-3.5 w-3.5 shrink-0" />
+      <Folder className="h-3.5 w-3.5 shrink-0" />
+      <span className="min-w-0 truncate">{label}</span>
+    </button>
   );
 }
 

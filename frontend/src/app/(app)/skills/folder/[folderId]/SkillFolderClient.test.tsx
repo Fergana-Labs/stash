@@ -18,7 +18,6 @@ import {
   trashItem,
   updatePage,
 } from "@/lib/api";
-import { useBreadcrumbs } from "@/components/BreadcrumbContext";
 import { useShareAction } from "@/components/ShellChromeContext";
 import { ConfirmDialogProvider } from "@/components/ConfirmDialog";
 
@@ -89,32 +88,6 @@ vi.mock("@/components/share/ResourceShareButton", () => ({
   ),
 }));
 
-vi.mock("@/components/content/file-browser/FileBrowser", () => ({
-  default: ({
-    folderHrefBase,
-    hiddenItemIds,
-    intro,
-    itemsHeading,
-    supportingFilesMode,
-  }: {
-    folderHrefBase?: string;
-    hiddenItemIds?: readonly string[];
-    intro?: ReactNode;
-    itemsHeading?: string;
-    supportingFilesMode?: boolean;
-  }) => (
-    <div
-      data-testid="file-browser"
-      data-href-base={folderHrefBase}
-      data-hidden-items={hiddenItemIds?.join(",")}
-      data-supporting-files-mode={supportingFilesMode}
-    >
-      {intro}
-      {itemsHeading}
-    </div>
-  ),
-}));
-
 vi.mock("@/hooks/useAuth", () => ({
   useAuth: () => ({
     user: { id: "user-1", name: "henry", display_name: "Henry" },
@@ -166,32 +139,12 @@ describe("SkillFolderClient", () => {
     cleanup();
   });
 
-  it("roots breadcrumbs at Skills and trails from the skill folder", async () => {
+  it("returns old subfolder URLs to the Skill workspace", async () => {
     render(<SkillFolderClient folderId="folder-sub" />);
 
-    await screen.findByTestId("file-browser");
-
-    const crumbs = vi.mocked(useBreadcrumbs).mock.calls.at(-1)?.[0];
-    // Crumbs point at /skills/folder/<id>, not /skills/<id> — the latter is
-    // the published-slug route and renders "Skill not found" for a folder id.
-    expect(crumbs).toEqual([
-      { label: "Skills", href: "/skills" },
-      { label: "Launch Plan", href: "/skills/folder/folder-root" },
-      { label: "research" },
-    ]);
-    // Ancestors above the skill root (plain folders) stay out of the trail.
-    expect(crumbs?.some((c: { label: string }) => c.label === "Projects")).toBe(
-      false,
+    await waitFor(() =>
+      expect(router.replace).toHaveBeenCalledWith("/skills/folder/folder-root"),
     );
-  });
-
-  it("keeps folder navigation on the skill browse route", async () => {
-    render(<SkillFolderClient folderId="folder-sub" />);
-
-    const browser = await screen.findByTestId("file-browser");
-    // FileBrowser builds `${folderHrefBase}/${id}`, so a subfolder inside a
-    // skill must resolve to /skills/folder/<id>.
-    expect(browser).toHaveAttribute("data-href-base", "/skills/folder");
   });
 
   it("bounces non-skill folders back to the Files route", async () => {
@@ -375,8 +328,6 @@ describe("SkillFolderClient", () => {
     const sidebar = screen.getByRole("complementary");
     expect(within(sidebar).queryByRole("switch", { name: "Enabled" })).not.toBeInTheDocument();
     expect(within(sidebar).queryByText("Share resource")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("file-browser")).not.toBeInTheDocument();
-
     vi.mocked(updatePage).mockResolvedValue({
       ...(await vi.mocked(getPage).mock.results[0].value),
       content_markdown:
@@ -405,6 +356,122 @@ describe("SkillFolderClient", () => {
     });
     fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
     await waitFor(() => expect(trashItem).toHaveBeenCalledWith("page", "page-brief"));
+  });
+
+  it("expands supporting folders inside the Skill sidebar", async () => {
+    vi.mocked(getFolderContents).mockImplementation(async (requestedFolderId) => {
+      if (requestedFolderId === "folder-root") {
+        return {
+          folder: {
+            id: "folder-root",
+            name: "Launch Plan",
+            parent_folder_id: null,
+            is_skill: true,
+          },
+          breadcrumbs: [
+            {
+              id: "folder-root",
+              name: "Launch Plan",
+              is_skill: true,
+              is_memory: false,
+            },
+          ],
+          subfolders: [
+            {
+              id: "folder-queries",
+              name: "queries",
+              page_count: 2,
+              file_count: 0,
+              created_at: "2026-08-26T00:00:00Z",
+            },
+          ],
+          pages: [
+            {
+              id: "page-skill",
+              name: "SKILL.md",
+              content_type: "markdown",
+              created_at: "2026-08-26T00:00:00Z",
+            },
+          ],
+          files: [],
+          tables: [],
+        };
+      }
+      if (requestedFolderId === "folder-queries") {
+        return {
+          folder: {
+            id: "folder-queries",
+            name: "queries",
+            parent_folder_id: "folder-root",
+            is_skill: false,
+          },
+          breadcrumbs: [
+            {
+              id: "folder-root",
+              name: "Launch Plan",
+              is_skill: true,
+              is_memory: false,
+            },
+            {
+              id: "folder-queries",
+              name: "queries",
+              is_skill: false,
+              is_memory: false,
+            },
+          ],
+          subfolders: [],
+          pages: [
+            {
+              id: "page-slow",
+              name: "slow.sql",
+              content_type: "markdown",
+              created_at: "2026-08-26T00:00:00Z",
+            },
+            {
+              id: "page-active",
+              name: "active.sql",
+              content_type: "markdown",
+              created_at: "2026-08-26T00:00:00Z",
+            },
+          ],
+          files: [],
+          tables: [],
+        };
+      }
+      throw new Error(`Unexpected folder ${requestedFolderId}`);
+    });
+    vi.mocked(getPage).mockResolvedValue({
+      id: "page-skill",
+      owner_user_id: "user-1",
+      folder_id: "folder-root",
+      name: "SKILL.md",
+      content_type: "markdown",
+      content_markdown: "# Launch Plan",
+      content_html: "",
+      html_layout: "responsive",
+      content_hash: null,
+      can_write: true,
+      created_by: "user-1",
+      updated_by: null,
+      created_at: "2026-08-26T00:00:00Z",
+      updated_at: "2026-08-26T00:00:00Z",
+    });
+
+    render(<SkillFolderClient folderId="folder-root" />);
+
+    const folderButton = await screen.findByRole("button", { name: "queries" });
+    expect(folderButton).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(folderButton);
+
+    expect(await screen.findByRole("link", { name: "slow.sql" })).toHaveAttribute(
+      "href",
+      "/skills/folder/folder-root?page=page-slow",
+    );
+    expect(screen.getByRole("link", { name: "active.sql" })).toHaveAttribute(
+      "href",
+      "/skills/folder/folder-root?page=page-active",
+    );
+    expect(folderButton).toHaveAttribute("aria-expanded", "true");
   });
 
   it("opens a supporting Markdown file inside the same Skill editor", async () => {
