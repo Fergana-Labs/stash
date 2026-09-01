@@ -350,10 +350,14 @@ async def get_transcript_metadata_legacy(
 @router.get("/{session_id}/events")
 async def get_transcript_events_legacy(
     session_id: str,
-    limit: int = Query(..., ge=1),
+    limit: int = Query(10_000, ge=1),
     offset: int = 0,
     current_user: dict = Depends(get_current_user),
 ):
+    # The clients pinned to this shape (stashai ≤0.1.366) send no limit and
+    # render the response as the whole session, so a required limit turned
+    # their every transcript read into a 422. The default is served here and
+    # only here — the canonical route above stays strict.
     return await get_transcript_events(session_id, limit, offset, current_user)
 
 
