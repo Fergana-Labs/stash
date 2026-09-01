@@ -26,6 +26,13 @@ description: No tools here.
 ---
 """
 
+THIRD_PARTY = """---
+name: weather
+description: Someone else's server.
+mcp: weather https://weather.example/mcp
+---
+"""
+
 
 @pytest.fixture
 def home(monkeypatch, tmp_path: Path) -> Path:
@@ -33,7 +40,9 @@ def home(monkeypatch, tmp_path: Path) -> Path:
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
     monkeypatch.setattr(skill_mcp, "USER_CONFIG_DIR", tmp_path / ".stash")
     monkeypatch.setattr(
-        skill_mcp, "load_config", lambda: {"api_key": "mc_test_key", "base_url": "x"}
+        skill_mcp,
+        "load_config",
+        lambda: {"api_key": "mc_test_key", "base_url": "https://api.example.test"},
     )
     return tmp_path
 
@@ -87,6 +96,17 @@ def test_every_harness_gets_the_server_with_the_users_key(home):
     assert cursor["mcpServers"]["stylewriter"]["url"].endswith("/mcp/stylewriter")
 
 
+def test_the_key_never_goes_to_another_host(home):
+    root = _skills_root(home, ("stylewriter", SKILL), ("weather", THIRD_PARTY))
+    skill_mcp.sync(root, ["claude", "codex"])
+    claude = json.loads((home / ".claude.json").read_text())
+    assert "headers" not in claude["mcpServers"]["weather"]
+    assert claude["mcpServers"]["stylewriter"]["headers"]["Authorization"] == "Bearer mc_test_key"
+    codex = (home / ".codex" / "config.toml").read_text()
+    weather_block = codex.split("[mcp_servers.weather]", 1)[1].split("[mcp_servers", 1)[0]
+    assert "mc_test_key" not in weather_block
+
+
 def test_removing_the_skill_removes_only_our_entries(home):
     root = _skills_root(home, ("stylewriter", SKILL))
     (home / ".claude.json").write_text(json.dumps({"mcpServers": {"mine": {"type": "stdio"}}}))
@@ -115,6 +135,8 @@ def test_nothing_declared_touches_nothing(home):
 
 def test_signed_out_fails_loud(home, monkeypatch):
     root = _skills_root(home, ("stylewriter", SKILL))
-    monkeypatch.setattr(skill_mcp, "load_config", lambda: {"api_key": "", "base_url": "x"})
+    monkeypatch.setattr(
+        skill_mcp, "load_config", lambda: {"api_key": "", "base_url": "https://api.example.test"}
+    )
     with pytest.raises(RuntimeError, match="signin"):
         skill_mcp.sync(root, ["claude"])

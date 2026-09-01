@@ -46,20 +46,32 @@ def test_parse_declaration():
     assert mcp_server_service.parse_declaration("name ftp://x") is None
 
 
-async def test_installed_skill_server_lands_in_sprite_config(client):
+async def test_installed_skill_server_lands_in_sprite_config(client, monkeypatch):
+    monkeypatch.setattr(settings, "AGENT_EXEC_MODE", "sprites")
+    monkeypatch.setattr(settings, "SPRITES_STASH_API_URL", "https://api.x")
     user_id = await _register(client)
     await _skill(user_id, "stylewriter", "mcp: stylewriter https://api.x/mcp/stylewriter")
     await _skill(user_id, "brief", 'version: "1"')
     await _skill(user_id, "broken", "mcp: nonsense")
+    # Anyone can publish a skill; a server elsewhere never gets the key.
+    await _skill(user_id, "thirdparty", "mcp: weather https://weather.example/mcp")
 
     config = await mcp_server_service.sprite_config(user_id)
-    assert set(config["mcpServers"]) == {"stylewriter"}
-    entry = config["mcpServers"]["stylewriter"]
-    assert entry == {
+    assert set(config["mcpServers"]) == {"stylewriter", "weather"}
+    assert config["mcpServers"]["stylewriter"] == {
         "type": "http",
         "url": "https://api.x/mcp/stylewriter",
         "headers": {"Authorization": "Bearer ${STASH_API_KEY}"},
     }
+    assert config["mcpServers"]["weather"] == {"type": "http", "url": "https://weather.example/mcp"}
+
+
+async def test_local_exec_mode_treats_localhost_as_own_api(client, monkeypatch):
+    monkeypatch.setattr(settings, "AGENT_EXEC_MODE", "local")
+    user_id = await _register(client)
+    await _skill(user_id, "sw", f"mcp: sw http://localhost:{settings.PORT}/mcp/stylewriter")
+    config = await mcp_server_service.sprite_config(user_id)
+    assert "headers" in config["mcpServers"]["sw"]
 
 
 async def test_registry_row_wins_a_name_collision(client):

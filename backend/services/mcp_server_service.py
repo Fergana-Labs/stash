@@ -20,8 +20,10 @@ import json
 import logging
 import re
 import shlex
+from urllib.parse import urlparse
 from uuid import UUID
 
+from ..config import settings
 from ..database import get_pool
 from ..integrations.crypto import integration_fernet
 from . import skill_service, sprite_service
@@ -33,6 +35,19 @@ _DECLARATION_RE = re.compile(r"^([a-zA-Z0-9][a-zA-Z0-9_-]{0,99})\s+(https?://\S+
 # The harness expands this from the turn's environment, so the key never
 # lands in a file. `sprite_service.agent_env` supplies it.
 _SKILL_SERVER_AUTH = "Bearer ${STASH_API_KEY}"
+
+
+def _own_api_origin() -> str:
+    """Where the harness reaches this API from: the sprite's configured URL,
+    or this machine in local exec mode (mirrors `sprite_service.agent_env`)."""
+    if settings.AGENT_EXEC_MODE == "local":
+        return f"http://localhost:{settings.PORT}"
+    return settings.SPRITES_STASH_API_URL
+
+
+def _same_origin(url: str, base: str) -> bool:
+    a, b = urlparse(url), urlparse(base)
+    return (a.scheme, a.netloc) == (b.scheme, b.netloc)
 
 
 def _encrypt_json(values: dict[str, str]) -> bytes | None:
@@ -146,11 +161,13 @@ async def skill_declared_entries(user_id: UUID) -> dict[str, dict]:
             )
             continue
         name, url = parsed
-        entries[name] = {
-            "type": "http",
-            "url": url,
-            "headers": {"Authorization": _SKILL_SERVER_AUTH},
-        }
+        entry: dict = {"type": "http", "url": url}
+        # The user's key goes only to our own API. Anyone can publish a
+        # skill, so a declared server on any other host is just a server —
+        # it never receives the credential.
+        if _same_origin(url, _own_api_origin()):
+            entry["headers"] = {"Authorization": _SKILL_SERVER_AUTH}
+        entries[name] = entry
     return entries
 
 
