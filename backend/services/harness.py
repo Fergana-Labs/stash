@@ -27,8 +27,9 @@ from dataclasses import dataclass
 from ..database import get_pool
 from . import model_provider
 
-# Claude's complaint when --resume points at a transcript this box never had.
-RESUME_MISSING_RE = re.compile(r"no conversation found", re.IGNORECASE)
+# Claude's complaint when --resume points at a transcript this box never had;
+# pi's is the "No session found matching '<id>'" line on a dead --session id.
+RESUME_MISSING_RE = re.compile(r"no conversation found|no session found matching", re.IGNORECASE)
 
 
 async def get_native_id(session_id: str, harness_id: str) -> str | None:
@@ -78,8 +79,11 @@ CLAUDE = Harness("claude-code", "claude", model_provider.ANTHROPIC)
 CODEX = Harness("codex", "codex", model_provider.OPENAI)
 # opencode drives OpenRouter's many models; GLM is the default hosted pick.
 OPENCODE = Harness("opencode", "opencode", model_provider.OPENROUTER, default_model="z-ai/glm-5.2")
+# pi drives the user's own OpenAI-compatible endpoint (the LOCAL provider);
+# the model id rides on argv because each endpoint has its own catalog.
+PI = Harness("pi", "pi", model_provider.LOCAL)
 
-_BY_ID = {h.id: h for h in (CLAUDE, CODEX, OPENCODE)}
+_BY_ID = {h.id: h for h in (CLAUDE, CODEX, OPENCODE, PI)}
 
 
 def get(harness_id: str) -> Harness:
@@ -108,9 +112,11 @@ def build_argv(
     resume: bool,
     system_prompt: str,
     disallowed_tools: list[str] | None = None,
+    model: str | None = None,
 ) -> list[str]:
     """`session_key` is the id for this conversation (see session_key());
-    `resume` says whether to continue an existing session vs create fresh."""
+    `resume` says whether to continue an existing session vs create fresh.
+    `model` is the LOCAL endpoint's model id (pi only)."""
     if harness is CLAUDE:
         # Claude always carries its deterministic id: --session-id creates it on
         # turn 1, --resume continues that exact session on later turns.
@@ -163,6 +169,27 @@ def build_argv(
             argv += ["-s", session_key]
         return argv
 
+    if harness is PI:
+        # One-shot headless turn against the user's local endpoint. The model
+        # is endpoint-specific, so there is no default — fail loud instead.
+        if not model:
+            raise ValueError("pi requires a model: the local endpoint's model id")
+        argv = [
+            "pi",
+            "--mode",
+            "json",
+            "--model",
+            f"local/{model}",
+            "-p",
+            prompt,
+            "--append-system-prompt",
+            system_prompt,
+            "--no-extensions",
+        ]
+        if resume and session_key:
+            argv += ["--session", session_key]
+        return argv
+
     raise ValueError(f"unhandled harness: {harness.id}")
 
 
@@ -185,6 +212,8 @@ def map_line(harness: Harness, line: str, state: TurnState) -> list[dict]:
         return _map_codex(obj, state)
     if harness is OPENCODE:
         return _map_opencode(obj, state)
+    if harness is PI:
+        return _map_pi(obj, state)
     return []
 
 
@@ -307,5 +336,63 @@ def _map_opencode(obj: dict, state: TurnState) -> list[dict]:
         # dropping it once left four days of failures logged as the literal
         # string "opencode error".
         state.error = str(part.get("message") or f"opencode error: {json.dumps(obj)[:400]}")
+        return []
+    return []
+
+
+# --- pi (--mode json) -------------------------------------------------------
+
+
+def _map_pi(obj: dict, state: TurnState) -> list[dict]:
+    kind = obj.get("type")
+    if kind == "session":
+        # The first line of every turn; the id is stable across resume, so it
+        # is the resume key for all later turns.
+        state.native_id = obj.get("id") or state.native_id
+        return []
+    if kind == "message_update":
+        event = obj.get("assistantMessageEvent") or {}
+        if event.get("type") == "text_delta" and event.get("delta"):
+            return [{"type": "text", "delta": event["delta"]}]
+        return []
+    if kind == "tool_execution_start":
+        return [
+            {
+                "type": "tool",
+                "id": obj.get("toolCallId") or "",
+                "name": obj.get("toolName") or "",
+                "args": obj.get("args") or {},
+            }
+        ]
+    if kind == "tool_execution_end":
+        return [
+            {
+                "type": "tool_result",
+                "id": obj.get("toolCallId") or "",
+                "name": obj.get("toolName") or "",
+                "ok": not obj.get("isError", False),
+                "output": str(obj.get("result")),
+            }
+        ]
+    if kind == "message_end":
+        message = obj.get("message") or {}
+        if message.get("role") != "assistant":
+            return []
+        if message.get("stopReason") == "error":
+            # pi exits 0 on a dead endpoint after its own retries; this (and
+            # auto_retry_end below) is the error path — never the exit code.
+            state.error = str(message.get("errorMessage") or "local model error")
+            return []
+        text = "".join(
+            block.get("text") or ""
+            for block in message.get("content") or []
+            if isinstance(block, dict) and block.get("type") == "text"
+        )
+        if text.strip():
+            state.result_text = text.strip()
+        return []
+    if kind == "auto_retry_end":
+        if not obj.get("success", True):
+            state.error = str(obj.get("finalError") or "local model endpoint retries exhausted")
         return []
     return []

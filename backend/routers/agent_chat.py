@@ -49,7 +49,7 @@ async def chat(
     except agent_auth.NeedsAuth:
         raise HTTPException(
             status_code=402,
-            detail="Connect your Claude, Codex, or OpenRouter key in settings, "
+            detail="Connect a Claude, Codex, or OpenRouter key, or a local model, in settings, "
             "or upgrade to Pro to use the managed agent.",
         )
     except agent_auth.ProviderNotConfigured:
@@ -104,7 +104,7 @@ async def run_now(
     except agent_auth.NeedsAuth:
         raise HTTPException(
             status_code=402,
-            detail="Connect your Claude, Codex, or OpenRouter key in settings, "
+            detail="Connect a Claude, Codex, or OpenRouter key, or a local model, in settings, "
             "or upgrade to Pro to use the managed agent.",
         )
     except agent_auth.ProviderNotConfigured:

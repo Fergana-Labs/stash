@@ -594,7 +594,22 @@ async def test_backfill_dispatches_full_history_without_touching_watermark(
     from the empty watermark. The stored watermark must survive the dispatch
     untouched: a failed or lost backfill run must not have thrown away the
     incremental position."""
+    from backend.services import agent_auth
     from backend.tasks import agent_schedules
+
+    # The backfill trigger resolves the workspace's credentials up front; the
+    # scope account has none, so give it a connected local endpoint (STAS-131
+    # removed the no-credential machine-login fallback).
+    async def local_cred(user_id, provider=None):
+        if provider == "local":
+            return {
+                "provider": "local",
+                "kind": "endpoint",
+                "secret": '{"base_url": "http://127.0.0.1:11434/v1", "model": "m"}',
+            }
+        return None
+
+    monkeypatch.setattr(agent_auth, "_get_credential", local_cred)
 
     dispatched: list[tuple] = []
     monkeypatch.setattr(

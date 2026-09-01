@@ -40,7 +40,7 @@
 - **Sessions stream in automatically.** A hook for your coding agent pushes every transcript — prompts, tool calls, artifacts — into your Stash.
 - **Files and sessions live side by side.** Markdown, HTML, tables, PDFs. You and your agents both write here; both sides see edits in real time.
 - **Agents query it like a filesystem.** A CLI, MCP server (~70 read/write tools), REST API, and virtual-filesystem shell expose your Stash to any agent. One search spans your pages, sessions, and every connected source at once.
-- **There's an agent in the box too.** Chat with an agent that already has all of this — in the app, from Slack, or from Telegram. It's a real coding-agent CLI (Claude Code, Codex, or opencode) running on your own cloud VM, so it can read, write, and run things. Give it a cron and it becomes a scheduled agent.
+- **There's an agent in the box too.** Chat with an agent that already has all of this — in the app, from Slack, or from Telegram. It's a real coding-agent CLI (Claude Code, Codex, opencode, or pi) running on your own cloud VM, so it can read, write, and run things. Give it a cron and it becomes a scheduled agent.
 - **Memory is a wiki an agent keeps for you.** A scheduled curator reads whatever is new since its last run — sessions, files, saves — and compiles it into linked pages: entities, concepts, and a running log. It writes only inside the reserved Memory folder, and never reads its own output.
 - **Skills are the shareable slice.** A Skill is just a folder with a `SKILL.md` in it — put the pages, files, and tables that belong together in one folder and it becomes shareable as a unit. Publish it to the world, fork a public Skill into your own Stash, or `stash skills install` one into your agent — installed skills auto-update at session start, and `stash skills follow` auto-installs skills people share with you.
 - **Bring your own MCP servers.** Register MCP servers once (Tools page or `stash tools add`); your cloud agent gets them automatically and `stash tools install` writes them into any local agent's `.mcp.json`.
@@ -221,14 +221,14 @@ claude
 
 Stash is built for engineering teams working in private repos.
 
-- **LLM calls are optional and scoped.** An Anthropic key powers ask-the-stash, session titles, and OCR for scanned PDFs; the chat agent runs on Anthropic, OpenAI, or OpenRouter with your own key. Without any of them, the rest of Stash works — those features are simply unavailable.
+- **LLM calls are optional and scoped.** An Anthropic key powers ask-the-stash, session titles, and OCR for scanned PDFs; the chat agent runs on Anthropic, OpenAI, or OpenRouter with your own key, or on your own local model endpoint. Without any of them, the rest of Stash works — those features are simply unavailable.
 - **Private by default.** Your Stash is yours alone. Content becomes public only when you make it so: publishing a Skill, creating a public link to a page, file, folder, or table, or posting to the pastebin.
 - **Recording is yours to control.** Session recording is on by default during setup, and every control is one command away: decline it in the wizard, pause globally with `stash stop`, pick which agents record, or exclude folders in `stash settings`. Saying no still gives your agent *read* access to your Stash — nothing about using Stash requires uploading your own sessions.
   
 ## FAQ
 
 **What LLMs does Stash use?**
-An Anthropic key covers ask-the-stash, session titles, and scanned-PDF OCR. The chat agent is separate and runs whichever harness you point it at — Claude Code, Codex, or opencode — against your own Anthropic, OpenAI, or OpenRouter credentials. Embeddings are a third, independent choice (OpenAI, HuggingFace, or a local model). All of it is optional; without any keys the rest of Stash works and those features are disabled.
+An Anthropic key covers ask-the-stash, session titles, and scanned-PDF OCR. The chat agent is separate and runs whichever harness you point it at — Claude Code, Codex, opencode, or pi — against your own Anthropic, OpenAI, OpenRouter, or local-model endpoint. Embeddings are a third, independent choice (OpenAI, HuggingFace, or a local model). All of it is optional; without any keys the rest of Stash works and those features are disabled.
 
 **What writes to my Stash on its own?**
 One thing by default: the Memory curator, a scheduled agent that compiles your Memory wiki from new sessions and files. It only writes inside the reserved Memory folder, and it only reads what's new since its last run. Turn the nightly run off or on with `stash memory --curator off|on` (on-demand runs keep working). Beyond that, nothing runs unless you create it — any agent you give a cron to becomes a scheduled agent, and those have the same reach you do.
