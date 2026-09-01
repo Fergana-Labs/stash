@@ -1,12 +1,21 @@
 "use client";
 
+import { MoreHorizontal, X } from "lucide-react";
 import { useState } from "react";
 
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { createUser } from "@/lib/api";
 
 // Manual user creation, for setting a user up before their product's backend
 // has uploaded a session — the first upload with this user_id lands on them.
+// Tucked behind a "…" menu: the common path stays upload-driven.
 export default function AddUserControls({ onAdded }: { onAdded: () => void }) {
+  const [formOpen, setFormOpen] = useState(false);
   const [userId, setUserId] = useState("");
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
@@ -19,6 +28,7 @@ export default function AddUserControls({ onAdded }: { onAdded: () => void }) {
       await createUser(userId.trim(), name.trim() || undefined);
       setUserId("");
       setName("");
+      setFormOpen(false);
       onAdded();
     } catch (cause) {
       if (!(cause instanceof Error)) throw cause;
@@ -28,9 +38,40 @@ export default function AddUserControls({ onAdded }: { onAdded: () => void }) {
     }
   }
 
+  if (!formOpen) {
+    return (
+      <div className="mb-2 flex justify-end">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              aria-label="User actions"
+              className="cursor-pointer rounded p-1.5 text-muted-foreground hover:bg-raised hover:text-foreground"
+            >
+              <MoreHorizontal className="h-4 w-4" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => setFormOpen(true)}>Add a user</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+    );
+  }
+
   return (
     <div className="mb-4 rounded border border-border bg-surface px-5 py-4">
-      <div className="text-[14.5px] text-foreground">Add a user</div>
+      <div className="flex items-start justify-between">
+        <div className="text-[14.5px] text-foreground">Add a user</div>
+        <button
+          type="button"
+          aria-label="Close"
+          onClick={() => setFormOpen(false)}
+          className="cursor-pointer rounded p-1 text-muted-foreground hover:bg-raised hover:text-foreground"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
       <p className="mt-1 text-[13px] leading-6 text-muted-foreground">
         Set a user up before their first session — assign sources or seed their wiki. Uploads
         carrying this <span className="font-mono text-[12px]">user_id</span> land on them.
