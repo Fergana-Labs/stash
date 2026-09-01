@@ -218,7 +218,7 @@ export async function activateDeveloperPlatform(workspaceId?: string): Promise<W
   });
 }
 
-// Mints a machine key on the developer workspace's scope user (scope header
+// Mints a developer key on the developer workspace's scope user (scope header
 // picks the workspace). The key is shown once.
 export type DeveloperKey = {
   id: string;
