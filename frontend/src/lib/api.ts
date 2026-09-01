@@ -262,6 +262,15 @@ export async function listUsers(): Promise<{
   return apiFetch(`${ME}/users`);
 }
 
+// Manual creation, ahead of the user's first uploaded session. The first
+// upload carrying this user_id lands on the same user.
+export async function createUser(userId: string, name?: string): Promise<EndUser> {
+  return apiFetch(`${ME}/users`, {
+    method: "POST",
+    body: JSON.stringify({ user_id: userId, ...(name ? { name } : {}) }),
+  });
+}
+
 // The whole workspace's sessions, newest first, labelled by user. Rows with
 // no user are the workspace's own agents — the curator's runs, mostly.
 export interface DeveloperSession {

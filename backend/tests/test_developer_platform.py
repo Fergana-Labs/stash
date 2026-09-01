@@ -106,6 +106,62 @@ async def test_activate_is_idempotent(client: AsyncClient):
     assert again["external_wiki_folder_id"] == workspace["external_wiki_folder_id"]
 
 
+# --- Manual user creation ---
+
+
+@pytest.mark.asyncio
+async def test_manual_create_then_upload_lands_on_the_same_user(client: AsyncClient, pool):
+    """A developer can set a user up (sources, wiki) before that user's first
+    session; the first upload carrying the user_id must join them, not fork a
+    second user."""
+    api_key, _, workspace = await _developer(client)
+    scope = {**_auth(api_key), "X-Stash-Scope": workspace["scope_user_id"]}
+
+    resp = await client.post(
+        "/api/v1/me/users",
+        json={"user_id": "org_early", "name": "Early Bird Freight"},
+        headers=scope,
+    )
+    assert resp.status_code == 201, resp.text
+    created = resp.json()
+    assert created["external_id"] == "org_early"
+    assert created["name"] == "Early Bird Freight"
+    assert created["wiki_folder_id"] is not None
+
+    machine_key = await _mint_workspace_key(client, api_key, workspace)
+    await _push(client, machine_key, [_event("sess-early-1", user_id="org_early")])
+
+    session = await pool.fetchrow(
+        "SELECT end_user_id FROM sessions WHERE owner_user_id = $1 AND session_id = 'sess-early-1'",
+        uuid.UUID(workspace["scope_user_id"]),
+    )
+    assert str(session["end_user_id"]) == created["id"]
+
+    resp = await client.get("/api/v1/me/users", headers=scope)
+    assert [u["external_id"] for u in resp.json()["users"]] == ["org_early"]
+
+
+@pytest.mark.asyncio
+async def test_manual_create_of_existing_user_conflicts(client: AsyncClient):
+    """Creating by hand is deliberate; a duplicate id is more likely a typo
+    than an intent to no-op, so it must fail loud rather than return the
+    existing user."""
+    api_key, _, workspace = await _developer(client)
+    scope = {**_auth(api_key), "X-Stash-Scope": workspace["scope_user_id"]}
+
+    resp = await client.post("/api/v1/me/users", json={"user_id": "org_dup"}, headers=scope)
+    assert resp.status_code == 201, resp.text
+    resp = await client.post("/api/v1/me/users", json={"user_id": "org_dup"}, headers=scope)
+    assert resp.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_manual_create_requires_a_developer_workspace_scope(client: AsyncClient):
+    api_key, _ = await _register_with_email(client, f"{unique_name('solo')}@example.com")
+    resp = await client.post("/api/v1/me/users", json={"user_id": "org_x"}, headers=_auth(api_key))
+    assert resp.status_code == 400
+
+
 # --- The user write contract ---
 
 

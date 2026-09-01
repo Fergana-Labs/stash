@@ -40,6 +40,13 @@ class DeveloperKeyRequest(BaseModel):
     expires_in_days: int | None = Field(None, ge=1, le=3650)
 
 
+class EndUserCreateRequest(BaseModel):
+    # The developer's own id for this user — the same value their backend
+    # asserts as user_id on uploads. Matches AddSourceRequest.user_id.
+    user_id: str = Field(..., min_length=1, max_length=128)
+    name: str | None = Field(None, min_length=1, max_length=255)
+
+
 class EndUserUpdateRequest(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=255)
     share_wiki: bool | None = None
@@ -311,6 +318,21 @@ async def list_users(
         "users": await end_user_service.list_end_users(workspace["id"]),
         "stats": await end_user_service.workspace_stats(workspace),
     }
+
+
+@users_router.post("", status_code=201)
+async def create_user(
+    req: EndUserCreateRequest,
+    current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
+):
+    """Create an end user by hand, before their first session arrives — so a
+    developer can assign sources or seed a wiki ahead of onboarding. The first
+    upload carrying this user_id lands on the same user."""
+    workspace = await _require_active_workspace(scope_user_id)
+    if await end_user_service.find_end_user(workspace["id"], req.user_id) is not None:
+        raise HTTPException(status_code=409, detail=f"user {req.user_id!r} already exists")
+    return await end_user_service.get_or_create_end_user(workspace, req.user_id, req.name)
 
 
 async def _end_user_in_scope(user_id: UUID, scope_user_id: UUID) -> dict:

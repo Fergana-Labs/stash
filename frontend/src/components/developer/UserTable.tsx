@@ -12,7 +12,7 @@ export default function UserTable({ users, onChanged }: { users: EndUser[]; onCh
     return (
       <p className="rounded border border-dashed border-border px-6 py-10 text-center text-[15px] leading-7 text-muted-foreground">
         No users yet. Users appear automatically the first time your backend uploads a session
-        with a new <Code>user_id</Code>.
+        with a new <Code>user_id</Code> — or add one by hand above.
       </p>
     );
   }

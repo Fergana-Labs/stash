@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import AddUserControls from "@/components/developer/AddUserControls";
 import DeveloperGate from "@/components/developer/DeveloperGate";
 import { PageHeading } from "@/components/developer/DocsPrimitives";
 import UserTable from "@/components/developer/UserTable";
@@ -43,7 +44,10 @@ function Users() {
       ) : users === null ? (
         <p className="text-[15px] text-muted-foreground">Loading…</p>
       ) : (
-        <UserTable users={users} onChanged={refresh} />
+        <>
+          <AddUserControls onAdded={refresh} />
+          <UserTable users={users} onChanged={refresh} />
+        </>
       )}
     </>
   );
