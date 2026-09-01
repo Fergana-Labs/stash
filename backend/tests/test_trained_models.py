@@ -110,6 +110,10 @@ def test_cleaner_keeps_only_prose():
     paragraphs = corpus.paragraphs(text)
     assert paragraphs[0].startswith("Real prose that someone wrote")
     assert paragraphs[-1] == "See the docs and for more."
+    # An export's sign-off would teach the model to sign off and stop.
+    assert corpus.paragraphs("Real words here.\n\n— @samzliu · 2026-01-30\nhttps://x.com/i/1") == [
+        "Real words here."
+    ]
     assert not any("bullet" in p or "quote" in p or "code" in p or "table" in p for p in paragraphs)
 
 

@@ -288,7 +288,13 @@ class Detector:
 
     @modal.method()
     def read_many(self, texts: list[str]) -> list[float]:
-        """p_human for each text."""
+        """p_human for each text.
+
+        As in the reference implementation: the numerator is the performer's
+        log-perplexity of the text, the denominator the cross-entropy of the
+        observer's distribution against the performer's log-probabilities.
+        Swapping the two roles shifts every score and reads real writing as
+        machine text."""
         import torch
 
         from stylewriter.binoculars import p_human
@@ -299,13 +305,13 @@ class Detector:
                 "cuda"
             )
             with torch.no_grad():
-                observer_logits = self.observer(**batch).logits[:, :-1]
-                performer_logits = self.performer(**batch).logits[:, :-1]
+                observer_logits = self.observer(**batch).logits[:, :-1].float()
+                performer_logits = self.performer(**batch).logits[:, :-1].float()
             targets = batch["input_ids"][:, 1:]
-            log_probs = torch.log_softmax(observer_logits.float(), dim=-1)
-            ppl = -log_probs.gather(-1, targets.unsqueeze(-1)).squeeze(-1).mean()
-            performer_probs = torch.softmax(performer_logits.float(), dim=-1)
-            x_ppl = -(performer_probs * log_probs).sum(-1).mean()
+            performer_log_probs = torch.log_softmax(performer_logits, dim=-1)
+            ppl = -performer_log_probs.gather(-1, targets.unsqueeze(-1)).squeeze(-1).mean()
+            observer_probs = torch.softmax(observer_logits, dim=-1)
+            x_ppl = -(observer_probs * performer_log_probs).sum(-1).mean()
             readings.append(p_human((ppl / x_ppl).item()))
         return readings
 

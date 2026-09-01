@@ -40,6 +40,7 @@ _STRUCTURE_LINE_RE = re.compile(
     r"|[-*+]\s"  # bullet
     r"|\d+[.)]\s"  # numbered item
     r"|[-*_]{3,}\s*$"  # horizontal rule
+    r"|[—–-]\s*@\w+"  # attribution footer an export appends ("— @handle · date")
     r")"
 )
 
