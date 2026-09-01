@@ -342,22 +342,64 @@ async def get_end_user(end_user_id: UUID) -> dict | None:
     return dict(row) if row else None
 
 
-async def update_end_user(
-    end_user_id: UUID, name: str | None = None, share_wiki: bool | None = None
-) -> dict:
+async def update_end_user(end_user_id: UUID, updates: dict) -> dict:
     pool = get_pool()
+    sets = []
+    args = []
+    for field in ("name", "share_wiki"):
+        if field not in updates:
+            continue
+        args.append(updates[field])
+        sets.append(f"{field} = ${len(args)}")
+    if not sets:
+        raise ValueError("at least one user field is required")
+    args.append(end_user_id)
     row = await pool.fetchrow(
-        f"UPDATE end_users SET "
-        "  name = COALESCE($2, name), "
-        "  share_wiki = COALESCE($3, share_wiki) "
-        f"WHERE id = $1 RETURNING {_END_USER_COLS_PLAIN}",
-        end_user_id,
-        name,
-        share_wiki,
+        f"UPDATE end_users SET {', '.join(sets)} "
+        f"WHERE id = ${len(args)} RETURNING {_END_USER_COLS_PLAIN}",
+        *args,
     )
     if row is None:
         raise ValueError("user not found")
     return dict(row)
+
+
+async def delete_end_user(end_user_id: UUID, deleted_by: UUID) -> bool:
+    """Delete an end-user identity and its private wiki.
+
+    The schema owns the retention policy: personal pages and sources cascade,
+    while historical sessions and uploaded files remain in the workspace with
+    their end_user_id cleared. Files placed inside the private wiki move to
+    Trash before its protected folder is removed.
+    """
+    pool = get_pool()
+    async with pool.acquire() as conn, conn.transaction():
+        end_user = await conn.fetchrow(
+            "SELECT wiki_folder_id FROM end_users WHERE id = $1 FOR UPDATE", end_user_id
+        )
+        if end_user is None:
+            return False
+        wiki_folder_id = end_user["wiki_folder_id"]
+        subtree = await conn.fetch(
+            "WITH RECURSIVE tree AS ("
+            "  SELECT id FROM folders WHERE id = $1"
+            "  UNION ALL"
+            "  SELECT f.id FROM folders f JOIN tree t ON f.parent_folder_id = t.id"
+            ") SELECT id FROM tree",
+            wiki_folder_id,
+        )
+        folder_ids = [row["id"] for row in subtree]
+        await conn.execute(
+            "UPDATE files SET deleted_at = now(), deleted_by = $2 "
+            "WHERE folder_id = ANY($1) AND deleted_at IS NULL",
+            folder_ids,
+            deleted_by,
+        )
+        await conn.execute("DELETE FROM pages WHERE folder_id = ANY($1)", folder_ids)
+        await conn.execute("DELETE FROM tables WHERE folder_id = ANY($1)", folder_ids)
+        await conn.execute("DELETE FROM end_users WHERE id = $1", end_user_id)
+        await conn.execute("DELETE FROM folders WHERE id = $1", wiki_folder_id)
+    return True
 
 
 async def end_user_detail(end_user: dict) -> dict:

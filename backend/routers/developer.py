@@ -40,6 +40,13 @@ class DeveloperKeyRequest(BaseModel):
     expires_in_days: int | None = Field(None, ge=1, le=3650)
 
 
+class EndUserCreateRequest(BaseModel):
+    # The developer's own id for this user — the same value their backend
+    # asserts as user_id on uploads. Matches AddSourceRequest.user_id.
+    user_id: str = Field(..., min_length=1, max_length=128)
+    name: str | None = Field(None, min_length=1, max_length=255)
+
+
 class EndUserUpdateRequest(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=255)
     share_wiki: bool | None = None
@@ -313,6 +320,21 @@ async def list_users(
     }
 
 
+@users_router.post("", status_code=201)
+async def create_user(
+    req: EndUserCreateRequest,
+    current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
+):
+    """Create an end user by hand, before their first session arrives — so a
+    developer can assign sources or seed a wiki ahead of onboarding. The first
+    upload carrying this user_id lands on the same user."""
+    workspace = await _require_active_workspace(scope_user_id)
+    if await end_user_service.find_end_user(workspace["id"], req.user_id) is not None:
+        raise HTTPException(status_code=409, detail=f"user {req.user_id!r} already exists")
+    return await end_user_service.get_or_create_end_user(workspace, req.user_id, req.name)
+
+
 async def _end_user_in_scope(user_id: UUID, scope_user_id: UUID) -> dict:
     end_user = await end_user_service.get_end_user(user_id)
     if end_user is None:
@@ -357,4 +379,18 @@ async def update_user(
     scope_user_id: UUID = Depends(get_scope),
 ):
     await _end_user_in_scope(user_id, scope_user_id)
-    return await end_user_service.update_end_user(user_id, name=req.name, share_wiki=req.share_wiki)
+    updates = req.model_dump(exclude_unset=True)
+    if not updates or any(value is None for value in updates.values()):
+        raise HTTPException(status_code=400, detail="at least one user field is required")
+    return await end_user_service.update_end_user(user_id, updates)
+
+
+@users_router.delete("/{user_id}", status_code=204)
+async def delete_user(
+    user_id: UUID,
+    current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
+):
+    await _end_user_in_scope(user_id, scope_user_id)
+    if not await end_user_service.delete_end_user(user_id, current_user["id"]):
+        raise HTTPException(status_code=404, detail="User not found")
