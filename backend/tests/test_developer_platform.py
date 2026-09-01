@@ -232,6 +232,62 @@ async def test_user_vfs_isolates_users(client: AsyncClient, pool):
 
 
 @pytest.mark.asyncio
+async def test_developer_workspace_without_user_id_reads_only_shared_wiki(
+    client: AsyncClient, pool
+):
+    """A developer can search shared product knowledge without impersonating an
+    end user. Omitting user_id must narrow access to the shared wiki; it must
+    never expose any user's private wiki or transcripts."""
+    api_key, _, workspace = await _developer(client)
+    machine_key = await _mint_workspace_key(client, api_key, workspace)
+    await _push(
+        client,
+        machine_key,
+        [
+            _event("sess-acme-1", user_id="org_acme", user_name="Acme"),
+            _event("sess-beta-1", user_id="org_beta", user_name="Beta"),
+            _event("sess-internal"),
+        ],
+    )
+
+    end_users = {
+        r["external_id"]: r
+        for r in await pool.fetch(
+            "SELECT external_id, wiki_folder_id FROM end_users WHERE workspace_id = $1",
+            uuid.UUID(workspace["id"]),
+        )
+    }
+    scope_id = uuid.UUID(workspace["scope_user_id"])
+    for name, folder_id in [
+        ("Fault codes", uuid.UUID(workspace["external_wiki_folder_id"])),
+        ("Acme notes", end_users["org_acme"]["wiki_folder_id"]),
+        ("Beta notes", end_users["org_beta"]["wiki_folder_id"]),
+    ]:
+        await pool.execute(
+            "INSERT INTO pages (owner_user_id, name, content_markdown, folder_id, created_by) "
+            "VALUES ($1, $2, 'body', $3, $1)",
+            scope_id,
+            name,
+            folder_id,
+        )
+
+    resp = await client.post(
+        "/api/v1/me/vfs",
+        json={"script": "find / -type f"},
+        headers=_auth(machine_key),
+    )
+    assert resp.status_code == 200, resp.text
+    listing = resp.json()["stdout"]
+
+    assert "Fault codes" in listing
+    assert "Acme notes" not in listing
+    assert "Beta notes" not in listing
+    assert "sess-acme-1" not in listing
+    assert "sess-beta-1" not in listing
+    assert "sess-internal" not in listing
+
+
+@pytest.mark.asyncio
 async def test_new_user_reads_the_shared_wiki_before_they_have_written(client: AsyncClient, pool):
     """A customer's agent reads context before it records anything, so its very
     first call names a user that has no row yet. That has to work, and it has to
@@ -330,6 +386,14 @@ async def test_user_scoped_source_is_visible_to_that_user_only(client: AsyncClie
 
     assert "google" in await sources_listing("org_acme")
     assert "google" not in await sources_listing("org_beta")
+
+    resp = await client.post(
+        "/api/v1/me/vfs",
+        json={"script": "ls /sources"},
+        headers=_auth(machine_key),
+    )
+    assert resp.status_code == 200, resp.text
+    assert "google" not in resp.json()["stdout"]
 
 
 @pytest.mark.asyncio
