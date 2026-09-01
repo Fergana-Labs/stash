@@ -7,7 +7,10 @@ style profile, then sends prompts and gets back drafts.
 
     cd gpu && modal deploy -m stylewriter.modal_app
 
-prints the `api` endpoint URL, which becomes STYLEWRITER_GPU_URL.
+prints the `api` endpoint URL, which becomes STYLEWRITER_GPU_URL. Before the
+first deploy, create the shared secret the backend authenticates with:
+
+    modal secret create stylewriter-api STYLEWRITER_GPU_SECRET=<random>
 """
 
 # No `from __future__ import annotations` here: Modal inspects real annotation
@@ -17,7 +20,10 @@ import modal
 
 APP_NAME = "stylewriter"
 ADAPTERS_VOLUME = "stylewriter-adapters"
-CACHE_VOLUME = "stylewriter-cache"
+# The workspace already holds every base model this app uses under this
+# volume's HF cache (tens of gigabytes); sharing it is what makes a fresh
+# deploy start in minutes instead of re-downloading.
+CACHE_VOLUME = "voiceprint-cache"
 
 PREP_MODEL = "Qwen/Qwen2.5-7B-Instruct"
 BASE_MODEL = "Qwen/Qwen2.5-14B-Instruct"
@@ -480,34 +486,54 @@ def score_now(item: dict) -> dict:
     }
 
 
-@app.function(image=web_image, timeout=300, max_containers=8)
-@modal.fastapi_endpoint(method="POST", requires_proxy_auth=True)
-def api(item: dict):
+# The one caller is the Stash backend, which holds the same secret. A shared
+# secret rather than Modal proxy auth because proxy tokens can only be minted
+# in the dashboard; this one is created with `modal secret create`.
+API_SECRET = modal.Secret.from_name("stylewriter-api")
+
+
+@app.function(image=web_image, timeout=300, max_containers=8, secrets=[API_SECRET])
+@modal.asgi_app()
+def api():
     """The one door. `op` picks what happens; jobs come back as a call id,
-    `result` reports on one, `score` answers inline."""
-    from fastapi import HTTPException
+    `result` reports on one, `score` answers inline. A FastAPI app rather
+    than a bare endpoint so the secret can be read from a header."""
+    import hmac
+    import os
+    from typing import Annotated
+
+    from fastapi import FastAPI, Header, HTTPException
     from fastapi.responses import JSONResponse
 
-    op = item.get("op")
-    try:
-        if op == "train_start":
-            parse_training(item)
-            return {"call_id": train_job.spawn(item).object_id}
-        if op == "generate_start":
-            parse_generation(item)
-            return {"call_id": generate_job.spawn(item).object_id}
-        if op == "score":
-            return score_now(item)
-    except ValueError as error:
-        raise HTTPException(status_code=400, detail=str(error)) from error
-    if op == "result":
-        call_id = item.get("call_id")
-        if not isinstance(call_id, str) or not call_id.startswith("fc-"):
-            raise HTTPException(status_code=400, detail="invalid call id")
+    web = FastAPI()
+    expected = f"Bearer {os.environ['STYLEWRITER_GPU_SECRET']}"
+
+    @web.post("/")
+    def handle(item: dict, authorization: Annotated[str, Header()] = ""):
+        if not hmac.compare_digest(authorization, expected):
+            raise HTTPException(status_code=401, detail="bad secret")
+        op = item.get("op")
         try:
-            return modal.FunctionCall.from_id(call_id).get(timeout=0)
-        except TimeoutError:
-            return JSONResponse(status_code=202, content={"status": "pending"})
-        except Exception as error:  # the job itself raised; surface its message
-            raise HTTPException(status_code=500, detail=str(error)) from error
-    raise HTTPException(status_code=400, detail=f"unknown op {op!r}")
+            if op == "train_start":
+                parse_training(item)
+                return {"call_id": train_job.spawn(item).object_id}
+            if op == "generate_start":
+                parse_generation(item)
+                return {"call_id": generate_job.spawn(item).object_id}
+            if op == "score":
+                return score_now(item)
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        if op == "result":
+            call_id = item.get("call_id")
+            if not isinstance(call_id, str) or not call_id.startswith("fc-"):
+                raise HTTPException(status_code=400, detail="invalid call id")
+            try:
+                return modal.FunctionCall.from_id(call_id).get(timeout=0)
+            except TimeoutError:
+                return JSONResponse(status_code=202, content={"status": "pending"})
+            except Exception as error:  # the job itself raised; surface its message
+                raise HTTPException(status_code=500, detail=str(error)) from error
+        raise HTTPException(status_code=400, detail=f"unknown op {op!r}")
+
+    return web

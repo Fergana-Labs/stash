@@ -99,13 +99,20 @@ function ModelRow({
         <div className="flex items-center gap-2">
           <span className="text-sm font-medium">{model.name}</span>
           <span className="text-xs text-muted-foreground">{title}</span>
+          {model.shared && (
+            <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
+              Shared
+            </span>
+          )}
         </div>
         <div className="truncate text-xs text-muted-foreground">
           {model.status === "failed" && model.error
             ? model.error
-            : `${model.words.toLocaleString()} words from ${model.corpus.sources.length} page${
-                model.corpus.sources.length === 1 ? "" : "s"
-              }`}
+            : model.shared
+              ? "A house voice everyone can try. Train your own for yours."
+              : `${model.words.toLocaleString()} words from ${model.corpus.sources.length} page${
+                  model.corpus.sources.length === 1 ? "" : "s"
+                }`}
         </div>
       </div>
       <StatusPill status={model.status} />
@@ -114,9 +121,11 @@ function ModelRow({
           Write
         </Button>
       )}
-      <Button variant="ghost" size="sm" onClick={() => void remove()} disabled={removing}>
-        Delete
-      </Button>
+      {!model.shared && (
+        <Button variant="ghost" size="sm" onClick={() => void remove()} disabled={removing}>
+          Delete
+        </Button>
+      )}
     </li>
   );
 }

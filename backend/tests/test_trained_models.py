@@ -570,3 +570,80 @@ async def test_mcp_tools_run_as_the_caller(client, billing_on, mcp_running):
     assert resp.status_code == 200, resp.text
     payload = json.loads(resp.json()["result"]["content"][0]["text"])
     assert payload["models"] == [] and payload["kind"] == "stylewriter"
+
+
+# ── The shared default model ──────────────────────────────────────────
+
+
+@pytest.fixture
+def default_shipped(monkeypatch, tmp_path):
+    """A shipped default: its presence is the profile file."""
+    path = tmp_path / "default_profile.json"
+    path.write_text(
+        json.dumps(
+            {
+                "profile": {"mean": [1.0], "std": [1.0]},
+                "corpus": {"usable_words": 14_000, "chunks": 40, "sources": ["a.md"]},
+            }
+        )
+    )
+    monkeypatch.setattr(stylewriter, "DEFAULT_PROFILE_PATH", path)
+
+
+async def test_default_model_is_listed_runnable_and_kept(
+    client, gpu_stubbed, default_shipped, monkeypatch
+):
+    key, user_id = await _register(client)
+    listed = (await client.get("/api/v1/me/models", headers=_auth(key))).json()
+    assert [(m["name"], m["shared"], m["status"]) for m in listed] == [("default", True, "ready")]
+
+    sent = {}
+
+    async def start(url, op, payload):
+        sent.update(payload)
+        return "fc-gen"
+
+    async def wait(url, call_id, seconds, every=2.0):
+        return {
+            "text": "House voice.",
+            "style_score": 0.5,
+            "p_human": 0.9,
+            "draws": 4,
+            "soft_failed": False,
+        }
+
+    monkeypatch.setattr(gpu, "start", start)
+    monkeypatch.setattr(gpu, "wait", wait)
+    resp = await client.post(
+        "/api/v1/me/models/stylewriter/default/run",
+        json={"op": "write", "input": {"notes": ["a fact"]}},
+        headers=_auth(key),
+    )
+    assert resp.status_code == 200, resp.text
+    assert sent["adapter_path"] == stylewriter.DEFAULT_ADAPTER
+
+    assert (
+        await client.delete("/api/v1/me/models/stylewriter/default", headers=_auth(key))
+    ).status_code == 409
+    monkeypatch.setattr(settings, "STRIPE_SECRET_KEY", None)
+    await _corpus_folder(user_id, 2_200)
+    resp = await client.post(
+        "/api/v1/me/models",
+        json={"kind": "stylewriter", "name": "default", "folder": "Writing samples"},
+        headers=_auth(key),
+    )
+    assert resp.status_code == 422
+
+    status = (
+        await client.get("/api/v1/me/models/setup-status/stylewriter", headers=_auth(key))
+    ).json()
+    assert "shared default" in status["next_step"]
+
+
+async def test_no_default_until_one_is_shipped(client, monkeypatch, tmp_path):
+    monkeypatch.setattr(stylewriter, "DEFAULT_PROFILE_PATH", tmp_path / "missing.json")
+    key, _ = await _register(client)
+    assert (await client.get("/api/v1/me/models", headers=_auth(key))).json() == []
+    assert (
+        await client.get("/api/v1/me/models/stylewriter/default", headers=_auth(key))
+    ).status_code == 404

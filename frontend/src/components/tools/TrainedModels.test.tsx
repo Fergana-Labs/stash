@@ -51,6 +51,7 @@ const READY: TrainedModel = {
   kind: "stylewriter",
   name: "me",
   status: "ready",
+  shared: false,
   words: 2140,
   base_model: "Qwen/Qwen2.5-14B-Instruct",
   corpus_folder_id: "f1",

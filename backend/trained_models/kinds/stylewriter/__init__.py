@@ -9,8 +9,11 @@ the GPU app for a training run or a draft, and the tools an agent gets.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Awaitable, Callable
 from dataclasses import asdict
+from datetime import UTC, datetime
+from pathlib import Path
 from typing import Literal
 
 from mcp.server.fastmcp import FastMCP
@@ -24,6 +27,40 @@ from .corpus import CorpusReport, Document
 TITLE = "Stylewriter"
 BASE_MODEL = "Qwen/Qwen2.5-14B-Instruct"
 PRICE_SETTING = "STRIPE_STYLEWRITER_PRICE_ID"
+
+# The shared default model: trained once by us, usable by everyone, so the
+# skill writes before anyone has paid. The adapter lives on the GPU volume;
+# its style profile ships here, written by `train_default` after the run.
+DEFAULT_ADAPTER = "/adapters/model_default"
+DEFAULT_PROFILE_PATH = Path(__file__).with_name("default_profile.json")
+
+
+def default_model() -> dict | None:
+    """The shared model in the same shape as a trained row, or None when no
+    default has been shipped for this kind."""
+    if not DEFAULT_PROFILE_PATH.exists():
+        return None
+    shipped = json.loads(DEFAULT_PROFILE_PATH.read_text())
+    stamped = datetime.fromtimestamp(DEFAULT_PROFILE_PATH.stat().st_mtime, UTC)
+    return {
+        "id": "default",
+        "owner_user_id": None,
+        "kind": "stylewriter",
+        "name": "default",
+        "status": "ready",
+        "purchase_id": None,
+        "corpus_folder_id": None,
+        "corpus": shipped["corpus"],
+        "words": shipped["corpus"]["usable_words"],
+        "base_model": BASE_MODEL,
+        "job_ref": None,
+        "provider_ref": DEFAULT_ADAPTER,
+        "profile": shipped["profile"],
+        "error": None,
+        "created_at": stamped,
+        "trained_at": stamped,
+    }
+
 
 # A warm serving container answers in seconds. A cold one loads a 14B model
 # first, which can take minutes — longer than a harness waits on one tool

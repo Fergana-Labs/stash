@@ -70,6 +70,9 @@ class BadName(Exception):
     pass
 
 
+SHARED_NAME = "default"
+
+
 def public(model: dict) -> dict:
     """The row as callers see it: no adapter path, no style profile."""
     return {
@@ -77,6 +80,8 @@ def public(model: dict) -> dict:
         "kind": model["kind"],
         "name": model["name"],
         "status": model["status"],
+        # The shared default belongs to nobody and cannot be deleted.
+        "shared": model["owner_user_id"] is None,
         "words": model["words"],
         "base_model": model["base_model"],
         "corpus_folder_id": str(model["corpus_folder_id"]) if model["corpus_folder_id"] else None,
@@ -90,7 +95,14 @@ def public(model: dict) -> dict:
 # ── Models ────────────────────────────────────────────────────────────
 
 
+def _shared_models(kind: str | None) -> list[dict]:
+    kinds = registry.KINDS if kind is None else {kind: registry.get(kind)}
+    found = [module.default_model() for module in kinds.values()]
+    return [m for m in found if m is not None]
+
+
 async def list_models(owner_user_id: UUID, kind: str | None = None) -> list[dict]:
+    """The user's own models, then the shared default of each kind."""
     pool = get_pool()
     if kind is None:
         rows = await pool.fetch(
@@ -105,10 +117,15 @@ async def list_models(owner_user_id: UUID, kind: str | None = None) -> list[dict
             owner_user_id,
             kind,
         )
-    return [dict(r) for r in rows]
+    return [dict(r) for r in rows] + _shared_models(kind)
 
 
 async def get_model(owner_user_id: UUID, kind: str, name: str) -> dict:
+    if name == SHARED_NAME:
+        shared = registry.get(kind).default_model()
+        if shared is None:
+            raise ModelNotFound(f"no shared {kind} model has been published")
+        return shared
     row = await get_pool().fetchrow(
         f"SELECT {_MODEL_COLUMNS} FROM trained_models "
         "WHERE owner_user_id = $1 AND kind = $2 AND name = $3",
@@ -131,6 +148,8 @@ async def get_model_by_id(model_id: UUID) -> dict | None:
 async def delete_model(owner_user_id: UUID, kind: str, name: str) -> bool:
     """Drop the row. The adapter on the GPU volume is small and is reaped by
     the GPU app's own housekeeping, not by a request."""
+    if name == SHARED_NAME:
+        raise BadName("the shared default model cannot be deleted")
     status = await get_pool().execute(
         "DELETE FROM trained_models WHERE owner_user_id = $1 AND kind = $2 AND name = $3",
         owner_user_id,
@@ -234,6 +253,8 @@ async def train(owner_user_id: UUID, user: dict, kind: str, name: str, folder: s
     module = registry.get(kind)
     if not NAME_RE.match(name):
         raise BadName("names are 1-40 characters of lowercase letters, digits and hyphens")
+    if name == SHARED_NAME:
+        raise BadName(f"{SHARED_NAME!r} is the shared model; pick another name")
     if await _name_exists(owner_user_id, kind, name):
         raise NameTaken(f"a {kind} model named {name!r} already exists")
 
@@ -384,11 +405,12 @@ async def setup_status(owner_user_id: UUID, user: dict, kind: str) -> dict:
     """Where this user is with this kind of model, and what to do next."""
     module = registry.get(kind)
     models = [public(m) for m in await list_models(owner_user_id, kind)]
-    ready = [m["name"] for m in models if m["status"] == "ready"]
+    own_ready = [m["name"] for m in models if m["status"] == "ready" and not m["shared"]]
+    shared = [m["name"] for m in models if m["shared"]]
     training = [m["name"] for m in models if m["status"] in ("queued", "training")]
     spendable = await purchases.spendable_count(owner_user_id, kind)
-    if ready:
-        next_step = f"Ready to write with: {', '.join(ready)}."
+    if own_ready:
+        next_step = f"Ready to write with the user's own model: {', '.join(own_ready)}."
     elif training:
         next_step = f"Training: {', '.join(training)}. Poll job_result until ready."
     elif spendable:
@@ -400,6 +422,11 @@ async def setup_status(owner_user_id: UUID, user: dict, kind: str) -> dict:
         )
     else:
         next_step = "Put the user's writing in a folder, check it with check_corpus, then train."
+    if not own_ready and shared:
+        next_step += (
+            f" Meanwhile the shared {', '.join(shared)} model is ready to try — a house voice, "
+            "not the user's; say so when using it."
+        )
     return {
         "kind": kind,
         "title": module.TITLE,

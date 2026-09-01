@@ -167,5 +167,9 @@ async def delete_model(
     owner_user_id: UUID = Depends(get_scope),
 ) -> None:
     _kind(kind)
-    if not await service.delete_model(owner_user_id, kind, name):
+    try:
+        deleted = await service.delete_model(owner_user_id, kind, name)
+    except service.BadName as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+    if not deleted:
         raise HTTPException(status_code=404, detail=f"no {kind} model named {name!r}")

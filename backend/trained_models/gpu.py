@@ -4,8 +4,8 @@ Every kind deploys one Modal app with a single web endpoint that takes
 `{"op": ..., ...}` and either spawns a job (`*_start` ops, returning a
 `call_id`) or reports on one (`result`, returning 202 while it runs). The
 backend never imports the Modal SDK: the GPU code is deployed from `gpu/`
-on its own schedule, and this client only needs a URL and the proxy-auth
-key pair Modal issues for the workspace.
+on its own schedule, and this client only needs a URL and the shared secret
+both sides hold.
 """
 
 from __future__ import annotations
@@ -23,9 +23,9 @@ class GpuJobFailed(Exception):
 
 
 def _headers() -> dict[str, str]:
-    if not settings.MODAL_KEY or not settings.MODAL_SECRET:
-        raise RuntimeError("MODAL_KEY and MODAL_SECRET must be set to reach GPU apps")
-    return {"Modal-Key": settings.MODAL_KEY, "Modal-Secret": settings.MODAL_SECRET}
+    if not settings.STYLEWRITER_GPU_SECRET:
+        raise RuntimeError("STYLEWRITER_GPU_SECRET must be set to reach the GPU app")
+    return {"Authorization": f"Bearer {settings.STYLEWRITER_GPU_SECRET}"}
 
 
 async def start(url: str, op: str, payload: dict) -> str:

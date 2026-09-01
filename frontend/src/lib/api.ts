@@ -2602,6 +2602,8 @@ export type TrainedModel = {
   kind: string;
   name: string;
   status: "queued" | "training" | "ready" | "failed";
+  // The shared default model belongs to nobody and cannot be deleted.
+  shared: boolean;
   words: number;
   base_model: string;
   corpus_folder_id: string | null;

@@ -322,12 +322,11 @@ class Settings:
     )
 
     # --- Trained models (GPU apps on Modal, see gpu/) ---
-    # Proxy-auth token pair for the workspace's web endpoints (Modal dashboard
-    # -> Settings -> Proxy Auth Tokens). Needed by web and worker alike.
-    MODAL_KEY: str | None = os.getenv("MODAL_KEY")
-    MODAL_SECRET: str | None = os.getenv("MODAL_SECRET")
-    # The `api` web endpoint printed by `modal deploy` for gpu/stylewriter.
+    # The `api` web endpoint printed by `modal deploy` for gpu/stylewriter, and
+    # the shared secret it checks (the value of the `stylewriter-api` Modal
+    # secret). Needed by web and worker alike.
     STYLEWRITER_GPU_URL: str | None = os.getenv("STYLEWRITER_GPU_URL")
+    STYLEWRITER_GPU_SECRET: str | None = os.getenv("STYLEWRITER_GPU_SECRET")
 
     # ScrapeCreators (public social-content scraping, product-level key —
     # hydrates Instagram saves server-side; users never bring their own).

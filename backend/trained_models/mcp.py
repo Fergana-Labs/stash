@@ -144,7 +144,10 @@ def _generic_tools(mcp: FastMCP, kind: str) -> None:
     async def delete_model(name: str) -> dict:
         """Delete a model. Only on the user's explicit say-so; it cannot be
         undone and a new one costs a training run."""
-        deleted = await service.delete_model(_user()["id"], kind, name)
+        try:
+            deleted = await service.delete_model(_user()["id"], kind, name)
+        except service.BadName as error:
+            return {"status": "error", "message": str(error)}
         return {"deleted": deleted}
 
 

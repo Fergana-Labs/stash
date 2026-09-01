@@ -18,6 +18,11 @@ call `setup_status` first.** It tells you whether there is a ready model, a run 
 progress, a paid run waiting to be used, or nothing yet — and what to do next.
 Never assume; a new user and a returning one need completely different help.
 
+A shared model named `default` is always ready. It is a house voice, not the
+user's: use it to show what the tool does before they train, and say plainly
+that it is not their voice. Anything that should sound like *them* needs their
+own model.
+
 ---
 
 ## Part 1 — Getting a model trained
