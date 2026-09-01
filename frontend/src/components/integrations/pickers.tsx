@@ -138,9 +138,19 @@ export function AddSourceControls({
   if (connector.kind === "drive") {
     return (
       <div className="space-y-2">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void add({ external_ref: "root", display_name: "Google Drive" })}
+            disabled={busy}
+            className={secondaryButton()}
+          >
+            {busy ? "Adding..." : "Add My Drive"}
+          </button>
+          <span className="text-[11.5px] text-muted-foreground">or sync just one folder:</span>
+        </div>
         <DriveFolderControls
           busy={busy}
-          onAddMyDrive={() => add({ external_ref: "root", display_name: "Google Drive" })}
           onAddFolder={(folderId, displayName) =>
             add({
               source_type: "google_drive_folder",
@@ -265,13 +275,11 @@ export function parseDriveFolderId(input: string): string | null {
   return null;
 }
 
-function DriveFolderControls({
+export function DriveFolderControls({
   busy,
-  onAddMyDrive,
   onAddFolder,
 }: {
   busy: boolean;
-  onAddMyDrive: () => Promise<boolean>;
   // Blank name means the server names the source after the Drive folder.
   onAddFolder: (folderId: string, displayName: string) => Promise<boolean>;
 }) {
@@ -290,12 +298,6 @@ function DriveFolderControls({
 
   return (
     <div className="space-y-2">
-      <div className="flex items-center gap-2">
-        <button type="button" onClick={() => void onAddMyDrive()} disabled={busy} className={secondaryButton()}>
-          {busy ? "Adding..." : "Add My Drive"}
-        </button>
-        <span className="text-[11.5px] text-muted-foreground">or sync just one folder:</span>
-      </div>
       <input
         value={link}
         onChange={(event) => setLink(event.target.value)}

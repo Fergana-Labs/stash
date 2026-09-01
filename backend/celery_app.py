@@ -52,8 +52,8 @@ celery.conf.update(
     # Two queues, split by task weight. Anything that can hold a worker slot
     # for minutes — subprocess extractions, Playwright renders, exports,
     # source crawls, bulk URL fetches, headless agent runs — routes to
-    # "heavy" and gets its own worker pool. Everything else (every beat
-    # sweep, every cheap bounded task) stays on "default", which therefore
+    # "heavy" and gets its own worker pool. Everything else (cheap beat
+    # sweeps and bounded tasks) stays on "default", which therefore
     # never stalls: cadence-sensitive tasks like X token keep-fresh (its
     # 45-min refresh_margin assumes a tick roughly every 30 min) get their
     # guarantee without being enumerated. Interactive agent replies
@@ -73,6 +73,7 @@ celery.conf.update(
         "backend.exports.gslides.export_to_google_slides": {"queue": "heavy"},
         "backend.tasks.agent_schedules.run_scheduled_agent": {"queue": "heavy"},
         "backend.tasks.agent_schedules.run_curator_now": {"queue": "heavy"},
+        "backend.tasks.viz.precompute": {"queue": "heavy"},
     },
     task_acks_late=True,
     task_reject_on_worker_lost=True,
