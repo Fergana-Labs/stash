@@ -110,6 +110,18 @@ export class ApiError extends Error {
   }
 }
 
+// A 402 whose body carries where to pay. The subscription paywall is a plain
+// 402 the caller answers with its own modal; one-time purchases (a training
+// run) come back with the Stripe Checkout URL to open.
+export class PaymentRequiredError extends ApiError {
+  checkoutUrl: string;
+  constructor(message: string, checkoutUrl: string) {
+    super(402, message);
+    this.name = "PaymentRequiredError";
+    this.checkoutUrl = checkoutUrl;
+  }
+}
+
 export async function fetchAuthed(path: string): Promise<Response> {
   const token = await getAuthToken();
   const headers: Record<string, string> = {};
@@ -145,6 +157,9 @@ export async function apiFetch<T>(
   if (!res.ok) {
     const body = await res.json().catch(() => ({ detail: res.statusText }));
     const detail = body.detail;
+    if (res.status === 402 && detail && typeof detail.checkout_url === "string") {
+      throw new PaymentRequiredError(String(detail.message), detail.checkout_url);
+    }
     const msg =
       typeof detail === "string"
         ? detail
@@ -2578,6 +2593,96 @@ export async function createMcpServer(input: McpServerCreate): Promise<McpServer
 
 export async function deleteMcpServer(serverId: string): Promise<void> {
   await apiFetch(`${ME}/mcp-servers/${serverId}`, { method: "DELETE" });
+}
+
+// --- Trained models (the Tools page; agents use the skill's MCP server) ---
+
+export type TrainedModel = {
+  id: string;
+  kind: string;
+  name: string;
+  status: "queued" | "training" | "ready" | "failed";
+  words: number;
+  base_model: string;
+  corpus_folder_id: string | null;
+  corpus: { usable_words: number; chunks: number; sources: string[] };
+  error: string | null;
+  created_at: string;
+  trained_at: string | null;
+};
+
+export type ModelKind = { kind: string; title: string; base_model: string };
+
+export type CorpusReport = {
+  folder: { id: string; name: string };
+  status: "blocked" | "warning" | "ready";
+  ready: boolean;
+  documents: number;
+  usable_documents: number;
+  raw_words: number;
+  usable_words: number;
+  chunks: number;
+  duplicate_chunks: number;
+  duplicate_words: number;
+  minimum_words: number;
+  recommended_words: number;
+  reasons: string[];
+  warnings: string[];
+};
+
+export type ModelRunResult =
+  | { status: "pending"; job_id: string; hint: string }
+  | {
+      status: "done";
+      text: string;
+      style_score: number;
+      p_human: number;
+      draws: number;
+      soft_failed: boolean;
+      warning: string;
+    };
+
+export async function listTrainedModels(): Promise<TrainedModel[]> {
+  return apiFetch(`${ME}/models`);
+}
+
+export async function listModelKinds(): Promise<ModelKind[]> {
+  return apiFetch(`${ME}/models/kinds`);
+}
+
+export async function checkModelCorpus(kind: string, folder: string): Promise<CorpusReport> {
+  return apiFetch(`${ME}/models/check-corpus`, {
+    method: "POST",
+    body: JSON.stringify({ kind, folder }),
+  });
+}
+
+// Throws PaymentRequiredError when a training run must be bought first.
+export async function trainModel(kind: string, name: string, folder: string): Promise<TrainedModel> {
+  return apiFetch(`${ME}/models`, {
+    method: "POST",
+    body: JSON.stringify({ kind, name, folder }),
+  });
+}
+
+export async function runModel(
+  kind: string,
+  name: string,
+  op: string,
+  input: Record<string, unknown>
+): Promise<ModelRunResult> {
+  return apiFetch(`${ME}/models/${kind}/${encodeURIComponent(name)}/run`, {
+    method: "POST",
+    body: JSON.stringify({ op, input }),
+  });
+}
+
+export async function getModelJob(kind: string, name: string, jobId: string): Promise<ModelRunResult> {
+  return apiFetch(`${ME}/models/${kind}/${encodeURIComponent(name)}/jobs/${encodeURIComponent(jobId)}`);
+}
+
+export async function deleteTrainedModel(kind: string, name: string): Promise<void> {
+  await apiFetch(`${ME}/models/${kind}/${encodeURIComponent(name)}`, { method: "DELETE" });
 }
 
 // --- Mini programs (app-shaped tables) ---

@@ -34,6 +34,7 @@ import {
   type Connector,
 } from "@/components/integrations/connectors";
 import PaywallModal from "@/components/PaywallModal";
+import TrainedModels from "@/components/tools/TrainedModels";
 
 // One row per connector — the standard integrations list. The row is a link
 // to the provider's page (manage, pick sources, disconnect). For OAuth
@@ -379,6 +380,17 @@ function ToolsPageInner() {
           </p>
           <div className="mt-4">
             <IntegrationsGrid />
+          </div>
+        </section>
+
+        <section>
+          <h2 className="text-[15px] font-semibold text-foreground">Models</h2>
+          <p className="mt-0.5 text-[13px] text-muted-foreground">
+            Models trained on your own material. Your agent uses them through the skill that
+            brings them; this is where you train and try one.
+          </p>
+          <div className="mt-4">
+            <TrainedModels />
           </div>
         </section>
 
