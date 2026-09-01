@@ -19,11 +19,16 @@ from fastapi import HTTPException
 
 from ..config import settings
 from ..database import get_pool
+from ..trained_models import purchases
 
 # Stripe statuses that grant Pro. Everything else (past_due, canceled,
 # unpaid, incomplete) means free-tier enforcement.
 ACTIVE_STATUSES = {"active", "trialing"}
 FREE_CONNECTION_LIMIT = 2
+
+# One training run of a trained-model skill. Shown to users before checkout;
+# the Stripe price must agree with it.
+TRAINING_PRICE_CENTS = 2_000
 
 # Internal team accounts get Pro without a subscription — no card, no Stripe row.
 INTERNAL_EMAIL_DOMAINS = {"ferganalabs.com", "joinstash.ai"}
@@ -162,6 +167,26 @@ async def create_checkout_session(user: dict, interval: str) -> str:
     return session.url
 
 
+async def create_purchase_checkout(
+    user: dict, owner_user_id: UUID, kind: str, price_id: str
+) -> str:
+    """One-time payment for a training run. The metadata is what the webhook
+    turns into a purchase row, so it names the scope the model will live in."""
+    customer_id = await _get_or_create_customer_id(user)
+    session = await asyncio.to_thread(
+        stripe.checkout.Session.create,
+        api_key=settings.STRIPE_SECRET_KEY,
+        mode="payment",
+        customer=customer_id,
+        client_reference_id=str(user["id"]),
+        line_items=[{"price": price_id, "quantity": 1}],
+        metadata={"purchase": "training", "kind": kind, "owner_user_id": str(owner_user_id)},
+        success_url=f"{settings.PUBLIC_URL}/tools?purchase=success",
+        cancel_url=f"{settings.PUBLIC_URL}/tools",
+    )
+    return session.url
+
+
 async def create_portal_session(user_id: UUID) -> str:
     customer_id = await get_pool().fetchval(
         "SELECT stripe_customer_id FROM user_subscriptions WHERE user_id = $1", user_id
@@ -183,7 +208,16 @@ async def apply_webhook_event(event: dict) -> None:
     kind = event["type"]
     obj = event["data"]["object"]
 
-    if kind == "checkout.session.completed":
+    if kind == "checkout.session.completed" and obj.get("mode") == "payment":
+        # A one-time purchase, not a subscription: it never touches the
+        # subscription row, however the customer ids line up.
+        await purchases.record(
+            UUID(obj["metadata"]["owner_user_id"]),
+            obj["metadata"]["kind"],
+            obj["id"],
+            obj["amount_total"],
+        )
+    elif kind == "checkout.session.completed":
         await get_pool().execute(
             """
             UPDATE user_subscriptions
