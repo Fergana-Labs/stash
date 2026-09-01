@@ -458,9 +458,11 @@ async def _pump_turn(
 
             sprite = await sprite_service.acquire(user_id)
             await sprite_service.touch(user_id)
-            # Registered MCP servers reach the harness via the workdir's
-            # .mcp.json, rewritten every turn so removals propagate too.
+            # Registered and skill-declared MCP servers reach the harness via
+            # the workdir's .mcp.json, rewritten every turn so removals
+            # propagate too; the turn env carries the key they authenticate with.
             await mcp_server_service.sync_sprite_config(user_id, sprite)
+            auth.env.update(await sprite_service.agent_env(user_id))
 
             final = ""
             error: str | None = None
@@ -604,10 +606,7 @@ async def run_chat(
         raise NeedsAuth
     except agent_auth.ProviderNotConfigured:
         raise RuntimeError("cloud agent is not configured")
-    # Local exec runs the harness as this machine's own user, so hand the turn
-    # its own Stash credentials: without them the `stash` CLI inside it falls
-    # back to the developer's ~/.stash, which points at production.
-    auth.env.update(await sprite_service.local_agent_env(user_id))
+    auth.env.update(await sprite_service.agent_env(user_id))
     async with _TurnLock(session_id):
         history = await _load_history(owner_user_id, session_id, user_id)
         await memory_service.push_event(
@@ -615,8 +614,8 @@ async def run_chat(
         )
         sprite = await sprite_service.acquire(user_id)
         await sprite_service.touch(user_id)
-        # Registered MCP servers reach the harness via the workdir's
-        # .mcp.json, rewritten every turn so removals propagate too.
+        # Registered and skill-declared MCP servers reach the harness via the
+        # workdir's .mcp.json, rewritten every turn so removals propagate too.
         await mcp_server_service.sync_sprite_config(user_id, sprite)
 
         final = ""
