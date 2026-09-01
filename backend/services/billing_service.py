@@ -181,8 +181,8 @@ async def create_purchase_checkout(
         client_reference_id=str(user["id"]),
         line_items=[{"price": price_id, "quantity": 1}],
         metadata={"purchase": "training", "kind": kind, "owner_user_id": str(owner_user_id)},
-        success_url=f"{settings.PUBLIC_URL}/tools?purchase=success",
-        cancel_url=f"{settings.PUBLIC_URL}/tools",
+        success_url=f"{settings.PUBLIC_URL}/models?purchase=success",
+        cancel_url=f"{settings.PUBLIC_URL}/models",
     )
     return session.url
 

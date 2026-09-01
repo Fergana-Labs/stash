@@ -26,12 +26,6 @@ vi.mock("@/components/BreadcrumbContext", () => ({
   useBreadcrumbs: vi.fn(),
 }));
 
-// The Models section has its own tests; here it would only add API calls
-// to mock.
-vi.mock("@/components/tools/TrainedModels", () => ({
-  default: () => null,
-}));
-
 vi.mock("sonner", () => ({
   toast: { error: vi.fn() },
 }));
