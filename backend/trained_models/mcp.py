@@ -40,8 +40,12 @@ class _BearerAuth:
     """Resolve the bearer key before the MCP app sees the request. Read-only
     keys are refused outright: every tool here spends or produces."""
 
-    def __init__(self, app: ASGIApp):
+    def __init__(self, app: ASGIApp, kind: str):
         self.app = app
+        # The rate-limit middleware names every route's endpoint the way it
+        # would a function; an ASGI object without these is a 500.
+        self.__name__ = f"mcp_{kind}"
+        self.__qualname__ = self.__name__
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
@@ -178,7 +182,7 @@ def build(kind: str) -> ASGIApp:
     _generic_tools(mcp, kind)
     module.register_tools(mcp, _run_for(kind))
     _servers[kind] = mcp
-    return _BearerAuth(mcp.streamable_http_app())
+    return _BearerAuth(mcp.streamable_http_app(), kind)
 
 
 def mount_all(app: FastAPI) -> None:

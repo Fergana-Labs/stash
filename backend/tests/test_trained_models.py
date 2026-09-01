@@ -647,3 +647,17 @@ async def test_no_default_until_one_is_shipped(client, monkeypatch, tmp_path):
     assert (
         await client.get("/api/v1/me/models/stylewriter/default", headers=_auth(key))
     ).status_code == 404
+
+
+def test_every_route_endpoint_is_nameable():
+    """The rate-limit middleware (off under tests) names every route's
+    endpoint via __module__ and __name__; an ASGI object without them turns
+    every request into a 500 in production but never fails here."""
+    from backend.main import app
+
+    for route in app.routes:
+        endpoint = getattr(route, "endpoint", None)
+        if endpoint is None:
+            continue
+        assert getattr(endpoint, "__module__", None), route
+        assert getattr(endpoint, "__name__", None), route
