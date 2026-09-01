@@ -31,7 +31,9 @@ SUPPORTED_MODELS = {BASE_MODEL}
 
 TRAIN_GPU = "A100-80GB"
 SERVE_GPU = "A100-80GB"
-DETECTOR_GPU = "L40S"
+# Two 7B models in bf16, about 28 GB: an L40S is the cheapest fit, and an
+# A100 takes the job when Modal has no L40S to give.
+DETECTOR_GPU = ["L40S", "A100-40GB", "A100-80GB"]
 
 LORA_RANK = 16
 LORA_ALPHA = 32
@@ -481,7 +483,10 @@ def generate_job(item: dict) -> dict:
     }
 
 
-def score_now(item: dict) -> dict:
+@app.function(image=web_image, timeout=1000, max_containers=8)
+def score_job(item: dict) -> dict:
+    """A job like generation: the detector may be cold, and a caller waiting
+    on an HTTP response cannot wait out a container start."""
     from stylewriter import stylometry
 
     request = parse_generation(item)
@@ -501,9 +506,9 @@ API_SECRET = modal.Secret.from_name("stylewriter-api")
 @app.function(image=web_image, timeout=300, max_containers=8, secrets=[API_SECRET])
 @modal.asgi_app()
 def api():
-    """The one door. `op` picks what happens; jobs come back as a call id,
-    `result` reports on one, `score` answers inline. A FastAPI app rather
-    than a bare endpoint so the secret can be read from a header."""
+    """The one door. `op` picks what happens; every `*_start` op spawns a job
+    and answers with its call id, `result` reports on one. A FastAPI app
+    rather than a bare endpoint so the secret can be read from a header."""
     import hmac
     import os
     from typing import Annotated
@@ -526,8 +531,9 @@ def api():
             if op == "generate_start":
                 parse_generation(item)
                 return {"call_id": generate_job.spawn(item).object_id}
-            if op == "score":
-                return score_now(item)
+            if op == "score_start":
+                parse_generation(item)
+                return {"call_id": score_job.spawn(item).object_id}
         except ValueError as error:
             raise HTTPException(status_code=400, detail=str(error)) from error
         if op == "result":

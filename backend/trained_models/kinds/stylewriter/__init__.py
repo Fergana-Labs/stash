@@ -151,12 +151,8 @@ def _outcome(found: dict | None, job_id: str) -> dict:
 
 
 async def run(model: dict, op: str, payload: BaseModel) -> dict:
-    if op == "score":
-        return {
-            "status": "done",
-            **await gpu.call(_url(), "score", _generation_payload(model, op, payload)),
-        }
-    call_id = await gpu.start(_url(), "generate_start", _generation_payload(model, op, payload))
+    start_op = "score_start" if op == "score" else "generate_start"
+    call_id = await gpu.start(_url(), start_op, _generation_payload(model, op, payload))
     return _outcome(await gpu.wait(_url(), call_id, GENERATE_WAIT_S), call_id)
 
 

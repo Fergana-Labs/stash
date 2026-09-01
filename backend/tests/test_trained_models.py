@@ -79,6 +79,13 @@ def billing_on(monkeypatch):
     monkeypatch.setattr(settings, "INTERNAL_DOMAINS_FREE_PRO", False)
 
 
+@pytest.fixture(autouse=True)
+def no_default(monkeypatch, tmp_path):
+    """The repo ships a default profile; these tests reason about a user's
+    own models, so the shared one is absent unless a test asks for it."""
+    monkeypatch.setattr(stylewriter, "DEFAULT_PROFILE_PATH", tmp_path / "no-default.json")
+
+
 @pytest.fixture
 def gpu_stubbed(monkeypatch):
     """No GPU in tests: training starts instantly and the poll task is a no-op."""
@@ -580,7 +587,7 @@ async def test_mcp_tools_run_as_the_caller(client, billing_on, mcp_running):
 
 
 @pytest.fixture
-def default_shipped(monkeypatch, tmp_path):
+def default_shipped(no_default, monkeypatch, tmp_path):
     """A shipped default: its presence is the profile file."""
     path = tmp_path / "default_profile.json"
     path.write_text(

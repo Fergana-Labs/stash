@@ -38,16 +38,6 @@ async def start(url: str, op: str, payload: dict) -> str:
     return response.json()["call_id"]
 
 
-async def call(url: str, op: str, payload: dict) -> dict:
-    """An op the endpoint answers inline, without spawning a job."""
-    async with httpx.AsyncClient(timeout=60) as client:
-        response = await client.post(url, json={"op": op, **payload}, headers=_headers())
-    if response.status_code == 400:
-        raise ValueError(response.json()["detail"])
-    response.raise_for_status()
-    return response.json()
-
-
 async def result(url: str, call_id: str) -> dict | None:
     """The job's result, or None while it is still running."""
     async with httpx.AsyncClient(timeout=60) as client:
