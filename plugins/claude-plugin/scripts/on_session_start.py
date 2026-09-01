@@ -90,13 +90,10 @@ def main():
     state = load_state(DATA_DIR)
 
     session_context = ""
-    try:
-        from config import get_client
+    from config import get_client
 
-        with get_client() as client:
-            session_url = create_session_record(client, cfg, state, event, DATA_DIR)
-    except Exception:
-        session_url = None
+    with get_client() as client:
+        session_url = create_session_record(client, cfg, state, event, DATA_DIR)
 
     # The CLI upgrade runs from scripts/ensure_cli.sh before this script is
     # reached: an upgrade invoked here cannot run on the stale CLIs that need it.

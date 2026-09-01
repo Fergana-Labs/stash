@@ -12,7 +12,9 @@ still reach — so these tests pin the properties that make it work.
 from __future__ import annotations
 
 import json
+import os
 import re
+import shutil
 import subprocess
 import time
 from pathlib import Path
@@ -33,6 +35,28 @@ def _as_tuple(version: str) -> tuple[int, ...]:
     return tuple(int(part) for part in version.split("."))
 
 
+def _hermetic_bin_dir(tmp_path: Path) -> Path:
+    """Build a bin dir that resolves every binary the script and its stubs need.
+
+    PATH must not see any host `uv` here: a real `/usr/bin/uv` would otherwise
+    push `test_stale_cli_without_uv_fails_loudly` into the uv-present branch and
+    the no-uv "fail loudly" path would never run. So the script runs with PATH
+    set to exactly this directory, containing symlinks to the tools it and its
+    `#!/usr/bin/env bash` stubs resolve: bash, awk (version_below and the
+    `stash --version` extraction call it unconditionally), plus sleep/touch for
+    the uv stub.
+    """
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir(exist_ok=True)
+
+    for tool in ("bash", "awk", "sleep", "touch", "sh", "env"):
+        target = shutil.which(tool)
+        assert target, f"cannot build hermetic PATH: {tool} not found on the host"
+        os.symlink(target, bin_dir / tool)
+
+    return bin_dir
+
+
 def _run(
     tmp_path: Path,
     *,
@@ -40,9 +64,8 @@ def _run(
     uv_present: bool,
     uv_seconds: int = 0,
 ) -> subprocess.CompletedProcess:
-    """Run ensure_cli.sh against stub `stash`/`uv` binaries on a minimal PATH."""
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
+    """Run ensure_cli.sh against stub `stash`/`uv` binaries on a hermetic PATH."""
+    bin_dir = _hermetic_bin_dir(tmp_path)
     marker = tmp_path / "upgraded"
 
     if stash_version is not None:
@@ -61,7 +84,11 @@ def _run(
 
     return subprocess.run(
         ["bash", str(ENSURE_CLI)],
-        env={"PATH": f"{bin_dir}:/usr/bin:/bin", "HOME": str(tmp_path)},
+        # PATH is only the sandbox bin dir: `command -v uv` sees nothing unless
+        # the test staged a stub, but every binary the script/stubs call (bash,
+        # awk, sleep, touch) still resolves there. HOME lets find_uv() seek
+        # ~/.local/bin/uv only inside the tmp dir.
+        env={"PATH": str(bin_dir), "HOME": str(tmp_path)},
         capture_output=True,
         text=True,
     )
@@ -117,10 +144,12 @@ def test_stale_cli_does_not_block_session_start(tmp_path):
 
 def test_stale_cli_without_uv_fails_loudly(tmp_path):
     """No silent no-op: a machine that cannot self-repair has to say so, or the
-    outage stays invisible the way the original one did."""
+    outage stays invisible the way the original one did. Pinpoints the no-uv
+    branch's message, which "not being recorded" (a substring of BOTH branches)
+    would not."""
     result = _run(tmp_path, stash_version="0.1.314", uv_present=False)
     assert result.returncode == 1
-    assert "not being recorded" in result.stderr
+    assert "Session activity is not being recorded" in result.stderr
     assert result.stdout == ""
 
 

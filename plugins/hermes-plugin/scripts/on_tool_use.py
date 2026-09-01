@@ -16,11 +16,8 @@ def main():
     if not event.tool_name:
         return
     cfg = get_config()
-    try:
-        with get_client() as client:
-            stream_tool_use(client, cfg, state, event, DATA_DIR)
-    except Exception:
-        pass
+    with get_client() as client:
+        stream_tool_use(client, cfg, state, event, DATA_DIR)
 
 
 if __name__ == "__main__":

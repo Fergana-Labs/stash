@@ -90,7 +90,7 @@ def _parse_tool_output(raw) -> dict | None:
     if isinstance(raw, str):
         try:
             parsed = json.loads(raw)
-        except Exception:
+        except json.JSONDecodeError:
             return {"raw": raw}
         return parsed if isinstance(parsed, dict) else {"raw": raw}
     return {"raw": str(raw)}

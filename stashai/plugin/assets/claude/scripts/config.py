@@ -24,14 +24,14 @@ PRODUCTION_BASE_URL = "https://api.joinstash.ai"
 def get_stdin_data() -> dict:
     try:
         return json.loads(sys.stdin.read())
-    except Exception:
+    except (json.JSONDecodeError, OSError):
         return {}
 
 
 def _read_json(path: Path) -> dict:
     try:
         return json.loads(path.read_text())
-    except Exception:
+    except (json.JSONDecodeError, OSError):
         return {}
 
 

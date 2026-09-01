@@ -5,6 +5,13 @@ everything before it is captured in git history (`git log`), not here.
 
 ## Unreleased
 
+- Self-hosting: the documented local compose pair parses again. `docker-compose.local.yml`
+  carried an orphaned `collab` override for the service removed in #982, so
+  `docker compose -f docker-compose.prod.yml -f docker-compose.local.yml config`
+  failed with "service collab has neither an image nor a build context". The
+  override is gone and the pair starts the documented seven services. The GHCR
+  image pins now track the CLI release version (`0.1.368`) instead of drifting
+  behind it, and a test enforces that they stay equal.
 - CLI onboarding redesigned (#940). `stash signin` walks a first-run wizard
   that can be re-run anytime with the new `stash setup` — no answer is final.
   Session recording is framed as private-by-default and on by default

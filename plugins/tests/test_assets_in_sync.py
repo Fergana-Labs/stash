@@ -14,7 +14,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 SRC_DIR = REPO_ROOT / "plugins"
 DST_DIR = REPO_ROOT / "stashai" / "plugin" / "assets"
 
-AGENTS = ("cursor", "codex", "opencode", "gemini", "openclaw", "hermes")
+AGENTS = ("cursor", "codex", "opencode", "gemini", "openclaw", "hermes", "pi")
 IGNORE_NAMES = {"__pycache__", "node_modules"}
 IGNORE_SUFFIXES = {".pyc"}
 
@@ -33,7 +33,35 @@ def _iter_tracked_files(root: Path):
 def test_every_agent_has_shipped_assets():
     for agent in AGENTS:
         assert (DST_DIR / agent).is_dir(), (
-            f"Missing shipped assets for {agent!r}: " f"expected {DST_DIR / agent} to exist"
+            f"Missing shipped assets for {agent!r}: expected {DST_DIR / agent} to exist"
+        )
+
+
+def _assert_in_sync(
+    agent: str, src_root: Path, dst_root: Path, suffixes: set[str] | None = None
+) -> None:
+    def _tracked(root: Path) -> dict:
+        return {
+            rel: path
+            for rel, path in _iter_tracked_files(root)
+            if suffixes is None or path.suffix in suffixes
+        }
+
+    src_map = _tracked(src_root)
+    dst_map = _tracked(dst_root)
+
+    assert set(src_map) == set(dst_map), (
+        f"{agent}: file set drift between {src_root} and {dst_root}. "
+        f"Only in source: {sorted(set(src_map) - set(dst_map))}; "
+        f"only in assets: {sorted(set(dst_map) - set(src_map))}"
+    )
+
+    for rel in src_map:
+        src_bytes = src_map[rel].read_bytes()
+        dst_bytes = dst_map[rel].read_bytes()
+        assert src_bytes == dst_bytes, (
+            f"{agent}: {rel} differs between {src_root} and {dst_root}. "
+            f"Re-run the vendor copy when editing plugin sources."
         )
 
 
