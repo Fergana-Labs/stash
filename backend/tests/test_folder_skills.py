@@ -62,6 +62,29 @@ def _all_tree_folder_ids(node: dict) -> set[str]:
     return ids
 
 
+@pytest.mark.asyncio
+async def test_second_skill_md_is_rejected_instead_of_getting_a_suffix(
+    client: AsyncClient,
+):
+    api_key, _ = await _register(client)
+    scope = await _scope(client, api_key)
+    folder = await _folder(client, api_key, scope, "one-manifest")
+    content = "---\nname: one-manifest\ndescription: One manifest only.\n---\n\nUse it."
+    await _page(client, api_key, scope, "SKILL.md", folder_id=folder, content=content)
+
+    duplicate = await client.post(
+        "/api/v1/me/pages/new",
+        json={"name": "SKILL.md", "folder_id": folder, "content": content},
+        headers=_auth(api_key),
+    )
+
+    assert duplicate.status_code == 409
+    contents = (
+        await client.get(f"/api/v1/me/folders/{folder}/contents", headers=_auth(api_key))
+    ).json()
+    assert [page["name"] for page in contents["pages"]] == ["SKILL.md"]
+
+
 # --- MECE: skill subtrees leave the Files surfaces ---
 
 

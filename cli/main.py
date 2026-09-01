@@ -1407,6 +1407,11 @@ def upload(
     root_name = name or (target.stem if target.is_file() else target.name)
     skill_title = skill.strip() or root_name
     create_skill = bool(skill)
+    has_root_skill_md = any(
+        (file_path.relative_to(target) if target.is_dir() else Path(file_path.name))
+        == Path("SKILL.md")
+        for file_path in files
+    )
     console.print(f"[dim]Uploading {len(files)} file(s) as '{root_name}'...[/dim]")
 
     with _client() as c:
@@ -1467,16 +1472,13 @@ def upload(
         if create_skill:
             # Skill membership is a stored flag: writing a SKILL.md does not
             # make a folder a skill, the convert verb does.
-            try:
+            if not has_root_skill_md:
                 c.create_page(
                     name="SKILL.md",
                     content=f"---\nname: {skill_title}\ndescription: Uploaded from {target.name}\n---\n\n# {skill_title}\n",
                     folder_id=root_folder["id"],
                     content_type="markdown",
                 )
-            except StashError as e:
-                if e.status_code != 409:
-                    raise
             c.convert_folder_to_skill(root_folder["id"])
             if public:
                 skill_row = c.publish_skill_folder(

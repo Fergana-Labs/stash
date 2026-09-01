@@ -1,11 +1,19 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 import { Page } from "../../lib/types";
 import { uploadFile, fileDownloadUrl } from "../../lib/api";
+import LiveMarkdownEditor from "./LiveMarkdownEditor";
 
 const AUTOSAVE_DEBOUNCE_MS = 1500;
 
@@ -16,6 +24,11 @@ interface MarkdownEditorProps {
   onSave: (content: string) => void | Promise<void>;
   confirmSave?: () => boolean;
   onSaveStatusChange?: (status: SaveStatus) => void;
+  alwaysEditing?: boolean;
+  toolbarLeading?: ReactNode;
+  toolbarCenter?: ReactNode;
+  toolbarActions?: ReactNode;
+  previewMarkdown?: (markdown: string) => string;
 }
 
 /** The markdown editor edits markdown.
@@ -29,14 +42,20 @@ interface MarkdownEditorProps {
  *  production carry code fences, 99 of them SKILL.md files, and one keystroke
  *  anywhere in the document was enough to rewrite the lot.
  *
- *  So there is no conversion now. The textarea holds the file's bytes, the
- *  preview renders a copy for looking at, and a save writes back exactly what
- *  is in the box. Nothing can be lost in a round trip that does not happen. */
+ *  So there is no conversion now. The editor buffer holds the Markdown source,
+ *  the preview renders a copy for looking at, and a save writes back exactly
+ *  what is in the buffer. Nothing can be lost in a round trip that does not
+ *  happen. */
 export default function MarkdownEditor({
   file,
   onSave,
   confirmSave,
   onSaveStatusChange,
+  alwaysEditing = false,
+  toolbarLeading,
+  toolbarCenter,
+  toolbarActions,
+  previewMarkdown,
 }: MarkdownEditorProps) {
   const [value, setValue] = useState(file.content_markdown);
   const [dirty, setDirty] = useState(false);
@@ -45,10 +64,11 @@ export default function MarkdownEditor({
   // Pages open as a rendered document; editing the raw markdown is an
   // explicit step. A new empty page opens straight into the editor.
   const [mode, setMode] = useState<"view" | "edit">(
-    file.content_markdown ? "view" : "edit"
+    alwaysEditing || !file.content_markdown ? "edit" : "view"
   );
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSaved = useRef(file.content_markdown);
+  const valueRef = useRef(file.content_markdown);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const readOnly = !file.can_write;
 
@@ -56,12 +76,13 @@ export default function MarkdownEditor({
   // echo must not yank the buffer out from under the cursor.
   useEffect(() => {
     setValue(file.content_markdown);
+    valueRef.current = file.content_markdown;
     lastSaved.current = file.content_markdown;
     setDirty(false);
     setSaving(false);
-    setMode(file.content_markdown ? "view" : "edit");
+    setMode(alwaysEditing || !file.content_markdown ? "edit" : "view");
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [file.id]);
+  }, [file.id, alwaysEditing]);
 
   useEffect(() => {
     onSaveStatusChange?.(saving ? "saving" : dirty ? "dirty" : "saved");
@@ -89,6 +110,7 @@ export default function MarkdownEditor({
 
   function onChange(next: string) {
     setValue(next);
+    valueRef.current = next;
     setDirty(next !== lastSaved.current);
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
@@ -102,8 +124,8 @@ export default function MarkdownEditor({
     return () => {
       if (!saveTimer.current) return;
       clearTimeout(saveTimer.current);
-      const pending = textareaRef.current?.value;
-      if (pending !== undefined && pending !== lastSaved.current) {
+      const pending = valueRef.current;
+      if (pending !== lastSaved.current) {
         void saveRef.current(pending);
       }
     };
@@ -112,6 +134,7 @@ export default function MarkdownEditor({
   // Cmd/Ctrl+S flushes immediately.
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
+      if (e.defaultPrevented) return;
       if (!((e.metaKey || e.ctrlKey) && e.key === "s")) return;
       e.preventDefault();
       if (readOnly) return;
@@ -119,8 +142,8 @@ export default function MarkdownEditor({
         clearTimeout(saveTimer.current);
         saveTimer.current = null;
       }
-      const current = textareaRef.current?.value;
-      if (current !== undefined && current !== lastSaved.current) void saveRef.current(current);
+      const current = valueRef.current;
+      if (current !== lastSaved.current) void saveRef.current(current);
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
@@ -179,14 +202,13 @@ export default function MarkdownEditor({
         });
       }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [readOnly]
   );
 
   const toolbarButton =
     "cursor-pointer rounded px-2 py-1 text-[12px] text-muted-foreground transition-colors hover:bg-raised hover:text-foreground";
 
-  if (mode === "view") {
+  if (!alwaysEditing && mode === "view") {
     return (
       <div className="flex flex-col">
         {!readOnly && (
@@ -212,17 +234,28 @@ export default function MarkdownEditor({
 
   return (
     <div className="flex flex-col">
-      <div className="flex shrink-0 items-center justify-end gap-1 border-b border-border-subtle px-3 py-1.5">
-        <button
-          type="button"
-          onClick={() => setShowPreview((p) => !p)}
-          className={toolbarButton}
-        >
-          {showPreview ? "Hide preview" : "Preview"}
-        </button>
-        <button type="button" onClick={() => setMode("view")} className={toolbarButton}>
-          Done
-        </button>
+      <div
+        role="toolbar"
+        aria-label="Markdown editor"
+        className="grid min-h-12 shrink-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 border-b border-border-subtle px-4"
+      >
+        <div className="min-w-0">{toolbarLeading}</div>
+        <div className="min-w-0">{toolbarCenter}</div>
+        <div className="flex shrink-0 items-center justify-self-end gap-2">
+          <button
+            type="button"
+            onClick={() => setShowPreview((p) => !p)}
+            className={toolbarButton}
+          >
+            {showPreview ? "Hide preview" : "Preview"}
+          </button>
+          {!alwaysEditing && (
+            <button type="button" onClick={() => setMode("view")} className={toolbarButton}>
+              Done
+            </button>
+          )}
+          {toolbarActions}
+        </div>
       </div>
 
       {readOnly && (
@@ -232,32 +265,43 @@ export default function MarkdownEditor({
       )}
 
       <div className="flex bg-background">
-        <textarea
-          ref={textareaRef}
-          value={value}
-          readOnly={readOnly}
-          onChange={(e) => onChange(e.target.value)}
-          onPaste={(e) => {
-            const files = e.clipboardData?.files;
-            if (!files || files.length === 0) return;
-            e.preventDefault();
-            void insertFiles(files);
-          }}
-          onDragOver={(e) => e.preventDefault()}
-          onDrop={(e) => {
-            const files = e.dataTransfer?.files;
-            if (!files || files.length === 0) return;
-            e.preventDefault();
-            void insertFiles(files);
-          }}
-          spellCheck={false}
-          placeholder="Start typing..."
-          className="min-h-[75vh] flex-1 resize-none overflow-hidden bg-transparent px-12 pt-10 pb-24 font-mono text-[13px] leading-[1.7] text-foreground outline-none"
-        />
+        {alwaysEditing ? (
+          <LiveMarkdownEditor
+            value={value}
+            onChange={onChange}
+            onSave={(next) => void save(next)}
+            readOnly={readOnly}
+          />
+        ) : (
+          <textarea
+            ref={textareaRef}
+            value={value}
+            readOnly={readOnly}
+            onChange={(e) => onChange(e.target.value)}
+            onPaste={(e) => {
+              const files = e.clipboardData?.files;
+              if (!files || files.length === 0) return;
+              e.preventDefault();
+              void insertFiles(files);
+            }}
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={(e) => {
+              const files = e.dataTransfer?.files;
+              if (!files || files.length === 0) return;
+              e.preventDefault();
+              void insertFiles(files);
+            }}
+            spellCheck={false}
+            placeholder="Start typing..."
+            className="min-h-[75vh] flex-1 resize-none overflow-hidden bg-transparent px-12 pt-10 pb-24 font-mono text-[13px] leading-[1.7] text-foreground outline-none"
+          />
+        )}
         {showPreview && (
           <div className="flex-1 border-l border-border-subtle">
             <article className="prose prose-sm markdown-content mx-auto max-w-[920px] px-8 py-8 text-foreground">
-              <Markdown remarkPlugins={[remarkGfm]}>{value}</Markdown>
+              <Markdown remarkPlugins={[remarkGfm]}>
+                {previewMarkdown ? previewMarkdown(value) : value}
+              </Markdown>
             </article>
           </div>
         )}

@@ -1328,6 +1328,8 @@ async def create_page_unique(
                 owner_user_id, name, created_by, folder_id=folder_id, **content
             )
         except DuplicatePageName:
+            if base_name == skill_service.SKILL_MD_NAME:
+                raise
             name = f"{base_name} ({n})"
             n += 1
 

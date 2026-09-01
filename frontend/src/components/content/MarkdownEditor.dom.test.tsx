@@ -1,4 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { EditorView } from "@codemirror/view";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { Page } from "../../lib/types";
@@ -93,6 +94,32 @@ describe("MarkdownEditor", () => {
     );
 
     expect(await screen.findByRole("textbox")).toBeInTheDocument();
+  });
+
+  it("can stay directly editable while sharing one toolbar with its host", async () => {
+    render(
+      <MarkdownEditor
+        file={page}
+        onSave={vi.fn()}
+        alwaysEditing
+        toolbarLeading={<span>Fixture.md</span>}
+        toolbarCenter={<span>Fixture Skill</span>}
+        toolbarActions={<button type="button">Share</button>}
+      />,
+    );
+
+    const editor = await screen.findByRole("textbox", { name: "Start typing..." });
+    const view = EditorView.findFromDOM(editor.closest(".cm-editor") as HTMLElement);
+    expect(view?.state.doc.toString()).toBe(TRICKY);
+    expect(editor.querySelector(".cm-live-heading-1")).toHaveTextContent("Setup");
+    expect(editor.querySelector(".cm-live-heading-1")).not.toHaveTextContent("#");
+    const toolbar = screen.getByRole("toolbar", { name: "Markdown editor" });
+    expect(toolbar).toHaveTextContent("Fixture.md");
+    expect(toolbar).toHaveTextContent("Fixture Skill");
+    expect(toolbar).toHaveTextContent("Preview");
+    expect(toolbar).toHaveTextContent("Share");
+    expect(screen.queryByRole("button", { name: "Edit" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Done" })).not.toBeInTheDocument();
   });
 
   it("viewers without write access get the rendered page and no Edit", async () => {

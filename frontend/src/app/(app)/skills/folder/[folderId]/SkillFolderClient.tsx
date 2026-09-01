@@ -1,41 +1,47 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import Markdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import { useEffect, useMemo, useState } from "react";
+import { ArrowLeft, File, FileText, Folder, Plus, Table2 } from "lucide-react";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useBreadcrumbs } from "@/components/BreadcrumbContext";
 import { useShareAction } from "@/components/ShellChromeContext";
 import { FileBrowserSkeleton } from "@/components/SkeletonStates";
 import ResourceShareButton from "@/components/share/ResourceShareButton";
 import FileBrowser from "@/components/content/file-browser/FileBrowser";
+import MarkdownEditor from "@/components/content/MarkdownEditor";
 import SkillEnabledToggle from "@/components/skill/SkillEnabledToggle";
 import { useAuth } from "@/hooks/useAuth";
 import {
+  fileDownloadUrl,
   getFolderContents,
   getPage,
   listSkills,
   updatePage,
+  uploadFileOrPage,
   type FolderContents,
   type Skill,
 } from "@/lib/api";
 import { SKILL_MD, stripFrontmatter } from "@/lib/localSkill";
+import { refreshSidebar } from "@/lib/skillNavigationCache";
 import type { Page } from "@/lib/types";
 
 // The Skill root presents instructions plus supporting files. Subfolders use
 // the ordinary browser, but their links stay inside the Skill route.
 export default function SkillFolderClient({ folderId }: { folderId: string }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const selectedPageId = searchParams.get("page");
   const { user, loading } = useAuth();
   const userId = user?.id;
 
   const [contents, setContents] = useState<FolderContents | null>(null);
   const [skill, setSkill] = useState<Skill | null>(null);
   const [instructions, setInstructions] = useState<Page | null>(null);
-  const [editingInstructions, setEditingInstructions] = useState(false);
-  const [instructionDraft, setInstructionDraft] = useState("");
+  const [skillInstructionsId, setSkillInstructionsId] = useState<string | null>(null);
   const [savingInstructions, setSavingInstructions] = useState(false);
   const [error, setError] = useState("");
+  const uploadInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (!loading && !userId) router.push("/login");
@@ -57,17 +63,24 @@ export default function SkillFolderClient({ folderId }: { folderId: string }) {
           const skillPage = c.pages.find((page) => page.name === SKILL_MD);
           if (!skillPage)
             throw new Error("This Skill is missing its SKILL.md instructions");
+          const selectedPage = selectedPageId
+            ? c.pages.find((page) => page.id === selectedPageId)
+            : skillPage;
+          if (!selectedPage)
+            throw new Error("This file does not belong to this Skill");
           const [page, listed] = await Promise.all([
-            getPage(skillPage.id),
+            getPage(selectedPage.id),
             listSkills(),
           ]);
           if (cancelled) return;
           const match = listed.find((entry) => entry.folder_id === folderId);
           if (!match) throw new Error("This Skill is not in your Skills list");
           setInstructions(page);
+          setSkillInstructionsId(skillPage.id);
           setSkill(match);
         } else {
           setInstructions(null);
+          setSkillInstructionsId(null);
           setSkill(null);
         }
         setContents(c);
@@ -79,7 +92,7 @@ export default function SkillFolderClient({ folderId }: { folderId: string }) {
     return () => {
       cancelled = true;
     };
-  }, [userId, folderId, router]);
+  }, [userId, folderId, router, selectedPageId]);
 
   const crumbs = useMemo(() => {
     if (!contents) return [{ label: "Skills", href: `/skills` }];
@@ -105,19 +118,9 @@ export default function SkillFolderClient({ folderId }: { folderId: string }) {
   // Skill actions live on the skill root; subfolders are plain browsing.
   const isSkillRoot = !!contents?.folder.is_skill;
   const folderName = contents?.folder.name ?? "";
-  const shareAction = useMemo(() => {
-    if (!user || !isSkillRoot) return null;
-    return (
-      <ResourceShareButton
-        objectType="folder"
-        objectId={folderId}
-        resourceName={folderName}
-        resourceUrlPath={`/skills/folder/${folderId}`}
-        currentUser={user}
-      />
-    );
-  }, [user, isSkillRoot, folderId, folderName]);
-  useShareAction(shareAction);
+  // Skill sharing lives beside the Skill itself. Registering it in the shell
+  // creates an otherwise-empty full-width action bar above the editor.
+  useShareAction(null);
 
   if (loading) return <FileBrowserSkeleton />;
   if (!user) return null;
@@ -128,36 +131,28 @@ export default function SkillFolderClient({ folderId }: { folderId: string }) {
           Skill unavailable
         </h1>
         <p className="mt-2 text-[14px] leading-relaxed text-dim">{error}</p>
+        <Link
+          href="/skills"
+          className="mt-5 inline-flex items-center gap-1.5 rounded-md border border-border bg-base px-3 py-2 text-[13px] font-medium text-foreground hover:bg-raised"
+        >
+          <ArrowLeft className="h-3.5 w-3.5" />
+          Go back to Skills
+        </Link>
       </div>
     );
   }
   if (!contents) return <FileBrowserSkeleton />;
 
-  const instructionBody = instructions
-    ? withoutRepeatedTitle(
-        stripFrontmatter(instructions.content_markdown),
-        contents.folder.name,
-      )
-    : "";
-
-  function beginEditingInstructions() {
-    setInstructionDraft(instructionBody);
-    setEditingInstructions(true);
-  }
-
-  async function saveInstructions() {
-    if (!instructions || !instructionDraft.trim()) return;
+  async function saveInstructions(content: string) {
+    if (!instructions || !content.trim()) return;
     setSavingInstructions(true);
     setError("");
     try {
       const updated = await updatePage(instructions.id, {
-        content: replaceSkillInstructions(
-          instructions.content_markdown,
-          instructionDraft,
-        ),
+        content,
       });
       setInstructions(updated);
-      setEditingInstructions(false);
+      if (instructions.id === skillInstructionsId) await reloadSkill();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to save instructions");
     } finally {
@@ -172,142 +167,185 @@ export default function SkillFolderClient({ folderId }: { folderId: string }) {
     setSkill(match);
   }
 
-  // The Skill root reads like a repository page: a header with the
-  // description, the enabled switch and the vitals, then the SKILL.md
-  // rendered like a README with its own title bar, then the supporting files.
-  const skillIntro = instructions && skill ? (
-    <section className="mt-6 border-b border-border-subtle pb-8">
-      <header className="flex flex-wrap items-start justify-between gap-4">
-        <div className="min-w-0 flex-1">
-          <h1 className="font-display text-[24px] font-bold tracking-tight text-foreground">
-            {skill.name}
-          </h1>
-          <p className="mt-1.5 max-w-2xl text-[14px] leading-relaxed text-dim">
-            {skill.description || "No description"}
-          </p>
-          {skill.when_to_use && (
-            <p className="mt-2 max-w-2xl text-[13px] leading-relaxed text-muted-foreground">
-              <span className="font-medium text-foreground">When to use:</span>{" "}
-              {skill.when_to_use}
-            </p>
-          )}
-        </div>
-        <SkillEnabledToggle skill={skill} onChanged={reloadSkill} />
-      </header>
-      <dl className="mt-4 flex flex-wrap gap-x-5 gap-y-1 text-[12px] text-muted-foreground">
-        <SkillStat label="Files" value={String(skill.file_count)} />
-        <SkillStat label="Updated" value={formatSkillDate(skill.updated_at)} />
-        {skill.version && <SkillStat label="Version" value={skill.version} />}
-        <SkillStat
-          label="Visibility"
-          value={skill.published ? "Published" : "Private to you"}
-        />
-      </dl>
+  async function uploadSupportingFiles(files: File[]) {
+    setError("");
+    try {
+      for (const file of files) {
+        await uploadFileOrPage(file, folderId);
+      }
+      setContents(await getFolderContents(folderId));
+      await refreshSidebar();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to add files");
+    }
+  }
 
-      <div className="mt-6 overflow-hidden rounded-lg border border-border">
-        <div className="flex items-center justify-between border-b border-border bg-raised px-4 py-2">
-          <span className="font-mono text-[12px] font-medium text-foreground">
-            SKILL.md
-          </span>
-          {!editingInstructions && (
+  if (isSkillRoot && instructions && skill && skillInstructionsId) {
+    const showingSkillInstructions = instructions.id === skillInstructionsId;
+    return (
+      <div className="flex min-h-0 flex-1 overflow-hidden bg-background">
+        <aside className="scroll-thin flex w-64 shrink-0 flex-col overflow-y-auto border-r border-border-subtle bg-surface/40">
+          <div className="border-b border-border-subtle px-4 py-4">
+            <Link
+              href="/skills"
+              className="inline-flex items-center gap-1.5 text-[12px] font-medium text-muted-foreground hover:text-foreground"
+            >
+              <ArrowLeft className="h-3.5 w-3.5" />
+              All Skills
+            </Link>
+          </div>
+
+          <div className="flex items-center justify-between px-3 pb-1 pt-3">
+            <span className="sys-label">Files</span>
             <button
               type="button"
-              onClick={beginEditingInstructions}
-              className="cursor-pointer text-[12.5px] font-medium text-muted-foreground hover:text-foreground"
+              aria-label="Add files"
+              onClick={() => uploadInputRef.current?.click()}
+              className="cursor-pointer rounded p-1 text-muted-foreground hover:bg-raised hover:text-foreground"
             >
-              Edit instructions
-            </button>
-          )}
-        </div>
-        <div className="px-5 py-4">
-      {editingInstructions ? (
-        <div>
-          <label
-            htmlFor="skill-instructions"
-            className="text-[13px] font-medium text-foreground"
-          >
-            Instructions
-          </label>
-          <textarea
-            id="skill-instructions"
-            value={instructionDraft}
-            onChange={(event) => setInstructionDraft(event.target.value)}
-            autoFocus
-            className="mt-2 min-h-72 w-full resize-y rounded-lg border border-border bg-base px-3 py-2.5 font-mono text-[13px] leading-relaxed text-foreground outline-none focus:border-foreground/30"
-          />
-          <div className="mt-3 flex justify-end gap-2">
-            <button
-              type="button"
-              onClick={() => setEditingInstructions(false)}
-              disabled={savingInstructions}
-              className="cursor-pointer rounded-md border border-border bg-base px-3 py-1.5 text-[12.5px] font-medium text-foreground hover:bg-raised disabled:opacity-50"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={() => void saveInstructions()}
-              disabled={savingInstructions || !instructionDraft.trim()}
-              className="cursor-pointer rounded-md bg-[var(--color-brand-600)] px-3 py-1.5 text-[12.5px] font-medium text-white hover:bg-[var(--color-brand-700)] disabled:cursor-default disabled:opacity-50"
-            >
-              {savingInstructions ? "Saving…" : "Save"}
+              <Plus className="h-3.5 w-3.5" />
             </button>
           </div>
-        </div>
-      ) : instructionBody ? (
-        <div className="markdown-content">
-          <Markdown remarkPlugins={[remarkGfm]}>{instructionBody}</Markdown>
-        </div>
-      ) : (
-        <p className="text-[14px] text-muted-foreground">
-          No instructions have been written yet.
-        </p>
-      )}
-        </div>
+
+          <nav aria-label="Skill files" className="px-2 pb-4">
+            <SkillFileRow
+              active={showingSkillInstructions}
+              href={`/skills/folder/${folderId}`}
+              icon={<FileText />}
+              label="SKILL.md"
+            />
+            {contents.pages
+              .filter((page) => page.id !== skillInstructionsId)
+              .map((page) => (
+                <SkillFileRow
+                  key={page.id}
+                  active={page.id === instructions.id}
+                  href={`/skills/folder/${folderId}?page=${page.id}`}
+                  icon={<FileText />}
+                  label={page.name}
+                />
+              ))}
+            {contents.subfolders.map((folder) => (
+              <SkillFileRow
+                key={folder.id}
+                href={`/skills/folder/${folder.id}`}
+                icon={<Folder />}
+                label={folder.name}
+              />
+            ))}
+            {contents.files.map((file) => (
+              <SkillFileRow
+                key={file.id}
+                href={fileDownloadUrl(file.id)}
+                icon={<File />}
+                label={file.name}
+              />
+            ))}
+            {contents.tables.map((table) => (
+              <SkillFileRow
+                key={table.id}
+                href={`/tables/${table.id}`}
+                icon={<Table2 />}
+                label={table.name}
+              />
+            ))}
+          </nav>
+        </aside>
+
+        <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
+          {error && (
+            <div className="border-b border-red-300/40 bg-red-500/10 px-4 py-2 text-[13px] text-red-500">
+              {error}
+            </div>
+          )}
+          <div className="scroll-thin min-h-0 flex-1 overflow-y-auto">
+            <MarkdownEditor
+              file={instructions}
+              onSave={saveInstructions}
+              alwaysEditing
+              previewMarkdown={showingSkillInstructions ? stripFrontmatter : undefined}
+              toolbarLeading={(
+                <span className="truncate font-mono text-[12.5px] text-muted-foreground">
+                  {instructions.name}
+                </span>
+              )}
+              toolbarCenter={(
+                <span className="block max-w-[40vw] truncate text-[12.5px] font-medium text-foreground">
+                  {skill.name}
+                </span>
+              )}
+              toolbarActions={(
+                <>
+                  {savingInstructions && (
+                    <span className="text-[11px] text-muted-foreground">Saving…</span>
+                  )}
+                  <SkillEnabledToggle skill={skill} onChanged={reloadSkill} />
+                  <ResourceShareButton
+                    objectType="folder"
+                    objectId={folderId}
+                    resourceName={folderName}
+                    resourceUrlPath={`/skills/folder/${folderId}`}
+                    currentUser={user}
+                  />
+                </>
+              )}
+            />
+          </div>
+        </main>
+
+        <input
+          ref={uploadInputRef}
+          type="file"
+          multiple
+          className="hidden"
+          onChange={(event) => {
+            const files = Array.from(event.target.files ?? []);
+            event.target.value = "";
+            if (files.length > 0) void uploadSupportingFiles(files);
+          }}
+        />
       </div>
-    </section>
-  ) : null;
+    );
+  }
 
   return (
     <FileBrowser
       folderId={folderId}
       folderHrefBase={`/skills/folder`}
       breadcrumbs={crumbs}
-      hiddenItemIds={instructions ? [instructions.id] : []}
-      intro={skillIntro}
-      itemsHeading={instructions ? "Supporting files" : undefined}
-      supportingFilesMode={!!instructions}
     />
   );
 }
 
-function SkillStat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-baseline gap-1">
-      <dt className="text-muted-foreground/80">{label}</dt>
-      <dd className="font-medium text-foreground">{value}</dd>
-    </div>
+function SkillFileRow({
+  active = false,
+  href,
+  icon,
+  label,
+}: {
+  active?: boolean;
+  href?: string;
+  icon: React.ReactElement;
+  label: string;
+}) {
+  const content = (
+    <>
+      <span className="[&>svg]:h-3.5 [&>svg]:w-3.5">{icon}</span>
+      <span className="min-w-0 truncate">{label}</span>
+    </>
   );
-}
+  const className = `flex items-center gap-2 rounded-md px-2 py-1.5 text-[12.5px] ${
+    active
+      ? "bg-raised font-medium text-foreground"
+      : "text-muted-foreground hover:bg-raised hover:text-foreground"
+  }`;
 
-function formatSkillDate(iso: string): string {
-  return new Date(iso).toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-}
-
-function withoutRepeatedTitle(markdown: string, skillName: string): string {
-  const lines = markdown.trim().split("\n");
-  if (lines[0]?.trim() !== `# ${skillName}`) return markdown;
-  return lines.slice(1).join("\n").trim();
-}
-
-function replaceSkillInstructions(markdown: string, instructions: string): string {
-  const frontmatter = markdown.match(/^---\r?\n[\s\S]*?\r?\n---/);
-  if (!frontmatter) {
-    throw new Error("This Skill has invalid SKILL.md frontmatter");
+  if (!href) {
+    return <div className={className}>{content}</div>;
   }
-  return `${frontmatter[0]}\n\n${instructions.trim()}\n`;
+  return (
+    <Link href={href} className={className}>
+      {content}
+    </Link>
+  );
 }

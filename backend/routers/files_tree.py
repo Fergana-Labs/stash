@@ -613,17 +613,20 @@ async def create_page(
             end_user = await end_user_service.resolve_end_user_for_scope(owner_user_id, req.user_id)
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
-    page = await files_tree_service.create_page_unique(
-        owner_user_id,
-        req.name,
-        current_user["id"],
-        req.folder_id,
-        content=req.content,
-        content_type=req.content_type,
-        content_html=req.content_html,
-        html_layout=req.html_layout,
-        end_user_id=end_user["id"] if end_user else None,
-    )
+    try:
+        page = await files_tree_service.create_page_unique(
+            owner_user_id,
+            req.name,
+            current_user["id"],
+            req.folder_id,
+            content=req.content,
+            content_type=req.content_type,
+            content_html=req.content_html,
+            html_layout=req.html_layout,
+            end_user_id=end_user["id"] if end_user else None,
+        )
+    except files_tree_service.DuplicatePageName as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
     # The creator just wrote it; the response must not demote the editor.
     return PageResponse(**{**page, "can_write": True})
 

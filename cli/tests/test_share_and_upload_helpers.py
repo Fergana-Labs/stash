@@ -204,3 +204,43 @@ def test_upload_with_skill_flag_private_skips_publish(monkeypatch, tmp_path) -> 
     assert "SKILL.md" in created_pages
     assert converted == ["folder-1"]
     assert published == {}
+
+
+def test_upload_skill_folder_keeps_its_single_root_skill_md(monkeypatch, tmp_path) -> None:
+    uploaded = tmp_path / "customer-notes"
+    uploaded.mkdir()
+    skill_md = "---\nname: customer-notes\ndescription: Notes\n---\n\n# Instructions\n"
+    (uploaded / "SKILL.md").write_text(skill_md)
+    (uploaded / "faq.md").write_text("# FAQ\n")
+    created_pages: list[tuple[str, str]] = []
+
+    class FakeClient:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def create_folder(self, name, parent_folder_id=None):
+            return {"id": "folder-1", "name": name}
+
+        def create_page(self, name, content="", folder_id=None, content_type=None):
+            created_pages.append((name, content))
+            return {"id": f"page-{len(created_pages)}"}
+
+        def convert_folder_to_skill(self, folder_id):
+            return {"folder_id": folder_id, "name": "customer-notes", "is_skill": True}
+
+    monkeypatch.setattr(main, "_require_auth", lambda: None)
+    monkeypatch.setattr(main, "_client", lambda: FakeClient())
+
+    main.upload(
+        str(uploaded),
+        name="",
+        skill="customer-notes",
+        public=False,
+        as_json=False,
+    )
+
+    manifests = [content for name, content in created_pages if name == "SKILL.md"]
+    assert manifests == [skill_md]

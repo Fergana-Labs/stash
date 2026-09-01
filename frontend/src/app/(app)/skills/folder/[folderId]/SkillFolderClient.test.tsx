@@ -3,9 +3,11 @@ import {
   fireEvent,
   render as renderBase,
   screen,
+  within,
   waitFor,
 } from "@testing-library/react";
 import type { ReactNode } from "react";
+import { EditorView } from "@codemirror/view";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import SkillFolderClient from "./SkillFolderClient";
 import { getFolderContents, getPage, listSkills, updatePage } from "@/lib/api";
@@ -25,18 +27,22 @@ const router = vi.hoisted(() => ({
 const params = vi.hoisted(() => ({
   folderId: "folder-sub",
 }));
+const searchParams = vi.hoisted(() => new URLSearchParams());
 
 vi.mock("next/navigation", () => ({
   useParams: () => params,
   useRouter: () => router,
+  useSearchParams: () => searchParams,
 }));
 
 vi.mock("@/lib/api", () => ({
+  fileDownloadUrl: vi.fn((id: string) => `/api/v1/me/files/${id}/download`),
   getFolderContents: vi.fn(),
   getPage: vi.fn(),
   listSkills: vi.fn(),
   setSkillAgentEnabled: vi.fn(),
   updatePage: vi.fn(),
+  uploadFileOrPage: vi.fn(),
   trashItem: vi.fn(),
 }));
 
@@ -111,6 +117,7 @@ vi.mock("@/hooks/useAuth", () => ({
 describe("SkillFolderClient", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    searchParams.delete("page");
     vi.mocked(listSkills).mockResolvedValue([launchPlanSkill]);
     params.folderId = "folder-sub";
     vi.mocked(getFolderContents).mockResolvedValue({
@@ -203,9 +210,23 @@ describe("SkillFolderClient", () => {
     );
   });
 
+  it("offers an escape hatch when the Skill cannot be opened", async () => {
+    vi.mocked(getFolderContents).mockRejectedValue(
+      new Error("This file does not belong to this Skill"),
+    );
+
+    render(<SkillFolderClient folderId="folder-root" />);
+
+    expect(await screen.findByText("Skill unavailable")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Go back to Skills" })).toHaveAttribute(
+      "href",
+      "/skills",
+    );
+  });
+
   // The Share dialog turns this path into the link the user copies. Pointing
   // it at /skills/<folderId> hands the recipient a "Skill not found" page.
-  it("shares the skill with a link the recipient can open", async () => {
+  it("keeps sharing in the Skill sidebar instead of creating a shell action row", async () => {
     vi.mocked(getFolderContents).mockResolvedValue({
       folder: {
         id: "folder-root",
@@ -251,18 +272,16 @@ describe("SkillFolderClient", () => {
     });
 
     render(<SkillFolderClient folderId="folder-root" />);
-    await screen.findByTestId("file-browser");
-
-    const action = vi.mocked(useShareAction).mock.calls.at(-1)?.[0];
-    render(<>{action}</>);
+    await screen.findByRole("link", { name: "All Skills" });
 
     expect(screen.getByText("Share resource")).toHaveAttribute(
       "data-share-url",
       "/skills/folder/folder-root",
     );
+    expect(vi.mocked(useShareAction)).toHaveBeenLastCalledWith(null);
   });
 
-  it("leads with rendered SKILL.md instructions and hides that page from the file list", async () => {
+  it("presents the Skill as a Markdown editor with its files in a sidebar", async () => {
     vi.mocked(getFolderContents).mockResolvedValue({
       folder: {
         id: "folder-root",
@@ -316,50 +335,121 @@ describe("SkillFolderClient", () => {
 
     render(<SkillFolderClient folderId="folder-root" />);
 
-    expect(
-      await screen.findByRole("heading", { name: "When to use this" }),
-    ).toBeInTheDocument();
-    expect(screen.getByText("Follow the checklist.")).toBeInTheDocument();
-    // The repository-style header: description, when-to-use, vitals, switch.
-    expect(screen.getByRole("heading", { name: "Launch Plan" })).toBeInTheDocument();
-    expect(screen.getByText("A launch helper")).toBeInTheDocument();
-    expect(screen.getByText("Use when planning a launch.")).toBeInTheDocument();
-    expect(screen.getByText("SKILL.md")).toBeInTheDocument();
-    expect(screen.getByRole("switch", { name: "Enabled" })).toHaveAttribute(
+    const editor = await screen.findByRole("textbox", { name: "Start typing..." });
+    const view = EditorView.findFromDOM(editor.closest(".cm-editor") as HTMLElement);
+    expect(view?.state.doc.toString()).toBe(
+      "---\nname: Launch Plan\ndescription: A launch helper\n---\n\n## When to use this\nFollow the checklist.",
+    );
+    expect(editor.querySelector(".cm-live-heading-2")).toHaveTextContent(
+      "When to use this",
+    );
+    expect(editor.querySelector(".cm-live-heading-2")).not.toHaveTextContent("##");
+    expect(screen.queryByRole("button", { name: "Edit" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Done" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "All Skills" })).toHaveAttribute(
+      "href",
+      "/skills",
+    );
+    expect(screen.queryByRole("heading", { name: "Launch Plan" })).not.toBeInTheDocument();
+    expect(screen.queryByText("A launch helper")).not.toBeInTheDocument();
+    expect(screen.getAllByText("SKILL.md")).toHaveLength(2);
+    expect(screen.getByRole("link", { name: "Brief" })).toHaveAttribute(
+      "href",
+      "/skills/folder/folder-root?page=page-brief",
+    );
+    const toolbar = screen.getByRole("toolbar", { name: "Markdown editor" });
+    expect(toolbar).toHaveTextContent(/SKILL\.md.*Launch Plan/);
+    expect(within(toolbar).getByRole("switch", { name: "Enabled" })).toHaveAttribute(
       "aria-checked",
       "true",
     );
-    expect(screen.queryByText(/name: Launch Plan/)).not.toBeInTheDocument();
-    fireEvent.click(
-      screen.getByRole("button", { name: "Edit instructions" }),
-    );
-    const editor = screen.getByLabelText("Instructions");
-    expect(editor).toHaveValue(
-      "## When to use this\nFollow the checklist.",
-    );
+    expect(within(toolbar).getByText("Share resource")).toBeInTheDocument();
+    const sidebar = screen.getByRole("complementary");
+    expect(within(sidebar).queryByRole("switch", { name: "Enabled" })).not.toBeInTheDocument();
+    expect(within(sidebar).queryByText("Share resource")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("file-browser")).not.toBeInTheDocument();
 
     vi.mocked(updatePage).mockResolvedValue({
       ...(await vi.mocked(getPage).mock.results[0].value),
       content_markdown:
         "---\nname: Launch Plan\ndescription: A launch helper\n---\n\nUse the revised checklist.\n",
     });
-    fireEvent.change(editor, { target: { value: "Use the revised checklist." } });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    view?.dispatch({
+      changes: {
+        from: 0,
+        to: view.state.doc.length,
+        insert:
+          "---\nname: Launch Plan\ndescription: A launch helper\n---\n\nUse the revised checklist.\n",
+      },
+    });
+    fireEvent.keyDown(window, { key: "s", metaKey: true });
 
     await waitFor(() =>
       expect(updatePage).toHaveBeenCalledWith("page-skill", {
         content:
           "---\nname: Launch Plan\ndescription: A launch helper\n---\n\nUse the revised checklist.\n",
-      }),
+        }),
     );
-    expect(screen.getByTestId("file-browser")).toHaveAttribute(
-      "data-hidden-items",
-      "page-skill",
-    );
-    expect(screen.getByTestId("file-browser")).toHaveAttribute(
-      "data-supporting-files-mode",
-      "true",
-    );
-    expect(screen.getByText("Supporting files")).toBeInTheDocument();
+  });
+
+  it("opens a supporting Markdown file inside the same Skill editor", async () => {
+    searchParams.set("page", "page-brief");
+    vi.mocked(getFolderContents).mockResolvedValue({
+      folder: {
+        id: "folder-root",
+        name: "Launch Plan",
+        parent_folder_id: null,
+        is_skill: true,
+      },
+      breadcrumbs: [
+        {
+          id: "folder-root",
+          name: "Launch Plan",
+          is_skill: true,
+          is_memory: false,
+        },
+      ],
+      subfolders: [],
+      pages: [
+        {
+          id: "page-skill",
+          name: "SKILL.md",
+          content_type: "markdown",
+          created_at: "2026-08-26T00:00:00Z",
+        },
+        {
+          id: "page-brief",
+          name: "Brief",
+          content_type: "markdown",
+          created_at: "2026-08-26T00:00:00Z",
+        },
+      ],
+      files: [],
+      tables: [],
+    });
+    vi.mocked(getPage).mockResolvedValue({
+      id: "page-brief",
+      owner_user_id: "user-1",
+      folder_id: "folder-root",
+      name: "Brief",
+      content_type: "markdown",
+      content_markdown: "# Supporting brief",
+      content_html: "",
+      html_layout: "responsive",
+      content_hash: null,
+      can_write: true,
+      created_by: "user-1",
+      updated_by: null,
+      created_at: "2026-08-26T00:00:00Z",
+      updated_at: "2026-08-26T00:00:00Z",
+    });
+
+    render(<SkillFolderClient folderId="folder-root" />);
+
+    const toolbar = await screen.findByRole("toolbar", { name: "Markdown editor" });
+    expect(toolbar).toHaveTextContent(/Brief.*Launch Plan/);
+    expect(screen.getByRole("complementary")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Brief" })).toHaveClass("bg-raised");
+    expect(screen.queryByRole("button", { name: "Edit" })).not.toBeInTheDocument();
   });
 });
