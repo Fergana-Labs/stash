@@ -379,4 +379,18 @@ async def update_user(
     scope_user_id: UUID = Depends(get_scope),
 ):
     await _end_user_in_scope(user_id, scope_user_id)
-    return await end_user_service.update_end_user(user_id, name=req.name, share_wiki=req.share_wiki)
+    updates = req.model_dump(exclude_unset=True)
+    if not updates or any(value is None for value in updates.values()):
+        raise HTTPException(status_code=400, detail="at least one user field is required")
+    return await end_user_service.update_end_user(user_id, updates)
+
+
+@users_router.delete("/{user_id}", status_code=204)
+async def delete_user(
+    user_id: UUID,
+    current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
+):
+    await _end_user_in_scope(user_id, scope_user_id)
+    if not await end_user_service.delete_end_user(user_id, current_user["id"]):
+        raise HTTPException(status_code=404, detail="User not found")

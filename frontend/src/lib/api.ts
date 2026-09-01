@@ -425,6 +425,10 @@ export async function updateUser(
   });
 }
 
+export async function deleteUser(userId: string): Promise<void> {
+  return apiFetch(`${ME}/users/${userId}`, { method: "DELETE" });
+}
+
 // A hackathon (or other) access code: grants the code's plan to this account.
 export async function redeemCode(code: string): Promise<{ plan: string }> {
   return apiFetch("/api/v1/users/me/redeem-code", {
