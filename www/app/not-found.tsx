@@ -124,6 +124,15 @@ export default function NotFound() {
         This page doesn&apos;t exist, or it was moved.
       </p>
 
+      <div
+        aria-label="404 haiku"
+        className="mt-6 space-y-1 font-display text-[18px] leading-7 text-ink"
+      >
+        <p>Lost page, quiet path</p>
+        <p>Stash keeps one small lantern lit</p>
+        <p>Home waits close at hand</p>
+      </div>
+
       <Link
         href="/"
         className="mt-8 inline-flex h-10 items-center rounded-lg bg-brand px-[18px] text-[14px] font-medium text-white shadow-sm transition hover:bg-brand-hover"
