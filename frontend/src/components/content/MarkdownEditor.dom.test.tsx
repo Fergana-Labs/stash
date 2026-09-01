@@ -29,6 +29,8 @@ npm run dev
 
 > A blockquote.
 
+**Bold text** and \`inline code\`.
+
 | a | b |
 | - | - |
 | 1 | 2 |
@@ -113,10 +115,14 @@ describe("MarkdownEditor", () => {
     expect(view?.state.doc.toString()).toBe(TRICKY);
     expect(editor.querySelector(".cm-live-heading-1")).toHaveTextContent("Setup");
     expect(editor.querySelector(".cm-live-heading-1")).not.toHaveTextContent("#");
+    expect(editor.querySelector(".cm-live-strong")).toHaveTextContent("Bold text");
+    expect(editor.querySelector(".cm-live-strong")).not.toHaveTextContent("**");
+    expect(editor.querySelector(".cm-live-inline-code")).toHaveTextContent("inline code");
+    expect(editor.querySelector(".cm-live-inline-code")).not.toHaveTextContent("`");
     const toolbar = screen.getByRole("toolbar", { name: "Markdown editor" });
     expect(toolbar).toHaveTextContent("Fixture.md");
     expect(toolbar).toHaveTextContent("Fixture Skill");
-    expect(toolbar).toHaveTextContent("Preview");
+    expect(toolbar).not.toHaveTextContent("Preview");
     expect(toolbar).toHaveTextContent("Share");
     expect(screen.queryByRole("button", { name: "Edit" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Done" })).not.toBeInTheDocument();

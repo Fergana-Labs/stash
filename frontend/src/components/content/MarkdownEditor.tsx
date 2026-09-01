@@ -242,13 +242,15 @@ export default function MarkdownEditor({
         <div className="min-w-0">{toolbarLeading}</div>
         <div className="min-w-0">{toolbarCenter}</div>
         <div className="flex shrink-0 items-center justify-self-end gap-2">
-          <button
-            type="button"
-            onClick={() => setShowPreview((p) => !p)}
-            className={toolbarButton}
-          >
-            {showPreview ? "Hide preview" : "Preview"}
-          </button>
+          {!alwaysEditing && (
+            <button
+              type="button"
+              onClick={() => setShowPreview((p) => !p)}
+              className={toolbarButton}
+            >
+              {showPreview ? "Hide preview" : "Preview"}
+            </button>
+          )}
           {!alwaysEditing && (
             <button type="button" onClick={() => setMode("view")} className={toolbarButton}>
               Done

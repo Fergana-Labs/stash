@@ -3,6 +3,12 @@
 import { useState } from "react";
 import { setSkillAgentEnabled, type Skill } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 /** The switch that hands a Skill to the user's coding agents (or takes it
  *  back). Shared by the Skills list and the Skill page. */
@@ -33,39 +39,50 @@ export default function SkillEnabledToggle({
 
   return (
     <div className="shrink-0">
-      <button
-        role="switch"
-        aria-checked={skill.agent_enabled}
-        disabled={saving}
-        onClick={() => void toggle()}
-        className="group flex cursor-pointer items-center gap-2 disabled:opacity-50"
-      >
-        <span
-          className={cn(
-            "relative h-5 w-9 rounded-full transition-colors",
-            skill.agent_enabled
-              ? "bg-brand-500"
-              : "bg-border group-hover:bg-muted-foreground/40",
-          )}
-        >
-          <span
-            className={cn(
-              "absolute top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-[left]",
-              skill.agent_enabled ? "left-[18px]" : "left-0.5",
-            )}
-          />
-        </span>
-        <span
-          className={cn(
-            "w-[82px] whitespace-nowrap text-left text-[13px]",
-            skill.agent_enabled
-              ? "font-medium text-brand-500"
-              : "text-muted-foreground",
-          )}
-        >
-          {skill.agent_enabled ? "Enabled" : "Not enabled"}
-        </span>
-      </button>
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              role="switch"
+              aria-checked={skill.agent_enabled}
+              disabled={saving}
+              onClick={() => void toggle()}
+              className="group flex cursor-pointer items-center gap-2 disabled:opacity-50"
+            >
+              <span
+                className={cn(
+                  "relative h-5 w-9 rounded-full transition-colors",
+                  skill.agent_enabled
+                    ? "bg-brand-500"
+                    : "bg-border group-hover:bg-muted-foreground/40",
+                )}
+              >
+                <span
+                  className={cn(
+                    "absolute top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-[left]",
+                    skill.agent_enabled ? "left-[18px]" : "left-0.5",
+                  )}
+                />
+              </span>
+              <span
+                className={cn(
+                  "w-[82px] whitespace-nowrap text-left text-[13px]",
+                  skill.agent_enabled
+                    ? "font-medium text-brand-500"
+                    : "text-muted-foreground",
+                )}
+              >
+                {skill.agent_enabled ? "Enabled" : "Not enabled"}
+              </span>
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom" sideOffset={8}>
+            {skill.agent_enabled
+              ? "Your agents connected to Stash currently have access to this Skill."
+              : "Your agents connected to Stash do not currently have access to this Skill."}
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
       {error && <div className="mt-1 text-[11px] text-error">{error}</div>}
     </div>
   );

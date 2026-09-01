@@ -10,7 +10,14 @@ import type { ReactNode } from "react";
 import { EditorView } from "@codemirror/view";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import SkillFolderClient from "./SkillFolderClient";
-import { getFolderContents, getPage, listSkills, updatePage } from "@/lib/api";
+import {
+  createPage,
+  getFolderContents,
+  getPage,
+  listSkills,
+  trashItem,
+  updatePage,
+} from "@/lib/api";
 import { useBreadcrumbs } from "@/components/BreadcrumbContext";
 import { useShareAction } from "@/components/ShellChromeContext";
 import { ConfirmDialogProvider } from "@/components/ConfirmDialog";
@@ -37,6 +44,7 @@ vi.mock("next/navigation", () => ({
 
 vi.mock("@/lib/api", () => ({
   fileDownloadUrl: vi.fn((id: string) => `/api/v1/me/files/${id}/download`),
+  createPage: vi.fn(),
   getFolderContents: vi.fn(),
   getPage: vi.fn(),
   listSkills: vi.fn(),
@@ -388,8 +396,15 @@ describe("SkillFolderClient", () => {
       expect(updatePage).toHaveBeenCalledWith("page-skill", {
         content:
           "---\nname: Launch Plan\ndescription: A launch helper\n---\n\nUse the revised checklist.\n",
-        }),
+      }),
     );
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete Brief" }));
+    const dialog = await screen.findByRole("alertdialog", {
+      name: 'Delete "Brief"?',
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
+    await waitFor(() => expect(trashItem).toHaveBeenCalledWith("page", "page-brief"));
   });
 
   it("opens a supporting Markdown file inside the same Skill editor", async () => {
@@ -449,7 +464,104 @@ describe("SkillFolderClient", () => {
     const toolbar = await screen.findByRole("toolbar", { name: "Markdown editor" });
     expect(toolbar).toHaveTextContent(/Brief.*Launch Plan/);
     expect(screen.getByRole("complementary")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Brief" })).toHaveClass("bg-raised");
+    expect(screen.getByRole("link", { name: "Brief" }).parentElement).toHaveClass(
+      "bg-raised",
+    );
     expect(screen.queryByRole("button", { name: "Edit" })).not.toBeInTheDocument();
+
+    vi.mocked(updatePage).mockResolvedValue({
+      ...(await vi.mocked(getPage).mock.results[0].value),
+      name: "Guide.md",
+    });
+    fireEvent.click(within(toolbar).getByRole("button", { name: "Rename Brief" }));
+    const toolbarRename = await screen.findByRole("textbox", { name: "Rename Brief" });
+    fireEvent.change(toolbarRename, { target: { value: "Guide.md" } });
+    fireEvent.blur(toolbarRename);
+    await waitFor(() =>
+      expect(updatePage).toHaveBeenCalledWith("page-brief", { name: "Guide.md" }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Rename Brief" }));
+    expect(await screen.findByRole("textbox", { name: "Rename Brief" })).toBeInTheDocument();
+  });
+
+  it("lets the plus menu create and open a Markdown file", async () => {
+    vi.mocked(getFolderContents).mockResolvedValue({
+      folder: {
+        id: "folder-root",
+        name: "Launch Plan",
+        parent_folder_id: null,
+        is_skill: true,
+      },
+      breadcrumbs: [
+        {
+          id: "folder-root",
+          name: "Launch Plan",
+          is_skill: true,
+          is_memory: false,
+        },
+      ],
+      subfolders: [],
+      pages: [
+        {
+          id: "page-skill",
+          name: "SKILL.md",
+          content_type: "markdown",
+          created_at: "2026-08-26T00:00:00Z",
+        },
+      ],
+      files: [],
+      tables: [],
+    });
+    vi.mocked(getPage).mockResolvedValue({
+      id: "page-skill",
+      owner_user_id: "user-1",
+      folder_id: "folder-root",
+      name: "SKILL.md",
+      content_type: "markdown",
+      content_markdown:
+        "---\nname: Launch Plan\ndescription: A launch helper\n---\n\n# Launch Plan",
+      content_html: "",
+      html_layout: "responsive",
+      content_hash: null,
+      can_write: true,
+      created_by: "user-1",
+      updated_by: null,
+      created_at: "2026-08-26T00:00:00Z",
+      updated_at: "2026-08-26T00:00:00Z",
+    });
+    vi.mocked(createPage).mockResolvedValue({
+      id: "page-notes",
+      owner_user_id: "user-1",
+      folder_id: "folder-root",
+      name: "notes.md",
+      content_type: "markdown",
+      content_markdown: "",
+      content_html: "",
+      html_layout: "responsive",
+      content_hash: null,
+      can_write: true,
+      created_by: "user-1",
+      updated_by: null,
+      created_at: "2026-08-26T00:00:00Z",
+      updated_at: "2026-08-26T00:00:00Z",
+    });
+
+    render(<SkillFolderClient folderId="folder-root" />);
+
+    fireEvent.pointerDown(
+      await screen.findByRole("button", { name: "Add to Skill" }),
+      { button: 0, ctrlKey: false },
+    );
+    expect(screen.getByRole("menuitem", { name: "New Markdown file" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Upload file" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("menuitem", { name: "New Markdown file" }));
+
+    await waitFor(() =>
+      expect(createPage).toHaveBeenCalledWith("Untitled.md", "folder-root"),
+    );
+    expect(router.push).toHaveBeenCalledWith(
+      "/skills/folder/folder-root?page=page-notes",
+    );
   });
 });

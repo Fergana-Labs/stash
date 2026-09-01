@@ -71,6 +71,9 @@ export default function LiveMarkdownEditor({
             onChangeRef.current(update.state.doc.toString());
           }),
           EditorView.lineWrapping,
+          // CodeMirror maps pointer coordinates from measured line boxes.
+          // Vertical margins sit outside those boxes and make clicks drift
+          // farther down the document after every heading; padding is measured.
           EditorView.theme({
             "&": {
               minHeight: "75vh",
@@ -79,11 +82,14 @@ export default function LiveMarkdownEditor({
               fontSize: "14px",
             },
             ".cm-scroller": {
+              minHeight: "75vh",
               overflow: "visible",
               fontFamily: "inherit",
               lineHeight: "1.7",
             },
             ".cm-content": {
+              minHeight: "75vh",
+              boxSizing: "border-box",
               padding: "34px 48px 96px",
               caretColor: "var(--color-foreground)",
             },
@@ -94,26 +100,35 @@ export default function LiveMarkdownEditor({
               fontSize: "28px",
               fontWeight: "700",
               lineHeight: "1.25",
-              marginTop: "18px",
-              marginBottom: "8px",
+              paddingTop: "18px",
+              paddingBottom: "8px",
             },
             ".cm-live-heading-2": {
               fontSize: "21px",
               fontWeight: "700",
               lineHeight: "1.3",
-              marginTop: "16px",
-              marginBottom: "6px",
+              paddingTop: "16px",
+              paddingBottom: "6px",
             },
             ".cm-live-heading-3": {
               fontSize: "17px",
               fontWeight: "650",
               lineHeight: "1.35",
-              marginTop: "14px",
-              marginBottom: "4px",
+              paddingTop: "14px",
+              paddingBottom: "4px",
             },
             ".cm-live-heading-1 span, .cm-live-heading-2 span, .cm-live-heading-3 span": {
               color: "var(--color-foreground)",
               textDecoration: "none",
+            },
+            ".cm-live-strong": { fontWeight: "700" },
+            ".cm-live-emphasis": { fontStyle: "italic" },
+            ".cm-live-inline-code": {
+              borderRadius: "4px",
+              backgroundColor: "var(--color-raised)",
+              color: "var(--color-brand-600)",
+              fontFamily: "var(--font-mono)",
+              fontSize: "0.9em",
             },
             ".cm-selectionBackground, ::selection": {
               backgroundColor: "color-mix(in srgb, var(--color-brand-500) 20%, transparent) !important",
@@ -179,17 +194,26 @@ function buildDecorations(view: EditorView): DecorationSet {
         );
       }
 
-      if (
-        node.name !== "HeaderMark" ||
-        !node.node.parent?.name.startsWith("ATXHeading")
-      ) {
-        return;
+      const markClass = {
+        StrongEmphasis: "cm-live-strong",
+        Emphasis: "cm-live-emphasis",
+        InlineCode: "cm-live-inline-code",
+      }[node.name];
+      if (markClass) {
+        decorations.push(Decoration.mark({ class: markClass }).range(node.from, node.to));
       }
+
       const line = view.state.doc.lineAt(node.from);
       if (line.number === activeLine.number) return;
-      const afterMark = view.state.sliceDoc(node.to, Math.min(node.to + 1, line.to));
-      const to = afterMark === " " ? node.to + 1 : node.to;
-      decorations.push(Decoration.replace({}).range(node.from, to));
+
+      if (node.name === "HeaderMark" && node.node.parent?.name.startsWith("ATXHeading")) {
+        const afterMark = view.state.sliceDoc(node.to, Math.min(node.to + 1, line.to));
+        const to = afterMark === " " ? node.to + 1 : node.to;
+        decorations.push(Decoration.replace({}).range(node.from, to));
+      }
+      if (node.name === "EmphasisMark" || node.name === "CodeMark") {
+        decorations.push(Decoration.replace({}).range(node.from, node.to));
+      }
     },
   });
 
