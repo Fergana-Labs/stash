@@ -559,9 +559,9 @@ async def test_setup_status_tells_the_agent_what_is_next(client, billing_on, gpu
 async def mcp_running():
     """The test client never runs the app lifespan, and the streamable-HTTP
     session manager can only be started once per process."""
-    from backend.trained_models import mcp as trained_models_mcp
+    from backend.skill_servers import mount
 
-    async with trained_models_mcp.lifespan():
+    async with mount.lifespan():
         yield
 
 
