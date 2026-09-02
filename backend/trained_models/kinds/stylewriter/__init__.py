@@ -64,8 +64,9 @@ def default_model() -> dict | None:
 
 # A warm serving container answers in seconds. A cold one loads a 14B model
 # first, which can take minutes — longer than a harness waits on one tool
-# call — so past this the caller gets a job id and polls.
-GENERATE_WAIT_S = 60
+# call, and longer than the web app's proxy (30 s) — so past this the caller
+# gets a job id and polls.
+GENERATE_WAIT_S = 20
 
 Length = Literal["short", "medium", "long"]
 

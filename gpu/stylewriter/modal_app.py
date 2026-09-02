@@ -252,16 +252,16 @@ class Writer:
     def generate(
         self, adapter_path: str, prompt: dict, n: int, sampling: dict, max_tokens: int
     ) -> list[dict]:
-        import zlib
-
         from vllm import SamplingParams
         from vllm.lora.request import LoRARequest
+
+        from stylewriter.adapters import lora_id
 
         text = self.tokenizer.apply_chat_template(
             prompt["messages"], tokenize=False, add_generation_prompt=True
         )
         params = SamplingParams(n=n, max_tokens=max_tokens, **sampling)
-        lora = LoRARequest(adapter_path, zlib.crc32(adapter_path.encode()) or 1, adapter_path)
+        lora = LoRARequest(adapter_path, lora_id(adapter_path), adapter_path)
         outputs = self.llm.generate([text], params, lora_request=lora, use_tqdm=False)
         return [{"text": o.text, "finish_reason": o.finish_reason} for o in outputs[0].outputs]
 

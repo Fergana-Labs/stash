@@ -3,7 +3,7 @@ the technique (train and serve must agree to the token), the style score is
 what ranks drafts, and the selection loop is what keeps GPU cost to one
 batch in the common case."""
 
-from stylewriter import binoculars, prep, scaffold, selection, stylometry
+from stylewriter import adapters, binoculars, prep, scaffold, selection, stylometry
 
 ESSAY = (
     "I keep coming back to the same idea. Memory is not a feature you bolt onto "
@@ -92,3 +92,12 @@ def test_p_human_is_monotone_around_the_threshold():
     assert binoculars.p_human(binoculars.THRESHOLD) == 0.5
     assert binoculars.p_human(binoculars.THRESHOLD + 0.2) > 0.9
     assert binoculars.p_human(binoculars.THRESHOLD - 0.2) < 0.1
+
+
+def test_lora_ids_fit_the_engine():
+    # This path's CRC exceeds int32 and crashed the engine once.
+    path = "/adapters/model_ff531fdb5bfb4e5ab000e00e0954a8c7"
+    for candidate in (path, "/adapters/model_default", "/adapters/model_x"):
+        value = adapters.lora_id(candidate)
+        assert 1 <= value <= 0x7FFFFFFF
+    assert adapters.lora_id(path) != adapters.lora_id("/adapters/model_default")
