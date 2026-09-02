@@ -548,6 +548,7 @@ async def test_setup_status_tells_the_agent_what_is_next(client, billing_on, gpu
     body = resp.json()
     assert body["models"] == [] and body["paid_runs_available"] == 0
     assert "checkout" in body["next_step"] and "$20" in body["training_fee"]
+    assert body["models_page"].endswith("/models")
     assert stylewriter.TITLE == body["title"]
 
 

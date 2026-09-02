@@ -23,6 +23,12 @@ user's: use it to show what the tool does before they train, and say plainly
 that it is not their voice. Anything that should sound like *them* needs their
 own model.
 
+Everything below can also be done by hand on the **Models page**
+(Settings → Models, or [app.joinstash.ai/models](https://app.joinstash.ai/models)):
+train from a folder or pasted writing, pay, watch a run, and try a model.
+`setup_status` returns that link as `models_page`; hand it to the user when
+they would rather click than talk.
+
 ---
 
 ## Part 1 — Getting a model trained

@@ -430,6 +430,9 @@ async def setup_status(owner_user_id: UUID, user: dict, kind: str) -> dict:
     return {
         "kind": kind,
         "title": module.TITLE,
+        # Where a person manages the same things by hand; the skill hands it
+        # to users who would rather click than talk.
+        "models_page": f"{settings.PUBLIC_URL.rstrip('/')}/models",
         "models": models,
         "paid_runs_available": spendable,
         "training_fee": None
