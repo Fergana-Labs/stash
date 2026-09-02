@@ -41,8 +41,14 @@ _STRUCTURE_LINE_RE = re.compile(
     r"|\d+[.)]\s"  # numbered item
     r"|[-*_]{3,}\s*$"  # horizontal rule
     r"|[—–-]\s*@\w+"  # attribution footer an export appends ("— @handle · date")
-    r")"
+    r"|(references|sources|footnotes|notes)\s*:?\s*$"  # a trailing citations block's label
+    r")",
+    re.IGNORECASE,
 )
+
+# An export's first line is the piece's title: short and not a sentence. Kept,
+# it teaches the model to open every draft with a headline fragment.
+_TITLE_MAX_WORDS = 12
 
 
 @dataclass(frozen=True)
@@ -112,12 +118,20 @@ def _clean_inline(line: str) -> str:
     return " ".join(line.split())
 
 
+def _is_title(line: str) -> bool:
+    words = line.split()
+    return 0 < len(words) <= _TITLE_MAX_WORDS and not line.rstrip().endswith(
+        (".", "!", "?", '"', "”")
+    )
+
+
 def paragraphs(text: str) -> list[str]:
     """The prose paragraphs of one document, structure removed."""
     text = _FENCE_RE.sub("\n", text)
     text = _TAG_RE.sub(" ", text)
     out: list[str] = []
     current: list[str] = []
+    seen_content = False
     for raw in text.splitlines():
         if not raw.strip():
             if current:
@@ -126,6 +140,10 @@ def paragraphs(text: str) -> list[str]:
             continue
         if _STRUCTURE_LINE_RE.match(raw):
             continue
+        if not seen_content:
+            seen_content = True
+            if _is_title(raw):
+                continue
         cleaned = _clean_inline(raw)
         if cleaned:
             current.append(cleaned)

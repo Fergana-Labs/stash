@@ -121,6 +121,14 @@ def test_cleaner_keeps_only_prose():
     assert corpus.paragraphs("Real words here.\n\n— @samzliu · 2026-01-30\nhttps://x.com/i/1") == [
         "Real words here."
     ]
+    # A bare title line and a trailing references label are structure too.
+    assert corpus.paragraphs(
+        "I quit my PhD at Stanford\n\nWhen I left, my dad was not pleased."
+    ) == ["When I left, my dad was not pleased."]
+    assert corpus.paragraphs("A sentence first.\n\nMore here.\n\nReferences\n") == [
+        "A sentence first.",
+        "More here.",
+    ]
     assert not any("bullet" in p or "quote" in p or "code" in p or "table" in p for p in paragraphs)
 
 
