@@ -60,6 +60,8 @@ from .routers import (
 )
 from .services import demo_service
 from .services.row_validation import RowValidationError
+from .skill_servers import mount as skill_servers
+from .trained_models import router as trained_models_router
 
 logger = logging.getLogger("stash")
 
@@ -82,7 +84,8 @@ async def lifespan(app: FastAPI):
     except Exception:
         logger.exception("seed_demo failed at startup")
     try:
-        yield
+        async with skill_servers.lifespan():
+            yield
     finally:
         await close_db()
 
@@ -165,6 +168,8 @@ app.include_router(telegram.router)
 app.include_router(shares.router)
 app.include_router(webhooks.router)
 app.include_router(billing.router)
+app.include_router(trained_models_router.router)
+skill_servers.mount_all(app)
 app.include_router(bulk_export.router)
 app.include_router(exports.router)
 app.include_router(demo.router)

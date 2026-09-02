@@ -24,7 +24,7 @@ from rich.text import Text
 from stashai.plugin.doctor import shadow_install_warning
 from stashai.plugin.upload_status import read_upload_status
 
-from . import __version__, telemetry
+from . import __version__, skill_mcp, telemetry
 from .client import StashClient, StashError, split_source_tokens
 from .config import (
     MANIFEST_FILE,
@@ -1995,13 +1995,16 @@ def skills_install(
         "remote_hash": _hash_remote_contents(detail["contents"]),
     }
     _save_installed_manifest(manifest)
+    tool_servers = skill_mcp.sync(root, _detected_agents())
 
     if _use_json(as_json):
-        output_json({"path": str(target), "items": written})
+        output_json({"path": str(target), "items": written, "tool_servers": tool_servers})
         return
     console.print(
         f"[green]Installed[/green] '{detail['skill']['title']}' → {target}  ({written} items)"
     )
+    for note in tool_servers:
+        console.print(f"[dim]{note}[/dim]")
     console.print(
         "[dim]The agent loads it at its next session start; "
         "it auto-updates on `stash skills sync`.[/dim]"
@@ -2380,6 +2383,9 @@ def skills_sync(
     _save_installed_manifest(manifest)
     summary["updated"] = updated
     summary["ignored"] += notes
+    # Skills can bring a hosted tool server; the harnesses learn about it
+    # here, at the same moment they learn about the skill itself.
+    summary["tool_servers"] = skill_mcp.sync(root, _detected_agents())
 
     if updated:
         # The plugin's SessionStart hook shows this list once next session, so
@@ -2402,6 +2408,8 @@ def skills_sync(
         console.print(f"[dim]ignored[/dim]  {note}")
     for note in summary["conflicts"]:
         console.print(f"[yellow]conflict[/yellow] {note}")
+    for note in summary["tool_servers"]:
+        console.print(f"[dim]{note}[/dim]")
     console.print(
         f"[dim]{len(summary['pulled'])} pulled, {len(summary['pushed'])} pushed, "
         f"{len(summary['unchanged'])} unchanged, {len(summary['conflicts'])} conflicts → {root}[/dim]"

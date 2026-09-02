@@ -312,11 +312,21 @@ class Settings:
     # The recurring Pro prices (price_...): $20/month and $200/year.
     STRIPE_MONTHLY_PRICE_ID: str | None = os.getenv("STRIPE_MONTHLY_PRICE_ID")
     STRIPE_ANNUAL_PRICE_ID: str | None = os.getenv("STRIPE_ANNUAL_PRICE_ID")
+    # One-time training fee for trained-model skills (price_..., $20).
+    # Per kind, so the next kind gets its own price without touching code.
+    STRIPE_STYLEWRITER_PRICE_ID: str | None = os.getenv("STRIPE_STYLEWRITER_PRICE_ID")
     # Internal team domains get Pro for free. Set to "false" to make internal
     # accounts hit the real pay gate — useful for testing the paywall.
     INTERNAL_DOMAINS_FREE_PRO: bool = (
         os.getenv("INTERNAL_DOMAINS_FREE_PRO", "true").lower() == "true"
     )
+
+    # --- Trained models (GPU apps on Modal, see gpu/) ---
+    # The `api` web endpoint printed by `modal deploy` for gpu/stylewriter, and
+    # the shared secret it checks (the value of the `stylewriter-api` Modal
+    # secret). Needed by web and worker alike.
+    STYLEWRITER_GPU_URL: str | None = os.getenv("STYLEWRITER_GPU_URL")
+    STYLEWRITER_GPU_SECRET: str | None = os.getenv("STYLEWRITER_GPU_SECRET")
 
     # ScrapeCreators (public social-content scraping, product-level key —
     # hydrates Instagram saves server-side; users never bring their own).
