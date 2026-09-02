@@ -208,12 +208,17 @@ async def apply_webhook_event(event: dict) -> None:
     kind = event["type"]
     obj = event["data"]["object"]
 
+    metadata = obj.get("metadata") or {}
     if kind == "checkout.session.completed" and obj.get("mode") == "payment":
         # A one-time purchase, not a subscription: it never touches the
-        # subscription row, however the customer ids line up.
+        # subscription row, however the customer ids line up. Only sessions
+        # this code created carry the marker; anything else paying through
+        # the same Stripe account is not ours to record.
+        if metadata.get("purchase") != "training":
+            return
         await purchases.record(
-            UUID(obj["metadata"]["owner_user_id"]),
-            obj["metadata"]["kind"],
+            UUID(metadata["owner_user_id"]),
+            metadata["kind"],
             obj["id"],
             obj["amount_total"],
         )

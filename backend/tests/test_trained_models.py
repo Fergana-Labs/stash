@@ -254,6 +254,22 @@ async def test_webhook_records_a_purchase_exactly_once(client, pool, billing_on)
         == 0
     )
 
+    # Someone else's one-time checkout on the same Stripe account is ignored.
+    foreign = json.dumps(
+        {
+            "object": "event",
+            "type": "checkout.session.completed",
+            "data": {"object": {"id": "cs_other", "mode": "payment", "amount_total": 500}},
+        }
+    ).encode()
+    resp = await client.post(
+        "/api/v1/billing/webhook",
+        content=foreign,
+        headers={"stripe-signature": _stripe_signature(foreign, "whsec_test_x")},
+    )
+    assert resp.status_code == 200
+    assert await purchases.spendable_count(user_id, "stylewriter") == 1
+
 
 async def test_train_consumes_the_purchase_and_starts_the_job(
     client, pool, billing_on, gpu_stubbed, monkeypatch
