@@ -59,6 +59,7 @@ from .routers import (
     webhooks,
 )
 from .services import demo_service
+from .services.mcp_service import create_mcp_app
 from .services.row_validation import RowValidationError
 
 logger = logging.getLogger("stash")
@@ -168,6 +169,7 @@ app.include_router(billing.router)
 app.include_router(bulk_export.router)
 app.include_router(exports.router)
 app.include_router(demo.router)
+app.mount("/api/v1/mcp", create_mcp_app())
 
 if settings.AUTH0_ENABLED:
     from backend.managed.auth0 import router as auth0_router

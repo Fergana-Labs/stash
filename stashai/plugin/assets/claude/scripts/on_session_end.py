@@ -16,11 +16,8 @@ def main():
     cfg = get_config()
 
     event = adapt_stop(get_stdin_data())
-    try:
-        with get_client() as client:
-            stream_session_end(client, cfg, state, event)
-    except Exception:
-        pass
+    with get_client() as client:
+        stream_session_end(client, cfg, state, event)
 
     state["session_id"] = ""
     save_state(DATA_DIR, state)

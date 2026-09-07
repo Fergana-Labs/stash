@@ -16,12 +16,9 @@ def main():
     cfg = get_config()
 
     event = adapt_session_end(get_stdin_data())
-    try:
-        with get_client() as client:
-            stream_session_end(client, cfg, state, event)
-            finalize_session_upload(client, cfg, state, event, DATA_DIR)
-    except Exception:
-        pass
+    with get_client() as client:
+        stream_session_end(client, cfg, state, event)
+        finalize_session_upload(client, cfg, state, event, DATA_DIR)
 
     state["session_id"] = ""
     save_state(DATA_DIR, state)

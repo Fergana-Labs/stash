@@ -4,6 +4,7 @@ Each agent directory mirrors `plugins/<agent>-plugin/` in the source repo.
 `stash connect` reads these to install hook configs into `~/.<agent>/` without
 requiring the user to clone the stash repo.
 
+Current agents: claude, codex, cursor, gemini, openclaw, opencode, pi.
 The source-of-truth is `plugins/<agent>-plugin/`; a drift test in
 `plugins/tests/test_assets_in_sync.py` keeps the two identical.
 """

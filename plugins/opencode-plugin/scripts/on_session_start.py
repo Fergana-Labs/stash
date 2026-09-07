@@ -28,12 +28,9 @@ def _flush_stale_session(prior_sid: str, state: dict) -> None:
     cfg = get_config()
     stale_state = {**state, "session_id": prior_sid}
     stale_event = HookEvent(kind="session_end", session_id=prior_sid, cwd="")
-    try:
-        with get_client() as client:
-            stream_session_end(client, cfg, stale_state, stale_event)
-            finalize_session_upload(client, cfg, stale_state, stale_event, DATA_DIR)
-    except Exception:
-        pass
+    with get_client() as client:
+        stream_session_end(client, cfg, stale_state, stale_event)
+        finalize_session_upload(client, cfg, stale_state, stale_event, DATA_DIR)
 
 
 def main():
@@ -56,11 +53,8 @@ def main():
     reset_stats(DATA_DIR)
     state = load_state(DATA_DIR)
 
-    try:
-        with get_client() as client:
-            create_session_record(client, cfg, state, event, DATA_DIR)
-    except Exception:
-        pass
+    with get_client() as client:
+        create_session_record(client, cfg, state, event, DATA_DIR)
 
     spawn_skills_sync(cfg)
     spawn_self_upgrade()
