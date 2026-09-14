@@ -423,6 +423,35 @@ async def test_denied_lookup_is_an_explicit_tool_error_without_protected_content
 
 
 @pytest.mark.asyncio
+async def test_truncated_response_cannot_execute_partial_page_writes(
+    dataset, pool, monkeypatch, sprite_exec
+):
+    from anthropic.types import ToolUseBlock
+
+    async def create(**kwargs):
+        return SimpleNamespace(
+            stop_reason="max_tokens",
+            content=[
+                ToolUseBlock(
+                    type="tool_use",
+                    id="truncated",
+                    name="write_page",
+                    input={"page_id": None, "title": "Partial page", "content": "Incomplete"},
+                )
+            ],
+        )
+
+    monkeypatch.setattr(
+        curation.llm,
+        "_get_client",
+        lambda: SimpleNamespace(messages=SimpleNamespace(create=create)),
+    )
+    with pytest.raises(RuntimeError, match="max_tokens"):
+        await curation.run_scope(await scope(dataset, "shared"), None)
+    assert await pool.fetchval("SELECT count(*) FROM pages WHERE name='Partial page'") == 0
+
+
+@pytest.mark.asyncio
 async def test_missing_backend_key_fails_without_dispatch(dataset, client, monkeypatch):
     from backend.tasks import agent_schedules
 
