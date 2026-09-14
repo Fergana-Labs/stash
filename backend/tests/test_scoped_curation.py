@@ -386,7 +386,7 @@ async def test_native_model_loop_uses_fresh_messages_and_restricted_tools(
 
 @pytest.mark.asyncio
 async def test_denied_lookup_is_an_explicit_tool_error_without_protected_content(
-    dataset, monkeypatch
+    dataset, monkeypatch, sprite_exec
 ):
     from anthropic.types import TextBlock, ToolUseBlock
 
