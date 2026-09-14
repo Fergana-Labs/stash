@@ -1,7 +1,5 @@
 Write extremely easy to consume code. Optimize for readability: skimmable, no cleverness, early returns.
 
-> This file is the single source of truth for agent rules in this repo. `AGENTS.md` is a symlink to this file so Codex, OpenCode, and any other AGENTS.md-style tool get the same instructions as Claude Code. Edit this file; never edit AGENTS.md directly.
-
 ### Write simple code
 We are a startup. Therefore, code simplicity is our most important concern. Please NEVER
  - Add backwards compatibility support of any kind. This includes compatibility shims, aliases, legacy format support, and fallback code paths.
@@ -133,7 +131,7 @@ By default `stash` is the released PyPI build (`uv tool` install, self-updating)
 - `docker-compose.prod.yml` and the **GHCR images are for self-hosters only** — they are NOT how joinstash.ai deploys. Editing them does not affect prod.
 - `publish.yml` (on push to `main`) publishes the **`stashai` CLI to PyPI** on a version bump and builds GHCR release images — this is CLI/self-host distribution, separate from the Render app deploy.
 
-# 12-rule template
+# 11-rule template
 
 These rules apply to every task in this project unless explicitly overridden.
 Bias: caution over speed on non-trivial work. Use judgment on trivial tasks.
@@ -164,34 +162,29 @@ Use me for: classification, drafting, summarization, extraction.
 Do NOT use me for: routing, retries, deterministic transforms.
 If code can answer, code answers.
 
-## Rule 6 — Token budgets are not advisory
-Per-task: 4,000 tokens. Per-session: 30,000 tokens.
-If approaching budget, summarize and start fresh.
-Surface the breach. Do not silently overrun.
-
-## Rule 7 — Surface conflicts, don't average them
+## Rule 6 — Surface conflicts, don't average them
 If two patterns contradict, pick one (more recent / more tested).
 Explain why. Flag the other for cleanup.
 Don't blend conflicting patterns.
 
-## Rule 8 — Read before you write
+## Rule 7 — Read before you write
 Before adding code, read exports, immediate callers, shared utilities.
 "Looks orthogonal" is dangerous. If unsure why code is structured a way, ask.
 
-## Rule 9 — Tests verify intent, not just behavior
+## Rule 8 — Tests verify intent, not just behavior
 Tests must encode WHY behavior matters, not just WHAT it does.
 A test that can't fail when business logic changes is wrong.
 
-## Rule 10 — Checkpoint after every significant step
+## Rule 9 — Checkpoint after every significant step
 Summarize what was done, what's verified, what's left.
 Don't continue from a state you can't describe back.
 If you lose track, stop and restate.
 
-## Rule 11 — Match the codebase's conventions, even if you disagree
+## Rule 10 — Match the codebase's conventions, even if you disagree
 Conformance > taste inside the codebase.
 If you genuinely think a convention is harmful, surface it. Don't fork silently.
 
-## Rule 12 — Fail loud
+## Rule 11 — Fail loud
 "Completed" is wrong if anything was skipped silently.
 "Tests pass" is wrong if any were skipped.
 Default to surfacing uncertainty, not hiding it.
