@@ -772,7 +772,7 @@ async def test_curator_instructions_roundtrip(client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_backfill_dispatches_full_history_without_touching_watermark(
-    client: AsyncClient, monkeypatch
+    client: AsyncClient, monkeypatch, sprite_exec
 ):
     """Backfill means 'read everything again' — but only the run itself works
     from the empty watermark. The stored watermark must survive the dispatch

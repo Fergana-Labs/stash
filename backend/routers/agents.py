@@ -153,6 +153,22 @@ async def get_agent_prompt(agent_id: UUID, current_user: dict = Depends(get_curr
     agent = await agent_service.get_agent(current_user["id"], agent_id)
     if agent["run_mode"] != "scheduled":
         raise HTTPException(status_code=400, detail="Only scheduled agents run a fixed prompt.")
+    from ..services import end_user_service, scoped_curation_service
+
+    workspace = await scoped_curation_service.workspace_for_agent(agent)
+    if workspace is not None:
+        if agent["curator_wiki"] == "external":
+            system = await end_user_service.external_curator_prompt(
+                workspace, agent["curated_through"]
+            )
+        else:
+            system = scoped_curation_service.system_prompt("internal")
+        if agent["system_prompt"] is not None:
+            system += "\n" + agent["system_prompt"]
+        return {
+            "system_prompt": system,
+            "run_prompt": "Curate the permitted documents for this run.",
+        }
     owner_name = current_user["display_name"] or current_user["name"]
     _, run_prompt = await sprite_agent_service.build_scheduled_turn(agent, "preview")
     return {

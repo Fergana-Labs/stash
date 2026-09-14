@@ -21,6 +21,11 @@ from .test_permissions import _register_with_email
 
 @pytest.fixture
 def dispatched(monkeypatch):
+    from backend.config import settings
+    from backend.tasks.session_titles import generate_session_title
+
+    monkeypatch.setattr(settings, "ANTHROPIC_API_KEY", "sk-ant-test-key")
+    monkeypatch.setattr(generate_session_title, "delay", lambda *a, **k: None)
     calls: list[tuple] = []
     monkeypatch.setattr(run_curator_now, "delay", lambda *a, **k: calls.append((a, k)))
     return calls
@@ -54,6 +59,16 @@ async def test_first_day_conversation_dispatches_unmetered_runs(
     # The platform is the trigger, so the runs must not eat the workspace's
     # free monthly curator allowance.
     assert all(kwargs == {"metered": False} for _, kwargs in dispatched)
+
+
+@pytest.mark.asyncio
+async def test_paused_curator_stays_paused_on_first_day(client, pool, dispatched):
+    scope_id = await _workspace_with_conversation(client)
+    await pool.execute(
+        "UPDATE agents SET run_mode='chat' WHERE user_id=$1 AND is_curator", scope_id
+    )
+    await _first_day_curator_tick(scope_id)
+    assert dispatched == []
 
 
 @pytest.mark.asyncio
