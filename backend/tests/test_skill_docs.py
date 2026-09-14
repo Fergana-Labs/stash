@@ -4,12 +4,12 @@ from pathlib import Path
 
 from httpx import AsyncClient
 
-from backend.services import skill_service
+from backend.services import mcp_server_service, skill_service
 
 from .conftest import unique_name
 
 SKILL_DOCS = Path(__file__).resolve().parents[2] / "docs" / "skills"
-SKILL_NAMES = ("brief", "cleanup", "overview", "resurface", "slides")
+SKILL_NAMES = ("brief", "cleanup", "overview", "resurface", "slides", "stylewriter")
 
 
 def test_every_documented_skill_has_routing_metadata():
@@ -22,6 +22,10 @@ def test_every_documented_skill_has_routing_metadata():
         assert metadata["description"]
         assert metadata["when_to_use"]
         assert body.strip()
+        # A skill that brings a tool server must declare it in the one shape
+        # the config writers read; a typo here is invisible until a turn.
+        if "mcp" in metadata:
+            assert mcp_server_service.parse_declaration(metadata["mcp"]) is not None
 
 
 async def test_new_accounts_do_not_receive_built_in_skills(client: AsyncClient):

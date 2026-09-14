@@ -313,6 +313,8 @@ async def list_skills(owner_user_id: UUID, user_id: UUID) -> list[dict]:
                 "when_to_use": meta.get("when_to_use", ""),
                 "version": meta.get("version", ""),
                 "mcp_exposed": bool(meta.get("mcp_exposed", False)),
+                # "<name> <url>": a tool server the skill brings with it.
+                "mcp": str(meta.get("mcp", "")),
                 "file_count": int(r["file_count"]),
                 "updated_at": r["updated_at"] or r["folder_updated_at"],
                 # False = a draft skill: it exists and is named, but has no

@@ -15,6 +15,10 @@ Operational evidence collection lives in [security-operations.md](security-opera
 - Gong calls, transcripts, participants, and workspace metadata.
 - Source integration credentials, OAuth tokens, refresh tokens, and webhook payloads.
 - User-registered MCP server secrets (headers and env values).
+- Stylewriter training corpora: the passages of a user's own writing sent to our Modal
+  workspace to train their model, the resulting adapter, and drafts generated from it.
+  This is the one path by which user content leaves Stash for a GPU vendor; it runs only
+  when the user starts a training run or asks for a draft, and the Models page says so.
 - Account permissions, analytics, and security audit events.
 
 ## Code Controls Required For Managed Access
@@ -108,7 +112,8 @@ These items cannot be proven by code alone. They need production configuration, 
 - Customer data retention and deletion windows are documented, including copied integration data, transcripts, files, exports, backups, and derived artifacts.
 - Backup and restore procedures are documented and tested against the production database and storage buckets.
 - Incident response has an owner, severity levels, customer notification criteria, and a tested process for revoking integration tokens.
-- Subprocessors and infrastructure vendors are listed with the data categories they process.
+- Subprocessors and infrastructure vendors are listed with the data categories they process
+  (Modal, for Stylewriter training passages and generated drafts, belongs on that list).
 - Production observability redacts secrets and customer content from logs by default.
 - The customer can disconnect Slack, Jira, Gong, and other integrations without leaving copied documents or stored files behind.
 - A security contact and vulnerability reporting path are published at `/security` and `/.well-known/security.txt`, and the contact path is monitored.

@@ -388,32 +388,38 @@ async def _sprites_exec_stream(
 
 # One machine key per user per process. `create_api_key` returns the secret
 # only at creation, so it cannot be re-read from the row later.
-_LOCAL_KEYS: dict[UUID, str] = {}
+_TURN_KEYS: dict[UUID, str] = {}
 
 
-async def local_agent_env(user_id: UUID) -> dict[str, str]:
-    """Stash credentials for an agent turn running in local exec mode.
-
-    Local mode runs the harness as this machine's own user, so without these
-    the `stash` CLI inside the turn falls back to the developer's own
-    ~/.stash/config.json — which points at production. An agent would then be
-    reading and writing the developer's real Stash instead of the one the
-    backend is serving, and any command that persists config (workspace
-    switch, sign-in) would mutate their login.
-
-    Both variables override the config file in the CLI, so the developer's
-    ~/.stash is untouched and their local Claude login — which local mode
-    deliberately relies on — still resolves.
-    """
-    if settings.AGENT_EXEC_MODE != "local":
-        return {}
-    key = _LOCAL_KEYS.get(user_id)
+async def _turn_key(user_id: UUID) -> str:
+    key = _TURN_KEYS.get(user_id)
     if key is None:
         from ..auth import create_api_key
 
-        key = await create_api_key(user_id, name="local sprite", key_type="machine")
-        _LOCAL_KEYS[user_id] = key
-    return {"STASH_API_KEY": key, "STASH_URL": f"http://localhost:{settings.PORT}"}
+        key = await create_api_key(user_id, name="agent turn", key_type="machine")
+        _TURN_KEYS[user_id] = key
+    return key
+
+
+async def agent_env(user_id: UUID) -> dict[str, str]:
+    """Stash credentials in the environment of every agent turn.
+
+    On a sprite, `.mcp.json` names skill-declared tool servers with an
+    `Authorization: Bearer ${STASH_API_KEY}` header that the harness expands
+    from its environment — so the key never lands in a file, and this is
+    where it comes from.
+
+    Local mode needs the same variable for a second reason: it runs the
+    harness as this machine's own user, so without it the `stash` CLI inside
+    the turn falls back to the developer's own ~/.stash/config.json — which
+    points at production. STASH_URL keeps that CLI on the backend being
+    served; both variables override the config file, so the developer's
+    ~/.stash is untouched and their local Claude login still resolves.
+    """
+    key = await _turn_key(user_id)
+    if settings.AGENT_EXEC_MODE == "local":
+        return {"STASH_API_KEY": key, "STASH_URL": f"http://localhost:{settings.PORT}"}
+    return {"STASH_API_KEY": key}
 
 
 def _local_workdir() -> Path:

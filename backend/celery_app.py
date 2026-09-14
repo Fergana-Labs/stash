@@ -40,6 +40,7 @@ celery = Celery(
         "backend.tasks.cli_auth",
         "backend.tasks.sources",
         "backend.tasks.agent_schedules",
+        "backend.trained_models.tasks",
         "backend.integrations.google.exporters.slides",
         "backend.integrations.x_saves.tasks",
         "backend.exports.pdf",
