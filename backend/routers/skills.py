@@ -2,7 +2,7 @@
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, UploadFile
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field
 
@@ -20,6 +20,7 @@ from ..services import (
     files_tree_service,
     github_skill_import,
     permission_service,
+    response_audit_service,
     security_audit_service,
     shared_skill_service,
     skill_service,
@@ -151,12 +152,20 @@ async def publish_skill(
 
 @me_router.get("/skills")
 async def list_skills(
+    request: Request,
     current_user: dict = Depends(get_current_user),
     owner_user_id: UUID = Depends(get_scope),
 ):
     """Every skill folder in the active scope, with publish info when shared."""
     skills = await skill_service.list_skills(owner_user_id, current_user["id"])
-    return {"skills": skills}
+    return await response_audit_service.record_response(
+        request,
+        owner_user_id=owner_user_id,
+        actor_user_id=current_user["id"],
+        external_user_id=response_audit_service.correlation_header(request, "X-Stash-User-Id"),
+        request_data={},
+        content={"skills": skills},
+    )
 
 
 class GithubImportRequest(BaseModel):
@@ -215,19 +224,27 @@ async def list_github_import_repos(
 @me_router.get("/skills/{name}")
 async def get_local_skill(
     name: str,
+    request: Request,
     current_user: dict = Depends(get_current_user),
     owner_user_id: UUID = Depends(get_scope),
 ):
     """Read a skill by name: SKILL.md + sibling files concatenated."""
     skill = await skill_service.read_skill(owner_user_id, name, current_user["id"])
-    if not skill:
-        raise HTTPException(status_code=404, detail="Skill not found")
-    return skill
+    return await response_audit_service.record_response(
+        request,
+        owner_user_id=owner_user_id,
+        actor_user_id=current_user["id"],
+        external_user_id=response_audit_service.correlation_header(request, "X-Stash-User-Id"),
+        request_data={"name": name},
+        content=skill or {"detail": "Skill not found"},
+        status_code=200 if skill else 404,
+    )
 
 
 @me_router.get("/source-skills/{source_ref}")
 async def read_source_skill(
     source_ref: str,
+    request: Request,
     current_user: dict = Depends(get_current_user),
     owner_user_id: UUID = Depends(get_scope),
 ):
@@ -236,9 +253,15 @@ async def read_source_skill(
     with the same title, and by the upstream id rather than ours because a
     rename in Drive replaces our row."""
     skill = await skill_service.read_source_skill(owner_user_id, source_ref, current_user["id"])
-    if not skill:
-        raise HTTPException(status_code=404, detail="Skill not found")
-    return skill
+    return await response_audit_service.record_response(
+        request,
+        owner_user_id=owner_user_id,
+        actor_user_id=current_user["id"],
+        external_user_id=response_audit_service.correlation_header(request, "X-Stash-User-Id"),
+        request_data={"source_ref": source_ref},
+        content=skill or {"detail": "Skill not found"},
+        status_code=200 if skill else 404,
+    )
 
 
 async def _require_skill_folder(owner_user_id: UUID, folder_id: UUID, user_id: UUID) -> dict:
