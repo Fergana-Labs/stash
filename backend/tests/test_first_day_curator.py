@@ -22,8 +22,10 @@ from .test_permissions import _register_with_email
 @pytest.fixture
 def dispatched(monkeypatch):
     from backend.config import settings
+    from backend.tasks.session_titles import generate_session_title
 
     monkeypatch.setattr(settings, "ANTHROPIC_API_KEY", "sk-ant-test-key")
+    monkeypatch.setattr(generate_session_title, "delay", lambda *a, **k: None)
     calls: list[tuple] = []
     monkeypatch.setattr(run_curator_now, "delay", lambda *a, **k: calls.append((a, k)))
     return calls

@@ -90,7 +90,7 @@ async def require_run_auth(agent: dict) -> None:
 
 def system_prompt(purpose: str) -> str:
     destination = {
-        "shared": "the shared wiki, using only the participating users' supplied material",
+        "shared": "the shared wiki of reusable, anonymized knowledge, using only the participating users' supplied material",
         "private": "one user's private wiki, preserving that user's specific details",
         "internal": "the developer's private Memory wiki",
     }[purpose]

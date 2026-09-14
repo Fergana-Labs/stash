@@ -54,10 +54,9 @@ function Curator() {
   return (
     <>
       <PageHeading title="Curator">
-        One agent for the whole workspace, one run a night. It reads only the sessions
-        uploaded since its last run — cost scales with new conversation, not with how many
-        users you have — and in that single run writes both places at once: each active
-        user&apos;s own wiki, and the shared anonymized wiki every user&apos;s agent reads.
+        Each night, the curator processes new activity in separate runs for each
+        user&apos;s private wiki and the shared anonymized wiki. The shared run can read
+        only material from users who allow sharing.
       </PageHeading>
 
       <section className="mb-12 grid grid-cols-1 gap-4 sm:grid-cols-3">
