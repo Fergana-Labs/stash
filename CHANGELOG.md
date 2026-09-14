@@ -5,6 +5,9 @@ everything before it is captured in git history (`git log`), not here.
 
 ## Unreleased
 
+- External curator audit details now stay in run transcripts. Existing shared
+  `Log` and `changelog` pages move to a private workspace archive, with public
+  and explicit page shares removed.
 - CLI onboarding redesigned (#940). `stash signin` walks a first-run wizard
   that can be re-run anytime with the new `stash setup` — no answer is final.
   Session recording is framed as private-by-default and on by default

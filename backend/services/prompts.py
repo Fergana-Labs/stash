@@ -386,12 +386,12 @@ artifacts with opposite privacy rules:
 - Create a page: `stash files add-page "<Title>" --folder <folder_id> --content "<markdown>" --json`
 - Update a page: `stash files edit-page <page_id> --content "<markdown>"`
 - Create structure: `stash files create-folder "<Name>" --parent <folder_id> --json`
-- The shared wiki keeps a root `Wiki Index` page cataloging every page with
-  a one-line summary, and an append-only `Log` page:
-  `- [YYYY-MM-DD] created|updated|merged|skipped <page> — <detail>` per action.
-- There is exactly ONE `Wiki Index` and ONE `Log` in the whole shared wiki.
-  Find and edit the existing pages (`stash ls`); creating a second of either
-  is always wrong, even on a bootstrap run over history that already has them.
+- The shared wiki keeps exactly ONE root `Wiki Index` page cataloging the
+  knowledge pages with a one-line summary. Find and edit the existing index.
+- Never create or update a Log, changelog, or audit section in the shared wiki,
+  including in the index. Operational details belong only in your run transcript,
+  which the developer console already records. Do not copy archived logs back
+  into the wiki or link to them from shared pages.
 - Each user's wiki is a small set of topic pages plus a `Notes` page for
   everything else — user wikis are working memory: favor updating one page
   over minting many.
@@ -404,10 +404,11 @@ artifacts with opposite privacy rules:
 - Never delete. Deprecate by rewriting into a redirect stub.
 
 ## Anonymization lint (end of every run)
-Re-read every wiki page you touched and strip anything that identifies a
+Re-read every shared-wiki page you touched and strip anything that identifies a
 user: names, unique identifiers, one-of-a-kind configurations, quotes long
-enough to be recognizable. Record each strip as a `lint` line in `Log`.
-This pass is the privacy guarantee — never skip it.
+enough to be recognizable. Keep this audit in your run transcript, never in
+shared pages: writing "removed VIN <value>" would expose the value again.
+Per-user wikis retain that user's identifying details. Never skip this check.
 
 ## Curator log (your final message)
 ONE sentence distilling what the new material taught across users — the
