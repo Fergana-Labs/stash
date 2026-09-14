@@ -118,13 +118,13 @@ async def test_shared_curator_cannot_discover_or_guess_protected_material(datase
     # Private wikis aren't shared inputs, including those of participating users.
     assert "PUBLIC_WIKI_SECRET" not in corpus
     for document_id in (
-        f"page:{dataset.pages['private']}",
+        str(dataset.pages["private"]),
         "session:private-job",
         f"file:{dataset.private_file}",
         f"source:{dataset.source_doc}",
     ):
-        with pytest.raises(PermissionError):
-            await shared.tool("read_document", {"document_id": document_id})
+        denied = await shared.tool("read_document", {"document_id": document_id})
+        assert "unavailable" in denied["error"] and "content" not in denied
     with pytest.raises(PermissionError):
         await shared.tool("bash", {"command": "stash changes --json"})
 
@@ -185,7 +185,7 @@ async def test_revocation_invalidates_inflight_read_write_and_old_shared_corpus(
     old_root = dataset.workspace["external_wiki_folder_id"]
     await end_user_service.update_end_user(dataset.users["public"]["id"], share_wiki=False)
     for tool, args in (
-        ("read_document", {"document_id": f"page:{dataset.shared}"}),
+        ("read_document", {"document_id": str(dataset.shared)}),
         ("write_page", {"page_id": None, "title": "Leaked", "content": "ALLOWED_TRANSCRIPT"}),
     ):
         with pytest.raises(PermissionError, match="permissions changed"):
@@ -221,6 +221,22 @@ async def test_shared_input_excludes_replayed_retrieval_results(dataset, client)
 
 
 @pytest.mark.asyncio
+async def test_discovered_page_id_can_be_read_and_updated_without_translation(dataset):
+    shared = await scope(dataset, "shared")
+    listing = await shared.tool("search_documents", {"query": "Index"})
+    page_id = listing["documents"][0]["id"]
+    original = await shared.tool("read_document", {"document_id": page_id})
+    assert original["content"] == "ALLOWED_SHARED_KNOWLEDGE"
+    result = await shared.tool(
+        "write_page",
+        {"page_id": page_id, "title": "Index", "content": "Updated permitted knowledge."},
+    )
+    assert result["page_id"] == page_id
+    updated = await shared.tool("read_document", {"document_id": page_id})
+    assert updated["content"] == "Updated permitted knowledge."
+
+
+@pytest.mark.asyncio
 async def test_shared_reads_recheck_consent_even_without_a_generation_change(dataset, pool):
     shared = await scope(dataset, "shared")
     await pool.execute(
@@ -237,9 +253,13 @@ async def test_separate_model_contexts_and_no_sprite_execution(
     from backend.services import agent_service, sprite_agent_service
 
     calls = []
+    all_started = asyncio.Event()
 
     async def fake_run(scope, instructions):
         calls.append((scope.purpose, json.dumps(scope.documents)))
+        if len(calls) == 3:
+            all_started.set()
+        await asyncio.wait_for(all_started.wait(), timeout=1)
         return "Completed this isolated wiki."
 
     async def forbidden(*args, **kwargs):
@@ -365,6 +385,73 @@ async def test_native_model_loop_uses_fresh_messages_and_restricted_tools(
 
 
 @pytest.mark.asyncio
+async def test_denied_lookup_is_an_explicit_tool_error_without_protected_content(
+    dataset, monkeypatch, sprite_exec
+):
+    from anthropic.types import TextBlock, ToolUseBlock
+
+    shared = await scope(dataset, "shared")
+    requests = []
+
+    async def create(**kwargs):
+        requests.append(json.loads(json.dumps(kwargs)))
+        if len(requests) == 1:
+            return SimpleNamespace(
+                stop_reason="tool_use",
+                content=[
+                    ToolUseBlock(
+                        type="tool_use",
+                        id="denied",
+                        name="read_document",
+                        input={"document_id": "session:private-job"},
+                    )
+                ],
+            )
+        return SimpleNamespace(
+            stop_reason="end_turn", content=[TextBlock(type="text", text="No update needed.")]
+        )
+
+    monkeypatch.setattr(
+        curation.llm,
+        "_get_client",
+        lambda: SimpleNamespace(messages=SimpleNamespace(create=create)),
+    )
+    await curation.run_scope(shared, None)
+    result = requests[1]["messages"][-1]["content"][0]
+    assert result["is_error"] and "unavailable" in result["content"]
+    assert "SECRET_TRANSCRIPT" not in json.dumps(requests)
+
+
+@pytest.mark.asyncio
+async def test_truncated_response_cannot_execute_partial_page_writes(
+    dataset, pool, monkeypatch, sprite_exec
+):
+    from anthropic.types import ToolUseBlock
+
+    async def create(**kwargs):
+        return SimpleNamespace(
+            stop_reason="max_tokens",
+            content=[
+                ToolUseBlock(
+                    type="tool_use",
+                    id="truncated",
+                    name="write_page",
+                    input={"page_id": None, "title": "Partial page", "content": "Incomplete"},
+                )
+            ],
+        )
+
+    monkeypatch.setattr(
+        curation.llm,
+        "_get_client",
+        lambda: SimpleNamespace(messages=SimpleNamespace(create=create)),
+    )
+    with pytest.raises(RuntimeError, match="max_tokens"):
+        await curation.run_scope(await scope(dataset, "shared"), None)
+    assert await pool.fetchval("SELECT count(*) FROM pages WHERE name='Partial page'") == 0
+
+
+@pytest.mark.asyncio
 async def test_missing_backend_key_fails_without_dispatch(dataset, client, monkeypatch):
     from backend.tasks import agent_schedules
 
@@ -397,10 +484,22 @@ async def test_failed_shared_run_does_not_report_success_or_advance_watermark(
 ):
     from backend.services import agent_service, sprite_agent_service
 
+    private_started = set()
+    private_cancelled = set()
+    all_private_started = asyncio.Event()
+
     async def fail_shared(scope, instructions):
         if scope.purpose == "shared":
+            await asyncio.wait_for(all_private_started.wait(), timeout=1)
             raise PermissionError("Publication denied")
-        return "Private curation completed."
+        private_started.add(scope.destination)
+        if len(private_started) == 2:
+            all_private_started.set()
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            private_cancelled.add(scope.destination)
+            raise
 
     monkeypatch.setattr(curation, "run_scope", fail_shared)
     agent = await agent_service.get_or_create_curator(dataset.owner, wiki="external")
@@ -408,8 +507,10 @@ async def test_failed_shared_run_does_not_report_success_or_advance_watermark(
     before = await pool.fetchval(
         "SELECT curated_through FROM agents WHERE id=$1", UUID(agent["id"])
     )
-    with pytest.raises(PermissionError):
+    with pytest.raises(ExceptionGroup) as failure:
         await sprite_agent_service.run_scheduled(agent, "failed-test")
+    assert any(isinstance(exc, PermissionError) for exc in failure.value.exceptions)
+    assert private_cancelled == private_started and len(private_cancelled) == 2
     assert (
         await pool.fetchval("SELECT curated_through FROM agents WHERE id=$1", UUID(agent["id"]))
         == before
