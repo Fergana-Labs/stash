@@ -172,7 +172,10 @@ class CurationScope:
             if name == "read_document":
                 args = Read.model_validate(arguments)
                 if args.document_id not in self.documents:
-                    raise PermissionError("Document is outside this curation scope")
+                    return {
+                        "error": "Document is unavailable in this scope. "
+                        "Use search_documents to find permitted document IDs."
+                    }
                 content = self.documents[args.document_id]["content"]
                 end = args.offset + _READ_CHARS
                 return {
@@ -385,7 +388,12 @@ async def run_scope(scope: CurationScope, instructions: str | None) -> str:
             if block.type == "tool_use":
                 result = await scope.tool(block.name, block.input)
                 results.append(
-                    {"type": "tool_result", "tool_use_id": block.id, "content": json.dumps(result)}
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": block.id,
+                        "content": json.dumps(result),
+                        "is_error": "error" in result,
+                    }
                 )
         messages.append({"role": "user", "content": results})
     raise RuntimeError("Curator exhausted its tool turns before completing")

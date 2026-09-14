@@ -123,8 +123,8 @@ async def test_shared_curator_cannot_discover_or_guess_protected_material(datase
         f"file:{dataset.private_file}",
         f"source:{dataset.source_doc}",
     ):
-        with pytest.raises(PermissionError):
-            await shared.tool("read_document", {"document_id": document_id})
+        denied = await shared.tool("read_document", {"document_id": document_id})
+        assert "unavailable" in denied["error"] and "content" not in denied
     with pytest.raises(PermissionError):
         await shared.tool("bash", {"command": "stash changes --json"})
 
@@ -382,6 +382,44 @@ async def test_native_model_loop_uses_fresh_messages_and_restricted_tools(
     assert "SECRET_TRANSCRIPT" in json.dumps(requests[1]["messages"])
     assert "SECRET_TRANSCRIPT" not in json.dumps(requests[2])
     assert len(requests[2]["messages"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_denied_lookup_is_an_explicit_tool_error_without_protected_content(
+    dataset, monkeypatch
+):
+    from anthropic.types import TextBlock, ToolUseBlock
+
+    shared = await scope(dataset, "shared")
+    requests = []
+
+    async def create(**kwargs):
+        requests.append(json.loads(json.dumps(kwargs)))
+        if len(requests) == 1:
+            return SimpleNamespace(
+                stop_reason="tool_use",
+                content=[
+                    ToolUseBlock(
+                        type="tool_use",
+                        id="denied",
+                        name="read_document",
+                        input={"document_id": "session:private-job"},
+                    )
+                ],
+            )
+        return SimpleNamespace(
+            stop_reason="end_turn", content=[TextBlock(type="text", text="No update needed.")]
+        )
+
+    monkeypatch.setattr(
+        curation.llm,
+        "_get_client",
+        lambda: SimpleNamespace(messages=SimpleNamespace(create=create)),
+    )
+    await curation.run_scope(shared, None)
+    result = requests[1]["messages"][-1]["content"][0]
+    assert result["is_error"] and "unavailable" in result["content"]
+    assert "SECRET_TRANSCRIPT" not in json.dumps(requests)
 
 
 @pytest.mark.asyncio
