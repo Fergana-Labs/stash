@@ -237,9 +237,13 @@ async def test_separate_model_contexts_and_no_sprite_execution(
     from backend.services import agent_service, sprite_agent_service
 
     calls = []
+    all_started = asyncio.Event()
 
     async def fake_run(scope, instructions):
         calls.append((scope.purpose, json.dumps(scope.documents)))
+        if len(calls) == 3:
+            all_started.set()
+        await asyncio.wait_for(all_started.wait(), timeout=1)
         return "Completed this isolated wiki."
 
     async def forbidden(*args, **kwargs):
@@ -397,10 +401,22 @@ async def test_failed_shared_run_does_not_report_success_or_advance_watermark(
 ):
     from backend.services import agent_service, sprite_agent_service
 
+    private_started = set()
+    private_cancelled = set()
+    all_private_started = asyncio.Event()
+
     async def fail_shared(scope, instructions):
         if scope.purpose == "shared":
+            await asyncio.wait_for(all_private_started.wait(), timeout=1)
             raise PermissionError("Publication denied")
-        return "Private curation completed."
+        private_started.add(scope.destination)
+        if len(private_started) == 2:
+            all_private_started.set()
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            private_cancelled.add(scope.destination)
+            raise
 
     monkeypatch.setattr(curation, "run_scope", fail_shared)
     agent = await agent_service.get_or_create_curator(dataset.owner, wiki="external")
@@ -408,8 +424,10 @@ async def test_failed_shared_run_does_not_report_success_or_advance_watermark(
     before = await pool.fetchval(
         "SELECT curated_through FROM agents WHERE id=$1", UUID(agent["id"])
     )
-    with pytest.raises(PermissionError):
+    with pytest.raises(ExceptionGroup) as failure:
         await sprite_agent_service.run_scheduled(agent, "failed-test")
+    assert any(isinstance(exc, PermissionError) for exc in failure.value.exceptions)
+    assert private_cancelled == private_started and len(private_cancelled) == 2
     assert (
         await pool.fetchval("SELECT curated_through FROM agents WHERE id=$1", UUID(agent["id"]))
         == before

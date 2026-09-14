@@ -6,6 +6,7 @@ its destination wiki. Opted-out inputs never enter a shared completion.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 from dataclasses import dataclass, field
@@ -21,6 +22,7 @@ from . import agent_auth, curation_service, files_tree_service, llm, memory_serv
 
 _READ_CHARS = 16_000
 _MAX_TURNS = 40
+_MAX_CONCURRENT_SCOPES = 4
 # Re-ingesting retrievals feeds historical cross-user copies back into the
 # shared corpus. Shared learning uses primary interactions and vendor results.
 _RETRIEVAL_TOOLS = ("search_stash", "stash_vfs", "recall", "load_skill")
@@ -427,19 +429,27 @@ async def run(agent: dict, workspace: dict, run_stamp: str) -> str:
                 until,
             )
         )
-    summaries = []
-    for scope in scopes:
-        summary = await run_scope(scope, agent["system_prompt"])
-        summaries.append(f"{scope.purpose} wiki {scope.destination}:\n{summary}")
-        await memory_service.push_event(
-            owner,
-            agent["name"],
-            "tool_result",
-            summaries[-1],
-            owner,
-            session_id=scope.session_id,
-            tool_name="curate_wiki",
-        )
+    concurrency = asyncio.Semaphore(_MAX_CONCURRENT_SCOPES)
+
+    async def curate(scope: CurationScope) -> str:
+        async with concurrency:
+            summary = await run_scope(scope, agent["system_prompt"])
+            record = f"{scope.purpose} wiki {scope.destination}:\n{summary}"
+            await memory_service.push_event(
+                owner,
+                agent["name"],
+                "tool_result",
+                record,
+                owner,
+                session_id=scope.session_id,
+                tool_name="curate_wiki",
+            )
+            return record
+
+    # A failed scope cancels and joins its siblings before releasing the run lock.
+    async with asyncio.TaskGroup() as group:
+        tasks = [group.create_task(curate(scope)) for scope in scopes]
+    summaries = [task.result() for task in tasks]
     # Commit progress under the same permission lock as writes. The scheduler
     # must not later overwrite a concurrent opt-out's reset watermark.
     async with get_pool().acquire() as conn, conn.transaction():
