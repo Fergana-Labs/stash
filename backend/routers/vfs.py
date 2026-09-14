@@ -10,7 +10,13 @@ from pydantic import BaseModel, ConfigDict, Field
 from stashvfs import MountError
 
 from ..auth import get_current_user
-from ..services import end_user_service, security_audit_service, source_service, vfs_service
+from ..services import (
+    end_user_service,
+    response_audit_service,
+    security_audit_service,
+    source_service,
+    vfs_service,
+)
 from ..services.vfs_service import VfsBudgetExceeded
 
 router = APIRouter(prefix="/api/v1/me/vfs", tags=["vfs"])
@@ -105,15 +111,30 @@ async def run_vfs(
             status_code=401,
             detail="The VFS runs every read as the calling credential; use an API key, not a cookie.",
         )
-    end_user_ctx = await _external_vfs_ctx(current_user, body.user_id)
+    status_code = 200
+    headers = None
     try:
-        return await vfs_service.run_vfs_script(
+        end_user_ctx = await _external_vfs_ctx(current_user, body.user_id)
+        content = await vfs_service.run_vfs_script(
             request.app, authorization, body.script, body.cwd, end_user_ctx
         )
     except MountError as e:
-        raise HTTPException(status_code=400, detail=str(e)) from e
+        status_code, content = 400, {"detail": str(e)}
     except VfsBudgetExceeded as e:
-        raise HTTPException(status_code=413, detail=str(e)) from e
+        status_code, content = 413, {"detail": str(e)}
+    except HTTPException as e:
+        status_code, content = e.status_code, {"detail": e.detail}
+        headers = e.headers
+    return await response_audit_service.record_response(
+        request,
+        owner_user_id=current_user["id"],
+        actor_user_id=current_user["id"],
+        external_user_id=body.user_id,
+        request_data=body.model_dump(),
+        content=content,
+        status_code=status_code,
+        headers=headers,
+    )
 
 
 @router.post("/searches", status_code=204)

@@ -5,6 +5,10 @@ everything before it is captured in git history (`git log`), not here.
 
 ## Unreleased
 
+- Developer VFS and skill reads retain complete responses in a private audit
+  journal, separate from wiki and curator content. Responses include a request
+  ID and accept optional org, conversation, and workflow correlation headers.
+  Covered reads return 503 if the response cannot be recorded.
 - Developer curation enforces sharing in backend tools: opted-out inputs stay
   in separate private runs that cannot write to the shared wiki. Developer
   curators use the backend Anthropic model without workspace credentials or
