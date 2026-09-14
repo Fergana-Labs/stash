@@ -118,7 +118,7 @@ async def test_shared_curator_cannot_discover_or_guess_protected_material(datase
     # Private wikis aren't shared inputs, including those of participating users.
     assert "PUBLIC_WIKI_SECRET" not in corpus
     for document_id in (
-        f"page:{dataset.pages['private']}",
+        str(dataset.pages["private"]),
         "session:private-job",
         f"file:{dataset.private_file}",
         f"source:{dataset.source_doc}",
@@ -185,7 +185,7 @@ async def test_revocation_invalidates_inflight_read_write_and_old_shared_corpus(
     old_root = dataset.workspace["external_wiki_folder_id"]
     await end_user_service.update_end_user(dataset.users["public"]["id"], share_wiki=False)
     for tool, args in (
-        ("read_document", {"document_id": f"page:{dataset.shared}"}),
+        ("read_document", {"document_id": str(dataset.shared)}),
         ("write_page", {"page_id": None, "title": "Leaked", "content": "ALLOWED_TRANSCRIPT"}),
     ):
         with pytest.raises(PermissionError, match="permissions changed"):
@@ -218,6 +218,22 @@ async def test_shared_input_excludes_replayed_retrieval_results(dataset, client)
     )
     await _push(client, dataset.key, [event])
     assert "OLD_COPIED_PRIVATE_DATA" not in json.dumps((await scope(dataset, "shared")).documents)
+
+
+@pytest.mark.asyncio
+async def test_discovered_page_id_can_be_read_and_updated_without_translation(dataset):
+    shared = await scope(dataset, "shared")
+    listing = await shared.tool("search_documents", {"query": "Index"})
+    page_id = listing["documents"][0]["id"]
+    original = await shared.tool("read_document", {"document_id": page_id})
+    assert original["content"] == "ALLOWED_SHARED_KNOWLEDGE"
+    result = await shared.tool(
+        "write_page",
+        {"page_id": page_id, "title": "Index", "content": "Updated permitted knowledge."},
+    )
+    assert result["page_id"] == page_id
+    updated = await shared.tool("read_document", {"document_id": page_id})
+    assert updated["content"] == "Updated permitted knowledge."
 
 
 @pytest.mark.asyncio

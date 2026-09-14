@@ -234,7 +234,7 @@ class CurationScope:
             "create" if args.page_id is None else "update",
         )
         self.writable[row["id"]] = dict(row)
-        self.documents[f"page:{row['id']}"] = {
+        self.documents[str(row["id"])] = {
             "title": args.title,
             "content": args.content,
             "writable": True,
@@ -278,7 +278,7 @@ async def load_scope(
         )
         for p in pages:
             writable = p["root"] == destination
-            scope.documents[f"page:{p['id']}"] = {
+            scope.documents[str(p["id"])] = {
                 "title": p["name"],
                 "content": p["content_markdown"],
                 "writable": writable,
@@ -413,10 +413,7 @@ async def run(agent: dict, workspace: dict, run_stamp: str) -> str:
             private = await load_scope(
                 workspace, "private", user["wiki_folder_id"], [user["id"]], session, since, until
             )
-            if any(
-                not d["writable"] and not k.startswith("page:")
-                for k, d in private.documents.items()
-            ):
+            if any(key.startswith(("session:", "file:", "source:")) for key in private.documents):
                 scopes.append(private)
         scopes.append(
             await load_scope(
