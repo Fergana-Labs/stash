@@ -5,6 +5,11 @@ everything before it is captured in git history (`git log`), not here.
 
 ## Unreleased
 
+- Developer curation enforces sharing in backend tools: opted-out inputs stay
+  in separate private runs that cannot write to the shared wiki. Developer
+  curators use the backend Anthropic model without workspace credentials or
+  shell access. Opting out archives the previous shared corpus privately and
+  rebuilds from permitted inputs; existing opt-outs are migrated on deployment.
 - External curator audit details now stay in run transcripts. Existing shared
   `Log` and `changelog` pages move to a private workspace archive, with public
   and explicit page shares removed.

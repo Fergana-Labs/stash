@@ -216,26 +216,15 @@ async def end_users_with_activity_since(workspace_id: UUID, since) -> list[dict]
 
 
 async def external_curator_prompt(workspace: dict, since) -> str:
-    """The prompt the external curator will send for this workspace.
+    """Preview the prompts used by the separate shared and private runs."""
+    from .scoped_curation_service import system_prompt
 
-    One definition, used by the run and by the console that shows it — the
-    console's whole claim is that what it displays is what the run sends, which
-    only holds if they build it the same way.
-    """
-    from . import prompts
-
-    end_users = await end_users_with_activity_since(workspace["id"], since)
-    return prompts.render_external_curator_prompt(
-        str(workspace["external_wiki_folder_id"]),
-        [
-            {
-                "name": end_user["name"],
-                "wiki_folder_id": str(end_user["wiki_folder_id"]),
-                "share_wiki": end_user["share_wiki"],
-            }
-            for end_user in end_users
-        ],
-        since.isoformat() if since else None,
+    window = "full history" if since is None else f"changes since {since.isoformat()}"
+    return (
+        f"Separate backend runs over {window}. Each run has isolated model state and tools.\n\n"
+        + system_prompt("shared")
+        + "\n\n"
+        + system_prompt("private")
     )
 
 
@@ -345,19 +334,76 @@ async def get_end_user(end_user_id: UUID) -> dict | None:
 async def update_end_user(
     end_user_id: UUID, name: str | None = None, share_wiki: bool | None = None
 ) -> dict:
-    pool = get_pool()
-    row = await pool.fetchrow(
-        f"UPDATE end_users SET "
-        "  name = COALESCE($2, name), "
-        "  share_wiki = COALESCE($3, share_wiki) "
-        f"WHERE id = $1 RETURNING {_END_USER_COLS_PLAIN}",
-        end_user_id,
-        name,
-        share_wiki,
-    )
-    if row is None:
-        raise ValueError("user not found")
+    async with get_pool().acquire() as conn, conn.transaction():
+        workspace = await conn.fetchrow(
+            "SELECT w.* FROM workspaces w JOIN end_users e ON e.workspace_id=w.id "
+            "WHERE e.id=$1 FOR UPDATE OF w",
+            end_user_id,
+        )
+        if workspace is None:
+            raise ValueError("user not found")
+        old = await conn.fetchrow("SELECT * FROM end_users WHERE id=$1 FOR UPDATE", end_user_id)
+        row = await conn.fetchrow(
+            "UPDATE end_users SET name=COALESCE($2,name),share_wiki=COALESCE($3,share_wiki) "
+            f"WHERE id=$1 RETURNING {_END_USER_COLS_PLAIN}",
+            end_user_id,
+            name,
+            share_wiki,
+        )
+        if share_wiki is not None and old["share_wiki"] != share_wiki:
+            await conn.execute(
+                "UPDATE workspaces SET curation_generation=curation_generation+1 WHERE id=$1",
+                workspace["id"],
+            )
+            if not share_wiki:
+                await _archive_shared_wiki(conn, workspace)
     return dict(row)
+
+
+async def _archive_shared_wiki(conn, workspace) -> None:
+    """Without historical input provenance, revocation requires a clean shared corpus."""
+    root = workspace["external_wiki_folder_id"]
+    folders = await conn.fetch(
+        "WITH RECURSIVE t AS (SELECT id FROM folders WHERE id=$1 UNION ALL "
+        "SELECT f.id FROM folders f JOIN t ON f.parent_folder_id=t.id) SELECT id FROM t",
+        root,
+    )
+    ids = [f["id"] for f in folders]
+    for table, column in (
+        ("folders", "id"),
+        ("pages", "folder_id"),
+        ("files", "folder_id"),
+        ("tables", "folder_id"),
+    ):
+        await conn.execute(
+            f"UPDATE {table} SET public_permission='none' WHERE {column}=ANY($1::uuid[])", ids
+        )
+    await conn.execute(
+        "DELETE FROM shares WHERE object_id=ANY($1::uuid[]) "
+        "OR object_id IN (SELECT id FROM pages WHERE folder_id=ANY($1::uuid[])) "
+        "OR object_id IN (SELECT id FROM files WHERE folder_id=ANY($1::uuid[])) "
+        "OR object_id IN (SELECT id FROM tables WHERE folder_id=ANY($1::uuid[]))",
+        ids,
+    )
+    await conn.execute("DELETE FROM skills WHERE folder_id=ANY($1::uuid[])", ids)
+    await conn.execute("UPDATE files SET end_user_id=NULL WHERE folder_id=ANY($1::uuid[])", ids)
+    await conn.execute(
+        "UPDATE folders SET name=$2,parent_folder_id=NULL WHERE id=$1",
+        root,
+        f"Shared wiki archive ({root})",
+    )
+    new_root = await conn.fetchval(
+        "INSERT INTO folders (owner_user_id,created_by,name,is_protected) "
+        "VALUES ($1,$1,'External Wiki',true) RETURNING id",
+        workspace["scope_user_id"],
+    )
+    await conn.execute(
+        "UPDATE workspaces SET external_wiki_folder_id=$2 WHERE id=$1", workspace["id"], new_root
+    )
+    await conn.execute(
+        "UPDATE agents SET curated_through=NULL WHERE user_id=$1 AND curator_wiki='external'",
+        workspace["scope_user_id"],
+    )
 
 
 async def end_user_detail(end_user: dict) -> dict:

@@ -220,11 +220,9 @@ function PromptSection({ nightly, backfill }: { nightly: string; backfill: strin
         </div>
       </div>
       <p className="mt-2 text-[13.5px] leading-6 text-muted-foreground">
-        Rendered from live state, so this is exactly what the run sends. The nightly prompt
-        names only the users with something new since the watermark — a user who has said
-        nothing cannot have anything curated for them, and naming every user would grow the
-        prompt with your customer base rather than with the work in front of it. The
-        backfill prompt is the same thing with no watermark: the full history.
+        Shared curation reads only material from users who allow sharing. Each user&apos;s
+        private wiki is updated separately. These are the instructions for those runs:
+        nightly runs process new activity, while backfill starts from the full history.
       </p>
       {shown !== "hidden" && (
         <div className="mt-4">

@@ -62,9 +62,16 @@ async def _run_curator_now(
 
     `metered=False` is for runs the platform initiates on its own (the
     first-day curator): they must not eat the user's free monthly allowance."""
-    from ..services import agent_service, curation_service, sprite_agent_service
+    from ..services import (
+        agent_service,
+        curation_service,
+        scoped_curation_service,
+        sprite_agent_service,
+    )
 
     agent = await agent_service.get_agent_by_id(agent_id)
+    if not metered and agent["run_mode"] != "scheduled":
+        return
     if full_history:
         agent = {**agent, "curated_through": None}
     now = datetime.now(UTC)
@@ -73,10 +80,11 @@ async def _run_curator_now(
         # Seconds-resolution stamp so a manual run never shares a session with
         # the beat's minute-stamped run.
         await sprite_agent_service.run_scheduled(agent, now.strftime("%Y%m%d%H%M%S"))
-        through = await curation_service.complete_through(
-            UUID(str(agent["user_id"])), agent["curated_through"], now
-        )
-        await agent_service.mark_curated(agent_id, through)
+        if await scoped_curation_service.workspace_for_agent(agent) is None:
+            through = await curation_service.complete_through(
+                UUID(str(agent["user_id"])), agent["curated_through"], now
+            )
+            await agent_service.mark_curated(agent_id, through)
         await agent_service.mark_run_succeeded(agent_id)
     except Exception as e:
         await agent_service.mark_run_failed(agent_id, str(e), metered=metered)
@@ -124,8 +132,10 @@ async def _first_day_curator_tick(scope_user_id: UUID) -> None:
 
 
 async def _maybe_dispatch_first_day_run(scope_user_id: UUID, agent: dict, now: datetime) -> None:
-    from ..services import agent_auth, curation_service
+    from ..services import agent_auth, curation_service, scoped_curation_service
 
+    if agent["run_mode"] != "scheduled":
+        return
     # A curator that has never run skips the debounce: its seeded last_run_at
     # is the backfill point (~account creation), which would otherwise mute
     # the very first conversations after signup.
@@ -136,7 +146,7 @@ async def _maybe_dispatch_first_day_run(scope_user_id: UUID, agent: dict, now: d
     ):
         return
     try:
-        await agent_auth.resolve(scope_user_id, agent["model_provider"])
+        await scoped_curation_service.require_run_auth(agent)
     except (agent_auth.NeedsAuth, agent_auth.ProviderNotConfigured):
         return
     if not await curation_service.has_changes_since(
@@ -150,7 +160,13 @@ async def _maybe_dispatch_first_day_run(scope_user_id: UUID, agent: dict, now: d
 
 async def _run_due() -> int:
     from ..config import settings
-    from ..services import agent_auth, agent_service, billing_service, curation_service
+    from ..services import (
+        agent_auth,
+        agent_service,
+        billing_service,
+        curation_service,
+        scoped_curation_service,
+    )
 
     now = datetime.now(UTC)
     stamp = now.strftime("%Y%m%d%H%M")
@@ -176,7 +192,7 @@ async def _run_due() -> int:
             continue
         # No runnable credential (unconnected free user) → nothing can run.
         try:
-            await agent_auth.resolve(user_id, agent["model_provider"])
+            await scoped_curation_service.require_run_auth(agent)
         except (agent_auth.NeedsAuth, agent_auth.ProviderNotConfigured):
             logger.info("agent schedule: no credential for agent %s — skipping", agent["id"])
             await agent_service.mark_run_skipped(agent["id"], "no_credential")
@@ -195,7 +211,13 @@ async def _run_due() -> int:
 
 async def _run_scheduled_agent(agent_id: UUID, stamp: str) -> None:
     from ..database import get_pool
-    from ..services import agent_service, alert_service, curation_service, sprite_agent_service
+    from ..services import (
+        agent_service,
+        alert_service,
+        curation_service,
+        scoped_curation_service,
+        sprite_agent_service,
+    )
 
     try:
         agent = await agent_service.get_agent_by_id(agent_id)
@@ -204,11 +226,13 @@ async def _run_scheduled_agent(agent_id: UUID, stamp: str) -> None:
         # agent row left to record a failure on.
         logger.info("agent schedule: agent %s deleted before its run", agent_id)
         return
+    if agent["run_mode"] != "scheduled":
+        return
     user_id = UUID(str(agent["user_id"]))
     now = datetime.now(UTC)
     try:
         await sprite_agent_service.run_scheduled(agent, stamp)
-        if agent["is_curator"]:
+        if agent["is_curator"] and await scoped_curation_service.workspace_for_agent(agent) is None:
             # `now` predates the run, so changes made during it stay ahead of
             # the watermark and are picked up next time. If the delta
             # overflowed the event cap, the watermark stops at the last event
