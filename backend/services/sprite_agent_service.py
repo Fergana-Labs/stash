@@ -403,7 +403,13 @@ async def run_scheduled(agent: dict, run_stamp: str) -> str:
             _TurnLock(f"scoped-curator-{agent['id']}"),
             _TurnLock(f"{scheduled_session_prefix(agent)}{run_stamp}"),
         ):
-            return await scoped_curation_service.run(agent, workspace, run_stamp)
+            try:
+                return await asyncio.wait_for(
+                    scoped_curation_service.run(agent, workspace, run_stamp),
+                    timeout=settings.AGENT_TURN_TIMEOUT_SECONDS,
+                )
+            except TimeoutError as exc:
+                raise RuntimeError("Scoped curation exceeded its run time limit") from exc
     user = await user_service.get_user_by_id(user_id)
     if user is None:
         return ""

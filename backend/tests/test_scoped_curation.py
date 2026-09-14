@@ -1,5 +1,6 @@
 """An opted-out customer's data must be unavailable, even to a disobedient curator."""
 
+import asyncio
 import json
 from datetime import UTC, datetime
 from types import SimpleNamespace
@@ -419,3 +420,30 @@ async def test_failed_shared_run_does_not_report_success_or_advance_watermark(
         )
         == 0
     )
+
+
+@pytest.mark.asyncio
+async def test_scoped_run_timeout_preserves_progress_and_releases_lock(
+    dataset, pool, monkeypatch, sprite_exec
+):
+    from backend.services import agent_service, sprite_agent_service
+    from backend.tasks.agent_schedules import _run_curator_now
+
+    async def stuck(*args):
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr(curation, "run_scope", stuck)
+    monkeypatch.setattr(sprite_agent_service.settings, "AGENT_TURN_TIMEOUT_SECONDS", 0.05)
+    agent = await agent_service.get_or_create_curator(dataset.owner, wiki="external")
+    before = await pool.fetchval(
+        "SELECT curated_through FROM agents WHERE id=$1", UUID(agent["id"])
+    )
+    with pytest.raises(RuntimeError, match="run time limit"):
+        await _run_curator_now(UUID(agent["id"]), metered=False)
+    row = await pool.fetchrow(
+        "SELECT curated_through,last_run_outcome,last_run_error FROM agents WHERE id=$1",
+        UUID(agent["id"]),
+    )
+    assert row["curated_through"] == before
+    assert row["last_run_outcome"] == "failed" and "run time limit" in row["last_run_error"]
+    assert sprite_exec.redis.data == {}
