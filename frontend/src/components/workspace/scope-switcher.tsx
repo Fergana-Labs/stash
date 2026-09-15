@@ -27,7 +27,7 @@ import {
  * cache to invalidate), so switching reloads the app rather than trying to
  * chase down each in-flight useEffect.
  */
-export default function ScopeSwitcher() {
+export default function ScopeSwitcher({ developerOnly }: { developerOnly: boolean }) {
   const scope = useScope();
   const [workspaces, setWorkspaces] = useState<Workspace[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -84,10 +84,12 @@ export default function ScopeSwitcher() {
         {scope?.view === "developer" ? (
           <TerminalSquare className="h-3.5 w-3.5 shrink-0" />
         ) : inWorkspace ? null : (
-          <CircleUser className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+          !developerOnly && <CircleUser className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
         )}
         <span className="max-w-[160px] truncate">
-          {scope ? (scope.view === "developer" ? `${scope.name} Platform` : scope.name) : "Personal"}
+          {developerOnly && scope?.view !== "developer"
+            ? "Select workspace"
+            : scope ? (scope.view === "developer" ? `${scope.name} Platform` : scope.name) : "Personal"}
         </span>
         <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-60" />
       </DropdownMenuTrigger>
@@ -95,13 +97,15 @@ export default function ScopeSwitcher() {
         <DropdownMenuLabel className="text-[11px] text-muted-foreground">
           Scope
         </DropdownMenuLabel>
-        <ScopeItem
-          icon={<CircleUser className="h-4 w-4 text-muted-foreground" />}
-          label="Personal"
-          detail="Your own stash"
-          selected={!inWorkspace}
-          onSelect={() => select(null)}
-        />
+        {!developerOnly && (
+          <ScopeItem
+            icon={<CircleUser className="h-4 w-4 text-muted-foreground" />}
+            label="Personal"
+            detail="Your own stash"
+            selected={!inWorkspace}
+            onSelect={() => select(null)}
+          />
+        )}
         {error ? (
           <>
             <DropdownMenuSeparator />
@@ -116,6 +120,7 @@ export default function ScopeSwitcher() {
           </>
         ) : (
           <WorkspaceScopes
+            developerOnly={developerOnly}
             workspaces={workspaces}
             scope={scope}
             onSelect={select}
@@ -130,11 +135,13 @@ export default function ScopeSwitcher() {
 /** Every row that needs the workspace list, so the list is non-null here and
  *  "you have no platform" is only ever said about a list that actually loaded. */
 function WorkspaceScopes({
+  developerOnly,
   workspaces,
   scope,
   onSelect,
   onEnterPlatform,
 }: {
+  developerOnly: boolean;
   workspaces: Workspace[];
   scope: Scope | null;
   onSelect: (next: Scope | null) => void;
@@ -147,7 +154,7 @@ function WorkspaceScopes({
   // contexts (personal / workspace / console) when it is one account and one
   // console. If a workspace ever legitimately carries both faces, that needs
   // a real flag, not this inference.
-  const internal = workspaces.filter((w) => w.external_wiki_folder_id === null);
+  const internal = workspaces.filter((w) => !developerOnly && w.external_wiki_folder_id === null);
   return (
     <>
       {internal.length > 0 && <DropdownMenuSeparator />}

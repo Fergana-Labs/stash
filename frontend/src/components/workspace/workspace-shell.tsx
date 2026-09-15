@@ -1,8 +1,9 @@
 "use client";
 
 import { ReactNode, useEffect, useState } from "react";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import DeveloperShell from "@/components/developer/DeveloperShell";
+import DeveloperGate from "@/components/developer/DeveloperGate";
 import { useScope } from "@/lib/scope-store";
 import { useWorkspace } from "@/lib/workspace-store";
 import type { User } from "@/lib/types";
@@ -120,7 +121,17 @@ export default function WorkspaceShell({
   children: ReactNode;
 }) {
   const pathname = usePathname();
+  const router = useRouter();
   const searchParams = useSearchParams();
+  // The console links to these shared viewers for its users' data and sources.
+  // DeveloperGate requires a platform workspace before mounting their content.
+  const isPlatformResource = /^\/(p|f|folders|tables|sessions|integrations)\/[^/]+$/.test(pathname);
+  const redirectToPlatform = user.developer_platform_only &&
+    !isPlatformResource && pathname !== "/settings" &&
+    pathname !== "/developer" && !pathname.startsWith("/developer/");
+  useEffect(() => {
+    if (redirectToPlatform) router.replace("/developer");
+  }, [redirectToPlatform, router]);
   const scope = useScope();
   const routeSection = sectionForPath(pathname);
   const requestedSection = searchParams.get("section");
@@ -147,11 +158,15 @@ export default function WorkspaceShell({
 
   // A Developer Console context gets its own chrome — the infra-dashboard
   // shell, not the consumer app's rail and workbench.
-  if (scope?.view === "developer") {
+  if (redirectToPlatform) return null;
+
+  if (user.developer_platform_only || scope?.view === "developer") {
     return (
       <>
         <DeveloperShell user={user} onLogout={onLogout}>
-          {children}
+          {user.developer_platform_only && isPlatformResource
+            ? <DeveloperGate>{children}</DeveloperGate>
+            : children}
         </DeveloperShell>
         <Toaster />
       </>

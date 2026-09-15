@@ -65,6 +65,7 @@ function OnboardingInner() {
 
   useEffect(() => {
     if (!loading && !user) router.replace("/login");
+    if (!loading && user?.developer_platform_only) router.replace("/developer");
   }, [loading, user, router]);
 
   useEffect(() => {
@@ -100,7 +101,7 @@ function OnboardingInner() {
     exitToHome();
   }, [exitToHome, stepIdx]);
 
-  if (loading || !user) {
+  if (loading || !user || user.developer_platform_only) {
     return (
       <div className="min-h-screen flex items-center justify-center text-muted-foreground">Loading…</div>
     );

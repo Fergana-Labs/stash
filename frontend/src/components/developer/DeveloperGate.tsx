@@ -5,6 +5,8 @@ import Link from "next/link";
 import { BookOpen, TerminalSquare, Users } from "lucide-react";
 
 import { StashIcon } from "@/components/SkillIcons";
+import AccountMenu from "@/components/workspace/account-menu";
+import { useAuth } from "@/hooks/useAuth";
 import { activateDeveloperPlatform, listMyWorkspaces } from "@/lib/api";
 import { getScope, setScope } from "@/lib/scope-store";
 import type { Workspace } from "@/lib/types";
@@ -17,6 +19,7 @@ import type { Workspace } from "@/lib/types";
  * the app chrome to the platform shell.
  */
 export default function DeveloperGate({ children }: { children: React.ReactNode }) {
+  const { user, logout } = useAuth();
   const [workspaces, setWorkspaces] = useState<Workspace[] | null>(null);
   const [activating, setActivating] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -81,12 +84,17 @@ export default function DeveloperGate({ children }: { children: React.ReactNode 
             Developer Platform
           </span>
         </div>
-        <Link
-          href="/"
-          className="text-[13.5px] text-muted-foreground transition-colors hover:text-foreground"
-        >
-          ← Back to Stash
-        </Link>
+        {user && !user.developer_platform_only && (
+          <Link
+            href="/"
+            className="text-[13.5px] text-muted-foreground transition-colors hover:text-foreground"
+          >
+            ← Back to Stash
+          </Link>
+        )}
+        {user?.developer_platform_only && (
+          <AccountMenu user={user} onLogout={logout} placement="header" />
+        )}
       </div>
 
       <div className="flex min-h-[calc(100vh-140px)] items-center justify-center px-6 py-10">

@@ -52,7 +52,7 @@ export default function AppGroupLayout({ children }: { children: ReactNode }) {
     return isPublicSkillRoute ? <PublicSkillSkeleton /> : <AppShellSkeleton />;
   }
 
-  if (isSkillItemRoute) {
+  if (isSkillItemRoute && !user?.developer_platform_only) {
     return <main className="min-h-screen bg-background">{children}</main>;
   }
 

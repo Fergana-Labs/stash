@@ -5,6 +5,9 @@ everything before it is captured in git history (`git log`), not here.
 
 ## Unreleased
 
+- New signups see only the Developer Platform, with internal navigation,
+  onboarding, and settings hidden by a per-user flag. Existing accounts retain
+  both interfaces.
 - Developer curation enforces sharing in backend tools: opted-out inputs stay
   in separate private runs that cannot write to the shared wiki. Developer
   curators use the backend Anthropic model without workspace credentials or

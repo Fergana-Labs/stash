@@ -122,7 +122,7 @@ async def _get_user_from_api_key(token: str, *, managed_auth_enabled: bool) -> d
     row = await pool.fetchrow(
         "SELECT u.id, u.name, u.display_name, u.email, u.description, "
         "       u.created_at, u.last_seen, u.role, u.referral_source, u.use_case, "
-        "       u.plan, u.plan_intent, "
+        "       u.plan, u.plan_intent, u.developer_platform_only, "
         "       k.id AS key_id, k.key_type, k.access AS key_access, k.expires_at "
         "FROM user_api_keys k JOIN users u ON u.id = k.user_id "
         "WHERE k.key_hash = $1 AND k.revoked_at IS NULL",
@@ -160,7 +160,7 @@ async def _get_user_from_jwt(token: str) -> dict:
     pool = get_pool()
     row = await pool.fetchrow(
         "SELECT id, name, display_name, email, description, created_at, last_seen, "
-        "       role, referral_source, use_case, plan, plan_intent "
+        "       role, referral_source, use_case, plan, plan_intent, developer_platform_only "
         "FROM users WHERE auth0_sub = $1",
         claims["sub"],
     )

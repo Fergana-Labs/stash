@@ -131,7 +131,7 @@ async def update_user(
     if not sets:
         row = await pool.fetchrow(
             "SELECT id, name, display_name, email, description, created_at, last_seen, "
-            "       role, referral_source, use_case, plan, plan_intent "
+            "       role, referral_source, use_case, plan, plan_intent, developer_platform_only "
             "FROM users WHERE id = $1",
             user_id,
         )
@@ -140,7 +140,7 @@ async def update_user(
     row = await pool.fetchrow(
         f"UPDATE users SET {', '.join(sets)} WHERE id = ${idx} "
         "RETURNING id, name, display_name, email, description, created_at, last_seen, "
-        "          role, referral_source, use_case, plan, plan_intent",
+        "          role, referral_source, use_case, plan, plan_intent, developer_platform_only",
         *args,
     )
 

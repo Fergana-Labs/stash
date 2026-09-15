@@ -10,6 +10,7 @@ vi.mock("next/navigation", () => ({
 
 const authUser = vi.hoisted(() => ({
   id: "user-1",
+  developer_platform_only: false,
   name: "Henry",
   display_name: "Henry",
   description: "",
@@ -34,7 +35,17 @@ vi.mock("../../lib/api", () => ({
   updatePage: vi.fn(),
 }));
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  authUser.developer_platform_only = false;
+});
+
+it("keeps platform-only signups out of internal agent onboarding", () => {
+  authUser.developer_platform_only = true;
+  render(<OnboardingPage />);
+  expect(screen.queryByRole("button", { name: "Engineer" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Continue" })).not.toBeInTheDocument();
+});
 
 describe("about step pills", () => {
   it("clicking a selected pill unselects it, so a mis-click is recoverable", () => {

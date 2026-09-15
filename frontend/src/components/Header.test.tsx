@@ -20,6 +20,7 @@ vi.mock("next/link", () => ({
 
 const user = {
   id: "user-1",
+  developer_platform_only: false,
   name: "henry",
   display_name: "Henry Dowling",
   email: "henry@example.com",
