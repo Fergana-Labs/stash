@@ -1,5 +1,6 @@
 export interface User {
   id: string;
+  developer_platform_only: boolean;
   name: string;
   display_name: string;
   email?: string | null;

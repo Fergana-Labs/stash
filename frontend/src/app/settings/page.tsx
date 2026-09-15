@@ -42,7 +42,7 @@ export default function SettingsPage() {
         <div className="w-full max-w-2xl mx-auto space-y-8">
           <button
             type="button"
-            onClick={() => router.push("/")}
+            onClick={() => router.push(user.developer_platform_only ? "/developer" : "/")}
             className="cursor-pointer text-sm text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5"
           >
             <span aria-hidden>←</span> Home
@@ -50,15 +50,17 @@ export default function SettingsPage() {
           <div>
             <h1 className="text-2xl font-semibold text-foreground">Settings</h1>
             <p className="text-sm text-muted-foreground mt-1">
-              Your profile, connected sources, sessions, and password.
+              {user.developer_platform_only
+                ? "Your profile, API keys, sessions, and password."
+                : "Your profile, connected sources, sessions, and password."}
             </p>
           </div>
           <Profile user={user} onUpdated={refresh} />
           <SubscriptionSection />
-          <AgentModelSection />
-          <IntegrationsSettings embedded />
+          {!user.developer_platform_only && <AgentModelSection />}
+          {!user.developer_platform_only && <IntegrationsSettings embedded />}
           <ActiveSessions />
-          <ExportSection />
+          {!user.developer_platform_only && <ExportSection />}
           {!AUTH0_ENABLED && <ChangePassword />}
         </div>
       </main>
