@@ -1,6 +1,7 @@
 "use server";
 
 import { escapeHtml, sendPostmark } from "../_lib/postmark";
+import { verifyTurnstile } from "./turnstile";
 
 const SALES_EMAIL = "sam@joinstash.ai";
 const FROM_ADDRESS = "Stash <notifications@joinstash.ai>";
@@ -26,6 +27,15 @@ export async function submitContactSales(
   }
   if (!email.includes("@")) {
     return { status: "error", message: "Please enter a valid email address." };
+  }
+
+  try {
+    if (!(await verifyTurnstile(formData.get("cf-turnstile-response")))) {
+      return { status: "error", message: "Please complete the verification and try again." };
+    }
+  } catch (error) {
+    console.error("Contact-sales verification unavailable", error);
+    return { status: "error", message: "Verification is unavailable. Please try again later." };
   }
 
   const token = process.env.POSTMARK_SERVER_TOKEN;

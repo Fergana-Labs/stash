@@ -4,6 +4,7 @@ import { useActionState, useState } from "react";
 import { useFormStatus } from "react-dom";
 
 import CustomSelect from "../_components/CustomSelect";
+import BotCheck from "./BotCheck";
 import { submitContactSales, type ContactSalesState } from "./actions";
 
 const INITIAL_STATE: ContactSalesState = { status: "idle" };
@@ -23,7 +24,17 @@ const REFERRAL_SOURCES = [
 ];
 
 export default function ContactSalesForm() {
-  const [state, formAction] = useActionState(submitContactSales, INITIAL_STATE);
+  const [verificationToken, setVerificationToken] = useState("");
+  const [attempt, setAttempt] = useState(0);
+  const [state, formAction] = useActionState(async (previous: ContactSalesState, data: FormData) => {
+    try {
+      return await submitContactSales(previous, data);
+    } finally {
+      // Turnstile tokens are single-use, including when email delivery fails.
+      setVerificationToken("");
+      setAttempt((value) => value + 1);
+    }
+  }, INITIAL_STATE);
   const [teamSize, setTeamSize] = useState("");
   const [referralSource, setReferralSource] = useState("");
 
@@ -120,7 +131,8 @@ export default function ContactSalesForm() {
         </p>
       ) : null}
 
-      <SubmitButton />
+      <BotCheck attempt={attempt} onToken={setVerificationToken} />
+      <SubmitButton verified={Boolean(verificationToken)} />
       <p className="text-[12.5px] leading-[1.55] text-muted">
         Prefer email? Reach us at{" "}
         <a
@@ -169,12 +181,12 @@ function Field({
   );
 }
 
-function SubmitButton() {
+function SubmitButton({ verified }: { verified: boolean }) {
   const { pending } = useFormStatus();
   return (
     <button
       type="submit"
-      disabled={pending}
+      disabled={pending || !verified}
       className="inline-flex h-11 items-center justify-center rounded-lg bg-brand px-[18px] text-[14px] font-medium text-white shadow-sm transition hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-60"
     >
       {pending ? "Sending…" : "Book a demo"}
