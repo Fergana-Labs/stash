@@ -14,7 +14,7 @@ security = HTTPBearer(auto_error=False)
 
 _LAST_SEEN_DEBOUNCE_SECONDS = 60
 _LAST_SEEN_CACHE_SIZE = 4096
-API_KEY_TYPES = {"password", "manual", "cli", "invite", "machine"}
+API_KEY_TYPES = {"password", "manual", "cli", "invite", "developer", "internal"}
 API_KEY_ACCESS_LEVELS = {"read", "full"}
 
 # Mutating routes a read-access key may still call: pushing its own session
@@ -136,7 +136,12 @@ async def _get_user_from_api_key(token: str, *, managed_auth_enabled: bool) -> d
     expires_at = user.pop("expires_at")
     if expires_at is not None and expires_at <= datetime.now(UTC):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="API key expired")
-    if managed_auth_enabled and user["key_type"] not in ("cli", "manual", "machine"):
+    if managed_auth_enabled and user["key_type"] not in (
+        "cli",
+        "manual",
+        "developer",
+        "internal",
+    ):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="API key is not allowed for managed auth",
