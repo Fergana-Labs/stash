@@ -902,7 +902,7 @@ def test_check_tree_indexable_enforces_caps_before_download():
         MAX_SNAPSHOT_BYTES,
         _check_tree_indexable,
     )
-    from backend.services.source_service import SourceSyncUserError
+    from backend.services.source_service import SourceSetupRequired
 
     def tree(blobs, truncated=False):
         return {"truncated": truncated, "tree": blobs}
@@ -912,14 +912,14 @@ def test_check_tree_indexable_enforces_caps_before_download():
     # Under every cap: passes. Non-blob entries (trees, submodules) don't count.
     _check_tree_indexable(tree([blob] * 10 + [{"type": "tree"}, {"type": "commit"}]))
 
-    with pytest.raises(SourceSyncUserError, match="truncated"):
+    with pytest.raises(SourceSetupRequired, match="truncated"):
         _check_tree_indexable(tree([blob], truncated=True))
 
-    with pytest.raises(SourceSyncUserError, match=f"cap is {MAX_FILES}"):
+    with pytest.raises(SourceSetupRequired, match=f"cap is {MAX_FILES}"):
         _check_tree_indexable(tree([blob] * (MAX_FILES + 1)))
 
     over = {"type": "blob", "size": MAX_SNAPSHOT_BYTES + 1}
-    with pytest.raises(SourceSyncUserError, match="cap is 100MB"):
+    with pytest.raises(SourceSetupRequired, match="cap is 100MB"):
         _check_tree_indexable(tree([over]))
 
 
@@ -932,7 +932,7 @@ async def test_github_sync_refuses_oversized_repo_without_downloading(monkeypatc
     from uuid import uuid4
 
     from backend.integrations.github import indexer as github_indexer
-    from backend.services.source_service import SourceSyncUserError
+    from backend.services.source_service import SourceSetupRequired
 
     source = {
         "id": str(uuid4()),
@@ -968,5 +968,5 @@ async def test_github_sync_refuses_oversized_repo_without_downloading(monkeypatc
     monkeypatch.setattr(github_indexer, "_github_snapshot_tree", snapshot_tree)
     monkeypatch.setattr(github_indexer, "_crawl_archive", crawl_archive)
 
-    with pytest.raises(SourceSyncUserError, match=f"cap is {github_indexer.MAX_FILES}"):
+    with pytest.raises(SourceSetupRequired, match=f"cap is {github_indexer.MAX_FILES}"):
         await github_indexer.index_github_repo(source)

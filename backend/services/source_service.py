@@ -936,10 +936,11 @@ async def upsert_drive_document(
         and existing["name"] == name
         and existing["external_ref"] == external_ref
         and existing["external_updated_at"] == external_updated_at
-        and existing["extraction_status"] in SETTLED_EXTRACTION_STATUSES
     )
     if unchanged:
-        return None
+        if existing["extraction_status"] in SETTLED_EXTRACTION_STATUSES:
+            return None
+        return existing["id"]
 
     row = await pool.fetchrow(
         "INSERT INTO drive_documents "
@@ -953,7 +954,8 @@ async def upsert_drive_document(
         # at most one sync interval stale, which beats making the document
         # unreadable for the minutes an OCR pass takes.
         "extraction_status = 'pending', extraction_error = NULL, extraction_attempts = 0, "
-        "locked_at = NULL, deleted_at = NULL, updated_at = now() "
+        "locked_at = NULL, extraction_task_id = NULL, extraction_claimed_at = NULL, "
+        "extraction_retry_at = now(), deleted_at = NULL, updated_at = now() "
         "RETURNING id",
         source_id,
         owner_user_id,

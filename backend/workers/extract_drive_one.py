@@ -2,7 +2,7 @@
 
 Invoked by the dispatcher as:
 
-    python -m backend.workers.extract_drive_one <drive_documents.id>
+    python -m backend.workers.extract_drive_one <drive_documents.id> <task_id>
 
 Isolated in its own OS process so pypdf on a 180 MB parts catalog OOMs this
 child rather than the Celery worker. RLIMIT_AS is applied before any heavy
@@ -28,6 +28,8 @@ import os
 import resource
 import sys
 import traceback
+from datetime import UTC, datetime
+from email.utils import parsedate_to_datetime
 from uuid import UUID
 
 _MEM_LIMIT_BYTES = int(os.getenv("EXTRACTION_MEMORY_LIMIT_MB", "1024")) * 1024 * 1024
@@ -45,19 +47,20 @@ def _apply_memory_limit() -> None:
         pass
 
 
-async def _store_unreadable(conn, row_id: UUID, status: str, reason: str) -> None:
+async def _store_unreadable(conn, row_id: UUID, task_id: str, status: str, reason: str) -> None:
     """A document with no text is a fact about the document, not a crash. Record
     why, so a read of it can say so instead of returning an empty string."""
     await conn.execute(
         "UPDATE drive_documents SET extraction_status = $2, extraction_error = $3, "
-        "locked_at = NULL WHERE id = $1",
+        "locked_at = NULL WHERE id = $1 AND extraction_task_id = $4",
         row_id,
         status,
         reason[:2000],
+        task_id,
     )
 
 
-async def _run(row_id: UUID) -> int:
+async def _run(row_id: UUID, task_id: str) -> int:
     # Lazy imports so the RLIMIT above applies to everything heavy.
     import asyncpg
 
@@ -77,8 +80,10 @@ async def _run(row_id: UUID) -> int:
     try:
         row = await conn.fetchrow(
             "SELECT d.id, d.external_ref, d.owner_user_id "
-            "FROM drive_documents d WHERE d.id = $1 AND d.deleted_at IS NULL",
+            "FROM drive_documents d WHERE d.id = $1 AND d.deleted_at IS NULL "
+            "AND extraction_task_id = $2",
             row_id,
+            task_id,
         )
         if not row or not row["external_ref"]:
             return 1
@@ -91,10 +96,10 @@ async def _run(row_id: UUID) -> int:
                 transcribe_pdfs=True,
             )
         except DriveFileUnsupported as e:
-            await _store_unreadable(conn, row_id, "unsupported", str(e))
+            await _store_unreadable(conn, row_id, task_id, "unsupported", str(e))
             return 0
         except DriveFileTooLarge as e:
-            await _store_unreadable(conn, row_id, "too_large", str(e))
+            await _store_unreadable(conn, row_id, task_id, "too_large", str(e))
             return 0
 
         if len(text) > MAX_EXTRACTED_TEXT:
@@ -104,38 +109,50 @@ async def _run(row_id: UUID) -> int:
             "UPDATE drive_documents SET "
             "content = $2, content_hash = md5($2), extraction_status = 'done', "
             "extraction_error = NULL, locked_at = NULL, embed_stale = TRUE, updated_at = now() "
-            "WHERE id = $1",
+            "WHERE id = $1 AND extraction_task_id = $3",
             row_id,
             text,
+            task_id,
         )
         return 0
     except Exception as e:
         # The persisted error carries only the exception class — never the
         # message, which may embed document text or provider responses.
-        try:
-            if _is_rate_limit(e):
-                # A rate limit means "later", not "broken": hand the attempt
-                # back, or a quota blip marches every in-flight document to
-                # permanent failure in seconds.
-                await conn.execute(
-                    "UPDATE drive_documents SET "
-                    "extraction_status = 'pending', "
-                    "extraction_attempts = greatest(extraction_attempts - 1, 0), "
-                    "extraction_error = 'Extraction rate limited: HTTP 429', "
-                    "locked_at = NULL WHERE id = $1",
-                    row_id,
-                )
-            else:
-                await conn.execute(
-                    "UPDATE drive_documents SET "
-                    "extraction_status = CASE WHEN extraction_attempts >= 3 THEN 'failed' "
-                    "ELSE 'pending' END, "
-                    "extraction_error = $2, locked_at = NULL WHERE id = $1",
-                    row_id,
-                    f"Extraction failed: {type(e).__name__}",
-                )
-        except Exception:
-            pass
+        if _is_rate_limit(e):
+            delay = 900
+            retry_after = e.response.headers.get("Retry-After")
+            if retry_after is not None:
+                if retry_after.isdigit():
+                    delay = max(delay, int(retry_after))
+                else:
+                    retry_at = parsedate_to_datetime(retry_after)
+                    delay = max(delay, int((retry_at - datetime.now(UTC)).total_seconds()))
+            host = e.request.url.host
+            await conn.execute(
+                "UPDATE drive_documents SET extraction_status = 'pending', "
+                "extraction_attempts = greatest(extraction_attempts - 1, 0), "
+                "extraction_error = $3, locked_at = NULL, "
+                "extraction_retry_at = now() + $4 * interval '1 second' "
+                "WHERE id = $1 AND extraction_task_id = $2",
+                row_id,
+                task_id,
+                f"Extraction rate limited: HTTP 429 from {host}",
+                delay,
+            )
+        else:
+            await conn.execute(
+                "UPDATE drive_documents SET "
+                "extraction_status = CASE WHEN extraction_attempts >= 3 THEN 'failed' "
+                "ELSE 'pending' END, extraction_error = $3, locked_at = NULL, "
+                "extraction_retry_at = now() + interval '5 minutes' "
+                "WHERE id = $1 AND extraction_task_id = $2",
+                row_id,
+                task_id,
+                f"Extraction failed: {type(e).__name__}",
+            )
+            for filename, lineno, name, _line in traceback.extract_tb(e.__traceback__):
+                sys.stderr.write(f'  File "{filename}", line {lineno}, in {name}\n')
+            sys.stderr.write(f"{type(e).__name__}\n")
         return 1
     finally:
         await conn.close()
@@ -143,8 +160,10 @@ async def _run(row_id: UUID) -> int:
 
 
 def main() -> None:
-    if len(sys.argv) != 2:
-        print("usage: python -m backend.workers.extract_drive_one <row_id>", file=sys.stderr)
+    if len(sys.argv) != 3:
+        print(
+            "usage: python -m backend.workers.extract_drive_one <row_id> <task_id>", file=sys.stderr
+        )
         sys.exit(2)
     try:
         row_id = UUID(sys.argv[1])
@@ -153,7 +172,7 @@ def main() -> None:
         sys.exit(2)
     _apply_memory_limit()
     try:
-        code = asyncio.run(_run(row_id))
+        code = asyncio.run(_run(row_id, sys.argv[2]))
     except Exception as e:
         # Frame locations only — no source lines and no message. Either can
         # embed document text, and this report reaches the parent's logs.
