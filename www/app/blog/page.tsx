@@ -88,12 +88,6 @@ const POSTS: Post[] = [
     author: "Sam Liu",
   },
   {
-    title: "Why memory is critical",
-    blurb: "Why memory is critical in building useful AI products.",
-    href: "https://henrydowling.com/background-context.html",
-    author: "Henry Dowling",
-  },
-  {
     title: "Techniques to improve coding agent velocity",
     blurb:
       "Strategies for making coding agents more autonomous and effective.",
