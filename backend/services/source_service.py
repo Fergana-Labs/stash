@@ -544,18 +544,19 @@ async def get_source_for_sync(source_id: UUID) -> dict | None:
 
 
 async def due_sources(limit: int = 50) -> list[dict]:
-    """Pull sources whose scheduled sync is due (for the Beat reconciler). Also
-    reclaims sources stuck in 'syncing' for over 10 minutes: a sync killed
-    mid-run (e.g. a worker redeploy) never reaches mark_sync_done, so without
-    this the source would sit 'syncing' forever and never re-sync."""
+    """Due sources without a live claim; enqueue_sync atomically claims them."""
+    from .source_sync_service import SYNC_LEASE_MINUTES
+
     rows = await get_pool().fetch(
-        "SELECT id, owner_user_id, source_type, external_ref, sync_cursor, settings "
-        "FROM user_sources "
-        "WHERE sync_enabled AND ("
-        "  next_sync_at <= now() "
-        "  OR (sync_status = 'syncing' AND updated_at < now() - interval '10 minutes')"
-        ") "
-        "ORDER BY next_sync_at LIMIT $1",
+        f"""
+        SELECT id, owner_user_id, source_type, external_ref, sync_cursor, settings
+        FROM user_sources
+        WHERE sync_enabled
+          AND (sync_task_id IS NULL
+               OR sync_claimed_at < now() - interval '{SYNC_LEASE_MINUTES} minutes')
+          AND (next_sync_at <= now() OR sync_task_id IS NOT NULL)
+        ORDER BY next_sync_at LIMIT $1
+        """,
         limit,
     )
     return [
@@ -612,34 +613,13 @@ ACCESS_KICK_LIMIT = 50
 
 
 async def kick_stale_sources(owner_user_id: UUID) -> list[str]:
-    """Claim the scope's due, sync-enabled sources for an access-triggered
-    sync; the caller enqueues one sync task per returned id.
-
-    Access pulls a sync forward, it does not invent a new cadence: a source is
-    only claimed once next_sync_at has passed, the same bar the Beat reconciler
-    uses, so a source configured to sync every 6 hours still syncs every 6
-    hours no matter how often its owner opens the page. The updated_at guard is
-    the debounce on top of that — every sync start/finish/failure touches
-    updated_at, so a source is kicked at most once per window even when it
-    fails every time, and a just-created source (next_sync_at defaults to now)
-    is not re-kicked by the listing that follows its own connect.
-
-    The claim applies mark_sync_started's mutation atomically, so concurrent
-    listings enqueue each source at most once. 'needs_setup' is excluded — it
-    means the user must act, and re-syncing on read cannot fix it."""
+    """Find due sources on access; enqueue_sync arbitrates concurrent triggers."""
     rows = await get_pool().fetch(
-        "UPDATE user_sources SET sync_status = 'syncing', sync_error = NULL, "
-        "next_sync_at = now() + (sync_interval_s || ' seconds')::interval, updated_at = now() "
-        "WHERE id IN ("
-        "  SELECT id FROM user_sources "
-        "  WHERE owner_user_id = $1 AND sync_enabled "
-        "  AND sync_status NOT IN ('syncing', 'needs_setup') "
-        "  AND next_sync_at <= now() "
-        "  AND updated_at < now() - ($2 || ' seconds')::interval "
-        "  ORDER BY next_sync_at "
-        "  LIMIT $3 "
-        "  FOR UPDATE SKIP LOCKED"
-        ") RETURNING id",
+        "SELECT id FROM user_sources WHERE owner_user_id = $1 AND sync_enabled "
+        "AND sync_status != 'needs_setup' AND sync_task_id IS NULL "
+        "AND next_sync_at <= now() "
+        "AND updated_at < now() - ($2 || ' seconds')::interval "
+        "ORDER BY next_sync_at LIMIT $3",
         owner_user_id,
         str(ACCESS_KICK_STALE_S),
         ACCESS_KICK_LIMIT,

@@ -174,7 +174,7 @@ async def test_source_sync_registers_user_owned_task(
     def fake_send_task(name, kwargs, task_id):
         sent.append({"name": name, "kwargs": kwargs, "task_id": task_id})
 
-    monkeypatch.setattr("backend.routers.sources.celery.send_task", fake_send_task)
+    monkeypatch.setattr("backend.services.source_sync_service.celery.send_task", fake_send_task)
 
     response = await client.post(
         f"/api/v1/me/sources/{source['id']}/sync",
