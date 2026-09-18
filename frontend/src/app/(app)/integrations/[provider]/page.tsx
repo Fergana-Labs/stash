@@ -4,6 +4,7 @@ import { useParams, usePathname, useRouter, useSearchParams } from "next/navigat
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FileText, Folder, MoreHorizontal } from "lucide-react";
+import { toast } from "sonner";
 
 import { useBreadcrumbs } from "@/components/BreadcrumbContext";
 import { useConfirm } from "@/components/ConfirmDialog";
@@ -250,7 +251,8 @@ export function IntegrationDetail({ provider }: { provider: string }) {
     setBusy(`sync:${source.source}`);
     setError("");
     try {
-      await syncSourceApi(source.source);
+      const result = await syncSourceApi(source.source);
+      if (result.status === "in_progress") toast("Sync in progress");
       await refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not start sync");
@@ -691,7 +693,7 @@ function shortRef(source: Source): string | null {
   return ref;
 }
 
-function SourceRow({
+export function SourceRow({
   source,
   highlighted,
   open,
@@ -862,8 +864,11 @@ function SourceRow({
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-max min-w-28">
               {syncs && (
-                <DropdownMenuItem disabled={busySync} onClick={onSync}>
-                  {busySync ? "Syncing..." : "Sync now"}
+                <DropdownMenuItem
+                  disabled={busySync || status.sync_status === "syncing"}
+                  onSelect={onSync}
+                >
+                  {busySync || status.sync_status === "syncing" ? "Sync in progress" : "Sync now"}
                 </DropdownMenuItem>
               )}
               {source.type === "google_drive_folder" && (

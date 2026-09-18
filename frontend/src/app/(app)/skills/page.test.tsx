@@ -322,7 +322,7 @@ describe("SkillsPage", () => {
     // Drive syncs on a minutes-long interval, so without this the edit stays
     // invisible until the next sync, draft or not.
     vi.mocked(listSkills).mockResolvedValue([sourceSkill({ has_instructions: true })]);
-    vi.mocked(syncSource).mockResolvedValue({ task_id: "task-1" });
+    vi.mocked(syncSource).mockResolvedValue({ status: "queued", task_id: "task-1" });
 
     render(<SkillsPage />);
 
