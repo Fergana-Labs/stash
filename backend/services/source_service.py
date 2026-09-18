@@ -551,7 +551,7 @@ async def due_sources(limit: int = 50) -> list[dict]:
         f"""
         SELECT id, owner_user_id, source_type, external_ref, sync_cursor, settings
         FROM user_sources
-        WHERE sync_enabled AND sync_status != 'needs_setup'
+        WHERE sync_enabled
           AND (sync_task_id IS NULL
                OR sync_claimed_at < now() - interval '{SYNC_LEASE_MINUTES} minutes')
           AND (next_sync_at <= now() OR sync_task_id IS NOT NULL)

@@ -218,3 +218,17 @@ async def test_alert_uses_the_configured_workspace_and_channel(client, monkeypat
     await alert_service.send_alert("Sync freshness alert")
     install.assert_awaited_once_with("T_STASH")
     post.assert_awaited_once_with("test-token", "C_INCIDENTS", "Sync freshness alert")
+
+
+@pytest.mark.asyncio
+async def test_scheduled_sync_can_recheck_setup_after_provider_configuration_changes(
+    client, pool, monkeypatch
+):
+    _, sid = await make_source(client)
+    await pool.execute("UPDATE user_sources SET sync_status='needs_setup' WHERE id=$1", sid)
+    published = []
+    monkeypatch.setattr(
+        source_sync_service.celery, "send_task", lambda *a, **kw: published.append(kw)
+    )
+    assert await sources._reconcile_due() == 1
+    assert len(published) == 1
