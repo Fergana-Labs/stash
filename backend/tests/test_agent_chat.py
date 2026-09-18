@@ -11,6 +11,8 @@ import json
 import pytest
 from httpx import AsyncClient
 
+from backend.config import settings
+
 from .conftest import stream_json_reply, unique_name
 
 
@@ -361,3 +363,26 @@ async def test_stop_and_status_require_an_owned_session(client: AsyncClient, spr
     # Own session with no turn running: stop is a 409, not a silent no-op.
     r = await client.post(f"/api/v1/me/agent-chat/{session_id}/stop", headers=_auth(key))
     assert r.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_local_mode_without_credential_returns_402(client: AsyncClient, monkeypatch):
+    """Local exec mode with no connected credential must refuse up front with
+    the actionable 402 — the old silent CLAUDE machine login started a turn
+    that died mid-stream (FileNotFoundError: 'claude') on boxes without the
+    binary (STAS-131)."""
+    monkeypatch.setattr(settings, "AGENT_EXEC_MODE", "local")
+    key, _ = await _register(client)
+
+    r = await client.post(
+        "/api/v1/me/agent-chat",
+        json={"message": "hello"},
+        headers=_auth(key),
+    )
+    assert r.status_code == 402
+    assert "local model" in r.json()["detail"]
+
+    # The refusal happened before anything was persisted: the session
+    # read-back is a "No such chat" 404.
+    got = await client.get("/api/v1/me/agent-chat/agent-nosuchsession/status", headers=_auth(key))
+    assert got.status_code == 404

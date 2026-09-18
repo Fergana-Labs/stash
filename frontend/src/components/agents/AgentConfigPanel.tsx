@@ -21,6 +21,7 @@ const MODELS = [
   { value: "anthropic", label: "Claude Code" },
   { value: "openai", label: "Codex" },
   { value: "openrouter", label: "OpenRouter (GLM 5.2 managed)" },
+  { value: "local", label: "Local model (pi)" },
 ];
 
 // Config for one agent: model, persona, run mode + schedule, channel binding.

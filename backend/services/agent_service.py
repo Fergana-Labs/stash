@@ -53,7 +53,7 @@ def _staggered_nightly_cron(user_id: UUID) -> str:
     return f"{n % 60} {hour} * * *"
 
 
-_VALID_PROVIDERS = {"anthropic", "openai", "openrouter"}
+_VALID_PROVIDERS = {"anthropic", "openai", "openrouter", "local"}
 _VALID_RUN_MODES = {"chat", "scheduled"}
 
 
