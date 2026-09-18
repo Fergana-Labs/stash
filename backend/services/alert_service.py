@@ -1,25 +1,20 @@
-"""Ops alerts for failures an operator must see.
-
-Every alert is logged at ERROR. When ALERT_SLACK_WEBHOOK_URL is set, the
-alert is also posted to the team Slack channel; a failed post raises, so a
-broken webhook is itself loud instead of silently eating alerts.
-"""
+"""Operational alerts delivered by the installed Stash Slack bot."""
 
 from __future__ import annotations
 
 import logging
 
-import httpx
-
 from ..config import settings
+from ..integrations.slack import client, installs
 
 logger = logging.getLogger(__name__)
 
 
 async def send_alert(text: str) -> None:
     logger.error("ALERT: %s", text)
-    if not settings.ALERT_SLACK_WEBHOOK_URL:
-        return
-    async with httpx.AsyncClient(timeout=10) as client:
-        response = await client.post(settings.ALERT_SLACK_WEBHOOK_URL, json={"text": text})
-        response.raise_for_status()
+    if not settings.ALERT_SLACK_TEAM_ID or not settings.ALERT_SLACK_CHANNEL_ID:
+        raise RuntimeError("ALERT_SLACK_TEAM_ID and ALERT_SLACK_CHANNEL_ID are required")
+    install = await installs.get_install(settings.ALERT_SLACK_TEAM_ID)
+    if install is None:
+        raise RuntimeError("The alert workspace has no Stash Slack bot installation")
+    await client.post_message(install["bot_token"], settings.ALERT_SLACK_CHANNEL_ID, text)

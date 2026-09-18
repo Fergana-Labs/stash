@@ -348,7 +348,8 @@ async def test_due_sources_reclaims_stuck_syncing(client: AsyncClient, _db_pool)
     # Currently syncing and not due by schedule, freshly started -> left alone.
     await _db_pool.execute(
         "UPDATE user_sources SET sync_status = 'syncing', "
-        "next_sync_at = now() + interval '1 hour', updated_at = now() WHERE id = $1",
+        "next_sync_at = now() + interval '1 hour', updated_at = now(), "
+        "sync_task_id = 'claimed-task', sync_claimed_at = now() WHERE id = $1",
         sid,
     )
     due = {UUID(s["id"]) for s in await source_service.due_sources(limit=50)}
@@ -356,7 +357,7 @@ async def test_due_sources_reclaims_stuck_syncing(client: AsyncClient, _db_pool)
 
     # Stuck syncing past the threshold -> reclaimed even though not schedule-due.
     await _db_pool.execute(
-        "UPDATE user_sources SET updated_at = now() - interval '15 minutes' WHERE id = $1", sid
+        "UPDATE user_sources SET sync_claimed_at = now() - interval '36 minutes' WHERE id = $1", sid
     )
     due = {UUID(s["id"]) for s in await source_service.due_sources(limit=50)}
     assert sid in due
@@ -648,7 +649,7 @@ async def test_connected_source_handles_are_owner_scoped(
     def fake_send_task(*args, **kwargs):
         sent_tasks.append({"args": args, "kwargs": kwargs})
 
-    monkeypatch.setattr("backend.routers.sources.celery.send_task", fake_send_task)
+    monkeypatch.setattr("backend.services.source_sync_service.celery.send_task", fake_send_task)
     cross_owner_doc = await client.get(
         f"/api/v1/me/sources/{source_id}/doc",
         params={"ref": "eng/1"},
@@ -4041,7 +4042,7 @@ async def test_listing_sources_kicks_stale_syncs(client: AsyncClient, monkeypatc
     )
     sent: list[dict] = []
     monkeypatch.setattr(
-        "backend.routers.sources.celery.send_task",
+        "backend.services.source_sync_service.celery.send_task",
         lambda *args, **kwargs: sent.append(kwargs.get("kwargs", {})),
     )
 
@@ -4092,7 +4093,7 @@ async def test_needs_setup_sources_are_not_kicked_by_access(client: AsyncClient,
     )
     sent: list[dict] = []
     monkeypatch.setattr(
-        "backend.routers.sources.celery.send_task",
+        "backend.services.source_sync_service.celery.send_task",
         lambda *args, **kwargs: sent.append(kwargs),
     )
 
@@ -4129,7 +4130,7 @@ async def test_access_kick_respects_the_configured_sync_interval(client: AsyncCl
     )
     sent: list[dict] = []
     monkeypatch.setattr(
-        "backend.routers.sources.celery.send_task",
+        "backend.services.source_sync_service.celery.send_task",
         lambda *args, **kwargs: sent.append(kwargs.get("kwargs", {})),
     )
 

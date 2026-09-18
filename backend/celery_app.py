@@ -154,6 +154,10 @@ celery.conf.update(
             # window (08:00–11:59 UTC), so a bad night alerts the same morning.
             "schedule": crontab(hour=15, minute=30),
         },
+        "sources-alert-stalled": {
+            "task": "backend.tasks.sources.alert_stalled_syncs",
+            "schedule": 300.0,
+        },
         "sources-reconcile-due": {
             "task": "backend.tasks.sources.reconcile_due",
             "schedule": 120.0,

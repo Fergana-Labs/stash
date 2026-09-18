@@ -11,20 +11,18 @@ endpoints just manage the registry.
 
 from __future__ import annotations
 
-import asyncio
 import json
 import re
 from datetime import UTC, datetime
 from typing import Literal
 from urllib.parse import quote
-from uuid import UUID, uuid4
+from uuid import UUID
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, Field
 
 from ..auth import get_current_user, get_scope
-from ..celery_app import celery
 from ..database import get_pool
 from ..integrations import storage as integration_storage
 from ..integrations.google import indexer as google_indexer
@@ -33,6 +31,7 @@ from ..services import (
     end_user_service,
     security_audit_service,
     source_service,
+    source_sync_service,
     task_service,
     user_scope_service,
 )
@@ -163,16 +162,6 @@ async def _resolve_posthog_source(user_id) -> tuple[str, str]:
     return "project", f"PostHog ({display_name})"
 
 
-def _enqueue_source_syncs(source_ids: list[str]) -> None:
-    """Publishing to the broker is blocking socket work, so a batch of them
-    runs off the event loop."""
-    for source_id in source_ids:
-        celery.send_task(
-            "backend.tasks.sources.sync_source",
-            kwargs={"source_id": source_id},
-        )
-
-
 @router.get("")
 async def list_sources(
     current_user: dict = Depends(get_current_user),
@@ -190,8 +179,8 @@ async def list_sources(
     owner_user_id = scope_user_id
     await _require_member(owner_user_id, current_user["id"])
     source_ids = await source_service.kick_stale_sources(owner_user_id)
-    if source_ids:
-        await asyncio.to_thread(_enqueue_source_syncs, source_ids)
+    for source_id in source_ids:
+        await source_sync_service.enqueue_sync(UUID(source_id))
     return {"sources": await source_service.list_sources(owner_user_id, current_user["id"])}
 
 
@@ -472,7 +461,12 @@ async def sync_source_now(
         # Search-driven sources have no indexer; the queued task would no-op,
         # so a 200 here would be a lie.
         raise HTTPException(status_code=400, detail="This source type does not sync")
-    task_id = str(uuid4())
+    task_id = await source_sync_service.enqueue_sync(source_id)
+    if task_id is None:
+        raise HTTPException(
+            status_code=409,
+            detail="This source already has a sync in progress or syncing is disabled.",
+        )
     await task_service.register_task(
         task_id=task_id,
         user_id=current_user["id"],
@@ -480,14 +474,6 @@ async def sync_source_now(
         task_type="source_sync",
         object_type="source",
         object_id=source_id,
-    )
-    # Mark syncing at enqueue (not just when the worker picks it up) so the UI
-    # sees the in-flight sync as soon as this request returns.
-    await source_service.mark_sync_started(source_id)
-    celery.send_task(
-        "backend.tasks.sources.sync_source",
-        kwargs={"source_id": str(source_id)},
-        task_id=task_id,
     )
     await security_audit_service.record_event(
         action="source.sync_requested",
@@ -662,5 +648,5 @@ async def push_saved_items(
             new += 1
 
     if new:
-        celery.send_task("backend.tasks.sources.sync_source", args=[str(source_id)])
+        await source_sync_service.enqueue_sync(source_id)
     return {"accepted": len(parsed), "new": new, "existing": len(parsed) - new}
