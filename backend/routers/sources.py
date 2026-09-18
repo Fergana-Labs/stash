@@ -461,12 +461,14 @@ async def sync_source_now(
         # Search-driven sources have no indexer; the queued task would no-op,
         # so a 200 here would be a lie.
         raise HTTPException(status_code=400, detail="This source type does not sync")
-    task_id = await source_sync_service.enqueue_sync(source_id)
-    if task_id is None:
+    if not source["sync_enabled"]:
         raise HTTPException(
             status_code=409,
-            detail="This source already has a sync in progress or syncing is disabled.",
+            detail="Syncing is disabled for this source.",
         )
+    task_id = await source_sync_service.enqueue_sync(source_id)
+    if task_id is None:
+        return {"status": "in_progress"}
     await task_service.register_task(
         task_id=task_id,
         user_id=current_user["id"],
@@ -485,7 +487,7 @@ async def sync_source_now(
         source_type=source["source_type"],
         metadata={"task_id": task_id},
     )
-    return {"task_id": task_id}
+    return {"status": "queued", "task_id": task_id}
 
 
 @router.post("/{source_id}/bind-skills")
