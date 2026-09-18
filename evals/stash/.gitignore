@@ -1,0 +1,7 @@
+runs/
+runs.sqlite
+*.sqlite
+__pycache__/
+*.egg-info/
+stash_eval.egg-info/
+.venv/
