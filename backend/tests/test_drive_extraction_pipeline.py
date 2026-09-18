@@ -66,7 +66,9 @@ def _stub_drive(monkeypatch, files: list[dict]) -> list[str]:
     monkeypatch.setattr(indexer, "_list", fake_list)
     monkeypatch.setattr(indexer, "_require_readable_folder", _folder_reads_fine)
     monkeypatch.setattr(
-        drive_extraction.extract_drive_document, "delay", lambda row_id: enqueued.append(row_id)
+        drive_extraction.extract_drive_document,
+        "apply_async",
+        lambda *, args, task_id: enqueued.append(args[0]),
     )
     return enqueued
 
@@ -93,7 +95,9 @@ def _stub_drive_listings(monkeypatch, listings: dict[str, list[dict]]) -> list[s
     monkeypatch.setattr(indexer, "_target_modified_time", fake_target_time)
     monkeypatch.setattr(indexer, "_require_readable_folder", _folder_reads_fine)
     monkeypatch.setattr(
-        drive_extraction.extract_drive_document, "delay", lambda row_id: enqueued.append(row_id)
+        drive_extraction.extract_drive_document,
+        "apply_async",
+        lambda *, args, task_id: enqueued.append(args[0]),
     )
     return enqueued
 
@@ -287,6 +291,12 @@ def _stub_extract(monkeypatch, result):
     monkeypatch.setattr("backend.database.close_db", _noop)
 
 
+async def _task_id(row_id):
+    return await get_pool().fetchval(
+        "SELECT extraction_task_id FROM drive_documents WHERE id=$1", row_id
+    )
+
+
 async def _noop(*_a, **_k):
     """The child closes the pool on exit. In-process that would close the pool
     the rest of the test session shares."""
@@ -296,7 +306,7 @@ async def test_the_child_stores_extracted_text(client: AsyncClient, monkeypatch)
     row_id, _ = await _pending_row(client, monkeypatch)
     _stub_extract(monkeypatch, "STEMCO 2036 1036 382-8036")
 
-    assert await extract_drive_one._run(row_id) == 0
+    assert await extract_drive_one._run(row_id, await _task_id(row_id)) == 0
 
     row = await get_pool().fetchrow(
         "SELECT content, extraction_status, extraction_error, embed_stale "
@@ -325,7 +335,7 @@ async def test_the_child_records_why_a_file_has_no_text(
     row_id, _ = await _pending_row(client, monkeypatch)
     _stub_extract(monkeypatch, raised)
 
-    assert await extract_drive_one._run(row_id) == 0
+    assert await extract_drive_one._run(row_id, await _task_id(row_id)) == 0
 
     row = await get_pool().fetchrow(
         "SELECT content, extraction_status, extraction_error FROM drive_documents WHERE id = $1",
@@ -344,7 +354,7 @@ async def test_the_child_redacts_an_unexpected_failure_and_leaves_it_retryable(
     row_id, _ = await _pending_row(client, monkeypatch)
     _stub_extract(monkeypatch, RuntimeError("token abc123 leaked into the message"))
 
-    assert await extract_drive_one._run(row_id) == 1
+    assert await extract_drive_one._run(row_id, await _task_id(row_id)) == 1
 
     row = await get_pool().fetchrow(
         "SELECT extraction_status, extraction_error FROM drive_documents WHERE id = $1",
@@ -361,15 +371,16 @@ async def test_a_row_is_claimed_once(client: AsyncClient, monkeypatch):
     row_id, _ = await _pending_row(client, monkeypatch)
     monkeypatch.setattr(drive_extraction, "_run_child", _child_ok)
 
-    assert await drive_extraction._extract(row_id) == "ok"
-    assert await drive_extraction._extract(row_id) == "skipped"
+    task_id = await _task_id(row_id)
+    assert await drive_extraction._run_claimed(row_id, task_id) == "ok"
+    assert await drive_extraction._run_claimed(row_id, task_id) == "skipped"
 
 
-async def _child_ok(_row_id):
+async def _child_ok(_row_id, _task_id):
     return 0, ""
 
 
-async def _child_oom(_row_id):
+async def _child_oom(_row_id, _task_id):
     return 137, ""
 
 
@@ -379,7 +390,7 @@ async def test_a_child_killed_by_the_oom_killer_is_recorded(client: AsyncClient,
     row_id, _ = await _pending_row(client, monkeypatch)
     monkeypatch.setattr(drive_extraction, "_run_child", _child_oom)
 
-    assert await drive_extraction._extract(row_id) == "failed"
+    assert await drive_extraction._run_claimed(row_id, await _task_id(row_id)) == "failed"
 
     row = await get_pool().fetchrow(
         "SELECT extraction_status, extraction_error FROM drive_documents WHERE id = $1",
@@ -395,7 +406,7 @@ async def test_a_startup_crash_reaches_the_parents_log(monkeypatch):
     The parent captures the stderr tail, which carries the failure."""
     monkeypatch.setattr(drive_extraction, "_CHILD_MODULE", "backend.no_such_module")
 
-    code, tail = await drive_extraction._run_child(uuid4())
+    code, tail = await drive_extraction._run_child(uuid4(), "task")
 
     assert code == 1
     assert "No module named" in tail
@@ -407,11 +418,11 @@ def test_a_child_crash_report_names_the_class_but_never_the_message(monkeypatch,
     embed document text or provider responses, and this reaches the logs."""
     monkeypatch.setattr(extract_drive_one, "_apply_memory_limit", lambda: None)
 
-    async def _boom(_row_id):
+    async def _boom(_row_id, _task_id):
         raise RuntimeError("token abc123 leaked into the message")
 
     monkeypatch.setattr(extract_drive_one, "_run", _boom)
-    monkeypatch.setattr(sys, "argv", ["extract_drive_one", str(uuid4())])
+    monkeypatch.setattr(sys, "argv", ["extract_drive_one", str(uuid4()), "task"])
 
     with pytest.raises(SystemExit) as exc:
         extract_drive_one.main()
@@ -842,3 +853,143 @@ def test_four_dash_delimiters_leave_no_stray_dash_in_the_body():
     meta, body = skill_service.parse_frontmatter(repaired)
     assert meta["name"] == "Turbochargers"
     assert body == "Check it.\n"
+
+
+async def test_sync_and_sweeps_queue_one_extraction_until_worker_starts(client, monkeypatch):
+    """A slow queue must not accumulate another copy on every sweep or folder sync."""
+    import asyncio
+
+    row_id, source_id = await _pending_row(client, monkeypatch)
+    task_id = await _task_id(row_id)
+    published = []
+    monkeypatch.setattr(
+        drive_extraction.extract_drive_document, "apply_async", lambda **kw: published.append(kw)
+    )
+    assert await drive_extraction._enqueue_pending() == 0
+    claims = await asyncio.gather(*(drive_extraction.enqueue_extraction(row_id) for _ in range(8)))
+    assert claims == [None] * 8
+    source = await source_service.get_source_for_sync(source_id)
+    await indexer.index_google_drive_folder(source)
+    assert await _task_id(row_id) == task_id
+    assert published == []
+
+
+async def test_duplicate_delivery_does_not_release_running_extraction(client, monkeypatch):
+    import asyncio
+
+    row_id, _ = await _pending_row(client, monkeypatch)
+    task_id = await _task_id(row_id)
+    entered, release = asyncio.Event(), asyncio.Event()
+
+    async def child(*args):
+        entered.set()
+        await release.wait()
+        return 0, ""
+
+    monkeypatch.setattr(drive_extraction, "_run_child", child)
+    first = asyncio.create_task(drive_extraction._run_claimed(row_id, task_id))
+    await entered.wait()
+    try:
+        assert await drive_extraction._run_claimed(row_id, task_id) == "skipped"
+        assert await _task_id(row_id) == task_id
+        assert await drive_extraction.enqueue_extraction(row_id) is None
+    finally:
+        release.set()
+        await first
+
+
+@pytest.mark.parametrize("retry_after,minimum_seconds", [(None, 899), ("1800", 1799)])
+async def test_rate_limit_waits_without_spending_attempts_or_resetting_on_sync(
+    client, monkeypatch, retry_after, minimum_seconds
+):
+    import httpx
+
+    row_id, source_id = await _pending_row(client, monkeypatch)
+    task_id = await _task_id(row_id)
+    assert await drive_extraction._claim(row_id, task_id)
+    headers = {} if retry_after is None else {"Retry-After": retry_after}
+    response = httpx.Response(
+        429,
+        headers=headers,
+        request=httpx.Request("POST", "https://generativelanguage.googleapis.com/ocr"),
+    )
+    _stub_extract(
+        monkeypatch, httpx.HTTPStatusError("secret", request=response.request, response=response)
+    )
+    assert await extract_drive_one._run(row_id, task_id) == 1
+    await drive_extraction._release(row_id, task_id)
+    source = await source_service.get_source_for_sync(source_id)
+    await indexer.index_google_drive_folder(source)
+    row = await get_pool().fetchrow(
+        "SELECT extraction_attempts,extraction_error,extract(epoch FROM extraction_retry_at-now()) delay "
+        "FROM drive_documents WHERE id=$1",
+        row_id,
+    )
+    assert row["extraction_attempts"] == 0
+    assert row["delay"] >= minimum_seconds
+    assert (
+        row["extraction_error"]
+        == "Extraction rate limited: HTTP 429 from generativelanguage.googleapis.com"
+    )
+    assert await drive_extraction._enqueue_pending() == 0
+    await get_pool().execute(
+        "UPDATE drive_documents SET extraction_retry_at=now() WHERE id=$1", row_id
+    )
+    assert await drive_extraction._enqueue_pending() == 1
+    assert await drive_extraction._enqueue_pending() == 0
+
+
+async def test_obsolete_child_cannot_overwrite_a_new_file_version(client, monkeypatch):
+    row_id, source_id = await _pending_row(client, monkeypatch)
+    task_id = await _task_id(row_id)
+    assert await drive_extraction._claim(row_id, task_id)
+    source = await source_service.get_source_for_sync(source_id)
+
+    async def change_during_extraction(*args, **kwargs):
+        _stub_drive(monkeypatch, [_entry("Scan.pdf", datetime(2026, 7, 10, tzinfo=UTC))])
+        await indexer.index_google_drive_folder(source)
+        return "old content"
+
+    monkeypatch.setattr(indexer, "extract_drive_text", change_during_extraction)
+    monkeypatch.setattr("backend.database.close_db", _noop)
+    assert await extract_drive_one._run(row_id, task_id) == 0
+    new_task_id = await _task_id(row_id)
+    assert new_task_id != task_id
+    await drive_extraction._release(row_id, task_id)
+    assert await _task_id(row_id) == new_task_id
+    row = await get_pool().fetchrow(
+        "SELECT content,extraction_status FROM drive_documents WHERE id=$1", row_id
+    )
+    assert row["content"] is None
+    assert row["extraction_status"] == "pending"
+
+
+async def test_publish_failure_does_not_strand_extraction(client, monkeypatch):
+    row_id, _ = await _pending_row(client, monkeypatch)
+    await drive_extraction._release(row_id, await _task_id(row_id))
+
+    def fail(**kwargs):
+        raise ConnectionError("broker down")
+
+    monkeypatch.setattr(drive_extraction.extract_drive_document, "apply_async", fail)
+    with pytest.raises(ConnectionError):
+        await drive_extraction.enqueue_extraction(row_id)
+    assert await _task_id(row_id) is None
+    monkeypatch.setattr(drive_extraction.extract_drive_document, "apply_async", lambda **kw: None)
+    assert await drive_extraction._enqueue_pending() == 1
+
+
+async def test_repeated_worker_deaths_stop_at_the_retry_limit(client, monkeypatch):
+    row_id, _ = await _pending_row(client, monkeypatch)
+    await get_pool().execute(
+        "UPDATE drive_documents SET extraction_status='processing', extraction_attempts=3, "
+        "locked_at=now()-interval '36 minutes', "
+        "extraction_claimed_at=now()-interval '36 minutes' WHERE id=$1",
+        row_id,
+    )
+    assert await drive_extraction._enqueue_pending() == 0
+    row = await get_pool().fetchrow(
+        "SELECT extraction_status,extraction_task_id FROM drive_documents WHERE id=$1", row_id
+    )
+    assert row["extraction_status"] == "failed"
+    assert row["extraction_task_id"] is None

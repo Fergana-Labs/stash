@@ -79,20 +79,20 @@ async def _github_snapshot_tree(url: str, headers: dict, head_sha: str) -> dict:
 
 def _check_tree_indexable(tree: dict) -> None:
     """Refuse a snapshot the crawler would give up on anyway, before paying
-    for the download. Messages are owner-facing (SourceSyncUserError)."""
+    for the download. Messages are owner-facing (SourceSetupRequired)."""
     if tree["truncated"]:
         # GitHub truncates the listing past ~100k entries — far over MAX_FILES.
-        raise source_service.SourceSyncUserError(
+        raise source_service.SourceSetupRequired(
             "Repo is too large to index: GitHub truncated its file listing"
         )
     blobs = [e for e in tree["tree"] if e["type"] == "blob"]
     if len(blobs) > MAX_FILES:
-        raise source_service.SourceSyncUserError(
+        raise source_service.SourceSetupRequired(
             f"Repo has {len(blobs)} files; the indexing cap is {MAX_FILES}"
         )
     total_bytes = sum(e["size"] for e in blobs)
     if total_bytes > MAX_SNAPSHOT_BYTES:
-        raise source_service.SourceSyncUserError(
+        raise source_service.SourceSetupRequired(
             f"Repo content is {total_bytes // (1024 * 1024)}MB; "
             f"the indexing cap is {MAX_SNAPSHOT_BYTES // (1024 * 1024)}MB"
         )

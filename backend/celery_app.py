@@ -49,25 +49,14 @@ celery = Celery(
 
 celery.conf.update(
     task_default_queue="default",
-    # Two queues, split by task weight. Anything that can hold a worker slot
-    # for minutes — subprocess extractions, Playwright renders, exports,
-    # source crawls, bulk URL fetches, headless agent runs — routes to
-    # "heavy" and gets its own worker pool. Everything else (cheap beat
-    # sweeps and bounded tasks) stays on "default", which therefore
-    # never stalls: cadence-sensitive tasks like X token keep-fresh (its
-    # 45-min refresh_margin assumes a tick roughly every 30 min) get their
-    # guarantee without being enumerated. Interactive agent replies
-    # (Slack/Telegram) also stay on "default" deliberately: a user is
-    # waiting, and "heavy" would queue them behind renders. A worker started
-    # without -Q consumes every queue listed in task_queues, so a deploy
-    # whose worker command predates the split still executes both queues;
-    # -Q flags (start.sh, docker-compose.prod.yml) give the real isolation.
-    task_queues=(Queue("default"), Queue("heavy")),
+    # Source crawls have their own pool so extraction retries cannot block syncing.
+    # Slow extraction, exports, and agent runs use heavy; beat sweeps use default.
+    task_queues=(Queue("default"), Queue("heavy"), Queue("sync")),
     task_routes={
         "backend.tasks.extraction.extract_file_text": {"queue": "heavy"},
         "backend.tasks.drive_extraction.extract_drive_document": {"queue": "heavy"},
         "backend.tasks.clips.process_url_imports": {"queue": "heavy"},
-        "backend.tasks.sources.sync_source": {"queue": "heavy"},
+        "backend.tasks.sources.sync_source": {"queue": "sync"},
         "backend.exports.pdf.export_pdf": {"queue": "heavy"},
         "backend.exports.pptx.export_pptx": {"queue": "heavy"},
         "backend.exports.gslides.export_to_google_slides": {"queue": "heavy"},
