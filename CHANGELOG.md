@@ -5,6 +5,11 @@ everything before it is captured in git history (`git log`), not here.
 
 ## Unreleased
 
+- Self-hosting works from the published two-file compose command again: the
+  localhost override no longer declares a `collab` service the base file lacks,
+  which aborted `docker compose up` before a single container started, and the
+  five GHCR image pins name the release this repo actually ships instead of two
+  releases behind it. A contract test guards both.
 - New signups see only the Developer Platform, with internal navigation,
   onboarding, and settings hidden by a per-user flag. Existing accounts retain
   both interfaces.
