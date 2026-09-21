@@ -157,3 +157,35 @@ async def test_put_contents_requires_skill_md_and_ownership(client: AsyncClient)
         headers=_auth(outsider_key),
     )
     assert outsider.status_code == 404
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "path, content",
+    [
+        ("SKILL.md", b"---\nname: broken\n---\n"),
+        ("nested/SKILL.md", b"---\nname: broken\n---\n"),
+        ("SKILL.md", b"\xff"),
+    ],
+)
+async def test_invalid_sync_preserves_existing_skill(client, path, content):
+    api_key = await _register(client)
+    _, folder_id = await _make_skill(client, api_key)
+    url = f"/api/v1/me/skills/{folder_id}/contents"
+    before = (await client.get(url, headers=_auth(api_key))).json()
+    uploads = [("files", (path, content, "text/markdown"))]
+    if path != "SKILL.md":
+        uploads.append(
+            (
+                "files",
+                (
+                    "SKILL.md",
+                    b"---\nname: valid\ndescription: Valid metadata.\n---\n",
+                    "text/markdown",
+                ),
+            )
+        )
+    response = await client.put(url, files=uploads, headers=_auth(api_key))
+    assert response.status_code == 400
+    after = (await client.get(url, headers=_auth(api_key))).json()
+    assert after == before
