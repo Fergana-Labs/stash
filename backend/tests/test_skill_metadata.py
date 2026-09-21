@@ -21,11 +21,11 @@ def test_skill_template_round_trips_yaml_sensitive_metadata():
     skill_service.validate_skill_md(markdown)
 
 
-def test_skill_validation_rejects_a_title_without_instructions():
-    markdown = '---\nname: "Deploy"\ndescription: "Ship production."\n---\n\n# Deploy\n'
-
-    with pytest.raises(ValueError, match="requires instructions"):
-        skill_service.validate_skill_md(markdown)
+@pytest.mark.parametrize("body", ["", "\n", "# Deploy\n", "# Deployment\n", "Run tests.\n"])
+def test_skill_validation_does_not_judge_the_authors_markdown(body):
+    markdown = '---\nname: "Deploy"\ndescription: "Ship production."\n---\n\n' + body
+    skill_service.validate_skill_md(markdown)
+    assert skill_service.declared_skill(markdown)["name"] == "Deploy"
 
 
 @pytest.mark.parametrize(

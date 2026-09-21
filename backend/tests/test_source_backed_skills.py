@@ -33,8 +33,8 @@ def test_skill_shelf_explains_each_document_status():
         "skill_status_reason": "Agents can load this file as a Skill.",
     }
     assert classify(_declared("Draft", "Not ready", body=""), "done") == {
-        "skill_status": "not_skill",
-        "skill_status_reason": "SKILL.md requires instructions below its frontmatter",
+        "skill_status": "skill",
+        "skill_status_reason": "Agents can load this file as a Skill.",
     }
     assert classify("Meeting notes", "done") == {
         "skill_status": "not_skill",
@@ -298,7 +298,9 @@ async def test_reading_an_undeclared_document_is_not_found(client: AsyncClient, 
 
 
 @pytest.mark.asyncio
-async def test_a_declaration_with_nothing_under_it_is_not_a_skill(client: AsyncClient, pool):
+async def test_valid_frontmatter_declares_a_skill_even_with_an_empty_body(
+    client: AsyncClient, pool
+):
     _key, owner_id = await _register(client)
     source_id = await _skill_shelf(pool, owner_id)
     await _doc(
@@ -310,10 +312,11 @@ async def test_a_declaration_with_nothing_under_it_is_not_a_skill(client: AsyncC
     )
 
     listed = await skill_service.list_skills(owner_id, owner_id)
-    assert listed == []
+    assert [skill["name"] for skill in listed] == ["Turbochargers"]
 
     skill = await skill_service.read_source_skill(owner_id, "drive-Turbochargers.md", owner_id)
-    assert skill is None
+    assert skill is not None
+    assert skill["name"] == "Turbochargers"
 
 
 @pytest.mark.asyncio

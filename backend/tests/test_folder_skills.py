@@ -600,10 +600,11 @@ async def test_disabled_skill_stays_in_web_list_but_is_not_provided_to_agents(
         folder_id,
         '---\nname: "Deploy"\ndescription: "Use for deploys."\n---\n\n# Deploy',
     )
-    enable_empty = await client.patch(
+    enable_title_only = await client.patch(
         f"/api/v1/me/skills/folder/{folder_id}/agent-enabled",
         json={"enabled": True},
         headers=_auth(key),
     )
-    assert enable_empty.status_code == 400
-    assert "requires instructions" in enable_empty.json()["detail"]
+    assert enable_title_only.status_code == 200
+    agent_list = await client.get("/api/v1/me/skills", headers=_auth(key))
+    assert [skill["name"] for skill in agent_list.json()["skills"]] == ["Deploy"]

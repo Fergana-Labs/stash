@@ -63,7 +63,7 @@ async def test_convert_verbs_are_the_only_way_membership_changes(scope, _db_pool
 
 
 @pytest.mark.asyncio
-async def test_deleting_or_emptying_skill_md_is_refused(scope, _db_pool):
+async def test_skill_md_is_protected_but_its_body_can_be_empty(scope, _db_pool):
     folder = await files_tree_service.create_skill(
         scope,
         scope,
@@ -80,13 +80,13 @@ async def test_deleting_or_emptying_skill_md_is_refused(scope, _db_pool):
     with pytest.raises(ValueError, match="can't be deleted, renamed, or moved"):
         await files_tree_service.update_page(page_id, scope, scope, name="notes.md")
 
-    with pytest.raises(ValueError, match="requires instructions"):
-        await files_tree_service.update_page(
-            page_id,
-            scope,
-            scope,
-            content='---\nname: "Brake Shoes"\ndescription: "Service brakes."\n---\n',
-        )
+    content = '---\nname: "Brake Shoes"\ndescription: "Service brakes."\n---\n'
+    await files_tree_service.update_page(page_id, scope, scope, content=content)
+    assert (
+        await _db_pool.fetchval("SELECT content_markdown FROM pages WHERE id = $1", page_id)
+        == content
+    )
+    assert (await skill_service.list_skills(scope, scope))[0]["name"] == "Brake Shoes"
 
 
 @pytest.mark.asyncio
@@ -327,13 +327,12 @@ async def test_skill_md_cannot_be_moved_out_of_its_skill(scope, _db_pool):
         await files_tree_service.update_page(page_id, scope, scope, folder_id=elsewhere["id"])
     with pytest.raises(ValueError, match="can't be deleted, renamed, or moved"):
         await files_tree_service.update_page(page_id, scope, scope, move_to_root=True)
-    with pytest.raises(ValueError, match="requires instructions"):
-        await files_tree_service.update_page(
-            page_id,
-            scope,
-            scope,
-            content='---\nname: "Movable"\ndescription: "Use for move tests."\n---\n\n# Movable',
-        )
+    title_only = '---\nname: "Movable"\ndescription: "Use for move tests."\n---\n\n# Movable'
+    await files_tree_service.update_page(page_id, scope, scope, content=title_only)
+    assert (
+        await _db_pool.fetchval("SELECT content_markdown FROM pages WHERE id = $1", page_id)
+        == title_only
+    )
 
     edited_content = (
         '---\nname: "Movable"\ndescription: "Use for move tests."\n---\n\n# Movable\n\nNew body.'

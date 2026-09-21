@@ -4,7 +4,7 @@ Membership is stored, never derived: it changes only through deliberate
 verbs (create a skill, convert a folder, import a repo), so editing files
 inside a folder can never reclassify it. SKILL.md holds the skill's
 instructions and frontmatter metadata. A folder cannot become a skill unless
-that document is valid and nonempty.
+that document has valid frontmatter.
 
 Files and Skills are MECE: skill subtrees are filtered out of every Files
 surface (see ``skill_subtree_folder_ids``) and surfaced in the Skills area
@@ -111,17 +111,6 @@ def validate_skill_md(md: str) -> None:
         raise ValueError(
             f"SKILL.md description must be at most {MAX_SKILL_DESCRIPTION_LENGTH} characters"
         )
-    if not skill_instruction_body(md):
-        raise ValueError("SKILL.md requires instructions below its frontmatter")
-
-
-def skill_instruction_body(md: str) -> str:
-    """The agent instructions, excluding a repeated title heading."""
-    meta, body = parse_frontmatter(md)
-    lines = body.strip().splitlines()
-    if lines and lines[0].strip() == f"# {str(meta.get('name', '')).strip()}":
-        lines = lines[1:]
-    return "\n".join(lines).strip()
 
 
 def declared_skill(content: str | None) -> dict | None:
@@ -286,9 +275,8 @@ async def list_skills(
     """List every skill folder in the scope: folder + SKILL.md frontmatter,
     plus the publish record when the skill has been shared.
 
-    Every skill must have a valid, nonempty SKILL.md. The migration that
-    introduced this invariant repaired older rows; fail loudly if storage is
-    ever corrupted again."""
+    Every skill must have a SKILL.md with valid frontmatter. The Markdown
+    body belongs to the author; its contents do not determine membership."""
     pool = get_pool()
     readable = permission_service.readable_content_condition("folder", "f", 2)
     rows = await pool.fetch(
