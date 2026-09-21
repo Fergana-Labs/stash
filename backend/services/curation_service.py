@@ -451,7 +451,9 @@ async def _feed_events(
     if until is not None:
         args.append(until)
         where += f" AND he.created_at <= ${len(args)}"
-    trace_ids = await allowed_trace_ids(owner_user_id, since, until)
+    # Select ongoing traces too: the event window bounds their input, while
+    # charging waits until their final event has been processed.
+    trace_ids = await allowed_trace_ids(owner_user_id, since, None)
     if trace_ids is not None:
         args.append(trace_ids)
         where += (

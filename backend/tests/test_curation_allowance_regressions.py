@@ -1,7 +1,9 @@
+import asyncio
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock
 from uuid import UUID
 
+import asyncpg
 import pytest
 
 from backend.config import settings
@@ -113,3 +115,89 @@ async def test_exhausted_allowance_never_dispatches_or_runs_inference(
     )
     assert row["curated_through"] == curator["curated_through"]
     assert row["last_run_outcome"] == "skipped_credits"
+
+
+@pytest.mark.asyncio
+async def test_deferred_overlapping_trace_keeps_its_prefix(client, pool, monkeypatch):
+    key, uid = await _register(client)
+    since = datetime.now(UTC) - timedelta(hours=1)
+    first_end = since + timedelta(minutes=10)
+    second_end = since + timedelta(minutes=20)
+    await _traces(client, key, [first_end, second_end])
+    await _push_events(
+        client,
+        key,
+        [
+            {
+                "agent_name": "claude-code",
+                "event_type": "user_message",
+                "content": "Essential context",
+                "session_id": "trace-1",
+                "created_at": (since + timedelta(minutes=5)).isoformat(),
+            }
+        ],
+    )
+    curator = await agent_service.get_or_create_curator(uid)
+    monkeypatch.setattr(settings, "FREE_CURATED_TRACES", 1)
+    feed = await curation_service.changes_since(uid, uid, since, first_end)
+    assert {e["session_id"] for e in feed["history"]} == {"trace-0"}
+    await agent_service.mark_curated(UUID(curator["id"]), first_end, since=since)
+    assert (await curation_service.curation_allowance(uid, second_end))["used"] == 1
+    position = await pool.fetchval(
+        "SELECT curated_through FROM agents WHERE id=$1", UUID(curator["id"])
+    )
+    monkeypatch.setattr(settings, "FREE_CURATED_TRACES", 2)
+    feed = await curation_service.changes_since(uid, uid, position, second_end)
+    assert any(e["content"] == "Essential context" for e in feed["history"])
+
+
+@pytest.mark.asyncio
+async def test_selected_trace_drains_across_event_cap(client, pool, monkeypatch):
+    key, uid = await _register(client)
+    since = datetime.now(UTC) - timedelta(hours=1)
+    end = since + timedelta(minutes=20)
+    await _traces(client, key, [end])
+    await _push_events(
+        client,
+        key,
+        [
+            {
+                "agent_name": "claude-code",
+                "event_type": "user_message",
+                "content": f"Part {i}",
+                "session_id": "trace-0",
+                "created_at": (since + timedelta(minutes=i)).isoformat(),
+            }
+            for i in range(1, 5)
+        ],
+    )
+    monkeypatch.setattr(curation_service, "_MAX_EVENTS", 2)
+    curator = await agent_service.get_or_create_curator(uid)
+    through = await curation_service.complete_through(uid, since, end)
+    await agent_service.mark_curated(UUID(curator["id"]), through, since=since)
+    position = await pool.fetchval(
+        "SELECT curated_through FROM agents WHERE id=$1", UUID(curator["id"])
+    )
+    assert position == through
+    assert (await curation_service.curation_allowance(uid, end))["used"] == 0
+    next_feed = await curation_service.changes_since(uid, uid, position, end)
+    assert any(e["content"] == "Part 3" for e in next_feed["history"])
+
+
+@pytest.mark.asyncio
+async def test_completion_works_with_one_database_connection(client, pool, monkeypatch):
+    from backend import database
+
+    from .conftest import _TEST_DB_URL
+
+    key, uid = await _register(client)
+    now = datetime.now(UTC)
+    await _traces(client, key, [now - timedelta(seconds=1)])
+    curator = await agent_service.get_or_create_curator(uid)
+    async with asyncpg.create_pool(_TEST_DB_URL, min_size=1, max_size=1) as single:
+        monkeypatch.setattr(database, "pool", single)
+        await asyncio.wait_for(
+            agent_service.mark_curated(UUID(curator["id"]), now, since=None), timeout=3
+        )
+    monkeypatch.setattr(database, "pool", pool)
+    assert (await curation_service.curation_allowance(uid, now))["used"] == 1
