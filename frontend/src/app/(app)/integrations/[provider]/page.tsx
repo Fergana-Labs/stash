@@ -41,6 +41,7 @@ import {
   secondaryButton,
 } from "@/components/integrations/pickers";
 import PaywallModal from "@/components/PaywallModal";
+import DeveloperGate from "@/components/developer/DeveloperGate";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -58,7 +59,11 @@ const SYNC_POLL_MAX_ATTEMPTS = 100;
 
 export default function IntegrationRoute() {
   const params = useParams();
-  return <IntegrationDetail provider={params.provider as string} />;
+  return (
+    <DeveloperGate>
+      <IntegrationDetail provider={params.provider as string} />
+    </DeveloperGate>
+  );
 }
 
 export function IntegrationDetail({ provider }: { provider: string }) {

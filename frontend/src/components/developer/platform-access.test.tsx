@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import WorkspaceShell from "@/components/workspace/workspace-shell";
 import DeveloperGate from "./DeveloperGate";
+import DeveloperSources from "@/app/(app)/developer/sources/page";
 import type { Scope } from "@/lib/types";
 
 const state = vi.hoisted(() => ({
@@ -40,6 +41,10 @@ vi.mock("@/components/workspace/persistence", () => ({ default: () => null }));
 vi.mock("@/components/workspace/explorer", () => ({ default: () => null }));
 vi.mock("@/components/workspace/workbench", () => ({ default: () => null }));
 vi.mock("@/components/ui/sonner", () => ({ Toaster: () => null }));
+
+vi.mock("@/components/integrations/SourceConnectorList", () => ({
+  default: ({ returnTo }: { returnTo: string }) => <a href={returnTo}>Source controls</a>,
+}));
 
 beforeEach(() => {
   state.pathname = "/developer";
@@ -124,4 +129,19 @@ it("preserves existing users' internal interface", async () => {
   await waitFor(() => expect(screen.getByText("Internal content")).toBeInTheDocument());
   expect(screen.getByText("Internal navigation")).toBeInTheDocument();
   expect(state.replace).not.toHaveBeenCalled();
+});
+
+
+it("keeps source controls out of personal scope", async () => {
+  state.user.developer_platform_only = false;
+  render(<DeveloperSources />);
+  await screen.findByText("Run Stash for your product's users");
+  expect(screen.queryByText("Source controls")).not.toBeInTheDocument();
+});
+
+it("opens source management in a developer workspace and returns OAuth there", async () => {
+  state.scope = { scope_user_id: "platform", name: "Product", view: "developer" };
+  render(<DeveloperSources />);
+  expect(await screen.findByRole("link", { name: "Source controls" }))
+    .toHaveAttribute("href", "/developer/sources");
 });

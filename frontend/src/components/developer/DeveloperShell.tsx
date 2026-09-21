@@ -41,6 +41,11 @@ const NAV: { title: string; items: NavItem[] }[] = [
     title: "Data",
     items: [
       {
+        href: "/developer/sources",
+        label: "Sources",
+        match: (p) => p.startsWith("/developer/sources") || p.startsWith("/integrations/"),
+      },
+      {
         href: "/developer/sessions",
         label: "Sessions",
         match: (p) => p.startsWith("/developer/sessions"),

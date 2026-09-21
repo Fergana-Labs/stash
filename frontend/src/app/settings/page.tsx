@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import WorkspaceShell from "@/components/workspace/workspace-shell";
 import SubscriptionSection from "../../components/settings/SubscriptionSection";
-import IntegrationsSettings from "@/components/integrations/IntegrationsSettings";
 import ExportSection from "../../components/settings/ExportSection";
 import { AccountSettingsSkeleton } from "../../components/SkeletonStates";
 import { useAuth } from "../../hooks/useAuth";
@@ -13,7 +12,7 @@ import { User } from "../../lib/types";
 
 const AUTH0_ENABLED = process.env.NEXT_PUBLIC_AUTH0_ENABLED === "true";
 
-type SettingsTab = "account" | "subscription" | "sources" | "data";
+type SettingsTab = "account" | "subscription" | "data";
 
 const SETTINGS_TABS: Array<{
   id: SettingsTab;
@@ -29,11 +28,6 @@ const SETTINGS_TABS: Array<{
     id: "subscription",
     label: "Subscription",
     description: "View your plan and manage billing.",
-  },
-  {
-    id: "sources",
-    label: "Connected sources",
-    description: "Manage the accounts and sources your agents can read.",
   },
   {
     id: "data",
@@ -114,7 +108,6 @@ export default function SettingsPage() {
                   </>
                 )}
                 {activeTab === "subscription" && <SubscriptionSection />}
-                {activeTab === "sources" && <IntegrationsSettings embedded />}
                 {activeTab === "data" && <ExportSection />}
               </div>
             </div>
