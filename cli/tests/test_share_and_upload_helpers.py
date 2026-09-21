@@ -3,6 +3,7 @@ from uuid import uuid4
 
 from backend.config import settings
 from backend.routers.files import _file_app_url
+from backend.services.skill_service import validate_skill_md
 from cli import main
 from cli.main import _is_upload_text_file
 
@@ -139,6 +140,8 @@ def test_upload_with_skill_flag_publishes_the_folder(monkeypatch, tmp_path) -> N
             return {"id": "file-1", "name": uploaded.name, "url": "https://files.test/shot.png"}
 
         def create_page(self, name, content="", folder_id=None, content_type=None):
+            if name == "SKILL.md":
+                validate_skill_md(content)
             created_pages.append(name)
             return {"id": f"page-{len(created_pages)}"}
 
@@ -182,6 +185,8 @@ def test_upload_with_skill_flag_private_skips_publish(monkeypatch, tmp_path) -> 
             return {"id": "folder-1", "name": name}
 
         def create_page(self, name, content="", folder_id=None, content_type=None):
+            if name == "SKILL.md":
+                validate_skill_md(content)
             created_pages.append(name)
             assert folder_id == "folder-1"
             return {"id": f"page-{len(created_pages)}"}
@@ -204,3 +209,34 @@ def test_upload_with_skill_flag_private_skips_publish(monkeypatch, tmp_path) -> 
     assert "SKILL.md" in created_pages
     assert converted == ["folder-1"]
     assert published == {}
+
+
+def test_skills_create_template_passes_server_validation(monkeypatch):
+    created = {}
+
+    class Client:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            pass
+
+        def create_folder(self, name):
+            return {"id": "folder-1", "name": name}
+
+        def create_page(self, **kwargs):
+            created.update(kwargs)
+
+        def convert_folder_to_skill(self, folder_id):
+            validate_skill_md(created["content"])
+            return {"id": folder_id}
+
+    monkeypatch.setattr(main, "_client", Client)
+    main.skills_create(
+        "Deploy",
+        description="Run tests before deploying.",
+        public=False,
+        discover=False,
+        as_json=False,
+    )
+    assert "Run tests before deploying." in created["content"].split("---", 2)[2]

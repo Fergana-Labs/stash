@@ -1566,7 +1566,11 @@ def upload(
             try:
                 c.create_page(
                     name="SKILL.md",
-                    content=f"---\nname: {skill_title}\ndescription: Uploaded from {target.name}\n---\n\n# {skill_title}\n",
+                    content=(
+                        f"---\nname: {json.dumps(skill_title)}\n"
+                        f"description: {json.dumps(f'Uploaded from {target.name}')}\n---\n\n"
+                        f"# {skill_title}\n\nUse the files in this Skill for {skill_title}.\n"
+                    ),
                     folder_id=root_folder["id"],
                     content_type="markdown",
                 )
@@ -1724,9 +1728,7 @@ def skills_create(
     if not description or len(description) > 1024:
         console.print("[red]Error:[/red] skill description must contain 1-1024 characters.")
         raise typer.Exit(1)
-    skill_md = (
-        f"---\nname: {json.dumps(name)}\ndescription: {json.dumps(description)}\n---\n\n# {name}\n"
-    )
+    skill_md = f"---\nname: {json.dumps(name)}\ndescription: {json.dumps(description)}\n---\n\n# {name}\n\n{description}\n"
     with _client() as c:
         try:
             folder = c.create_folder(name)
