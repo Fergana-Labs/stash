@@ -21,7 +21,7 @@ export default function SharedSkillClient({ folderId }: { folderId: string }) {
   useEffect(() => {
     if (loading) return;
     if (!userId) {
-      router.replace(loginPathWithNext(`/skills/shared/${folderId}`));
+      router.replace(loginPathWithNext(`/shared-skills/${folderId}`));
       return;
     }
     let cancelled = false;

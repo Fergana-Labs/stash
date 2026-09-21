@@ -73,7 +73,7 @@ describe("ResourceShareButton", () => {
   it("lets Skill owners see and revoke an existing folder public grant", async () => {
     vi.mocked(getGeneralAccess).mockResolvedValue("read");
     render(<ResourceShareButton objectType="folder" objectId="skill-1"
-      resourceName="My Skill" resourceUrlPath="/skills/shared/skill-1"
+      resourceName="My Skill" resourceUrlPath="/shared-skills/skill-1"
       currentUser={currentUser} allowPublicLink={false} />);
     fireEvent.click(screen.getByRole("button", { name: "Share" }));
     expect(await screen.findByText("Files are publicly accessible")).toBeInTheDocument();
