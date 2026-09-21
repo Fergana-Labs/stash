@@ -546,7 +546,7 @@ export default function SkillFolderClient({ folderId }: { folderId: string }) {
                     objectType="folder"
                     objectId={folderId}
                     resourceName={folderName}
-                    resourceUrlPath={`/skills/folder/${folderId}`}
+                    resourceUrlPath={`/skills/shared/${folderId}`}
                     currentUser={user}
                   />
                 </>

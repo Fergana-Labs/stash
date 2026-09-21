@@ -237,7 +237,7 @@ describe("SkillFolderClient", () => {
 
     expect(screen.getByText("Share resource")).toHaveAttribute(
       "data-share-url",
-      "/skills/folder/folder-root",
+      "/skills/shared/folder-root",
     );
     expect(vi.mocked(useShareAction)).toHaveBeenLastCalledWith(null);
   });

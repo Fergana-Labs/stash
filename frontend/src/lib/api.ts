@@ -1806,6 +1806,16 @@ export async function listSkillsSharedWithMe(): Promise<SharedSkill[]> {
   return data.skills;
 }
 
+export interface SharedSkillContents {
+  folder_id: string;
+  folder_name: string;
+  contents: PublicSkillContents;
+}
+
+export async function getSharedSkillContents(folderId: string): Promise<SharedSkillContents> {
+  return apiFetch(`${ME}/shared-skills/${folderId}/contents`);
+}
+
 // Inlined folder contents for the public skill renderer.
 export interface PublicSkillSubfolder {
   id: string;
