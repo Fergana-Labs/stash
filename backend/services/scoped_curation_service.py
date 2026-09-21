@@ -445,7 +445,7 @@ async def run(agent: dict, workspace: dict, run_stamp: str) -> str:
         async with concurrency:
             summary = await run_scope(scope, agent["system_prompt"])
             record = f"{scope.purpose} wiki {scope.destination}:\n{summary}"
-            await memory_service.push_event(
+            await memory_service.push_internal_event(
                 owner,
                 agent["name"],
                 "tool_result",
@@ -467,7 +467,7 @@ async def run(agent: dict, workspace: dict, run_stamp: str) -> str:
         await conn.execute(
             "UPDATE agents SET curated_through=$2 WHERE id=$1", UUID(str(agent["id"])), until
         )
-    await memory_service.push_event(
+    await memory_service.push_internal_event(
         owner,
         agent["name"],
         "assistant_message",

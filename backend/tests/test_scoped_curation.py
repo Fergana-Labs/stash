@@ -548,3 +548,31 @@ async def test_scoped_run_timeout_preserves_progress_and_releases_lock(
     assert row["curated_through"] == before
     assert row["last_run_outcome"] == "failed" and "run time limit" in row["last_run_error"]
     assert sprite_exec.redis.data == {}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("wiki", ["internal", "external"])
+async def test_curator_keeps_run_logs_without_inflating_session_analytics(
+    dataset, pool, monkeypatch, sprite_exec, wiki
+):
+    from backend.services import agent_service, analytics_service, sprite_agent_service
+
+    async def fake_run(scope, instructions):
+        return "Completed this wiki."
+
+    monkeypatch.setattr(curation, "run_scope", fake_run)
+    agent = await agent_service.get_or_create_curator(dataset.owner, wiki=wiki)
+    agent["curated_through"] = None
+    before = await analytics_service.get_sessions_analytics(dataset.owner, dataset.owner)
+    await sprite_agent_service.run_scheduled(agent, "analytics-test")
+    after = await analytics_service.get_sessions_analytics(dataset.owner, dataset.owner)
+
+    assert after["totals"] == before["totals"]
+    session_id = f"agent-curate-{agent['id']}-analytics-test"
+    summary = await pool.fetchval(
+        "SELECT content FROM history_events WHERE owner_user_id=$1 "
+        "AND session_id=$2 AND event_type='assistant_message'",
+        dataset.owner,
+        session_id,
+    )
+    assert "Completed this wiki." in summary
