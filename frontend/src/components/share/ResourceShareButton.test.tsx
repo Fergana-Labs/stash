@@ -59,6 +59,17 @@ describe("ResourceShareButton", () => {
     cleanup();
   });
 
+  it("keeps Skill folder sharing private when publishing owns public links", async () => {
+    render(<ResourceShareButton objectType="folder" objectId="skill-1"
+      resourceName="My Skill" resourceUrlPath="/skills/folder/skill-1"
+      currentUser={currentUser} allowPublicLink={false} />);
+    fireEvent.click(screen.getByRole("button", { name: "Share" }));
+    expect(await screen.findByText("Ada Lovelace")).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Add people" })).toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "General access" })).not.toBeInTheDocument();
+    expect(getGeneralAccess).not.toHaveBeenCalled();
+  });
+
   it("shows file access and copies the canonical file URL", async () => {
     render(
       <ResourceShareButton

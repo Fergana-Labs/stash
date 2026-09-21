@@ -48,12 +48,14 @@ export default function ResourceShareButton({
   objectId,
   resourceName,
   resourceUrlPath,
+  allowPublicLink = true,
   currentUser,
 }: {
   objectType: SharedObjectType;
   objectId: string;
   resourceName: string;
   resourceUrlPath: string;
+  allowPublicLink?: boolean;
   currentUser: User;
 }) {
   const [open, setOpen] = useState(false);
@@ -77,6 +79,7 @@ export default function ResourceShareButton({
           objectId={objectId}
           resourceName={resourceName}
           resourceUrlPath={resourceUrlPath}
+          allowPublicLink={allowPublicLink}
           currentUser={currentUser}
           boundaryRef={containerRef}
           onClose={() => setOpen(false)}
@@ -96,6 +99,7 @@ export function ResourceShareDialog({
   objectId,
   resourceName,
   resourceUrlPath,
+  allowPublicLink = true,
   currentUser,
   boundaryRef,
   onClose,
@@ -104,6 +108,7 @@ export function ResourceShareDialog({
   objectId: string;
   resourceName: string;
   resourceUrlPath: string;
+  allowPublicLink?: boolean;
   currentUser: User;
   boundaryRef: RefObject<HTMLDivElement | null>;
   onClose: () => void;
@@ -117,7 +122,7 @@ export function ResourceShareDialog({
   const [generalAccess, setGeneralAccess] = useState<GeneralPermission>("none");
   const [savingAccess, setSavingAccess] = useState(false);
 
-  const supportsGeneralAccess = GENERAL_ACCESS_TYPES.includes(objectType);
+  const supportsGeneralAccess = allowPublicLink && GENERAL_ACCESS_TYPES.includes(objectType);
 
   useEscapeKey(true, onClose);
 

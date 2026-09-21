@@ -21,6 +21,7 @@ import { useBreadcrumbs } from "@/components/BreadcrumbContext";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { useShareAction } from "@/components/ShellChromeContext";
 import { FileBrowserSkeleton } from "@/components/SkeletonStates";
+import SkillShareButton from "@/components/skill/SkillShareButton";
 import ResourceShareButton from "@/components/share/ResourceShareButton";
 import MarkdownEditor from "@/components/content/MarkdownEditor";
 import SkillEnabledToggle from "@/components/skill/SkillEnabledToggle";
@@ -535,7 +536,13 @@ export default function SkillFolderClient({ folderId }: { folderId: string }) {
                     <span className="text-[11px] text-muted-foreground">Saving…</span>
                   )}
                   <SkillEnabledToggle skill={skill} onChanged={reloadSkill} />
+                  <SkillShareButton
+                    folderId={folderId}
+                    publish={skill.published}
+                    onPublishChange={() => void reloadSkill()}
+                  />
                   <ResourceShareButton
+                    allowPublicLink={false}
                     objectType="folder"
                     objectId={folderId}
                     resourceName={folderName}

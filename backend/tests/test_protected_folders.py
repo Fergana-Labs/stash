@@ -143,7 +143,16 @@ async def test_memory_refuses_content_wipe_even_disguised_as_a_skill(client, poo
 
     response = await client.put(
         f"/api/v1/me/skills/{memory['id']}/contents",
-        files=[("files", ("SKILL.md", b"# replacement", "text/markdown"))],
+        files=[
+            (
+                "files",
+                (
+                    "SKILL.md",
+                    b"---\nname: Replacement\ndescription: Valid replacement.\n---\n# replacement",
+                    "text/markdown",
+                ),
+            )
+        ],
         headers=user["headers"],
     )
     assert response.status_code == 400
