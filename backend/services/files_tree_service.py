@@ -1912,6 +1912,13 @@ async def clear_folder_contents(root_folder_id: UUID) -> None:
     await pool.execute(f"DELETE FROM folders WHERE id IN ({_SUBTREE}) AND id <> $1", root_folder_id)
 
 
+def validate_skill_files(files: list[tuple[str, bytes]]) -> None:
+    """Check all Skill documents before a bulk write can change existing data."""
+    for path, blob in files:
+        if path.rpartition("/")[2] == skill_service.SKILL_MD_NAME:
+            skill_service.validate_skill_md(blob.decode("utf-8"))
+
+
 async def write_folder_files(
     owner_user_id: UUID,
     owner_id: UUID,
@@ -1928,9 +1935,7 @@ async def write_folder_files(
     folders are never promoted."""
     import mimetypes
 
-    for rel_path, blob in files:
-        if rel_path.rpartition("/")[2] == skill_service.SKILL_MD_NAME:
-            skill_service.validate_skill_md(blob.decode("utf-8", errors="replace"))
+    validate_skill_files(files)
 
     from . import storage_service
 

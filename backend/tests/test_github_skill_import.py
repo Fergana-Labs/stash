@@ -23,7 +23,7 @@ FAKE_REPO = {
     "cooking/SKILL.md": COOKING_SKILL_MD,
     "cooking/references/guide.md": b"# Techniques\n",
     "cooking/logo.png": b"\x89PNG fake bytes",
-    "baking/SKILL.md": b"Just a body, no frontmatter.\n",
+    "baking/SKILL.md": b"---\nname: baking\ndescription: Bake things.\n---\n",
 }
 
 
@@ -102,7 +102,7 @@ async def test_subdir_import_publishes_only_that_directory(client: AsyncClient, 
         monkeypatch,
         {
             "static/SKILL.md": b"---\nname: Not Ours\n---\nbody\n",
-            "docs/skills/brief/SKILL.md": b"---\nname: brief\n---\nbody\n",
+            "docs/skills/brief/SKILL.md": b"---\nname: brief\ndescription: Write a brief.\n---\nbody\n",
         },
     )
     await _import_repo("https://github.com/acme/skills/tree/main/docs/skills")
@@ -209,3 +209,39 @@ async def test_import_requires_skill_md(pool):
             fallback_title="empty",
             files=[("README.md", b"hi")],
         )
+
+
+@pytest.mark.asyncio
+async def test_invalid_reimport_keeps_published_contents(pool):
+    owner, creator = await gsi.ensure_curator()
+    source_url = "https://github.com/acme/preserved"
+    original = (
+        b"---\nname: Preserved\ndescription: Keep the existing content.\n---\nOriginal instructions"
+    )
+    await gsi.import_skill(
+        owner,
+        creator,
+        source_url=source_url,
+        fallback_title="Preserved",
+        files=[("SKILL.md", original)],
+    )
+    before = await pool.fetchrow(
+        "SELECT id, folder_id, slug FROM skills WHERE source_github_url=$1", source_url
+    )
+    with pytest.raises(ValueError, match="description"):
+        await gsi.import_skill(
+            owner,
+            creator,
+            source_url=source_url,
+            fallback_title="Preserved",
+            files=[("SKILL.md", b"---\nname: Broken\n---\n")],
+        )
+    after = await pool.fetchrow(
+        "SELECT id, folder_id, slug FROM skills WHERE source_github_url=$1", source_url
+    )
+    assert after == before
+    content = await pool.fetchval(
+        "SELECT content_markdown FROM pages WHERE folder_id=$1 AND name='SKILL.md'",
+        before["folder_id"],
+    )
+    assert content == original.decode()

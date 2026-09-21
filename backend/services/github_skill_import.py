@@ -186,7 +186,8 @@ async def import_skill(
     skill_md = next((blob for path, blob in files if path == "SKILL.md"), None)
     if skill_md is None:
         raise ValueError(f"{source_url}: no SKILL.md")
-    meta, _body = skill_service.parse_frontmatter(skill_md.decode("utf-8", errors="replace"))
+    files_tree_service.validate_skill_files(files)
+    meta, _body = skill_service.parse_frontmatter(skill_md.decode("utf-8"))
     title = str(meta.get("name") or fallback_title)
     description = str(meta.get("description") or "")
 

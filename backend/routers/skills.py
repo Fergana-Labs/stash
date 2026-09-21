@@ -395,9 +395,7 @@ async def replace_skill_contents(
         raise HTTPException(status_code=400, detail="A skill must include a SKILL.md")
 
     try:
-        for path, blob in payload:
-            if path.rpartition("/")[2] == skill_service.SKILL_MD_NAME:
-                skill_service.validate_skill_md(blob.decode("utf-8"))
+        files_tree_service.validate_skill_files(payload)
         await files_tree_service.clear_folder_contents(folder_id)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
