@@ -216,25 +216,23 @@ async def test_a_settled_unreadable_file_is_not_requeued_by_the_next_sync(client
     assert new_version is not None
 
 
-async def test_a_stale_processing_lock_is_reclaimable(client: AsyncClient):
-    """A worker that dies mid-extraction leaves 'processing' behind forever. The
-    Beat sweep re-enqueues such rows, so the claim must accept them — while
-    refusing a live lock, whose worker is still extracting."""
-    from backend.tasks.drive_extraction import _claim
+async def test_a_stale_processing_lock_is_reclaimable(client: AsyncClient, monkeypatch):
+    from backend.tasks.drive_extraction import _claim, enqueue_extraction, extract_drive_document
 
+    monkeypatch.setattr(extract_drive_document, "apply_async", lambda **kw: None)
     _, owner_id = await _register(client)
     src = await _folder_source(owner_id)
-
     stuck = await _row(UUID(src["id"]), owner_id, "Stuck.pdf", extraction_status="processing")
     await get_pool().execute(
-        "UPDATE drive_documents SET locked_at = now() - INTERVAL '31 minutes' WHERE id = $1",
+        "UPDATE drive_documents SET locked_at = now() - INTERVAL '36 minutes', "
+        "extraction_task_id='dead', extraction_claimed_at=now()-interval '36 minutes' WHERE id=$1",
         stuck,
     )
-    assert await _claim(stuck) is True
-
-    live = await _row(UUID(src["id"]), owner_id, "Live.pdf", extraction_status="processing")
-    await get_pool().execute("UPDATE drive_documents SET locked_at = now() WHERE id = $1", live)
-    assert await _claim(live) is False
+    task_id = await enqueue_extraction(stuck)
+    assert task_id is not None
+    assert not await _claim(stuck, "dead")
+    assert await _claim(stuck, task_id)
+    assert await enqueue_extraction(stuck) is None
 
 
 async def test_the_recovery_sweep_is_scheduled():

@@ -99,7 +99,7 @@ export default function DeveloperShell({
             <span className="hidden font-mono text-[11px] uppercase tracking-[0.14em] text-muted-foreground sm:block">
               Developer Platform
             </span>
-            <ScopeSwitcher />
+            <ScopeSwitcher developerOnly={user.developer_platform_only} />
           </div>
           <nav className="flex items-center gap-6 text-[14px] text-dim">
             <a

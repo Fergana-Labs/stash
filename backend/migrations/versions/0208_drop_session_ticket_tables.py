@@ -5,14 +5,14 @@ GitHub-PR-based discovery, API enrichment) is removed from the product, so
 its two tables go with it. The Linear connected source (/sources) is a
 separate feature and keeps its own tables.
 
-Revision ID: 0203
-Revises: 0202
+Revision ID: 0208
+Revises: 0207
 """
 
 from alembic import op
 
-revision = "0203"
-down_revision = "0202"
+revision = "0208"
+down_revision = "0207"
 branch_labels = None
 depends_on = None
 

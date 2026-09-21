@@ -34,6 +34,7 @@ class Auth0SessionResponse(BaseModel):
 
 class UserProfile(BaseModel):
     id: UUID
+    developer_platform_only: bool
     name: str
     display_name: str
     email: str | None = None

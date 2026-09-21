@@ -30,7 +30,7 @@ from ..integrations.posthog.indexer import index_posthog
 from ..integrations.slack.indexer import index_slack, ingest_slack_message
 from ..integrations.social_saves.indexer import index_instagram_saves
 from ..integrations.x_saves.indexer import index_x_saves
-from ..services import source_service
+from ..services import alert_service, source_service, source_sync_service
 from ._celery_helpers import run_async
 
 logger = logging.getLogger(__name__)
@@ -107,17 +107,23 @@ async def _reconcile_due() -> int:
     for s in due:
         if s["source_type"] not in INDEXERS:
             continue
-        celery.send_task(
-            "backend.tasks.sources.sync_source",
-            kwargs={"source_id": s["id"]},
-        )
-        dispatched += 1
+        if await source_sync_service.enqueue_sync(UUID(s["id"])) is not None:
+            dispatched += 1
     return dispatched
 
 
-@celery.task(name="backend.tasks.sources.sync_source")
-def sync_source(source_id: str) -> dict:
-    return run_async(_sync_source(UUID(source_id)))
+async def _run_claimed_sync(source_id: UUID, task_id: str) -> dict:
+    if not await source_sync_service.start_sync(source_id, task_id):
+        return {"status": "superseded"}
+    try:
+        return await _sync_source(source_id)
+    finally:
+        await source_sync_service.finish_sync(source_id, task_id)
+
+
+@celery.task(bind=True, name="backend.tasks.sources.sync_source")
+def sync_source(self, source_id: str) -> dict:
+    return run_async(_run_claimed_sync(UUID(source_id), self.request.id))
 
 
 @celery.task(name="backend.tasks.sources.reconcile_due")
@@ -178,3 +184,47 @@ def respond_to_telegram_message(message: dict) -> None:
 
 
 # --- END Telegram agent ---
+
+
+async def _alert_stalled_syncs() -> int:
+    from ..database import get_pool
+
+    rows = await get_pool().fetch(
+        """
+        SELECT id, display_name, source_type, last_synced_at, sync_claimed_at
+        FROM user_sources
+        WHERE sync_enabled AND sync_status != 'needs_setup'
+          AND source_type = ANY($1::text[])
+          AND (sync_alerted_at IS NULL OR sync_alerted_at < now() - interval '1 hour')
+          AND (
+            COALESCE(last_synced_at, created_at)
+              < now() - sync_interval_s * interval '1 second' - interval '30 minutes'
+            OR (sync_task_id IS NOT NULL AND sync_started_at IS NULL
+                AND sync_claimed_at < now() - interval '15 minutes')
+          )
+        ORDER BY last_synced_at NULLS FIRST
+        """,
+        list(INDEXERS),
+    )
+    if not rows:
+        return 0
+    lines = [
+        f"- {r['display_name']} ({r['id']}, {r['source_type']}): "
+        f"last successful sync {r['last_synced_at']}; claimed {r['sync_claimed_at']}"
+        for r in rows[:25]
+    ]
+    if len(rows) > 25:
+        lines.append(f"... and {len(rows) - 25} more sources.")
+    await alert_service.send_alert(
+        f"Source syncing stalled for {len(rows)} source(s):\n" + "\n".join(lines)
+    )
+    await get_pool().execute(
+        "UPDATE user_sources SET sync_alerted_at = now() WHERE id = ANY($1::uuid[])",
+        [r["id"] for r in rows],
+    )
+    return len(rows)
+
+
+@celery.task(name="backend.tasks.sources.alert_stalled_syncs")
+def alert_stalled_syncs() -> int:
+    return run_async(_alert_stalled_syncs())

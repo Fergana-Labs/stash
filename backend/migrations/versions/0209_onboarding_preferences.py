@@ -5,14 +5,14 @@ One row per user: the setup decisions made on the web onboarding page
 `consumed_at` is stamped by the CLI once it applies them, so a later
 standalone signin runs the wizard instead of re-applying stale choices.
 
-Revision ID: 0204
-Revises: 0203
+Revision ID: 0209
+Revises: 0208
 """
 
 from alembic import op
 
-revision = "0204"
-down_revision = "0203"
+revision = "0209"
+down_revision = "0208"
 branch_labels = None
 depends_on = None
 

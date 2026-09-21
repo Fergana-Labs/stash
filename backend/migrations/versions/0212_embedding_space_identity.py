@@ -1,13 +1,13 @@
 """Version stored embeddings and projection caches.
 
-Revision ID: 0207
-Revises: 0206
+Revision ID: 0212
+Revises: 0211
 """
 
 from alembic import op
 
-revision = "0207"
-down_revision = "0206"
+revision = "0212"
+down_revision = "0211"
 branch_labels = None
 depends_on = None
 

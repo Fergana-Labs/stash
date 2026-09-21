@@ -1,13 +1,13 @@
 """Let users choose which Skills are provided to agents.
 
-Revision ID: 0210
-Revises: 0209
+Revision ID: 0215
+Revises: 0214
 """
 
 from alembic import op
 
-revision = "0210"
-down_revision = "0209"
+revision = "0215"
+down_revision = "0214"
 branch_labels = None
 depends_on = None
 

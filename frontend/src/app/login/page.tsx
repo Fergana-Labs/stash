@@ -66,6 +66,11 @@ function LoginPageInner() {
       return;
     }
 
+    if (user.developer_platform_only) {
+      router.push("/developer");
+      return;
+    }
+
     if (justRegistered || FORCE_ONBOARDING) {
       router.push("/onboarding");
       return;

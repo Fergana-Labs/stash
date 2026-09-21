@@ -190,9 +190,10 @@ class Settings:
     POSTMARK_SERVER_TOKEN: str | None = os.getenv("POSTMARK_SERVER_TOKEN")
 
     # --- Ops alerts ---
-    # Slack incoming-webhook URL for operational alerts (scheduled agent run
-    # failures, stale curators). Unset → alerts are ERROR logs only.
-    ALERT_SLACK_WEBHOOK_URL: str | None = os.getenv("ALERT_SLACK_WEBHOOK_URL")
+    # The installed Slack bot must be a member of this operations channel.
+    # Missing configuration or failed delivery raises; logs are not delivery.
+    ALERT_SLACK_TEAM_ID: str | None = os.getenv("ALERT_SLACK_TEAM_ID")
+    ALERT_SLACK_CHANNEL_ID: str | None = os.getenv("ALERT_SLACK_CHANNEL_ID")
 
     # --- Admin ---
     # Shared secret for /api/v1/admin/* endpoints. The www admin page sends

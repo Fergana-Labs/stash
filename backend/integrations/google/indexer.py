@@ -398,7 +398,7 @@ async def index_google_drive_folder(source: dict) -> str | None:
     bodies are extracted by `backend.workers.extract_drive_one`, one child process
     per file, because pypdf on a 180 MB catalog will OOM whatever it runs inside.
     """
-    from ...tasks.drive_extraction import extract_drive_document
+    from ...tasks.drive_extraction import enqueue_extraction
 
     source_id = UUID(source["id"])
     owner_user_id = UUID(source["owner_user_id"])
@@ -446,7 +446,7 @@ async def index_google_drive_folder(source: dict) -> str | None:
 
     await source_service.remove_missing_documents("drive_documents", source_id, present)
     for row_id in stale:
-        extract_drive_document.delay(str(row_id))
+        await enqueue_extraction(row_id)
     logger.info(
         "google drive folder %s: indexed %d file(s), %d to extract",
         source_id,

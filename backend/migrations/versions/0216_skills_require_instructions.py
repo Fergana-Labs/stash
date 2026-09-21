@@ -1,7 +1,7 @@
 """Make instructions intrinsic to every stored skill.
 
-Revision ID: 0211
-Revises: 0210
+Revision ID: 0216
+Revises: 0215
 """
 
 import hashlib
@@ -10,8 +10,8 @@ import json
 from alembic import op
 from sqlalchemy import text
 
-revision = "0211"
-down_revision = "0210"
+revision = "0216"
+down_revision = "0215"
 branch_labels = None
 depends_on = None
 

@@ -55,7 +55,7 @@ export default function SettingsPage() {
         <div className="mx-auto w-full max-w-5xl">
           <button
             type="button"
-            onClick={() => router.push("/")}
+            onClick={() => router.push(user.developer_platform_only ? "/developer" : "/")}
             className="cursor-pointer text-sm text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5"
           >
             <span aria-hidden>←</span> Home

@@ -48,30 +48,20 @@ celery = Celery(
 
 celery.conf.update(
     task_default_queue="default",
-    # Two queues, split by task weight. Anything that can hold a worker slot
-    # for minutes — subprocess extractions, Playwright renders, exports,
-    # source crawls, bulk URL fetches, headless agent runs — routes to
-    # "heavy" and gets its own worker pool. Everything else (every beat
-    # sweep, every cheap bounded task) stays on "default", which therefore
-    # never stalls: cadence-sensitive tasks like X token keep-fresh (its
-    # 45-min refresh_margin assumes a tick roughly every 30 min) get their
-    # guarantee without being enumerated. Interactive agent replies
-    # (Slack/Telegram) also stay on "default" deliberately: a user is
-    # waiting, and "heavy" would queue them behind renders. A worker started
-    # without -Q consumes every queue listed in task_queues, so a deploy
-    # whose worker command predates the split still executes both queues;
-    # -Q flags (start.sh, docker-compose.prod.yml) give the real isolation.
-    task_queues=(Queue("default"), Queue("heavy")),
+    # Source crawls have their own pool so extraction retries cannot block syncing.
+    # Slow extraction, exports, and agent runs use heavy; beat sweeps use default.
+    task_queues=(Queue("default"), Queue("heavy"), Queue("sync")),
     task_routes={
         "backend.tasks.extraction.extract_file_text": {"queue": "heavy"},
         "backend.tasks.drive_extraction.extract_drive_document": {"queue": "heavy"},
         "backend.tasks.clips.process_url_imports": {"queue": "heavy"},
-        "backend.tasks.sources.sync_source": {"queue": "heavy"},
+        "backend.tasks.sources.sync_source": {"queue": "sync"},
         "backend.exports.pdf.export_pdf": {"queue": "heavy"},
         "backend.exports.pptx.export_pptx": {"queue": "heavy"},
         "backend.exports.gslides.export_to_google_slides": {"queue": "heavy"},
         "backend.tasks.agent_schedules.run_scheduled_agent": {"queue": "heavy"},
         "backend.tasks.agent_schedules.run_curator_now": {"queue": "heavy"},
+        "backend.tasks.viz.precompute": {"queue": "heavy"},
     },
     task_acks_late=True,
     task_reject_on_worker_lost=True,
@@ -143,6 +133,10 @@ celery.conf.update(
             # might never fire. 15:30 UTC is right after the nightly curator
             # window (08:00–11:59 UTC), so a bad night alerts the same morning.
             "schedule": crontab(hour=15, minute=30),
+        },
+        "sources-alert-stalled": {
+            "task": "backend.tasks.sources.alert_stalled_syncs",
+            "schedule": 300.0,
         },
         "sources-reconcile-due": {
             "task": "backend.tasks.sources.reconcile_due",

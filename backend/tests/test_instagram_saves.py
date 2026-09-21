@@ -138,11 +138,11 @@ async def test_push_creates_source_and_skeleton_rows(
     client: AsyncClient, pool, monkeypatch
 ) -> None:
     sent: list = []
-    from backend.routers import sources as sources_router
+    from backend.services import source_sync_service
 
     monkeypatch.setattr(settings, "SCRAPECREATORS_API_KEY", "sc-key")
     monkeypatch.setattr(
-        sources_router.celery, "send_task", lambda name, args: sent.append((name, args))
+        source_sync_service.celery, "send_task", lambda name, **kwargs: sent.append((name, kwargs))
     )
     headers, owner_id = await _register(client)
 
@@ -184,10 +184,10 @@ async def test_push_stamps_liveness_and_clears_warning(
     # The push is the only liveness signal an extension-fed source has: it
     # must stamp extension_last_push_at (the UI's staleness anchor) and clear
     # any standing sync warning — a push proves the pipeline is alive.
-    from backend.routers import sources as sources_router
+    from backend.services import source_sync_service
 
     monkeypatch.setattr(settings, "SCRAPECREATORS_API_KEY", "sc-key")
-    monkeypatch.setattr(sources_router.celery, "send_task", lambda name, args: None)
+    monkeypatch.setattr(source_sync_service.celery, "send_task", lambda name, **kwargs: None)
     headers, owner_id = await _register(client)
 
     await client.post(
@@ -221,10 +221,10 @@ async def test_purge_endpoint_covers_extension_fed_providers(
 ) -> None:
     # Instagram has no OAuth provider, so purge must gate on the source-type
     # map — the Delete data button is the only delete path extension users have.
-    from backend.routers import sources as sources_router
+    from backend.services import source_sync_service
 
     monkeypatch.setattr(settings, "SCRAPECREATORS_API_KEY", "sc-key")
-    monkeypatch.setattr(sources_router.celery, "send_task", lambda name, args: None)
+    monkeypatch.setattr(source_sync_service.celery, "send_task", lambda name, **kwargs: None)
     headers, owner_id = await _register(client)
     await client.post(
         "/api/v1/me/saved-items",
@@ -284,9 +284,9 @@ async def test_indexer_hydrates_content_transcript_and_media(
     client: AsyncClient, pool, fake_hydration, monkeypatch
 ) -> None:
     monkeypatch.setattr(
-        __import__("backend.routers.sources", fromlist=["celery"]).celery,
+        __import__("backend.services.source_sync_service", fromlist=["celery"]).celery,
         "send_task",
-        lambda name, args: None,
+        lambda name, **kwargs: None,
     )
     headers, owner_id = await _register(client)
     await client.post(
@@ -336,9 +336,9 @@ async def test_hydration_failure_lands_on_the_row(
 
     monkeypatch.setattr(ig_indexer, "_fetch_post", boom)
     monkeypatch.setattr(
-        __import__("backend.routers.sources", fromlist=["celery"]).celery,
+        __import__("backend.services.source_sync_service", fromlist=["celery"]).celery,
         "send_task",
-        lambda name, args: None,
+        lambda name, **kwargs: None,
     )
     headers, owner_id = await _register(client)
     await client.post(

@@ -47,12 +47,28 @@ async def _managed_auth0_headers(monkeypatch, name: str = "Managed User") -> tup
 
 
 @pytest.mark.asyncio
+async def test_managed_profile_returns_platform_flag(client, pool, monkeypatch):
+    user, headers = await _managed_auth0_headers(monkeypatch)
+    profile = await client.get("/api/v1/users/me", headers=headers)
+    assert profile.status_code == 200
+    assert profile.json()["developer_platform_only"] is False
+
+    await pool.execute("UPDATE users SET developer_platform_only = true WHERE id = $1", user["id"])
+    profile = await client.get("/api/v1/users/me", headers=headers)
+    assert profile.json()["developer_platform_only"] is True
+
+
+@pytest.mark.asyncio
 async def test_first_session_provision_reports_created(pool):
     sub = f"google-oauth2|{unique_name()}"
     user, created = await get_or_create_user_row_from_auth0(
         auth0_sub=sub, email=None, name="New Person"
     )
     assert created is True
+    assert (
+        await pool.fetchval("SELECT developer_platform_only FROM users WHERE id = $1", user["id"])
+        is False
+    )
 
 
 @pytest.mark.asyncio

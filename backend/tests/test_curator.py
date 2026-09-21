@@ -1,12 +1,13 @@
 """The daily Memory curator: provisioning, change feed, cost gate, prompt."""
 
 from datetime import UTC, datetime, timedelta
+from unittest.mock import AsyncMock
 from uuid import UUID
 
 import pytest
 from httpx import AsyncClient
 
-from backend.services import agent_service, curation_service, prompts
+from backend.services import agent_service, alert_service, curation_service, prompts
 
 from .conftest import unique_name
 
@@ -486,6 +487,9 @@ async def test_failed_curator_run_preserves_watermark(
     from backend.services import sprite_agent_service
     from backend.tasks.agent_schedules import _run_due, _run_scheduled_agent, run_scheduled_agent
 
+    send_alert = AsyncMock()
+    monkeypatch.setattr(alert_service, "send_alert", send_alert)
+
     key, uid = await _register(client)
     curator = await agent_service.get_or_create_curator(uid)
     await client.post(
@@ -502,6 +506,8 @@ async def test_failed_curator_run_preserves_watermark(
     monkeypatch.setattr(run_scheduled_agent, "delay", lambda *args: dispatched.append(args))
     assert await _run_due() == 1
     await _run_scheduled_agent(UUID(dispatched[0][0]), dispatched[0][1])
+    send_alert.assert_awaited_once()
+    assert "sprite exploded" in send_alert.call_args.args[0]
 
     after = await _db_pool.fetchval(
         "SELECT curated_through FROM agents WHERE id = $1", UUID(curator["id"])
@@ -514,6 +520,9 @@ async def test_failed_run_records_error(client: AsyncClient, sprite_exec, _db_po
     """A failed run must be visible through last_run_error."""
     from backend.services import sprite_agent_service
     from backend.tasks.agent_schedules import _run_due, _run_scheduled_agent, run_scheduled_agent
+
+    send_alert = AsyncMock()
+    monkeypatch.setattr(alert_service, "send_alert", send_alert)
 
     key, uid = await _register(client)
     curator = await agent_service.get_or_create_curator(uid)
@@ -531,6 +540,8 @@ async def test_failed_run_records_error(client: AsyncClient, sprite_exec, _db_po
     monkeypatch.setattr(run_scheduled_agent, "delay", lambda *args: dispatched.append(args))
     await _run_due()
     await _run_scheduled_agent(UUID(dispatched[0][0]), dispatched[0][1])
+    send_alert.assert_awaited_once()
+    assert "sprite exploded" in send_alert.call_args.args[0]
 
     row = await _db_pool.fetchrow(
         "SELECT last_run_error FROM agents WHERE id = $1",

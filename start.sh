@@ -575,6 +575,10 @@ echo "[worker]   Starting celery heavy worker..."
 celery -A backend.celery_app worker --loglevel=info --concurrency=2 -Q heavy &
 PIDS+=($!)
 
+echo "[worker]   Starting celery source sync worker..."
+celery -A backend.celery_app worker --loglevel=info --concurrency=2 -Q sync &
+PIDS+=($!)
+
 echo "[beat]     Starting celery beat..."
 celery -A backend.celery_app beat --loglevel=info \
     --schedule "$PROJECT_ROOT/.celerybeat-schedule" &

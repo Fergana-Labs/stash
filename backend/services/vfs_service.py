@@ -222,15 +222,17 @@ def _error_detail(response: httpx.Response) -> str:
     return f"HTTP {response.status_code}"
 
 
-class EndUserVfsClient(InProcessVfsClient):
-    """External Multiplayer: the caller's Stash narrowed to one end user.
+class ExternalVfsClient(InProcessVfsClient):
+    """External Multiplayer: the caller's Stash narrowed to shared knowledge,
+    optionally plus one end user's private knowledge.
 
     `/memory` becomes the workspace's shared external wiki (the memory-folder
     call answers with the wiki folder, and the model re-roots whatever that
     returns), `/files` holds the user's own wiki and the user's own uploads,
     `/sessions` only the user's transcripts, and `/sources` the sources
-    connected for this user. Skills and tables are developer-side surfaces and
-    don't exist in a user's view.
+    connected for this user. Without an end user, only the shared wiki remains.
+    Skills and tables are developer-side surfaces and don't exist in either
+    external view.
     """
 
     def __init__(self, http, loop, end_user_ctx: dict) -> None:
@@ -285,11 +287,15 @@ class EndUserVfsClient(InProcessVfsClient):
 
         return {
             **overview,
-            "sessions": [
-                s
-                for s in overview.get("sessions", [])
-                if s.get("end_user_external_id") == external_id
-            ],
+            "sessions": (
+                []
+                if external_id is None
+                else [
+                    s
+                    for s in overview.get("sessions", [])
+                    if s.get("end_user_external_id") == external_id
+                ]
+            ),
             "skills": [],
             "files": {
                 "folders": kept_folders,
@@ -297,7 +303,8 @@ class EndUserVfsClient(InProcessVfsClient):
                 "files": [
                     f
                     for f in tree.get("files", [])
-                    if f.get("end_user_external_id") == external_id or f["folder_id"] in kept_ids
+                    if f["folder_id"] in kept_ids
+                    or (external_id is not None and f.get("end_user_external_id") == external_id)
                 ],
             },
         }
@@ -308,7 +315,7 @@ def _build_model(
 ) -> StashVfsModel:
     if end_user_ctx is None:
         return StashVfsModel(InProcessVfsClient(http, loop), include_computer=False)
-    return StashVfsModel(EndUserVfsClient(http, loop, end_user_ctx), include_computer=False)
+    return StashVfsModel(ExternalVfsClient(http, loop, end_user_ctx), include_computer=False)
 
 
 def _run_script(
@@ -339,8 +346,8 @@ async def run_vfs_script(
 
     `authorization` is forwarded verbatim onto every nested request, so the VFS
     sees precisely what that credential sees anywhere else in the API.
-    `end_user_ctx` (External Multiplayer) narrows the tree to one end user —
-    see EndUserVfsClient.
+    `end_user_ctx` (External Multiplayer) narrows the tree to shared knowledge,
+    optionally plus one end user — see ExternalVfsClient.
     """
     loop = asyncio.get_running_loop()
     transport = httpx.ASGITransport(app=app)

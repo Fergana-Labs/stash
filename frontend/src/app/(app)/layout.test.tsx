@@ -15,6 +15,7 @@ const route = vi.hoisted(() => ({
       description: string;
       created_at: string;
       last_seen: string;
+      developer_platform_only: boolean;
     },
     loading: false,
     logout: vi.fn(),
@@ -44,6 +45,7 @@ vi.mock("../../hooks/useAuth", () => ({
 
 const user = {
   id: "user-1",
+  developer_platform_only: false,
   name: "henry",
   display_name: "Henry",
   description: "",
@@ -89,5 +91,13 @@ describe("AppGroupLayout", () => {
 
     expect(screen.queryByTestId("app-shell")).not.toBeInTheDocument();
     expect(screen.getByText("Skill item content")).toBeInTheDocument();
+  });
+
+  it("keeps platform-only accounts behind the shell gate even with a skill query", () => {
+    route.pathname = "/files";
+    route.search = "skill=shared-skill";
+    route.auth.user = { ...user, developer_platform_only: true };
+    render(<AppGroupLayout>Content</AppGroupLayout>);
+    expect(screen.getByTestId("app-shell")).toBeInTheDocument();
   });
 });

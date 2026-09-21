@@ -19,6 +19,11 @@ from .test_permissions import _register_with_email
 
 @pytest.fixture
 def dispatched(monkeypatch):
+    from backend.config import settings
+    from backend.tasks.session_titles import generate_session_title
+
+    monkeypatch.setattr(settings, "ANTHROPIC_API_KEY", "sk-ant-test-key")
+    monkeypatch.setattr(generate_session_title, "delay", lambda *a, **k: None)
     calls: list[tuple] = []
     monkeypatch.setattr(run_curator_now, "delay", lambda *a, **k: calls.append((a, k)))
     return calls
@@ -47,7 +52,17 @@ async def test_first_day_conversation_dispatches_runs(client: AsyncClient, pool,
     # Both of the workspace's wikis update eagerly on day one: its own Memory
     # wiki and the cross-user external wiki.
     assert await _dispatched_wikis(pool, dispatched) == {"internal", "external"}
-    assert all(kwargs == {} for _, kwargs in dispatched)
+    assert all(kwargs == {"automatic": True} for _, kwargs in dispatched)
+
+
+@pytest.mark.asyncio
+async def test_paused_curator_stays_paused_on_first_day(client, pool, dispatched):
+    scope_id = await _workspace_with_conversation(client)
+    await pool.execute(
+        "UPDATE agents SET run_mode='chat' WHERE user_id=$1 AND is_curator", scope_id
+    )
+    await _first_day_curator_tick(scope_id)
+    assert dispatched == []
 
 
 @pytest.mark.asyncio
@@ -129,7 +144,7 @@ async def test_personal_fifth_trace_dispatches_skill_creation(
     user_id = await _personal_user_with_conversations(client, 5)
     await _first_day_curator_tick(user_id)
     assert await _dispatched_wikis(pool, dispatched) == {"internal"}
-    assert dispatched[0][1] == {}
+    assert dispatched[0][1] == {"automatic": True}
 
 
 @pytest.mark.asyncio
@@ -213,3 +228,17 @@ async def test_late_import_reopens_curation(client: AsyncClient, pool, dispatche
     from backend.services import curation_service
 
     assert await curation_service.has_changes_since(user_id, user_id, curated_through)
+
+
+@pytest.mark.asyncio
+async def test_queued_automatic_run_respects_schedule_disabled_after_dispatch(
+    client, pool, sprite_exec
+):
+    from backend.services import agent_service
+    from backend.tasks.agent_schedules import _run_curator_now
+
+    _, _, workspace = await _developer(client)
+    agent = await agent_service.get_or_create_curator(UUID(workspace["scope_user_id"]))
+    await pool.execute("UPDATE agents SET run_mode='chat' WHERE id=$1", UUID(agent["id"]))
+    await _run_curator_now(UUID(agent["id"]), automatic=True)
+    assert sprite_exec.calls == []

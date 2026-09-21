@@ -567,6 +567,7 @@ export async function addSource(body: {
   external_ref?: string;
   display_name?: string;
   settings?: Record<string, unknown>;
+  user_id?: string;
 }): Promise<{ id: string; display_name: string }> {
   return apiFetch(`${ME}/sources`, {
     method: "POST",
@@ -1317,7 +1318,10 @@ export const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
 
 async function uploadAny(
   file: File,
-  folderId?: string | null
+  folderId?: string | null,
+  // External Multiplayer: scope the file to one end user (the developer's
+  // own id for them). The server stamps the file row's end_user_id.
+  userId?: string
 ): Promise<UploadApiResponse> {
   if (file.size > MAX_UPLOAD_BYTES) {
     throw new Error(`${file.name} is too large (max 100 MB)`);
@@ -1326,6 +1330,7 @@ async function uploadAny(
   const formData = new FormData();
   formData.append("file", file);
   if (folderId) formData.append("folder_id", folderId);
+  if (userId) formData.append("user_id", userId);
   // Hand-rolled fetch (FormData must set its own Content-Type), so the scope
   // header has to be attached here too — without it the server resolves the
   // upload to the personal scope and rejects any workspace-scoped folder_id.
@@ -1356,9 +1361,10 @@ async function uploadAny(
 // server didn't route it to the pages table.
 export async function uploadFile(
   file: File,
-  folderId?: string | null
+  folderId?: string | null,
+  userId?: string
 ): Promise<FileInfo> {
-  const result = await uploadAny(file, folderId);
+  const result = await uploadAny(file, folderId, userId);
   if (result.kind === "page") {
     throw new Error(
       `uploadFile got a page back from the server (${file.name}); ` +
@@ -2093,7 +2099,9 @@ export async function uploadTranscript(
   file: File,
   sessionId: string,
   agentName: string,
-  cwd?: string
+  cwd?: string,
+  // External Multiplayer: file the session under this end user.
+  userId?: string
 ): Promise<UploadedTranscript> {
   const token = await getAuthToken();
   const formData = new FormData();
@@ -2101,6 +2109,7 @@ export async function uploadTranscript(
   formData.append("session_id", sessionId);
   formData.append("agent_name", agentName);
   if (cwd) formData.append("cwd", cwd);
+  if (userId) formData.append("user_id", userId);
 
   // Hand-rolled fetch (FormData); the scope header must ride along or the
   // server files the transcript under the personal scope.

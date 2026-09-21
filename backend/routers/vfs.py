@@ -20,9 +20,9 @@ MAX_SCRIPT_LENGTH = 4096
 
 class VfsRequest(BaseModel):
     # Unknown fields are refused, not dropped: a misspelled user_id would
-    # otherwise run UNSCOPED — the whole workspace instead of one user's
-    # view — which is an isolation failure, not a typo. Strictness is safe
-    # here because only our own clients call this surface.
+    # otherwise run the developer workspace's shared-only view instead of one
+    # user's view. Strictness is safe because only our own clients call this
+    # surface.
     model_config = ConfigDict(extra="forbid")
 
     script: str = Field(max_length=MAX_SCRIPT_LENGTH)
@@ -30,13 +30,13 @@ class VfsRequest(BaseModel):
     user_id: str | None = Field(
         None,
         max_length=128,
-        description="External Multiplayer: narrow the tree to this end user — "
-        "shared wiki at /memory, the user's own wiki and files under /files, "
-        "the user's transcripts under /sessions",
+        description="External Multiplayer: omit for the shared wiki only, or narrow "
+        "the tree to this end user — shared wiki at /memory, the user's own wiki "
+        "and files under /files, the user's transcripts under /sessions",
     )
 
 
-async def _end_user_ctx(current_user: dict, user_id: str | None) -> dict | None:
+async def _external_vfs_ctx(current_user: dict, user_id: str | None) -> dict | None:
     """The developer contract: the caller's key belongs to the workspace's
     scope user, and user_id is asserted by their backend. Isolation between one
     developer's users is enforced at the developer boundary, not here.
@@ -47,14 +47,21 @@ async def _end_user_ctx(current_user: dict, user_id: str | None) -> dict | None:
     right: the accumulated cross-user knowledge is what a new user benefits
     from on day one. The user appears once their first session is uploaded.
     """
-    if user_id is None:
-        return None
     workspace = await end_user_service.workspace_for_scope(current_user["id"])
     if workspace is None or workspace["external_wiki_folder_id"] is None:
+        if user_id is None:
+            return None
         raise HTTPException(
             status_code=400,
             detail="user_id requires a developer workspace scope — activate the platform first",
         )
+    if user_id is None:
+        return {
+            "external_id": None,
+            "shared_wiki_folder_id": str(workspace["external_wiki_folder_id"]),
+            "wiki_folder_id": None,
+            "source_ids": set(),
+        }
     end_user = await end_user_service.find_end_user(workspace["id"], user_id)
     if end_user is None:
         return {
@@ -98,7 +105,7 @@ async def run_vfs(
             status_code=401,
             detail="The VFS runs every read as the calling credential; use an API key, not a cookie.",
         )
-    end_user_ctx = await _end_user_ctx(current_user, body.user_id)
+    end_user_ctx = await _external_vfs_ctx(current_user, body.user_id)
     try:
         return await vfs_service.run_vfs_script(
             request.app, authorization, body.script, body.cwd, end_user_ctx

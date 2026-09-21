@@ -7,8 +7,8 @@ the session as a whole."""
 
 from alembic import op
 
-revision = "0215"
-down_revision = "0214"
+revision = "0220"
+down_revision = "0219"
 branch_labels = None
 depends_on = None
 

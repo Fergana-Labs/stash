@@ -7,6 +7,8 @@ import { ArrowLeft } from "lucide-react";
 
 import DeveloperGate from "@/components/developer/DeveloperGate";
 import { Code, PageHeading, SectionHeading } from "@/components/developer/DocsPrimitives";
+import UserFileUploadControls from "@/components/developer/UserFileUploadControls";
+import UserSessionUploadControls from "@/components/developer/UserSessionUploadControls";
 import WikiToggle from "@/components/developer/WikiToggle";
 import WikiGraph from "@/components/memory/WikiGraph";
 import {
@@ -145,6 +147,7 @@ function UserDetail() {
 
       <section className="mb-12">
         <SectionHeading>Sessions</SectionHeading>
+        <UserSessionUploadControls externalUserId={user.external_id} onAdded={refresh} />
         {sessions.length === 0 ? (
           <Empty>No sessions yet for this user.</Empty>
         ) : (
@@ -179,10 +182,11 @@ function UserDetail() {
           Files your backend uploaded with this user&apos;s <Code>user_id</Code>. Your other
           users never see them.
         </p>
+        <UserFileUploadControls externalUserId={user.external_id} onAdded={refresh} />
         {files.length === 0 ? (
           <Empty>
-            No files yet. Files arrive when your backend uploads one with this user&apos;s{" "}
-            <Code>user_id</Code>.
+            No files yet. Upload one here, or have your backend upload one with this
+            user&apos;s <Code>user_id</Code>.
           </Empty>
         ) : (
           <div className="mt-4 overflow-hidden rounded border border-border bg-surface">

@@ -62,6 +62,7 @@ function OnboardingInner() {
 
   useEffect(() => {
     if (!loading && !user) router.replace("/login");
+    if (!loading && user?.developer_platform_only) router.replace("/developer");
   }, [loading, user, router]);
 
   useEffect(() => {
@@ -113,7 +114,7 @@ function OnboardingInner() {
     router.replace("/");
   }, [isConnect, status, router]);
 
-  if (loading || !user || !prepared) return <LoadingScreen />;
+  if (loading || !user || user.developer_platform_only || !prepared) return <LoadingScreen />;
   if (isConnect && status !== null && status.curatable_trace_count > 0) {
     return <LoadingScreen />;
   }

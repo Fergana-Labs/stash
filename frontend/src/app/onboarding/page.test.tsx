@@ -21,6 +21,7 @@ vi.mock("next/navigation", () => ({
 
 const authUser = vi.hoisted(() => ({
   id: "user-1",
+  developer_platform_only: false,
   name: "Henry",
   display_name: "Henry",
   description: "",
@@ -51,6 +52,7 @@ vi.mock("../../lib/api", () => ({
 
 afterEach(() => {
   cleanup();
+  authUser.developer_platform_only = false;
   vi.clearAllMocks();
   navigation.step = null;
   vi.mocked(getOnboardingPreferences).mockResolvedValue({ preferences: null });
@@ -133,4 +135,11 @@ describe("trace-to-Skills onboarding", () => {
 
     await waitFor(() => expect(navigation.replace).toHaveBeenCalledWith("/"));
   });
+});
+
+it("keeps platform-only users out of Skills onboarding", async () => {
+  authUser.developer_platform_only = true;
+  render(<OnboardingPage />);
+  await waitFor(() => expect(navigation.replace).toHaveBeenCalledWith("/developer"));
+  expect(screen.queryByRole("button", { name: "Engineer" })).not.toBeInTheDocument();
 });

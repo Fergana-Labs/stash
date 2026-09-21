@@ -39,6 +39,21 @@ def _capture_alerts(monkeypatch: pytest.MonkeyPatch) -> list[str]:
     return sent
 
 
+@pytest.mark.asyncio
+async def test_queued_curator_does_not_run_after_pause(client, pool, monkeypatch):
+    from backend.services import sprite_agent_service
+
+    user_id = await _register(client)
+    agent = await agent_service.get_or_create_curator(user_id)
+    await pool.execute("UPDATE agents SET run_mode='chat' WHERE id=$1", agent["id"])
+
+    async def forbidden(*args):
+        pytest.fail("A queued job must respect a subsequent pause")
+
+    monkeypatch.setattr(sprite_agent_service, "run_scheduled", forbidden)
+    await agent_schedules._run_scheduled_agent(agent["id"], "test")
+
+
 async def _make_curator(
     user_id: uuid.UUID, *, curated_hours_ago: int, last_run_error: str | None
 ) -> dict:

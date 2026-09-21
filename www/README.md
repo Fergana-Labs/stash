@@ -39,3 +39,29 @@ page (CLI sign-in flow for Claude Code-driven setup) needs Auth0:
 
 When `NEXT_PUBLIC_AUTH0_ENABLED` is unset, `/connect-token` renders a
 "sign-in is not configured" message and the auth middleware no-ops.
+
+### Demo form bot protection
+
+Before deploying `/contact-sales`, create a Cloudflare Turnstile widget in Managed
+mode with `www.joinstash.ai` as an allowed hostname. Configure these variables on
+the **Vercel marketing-site project** (not the Render app):
+
+| Variable | Purpose |
+| --- | --- |
+| `NEXT_PUBLIC_TURNSTILE_SITE_KEY` | Public widget key; required at build time |
+| `TURNSTILE_SECRET_KEY` | Server-only widget secret |
+| `TURNSTILE_HOSTNAME` | Exact expected hostname, `www.joinstash.ai` in production |
+| `POSTMARK_SERVER_TOKEN` | Existing email delivery credential |
+
+Redeploy after setting the variables. The server verifies the token, hostname,
+and `contact_sales` action before sending either email. Missing configuration or
+failed verification blocks submission. Tokens expire after five minutes and
+cannot be reused; the form refreshes verification after each submission attempt.
+
+For local browser checks, use Cloudflare's [official test keys](https://developers.cloudflare.com/turnstile/troubleshooting/testing/)
+in local-only environment variables. Never deploy test keys to production. Preview
+deployments need a widget and expected hostname configured for their own domain.
+
+Run `npm test` for the submission tests (all external requests are mocked).
+This protection does not impose IP or email rate limits; those require a shared
+store across the site's serverless instances.

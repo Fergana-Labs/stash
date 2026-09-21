@@ -45,23 +45,32 @@ def run_scheduled_agent(agent_id: str, stamp: str) -> None:
 
 
 @celery.task(name="backend.tasks.agent_schedules.run_curator_now")
-def run_curator_now(agent_id: str, full_history: bool = False) -> None:
-    run_async(_run_curator_now(UUID(agent_id), full_history))
+def run_curator_now(agent_id: str, full_history: bool = False, automatic: bool = False) -> None:
+    run_async(_run_curator_now(UUID(agent_id), full_history, automatic))
 
 
-async def _run_curator_now(agent_id: UUID, full_history: bool = False) -> None:
+async def _run_curator_now(
+    agent_id: UUID, full_history: bool = False, automatic: bool = False
+) -> None:
     """A user-requested curator run: same execution as the daily tick, minus
     the due-check — the user is the trigger. The router already enforced the
     free-tier allowance and resolved credentials.
 
     `full_history` is the backfill: the run reads with no watermark, but the
     stored watermark is only advanced after success — a failed backfill must
-    not have thrown away the incremental position.
-
+    not have thrown away the incremental position. Automatic runs honor the
+    schedule switch; explicit user requests can run with scheduling disabled.
     """
-    from ..services import agent_service, curation_service, sprite_agent_service
+    from ..services import (
+        agent_service,
+        curation_service,
+        scoped_curation_service,
+        sprite_agent_service,
+    )
 
     agent = await agent_service.get_agent_by_id(agent_id)
+    if automatic and agent["run_mode"] != "scheduled":
+        return
     if full_history:
         agent = {**agent, "curated_through": None}
     now = datetime.now(UTC)
@@ -70,14 +79,15 @@ async def _run_curator_now(agent_id: UUID, full_history: bool = False) -> None:
         # Seconds-resolution stamp so a manual run never shares a session with
         # the beat's minute-stamped run.
         await sprite_agent_service.run_scheduled(agent, now.strftime("%Y%m%d%H%M%S"))
-        user_id = UUID(str(agent["user_id"]))
-        allowed_until = await curation_service.entitled_through(
-            user_id, agent["curated_through"], now
-        )
-        through = await curation_service.complete_through(
-            user_id, agent["curated_through"], allowed_until
-        )
-        await agent_service.mark_curated(agent_id, through)
+        if await scoped_curation_service.workspace_for_agent(agent) is None:
+            user_id = UUID(str(agent["user_id"]))
+            allowed_until = await curation_service.entitled_through(
+                user_id, agent["curated_through"], now
+            )
+            through = await curation_service.complete_through(
+                user_id, agent["curated_through"], allowed_until
+            )
+            await agent_service.mark_curated(agent_id, through)
         await agent_service.mark_run_succeeded(agent_id)
     except Exception as e:
         await agent_service.mark_run_failed(agent_id, str(e))
@@ -140,8 +150,10 @@ async def _maybe_dispatch_first_day_run(
     *,
     minimum_traces: int = 0,
 ) -> None:
-    from ..services import agent_auth, curation_service
+    from ..services import agent_auth, curation_service, scoped_curation_service
 
+    if agent["run_mode"] != "scheduled":
+        return
     if await curation_service.curatable_trace_count(scope_user_id) < minimum_traces:
         return
     # A curator that has never run skips the debounce: its seeded last_run_at
@@ -154,14 +166,14 @@ async def _maybe_dispatch_first_day_run(
     ):
         return
     try:
-        await agent_auth.resolve(scope_user_id, agent["model_provider"], allow_free_managed=True)
+        await scoped_curation_service.require_run_auth(agent)
     except (agent_auth.NeedsAuth, agent_auth.ProviderNotConfigured):
         return
     if not await curation_service.has_changes_since(
         scope_user_id, scope_user_id, agent["curated_through"]
     ):
         return
-    run_curator_now.delay(str(agent["id"]))
+    run_curator_now.delay(str(agent["id"]), automatic=True)
 
 
 async def _run_due() -> int:
@@ -169,6 +181,7 @@ async def _run_due() -> int:
         agent_auth,
         agent_service,
         curation_service,
+        scoped_curation_service,
         sprite_agent_service,
     )
 
@@ -199,11 +212,7 @@ async def _run_due() -> int:
             continue
         # No runnable credential (unconnected free user) → nothing can run.
         try:
-            await agent_auth.resolve(
-                user_id,
-                agent["model_provider"],
-                allow_free_managed=bool(agent["is_curator"]),
-            )
+            await scoped_curation_service.require_run_auth(agent)
         except (agent_auth.NeedsAuth, agent_auth.ProviderNotConfigured):
             logger.info("agent schedule: no credential for agent %s — skipping", agent["id"])
             await agent_service.mark_run_skipped(agent["id"], "no_credential")
@@ -229,7 +238,13 @@ async def _run_due() -> int:
 
 async def _run_scheduled_agent(agent_id: UUID, stamp: str) -> None:
     from ..database import get_pool
-    from ..services import agent_service, alert_service, curation_service, sprite_agent_service
+    from ..services import (
+        agent_service,
+        alert_service,
+        curation_service,
+        scoped_curation_service,
+        sprite_agent_service,
+    )
 
     try:
         agent = await agent_service.get_agent_by_id(agent_id)
@@ -238,11 +253,13 @@ async def _run_scheduled_agent(agent_id: UUID, stamp: str) -> None:
         # agent row left to record a failure on.
         logger.info("agent schedule: agent %s deleted before its run", agent_id)
         return
+    if agent["run_mode"] != "scheduled":
+        return
     user_id = UUID(str(agent["user_id"]))
     now = datetime.now(UTC)
     try:
         await sprite_agent_service.run_scheduled(agent, stamp)
-        if agent["is_curator"]:
+        if agent["is_curator"] and await scoped_curation_service.workspace_for_agent(agent) is None:
             # `now` predates the run, so changes made during it stay ahead of
             # the watermark and are picked up next time. If the delta
             # overflowed the event cap, the watermark stops at the last event

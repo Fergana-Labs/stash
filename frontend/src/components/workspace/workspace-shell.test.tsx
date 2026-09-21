@@ -3,6 +3,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { User } from "@/lib/types";
 import WorkspaceShell from "./workspace-shell";
 
+vi.mock("next/navigation", () => ({
+  usePathname: () => "/skills",
+  useRouter: () => ({ replace: vi.fn() }),
+}));
+
 vi.mock("@/lib/scope-store", () => ({ useScope: () => null }));
 vi.mock("@/components/ShellChromeContext", () => ({
   useShellChromeValue: () => ({ shareAction: <button>Share</button> }),

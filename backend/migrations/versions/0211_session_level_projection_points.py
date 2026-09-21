@@ -4,14 +4,14 @@ Cached rows hold per-event points with source "history_events", which the new
 compute never produces — the cache is truncated so everything recomputes in
 the session-level shape on next load.
 
-Revision ID: 0206
-Revises: 0205
+Revision ID: 0211
+Revises: 0210
 """
 
 from alembic import op
 
-revision = "0206"
-down_revision = "0205"
+revision = "0211"
+down_revision = "0210"
 branch_labels = None
 depends_on = None
 

@@ -34,7 +34,7 @@ export default function Topbar() {
           <StashIcon className="text-[22px]" />
           <span className="text-[15px] font-semibold tracking-tight text-foreground">Stash</span>
         </Link>
-        <ScopeSwitcher />
+        <ScopeSwitcher developerOnly={false} />
       </div>
       <div className="flex min-w-0 flex-1 justify-center">
         <div ref={searchBarRef} className="w-full max-w-2xl">

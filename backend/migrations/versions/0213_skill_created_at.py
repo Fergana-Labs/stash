@@ -1,13 +1,13 @@
 """Record when a folder became a Skill.
 
-Revision ID: 0208
-Revises: 0207
+Revision ID: 0213
+Revises: 0212
 """
 
 from alembic import op
 
-revision = "0208"
-down_revision = "0207"
+revision = "0213"
+down_revision = "0212"
 branch_labels = None
 depends_on = None
 
