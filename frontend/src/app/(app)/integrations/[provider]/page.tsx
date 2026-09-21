@@ -143,8 +143,8 @@ export function IntegrationDetail({ provider }: { provider: string }) {
           <h1 className="font-display text-[20px] font-semibold text-foreground">Unknown integration</h1>
           <p className="mt-2 text-[13px] text-muted-foreground">
             No integration matches “{provider}”.{" "}
-            <Link href="/settings" className="text-brand hover:underline">
-              Manage in Settings
+            <Link href="/developer/sources" className="text-brand hover:underline">
+              Manage sources
             </Link>
             .
           </p>
@@ -407,8 +407,8 @@ export function IntegrationDetail({ provider }: { provider: string }) {
         {/* Subtitle: what this integration does + a quiet Settings link. */}
         <div className="mb-6 ml-[42px] mt-0.5 text-[12.5px] text-muted-foreground">
           {connector.blurb}{" "}
-          <Link href="/settings" className="font-semibold text-brand hover:underline">
-            Manage in Settings
+          <Link href="/developer/sources" className="font-semibold text-brand hover:underline">
+            Manage sources
           </Link>
         </div>
 
