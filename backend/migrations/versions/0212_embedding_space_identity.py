@@ -7,8 +7,6 @@ Revises: 0211
 from alembic import op
 from sqlalchemy import text
 
-from backend.services.embeddings import space_id
-
 revision = "0212"
 down_revision = "0211"
 branch_labels = None
@@ -16,6 +14,8 @@ depends_on = None
 
 
 def upgrade() -> None:
+    from backend.services.embeddings import space_id
+
     op.execute(
         "CREATE TABLE embedding_space_state ("
         "singleton BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK (singleton), "

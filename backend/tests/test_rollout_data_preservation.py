@@ -7,6 +7,8 @@ from alembic.operations import Operations
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
+from backend.services import embeddings
+
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
@@ -24,7 +26,7 @@ async def test_rollout_preserves_vectors_and_does_not_invent_historical_usage(
         conn.execute(text("CREATE TEMP TABLE migration_test_scope (id int)"))
         conn.execute(text("SET LOCAL search_path TO pg_temp, public"))
         if revision.startswith("0212"):
-            monkeypatch.setattr(migration, "space_id", lambda: "verified-existing-model")
+            monkeypatch.setattr(embeddings, "space_id", lambda: "verified-existing-model")
             tables = [
                 "pages",
                 "table_rows",
