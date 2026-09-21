@@ -7,6 +7,7 @@ import { ArrowLeft } from "lucide-react";
 
 import DeveloperGate from "@/components/developer/DeveloperGate";
 import { Code, PageHeading, SectionHeading } from "@/components/developer/DocsPrimitives";
+import UserDriveSourceControls from "@/components/developer/UserDriveSourceControls";
 import UserFileUploadControls from "@/components/developer/UserFileUploadControls";
 import UserSessionUploadControls from "@/components/developer/UserSessionUploadControls";
 import WikiToggle from "@/components/developer/WikiToggle";
@@ -16,6 +17,7 @@ import {
   getUserWikiGraph,
   type EndUserFile,
   type EndUserSession,
+  type EndUserSource,
   type EndUserWikiPage,
   type WikiGraph as WikiGraphData,
 } from "@/lib/api";
@@ -36,6 +38,7 @@ function UserDetail() {
   const [files, setFiles] = useState<EndUserFile[]>([]);
   const [wikiPages, setWikiPages] = useState<EndUserWikiPage[]>([]);
   const [wikiGraph, setWikiGraph] = useState<WikiGraphData | null>(null);
+  const [sources, setSources] = useState<EndUserSource[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(() => {
@@ -46,6 +49,7 @@ function UserDetail() {
         setSessions(res.sessions);
         setFiles(res.files);
         setWikiPages(res.wiki_pages);
+        setSources(res.sources);
       })
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load the user"));
     // The graph is decoration over the list — its failure shouldn't blank the page.
@@ -179,8 +183,9 @@ function UserDetail() {
       <section>
         <SectionHeading>Files</SectionHeading>
         <p className="mt-2 text-[13.5px] leading-6 text-muted-foreground">
-          Files your backend uploaded with this user&apos;s <Code>user_id</Code>. Your other
-          users never see them.
+          Everything this user&apos;s agent can read besides the wikis: files your backend
+          uploaded with their <Code>user_id</Code>, and integrations connected for them
+          alone. Your other users never see any of it.
         </p>
         <UserFileUploadControls externalUserId={user.external_id} onAdded={refresh} />
         {files.length === 0 ? (
@@ -201,6 +206,41 @@ function UserDetail() {
                 </span>
                 <span className="shrink-0 font-mono text-[12px] text-muted-foreground">
                   {formatBytes(f.size_bytes)} · {formatDate(f.created_at)}
+                </span>
+              </Link>
+            ))}
+          </div>
+        )}
+        <div className="mt-6 font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+          Connected sources
+        </div>
+        <div className="mt-3 rounded border border-border bg-surface px-5 py-4">
+          <div className="text-[14.5px] text-foreground">Assign a Google Drive folder</div>
+          <p className="mt-1 text-[13px] leading-6 text-muted-foreground">
+            Only this user&apos;s agent can browse the folder. Other users in the workspace
+            cannot see it.
+          </p>
+          <UserDriveSourceControls externalUserId={user.external_id} onAdded={refresh} />
+        </div>
+        {sources.length === 0 ? (
+          <Empty>
+            None connected. Add one with this user&apos;s <Code>user_id</Code> to scope it
+            here.
+          </Empty>
+        ) : (
+          <div className="mt-3 overflow-hidden rounded border border-border bg-surface">
+            {sources.map((source) => (
+              <Link
+                key={source.id}
+                href={`/integrations/${source.provider}?source=${source.id}`}
+                className="flex items-center gap-4 border-b border-border px-5 py-3.5 transition-colors last:border-b-0 hover:bg-raised"
+              >
+                <span className="min-w-0 flex-1 truncate text-[14.5px] text-foreground">
+                  {source.display_name}
+                </span>
+                <span className="shrink-0 font-mono text-[12px] text-muted-foreground">
+                  {source.type}
+                  {source.last_synced_at ? ` · synced ${formatDate(source.last_synced_at)}` : ""}
                 </span>
               </Link>
             ))}
