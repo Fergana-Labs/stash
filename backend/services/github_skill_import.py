@@ -237,6 +237,7 @@ async def import_skill(
     files: list[tuple[str, bytes]],
 ) -> str:
     """Import one skill's files. Returns 'created' or 'updated'."""
+    skill_service.validate_skill_files(files)
     skill_md = next((blob for path, blob in files if path == "SKILL.md"), None)
     if skill_md is None:
         raise ValueError(f"{source_url}: no SKILL.md")

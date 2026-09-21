@@ -37,9 +37,7 @@ FRONTMATTER_SCAN_BYTES = 8192
 
 
 def skill_md_template(name: str, description: str) -> str:
-    return (
-        f"---\nname: {json.dumps(name)}\ndescription: {json.dumps(description)}\n---\n\n# {name}\n"
-    )
+    return f"---\nname: {json.dumps(name)}\ndescription: {json.dumps(description)}\n---\n\n# {name}\n\n{description.strip()}\n"
 
 
 def not_skill_folder_pred(alias: str) -> str:
@@ -106,6 +104,23 @@ def validate_skill_md(md: str) -> None:
         raise ValueError(
             f"SKILL.md description must be at most {MAX_SKILL_DESCRIPTION_LENGTH} characters"
         )
+    if not skill_instruction_body(md):
+        raise ValueError("SKILL.md requires instructions below its frontmatter")
+
+
+def skill_instruction_body(md: str) -> str:
+    """The agent instructions, excluding a repeated title heading."""
+    meta, body = parse_frontmatter(md)
+    lines = body.strip().splitlines()
+    if lines and lines[0].strip() == f"# {str(meta.get('name', '')).strip()}":
+        lines = lines[1:]
+    return "\n".join(lines).strip()
+
+
+def validate_skill_files(files: list[tuple[str, bytes]]) -> None:
+    for path, blob in files:
+        if path.rpartition("/")[2] == SKILL_MD_NAME:
+            validate_skill_md(blob.decode("utf-8"))
 
 
 def declared_skill(content: str | None) -> dict | None:
@@ -147,17 +162,10 @@ def source_document_skill_status(content: str | None, extraction_status: str) ->
         }
 
     head = (content or "")[:FRONTMATTER_SCAN_BYTES]
-    if declared_skill(head) is None:
-        return {
-            "skill_status": "not_skill",
-            "skill_status_reason": "At the top, add a name and description between --- lines.",
-        }
-
-    if not parse_frontmatter(head)[1].strip():
-        return {
-            "skill_status": "draft",
-            "skill_status_reason": "Add instructions below the closing --- line.",
-        }
+    try:
+        validate_skill_md(head)
+    except ValueError as error:
+        return {"skill_status": "not_skill", "skill_status_reason": str(error)}
 
     return {
         "skill_status": "skill",

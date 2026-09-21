@@ -86,15 +86,25 @@ async def convert_folder_to_skill(
             status_code=400,
             detail="description is required to convert a folder with no SKILL.md",
         )
-    result = await _set_is_skill(folder_id, owner_user_id, current_user["id"], True)
-    await shared_skill_service.ensure_skill_md(
-        owner_user_id,
+    if not await permission_service.check_access(
+        "folder",
         folder_id,
         current_user["id"],
-        result["name"],
-        description,
-    )
-    return result
+        owner_user_id=owner_user_id,
+        require="write",
+    ):
+        raise HTTPException(status_code=403, detail="Not allowed to write this folder")
+    try:
+        await shared_skill_service.ensure_skill_md(
+            owner_user_id,
+            folder_id,
+            current_user["id"],
+            (await files_tree_service.get_folder(folder_id))["name"],
+            description,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error))
+    return await _set_is_skill(folder_id, owner_user_id, current_user["id"], True)
 
 
 @me_router.post("/folders/{folder_id}/convert-to-folder", status_code=200)
@@ -298,6 +308,7 @@ async def replace_skill_contents(
         raise HTTPException(status_code=400, detail="A skill must include a SKILL.md")
 
     try:
+        skill_service.validate_skill_files(payload)
         await files_tree_service.clear_folder_contents(folder_id)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

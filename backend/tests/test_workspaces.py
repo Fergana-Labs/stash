@@ -511,7 +511,7 @@ async def _workspace_skill_folder(pool, scope_user_id, name="team-skill") -> uui
     )
     await pool.execute(
         "INSERT INTO pages (owner_user_id, folder_id, name, content_markdown, created_by) "
-        "VALUES ($1, $2, 'SKILL.md', '---\nname: team-skill\n---\nhow we deploy', $1)",
+        "VALUES ($1, $2, 'SKILL.md', '---\nname: team-skill\ndescription: Deploy as a team.\n---\nhow we deploy', $1)",
         scope_id,
         folder["id"],
     )

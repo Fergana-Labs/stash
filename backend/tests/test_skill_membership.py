@@ -97,7 +97,16 @@ async def test_bulk_write_carrying_a_skill_md_promotes_explicitly(scope, _db_poo
     editing files inside an existing folder."""
     folder = await files_tree_service.create_folder(scope, "imported-repo", scope)
     await files_tree_service.write_folder_files(
-        scope, scope, folder["id"], [("SKILL.md", b"# imported"), ("notes.md", b"context")]
+        scope,
+        scope,
+        folder["id"],
+        [
+            (
+                "SKILL.md",
+                skill_service.skill_md_template("Imported", "Follow the reference.").encode(),
+            ),
+            ("notes.md", b"context"),
+        ],
     )
 
     assert [s["folder_id"] for s in await skill_service.list_skills(scope, scope)] == [
@@ -162,7 +171,11 @@ async def test_folder_plus_skill_md_plus_convert_is_the_cli_recipe(client, _db_p
     ).json()["id"]
     await client.post(
         "/api/v1/me/pages/new",
-        json={"name": "SKILL.md", "folder_id": folder_id, "content": "---\nname: cli-skill\n---\n"},
+        json={
+            "name": "SKILL.md",
+            "folder_id": folder_id,
+            "content": "---\nname: cli-skill\ndescription: Follow the reference.\n---\nRead the reference.\n",
+        },
         headers=headers,
     )
 
@@ -314,7 +327,12 @@ async def test_skill_md_cannot_be_moved_out_of_its_skill(scope, _db_pool):
         await files_tree_service.update_page(page_id, scope, scope, move_to_root=True)
 
     # Editing its content is untouched — only leaving the skill is refused.
-    edited = await files_tree_service.update_page(page_id, scope, scope, content="# new body")
+    edited = await files_tree_service.update_page(
+        page_id,
+        scope,
+        scope,
+        content=skill_service.skill_md_template("Movable", "Updated instructions."),
+    )
     assert edited is not None
     [skill] = await skill_service.list_skills(scope, scope)
     assert skill["has_instructions"] is True

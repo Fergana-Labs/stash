@@ -75,7 +75,14 @@ async def test_skill_folder_is_hidden_from_files_surfaces_until_converted_back(
     docs = await _folder(client, api_key, scope, "Docs")
     skill_folder = await _folder(client, api_key, scope, "my-skill", parent_folder_id=docs)
     nested = await _folder(client, api_key, scope, "refs", parent_folder_id=skill_folder)
-    skill_md = await _page(client, api_key, scope, "SKILL.md", folder_id=skill_folder)
+    skill_md = await _page(
+        client,
+        api_key,
+        scope,
+        "SKILL.md",
+        folder_id=skill_folder,
+        content="---\nname: Skill\ndescription: Do the task.\n---\nFollow the reference.",
+    )
     # Membership is explicit now: writing SKILL.md no longer promotes.
     promoted = await client.post(
         f"/api/v1/me/folders/{skill_folder}/convert-to-skill",
@@ -439,7 +446,14 @@ async def test_install_ping_counts_adoption_separately_from_views(client: AsyncC
     owner_key, _ = await _register(client)
     scope = await _scope(client, owner_key)
     folder = await _folder(client, owner_key, scope, "pingable")
-    await _page(client, owner_key, scope, "SKILL.md", folder_id=folder, content="# s")
+    await _page(
+        client,
+        owner_key,
+        scope,
+        "SKILL.md",
+        folder_id=folder,
+        content="---\nname: Pingable\ndescription: Test installation.\n---\nFollow the reference.",
+    )
     published = await client.post(
         "/api/v1/me/skills",
         json={"folder_id": folder, "title": "Pingable"},
@@ -523,3 +537,26 @@ async def test_create_skill_rejects_a_name_codex_cannot_load(client: AsyncClient
         headers=_auth(key),
     )
     assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_clearing_skill_instructions_is_rejected_without_changing_the_page(client):
+    key, _ = await _register(client)
+    created = await client.post(
+        "/api/v1/me/skills/new",
+        json={"name": "Deploy", "description": "Ship safely."},
+        headers=_auth(key),
+    )
+    assert created.status_code == 201
+    folder_id = created.json()["folder_id"]
+    contents = await client.get(f"/api/v1/me/skills/{folder_id}/contents", headers=_auth(key))
+    page = contents.json()["contents"]["pages"][0]
+    response = await client.patch(
+        f"/api/v1/me/pages/{page['id']}",
+        json={"content": "---\nname: Deploy\ndescription: Ship safely.\n---\n# Deploy\n"},
+        headers=_auth(key),
+    )
+    assert response.status_code == 400
+    assert "requires instructions" in response.json()["detail"]
+    after = await client.get(f"/api/v1/me/skills/{folder_id}/contents", headers=_auth(key))
+    assert after.json() == contents.json()

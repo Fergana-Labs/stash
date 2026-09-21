@@ -23,7 +23,7 @@ FAKE_REPO = {
     "cooking/SKILL.md": COOKING_SKILL_MD,
     "cooking/references/guide.md": b"# Techniques\n",
     "cooking/logo.png": b"\x89PNG fake bytes",
-    "baking/SKILL.md": b"Just a body, no frontmatter.\n",
+    "baking/SKILL.md": b"---\nname: baking\ndescription: Bake from recipes.\n---\nFollow the recipe.\n",
 }
 
 
@@ -108,8 +108,8 @@ async def test_subdir_import_publishes_only_that_directory(client: AsyncClient, 
     _fake_github(
         monkeypatch,
         {
-            "static/SKILL.md": b"---\nname: Not Ours\n---\nbody\n",
-            "docs/skills/brief/SKILL.md": b"---\nname: brief\n---\nbody\n",
+            "static/SKILL.md": b"---\nname: Not Ours\ndescription: Other instructions.\n---\nbody\n",
+            "docs/skills/brief/SKILL.md": b"---\nname: brief\ndescription: Write briefs.\n---\nbody\n",
         },
     )
     await _import_repo("https://github.com/acme/skills/tree/main/docs/skills")
@@ -273,3 +273,14 @@ async def test_inspect_reports_skill_dirs_before_import(client: AsyncClient, mon
         headers=auth,
     )
     assert bad.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_invalid_reimport_preserves_existing_files(pool, monkeypatch):
+    _fake_github(monkeypatch, {"SKILL.md": COOKING_SKILL_MD, "notes.md": b"Keep these notes."})
+    await _import_repo("https://github.com/acme/skills")
+    before = await pool.fetch("SELECT id, content_markdown FROM pages ORDER BY id")
+    _fake_github(monkeypatch, {"SKILL.md": b"---\nname: Cooking Wizard\ndescription: Cook.\n---\n"})
+    with pytest.raises(ValueError, match="requires instructions"):
+        await _import_repo("https://github.com/acme/skills")
+    assert await pool.fetch("SELECT id, content_markdown FROM pages ORDER BY id") == before

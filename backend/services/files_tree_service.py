@@ -691,9 +691,13 @@ async def create_page(
 ) -> dict:
     pool = get_pool()
     if folder_id is not None:
-        folder = await pool.fetchrow("SELECT owner_user_id FROM folders WHERE id = $1", folder_id)
+        folder = await pool.fetchrow(
+            "SELECT owner_user_id, is_skill FROM folders WHERE id = $1", folder_id
+        )
         if not folder or folder["owner_user_id"] != owner_user_id:
             raise ValueError("folder_id does not belong to scope")
+        if folder["is_skill"] and name == skill_service.SKILL_MD_NAME:
+            skill_service.validate_skill_md(content)
     content_html = _sanitize_html(content_html)
     active = _active_content(content_type, content, content_html)
     ch = _content_hash(active)
@@ -859,6 +863,20 @@ async def update_page(
     When `notify` (the default), a content change broadcasts a page-update
     event so open viewers refetch the page."""
     pool = get_pool()
+    if content is not None:
+        skill_page = await pool.fetchrow(
+            "SELECT p.name, f.is_skill FROM pages p "
+            "LEFT JOIN folders f ON f.id = p.folder_id "
+            "WHERE p.id = $1 AND p.owner_user_id = $2",
+            page_id,
+            owner_user_id,
+        )
+        if (
+            skill_page
+            and skill_page["is_skill"]
+            and skill_page["name"] == skill_service.SKILL_MD_NAME
+        ):
+            skill_service.validate_skill_md(content)
     if name is not None:
         await _assert_not_a_skills_instructions(page_id, owner_user_id)
     if folder_id is not None or move_to_root:
@@ -1894,6 +1912,8 @@ async def write_folder_files(
     caller, unlike a user editing files inside an existing folder. Protected
     folders are never promoted."""
     import mimetypes
+
+    skill_service.validate_skill_files(files)
 
     from . import storage_service
 

@@ -17,7 +17,7 @@ def test_skill_template_round_trips_yaml_sensitive_metadata():
         "name": "Release: web",
         "description": "Use for deploys:\nproduction only.",
     }
-    assert body == "# Release: web\n"
+    assert body == "# Release: web\n\nUse for deploys:\nproduction only.\n"
     skill_service.validate_skill_md(markdown)
 
 
@@ -74,3 +74,10 @@ def test_skill_migration_repairs_blank_legacy_metadata():
     }
     assert body == "# Instructions\n"
     skill_service.validate_skill_md(migrated)
+
+
+@pytest.mark.parametrize("body", ["", "\n", "# Deploy\n", "# Deploy\n\n  "])
+def test_skills_require_more_than_a_title(body):
+    markdown = "---\nname: Deploy\ndescription: Ship safely.\n---\n\n" + body
+    with pytest.raises(ValueError, match="requires instructions"):
+        skill_service.validate_skill_md(markdown)

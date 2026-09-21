@@ -33,12 +33,12 @@ def test_skill_shelf_explains_each_document_status():
         "skill_status_reason": "Agents can load this file as a Skill.",
     }
     assert classify(_declared("Draft", "Not ready", body=""), "done") == {
-        "skill_status": "draft",
-        "skill_status_reason": "Add instructions below the closing --- line.",
+        "skill_status": "not_skill",
+        "skill_status_reason": "SKILL.md requires instructions below its frontmatter",
     }
     assert classify("Meeting notes", "done") == {
         "skill_status": "not_skill",
-        "skill_status_reason": "At the top, add a name and description between --- lines.",
+        "skill_status_reason": "SKILL.md frontmatter requires a nonblank name",
     }
     assert classify(None, "processing") == {
         "skill_status": "checking",
@@ -299,11 +299,8 @@ async def test_reading_an_undeclared_document_is_not_found(client: AsyncClient, 
 
 
 @pytest.mark.asyncio
-async def test_a_declaration_with_nothing_under_it_is_a_draft(client: AsyncClient, pool):
-    """Found by running the agent's own tools: a Doc holding only a frontmatter
-    block declared a skill with no instructions in it, and `read_skill` handed
-    the agent an empty document instead of the refusal the draft flag exists to
-    trigger. Declaring yourself a skill is not the same as being one."""
+async def test_a_declaration_without_instructions_is_not_loadable(client: AsyncClient, pool):
+    """Agents must not load a metadata-only document as instructions."""
     _key, owner_id = await _register(client)
     source_id = await _skill_shelf(pool, owner_id)
     await _doc(
@@ -314,14 +311,10 @@ async def test_a_declaration_with_nothing_under_it_is_a_draft(client: AsyncClien
         content='---\nname: "Turbochargers"\ndescription: "Boost loss."\n---\n',
     )
 
-    listed = await skill_service.list_skills(owner_id, owner_id)
-    assert [s["name"] for s in listed] == ["Turbochargers"]
-    assert listed[0]["has_instructions"] is False
-
-    skill = await skill_service.read_source_skill(owner_id, "drive-Turbochargers.md", owner_id)
-    assert skill is not None
-    assert skill["has_instructions"] is False
-    assert skill["combined"] == ""
+    assert await skill_service.list_skills(owner_id, owner_id) == []
+    assert (
+        await skill_service.read_source_skill(owner_id, "drive-Turbochargers.md", owner_id) is None
+    )
 
 
 @pytest.mark.asyncio

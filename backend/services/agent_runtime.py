@@ -476,6 +476,7 @@ async def _read_skill(args: dict) -> dict:
     },
 )
 async def _create_skill(args: dict) -> dict:
+    skill_service.validate_skill_md(args["skill_md"])
     owner_user_id = _current_scope()
     user_id = _current_user()
     # The model chose this name, and later loads resolve by it — silently

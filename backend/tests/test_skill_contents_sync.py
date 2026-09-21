@@ -37,7 +37,7 @@ async def _make_skill(client: AsyncClient, api_key: str) -> tuple[str, str]:
         "/api/v1/me/pages/new",
         json={
             "name": "SKILL.md",
-            "content": "---\nname: my-skill\n---\nv1",
+            "content": "---\nname: my-skill\ndescription: Manage this skill.\n---\nv1",
             "folder_id": folder_id,
         },
         headers=_auth(api_key),
@@ -74,7 +74,14 @@ async def test_put_contents_replaces_subtree(client: AsyncClient, pool):
     resp = await client.put(
         f"/api/v1/me/skills/{folder_id}/contents",
         files=[
-            ("files", ("SKILL.md", b"---\nname: my-skill\n---\nv2", "text/markdown")),
+            (
+                "files",
+                (
+                    "SKILL.md",
+                    b"---\nname: my-skill\ndescription: Manage this skill.\n---\nv2",
+                    "text/markdown",
+                ),
+            ),
             ("files", ("references/guide.md", b"# guide", "text/markdown")),
         ],
         headers=_auth(api_key),
@@ -95,7 +102,16 @@ async def test_put_contents_replaces_subtree(client: AsyncClient, pool):
     # nothing may orphan into the scope root (folder FKs are SET NULL).
     resp = await client.put(
         f"/api/v1/me/skills/{folder_id}/contents",
-        files=[("files", ("SKILL.md", b"v3", "text/markdown"))],
+        files=[
+            (
+                "files",
+                (
+                    "SKILL.md",
+                    b"---\nname: my-skill\ndescription: Manage this skill.\n---\nv3",
+                    "text/markdown",
+                ),
+            )
+        ],
         headers=_auth(api_key),
     )
     assert resp.status_code == 200
@@ -139,3 +155,25 @@ async def test_put_contents_requires_skill_md_and_ownership(client: AsyncClient)
         headers=_auth(outsider_key),
     )
     assert outsider.status_code == 404
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "bad_content",
+    [
+        b"---\nname: my-skill\ndescription: Manage this skill.\n---\n# my-skill\n",
+        b"missing metadata",
+    ],
+)
+async def test_rejected_sync_preserves_existing_skill_contents(client, bad_content):
+    key = await _register(client)
+    _, folder_id = await _make_skill(client, key)
+    before = await client.get(f"/api/v1/me/skills/{folder_id}/contents", headers=_auth(key))
+    response = await client.put(
+        f"/api/v1/me/skills/{folder_id}/contents",
+        files=[("files", ("SKILL.md", bad_content, "text/markdown"))],
+        headers=_auth(key),
+    )
+    assert response.status_code == 400
+    after = await client.get(f"/api/v1/me/skills/{folder_id}/contents", headers=_auth(key))
+    assert after.json() == before.json()

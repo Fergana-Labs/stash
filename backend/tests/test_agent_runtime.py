@@ -605,14 +605,24 @@ async def test_agent_create_skill_refuses_a_taken_name_with_the_holder(scope: UU
     user_token = agent_runtime._user_ctx.set(user_id)
     try:
         first = json.loads(
-            (await agent_runtime._create_skill.handler({"name": "Fitment", "skill_md": "# one"}))[
-                "content"
-            ][0]["text"]
+            (
+                await agent_runtime._create_skill.handler(
+                    {
+                        "name": "Fitment",
+                        "skill_md": "---\nname: Fitment\ndescription: Find compatible parts.\n---\nFirst instructions.",
+                    }
+                )
+            )["content"][0]["text"]
         )
         second = json.loads(
-            (await agent_runtime._create_skill.handler({"name": "Fitment", "skill_md": "# two"}))[
-                "content"
-            ][0]["text"]
+            (
+                await agent_runtime._create_skill.handler(
+                    {
+                        "name": "Fitment",
+                        "skill_md": "---\nname: Fitment\ndescription: Find compatible parts.\n---\nSecond instructions.",
+                    }
+                )
+            )["content"][0]["text"]
         )
     finally:
         agent_runtime._user_ctx.reset(user_token)
@@ -629,8 +639,30 @@ async def test_agent_create_skill_refuses_a_taken_name_with_the_holder(scope: UU
         "SELECT content_markdown FROM pages WHERE folder_id = $1 AND name = 'SKILL.md'",
         UUID(first["folder_id"]),
     )
-    assert md == "# one"
+    assert md == "---\nname: Fitment\ndescription: Find compatible parts.\n---\nFirst instructions."
     count = await _db_pool.fetchval(
         "SELECT count(*) FROM folders WHERE owner_user_id = $1 AND name LIKE 'Fitment%'", scope
     )
     assert count == 1
+
+
+@pytest.mark.asyncio
+async def test_invalid_skill_instructions_do_not_create_an_empty_skill(scope: UUID, _db_pool):
+    scope_token = agent_runtime._scope_ctx.set(scope)
+    user_token = agent_runtime._user_ctx.set(scope)
+    try:
+        with pytest.raises(ValueError, match="requires instructions"):
+            await agent_runtime._create_skill.handler(
+                {
+                    "name": "Incomplete skill",
+                    "skill_md": "---\nname: Incomplete skill\ndescription: Missing steps.\n---\n# Incomplete skill\n",
+                }
+            )
+    finally:
+        agent_runtime._user_ctx.reset(user_token)
+        agent_runtime._scope_ctx.reset(scope_token)
+    assert not await _db_pool.fetchval(
+        "SELECT EXISTS(SELECT 1 FROM folders WHERE owner_user_id = $1 AND name = $2)",
+        scope,
+        "Incomplete skill",
+    )

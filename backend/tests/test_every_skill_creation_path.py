@@ -104,7 +104,16 @@ async def test_bulk_file_write(scope, _db_pool):
     carries a SKILL.md — the folder must come out marked."""
     folder = await files_tree_service.create_folder(scope, "imported", scope)
     await files_tree_service.write_folder_files(
-        scope, scope, folder["id"], [("SKILL.md", b"---\nname: imported\n---\n"), ("ref.md", b"x")]
+        scope,
+        scope,
+        folder["id"],
+        [
+            (
+                "SKILL.md",
+                b"---\nname: imported\ndescription: Import this skill.\n---\nFollow the reference.\n",
+            ),
+            ("ref.md", b"x"),
+        ],
     )
     await _assert_is_a_usable_skill(scope, folder["id"], _db_pool, via="write_folder_files")
 
@@ -120,7 +129,10 @@ async def test_agent_create_skill_tool(scope, _db_pool):
         created = json.loads(
             (
                 await agent_runtime._create_skill.handler(
-                    {"name": "Via agent", "skill_md": "---\nname: Via agent\n---\n\n# go\n"}
+                    {
+                        "name": "Via agent",
+                        "skill_md": "---\nname: Via agent\ndescription: Follow these instructions.\n---\n\n# go\n",
+                    }
                 )
             )["content"][0]["text"]
         )
