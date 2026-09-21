@@ -47,7 +47,7 @@
     "lucide-react": "^1.23.0",
     "markdown-it": "15.0.0",
     "nanoid": "^5.1.16",
-    "next": "16.2.11",
+    "next": "16.3.5",
     "radix-ui": "^1.6.1",
     "react": "19.2.3",
     "react-dom": "19.2.3",
@@ -79,7 +79,7 @@
     "@types/react-dom": "^19",
     "@vitejs/plugin-react": "^6.0.1",
     "eslint": "^9",
-    "eslint-config-next": "16.1.6",
+    "eslint-config-next": "16.3.5",
     "jsdom": "^29.0.1",
     "tailwindcss": "^4",
     "typescript": "^5",
@@ -87,6 +87,6 @@
   },
   "overrides": {
     "postcss": "8.5.26",
-    "sharp": "^0.35.3"
+    "sharp": "^0.35.4"
   }
 }
