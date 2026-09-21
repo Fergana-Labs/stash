@@ -12,7 +12,7 @@ ADMIN = {"X-Admin-Token": "test-admin-secret-token-at-least-32-chars-long"}
 
 FAKE_REPO = {
     "cooking/SKILL.md": b"---\nname: Cooking\ndescription: Cook things.\n---\nBody",
-    "baking/SKILL.md": b"---\nname: Baking\n---\nBody",
+    "baking/SKILL.md": b"---\nname: Baking\ndescription: Bake things.\n---\nBody",
 }
 
 
