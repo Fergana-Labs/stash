@@ -208,31 +208,16 @@ async def _reconcile_source_documents() -> int:
 
 
 async def _ensure_embedding_space() -> None:
-    """Hard-cut all stored vectors when their generating model changes."""
-    pool = get_pool()
+    """A model change requires an explicit migration, never automatic deletion."""
     current = embedding_service.space_id()
-    async with pool.acquire() as conn, conn.transaction():
-        await conn.execute("SELECT pg_advisory_xact_lock(183624091)")
-        stored = await conn.fetchval(
-            "SELECT space_id FROM embedding_space_state WHERE singleton = TRUE"
+    stored = await get_pool().fetchval(
+        "SELECT space_id FROM embedding_space_state WHERE singleton = TRUE"
+    )
+    if stored != current:
+        raise RuntimeError(
+            f"Embedding space mismatch: stored={stored!r}, configured={current!r}. "
+            "Keep the existing provider configuration or explicitly migrate its vectors."
         )
-        if stored == current:
-            return
-
-        tables = ["pages", "table_rows", "history_events", "files", *_SOURCE_CONTENT_TABLES]
-        for table in tables:
-            await conn.execute(
-                f"UPDATE {table} SET embedding = NULL, embed_stale = TRUE "
-                "WHERE embedding IS NOT NULL"
-            )
-        await conn.execute("TRUNCATE embedding_projections")
-        await conn.execute(
-            "INSERT INTO embedding_space_state (singleton, space_id, updated_at) "
-            "VALUES (TRUE, $1, NOW()) ON CONFLICT (singleton) DO UPDATE "
-            "SET space_id = EXCLUDED.space_id, updated_at = NOW()",
-            current,
-        )
-        logger.info("embedding space changed: all stored vectors queued for replacement")
 
 
 async def _reconcile() -> int:

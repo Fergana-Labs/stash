@@ -11,7 +11,7 @@ without waking a sprite.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from ..database import get_pool
@@ -339,6 +339,37 @@ async def curation_allowance(owner_user_id: UUID, now: datetime) -> dict | None:
     }
 
 
+async def allowed_trace_ids(
+    owner_user_id: UUID, since: datetime | None, until: datetime | None
+) -> list[UUID] | None:
+    """The exact new traces this run can consume, including timestamp ties."""
+    allowance = await curation_allowance(owner_user_id, datetime.now(UTC))
+    if allowance is None:
+        return None
+    remaining = max(0, allowance["limit"] - allowance["used"])
+    rows = await get_pool().fetch(
+        """
+        SELECT s.id FROM sessions s
+        WHERE s.owner_user_id = $1 AND s.deleted_at IS NULL
+          AND s.session_id NOT LIKE 'agent-curate-%'
+          AND s.curated_at IS NULL
+          AND ($2::timestamptz IS NULL OR s.last_event_at > $2)
+          AND ($3::timestamptz IS NULL OR s.last_event_at <= $3)
+          AND EXISTS (
+              SELECT 1 FROM history_events he
+              WHERE he.owner_user_id = s.owner_user_id AND he.session_id = s.session_id
+                AND he.event_type = 'assistant_message'
+          )
+        ORDER BY s.last_event_at, s.id LIMIT $4
+        """,
+        owner_user_id,
+        since,
+        until,
+        remaining,
+    )
+    return [row["id"] for row in rows]
+
+
 async def limited_curation_through(
     owner_user_id: UUID,
     since: datetime | None,
@@ -420,6 +451,15 @@ async def _feed_events(
     if until is not None:
         args.append(until)
         where += f" AND he.created_at <= ${len(args)}"
+    trace_ids = await allowed_trace_ids(owner_user_id, since, until)
+    if trace_ids is not None:
+        args.append(trace_ids)
+        where += (
+            f" AND (s.id = ANY(${len(args)}::uuid[]) OR s.curated_at IS NOT NULL "
+            "OR s.id IS NULL OR NOT EXISTS (SELECT 1 FROM history_events useful "
+            "WHERE useful.owner_user_id = s.owner_user_id AND useful.session_id = s.session_id "
+            "AND useful.event_type = 'assistant_message'))"
+        )
     rows = await pool.fetch(
         f"SELECT he.session_id, he.agent_name, he.event_type, he.content, he.created_at, "
         f"eu.name AS user, eu.share_wiki AS user_share_wiki "

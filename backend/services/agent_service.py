@@ -8,7 +8,7 @@ agent, whose config shapes the turn.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from fastapi import HTTPException
@@ -320,34 +320,55 @@ async def mark_run_succeeded(agent_id: UUID) -> None:
     )
 
 
-async def mark_curated(agent_id: UUID, through) -> None:
-    """Advance the curator's delta watermark — only after a successful run, so
-    a failed run's window is re-covered next time. Internal curators also mark
-    every useful trace completed through that watermark as consumed."""
-    await get_pool().execute(
-        """
-        WITH curator AS (
-            UPDATE agents SET curated_through = $2 WHERE id = $1
-            RETURNING user_id, curator_wiki
+async def mark_curated(agent_id: UUID, through, *, since) -> None:
+    """Charge only traces in this run, leaving unselected timestamp ties pending."""
+    from . import curation_service
+
+    pool = get_pool()
+    async with pool.acquire() as conn, conn.transaction():
+        agent = await conn.fetchrow("SELECT * FROM agents WHERE id = $1 FOR UPDATE", agent_id)
+        if agent["curator_wiki"] == "internal":
+            trace_ids = await curation_service.allowed_trace_ids(agent["user_id"], since, through)
+            await conn.execute(
+                """
+                UPDATE sessions s SET curated_at = now()
+                WHERE s.owner_user_id = $1 AND s.curated_at IS NULL AND s.deleted_at IS NULL
+                  AND s.session_id NOT LIKE 'agent-curate-%'
+                  AND ($2::timestamptz IS NULL OR s.last_event_at > $2)
+                  AND s.last_event_at <= $3
+                  AND ($4::uuid[] IS NULL OR s.id = ANY($4))
+                  AND EXISTS (SELECT 1 FROM history_events he
+                              WHERE he.owner_user_id = s.owner_user_id
+                                AND he.session_id = s.session_id
+                                AND he.event_type = 'assistant_message')
+                """,
+                agent["user_id"],
+                since,
+                through,
+                trace_ids,
+            )
+            # A timestamp alone cannot distinguish selected and deferred ties.
+            pending = await conn.fetchval(
+                """
+                SELECT min(s.last_event_at) FROM sessions s
+                WHERE s.owner_user_id = $1 AND s.curated_at IS NULL AND s.deleted_at IS NULL
+                  AND s.session_id NOT LIKE 'agent-curate-%'
+                  AND ($2::timestamptz IS NULL OR s.last_event_at > $2)
+                  AND s.last_event_at <= $3
+                  AND EXISTS (SELECT 1 FROM history_events he
+                              WHERE he.owner_user_id = s.owner_user_id
+                                AND he.session_id = s.session_id
+                                AND he.event_type = 'assistant_message')
+                """,
+                agent["user_id"],
+                since,
+                through,
+            )
+            if pending is not None:
+                through = pending - timedelta(microseconds=1)
+        await conn.execute(
+            "UPDATE agents SET curated_through = $2 WHERE id = $1", agent_id, through
         )
-        UPDATE sessions s SET curated_at = now()
-        FROM curator c
-        WHERE c.curator_wiki = 'internal'
-          AND s.owner_user_id = c.user_id
-          AND s.curated_at IS NULL
-          AND s.deleted_at IS NULL
-          AND s.session_id NOT LIKE 'agent-curate-%'
-          AND s.last_event_at <= $2
-          AND EXISTS (
-              SELECT 1 FROM history_events he
-              WHERE he.owner_user_id = s.owner_user_id
-                AND he.session_id = s.session_id
-                AND he.event_type = 'assistant_message'
-          )
-        """,
-        agent_id,
-        through,
-    )
 
 
 async def set_system_prompt(agent_id: UUID, text: str | None) -> dict:

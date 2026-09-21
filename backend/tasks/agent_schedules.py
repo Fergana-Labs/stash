@@ -49,12 +49,24 @@ def run_curator_now(agent_id: str, full_history: bool = False, automatic: bool =
     run_async(_run_curator_now(UUID(agent_id), full_history, automatic))
 
 
+async def _skip_exhausted_curator(agent: dict, now: datetime) -> bool:
+    from ..services import agent_service, curation_service
+
+    if not agent["is_curator"]:
+        return False
+    allowance = await curation_service.curation_allowance(UUID(str(agent["user_id"])), now)
+    if allowance is None or allowance["used"] < allowance["limit"]:
+        return False
+    await agent_service.mark_run_skipped(agent["id"], "credits")
+    return True
+
+
 async def _run_curator_now(
     agent_id: UUID, full_history: bool = False, automatic: bool = False
 ) -> None:
     """A user-requested curator run: same execution as the daily tick, minus
-    the due-check — the user is the trigger. The router already enforced the
-    free-tier allowance and resolved credentials.
+    the due-check — the user is the trigger. Recheck the allowance at execution
+    time because queued runs can outlive the quota available at dispatch.
 
     `full_history` is the backfill: the run reads with no watermark, but the
     stored watermark is only advanced after success — a failed backfill must
@@ -75,6 +87,8 @@ async def _run_curator_now(
         agent = {**agent, "curated_through": None}
     now = datetime.now(UTC)
     await agent_service.mark_run(agent_id)
+    if await _skip_exhausted_curator(agent, now):
+        return
     try:
         # Seconds-resolution stamp so a manual run never shares a session with
         # the beat's minute-stamped run.
@@ -87,7 +101,7 @@ async def _run_curator_now(
             through = await curation_service.complete_through(
                 user_id, agent["curated_through"], allowed_until
             )
-            await agent_service.mark_curated(agent_id, through)
+            await agent_service.mark_curated(agent_id, through, since=agent["curated_through"])
         await agent_service.mark_run_succeeded(agent_id)
     except Exception as e:
         await agent_service.mark_run_failed(agent_id, str(e))
@@ -153,6 +167,8 @@ async def _maybe_dispatch_first_day_run(
     from ..services import agent_auth, curation_service, scoped_curation_service
 
     if agent["run_mode"] != "scheduled":
+        return
+    if await _skip_exhausted_curator(agent, now):
         return
     if await curation_service.curatable_trace_count(scope_user_id) < minimum_traces:
         return
@@ -257,6 +273,8 @@ async def _run_scheduled_agent(agent_id: UUID, stamp: str) -> None:
         return
     user_id = UUID(str(agent["user_id"]))
     now = datetime.now(UTC)
+    if await _skip_exhausted_curator(agent, now):
+        return
     try:
         await sprite_agent_service.run_scheduled(agent, stamp)
         if agent["is_curator"] and await scoped_curation_service.workspace_for_agent(agent) is None:
@@ -272,7 +290,7 @@ async def _run_scheduled_agent(agent_id: UUID, stamp: str) -> None:
             through = await curation_service.complete_through(
                 user_id, agent["curated_through"], allowed_until
             )
-            await agent_service.mark_curated(agent_id, through)
+            await agent_service.mark_curated(agent_id, through, since=agent["curated_through"])
         await agent_service.mark_run_succeeded(agent_id)
     except Exception as e:
         logger.exception("agent schedule: run failed for agent %s", agent_id)
