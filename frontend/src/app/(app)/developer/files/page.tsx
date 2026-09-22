@@ -1,5 +1,7 @@
 "use client";
 
+import { useDeveloperExperience } from "@/lib/developer-experience";
+
 import { useEffect, useState } from "react";
 import Link from "next/link";
 
@@ -26,6 +28,7 @@ type FilesData = Awaited<ReturnType<typeof listDeveloperFiles>>;
  *  shared skill holds (every user's agent reads it), and what each user owns
  *  (their skill pages and uploads — theirs alone). */
 function Files() {
+  const experience = useDeveloperExperience();
   const [data, setData] = useState<FilesData | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -45,24 +48,24 @@ function Files() {
   return (
     <>
       <PageHeading title="Files">
-        Two piles, two audiences: shared skill files every user&apos;s agent reads, and each
+        Two piles, two audiences: shared {experience.singular} files every user&apos;s agent reads, and each
         user&apos;s own files that only they (and you) can see.
       </PageHeading>
 
       <section className="mb-12">
         <div className="flex items-baseline justify-between gap-4">
-          <SectionHeading>Shared skill files</SectionHeading>
+          <SectionHeading>Shared {experience.singular} files</SectionHeading>
           <Link
-            href="/developer/skills"
+            href={experience.knowledgePath}
             className="text-[13px] text-muted-foreground transition-colors hover:text-foreground"
           >
-            Open the skill
+            Open the {experience.singular}
           </Link>
         </div>
         {data.skill_pages.length === 0 && data.skill_files.length === 0 ? (
           <Empty>
             Nothing yet. The curator writes here; you can also drop reference material into
-            the skill folder yourself and the next run folds it in.
+            the {experience.singular} folder yourself and the next run folds it in.
           </Empty>
         ) : (
           <div className="mt-4 overflow-hidden rounded border border-border bg-surface">
@@ -89,6 +92,7 @@ function Files() {
 }
 
 function UserFiles({ user }: { user: DeveloperUserFiles }) {
+  const experience = useDeveloperExperience();
   const empty = user.skill_pages.length === 0 && user.files.length === 0;
   return (
     <div className="mt-6">
@@ -103,7 +107,7 @@ function UserFiles({ user }: { user: DeveloperUserFiles }) {
       </Link>
       {empty ? (
         <p className="mt-2 text-[13px] leading-5 text-muted-foreground">
-          Nothing yet — their skill fills in on the curator&apos;s next run over their sessions.
+          Nothing yet — their {experience.singular} fills in on the curator&apos;s next run over their sessions.
         </p>
       ) : (
         <div className="mt-2 overflow-hidden rounded border border-border bg-surface">

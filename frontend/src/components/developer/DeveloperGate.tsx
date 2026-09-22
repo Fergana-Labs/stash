@@ -1,5 +1,7 @@
 "use client";
 
+import { useDeveloperExperience } from "@/lib/developer-experience";
+
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { BookOpen, TerminalSquare, Users } from "lucide-react";
@@ -19,6 +21,7 @@ import type { Workspace } from "@/lib/types";
  * the app chrome to the platform shell.
  */
 export default function DeveloperGate({ children }: { children: React.ReactNode }) {
+  const experience = useDeveloperExperience();
   const { user, logout } = useAuth();
   const [workspaces, setWorkspaces] = useState<Workspace[] | null>(null);
   const [activating, setActivating] = useState(false);
@@ -55,7 +58,7 @@ export default function DeveloperGate({ children }: { children: React.ReactNode 
   if (inPlatform) return <>{children}</>;
 
   function enter(w: Workspace) {
-    setScope({ scope_user_id: w.scope_user_id, name: w.name, view: "developer" });
+    setScope({ scope_user_id: w.scope_user_id, name: w.name, view: "developer", legacy_wiki_enabled: w.legacy_wiki_enabled });
     window.location.assign("/developer");
   }
 
@@ -105,18 +108,18 @@ export default function DeveloperGate({ children }: { children: React.ReactNode 
             Run Stash for your product&apos;s users
           </h1>
           <p className="mt-4 max-w-lg text-[16px] leading-7 text-dim">
-            Each of your users — a company or one person — gets Skills of their own, and
+            Each of your users — a company or one person — gets {experience.Plural} of their own, and
             your agents share what they learn.
           </p>
 
           <ul className="mt-10 space-y-5">
             <Feature icon={Users} title="Per-user Skills">
-              Every user gets a private skill only their agent reads — one field,{" "}
+              Every user gets a private {experience.singular} only their agent reads — one field,{" "}
               <code className="rounded bg-raised px-1 font-mono text-[12.5px]">user_id</code>,
               is the isolation boundary.
             </Feature>
             <Feature icon={BookOpen} title="One shared brain">
-              A curator distills every user&apos;s sessions into a single anonymized skill
+              A curator distills every user&apos;s sessions into a single anonymized {experience.singular}
               all your agents read.
             </Feature>
             <Feature icon={TerminalSquare} title="Agent-first setup">

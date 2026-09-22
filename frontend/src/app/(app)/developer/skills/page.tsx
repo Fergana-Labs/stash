@@ -1,5 +1,7 @@
 "use client";
 
+import { useDeveloperExperience } from "@/lib/developer-experience";
+
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 
@@ -28,6 +30,7 @@ export default function DeveloperSkill() {
  *  pages are ordinary (protected) files you still want to open and read. Below
  *  both, each user's own skill, which lives outside this folder. */
 function SharedSkill() {
+  const experience = useDeveloperExperience();
   const [graph, setGraph] = useState<SkillGraphData | null>(null);
   const [folderId, setFolderId] = useState<string | null>(null);
   const [users, setUsers] = useState<EndUser[]>([]);
@@ -37,7 +40,7 @@ function SharedSkill() {
   const refreshGraph = useCallback(() => {
     getDeveloperSkillGraph()
       .then(setGraph)
-      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load the skill graph"));
+      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load the knowledge graph"));
   }, []);
 
   useEffect(() => {
@@ -85,10 +88,10 @@ function SharedSkill() {
 
       {users.length > 0 && (
         <div className="mt-10">
-          <div className="sys-label mb-1.5">Per-user skills</div>
+          <div className="sys-label mb-1.5">Per-user {experience.plural}</div>
           <p className="mb-3 text-[12.5px] leading-5 text-muted-foreground">
             What the curator knows about each user individually. Nothing here is shared:
-            a user&apos;s agent reads the shared skill above plus their own skill, never
+            a user&apos;s agent reads the shared {experience.singular} above plus their own {experience.singular}, never
             anyone else&apos;s.
           </p>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -109,6 +112,7 @@ function SharedSkill() {
 }
 
 function EmptyGraph({ onStarted }: { onStarted: () => void }) {
+  const experience = useDeveloperExperience();
   const [state, setState] = useState<"idle" | "starting" | "running">("idle");
   const [error, setError] = useState<string | null>(null);
 
@@ -128,7 +132,7 @@ function EmptyGraph({ onStarted }: { onStarted: () => void }) {
   return (
     <div className="flex h-[560px] flex-col items-center justify-center gap-4 px-2 text-center">
       <p className="max-w-[52ch] text-[12.5px] leading-5 text-muted-foreground">
-        No skill pages yet. The curator compiles what your users have learned into a set of
+        No {experience.singular} pages yet. The curator compiles what your users have learned into a set of
         linked pages every night.
       </p>
       {state === "running" ? (
@@ -152,6 +156,7 @@ function EmptyGraph({ onStarted }: { onStarted: () => void }) {
 /** Each user's skill as a skill: the same graph the user detail page shows,
  *  small enough to scan the whole customer base at once. */
 function UserSkillCard({ user }: { user: EndUser }) {
+  const experience = useDeveloperExperience();
   const [graph, setGraph] = useState<SkillGraphData | null>(null);
   const [failed, setFailed] = useState(false);
 
@@ -177,12 +182,12 @@ function UserSkillCard({ user }: { user: EndUser }) {
           href={`/folders/${user.skill_folder_id}`}
           className="shrink-0 text-[13px] text-muted-foreground transition-colors hover:text-foreground"
         >
-          Open skill
+          Open {experience.singular}
         </Link>
       </div>
       {failed ? (
         <div className="flex h-[220px] items-center justify-center text-[12.5px] text-muted-foreground">
-          Couldn&apos;t load this skill.
+          Couldn&apos;t load this {experience.singular}.
         </div>
       ) : !graph ? (
         <div className="h-[220px] w-full animate-pulse bg-muted/40" />

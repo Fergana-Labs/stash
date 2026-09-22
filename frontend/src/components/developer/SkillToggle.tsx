@@ -1,5 +1,7 @@
 "use client";
 
+import { useDeveloperExperience } from "@/lib/developer-experience";
+
 import { useState } from "react";
 
 import { updateUser } from "@/lib/api";
@@ -11,6 +13,7 @@ import { cn } from "@/lib/utils";
  *  Shared by the user list and the user detail page so the control behaves
  *  identically in both. */
 export default function SkillToggle({ user, onChanged }: { user: EndUser; onChanged: () => void }) {
+  const experience = useDeveloperExperience();
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -61,7 +64,7 @@ export default function SkillToggle({ user, onChanged }: { user: EndUser; onChan
             user.share_skill ? "font-medium text-brand-500" : "text-muted-foreground",
           )}
         >
-          {user.share_skill ? "Feeds shared Skills" : "Opted out"}
+          {user.share_skill ? experience.text("Feeds shared Skills") : "Opted out"}
         </span>
       </button>
       {error && <span className="mt-1 block text-[12px] text-error">{error}</span>}

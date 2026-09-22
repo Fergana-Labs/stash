@@ -64,7 +64,7 @@ async def create_workspace(name: str, domain: str | None, created_by: UUID | Non
         "INSERT INTO workspaces (name, domain, scope_user_id, created_by) "
         "VALUES ($1, $2, $3, $4) "
         "RETURNING id, name, domain, scope_user_id, created_by, "
-        "         external_skill_folder_id, end_user_skills_folder_id, created_at",
+        "         external_skill_folder_id, end_user_skills_folder_id, legacy_wiki_enabled, created_at",
         name,
         domain,
         scope_user["id"],
@@ -82,7 +82,7 @@ async def get_workspace(workspace_id: UUID) -> dict | None:
     pool = get_pool()
     row = await pool.fetchrow(
         "SELECT id, name, domain, scope_user_id, created_by, "
-        "       external_skill_folder_id, end_user_skills_folder_id, created_at "
+        "       external_skill_folder_id, end_user_skills_folder_id, legacy_wiki_enabled, created_at "
         "FROM workspaces WHERE id = $1",
         workspace_id,
     )
@@ -149,7 +149,7 @@ async def list_for_user(user_id: UUID) -> list[dict]:
     membership = permission_service.workspace_member_condition("w", 1)
     pool = get_pool()
     rows = await pool.fetch(
-        f"SELECT w.id, w.name, w.domain, w.scope_user_id, w.external_skill_folder_id "
+        f"SELECT w.id, w.name, w.domain, w.scope_user_id, w.external_skill_folder_id, w.legacy_wiki_enabled "
         f"FROM workspaces w WHERE {membership} ORDER BY w.name",
         user_id,
     )

@@ -294,8 +294,10 @@ async def recent_curatable_trace_ids(owner_user_id: UUID, limit: int) -> list[st
 
 
 async def curation_allowance(owner_user_id: UUID, now: datetime) -> dict | None:
-    from . import transcript_usage_service
+    from . import developer_contract_service, transcript_usage_service
 
+    if await developer_contract_service.uses_wiki(owner_user_id):
+        return None
     budget = await transcript_usage_service.allowance(owner_user_id, now)
     return None if budget["limit"] is None else budget
 

@@ -2,6 +2,8 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import WorkspaceShell from "@/components/workspace/workspace-shell";
+import { developerText } from "@/lib/developer-experience";
+import { INSTALL_PROMPT } from "./agentPrompts";
 import DeveloperGate from "./DeveloperGate";
 import DeveloperSources from "@/app/(app)/developer/sources/page";
 import type { Scope } from "@/lib/types";
@@ -144,4 +146,22 @@ it("opens source management in a developer workspace and returns OAuth there", a
   render(<DeveloperSources />);
   expect(await screen.findByRole("link", { name: "Source controls" }))
     .toHaveAttribute("href", "/developer/sources");
+});
+
+
+it("keeps Heavi's wiki navigation without changing other workspaces", async () => {
+  state.scope = { scope_user_id: "platform", name: "Product", view: "developer", legacy_wiki_enabled: true };
+  state.pathname = "/developer/wiki";
+  render(<WorkspaceShell user={state.user} onLogout={vi.fn()}><div>Wiki content</div></WorkspaceShell>);
+  expect(await screen.findByRole("link", { name: "Shared Wiki" })).toHaveAttribute("href", "/developer/wiki");
+  expect(screen.queryByRole("link", { name: "Shared Skill" })).not.toBeInTheDocument();
+});
+
+it("keeps executable wiki paths in the grandfathered installation prompt", () => {
+  const prompt = developerText(INSTALL_PROMPT, true);
+  expect(prompt).toContain("cat /memory/*.md");
+  expect(prompt).toContain("cat /files/wiki/*.md");
+  expect(prompt).not.toContain("/skills/");
+  expect(prompt).not.toContain("/wikis/");
+  expect(developerText(INSTALL_PROMPT, false)).toBe(INSTALL_PROMPT);
 });

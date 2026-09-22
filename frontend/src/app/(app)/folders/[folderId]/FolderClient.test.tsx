@@ -1,12 +1,15 @@
 import { cleanup, render, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import FolderClient from "./FolderClient";
+import { isDeveloperView } from "@/lib/scope-store";
 import { getFolderContents } from "@/lib/api";
 
 const router = vi.hoisted(() => ({
   push: vi.fn(),
   replace: vi.fn(),
 }));
+
+vi.mock("@/lib/scope-store", () => ({ isDeveloperView: vi.fn(() => false) }));
 
 vi.mock("next/navigation", () => ({
   useParams: () => ({ folderId: "folder-root" }),
@@ -79,7 +82,10 @@ function contents(
 }
 
 describe("FolderClient skill redirect", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(isDeveloperView).mockReturnValue(false);
+  });
   afterEach(() => cleanup());
 
   // /skills/<x> is the *published slug* route. Sending a folder id there
@@ -101,6 +107,14 @@ describe("FolderClient skill redirect", () => {
 
     await waitFor(() => expect(router.replace).toHaveBeenCalled());
     expect(router.replace).toHaveBeenCalledWith("/skills/folder/folder-root");
+  });
+
+  it("opens private developer knowledge without requiring global catalog membership", async () => {
+    vi.mocked(isDeveloperView).mockReturnValue(true);
+    vi.mocked(getFolderContents).mockResolvedValue(contents(true));
+    render(<FolderClient folderId="folder-root" />);
+    await waitFor(() => expect(getFolderContents).toHaveBeenCalled());
+    expect(router.replace).not.toHaveBeenCalled();
   });
 
   it("leaves an ordinary folder where it is", async () => {

@@ -1,5 +1,7 @@
 "use client";
 
+import { useDeveloperExperience } from "@/lib/developer-experience";
+
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
@@ -32,6 +34,7 @@ export default function UserDetailRoute() {
 }
 
 function UserDetail() {
+  const experience = useDeveloperExperience();
   const userId = String(useParams().userId);
   const [user, setUser] = useState<EndUser | null>(null);
   const [sessions, setSessions] = useState<EndUserSession[]>([]);
@@ -85,18 +88,18 @@ function UserDetail() {
       </PageHeading>
 
       <section className="mb-12">
-        <SectionHeading>Shared Skills</SectionHeading>
+        <SectionHeading>Shared {experience.Plural}</SectionHeading>
         <div className="mt-4 flex items-center gap-4 rounded border border-border bg-surface px-5 py-4">
           <div className="min-w-0 flex-1">
             <div className="text-[15px] text-foreground">
               {user.share_skill
-                ? "This user's sessions feed the shared skill"
-                : "This user is opted out of the shared skill"}
+                ? experience.text("This user's sessions feed the shared skill")
+                : experience.text("This user is opted out of the shared skill")}
             </div>
             <p className="mt-1 text-[13.5px] leading-6 text-muted-foreground">
               {user.share_skill
-                ? "The curator distils anonymized lessons from their sessions into the skill every user's agent reads. Their identity never appears there."
-                : "Their sessions stay in their own skill. Anything already written to the shared skill stays — an opt-out is not a retraction."}
+                ? experience.text("The curator distils anonymized lessons from their sessions into the skill every user's agent reads. Their identity never appears there.")
+                : experience.text("Their sessions stay in their own skill. Anything already written to the shared skill stays — an opt-out is not a retraction.")}
             </p>
           </div>
           <SkillToggle user={user} onChanged={refresh} />
@@ -105,7 +108,7 @@ function UserDetail() {
 
       <section className="mb-12">
         <div className="flex items-baseline justify-between gap-4">
-          <SectionHeading>This user&apos;s skill</SectionHeading>
+          <SectionHeading>This user&apos;s {experience.singular}</SectionHeading>
           <Link
             href={`/folders/${user.skill_folder_id}`}
             className="text-[13px] text-muted-foreground transition-colors hover:text-foreground"
@@ -115,7 +118,7 @@ function UserDetail() {
         </div>
         <p className="mt-2 text-[13.5px] leading-6 text-muted-foreground">
           What the curator has learned about this user specifically — kept out of the shared
-          skill, in their own words and their own detail. Only this user&apos;s agent (and you)
+          {experience.singular}, in their own words and their own detail. Only this user&apos;s agent (and you)
           can read it.
         </p>
         {skillPages.length === 0 ? (
@@ -183,7 +186,7 @@ function UserDetail() {
       <section>
         <SectionHeading>Files</SectionHeading>
         <p className="mt-2 text-[13.5px] leading-6 text-muted-foreground">
-          Everything this user&apos;s agent can read besides the skills: files your backend
+          Everything this user&apos;s agent can read besides the {experience.plural}: files your backend
           uploaded with their <Code>user_id</Code>, and integrations connected for them
           alone. Your other users never see any of it.
         </p>

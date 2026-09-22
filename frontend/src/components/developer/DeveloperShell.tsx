@@ -7,6 +7,7 @@ import { usePathname } from "next/navigation";
 import ScopeSwitcher from "@/components/workspace/scope-switcher";
 import { StashIcon } from "@/components/SkillIcons";
 import AccountMenu from "@/components/workspace/account-menu";
+import { useDeveloperExperience } from "@/lib/developer-experience";
 import { cn } from "@/lib/utils";
 import type { User } from "@/lib/types";
 
@@ -85,6 +86,7 @@ export default function DeveloperShell({
   children: ReactNode;
 }) {
   const pathname = usePathname();
+  const experience = useDeveloperExperience();
 
   return (
     <div data-surface="developer" className="min-h-screen bg-base">
@@ -133,15 +135,15 @@ export default function DeveloperShell({
                     {section.items.map((item) => (
                       <Link
                         key={item.href}
-                        href={item.href}
+                        href={item.href === "/developer/skills" ? experience.knowledgePath : item.href}
                         className={cn(
                           "block rounded-sm px-3 py-2 text-[13px] transition-colors",
-                          item.match(pathname)
+                          (item.match(pathname) || (item.href === "/developer/skills" && pathname === "/developer/wiki"))
                             ? "bg-brand-500/10 font-medium text-brand-500"
                             : "text-dim hover:bg-raised hover:text-foreground",
                         )}
                       >
-                        {item.label}
+                        {experience.text(item.label)}
                       </Link>
                     ))}
                   </div>

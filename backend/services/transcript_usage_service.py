@@ -56,10 +56,20 @@ async def allowance(owner: UUID, now: datetime, *, conn=None) -> dict:
         start,
         end,
     )
-    included = None if plan == "enterprise" else PRO_TOKENS if plan == "pro" else FREE_TOKENS
+    from . import developer_contract_service
+
+    wiki_contract = await developer_contract_service.uses_wiki(owner, conn=db)
+    included = (
+        None
+        if plan == "enterprise" or wiki_contract
+        else PRO_TOKENS
+        if plan == "pro"
+        else FREE_TOKENS
+    )
     cap = 0 if account["overage_limit_cents"] is None else account["overage_limit_cents"]
     enabled = (
         billing_service.billing_enabled()
+        and not wiki_contract
         and plan == "pro"
         and account["status"] == "active"
         and account["usage_item_id"] is not None
@@ -85,6 +95,10 @@ async def allowance(owner: UUID, now: datetime, *, conn=None) -> dict:
 
 async def record(conn, owner: UUID, events: list[dict], now: datetime) -> None:
     """Called inside the same transaction as curation progress; serialize account spending."""
+    from . import developer_contract_service
+
+    if await developer_contract_service.uses_wiki(owner, conn=conn):
+        return
     await conn.fetchval("SELECT id FROM users WHERE id=$1 FOR UPDATE", owner)
     budget = await allowance(owner, now, conn=conn)
     added = 0

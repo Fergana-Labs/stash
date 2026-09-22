@@ -1,5 +1,7 @@
 "use client";
 
+import { useDeveloperExperience } from "@/lib/developer-experience";
+
 import { useState } from "react";
 import { ChevronRight, Copy } from "lucide-react";
 
@@ -10,10 +12,15 @@ import { CodeBlock, PageHeading, SectionHeading } from "@/components/developer/D
 import { BACKFILL_PROMPT, INSTALL_PROMPT, KEY_PLACEHOLDER } from "@/components/developer/agentPrompts";
 
 export default function DeveloperPrompts() {
+  const experience = useDeveloperExperience();
   const [apiKey, setApiKey] = useState("");
   const installPrompt = apiKey.trim()
     ? INSTALL_PROMPT.replace(KEY_PLACEHOLDER, apiKey.trim())
     : INSTALL_PROMPT;
+
+  const install = experience.wiki
+    ? experience.text(installPrompt)
+    : installPrompt;
 
   return (
     <DeveloperGate>
@@ -25,11 +32,8 @@ export default function DeveloperPrompts() {
 
       <PromptSection
         title="Install"
-        blurb="The whole onboarding in one prompt: the Skills read before each turn, the
-          transcript upload after it, a backfill of whatever history your database already
-          holds, and a final check that a user shows up in this console. Paste a key from
-          the API Keys page into the first line."
-        prompt={installPrompt}
+        blurb={experience.text("The whole onboarding in one prompt: the Skills read before each turn, the transcript upload after it, a backfill of your history, and a final check that a user shows up in this console. Paste a key from the API Keys page into the first line.")}
+        prompt={install}
         keyField={{ value: apiKey, onChange: setApiKey }}
       />
 
@@ -39,7 +43,7 @@ export default function DeveloperPrompts() {
           blurb="For a stash that is already installed. Install covers your history on the way
             in — reach for this only when there is history left to load: you skipped it
             during install, or you've since imported another database."
-          prompt={BACKFILL_PROMPT}
+          prompt={experience.text(BACKFILL_PROMPT)}
         />
       </Advanced>
     </DeveloperGate>

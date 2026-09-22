@@ -30,6 +30,16 @@ def upgrade() -> None:
     op.execute("ALTER INDEX one_curator_per_user_per_wiki RENAME TO one_curator_per_user_per_skill")
     op.execute("ALTER TABLE folders DROP CONSTRAINT folders_protected_is_never_a_skill")
     bind = op.get_bind()
+    heavi_scopes = set(
+        bind.execute(
+            text(
+                "SELECT w.scope_user_id FROM workspaces w WHERE w.external_skill_folder_id IS NOT NULL "
+                "AND (w.domain='heaviai.com' "
+                "OR w.created_by IN (SELECT id FROM users WHERE lower(email)='stash@heaviai.com') "
+                "OR w.scope_user_id IN (SELECT id FROM users WHERE lower(email)='stash@heaviai.com'))"
+            )
+        ).scalars()
+    )
     roots = (
         bind.execute(
             text(
@@ -44,6 +54,8 @@ def upgrade() -> None:
         .all()
     )
     for root in roots:
+        if root["owner_user_id"] in heavi_scopes:
+            continue
         name = root["name"]
         archived = name.startswith("Shared wiki archive (")
         if archived:
@@ -124,10 +136,11 @@ def upgrade() -> None:
                 params,
             )
     op.execute(
-        "UPDATE folders SET name='User Skills' WHERE id IN (SELECT end_user_skills_folder_id FROM workspaces)"
+        "UPDATE folders SET name='User Skills' WHERE id IN (SELECT end_user_skills_folder_id "
+        "FROM workspaces WHERE external_skill_folder_id IN (SELECT id FROM folders WHERE is_skill))"
     )
     op.execute(
-        "UPDATE agents SET name=CASE WHEN curator_skill='internal' THEN 'Skills curator' ELSE 'Shared Skills curator' END WHERE is_curator"
+        "UPDATE agents SET name=CASE WHEN curator_skill='internal' THEN 'Skills curator' ELSE 'Shared Skills curator' END WHERE is_curator AND user_id IN (SELECT owner_user_id FROM folders WHERE is_curated_skill AND is_skill)"
     )
 
 

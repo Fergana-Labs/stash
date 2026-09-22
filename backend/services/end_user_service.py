@@ -59,7 +59,7 @@ async def activate(workspace_id: UUID, created_by: UUID) -> dict:
         "SET external_skill_folder_id = $2, end_user_skills_folder_id = $3 "
         "WHERE id = $1 AND external_skill_folder_id IS NULL "
         "RETURNING id, name, domain, scope_user_id, created_by, "
-        "         external_skill_folder_id, end_user_skills_folder_id, created_at",
+        "         external_skill_folder_id, end_user_skills_folder_id, legacy_wiki_enabled, created_at",
         workspace_id,
         skill["id"],
         user_skills["id"],
@@ -79,7 +79,7 @@ async def workspace_for_scope(scope_user_id: UUID) -> dict | None:
     pool = get_pool()
     row = await pool.fetchrow(
         "SELECT id, name, domain, scope_user_id, created_by, "
-        "       external_skill_folder_id, end_user_skills_folder_id, created_at "
+        "       external_skill_folder_id, end_user_skills_folder_id, legacy_wiki_enabled, created_at "
         "FROM workspaces WHERE scope_user_id = $1",
         scope_user_id,
     )
@@ -139,13 +139,14 @@ async def get_or_create_end_user(
                 name or external_id,
                 skill_folder["id"],
             )
-            await files_tree_service.initialize_curated_skill(
-                conn,
-                skill_folder["id"],
-                workspace["scope_user_id"],
-                f"Knowledge for {external_id}",
-                end_user_id=row["id"],
-            )
+            if not workspace["legacy_wiki_enabled"]:
+                await files_tree_service.initialize_curated_skill(
+                    conn,
+                    skill_folder["id"],
+                    workspace["scope_user_id"],
+                    f"Knowledge for {external_id}",
+                    end_user_id=row["id"],
+                )
             return dict(row)
 
 
@@ -401,16 +402,18 @@ async def _archive_shared_skill(conn, workspace) -> None:
     await conn.execute(
         "UPDATE folders SET name=$2,parent_folder_id=NULL,agent_enabled=false WHERE id=$1",
         root,
-        f"Shared skill archive ({root})",
+        f"Shared {'wiki' if workspace['legacy_wiki_enabled'] else 'skill'} archive ({root})",
     )
     new_root = await conn.fetchval(
         "INSERT INTO folders (owner_user_id,created_by,name,is_protected) "
-        "VALUES ($1,$1,'Shared knowledge',true) RETURNING id",
+        "VALUES ($1,$1,$2,true) RETURNING id",
         workspace["scope_user_id"],
+        "External Wiki" if workspace["legacy_wiki_enabled"] else "Shared knowledge",
     )
-    await files_tree_service.initialize_curated_skill(
-        conn, new_root, workspace["scope_user_id"], "Shared knowledge"
-    )
+    if not workspace["legacy_wiki_enabled"]:
+        await files_tree_service.initialize_curated_skill(
+            conn, new_root, workspace["scope_user_id"], "Shared knowledge"
+        )
     await conn.execute(
         "UPDATE workspaces SET external_skill_folder_id=$2 WHERE id=$1", workspace["id"], new_root
     )

@@ -40,8 +40,13 @@ export default function ScopeSwitcher({ developerOnly }: { developerOnly: boolea
         // from a workspace would otherwise keep stamping a scope the backend
         // now 403s, with the switcher gone and no way back to Personal.
         const selected = getScope();
-        if (selected && !mine.some((w) => w.scope_user_id === selected.scope_user_id)) {
-          setScope(null);
+        if (selected) {
+          const workspace = mine.find((w) => w.scope_user_id === selected.scope_user_id);
+          if (!workspace) {
+            setScope(null);
+          } else if (selected.legacy_wiki_enabled !== workspace.legacy_wiki_enabled) {
+            setScope({ ...selected, legacy_wiki_enabled: workspace.legacy_wiki_enabled });
+          }
         }
       })
       .catch((e) =>
@@ -61,7 +66,7 @@ export default function ScopeSwitcher({ developerOnly }: { developerOnly: boolea
   }
 
   function enterPlatform(w: Workspace) {
-    setScope({ scope_user_id: w.scope_user_id, name: w.name, view: "developer" });
+    setScope({ scope_user_id: w.scope_user_id, name: w.name, view: "developer", legacy_wiki_enabled: w.legacy_wiki_enabled });
     window.location.assign("/developer");
   }
 

@@ -339,6 +339,7 @@ export interface Workspace {
   scope_user_id: string;
   /** Set when the developer platform is active on this workspace. */
   external_skill_folder_id: string | null;
+  legacy_wiki_enabled: boolean;
 }
 
 /** External Multiplayer: one customer of a developer workspace. */
@@ -361,6 +362,7 @@ export interface EndUser {
  *  knowledge base (default) and the developer console chrome. */
 export type Scope = Pick<Workspace, "scope_user_id" | "name"> & {
   view?: "developer";
+  legacy_wiki_enabled?: boolean;
 };
 
 /** Filter-chip counts, computed over the whole table rather than a loaded

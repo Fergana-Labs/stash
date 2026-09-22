@@ -1,5 +1,7 @@
 "use client";
 
+import { useDeveloperExperience } from "@/lib/developer-experience";
+
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
@@ -40,6 +42,7 @@ const ROUTES = [
 ];
 
 function Overview() {
+  const experience = useDeveloperExperience();
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [users, setUsers] = useState<EndUser[]>([]);
   const [stats, setStats] = useState({ skill_page_count: 0, user_session_count: 0 });
@@ -75,8 +78,8 @@ function Overview() {
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         <Stat label="Users" value={users.length} />
         <Stat label="User sessions" value={stats.user_session_count} />
-        <Stat label="Skill pages" value={stats.skill_page_count} />
-        <Stat label="Feeding the skill" value={users.filter((o) => o.share_skill).length} />
+        <Stat label={experience.text("Skill pages")} value={stats.skill_page_count} />
+        <Stat label={experience.text("Feeding the skill")} value={users.filter((o) => o.share_skill).length} />
       </div>
 
       <section className="mt-12">
@@ -85,7 +88,7 @@ function Overview() {
           {ROUTES.map((route, i) => (
             <Link
               key={route.href}
-              href={route.href}
+              href={route.href === "/developer/skills" ? experience.knowledgePath : route.href}
               className="group flex items-center gap-4 rounded border border-border bg-surface px-5 py-4 transition-colors hover:border-brand-300 hover:bg-raised"
             >
               <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-500/10 font-mono text-[12px] text-brand-500">
@@ -93,10 +96,10 @@ function Overview() {
               </span>
               <span className="min-w-0 flex-1">
                 <span className="block text-[15px] font-medium text-foreground">
-                  {route.title}
+                  {experience.text(route.title)}
                 </span>
                 <span className="mt-0.5 block text-[13.5px] leading-6 text-muted-foreground">
-                  {route.detail}
+                  {experience.text(route.detail)}
                 </span>
               </span>
               <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground transition-colors group-hover:text-brand-500" />

@@ -280,6 +280,12 @@ async def list_skills(
     pool = get_pool()
     readable = permission_service.readable_content_condition("folder", "f", 2)
     rows = await pool.fetch(
+        "WITH RECURSIVE hidden_knowledge(id) AS ("
+        "SELECT f.id FROM folders f JOIN workspaces w ON w.scope_user_id=f.owner_user_id "
+        "WHERE f.owner_user_id=$1 AND w.external_skill_folder_id IS NOT NULL AND ("
+        "f.is_curated_skill OR EXISTS (SELECT 1 FROM end_users eu WHERE eu.skill_folder_id=f.id) "
+        "OR (w.legacy_wiki_enabled AND w.external_skill_folder_id=f.id)) "
+        "UNION ALL SELECT f.id FROM folders f JOIN hidden_knowledge h ON f.parent_folder_id=h.id) "
         "SELECT f.id AS folder_id, f.name AS folder_name, f.updated_at AS folder_updated_at, "
         "  f.agent_enabled, "
         "  p.id AS skill_md_id, p.content_markdown AS skill_md, p.updated_at, "
@@ -291,6 +297,7 @@ async def list_skills(
         "LEFT JOIN pages p ON p.folder_id = f.id AND p.name = 'SKILL.md' AND p.deleted_at IS NULL "
         "LEFT JOIN skills s ON s.folder_id = f.id "
         f"WHERE f.owner_user_id = $1 AND f.is_skill AND {readable} "
+        "AND f.id NOT IN (SELECT id FROM hidden_knowledge) "
         "ORDER BY f.name",
         owner_user_id,
         user_id,

@@ -1,5 +1,7 @@
 "use client";
 
+import { useDeveloperExperience } from "@/lib/developer-experience";
+
 import { Code, CodeBlock, SectionHeading } from "@/components/developer/DocsPrimitives";
 
 const READ = `# Your agent reads. user_id is the only thing Stash needs — it is
@@ -20,14 +22,15 @@ curl -X POST https://api.joinstash.ai/api/v1/me/sessions/events/batch \\
 
 /** The two-call integration contract. */
 export default function SetupCard() {
+  const experience = useDeveloperExperience();
   return (
     <>
       <div className="mt-12">
         <SectionHeading>Reading: what your agent sees</SectionHeading>
         <p className="mt-3 max-w-2xl text-[15px] leading-7 text-dim">
           One field. <Code>user_id</Code> is your own id for that user, and it is the
-          isolation boundary: the shared skill at <Code>/skills/shared</Code>, that user&apos;s
-          skill and files under <Code>/files</Code>, their raw transcripts under{" "}
+          isolation boundary: the shared {experience.singular} at <Code>/{experience.plural}/shared</Code>, that user&apos;s
+          {experience.singular} and files under <Code>/files</Code>, their raw transcripts under{" "}
           <Code>/sessions</Code>, and nothing of anyone else&apos;s. First time we see an id,
           the user is created.
         </p>

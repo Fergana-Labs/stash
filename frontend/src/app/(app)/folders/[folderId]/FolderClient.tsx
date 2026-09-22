@@ -21,6 +21,7 @@ import {
 } from "@/lib/api";
 import { findInSkillContents } from "@/lib/localSkill";
 import { loginPathWithNext } from "@/lib/loginRedirect";
+import { isDeveloperView } from "@/lib/scope-store";
 import { sectionCrumbs } from "@/lib/skill-breadcrumbs";
 import { refreshSidebar } from "@/lib/skillNavigationCache";
 
@@ -101,7 +102,8 @@ export default function FolderDetailPage({ folderId: folderIdProp }: { folderId?
         // Skill folders live on the skill browse route — deep links self-heal.
         // /skills/<x> is the published-slug route; a folder id there renders
         // "Skill not found". The skill's own page is /skills/folder/<id>.
-        if (c.folder.is_skill || c.breadcrumbs.some((b) => b.is_skill)) {
+        // Private developer knowledge is deliberately absent from the global catalog.
+        if (!isDeveloperView() && (c.folder.is_skill || c.breadcrumbs.some((b) => b.is_skill))) {
           router.replace(`/skills/folder/${folderId}`);
           return;
         }

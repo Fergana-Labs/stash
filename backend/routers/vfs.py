@@ -57,6 +57,7 @@ async def _external_vfs_ctx(current_user: dict, user_id: str | None) -> dict | N
         )
     if user_id is None:
         return {
+            "legacy_wiki_enabled": workspace["legacy_wiki_enabled"],
             "external_id": None,
             "shared_skill_folder_id": str(workspace["external_skill_folder_id"]),
             "skill_folder_id": None,
@@ -65,6 +66,7 @@ async def _external_vfs_ctx(current_user: dict, user_id: str | None) -> dict | N
     end_user = await end_user_service.find_end_user(workspace["id"], user_id)
     if end_user is None:
         return {
+            "legacy_wiki_enabled": workspace["legacy_wiki_enabled"],
             "external_id": user_id,
             "shared_skill_folder_id": str(workspace["external_skill_folder_id"]),
             "skill_folder_id": None,
@@ -74,6 +76,7 @@ async def _external_vfs_ctx(current_user: dict, user_id: str | None) -> dict | N
         current_user["id"], end_user_id=end_user["id"]
     )
     return {
+        "legacy_wiki_enabled": workspace["legacy_wiki_enabled"],
         "external_id": end_user["external_id"],
         "shared_skill_folder_id": str(workspace["external_skill_folder_id"]),
         "skill_folder_id": str(end_user["skill_folder_id"]),

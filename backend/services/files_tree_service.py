@@ -398,12 +398,18 @@ async def get_or_create_curated_skill(owner_user_id: UUID, created_by: UUID) -> 
         )
         if row is not None:
             return dict(row)
+        from . import developer_contract_service
+
+        wiki = await developer_contract_service.uses_wiki(owner_user_id, conn=conn)
         row = await conn.fetchrow(
             "INSERT INTO folders (owner_user_id,name,created_by,is_curated_skill,is_protected) "
-            "VALUES ($1,'Learned knowledge',$2,true,true) RETURNING *",
+            "VALUES ($1,$3,$2,true,true) RETURNING *",
             owner_user_id,
             created_by,
+            "Memory" if wiki else "Learned knowledge",
         )
+        if wiki:
+            return dict(row)
         await initialize_curated_skill(conn, row["id"], owner_user_id, row["name"])
         return {**dict(row), "is_skill": True}
 

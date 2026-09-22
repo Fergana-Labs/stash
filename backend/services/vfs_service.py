@@ -255,11 +255,7 @@ class ExternalVfsClient(InProcessVfsClient):
                 for s in overview["sessions"]
                 if external_id is not None and s.get("end_user_external_id") == external_id
             ],
-            "skills": [
-                {**s, "name": roots[s["folder_id"]]}
-                for s in overview["skills"]
-                if s["folder_id"] in roots
-            ],
+            "skills": [{"folder_id": folder_id, "name": name} for folder_id, name in roots.items()],
             "files": {
                 "folders": [],
                 "pages": [],
@@ -272,12 +268,37 @@ class ExternalVfsClient(InProcessVfsClient):
         }
 
 
+class WikiDeveloperVfsModel(StashVfsModel):
+    """Heavi keeps its deployed paths; only server-authorized roots are mounted."""
+
+    def refresh(self) -> None:
+        super().refresh()
+        self._add_static_file(
+            "/README.md",
+            "# Stash\n\n"
+            "This is a read-only virtual filesystem.\n"
+            "- `/memory` contains shared wiki knowledge.\n"
+            "- `/files/wiki` contains this user's private wiki, when a user is selected.\n"
+            "- `/files` contains this user's uploaded files.\n"
+            "- `/sessions` contains this user's recorded conversations.\n"
+            "- `/sources` contains the connected sources available to this workspace.\n",
+        )
+
+    def _add_skills(self, skills: list[dict]) -> None:
+        paths = {"shared": "/memory", "personal": "/files/wiki"}
+        for skill in skills:
+            root = paths[skill["name"]]
+            self._add_dir(root)
+            self._expanders[root] = lambda r=root, f=skill["folder_id"]: self._expand_skill(r, f)
+
+
 def _build_model(
     http: httpx.AsyncClient, loop: asyncio.AbstractEventLoop, end_user_ctx: dict | None
 ) -> StashVfsModel:
     if end_user_ctx is None:
         return StashVfsModel(InProcessVfsClient(http, loop), include_computer=False)
-    return StashVfsModel(ExternalVfsClient(http, loop, end_user_ctx), include_computer=False)
+    model = WikiDeveloperVfsModel if end_user_ctx["legacy_wiki_enabled"] else StashVfsModel
+    return model(ExternalVfsClient(http, loop, end_user_ctx), include_computer=False)
 
 
 def _run_script(

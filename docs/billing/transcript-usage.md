@@ -92,3 +92,5 @@ clocks, inspect invoices, lower the cap, and cancel. Automated repository tests 
 Stripe mocks and a real local Postgres database; they do not prove account-specific
 Stripe invoice configuration. No live Stripe resources or charges are created by
 this code change itself.
+
+Heavi workspaces with `legacy_wiki_enabled` keep unmetered curation and do not generate transcript usage charges. See [the rollout exception](../heavi-wiki-contract.md).
