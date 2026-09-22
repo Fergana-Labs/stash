@@ -15,6 +15,16 @@ _SELECT_COLS = (
 
 SESSION_RATINGS = ("good", "bad")
 
+CLIENT_NAMES = {
+    "claude_code": "Claude Code",
+    "codex_cli": "Codex",
+    "cursor": "Cursor",
+    "opencode": "OpenCode",
+    "gemini_cli": "Gemini CLI",
+    "openclaw": "OpenClaw",
+    "hermes": "Hermes",
+}
+
 
 async def upsert_session(
     owner_user_id: UUID,
@@ -51,6 +61,17 @@ async def upsert_session(
     replayed old transcript never rewinds a session's recency.
     """
     pool = get_pool()
+    # Plugin events identify the harness separately from the signed-in user's
+    # handle. API-only agents supply their own name instead.
+    client = await pool.fetchval(
+        "SELECT metadata->>'client' FROM history_events "
+        "WHERE owner_user_id=$1 AND session_id=$2 AND metadata ? 'client' "
+        "ORDER BY created_at DESC,id DESC LIMIT 1",
+        owner_user_id,
+        session_id,
+    )
+    if client is not None:
+        agent_name = CLIENT_NAMES[client] if client in CLIENT_NAMES else client
     row = await pool.fetchrow(
         "INSERT INTO sessions "
         "  (owner_user_id, session_id, agent_name, cwd, created_by, end_user_id, "

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import re
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from ..config import settings
@@ -56,7 +56,7 @@ async def titles_for_sessions(
     session_ids = [s["session_id"] for s in sessions]
     rows = await pool.fetch(
         "SELECT session_id, title, title_source_hash AS source_hash, "
-        "       title_user_set AS user_set "
+        "       title_user_set AS user_set, title_updated_at "
         "FROM sessions "
         "WHERE owner_user_id = $1 AND session_id = ANY($2::text[]) AND title IS NOT NULL",
         owner_user_id,
@@ -78,6 +78,9 @@ async def titles_for_sessions(
         if title_row and title_row.get("user_set"):
             continue
         if title_row and title_row["source_hash"] == session_source_hash:
+            continue
+        updated = title_row.get("title_updated_at") if title_row else None
+        if updated is not None and updated > datetime.now(UTC) - timedelta(minutes=5):
             continue
         stale_session_ids.append(session_id)
 
@@ -130,7 +133,7 @@ async def set_user_title(owner_user_id: UUID, session_id: str, title: str) -> st
 
 
 def _enqueue_title_generation(owner_user_id: UUID, session_ids: list[str]) -> None:
-    if not settings.ANTHROPIC_API_KEY:
+    if settings.AGENT_EXEC_MODE != "local" and not settings.ANTHROPIC_API_KEY:
         return
 
     from ..tasks.session_titles import generate_session_title
