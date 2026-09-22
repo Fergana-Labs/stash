@@ -114,3 +114,64 @@ async def test_rollout_preserves_vectors_and_does_not_invent_historical_usage(
                 await transaction.rollback()
     finally:
         await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_token_rollout_grandfathers_only_already_curated_content(pool):
+    migration = importlib.import_module("backend.migrations.versions.0224_transcript_token_usage")
+    engine = create_async_engine(
+        os.environ["TEST_DATABASE_URL"].replace("postgresql://", "postgresql+asyncpg://", 1)
+    )
+
+    def migrate(conn):
+        conn.execute(text("CREATE SCHEMA token_rollout_test"))
+        conn.execute(text("SET LOCAL search_path TO token_rollout_test, public"))
+        statements = [
+            "CREATE TABLE users (id uuid PRIMARY KEY)",
+            "CREATE TABLE user_subscriptions (user_id uuid)",
+            "CREATE TABLE sessions (owner_user_id uuid,session_id text,end_user_id uuid,curated_at timestamptz)",
+            "CREATE TABLE agents (user_id uuid,is_curator boolean,curator_skill text,curated_through timestamptz)",
+            "CREATE TABLE history_events (owner_user_id uuid,session_id text,event_type text,content text,created_at timestamptz)",
+            "INSERT INTO users VALUES ('00000000-0000-0000-0000-000000000001')",
+            "INSERT INTO user_subscriptions SELECT id FROM users",
+            "INSERT INTO sessions SELECT id,'personal',NULL,NULL FROM users",
+            "INSERT INTO sessions SELECT id,'external',id,NULL FROM users",
+            "INSERT INTO agents SELECT id,true,'internal','2024-01-01' FROM users",
+            "INSERT INTO agents SELECT id,true,'external','2026-01-01' FROM users",
+            "INSERT INTO history_events SELECT id,'personal','assistant_message','already curated','2020-01-01' FROM users",
+            "INSERT INTO history_events SELECT id,'personal','assistant_message','pending personal','2025-01-01' FROM users",
+            "INSERT INTO history_events SELECT id,'external','assistant_message','already curated external','2025-01-01' FROM users",
+            "INSERT INTO history_events SELECT id,'external','assistant_message','pending external','2027-01-01' FROM users",
+        ]
+        for statement in statements:
+            conn.execute(text(statement))
+        with Operations.context(MigrationContext.configure(conn)):
+            migration.upgrade()
+        assert conn.execute(text("SELECT count(*),sum(tokens) FROM transcript_usage")).one() == (
+            2,
+            0,
+        )
+        assert conn.execute(text("SELECT count(*) FROM history_events")).scalar_one() == 4
+        assert conn.execute(text("SELECT count(*) FROM transcript_meter_events")).scalar_one() == 0
+        assert (
+            conn.execute(text("SELECT overage_limit_cents FROM user_subscriptions")).scalar_one()
+            == 0
+        )
+        assert (
+            conn.execute(
+                text(
+                    "SELECT count(*) FROM information_schema.columns WHERE table_schema='token_rollout_test' AND table_name='sessions' AND column_name='curated_at'"
+                )
+            ).scalar_one()
+            == 0
+        )
+
+    try:
+        async with engine.connect() as conn:
+            transaction = await conn.begin()
+            try:
+                await conn.run_sync(migrate)
+            finally:
+                await transaction.rollback()
+    finally:
+        await engine.dispose()

@@ -1,9 +1,10 @@
-"""Per-user Stripe billing: Free (1 connected account) vs Pro ($20/mo, unlimited).
+"""Per-user Stripe subscriptions and opt-in transcript-token overages.
 
 Billing is switched on by STRIPE_SECRET_KEY being set (managed deployment).
-Self-hosted instances leave it unset: billing endpoints 404 and the pay gate
-is a no-op. Enforcement is connect-time only — existing connections keep
-syncing even after a subscription lapses.
+Self-hosted instances leave it unset: billing endpoints 404 and the source
+pay gate is a no-op. Source limits apply at connect time; existing connections
+keep syncing after a subscription lapses. Transcript usage is recorded after
+successful curation, with paid overages enabled only by explicit subscriber consent.
 
 The user ↔ Stripe customer mapping row is created when checkout starts, so
 every later webhook resolves by stripe_customer_id regardless of event order.
@@ -12,6 +13,7 @@ every later webhook resolves by stripe_customer_id regardless of event order.
 from __future__ import annotations
 
 import asyncio
+from decimal import Decimal
 from uuid import UUID
 
 import stripe
@@ -49,6 +51,14 @@ async def get_subscription(user_id: UUID) -> dict | None:
     return dict(row) if row else None
 
 
+def plan_from_account(account) -> str:
+    if account["plan"] == "enterprise":
+        return "enterprise"
+    if is_internal_email(account["email"]) or account["status"] in ACTIVE_STATUSES:
+        return "pro"
+    return "free"
+
+
 async def plan_label(user_id: UUID) -> str:
     """The plan the UI names: 'enterprise' (granted by an admin or a redeemed
     code — no Stripe row), 'pro' (paid or internal), else 'free'. Gates use
@@ -62,29 +72,11 @@ async def plan_label(user_id: UUID) -> str:
     )
     if row is None:
         return "free"
-    if row["plan"] == "enterprise":
-        return "enterprise"
-    if is_internal_email(row["email"]) or row["status"] in ACTIVE_STATUSES:
-        return "pro"
-    return "free"
+    return plan_from_account(row)
 
 
 async def is_pro(user_id: UUID) -> bool:
-    row = await get_pool().fetchrow(
-        "SELECT u.email, u.plan, s.status FROM users u "
-        "LEFT JOIN user_subscriptions s ON s.user_id = u.id "
-        "WHERE u.id = $1",
-        user_id,
-    )
-    if row is None:
-        return False
-    # Enterprise is an admin-granted entitlement (no Stripe subscription) —
-    # workspace scope users rely on it to connect more than one source.
-    if row["plan"] == "enterprise":
-        return True
-    if is_internal_email(row["email"]):
-        return True
-    return row["status"] in ACTIVE_STATUSES
+    return await plan_label(user_id) in {"pro", "enterprise"}
 
 
 # Providers that don't count against the free limit. X is a social-saves
@@ -177,39 +169,144 @@ async def create_portal_session(user_id: UUID) -> str:
     return session.url
 
 
+async def set_overage_limit(user_id: UUID, cents: int) -> None:
+    """Consent is local and explicit; attaching a meter never enables spending by itself."""
+    from .transcript_usage_service import METER_EVENT_NAME, OVERAGE_CENTS_PER_MILLION
+
+    require_billing_enabled()
+    async with get_pool().acquire() as conn, conn.transaction():
+        await conn.fetchval("SELECT id FROM users WHERE id=$1 FOR UPDATE", user_id)
+        sub = await conn.fetchrow("SELECT * FROM user_subscriptions WHERE user_id=$1", user_id)
+        if sub is None or sub["status"] != "active" or not sub["stripe_subscription_id"]:
+            raise HTTPException(400, "An active paid Pro subscription is required for overages.")
+        item_id = sub["usage_item_id"]
+        if cents > 0:
+            if settings.STRIPE_TOKEN_PRICE_ID is None:
+                raise HTTPException(503, "Transcript usage billing has not been configured.")
+            price = await asyncio.to_thread(
+                stripe.Price.retrieve,
+                settings.STRIPE_TOKEN_PRICE_ID,
+                api_key=settings.STRIPE_SECRET_KEY,
+            )
+            recurring = price["recurring"]
+            if (
+                price["currency"] != "usd"
+                or price["billing_scheme"] != "per_unit"
+                or Decimal(price["unit_amount_decimal"])
+                != Decimal(OVERAGE_CENTS_PER_MILLION) / 1_000_000
+                or recurring["interval"] != "month"
+                or recurring["interval_count"] != 1
+                or recurring["usage_type"] != "metered"
+                or price["transform_quantity"] is not None
+            ):
+                raise HTTPException(
+                    503, "The Stripe transcript price does not match the published rate."
+                )
+            meter = await asyncio.to_thread(
+                stripe.billing.Meter.retrieve,
+                recurring["meter"],
+                api_key=settings.STRIPE_SECRET_KEY,
+            )
+            if (
+                meter["event_name"] != METER_EVENT_NAME
+                or meter["status"] != "active"
+                or meter["event_time_window"] is not None
+                or meter["default_aggregation"]["formula"] != "sum"
+                or meter["customer_mapping"]["event_payload_key"] != "stripe_customer_id"
+                or meter["value_settings"]["event_payload_key"] != "value"
+            ):
+                raise HTTPException(503, "The Stripe transcript meter is misconfigured.")
+            live = await asyncio.to_thread(
+                stripe.Subscription.retrieve,
+                sub["stripe_subscription_id"],
+                api_key=settings.STRIPE_SECRET_KEY,
+            )
+            if live["status"] != "active":
+                raise HTTPException(400, "The subscription is no longer active.")
+            items = [
+                i
+                for i in live["items"]["data"]
+                if i["price"]["id"] == settings.STRIPE_TOKEN_PRICE_ID
+            ]
+            if len(items) > 1:
+                raise HTTPException(503, "Subscription has duplicate transcript meters.")
+            if items:
+                item_id = items[0]["id"]
+            else:
+                if live["billing_mode"]["type"] != "flexible":
+                    await asyncio.to_thread(
+                        stripe.Subscription.migrate,
+                        sub["stripe_subscription_id"],
+                        billing_mode={"type": "flexible"},
+                        api_key=settings.STRIPE_SECRET_KEY,
+                    )
+                live = await asyncio.to_thread(
+                    stripe.Subscription.modify,
+                    sub["stripe_subscription_id"],
+                    items=[{"price": settings.STRIPE_TOKEN_PRICE_ID}],
+                    proration_behavior="none",
+                    idempotency_key=f"transcript-meter-{sub['stripe_subscription_id']}",
+                    api_key=settings.STRIPE_SECRET_KEY,
+                )
+                item_id = next(
+                    i["id"]
+                    for i in live["items"]["data"]
+                    if i["price"]["id"] == settings.STRIPE_TOKEN_PRICE_ID
+                )
+        await conn.execute(
+            "UPDATE user_subscriptions SET overage_limit_cents=$2,usage_item_id=$3,updated_at=now() WHERE user_id=$1",
+            user_id,
+            cents,
+            item_id,
+        )
+
+
 async def apply_webhook_event(event: dict) -> None:
     """Sync subscription state from Stripe. Events for unknown customers
     (e.g. manual dashboard actions) are ignored, not errors."""
     kind = event["type"]
     obj = event["data"]["object"]
 
-    if kind == "checkout.session.completed":
-        await get_pool().execute(
-            """
-            UPDATE user_subscriptions
-            SET stripe_subscription_id = $1, status = 'active', updated_at = now()
-            WHERE stripe_customer_id = $2
-            """,
-            obj.get("subscription"),
-            obj.get("customer"),
+    if kind not in {
+        "checkout.session.completed",
+        "customer.subscription.created",
+        "customer.subscription.updated",
+        "customer.subscription.deleted",
+    }:
+        return
+    customer = obj["customer"]
+    owner = await get_pool().fetchval(
+        "SELECT user_id FROM user_subscriptions WHERE stripe_customer_id=$1", customer
+    )
+    if owner is None:
+        return
+    subscription_id = obj["subscription"] if kind == "checkout.session.completed" else obj["id"]
+    # Read current state under the account lock; webhook deliveries can be reordered.
+    async with get_pool().acquire() as conn, conn.transaction():
+        await conn.fetchval("SELECT id FROM users WHERE id=$1 FOR UPDATE", owner)
+        live = await asyncio.to_thread(
+            stripe.Subscription.retrieve, subscription_id, api_key=settings.STRIPE_SECRET_KEY
         )
-    elif kind == "customer.subscription.updated":
-        await get_pool().execute(
-            """
-            UPDATE user_subscriptions
-            SET stripe_subscription_id = $1, status = $2, updated_at = now()
-            WHERE stripe_customer_id = $3
-            """,
-            obj.get("id"),
-            obj.get("status"),
-            obj.get("customer"),
+        current_created = await conn.fetchval(
+            "SELECT stripe_subscription_created FROM user_subscriptions WHERE user_id=$1", owner
         )
-    elif kind == "customer.subscription.deleted":
-        await get_pool().execute(
-            """
-            UPDATE user_subscriptions
-            SET status = 'canceled', updated_at = now()
-            WHERE stripe_customer_id = $1
-            """,
-            obj.get("customer"),
+        if live["created"] < current_created:
+            return
+        items = [
+            item
+            for item in live["items"]["data"]
+            if item["price"]["id"] == settings.STRIPE_TOKEN_PRICE_ID
+        ]
+        if len(items) > 1:
+            raise ValueError("Subscription has duplicate transcript meters")
+        item_id = items[0]["id"] if items else None
+        await conn.execute(
+            "UPDATE user_subscriptions SET stripe_subscription_id=$2,status=$3,usage_item_id=$4,"
+            "stripe_subscription_created=$5,overage_limit_cents=CASE WHEN $3='active' AND $4::text IS NOT NULL "
+            "THEN overage_limit_cents ELSE 0 END,updated_at=now() WHERE user_id=$1",
+            owner,
+            live["id"],
+            live["status"],
+            item_id,
+            live["created"],
         )

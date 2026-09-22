@@ -229,7 +229,7 @@ async def get_changes(
     from ..services import curation_service
 
     since_dt = datetime.fromisoformat(since) if since else None
-    until = await curation_service.entitled_through(scope_user_id, since_dt, datetime.now(UTC))
+    until = datetime.now(UTC)
     return await curation_service.changes_since(scope_user_id, current_user["id"], since_dt, until)
 
 
@@ -263,7 +263,16 @@ async def curate_skills(
         period = " this month" if allowance["period"] == "month" else ""
         raise HTTPException(
             status_code=402,
-            detail=f"Your plan's {allowance['limit']:,}-trace allowance{period} is used up.",
+            detail=f"Your plan's {allowance['limit']:,}-token allowance{period} is used up.",
+        )
+    events, more = await curation_service._feed_events(
+        user_id, curator["curated_through"], datetime.now(UTC), curation_service._MAX_EVENTS
+    )
+    if more and not events:
+        raise HTTPException(
+            402,
+            "The next transcript entry exceeds your remaining token allowance or spending cap. "
+            "Increase your limit or wait for the monthly reset.",
         )
     try:
         await agent_auth.resolve(user_id, curator["model_provider"], allow_free_managed=True)

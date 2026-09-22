@@ -20,6 +20,7 @@ from httpx import AsyncClient
 
 from backend.config import settings
 from backend.services import billing_service, workspace_service
+from backend.services import transcript_usage_service as usage
 
 from .conftest import unique_name
 
@@ -174,17 +175,29 @@ async def test_billing_me_reflects_plan(client, pool, billing_on):
     await _connect_account(pool, user_id, "github")
 
     me = (await client.get("/api/v1/billing/me", headers=_auth(api_key))).json()
-    assert me == {
+    assert {
+        k: me[k]
+        for k in (
+            "billing_enabled",
+            "plan",
+            "status",
+            "connection_count",
+            "connection_limit",
+            "transcript_tokens",
+            "included_tokens",
+            "free_included_tokens",
+            "pro_included_tokens",
+        )
+    } == {
         "billing_enabled": True,
         "plan": "free",
         "status": None,
         "connection_count": 1,
         "connection_limit": billing_service.FREE_CONNECTION_LIMIT,
-        "curated_trace_count": 0,
-        "curated_trace_limit": settings.FREE_CURATED_TRACES,
-        "curated_trace_period": "lifetime",
-        "free_curated_trace_limit": settings.FREE_CURATED_TRACES,
-        "pro_curated_trace_limit": settings.PRO_CURATED_TRACES_PER_MONTH,
+        "transcript_tokens": 0,
+        "included_tokens": usage.FREE_TOKENS,
+        "free_included_tokens": usage.FREE_TOKENS,
+        "pro_included_tokens": usage.PRO_TOKENS,
     }
 
     await pool.execute(
@@ -195,9 +208,10 @@ async def test_billing_me_reflects_plan(client, pool, billing_on):
     me = (await client.get("/api/v1/billing/me", headers=_auth(api_key))).json()
     assert me["plan"] == "pro"
     assert me["status"] == "active"
-    assert me["curated_trace_count"] == 0
-    assert me["curated_trace_limit"] == settings.PRO_CURATED_TRACES_PER_MONTH
-    assert me["curated_trace_period"] == "month"
+    assert me["transcript_tokens"] == 0
+    assert me["included_tokens"] == usage.PRO_TOKENS
+    assert me["overages_enabled"] is False
+    assert me["overage_limit_cents"] == 0
 
 
 @pytest.mark.asyncio
@@ -205,17 +219,30 @@ async def test_billing_me_still_returns_plan_when_checkout_is_disabled(client, m
     monkeypatch.setattr(settings, "STRIPE_SECRET_KEY", None)
     api_key, _ = await _register(client)
     resp = await client.get("/api/v1/billing/me", headers=_auth(api_key))
-    assert resp.json() == {
+    me = resp.json()
+    assert {
+        k: me[k]
+        for k in (
+            "billing_enabled",
+            "plan",
+            "status",
+            "connection_count",
+            "connection_limit",
+            "transcript_tokens",
+            "included_tokens",
+            "free_included_tokens",
+            "pro_included_tokens",
+        )
+    } == {
         "billing_enabled": False,
         "plan": "free",
         "status": None,
         "connection_count": 0,
         "connection_limit": billing_service.FREE_CONNECTION_LIMIT,
-        "curated_trace_count": 0,
-        "curated_trace_limit": settings.FREE_CURATED_TRACES,
-        "curated_trace_period": "lifetime",
-        "free_curated_trace_limit": settings.FREE_CURATED_TRACES,
-        "pro_curated_trace_limit": settings.PRO_CURATED_TRACES_PER_MONTH,
+        "transcript_tokens": 0,
+        "included_tokens": usage.FREE_TOKENS,
+        "free_included_tokens": usage.FREE_TOKENS,
+        "pro_included_tokens": usage.PRO_TOKENS,
     }
 
 
@@ -238,7 +265,11 @@ async def test_billing_me_reports_the_selected_workspace_plan(client, billing_on
 
 
 @pytest.mark.asyncio
-async def test_webhook_subscription_deleted_downgrades(client, pool, billing_on):
+async def test_webhook_subscription_deleted_downgrades(client, pool, billing_on, monkeypatch):
+    monkeypatch.setattr(
+        "stripe.Subscription.retrieve",
+        lambda *a, **k: {"id": "sub_1", "status": "canceled", "created": 1, "items": {"data": []}},
+    )
     _, user_id = await _register(client)
     await pool.execute(
         "INSERT INTO user_subscriptions (user_id, stripe_customer_id, stripe_subscription_id, status) "
@@ -280,7 +311,11 @@ async def test_webhook_rejects_bad_signature(client, billing_on):
 
 
 @pytest.mark.asyncio
-async def test_webhook_checkout_completed_activates(client, pool, billing_on):
+async def test_webhook_checkout_completed_activates(client, pool, billing_on, monkeypatch):
+    monkeypatch.setattr(
+        "stripe.Subscription.retrieve",
+        lambda *a, **k: {"id": "sub_new", "status": "active", "created": 1, "items": {"data": []}},
+    )
     _, user_id = await _register(client)
     # The customer mapping row is created when checkout starts, before any webhook.
     await pool.execute(

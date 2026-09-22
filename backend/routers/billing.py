@@ -11,11 +11,11 @@ from uuid import UUID
 
 import stripe
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from ..auth import get_current_user, get_scope
 from ..config import settings
-from ..services import billing_service, curation_service
+from ..services import billing_service, transcript_usage_service
 
 router = APIRouter(prefix="/api/v1/billing", tags=["billing"])
 
@@ -26,19 +26,40 @@ async def my_billing(
 ):
     subscription = await billing_service.get_subscription(scope_user_id)
     status = subscription["status"] if subscription else None
-    allowance = await curation_service.curation_allowance(scope_user_id, datetime.now(UTC))
+    allowance = await transcript_usage_service.allowance(scope_user_id, datetime.now(UTC))
     return {
         "billing_enabled": billing_service.billing_enabled(),
         "plan": await billing_service.plan_label(scope_user_id),
         "status": status,
         "connection_count": await billing_service.connection_count(scope_user_id),
         "connection_limit": billing_service.FREE_CONNECTION_LIMIT,
-        "curated_trace_count": allowance["used"] if allowance else None,
-        "curated_trace_limit": allowance["limit"] if allowance else None,
-        "curated_trace_period": allowance["period"] if allowance else None,
-        "free_curated_trace_limit": settings.FREE_CURATED_TRACES,
-        "pro_curated_trace_limit": settings.PRO_CURATED_TRACES_PER_MONTH,
+        "transcript_tokens": allowance["used"],
+        "included_tokens": allowance["included"],
+        "remaining_tokens": allowance["remaining"],
+        "resets_at": allowance["resets_at"],
+        "overage_cents": allowance["overage_cents"],
+        "overage_limit_cents": allowance["overage_limit_cents"],
+        "overages_enabled": allowance["overages_enabled"],
+        "overage_cents_per_million": transcript_usage_service.OVERAGE_CENTS_PER_MILLION,
+        "free_included_tokens": transcript_usage_service.FREE_TOKENS,
+        "pro_included_tokens": transcript_usage_service.PRO_TOKENS,
     }
+
+
+class OverageLimitRequest(BaseModel):
+    limit_cents: int = Field(ge=0, le=100_000, strict=True)
+
+
+@router.put("/overage-limit")
+async def set_overage_limit(
+    body: OverageLimitRequest,
+    current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
+):
+    if scope_user_id != current_user["id"]:
+        raise HTTPException(403, "Manage usage billing from your personal account.")
+    await billing_service.set_overage_limit(current_user["id"], body.limit_cents)
+    return await my_billing(scope_user_id)
 
 
 class CheckoutRequest(BaseModel):

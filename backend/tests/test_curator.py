@@ -652,16 +652,15 @@ async def test_manual_recompute_bookkeeping_failure_records_failed_outcome(
 ):
     """A successful turn is not a successful curator run until its watermark
     advances. The outcome must cover that post-turn work too."""
-    from backend.services import curation_service
     from backend.tasks.agent_schedules import _run_curator_now
 
     _key, uid = await _register(client)
     curator = await agent_service.get_or_create_curator(uid)
 
-    async def boom(user_id, curated_through, now):
+    async def boom(*args, **kwargs):
         raise RuntimeError("watermark write failed")
 
-    monkeypatch.setattr(curation_service, "complete_through", boom)
+    monkeypatch.setattr(agent_service, "mark_curated", boom)
     with pytest.raises(RuntimeError):
         await _run_curator_now(UUID(curator["id"]))
 

@@ -11,6 +11,7 @@ without waking a sprite.
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
@@ -251,28 +252,6 @@ async def changes_since(
     }
 
 
-async def curated_trace_count(owner_user_id: UUID, curated_since: datetime | None = None) -> int:
-    return int(
-        await get_pool().fetchval(
-            """
-            SELECT count(*) FROM sessions s
-            WHERE s.owner_user_id = $1 AND s.deleted_at IS NULL
-              AND s.session_id NOT LIKE 'agent-curate-%'
-              AND s.curated_at IS NOT NULL
-              AND ($2::timestamptz IS NULL OR s.curated_at >= $2)
-              AND EXISTS (
-                  SELECT 1 FROM history_events he
-                  WHERE he.owner_user_id = s.owner_user_id
-                    AND he.session_id = s.session_id
-                    AND he.event_type = 'assistant_message'
-              )
-            """,
-            owner_user_id,
-            curated_since,
-        )
-    )
-
-
 async def curatable_trace_count(owner_user_id: UUID) -> int:
     """Personal traces with an assistant response: enough substance to learn from."""
     return int(
@@ -315,112 +294,10 @@ async def recent_curatable_trace_ids(owner_user_id: UUID, limit: int) -> list[st
 
 
 async def curation_allowance(owner_user_id: UUID, now: datetime) -> dict | None:
-    from ..config import settings
-    from . import billing_service
+    from . import transcript_usage_service
 
-    plan = await billing_service.plan_label(owner_user_id)
-    if plan == "enterprise":
-        return None
-    if plan == "pro":
-        period_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        limit = settings.PRO_CURATED_TRACES_PER_MONTH
-        period = "month"
-    else:
-        period_start = None
-        limit = settings.FREE_CURATED_TRACES
-        period = "lifetime"
-    return {
-        "plan": plan,
-        "used": await curated_trace_count(owner_user_id, period_start),
-        "limit": limit,
-        "period": period,
-    }
-
-
-async def allowed_trace_ids(
-    owner_user_id: UUID, since: datetime | None, until: datetime | None
-) -> list[UUID] | None:
-    """The exact new traces this run can consume, including timestamp ties."""
-    allowance = await curation_allowance(owner_user_id, datetime.now(UTC))
-    if allowance is None:
-        return None
-    remaining = max(0, allowance["limit"] - allowance["used"])
-    rows = await get_pool().fetch(
-        """
-        SELECT s.id FROM sessions s
-        WHERE s.owner_user_id = $1 AND s.deleted_at IS NULL
-          AND s.session_id NOT LIKE 'agent-curate-%'
-          AND s.curated_at IS NULL
-          AND ($2::timestamptz IS NULL OR s.last_event_at > $2)
-          AND ($3::timestamptz IS NULL OR s.last_event_at <= $3)
-          AND EXISTS (
-              SELECT 1 FROM history_events he
-              WHERE he.owner_user_id = s.owner_user_id AND he.session_id = s.session_id
-                AND he.event_type = 'assistant_message'
-          )
-        ORDER BY s.last_event_at, s.id LIMIT $4
-        """,
-        owner_user_id,
-        since,
-        until,
-        remaining,
-    )
-    return [row["id"] for row in rows]
-
-
-async def limited_curation_through(
-    owner_user_id: UUID,
-    since: datetime | None,
-    requested_until: datetime,
-    remaining: int,
-) -> datetime | None:
-    """The end of the user's remaining trace allowance.
-
-    None means the requested window fits. A timestamp bounds every input in
-    the run at the completion time of the final included trace.
-    """
-    if remaining <= 0:
-        return since
-    boundary = await get_pool().fetchval(
-        """
-        SELECT s.last_event_at FROM sessions s
-        WHERE s.owner_user_id = $1 AND s.deleted_at IS NULL
-          AND s.session_id NOT LIKE 'agent-curate-%'
-          AND s.curated_at IS NULL
-          AND ($2::timestamptz IS NULL OR s.last_event_at > $2)
-          AND s.last_event_at <= $3
-          AND EXISTS (
-              SELECT 1 FROM history_events he
-              WHERE he.owner_user_id = s.owner_user_id
-                AND he.session_id = s.session_id
-                AND he.event_type = 'assistant_message'
-          )
-        ORDER BY s.last_event_at, s.id
-        OFFSET $4 LIMIT 1
-        """,
-        owner_user_id,
-        since,
-        requested_until,
-        remaining - 1,
-    )
-    if boundary is None:
-        return None
-    return boundary
-
-
-async def entitled_through(
-    owner_user_id: UUID, since: datetime | None, requested_until: datetime
-) -> datetime:
-    allowance = await curation_allowance(owner_user_id, requested_until)
-    if allowance is None:
-        return requested_until
-    boundary = await limited_curation_through(
-        owner_user_id,
-        since,
-        requested_until,
-        allowance["limit"] - allowance["used"],
-    )
-    return requested_until if boundary is None else boundary
+    budget = await transcript_usage_service.allowance(owner_user_id, now)
+    return None if budget["limit"] is None else budget
 
 
 async def _feed_events(
@@ -441,6 +318,15 @@ async def _feed_events(
     that user's own skill, and only share_skill users feed the shared anonymized
     skill."""
     pool = get_pool()
+    batch = await pool.fetchrow(
+        "SELECT events,has_more FROM curation_batches WHERE owner_user_id=$1 AND expires_at>now()",
+        owner_user_id,
+    )
+    if batch is not None:
+        return [
+            {**event, "created_at": datetime.fromisoformat(event["created_at"])}
+            for event in batch["events"]
+        ], batch["has_more"]
     args: list = [owner_user_id]
     where = "he.owner_user_id = $1 AND (he.session_id IS NULL OR he.session_id NOT LIKE 'agent-curate-%')"
     if since is not None:
@@ -449,19 +335,15 @@ async def _feed_events(
     if until is not None:
         args.append(until)
         where += f" AND he.created_at <= ${len(args)}"
-    # Select ongoing traces too: the event window bounds their input, while
-    # charging waits until their final event has been processed.
-    trace_ids = await allowed_trace_ids(owner_user_id, since, None)
-    if trace_ids is not None:
-        args.append(trace_ids)
-        where += (
-            f" AND (s.id = ANY(${len(args)}::uuid[]) OR s.curated_at IS NOT NULL "
-            "OR s.id IS NULL OR NOT EXISTS (SELECT 1 FROM history_events useful "
-            "WHERE useful.owner_user_id = s.owner_user_id AND useful.session_id = s.session_id "
-            "AND useful.event_type = 'assistant_message'))"
-        )
+    where += " AND (s.id IS NULL OR s.deleted_at IS NULL)"
+    # Process each transcript body once, including when uploads replace event IDs.
+    where += (
+        " AND NOT EXISTS (SELECT 1 FROM transcript_usage u WHERE u.owner_user_id=he.owner_user_id "
+        "AND u.content_key=transcript_usage_key(he.session_id,he.event_type,he.content))"
+    )
     rows = await pool.fetch(
         f"SELECT he.session_id, he.agent_name, he.event_type, he.content, he.created_at, "
+        f"transcript_usage_key(he.session_id,he.event_type,he.content) AS content_key, "
         f"eu.name AS user, eu.share_skill AS user_share_skill "
         f"FROM history_events he "
         f"LEFT JOIN sessions s ON s.owner_user_id = he.owner_user_id "
@@ -471,8 +353,55 @@ async def _feed_events(
         f"ORDER BY he.created_at, he.id LIMIT {limit + 1}",
         *args,
     )
-    has_more = len(rows) > limit
-    return [dict(r) for r in rows[:limit]], has_more
+    from . import transcript_usage_service
+
+    budget = await transcript_usage_service.allowance(owner_user_id, datetime.now(UTC))
+    remaining = budget["remaining"]
+    events = []
+    seen = set()
+    for row in rows[:limit]:
+        tokens = 0
+        if row["session_id"] is not None and row["content_key"] not in seen:
+            tokens = transcript_usage_service.count_tokens(row["content"])
+        if remaining is not None and tokens > remaining:
+            return events, True
+        if remaining is not None:
+            remaining -= tokens
+        seen.add(row["content_key"])
+        events.append(dict(row))
+    return events, len(rows) > limit
+
+
+@asynccontextmanager
+async def batch(owner: UUID, since: datetime | None, until: datetime):
+    """Freeze billable input for the CLI feed and the success receipt together."""
+    from ..config import settings
+
+    events, more = await _feed_events(owner, since, until, _MAX_EVENTS)
+    through = until
+    if more:
+        through = events[-1]["created_at"] - timedelta(microseconds=1) if events else since
+    if through is None:
+        through = datetime.min.replace(tzinfo=UTC)
+    serialized = [{**e, "created_at": e["created_at"].isoformat()} for e in events]
+    batch_id = await get_pool().fetchval(
+        "INSERT INTO curation_batches(owner_user_id,events,has_more,expires_at) VALUES ($1,$2,$3,$4) "
+        "ON CONFLICT (owner_user_id) DO UPDATE SET id=gen_random_uuid(),events=excluded.events,"
+        "has_more=excluded.has_more,expires_at=excluded.expires_at "
+        "WHERE curation_batches.expires_at<now() RETURNING id",
+        owner,
+        serialized,
+        more,
+        datetime.now(UTC) + timedelta(seconds=settings.AGENT_TURN_TIMEOUT_SECONDS + 60),
+    )
+    if batch_id is None:
+        raise RuntimeError("Skills curation is already running for this account")
+    try:
+        yield events, through, batch_id
+    finally:
+        await get_pool().execute(
+            "DELETE FROM curation_batches WHERE owner_user_id=$1 AND id=$2", owner, batch_id
+        )
 
 
 async def complete_through(
@@ -488,6 +417,8 @@ async def complete_through(
     events, has_more = await _feed_events(owner_user_id, since, until, _MAX_EVENTS)
     if not has_more:
         return until
+    if not events:
+        return since if since is not None else datetime.min.replace(tzinfo=UTC)
     return events[-1]["created_at"] - timedelta(microseconds=1)
 
 

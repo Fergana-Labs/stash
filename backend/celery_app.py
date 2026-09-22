@@ -39,6 +39,7 @@ celery = Celery(
         "backend.tasks.cli_auth",
         "backend.tasks.sources",
         "backend.tasks.agent_schedules",
+        "backend.tasks.transcript_billing",
         "backend.integrations.google.exporters.slides",
         "backend.integrations.x_saves.tasks",
         "backend.exports.pdf",
@@ -80,6 +81,10 @@ celery.conf.update(
     timezone="UTC",
     enable_utc=True,
     beat_schedule={
+        "transcript-usage-report": {
+            "task": "backend.tasks.transcript_billing.report_usage",
+            "schedule": 60.0,
+        },
         "embedding-reconcile": {
             "task": "backend.tasks.embeddings.reconcile",
             "schedule": 60.0,

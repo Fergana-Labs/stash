@@ -126,6 +126,7 @@ class CurationScope:
     destination: UUID
     user_ids: list[UUID]
     session_id: str
+    usage_events: list[dict] = field(default_factory=list)
     documents: dict[str, dict] = field(default_factory=dict)
     writable: dict[UUID, dict] = field(default_factory=dict)
 
@@ -304,7 +305,8 @@ async def load_scope(
             if writable:
                 scope.writable[p["id"]] = dict(p)
         events = await conn.fetch(
-            "SELECT he.session_id,he.event_type,he.tool_name,he.content,he.created_at "
+            "SELECT he.session_id,he.event_type,he.tool_name,he.content,he.created_at, "
+            "transcript_usage_key(he.session_id,he.event_type,he.content) AS content_key "
             "FROM history_events he JOIN sessions s ON s.owner_user_id=he.owner_user_id "
             "AND s.session_id=he.session_id WHERE he.owner_user_id=$1 AND s.deleted_at IS NULL "
             "AND (s.end_user_id=ANY($2::uuid[]) OR ($3 AND s.end_user_id IS NULL)) "
@@ -320,6 +322,7 @@ async def load_scope(
             purpose == "shared",
             list(_RETRIEVAL_TOOLS),
         )
+        scope.usage_events = [dict(e) for e in events]
         for e in events:
             key = f"session:{e['session_id']}"
             if key not in scope.documents:
@@ -474,6 +477,14 @@ async def run(agent: dict, workspace: dict, run_stamp: str) -> str:
     # must not later overwrite a concurrent opt-out's reset watermark.
     async with get_pool().acquire() as conn, conn.transaction():
         await scopes[-1].check(conn)
+        from . import transcript_usage_service
+
+        await transcript_usage_service.record(
+            conn,
+            owner,
+            [event for scope in scopes for event in scope.usage_events],
+            datetime.now(UTC),
+        )
         await conn.execute(
             "UPDATE agents SET curated_through=$2 WHERE id=$1", UUID(str(agent["id"])), until
         )

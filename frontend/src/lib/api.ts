@@ -450,15 +450,27 @@ export interface BillingInfo {
   billing_enabled: boolean;
   plan: "free" | "pro" | "enterprise";
   status: string | null;
-  curated_trace_count: number | null;
-  curated_trace_limit: number | null;
-  curated_trace_period: "lifetime" | "month" | null;
-  free_curated_trace_limit: number;
-  pro_curated_trace_limit: number;
+  transcript_tokens: number;
+  included_tokens: number | null;
+  remaining_tokens: number | null;
+  resets_at: string;
+  overage_cents: number;
+  overage_limit_cents: number;
+  overages_enabled: boolean;
+  overage_cents_per_million: number;
+  free_included_tokens: number;
+  pro_included_tokens: number;
 }
 
 export async function getBilling(): Promise<BillingInfo> {
   return apiFetch("/api/v1/billing/me");
+}
+
+export async function setOverageLimit(limitCents: number): Promise<BillingInfo> {
+  return apiFetch("/api/v1/billing/overage-limit", {
+    method: "PUT",
+    body: JSON.stringify({ limit_cents: limitCents }),
+  });
 }
 
 export async function startCheckout(interval: "month" | "year"): Promise<{ url: string }> {

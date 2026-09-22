@@ -190,7 +190,7 @@ async def test_run_bookkeeping_failure_sends_alert(client: AsyncClient, monkeypa
     """A run whose post-turn bookkeeping fails must record last_run_error and
     alert, exactly like a failed turn — otherwise the watermark silently stops
     advancing with no trace on the agent row."""
-    from backend.services import curation_service, sprite_agent_service
+    from backend.services import agent_service, sprite_agent_service
 
     user_id = await _register(client)
     agent = await _make_curator(user_id, curated_hours_ago=72, last_run_error=None)
@@ -198,11 +198,11 @@ async def test_run_bookkeeping_failure_sends_alert(client: AsyncClient, monkeypa
     async def fake_run_scheduled(agent, stamp):
         return ""
 
-    async def boom(user_id, curated_through, now):
+    async def boom(*args, **kwargs):
         raise RuntimeError("watermark write failed")
 
     monkeypatch.setattr(sprite_agent_service, "run_scheduled", fake_run_scheduled)
-    monkeypatch.setattr(curation_service, "complete_through", boom)
+    monkeypatch.setattr(agent_service, "mark_curated", boom)
     sent = _capture_alerts(monkeypatch)
 
     await agent_schedules._run_scheduled_agent(uuid.UUID(agent["id"]), "202608091200")

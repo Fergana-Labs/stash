@@ -275,6 +275,13 @@ async def test_separate_model_contexts_and_no_sprite_execution(
     assert all("SECRET_TRANSCRIPT" not in text for p, text in calls if p == "shared")
     assert any("SECRET_TRANSCRIPT" in text for p, text in calls if p == "private")
     assert sprite_exec.calls == [] and sprite_exec.writes == []
+    # The participating user's transcript feeds two model contexts, but is metered once.
+    assert (
+        await pool.fetchval(
+            "SELECT count(*) FROM transcript_usage WHERE owner_user_id=$1", dataset.owner
+        )
+        == 2
+    )
 
 
 @pytest.mark.asyncio

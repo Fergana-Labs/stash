@@ -7,8 +7,8 @@ from uuid import UUID
 import pytest
 from httpx import AsyncClient
 
-from backend.config import settings
 from backend.services import agent_service
+from backend.services import transcript_usage_service as usage
 
 from .test_curator import _auth, _make_due, _register
 
@@ -79,7 +79,7 @@ async def test_admin_grants_and_revokes_plan(client: AsyncClient, monkeypatch):
 async def test_free_curator_credits_exhausted_skips_run(
     client: AsyncClient, sprite_exec, _db_pool, monkeypatch
 ):
-    """Free curation stops after 1,000 useful traces; Enterprise is unlimited."""
+    """Free curation stops after 100,000 transcript tokens; Enterprise is unlimited."""
     from backend.tasks.agent_schedules import _run_due, _run_scheduled_agent, run_scheduled_agent
 
     key, uid = await _register(client)
@@ -90,45 +90,11 @@ async def test_free_curator_credits_exhausted_skips_run(
     )
     watermark = datetime.now(UTC) - timedelta(minutes=2)
     await _make_due(_db_pool, curator["id"], watermark)
-    # Every quota trace has an assistant message; empty sessions do not count.
     await _db_pool.execute(
-        """
-        INSERT INTO sessions
-            (owner_user_id, session_id, agent_name, created_by, started_at,
-             last_event_at, curated_at)
-        SELECT $1, 'quota-' || n, 'codex', $1,
-               $2::timestamptz - interval '1 hour', $2::timestamptz, $2::timestamptz
-        FROM generate_series(1, $3) n
-        """,
+        "INSERT INTO transcript_usage(owner_user_id,content_key,tokens) VALUES ($1,'consumed',$2)",
         uid,
-        watermark,
-        settings.FREE_CURATED_TRACES,
+        usage.FREE_TOKENS,
     )
-    await _db_pool.execute(
-        """
-        INSERT INTO sessions
-            (owner_user_id, session_id, agent_name, created_by, started_at,
-             last_event_at, curated_at)
-        VALUES ($1, 'empty-session', 'codex', $1, $2, $2, $2)
-        """,
-        uid,
-        watermark,
-    )
-    await _db_pool.execute(
-        """
-        INSERT INTO history_events
-            (owner_user_id, created_by, agent_name, event_type, content, session_id, created_at)
-        SELECT $1, $1, 'codex', 'assistant_message', 'done',
-               'quota-' || n, $2::timestamptz
-        FROM generate_series(1, $3) n
-        """,
-        uid,
-        watermark,
-        settings.FREE_CURATED_TRACES,
-    )
-    from backend.services import curation_service
-
-    assert await curation_service.curated_trace_count(uid) == settings.FREE_CURATED_TRACES
 
     ran = await _run_due()
 
@@ -155,7 +121,7 @@ async def test_free_curator_credits_exhausted_skips_run(
 async def test_pro_curator_allowance_resets_each_month(client: AsyncClient, _db_pool, monkeypatch):
     from backend.tasks.agent_schedules import _run_due, run_scheduled_agent
 
-    monkeypatch.setattr(settings, "PRO_CURATED_TRACES_PER_MONTH", 1)
+    monkeypatch.setattr(usage, "PRO_TOKENS", 1)
     key, uid = await _register(client)
     await _db_pool.execute(
         "INSERT INTO user_subscriptions (user_id, stripe_customer_id, status) "
@@ -166,21 +132,8 @@ async def test_pro_curator_allowance_resets_each_month(client: AsyncClient, _db_
     watermark = datetime.now(UTC) - timedelta(minutes=2)
     await _make_due(_db_pool, curator["id"], watermark)
     await _db_pool.execute(
-        """
-        INSERT INTO sessions
-            (owner_user_id, session_id, agent_name, created_by, started_at,
-             last_event_at, curated_at)
-        VALUES ($1, 'pro-used', 'codex', $1, $2, $2, now())
-        """,
+        "INSERT INTO transcript_usage(owner_user_id,content_key,tokens) VALUES ($1,'consumed',1)",
         uid,
-        watermark,
-    )
-    await _db_pool.execute(
-        "INSERT INTO history_events "
-        "(owner_user_id, created_by, agent_name, event_type, content, session_id, created_at) "
-        "VALUES ($1, $1, 'codex', 'assistant_message', 'done', 'pro-used', $2)",
-        uid,
-        watermark,
     )
     await client.post(
         "/api/v1/me/pages/new", json={"name": "Pending", "content": "x"}, headers=_auth(key)
@@ -189,8 +142,8 @@ async def test_pro_curator_allowance_resets_each_month(client: AsyncClient, _db_
     assert await _run_due() == 0
 
     await _db_pool.execute(
-        "UPDATE sessions SET curated_at = date_trunc('month', now()) - interval '1 second' "
-        "WHERE owner_user_id = $1 AND session_id = 'pro-used'",
+        "UPDATE transcript_usage SET processed_at = date_trunc('month', now()) - interval '1 second' "
+        "WHERE owner_user_id = $1",
         uid,
     )
     await _make_due(_db_pool, curator["id"], watermark)
@@ -203,7 +156,7 @@ async def test_pro_curator_allowance_resets_each_month(client: AsyncClient, _db_
 @pytest.mark.asyncio
 async def test_on_demand_curator_run_refused_on_sse_route(client: AsyncClient, _db_pool):
     """The curator's "Run now" enqueues on the worker via /skills/curate
-    (with the same trace allowance as the scheduler). The SSE
+    (with the same token allowance as the scheduler). The SSE
     route refuses curators outright: a curation pass takes minutes, and an
     SSE run dies silently when the browser tab closes."""
     key, uid = await _register(client)

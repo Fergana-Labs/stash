@@ -26,6 +26,9 @@ WORKDIR /app
 COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+ENV TIKTOKEN_CACHE_DIR=/opt/tiktoken
+RUN python -c "import tiktoken; tiktoken.get_encoding('cl100k_base')" && chmod -R a+rX /opt/tiktoken
+
 # Playwright browser binary. Installs into /root/.cache by default; we
 # redirect to a stash-readable path so the worker (running as stash)
 # can launch it.

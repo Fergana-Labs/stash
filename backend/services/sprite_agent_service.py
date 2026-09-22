@@ -254,9 +254,8 @@ async def _curator_run_stats(agent: dict) -> dict:
 
     user_id = UUID(str(agent["user_id"]))
     now = datetime.now(UTC)
-    until = await curation_service.entitled_through(user_id, agent.get("curated_through"), now)
     delta = await curation_service.changes_since(
-        user_id, user_id, agent.get("curated_through"), until
+        user_id, user_id, agent.get("curated_through"), now
     )
     external = agent.get("curator_skill") == "external"
     history = [event for event in delta["history"] if bool(event.get("user")) == external]
