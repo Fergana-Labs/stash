@@ -13,3 +13,7 @@ export function showTools(user: User | null | undefined): boolean {
   if (!domain) return false;
   return TOOLS_DOMAINS.has(domain.toLowerCase());
 }
+
+export function showPersonalIntegrations(user: User | null | undefined): boolean {
+  return Boolean(user?.personal_integrations_enabled && !user.developer_platform_only);
+}

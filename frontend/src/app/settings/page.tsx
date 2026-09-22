@@ -1,6 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
+import { showPersonalIntegrations } from "@/lib/flags";
+import { useScope } from "@/lib/scope-store";
 import { useRouter } from "next/navigation";
 import WorkspaceShell from "@/components/workspace/workspace-shell";
 import SubscriptionSection from "../../components/settings/SubscriptionSection";
@@ -37,6 +40,7 @@ const SETTINGS_TABS: Array<{
 ];
 
 export default function SettingsPage() {
+  const scope = useScope();
   const router = useRouter();
   const { user, loading, logout, refresh } = useAuth();
   const [activeTab, setActiveTab] = useState<SettingsTab>("account");
@@ -84,6 +88,14 @@ export default function SettingsPage() {
                     {tab.label}
                   </button>
                 ))}
+                {showPersonalIntegrations(user) && scope?.view !== "developer" && (
+                  <Link
+                    href="/settings/integrations"
+                    className="rounded-md px-3 py-2 text-left text-[13px] font-medium text-muted-foreground hover:bg-raised/60 hover:text-foreground"
+                  >
+                    Sources
+                  </Link>
+                )}
               </nav>
             </aside>
 

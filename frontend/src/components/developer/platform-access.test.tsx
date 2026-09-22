@@ -13,7 +13,7 @@ const state = vi.hoisted(() => ({
   logout: vi.fn(),
   user: {
     id: "user-1", name: "developer", display_name: "Developer", description: "",
-    created_at: "2026-09-15", last_seen: "2026-09-15", developer_platform_only: true,
+    created_at: "2026-09-15", last_seen: "2026-09-15", developer_platform_only: true, personal_integrations_enabled: false,
   },
 }));
 

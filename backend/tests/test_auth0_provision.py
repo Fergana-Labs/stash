@@ -47,15 +47,21 @@ async def _managed_auth0_headers(monkeypatch, name: str = "Managed User") -> tup
 
 
 @pytest.mark.asyncio
-async def test_managed_profile_returns_platform_flag(client, pool, monkeypatch):
+async def test_managed_profile_returns_account_flags(client, pool, monkeypatch):
     user, headers = await _managed_auth0_headers(monkeypatch)
     profile = await client.get("/api/v1/users/me", headers=headers)
     assert profile.status_code == 200
     assert profile.json()["developer_platform_only"] is False
+    assert profile.json()["personal_integrations_enabled"] is False
 
-    await pool.execute("UPDATE users SET developer_platform_only = true WHERE id = $1", user["id"])
+    await pool.execute(
+        "UPDATE users SET developer_platform_only = true, personal_integrations_enabled = true "
+        "WHERE id = $1",
+        user["id"],
+    )
     profile = await client.get("/api/v1/users/me", headers=headers)
     assert profile.json()["developer_platform_only"] is True
+    assert profile.json()["personal_integrations_enabled"] is True
 
 
 @pytest.mark.asyncio

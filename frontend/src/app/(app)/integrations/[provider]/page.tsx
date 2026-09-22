@@ -41,7 +41,8 @@ import {
   secondaryButton,
 } from "@/components/integrations/pickers";
 import PaywallModal from "@/components/PaywallModal";
-import DeveloperGate from "@/components/developer/DeveloperGate";
+import IntegrationGate from "@/components/integrations/IntegrationGate";
+import { useScope } from "@/lib/scope-store";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -60,13 +61,15 @@ const SYNC_POLL_MAX_ATTEMPTS = 100;
 export default function IntegrationRoute() {
   const params = useParams();
   return (
-    <DeveloperGate>
+    <IntegrationGate>
       <IntegrationDetail provider={params.provider as string} />
-    </DeveloperGate>
+    </IntegrationGate>
   );
 }
 
 export function IntegrationDetail({ provider }: { provider: string }) {
+  const scope = useScope();
+  const sourcesUrl = scope?.view === "developer" ? "/developer/sources" : "/settings/integrations";
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -143,7 +146,7 @@ export function IntegrationDetail({ provider }: { provider: string }) {
           <h1 className="font-display text-[20px] font-semibold text-foreground">Unknown integration</h1>
           <p className="mt-2 text-[13px] text-muted-foreground">
             No integration matches “{provider}”.{" "}
-            <Link href="/developer/sources" className="text-brand hover:underline">
+            <Link href={sourcesUrl} className="text-brand hover:underline">
               Manage sources
             </Link>
             .
@@ -407,7 +410,7 @@ export function IntegrationDetail({ provider }: { provider: string }) {
         {/* Subtitle: what this integration does + a quiet Settings link. */}
         <div className="mb-6 ml-[42px] mt-0.5 text-[12.5px] text-muted-foreground">
           {connector.blurb}{" "}
-          <Link href="/developer/sources" className="font-semibold text-brand hover:underline">
+          <Link href={sourcesUrl} className="font-semibold text-brand hover:underline">
             Manage sources
           </Link>
         </div>

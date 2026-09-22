@@ -22,6 +22,7 @@ vi.mock("../../lib/api", () => ({
 const currentUser = {
   id: "user-1",
   developer_platform_only: false,
+  personal_integrations_enabled: false,
   name: "henry",
   display_name: "Henry Dowling",
   email: "henry@example.com",
