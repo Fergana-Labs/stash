@@ -272,8 +272,7 @@ function ConnectStep({ error, onComplete }: { error: string; onComplete: () => v
         Turn your traces into Skills
       </h1>
       <p className="mt-2 max-w-2xl text-[14px] leading-6 text-muted-foreground">
-        Connect Stash once. It imports your five most recent coding sessions, then creates your
-        first three Skills automatically.
+        Connect Stash once. It imports your five most recent coding sessions, then builds a Skill containing what your agents have learned.
       </p>
       {error && <p className="mt-4 text-[12.5px] text-error">{error}</p>}
       <div className="mt-8 divide-y divide-border border-y border-border">
@@ -289,7 +288,7 @@ function ConnectStep({ error, onComplete }: { error: string; onComplete: () => v
         </ProductStep>
         <ProductStep number={2} title="Stash automatically improves your agent">
           <p className="text-[13px] leading-5 text-muted-foreground">
-            Stash finds reusable patterns in your sessions, turns them into Skills, and keeps them
+            Stash finds reusable patterns in your sessions, maintains them in your Skills, and keeps them
             available to your coding agents.
           </p>
         </ProductStep>

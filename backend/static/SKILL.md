@@ -1,4 +1,4 @@
-# Stash — Files, Skills, and Memory System
+# Stash — Files, Sessions, and Skills
 
 ## Concept: Your Stash and Skills
 
@@ -10,8 +10,8 @@ Your Stash has three primary surfaces:
 - **Files** — folders, markdown pages, HTML pages, uploads, and tables.
 - **Skills** — modules of agent-usable knowledge: local SKILL.md folders and shareable bundles of sessions and Files.
 
-To give your agents a skill, **create a Files folder** whose immediate children
-include a file named `SKILL.md`. The body of `SKILL.md` starts with YAML
+To give your agents a Skill, use `stash skills create` or import a folder with
+`stash skills add <path>`. Each Skill contains an entry point named `SKILL.md`. The body of `SKILL.md` starts with YAML
 frontmatter:
 
 ```yaml

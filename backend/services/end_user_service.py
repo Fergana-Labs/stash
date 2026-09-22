@@ -12,13 +12,13 @@ kind of user, theirs. Inside Stash "user" means an account, so the schema and
 this module say end_user. Nothing anywhere says tenant.
 
 Two memory surfaces hang off this table:
-- the workspace's external wiki (`workspaces.external_wiki_folder_id`) —
-  cross-user, anonymized by the curator, opt-out per user via `share_wiki`;
-- a per-user wiki folder (`end_users.wiki_folder_id`) — non-anonymized,
+- the workspace's external skill (`workspaces.external_skill_folder_id`) —
+  cross-user, anonymized by the curator, opt-out per user via `share_skill`;
+- a per-user skill folder (`end_users.skill_folder_id`) — non-anonymized,
   visible only through that user's own reads and the developer console.
 
-Activating the developer platform on a workspace creates the wiki and
-user-wikis folders; `external_wiki_folder_id IS NOT NULL` is the "developer
+Activating the developer platform on a workspace creates the skill and
+user-skills folders; `external_skill_folder_id IS NOT NULL` is the "developer
 platform is active" marker.
 """
 
@@ -27,47 +27,51 @@ from uuid import UUID
 from ..database import get_pool
 from . import files_tree_service, source_service, workspace_service
 
-_END_USER_COLS_PLAIN = "id, workspace_id, external_id, name, share_wiki, wiki_folder_id, created_at"
+_END_USER_COLS_PLAIN = (
+    "id, workspace_id, external_id, name, share_skill, skill_folder_id, created_at"
+)
 _END_USER_COLS = (
-    "eu.id, eu.workspace_id, eu.external_id, eu.name, eu.share_wiki, "
-    "eu.wiki_folder_id, eu.created_at"
+    "eu.id, eu.workspace_id, eu.external_id, eu.name, eu.share_skill, "
+    "eu.skill_folder_id, eu.created_at"
 )
 
 
 async def activate(workspace_id: UUID, created_by: UUID) -> dict:
     """Turn on the developer platform for a workspace: create the external
-    wiki and user-wikis folders and stamp them on the row. Idempotent."""
+    skill and user-skills folders and stamp them on the row. Idempotent."""
     pool = get_pool()
     workspace = await workspace_service.get_workspace(workspace_id)
     if workspace is None:
         raise ValueError("workspace not found")
-    if workspace["external_wiki_folder_id"] is not None:
+    if workspace["external_skill_folder_id"] is not None:
         return workspace
     owner = workspace["scope_user_id"]
-    wiki = await files_tree_service.create_folder(
-        owner, "External Wiki", created_by, protected=True
+    skill = await files_tree_service.create_folder(
+        owner, "Shared knowledge", created_by, protected=True
     )
-    user_wikis = await files_tree_service.create_folder(
-        owner, "User Wikis", created_by, protected=True
+    user_skills = await files_tree_service.create_folder(
+        owner, "User Skills", created_by, protected=True
     )
+    async with pool.acquire() as conn, conn.transaction():
+        await files_tree_service.initialize_curated_skill(conn, skill["id"], owner, skill["name"])
     row = await pool.fetchrow(
         "UPDATE workspaces "
-        "SET external_wiki_folder_id = $2, end_user_wikis_folder_id = $3 "
-        "WHERE id = $1 AND external_wiki_folder_id IS NULL "
+        "SET external_skill_folder_id = $2, end_user_skills_folder_id = $3 "
+        "WHERE id = $1 AND external_skill_folder_id IS NULL "
         "RETURNING id, name, domain, scope_user_id, created_by, "
-        "         external_wiki_folder_id, end_user_wikis_folder_id, created_at",
+        "         external_skill_folder_id, end_user_skills_folder_id, created_at",
         workspace_id,
-        wiki["id"],
-        user_wikis["id"],
+        skill["id"],
+        user_skills["id"],
     )
     if row is None:
         # Lost an activation race — the other winner's folders stand.
         return await workspace_service.get_workspace(workspace_id)
-    # The external wiki needs its own curator: the internal one writes the
-    # scope's Memory wiki under the opposite privacy rules.
+    # The external skill needs its own curator: the internal one writes the
+    # scope's curated Skill under the opposite privacy rules.
     from . import agent_service
 
-    await agent_service.get_or_create_curator(owner, wiki="external")
+    await agent_service.get_or_create_curator(owner, skill="external")
     return dict(row)
 
 
@@ -75,7 +79,7 @@ async def workspace_for_scope(scope_user_id: UUID) -> dict | None:
     pool = get_pool()
     row = await pool.fetchrow(
         "SELECT id, name, domain, scope_user_id, created_by, "
-        "       external_wiki_folder_id, end_user_wikis_folder_id, created_at "
+        "       external_skill_folder_id, end_user_skills_folder_id, created_at "
         "FROM workspaces WHERE scope_user_id = $1",
         scope_user_id,
     )
@@ -86,9 +90,9 @@ async def get_or_create_end_user(
     workspace: dict, external_id: str, name: str | None = None
 ) -> dict:
     """Resolve an end user by the developer's own id, creating them (and their
-    wiki folder) on first sight. The name defaults to the external id and is
+    skill folder) on first sight. The name defaults to the external id and is
     only a display label — identity lives on (workspace_id, external_id)."""
-    if workspace["external_wiki_folder_id"] is None:
+    if workspace["external_skill_folder_id"] is None:
         raise ValueError("developer platform is not active on this workspace — activate it first")
     pool = get_pool()
     row = await pool.fetchrow(
@@ -116,24 +120,31 @@ async def get_or_create_end_user(
             # The folder is named by external_id, not the display name: folders
             # are unique on (owner, parent, name), and two of a developer's
             # users may well share a display name.
-            wiki_folder = await conn.fetchrow(
+            skill_folder = await conn.fetchrow(
                 "INSERT INTO folders "
                 "  (owner_user_id, parent_folder_id, name, created_by, is_protected) "
                 "VALUES ($1, $2, $3, $4, true) RETURNING id",
                 workspace["scope_user_id"],
-                workspace["end_user_wikis_folder_id"],
+                workspace["end_user_skills_folder_id"],
                 external_id,
                 workspace["scope_user_id"],
             )
             row = await conn.fetchrow(
                 f"INSERT INTO end_users "
-                "  (workspace_id, external_id, name, wiki_folder_id) "
+                "  (workspace_id, external_id, name, skill_folder_id) "
                 "VALUES ($1, $2, $3, $4) "
                 f"RETURNING {_END_USER_COLS_PLAIN}",
                 workspace["id"],
                 external_id,
                 name or external_id,
-                wiki_folder["id"],
+                skill_folder["id"],
+            )
+            await files_tree_service.initialize_curated_skill(
+                conn,
+                skill_folder["id"],
+                workspace["scope_user_id"],
+                f"Knowledge for {external_id}",
+                end_user_id=row["id"],
             )
             return dict(row)
 
@@ -231,21 +242,21 @@ async def external_curator_prompt(workspace: dict, since) -> str:
 async def workspace_stats(workspace: dict) -> dict:
     """Console overview numbers: how much the platform has absorbed."""
     pool = get_pool()
-    wiki_page_count = await pool.fetchval(
+    skill_page_count = await pool.fetchval(
         "WITH RECURSIVE wtree AS ("
         "  SELECT f.id FROM folders f WHERE f.id = $1"
         "  UNION"
         "  SELECT f.id FROM folders f JOIN wtree w ON f.parent_folder_id = w.id"
         ") SELECT count(*) FROM pages p "
         "WHERE p.folder_id IN (SELECT id FROM wtree) AND p.deleted_at IS NULL",
-        workspace["external_wiki_folder_id"],
+        workspace["external_skill_folder_id"],
     )
     session_count = await pool.fetchval(
         "SELECT count(*) FROM sessions s JOIN end_users eu ON eu.id = s.end_user_id "
         "WHERE eu.workspace_id = $1 AND s.deleted_at IS NULL",
         workspace["id"],
     )
-    return {"wiki_page_count": wiki_page_count, "user_session_count": session_count}
+    return {"skill_page_count": skill_page_count, "user_session_count": session_count}
 
 
 async def workspace_sessions(workspace: dict, limit: int = 200) -> list[dict]:
@@ -274,31 +285,31 @@ async def workspace_sessions(workspace: dict, limit: int = 200) -> list[dict]:
 
 
 async def workspace_files(workspace: dict) -> dict:
-    """The console's files view: the shared wiki's pages and files, and each
-    user's own material (their wiki's pages plus uploaded files)."""
+    """The console's files view: the shared skill's pages and files, and each
+    user's own material (their skill's pages plus uploaded files)."""
     pool = get_pool()
-    wiki_ids = list(
-        await files_tree_service.folder_subtree_ids(workspace["external_wiki_folder_id"])
+    skill_ids = list(
+        await files_tree_service.folder_subtree_ids(workspace["external_skill_folder_id"])
     )
-    wiki_pages = await pool.fetch(
+    skill_pages = await pool.fetch(
         "SELECT id, name, updated_at FROM pages "
         "WHERE folder_id = ANY($1) AND deleted_at IS NULL ORDER BY updated_at DESC",
-        wiki_ids,
+        skill_ids,
     )
-    wiki_files = await pool.fetch(
+    skill_files = await pool.fetch(
         "SELECT id, name, size_bytes, created_at FROM files "
         "WHERE folder_id = ANY($1) AND deleted_at IS NULL ORDER BY created_at DESC",
-        wiki_ids,
+        skill_ids,
     )
     users = []
     for end_user in await list_end_users(workspace["id"]):
-        user_wiki_ids = list(
-            await files_tree_service.folder_subtree_ids(end_user["wiki_folder_id"])
+        user_skill_ids = list(
+            await files_tree_service.folder_subtree_ids(end_user["skill_folder_id"])
         )
-        user_wiki_pages = await pool.fetch(
+        user_skill_pages = await pool.fetch(
             "SELECT id, name, updated_at FROM pages "
             "WHERE folder_id = ANY($1) AND deleted_at IS NULL ORDER BY updated_at DESC",
-            user_wiki_ids,
+            user_skill_ids,
         )
         files = await pool.fetch(
             "SELECT id, name, size_bytes, created_at FROM files "
@@ -310,15 +321,15 @@ async def workspace_files(workspace: dict) -> dict:
                 "id": str(end_user["id"]),
                 "name": end_user["name"],
                 "external_id": end_user["external_id"],
-                "wiki_folder_id": str(end_user["wiki_folder_id"]),
-                "wiki_pages": [dict(r) for r in user_wiki_pages],
+                "skill_folder_id": str(end_user["skill_folder_id"]),
+                "skill_pages": [dict(r) for r in user_skill_pages],
                 "files": [dict(r) for r in files],
             }
         )
     return {
-        "wiki_folder_id": str(workspace["external_wiki_folder_id"]),
-        "wiki_pages": [dict(r) for r in wiki_pages],
-        "wiki_files": [dict(r) for r in wiki_files],
+        "skill_folder_id": str(workspace["external_skill_folder_id"]),
+        "skill_pages": [dict(r) for r in skill_pages],
+        "skill_files": [dict(r) for r in skill_files],
         "users": users,
     }
 
@@ -332,7 +343,7 @@ async def get_end_user(end_user_id: UUID) -> dict | None:
 
 
 async def update_end_user(
-    end_user_id: UUID, name: str | None = None, share_wiki: bool | None = None
+    end_user_id: UUID, name: str | None = None, share_skill: bool | None = None
 ) -> dict:
     async with get_pool().acquire() as conn, conn.transaction():
         workspace = await conn.fetchrow(
@@ -344,25 +355,25 @@ async def update_end_user(
             raise ValueError("user not found")
         old = await conn.fetchrow("SELECT * FROM end_users WHERE id=$1 FOR UPDATE", end_user_id)
         row = await conn.fetchrow(
-            "UPDATE end_users SET name=COALESCE($2,name),share_wiki=COALESCE($3,share_wiki) "
+            "UPDATE end_users SET name=COALESCE($2,name),share_skill=COALESCE($3,share_skill) "
             f"WHERE id=$1 RETURNING {_END_USER_COLS_PLAIN}",
             end_user_id,
             name,
-            share_wiki,
+            share_skill,
         )
-        if share_wiki is not None and old["share_wiki"] != share_wiki:
+        if share_skill is not None and old["share_skill"] != share_skill:
             await conn.execute(
                 "UPDATE workspaces SET curation_generation=curation_generation+1 WHERE id=$1",
                 workspace["id"],
             )
-            if not share_wiki:
-                await _archive_shared_wiki(conn, workspace)
+            if not share_skill:
+                await _archive_shared_skill(conn, workspace)
     return dict(row)
 
 
-async def _archive_shared_wiki(conn, workspace) -> None:
+async def _archive_shared_skill(conn, workspace) -> None:
     """Without historical input provenance, revocation requires a clean shared corpus."""
-    root = workspace["external_wiki_folder_id"]
+    root = workspace["external_skill_folder_id"]
     folders = await conn.fetch(
         "WITH RECURSIVE t AS (SELECT id FROM folders WHERE id=$1 UNION ALL "
         "SELECT f.id FROM folders f JOIN t ON f.parent_folder_id=t.id) SELECT id FROM t",
@@ -388,27 +399,30 @@ async def _archive_shared_wiki(conn, workspace) -> None:
     await conn.execute("DELETE FROM skills WHERE folder_id=ANY($1::uuid[])", ids)
     await conn.execute("UPDATE files SET end_user_id=NULL WHERE folder_id=ANY($1::uuid[])", ids)
     await conn.execute(
-        "UPDATE folders SET name=$2,parent_folder_id=NULL WHERE id=$1",
+        "UPDATE folders SET name=$2,parent_folder_id=NULL,agent_enabled=false WHERE id=$1",
         root,
-        f"Shared wiki archive ({root})",
+        f"Shared skill archive ({root})",
     )
     new_root = await conn.fetchval(
         "INSERT INTO folders (owner_user_id,created_by,name,is_protected) "
-        "VALUES ($1,$1,'External Wiki',true) RETURNING id",
+        "VALUES ($1,$1,'Shared knowledge',true) RETURNING id",
         workspace["scope_user_id"],
     )
-    await conn.execute(
-        "UPDATE workspaces SET external_wiki_folder_id=$2 WHERE id=$1", workspace["id"], new_root
+    await files_tree_service.initialize_curated_skill(
+        conn, new_root, workspace["scope_user_id"], "Shared knowledge"
     )
     await conn.execute(
-        "UPDATE agents SET curated_through=NULL WHERE user_id=$1 AND curator_wiki='external'",
+        "UPDATE workspaces SET external_skill_folder_id=$2 WHERE id=$1", workspace["id"], new_root
+    )
+    await conn.execute(
+        "UPDATE agents SET curated_through=NULL WHERE user_id=$1 AND curator_skill='external'",
         workspace["scope_user_id"],
     )
 
 
 async def end_user_detail(end_user: dict) -> dict:
     """Everything the console shows about one user: their transcripts, the
-    files their uploads carried, and the wiki the curator writes for them."""
+    files their uploads carried, and the skill the curator writes for them."""
     pool = get_pool()
     sessions = await pool.fetch(
         "SELECT s.session_id, s.agent_name, s.started_at, s.title, "
@@ -428,10 +442,10 @@ async def end_user_detail(end_user: dict) -> dict:
         "ORDER BY created_at DESC",
         end_user["id"],
     )
-    wiki_pages = await pool.fetch(
+    skill_pages = await pool.fetch(
         "SELECT id, name, updated_at FROM pages "
         "WHERE folder_id = ANY($1) AND deleted_at IS NULL ORDER BY updated_at DESC",
-        list(await files_tree_service.folder_subtree_ids(end_user["wiki_folder_id"])),
+        list(await files_tree_service.folder_subtree_ids(end_user["skill_folder_id"])),
     )
     workspace = await workspace_service.get_workspace(end_user["workspace_id"])
     sources = await source_service.list_connected_sources(
@@ -441,6 +455,6 @@ async def end_user_detail(end_user: dict) -> dict:
         "user": end_user,
         "sessions": [dict(r) for r in sessions],
         "files": [dict(r) for r in files],
-        "wiki_pages": [dict(r) for r in wiki_pages],
+        "skill_pages": [dict(r) for r in skill_pages],
         "sources": sources,
     }

@@ -2,8 +2,8 @@
 
 Publishing, forking, and deleting used to confer or revoke skill-ness as a
 side effect of writing or removing a SKILL.md. These pin the behaviour now
-that membership is a flag: each path carries it deliberately, protected
-folders can never acquire it, and a deleted skill does not return when one of
+that membership is a flag: each path carries it deliberately, and a deleted
+skill does not return when one of
 its trashed pages is restored.
 """
 
@@ -73,17 +73,41 @@ async def test_forking_carries_membership_into_the_new_scope(scope, _db_pool):
 
 
 @pytest.mark.asyncio
-async def test_publishing_cannot_turn_memory_into_a_skill(scope, _db_pool):
-    """Publish sets membership, so it is another door onto the protected
-    folders — it must refuse them like every other promotion path."""
-    memory = await files_tree_service.get_or_create_memory_folder(scope, scope)
-
-    with pytest.raises(ValueError, match="can't be turned into a skill"):
-        await shared_skill_service.publish_folder(
-            scope, scope, memory["id"], title="Memory", description="d"
-        )
-
+async def test_curated_knowledge_uses_the_normal_skill_lifecycle(scope, _db_pool):
+    knowledge = await files_tree_service.get_or_create_curated_skill(scope, scope)
+    listed = await skill_service.list_skills(scope, scope)
+    assert [s["folder_id"] for s in listed] == [str(knowledge["id"])]
+    assert listed[0]["published"] is None
+    nested = await files_tree_service.create_folder(scope, "Projects", scope, knowledge["id"])
+    page = await files_tree_service.create_page(
+        scope, "Decision", scope, folder_id=nested["id"], content="Keep the original context."
+    )
+    await files_tree_service.create_page(
+        scope,
+        "Reference",
+        scope,
+        folder_id=nested["id"],
+        content_type="html",
+        content_html="<p>Retain rich text.</p>",
+    )
+    read = await skill_service.read_skill(scope, str(knowledge["id"]), scope)
+    assert any(
+        f["name"] == "Projects/Decision" and f["id"] == str(page["id"]) for f in read["files"]
+    )
+    assert "Keep the original context." in read["combined"]
+    assert "<p>Retain rich text.</p>" in read["combined"]
+    contents = await shared_skill_service.folder_contents({"folder_id": knowledge["id"]})
+    assert any(
+        p["name"] == "Decision" and p["folder_path"] == ["Projects"] for p in contents["pages"]
+    )
+    await _db_pool.execute("UPDATE folders SET agent_enabled=false WHERE id=$1", knowledge["id"])
     assert await skill_service.list_skills(scope, scope) == []
+    assert len(await skill_service.list_skills(scope, scope, include_disabled=True)) == 1
+    await _db_pool.execute("UPDATE folders SET agent_enabled=true WHERE id=$1", knowledge["id"])
+    published = await shared_skill_service.publish_folder(
+        scope, scope, knowledge["id"], title="Learned knowledge", description="d"
+    )
+    assert published["folder_id"] == knowledge["id"]
 
 
 @pytest.mark.asyncio

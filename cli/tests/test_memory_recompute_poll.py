@@ -1,4 +1,4 @@
-"""`stash memory --recompute` polls the curator instead of trusting the 202.
+"""`stash skills curate --recompute` polls the curator instead of trusting the 202.
 
 The web service enqueues and answers 202 before the worker executes — the two
 can disagree (env drift, worker down), so the CLI watches the agent row for

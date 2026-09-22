@@ -117,7 +117,7 @@ export default function InternalAgentsPage() {
           <Step n="02" title="Refine them using sleep-time compute">
             <p>
               Work that repeats becomes a skill: a folder with a <Code>SKILL.md</Code> that an agent
-              installs and loads on the next run. The rest becomes a wiki of pages that your team
+              installs and loads on the next run. The rest becomes a skill of pages that your team
               and your agents both read.
             </p>
             <figure className="m-0">

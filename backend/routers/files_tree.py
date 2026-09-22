@@ -164,32 +164,32 @@ async def get_scope_tree(
     return ScopeTreeResponse(**tree)
 
 
-@router.get("/memory-folder", response_model=FolderResponse)
-async def get_memory_folder(
+@router.get("/skills/curation/root", response_model=FolderResponse)
+async def get_curated_skill(
     current_user: dict = Depends(get_current_user),
     scope_user_id: UUID = Depends(get_scope),
 ):
-    """The scope's reserved Memory folder (created on first access)."""
-    folder = await files_tree_service.get_or_create_memory_folder(scope_user_id, current_user["id"])
+    """The scope's reserved curated Skill folder (created on first access)."""
+    folder = await files_tree_service.get_or_create_curated_skill(scope_user_id, current_user["id"])
     await security_audit_service.record_entries_listed(
-        target_type="memory_folder",
+        target_type="curated_skill",
         actor_user_id=current_user["id"],
         owner_user_id=scope_user_id,
     )
     return FolderResponse(**folder)
 
 
-@router.get("/memory-tree", response_model=ScopeTreeResponse)
-async def get_memory_tree(
+@router.get("/skills/curation/tree", response_model=ScopeTreeResponse)
+async def get_curated_skill_tree(
     current_user: dict = Depends(get_current_user),
     scope_user_id: UUID = Depends(get_scope),
 ):
-    """The Memory wiki as a nested file-system tree (folders + pages), rooted
-    at the scope's Memory folder. Drives the wiki browser page and `stash
-    memory ls`/`write`."""
-    tree = await files_tree_service.memory_tree(scope_user_id, current_user["id"])
+    """The curated Skill as a nested file-system tree (folders + pages), rooted
+    at the scope's curated Skill folder. Drives the skill browser page and `stash
+    skills tree`/`write`."""
+    tree = await files_tree_service.curated_skill_tree(scope_user_id, current_user["id"])
     await security_audit_service.record_entries_listed(
-        target_type="memory_tree",
+        target_type="curated_skill_tree",
         actor_user_id=current_user["id"],
         owner_user_id=scope_user_id,
         metadata={"result_count": len(tree["folders"]) + len(tree["pages"])},
@@ -197,13 +197,13 @@ async def get_memory_tree(
     return ScopeTreeResponse(**tree)
 
 
-@router.get("/memory-graph")
-async def get_memory_graph(
+@router.get("/skills/curation/graph")
+async def get_curated_skill_graph(
     scope_user_id: UUID = Depends(get_scope),
 ):
-    """The Memory wiki as a graph — pages in the Memory subtree plus the
+    """The curated Skill as a graph — pages in the curated Skill subtree plus the
     links between them. Drives the dashboard's context-graph visual."""
-    return await files_tree_service.memory_wiki_graph(scope_user_id)
+    return await files_tree_service.curated_skill_graph(scope_user_id)
 
 
 @router.get("/local-curator-prompt")
@@ -222,8 +222,8 @@ async def get_changes(
     current_user: dict = Depends(get_current_user),
     scope_user_id: UUID = Depends(get_scope),
 ):
-    """The incremental change feed the Memory curator reads: history, changed
-    pages (excl. Memory), new files, and connected sources since `since`."""
+    """The incremental change feed the Skills curator reads: history, changed
+    pages (excluding curated knowledge), new files, and connected sources since `since`."""
     from datetime import UTC, datetime
 
     from ..services import curation_service
@@ -233,13 +233,13 @@ async def get_changes(
     return await curation_service.changes_since(scope_user_id, current_user["id"], since_dt, until)
 
 
-@router.post("/memory/recompute", status_code=202)
-async def recompute_memory(
+@router.post("/skills/curate", status_code=202)
+async def curate_skills(
     current_user: dict = Depends(get_current_user),
     scope_user_id: UUID = Depends(get_scope),
 ):
-    """Run the Memory curator now instead of waiting for the daily tick — the
-    onboarding flow: connect sources, upload documents, watch the wiki build.
+    """Run the Skills curator now instead of waiting for the daily tick — the
+    onboarding flow: connect sources, upload documents, watch the skill build.
     Enforces the same free-tier sleep-time allowance as the scheduler."""
     from datetime import UTC, datetime
 
@@ -252,7 +252,7 @@ async def recompute_memory(
     if scope_user_id != current_user["id"]:
         raise HTTPException(
             status_code=403,
-            detail="Workspace memory recomputes on the workspace's own schedule.",
+            detail="Workspace Skills curate on the workspace's own schedule.",
         )
     user_id = current_user["id"]
     curator = await agent_service.get_or_create_curator(user_id)
@@ -352,13 +352,13 @@ async def get_folder_contents(
     ancestry_rows = await pool.fetch(
         """
         WITH RECURSIVE chain AS (
-          SELECT id, name, parent_folder_id, is_skill, is_memory, 0 AS depth
+          SELECT id, name, parent_folder_id, is_skill, is_curated_skill, 0 AS depth
           FROM folders WHERE id = $1
           UNION ALL
-          SELECT f.id, f.name, f.parent_folder_id, f.is_skill, f.is_memory, c.depth + 1
+          SELECT f.id, f.name, f.parent_folder_id, f.is_skill, f.is_curated_skill, c.depth + 1
           FROM folders f JOIN chain c ON c.parent_folder_id = f.id
         )
-        SELECT id, name, is_skill, is_memory FROM chain ORDER BY depth DESC
+        SELECT id, name, is_skill, is_curated_skill FROM chain ORDER BY depth DESC
         """,
         folder_id,
     )
@@ -367,7 +367,7 @@ async def get_folder_contents(
             "id": str(r["id"]),
             "name": r["name"],
             "is_skill": bool(r["is_skill"]),
-            "is_memory": bool(r["is_memory"]),
+            "is_curated_skill": bool(r["is_curated_skill"]),
         }
         for r in ancestry_rows
     ]

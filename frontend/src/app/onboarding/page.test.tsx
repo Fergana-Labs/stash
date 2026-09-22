@@ -45,7 +45,6 @@ vi.mock("../../lib/api", () => ({
     curatable_session_ids: [],
     skill_count: 0,
     trace_target: 5,
-    skill_target: 3,
   })),
   putOnboardingPreferences: vi.fn(async () => ({ ok: true })),
   updateMe: vi.fn(async () => authUser),
@@ -62,7 +61,6 @@ afterEach(() => {
     curatable_session_ids: [],
     skill_count: 0,
     trace_target: 5,
-    skill_target: 3,
   });
   vi.mocked(putOnboardingPreferences).mockResolvedValue({ ok: true });
   vi.mocked(updateMe).mockResolvedValue(authUser);
@@ -129,7 +127,6 @@ describe("trace-to-Skills onboarding", () => {
       curatable_session_ids: ["session-1"],
       skill_count: 0,
       trace_target: 5,
-      skill_target: 3,
     });
 
     render(<OnboardingPage />);

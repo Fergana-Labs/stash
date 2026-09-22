@@ -1,4 +1,4 @@
-/** Scheduled runs (Memory curator, other scheduled agents) have no human
+/** Scheduled runs (Skills curator, other scheduled agents) have no human
  * turns: their "user" events are server-built prompts. Labelling them as a
  * person misleads anyone auditing a trace, so the viewer must call them what
  * they are — the system prompt — while real chat turns keep the human's name.
@@ -22,7 +22,7 @@ function event(overrides: Partial<SessionEvent>): SessionEvent {
 describe("system prompt labelling", () => {
   it("labels user events in a curator run as the system prompt", () => {
     const turn = eventToTurn(
-      event({ content: "You maintain the user's Memory wiki…" }),
+      event({ content: "You maintain the user's curated Skill…" }),
       "agent-curate-123-20260818",
       "Henry"
     );
@@ -48,12 +48,12 @@ describe("system prompt labelling", () => {
 
   it("names assistant turns after the agent", () => {
     const turn = eventToTurn(
-      event({ role: "assistant", agent_name: "Memory curator" }),
+      event({ role: "assistant", agent_name: "Skills curator" }),
       "agent-curate-123-20260818",
       null
     );
     expect(turn.who).toBe("assistant");
-    expect(turn.name).toBe("Memory curator");
+    expect(turn.name).toBe("Skills curator");
   });
 
   it("recognises only curate/sched session ids as scheduled runs", () => {
@@ -67,10 +67,10 @@ describe("system prompt labelling", () => {
 describe("toolDisplay", () => {
   it("shows a bash call's command as the code, summarized by its description", () => {
     const { summary, body } = toolDisplay(
-      '{"command": "stash memory --json", "description": "Read the memory folder id"}'
+      '{"command": "stash skills curate --json", "description": "Read the curated Skill folder id"}'
     );
-    expect(summary).toBe("Read the memory folder id");
-    expect(body).toBe("stash memory --json");
+    expect(summary).toBe("Read the curated Skill folder id");
+    expect(body).toBe("stash skills curate --json");
   });
 
   it("pretty-prints other JSON inputs and summarizes by file_path", () => {

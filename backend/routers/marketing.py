@@ -26,7 +26,7 @@ _GET_LIMIT = "30/minute"
 _CHAT_LIMIT = "30/minute"
 
 _KINDS = {"view", "signup"}
-_VARIANTS = {"drive", "wiki", "connect", "assistant"}
+_VARIANTS = {"drive", "skill", "connect", "assistant"}
 
 
 class MarketingEvent(BaseModel):

@@ -35,8 +35,8 @@ function Users() {
     <>
       <PageHeading title="Users">
         One end user of your product each — a company, or one person. Each has a private
-        wiki of their own; the switch controls whether their sessions also feed the shared
-        anonymized wiki.
+        skill of their own; the switch controls whether their sessions also feed the shared
+        anonymized skill.
       </PageHeading>
       {error ? (
         <p className="text-[15px] text-error">Couldn&apos;t load users: {error}</p>

@@ -155,14 +155,14 @@ function WorkspaceScopes({
   onEnterPlatform: (w: Workspace) => void;
   onCreatePlatform: () => void;
 }) {
-  const consoles = workspaces.filter((w) => w.external_wiki_folder_id !== null);
+  const consoles = workspaces.filter((w) => w.external_skill_folder_id !== null);
   // A workspace only earns its internal-knowledge-base row when that face is
   // the workspace's point. One activated as a developer platform lists under
   // Developer instead — showing both made a platform workspace read as three
   // contexts (personal / workspace / console) when it is one account and one
   // console. If a workspace ever legitimately carries both faces, that needs
   // a real flag, not this inference.
-  const internal = workspaces.filter((w) => !developerOnly && w.external_wiki_folder_id === null);
+  const internal = workspaces.filter((w) => !developerOnly && w.external_skill_folder_id === null);
   return (
     <>
       {internal.length > 0 && <DropdownMenuSeparator />}

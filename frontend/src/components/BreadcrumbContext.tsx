@@ -13,7 +13,7 @@ export type Crumb = {
   label: string;
   href?: string;
   onClick?: () => void;
-  area?: "memory" | "skills";
+  area?: "skills";
 };
 
 interface Ctx {

@@ -3269,20 +3269,12 @@ def _poll_recompute_outcome(
     return "queued", None
 
 
-memory_app = typer.Typer(
-    help="Your Memory wiki — status, recompute, and direct page writes.",
-    invoke_without_command=True,
-)
-app.add_typer(memory_app, name="memory")
-
-
-@memory_app.callback()
-def memory_default(
-    ctx: typer.Context,
+@skills_app.command("curate")
+def skills_curate(
     recompute: bool = typer.Option(
         False,
         "--recompute",
-        help="Run the Memory curator now instead of waiting for the daily pass.",
+        help="Run the Skills curator now instead of waiting for the daily pass.",
     ),
     curator: str = typer.Option(
         None,
@@ -3292,9 +3284,7 @@ def memory_default(
     ),
     as_json: bool = typer.Option(False, "--json"),
 ):
-    """Show your reserved Memory folder (its id is where the wiki lives)."""
-    if ctx.invoked_subcommand is not None:
-        return
+    """Show your reserved curated Skill folder (its id is where the skill lives)."""
     if curator is not None and curator not in ("on", "off"):
         console.print("[red]--curator takes 'on' or 'off'.[/red]")
         raise typer.Exit(1)
@@ -3302,7 +3292,7 @@ def memory_default(
         if curator is not None:
             row = c.get_curator()
             if not row:
-                console.print("[red]No Memory curator found for this account.[/red]")
+                console.print("[red]No Skills curator found for this account.[/red]")
                 raise typer.Exit(1)
             updated = c.set_curator_scheduled(row["id"], curator == "on")
             if _use_json(as_json):
@@ -3314,12 +3304,12 @@ def memory_default(
             else:
                 console.print(
                     "Curator nightly cloud run: [yellow]off[/yellow] — "
-                    "run it yourself with `stash memory --recompute` or locally."
+                    "run it yourself with `stash skills curate --recompute` or locally."
                 )
             return
         if recompute:
             before = c.get_curator()
-            data = c.recompute_memory()
+            data = c.curate_skills()
             outcome, run_error = _poll_recompute_outcome(c, before)
             if _use_json(as_json):
                 output_json({**data, "outcome": outcome, "last_run_error": run_error})
@@ -3328,22 +3318,22 @@ def memory_default(
             elif outcome == "queued":
                 console.print(
                     "[yellow]Curator run was enqueued but no worker picked it up "
-                    "within 30s — it may still run; check `stash memory` later.[/yellow]"
+                    "within 30s — it may still run; check `stash skills curate` later.[/yellow]"
                 )
             else:
                 console.print(
-                    "Curator run started — the Memory wiki will update shortly. "
-                    "Check `stash memory` for the outcome."
+                    "Curator run started — the curated Skill will update shortly. "
+                    "Check `stash skills curate` for the outcome."
                 )
             if outcome == "failed":
                 raise typer.Exit(1)
             return
-        folder = c.get_memory_folder()
+        folder = c.get_curated_skill()
         row = c.get_curator()
     if _use_json(as_json):
         output_json({**folder, "curator": row})
         return
-    console.print(f"Memory folder: [cyan]{folder['name']}[/cyan] (id {folder['id']})")
+    console.print(f"curated Skill folder: [cyan]{folder['name']}[/cyan] (id {folder['id']})")
     if row:
         schedule = "nightly (cloud)" if row["run_mode"] == "scheduled" else "off — on-demand only"
         console.print(f"Curator schedule: {schedule}")
@@ -3353,18 +3343,22 @@ def memory_default(
             console.print(f"[red]Curator last run failed:[/red] {row['last_run_error']}")
 
 
-def _resolve_memory_target(c: StashClient, path: str) -> tuple[dict | None, str, str]:
-    """Walk `path` (relative to the Memory folder) to its page slot.
+def _resolve_skill_target(c: StashClient, path: str) -> tuple[dict | None, str, str]:
+    """Walk `path` (relative to the curated Skill folder) to its page slot.
 
     Returns (existing_page | None, folder_id, page_name), creating missing
     intermediate folders along the way. A trailing `.md` on the page segment
     is stripped — the VFS shows page names with that suffix."""
     segments = [s for s in path.split("/") if s]
-    page_name = segments[-1].removesuffix(".md") if segments else ""
+    page_name = (
+        (segments[-1] if segments[-1] == "SKILL.md" else segments[-1].removesuffix(".md"))
+        if segments
+        else ""
+    )
     if not page_name:
         raise ValueError(f"not a page path: {path!r}")
-    folder_id = c.get_memory_folder()["id"]
-    node: dict | None = c.get_memory_tree()
+    folder_id = c.get_curated_skill()["id"]
+    node: dict | None = c.get_curated_skill_tree()
     for segment in segments[:-1]:
         child = next((f for f in node["folders"] if f["name"] == segment), None) if node else None
         if child is None:
@@ -3378,18 +3372,18 @@ def _resolve_memory_target(c: StashClient, path: str) -> tuple[dict | None, str,
     return page, folder_id, page_name
 
 
-@memory_app.command("write")
-def memory_write(
+@skills_app.command("write")
+def skills_write(
     path: str = typer.Argument(
         ...,
-        help="Page path under the Memory folder, e.g. 'Product/Chainbase'. "
+        help="Page path under the curated Skill folder, e.g. 'Product/Chainbase'. "
         "Missing subfolders are created; a trailing .md is stripped.",
     ),
     content: str = typer.Option(None, "--content", help="Page body. Reads stdin if omitted."),
     as_json: bool = typer.Option(False, "--json"),
 ):
-    """Create or update a Memory wiki page at a path — the direct write
-    surface for agents that maintain the wiki themselves."""
+    """Create or update a curated Skill page at a path — the direct write
+    surface for agents that maintain the skill themselves."""
     if content is None and not sys.stdin.isatty():
         content = sys.stdin.read()
     if content is None:
@@ -3397,7 +3391,7 @@ def memory_write(
         raise typer.Exit(1)
     with _client() as c:
         try:
-            page, folder_id, page_name = _resolve_memory_target(c, path)
+            page, folder_id, page_name = _resolve_skill_target(c, path)
         except ValueError as e:
             console.print(f"[red]{e}[/red]")
             raise typer.Exit(1)
@@ -3418,30 +3412,30 @@ def memory_write(
         console.print(f"[green]Page '{data['name']}' {action}.[/green]  ID: {data['id']}")
 
 
-def _print_memory_tree(node: dict, indent: int) -> None:
+def _print_curated_skill_tree(node: dict, indent: int) -> None:
     pad = "  " * indent
     for f in node["folders"]:
         console.print(f"{pad}[cyan]{f['name']}/[/cyan]  [dim]{f['id']}[/dim]")
-        _print_memory_tree(f, indent + 1)
+        _print_curated_skill_tree(f, indent + 1)
     for p in node["pages"]:
         console.print(f"{pad}{p['name']}  [dim]{p['id']}[/dim]")
 
 
-@memory_app.command("ls")
-def memory_ls(as_json: bool = typer.Option(False, "--json")):
-    """The Memory wiki tree with ids — page ids feed `stash files edit-page`
+@skills_app.command("tree")
+def skills_tree(as_json: bool = typer.Option(False, "--json")):
+    """The curated Skill tree with ids — page ids feed `stash files edit-page`
     and `stash rm page:<id>`."""
     with _client() as c:
         try:
-            folder = c.get_memory_folder()
-            tree = c.get_memory_tree()
+            folder = c.get_curated_skill()
+            tree = c.get_curated_skill_tree()
         except StashError as e:
             _err(e)
     if _use_json(as_json):
         output_json({"id": folder["id"], "name": folder["name"], **tree})
         return
     console.print(f"[cyan]{folder['name']}/[/cyan]  [dim]{folder['id']}[/dim]")
-    _print_memory_tree(tree, indent=1)
+    _print_curated_skill_tree(tree, indent=1)
 
 
 @app.command("changes")
@@ -3450,7 +3444,7 @@ def changes(
     as_json: bool = typer.Option(False, "--json"),
 ):
     """What changed since a timestamp — history, pages, files, saves, sources.
-    Feeds the Memory curator's incremental pass."""
+    Feeds the Skills curator's incremental pass."""
     with _client() as c:
         data = c.get_changes(since or None)
     if _use_json(as_json):
@@ -5746,8 +5740,6 @@ def _setup_complete_intro(
     importing: dict | None,
     recorded_paths: list[str] | None = None,
 ) -> str:
-    # Home *is* the memory dashboard — there is no /memory route.
-    memory_url = frontend_url
     # Empty = everywhere, the contract `recorded_paths` carries everywhere else
     # (cli/config.py, the plugin's gate). The splash has to say which one the
     # user just chose — promising machine-wide capture to someone who scoped
@@ -5778,14 +5770,14 @@ def _setup_complete_intro(
         "to its CLAUDE.md — agents working there will know how to use your Stash."
     )
     return (
-        "[bold]Your agents just got a memory[/bold]\n"
+        "[bold]Your agents now have Stash[/bold]\n"
         f"Every coding session {where} now lands in your private Stash.\n"
         "Your agents can draw on everything you've worked on before — past fixes,\n"
         "decisions, dead ends — instead of starting every session from zero.\n"
         "\n"
         "[bold]Your knowledge base[/bold]\n"
-        f"  [link={memory_url}][bold #1e3a8a]{memory_url}[/bold #1e3a8a][/link]\n"
-        "Stash compiles your sessions into memory your agents check before they\n"
+        f"  [link={frontend_url}][bold #1e3a8a]{frontend_url}[/bold #1e3a8a][/link]\n"
+        "Stash compiles your sessions into Skills your agents check before they\n"
         "work. The more you use it, the better they get.\n"
         "\n"
         f"{recording_section}"
@@ -5818,7 +5810,7 @@ def _show_setup_complete_splash() -> None:
                     load_config().get("recorded_paths"),
                 )
             ),
-            title="[bold #1e3a8a]Your agent memory[/bold #1e3a8a]",
+            title="[bold #1e3a8a]Your agent Skills[/bold #1e3a8a]",
             border_style="#1e3a8a",
             padding=(1, 2),
         )

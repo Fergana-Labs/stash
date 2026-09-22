@@ -4,7 +4,7 @@ import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 
 import { Code } from "@/components/developer/DocsPrimitives";
-import WikiToggle from "@/components/developer/WikiToggle";
+import SkillToggle from "@/components/developer/SkillToggle";
 import type { EndUser } from "@/lib/types";
 
 export default function UserTable({ users, onChanged }: { users: EndUser[]; onChanged: () => void }) {
@@ -35,7 +35,7 @@ export default function UserTable({ users, onChanged }: { users: EndUser[]; onCh
                 ` · last ${new Date(user.last_session_at).toLocaleDateString()}`}
             </span>
           </span>
-          <WikiToggle user={user} onChanged={onChanged} />
+          <SkillToggle user={user} onChanged={onChanged} />
           <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
         </Link>
       ))}

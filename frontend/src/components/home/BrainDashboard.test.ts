@@ -8,7 +8,6 @@ const status: OnboardingStatus = {
   curatable_session_ids: [],
   skill_count: 0,
   trace_target: 5,
-  skill_target: 3,
 };
 
 const uploadingSource: UploadSource = {
@@ -32,9 +31,9 @@ describe("first-session upload progress", () => {
     ).toBeNull();
   });
 
-  it("ends once the five-session onboarding target is reached", () => {
+  it("opens Home after the first useful session, even below the import sample size", () => {
     expect(
-      getInitialUploadProgress({ ...status, curatable_trace_count: 5 }, [uploadingSource]),
+      getInitialUploadProgress({ ...status, curatable_trace_count: 1 }, [uploadingSource]),
     ).toBeNull();
   });
 });

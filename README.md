@@ -25,9 +25,9 @@
 </p>
 
 
-<!-- Screenshot #1 — The Memory page: wiki graph, knowledge map, recent edits -->
+<!-- Screenshot #1 — The Memory page: skill graph, knowledge map, recent edits -->
 <p align="center">
-  <img src="docs/assets/memory.png" alt="Stash Memory — wiki knowledge graph, file system, and recent agent activity" width="900" />
+  <img src="docs/assets/memory.png" alt="Stash Skills — knowledge graph, file system, and recent agent activity" width="900" />
 </p>
 <!-- GIF #2 — The product in action: agent runs `stash search`, gets a cited answer -->
 
@@ -41,7 +41,7 @@
 - **Files and sessions live side by side.** Markdown, HTML, tables, PDFs. You and your agents both write here; both sides see edits in real time.
 - **Agents query it like a filesystem.** A CLI, MCP server (~70 read/write tools), REST API, and virtual-filesystem shell expose your Stash to any agent. One search spans your pages, sessions, and every connected source at once.
 - **There's an agent in the box too.** Chat with an agent that already has all of this — in the app, from Slack, or from Telegram. It's a real coding-agent CLI (Claude Code, Codex, or opencode) running on your own cloud VM, so it can read, write, and run things. Give it a cron and it becomes a scheduled agent.
-- **Memory is a wiki an agent keeps for you.** A scheduled curator reads whatever is new since its last run — sessions, files, saves — and compiles it into linked pages: entities, concepts, and a running log. It writes only inside the reserved Memory folder, and never reads its own output.
+- **Memory is a skill an agent keeps for you.** A scheduled curator reads whatever is new since its last run — sessions, files, saves — and compiles it into linked pages: entities, concepts, and a running log. It writes only inside the reserved curated Skill folder, and never reads its own output.
 - **Skills are the shareable slice.** A Skill is just a folder with a `SKILL.md` in it — put the pages, files, and tables that belong together in one folder and it becomes shareable as a unit. Publish it to the world, fork a public Skill into your own Stash, or `stash skills install` one into your agent — installed skills auto-update at session start, and `stash skills follow` auto-installs skills people share with you.
 - **Bring your own MCP servers.** Register MCP servers once (Tools page or `stash tools add`); your cloud agent gets them automatically and `stash tools install` writes them into any local agent's `.mcp.json`.
 
@@ -231,7 +231,7 @@ Stash is built for engineering teams working in private repos.
 An Anthropic key covers ask-the-stash, session titles, and scanned-PDF OCR. The chat agent is separate and runs whichever harness you point it at — Claude Code, Codex, or opencode — against your own Anthropic, OpenAI, or OpenRouter credentials. Embeddings are a third, independent choice (OpenAI, HuggingFace, or a local model). All of it is optional; without any keys the rest of Stash works and those features are disabled.
 
 **What writes to my Stash on its own?**
-One thing by default: the Memory curator, a scheduled agent that compiles your Memory wiki from new sessions and files. It only writes inside the reserved Memory folder, and it only reads what's new since its last run. Turn the nightly run off or on with `stash memory --curator off|on` (on-demand runs keep working). Beyond that, nothing runs unless you create it — any agent you give a cron to becomes a scheduled agent, and those have the same reach you do.
+One thing by default: the Skills curator, a scheduled agent that compiles your curated Skill from new sessions and files. It only writes inside the reserved curated Skill folder, and it only reads what's new since its last run. Turn the nightly run off or on with `stash skills curate --curator off|on` (on-demand runs keep working). Beyond that, nothing runs unless you create it — any agent you give a cron to becomes a scheduled agent, and those have the same reach you do.
 
 **Can I use this without Claude Code?**
 Yes. You can use the CLI with anything, and Stash has native plugins for Cursor, Codex, Opencode, Gemini CLI, and more.

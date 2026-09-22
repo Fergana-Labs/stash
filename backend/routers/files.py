@@ -229,9 +229,9 @@ async def ingest_bytes(
     # and MCP all hit this single path and get the routing for free.
     # An end user's uploads are raw data by definition: markdown that would
     # normally become an editable page stays a file when it belongs to a
-    # customer, since pages are the memory substrate (shared wiki, per-user wiki) and those
+    # customer, since pages are the memory substrate (shared skill, per-user skill) and those
     # are curated, not uploaded. Text a user should *remember* goes to their
-    # wiki folder.
+    # skill folder.
     page_kind = None if end_user_id else files_tree_service.detect_page_kind(filename, content_type)
     if page_kind is not None:
         if folder_id is not None:
@@ -491,7 +491,7 @@ async def download_my_file(
     file_id: UUID,
     current_user: dict | None = Depends(get_current_user_optional),
 ):
-    """Permanent URL for file links embedded in wiki pages. Resolves the file's
+    """Permanent URL for file links embedded in skill pages. Resolves the file's
     real owner so recipients of a shared page — or a public link, logged out —
     can load its embedded images."""
     viewer_id = current_user["id"] if current_user else None

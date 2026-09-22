@@ -65,7 +65,7 @@ async def can_write(owner_user_id: UUID | None, user_id: UUID | None) -> bool:
 
 
 async def seed_user_scope(user_id: UUID) -> None:
-    """Provision the daily Memory curator for a new scope.
+    """Provision the daily Skills curator for a new scope.
 
     Public Skills are opt-in and are installed from Discover, never seeded
     into accounts.

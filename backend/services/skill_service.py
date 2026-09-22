@@ -418,8 +418,12 @@ async def read_skill(owner_user_id: UUID, name: str, user_id: UUID) -> dict | No
 
     folder_id = match["folder_id"]
     pages = await pool.fetch(
-        "SELECT id, name, content_markdown, updated_at "
-        "FROM pages WHERE folder_id = $1 AND deleted_at IS NULL ORDER BY name",
+        "WITH RECURSIVE subtree AS (SELECT id, ARRAY[]::text[] AS path FROM folders WHERE id=$1 "
+        "UNION ALL SELECT f.id,s.path || f.name FROM folders f "
+        "JOIN subtree s ON f.parent_folder_id=s.id) "
+        "SELECT p.id,array_to_string(s.path || p.name, '/') AS name,p.content_markdown,p.content_html,p.content_type,p.updated_at "
+        "FROM pages p JOIN subtree s ON s.id=p.folder_id "
+        "WHERE p.deleted_at IS NULL ORDER BY name",
         UUID(folder_id),
     )
     readable_pages = []
@@ -430,7 +434,14 @@ async def read_skill(owner_user_id: UUID, name: str, user_id: UUID) -> dict | No
             user_id,
             owner_user_id=owner_user_id,
         ):
-            readable_pages.append(page)
+            readable_pages.append(
+                {
+                    **dict(page),
+                    "content": page["content_html"]
+                    if page["content_type"] == "html"
+                    else page["content_markdown"],
+                }
+            )
     pages = readable_pages
 
     skill_md = next((p for p in pages if p["name"] == "SKILL.md"), None)
@@ -443,7 +454,7 @@ async def read_skill(owner_user_id: UUID, name: str, user_id: UUID) -> dict | No
     if skill_md:
         combined_parts.append(f"# {match['name']} (SKILL.md)\n\n{body}")
     for p in siblings:
-        combined_parts.append(f"\n\n## {p['name']}\n\n{p['content_markdown'] or ''}")
+        combined_parts.append(f"\n\n## {p['name']}\n\n{p['content'] or ''}")
 
     return {
         "folder_id": folder_id,
@@ -458,7 +469,7 @@ async def read_skill(owner_user_id: UUID, name: str, user_id: UUID) -> dict | No
                 "id": str(p["id"]),
                 "name": p["name"],
                 "updated_at": p["updated_at"],
-                "content": p["content_markdown"] or "",
+                "content": p["content"] or "",
             }
             for p in pages
         ],

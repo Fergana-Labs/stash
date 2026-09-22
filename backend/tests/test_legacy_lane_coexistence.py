@@ -45,23 +45,23 @@ async def _convert_account(pool, user_id_str: str, folders: list[dict]) -> None:
     """The shape migration 0201 leaves behind: the account is an active
     developer workspace scope, and each keyed folder has an end_users row."""
     user_id = uuid.UUID(user_id_str)
-    wiki_id = await pool.fetchval(
+    skill_id = await pool.fetchval(
         "INSERT INTO folders (owner_user_id, name, created_by, is_protected) "
-        "VALUES ($1, 'External Wiki', $1, true) RETURNING id",
+        "VALUES ($1, 'External Skill', $1, true) RETURNING id",
         user_id,
     )
-    wikis_id = await pool.fetchval(
+    skills_id = await pool.fetchval(
         "INSERT INTO folders (owner_user_id, name, created_by, is_protected) "
-        "VALUES ($1, 'User Wikis', $1, true) RETURNING id",
+        "VALUES ($1, 'User Skills', $1, true) RETURNING id",
         user_id,
     )
     workspace_id = await pool.fetchval(
         "INSERT INTO workspaces (name, domain, scope_user_id, created_by, "
-        "                        external_wiki_folder_id, end_user_wikis_folder_id) "
+        "                        external_skill_folder_id, end_user_skills_folder_id) "
         "VALUES ('Converted', NULL, $1, $1, $2, $3) RETURNING id",
         user_id,
-        wiki_id,
-        wikis_id,
+        skill_id,
+        skills_id,
     )
     await pool.execute(
         "INSERT INTO workspace_members (workspace_id, user_id) VALUES ($1, $2)",
@@ -69,21 +69,21 @@ async def _convert_account(pool, user_id_str: str, folders: list[dict]) -> None:
         user_id,
     )
     for folder in folders:
-        user_wiki_id = await pool.fetchval(
+        user_skill_id = await pool.fetchval(
             "INSERT INTO folders (owner_user_id, parent_folder_id, name, created_by, "
             "                     is_protected) "
             "VALUES ($1, $2, $3, $1, true) RETURNING id",
             user_id,
-            wikis_id,
+            skills_id,
             folder["external_key"],
         )
         await pool.execute(
-            "INSERT INTO end_users (workspace_id, external_id, name, wiki_folder_id) "
+            "INSERT INTO end_users (workspace_id, external_id, name, skill_folder_id) "
             "VALUES ($1, $2, $3, $4)",
             workspace_id,
             folder["external_key"],
             folder["name"],
-            user_wiki_id,
+            user_skill_id,
         )
 
 

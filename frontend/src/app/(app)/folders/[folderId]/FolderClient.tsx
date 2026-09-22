@@ -21,7 +21,7 @@ import {
 } from "@/lib/api";
 import { findInSkillContents } from "@/lib/localSkill";
 import { loginPathWithNext } from "@/lib/loginRedirect";
-import { sectionCrumbs } from "@/lib/memory-folder";
+import { sectionCrumbs } from "@/lib/skill-breadcrumbs";
 import { refreshSidebar } from "@/lib/skillNavigationCache";
 
 export default function FolderDetailPage({ folderId: folderIdProp }: { folderId?: string }) {

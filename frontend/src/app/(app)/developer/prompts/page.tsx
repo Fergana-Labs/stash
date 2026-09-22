@@ -25,7 +25,7 @@ export default function DeveloperPrompts() {
 
       <PromptSection
         title="Install"
-        blurb="The whole onboarding in one prompt: the memory read before each turn, the
+        blurb="The whole onboarding in one prompt: the Skills read before each turn, the
           transcript upload after it, a backfill of whatever history your database already
           holds, and a final check that a user shows up in this console. Paste a key from
           the API Keys page into the first line."

@@ -2,29 +2,29 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { SkeletonBlock } from "@/components/SkeletonStates";
-import CuratorLog from "@/components/memory/CuratorLog";
-import WikiGraph from "@/components/memory/WikiGraph";
+import CuratorLog from "@/components/home/CuratorLog";
+import SkillGraph from "@/components/home/SkillGraph";
 import EmbeddingSpaceExplorer from "@/components/viz/EmbeddingSpaceExplorer";
 import {
   getEmbeddingProjection,
-  getMemoryGraph,
+  getCuratedSkillGraph,
   getSessionsAnalytics,
   type SessionsAnalytics,
-  type WikiGraph as WikiGraphData,
+  type SkillGraph as SkillGraphData,
 } from "@/lib/api";
 import type { EmbeddingProjection } from "@/lib/types";
 
 /** Usage — an honest dashboard over the sessions the user can
  *  read (same scoping as the Sessions list): totals, sessions per day for the
  *  last 60 days, breakdowns by agent and by person, then the theme
- *  visualizations (session embedding map, memory wiki graph) and the
+ *  visualizations (session embedding map, curated Skill graph) and the
  *  curator log. Plain CSS bars for the stats, no chart library. Each
  *  visualization fetches independently so one slow endpoint can't hold the
  *  page. */
 export default function SessionAnalyticsPage() {
   const [data, setData] = useState<SessionsAnalytics | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [graph, setGraph] = useState<WikiGraphData | null>(null);
+  const [graph, setGraph] = useState<SkillGraphData | null>(null);
   const [graphLoaded, setGraphLoaded] = useState(false);
   const [graphError, setGraphError] = useState<string | null>(null);
   const [projection, setProjection] = useState<EmbeddingProjection | null>(null);
@@ -36,7 +36,7 @@ export default function SessionAnalyticsPage() {
     getSessionsAnalytics()
       .then((d) => { if (!cancelled) setData(d); })
       .catch((e) => { if (!cancelled) setError(e instanceof Error ? e.message : String(e)); });
-    getMemoryGraph()
+    getCuratedSkillGraph()
       .then((g) => { if (!cancelled) setGraph(g); })
       .catch((reason) => { if (!cancelled) setGraphError(String(reason)); })
       .finally(() => { if (!cancelled) setGraphLoaded(true); });
@@ -113,9 +113,9 @@ export default function SessionAnalyticsPage() {
         </section>
 
         <section className="mt-5">
-          <div className="sys-label mb-1.5">Memory wiki</div>
+          <div className="sys-label mb-1.5">curated Skill</div>
           <p className="mb-1.5 text-[12px] text-foreground/75">
-            The curator&apos;s context graph — your wiki pages and the links between them.
+            The curator&apos;s context graph — your skill pages and the links between them.
             Click a node to open its page.
           </p>
           <div className="card-soft p-3">
@@ -124,10 +124,10 @@ export default function SessionAnalyticsPage() {
             ) : graphError ? (
               <VisualizationError message={graphError} />
             ) : graph && graph.nodes.length > 0 ? (
-              <WikiGraph data={graph} />
+              <SkillGraph data={graph} />
             ) : (
               <EmptyState>
-                No wiki pages yet. The Memory curator&apos;s nightly run compiles your
+                No skill pages yet. The Skills curator&apos;s nightly run compiles your
                 history into a context graph of linked pages.
               </EmptyState>
             )}

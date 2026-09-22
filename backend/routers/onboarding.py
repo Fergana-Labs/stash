@@ -40,7 +40,7 @@ class OnboardingPreferences(BaseModel):
 @router.get("/me/onboarding-status")
 async def get_onboarding_status(current_user: dict = Depends(get_current_user)) -> dict:
     user_id = current_user["id"]
-    trace_target = curation_service.SKILL_BOOTSTRAP_TRACE_TARGET
+    trace_target = curation_service.ONBOARDING_TRACE_TARGET
     skill_count = await get_pool().fetchval(
         "SELECT count(*) FROM folders WHERE owner_user_id = $1 AND is_skill",
         user_id,
@@ -52,7 +52,6 @@ async def get_onboarding_status(current_user: dict = Depends(get_current_user)) 
         ),
         "skill_count": int(skill_count),
         "trace_target": trace_target,
-        "skill_target": curation_service.SKILL_BOOTSTRAP_COUNT,
     }
 
 

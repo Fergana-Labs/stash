@@ -14,9 +14,9 @@ export const KEY_PLACEHOLDER = "[INSERT API KEY HERE]";
 export const INSTALL_PROMPT = `MY API KEY IS ${KEY_PLACEHOLDER}
 
 Wire Stash (https://api.joinstash.ai) into this app so our agent has
-per-user memory: every user's agent reads a shared knowledge wiki plus
-that user's own private memory, and what our users say feeds back in.
-Then load our existing history, so memory starts full instead of empty.
+per-user Skills: every user's agent reads a shared knowledge skill plus
+that user's own private Skill, and what our users say feeds back in.
+Then load our existing history, so Skills start full instead of empty.
 
 Context:
 - Put the API key above in this app's env as STASH_API_KEY and never
@@ -28,15 +28,15 @@ Context:
   material. First sight of a new user_id creates the user in Stash.
 
 Step 1 — READ. When composing the agent's context for a turn, fetch that
-user's memory and put it in the system prompt:
+user's Skills and put it in the system prompt:
    POST /api/v1/me/vfs
    Header "Authorization: Bearer $STASH_API_KEY", body
-   {"script": "cat /memory/*.md", "user_id": "<user>"}
-   stdout is markdown: the shared wiki every user's agent reads. Wiki
-   categories are subfolders — "ls /memory" lists them,
-   "cat /memory/<category>/*.md" reads one.
-   Also on the same call: "cat /files/wiki/*.md" (this user's own
-   wiki — it exists once the curator has run over their sessions),
+   {"script": "cat /skills/shared/*.md", "user_id": "<user>"}
+   stdout is markdown: the shared skill every user's agent reads. Skill
+   categories are subfolders — "ls /skills/shared" lists them,
+   "cat /skills/shared/<category>/*.md" reads one.
+   Also on the same call: "cat /skills/personal/*.md" (this user's own
+   skill — it exists once the curator has run over their sessions),
    "ls /sessions" and raw transcripts under /sessions. Reading has
    nothing to do with which conversation you are in — no session id
    involved.
@@ -68,11 +68,11 @@ Step 4 — verify end to end. Send one message through the app and
 confirm the user appears on the Users page of our Stash developer
 console (the /developer/users route of the Stash web app). Then tell me you're done — I'll press Backfill on the console's
 Curator page so the curator reads everything, history included, and
-builds each user's wiki plus the shared one.`;
+builds each user's skill plus the shared one.`;
 
 export const BACKFILL_PROMPT = `Stash (https://api.joinstash.ai) is already wired into this app — this
 task only loads our existing conversation history into it, so our
-agent's memory covers everything from before the integration.
+agent's Skills covers everything from before the integration.
 
 Context:
 - Our Stash API key is in $STASH_API_KEY. It can read and record, never delete.
@@ -101,4 +101,4 @@ Steps:
 
 When it finishes, tell me — I'll press Backfill in the Stash console
 (Curator page) so the curator reads the whole history and builds each
-user's wiki plus the shared one.`;
+user's skill plus the shared one.`;

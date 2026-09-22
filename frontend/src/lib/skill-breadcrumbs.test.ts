@@ -1,30 +1,31 @@
 import { describe, expect, it } from "vitest";
-import { sectionCrumbs } from "./memory-folder";
+import { sectionCrumbs } from "./skill-breadcrumbs";
 
 describe("sectionCrumbs", () => {
   it("walks plain uploaded folders without a section root", () => {
     expect(sectionCrumbs([])).toEqual([]);
     expect(
       sectionCrumbs([
-        { id: "imports", name: "Imports", is_skill: false, is_memory: false },
+        { id: "imports", name: "Imports", is_skill: false, is_curated_skill: false },
       ]),
     ).toEqual([{ label: "Imports", href: "/folders/imports" }]);
   });
 
-  it("roots curator content at Memory", () => {
+  it("roots curated knowledge at Skills", () => {
     expect(
       sectionCrumbs([
-        { id: "memory", name: "Memory", is_skill: false, is_memory: true },
+        { id: "curated", name: "Learned knowledge", is_skill: true, is_curated_skill: true },
         {
           id: "platform",
           name: "Platform & Data",
           is_skill: false,
-          is_memory: false,
+          is_curated_skill: false,
         },
       ]),
     ).toEqual([
-      { label: "Memory", href: "/", area: "memory" },
-      { label: "Platform & Data", href: "/folders/platform" },
+      { label: "Skills", href: "/skills", area: "skills" },
+      { label: "Learned knowledge", href: "/skills/folder/curated" },
+      { label: "Platform & Data", href: "/skills/folder/platform" },
     ]);
   });
 
@@ -35,15 +36,15 @@ describe("sectionCrumbs", () => {
           id: "ordinary-parent",
           name: "Imports",
           is_skill: false,
-          is_memory: false,
+          is_curated_skill: false,
         },
         {
           id: "skill-root",
           name: "Partner Briefs",
           is_skill: true,
-          is_memory: false,
+          is_curated_skill: false,
         },
-        { id: "research", name: "Research", is_skill: false, is_memory: false },
+        { id: "research", name: "Research", is_skill: false, is_curated_skill: false },
       ]),
     ).toEqual([
       { label: "Skills", href: "/skills", area: "skills" },

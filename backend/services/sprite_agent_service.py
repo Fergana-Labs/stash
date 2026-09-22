@@ -258,7 +258,7 @@ async def _curator_run_stats(agent: dict) -> dict:
     delta = await curation_service.changes_since(
         user_id, user_id, agent.get("curated_through"), until
     )
-    external = agent.get("curator_wiki") == "external"
+    external = agent.get("curator_skill") == "external"
     history = [event for event in delta["history"] if bool(event.get("user")) == external]
     trace_ids = {event["session_id"] for event in history if event.get("session_id")}
     return {
@@ -448,7 +448,7 @@ def scheduled_session_prefix(agent: dict) -> str:
 async def build_scheduled_turn(agent: dict, run_stamp: str) -> tuple[str, str]:
     """(session_id, message) for one run of a scheduled agent.
 
-    The reserved Memory curator (is_curator) runs the curation prompt built
+    The reserved Skills curator (is_curator) runs the curation prompt built
     server-side from its watermark; other scheduled agents run schedule_prompt.
     Each run gets its own per-run session id so history (and the CLI transcript
     it replays) can't grow unbounded across a long-lived schedule."""
@@ -459,11 +459,11 @@ async def build_scheduled_turn(agent: dict, run_stamp: str) -> tuple[str, str]:
     if agent.get("is_curator"):
         since = agent["curated_through"].isoformat() if agent.get("curated_through") else None
         if (
-            agent["curator_wiki"] == "external"
+            agent["curator_skill"] == "external"
             or await scoped_curation_service.workspace_for_agent(agent) is not None
         ):
             raise PermissionError("Developer curators must use scoped backend curation")
-        memory = await files_tree_service.get_or_create_memory_folder(user_id, user_id)
+        memory = await files_tree_service.get_or_create_curated_skill(user_id, user_id)
         return session_id, prompts.render_curator_prompt(memory["id"], since)
     return session_id, agent["schedule_prompt"]
 

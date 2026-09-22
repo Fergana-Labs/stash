@@ -29,7 +29,7 @@ import FileContentRenderer, {
   isText,
 } from "@/components/content/FileContentRenderer";
 import FileViewerHeader from "@/components/content/FileViewerHeader";
-import { sectionCrumbs } from "@/lib/memory-folder";
+import { sectionCrumbs } from "@/lib/skill-breadcrumbs";
 import ResourceShareButton from "@/components/share/ResourceShareButton";
 
 function isCsv(ct: string) {

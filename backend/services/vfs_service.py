@@ -138,8 +138,8 @@ class InProcessVfsClient:
     def get_overview(self) -> dict:
         return self._get("/api/v1/me/overview")
 
-    def get_memory_folder(self) -> dict:
-        return self._get("/api/v1/me/memory-folder")
+    def get_skill_contents(self, folder_id: str) -> dict:
+        return self._get(f"/api/v1/me/skills/{folder_id}/contents")
 
     def list_tables(self) -> list:
         return self._get("/api/v1/me/tables")["tables"]
@@ -223,88 +223,50 @@ def _error_detail(response: httpx.Response) -> str:
 
 
 class ExternalVfsClient(InProcessVfsClient):
-    """External Multiplayer: the caller's Stash narrowed to shared knowledge,
-    optionally plus one end user's private knowledge.
-
-    `/memory` becomes the workspace's shared external wiki (the memory-folder
-    call answers with the wiki folder, and the model re-roots whatever that
-    returns), `/files` holds the user's own wiki and the user's own uploads,
-    `/sessions` only the user's transcripts, and `/sources` the sources
-    connected for this user. Without an end user, only the shared wiki remains.
-    Skills and tables are developer-side surfaces and don't exist in either
-    external view.
-    """
+    """Only shared Skills and the selected user's private Skill, files and sessions."""
 
     def __init__(self, http, loop, end_user_ctx: dict) -> None:
         super().__init__(http, loop)
         self._end_user = end_user_ctx
 
-    def get_memory_folder(self) -> dict:
-        return {"id": self._end_user["shared_wiki_folder_id"]}
-
     def list_tables(self) -> list:
         return []
 
     def list_sources(self) -> list:
-        """Only the sources connected for this user — a customer's Drive folder
-        belongs to that customer, never to the developer's other customers."""
         allowed = self._end_user["source_ids"]
         return [s for s in super().list_sources() if s.get("source") in allowed]
+
+    def get_skill_contents(self, folder_id: str) -> dict:
+        allowed = {self._end_user["shared_skill_folder_id"], self._end_user["skill_folder_id"]}
+        if folder_id not in allowed:
+            raise VfsClientError("Skill is outside this user's scope")
+        return super().get_skill_contents(folder_id)
 
     def get_overview(self) -> dict:
         overview = super().get_overview()
         external_id = self._end_user["external_id"]
-        tree = overview.get("files", {})
-        folders = tree.get("folders", [])
-
-        # Descendant closure of the shared-wiki and user-wiki roots. Everything
-        # else in the workspace — other users' wikis included — is invisible.
-        children: dict[str | None, list[dict]] = {}
-        for folder in folders:
-            children.setdefault(folder["parent_folder_id"], []).append(folder)
-        kept_ids: set[str] = set()
-        # A customer with no wiki folder yet has not been written for — they still
-        # read the shared wiki, they just own nothing.
-        frontier = [self._end_user["shared_wiki_folder_id"]]
-        if self._end_user["wiki_folder_id"]:
-            frontier.append(self._end_user["wiki_folder_id"])
-        while frontier:
-            folder_id = frontier.pop()
-            if folder_id in kept_ids:
-                continue
-            kept_ids.add(folder_id)
-            frontier.extend(f["id"] for f in children.get(folder_id, []))
-
-        kept_folders = []
-        for folder in folders:
-            if folder["id"] not in kept_ids:
-                continue
-            if folder["id"] == self._end_user["wiki_folder_id"]:
-                # The user-wiki root's parent (the workspace's "User Wikis"
-                # container) is filtered out, so mount it at /files/wiki.
-                folder = {**folder, "parent_folder_id": None, "name": "wiki"}
-            kept_folders.append(folder)
-
+        roots = {self._end_user["shared_skill_folder_id"]: "shared"}
+        if self._end_user["skill_folder_id"] is not None:
+            roots[self._end_user["skill_folder_id"]] = "personal"
         return {
             **overview,
-            "sessions": (
-                []
-                if external_id is None
-                else [
-                    s
-                    for s in overview.get("sessions", [])
-                    if s.get("end_user_external_id") == external_id
-                ]
-            ),
-            "skills": [],
+            "sessions": [
+                s
+                for s in overview["sessions"]
+                if external_id is not None and s.get("end_user_external_id") == external_id
+            ],
+            "skills": [
+                {**s, "name": roots[s["folder_id"]]}
+                for s in overview["skills"]
+                if s["folder_id"] in roots
+            ],
             "files": {
-                "folders": kept_folders,
-                "pages": [p for p in tree.get("pages", []) if p["folder_id"] in kept_ids],
+                "folders": [],
+                "pages": [],
                 "files": [
-                    f
-                    for f in tree.get("files", [])
-                    if f["folder_id"] in kept_ids
-                    or (external_id is not None and f.get("end_user_external_id") == external_id)
+                    {**f, "folder_id": None}
+                    for f in overview["files"]["files"]
+                    if external_id is not None and f.get("end_user_external_id") == external_id
                 ],
             },
         }

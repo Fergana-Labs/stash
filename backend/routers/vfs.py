@@ -30,8 +30,8 @@ class VfsRequest(BaseModel):
     user_id: str | None = Field(
         None,
         max_length=128,
-        description="External Multiplayer: omit for the shared wiki only, or narrow "
-        "the tree to this end user — shared wiki at /memory, the user's own wiki "
+        description="External Multiplayer: omit for the shared skill only, or narrow "
+        "the tree to this end user — shared skill at /skills/shared, the user's own skill "
         "and files under /files, the user's transcripts under /sessions",
     )
 
@@ -43,12 +43,12 @@ async def _external_vfs_ctx(current_user: dict, user_id: str | None) -> dict | N
 
     A user id with no row yet is a customer who has not been written for —
     their agent's very first turn reads before it records anything. That reads
-    the shared wiki and an empty set of their own material, which is exactly
+    the shared skill and an empty set of their own material, which is exactly
     right: the accumulated cross-user knowledge is what a new user benefits
     from on day one. The user appears once their first session is uploaded.
     """
     workspace = await end_user_service.workspace_for_scope(current_user["id"])
-    if workspace is None or workspace["external_wiki_folder_id"] is None:
+    if workspace is None or workspace["external_skill_folder_id"] is None:
         if user_id is None:
             return None
         raise HTTPException(
@@ -58,16 +58,16 @@ async def _external_vfs_ctx(current_user: dict, user_id: str | None) -> dict | N
     if user_id is None:
         return {
             "external_id": None,
-            "shared_wiki_folder_id": str(workspace["external_wiki_folder_id"]),
-            "wiki_folder_id": None,
+            "shared_skill_folder_id": str(workspace["external_skill_folder_id"]),
+            "skill_folder_id": None,
             "source_ids": set(),
         }
     end_user = await end_user_service.find_end_user(workspace["id"], user_id)
     if end_user is None:
         return {
             "external_id": user_id,
-            "shared_wiki_folder_id": str(workspace["external_wiki_folder_id"]),
-            "wiki_folder_id": None,
+            "shared_skill_folder_id": str(workspace["external_skill_folder_id"]),
+            "skill_folder_id": None,
             "source_ids": set(),
         }
     connected = await source_service.list_connected_sources(
@@ -75,8 +75,8 @@ async def _external_vfs_ctx(current_user: dict, user_id: str | None) -> dict | N
     )
     return {
         "external_id": end_user["external_id"],
-        "shared_wiki_folder_id": str(workspace["external_wiki_folder_id"]),
-        "wiki_folder_id": str(end_user["wiki_folder_id"]),
+        "shared_skill_folder_id": str(workspace["external_skill_folder_id"]),
+        "skill_folder_id": str(end_user["skill_folder_id"]),
         "source_ids": {s["id"] for s in connected},
     }
 

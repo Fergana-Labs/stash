@@ -35,22 +35,12 @@ class FakeClient:
     def record_search(self, pattern, roots, docs_scanned):
         self.searches.append((pattern, roots, docs_scanned))
 
-    def get_memory_folder(self):
-        self.internal_at_call["get_memory_folder"] = self.internal
-        return {"id": "memfolder-12345678", "name": "Memory"}
-
     def get_overview(self):
         self.internal_at_call["get_overview"] = self.internal
         return {
             "files": {
                 "folders": [
                     {"id": "folder-12345678", "name": "Notes", "parent_folder_id": None},
-                    {"id": "memfolder-12345678", "name": "Memory", "parent_folder_id": None},
-                    {
-                        "id": "memcat-12345678",
-                        "name": "Projects",
-                        "parent_folder_id": "memfolder-12345678",
-                    },
                 ],
                 "pages": [
                     {
@@ -58,14 +48,6 @@ class FakeClient:
                         "name": "Plan",
                         "content_type": "markdown",
                         "folder_id": "folder-12345678",
-                        "created_at": "2026-05-01T09:00:00Z",
-                        "updated_at": "2026-05-02T10:30:00Z",
-                    },
-                    {
-                        "id": "wikipage-12345678",
-                        "name": "Memory Wiki",
-                        "content_type": "markdown",
-                        "folder_id": "memfolder-12345678",
                         "created_at": "2026-05-01T09:00:00Z",
                         "updated_at": "2026-05-02T10:30:00Z",
                     },
@@ -95,7 +77,8 @@ class FakeClient:
                     "name": "Demo Skill",
                     "file_count": 1,
                     "published": {"slug": "demo-stash"},
-                }
+                },
+                {"folder_id": "memfolder-12345678", "name": "Learned knowledge"},
             ],
             "sessions": [
                 {
@@ -109,8 +92,40 @@ class FakeClient:
             "machine": {"provisioned": True},
         }
 
+    def get_skill_contents(self, folder_id):
+        if folder_id == "skillfolder-12345678":
+            pages = [
+                {
+                    "id": "demo-entry",
+                    "name": "SKILL.md",
+                    "folder_path": [],
+                    "content_type": "markdown",
+                }
+            ]
+            folders = []
+        else:
+            assert folder_id == "memfolder-12345678"
+            folders = [{"id": "memcat-12345678", "name": "Projects", "path": ["Projects"]}]
+            pages = [
+                {
+                    "id": "skillpage-12345678",
+                    "name": "SKILL.md",
+                    "folder_path": [],
+                    "content_type": "markdown",
+                },
+                {
+                    "id": "project-page",
+                    "name": "Decisions",
+                    "folder_path": ["Projects"],
+                    "content_type": "markdown",
+                },
+            ]
+        return {"contents": {"subfolders": folders, "pages": pages, "files": [], "tables": []}}
+
     def get_page(self, page_id):
-        assert page_id in ("page-12345678", "wikipage-12345678")
+        if page_id == "demo-entry":
+            return {"content_type": "markdown", "content_markdown": "# Demo Stash\n"}
+        assert page_id in ("page-12345678", "skillpage-12345678", "project-page")
         return {"content_type": "markdown", "content_markdown": "# Plan\n", "content_html": ""}
 
     def download_file(self, file_id):
@@ -233,7 +248,6 @@ def test_refresh_marks_mount_calls_internal_but_not_user_reads():
 
     assert client.internal_at_call == {
         "get_overview": True,
-        "get_memory_folder": True,
         "list_tables": True,
     }
 
@@ -248,12 +262,11 @@ def test_vfs_exposes_user_sections():
         "README.md",
         "computer",
         "files",
-        "memory",
         "sessions",
         "skills",
         "sources",
     }
-    assert model.read_file("/skills/Demo Skill.md") == b"# Demo Stash\n"
+    assert model.read_file("/skills/Demo Skill/SKILL.md") == b"# Demo Stash\n"
     assert b"hello" in model.read_file("/sessions/Fix login/transcript.md")
     # Tables are not a segregated section — they live in their folder like
     # everything else.
@@ -342,16 +355,14 @@ def test_vfs_keeps_children_of_a_page_that_has_its_own_body():
     assert model.read_file(f"{parent}/Child B") == b"BODY of Parent/Child B"
 
 
-def test_vfs_memory_is_its_own_root_not_under_files():
-    """/files and /memory are MECE, mirroring the app Explorer's sections —
-    the Memory wiki is stored as a reserved files-tree folder but must not
-    show up when browsing /files."""
+def test_curated_knowledge_and_nested_documents_use_the_skills_tree():
+    """Curated knowledge is one ordinary Skill, with its supporting corpus intact."""
     model = _model()
 
-    assert not any(name.startswith("Memory") for name in model.list_dir("/files"))
-    memory_entries = model.list_dir("/memory")
-    assert any(name.startswith("Projects") for name in memory_entries)
-    assert any(name.startswith("Memory Wiki") for name in memory_entries)
+    assert "memory" not in model.list_dir("/")
+    assert "Learned knowledge" not in model.list_dir("/files")
+    assert set(model.list_dir("/skills/Learned knowledge")) == {"SKILL.md", "Projects"}
+    assert model.read_file("/skills/Learned knowledge/Projects/Decisions.md") == b"# Plan\n"
 
 
 def test_vfs_reads_files_and_pages():

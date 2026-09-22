@@ -36,22 +36,22 @@ async def _workspace_with_conversation(client: AsyncClient) -> UUID:
     return UUID(workspace["scope_user_id"])
 
 
-async def _dispatched_wikis(pool, dispatched) -> set[str]:
-    wikis = set()
+async def _dispatched_skills(pool, dispatched) -> set[str]:
+    skills = set()
     for args, _ in dispatched:
-        wikis.add(
-            await pool.fetchval("SELECT curator_wiki FROM agents WHERE id = $1", UUID(args[0]))
+        skills.add(
+            await pool.fetchval("SELECT curator_skill FROM agents WHERE id = $1", UUID(args[0]))
         )
-    return wikis
+    return skills
 
 
 @pytest.mark.asyncio
 async def test_first_day_conversation_dispatches_runs(client: AsyncClient, pool, dispatched):
     scope_id = await _workspace_with_conversation(client)
     await _first_day_curator_tick(scope_id)
-    # Both of the workspace's wikis update eagerly on day one: its own Memory
-    # wiki and the cross-user external wiki.
-    assert await _dispatched_wikis(pool, dispatched) == {"internal", "external"}
+    # Both of the workspace's skills update eagerly on day one: its own Memory
+    # skill and the cross-user external skill.
+    assert await _dispatched_skills(pool, dispatched) == {"internal", "external"}
     assert all(kwargs == {"automatic": True} for _, kwargs in dispatched)
 
 
@@ -72,10 +72,10 @@ async def test_old_workspace_still_curates_its_own_memory(client: AsyncClient, p
         "UPDATE workspaces SET created_at = now() - interval '2 days' WHERE scope_user_id = $1",
         scope_id,
     )
-    # The external wiki's first day is over; the scope user itself is still
-    # fresh, so its own Memory wiki keeps updating eagerly.
+    # The external skill's first day is over; the scope user itself is still
+    # fresh, so its own curated Skill keeps updating eagerly.
     await _first_day_curator_tick(scope_id)
-    assert await _dispatched_wikis(pool, dispatched) == {"internal"}
+    assert await _dispatched_skills(pool, dispatched) == {"internal"}
 
 
 @pytest.mark.asyncio
@@ -110,7 +110,7 @@ async def test_recent_run_debounces(client: AsyncClient, pool, dispatched):
         datetime.now(UTC) - timedelta(minutes=11),
     )
     await _first_day_curator_tick(scope_id)
-    assert await _dispatched_wikis(pool, dispatched) == {"internal", "external"}
+    assert await _dispatched_skills(pool, dispatched) == {"internal", "external"}
 
 
 async def _personal_user_with_conversations(client: AsyncClient, count: int = 1) -> UUID:
@@ -131,19 +131,17 @@ async def _personal_user_with_conversations(client: AsyncClient, count: int = 1)
 
 
 @pytest.mark.asyncio
-async def test_personal_first_day_waits_for_five_traces(client: AsyncClient, dispatched):
-    user_id = await _personal_user_with_conversations(client, 4)
+async def test_personal_curation_starts_with_one_session(client: AsyncClient, pool, dispatched):
+    user_id = await _personal_user_with_conversations(client, 1)
     await _first_day_curator_tick(user_id)
-    assert dispatched == []
+    assert await _dispatched_skills(pool, dispatched) == {"internal"}
 
 
 @pytest.mark.asyncio
-async def test_personal_fifth_trace_dispatches_skill_creation(
-    client: AsyncClient, pool, dispatched
-):
+async def test_personal_curation_accepts_multiple_sessions(client: AsyncClient, pool, dispatched):
     user_id = await _personal_user_with_conversations(client, 5)
     await _first_day_curator_tick(user_id)
-    assert await _dispatched_wikis(pool, dispatched) == {"internal"}
+    assert await _dispatched_skills(pool, dispatched) == {"internal"}
     assert dispatched[0][1] == {"automatic": True}
 
 
@@ -156,7 +154,7 @@ async def test_old_personal_account_still_gets_its_first_skill_bootstrap(
         "UPDATE users SET created_at = now() - interval '2 days' WHERE id = $1", user_id
     )
     await _first_day_curator_tick(user_id)
-    assert await _dispatched_wikis(pool, dispatched) == {"internal"}
+    assert await _dispatched_skills(pool, dispatched) == {"internal"}
 
 
 @pytest.mark.asyncio
@@ -198,7 +196,7 @@ async def test_imported_pre_signup_history_dispatches(client: AsyncClient, pool,
     )
     assert curated_through < old
     await _first_day_curator_tick(user_id)
-    assert await _dispatched_wikis(pool, dispatched) == {"internal"}
+    assert await _dispatched_skills(pool, dispatched) == {"internal"}
 
 
 @pytest.mark.asyncio

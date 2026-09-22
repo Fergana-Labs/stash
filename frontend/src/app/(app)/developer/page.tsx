@@ -30,11 +30,11 @@ const ROUTES = [
   {
     href: "/developer/users",
     title: "Your product's users",
-    detail: "A private wiki each, and who feeds the shared wiki.",
+    detail: "A private skill each, and who feeds the shared skill.",
   },
   {
-    href: "/developer/wiki",
-    title: "The anonymized shared wiki",
+    href: "/developer/skills",
+    title: "The anonymized shared skill",
     detail: "What every user's agent reads, with no user named.",
   },
 ];
@@ -42,7 +42,7 @@ const ROUTES = [
 function Overview() {
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [users, setUsers] = useState<EndUser[]>([]);
-  const [stats, setStats] = useState({ wiki_page_count: 0, user_session_count: 0 });
+  const [stats, setStats] = useState({ skill_page_count: 0, user_session_count: 0 });
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(() => {
@@ -75,8 +75,8 @@ function Overview() {
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         <Stat label="Users" value={users.length} />
         <Stat label="User sessions" value={stats.user_session_count} />
-        <Stat label="Wiki pages" value={stats.wiki_page_count} />
-        <Stat label="Feeding the wiki" value={users.filter((o) => o.share_wiki).length} />
+        <Stat label="Skill pages" value={stats.skill_page_count} />
+        <Stat label="Feeding the skill" value={users.filter((o) => o.share_skill).length} />
       </div>
 
       <section className="mt-12">

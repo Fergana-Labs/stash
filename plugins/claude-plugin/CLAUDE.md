@@ -56,9 +56,9 @@ stash stop                         # Pause session recording across every plugin
 
 ### Memory
 ```bash
-stash memory ls                                # The Memory wiki tree with ids
-stash memory write "Topic/Page" --content "…"  # Create or update a wiki page (stdin for long bodies)
-stash memory --curator off                     # Turn the nightly cloud curator off (on to resume)
+stash skills tree                                # The Memory wiki tree with ids
+stash skills write "Topic/Page" --content "…"  # Create or update a wiki page (stdin for long bodies)
+stash skills curate --curator off                     # Turn the nightly cloud curator off (on to resume)
 ```
 
 ### Files, history, tables

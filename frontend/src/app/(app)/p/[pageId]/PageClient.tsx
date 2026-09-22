@@ -26,7 +26,7 @@ import HtmlPageEditor, {
 import ExportDeckButton from "@/components/export/ExportDeckButton";
 import ResourceShareButton from "@/components/share/ResourceShareButton";
 import FileViewerHeader from "@/components/content/FileViewerHeader";
-import { sectionCrumbs } from "@/lib/memory-folder";
+import { sectionCrumbs } from "@/lib/skill-breadcrumbs";
 import MarkdownEditor, {
   extractCommentIdsFromMarkdown,
   type SaveStatus,

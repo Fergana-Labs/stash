@@ -4,11 +4,11 @@ import { Code, CodeBlock, SectionHeading } from "@/components/developer/DocsPrim
 
 const READ = `# Your agent reads. user_id is the only thing Stash needs — it is
 # the isolation boundary. No session, no conversation: reading memory has
-# nothing to do with which conversation you are in. Wiki categories are
-# subfolders: ls /memory lists them, cat /memory/<category>/*.md reads one.
+# nothing to do with which conversation you are in. Skill categories are
+# subfolders: ls /skills/shared lists them, cat /skills/shared/<category>/*.md reads one.
 curl -X POST https://api.joinstash.ai/api/v1/me/vfs \\
   -H "Authorization: Bearer $STASH_API_KEY" -H "Content-Type: application/json" \\
-  -d '{"script":"cat /memory/*.md", "user_id":"user_sam"}'`;
+  -d '{"script":"cat /skills/shared/*.md", "user_id":"user_sam"}'`;
 
 const WRITE = `# Your backend uploads transcripts. Its own mechanism — after the
 # turn, in a batch, from a queue worker, whenever suits you.
@@ -26,8 +26,8 @@ export default function SetupCard() {
         <SectionHeading>Reading: what your agent sees</SectionHeading>
         <p className="mt-3 max-w-2xl text-[15px] leading-7 text-dim">
           One field. <Code>user_id</Code> is your own id for that user, and it is the
-          isolation boundary: the shared wiki at <Code>/memory</Code>, that user&apos;s
-          wiki and files under <Code>/files</Code>, their raw transcripts under{" "}
+          isolation boundary: the shared skill at <Code>/skills/shared</Code>, that user&apos;s
+          skill and files under <Code>/files</Code>, their raw transcripts under{" "}
           <Code>/sessions</Code>, and nothing of anyone else&apos;s. First time we see an id,
           the user is created.
         </p>

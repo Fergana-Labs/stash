@@ -2,7 +2,6 @@ import { cleanup, render, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import FolderClient from "./FolderClient";
 import { getFolderContents } from "@/lib/api";
-import { useBreadcrumbs } from "@/components/BreadcrumbContext";
 
 const router = vi.hoisted(() => ({
   push: vi.fn(),
@@ -55,21 +54,21 @@ vi.mock("@/hooks/useAuth", () => ({
 function contents(
   folderIsSkill: boolean,
   breadcrumbIsSkill = false,
-  isMemory = false,
+  isCuratedSkill = false,
 ) {
   return {
     folder: {
       id: "folder-root",
-      name: isMemory ? "Memory" : "Brake Shoes",
+      name: isCuratedSkill ? "Learned knowledge" : "Brake Shoes",
       parent_folder_id: null,
       is_skill: folderIsSkill,
     },
     breadcrumbs: [
       {
         id: "folder-root",
-        name: isMemory ? "Memory" : "Brake Shoes",
+        name: isCuratedSkill ? "Learned knowledge" : "Brake Shoes",
         is_skill: breadcrumbIsSkill,
-        is_memory: isMemory,
+        is_curated_skill: isCuratedSkill,
       },
     ],
     subfolders: [],
@@ -113,16 +112,11 @@ describe("FolderClient skill redirect", () => {
     expect(router.replace).not.toHaveBeenCalled();
   });
 
-  it("roots the reserved Memory folder at Memory instead of Files", async () => {
-    vi.mocked(getFolderContents).mockResolvedValue(contents(false, false, true));
+  it("opens curated knowledge through the same Skills route", async () => {
+    vi.mocked(getFolderContents).mockResolvedValue(contents(true, true, true));
 
     render(<FolderClient folderId="folder-root" />);
 
-    await waitFor(() => {
-      const crumbs = vi.mocked(useBreadcrumbs).mock.calls.at(-1)?.[0];
-      expect(crumbs).toEqual([
-        { label: "Memory", href: undefined, area: "memory" },
-      ]);
-    });
+    await waitFor(() => expect(router.replace).toHaveBeenCalledWith("/skills/folder/folder-root"));
   });
 });

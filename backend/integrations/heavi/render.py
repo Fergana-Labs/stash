@@ -18,7 +18,7 @@ def _path_segment(value: str) -> str:
 def rule_path(rule: dict) -> str:
     # One folder per customer tenant: rules are tenant-scoped preferences, and
     # per-tenant folders match how the rest of their stash is organized
-    # (session folders per tenant, /memory/tenant/<name> pages).
+    # (session folders per tenant, /skills/shared/tenant/<name> pages).
     return f"{_path_segment(rule['tenant'])}/{_path_segment(rule['summary'])} ({rule['id']})"
 
 

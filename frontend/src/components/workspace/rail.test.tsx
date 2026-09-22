@@ -8,7 +8,7 @@ const route = vi.hoisted(() => ({
   pathname: "/",
   replace: vi.fn(),
   crumbs: null as
-    { label: string; area?: "memory" | "skills" }[] | null,
+    { label: string; area?: "skills" }[] | null,
 }));
 
 vi.mock("next/navigation", () => ({
@@ -70,18 +70,6 @@ describe("Rail", () => {
 
     fireEvent.click(screen.getByLabelText("Usage"));
     expect(route.replace).toHaveBeenLastCalledWith("/sessions/analytics");
-  });
-
-  it("identifies Memory content with Home", () => {
-    route.pathname = "/folders/memory";
-    route.crumbs = [{ label: "Memory", area: "memory" }];
-
-    render(<Rail user={user} onLogout={vi.fn()} />);
-
-    expect(screen.getByLabelText("Home").className).toContain("text-brand-600");
-    expect(screen.getByLabelText("Skills").className).not.toContain(
-      "text-brand-600",
-    );
   });
 
   it("identifies Skill content with Skills", () => {

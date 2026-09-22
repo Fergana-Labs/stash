@@ -61,7 +61,7 @@ async def test_rollout_preserves_vectors_and_does_not_invent_historical_usage(
             )
             conn.execute(
                 text(
-                    "CREATE TEMP TABLE agents (user_id int,is_curator boolean,curator_wiki text,curated_through timestamptz)"
+                    "CREATE TEMP TABLE agents (user_id int,is_curator boolean,curator_skill text,curated_through timestamptz)"
                 )
             )
             conn.execute(text("INSERT INTO agents VALUES (1,TRUE,'internal','2026-09-01')"))

@@ -37,8 +37,8 @@ async def _seed_run(pool, uid: UUID, curator_id: str, stamp: str, at: datetime, 
     await pool.execute(
         "INSERT INTO history_events (owner_user_id, created_by, agent_name, event_type, "
         "content, session_id, created_at) VALUES "
-        "($1, $1, 'Memory curator', 'user_message', '(prompt)', $2, $3), "
-        "($1, $1, 'Memory curator', 'assistant_message', $4, $2, $5)",
+        "($1, $1, 'Skills curator', 'user_message', '(prompt)', $2, $3), "
+        "($1, $1, 'Skills curator', 'assistant_message', $4, $2, $5)",
         uid,
         session,
         at,
@@ -52,7 +52,7 @@ async def _seed_stats(pool, uid: UUID, session: str, at: datetime, processed: di
     await pool.execute(
         "INSERT INTO history_events (owner_user_id, created_by, agent_name, event_type, "
         "content, session_id, created_at, metadata) "
-        "VALUES ($1, $1, 'Memory curator', $2, '', $3, $4, $5)",
+        "VALUES ($1, $1, 'Skills curator', $2, '', $3, $4, $5)",
         uid,
         CURATOR_RUN_STATS_EVENT,
         session,
@@ -67,7 +67,7 @@ async def _seed_started_run(pool, uid: UUID, curator_id: str, stamp: str, at: da
     await pool.execute(
         "INSERT INTO history_events (owner_user_id, created_by, agent_name, event_type, "
         "content, session_id, created_at) VALUES "
-        "($1, $1, 'Memory curator', 'user_message', '(prompt)', $2, $3)",
+        "($1, $1, 'Skills curator', 'user_message', '(prompt)', $2, $3)",
         uid,
         session,
         at,

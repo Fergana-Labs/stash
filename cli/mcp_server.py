@@ -7,7 +7,7 @@ from mcp.server.fastmcp import FastMCP
 from cli.client import StashClient, split_source_tokens
 from cli.config import load_config, save_scope
 
-mcp = FastMCP("stash", instructions="Stash — shared memory for AI coding agents")
+mcp = FastMCP("stash", instructions="Stash — Skills and context for AI coding agents")
 
 
 def _client() -> StashClient:
@@ -62,18 +62,18 @@ def stash_search(
 def stash_vfs(script: str, cwd: str = "/") -> str:
     """Run one read-only shell-shaped script over your whole Stash — `ls`,
     `cat`, `find`, `grep`/`rg`, `tree`, pipes — exactly like `stash vfs` in a
-    terminal. Roots include /files, /sessions, /skills, /memory, /sources.
+    terminal. Roots include /files, /sessions, /skills, /sources.
     A non-zero exit_code is a shell result (grep found nothing), not an error;
     read stdout/stderr like a terminal would show them."""
     return _json(_client().run_vfs(script, cwd=cwd))
 
 
 @mcp.tool()
-def stash_memory_tree() -> str:
-    """The Memory wiki as a nested folder/page tree, rooted at your Memory
+def stash_skills_tree() -> str:
+    """The curated Skill as a nested folder/page tree, rooted at your curated Skill
     folder. The Files tree (stash_tree) deliberately hides this subtree, so
-    this is how you discover memory pages; read one with stash_read_page."""
-    return _json(_client().get_memory_tree())
+    this is how you discover Skill documents; read one with stash_read_page."""
+    return _json(_client().get_curated_skill_tree())
 
 
 @mcp.tool()

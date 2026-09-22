@@ -243,10 +243,10 @@ class PageResponse(BaseModel):
     # External Multiplayer: the end user this page is about, if any. The
     # end_users row id — "user_id" would read as a Stash account here.
     end_user_id: UUID | None = None
-    # Which wiki this page is written for, derived from where it sits:
-    # "external" (the workspace's cross-user, anonymized wiki), "internal" (the
-    # scope's own Memory wiki), or None for an ordinary page.
-    wiki: str | None = None
+    # Which skill this page is written for, derived from where it sits:
+    # "external" (the workspace's cross-user, anonymized skill), "internal" (the
+    # scope's own curated Skill), or None for an ordinary page.
+    skill: str | None = None
     name: str
     content_markdown: str
     content_type: str = "markdown"
@@ -285,7 +285,7 @@ class ScopeTreeFolder(BaseModel):
     created_by: UUID
     created_at: datetime
     updated_at: datetime
-    # Memory and Clips: the client hides Rename/Delete rather than offering an
+    # Curated Skills and Clips: the client hides Rename/Delete rather than offering an
     # action the service refuses.
     is_protected: bool = False
     folders: list["ScopeTreeFolder"] = []

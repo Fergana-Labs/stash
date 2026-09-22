@@ -108,7 +108,6 @@ export default function Rail({
             item={item}
             active={
               item.match(pathname) ||
-              (item.key === "home" && contentArea === "memory") ||
               (item.key === "skills" && contentArea === "skills")
             }
             onClick={() => selectSection(item.key)}

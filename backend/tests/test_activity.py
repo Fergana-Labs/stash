@@ -477,18 +477,15 @@ async def _file_row(pool, owner_user_id: UUID, name: str, folder_id: UUID | None
 
 @pytest.mark.asyncio
 async def test_recent_activity_ignores_file_uploads(client: AsyncClient, pool):
-    """The Memory exclusion is about what the curator churns through, and the
-    curator writes files as well as pages — a filter that only covers pages
-    leaks half of that churn into Home. Nested folders count too: Memory's
-    descendants are Memory."""
+    """Home includes the curated Skill's creation, but no supporting-file churn."""
     api_key = await _register(client, "activity_mem_files")
     scope = UUID((await _scope(client, api_key))["id"])
     memory_id = UUID(
-        (await client.get("/api/v1/me/memory-folder", headers=_auth(api_key))).json()["id"]
+        (await client.get("/api/v1/me/skills/curation/root", headers=_auth(api_key))).json()["id"]
     )
     nested_id = await pool.fetchval(
         "INSERT INTO folders (owner_user_id, parent_folder_id, name, created_by) "
-        "VALUES ($1, $2, 'Wiki', $1) RETURNING id",
+        "VALUES ($1, $2, 'Skill', $1) RETURNING id",
         scope,
         memory_id,
     )
@@ -501,7 +498,9 @@ async def test_recent_activity_ignores_file_uploads(client: AsyncClient, pool):
         "/api/v1/me/recent-activity", params={"limit": 20}, headers=_auth(api_key)
     )
     assert resp.status_code == 200
-    assert resp.json()["events"] == []
+    assert [(event["kind"], event["title"]) for event in resp.json()["events"]] == [
+        ("skill.created", "Learned knowledge")
+    ]
 
 
 @pytest.mark.asyncio

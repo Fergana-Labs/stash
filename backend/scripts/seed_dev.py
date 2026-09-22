@@ -47,7 +47,7 @@ SEED_SOURCES = [
         "external_ref": "demo@example.com",
         "display_name": "Gmail (demo@example.com)",
     },
-    {"source_type": "notion", "external_ref": "demo-notion", "display_name": "Product Wiki"},
+    {"source_type": "notion", "external_ref": "demo-notion", "display_name": "Product Skill"},
     {
         "source_type": "slack",
         "external_ref": "T0DEMO",

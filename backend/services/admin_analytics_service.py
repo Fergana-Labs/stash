@@ -36,7 +36,7 @@ def internal_filter_sql(user_id_col: str, exclude_internal: bool) -> str:
 
 # Canonical funnel order. Reads top-of-funnel → bottom; missing steps render
 # as gaps so dashboards can show drop-off honestly.
-# Canonical funnel for connect agents → five traces → three Skills onboarding.
+# Canonical funnel for connect agents → import sessions → curated Skills onboarding.
 ONBOARDING_FUNNEL_STAGES: list[tuple[str, str]] = [
     ("viewed", "onboarding.viewed"),
     ("step_viewed", "onboarding.step_viewed"),

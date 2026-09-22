@@ -75,7 +75,7 @@ CURLY_ONLY_DOC_EXPORT = (
 
 ORDINARY_PROSE = (
     "---\n\nStandup 9:00 AM  \nAttendees: **Ann**, Bob  \n"
-    "Notes at https://wiki.example.com/turbo  \n\n---\n\nAction items below.\n"
+    "Notes at https://skill.example.com/turbo  \n\n---\n\nAction items below.\n"
 )
 
 HAND_AUTHORED_SKILL_MD = (

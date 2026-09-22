@@ -244,27 +244,27 @@ stash vfs --cwd "/me/sources" "rg 'incident' ."`}</CodeBlock>
         <Code>{`stash vfs "ls /sessions"`}</Code>.
       </Callout>
 
-      <H2>Memory</H2>
+      <H2>Skills curation</H2>
       <P>
-        Your Memory wiki lives in a reserved folder that the Memory curator — and, since{" "}
-        <Code>stash memory write</Code>, any agent — maintains. Pages are addressed by path.
+        Your curated Skill lives in a reserved folder that the Skills curator — and, since{" "}
+        <Code>stash skills write</Code>, any agent — maintains. Pages are addressed by path.
       </P>
 
       <CommandRef
-        command="stash memory"
+        command="stash skills curate"
         args="[--recompute] [--curator on|off] [--json]"
-        description="Show your reserved Memory folder and the nightly curator's schedule state. --recompute runs the curator now; --curator off|on toggles the nightly cloud run (on-demand runs keep working)."
+        description="Show your reserved curated Skill folder and the nightly curator's schedule state. --recompute runs the curator now; --curator off|on toggles the nightly cloud run (on-demand runs keep working)."
         params={[
-          { name: "--recompute", type: "flag", desc: "Run the Memory curator now." },
+          { name: "--recompute", type: "flag", desc: "Run the Skills curator now." },
           { name: "--curator", type: "string", desc: "Turn the nightly cloud curator run off or on." },
           { name: "--json", type: "flag", desc: "Machine-readable output." },
         ]}
       />
 
       <CommandRef
-        command="stash memory write"
+        command="stash skills write"
         args='"<Path>" [--content TEXT] [--json]'
-        description="Create or update a Memory wiki page at a path (e.g. 'Customers/Chainbase'). Missing subfolders are created; a trailing .md is stripped. Long bodies pipe on stdin."
+        description="Create or update a curated Skill page at a path (e.g. 'Customers/Chainbase'). Missing subfolders are created; a trailing .md is stripped. Long bodies pipe on stdin."
         params={[
           { name: "--content", type: "string", desc: "Page body. Reads stdin if omitted." },
           { name: "--json", type: "flag", desc: "Machine-readable output." },
@@ -272,9 +272,9 @@ stash vfs --cwd "/me/sources" "rg 'incident' ."`}</CodeBlock>
       />
 
       <CommandRef
-        command="stash memory ls"
+        command="stash skills tree"
         args="[--json]"
-        description="Print the Memory wiki tree with folder and page ids."
+        description="Print the curated Skill tree with folder and page ids."
         params={[
           { name: "--json", type: "flag", desc: "Machine-readable output." },
         ]}

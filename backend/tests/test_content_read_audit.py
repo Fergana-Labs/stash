@@ -133,7 +133,7 @@ async def test_vfs_cat_logs_page_read(client: AsyncClient, pool):
 
 
 async def test_vfs_mount_listings_are_tagged_auto_not_ask(client: AsyncClient, pool):
-    """Every VFS command rebuilds the tree, firing the overview/memory-folder/
+    """Every VFS command rebuilds the tree, firing the overview/
     tables listing routes. Those rows must carry via='auto' (excluded from
     content-activity analytics, like the skills sync) — otherwise one `cat`
     shows up as several listings the user never asked for. The read itself
@@ -150,7 +150,7 @@ async def test_vfs_mount_listings_are_tagged_auto_not_ask(client: AsyncClient, p
     assert resp.json()["exit_code"] == 0
 
     listings = await _read_events(pool, "content.entries_listed")
-    assert {r["target_type"] for r in listings} == {"overview", "memory_folder", "tables"}
+    assert {r["target_type"] for r in listings} == {"overview", "tables"}
     assert all(r["via"] == "auto" for r in listings)
     reads = await _read_events(pool, "content.page_read")
     assert [r["via"] for r in reads] == ["ask"]

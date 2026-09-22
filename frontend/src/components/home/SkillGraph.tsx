@@ -2,12 +2,12 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { WikiGraph as WikiGraphData, WikiGraphNode } from "@/lib/api";
+import type { SkillGraph as SkillGraphData, SkillGraphNode } from "@/lib/api";
 
 const MIN_SCALE = 0.25;
 const MAX_SCALE = 4;
 
-// Landing-page "Wiki" card palette: orange hubs, warm-gray leaves.
+// Landing-page "Skill" card palette: orange hubs, warm-gray leaves.
 function nodeColor(degree: number): string {
   if (degree >= 5) return "#F97316";
   if (degree >= 3) return "#EA7C1F";
@@ -20,7 +20,7 @@ function nodeRadius(degree: number): number {
 }
 
 interface Sim {
-  nodes: WikiGraphNode[];
+  nodes: SkillGraphNode[];
   x: Float64Array;
   y: Float64Array;
   vx: Float64Array;
@@ -29,7 +29,7 @@ interface Sim {
   alpha: number;
 }
 
-function buildSim(data: WikiGraphData, w: number, h: number): Sim {
+function buildSim(data: SkillGraphData, w: number, h: number): Sim {
   const n = data.nodes.length;
   const x = new Float64Array(n);
   const y = new Float64Array(n);
@@ -102,15 +102,15 @@ type Drag =
   | { mode: "pan"; lastX: number; lastY: number; moved: boolean }
   | { mode: "node"; index: number; moved: boolean; wx: number; wy: number };
 
-/** Obsidian-style force graph of the Memory wiki — pages as nodes sized and
+/** Obsidian-style force graph of the curated Skill — pages as nodes sized and
  *  colored by link count, page-to-page links as edges. Scroll to zoom, drag
  *  the canvas to pan, drag a node to rearrange (the layout re-settles around
  *  it), double-click to reset the view, click a node to open its page. */
-export default function WikiGraph({
+export default function SkillGraph({
   data,
   height = 560,
 }: {
-  data: WikiGraphData;
+  data: SkillGraphData;
   height?: number;
 }) {
   const router = useRouter();
@@ -208,7 +208,7 @@ export default function WikiGraph({
 
     // At overview zoom only hubs (and the hovered node) get labels — the
     // fit-scale core is too dense for full text. Zooming in labels every
-    // node, earlier for small wikis. Label screen size shrinks a little
+    // node, earlier for small skills. Label screen size shrinks a little
     // zoomed out and caps zoomed in, so text never drowns the nodes.
     const labelAll = v.scale >= (nodes.length <= 40 ? 0.8 : 1.5);
     const labelPx = Math.min(12, Math.max(8.5, 11 * v.scale));
@@ -285,7 +285,7 @@ export default function WikiGraph({
       // Park once the physics has settled and nothing is being dragged: the
       // canvas keeps its last frame until something wakes it. This loop used
       // to redraw every node, edge, and label at 60fps for as long as the tab
-      // stayed open, which starved the rest of the page on a large wiki.
+      // stayed open, which starved the rest of the page on a large skill.
       if (settling || dragRef.current) wake();
     };
     const wake = () => {

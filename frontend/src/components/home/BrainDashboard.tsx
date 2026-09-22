@@ -4,8 +4,8 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { ActivitySkeleton } from "@/components/SkeletonStates";
 import { SessionsIcon, SkillIcon, StashIcon } from "@/components/SkillIcons";
-import ActiveSkills from "@/components/memory/ActiveSkills";
-import DataAndPrivacy from "@/components/memory/DataAndPrivacy";
+import ActiveSkills from "@/components/home/ActiveSkills";
+import DataAndPrivacy from "@/components/home/DataAndPrivacy";
 import CopyableCommandBlock from "@/components/CopyableCommandBlock";
 import {
   getHistoryImportProgress,
@@ -264,7 +264,7 @@ function UploadingFirstSessions({ done, total }: { done: number; total: number }
         </h1>
         <p className="mx-auto mt-2 max-w-md text-[14px] leading-6 text-dim">
           {done.toLocaleString()} of {total.toLocaleString()} sessions uploaded. Stash will use them
-          to create your first three Skills.
+          to build and update your Skills.
         </p>
         <div className="mx-auto mt-6 h-2 max-w-md overflow-hidden rounded-full bg-border">
           <div
@@ -286,7 +286,7 @@ export function getInitialUploadProgress(
 ): { done: number; total: number } | null {
   if (status === null || sources === null) return null;
   if (!sources.some((source) => source.uploads_enabled === true)) return null;
-  if (status.curatable_trace_count >= status.trace_target) return null;
+  if (status.curatable_trace_count > 0) return null;
   return { done: status.curatable_trace_count, total: status.trace_target };
 }
 
@@ -311,7 +311,7 @@ function EmptyStashSetup() {
         </div>
         <p className="mt-4 text-[12.5px] text-muted-foreground">
           The installer signs you in and sets up session recording. Then use your coding
-          agent like you always do — this page becomes your agents&apos; shared memory as
+          agent like you always do — this page becomes your agents&apos; shared Skills as
           transcripts arrive.
         </p>
       </div>

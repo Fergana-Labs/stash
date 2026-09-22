@@ -23,8 +23,8 @@ export default function DeveloperFiles() {
 type FilesData = Awaited<ReturnType<typeof listDeveloperFiles>>;
 
 /** The platform's files in the two piles they actually come in: what the
- *  shared wiki holds (every user's agent reads it), and what each user owns
- *  (their wiki pages and uploads — theirs alone). */
+ *  shared skill holds (every user's agent reads it), and what each user owns
+ *  (their skill pages and uploads — theirs alone). */
 function Files() {
   const [data, setData] = useState<FilesData | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -45,31 +45,31 @@ function Files() {
   return (
     <>
       <PageHeading title="Files">
-        Two piles, two audiences: shared wiki files every user&apos;s agent reads, and each
+        Two piles, two audiences: shared skill files every user&apos;s agent reads, and each
         user&apos;s own files that only they (and you) can see.
       </PageHeading>
 
       <section className="mb-12">
         <div className="flex items-baseline justify-between gap-4">
-          <SectionHeading>Shared wiki files</SectionHeading>
+          <SectionHeading>Shared skill files</SectionHeading>
           <Link
-            href="/developer/wiki"
+            href="/developer/skills"
             className="text-[13px] text-muted-foreground transition-colors hover:text-foreground"
           >
-            Open the wiki
+            Open the skill
           </Link>
         </div>
-        {data.wiki_pages.length === 0 && data.wiki_files.length === 0 ? (
+        {data.skill_pages.length === 0 && data.skill_files.length === 0 ? (
           <Empty>
             Nothing yet. The curator writes here; you can also drop reference material into
-            the wiki folder yourself and the next run folds it in.
+            the skill folder yourself and the next run folds it in.
           </Empty>
         ) : (
           <div className="mt-4 overflow-hidden rounded border border-border bg-surface">
-            {data.wiki_pages.map((page) => (
+            {data.skill_pages.map((page) => (
               <PageLine key={page.id} page={page} />
             ))}
-            {data.wiki_files.map((file) => (
+            {data.skill_files.map((file) => (
               <FileLine key={file.id} file={file} />
             ))}
           </div>
@@ -89,7 +89,7 @@ function Files() {
 }
 
 function UserFiles({ user }: { user: DeveloperUserFiles }) {
-  const empty = user.wiki_pages.length === 0 && user.files.length === 0;
+  const empty = user.skill_pages.length === 0 && user.files.length === 0;
   return (
     <div className="mt-6">
       <Link
@@ -103,11 +103,11 @@ function UserFiles({ user }: { user: DeveloperUserFiles }) {
       </Link>
       {empty ? (
         <p className="mt-2 text-[13px] leading-5 text-muted-foreground">
-          Nothing yet — their wiki fills in on the curator&apos;s next run over their sessions.
+          Nothing yet — their skill fills in on the curator&apos;s next run over their sessions.
         </p>
       ) : (
         <div className="mt-2 overflow-hidden rounded border border-border bg-surface">
-          {user.wiki_pages.map((page) => (
+          {user.skill_pages.map((page) => (
             <PageLine key={page.id} page={page} />
           ))}
           {user.files.map((file) => (

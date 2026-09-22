@@ -154,10 +154,14 @@ def test_drain_drops_permanently_rejected_entries(tmp_path):
     the queue in front of good entries forever."""
     client = _make_client(tmp_path)
     qp = tmp_path / QUEUE_FILENAME
-    dead = {"path": "/api/v1/workspaces/w1/memory/events", "body": {"content": "old"}, "ts": 1.0}
+    dead = {
+        "path": "/api/v1/workspaces/w1/skills/shared/events",
+        "body": {"content": "old"},
+        "ts": 1.0,
+    }
     good = {"path": "/api/v1/me/sessions/events", "body": {"content": "new"}, "ts": 2.0}
     qp.write_text(json.dumps(dead) + "\n" + json.dumps(good) + "\n")
-    client._http.status_by_path["/api/v1/workspaces/w1/memory/events"] = 404
+    client._http.status_by_path["/api/v1/workspaces/w1/skills/shared/events"] = 404
 
     client.push_event(agent_name="a", event_type="t", content="live", session_id="s1")
 

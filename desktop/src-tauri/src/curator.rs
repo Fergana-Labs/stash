@@ -61,7 +61,7 @@ pub fn ensure_state_files() -> Result<(), std::io::Error> {
     if !config_path().exists() {
         // Disabled until the user flips the switch in the UI: a fresh install
         // must not silently start spending tokens on headless agent runs.
-        // No Write grant: the curator maintains the wiki through `stash files
+        // No Write grant: the curator maintains the Skill through `stash files
         // add-page/edit-page` and must not be able to modify local files —
         // including this config, which governs future runs' permissions.
         let default = LocalConfig {

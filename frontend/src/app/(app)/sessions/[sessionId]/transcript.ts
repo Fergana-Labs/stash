@@ -26,7 +26,7 @@ export function humanMessageJumps(turns: MessageTurn[]): HumanMessageJump[] {
   });
 }
 
-// Scheduled runs (the Memory curator and other scheduled agents) have no human
+// Scheduled runs (the Skills curator and other scheduled agents) have no human
 // turns: every "user" event in them is the server-built prompt for that run,
 // so the viewer labels those as the system prompt they are.
 export function isScheduledRunSession(sessionId: string): boolean {

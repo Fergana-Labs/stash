@@ -19,9 +19,9 @@ const NAV: { title: string; items: NavItem[] }[] = [
       { href: "/developer", label: "Overview", match: (p) => p === "/developer" },
       { href: "/developer/users", label: "Users", match: (p) => p.startsWith("/developer/users") },
       {
-        href: "/developer/wiki",
-        label: "Shared Wiki",
-        match: (p) => p.startsWith("/developer/wiki"),
+        href: "/developer/skills",
+        label: "Shared Skill",
+        match: (p) => p.startsWith("/developer/skills"),
       },
       {
         href: "/developer/curator",

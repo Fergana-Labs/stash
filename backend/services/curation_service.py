@@ -1,8 +1,8 @@
-"""The change feed the daily Memory curator reads.
+"""The change feed the daily Skills curator reads.
 
 `changes_since` is the incremental delta since the curator's watermark: new
 history events (excluding the curator's own run sessions), changed pages
-(excluding the Memory subtree), new files, changed Drive-folder documents,
+(excluding the curated Skill subtree), new files, changed Drive-folder documents,
 and the user's connected sources as pointers (the agent pulls source
 specifics with `stash search`) — the curator never sees its own output.
 `has_changes_since` is the cheap EXISTS the beat task uses to skip idle users
@@ -28,10 +28,8 @@ _MAX_SAVES = 100
 _MAX_SOURCE_DOCS = 100
 _SNIPPET = 280
 
-# Personal onboarding waits for enough real work to infer useful behavior,
-# then creates a small first set users can understand and inspect.
-SKILL_BOOTSTRAP_TRACE_TARGET = 5
-SKILL_BOOTSTRAP_COUNT = 3
+# The initial history import is a small sample; curation has no minimum trace count.
+ONBOARDING_TRACE_TARGET = 5
 
 
 async def has_changes_since(owner_user_id: UUID, user_id: UUID, since: datetime | None) -> bool:
@@ -40,7 +38,7 @@ async def has_changes_since(owner_user_id: UUID, user_id: UUID, since: datetime 
     if since is None:
         return True  # never curated → bootstrap.
     pool = get_pool()
-    memory_ids = await files_tree_service.memory_subtree_folder_ids(owner_user_id)
+    memory_ids = await files_tree_service.curated_skill_subtree_folder_ids(owner_user_id)
     exists = await pool.fetchval(
         """
         SELECT
@@ -77,11 +75,11 @@ async def changes_since(
     since: datetime | None,
     until: datetime | None = None,
 ) -> dict:
-    """The delta the curator reads: history events, changed pages (excl. Memory),
+    """The delta the curator reads: history events, changed pages (excluding curated knowledge),
     new files, changed Drive-folder documents, newly hydrated X/Instagram
     saves, and connected-source pointers."""
     pool = get_pool()
-    memory_ids = await files_tree_service.memory_subtree_folder_ids(owner_user_id)
+    memory_ids = await files_tree_service.curated_skill_subtree_folder_ids(owner_user_id)
     exclude = list(memory_ids) or None
 
     events, history_has_more = await _feed_events(owner_user_id, since, until, _MAX_EVENTS)
@@ -93,7 +91,7 @@ async def changes_since(
             "content": (e.get("content") or "")[:_SNIPPET],
             "created_at": _iso(e.get("created_at")),
             "user": e.get("user"),
-            "user_share_wiki": e.get("user_share_wiki"),
+            "user_share_skill": e.get("user_share_skill"),
         }
         for e in events
     ]
@@ -435,13 +433,13 @@ async def _feed_events(
 
     The curator's own run transcripts (`agent-curate-%` sessions) are excluded
     in SQL — feeding them back would echo-loop the daily gate and pollute the
-    wiki, and filtering after the query would let them consume feed slots that
+    skill, and filtering after the query would let them consume feed slots that
     belong to real activity.
 
-    Each event carries its session's end user (name and wiki opt-out) when it
+    Each event carries its session's end user (name and skill opt-out) when it
     has one — the external curator routes by it: every user's material feeds
-    that user's own wiki, and only share_wiki users feed the shared anonymized
-    wiki."""
+    that user's own skill, and only share_skill users feed the shared anonymized
+    skill."""
     pool = get_pool()
     args: list = [owner_user_id]
     where = "he.owner_user_id = $1 AND (he.session_id IS NULL OR he.session_id NOT LIKE 'agent-curate-%')"
@@ -464,7 +462,7 @@ async def _feed_events(
         )
     rows = await pool.fetch(
         f"SELECT he.session_id, he.agent_name, he.event_type, he.content, he.created_at, "
-        f"eu.name AS user, eu.share_wiki AS user_share_wiki "
+        f"eu.name AS user, eu.share_skill AS user_share_skill "
         f"FROM history_events he "
         f"LEFT JOIN sessions s ON s.owner_user_id = he.owner_user_id "
         f"  AND s.session_id = he.session_id "

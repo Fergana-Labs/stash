@@ -31,7 +31,7 @@ export default function DocsOverview() {
       <P>
         The Stash plugin records the sessions your coding agents already produce — Claude
         Code, Cursor, Codex, and the rest — into one shared, searchable store. A nightly
-        curator refines them into a wiki of pages and reusable skills, and every agent
+        curator refines them into a skill of pages and reusable skills, and every agent
         reads that memory back through the CLI or MCP on its next run. One engineer&apos;s
         debugging session becomes something every teammate&apos;s agent already knows.
       </P>
@@ -39,8 +39,8 @@ export default function DocsOverview() {
       <H3>External agents: the Developer Platform</H3>
       <P>
         The same memory loop for the agents inside your product. Your agents push their
-        conversations to Stash per end user; the curator writes each user a private wiki
-        plus one shared, anonymized wiki that every user&apos;s agent reads. Your product
+        conversations to Stash per end user; the curator writes each user a private skill
+        plus one shared, anonymized skill that every user&apos;s agent reads. Your product
         gets smarter with every conversation, without you building a memory system.
       </P>
 

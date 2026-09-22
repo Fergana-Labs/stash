@@ -79,7 +79,7 @@ pub async fn list_sources() -> Result<Value, String> {
     get("/api/v1/me/sources").await
 }
 
-/// The server-side Memory curator's row from `/me/agents` (is_curator = true),
+/// The server-side Skills curator's row from `/me/agents` (is_curator = true),
 /// or null when the account has none.
 #[tauri::command]
 pub async fn curator_status() -> Result<Value, String> {
@@ -95,13 +95,13 @@ pub async fn curator_status() -> Result<Value, String> {
     Ok(curator)
 }
 
-/// Kick the server-side Memory curator now instead of waiting for the nightly
+/// Kick the server-side Skills curator now instead of waiting for the nightly
 /// tick. 409 (nothing new) and 402 (out of credits) come back as errors with
 /// the backend's own message.
 #[tauri::command]
-pub async fn recompute_memory() -> Result<Value, String> {
+pub async fn curate_skills() -> Result<Value, String> {
     let s = session()?;
-    let path = "/api/v1/me/memory/recompute";
+    let path = "/api/v1/me/skills/curate";
     let mut req = http()
         .post(format!("{}{path}", s.base))
         .bearer_auth(&s.key);

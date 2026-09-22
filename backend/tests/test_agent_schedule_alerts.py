@@ -1,6 +1,6 @@
 """Scheduled-agent failures must page an operator, not just log.
 
-The Memory curator failed silently for four days in July 2026 (the managed
+The Skills curator failed silently for four days in July 2026 (the managed
 harness broke; the only trace was an ERROR line in celery logs nobody reads).
 These tests pin the two alert paths that prevent a repeat: per-run failure
 alerts, and the daily stale-watermark watchdog.

@@ -58,8 +58,8 @@ const TIERS: {
     price: "Let's talk",
     blurb: "Memory for the agents inside your product, per end user.",
     features: [
-      "A private wiki for each of your users",
-      "One shared, anonymized wiki every user's agent reads",
+      "A private skill for each of your users",
+      "One shared, anonymized skill every user's agent reads",
       "Workspace keys, console, and curator controls",
       "Self-hosting support — MIT licensed, run it on your infra",
     ],

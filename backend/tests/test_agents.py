@@ -27,7 +27,7 @@ def _auth(k: str) -> dict:
 @pytest.mark.asyncio
 async def test_default_agent_autocreated_and_listed(client: AsyncClient):
     """A fresh account has exactly its two reserved agents: the default chat
-    agent and the signup-provisioned Memory curator."""
+    agent and the signup-provisioned Skills curator."""
     key = await _register(client)
     r = await client.get("/api/v1/me/agents", headers=_auth(key))
     assert r.status_code == 200

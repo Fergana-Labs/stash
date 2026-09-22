@@ -44,7 +44,7 @@ vi.mock("@/components/BreadcrumbContext", () => ({ useBreadcrumbs: vi.fn() }));
 vi.mock("@/components/ShellChromeContext", () => ({ useShareAction: vi.fn() }));
 vi.mock("@/components/ConfirmDialog", () => ({ useConfirm: () => vi.fn() }));
 vi.mock("@/lib/pins", () => ({ recordRecent: vi.fn() }));
-vi.mock("@/lib/memory-folder", () => ({
+vi.mock("@/lib/skill-breadcrumbs", () => ({
   sectionCrumbs: () => [],
   useMemoryFolderId: () => null,
 }));

@@ -29,17 +29,20 @@ async def _user(client) -> dict:
     return {"id": UUID(body["id"]), "headers": {"Authorization": f"Bearer {body['api_key']}"}}
 
 
-async def test_memory_folder_refuses_rename_move_and_delete(client, pool):
+async def test_curated_skill_refuses_rename_move_and_delete(client, pool):
     user = await _user(client)
     owner = user["id"]
-    memory = await files_tree_service.get_or_create_memory_folder(owner, owner)
+    memory = await files_tree_service.get_or_create_curated_skill(owner, owner)
 
     with pytest.raises(ValueError, match="can't be renamed"):
         await files_tree_service.update_folder(memory["id"], owner, name="Notes")
     with pytest.raises(ValueError, match="can't be renamed"):
         await files_tree_service.delete_folder(memory["id"], owner, owner)
 
-    assert await pool.fetchval("SELECT name FROM folders WHERE id = $1", memory["id"]) == "Memory"
+    assert (
+        await pool.fetchval("SELECT name FROM folders WHERE id = $1", memory["id"])
+        == "Learned knowledge"
+    )
 
 
 async def test_clips_folder_refuses_rename_move_and_delete(client, pool):
@@ -123,19 +126,14 @@ async def test_the_api_reports_which_folders_are_protected(client):
     assert by_name["Notes"]["is_protected"] is False
 
 
-async def test_memory_refuses_content_wipe_even_disguised_as_a_skill(client, pool):
-    """Skill-ness is derived (folder with a live SKILL.md), so a stray SKILL.md
-    inside Memory makes it pass the skills sync gate — and skills sync empties
-    the folder with a hard delete, no trash. The wipe must refuse protected
-    folders no matter what the derivation claims."""
+async def test_curated_skill_refuses_sync_that_would_wipe_learned_knowledge(client, pool):
+    """Publishing or installing the curated Skill must not make bulk sync a way
+    to discard the maintained corpus. Its pages can be edited individually."""
     user = await _user(client)
     owner = user["id"]
-    memory = await files_tree_service.get_or_create_memory_folder(owner, owner)
-    wiki_page = await files_tree_service.create_page(
-        owner, "Wiki Index", owner, folder_id=memory["id"], content="precious"
-    )
-    await files_tree_service.create_page(
-        owner, "SKILL.md", owner, folder_id=memory["id"], content="# stray"
+    memory = await files_tree_service.get_or_create_curated_skill(owner, owner)
+    skill_page = await files_tree_service.create_page(
+        owner, "Skill Index", owner, folder_id=memory["id"], content="precious"
     )
 
     with pytest.raises(ValueError, match="can't be emptied"):
@@ -158,9 +156,9 @@ async def test_memory_refuses_content_wipe_even_disguised_as_a_skill(client, poo
     assert response.status_code == 400
     assert "can't be emptied" in response.json()["detail"]
 
-    # The wiki survived both attempts, live and in place.
+    # The skill survived both attempts, live and in place.
     row = await pool.fetchrow(
-        "SELECT folder_id, deleted_at FROM pages WHERE id = $1", wiki_page["id"]
+        "SELECT folder_id, deleted_at FROM pages WHERE id = $1", skill_page["id"]
     )
     assert row["folder_id"] == memory["id"]
     assert row["deleted_at"] is None

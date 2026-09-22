@@ -4,47 +4,47 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 
 import DeveloperGate from "@/components/developer/DeveloperGate";
-import WikiGraph from "@/components/memory/WikiGraph";
+import SkillGraph from "@/components/home/SkillGraph";
 import {
-  getDeveloperWikiGraph,
-  getUserWikiGraph,
+  getDeveloperSkillGraph,
+  getUserSkillGraph,
   listUsers,
   runCuratorNow,
-  type WikiGraph as WikiGraphData,
+  type SkillGraph as SkillGraphData,
 } from "@/lib/api";
 import type { EndUser } from "@/lib/types";
 import FolderDetailPage from "../../folders/[folderId]/FolderClient";
 
-export default function DeveloperWiki() {
+export default function DeveloperSkill() {
   return (
     <DeveloperGate>
-      <SharedWiki />
+      <SharedSkill />
     </DeveloperGate>
   );
 }
 
-/** The shared wiki twice over: the graph the curator maintains — every page it
+/** The shared skill twice over: the graph the curator maintains — every page it
  *  wrote and the references between them — above the folder itself, since the
  *  pages are ordinary (protected) files you still want to open and read. Below
- *  both, each user's own wiki, which lives outside this folder. */
-function SharedWiki() {
-  const [graph, setGraph] = useState<WikiGraphData | null>(null);
+ *  both, each user's own skill, which lives outside this folder. */
+function SharedSkill() {
+  const [graph, setGraph] = useState<SkillGraphData | null>(null);
   const [folderId, setFolderId] = useState<string | null>(null);
   const [users, setUsers] = useState<EndUser[]>([]);
   const [error, setError] = useState<string | null>(null);
   const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const refreshGraph = useCallback(() => {
-    getDeveloperWikiGraph()
+    getDeveloperSkillGraph()
       .then(setGraph)
-      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load the wiki graph"));
+      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load the skill graph"));
   }, []);
 
   useEffect(() => {
     refreshGraph();
     listUsers()
       .then((res) => {
-        setFolderId(res.workspace.external_wiki_folder_id);
+        setFolderId(res.workspace.external_skill_folder_id);
         setUsers(res.users);
       })
       .catch(() => setFolderId(null));
@@ -77,7 +77,7 @@ function SharedWiki() {
         ) : !graph ? (
           <div className="h-[560px] w-full animate-pulse rounded bg-muted/40" />
         ) : graph.nodes.length > 0 ? (
-          <WikiGraph data={graph} />
+          <SkillGraph data={graph} />
         ) : (
           <EmptyGraph onStarted={pollWhileRunning} />
         )}
@@ -85,15 +85,15 @@ function SharedWiki() {
 
       {users.length > 0 && (
         <div className="mt-10">
-          <div className="sys-label mb-1.5">Per-user wikis</div>
+          <div className="sys-label mb-1.5">Per-user skills</div>
           <p className="mb-3 text-[12.5px] leading-5 text-muted-foreground">
             What the curator knows about each user individually. Nothing here is shared:
-            a user&apos;s agent reads the shared wiki above plus their own wiki, never
+            a user&apos;s agent reads the shared skill above plus their own skill, never
             anyone else&apos;s.
           </p>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             {users.map((user) => (
-              <UserWikiCard key={user.id} user={user} />
+              <UserSkillCard key={user.id} user={user} />
             ))}
           </div>
         </div>
@@ -128,7 +128,7 @@ function EmptyGraph({ onStarted }: { onStarted: () => void }) {
   return (
     <div className="flex h-[560px] flex-col items-center justify-center gap-4 px-2 text-center">
       <p className="max-w-[52ch] text-[12.5px] leading-5 text-muted-foreground">
-        No wiki pages yet. The curator compiles what your users have learned into a set of
+        No skill pages yet. The curator compiles what your users have learned into a set of
         linked pages every night.
       </p>
       {state === "running" ? (
@@ -149,14 +149,14 @@ function EmptyGraph({ onStarted }: { onStarted: () => void }) {
   );
 }
 
-/** Each user's wiki as a wiki: the same graph the user detail page shows,
+/** Each user's skill as a skill: the same graph the user detail page shows,
  *  small enough to scan the whole customer base at once. */
-function UserWikiCard({ user }: { user: EndUser }) {
-  const [graph, setGraph] = useState<WikiGraphData | null>(null);
+function UserSkillCard({ user }: { user: EndUser }) {
+  const [graph, setGraph] = useState<SkillGraphData | null>(null);
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
-    getUserWikiGraph(user.id)
+    getUserSkillGraph(user.id)
       .then(setGraph)
       .catch(() => setFailed(true));
   }, [user.id]);
@@ -174,20 +174,20 @@ function UserWikiCard({ user }: { user: EndUser }) {
           {user.external_id}
         </span>
         <Link
-          href={`/folders/${user.wiki_folder_id}`}
+          href={`/folders/${user.skill_folder_id}`}
           className="shrink-0 text-[13px] text-muted-foreground transition-colors hover:text-foreground"
         >
-          Open wiki
+          Open skill
         </Link>
       </div>
       {failed ? (
         <div className="flex h-[220px] items-center justify-center text-[12.5px] text-muted-foreground">
-          Couldn&apos;t load this wiki.
+          Couldn&apos;t load this skill.
         </div>
       ) : !graph ? (
         <div className="h-[220px] w-full animate-pulse bg-muted/40" />
       ) : graph.nodes.length > 0 ? (
-        <WikiGraph data={graph} height={220} />
+        <SkillGraph data={graph} height={220} />
       ) : (
         <div className="flex h-[220px] items-center justify-center text-[12.5px] text-muted-foreground">
           Nothing curated for this user yet.

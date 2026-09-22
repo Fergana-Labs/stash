@@ -90,17 +90,17 @@ async def test_skill_md_is_protected_but_its_body_can_be_empty(scope, _db_pool):
 
 
 @pytest.mark.asyncio
-async def test_memory_can_never_become_a_skill(scope, _db_pool):
-    memory = await files_tree_service.get_or_create_memory_folder(scope, scope)
-
-    with pytest.raises(ValueError, match="can't be turned into a skill"):
-        await files_tree_service.set_folder_is_skill(memory["id"], scope, True)
-
-    # And a stray SKILL.md inside it changes nothing.
-    await files_tree_service.create_page(
-        scope, "SKILL.md", scope, folder_id=memory["id"], content="# stray"
+async def test_curated_knowledge_is_a_skill_with_protected_membership(scope, _db_pool):
+    skill = await files_tree_service.get_or_create_curated_skill(scope, scope)
+    listed = await skill_service.list_skills(scope, scope)
+    assert [item["folder_id"] for item in listed] == [str(skill["id"])]
+    entry = await _db_pool.fetchval(
+        "SELECT content_markdown FROM pages WHERE folder_id=$1 AND name='SKILL.md'",
+        skill["id"],
     )
-    assert await skill_service.list_skills(scope, scope) == []
+    skill_service.validate_skill_md(entry)
+    with pytest.raises(ValueError, match="fixed Skill role"):
+        await files_tree_service.set_folder_is_skill(skill["id"], scope, False)
 
 
 @pytest.mark.asyncio

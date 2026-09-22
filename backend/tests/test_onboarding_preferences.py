@@ -135,7 +135,6 @@ async def test_status_counts_only_traces_with_assistant_work(client: AsyncClient
         "curatable_session_ids": ["useful"],
         "skill_count": 1,
         "trace_target": 5,
-        "skill_target": 3,
     }
 
 

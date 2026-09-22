@@ -30,8 +30,8 @@ vi.mock("@/lib/scope-store", () => ({
 }));
 vi.mock("@/lib/api", () => ({
   listMyWorkspaces: async () => [
-    { id: "internal", scope_user_id: "internal", name: "Internal team", external_wiki_folder_id: null },
-    { id: "platform", scope_user_id: "platform", name: "Product", external_wiki_folder_id: "wiki" },
+    { id: "internal", scope_user_id: "internal", name: "Internal team", external_skill_folder_id: null },
+    { id: "platform", scope_user_id: "platform", name: "Product", external_skill_folder_id: "skill" },
   ],
   activateDeveloperPlatform: vi.fn(),
 }));
@@ -88,7 +88,7 @@ it.each([true, false])("filters context choices according to the account flag (%
   expect(screen.queryByRole("menuitem", { name: /Internal team/ }) !== null).toBe(!flag);
 });
 
-it.each(["/sessions/transcript", "/p/page", "/f/file", "/folders/wiki", "/integrations/google"])(
+it.each(["/sessions/transcript", "/p/page", "/f/file", "/folders/skill", "/integrations/google"])(
   "keeps the developer platform's shared viewer at %s working in developer chrome",
   async (pathname) => {
     state.pathname = pathname;

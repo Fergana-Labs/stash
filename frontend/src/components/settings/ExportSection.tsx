@@ -32,7 +32,7 @@ export default function ExportSection() {
       <div>
         <h2 className="text-base font-semibold text-foreground">Export your traces</h2>
         <p className="text-xs text-muted-foreground mt-0.5">
-          Download everything in your Stash as a zip: your Memory wiki and other pages as
+          Download everything in your Stash as a zip: your curated Skill and other pages as
           plain Markdown/HTML, and your uploaded files as their original bytes. Your data
           is never locked in.
         </p>

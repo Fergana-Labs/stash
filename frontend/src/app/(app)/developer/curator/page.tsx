@@ -55,7 +55,7 @@ function Curator() {
     <>
       <PageHeading title="Curator">
         Each night, the curator processes new activity in separate runs for each
-        user&apos;s private wiki and the shared anonymized wiki. The shared run can read
+        user&apos;s private skill and the shared anonymized skill. The shared run can read
         only material from users who allow sharing.
       </PageHeading>
 
@@ -117,22 +117,22 @@ function Curator() {
       </section>
 
       <section className="mb-12">
-        <SectionHeading>Feeding the shared wiki</SectionHeading>
+        <SectionHeading>Feeding the shared skill</SectionHeading>
         <p className="mt-2 text-[13.5px] leading-6 text-muted-foreground">
-          Every user gets their own wiki regardless. This is who also contributes to the
-          anonymized wiki the others read.
+          Every user gets their own skill regardless. This is who also contributes to the
+          anonymized skill the others read.
         </p>
         <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
           <UserColumn
             title="Feeding"
             users={data.feeding}
-            empty="No user is feeding the wiki, so it will stay as it is."
+            empty="No user is feeding the skill, so it will stay as it is."
             accent
           />
           <UserColumn
             title="Opted out"
             users={data.opted_out}
-            empty="Every user is feeding the wiki."
+            empty="Every user is feeding the skill."
           />
         </div>
       </section>
@@ -185,7 +185,7 @@ function Instructions({ initial }: { initial: string | null }) {
       </div>
       <p className="mt-2 text-[13.5px] leading-6 text-muted-foreground">
         Appended to the curator&apos;s prompt on every run — nightly, run-now, and backfill.
-        Use it to steer what gets curated: what belongs in the shared wiki, what should stay
+        Use it to steer what gets curated: what belongs in the shared skill, what should stay
         per-user, what to ignore entirely.
       </p>
       <textarea
@@ -193,7 +193,7 @@ function Instructions({ initial }: { initial: string | null }) {
         onChange={(e) => setText(e.target.value)}
         rows={4}
         placeholder={
-          "e.g. Part cross-references and diagnostic procedures belong in the shared wiki. " +
+          "e.g. Part cross-references and diagnostic procedures belong in the shared skill. " +
           "Pricing a user was quoted is per-user only, never shared."
         }
         className="mt-4 w-full rounded border border-border bg-surface px-4 py-3 text-[14px] leading-6 text-foreground placeholder:text-muted-foreground focus:border-brand-500 focus:outline-none"
@@ -220,7 +220,7 @@ function PromptSection({ nightly, backfill }: { nightly: string; backfill: strin
       </div>
       <p className="mt-2 text-[13.5px] leading-6 text-muted-foreground">
         Shared curation reads only material from users who allow sharing. Each user&apos;s
-        private wiki is updated separately. These are the instructions for those runs:
+        private skill is updated separately. These are the instructions for those runs:
         nightly runs process new activity, while backfill starts from the full history.
       </p>
       {shown !== "hidden" && (
@@ -324,7 +324,7 @@ function Runs({ runs, onStarted }: { runs: CuratorRun[]; onStarted: () => void }
       </div>
       <p className="mt-2 text-[13.5px] leading-6 text-muted-foreground">
         Run now curates what&apos;s new since the watermark. Backfill clears the watermark and
-        re-reads the full history — after a bulk upload, or to rebuild the wikis under new
+        re-reads the full history — after a bulk upload, or to rebuild the skills under new
         instructions. Pages update in place either way.
       </p>
       {runError && <p className="mt-2 text-[13px] text-error">{runError}</p>}

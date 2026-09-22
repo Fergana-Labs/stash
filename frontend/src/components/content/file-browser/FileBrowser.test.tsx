@@ -123,7 +123,7 @@ describe("FileBrowser folder links", () => {
           id: "folder-1",
           name: "Skill folder",
           is_skill: true,
-          is_memory: false,
+          is_curated_skill: false,
         },
       ],
       subfolders: [

@@ -19,12 +19,12 @@ _COLUMNS = (
     "id, user_id, name, model_provider, system_prompt, run_mode, "
     "schedule_cron, schedule_prompt, is_default, is_curator, slack_bound, "
     "telegram_bound, last_run_at, last_run_error, last_run_outcome, curated_through, "
-    "curator_wiki, created_at"
+    "curator_skill, created_at"
 )
 
 
 # The curator runs nightly, inside a quiet window (08:00–11:59 UTC = midnight–4am
-# Pacific): users are asleep so the wiki isn't chasing live edits, and no deploys
+# Pacific): users are asleep so the skill isn't chasing live edits, and no deploys
 # are restarting the worker mid-run (the cron tick is consumed up front, so a
 # killed run is lost until the next night). Staggered per user within the window
 # so sprite wakes don't all fire at once.
@@ -113,15 +113,15 @@ async def get_or_create_default(user_id: UUID) -> dict:
     return _row(row)
 
 
-# How far back the first curation looks (the wiki bootstraps from this window).
+# How far back the first curation looks (the skill bootstraps from this window).
 CURATOR_BACKFILL_DAYS = 90
 
 
-async def get_or_create_curator(user_id: UUID, wiki: str = "internal") -> dict:
-    """The scope's reserved curator for one wiki, created on first use.
+async def get_or_create_curator(user_id: UUID, skill: str = "internal") -> dict:
+    """The scope's reserved curator for one skill, created on first use.
 
-    `wiki` is "internal" (the scope's own Memory wiki) or "external" (the
-    workspace's cross-user anonymized wiki). They are separate agents: separate
+    `skill` is "internal" (the scope's own curated Skill) or "external" (the
+    workspace's cross-user anonymized skill). They are separate agents: separate
     schedules, watermarks and run histories, because they write to different
     places under opposite privacy rules.
 
@@ -130,35 +130,35 @@ async def get_or_create_curator(user_id: UUID, wiki: str = "internal") -> dict:
     first run is due immediately and bootstraps from real history."""
     pool = get_pool()
     row = await pool.fetchrow(
-        f"SELECT {_COLUMNS} FROM agents WHERE user_id = $1 AND is_curator AND curator_wiki = $2",
+        f"SELECT {_COLUMNS} FROM agents WHERE user_id = $1 AND is_curator AND curator_skill = $2",
         user_id,
-        wiki,
+        skill,
     )
     if row is not None:
         return _row(row)
-    name = "Memory curator" if wiki == "internal" else "External wiki curator"
+    name = "Skills curator" if skill == "internal" else "External skill curator"
     row = await pool.fetchrow(
         f"""
         INSERT INTO agents (user_id, name, run_mode, schedule_cron, is_curator,
-                            curator_wiki, last_run_at, curated_through)
+                            curator_skill, last_run_at, curated_through)
         SELECT $1, $4, 'scheduled', $2, true, $5, backfill, backfill
         FROM (SELECT greatest((SELECT created_at FROM users WHERE id = $1),
                               now() - make_interval(days => $3)) AS backfill) seed
-        ON CONFLICT (user_id, curator_wiki) WHERE is_curator DO NOTHING
+        ON CONFLICT (user_id, curator_skill) WHERE is_curator DO NOTHING
         RETURNING {_COLUMNS}
         """,
         user_id,
         _staggered_nightly_cron(user_id),
         CURATOR_BACKFILL_DAYS,
         name,
-        wiki,
+        skill,
     )
     if row is None:  # lost the race — read the winner.
         row = await pool.fetchrow(
             f"SELECT {_COLUMNS} FROM agents "
-            "WHERE user_id = $1 AND is_curator AND curator_wiki = $2",
+            "WHERE user_id = $1 AND is_curator AND curator_skill = $2",
             user_id,
-            wiki,
+            skill,
         )
     return _row(row)
 
@@ -203,7 +203,7 @@ async def update_agent(user_id: UUID, agent_id: UUID, fields: dict) -> dict:
     if current["is_curator"] and set(fields) - {"run_mode"}:
         raise HTTPException(
             status_code=400,
-            detail="only run_mode can change on the Memory curator (its schedule on/off switch)",
+            detail="only run_mode can change on the Skills curator (its schedule on/off switch)",
         )
     merged = {**current, **fields}
     _validate(
@@ -259,7 +259,7 @@ async def delete_agent(user_id: UUID, agent_id: UUID) -> None:
         raise HTTPException(status_code=400, detail="cannot delete the default agent")
     if agent["is_curator"]:
         raise HTTPException(
-            status_code=400, detail="cannot delete the Memory curator (turn it off instead)"
+            status_code=400, detail="cannot delete the Skills curator (turn it off instead)"
         )
     await get_pool().execute("DELETE FROM agents WHERE id = $1 AND user_id = $2", agent_id, user_id)
 
@@ -327,11 +327,11 @@ async def mark_curated(agent_id: UUID, through, *, since) -> None:
     pool = get_pool()
     agent = await get_agent_by_id(agent_id)
     trace_ids = None
-    if agent["curator_wiki"] == "internal":
+    if agent["curator_skill"] == "internal":
         trace_ids = await curation_service.allowed_trace_ids(agent["user_id"], since, None)
     async with pool.acquire() as conn, conn.transaction():
         await conn.fetchrow("SELECT id FROM agents WHERE id = $1 FOR UPDATE", agent_id)
-        if agent["curator_wiki"] == "internal":
+        if agent["curator_skill"] == "internal":
             await conn.execute(
                 """
                 UPDATE sessions s SET curated_at = now()

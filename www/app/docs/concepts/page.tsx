@@ -16,22 +16,22 @@ const CONCEPTS: { name: string; badge: string; badgeColor: string; desc: React.R
     desc: "The raw material. Every conversation your agents have — messages, tool calls, timestamps — streamed in by the plugin or pushed through the API, grouped into sessions, and searchable.",
   },
   {
-    name: "Memory",
-    badge: "Wiki",
+    name: "Skills",
+    badge: "Skill",
     badgeColor: "bg-purple-500/10 text-purple-500",
-    desc: "The refined layer: a wiki of linked pages compiled from your sessions, which your agents read before they work. Every page is an ordinary file you can open and edit — the curator treats your edits as source material.",
+    desc: "The refined layer: a skill of linked pages compiled from your sessions, which your agents read before they work. Every page is an ordinary file you can open and edit — the curator treats your edits as source material.",
   },
   {
     name: "Curator",
     badge: "Agent",
     badgeColor: "bg-amber-500/10 text-amber-600",
-    desc: "The agent that maintains the Memory wiki. It runs nightly (and on demand), reads only the sessions uploaded since its last run, and updates the wiki in place — cost scales with new conversation, not with how much you've stored.",
+    desc: "The agent that maintains the curated Skill. It runs nightly (and on demand), reads only the sessions uploaded since its last run, and updates the skill in place — cost scales with new conversation, not with how much you've stored.",
   },
   {
     name: "End user",
     badge: "Developer Platform",
     badgeColor: "bg-blue-500/10 text-blue-500",
-    desc: "A user of your product, identified by your own user id. On the Developer Platform, each end user gets a private wiki the curator maintains for them, and opted-in users also feed one shared, anonymized wiki that every user's agent reads.",
+    desc: "A user of your product, identified by your own user id. On the Developer Platform, each end user gets a private skill the curator maintains for them, and opted-in users also feed one shared, anonymized skill that every user's agent reads.",
   },
   {
     name: "Files",

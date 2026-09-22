@@ -21,7 +21,7 @@ async def test_existing_optout_archives_shared_tree_and_revokes_every_share(clie
     key = await _mint_workspace_key(client, api_key, workspace)
     await _push(client, key, [_event("s", "protected", "Protected customer")])
     owner = UUID(workspace["scope_user_id"])
-    old_root = UUID(workspace["external_wiki_folder_id"])
+    old_root = UUID(workspace["external_skill_folder_id"])
     protected = await pool.fetchval(
         "SELECT id FROM end_users WHERE workspace_id=$1", UUID(workspace["id"])
     )
@@ -75,25 +75,34 @@ async def test_existing_optout_archives_shared_tree_and_revokes_every_share(clie
 
         # Simulate the pre-deployment schema; upgrade must add the column itself.
         conn.execute(text("ALTER TABLE workspaces DROP COLUMN curation_generation"))
+        renamed = [
+            ("workspaces", "external_skill_folder_id", "external_wiki_folder_id"),
+            ("end_users", "share_skill", "share_wiki"),
+            ("agents", "curator_skill", "curator_wiki"),
+        ]
+        for table, current, historical in renamed:
+            conn.execute(text(f"ALTER TABLE {table} RENAME COLUMN {current} TO {historical}"))
         with Operations.context(MigrationContext.configure(conn)):
             migration.upgrade()
+        for table, current, historical in renamed:
+            conn.execute(text(f"ALTER TABLE {table} RENAME COLUMN {historical} TO {current}"))
 
     try:
         if method == "migration":
-            await pool.execute("UPDATE end_users SET share_wiki=false WHERE id=$1", protected)
+            await pool.execute("UPDATE end_users SET share_skill=false WHERE id=$1", protected)
             async with engine.begin() as conn:
                 await conn.run_sync(migrate)
         else:
-            await end_user_service.update_end_user(protected, share_wiki=False)
+            await end_user_service.update_end_user(protected, share_skill=False)
     finally:
         await engine.dispose()
 
     ws = await pool.fetchrow("SELECT * FROM workspaces WHERE id=$1", UUID(workspace["id"]))
-    assert ws["external_wiki_folder_id"] is not None and ws["external_wiki_folder_id"] != old_root
+    assert ws["external_skill_folder_id"] is not None and ws["external_skill_folder_id"] != old_root
     assert ws["curation_generation"] == 1
     assert await pool.fetchval(
-        "SELECT external_wiki_folder_id FROM workspaces WHERE id=$1", UUID(unaffected["id"])
-    ) == UUID(unaffected["external_wiki_folder_id"])
+        "SELECT external_skill_folder_id FROM workspaces WHERE id=$1", UUID(unaffected["id"])
+    ) == UUID(unaffected["external_skill_folder_id"])
     assert (
         await pool.fetchval("SELECT content_markdown FROM pages WHERE id=$1", page)
         == "PRE_ENFORCEMENT_SECRET"
@@ -108,7 +117,8 @@ async def test_existing_optout_archives_shared_tree_and_revokes_every_share(clie
         assert not await permission_service.check_access(kind, object_id, None, owner)
     assert (
         await pool.fetchval(
-            "SELECT curated_through FROM agents WHERE user_id=$1 AND curator_wiki='external'", owner
+            "SELECT curated_through FROM agents WHERE user_id=$1 AND curator_skill='external'",
+            owner,
         )
         is None
     )
@@ -116,7 +126,7 @@ async def test_existing_optout_archives_shared_tree_and_revokes_every_share(clie
         response = await client.post(
             "/api/v1/me/vfs",
             headers=_auth(key),
-            json={"script": "grep -r PRE_ENFORCEMENT_SECRET /memory /files", "user_id": user},
+            json={"script": "grep -r PRE_ENFORCEMENT_SECRET /skills /files", "user_id": user},
         )
         assert response.status_code == 200
         assert "PRE_ENFORCEMENT_SECRET" not in response.json()["stdout"]

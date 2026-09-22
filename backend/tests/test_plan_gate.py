@@ -202,7 +202,7 @@ async def test_pro_curator_allowance_resets_each_month(client: AsyncClient, _db_
 
 @pytest.mark.asyncio
 async def test_on_demand_curator_run_refused_on_sse_route(client: AsyncClient, _db_pool):
-    """The curator's "Run now" enqueues on the worker via /memory/recompute
+    """The curator's "Run now" enqueues on the worker via /skills/curate
     (with the same trace allowance as the scheduler). The SSE
     route refuses curators outright: a curation pass takes minutes, and an
     SSE run dies silently when the browser tab closes."""
@@ -213,4 +213,4 @@ async def test_on_demand_curator_run_refused_on_sse_route(client: AsyncClient, _
         "/api/v1/me/agent-chat/run", json={"agent_id": curator["id"]}, headers=_auth(key)
     )
     assert r.status_code == 400
-    assert "recompute" in r.json()["detail"]
+    assert "/me/skills/curate" in r.json()["detail"]

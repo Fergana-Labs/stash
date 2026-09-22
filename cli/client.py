@@ -358,11 +358,11 @@ class StashClient:
     def get_overview(self) -> dict:
         return self._get("/api/v1/me/overview")
 
-    def get_memory_folder(self) -> dict:
-        return self._get("/api/v1/me/memory-folder")
+    def get_curated_skill(self) -> dict:
+        return self._get("/api/v1/me/skills/curation/root")
 
-    def get_memory_tree(self) -> dict:
-        return self._get("/api/v1/me/memory-tree")
+    def get_curated_skill_tree(self) -> dict:
+        return self._get("/api/v1/me/skills/curation/tree")
 
     def run_vfs(self, script: str, cwd: str = "/") -> dict:
         """Run one read-only VFS script server-side (ls/cat/find/grep, pipes).
@@ -373,8 +373,8 @@ class StashClient:
         params = {"since": since} if since else {}
         return self._get("/api/v1/me/changes", **params)
 
-    def recompute_memory(self) -> dict:
-        return self._post("/api/v1/me/memory/recompute")
+    def curate_skills(self) -> dict:
+        return self._post("/api/v1/me/skills/curate")
 
     def get_curator(self) -> dict | None:
         agents = self._get("/api/v1/me/agents")["agents"]

@@ -105,7 +105,7 @@ class SkillAppVfsShell:
     def _expand_globs(self, args: list[str]) -> list[str]:
         """Expand `*`, `?` and `[...]` in path arguments, as a shell does.
 
-        This reads as a shell, so people write shell — `cat /memory/*` is the
+        This reads as a shell, so people write shell — `cat /skills/shared/*` is the
         idiom our own setup docs hand to developers. Without expansion that
         resolved to a literal filename, found nothing, and returned empty:
         an agent built on it ran with no context at all and nothing said so.

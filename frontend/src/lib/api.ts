@@ -257,7 +257,7 @@ export async function mintDeveloperKey(
 export async function listUsers(): Promise<{
   workspace: Workspace;
   users: EndUser[];
-  stats: { wiki_page_count: number; user_session_count: number };
+  stats: { skill_page_count: number; user_session_count: number };
 }> {
   return apiFetch(`${ME}/users`);
 }
@@ -297,15 +297,15 @@ export interface DeveloperUserFiles {
   id: string;
   name: string;
   external_id: string;
-  wiki_folder_id: string;
-  wiki_pages: DeveloperPageRow[];
+  skill_folder_id: string;
+  skill_pages: DeveloperPageRow[];
   files: DeveloperFileRow[];
 }
 
 export async function listDeveloperFiles(): Promise<{
-  wiki_folder_id: string;
-  wiki_pages: DeveloperPageRow[];
-  wiki_files: DeveloperFileRow[];
+  skill_folder_id: string;
+  skill_pages: DeveloperPageRow[];
+  skill_files: DeveloperFileRow[];
   users: DeveloperUserFiles[];
 }> {
   return apiFetch(`${ME}/developer/files`);
@@ -328,7 +328,7 @@ export interface EndUserFile {
   created_at: string;
 }
 
-export interface EndUserWikiPage {
+export interface EndUserSkillPage {
   id: string;
   name: string;
   updated_at: string;
@@ -400,7 +400,7 @@ export async function getUser(userId: string): Promise<{
   user: EndUser;
   sessions: EndUserSession[];
   files: EndUserFile[];
-  wiki_pages: EndUserWikiPage[];
+  skill_pages: EndUserSkillPage[];
   sources: EndUserSource[];
 }> {
   return apiFetch(`${ME}/users/${userId}`);
@@ -408,7 +408,7 @@ export async function getUser(userId: string): Promise<{
 
 export async function updateUser(
   userId: string,
-  patch: { name?: string; share_wiki?: boolean },
+  patch: { name?: string; share_skill?: boolean },
 ): Promise<EndUser> {
   return apiFetch(`${ME}/users/${userId}`, {
     method: "PATCH",
@@ -711,35 +711,35 @@ export async function listFolders(): Promise<{ folders: Folder[] }> {
   return apiFetch(`${ME}/folders`);
 }
 
-// The reserved per-user Memory folder (created on first access) — Memory's root.
-export async function getMemoryFolder(): Promise<Folder> {
-  return apiFetch(`${ME}/memory-folder`);
+// The reserved per-user curated Skill folder (created on first access).
+export async function getCuratedSkill(): Promise<Folder> {
+  return apiFetch(`${ME}/skills/curation/root`);
 }
 
-export interface WikiGraphNode {
+export interface SkillGraphNode {
   id: string;
   name: string;
   degree: number;
 }
 
-export interface WikiGraph {
-  nodes: WikiGraphNode[];
+export interface SkillGraph {
+  nodes: SkillGraphNode[];
   edges: { source: string; target: string }[];
 }
 
-// The Memory wiki as a graph: pages in the Memory subtree + links between them.
-export async function getMemoryGraph(): Promise<WikiGraph> {
-  return apiFetch(`${ME}/memory-graph`);
+// The curated Skill as a graph: pages in the curated Skill subtree + links between them.
+export async function getCuratedSkillGraph(): Promise<SkillGraph> {
+  return apiFetch(`${ME}/skills/curation/graph`);
 }
 
-// The same graph for a developer workspace's shared wiki.
-export async function getDeveloperWikiGraph(): Promise<WikiGraph> {
-  return apiFetch(`${ME}/developer/wiki-graph`);
+// The same graph for a developer workspace's shared skill.
+export async function getDeveloperSkillGraph(): Promise<SkillGraph> {
+  return apiFetch(`${ME}/developer/skills-graph`);
 }
 
-// One end user's own wiki, same graph shape.
-export async function getUserWikiGraph(userId: string): Promise<WikiGraph> {
-  return apiFetch(`${ME}/users/${userId}/wiki-graph`);
+// One end user's own skill, same graph shape.
+export async function getUserSkillGraph(userId: string): Promise<SkillGraph> {
+  return apiFetch(`${ME}/users/${userId}/skill-graph`);
 }
 
 // --- Curator log ---
@@ -814,7 +814,6 @@ export interface OnboardingStatus {
   curatable_session_ids: string[];
   skill_count: number;
   trace_target: number;
-  skill_target: number;
 }
 
 export async function getOnboardingStatus(): Promise<OnboardingStatus> {
@@ -2234,7 +2233,7 @@ export interface FolderBreadcrumb {
   id: string;
   name: string;
   is_skill: boolean;
-  is_memory: boolean;
+  is_curated_skill: boolean;
 }
 export interface FolderSubfolder {
   id: string;
