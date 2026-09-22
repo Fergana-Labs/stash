@@ -24,7 +24,6 @@ export default function SkillsPage() {
   const [skills, setSkills] = useState<Skill[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [suggestions, setSuggestions] = useState<SuggestedSkill[] | null>(null);
-  const [advancedOpen, setAdvancedOpen] = useState(false);
   const [composerOpen, setComposerOpen] = useState(false);
   const composerRef = useRef<HTMLDivElement | null>(null);
 
@@ -70,15 +69,34 @@ export default function SkillsPage() {
   return (
     <div className="scroll-thin flex-1 overflow-y-auto">
       <div className="mx-auto max-w-[920px] px-12 pb-20 pt-8">
-        <div>
-          <h1 className="font-display text-[21px] font-bold tracking-tight text-foreground">
-            Skills
-          </h1>
-          <p className="mt-1 text-[13px] text-muted-foreground">
-            Stash creates Skills from your traces. Choose which ones are
-            available to your coding agents.
-          </p>
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0 flex-1">
+            <h1 className="font-display text-[21px] font-bold tracking-tight text-foreground">
+              Skills
+            </h1>
+            <p className="mt-1 text-[13px] text-muted-foreground">
+              Create your own Skills or let Stash learn from your traces.
+              Choose which ones are available to your coding agents.
+            </p>
+          </div>
+          {!composerOpen && (
+            <button
+              type="button"
+              onClick={showComposer}
+              className="shrink-0 cursor-pointer rounded-md bg-[var(--color-brand-600)] px-3 py-2 text-[13px] font-medium text-white hover:bg-[var(--color-brand-700)]"
+            >
+              Create a skill
+            </button>
+          )}
         </div>
+        {composerOpen && (
+          <div ref={composerRef} className="mt-5">
+            <SkillComposer
+              onSubmit={newSkill}
+              onCancel={() => setComposerOpen(false)}
+            />
+          </div>
+        )}
         {error && (
           <p className="mt-5 text-[13px] text-error">
             Couldn&apos;t load Skills: {error}
@@ -88,8 +106,8 @@ export default function SkillsPage() {
           <div className="mt-8 h-28 animate-pulse rounded-md bg-raised" />
         ) : skills.length === 0 ? (
           <div className="mt-8 border-y border-border py-8 text-[13px] text-muted-foreground">
-            No Skills yet. Stash will create them as it learns from your agent
-            traces.
+            No Skills yet. Create a skill to get started, or let Stash learn
+            from your agent traces.
           </div>
         ) : (
           <div className="mt-8 divide-y divide-border border-y border-border">
@@ -113,42 +131,6 @@ export default function SkillsPage() {
             router.push(`/skills/folder/${created.folder_id}`);
           }}
         />
-
-        <div className="mt-10 border-t border-border pt-5">
-          <button
-            type="button"
-            aria-expanded={advancedOpen}
-            onClick={() => setAdvancedOpen((open) => !open)}
-            className="cursor-pointer text-[13px] font-medium text-muted-foreground hover:text-foreground"
-          >
-            Advanced
-          </button>
-          {advancedOpen && (
-            <div className="mt-4">
-              <p className="text-[13px] text-muted-foreground">
-                Create a Skill manually instead of waiting for Stash to derive
-                one from your traces.
-              </p>
-              {!composerOpen && (
-                <button
-                  type="button"
-                  onClick={showComposer}
-                  className="mt-3 cursor-pointer rounded-md border border-border bg-base px-3 py-2 text-[13px] font-medium text-foreground hover:bg-raised"
-                >
-                  New Skill
-                </button>
-              )}
-              {composerOpen && (
-                <div ref={composerRef} className="mt-4">
-                  <SkillComposer
-                    onSubmit={newSkill}
-                    onCancel={() => setComposerOpen(false)}
-                  />
-                </div>
-              )}
-            </div>
-          )}
-        </div>
       </div>
     </div>
   );

@@ -165,15 +165,14 @@ describe("SkillsPage", () => {
     );
   });
 
-  it("keeps manual Skill creation behind Advanced", async () => {
+  it("offers Skill creation directly on the page", async () => {
     vi.mocked(listSkills).mockResolvedValue([]);
     render(<SkillsPage />);
     expect(await screen.findByText(/No Skills yet/)).toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: "New Skill" }),
+      screen.queryByRole("button", { name: "Advanced" }),
     ).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Advanced" }));
-    fireEvent.click(screen.getByRole("button", { name: "New Skill" }));
+    fireEvent.click(screen.getByRole("button", { name: "Create a skill" }));
     expect(
       screen.getByRole("button", { name: /Create skill/i }),
     ).toBeInTheDocument();
