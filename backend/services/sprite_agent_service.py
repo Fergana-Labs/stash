@@ -321,6 +321,7 @@ async def _turn_events(
         resume=resume,
         system_prompt=system_prompt,
         disallowed_tools=disallowed_tools,
+        internal_run=session_id.startswith("agent-curate-"),
     )
     async for event in _run_harness(harness, sprite, argv, state, provider_env):
         yield event
@@ -340,6 +341,7 @@ async def _turn_events(
             resume=False,
             system_prompt=system_prompt,
             disallowed_tools=disallowed_tools,
+            internal_run=session_id.startswith("agent-curate-"),
         )
         async for event in _run_harness(harness, sprite, argv, state, provider_env):
             yield event

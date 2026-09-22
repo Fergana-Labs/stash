@@ -73,6 +73,8 @@ def test_claude_uses_deterministic_id_for_create_and_resume():
     assert first[:3] == ["claude", "-p", "hi"]
     assert first[first.index("--session-id") + 1] == key
     assert "--resume" not in first
+    assert "--no-session-persistence" not in first
+    assert "--settings" not in first
     assert "--dangerously-skip-permissions" in first
 
     later = h.build_argv(h.CLAUDE, "hi", session_key=key, resume=True, system_prompt="sys")

@@ -108,6 +108,7 @@ def build_argv(
     resume: bool,
     system_prompt: str,
     disallowed_tools: list[str] | None = None,
+    internal_run: bool = False,
 ) -> list[str]:
     """`session_key` is the id for this conversation (see session_key());
     `resume` says whether to continue an existing session vs create fresh."""
@@ -128,6 +129,10 @@ def build_argv(
             system_prompt,
             "--dangerously-skip-permissions",
         ]
+        if internal_run:
+            # Stash records its own job log; local hooks and transcript importers
+            # must not upload a second copy as a user conversation.
+            argv += ["--settings", '{"disableAllHooks":true}', "--no-session-persistence"]
         if disallowed_tools:
             argv += ["--disallowedTools", ",".join(disallowed_tools)]
         return argv

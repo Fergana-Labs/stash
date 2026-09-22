@@ -269,8 +269,15 @@ fn build_command(agent: &str, prompt: &str, cfg: &LocalConfig) -> Command {
         "claude" => {
             let mut rules = cfg.allowed_tools.clone();
             rules.extend(mcp_allow_rules());
+            // The curator has its own run log; hooks and transcript imports
+            // must not record it again as a user's coding session.
             cmd.arg("-p")
                 .arg(prompt)
+                .args([
+                    "--settings",
+                    r#"{"disableAllHooks":true}"#,
+                    "--no-session-persistence",
+                ])
                 .arg("--allowedTools")
                 .arg(rules.join(","));
         }
@@ -391,5 +398,26 @@ fn due(interval_hours: u64) -> bool {
     match last_success.and_then(&elapsed_since) {
         None => true,
         Some(since_success) => since_success >= chrono::Duration::hours(interval_hours as i64),
+    }
+}
+
+#[cfg(test)]
+mod recording_tests {
+    use super::*;
+
+    #[test]
+    fn claude_curator_does_not_create_uploadable_sessions() {
+        let cfg = LocalConfig {
+            enabled: true,
+            interval_hours: 6,
+            agent: "claude".into(),
+            allowed_tools: vec!["Bash(stash:*)".into()],
+        };
+        let cmd = build_command("claude", "curate", &cfg);
+        let args: Vec<_> = cmd.get_args().map(|a| a.to_str().unwrap()).collect();
+        assert!(args.contains(&"--no-session-persistence"));
+        let settings = args.iter().position(|a| *a == "--settings").unwrap();
+        let value: Value = serde_json::from_str(args[settings + 1]).unwrap();
+        assert_eq!(value["disableAllHooks"], true);
     }
 }

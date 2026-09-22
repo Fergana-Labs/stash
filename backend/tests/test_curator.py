@@ -1,5 +1,6 @@
 """The daily Skills curator: provisioning, change feed, cost gate, prompt."""
 
+import json
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock
 from uuid import UUID
@@ -477,6 +478,9 @@ async def test_curator_run_keeps_full_toolset(
 
     curator_argv = [a for a in sprite_exec.calls if "Skills Curation" in " ".join(a)]
     assert curator_argv and "--disallowedTools" not in curator_argv[0]
+    argv = curator_argv[0]
+    assert "--no-session-persistence" in argv
+    assert json.loads(argv[argv.index("--settings") + 1])["disableAllHooks"] is True
 
 
 @pytest.mark.asyncio
