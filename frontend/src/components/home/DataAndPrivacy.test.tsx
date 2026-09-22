@@ -24,7 +24,7 @@ describe("DataAndPrivacy", () => {
         {
           client: "codex_cli",
           key_id: "key-codex",
-          key_name: "CLI (henrys-macbook-pro)",
+          computer_name: "henrys-macbook-pro",
           session_count: 4,
           last_uploaded_at: new Date().toISOString(),
           uploads_enabled: true,
@@ -33,7 +33,7 @@ describe("DataAndPrivacy", () => {
         {
           client: "claude_code",
           key_id: null,
-          key_name: null,
+          computer_name: null,
           session_count: 1,
           last_uploaded_at: new Date().toISOString(),
           uploads_enabled: null,
@@ -42,7 +42,7 @@ describe("DataAndPrivacy", () => {
         {
           client: null,
           key_id: "key-mini",
-          key_name: "CLI (henrys-mac-mini)",
+          computer_name: "henrys-mac-mini",
           session_count: 0,
           last_uploaded_at: null,
           uploads_enabled: false,

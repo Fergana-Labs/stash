@@ -2022,7 +2022,7 @@ export async function listRecentActivity(limit = 20): Promise<RecentActivityFeed
 export interface UploadSource {
   client: string | null;
   key_id: string | null;
-  key_name: string | null;
+  computer_name: string | null;
   session_count: number;
   last_uploaded_at: string | null;
   uploads_enabled: boolean | null;

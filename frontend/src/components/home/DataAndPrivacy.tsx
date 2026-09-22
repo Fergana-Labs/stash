@@ -87,7 +87,7 @@ function UploadSourceList({
           <div className="min-w-0">
             <div className="truncate text-[13px] font-medium text-foreground">
               {source.client ? `${clientLabel(source.client)} on ` : ""}
-              {computerLabel(source.key_name)}
+              {source.computer_name === null ? "computer not recorded" : source.computer_name}
             </div>
             <div className="text-[11.5px] text-muted-foreground">
               {source.last_uploaded_at ? (
@@ -169,12 +169,6 @@ function clientLabel(client: string): string {
   const label = CLIENT_LABELS[client];
   if (!label) throw new Error(`Unknown coding-agent client: ${client}`);
   return label;
-}
-
-function computerLabel(keyName: string | null): string {
-  if (keyName === null) return "computer not recorded";
-  const cliName = /^CLI \((.+)\)$/.exec(keyName);
-  return cliName ? cliName[1] : keyName;
 }
 
 function relativeTime(iso: string): string {

@@ -160,7 +160,9 @@ async def list_upload_sources(
         WITH observed AS (
           SELECT he.metadata->>'client' AS client,
                  he.uploader_key_id AS key_id,
-                 k.name AS key_name,
+                 CASE WHEN k.key_type = 'cli'
+                      THEN substring(k.name FROM '^CLI [(](.+)[)]$')
+                 END AS computer_name,
                  k.uploads_enabled,
                  COALESCE(k.user_id = $2, FALSE) AS can_manage,
                  COUNT(DISTINCT he.session_id)::int AS session_count,
@@ -169,12 +171,14 @@ async def list_upload_sources(
           LEFT JOIN user_api_keys k ON k.id = he.uploader_key_id
           WHERE he.owner_user_id = $1
             AND NULLIF(he.metadata->>'client', '') IS NOT NULL
-          GROUP BY he.metadata->>'client', he.uploader_key_id, k.name,
+          GROUP BY he.metadata->>'client', he.uploader_key_id, k.name, k.key_type,
                    k.uploads_enabled, k.user_id
         ), signed_in_computers AS (
           SELECT NULL::text AS client,
                  k.id AS key_id,
-                 k.name AS key_name,
+                 CASE WHEN k.key_type = 'cli'
+                      THEN substring(k.name FROM '^CLI [(](.+)[)]$')
+                 END AS computer_name,
                  k.uploads_enabled,
                  TRUE AS can_manage,
                  0::int AS session_count,
@@ -185,14 +189,14 @@ async def list_upload_sources(
             AND k.revoked_at IS NULL
             AND NOT EXISTS (SELECT 1 FROM observed o WHERE o.key_id = k.id)
         )
-        SELECT client, key_id::text, key_name, uploads_enabled, can_manage,
+        SELECT client, key_id::text, computer_name, uploads_enabled, can_manage,
                session_count, last_uploaded_at
         FROM observed
         UNION ALL
-        SELECT client, key_id::text, key_name, uploads_enabled, can_manage,
+        SELECT client, key_id::text, computer_name, uploads_enabled, can_manage,
                session_count, last_uploaded_at
         FROM signed_in_computers
-        ORDER BY last_uploaded_at DESC NULLS LAST, key_name
+        ORDER BY last_uploaded_at DESC NULLS LAST, computer_name
         """,
         scope_user_id,
         current_user["id"],
@@ -202,7 +206,7 @@ async def list_upload_sources(
             {
                 "client": row["client"],
                 "key_id": row["key_id"],
-                "key_name": row["key_name"],
+                "computer_name": row["computer_name"],
                 "uploads_enabled": row["uploads_enabled"],
                 "can_manage": row["can_manage"],
                 "session_count": row["session_count"],

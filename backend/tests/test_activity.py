@@ -598,7 +598,7 @@ async def test_upload_sources_pair_coding_agent_with_uploader_computer(client: A
     assert sources[0]["key_id"]
     assert {key: value for key, value in sources[0].items() if key != "key_id"} == {
         "client": "codex_cli",
-        "key_name": "CLI (henrys-macbook-pro)",
+        "computer_name": "henrys-macbook-pro",
         "uploads_enabled": True,
         "can_manage": True,
         "session_count": 1,
@@ -606,7 +606,7 @@ async def test_upload_sources_pair_coding_agent_with_uploader_computer(client: A
     }
     assert {key: value for key, value in sources[1].items() if key != "key_id"} == {
         "client": None,
-        "key_name": "CLI (henrys-mac-mini)",
+        "computer_name": "henrys-mac-mini",
         "uploads_enabled": True,
         "can_manage": True,
         "session_count": 0,
@@ -633,3 +633,25 @@ async def test_upload_sources_pair_coding_agent_with_uploader_computer(client: A
     )
     assert blocked.status_code == 403
     assert blocked.json()["detail"] == "Uploads are disabled for this installation"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("key_name", ["password register", "CLI (not-a-device)"])
+async def test_upload_sources_do_not_treat_password_credentials_as_computers(
+    client: AsyncClient, pool, key_name: str
+):
+    api_key = await _register(client, "password_upload_source")
+    scope = await _scope(client, api_key)
+    await pool.execute(
+        "UPDATE user_api_keys SET name=$1 WHERE user_id=$2",
+        key_name,
+        UUID(scope["id"]),
+    )
+    await _event(client, api_key, scope["id"], "claude-session", client_name="claude_code")
+
+    response = await client.get("/api/v1/me/upload-sources", headers=_auth(api_key))
+    assert response.status_code == 200
+    source = response.json()["sources"][0]
+    assert source["client"] == "claude_code"
+    assert source["computer_name"] is None
+    assert "key_name" not in source

@@ -13,7 +13,7 @@ const status: OnboardingStatus = {
 const uploadingSource: UploadSource = {
   client: "codex_cli",
   key_id: "key-1",
-  key_name: "CLI (Henry's MacBook Pro)",
+  computer_name: "Henry's MacBook Pro",
   session_count: 0,
   last_uploaded_at: null,
   uploads_enabled: true,
