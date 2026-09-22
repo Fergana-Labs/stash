@@ -64,7 +64,7 @@ async def test_title_uses_opening_and_recent_conversation_not_tool_noise(client,
     assert "Fixed token pricing" in source
     assert "irrelevant log" not in source
     monkeypatch.setattr(settings, "AGENT_EXEC_MODE", "local")
-    monkeypatch.setattr(settings, "ANTHROPIC_API_KEY", None)
+    monkeypatch.setattr(settings, "ANTHROPIC_API_KEY", "test-api-key")
     generate = AsyncMock(return_value="Fix pricing and preserve Heavi wikis")
     monkeypatch.setattr(session_titles, "_generate_title", generate)
     assert await session_titles._generate_for_session(owner, "work") == "generated"
@@ -73,32 +73,33 @@ async def test_title_uses_opening_and_recent_conversation_not_tool_noise(client,
 
 
 @pytest.mark.asyncio
-async def test_local_title_completion_is_not_an_agent_session(monkeypatch):
-    monkeypatch.setattr(settings, "AGENT_EXEC_MODE", "local")
-    proc = AsyncMock()
-    proc.returncode = 0
-    proc.communicate.return_value = (
-        json.dumps({"is_error": False, "result": "Fix token pricing"}).encode(),
-        b"",
-    )
-    spawn = AsyncMock(return_value=proc)
-    monkeypatch.setattr(session_titles.asyncio, "create_subprocess_exec", spawn)
+@pytest.mark.parametrize("runtime", ["local", "sprites"])
+async def test_title_generation_always_uses_backend_model_api(monkeypatch, runtime):
+    from backend.services import llm
+
+    monkeypatch.setattr(settings, "AGENT_EXEC_MODE", runtime)
+    completion = AsyncMock(return_value="Fix token pricing")
+    monkeypatch.setattr(llm, "complete_text", completion)
     assert await session_titles._generate_title("some transcript") == "Fix token pricing"
-    args = spawn.call_args.args
-    assert args[args.index("--tools") + 1] == ""
-    assert "--strict-mcp-config" in args
-    assert "--no-session-persistence" in args
-    assert json.loads(args[args.index("--settings") + 1])["disableAllHooks"]
+    completion.assert_awaited_once_with(
+        prompt="<transcript>\nsome transcript\n</transcript>",
+        system=session_titles._TITLE_SYSTEM,
+        max_tokens=48,
+    )
 
 
-def test_local_titles_are_enqueued_without_api_key(monkeypatch):
-    monkeypatch.setattr(settings, "AGENT_EXEC_MODE", "local")
+@pytest.mark.parametrize("runtime", ["local", "sprites"])
+def test_title_queue_requires_backend_api_configuration(monkeypatch, runtime):
+    monkeypatch.setattr(settings, "AGENT_EXEC_MODE", runtime)
     monkeypatch.setattr(settings, "ANTHROPIC_API_KEY", None)
     calls = []
     monkeypatch.setattr(
         session_titles.generate_session_title, "delay", lambda *args: calls.append(args)
     )
     owner = UUID(int=1)
+    session_title_service._enqueue_title_generation(owner, ["continued"])
+    assert calls == []
+    monkeypatch.setattr(settings, "ANTHROPIC_API_KEY", "test-api-key")
     session_title_service._enqueue_title_generation(owner, ["continued"])
     assert calls == [(str(owner), "continued")]
 

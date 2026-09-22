@@ -133,7 +133,7 @@ async def set_user_title(owner_user_id: UUID, session_id: str, title: str) -> st
 
 
 def _enqueue_title_generation(owner_user_id: UUID, session_ids: list[str]) -> None:
-    if settings.AGENT_EXEC_MODE != "local" and not settings.ANTHROPIC_API_KEY:
+    if not settings.ANTHROPIC_API_KEY:
         return
 
     from ..tasks.session_titles import generate_session_title

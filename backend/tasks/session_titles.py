@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
-import json
-import tempfile
 from uuid import UUID
 
 from ..celery_app import celery
@@ -92,49 +89,9 @@ _TITLE_SYSTEM = (
 
 async def _generate_title(source: str) -> str:
     prompt = f"<transcript>\n{source}\n</transcript>"
-    if settings.AGENT_EXEC_MODE == "local":
-        # The same explicit local runtime as curation, using the machine's login.
-        # This completion cannot read files, call tools, or record a new session.
-        with tempfile.TemporaryDirectory(prefix="stash-title-") as cwd:
-            proc = await asyncio.create_subprocess_exec(
-                "claude",
-                "-p",
-                "--model",
-                settings.ANTHROPIC_FAST_MODEL,
-                "--output-format",
-                "json",
-                "--system-prompt",
-                _TITLE_SYSTEM,
-                "--tools",
-                "",
-                "--strict-mcp-config",
-                "--setting-sources",
-                "",
-                "--settings",
-                '{"disableAllHooks":true}',
-                "--no-session-persistence",
-                stdin=asyncio.subprocess.PIPE,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-                cwd=cwd,
-            )
-            try:
-                stdout, stderr = await asyncio.wait_for(proc.communicate(prompt.encode()), 60)
-            except (TimeoutError, asyncio.CancelledError):
-                if proc.returncode is None:
-                    proc.kill()
-                await proc.wait()
-                raise
-            if proc.returncode:
-                raise RuntimeError(f"Local title generation failed: {stderr.decode()[:500]}")
-            result = json.loads(stdout)
-            if result["is_error"]:
-                raise RuntimeError(f"Local title generation failed: {result['result']}")
-            text = result["result"]
-    else:
-        from ..services import llm
+    from ..services import llm
 
-        text = await llm.complete_text(prompt=prompt, system=_TITLE_SYSTEM, max_tokens=48)
+    text = await llm.complete_text(prompt=prompt, system=_TITLE_SYSTEM, max_tokens=48)
     title = _clean_title(text)
     if not title:
         raise ValueError("Title model did not return a task title")
@@ -179,7 +136,7 @@ async def _generate_locked(owner_user_id: UUID, session_id: str) -> str:
     if not source:
         return "empty"
 
-    if settings.AGENT_EXEC_MODE != "local" and not settings.ANTHROPIC_API_KEY:
+    if not settings.ANTHROPIC_API_KEY:
         return "unconfigured"
 
     title = await _generate_title(source)
@@ -206,7 +163,7 @@ def generate_session_title(owner_user_id: str, session_id: str) -> str:
 
 
 async def _reconcile_missing() -> int:
-    if settings.AGENT_EXEC_MODE != "local" and not settings.ANTHROPIC_API_KEY:
+    if not settings.ANTHROPIC_API_KEY:
         return 0
 
     pool = get_pool()
