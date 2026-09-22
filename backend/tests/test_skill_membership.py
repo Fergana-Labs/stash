@@ -27,6 +27,19 @@ async def scope(_db_pool):
 
 
 @pytest.mark.asyncio
+async def test_disabled_legacy_skill_does_not_break_enabled_catalog(scope, _db_pool):
+    healthy = await files_tree_service.create_skill(scope, scope, "Healthy", "Use healthy.", "")
+    await _db_pool.execute(
+        "INSERT INTO folders (owner_user_id, created_by, name, is_skill, agent_enabled) "
+        "VALUES ($1, $1, 'Disabled legacy skill', true, false)",
+        scope,
+    )
+
+    skills = await skill_service.list_skills(scope, scope)
+    assert [skill["folder_id"] for skill in skills] == [str(healthy["id"])]
+
+
+@pytest.mark.asyncio
 async def test_dropping_a_skill_md_into_a_folder_does_not_promote_it(scope, _db_pool):
     folder = await files_tree_service.create_folder(scope, "Notes", scope)
     await files_tree_service.create_page(

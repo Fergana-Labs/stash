@@ -1,4 +1,8 @@
-"""Hide Claude hook uploads that duplicated Stash's internal curator logs."""
+"""Remove session rows for Claude uploads that duplicated internal curator logs.
+
+Keep history_events as the audit record, as in 0219. A soft-deleted session
+would appear in Trash and could be restored into the user's session list.
+"""
 
 import uuid
 
@@ -26,10 +30,7 @@ def upgrade() -> None:
     for run in runs:
         native_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"stash-agent:{run['session_id']}"))
         bind.execute(
-            text(
-                "UPDATE sessions SET deleted_at=now() "
-                "WHERE owner_user_id=:owner AND session_id=:native AND deleted_at IS NULL"
-            ),
+            text("DELETE FROM sessions WHERE owner_user_id=:owner AND session_id=:native"),
             {"owner": run["owner_user_id"], "native": native_id},
         )
 

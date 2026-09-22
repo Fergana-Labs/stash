@@ -304,11 +304,11 @@ async def list_skills(
     )
     out = []
     for r in rows:
+        if not include_disabled and not r["agent_enabled"]:
+            continue
         skill_md = r["skill_md"] or ""
         validate_skill_md(skill_md)
         meta, _body = parse_frontmatter(skill_md)
-        if not include_disabled and not r["agent_enabled"]:
-            continue
         published = None
         if r["publish_id"]:
             published = {
