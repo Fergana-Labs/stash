@@ -32,6 +32,15 @@ export type Post = {
 };
 
 export const POSTS: Record<string, Post> = {
+  "why-memory-is-unsolved": {
+    slug: "why-memory-is-unsolved",
+    headline: "Why Memory Is Unsolved",
+    description:
+      "Most memory systems are still retrieval under the hood, and today's benchmarks mostly measure retrieval. Why perfect search is not enough, and the two problems actually holding memory back: blast radius and stability.",
+    author: AUTHORS["Sam Liu"],
+    datePublished: "2026-09-24",
+    byline: "September 2026",
+  },
   "why-no-great-consumer-ai": {
     slug: "why-no-great-consumer-ai",
     headline: "Why hasn't there been any great consumer AI (still)",

@@ -20,6 +20,13 @@ type Post = {
 
 const POSTS: Post[] = [
   {
+    title: "Why Memory Is Unsolved",
+    blurb:
+      "Memory is not retrieval. Why today's benchmarks mostly measure search, how we nearly saturated STALE, and the two problems actually holding memory back: blast radius and stability.",
+    href: "/blog/why-memory-is-unsolved",
+    author: "Sam Liu",
+  },
+  {
     title: "The context gold rush: why everyone is building the same thing",
     blurb:
       "Context graph, company brain, LLM wiki — a map of who is building the context layer, the patterns that have converged, and what is still missing before any of it reaches mass adoption.",
