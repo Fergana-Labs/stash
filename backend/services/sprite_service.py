@@ -254,7 +254,7 @@ def _seed_script(stash_key: str) -> str:
     auth, the Claude Code plugin (session upload), skills, and the workspace.
 
     The base image ships claude and codex but not opencode, which the managed
-    agent and BYO-OpenRouter users run — so the seed installs it into
+    agent and BYO-OpenRouter/Requesty users run — so the seed installs it into
     ~/.local/bin (on the harness PATH alongside claude/codex).
 
     Skills are synced here (not via a polling service) on purpose: a periodic

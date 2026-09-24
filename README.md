@@ -221,14 +221,14 @@ claude
 
 Stash is built for engineering teams working in private repos.
 
-- **LLM calls are optional and scoped.** An Anthropic key powers ask-the-stash, session titles, and OCR for scanned PDFs; the chat agent runs on Anthropic, OpenAI, or OpenRouter with your own key. Without any of them, the rest of Stash works — those features are simply unavailable.
+- **LLM calls are optional and scoped.** An Anthropic key powers ask-the-stash, session titles, and OCR for scanned PDFs; the chat agent runs on Anthropic, OpenAI, OpenRouter, or Requesty with your own key. Without any of them, the rest of Stash works — those features are simply unavailable.
 - **Private by default.** Your Stash is yours alone. Content becomes public only when you make it so: publishing a Skill, creating a public link to a page, file, folder, or table, or posting to the pastebin.
 - **Recording is yours to control.** Session recording is on by default during setup, and every control is one command away: decline it in the wizard, pause globally with `stash stop`, pick which agents record, or exclude folders in `stash settings`. Saying no still gives your agent *read* access to your Stash — nothing about using Stash requires uploading your own sessions.
   
 ## FAQ
 
 **What LLMs does Stash use?**
-An Anthropic key covers ask-the-stash, session titles, and scanned-PDF OCR. The chat agent is separate and runs whichever harness you point it at — Claude Code, Codex, or opencode — against your own Anthropic, OpenAI, or OpenRouter credentials. Embeddings are a third, independent choice (OpenAI, HuggingFace, or a local model). All of it is optional; without any keys the rest of Stash works and those features are disabled.
+An Anthropic key covers ask-the-stash, session titles, and scanned-PDF OCR. The chat agent is separate and runs whichever harness you point it at — Claude Code, Codex, or opencode — against your own Anthropic, OpenAI, OpenRouter, or Requesty credentials. Embeddings are a third, independent choice (OpenAI, HuggingFace, or a local model). All of it is optional; without any keys the rest of Stash works and those features are disabled.
 
 **What writes to my Stash on its own?**
 One thing by default: the Memory curator, a scheduled agent that compiles your Memory wiki from new sessions and files. It only writes inside the reserved Memory folder, and it only reads what's new since its last run. Turn the nightly run off or on with `stash memory --curator off|on` (on-demand runs keep working). Beyond that, nothing runs unless you create it — any agent you give a cron to becomes a scheduled agent, and those have the same reach you do.
