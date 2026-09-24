@@ -24,6 +24,7 @@ const ROUTES = [
   "/blog/why-no-great-consumer-ai",
   "/blog/context-gold-rush",
   "/blog/containerizing-memory",
+  "/blog/why-memory-is-unsolved",
   "/contact-sales",
   "/privacy",
   "/terms",
