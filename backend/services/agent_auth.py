@@ -44,9 +44,10 @@ _PROVIDER_HARNESS = {
     "anthropic": harness_mod.CLAUDE,  # Claude Code
     "openai": harness_mod.CODEX,  # Codex
     "openrouter": harness_mod.OPENCODE,  # opencode on the user's OpenRouter key
+    "requesty": harness_mod.OPENCODE_REQUESTY,  # opencode on the user's Requesty key
 }
-# OpenRouter has no OAuth — API key only.
-_API_KEY_ONLY = {"openrouter"}
+# OpenRouter and Requesty have no OAuth, API key only.
+_API_KEY_ONLY = {"openrouter", "requesty"}
 
 # The managed agent: opencode driving OpenRouter's GLM 5.2, on our key.
 MANAGED_HARNESS = harness_mod.OPENCODE

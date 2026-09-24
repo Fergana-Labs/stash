@@ -151,6 +151,20 @@ def test_opencode_argv_targets_openrouter_model():
     assert resumed[resumed.index("-s") + 1] == "sess_x"
 
 
+def test_opencode_argv_targets_requesty_model():
+    argv = h.build_argv(
+        h.OPENCODE_REQUESTY, "go", session_key=None, resume=False, system_prompt="sys"
+    )
+    assert argv[:2] == ["opencode", "run"]
+    assert argv[argv.index("-m") + 1] == "requesty/glm-5.2"
+    assert "-s" not in argv
+
+    resumed = h.build_argv(
+        h.OPENCODE_REQUESTY, "go", session_key="sess_x", resume=True, system_prompt="sys"
+    )
+    assert resumed[resumed.index("-s") + 1] == "sess_x"
+
+
 def test_opencode_captures_session_and_maps_text():
     state = h.TurnState()
     events = h.map_line(

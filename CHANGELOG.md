@@ -5,6 +5,9 @@ everything before it is captured in git history (`git log`), not here.
 
 ## Unreleased
 
+- The cloud agent can run on your own Requesty key: connect it under
+  Settings, Cloud agent model. It runs opencode on Requesty, defaulting to the
+  `glm-5.2` managed policy, and is API key only like OpenRouter.
 - New signups see only the Developer Platform, with internal navigation,
   onboarding, and settings hidden by a per-user flag. Existing accounts retain
   both interfaces.
