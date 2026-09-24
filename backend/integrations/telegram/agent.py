@@ -102,7 +102,8 @@ async def respond_to_message(message: dict) -> None:
         url = f"{settings.PUBLIC_URL.rstrip('/')}/settings"
         await client.send_message(
             chat_id,
-            f"Connect your Claude, Codex, or OpenRouter key — or upgrade to Pro — here: {url}",
+            "Connect your Claude, Codex, OpenRouter, or Requesty key — "
+            f"or upgrade to Pro — here: {url}",
             reply_to=reply_to,
         )
         return

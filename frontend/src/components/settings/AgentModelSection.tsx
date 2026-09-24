@@ -11,7 +11,8 @@ import {
 } from "@/lib/api";
 
 // The provider a user connects for their cloud agent. Claude and Codex support
-// OAuth (sign in with your subscription) or an API key; OpenRouter is key-only.
+// OAuth (sign in with your subscription) or an API key; OpenRouter and Requesty
+// are key-only.
 type Provider = {
   id: string;
   label: string;
@@ -42,6 +43,13 @@ const PROVIDERS: Provider[] = [
     oauth: false,
     keyHint: "sk-or-…",
   },
+  {
+    id: "requesty",
+    label: "Requesty",
+    blurb: "Run any model on your own Requesty key.",
+    oauth: false,
+    keyHint: "rqsty-…",
+  },
 ];
 
 export default function AgentModelSection() {
@@ -62,8 +70,8 @@ export default function AgentModelSection() {
       <div>
         <h2 className="text-lg font-semibold text-foreground">Cloud agent model</h2>
         <p className="text-sm text-muted-foreground mt-1">
-          Connect Claude, Codex, or OpenRouter to run the agent on your own account. Pro
-          members without a connection use the managed agent (OpenRouter GLM&nbsp;5.2).
+          Connect Claude, Codex, OpenRouter, or Requesty to run the agent on your own account.
+          Pro members without a connection use the managed agent (OpenRouter GLM&nbsp;5.2).
         </p>
       </div>
       {loading ? (

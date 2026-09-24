@@ -1,6 +1,6 @@
 """Connect / list / disconnect the model credential the cloud agent runs on.
 
-A user pastes an API key for Claude (anthropic), Codex (openai), or OpenRouter,
+A user pastes an API key for Claude (anthropic), Codex (openai), OpenRouter, or Requesty,
 and the agent runs their harness with it. OAuth connect flows are separate.
 """
 
@@ -14,7 +14,7 @@ from ..services import agent_auth, agent_oauth
 
 router = APIRouter(prefix="/api/v1/me/agent-credentials", tags=["agent-credentials"])
 
-_PROVIDERS = {"anthropic", "openai", "openrouter"}
+_PROVIDERS = {"anthropic", "openai", "openrouter", "requesty"}
 
 
 class ConnectRequest(BaseModel):

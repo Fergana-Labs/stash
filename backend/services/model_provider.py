@@ -19,4 +19,5 @@ class Provider:
 ANTHROPIC = Provider("anthropic", "ANTHROPIC_API_KEY")
 OPENAI = Provider("openai", "OPENAI_API_KEY")
 OPENROUTER = Provider("openrouter", "OPENROUTER_API_KEY")
+REQUESTY = Provider("requesty", "REQUESTY_API_KEY")
 GEMINI = Provider("gemini", "GEMINI_API_KEY")

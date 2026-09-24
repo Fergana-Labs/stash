@@ -105,7 +105,7 @@ async def respond_to_mention(team_id: str, event: dict) -> None:
 def _upgrade_prompt() -> str:
     url = f"{settings.PUBLIC_URL.rstrip('/')}/settings"
     return (
-        "Connect your Claude, Codex, or OpenRouter key — or upgrade to Pro for "
+        "Connect your Claude, Codex, OpenRouter, or Requesty key — or upgrade to Pro for "
         f"the managed agent — in Stash settings: {url}"
     )
 

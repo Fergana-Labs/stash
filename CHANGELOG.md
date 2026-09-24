@@ -5,6 +5,10 @@ everything before it is captured in git history (`git log`), not here.
 
 ## Unreleased
 
+- The cloud agent can run on your own Requesty key: connect it under
+  Settings, Cloud agent model. It runs opencode on Requesty, defaulting to the
+  `glm-5.2` managed policy, and is API key only like OpenRouter.
+
 - Bring in intuition models with a playground, prediction inbox, editable
   examples and rubrics, and evaluated model versions. Click a trained reward
   model to score or compare responses using its saved checkpoint, revisit run

@@ -78,8 +78,12 @@ CLAUDE = Harness("claude-code", "claude", model_provider.ANTHROPIC)
 CODEX = Harness("codex", "codex", model_provider.OPENAI)
 # opencode drives OpenRouter's many models; GLM is the default hosted pick.
 OPENCODE = Harness("opencode", "opencode", model_provider.OPENROUTER, default_model="z-ai/glm-5.2")
+# opencode on the user's Requesty key; glm-5.2 is Requesty's managed GLM policy.
+OPENCODE_REQUESTY = Harness(
+    "opencode-requesty", "opencode", model_provider.REQUESTY, default_model="glm-5.2"
+)
 
-_BY_ID = {h.id: h for h in (CLAUDE, CODEX, OPENCODE)}
+_BY_ID = {h.id: h for h in (CLAUDE, CODEX, OPENCODE, OPENCODE_REQUESTY)}
 
 
 def get(harness_id: str) -> Harness:
@@ -147,7 +151,7 @@ def build_argv(
             "--dangerously-bypass-approvals-and-sandbox",
         ]
 
-    if harness is OPENCODE:
+    if harness in (OPENCODE, OPENCODE_REQUESTY):
         full = f"{system_prompt}\n\n{prompt}"
         argv = [
             "opencode",
@@ -183,7 +187,7 @@ def map_line(harness: Harness, line: str, state: TurnState) -> list[dict]:
         return _map_claude(obj, state)
     if harness is CODEX:
         return _map_codex(obj, state)
-    if harness is OPENCODE:
+    if harness in (OPENCODE, OPENCODE_REQUESTY):
         return _map_opencode(obj, state)
     return []
 

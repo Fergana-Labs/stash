@@ -55,6 +55,19 @@ async def test_byo_openrouter_key_runs_opencode(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_byo_requesty_key_runs_opencode(monkeypatch):
+    monkeypatch.setattr(settings, "AGENT_EXEC_MODE", "sprites")
+
+    async def cred(_uid):
+        return {"provider": "requesty", "kind": "api_key", "secret": "rqsty-key"}
+
+    monkeypatch.setattr(agent_auth, "_get_credential", cred)
+    auth = await agent_auth.resolve(uuid.uuid4())
+    assert auth.harness is h.OPENCODE_REQUESTY and auth.env == {"REQUESTY_API_KEY": "rqsty-key"}
+    assert auth.files == {}
+
+
+@pytest.mark.asyncio
 async def test_byo_claude_oauth_writes_credentials_file(monkeypatch):
     monkeypatch.setattr(settings, "AGENT_EXEC_MODE", "sprites")
 
@@ -132,6 +145,33 @@ def test_openrouter_rejects_oauth():
         asyncio.get_event_loop().run_until_complete(
             agent_auth.store_credential(uuid.uuid4(), "openrouter", "oauth", "x")
         )
+
+
+def test_requesty_rejects_oauth():
+    import asyncio
+
+    with pytest.raises(ValueError):
+        asyncio.get_event_loop().run_until_complete(
+            agent_auth.store_credential(uuid.uuid4(), "requesty", "oauth", "x")
+        )
+
+
+@pytest.mark.asyncio
+async def test_prefer_requesty_without_key_does_not_use_managed(monkeypatch):
+    """Requesty is BYO only: preferring it without a key must not run the
+    managed OpenRouter agent, even on Pro."""
+    monkeypatch.setattr(settings, "AGENT_EXEC_MODE", "sprites")
+
+    async def none(user_id, provider=None):
+        return None
+
+    async def pro(_uid):
+        return True
+
+    monkeypatch.setattr(agent_auth, "_get_credential", none)
+    monkeypatch.setattr(billing_service, "is_pro", pro)
+    with pytest.raises(agent_auth.NeedsAuth):
+        await agent_auth.resolve(uuid.uuid4(), "requesty")
 
 
 @pytest.mark.asyncio
