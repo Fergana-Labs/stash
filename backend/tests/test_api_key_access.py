@@ -12,6 +12,7 @@ import json
 import pytest
 from httpx import AsyncClient
 
+from backend import auth
 from backend.auth import _READ_KEY_WRITE_ALLOWLIST
 from backend.main import app
 
@@ -159,6 +160,29 @@ async def test_keys_list_returns_access(client: AsyncClient):
     assert keys.status_code == 200
     by_name = {k["name"]: k["access"] for k in keys.json()}
     assert by_name["read-key"] == "read"
+
+
+@pytest.mark.asyncio
+async def test_internal_key_is_inaccessible_from_user_key_api(client: AsyncClient, pool):
+    owner_key = await _register(client)
+    owner = (await client.get("/api/v1/users/me", headers=_auth(owner_key))).json()
+    internal_key = await auth.create_api_key(
+        owner["id"], name="cloud computer", key_type="internal"
+    )
+    internal_id = await pool.fetchval(
+        "SELECT id FROM user_api_keys WHERE key_hash = $1",
+        auth.hash_api_key(internal_key),
+    )
+
+    listed = await client.get("/api/v1/users/me/keys", headers=_auth(owner_key))
+    assert listed.status_code == 200
+    assert "cloud computer" not in {key["name"] for key in listed.json()}
+
+    revoke = await client.delete(f"/api/v1/users/me/keys/{internal_id}", headers=_auth(owner_key))
+    assert revoke.status_code == 404
+
+    still_live = await client.get("/api/v1/users/me", headers=_auth(internal_key))
+    assert still_live.status_code == 200
 
 
 def test_allowlist_matches_registered_routes():
