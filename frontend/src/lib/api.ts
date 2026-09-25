@@ -607,7 +607,9 @@ export async function addSource(body: {
   });
 }
 
-export async function syncSource(sourceId: string): Promise<{ task_id: string }> {
+export async function syncSource(sourceId: string): Promise<
+  { status: "queued"; task_id: string } | { status: "in_progress" }
+> {
   return apiFetch(`${ME}/sources/${sourceId}/sync`, {
     method: "POST",
   });
