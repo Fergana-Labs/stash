@@ -8,6 +8,7 @@ session viewer can ship a Share button without involving the CLI.
 """
 
 import json
+from typing import Literal
 from urllib.parse import quote
 from uuid import UUID
 
@@ -18,7 +19,7 @@ from ..auth import get_current_user, get_scope
 from ..config import settings
 from ..database import get_pool
 from ..services import (
-    linear_ticket_service,
+    analytics_service,
     memory_service,
     permission_service,
     security_audit_service,
@@ -63,13 +64,13 @@ def _session_response(row: dict, title: str | None = None) -> dict:
             row.get("title_source"),
             row["session_id"],
         ),
-        "linear_tickets": linear_ticket_service.tickets_response(row.get("linear_tickets")),
         "agent_name": row.get("agent_name") or "",
         "cwd": row.get("cwd"),
         "files_touched": files_touched,
         "started_at": row.get("started_at"),
         "finished_at": row.get("finished_at"),
         "created_by": str(row["created_by"]) if row.get("created_by") else None,
+        "rating": row.get("rating"),
     }
 
 
@@ -143,7 +144,7 @@ async def list_my_sessions(
         f"""
         WITH page AS (
           SELECT s.id, s.owner_user_id, s.session_id, s.agent_name, s.created_by,
-                 s.session_folder_id, s.started_at, s.last_event_at
+                 s.session_folder_id, s.started_at, s.last_event_at, s.rating
           FROM sessions s
           WHERE {" AND ".join(where)}
           ORDER BY s.last_event_at DESC, s.session_id ASC, s.owner_user_id ASC
@@ -154,14 +155,18 @@ async def list_my_sessions(
           p.id AS id,
           p.owner_user_id,
           owner.display_name AS owner_name,
-          {linear_ticket_service.sql_json_agg("p")} AS linear_tickets,
           NULLIF(author.display_name, '') AS user_name,
-          p.agent_name,
+          -- The CLI plugin historically defaulted agent_name to the author's
+          -- login handle (users.name), so many rows carry a person, not an
+          -- agent. A value equal to the author's handle is that default, not
+          -- an agent name — suppress it rather than display a user as one.
+          NULLIF(p.agent_name, author.name) AS agent_name,
           sf.name AS session_folder_name,
           title.title_source,
           counts.event_count,
           p.started_at,
-          p.last_event_at
+          p.last_event_at,
+          p.rating
         FROM page p
         LEFT JOIN users owner ON owner.id = p.owner_user_id
         LEFT JOIN users author ON author.id = p.created_by
@@ -205,10 +210,19 @@ async def list_my_sessions(
         for session in session_group:
             session["title"] = titles[session["session_id"]]
             session.pop("title_source", None)
-            session["linear_tickets"] = linear_ticket_service.tickets_response(
-                session.get("linear_tickets")
-            )
     return {"sessions": sessions}
+
+
+@router.get("/me/sessions/analytics")
+async def my_sessions_analytics(
+    current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
+):
+    """Aggregates for the Session Analytics page: totals, sessions per day for
+    the last 60 days, and breakdowns by agent and by person. Same access
+    scoping as the sessions list above."""
+    owner_user_id = scope_user_id if scope_user_id != current_user["id"] else None
+    return await analytics_service.get_sessions_analytics(current_user["id"], owner_user_id)
 
 
 @router.post("/me/sessions", status_code=201)
@@ -267,9 +281,19 @@ async def _session_detail_payload(
         session,
         title=await session_title_service.title_for_events(owner_user_id, session_id, events),
     )
-    payload["linear_tickets"] = await linear_ticket_service.list_session_labels(session["id"])
     payload["artifacts"] = await _session_artifacts(session["id"])
+    payload["created_by_display_name"] = await _created_by_display_name(session.get("created_by"))
     return payload
+
+
+async def _created_by_display_name(created_by: UUID | None) -> str | None:
+    """Display name of the person whose session this is, for labelling their
+    turns in the viewer. Sessions with no author (a workspace's own agents)
+    have no human turns to label."""
+    if not created_by:
+        return None
+    pool = get_pool()
+    return await pool.fetchval("SELECT display_name FROM users WHERE id = $1", created_by)
 
 
 @router.get("/me/sessions/resolve")
@@ -335,6 +359,10 @@ class SessionTitleRequest(BaseModel):
     title: str = Field(..., min_length=1, max_length=200)
 
 
+class SessionRatingRequest(BaseModel):
+    rating: Literal["good", "bad"] | None
+
+
 @router.patch("/me/sessions/title")
 async def rename_my_session(
     session_id: str,
@@ -365,6 +393,36 @@ async def rename_my_session(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
     return {"title": title}
+
+
+@router.patch("/me/sessions/rating")
+async def rate_my_session(
+    session_id: str,
+    body: SessionRatingRequest,
+    current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
+):
+    """The user's good/bad verdict on a session. Same write gate as renaming."""
+    owner_user_id = scope_user_id
+    if not await memory_service.can_read_session(owner_user_id, session_id, current_user["id"]):
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    session = await session_service.get_session(owner_user_id, session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    can_write = await permission_service.check_access(
+        "session",
+        session["id"],
+        current_user["id"],
+        owner_user_id=owner_user_id,
+        require="write",
+    )
+    if not can_write:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    await session_service.set_rating(owner_user_id, session_id, body.rating)
+    return {"rating": body.rating}
 
 
 async def _check_session_write(

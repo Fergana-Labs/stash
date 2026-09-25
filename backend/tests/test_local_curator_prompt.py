@@ -18,8 +18,8 @@ async def test_serves_the_curation_prompt(client: AsyncClient):
     resp = await client.get("/api/v1/me/local-curator-prompt", headers=_auth(api_key))
     assert resp.status_code == 200
     prompt = resp.json()["prompt"]
-    # The prompt drives an unattended agent that maintains the user's wiki:
+    # The prompt drives an unattended agent that maintains the user's skill:
     # it must ground the run in the stash CLI and include the page-update
     # loop, or runs regenerate instead of maintaining.
     assert "stash" in prompt
-    assert "memory write" in prompt
+    assert "skills write" in prompt

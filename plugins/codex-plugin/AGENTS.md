@@ -8,7 +8,7 @@ Your activity in this repo is streamed to your Stash, so your other agents and y
 
 A **Skill** is a *special folder* — one containing a SKILL.md — holding related artifacts (pages, files, tables) that shares like any folder and gains a public URL when published. Use one when you're publishing a *collection* of related things together — a project writeup with its supporting files, a research thread with its sources, a session transcript plus the files it produced.
 
-A Skill is **not** a wrapper to slap on every single file you happen to share. One-item Skills clutter Discover and defeat the model.
+A Skill is **not** a wrapper to slap on every single file you happen to share. One-item Skills clutter your Skills and defeat the model.
 
 ## How to share things
 

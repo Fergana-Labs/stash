@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { ArrowLeft } from "lucide-react";
 import type { CSSProperties, ReactNode } from "react";
 
 import DownloadMenu, { type DownloadOption } from "../DownloadMenu";
@@ -81,12 +83,22 @@ export default function FileViewerHeader({
   downloadOptions,
   rightExtras,
 }: FileViewerHeaderProps) {
+  const router = useRouter();
   const iconStyle: CSSProperties = {
     color: iconColor ?? "var(--text-muted)",
   };
 
   return (
     <div className="flex h-11 shrink-0 items-center gap-2.5 border-b border-border bg-base px-4">
+      <button
+        type="button"
+        onClick={() => router.back()}
+        title="Back"
+        aria-label="Back"
+        className="inline-flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground hover:bg-raised hover:text-foreground"
+      >
+        <ArrowLeft className="h-4 w-4" />
+      </button>
       <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-border bg-base text-[14px]" style={iconStyle}>
         {icon}
       </span>

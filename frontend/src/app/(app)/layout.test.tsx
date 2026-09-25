@@ -46,6 +46,7 @@ vi.mock("../../hooks/useAuth", () => ({
 const user = {
   id: "user-1",
   developer_platform_only: false,
+  personal_integrations_enabled: false,
   name: "henry",
   display_name: "Henry",
   description: "",

@@ -87,7 +87,7 @@ async def run_now(
     closing the tab doesn't kill it.
 
     Curator runs are refused here: they enqueue on the worker via POST
-    /me/memory/recompute — the same path the daily schedule and the CLI use —
+    /me/skills/curate — the same path the daily schedule and the CLI use —
     so credit metering and the curated_through watermark stay in one place."""
     agent = await agent_service.get_agent(current_user["id"], UUID(req.agent_id))
     if agent["run_mode"] != "scheduled":
@@ -95,7 +95,7 @@ async def run_now(
     if agent["is_curator"]:
         raise HTTPException(
             status_code=400,
-            detail="Curator runs execute on the worker — use POST /me/memory/recompute.",
+            detail="Curator runs execute on the worker — use POST /me/skills/curate.",
         )
     if not agent["schedule_prompt"]:
         raise HTTPException(status_code=400, detail="This agent has no scheduled prompt to run.")

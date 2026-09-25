@@ -1,5 +1,7 @@
 "use client";
 
+import { useDeveloperExperience } from "@/lib/developer-experience";
+
 import { useCallback, useEffect, useState } from "react";
 
 import DeveloperGate from "@/components/developer/DeveloperGate";
@@ -17,6 +19,7 @@ export default function DeveloperUsers() {
 }
 
 function Users() {
+  const experience = useDeveloperExperience();
   const [users, setUsers] = useState<EndUser[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -35,8 +38,8 @@ function Users() {
     <>
       <PageHeading title="Users">
         One end user of your product each — a company, or one person. Each has a private
-        wiki of their own; the switch controls whether their sessions also feed the shared
-        anonymized wiki.
+        {experience.singular} of their own; the switch controls whether their sessions also feed the shared
+        anonymized {experience.singular}.
       </PageHeading>
       {error ? (
         <p className="text-[15px] text-error">Couldn&apos;t load users: {error}</p>

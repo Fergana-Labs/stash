@@ -757,7 +757,7 @@ def test_an_ordinary_document_opening_with_a_divider_keeps_its_structure():
     noise is the exporter's in any Doc.)"""
     exported = (
         "---\n\nStandup 9:00 AM  \nAttendees: **Ann**, Bob  \n"
-        "Notes at https://wiki.example.com/turbo  \n\n---\n\nAction items below.\n"
+        "Notes at https://skill.example.com/turbo  \n\n---\n\nAction items below.\n"
     )
 
     assert indexer.repair_exported_markdown(exported) == exported

@@ -1,6 +1,7 @@
 export interface User {
   id: string;
   developer_platform_only: boolean;
+  personal_integrations_enabled: boolean;
   name: string;
   display_name: string;
   email?: string | null;
@@ -28,7 +29,7 @@ export interface Folder {
   created_by: string;
   created_at: string;
   updated_at: string;
-  /** Memory and Clips: code resolves these by identity and writes into them,
+  /** Curated Skills and Clips: code resolves these by identity and writes into them,
    *  so the service refuses to rename, move, or delete one. Clients hide those
    *  actions rather than offer what will be refused. */
   is_protected?: boolean;
@@ -155,19 +156,8 @@ export interface MiniProgramApp {
   row_count: number;
 }
 
-/** A skill the launcher can run: the name to invoke plus the frontmatter that
- *  says what it does. Only skills in your own Skills are launchable — an agent
- *  reads its scope, not the public catalog — so this is always built from a
- *  Skill you hold. */
-export interface LaunchableSkill {
-  name: string;
-  description: string;
-  when_to_use: string;
-}
-
 /** A published skill an app's table is built for. Carries a slug because you
- *  may not hold it yet: the strip that lists these offers Add for those, and
- *  Run only once the skill is actually in your Skills. */
+ *  may not hold it yet: the strip that lists these offers Add for those. */
 export interface CuratedSkill {
   name: string;
   slug: string;
@@ -264,13 +254,23 @@ export interface EmbeddingProjectionPoint {
   x: number;
   y: number;
   z: number;
-  source: "pages" | "table_rows" | "history_events";
+  source: "pages" | "table_rows" | "sessions" | "files";
   label: string;
+  /** For sessions: event count and agent, e.g. "12 events · claude". */
+  detail?: string;
   created_at: string | null;
+  cluster: number;
+}
+
+export interface EmbeddingProjectionCluster {
+  index: number;
+  name: string;
+  size: number;
 }
 
 export interface EmbeddingProjection {
   points: EmbeddingProjectionPoint[];
+  clusters: EmbeddingProjectionCluster[];
   stats: { total_embeddings: number; projected: number };
   cached: boolean;
 }
@@ -338,7 +338,8 @@ export interface Workspace {
   domain: string | null;
   scope_user_id: string;
   /** Set when the developer platform is active on this workspace. */
-  external_wiki_folder_id: string | null;
+  external_skill_folder_id: string | null;
+  legacy_wiki_enabled: boolean;
 }
 
 /** External Multiplayer: one customer of a developer workspace. */
@@ -349,8 +350,8 @@ export interface EndUser {
   workspace_id: string;
   external_id: string;
   name: string;
-  share_wiki: boolean;
-  wiki_folder_id: string;
+  share_skill: boolean;
+  skill_folder_id: string;
   created_at: string;
   session_count: number;
   last_session_at: string | null;
@@ -361,6 +362,7 @@ export interface EndUser {
  *  knowledge base (default) and the developer console chrome. */
 export type Scope = Pick<Workspace, "scope_user_id" | "name"> & {
   view?: "developer";
+  legacy_wiki_enabled?: boolean;
 };
 
 /** Filter-chip counts, computed over the whole table rather than a loaded

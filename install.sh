@@ -76,6 +76,7 @@ MSG
   exit 0
 fi
 
-# Stdin is a real terminal; launch the wizard. `stash signin` does browser
-# sign-in, then session recording, agent hooks, and folder connection.
+# Stdin is a real terminal; launch `stash signin`. It does browser sign-in,
+# then either applies the choices made on the web onboarding page (printing
+# each one) or, when none are stored, runs the interactive setup wizard.
 exec "$STASH_BIN" signin

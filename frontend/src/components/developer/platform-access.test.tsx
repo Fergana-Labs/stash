@@ -2,7 +2,10 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import WorkspaceShell from "@/components/workspace/workspace-shell";
+import { developerText } from "@/lib/developer-experience";
+import { INSTALL_PROMPT } from "./agentPrompts";
 import DeveloperGate from "./DeveloperGate";
+import DeveloperSources from "@/app/(app)/developer/sources/page";
 import type { Scope } from "@/lib/types";
 
 const state = vi.hoisted(() => ({
@@ -12,7 +15,7 @@ const state = vi.hoisted(() => ({
   logout: vi.fn(),
   user: {
     id: "user-1", name: "developer", display_name: "Developer", description: "",
-    created_at: "2026-09-15", last_seen: "2026-09-15", developer_platform_only: true,
+    created_at: "2026-09-15", last_seen: "2026-09-15", developer_platform_only: true, personal_integrations_enabled: false,
   },
 }));
 
@@ -29,8 +32,8 @@ vi.mock("@/lib/scope-store", () => ({
 }));
 vi.mock("@/lib/api", () => ({
   listMyWorkspaces: async () => [
-    { id: "internal", scope_user_id: "internal", name: "Internal team", external_wiki_folder_id: null },
-    { id: "platform", scope_user_id: "platform", name: "Product", external_wiki_folder_id: "wiki" },
+    { id: "internal", scope_user_id: "internal", name: "Internal team", external_skill_folder_id: null },
+    { id: "platform", scope_user_id: "platform", name: "Product", external_skill_folder_id: "skill" },
   ],
   activateDeveloperPlatform: vi.fn(),
 }));
@@ -40,6 +43,10 @@ vi.mock("@/components/workspace/persistence", () => ({ default: () => null }));
 vi.mock("@/components/workspace/explorer", () => ({ default: () => null }));
 vi.mock("@/components/workspace/workbench", () => ({ default: () => null }));
 vi.mock("@/components/ui/sonner", () => ({ Toaster: () => null }));
+
+vi.mock("@/components/integrations/SourceConnectorList", () => ({
+  default: ({ returnTo }: { returnTo: string }) => <a href={returnTo}>Source controls</a>,
+}));
 
 beforeEach(() => {
   state.pathname = "/developer";
@@ -83,7 +90,7 @@ it.each([true, false])("filters context choices according to the account flag (%
   expect(screen.queryByRole("menuitem", { name: /Internal team/ }) !== null).toBe(!flag);
 });
 
-it.each(["/sessions/transcript", "/p/page", "/f/file", "/folders/wiki", "/integrations/google"])(
+it.each(["/sessions/transcript", "/p/page", "/f/file", "/folders/skill", "/integrations/google"])(
   "keeps the developer platform's shared viewer at %s working in developer chrome",
   async (pathname) => {
     state.pathname = pathname;
@@ -124,4 +131,37 @@ it("preserves existing users' internal interface", async () => {
   await waitFor(() => expect(screen.getByText("Internal content")).toBeInTheDocument());
   expect(screen.getByText("Internal navigation")).toBeInTheDocument();
   expect(state.replace).not.toHaveBeenCalled();
+});
+
+
+it("keeps source controls out of personal scope", async () => {
+  state.user.developer_platform_only = false;
+  render(<DeveloperSources />);
+  await screen.findByText("Run Stash for your product's users");
+  expect(screen.queryByText("Source controls")).not.toBeInTheDocument();
+});
+
+it("opens source management in a developer workspace and returns OAuth there", async () => {
+  state.scope = { scope_user_id: "platform", name: "Product", view: "developer" };
+  render(<DeveloperSources />);
+  expect(await screen.findByRole("link", { name: "Source controls" }))
+    .toHaveAttribute("href", "/developer/sources");
+});
+
+
+it("keeps Heavi's wiki navigation without changing other workspaces", async () => {
+  state.scope = { scope_user_id: "platform", name: "Product", view: "developer", legacy_wiki_enabled: true };
+  state.pathname = "/developer/wiki";
+  render(<WorkspaceShell user={state.user} onLogout={vi.fn()}><div>Wiki content</div></WorkspaceShell>);
+  expect(await screen.findByRole("link", { name: "Shared Wiki" })).toHaveAttribute("href", "/developer/wiki");
+  expect(screen.queryByRole("link", { name: "Shared Skill" })).not.toBeInTheDocument();
+});
+
+it("keeps executable wiki paths in the grandfathered installation prompt", () => {
+  const prompt = developerText(INSTALL_PROMPT, true);
+  expect(prompt).toContain("cat /memory/*.md");
+  expect(prompt).toContain("cat /files/wiki/*.md");
+  expect(prompt).not.toContain("/skills/");
+  expect(prompt).not.toContain("/wikis/");
+  expect(developerText(INSTALL_PROMPT, false)).toBe(INSTALL_PROMPT);
 });

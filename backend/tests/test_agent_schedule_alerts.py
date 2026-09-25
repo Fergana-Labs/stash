@@ -1,6 +1,6 @@
 """Scheduled-agent failures must page an operator, not just log.
 
-The Memory curator failed silently for four days in July 2026 (the managed
+The Skills curator failed silently for four days in July 2026 (the managed
 harness broke; the only trace was an ERROR line in celery logs nobody reads).
 These tests pin the two alert paths that prevent a repeat: per-run failure
 alerts, and the daily stale-watermark watchdog.
@@ -158,7 +158,7 @@ async def test_run_due_failure_sends_alert(client: AsyncClient, monkeypatch):
         user_id, "test", "user_message", "hello", user_id, f"sess-{uuid.uuid4()}"
     )
 
-    async def fake_resolve(user_id, prefer_provider=None):
+    async def fake_resolve(user_id, prefer_provider=None, *, allow_free_managed=False):
         return None
 
     async def fake_run_scheduled(agent, stamp):
@@ -190,7 +190,7 @@ async def test_run_bookkeeping_failure_sends_alert(client: AsyncClient, monkeypa
     """A run whose post-turn bookkeeping fails must record last_run_error and
     alert, exactly like a failed turn — otherwise the watermark silently stops
     advancing with no trace on the agent row."""
-    from backend.services import curation_service, sprite_agent_service
+    from backend.services import agent_service, sprite_agent_service
 
     user_id = await _register(client)
     agent = await _make_curator(user_id, curated_hours_ago=72, last_run_error=None)
@@ -198,11 +198,11 @@ async def test_run_bookkeeping_failure_sends_alert(client: AsyncClient, monkeypa
     async def fake_run_scheduled(agent, stamp):
         return ""
 
-    async def boom(user_id, curated_through, now):
+    async def boom(*args, **kwargs):
         raise RuntimeError("watermark write failed")
 
     monkeypatch.setattr(sprite_agent_service, "run_scheduled", fake_run_scheduled)
-    monkeypatch.setattr(curation_service, "complete_through", boom)
+    monkeypatch.setattr(agent_service, "mark_curated", boom)
     sent = _capture_alerts(monkeypatch)
 
     await agent_schedules._run_scheduled_agent(uuid.UUID(agent["id"]), "202608091200")
@@ -227,7 +227,7 @@ async def test_run_due_records_no_changes_skip(client: AsyncClient, monkeypatch)
         datetime.now(UTC) - timedelta(minutes=5),
     )
 
-    async def fake_resolve(user_id, prefer_provider=None):
+    async def fake_resolve(user_id, prefer_provider=None, *, allow_free_managed=False):
         return None
 
     async def no_changes(owner_user_id, user_id, since):
@@ -255,7 +255,7 @@ async def test_run_due_records_missing_credential_skip(client: AsyncClient, monk
         datetime.now(UTC) - timedelta(minutes=5),
     )
 
-    async def no_credential(user_id, prefer_provider=None):
+    async def no_credential(user_id, prefer_provider=None, *, allow_free_managed=False):
         raise agent_auth.NeedsAuth
 
     monkeypatch.setattr(agent_auth, "resolve", no_credential)

@@ -1,5 +1,7 @@
 "use client";
 
+import { useDeveloperExperience } from "@/lib/developer-experience";
+
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
@@ -10,16 +12,16 @@ import { Code, PageHeading, SectionHeading } from "@/components/developer/DocsPr
 import UserDriveSourceControls from "@/components/developer/UserDriveSourceControls";
 import UserFileUploadControls from "@/components/developer/UserFileUploadControls";
 import UserSessionUploadControls from "@/components/developer/UserSessionUploadControls";
-import WikiToggle from "@/components/developer/WikiToggle";
-import WikiGraph from "@/components/memory/WikiGraph";
+import SkillToggle from "@/components/developer/SkillToggle";
+import SkillGraph from "@/components/home/SkillGraph";
 import {
   getUser,
-  getUserWikiGraph,
+  getUserSkillGraph,
   type EndUserFile,
   type EndUserSession,
   type EndUserSource,
-  type EndUserWikiPage,
-  type WikiGraph as WikiGraphData,
+  type EndUserSkillPage,
+  type SkillGraph as SkillGraphData,
 } from "@/lib/api";
 import type { EndUser } from "@/lib/types";
 
@@ -32,12 +34,13 @@ export default function UserDetailRoute() {
 }
 
 function UserDetail() {
+  const experience = useDeveloperExperience();
   const userId = String(useParams().userId);
   const [user, setUser] = useState<EndUser | null>(null);
   const [sessions, setSessions] = useState<EndUserSession[]>([]);
   const [files, setFiles] = useState<EndUserFile[]>([]);
-  const [wikiPages, setWikiPages] = useState<EndUserWikiPage[]>([]);
-  const [wikiGraph, setWikiGraph] = useState<WikiGraphData | null>(null);
+  const [skillPages, setSkillPages] = useState<EndUserSkillPage[]>([]);
+  const [skillGraph, setSkillGraph] = useState<SkillGraphData | null>(null);
   const [sources, setSources] = useState<EndUserSource[]>([]);
   const [error, setError] = useState<string | null>(null);
 
@@ -48,14 +51,14 @@ function UserDetail() {
         setUser(res.user);
         setSessions(res.sessions);
         setFiles(res.files);
-        setWikiPages(res.wiki_pages);
+        setSkillPages(res.skill_pages);
         setSources(res.sources);
       })
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load the user"));
     // The graph is decoration over the list — its failure shouldn't blank the page.
-    getUserWikiGraph(userId)
-      .then(setWikiGraph)
-      .catch(() => setWikiGraph(null));
+    getUserSkillGraph(userId)
+      .then(setSkillGraph)
+      .catch(() => setSkillGraph(null));
   }, [userId]);
 
   useEffect(() => {
@@ -85,29 +88,29 @@ function UserDetail() {
       </PageHeading>
 
       <section className="mb-12">
-        <SectionHeading>Shared memory</SectionHeading>
+        <SectionHeading>Shared {experience.Plural}</SectionHeading>
         <div className="mt-4 flex items-center gap-4 rounded border border-border bg-surface px-5 py-4">
           <div className="min-w-0 flex-1">
             <div className="text-[15px] text-foreground">
-              {user.share_wiki
-                ? "This user's sessions feed the shared wiki"
-                : "This user is opted out of the shared wiki"}
+              {user.share_skill
+                ? experience.text("This user's sessions feed the shared skill")
+                : experience.text("This user is opted out of the shared skill")}
             </div>
             <p className="mt-1 text-[13.5px] leading-6 text-muted-foreground">
-              {user.share_wiki
-                ? "The curator distils anonymized lessons from their sessions into the wiki every user's agent reads. Their identity never appears there."
-                : "Their sessions stay in their own wiki. Anything already written to the shared wiki stays — an opt-out is not a retraction."}
+              {user.share_skill
+                ? experience.text("The curator distils anonymized lessons from their sessions into the skill every user's agent reads. Their identity never appears there.")
+                : experience.text("Their sessions stay in their own skill. Anything already written to the shared skill stays — an opt-out is not a retraction.")}
             </p>
           </div>
-          <WikiToggle user={user} onChanged={refresh} />
+          <SkillToggle user={user} onChanged={refresh} />
         </div>
       </section>
 
       <section className="mb-12">
         <div className="flex items-baseline justify-between gap-4">
-          <SectionHeading>This user&apos;s wiki</SectionHeading>
+          <SectionHeading>This user&apos;s {experience.singular}</SectionHeading>
           <Link
-            href={`/folders/${user.wiki_folder_id}`}
+            href={`/folders/${user.skill_folder_id}`}
             className="text-[13px] text-muted-foreground transition-colors hover:text-foreground"
           >
             Open folder
@@ -115,22 +118,22 @@ function UserDetail() {
         </div>
         <p className="mt-2 text-[13.5px] leading-6 text-muted-foreground">
           What the curator has learned about this user specifically — kept out of the shared
-          wiki, in their own words and their own detail. Only this user&apos;s agent (and you)
+          {experience.singular}, in their own words and their own detail. Only this user&apos;s agent (and you)
           can read it.
         </p>
-        {wikiPages.length === 0 ? (
+        {skillPages.length === 0 ? (
           <Empty>
             Nothing yet. The curator writes here on its next run over this user&apos;s sessions.
           </Empty>
         ) : (
           <>
-            {wikiGraph && wikiGraph.nodes.length > 0 && (
+            {skillGraph && skillGraph.nodes.length > 0 && (
               <div className="mt-4 rounded border border-border bg-surface p-2">
-                <WikiGraph data={wikiGraph} height={320} />
+                <SkillGraph data={skillGraph} height={320} />
               </div>
             )}
             <div className="mt-4 overflow-hidden rounded border border-border bg-surface">
-            {wikiPages.map((page) => (
+            {skillPages.map((page) => (
               <Link
                 key={page.id}
                 href={`/p/${page.id}`}
@@ -183,7 +186,7 @@ function UserDetail() {
       <section>
         <SectionHeading>Files</SectionHeading>
         <p className="mt-2 text-[13.5px] leading-6 text-muted-foreground">
-          Everything this user&apos;s agent can read besides the wikis: files your backend
+          Everything this user&apos;s agent can read besides the {experience.plural}: files your backend
           uploaded with their <Code>user_id</Code>, and integrations connected for them
           alone. Your other users never see any of it.
         </p>

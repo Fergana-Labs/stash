@@ -121,21 +121,6 @@ class Stash:
         self._delete(f"/api/v1/users/me/keys/{key_id}")
 
     # =========================================================================
-    # Discover (public Skills)
-    # =========================================================================
-
-    def list_discover_skills(
-        self,
-        query: str = "",
-        sort: str = "trending",
-        limit: int = 48,
-    ) -> dict:
-        params: dict = {"sort": sort, "limit": limit}
-        if query:
-            params["q"] = query
-        return self._get("/api/v1/discover/skills", **params)
-
-    # =========================================================================
     # Skills
     # =========================================================================
 

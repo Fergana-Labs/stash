@@ -134,7 +134,7 @@ class StashVfsModel:
                     "This is a read-only virtual filesystem view over Stash.",
                     "",
                     "- `files` exposes folders, pages, and uploaded files.",
-                    "- `memory` is the agent-curated Memory wiki (stored separately from `files`).",
+                    "- `skills` includes automatically maintained knowledge and its supporting documents.",
                     "- Sessions and skills are read-only projections.",
                     "- Tables live in the folder tree like any other item: a "
                     "table is a `<name>/` directory holding `schema.json`, "
@@ -287,9 +287,8 @@ class StashVfsModel:
 
     def _add_root(self) -> None:
         overview = self.client.get_overview()
-        memory_folder_id = str(self.client.get_memory_folder()["id"])
 
-        self._add_files_tree(overview.get("files", {}), memory_folder_id, self.client.list_tables())
+        self._add_files_tree(overview.get("files", {}), self.client.list_tables())
         self._add_skills(overview.get("skills", []))
         self._add_sessions(overview.get("sessions", []))
         self._add_sources()
@@ -329,13 +328,8 @@ class StashVfsModel:
                     size_hint=entry.get("size"),
                 )
 
-    def _add_files_tree(self, tree: dict, memory_folder_id: str, tables: list[dict]) -> None:
-        root_path = "/files"
+    def _add_files_tree(self, tree: dict, tables: list[dict], root_path: str = "/files") -> None:
         self._add_dir(root_path)
-        # The Memory wiki is stored as a reserved folder in the files tree but
-        # presented as its own root — /files and /memory are MECE, mirroring
-        # the app Explorer's sections.
-        self._add_dir("/memory")
         folders = {str(folder["id"]): folder for folder in tree.get("folders", [])}
         pages = tree.get("pages", [])
         # Files embedded in a page are internals of that document, not tree
@@ -351,9 +345,6 @@ class StashVfsModel:
         def folder_path(folder_id: str) -> str:
             if folder_id in folder_paths:
                 return folder_paths[folder_id]
-            if folder_id == memory_folder_id:
-                folder_paths[folder_id] = "/memory"
-                return "/memory"
             folder = folders[folder_id]
             parent_id = folder.get("parent_folder_id")
             parent_path = folder_path(str(parent_id)) if parent_id else root_path
@@ -424,7 +415,7 @@ class StashVfsModel:
             # inside a skill names a folder that has no path here. Its whole
             # subtree is projected under /skills, not /files — skip it rather
             # than crash the mount on the missing folder.
-            if parent_id and str(parent_id) not in folders and str(parent_id) != memory_folder_id:
+            if parent_id and str(parent_id) not in folders:
                 continue
             parent_path = folder_path(str(parent_id)) if parent_id else root_path
             created_at = table.get("created_at")
@@ -479,25 +470,40 @@ class StashVfsModel:
             basename = _dir_display_name(skill.get("name") or "skill", key, ambiguous)
             self._add_json_file(f"{skills_path}/{basename}.json", skill)
             if skill.get("source_ref"):
-                # Only when there is something to read. A document that
-                # declares itself a skill and says nothing gets no .md, the way
-                # a folder skill with no instructions gets none — an empty file
-                # reads as an empty skill rather than an unwritten one.
-                if skill.get("has_instructions"):
-                    doc_id = str(skill["source_ref"])
-                    self._add_file(
-                        f"{skills_path}/{basename}.md",
-                        loader=lambda d=doc_id: _text_bytes(self.client.get_source_skill_text(d)),
-                        app_url=f"/skills/source/{doc_id}",
-                    )
-                continue
-            slug = (skill.get("published") or {}).get("slug")
-            if slug:
+                doc_id = str(skill["source_ref"])
                 self._add_file(
                     f"{skills_path}/{basename}.md",
-                    loader=lambda s=slug: _text_bytes(self.client.get_skill_text(s)),
-                    app_url=f"/skills/{slug}",
+                    loader=lambda d=doc_id: _text_bytes(self.client.get_source_skill_text(d)),
+                    app_url=f"/skills/source/{doc_id}",
                 )
+                continue
+            root = self._add_dir_child(skills_path, basename)
+            self._expanders[root] = lambda r=root, f=key: self._expand_skill(r, f)
+
+    def _expand_skill(self, root: str, folder_id: str) -> None:
+        contents = self.client.get_skill_contents(folder_id)["contents"]
+        folders = contents["subfolders"]
+        by_path = {tuple(folder["path"]): folder["id"] for folder in folders}
+        by_path[()] = None
+        tree = {
+            "folders": [
+                {**folder, "parent_folder_id": by_path[tuple(folder["path"][:-1])]}
+                for folder in folders
+            ],
+            "pages": [
+                {**page, "folder_id": by_path[tuple(page["folder_path"])]}
+                for page in contents["pages"]
+            ],
+            "files": [
+                {**file, "folder_id": by_path[tuple(file["folder_path"])]}
+                for file in contents["files"]
+            ],
+        }
+        tables = [
+            {**table, "folder_id": by_path[tuple(table["folder_path"])]}
+            for table in contents["tables"]
+        ]
+        self._add_files_tree(tree, tables, root)
 
     def _add_sessions(self, sessions: list[dict]) -> None:
         sessions_path = "/sessions"

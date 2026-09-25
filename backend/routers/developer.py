@@ -12,11 +12,17 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from ..auth import API_KEY_ACCESS_LEVELS, create_api_key, get_current_user, get_scope
 from ..database import get_pool
-from ..services import agent_service, end_user_service, permission_service, workspace_service
+from ..services import (
+    agent_service,
+    developer_contract_service,
+    end_user_service,
+    permission_service,
+    workspace_service,
+)
 from .curator_log import curator_runs
 
 router = APIRouter(prefix="/api/v1/me/developer", tags=["developer"])
@@ -41,6 +47,15 @@ class DeveloperKeyRequest(BaseModel):
 
 
 class EndUserUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str | None = Field(None, min_length=1, max_length=255)
+    share_skill: bool | None = None
+
+
+class WikiEndUserUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     name: str | None = Field(None, min_length=1, max_length=255)
     share_wiki: bool | None = None
 
@@ -62,7 +77,7 @@ async def _require_member_workspace(workspace_id: UUID, user_id: UUID) -> dict:
 
 async def _require_active_workspace(scope_user_id: UUID) -> dict:
     workspace = await end_user_service.workspace_for_scope(scope_user_id)
-    if workspace is None or workspace["external_wiki_folder_id"] is None:
+    if workspace is None or workspace["external_skill_folder_id"] is None:
         raise HTTPException(
             status_code=400,
             detail="scope is not an active developer workspace — activate first",
@@ -84,7 +99,8 @@ async def activate_developer_platform(
         workspace = await workspace_service.create_workspace(
             name, domain=None, created_by=current_user["id"]
         )
-    return await end_user_service.activate(workspace["id"], current_user["id"])
+    activated = await end_user_service.activate(workspace["id"], current_user["id"])
+    return await developer_contract_service.response(activated["scope_user_id"], activated)
 
 
 @router.post("/keys")
@@ -144,20 +160,20 @@ async def revoke_developer_key(key_id: UUID, scope_user_id: UUID = Depends(get_s
     return {"revoked": True}
 
 
-@router.get("/wiki-graph")
-async def get_developer_wiki_graph(
+@router.get("/skill-graph")
+async def get_developer_skill_graph(
     scope_user_id: UUID = Depends(get_scope),
 ):
-    """This workspace's shared wiki as a graph — the same shape the personal
-    Memory dashboard renders, rooted at the external wiki folder instead of
-    the Memory subtree."""
+    """This workspace's shared skill as a graph — the same shape the personal
+    Skills graph renders, rooted at the external skill folder instead of
+    the curated Skill subtree."""
     from ..services import files_tree_service
 
     workspace = await _require_active_workspace(scope_user_id)
-    folder_id = workspace["external_wiki_folder_id"]
+    folder_id = workspace["external_skill_folder_id"]
     if not folder_id:
         return {"nodes": [], "edges": []}
-    return await files_tree_service.wiki_graph(
+    return await files_tree_service.skill_graph(
         await files_tree_service.folder_subtree_ids(folder_id)
     )
 
@@ -173,10 +189,12 @@ async def list_developer_sessions(scope_user_id: UUID = Depends(get_scope)):
 
 @router.get("/files")
 async def list_developer_files(scope_user_id: UUID = Depends(get_scope)):
-    """The two kinds of files the platform holds: the shared wiki's pages, and
-    each user's own material (their wiki's pages plus uploaded files)."""
+    """The two kinds of files the platform holds: the shared skill's pages, and
+    each user's own material (their skill's pages plus uploaded files)."""
     workspace = await _require_active_workspace(scope_user_id)
-    return await end_user_service.workspace_files(workspace)
+    return await developer_contract_service.response(
+        scope_user_id, await end_user_service.workspace_files(workspace)
+    )
 
 
 @router.get("/curator")
@@ -185,15 +203,15 @@ async def get_curator(
     scope_user_id: UUID = Depends(get_scope),
 ):
     """Everything about the external curator: when it next runs, the exact
-    prompt that run will use, which users feed the shared wiki, and how the
+    prompt that run will use, which users feed the shared skill, and how the
     recent runs went.
 
     The prompt is rendered from live state rather than stored, so what this
     shows is literally what the next run sends — including the user list and
-    each user's wiki opt-out.
+    each user's skill opt-out.
     """
     workspace = await _require_active_workspace(scope_user_id)
-    curator = await agent_service.get_or_create_curator(scope_user_id, wiki="external")
+    curator = await agent_service.get_or_create_curator(scope_user_id, skill="external")
     # Every user, for the overview columns; the prompt names only those with
     # material since the watermark, which is all a run can write for.
     end_users = await end_user_service.list_end_users(workspace["id"])
@@ -211,12 +229,12 @@ async def get_curator(
         "feeding": [
             {"id": str(u["id"]), "name": u["name"], "external_id": u["external_id"]}
             for u in end_users
-            if u["share_wiki"]
+            if u["share_skill"]
         ],
         "opted_out": [
             {"id": str(u["id"]), "name": u["name"], "external_id": u["external_id"]}
             for u in end_users
-            if not u["share_wiki"]
+            if not u["share_skill"]
         ],
         "runs": await curator_runs(scope_user_id, curator),
     }
@@ -234,7 +252,7 @@ async def update_curator(
     await _require_active_workspace(scope_user_id)
     if not await permission_service.is_workspace_member(scope_user_id, current_user["id"]):
         raise HTTPException(status_code=403, detail="Not a workspace member")
-    curator = await agent_service.get_or_create_curator(scope_user_id, wiki="external")
+    curator = await agent_service.get_or_create_curator(scope_user_id, skill="external")
     updated = await agent_service.set_system_prompt(UUID(curator["id"]), req.instructions)
     return {"instructions": updated["system_prompt"]}
 
@@ -250,7 +268,7 @@ async def _runnable_curator(scope_user_id: UUID, user_id: UUID) -> dict:
         scoped_curation_service.require_configured()
     except agent_auth.ProviderNotConfigured as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
-    return await agent_service.get_or_create_curator(scope_user_id, wiki="external")
+    return await agent_service.get_or_create_curator(scope_user_id, skill="external")
 
 
 @router.post("/curator/run", status_code=202)
@@ -261,7 +279,7 @@ async def run_curator_now(
     """Run the external curator now instead of waiting for tonight's tick.
 
     The same task the nightly schedule dispatches, minus the due-check — the
-    developer is the trigger. Without this there is no way to see the wiki
+    developer is the trigger. Without this there is no way to see the skill
     build: a developer wiring up their integration would have to wait a day to
     learn whether any of it works.
     """
@@ -299,11 +317,14 @@ async def list_users(
     scope_user_id: UUID = Depends(get_scope),
 ):
     workspace = await _require_active_workspace(scope_user_id)
-    return {
-        "workspace": workspace,
-        "users": await end_user_service.list_end_users(workspace["id"]),
-        "stats": await end_user_service.workspace_stats(workspace),
-    }
+    return await developer_contract_service.response(
+        scope_user_id,
+        {
+            "workspace": workspace,
+            "users": await end_user_service.list_end_users(workspace["id"]),
+            "stats": await end_user_service.workspace_stats(workspace),
+        },
+    )
 
 
 async def _end_user_in_scope(user_id: UUID, scope_user_id: UUID) -> dict:
@@ -322,32 +343,60 @@ async def get_user_detail(
     current_user: dict = Depends(get_current_user),
     scope_user_id: UUID = Depends(get_scope),
 ):
-    """One end user's world: their sessions, their files, their wiki setting."""
-    return await end_user_service.end_user_detail(await _end_user_in_scope(user_id, scope_user_id))
+    """One end user's world: their sessions, their files, their skill setting."""
+    detail = await end_user_service.end_user_detail(
+        await _end_user_in_scope(user_id, scope_user_id)
+    )
+    return await developer_contract_service.response(scope_user_id, detail)
 
 
-@users_router.get("/{user_id}/wiki-graph")
-async def get_user_wiki_graph(
+@users_router.get("/{user_id}/skill-graph")
+async def get_user_skill_graph(
     user_id: UUID,
     current_user: dict = Depends(get_current_user),
     scope_user_id: UUID = Depends(get_scope),
 ):
-    """One user's own wiki as a graph — the same rendering the shared wiki
-    gets, rooted at their own wiki folder."""
+    """One user's own skill as a graph — the same rendering the shared skill
+    gets, rooted at their own skill folder."""
     from ..services import files_tree_service
 
     end_user = await _end_user_in_scope(user_id, scope_user_id)
-    return await files_tree_service.wiki_graph(
-        await files_tree_service.folder_subtree_ids(end_user["wiki_folder_id"])
+    return await files_tree_service.skill_graph(
+        await files_tree_service.folder_subtree_ids(end_user["skill_folder_id"])
     )
 
 
 @users_router.patch("/{user_id}")
 async def update_user(
     user_id: UUID,
-    req: EndUserUpdateRequest,
+    req: EndUserUpdateRequest | WikiEndUserUpdateRequest,
     current_user: dict = Depends(get_current_user),
     scope_user_id: UUID = Depends(get_scope),
 ):
     await _end_user_in_scope(user_id, scope_user_id)
-    return await end_user_service.update_end_user(user_id, name=req.name, share_wiki=req.share_wiki)
+    if isinstance(req, WikiEndUserUpdateRequest):
+        if not await developer_contract_service.uses_wiki(scope_user_id):
+            raise HTTPException(422, "Use share_skill for this workspace")
+        share = req.share_wiki
+    else:
+        share = req.share_skill
+    updated = await end_user_service.update_end_user(user_id, name=req.name, share_skill=share)
+    return await developer_contract_service.response(scope_user_id, updated)
+
+
+@router.get("/wiki-graph", include_in_schema=False)
+async def get_developer_wiki_graph(scope_user_id: UUID = Depends(get_scope)):
+    if not await developer_contract_service.uses_wiki(scope_user_id):
+        raise HTTPException(404, "Wiki contract is not enabled")
+    return await get_developer_skill_graph(scope_user_id)
+
+
+@users_router.get("/{user_id}/wiki-graph", include_in_schema=False)
+async def get_user_wiki_graph(
+    user_id: UUID,
+    current_user: dict = Depends(get_current_user),
+    scope_user_id: UUID = Depends(get_scope),
+):
+    if not await developer_contract_service.uses_wiki(scope_user_id):
+        raise HTTPException(404, "Wiki contract is not enabled")
+    return await get_user_skill_graph(user_id, current_user, scope_user_id)

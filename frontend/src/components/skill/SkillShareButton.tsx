@@ -6,13 +6,10 @@ import { useConfirm } from "../ConfirmDialog";
 import {
   publishSkillFolder,
   unpublishSkill,
-  updateSkill,
   type PublishedSkill,
   type SkillPublishInfo,
 } from "../../lib/api";
 import { resetSkillNavigationCache } from "../../lib/skillNavigationCache";
-
-type HandoffStatus = "idle" | "copying" | "copied" | "error";
 
 function publishInfoFromRecord(record: PublishedSkill): SkillPublishInfo {
   return {
@@ -26,8 +23,8 @@ function publishInfoFromRecord(record: PublishedSkill): SkillPublishInfo {
 }
 
 // Publish button for a skill folder. Published = publicly readable: the
-// popover mints the publish record, then manages the public URL, the
-// Discover listing, and unpublishing. Person-to-person sharing is the
+// popover mints the publish record, then manages the public URL and
+// unpublishing. Person-to-person sharing is the
 // folder's generic ResourceShareButton, rendered next to this one.
 export default function SkillShareButton({
   folderId,
@@ -44,8 +41,6 @@ export default function SkillShareButton({
   const [copied, setCopied] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
-  const [handoffStatus, setHandoffStatus] = useState<HandoffStatus>("idle");
-  const [handoffMessage, setHandoffMessage] = useState("");
   const popoverRef = useRef<HTMLDivElement>(null);
 
   useEscapeKey(open, () => setOpen(false));
@@ -112,39 +107,6 @@ export default function SkillShareButton({
     }
   }
 
-  async function copyAgentHandoffLink() {
-    setOpen(false);
-    setHandoffStatus("copying");
-    setHandoffMessage("");
-    try {
-      const current = await ensurePublished();
-      await navigator.clipboard.writeText(agentHandoffUrl(current.slug));
-      setHandoffStatus("copied");
-      window.setTimeout(() => setHandoffStatus("idle"), 1600);
-    } catch (e) {
-      setHandoffStatus("error");
-      setHandoffMessage(e instanceof Error ? e.message : "Could not copy agent link.");
-      window.setTimeout(() => {
-        setHandoffStatus("idle");
-        setHandoffMessage("");
-      }, 3000);
-    }
-  }
-
-  async function toggleDiscoverable(nextDiscoverable: boolean) {
-    if (!publish) return;
-    setBusy(true);
-    setMessage("");
-    try {
-      const updated = await updateSkill(publish.id, { discoverable: nextDiscoverable });
-      applyPublish(publishInfoFromRecord(updated));
-    } catch (e) {
-      setMessage(e instanceof Error ? e.message : "Could not update Discover.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
   async function unpublish() {
     if (!publish) return;
     const ok = await confirm({
@@ -171,20 +133,6 @@ export default function SkillShareButton({
     <div ref={popoverRef} className="relative flex items-center gap-1.5">
       <button
         type="button"
-        onClick={() => void copyAgentHandoffLink()}
-        disabled={handoffStatus === "copying"}
-        aria-label="Copy agent handoff link"
-        title="Copy an agent-readable public link"
-        className="inline-flex min-w-[72px] cursor-pointer items-center justify-center rounded-md bg-surface px-2.5 py-1 text-[12.5px] font-medium text-dim ring-1 ring-inset ring-border hover:bg-raised hover:text-foreground disabled:opacity-50"
-      >
-        {handoffStatus === "copying"
-          ? "Copying"
-          : handoffStatus === "copied"
-            ? "Copied"
-            : "Agent Handoff"}
-      </button>
-      <button
-        type="button"
         onClick={() => setOpen((value) => !value)}
         aria-haspopup="dialog"
         aria-expanded={open}
@@ -192,9 +140,9 @@ export default function SkillShareButton({
       >
         {publish ? "Published" : "Publish"}
       </button>
-      {(handoffMessage || (message && !open)) && (
+      {(message && !open) && (
         <div className="absolute right-0 top-full z-40 mt-1.5 max-w-[280px] rounded-md border border-border bg-base px-2 py-1.5 text-[12px] text-muted-foreground shadow-lg">
-          {handoffMessage || message}
+          {message}
         </div>
       )}
       {open && (
@@ -236,16 +184,6 @@ export default function SkillShareButton({
                 </button>
               </div>
 
-              <label className="mt-3 flex cursor-pointer items-center gap-2 rounded-md border border-border bg-surface px-2 py-1.5">
-                <input
-                  type="checkbox"
-                  checked={publish.discoverable}
-                  disabled={busy}
-                  onChange={(e) => void toggleDiscoverable(e.target.checked)}
-                />
-                <span className="text-[12px] text-foreground">List on Discover</span>
-              </label>
-
               <div className="mt-3 flex items-center justify-between gap-2">
                 <span className="text-[11.5px] text-muted-foreground">
                   {publish.view_count} view{publish.view_count === 1 ? "" : "s"}
@@ -274,6 +212,3 @@ function absoluteUrl(path: string): string {
   return `${window.location.origin}${path}`;
 }
 
-function agentHandoffUrl(slug: string): string {
-  return absoluteUrl(`/api/v1/skills/${slug}?format=text`);
-}

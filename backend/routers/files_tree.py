@@ -164,32 +164,32 @@ async def get_scope_tree(
     return ScopeTreeResponse(**tree)
 
 
-@router.get("/memory-folder", response_model=FolderResponse)
-async def get_memory_folder(
+@router.get("/skills/curation/root", response_model=FolderResponse)
+async def get_curated_skill(
     current_user: dict = Depends(get_current_user),
     scope_user_id: UUID = Depends(get_scope),
 ):
-    """The scope's reserved Memory folder (created on first access)."""
-    folder = await files_tree_service.get_or_create_memory_folder(scope_user_id, current_user["id"])
+    """The scope's reserved curated Skill folder (created on first access)."""
+    folder = await files_tree_service.get_or_create_curated_skill(scope_user_id, current_user["id"])
     await security_audit_service.record_entries_listed(
-        target_type="memory_folder",
+        target_type="curated_skill",
         actor_user_id=current_user["id"],
         owner_user_id=scope_user_id,
     )
     return FolderResponse(**folder)
 
 
-@router.get("/memory-tree", response_model=ScopeTreeResponse)
-async def get_memory_tree(
+@router.get("/skills/curation/tree", response_model=ScopeTreeResponse)
+async def get_curated_skill_tree(
     current_user: dict = Depends(get_current_user),
     scope_user_id: UUID = Depends(get_scope),
 ):
-    """The Memory wiki as a nested file-system tree (folders + pages), rooted
-    at the scope's Memory folder. Drives the wiki browser page and `stash
-    memory ls`/`write`."""
-    tree = await files_tree_service.memory_tree(scope_user_id, current_user["id"])
+    """The curated Skill as a nested file-system tree (folders + pages), rooted
+    at the scope's curated Skill folder. Drives the skill browser page and `stash
+    skills tree`/`write`."""
+    tree = await files_tree_service.curated_skill_tree(scope_user_id, current_user["id"])
     await security_audit_service.record_entries_listed(
-        target_type="memory_tree",
+        target_type="curated_skill_tree",
         actor_user_id=current_user["id"],
         owner_user_id=scope_user_id,
         metadata={"result_count": len(tree["folders"]) + len(tree["pages"])},
@@ -197,13 +197,13 @@ async def get_memory_tree(
     return ScopeTreeResponse(**tree)
 
 
-@router.get("/memory-graph")
-async def get_memory_graph(
+@router.get("/skills/curation/graph")
+async def get_curated_skill_graph(
     scope_user_id: UUID = Depends(get_scope),
 ):
-    """The Memory wiki as a graph — pages in the Memory subtree plus the
+    """The curated Skill as a graph — pages in the curated Skill subtree plus the
     links between them. Drives the dashboard's context-graph visual."""
-    return await files_tree_service.memory_wiki_graph(scope_user_id)
+    return await files_tree_service.curated_skill_graph(scope_user_id)
 
 
 @router.get("/local-curator-prompt")
@@ -222,25 +222,27 @@ async def get_changes(
     current_user: dict = Depends(get_current_user),
     scope_user_id: UUID = Depends(get_scope),
 ):
-    """The incremental change feed the Memory curator reads: history, changed
-    pages (excl. Memory), new files, and connected sources since `since`."""
-    from datetime import datetime
+    """The incremental change feed the Skills curator reads: history, changed
+    pages (excluding curated knowledge), new files, and connected sources since `since`."""
+    from datetime import UTC, datetime
 
     from ..services import curation_service
 
     since_dt = datetime.fromisoformat(since) if since else None
-    return await curation_service.changes_since(scope_user_id, current_user["id"], since_dt)
+    until = datetime.now(UTC)
+    return await curation_service.changes_since(scope_user_id, current_user["id"], since_dt, until)
 
 
-@router.post("/memory/recompute", status_code=202)
-async def recompute_memory(
+@router.post("/skills/curate", status_code=202)
+async def curate_skills(
     current_user: dict = Depends(get_current_user),
     scope_user_id: UUID = Depends(get_scope),
 ):
-    """Run the Memory curator now instead of waiting for the daily tick — the
-    onboarding flow: connect sources, upload documents, watch the wiki build.
+    """Run the Skills curator now instead of waiting for the daily tick — the
+    onboarding flow: connect sources, upload documents, watch the skill build.
     Enforces the same free-tier sleep-time allowance as the scheduler."""
-    from ..config import settings
+    from datetime import UTC, datetime
+
     from ..services import agent_auth, agent_service, curation_service
     from ..tasks.agent_schedules import run_curator_now
 
@@ -250,28 +252,34 @@ async def recompute_memory(
     if scope_user_id != current_user["id"]:
         raise HTTPException(
             status_code=403,
-            detail="Workspace memory recomputes on the workspace's own schedule.",
+            detail="Workspace Skills curate on the workspace's own schedule.",
         )
     user_id = current_user["id"]
     curator = await agent_service.get_or_create_curator(user_id)
     if not await curation_service.has_changes_since(user_id, user_id, curator["curated_through"]):
         raise HTTPException(status_code=409, detail="Nothing new to curate since the last run.")
-    if agent_service.month_runs_used(curator) >= settings.FREE_CURATOR_RUNS_PER_MONTH:
-        from ..services import billing_service
-
-        if not await billing_service.is_pro(user_id):
-            raise HTTPException(
-                status_code=402,
-                detail=f"Free accounts get {settings.FREE_CURATOR_RUNS_PER_MONTH} sleep-time "
-                "curator runs per month; Pro is unlimited.",
-            )
+    allowance = await curation_service.curation_allowance(user_id, datetime.now(UTC))
+    if allowance is not None and allowance["used"] >= allowance["limit"]:
+        period = " this month" if allowance["period"] == "month" else ""
+        raise HTTPException(
+            status_code=402,
+            detail=f"Your plan's {allowance['limit']:,}-token allowance{period} is used up.",
+        )
+    events, more = await curation_service._feed_events(
+        user_id, curator["curated_through"], datetime.now(UTC), curation_service._MAX_EVENTS
+    )
+    if more and not events:
+        raise HTTPException(
+            402,
+            "The next transcript entry exceeds your remaining token allowance or spending cap. "
+            "Increase your limit or wait for the monthly reset.",
+        )
     try:
-        await agent_auth.resolve(user_id, curator["model_provider"])
+        await agent_auth.resolve(user_id, curator["model_provider"], allow_free_managed=True)
     except agent_auth.NeedsAuth:
         raise HTTPException(
             status_code=402,
-            detail="Connect your Claude, Codex, or OpenRouter key in settings, "
-            "or upgrade to Pro to run the Memory curator.",
+            detail="Upgrade to Pro to continue automatic curation.",
         )
     except agent_auth.ProviderNotConfigured:
         raise HTTPException(status_code=503, detail="The agent is not configured.")
@@ -353,18 +361,23 @@ async def get_folder_contents(
     ancestry_rows = await pool.fetch(
         """
         WITH RECURSIVE chain AS (
-          SELECT id, name, parent_folder_id, is_skill, 0 AS depth
+          SELECT id, name, parent_folder_id, is_skill, is_curated_skill, 0 AS depth
           FROM folders WHERE id = $1
           UNION ALL
-          SELECT f.id, f.name, f.parent_folder_id, f.is_skill, c.depth + 1
+          SELECT f.id, f.name, f.parent_folder_id, f.is_skill, f.is_curated_skill, c.depth + 1
           FROM folders f JOIN chain c ON c.parent_folder_id = f.id
         )
-        SELECT id, name, is_skill FROM chain ORDER BY depth DESC
+        SELECT id, name, is_skill, is_curated_skill FROM chain ORDER BY depth DESC
         """,
         folder_id,
     )
     breadcrumbs = [
-        {"id": str(r["id"]), "name": r["name"], "is_skill": bool(r["is_skill"])}
+        {
+            "id": str(r["id"]),
+            "name": r["name"],
+            "is_skill": bool(r["is_skill"]),
+            "is_curated_skill": bool(r["is_curated_skill"]),
+        }
         for r in ancestry_rows
     ]
 
@@ -609,17 +622,20 @@ async def create_page(
             end_user = await end_user_service.resolve_end_user_for_scope(owner_user_id, req.user_id)
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
-    page = await files_tree_service.create_page_unique(
-        owner_user_id,
-        req.name,
-        current_user["id"],
-        req.folder_id,
-        content=req.content,
-        content_type=req.content_type,
-        content_html=req.content_html,
-        html_layout=req.html_layout,
-        end_user_id=end_user["id"] if end_user else None,
-    )
+    try:
+        page = await files_tree_service.create_page_unique(
+            owner_user_id,
+            req.name,
+            current_user["id"],
+            req.folder_id,
+            content=req.content,
+            content_type=req.content_type,
+            content_html=req.content_html,
+            html_layout=req.html_layout,
+            end_user_id=end_user["id"] if end_user else None,
+        )
+    except files_tree_service.DuplicatePageName as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
     # The creator just wrote it; the response must not demote the editor.
     return PageResponse(**{**page, "can_write": True})
 

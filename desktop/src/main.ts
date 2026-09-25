@@ -280,16 +280,16 @@ async function excludeFolderViaPicker() {
 }
 
 // ---------------------------------------------------------------------------
-// Memory curator (server-side)
+// Skills curator (server-side)
 // ---------------------------------------------------------------------------
 
-async function renderMemory() {
-  const box = $("memory-status");
+async function renderSkills() {
+  const box = $("skills-status");
   box.replaceChildren();
   try {
     const curator = await invoke<any>("curator_status");
     if (!curator) {
-      box.append(el("p", "muted", "No Memory curator on this account yet."));
+      box.append(el("p", "muted", "No Skills curator on this account yet."));
       return;
     }
     const list = el("ul", "statuslist");
@@ -310,19 +310,19 @@ async function renderMemory() {
   }
 }
 
-async function recomputeMemory() {
+async function curateSkills() {
   const btn = $("recompute-btn") as HTMLButtonElement;
-  const msg = $("memory-msg");
+  const msg = $("skills-msg");
   btn.disabled = true;
   msg.textContent = "Starting…";
   try {
-    await invoke("recompute_memory");
+    await invoke("curate_skills");
     msg.textContent = "Curation started.";
   } catch (e) {
     msg.textContent = String(e);
   } finally {
     btn.disabled = false;
-    await renderMemory();
+    await renderSkills();
   }
 }
 
@@ -399,14 +399,14 @@ async function refreshAll() {
     renderChecklist(),
     renderHealth(),
     renderUploads(),
-    renderMemory(),
+    renderSkills(),
     renderLocal(),
   ]);
 }
 
 window.addEventListener("DOMContentLoaded", () => {
   $("refresh-btn").addEventListener("click", refreshAll);
-  $("recompute-btn").addEventListener("click", recomputeMemory);
+  $("recompute-btn").addEventListener("click", curateSkills);
   $("local-run-btn").addEventListener("click", runLocalNow);
 
   $("streaming-toggle").addEventListener("change", async (e) => {

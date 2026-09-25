@@ -7,8 +7,8 @@ from uuid import UUID
 import pytest
 from httpx import AsyncClient
 
-from backend.config import settings
 from backend.services import agent_service
+from backend.services import transcript_usage_service as usage
 
 from .test_curator import _auth, _make_due, _register
 
@@ -76,30 +76,10 @@ async def test_admin_grants_and_revokes_plan(client: AsyncClient, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_mark_run_meters_per_calendar_month(client: AsyncClient, _db_pool):
-    """The counter must reset when the month rolls over, or long-lived free
-    accounts would permanently exhaust their allowance."""
-    _key, uid = await _register(client)
-    curator = await agent_service.get_or_create_curator(uid)
-
-    assert await agent_service.mark_run(UUID(curator["id"])) == 1
-    assert await agent_service.mark_run(UUID(curator["id"])) == 2
-
-    # Simulate the anchor pointing at last month → next run restarts at 1.
-    await _db_pool.execute(
-        "UPDATE agents SET month_run_anchor = (date_trunc('month', now()) - interval '1 month')::date "
-        "WHERE id = $1",
-        UUID(curator["id"]),
-    )
-    assert await agent_service.mark_run(UUID(curator["id"])) == 1
-
-
-@pytest.mark.asyncio
 async def test_free_curator_credits_exhausted_skips_run(
     client: AsyncClient, sprite_exec, _db_pool, monkeypatch
 ):
-    """Free accounts get a monthly curator allowance; past it the beat must not
-    wake the sprite. Enterprise is unlimited — same state runs after the grant."""
+    """Free curation stops after 100,000 transcript tokens; Enterprise is unlimited."""
     from backend.tasks.agent_schedules import _run_due, _run_scheduled_agent, run_scheduled_agent
 
     key, uid = await _register(client)
@@ -110,12 +90,10 @@ async def test_free_curator_credits_exhausted_skips_run(
     )
     watermark = datetime.now(UTC) - timedelta(minutes=2)
     await _make_due(_db_pool, curator["id"], watermark)
-    # Allowance already spent this month.
     await _db_pool.execute(
-        "UPDATE agents SET month_run_count = $2, month_run_anchor = date_trunc('month', now())::date "
-        "WHERE id = $1",
-        UUID(curator["id"]),
-        settings.FREE_CURATOR_RUNS_PER_MONTH,
+        "INSERT INTO transcript_usage(owner_user_id,content_key,tokens) VALUES ($1,'consumed',$2)",
+        uid,
+        usage.FREE_TOKENS,
     )
 
     ran = await _run_due()
@@ -140,9 +118,45 @@ async def test_free_curator_credits_exhausted_skips_run(
 
 
 @pytest.mark.asyncio
+async def test_pro_curator_allowance_resets_each_month(client: AsyncClient, _db_pool, monkeypatch):
+    from backend.tasks.agent_schedules import _run_due, run_scheduled_agent
+
+    monkeypatch.setattr(usage, "PRO_TOKENS", 1)
+    key, uid = await _register(client)
+    await _db_pool.execute(
+        "INSERT INTO user_subscriptions (user_id, stripe_customer_id, status) "
+        "VALUES ($1, 'cus-pro-cap', 'active')",
+        uid,
+    )
+    curator = await agent_service.get_or_create_curator(uid)
+    watermark = datetime.now(UTC) - timedelta(minutes=2)
+    await _make_due(_db_pool, curator["id"], watermark)
+    await _db_pool.execute(
+        "INSERT INTO transcript_usage(owner_user_id,content_key,tokens) VALUES ($1,'consumed',1)",
+        uid,
+    )
+    await client.post(
+        "/api/v1/me/pages/new", json={"name": "Pending", "content": "x"}, headers=_auth(key)
+    )
+
+    assert await _run_due() == 0
+
+    await _db_pool.execute(
+        "UPDATE transcript_usage SET processed_at = date_trunc('month', now()) - interval '1 second' "
+        "WHERE owner_user_id = $1",
+        uid,
+    )
+    await _make_due(_db_pool, curator["id"], watermark)
+    dispatched = []
+    monkeypatch.setattr(run_scheduled_agent, "delay", lambda *args: dispatched.append(args))
+    assert await _run_due() == 1
+    assert len(dispatched) == 1
+
+
+@pytest.mark.asyncio
 async def test_on_demand_curator_run_refused_on_sse_route(client: AsyncClient, _db_pool):
-    """The curator's "Run now" enqueues on the worker via /memory/recompute
-    (metered there — see test_recompute_metered_like_the_scheduler). The SSE
+    """The curator's "Run now" enqueues on the worker via /skills/curate
+    (with the same token allowance as the scheduler). The SSE
     route refuses curators outright: a curation pass takes minutes, and an
     SSE run dies silently when the browser tab closes."""
     key, uid = await _register(client)
@@ -152,4 +166,4 @@ async def test_on_demand_curator_run_refused_on_sse_route(client: AsyncClient, _
         "/api/v1/me/agent-chat/run", json={"agent_id": curator["id"]}, headers=_auth(key)
     )
     assert r.status_code == 400
-    assert "recompute" in r.json()["detail"]
+    assert "/me/skills/curate" in r.json()["detail"]

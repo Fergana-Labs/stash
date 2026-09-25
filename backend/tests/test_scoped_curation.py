@@ -36,7 +36,7 @@ async def dataset(client, pool):
             "SELECT * FROM end_users WHERE workspace_id=$1", UUID(workspace["id"])
         )
     }
-    await end_user_service.update_end_user(users["private"]["id"], share_wiki=False)
+    await end_user_service.update_end_user(users["private"]["id"], share_skill=False)
     workspace = dict(
         await pool.fetchrow("SELECT * FROM workspaces WHERE id=$1", UUID(workspace["id"]))
     )
@@ -46,15 +46,15 @@ async def dataset(client, pool):
             "INSERT INTO pages (owner_user_id,folder_id,name,content_markdown,created_by) "
             "VALUES ($1,$2,$3,$4,$1) RETURNING id",
             owner,
-            user["wiki_folder_id"],
+            user["skill_folder_id"],
             f"{name} notes",
-            f"{name.upper()}_WIKI_SECRET",
+            f"{name.upper()}_SKILL_SECRET",
         )
     shared = await pool.fetchval(
         "INSERT INTO pages (owner_user_id,folder_id,name,content_markdown,created_by) "
         "VALUES ($1,$2,'Index','ALLOWED_SHARED_KNOWLEDGE',$1) RETURNING id",
         owner,
-        workspace["external_wiki_folder_id"],
+        workspace["external_skill_folder_id"],
     )
     private_file = await pool.fetchval(
         "INSERT INTO files (owner_user_id,end_user_id,name,content_type,size_bytes,storage_key,"
@@ -92,10 +92,10 @@ async def dataset(client, pool):
 
 async def scope(data, purpose, user="public"):
     if purpose == "shared":
-        destination = data.workspace["external_wiki_folder_id"]
+        destination = data.workspace["external_skill_folder_id"]
         users = [data.users["public"]["id"]]
     else:
-        destination = data.users[user]["wiki_folder_id"]
+        destination = data.users[user]["skill_folder_id"]
         users = [data.users[user]["id"]]
     return await curation.load_scope(
         data.workspace,
@@ -112,11 +112,11 @@ async def scope(data, purpose, user="public"):
 async def test_shared_curator_cannot_discover_or_guess_protected_material(dataset):
     shared = await scope(dataset, "shared")
     corpus = json.dumps(shared.documents)
-    for secret in ("SECRET_TRANSCRIPT", "PRIVATE_WIKI_SECRET", "SECRET_FILE", "SECRET_SOURCE"):
+    for secret in ("SECRET_TRANSCRIPT", "PRIVATE_SKILL_SECRET", "SECRET_FILE", "SECRET_SOURCE"):
         assert secret not in corpus
     assert "ALLOWED_TRANSCRIPT" in corpus and "ALLOWED_SHARED_KNOWLEDGE" in corpus
-    # Private wikis aren't shared inputs, including those of participating users.
-    assert "PUBLIC_WIKI_SECRET" not in corpus
+    # Private skills aren't shared inputs, including those of participating users.
+    assert "PUBLIC_SKILL_SECRET" not in corpus
     for document_id in (
         str(dataset.pages["private"]),
         "session:private-job",
@@ -135,10 +135,10 @@ async def test_private_curator_reads_own_material_and_shared_knowledge_only(data
     corpus = json.dumps(private.documents)
     assert all(
         s in corpus
-        for s in ("SECRET_TRANSCRIPT", "PRIVATE_WIKI_SECRET", "SECRET_FILE", "SECRET_SOURCE")
+        for s in ("SECRET_TRANSCRIPT", "PRIVATE_SKILL_SECRET", "SECRET_FILE", "SECRET_SOURCE")
     )
     assert "ALLOWED_SHARED_KNOWLEDGE" in corpus
-    assert "ALLOWED_TRANSCRIPT" not in corpus and "PUBLIC_WIKI_SECRET" not in corpus
+    assert "ALLOWED_TRANSCRIPT" not in corpus and "PUBLIC_SKILL_SECRET" not in corpus
     for page in (dataset.shared, dataset.pages["public"]):
         with pytest.raises(PermissionError):
             await private.tool(
@@ -151,7 +151,7 @@ async def test_private_curator_reads_own_material_and_shared_knowledge_only(data
                 "page_id": None,
                 "title": "Leak",
                 "content": "SECRET",
-                "folder_id": str(dataset.workspace["external_wiki_folder_id"]),
+                "folder_id": str(dataset.workspace["external_skill_folder_id"]),
             },
         )
 
@@ -163,7 +163,7 @@ async def test_model_can_write_only_its_fixed_destination(dataset, pool):
         "write_page", {"page_id": None, "title": "Maintenance", "content": "SECRET_RECORD"}
     )
     page = await pool.fetchrow("SELECT * FROM pages WHERE id=$1", UUID(result["page_id"]))
-    assert page["folder_id"] == dataset.users["private"]["wiki_folder_id"]
+    assert page["folder_id"] == dataset.users["private"]["skill_folder_id"]
     assert page["end_user_id"] == dataset.users["private"]["id"]
     assert page["public_permission"] == "none"
     await private.tool(
@@ -182,8 +182,8 @@ async def test_revocation_invalidates_inflight_read_write_and_old_shared_corpus(
     dataset, client, pool
 ):
     shared = await scope(dataset, "shared")
-    old_root = dataset.workspace["external_wiki_folder_id"]
-    await end_user_service.update_end_user(dataset.users["public"]["id"], share_wiki=False)
+    old_root = dataset.workspace["external_skill_folder_id"]
+    await end_user_service.update_end_user(dataset.users["public"]["id"], share_skill=False)
     for tool, args in (
         ("read_document", {"document_id": str(dataset.shared)}),
         ("write_page", {"page_id": None, "title": "Leaked", "content": "ALLOWED_TRANSCRIPT"}),
@@ -196,7 +196,7 @@ async def test_revocation_invalidates_inflight_read_write_and_old_shared_corpus(
     )
     assert (
         await pool.fetchval(
-            "SELECT external_wiki_folder_id FROM workspaces WHERE id=$1", dataset.workspace["id"]
+            "SELECT external_skill_folder_id FROM workspaces WHERE id=$1", dataset.workspace["id"]
         )
         != old_root
     )
@@ -204,7 +204,7 @@ async def test_revocation_invalidates_inflight_read_write_and_old_shared_corpus(
         r = await client.post(
             "/api/v1/me/vfs",
             headers=_auth(dataset.key),
-            json={"script": "grep -r ALLOWED_SHARED_KNOWLEDGE /memory /files", "user_id": user_id},
+            json={"script": "grep -r ALLOWED_SHARED_KNOWLEDGE /skills /files", "user_id": user_id},
         )
         assert r.status_code == 200
         assert "ALLOWED_SHARED_KNOWLEDGE" not in r.json()["stdout"]
@@ -224,7 +224,7 @@ async def test_shared_input_excludes_replayed_retrieval_results(dataset, client)
 async def test_discovered_page_id_can_be_read_and_updated_without_translation(dataset):
     shared = await scope(dataset, "shared")
     listing = await shared.tool("search_documents", {"query": "Index"})
-    page_id = listing["documents"][0]["id"]
+    page_id = next(doc["id"] for doc in listing["documents"] if doc["title"] == "Index")
     original = await shared.tool("read_document", {"document_id": page_id})
     assert original["content"] == "ALLOWED_SHARED_KNOWLEDGE"
     result = await shared.tool(
@@ -240,7 +240,7 @@ async def test_discovered_page_id_can_be_read_and_updated_without_translation(da
 async def test_shared_reads_recheck_consent_even_without_a_generation_change(dataset, pool):
     shared = await scope(dataset, "shared")
     await pool.execute(
-        "UPDATE end_users SET share_wiki=false WHERE id=$1", dataset.users["public"]["id"]
+        "UPDATE end_users SET share_skill=false WHERE id=$1", dataset.users["public"]["id"]
     )
     with pytest.raises(PermissionError, match="no longer shared"):
         await shared.tool("search_documents", {"query": ""})
@@ -260,14 +260,14 @@ async def test_separate_model_contexts_and_no_sprite_execution(
         if len(calls) == 3:
             all_started.set()
         await asyncio.wait_for(all_started.wait(), timeout=1)
-        return "Completed this isolated wiki."
+        return "Completed this isolated skill."
 
     async def forbidden(*args, **kwargs):
         pytest.fail("Developer curator must never run in a credential-bearing sprite")
 
     monkeypatch.setattr(curation, "run_scope", fake_run)
     monkeypatch.setattr(sprite_agent_service, "run_chat", forbidden)
-    agent = await agent_service.get_or_create_curator(dataset.owner, wiki="external")
+    agent = await agent_service.get_or_create_curator(dataset.owner, skill="external")
     agent["curated_through"] = None
     await sprite_agent_service.run_scheduled(agent, "security-test")
     assert len([p for p, _ in calls if p == "private"]) == 2
@@ -275,6 +275,13 @@ async def test_separate_model_contexts_and_no_sprite_execution(
     assert all("SECRET_TRANSCRIPT" not in text for p, text in calls if p == "shared")
     assert any("SECRET_TRANSCRIPT" in text for p, text in calls if p == "private")
     assert sprite_exec.calls == [] and sprite_exec.writes == []
+    # The participating user's transcript feeds two model contexts, but is metered once.
+    assert (
+        await pool.fetchval(
+            "SELECT count(*) FROM transcript_usage WHERE owner_user_id=$1", dataset.owner
+        )
+        == 2
+    )
 
 
 @pytest.mark.asyncio
@@ -292,7 +299,7 @@ async def test_internal_developer_curator_cannot_read_customer_inputs(
         return "No private developer changes."
 
     monkeypatch.setattr(curation, "run_scope", fake_run)
-    agent = await agent_service.get_or_create_curator(dataset.owner, wiki="internal")
+    agent = await agent_service.get_or_create_curator(dataset.owner, skill="internal")
     agent["curated_through"] = None
     await sprite_agent_service.run_scheduled(agent, "security-test")
     assert len(calls) == 1 and calls[0].purpose == "internal"
@@ -310,7 +317,7 @@ async def test_optout_during_model_request_blocks_publication(
     shared = await scope(dataset, "shared")
 
     async def create(**kwargs):
-        await end_user_service.update_end_user(dataset.users["public"]["id"], share_wiki=False)
+        await end_user_service.update_end_user(dataset.users["public"]["id"], share_skill=False)
         return SimpleNamespace(
             stop_reason="tool_use",
             content=[
@@ -472,7 +479,7 @@ async def test_developer_prompt_preview_describes_scoped_runner(dataset):
     from backend.routers.agents import get_agent_prompt
     from backend.services import agent_service
 
-    agent = await agent_service.get_or_create_curator(dataset.owner, wiki="external")
+    agent = await agent_service.get_or_create_curator(dataset.owner, skill="external")
     preview = await get_agent_prompt(UUID(agent["id"]), current_user={"id": dataset.owner})
     assert "separate" in preview["system_prompt"].lower()
     assert "stash changes" not in preview["system_prompt"]
@@ -502,7 +509,7 @@ async def test_failed_shared_run_does_not_report_success_or_advance_watermark(
             raise
 
     monkeypatch.setattr(curation, "run_scope", fail_shared)
-    agent = await agent_service.get_or_create_curator(dataset.owner, wiki="external")
+    agent = await agent_service.get_or_create_curator(dataset.owner, skill="external")
     agent["curated_through"] = None
     before = await pool.fetchval(
         "SELECT curated_through FROM agents WHERE id=$1", UUID(agent["id"])
@@ -535,12 +542,12 @@ async def test_scoped_run_timeout_preserves_progress_and_releases_lock(
 
     monkeypatch.setattr(curation, "run_scope", stuck)
     monkeypatch.setattr(sprite_agent_service.settings, "AGENT_TURN_TIMEOUT_SECONDS", 0.05)
-    agent = await agent_service.get_or_create_curator(dataset.owner, wiki="external")
+    agent = await agent_service.get_or_create_curator(dataset.owner, skill="external")
     before = await pool.fetchval(
         "SELECT curated_through FROM agents WHERE id=$1", UUID(agent["id"])
     )
     with pytest.raises(RuntimeError, match="run time limit"):
-        await _run_curator_now(UUID(agent["id"]), metered=False)
+        await _run_curator_now(UUID(agent["id"]))
     row = await pool.fetchrow(
         "SELECT curated_through,last_run_outcome,last_run_error FROM agents WHERE id=$1",
         UUID(agent["id"]),
@@ -548,3 +555,31 @@ async def test_scoped_run_timeout_preserves_progress_and_releases_lock(
     assert row["curated_through"] == before
     assert row["last_run_outcome"] == "failed" and "run time limit" in row["last_run_error"]
     assert sprite_exec.redis.data == {}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("skill", ["internal", "external"])
+async def test_curator_keeps_run_logs_without_inflating_session_analytics(
+    dataset, pool, monkeypatch, sprite_exec, skill
+):
+    from backend.services import agent_service, analytics_service, sprite_agent_service
+
+    async def fake_run(scope, instructions):
+        return "Completed this skill."
+
+    monkeypatch.setattr(curation, "run_scope", fake_run)
+    agent = await agent_service.get_or_create_curator(dataset.owner, skill=skill)
+    agent["curated_through"] = None
+    before = await analytics_service.get_sessions_analytics(dataset.owner, dataset.owner)
+    await sprite_agent_service.run_scheduled(agent, "analytics-test")
+    after = await analytics_service.get_sessions_analytics(dataset.owner, dataset.owner)
+
+    assert after["totals"] == before["totals"]
+    session_id = f"agent-curate-{agent['id']}-analytics-test"
+    summary = await pool.fetchval(
+        "SELECT content FROM history_events WHERE owner_user_id=$1 "
+        "AND session_id=$2 AND event_type='assistant_message'",
+        dataset.owner,
+        session_id,
+    )
+    assert "Completed this skill." in summary

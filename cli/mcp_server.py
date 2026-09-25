@@ -7,7 +7,7 @@ from mcp.server.fastmcp import FastMCP
 from cli.client import StashClient, split_source_tokens
 from cli.config import load_config, save_scope
 
-mcp = FastMCP("stash", instructions="Stash — shared memory for AI coding agents")
+mcp = FastMCP("stash", instructions="Stash — Skills and context for AI coding agents")
 
 
 def _client() -> StashClient:
@@ -62,18 +62,18 @@ def stash_search(
 def stash_vfs(script: str, cwd: str = "/") -> str:
     """Run one read-only shell-shaped script over your whole Stash — `ls`,
     `cat`, `find`, `grep`/`rg`, `tree`, pipes — exactly like `stash vfs` in a
-    terminal. Roots include /files, /sessions, /skills, /memory, /sources.
+    terminal. Roots include /files, /sessions, /skills, /sources.
     A non-zero exit_code is a shell result (grep found nothing), not an error;
     read stdout/stderr like a terminal would show them."""
     return _json(_client().run_vfs(script, cwd=cwd))
 
 
 @mcp.tool()
-def stash_memory_tree() -> str:
-    """The Memory wiki as a nested folder/page tree, rooted at your Memory
+def stash_skills_tree() -> str:
+    """The curated Skill as a nested folder/page tree, rooted at your curated Skill
     folder. The Files tree (stash_tree) deliberately hides this subtree, so
-    this is how you discover memory pages; read one with stash_read_page."""
-    return _json(_client().get_memory_tree())
+    this is how you discover Skill documents; read one with stash_read_page."""
+    return _json(_client().get_curated_skill_tree())
 
 
 @mcp.tool()
@@ -537,13 +537,10 @@ def stash_create_skill(
 
 
 @mcp.tool()
-def stash_publish_skill(
-    folder_id: str,
-    discoverable: bool = False,
-) -> str:
+def stash_publish_skill(folder_id: str) -> str:
     """Publish a skill folder: make it publicly readable at /skills/<slug>.
     To share privately with a person instead, share the folder (stash_share_object)."""
-    return _json(_client().publish_skill_folder(folder_id, discoverable=discoverable))
+    return _json(_client().publish_skill_folder(folder_id))
 
 
 @mcp.tool()
@@ -551,16 +548,13 @@ def stash_update_skill(
     skill_id: str,
     title: str = "",
     description: str = "",
-    discoverable: str = "",
 ) -> str:
-    """Update a published skill's metadata or Discover flag."""
+    """Update a published skill's metadata."""
     fields: dict = {}
     if title:
         fields["title"] = title
     if description:
         fields["description"] = description
-    if discoverable:
-        fields["discoverable"] = discoverable.lower() in {"1", "true", "yes", "on"}
     if not fields:
         raise ValueError("Pass at least one field to update")
     return _json(_client().update_skill(skill_id, **fields))
@@ -644,18 +638,7 @@ def stash_publish_markdown(
     )
 
 
-# ── Discover (public Skill catalog) ───────────────────────────────
-
-
-@mcp.tool()
-def stash_search_public_skills(query: str = "", sort: str = "trending") -> str:
-    """Search the public Skill catalog (Discover).
-
-    sort: trending | newest | popular. Pass an empty query to browse by
-    sort order. Returns the catalog entries — fork into your scope with
-    stash_fork_skill to follow up.
-    """
-    return _json(_client().list_discover_skills(query=query, sort=sort))
+# ── Public Skills ─────────────────────────────────────────────────
 
 
 @mcp.tool()

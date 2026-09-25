@@ -6,6 +6,7 @@ import os
 import uuid
 
 import pytest
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from .test_developer_platform import _developer, _event, _mint_workspace_key, _push
@@ -18,7 +19,7 @@ async def test_archive_preserves_logs_and_removes_customer_access(client, pool):
     key = await _mint_workspace_key(client, api_key, workspace)
     await _push(client, key, [_event("shop-session", user_id="shop", user_name="Shop")])
     owner = uuid.UUID(workspace["scope_user_id"])
-    root = uuid.UUID(workspace["external_wiki_folder_id"])
+    root = uuid.UUID(workspace["external_skill_folder_id"])
     system = await pool.fetchval(
         "INSERT INTO folders (owner_user_id, created_by, name, parent_folder_id) "
         "VALUES ($1, $1, '_system', $2) RETURNING id",
@@ -44,9 +45,9 @@ async def test_archive_preserves_logs_and_removes_customer_access(client, pool):
     internal = await page("Log", None, "Developer's unrelated log")
     topic = await page("Brake Shoes", root, "Confirm axle position before choosing a kit.")
     index = await page(
-        "Wiki Index",
+        "Skill Index",
         root,
-        f"# Wiki Index\n- [Log](/p/{current})\n- [Old log](/p/{old})\n"
+        f"# Skill Index\n- [Log](/p/{current})\n- [Old log](/p/{old})\n"
         "- Read `/memory/_system/changelog.md` for audit history.\n"
         f"- [Brake Shoes](/p/{topic})\n",
     )
@@ -71,8 +72,18 @@ async def test_archive_preserves_logs_and_removes_customer_access(client, pool):
         from alembic.migration import MigrationContext
         from alembic.operations import Operations
 
+        conn.execute(
+            text(
+                "ALTER TABLE workspaces RENAME COLUMN external_skill_folder_id TO external_wiki_folder_id"
+            )
+        )
         with Operations.context(MigrationContext.configure(conn)):
             migration.upgrade()
+        conn.execute(
+            text(
+                "ALTER TABLE workspaces RENAME COLUMN external_wiki_folder_id TO external_skill_folder_id"
+            )
+        )
 
     try:
         async with engine.begin() as conn:
@@ -94,7 +105,7 @@ async def test_archive_preserves_logs_and_removes_customer_access(client, pool):
     assert await pool.fetchval("SELECT folder_id FROM pages WHERE id = $1", internal) is None
     assert await pool.fetchval("SELECT count(*) FROM shares WHERE object_id = $1", current) == 0
     cleaned = await pool.fetchrow("SELECT * FROM pages WHERE id = $1", index)
-    assert cleaned["content_markdown"] == f"# Wiki Index\n- [Brake Shoes](/p/{topic})\n"
+    assert cleaned["content_markdown"] == f"# Skill Index\n- [Brake Shoes](/p/{topic})\n"
     assert (
         cleaned["content_hash"] == hashlib.sha256(cleaned["content_markdown"].encode()).hexdigest()
     )
@@ -103,9 +114,9 @@ async def test_archive_preserves_logs_and_removes_customer_access(client, pool):
     for user in (None, "shop", "new-shop"):
         for script in (
             "find / -type f",
-            "grep -r 'PRIVATEVIN12345678' /memory /files",
-            "cat /memory/Log.md",
-            "cat /memory/_system/changelog.md",
+            "grep -r 'PRIVATEVIN12345678' /skills /files",
+            "cat /skills/shared/Log.md",
+            "cat /skills/shared/_system/changelog.md",
             f"cat '/files/Curator log archive/{archived['name']}.md'",
         ):
             response = await client.post(

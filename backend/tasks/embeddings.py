@@ -207,9 +207,23 @@ async def _reconcile_source_documents() -> int:
     return done
 
 
+async def _ensure_embedding_space() -> None:
+    """A model change requires an explicit migration, never automatic deletion."""
+    current = embedding_service.space_id()
+    stored = await get_pool().fetchval(
+        "SELECT space_id FROM embedding_space_state WHERE singleton = TRUE"
+    )
+    if stored != current:
+        raise RuntimeError(
+            f"Embedding space mismatch: stored={stored!r}, configured={current!r}. "
+            "Keep the existing provider configuration or explicitly migrate its vectors."
+        )
+
+
 async def _reconcile() -> int:
     if not embedding_service.is_configured():
         return 0
+    await _ensure_embedding_space()
     done = 0
     for fn in (
         _reconcile_pages,

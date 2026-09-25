@@ -1,12 +1,15 @@
 import { cleanup, render, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import FolderClient from "./FolderClient";
+import { isDeveloperView } from "@/lib/scope-store";
 import { getFolderContents } from "@/lib/api";
 
 const router = vi.hoisted(() => ({
   push: vi.fn(),
   replace: vi.fn(),
 }));
+
+vi.mock("@/lib/scope-store", () => ({ isDeveloperView: vi.fn(() => false) }));
 
 vi.mock("next/navigation", () => ({
   useParams: () => ({ folderId: "folder-root" }),
@@ -31,11 +34,6 @@ vi.mock("@/lib/localSkill", () => ({
   findInSkillContents: vi.fn(() => null),
 }));
 
-vi.mock("@/lib/memory-folder", () => ({
-  sectionCrumbs: () => [],
-  useMemoryFolderId: () => null,
-}));
-
 vi.mock("@/components/BreadcrumbContext", () => ({
   useBreadcrumbs: vi.fn(),
 }));
@@ -56,15 +54,26 @@ vi.mock("@/hooks/useAuth", () => ({
   useAuth: () => ({ user: { id: "user-1", name: "henry" }, loading: false }),
 }));
 
-function contents(folderIsSkill: boolean, breadcrumbIsSkill = false) {
+function contents(
+  folderIsSkill: boolean,
+  breadcrumbIsSkill = false,
+  isCuratedSkill = false,
+) {
   return {
     folder: {
       id: "folder-root",
-      name: "Brake Shoes",
+      name: isCuratedSkill ? "Learned knowledge" : "Brake Shoes",
       parent_folder_id: null,
       is_skill: folderIsSkill,
     },
-    breadcrumbs: [{ id: "folder-root", name: "Brake Shoes", is_skill: breadcrumbIsSkill }],
+    breadcrumbs: [
+      {
+        id: "folder-root",
+        name: isCuratedSkill ? "Learned knowledge" : "Brake Shoes",
+        is_skill: breadcrumbIsSkill,
+        is_curated_skill: isCuratedSkill,
+      },
+    ],
     subfolders: [],
     pages: [],
     files: [],
@@ -73,7 +82,10 @@ function contents(folderIsSkill: boolean, breadcrumbIsSkill = false) {
 }
 
 describe("FolderClient skill redirect", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(isDeveloperView).mockReturnValue(false);
+  });
   afterEach(() => cleanup());
 
   // /skills/<x> is the *published slug* route. Sending a folder id there
@@ -97,6 +109,14 @@ describe("FolderClient skill redirect", () => {
     expect(router.replace).toHaveBeenCalledWith("/skills/folder/folder-root");
   });
 
+  it("opens private developer knowledge without requiring global catalog membership", async () => {
+    vi.mocked(isDeveloperView).mockReturnValue(true);
+    vi.mocked(getFolderContents).mockResolvedValue(contents(true));
+    render(<FolderClient folderId="folder-root" />);
+    await waitFor(() => expect(getFolderContents).toHaveBeenCalled());
+    expect(router.replace).not.toHaveBeenCalled();
+  });
+
   it("leaves an ordinary folder where it is", async () => {
     vi.mocked(getFolderContents).mockResolvedValue(contents(false));
 
@@ -104,5 +124,13 @@ describe("FolderClient skill redirect", () => {
 
     await waitFor(() => expect(getFolderContents).toHaveBeenCalled());
     expect(router.replace).not.toHaveBeenCalled();
+  });
+
+  it("opens curated knowledge through the same Skills route", async () => {
+    vi.mocked(getFolderContents).mockResolvedValue(contents(true, true, true));
+
+    render(<FolderClient folderId="folder-root" />);
+
+    await waitFor(() => expect(router.replace).toHaveBeenCalledWith("/skills/folder/folder-root"));
   });
 });

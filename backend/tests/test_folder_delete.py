@@ -115,7 +115,7 @@ async def test_delete_folder_missing_or_foreign_returns_false(scope, _db_pool):
 @pytest.mark.asyncio
 async def test_delete_folder_still_refuses_memory(scope, _db_pool):
     scope_id, user_id = scope
-    memory = await files_tree_service.get_or_create_memory_folder(scope_id, user_id)
+    memory = await files_tree_service.get_or_create_curated_skill(scope_id, user_id)
     with pytest.raises(ValueError):
         await files_tree_service.delete_folder(memory["id"], scope_id, user_id)
 
@@ -128,7 +128,11 @@ async def test_deleting_two_skill_folders_back_to_back(scope, _db_pool):
     scope_id, user_id = scope
     for _ in range(2):
         folder = await files_tree_service.create_skill(
-            scope_id, user_id, "New skill", "Use this skill for deletion tests."
+            scope_id,
+            user_id,
+            "New skill",
+            "Use this skill for deletion tests.",
+            "Follow this skill's steps.",
         )
         assert await files_tree_service.delete_folder(folder["id"], scope_id, user_id) is True
 

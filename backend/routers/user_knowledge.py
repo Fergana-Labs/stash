@@ -15,7 +15,6 @@ from ..config import settings
 from ..database import get_pool
 from ..services import (
     ask_service,
-    linear_ticket_service,
     llm,
     memory_service,
     permission_service,
@@ -50,7 +49,6 @@ async def _list_sessions(owner_user_id: UUID, user_id: UUID) -> list[dict]:
             "id": s["id"],
             "session_id": s["session_id"],
             "title": titles[s["session_id"]],
-            "linear_tickets": linear_ticket_service.tickets_response(s.get("linear_tickets")),
             "user_name": s["user_name"],
             "agent_name": s["agent_name"] or "",
             "size_bytes": int(s["size_bytes"] or 0),
@@ -210,18 +208,18 @@ async def ask_scope(
 
 
 # ---------------------------------------------------------------------------
-# Memory-demo: tailored before/after copy for the Memory onboarding path
+# Skills-demo: tailored before/after copy for the Skills onboarding path
 # ---------------------------------------------------------------------------
 
 
-class MemoryDemoResponse(BaseModel):
+class SkillsDemoResponse(BaseModel):
     topic: str
     before_steps: list[str]
     after_step: str
     real: bool  # true if grounded on an actual session; false for fallback
 
 
-_FALLBACK_DEMO = MemoryDemoResponse(
+_FALLBACK_DEMO = SkillsDemoResponse(
     topic="the API gateway refactor",
     before_steps=[
         "Paste 3,200 chars from last week's session",
@@ -235,11 +233,11 @@ _FALLBACK_DEMO = MemoryDemoResponse(
 )
 
 
-@router.post("/memory-demo", response_model=MemoryDemoResponse)
-async def memory_demo(
+@router.post("/skills-demo", response_model=SkillsDemoResponse)
+async def skills_demo(
     current_user: dict = Depends(get_current_user),
 ):
-    """Generate a personalized before/after demo for the Memory onboarding
+    """Generate a personalized before/after demo for the Skills onboarding
     step. If the scope has session(s), summon Claude (FAST tier) with
     the most recent session's title + a short snippet of its first events;
     otherwise return a canned fallback."""
@@ -293,7 +291,7 @@ async def memory_demo(
         after_step = str(payload.get("after_step") or "")
         if not before_steps or not after_step:
             raise ValueError("missing fields in LLM response")
-        return MemoryDemoResponse(
+        return SkillsDemoResponse(
             topic=topic,
             before_steps=before_steps,
             after_step=after_step,
@@ -303,7 +301,7 @@ async def memory_demo(
         # Either Anthropic call failed or JSON shape was wrong. Fall back
         # to the canned demo but seed the topic with the real session
         # title so it still feels somewhat personal.
-        return MemoryDemoResponse(
+        return SkillsDemoResponse(
             topic=title,
             before_steps=[
                 s.replace("the API gateway refactor", title) for s in _FALLBACK_DEMO.before_steps

@@ -41,9 +41,11 @@ async def _recompute_one(user_id) -> None:
         clusters,
         signature,
     )
-    # max_points matches the memory page's request; the cache row is keyed by
-    # source only, so this is the row the embeddings map will be served.
-    await analytics_service.get_embedding_projection(user_id, max_points=2000, refresh=True)
+    # The product visualization is session themes. Keep that source-specific
+    # cache warm so loading the dashboard never runs UMAP inline.
+    await analytics_service.get_embedding_projection(
+        user_id, max_points=2000, source="sessions", refresh=True
+    )
 
 
 async def _precompute() -> int:
@@ -58,7 +60,7 @@ async def _precompute() -> int:
         LEFT JOIN knowledge_density_cache kdc
                ON kdc.user_id = u.id AND kdc.owner_user_id IS NULL
         LEFT JOIN embedding_projections ep
-               ON ep.user_id = u.id AND ep.source_type = '_all' AND ep.owner_user_id IS NULL
+               ON ep.user_id = u.id AND ep.source_type = 'sessions' AND ep.owner_user_id IS NULL
         WHERE u.last_seen >= $1
           AND (kdc.computed_at IS NULL OR kdc.computed_at < $2
                OR ep.computed_at IS NULL OR ep.computed_at < $2)

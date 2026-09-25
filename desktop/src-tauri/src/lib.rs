@@ -25,7 +25,7 @@ pub fn run() {
             api::list_integrations,
             api::list_sources,
             api::curator_status,
-            api::recompute_memory,
+            api::curate_skills,
             signin::signin_start,
             signin::signin_poll,
             install::install_cli,

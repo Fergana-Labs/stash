@@ -426,24 +426,6 @@ async def _read_skill(args: dict) -> dict:
     skill = await skill_service.read_skill(owner_user_id, name, user_id)
     if not skill:
         return _text_result(json.dumps({"error": "not found"}))
-    if not skill["has_instructions"]:
-        # A draft skill exists and is named but has nothing to follow. Handing
-        # back an empty document would let the model act as if it had guidance.
-        return _text_result(
-            json.dumps(
-                {
-                    "error": "no_instructions",
-                    "name": skill["name"],
-                    "folder_id": skill["folder_id"],
-                    "hint": (
-                        "This document declares itself a skill but has nothing below its "
-                        "frontmatter, so there is nothing to follow."
-                        if skill["backing"] == "source"
-                        else "This skill has no SKILL.md yet, so there is nothing to follow."
-                    ),
-                }
-            )
-        )
     return _text_result(json.dumps({"name": skill["name"], "combined": skill["combined"]}))
 
 
@@ -483,6 +465,7 @@ async def _create_skill(args: dict) -> dict:
     # skill while the model believes it created it. Unlike the web button
     # (placeholder name, can't negotiate), a model can act on a refusal, so
     # a collision returns the existing holder and its real URL instead.
+    skill_service.validate_skill_md(args["skill_md"])
     try:
         folder = await files_tree_service.create_folder(owner_user_id, args["name"], user_id)
     except files_tree_service.DuplicateFolderName:
@@ -511,7 +494,6 @@ async def _create_skill(args: dict) -> dict:
                 }
             )
         )
-    await files_tree_service.set_folder_is_skill(folder["id"], owner_user_id, True)
     await files_tree_service.create_page(
         owner_user_id,
         "SKILL.md",
@@ -520,6 +502,7 @@ async def _create_skill(args: dict) -> dict:
         content=args["skill_md"],
         content_type="markdown",
     )
+    await files_tree_service.set_folder_is_skill(folder["id"], owner_user_id, True)
     for extra in args.get("files") or []:
         await files_tree_service.create_page(
             owner_user_id,

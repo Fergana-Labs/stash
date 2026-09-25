@@ -1,7 +1,16 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import { ChevronRight } from "lucide-react";
 import { useEscapeKey } from "../../../hooks/useEscapeKey";
 import { useConfirm } from "../../ConfirmDialog";
 import {
@@ -24,14 +33,13 @@ import {
   uploadFileOrPage,
   type FolderContents,
 } from "../../../lib/api";
-import type {
-  FolderTreeNode,
-  PageSummary,
-  Tree,
-} from "../../../lib/types";
+import type { FolderTreeNode, PageSummary, Tree } from "../../../lib/types";
 import { refreshSidebar } from "../../../lib/skillNavigationCache";
 import { useFilePins } from "../../../lib/filePins";
-import { openInNewTab, type NavigateOptions } from "../../../lib/linkNavigation";
+import {
+  openInNewTab,
+  type NavigateOptions,
+} from "../../../lib/linkNavigation";
 import { useRecents } from "../../../lib/pins";
 import { FileBrowserSkeleton } from "../../SkeletonStates";
 import EditableTitle from "../EditableTitle";
@@ -47,6 +55,11 @@ interface Props {
   // Base path for folder links. Defaults to the plain Files folder route;
   // the skill browser passes its own route so navigation stays in skill-land.
   folderHrefBase?: string;
+  breadcrumbs?: { label: string; href?: string }[];
+  hiddenItemIds?: readonly string[];
+  intro?: ReactNode;
+  itemsHeading?: string;
+  supportingFilesMode?: boolean;
 }
 
 // Mime type carried by drag events to identify a file-browser drag. Keeps the
@@ -69,7 +82,15 @@ type Scope = "mine" | "shared";
 
 const VIEW_STORAGE_KEY = "stash_files_view";
 
-export default function FileBrowser({ folderId, folderHrefBase }: Props) {
+export default function FileBrowser({
+  folderId,
+  folderHrefBase,
+  breadcrumbs,
+  hiddenItemIds = [],
+  intro,
+  itemsHeading,
+  supportingFilesMode = false,
+}: Props) {
   const router = useRouter();
   const confirm = useConfirm();
 
@@ -106,10 +127,12 @@ export default function FileBrowser({ folderId, folderHrefBase }: Props) {
 
   // Restore last-used view from localStorage on mount.
   useEffect(() => {
+    if (supportingFilesMode) return;
     if (typeof window === "undefined") return;
     const saved = window.localStorage.getItem(VIEW_STORAGE_KEY) as View | null;
-    if (saved === "list" || saved === "column" || saved === "grid") setView(saved);
-  }, []);
+    if (saved === "list" || saved === "column" || saved === "grid")
+      setView(saved);
+  }, [supportingFilesMode]);
 
   function setViewPersisted(next: View) {
     setView(next);
@@ -124,9 +147,11 @@ export default function FileBrowser({ folderId, folderHrefBase }: Props) {
   // the drop overlay steady until the pointer truly leaves the browser.
   const dropDepth = useRef(0);
   const [dropActive, setDropActive] = useState(false);
-  const [undo, setUndo] = useState<{ kind: "page" | "file"; id: string; name: string } | null>(
-    null,
-  );
+  const [undo, setUndo] = useState<{
+    kind: "page" | "file";
+    id: string;
+    name: string;
+  } | null>(null);
 
   // Auto-dismiss the Undo toast after 10s. Matches the gmail-style window.
   useEffect(() => {
@@ -184,7 +209,7 @@ export default function FileBrowser({ folderId, folderHrefBase }: Props) {
         const linkedTableIds = new Set(
           allFiles
             .map((file) => file.linked_table_id)
-            .filter((tableId): tableId is string => !!tableId)
+            .filter((tableId): tableId is string => !!tableId),
         );
         setRootTables(
           tablesResp.tables
@@ -227,6 +252,7 @@ export default function FileBrowser({ folderId, folderHrefBase }: Props) {
   }, [tree, rootFiles, rootTables]);
 
   const items: GridItem[] = useMemo(() => {
+    const hidden = new Set(hiddenItemIds);
     if (folderId) {
       if (!contents) return [];
       return [
@@ -245,10 +271,10 @@ export default function FileBrowser({ folderId, folderHrefBase }: Props) {
             size_bytes: f.size_bytes,
             linked_table_id: f.linked_table_id ?? null,
             created_at: f.created_at,
-          })
+          }),
         ),
         ...contents.tables.map((t) => tableToGridItem(t)),
-      ];
+      ].filter((item) => !hidden.has(item.id));
     }
     if (!tree) return [];
     return [
@@ -259,25 +285,22 @@ export default function FileBrowser({ folderId, folderHrefBase }: Props) {
         subtitle: subtitleForFolder(
           sub.pages?.length ?? 0,
           // file count isn't returned in the tree; approximate as 0
-          0
+          0,
         ),
         updatedAt: sub.updated_at,
       })),
       ...tree.pages.map((p: PageSummary) => pageToGridItem(p)),
       ...rootFiles,
       ...rootTables,
-    ];
-  }, [folderId, contents, tree, rootFiles, rootTables]);
+    ].filter((item) => !hidden.has(item.id));
+  }, [folderId, contents, tree, rootFiles, rootTables, hiddenItemIds]);
 
   // Every folder/page/file you own, flattened, so Pinned + Recent can
   // resolve and surface items that live anywhere — not just at the root.
   const allItems: GridItem[] = useMemo(() => {
     if (!tree) return [];
     const folders = flattenFolders(tree.folders);
-    const pages = [
-      ...tree.pages,
-      ...folders.flatMap((f) => f.pages ?? []),
-    ];
+    const pages = [...tree.pages, ...folders.flatMap((f) => f.pages ?? [])];
     return [
       ...folders.map((sub) => ({
         kind: "folder" as const,
@@ -311,7 +334,9 @@ export default function FileBrowser({ folderId, folderHrefBase }: Props) {
   const recentItems = useMemo(() => {
     return recents
       .map((entry) => itemById.get(entry.object_id))
-      .filter((item): item is GridItem => !!item && !pins.pinnedSet.has(item.id))
+      .filter(
+        (item): item is GridItem => !!item && !pins.pinnedSet.has(item.id),
+      )
       .slice(0, 8);
   }, [recents, itemById, pins.pinnedSet]);
 
@@ -323,21 +348,24 @@ export default function FileBrowser({ folderId, folderHrefBase }: Props) {
 
   // Move a single folder/page/file into the target folder (or root when
   // targetFolderId === null). No refresh — callers batch that.
-  async function moveOne(payload: FBDragPayload, targetFolderId: string | null) {
+  async function moveOne(
+    payload: FBDragPayload,
+    targetFolderId: string | null,
+  ) {
     if (payload.kind === "folder" && payload.id === targetFolderId) return;
     if (payload.kind === "folder") {
       await updateFolder(
         payload.id,
         targetFolderId === null
           ? { move_to_root: true }
-          : { parent_folder_id: targetFolderId }
+          : { parent_folder_id: targetFolderId },
       );
     } else if (payload.kind === "page" || payload.kind === "html") {
       await updatePage(
         payload.id,
         targetFolderId === null
           ? { move_to_root: true }
-          : { folder_id: targetFolderId }
+          : { folder_id: targetFolderId },
       );
     } else if (payload.kind === "datatable") {
       // Standalone tables live in their own `tables` table.
@@ -345,7 +373,7 @@ export default function FileBrowser({ folderId, folderHrefBase }: Props) {
         payload.id,
         targetFolderId === null
           ? { move_to_root: true }
-          : { folder_id: targetFolderId }
+          : { folder_id: targetFolderId },
       );
     } else {
       // A "table" item here is a CSV file linked to a table — it lives in the
@@ -354,12 +382,15 @@ export default function FileBrowser({ folderId, folderHrefBase }: Props) {
         payload.id,
         targetFolderId === null
           ? { move_to_root: true }
-          : { folder_id: targetFolderId }
+          : { folder_id: targetFolderId },
       );
     }
   }
 
-  async function reparent(payload: FBDragPayload, targetFolderId: string | null) {
+  async function reparent(
+    payload: FBDragPayload,
+    targetFolderId: string | null,
+  ) {
     try {
       await moveOne(payload, targetFolderId);
       await refreshAll();
@@ -369,7 +400,10 @@ export default function FileBrowser({ folderId, folderHrefBase }: Props) {
   }
 
   // Move every dragged item into the target folder, then refresh once.
-  async function reparentMany(payloads: FBDragPayload[], targetFolderId: string | null) {
+  async function reparentMany(
+    payloads: FBDragPayload[],
+    targetFolderId: string | null,
+  ) {
     try {
       for (const payload of payloads) await moveOne(payload, targetFolderId);
       await refreshAll();
@@ -541,7 +575,8 @@ export default function FileBrowser({ folderId, folderHrefBase }: Props) {
         } else if (item.kind === "datatable") {
           await deleteTable(item.id);
         } else {
-          const kind = item.kind === "page" || item.kind === "html" ? "page" : "file";
+          const kind =
+            item.kind === "page" || item.kind === "html" ? "page" : "file";
           await trashItem(kind, item.id);
         }
       }
@@ -569,7 +604,7 @@ export default function FileBrowser({ folderId, folderHrefBase }: Props) {
   async function renameItem(
     kind: "folder" | "page" | "html" | "table" | "datatable" | "file",
     id: string,
-    next: string
+    next: string,
   ): Promise<string> {
     if (kind === "folder") {
       const updated = await updateFolder(id, { name: next });
@@ -605,6 +640,14 @@ export default function FileBrowser({ folderId, folderHrefBase }: Props) {
       kind: item.kind,
       id: item.id,
     }));
+  const itemsClassName =
+    view === "column"
+      ? itemsHeading
+        ? "h-[68vh]"
+        : "mt-5 h-[68vh]"
+      : itemsHeading
+        ? ""
+        : "mt-5";
 
   const showShared = !folderId && scope === "shared";
 
@@ -645,9 +688,35 @@ export default function FileBrowser({ folderId, folderHrefBase }: Props) {
       )}
       <div className="mx-auto max-w-5xl px-8 py-7">
         {!folderId && <ScopeTabs scope={scope} onChange={setScope} />}
-        {/* Header: the page path lives in AppShell's top-bar breadcrumb, so we
-            only show the current folder name (rename target) or the section
-            title here, alongside the view toggle + create actions. */}
+        {folderId && breadcrumbs && (
+          <nav
+            className="flex min-h-6 items-center gap-1 text-[13px]"
+            aria-label="Folder location"
+          >
+            {breadcrumbs.map((crumb, index) => (
+              <span
+                key={`${crumb.label}-${index}`}
+                className="flex min-w-0 items-center gap-1"
+              >
+                {index > 0 && (
+                  <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                )}
+                {crumb.href ? (
+                  <Link
+                    href={crumb.href}
+                    className="max-w-48 truncate font-medium text-muted-foreground hover:text-foreground"
+                  >
+                    {crumb.label}
+                  </Link>
+                ) : (
+                  <span className="max-w-48 truncate font-medium text-foreground">
+                    {crumb.label}
+                  </span>
+                )}
+              </span>
+            ))}
+          </nav>
+        )}
         {!showShared && (
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
             {folderId && contents?.folder ? (
@@ -662,19 +731,23 @@ export default function FileBrowser({ folderId, folderHrefBase }: Props) {
               <div />
             )}
             <div className="flex flex-wrap items-center gap-2">
-              <ViewToggle view={view} onChange={setViewPersisted} />
+              {!supportingFilesMode && (
+                <ViewToggle view={view} onChange={setViewPersisted} />
+              )}
               <button
                 type="button"
                 onClick={handleUploadFile}
                 className="cursor-pointer rounded-md border border-border bg-base px-2.5 py-1 text-[12px] font-medium text-foreground hover:bg-raised"
               >
-                + Upload
+                {supportingFilesMode ? "Add files" : "+ Upload"}
               </button>
-              <NewMenu
-                onNewFolder={handleNewFolder}
-                onNewPage={handleNewPage}
-                onNewTable={handleNewTable}
-              />
+              {!supportingFilesMode && (
+                <NewMenu
+                  onNewFolder={handleNewFolder}
+                  onNewPage={handleNewPage}
+                  onNewTable={handleNewTable}
+                />
+              )}
             </div>
           </div>
         )}
@@ -684,6 +757,8 @@ export default function FileBrowser({ folderId, folderHrefBase }: Props) {
             {error}
           </div>
         )}
+
+        {intro}
 
         {showShared ? (
           <div className="mt-5">
@@ -703,7 +778,12 @@ export default function FileBrowser({ folderId, folderHrefBase }: Props) {
               />
             )}
 
-            <div className={view === "column" ? "mt-5 h-[68vh]" : "mt-5"}>
+            {itemsHeading && (
+              <h2 className="mb-2 mt-8 font-display text-[15px] font-semibold text-foreground">
+                {itemsHeading}
+              </h2>
+            )}
+            <div className={itemsClassName}>
               {view === "list" && (
                 <ItemsList
                   items={items}
@@ -747,9 +827,7 @@ export default function FileBrowser({ folderId, folderHrefBase }: Props) {
       {selectedItems.length > 0 && (
         <div className="pointer-events-none fixed inset-x-0 bottom-6 z-50 flex justify-center">
           <div className="pointer-events-auto flex items-center gap-3 rounded-lg border border-border bg-foreground px-4 py-2 text-[13px] text-background shadow-lg">
-            <span className="font-medium">
-              {selectedItems.length} selected
-            </span>
+            <span className="font-medium">{selectedItems.length} selected</span>
             <span className="hidden text-[11.5px] text-background/60 sm:inline">
               drag onto a folder to move
             </span>
@@ -798,7 +876,13 @@ export default function FileBrowser({ folderId, folderHrefBase }: Props) {
 }
 
 // Drive-style root selector: your own files vs items shared with you.
-function ScopeTabs({ scope, onChange }: { scope: Scope; onChange: (next: Scope) => void }) {
+function ScopeTabs({
+  scope,
+  onChange,
+}: {
+  scope: Scope;
+  onChange: (next: Scope) => void;
+}) {
   const tabs: { key: Scope; label: string }[] = [
     { key: "mine", label: "My files" },
     { key: "shared", label: "Shared with me" },
@@ -867,7 +951,10 @@ function NewMenu({
         aria-expanded={open}
         className="cursor-pointer rounded-md border border-border bg-base px-2.5 py-1 text-[12px] font-medium text-foreground hover:bg-raised"
       >
-        + New <span aria-hidden className="text-[10px]">▾</span>
+        + New{" "}
+        <span aria-hidden className="text-[10px]">
+          ▾
+        </span>
       </button>
       {open && (
         <div className="absolute right-0 top-full z-30 mt-1 w-44 overflow-hidden rounded-md border border-border bg-surface py-1 text-[12.5px] shadow-lg">
@@ -890,7 +977,13 @@ function NewMenu({
   );
 }
 
-function ViewToggle({ view, onChange }: { view: View; onChange: (next: View) => void }) {
+function ViewToggle({
+  view,
+  onChange,
+}: {
+  view: View;
+  onChange: (next: View) => void;
+}) {
   const opts: { key: View; label: string }[] = [
     { key: "list", label: "List" },
     { key: "column", label: "Column" },
@@ -907,7 +1000,9 @@ function ViewToggle({ view, onChange }: { view: View; onChange: (next: View) => 
             onClick={() => onChange(opt.key)}
             className={
               "cursor-pointer rounded px-2 py-[3px] " +
-              (active ? "bg-raised font-semibold text-foreground" : "text-muted-foreground hover:text-foreground")
+              (active
+                ? "bg-raised font-semibold text-foreground"
+                : "text-muted-foreground hover:text-foreground")
             }
           >
             {opt.label}
@@ -926,7 +1021,9 @@ function fileToGridItem(file: {
   linked_table_id?: string | null;
   created_at?: string;
 }): GridItem {
-  const isCsvLinked = !!(file.content_type.includes("csv") && file.linked_table_id);
+  const isCsvLinked = !!(
+    file.content_type.includes("csv") && file.linked_table_id
+  );
   return {
     kind: isCsvLinked ? "table" : "file",
     id: file.id,
@@ -939,7 +1036,11 @@ function fileToGridItem(file: {
   };
 }
 
-function tableToGridItem(table: { id: string; name: string; row_count: number | null }): GridItem {
+function tableToGridItem(table: {
+  id: string;
+  name: string;
+  row_count: number | null;
+}): GridItem {
   const rows = table.row_count ?? 0;
   return {
     kind: "datatable",
@@ -966,7 +1067,10 @@ function pageToGridItem(page: {
 }
 
 function flattenFolders(folders: FolderTreeNode[]): FolderTreeNode[] {
-  return folders.flatMap((folder) => [folder, ...flattenFolders(folder.folders ?? [])]);
+  return folders.flatMap((folder) => [
+    folder,
+    ...flattenFolders(folder.folders ?? []),
+  ]);
 }
 
 function subtitleForFolder(pages: number, files: number): string {

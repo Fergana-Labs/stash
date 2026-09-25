@@ -101,6 +101,14 @@ def _no_first_day_curator_dispatch(monkeypatch):
     monkeypatch.setattr(first_day_curator_tick, "delay", lambda *a, **k: None)
 
 
+@pytest.fixture(autouse=True)
+def _no_title_dispatch(monkeypatch):
+    """Title queueing is tested explicitly; API tests do not call a real broker."""
+    from backend.tasks.session_titles import generate_session_title
+
+    monkeypatch.setattr(generate_session_title, "delay", lambda *a, **k: None)
+
+
 @pytest_asyncio.fixture(autouse=True)
 async def _cleanup(_db_pool):
     """Truncate all user-data tables after each test for full isolation."""

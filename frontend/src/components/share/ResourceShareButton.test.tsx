@@ -22,6 +22,7 @@ vi.mock("../../lib/api", () => ({
 const currentUser = {
   id: "user-1",
   developer_platform_only: false,
+  personal_integrations_enabled: false,
   name: "henry",
   display_name: "Henry Dowling",
   email: "henry@example.com",
@@ -57,6 +58,29 @@ describe("ResourceShareButton", () => {
 
   afterEach(() => {
     cleanup();
+  });
+
+  it("keeps Skill folder sharing private when publishing owns public links", async () => {
+    render(<ResourceShareButton objectType="folder" objectId="skill-1"
+      resourceName="My Skill" resourceUrlPath="/skills/folder/skill-1"
+      currentUser={currentUser} allowPublicLink={false} />);
+    fireEvent.click(screen.getByRole("button", { name: "Share" }));
+    expect(await screen.findByText("Ada Lovelace")).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Add people" })).toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "General access" })).not.toBeInTheDocument();
+    expect(getGeneralAccess).toHaveBeenCalledWith("folder", "skill-1");
+  });
+
+  it("lets Skill owners see and revoke an existing folder public grant", async () => {
+    vi.mocked(getGeneralAccess).mockResolvedValue("read");
+    render(<ResourceShareButton objectType="folder" objectId="skill-1"
+      resourceName="My Skill" resourceUrlPath="/shared-skills/skill-1"
+      currentUser={currentUser} allowPublicLink={false} />);
+    fireEvent.click(screen.getByRole("button", { name: "Share" }));
+    expect(await screen.findByText("Files are publicly accessible")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Remove public file access" }));
+    await waitFor(() => expect(updateGeneralAccess).toHaveBeenCalledWith("folder", "skill-1", "none"));
+    expect(await screen.findByText("Restricted")).toBeInTheDocument();
   });
 
   it("shows file access and copies the canonical file URL", async () => {

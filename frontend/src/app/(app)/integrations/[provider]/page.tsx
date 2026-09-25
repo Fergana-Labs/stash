@@ -41,14 +41,14 @@ import {
   secondaryButton,
 } from "@/components/integrations/pickers";
 import PaywallModal from "@/components/PaywallModal";
+import IntegrationGate from "@/components/integrations/IntegrationGate";
+import { useScope } from "@/lib/scope-store";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { routes } from "@/lib/workspace-routes";
-import { useTabTitle } from "@/lib/workspace-store";
 
 // How often a row re-checks a source that is mid-sync, and how many times before
 // it gives up. A sync that hasn't settled in ~5 minutes is wedged; polling it for
@@ -60,13 +60,16 @@ const SYNC_POLL_MAX_ATTEMPTS = 100;
 
 export default function IntegrationRoute() {
   const params = useParams();
-  return <IntegrationDetail provider={params.provider as string} />;
+  return (
+    <IntegrationGate>
+      <IntegrationDetail provider={params.provider as string} />
+    </IntegrationGate>
+  );
 }
 
-// The integration manager for one provider. Rendered both as the
-// /integrations/[provider] route and inside a workbench "tool" tab (clicking
-// a connector in the Tools sidebar), so the provider comes in as a prop.
 export function IntegrationDetail({ provider }: { provider: string }) {
+  const scope = useScope();
+  const sourcesUrl = scope?.view === "developer" ? "/developer/sources" : "/settings/integrations";
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -82,7 +85,6 @@ export function IntegrationDetail({ provider }: { provider: string }) {
   const confirm = useConfirm();
 
   const connector = connectorForProvider(provider);
-  useTabTitle("tool", provider, connector?.label);
 
   const [status, setStatus] = useState<IntegrationStatus | null>(null);
   // null until the server list loads; false when the server omitted this
@@ -144,8 +146,8 @@ export function IntegrationDetail({ provider }: { provider: string }) {
           <h1 className="font-display text-[20px] font-semibold text-foreground">Unknown integration</h1>
           <p className="mt-2 text-[13px] text-muted-foreground">
             No integration matches “{provider}”.{" "}
-            <Link href="/settings" className="text-brand hover:underline">
-              Manage in Settings
+            <Link href={sourcesUrl} className="text-brand hover:underline">
+              Manage sources
             </Link>
             .
           </p>
@@ -335,7 +337,7 @@ export function IntegrationDetail({ provider }: { provider: string }) {
                     : null}
                 </span>
                 {!connected && (
-                  <Link href={routes.extension} className="text-[12.5px] font-semibold text-brand hover:underline">
+                  <Link href="/extension" className="text-[12.5px] font-semibold text-brand hover:underline">
                     Get the extension
                   </Link>
                 )}
@@ -408,8 +410,8 @@ export function IntegrationDetail({ provider }: { provider: string }) {
         {/* Subtitle: what this integration does + a quiet Settings link. */}
         <div className="mb-6 ml-[42px] mt-0.5 text-[12.5px] text-muted-foreground">
           {connector.blurb}{" "}
-          <Link href="/settings" className="font-semibold text-brand hover:underline">
-            Manage in Settings
+          <Link href={sourcesUrl} className="font-semibold text-brand hover:underline">
+            Manage sources
           </Link>
         </div>
 
@@ -420,7 +422,7 @@ export function IntegrationDetail({ provider }: { provider: string }) {
                 extensionLastPush!,
               ).toLocaleDateString()} — check that it's installed and that you're signed in to ${connector.label}.`}
             </span>
-            <Link href={routes.extension} className={secondaryButton()}>
+            <Link href="/extension" className={secondaryButton()}>
               Extension setup
             </Link>
           </div>
@@ -566,7 +568,7 @@ export function IntegrationDetail({ provider }: { provider: string }) {
             <div className="py-3 text-[12.5px] text-muted-foreground">
               {isExtension ? (
                 <>
-                  <Link href={routes.extension} className="font-semibold text-brand hover:underline">
+                  <Link href="/extension" className="font-semibold text-brand hover:underline">
                     Install the Stash browser extension
                   </Link>{" "}
                   and save on {connector.label} — your items will appear here.

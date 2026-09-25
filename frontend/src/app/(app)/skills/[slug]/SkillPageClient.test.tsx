@@ -19,7 +19,6 @@ import {
   getPublicSkill,
   listObjectShares,
   shareObjectByEmail,
-  unpublishSkill,
   updateSkill,
   type PublicSkillDetail,
 } from "@/lib/api";
@@ -65,9 +64,7 @@ vi.mock("../../../../lib/api", () => ({
   listObjectShares: vi.fn(),
   getGeneralAccess: vi.fn(),
   updateGeneralAccess: vi.fn(),
-  publishSkillFolder: vi.fn(),
   shareObjectByEmail: vi.fn(),
-  unpublishSkill: vi.fn(),
   unshareObject: vi.fn(),
   updateSkill: vi.fn(),
   uploadFile: vi.fn(),
@@ -170,77 +167,6 @@ describe("SkillPageClient", () => {
     cleanup();
   });
 
-  it("renders the publish popover in the app header with a copy-link affordance", async () => {
-    renderSkill(<SkillPageClient slug="shared-skill" />);
-
-    const publishButton = await screen.findByRole("button", { name: "Published" });
-    expect(
-      screen.getByRole("button", { name: "Copy agent handoff link" }),
-    ).toBeInTheDocument();
-    expect(publishButton.closest("header")).not.toBeNull();
-
-    fireEvent.click(publishButton);
-    // Popover renders a "Copy" button for the public URL; click it.
-    fireEvent.click(await screen.findByRole("button", { name: "Copy" }));
-
-    await waitFor(() =>
-      expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
-        `${window.location.origin}/skills/shared-skill`,
-      ),
-    );
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: "Copied" })).toBeInTheDocument(),
-    );
-  });
-
-  it("copies an agent-readable handoff link from the app header", async () => {
-    renderSkill(<SkillPageClient slug="shared-skill" />);
-
-    const handoffButton = await screen.findByRole("button", {
-      name: "Copy agent handoff link",
-    });
-    fireEvent.click(handoffButton);
-
-    await waitFor(() =>
-      expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
-        `${window.location.origin}/api/v1/skills/shared-skill?format=text`,
-      ),
-    );
-    await waitFor(() =>
-      expect(
-        screen.getByRole("button", { name: "Copy agent handoff link" }),
-      ).toHaveTextContent("Copied"),
-    );
-  });
-
-  it("toggles the Discover listing from the publish popover", async () => {
-    renderSkill(<SkillPageClient slug="shared-skill" />);
-
-    fireEvent.click(await screen.findByRole("button", { name: "Published" }));
-    const dialog = await screen.findByRole("dialog", { name: "Publish skill" });
-    fireEvent.click(within(dialog).getByLabelText("List on Discover"));
-
-    await waitFor(() =>
-      expect(updateSkill).toHaveBeenCalledWith("skill-1", { discoverable: true }),
-    );
-  });
-
-  it("unpublishes from the publish popover", async () => {
-    vi.mocked(unpublishSkill).mockResolvedValue(undefined);
-
-    renderSkill(<SkillPageClient slug="shared-skill" />);
-
-    fireEvent.click(await screen.findByRole("button", { name: "Published" }));
-    const dialog = await screen.findByRole("dialog", { name: "Publish skill" });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Unpublish" }));
-    const confirmDialog = await screen.findByRole("alertdialog", {
-      name: "Unpublish this skill?",
-    });
-    fireEvent.click(within(confirmDialog).getByRole("button", { name: "Unpublish" }));
-
-    await waitFor(() => expect(unpublishSkill).toHaveBeenCalledWith("skill-1"));
-  });
-
   it("shares the skill folder person-to-person via the generic share button", async () => {
     renderSkill(<SkillPageClient slug="shared-skill" />);
 
@@ -285,6 +211,21 @@ describe("SkillPageClient", () => {
     expect(
       screen.queryByRole("link", { name: "Skill settings" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("links signed-in viewers back to their Skills list", async () => {
+    renderSkill(<SkillPageClient slug="shared-skill" />);
+
+    expect(await screen.findByRole("link", { name: "← Skills" })).toHaveAttribute(
+      "href",
+      "/skills",
+    );
+
+    cleanup();
+    authState.user = null;
+    renderSkill(<SkillPageClient slug="shared-skill" />);
+    await screen.findByText("Shared Skill");
+    expect(screen.queryByRole("link", { name: "← Skills" })).not.toBeInTheDocument();
   });
 
   it("shows the CLI install command with a copy affordance", async () => {

@@ -162,7 +162,10 @@ def parse_jsonl_to_events(
         if not isinstance(obj, dict):
             continue
 
-        entry_type = obj.get("type")
+        # Claude Code lines carry {"type": "user"|"assistant", ...}; Cursor
+        # lines carry the same message shape but name the speaker with a
+        # top-level "role" and no "type" key.
+        entry_type = obj.get("type") or obj.get("role")
         if entry_type == "response_item":
             events.extend(
                 _parse_codex_response_item(obj, session_id=session_id, agent_name=agent_name)

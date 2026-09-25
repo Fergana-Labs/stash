@@ -48,12 +48,14 @@ export default function ResourceShareButton({
   objectId,
   resourceName,
   resourceUrlPath,
+  allowPublicLink = true,
   currentUser,
 }: {
   objectType: SharedObjectType;
   objectId: string;
   resourceName: string;
   resourceUrlPath: string;
+  allowPublicLink?: boolean;
   currentUser: User;
 }) {
   const [open, setOpen] = useState(false);
@@ -77,6 +79,7 @@ export default function ResourceShareButton({
           objectId={objectId}
           resourceName={resourceName}
           resourceUrlPath={resourceUrlPath}
+          allowPublicLink={allowPublicLink}
           currentUser={currentUser}
           boundaryRef={containerRef}
           onClose={() => setOpen(false)}
@@ -96,6 +99,7 @@ export function ResourceShareDialog({
   objectId,
   resourceName,
   resourceUrlPath,
+  allowPublicLink = true,
   currentUser,
   boundaryRef,
   onClose,
@@ -104,6 +108,7 @@ export function ResourceShareDialog({
   objectId: string;
   resourceName: string;
   resourceUrlPath: string;
+  allowPublicLink?: boolean;
   currentUser: User;
   boundaryRef: RefObject<HTMLDivElement | null>;
   onClose: () => void;
@@ -383,7 +388,7 @@ export function ResourceShareDialog({
             )}
           </span>
           <span className="min-w-0 flex-1">
-            {supportsGeneralAccess ? (
+            {supportsGeneralAccess && allowPublicLink ? (
               <>
                 <Select
                   aria-label="General access" portal={false}
@@ -409,15 +414,24 @@ export function ResourceShareDialog({
             ) : (
               <>
                 <span className="block text-[13px] font-medium text-foreground">
-                  Restricted
+                  {generalAccess === "none" ? "Restricted" : "Files are publicly accessible"}
                 </span>
                 <span className="block truncate text-[12px] text-muted-foreground">
-                  Only people with access can open this link
+                  {generalAccess === "none"
+                    ? "Only people with access can open this link"
+                    : "This folder also grants public access to its files."}
                 </span>
+                {generalAccess !== "none" && (
+                  <button type="button" disabled={savingAccess}
+                    onClick={() => void changeGeneralAccess("none")}
+                    className="mt-2 text-[12px] font-medium text-brand hover:underline disabled:opacity-50">
+                    Remove public file access
+                  </button>
+                )}
               </>
             )}
           </span>
-          {supportsGeneralAccess && generalAccess !== "none" && (
+          {supportsGeneralAccess && allowPublicLink && generalAccess !== "none" && (
             <Select
               aria-label="Link role" portal={false}
               value={generalAccess}

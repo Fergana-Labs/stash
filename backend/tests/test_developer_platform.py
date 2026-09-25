@@ -2,16 +2,16 @@
 
 What matters here:
 - Activation is self-serve and idempotent: a solo developer gets a one-man,
-  invite-only (NULL-domain) workspace with the wiki and user-wikis folders; the
+  invite-only (NULL-domain) workspace with the skill and user-skills folders; the
   creator is an explicit member, since no domain rule will ever cover them.
 - The user contract: `user_id` on an events upload names the developer's own
-  id for their end user. First sight creates the user and their wiki folder;
+  id for their end user. First sight creates the user and their skill folder;
   the session row is stamped set-once, so a user's session can never migrate to
   another user later.
 - User ids only work on developer workspace scopes — a personal upload
   carrying user_id fails loud, it never silently drops the user.
 - The user-scoped VFS shows one user's world and nothing else's: the shared
-  wiki at /memory, that user's own wiki and files under /files, that user's
+  skill at /skills/shared, that user's own skill and files under /files, that user's
   transcripts under /sessions. Another user's material must be invisible —
   that is the entire product promise to the developer's customers.
 """
@@ -76,8 +76,8 @@ async def test_activate_creates_one_man_workspace(client: AsyncClient, pool):
     api_key, _, workspace = await _developer(client)
 
     assert workspace["domain"] is None
-    assert workspace["external_wiki_folder_id"] is not None
-    assert workspace["end_user_wikis_folder_id"] is not None
+    assert workspace["external_skill_folder_id"] is not None
+    assert workspace["end_user_skills_folder_id"] is not None
 
     # The creator is an explicit member: the workspace scope works for them.
     resp = await client.get(
@@ -105,7 +105,7 @@ async def test_activate_is_idempotent(client: AsyncClient):
     )
     assert resp.status_code == 200
     again = resp.json()
-    assert again["external_wiki_folder_id"] == workspace["external_wiki_folder_id"]
+    assert again["external_skill_folder_id"] == workspace["external_skill_folder_id"]
 
 
 # --- The user write contract ---
@@ -128,8 +128,8 @@ async def test_user_upload_creates_end_user_and_stamps_session(client: AsyncClie
     )
     assert end_user is not None
     assert end_user["name"] == "Riverside Truck"
-    assert end_user["share_wiki"] is True
-    assert end_user["wiki_folder_id"] is not None
+    assert end_user["share_skill"] is True
+    assert end_user["skill_folder_id"] is not None
 
     session = await pool.fetchrow(
         "SELECT end_user_id FROM sessions WHERE owner_user_id = $1 AND session_id = 'sess-riverside-1'",
@@ -192,19 +192,19 @@ async def test_user_vfs_isolates_users(client: AsyncClient, pool):
         ],
     )
 
-    # Seed a wiki page (shared) and a page in each user's own wiki.
+    # Seed a skill page (shared) and a page in each user's own skill.
     end_users = {
         r["external_id"]: r
         for r in await pool.fetch(
-            "SELECT external_id, wiki_folder_id FROM end_users WHERE workspace_id = $1",
+            "SELECT external_id, skill_folder_id FROM end_users WHERE workspace_id = $1",
             uuid.UUID(workspace["id"]),
         )
     }
     scope_id = uuid.UUID(workspace["scope_user_id"])
     for name, folder_id in [
-        ("Fault codes", uuid.UUID(workspace["external_wiki_folder_id"])),
-        ("Acme notes", end_users["org_acme"]["wiki_folder_id"]),
-        ("Beta notes", end_users["org_beta"]["wiki_folder_id"]),
+        ("Fault codes", uuid.UUID(workspace["external_skill_folder_id"])),
+        ("Acme notes", end_users["org_acme"]["skill_folder_id"]),
+        ("Beta notes", end_users["org_beta"]["skill_folder_id"]),
     ]:
         await pool.execute(
             "INSERT INTO pages (owner_user_id, name, content_markdown, folder_id, created_by) "
@@ -222,7 +222,7 @@ async def test_user_vfs_isolates_users(client: AsyncClient, pool):
     assert resp.status_code == 200, resp.text
     listing = resp.json()["stdout"]
 
-    # Acme's world: the shared wiki, its own wiki, its own session.
+    # Acme's world: the shared skill, its own skill, its own session.
     assert "Fault codes" in listing
     assert "Acme notes" in listing
     assert "sess-acme-1" in listing or "hello from sess-acme-1" in listing
@@ -234,12 +234,12 @@ async def test_user_vfs_isolates_users(client: AsyncClient, pool):
 
 
 @pytest.mark.asyncio
-async def test_developer_workspace_without_user_id_reads_only_shared_wiki(
+async def test_developer_workspace_without_user_id_reads_only_shared_skill(
     client: AsyncClient, pool
 ):
     """A developer can search shared product knowledge without impersonating an
-    end user. Omitting user_id must narrow access to the shared wiki; it must
-    never expose any user's private wiki or transcripts."""
+    end user. Omitting user_id must narrow access to the shared skill; it must
+    never expose any user's private skill or transcripts."""
     api_key, _, workspace = await _developer(client)
     machine_key = await _mint_workspace_key(client, api_key, workspace)
     await _push(
@@ -255,15 +255,15 @@ async def test_developer_workspace_without_user_id_reads_only_shared_wiki(
     end_users = {
         r["external_id"]: r
         for r in await pool.fetch(
-            "SELECT external_id, wiki_folder_id FROM end_users WHERE workspace_id = $1",
+            "SELECT external_id, skill_folder_id FROM end_users WHERE workspace_id = $1",
             uuid.UUID(workspace["id"]),
         )
     }
     scope_id = uuid.UUID(workspace["scope_user_id"])
     for name, folder_id in [
-        ("Fault codes", uuid.UUID(workspace["external_wiki_folder_id"])),
-        ("Acme notes", end_users["org_acme"]["wiki_folder_id"]),
-        ("Beta notes", end_users["org_beta"]["wiki_folder_id"]),
+        ("Fault codes", uuid.UUID(workspace["external_skill_folder_id"])),
+        ("Acme notes", end_users["org_acme"]["skill_folder_id"]),
+        ("Beta notes", end_users["org_beta"]["skill_folder_id"]),
     ]:
         await pool.execute(
             "INSERT INTO pages (owner_user_id, name, content_markdown, folder_id, created_by) "
@@ -290,19 +290,19 @@ async def test_developer_workspace_without_user_id_reads_only_shared_wiki(
 
 
 @pytest.mark.asyncio
-async def test_new_user_reads_the_shared_wiki_before_they_have_written(client: AsyncClient, pool):
+async def test_new_user_reads_the_shared_skill_before_they_have_written(client: AsyncClient, pool):
     """A customer's agent reads context before it records anything, so its very
     first call names a user that has no row yet. That has to work, and it has to
-    return the shared wiki: the accumulated cross-user knowledge is exactly what
+    return the shared skill: the accumulated cross-user knowledge is exactly what
     a brand-new customer benefits from on day one. Failing here would mean a
-    customer can only read the wiki after contributing to it."""
+    customer can only read the skill after contributing to it."""
     api_key, _, workspace = await _developer(client)
     machine_key = await _mint_workspace_key(client, api_key, workspace)
     await pool.execute(
         "INSERT INTO pages (owner_user_id, name, content_markdown, folder_id, created_by) "
         "VALUES ($1, 'Fault codes', 'body', $2, $1)",
         uuid.UUID(workspace["scope_user_id"]),
-        uuid.UUID(workspace["external_wiki_folder_id"]),
+        uuid.UUID(workspace["external_skill_folder_id"]),
     )
 
     resp = await client.post(
@@ -313,8 +313,8 @@ async def test_new_user_reads_the_shared_wiki_before_they_have_written(client: A
     assert resp.status_code == 200, resp.text
     listing = resp.json()["stdout"]
     assert "Fault codes" in listing
-    # It owns nothing yet — no wiki folder, no sessions of its own.
-    assert "wiki" not in listing
+    # It owns nothing yet — no skill folder, no sessions of its own.
+    assert "/skills/personal" not in listing
 
 
 @pytest.mark.asyncio
@@ -640,7 +640,7 @@ async def test_console_lists_users_with_counts(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_console_wiki_opt_out(client: AsyncClient):
+async def test_console_skill_opt_out(client: AsyncClient):
     api_key, _, workspace = await _developer(client)
     machine_key = await _mint_workspace_key(client, api_key, workspace)
     await _push(client, machine_key, [_event("s1", user_id="org_acme", user_name="Acme")])
@@ -649,16 +649,16 @@ async def test_console_wiki_opt_out(client: AsyncClient):
     end_user = (await client.get("/api/v1/me/users", headers=scope)).json()["users"][0]
 
     resp = await client.patch(
-        f"/api/v1/me/users/{end_user['id']}", json={"share_wiki": False}, headers=scope
+        f"/api/v1/me/users/{end_user['id']}", json={"share_skill": False}, headers=scope
     )
     assert resp.status_code == 200
-    assert resp.json()["share_wiki"] is False
+    assert resp.json()["share_skill"] is False
 
     # A member of a different workspace can't touch it.
     other_key, _, other_ws = await _developer(client)
     resp = await client.patch(
         f"/api/v1/me/users/{end_user['id']}",
-        json={"share_wiki": True},
+        json={"share_skill": True},
         headers={**_auth(other_key), "X-Stash-Scope": other_ws["scope_user_id"]},
     )
     assert resp.status_code == 403
@@ -694,8 +694,8 @@ async def test_console_sessions_labelled_by_user(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_console_files_split_by_wiki_and_user(client: AsyncClient, pool):
-    """The files view answers 'whose is this?' by construction: shared wiki
+async def test_console_files_split_by_skill_and_user(client: AsyncClient, pool):
+    """The files view answers 'whose is this?' by construction: shared skill
     material in one pile, each user's own pages in theirs — never mixed."""
     api_key, _, workspace = await _developer(client)
     machine_key = await _mint_workspace_key(client, api_key, workspace)
@@ -710,14 +710,14 @@ async def test_console_files_split_by_wiki_and_user(client: AsyncClient, pool):
     end_users = {
         r["external_id"]: r
         for r in await pool.fetch(
-            "SELECT external_id, wiki_folder_id FROM end_users WHERE workspace_id = $1",
+            "SELECT external_id, skill_folder_id FROM end_users WHERE workspace_id = $1",
             uuid.UUID(workspace["id"]),
         )
     }
     scope_id = uuid.UUID(workspace["scope_user_id"])
     for name, folder_id in [
-        ("Fault codes", uuid.UUID(workspace["external_wiki_folder_id"])),
-        ("Acme notes", end_users["org_acme"]["wiki_folder_id"]),
+        ("Fault codes", uuid.UUID(workspace["external_skill_folder_id"])),
+        ("Acme notes", end_users["org_acme"]["skill_folder_id"]),
     ]:
         await pool.execute(
             "INSERT INTO pages (owner_user_id, name, content_markdown, folder_id, created_by) "
@@ -733,10 +733,10 @@ async def test_console_files_split_by_wiki_and_user(client: AsyncClient, pool):
     )
     assert resp.status_code == 200, resp.text
     body = resp.json()
-    assert [p["name"] for p in body["wiki_pages"]] == ["Fault codes"]
+    assert {p["name"] for p in body["skill_pages"]} == {"Fault codes", "SKILL.md"}
     by_user = {u["external_id"]: u for u in body["users"]}
-    assert [p["name"] for p in by_user["org_acme"]["wiki_pages"]] == ["Acme notes"]
-    assert by_user["org_beta"]["wiki_pages"] == []
+    assert {p["name"] for p in by_user["org_acme"]["skill_pages"]} == {"Acme notes", "SKILL.md"}
+    assert [p["name"] for p in by_user["org_beta"]["skill_pages"]] == ["SKILL.md"]
 
 
 @pytest.mark.asyncio
@@ -805,8 +805,8 @@ async def test_backfill_dispatches_full_history_without_touching_watermark(
 
 
 @pytest.mark.asyncio
-async def test_user_wiki_graph(client: AsyncClient, pool):
-    """A user's own wiki renders as a graph like the shared one — and only
+async def test_user_skill_graph(client: AsyncClient, pool):
+    """A user's own skill renders as a graph like the shared one — and only
     theirs: another user's pages must not leak into it."""
     api_key, _, workspace = await _developer(client)
     machine_key = await _mint_workspace_key(client, api_key, workspace)
@@ -821,14 +821,14 @@ async def test_user_wiki_graph(client: AsyncClient, pool):
     end_users = {
         r["external_id"]: r
         for r in await pool.fetch(
-            "SELECT id, external_id, wiki_folder_id FROM end_users WHERE workspace_id = $1",
+            "SELECT id, external_id, skill_folder_id FROM end_users WHERE workspace_id = $1",
             uuid.UUID(workspace["id"]),
         )
     }
     scope_id = uuid.UUID(workspace["scope_user_id"])
     for name, folder_id in [
-        ("Acme notes", end_users["org_acme"]["wiki_folder_id"]),
-        ("Beta notes", end_users["org_beta"]["wiki_folder_id"]),
+        ("Acme notes", end_users["org_acme"]["skill_folder_id"]),
+        ("Beta notes", end_users["org_beta"]["skill_folder_id"]),
     ]:
         await pool.execute(
             "INSERT INTO pages (owner_user_id, name, content_markdown, folder_id, created_by) "
@@ -839,7 +839,7 @@ async def test_user_wiki_graph(client: AsyncClient, pool):
         )
 
     resp = await client.get(
-        f"/api/v1/me/users/{end_users['org_acme']['id']}/wiki-graph",
+        f"/api/v1/me/users/{end_users['org_acme']['id']}/skill-graph",
         headers={**_auth(api_key), "X-Stash-Scope": workspace["scope_user_id"]},
     )
     assert resp.status_code == 200, resp.text
@@ -912,3 +912,13 @@ async def test_key_list_and_revoke(client: AsyncClient, pool):
     # Revoking an already-revoked key is a 404, not a silent success.
     again = await client.delete(f"/api/v1/me/developer/keys/{keys[0]['id']}", headers=scope)
     assert again.status_code == 404
+
+
+def test_unknown_consent_fields_fail_instead_of_silently_ignoring_an_opt_out():
+    from pydantic import ValidationError
+
+    from backend.routers.developer import EndUserUpdateRequest
+
+    with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
+        EndUserUpdateRequest.model_validate({"share_wiki": False})
+    assert EndUserUpdateRequest.model_validate({"share_skill": False}).share_skill is False

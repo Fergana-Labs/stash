@@ -17,8 +17,15 @@ def test_skill_template_round_trips_yaml_sensitive_metadata():
         "name": "Release: web",
         "description": "Use for deploys:\nproduction only.",
     }
-    assert body == "# Release: web\n"
+    assert body == "# Release: web\n\nUse for deploys:\nproduction only.\n"
     skill_service.validate_skill_md(markdown)
+
+
+@pytest.mark.parametrize("body", ["", "\n", "# Deploy\n", "# Deployment\n", "Run tests.\n"])
+def test_skill_validation_does_not_judge_the_authors_markdown(body):
+    markdown = '---\nname: "Deploy"\ndescription: "Ship production."\n---\n\n' + body
+    skill_service.validate_skill_md(markdown)
+    assert skill_service.declared_skill(markdown)["name"] == "Deploy"
 
 
 @pytest.mark.parametrize(

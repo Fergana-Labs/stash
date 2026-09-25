@@ -38,7 +38,7 @@ const NAV: NavSection[] = [
           { href: "/docs/cli#authentication", label: "Authentication" },
           { href: "/docs/cli#files", label: "Files" },
           { href: "/docs/cli#sessions", label: "Sessions" },
-          { href: "/docs/cli#memory", label: "Memory" },
+          { href: "/docs/cli#skills-curation", label: "Skills curation" },
           { href: "/docs/cli#sources-search", label: "Sources & search" },
           { href: "/docs/cli#tables", label: "Tables" },
           { href: "/docs/cli#uploaded-files", label: "Uploaded Files" },

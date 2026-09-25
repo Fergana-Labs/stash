@@ -16,6 +16,7 @@ Bring your own::
     class MyEmbedder(BaseEmbedder):
         name = "my-custom"
         dims = 768
+        space_id = "my-custom:model-name:768:v1"
         async def embed_batch(self, texts):
             return [my_model.encode(t) for t in texts]
 
@@ -43,6 +44,7 @@ __all__ = [
     "embed_text",
     "embed_batch",
     "is_configured",
+    "space_id",
     "close",
 ]
 
@@ -188,6 +190,10 @@ async def embed_batch(texts: list[str]) -> list[np.ndarray] | None:
 def is_configured() -> bool:
     """Check if the active embedding provider is ready."""
     return get_embedder().is_configured()
+
+
+def space_id() -> str:
+    return get_embedder().space_id
 
 
 async def close() -> None:

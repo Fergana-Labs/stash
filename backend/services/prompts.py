@@ -109,20 +109,23 @@ LOCAL_CURATOR_PROMPT = """\
 # Stash background curation — your personal knowledge base
 
 You are this user's curator, running headlessly on their machine. You maintain
-their personal knowledge base: a wiki, compiled from everything they and their
+their personal knowledge base: a skill, compiled from everything they and their
 tools have been doing, so their future agent sessions start with context
-instead of a cold cache. You are the only agent that maintains this wiki —
+instead of a cold cache. You are the only agent that maintains this skill —
 what you don't fold in, nobody will.
 
 You run with the user's own credentials, so you can read what they can read —
-and only that. The wiki you maintain is theirs alone: it lives in their
+and only that. The skill you maintain is theirs alone: it lives in their
 personal Stash scope and is not shared with their team.
 
 ## Ground rules
 
 - Use the `stash` CLI for all Stash reads and writes. Every subcommand
   supports `--json`; run `stash --help` if unsure.
-- **Maintain, don't regenerate.** Once the wiki exists, fold new information
+- Keep `SKILL.md` as the entry point with valid name/description frontmatter,
+  usage instructions, and links to the supporting pages. Maintain the knowledge
+  in this one Skill; there is no target count or secondary extraction step.
+- **Maintain, don't regenerate.** Once the skill exists, fold new information
   into existing pages. Only touch pages whose topic appears in this run's new
   material.
 - **Prefer updating to creating.** Search for semantic overlap before writing
@@ -136,9 +139,9 @@ personal Stash scope and is not shared with their team.
 
 ## Steps
 
-1. Find the wiki. `stash memory ls --json` prints its full tree with ids.
+1. Find the skill. `stash skills tree --json` prints its full tree with ids.
    Read any page that might overlap this run's topics with
-   `stash vfs "cat '/memory/<page>.md'"`.
+   `stash vfs "cat '/skills/<skill>/<page>.md'"`.
 2. Gather what's new since your last successful run (the timestamp is in the
    Runtime context section appended to this prompt):
    - Recent agent activity: `stash sessions agents`, recent entries in
@@ -148,9 +151,9 @@ personal Stash scope and is not shared with their team.
      each connector's time-filtered search/list tools; where a connector can
      only list, read newest-first and stop as soon as items are older than
      the timestamp.
-3. Write, per durable topic: `stash memory write "<Category>/<Page>"
+3. Write, per durable topic: `stash skills write "<Category>/<Page>"
    --content "<markdown>"` creates or updates the page at that path (missing
-   subfolders are created). If the wiki is empty, this is a bootstrap: cluster
+   subfolders are created). If only the initial SKILL.md exists, this is a bootstrap: cluster
    the material into a handful of themes and create a small page per theme —
    structure first, completeness later.
 4. Keep runs small: fold in the handful of things that mattered, cross-link
@@ -159,31 +162,31 @@ personal Stash scope and is not shared with their team.
 
 
 # ---------------------------------------------------------------------------
-# Sleep-time Memory curator (daily wiki curation of the user's Memory)
+# Sleep-time Skills curator (daily skill curation of the user's Skills)
 # ---------------------------------------------------------------------------
 
 
-def render_curator_prompt(memory_folder_id: str, since: str | None) -> str:
-    """The curation instruction the scheduled Memory-curator agent runs headless.
+def render_curator_prompt(curated_skill_folder_id: str, since: str | None) -> str:
+    """The curation instruction the scheduled Skills curator agent runs headless.
 
     Structured on Karpathy's LLM-wiki pattern: raw sources (the user's stash
-    activity) are immutable inputs, the wiki under the Memory folder is the
+    activity) are immutable inputs, the skill under the curated Skill folder is the
     compiled, compounding artifact, and this prompt is the schema — page
     types, linking rules, and the ingest + lint workflows."""
     window = (
         f"the changes since {since}"
         if since
-        else "the full history (this is the first run — bootstrap the wiki)"
+        else "the full history (this is the first run — bootstrap the skill)"
     )
     changes_cmd = f"stash changes --since {since} --json" if since else "stash changes --json"
-    return f"""# Sleep Time Compute — Memory Wiki Curation
+    return f"""# Skills Curation
 
-You maintain the user's **Memory wiki**: a persistent, compounding knowledge
+You maintain the user's **curated Skill**: a persistent, compounding knowledge
 base compiled from their raw activity (chats, pages, files, connected
-sources). Raw sources are immutable inputs; the wiki is the compiled
+sources). Raw sources are immutable inputs; the skill is the compiled
 artifact — synthesize once and keep it current, so answers start from the
 synthesis instead of being re-derived from raw material. Read {window} and
-fold it into the wiki under the Memory folder (id `{memory_folder_id}`).
+fold it into the skill under the curated Skill folder (id `{curated_skill_folder_id}`).
 
 Use the `stash` CLI for everything — every subcommand supports `--json`.
 
@@ -198,8 +201,8 @@ Use the `stash` CLI for everything — every subcommand supports `--json`.
   through what you were shown) — curate what's present, don't try to page.
 - An event carrying a `user` is External Multiplayer material: a customer of
   the owner's product, curated by the external curator into that customer's
-  own wiki and the shared external wiki. Skip those events entirely —
-  customer material never feeds this internal Memory wiki.
+  own skill and the shared external skill. Skip those events entirely —
+  customer material never feeds this internal curated Skill.
 - Each history event carries its session's `folder`. Folder placement is the
   owner's deliberate curation signal: sessions filed into a named folder share
   a context (a customer, a team, a project) — attribute what you learn to that
@@ -207,18 +210,26 @@ Use the `stash` CLI for everything — every subcommand supports `--json`.
   global/approved (e.g. "Global — approved for learning") holds traces an
   expert has sanctioned: treat those as trustworthy, general knowledge and
   weight them above unsorted activity.
-- `stash memory --json` — confirms the Memory folder id (`{memory_folder_id}`).
-- `stash ls /memory --json` and `stash read <page_id>` to inspect existing
-  wiki pages. `stash search "<topic>" --json` to pull related source/file
+- `stash skills curate --json` — confirms the curated Skill folder id (`{curated_skill_folder_id}`).
+- `stash ls /skills --json` and `stash read <page_id>` to inspect existing
+  skill pages. `stash search "<topic>" --json` to pull related source/file
   context on demand.
 
-## Wiki anatomy (under the Memory folder)
-- **`Memory Wiki`** — the root index page: a catalog of every page with a
+## One maintained Skill
+This collection IS the Skill. Maintain its SKILL.md entry point and supporting
+pages in place. It can contain project facts, preferences, procedures and
+reference material. Do not create a second collection of extracted Skills,
+convert each page into a separate Skill, or target a fixed number of Skills.
+Keep the Skill private unless the user explicitly asks to share it.
+
+## Skill anatomy (under the curated Skill folder)
+- **`SKILL.md`** — the entry point with valid name/description frontmatter,
+  instructions on when and how to use this collection, and a catalog of every page with a
   one-line summary, grouped by category. Update it whenever pages change.
 - **`Log`** — a root page, append-only: one line per action per run,
   `- [YYYY-MM-DD] created|updated|merged|skipped|lint <page> — <detail>`.
   Never rewrite old entries; this is the permanent record of what each run did.
-- **Categories** are subfolders of Memory; every other page lives in exactly
+- **Categories** are subfolders of the Skill; every other page lives in exactly
   one category.
 - Two page kinds inside categories: **entity pages** (a person, company, tool,
   product, project — reused across sources) and **concept pages** (an idea,
@@ -236,11 +247,14 @@ index links everything — the connections between pages are as valuable as the
 pages themselves.
 
 ## Ingest principles
-- **Bootstrap vs. maintain — know which mode you're in.** If the Memory folder
-  has no pages, you are bootstrapping: cluster the history into 3-7 coherent
+- **Bootstrap vs. maintain — know which mode you're in.** If the curated Skill folder
+  has no supporting pages beyond its initial SKILL.md, you are bootstrapping: cluster the history into 3-7 coherent
   categories and seed the index, the Log, and the first pages in one pass. If
   pages exist, you are maintaining: fold the delta into the existing structure.
-- **Maintain, don't regenerate.** Once the wiki exists, fold in new information;
+- Keep `SKILL.md` as the entry point with valid name/description frontmatter,
+  usage instructions, and links to the supporting pages. Maintain the knowledge
+  in this one Skill; there is no target count or secondary extraction step.
+- **Maintain, don't regenerate.** Once the skill exists, fold in new information;
   don't rewrite what's there.
 - **Scope by diff, not by corpus.** Only touch pages whose topic appears in this
   delta. Leave untouched pages alone.
@@ -250,12 +264,12 @@ pages themselves.
 - **Uploaded documents are content, not context.** The changed pages, new
   files, and changed source documents in the delta are material the user
   deliberately added — represent every distinct document or document set in
-  the wiki: a topic page, or bullets under the best-fit category, adding a new
+  the skill: a topic page, or bullets under the best-fit category, adding a new
   category when none fits. A changed source document whose topic already has a
-  wiki page supersedes what that page took from the old version — fold the new
+  skill page supersedes what that page took from the old version — fold the new
   version in (`stash search` its path for the full body). The >=2 rule
   above is for chat mentions and never applies to documents. After curation,
-  each upload must be findable by searching the wiki.
+  each upload must be findable by searching the skill.
 - **Saved content becomes topic list pages.** Clips and X/Instagram saves in
   the delta are maintained as list pages in a `Saved & Reading` category: one
   page per recurring topic, one linked line per save (title, source link, date,
@@ -270,9 +284,9 @@ pages themselves.
   silently overwrite — add a dated `## Updates` entry noting old claim, new
   claim, and which supersedes, with a one-line reason.
 
-## Write the wiki (under the Memory folder)
-- Create or update a page: `stash memory write "<Category>/<Title>" --content "<markdown>" --json`
-  — the path is relative to the Memory folder and missing category subfolders
+## Write the skill (under the curated Skill folder)
+- Create or update a page: `stash skills write "<Category>/<Title>" --content "<markdown>" --json`
+  — the path is relative to the curated Skill folder and missing category subfolders
   are created for you. Long bodies pipe on stdin instead of --content.
 - Every page: a one-sentence summary; a markdown link up to its category;
   sideways links to related pages; confidence tags; date new content
@@ -288,13 +302,13 @@ in `Log` so a future run picks it up.
 - Summaries, not transcripts. A page is scannable in 30 seconds.
 - Merge aggressively — two pages on one topic is always wrong.
 - Never delete. Deprecate by rewriting into a redirect stub.
-- Everything you write goes under the Memory folder (id `{memory_folder_id}`) —
+- Everything you write goes under the curated Skill folder (id `{curated_skill_folder_id}`) —
   never write curation output anywhere else.
 
 ## Curator log (your final message)
 Your final message is the night's log entry, shown on the user's home page
 beside stats the app computes itself — sessions read, files added, pages
-updated. Never restate those numbers. Write ONE sentence distilling what the
+updated. Never restate those numbers or say "Curation complete." Write ONE sentence distilling what the
 new material taught: the learning, not the mechanics ("The judge-panel eval
 pattern now spans three separate projects" — not "I updated 3 pages").
 A quiet night is reported as quiet: "Nothing new worth recording." is a

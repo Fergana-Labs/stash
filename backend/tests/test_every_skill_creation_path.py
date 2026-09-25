@@ -35,22 +35,36 @@ async def scope(_db_pool):
 
 
 async def _assert_is_a_usable_skill(scope, folder_id, _db_pool, *, via: str):
-    """The two halves of a skill: marked as one, and holding instructions."""
-    flagged = await _db_pool.fetchval("SELECT is_skill FROM folders WHERE id = $1", folder_id)
-    assert flagged is True, f"{via}: folder was not marked a skill"
+    """A skill is marked, timestamped for Home, and holds instructions."""
+    row = await _db_pool.fetchrow(
+        "SELECT is_skill, skill_created_at FROM folders WHERE id = $1", folder_id
+    )
+    assert row["is_skill"] is True, f"{via}: folder was not marked a skill"
+    assert row["skill_created_at"] is not None, f"{via}: skill has no creation timestamp"
 
     listed = [
         s for s in await skill_service.list_skills(scope, scope) if s["folder_id"] == str(folder_id)
     ]
     assert listed, f"{via}: skill does not appear in the skills listing"
-    assert listed[0]["has_instructions"] is True, f"{via}: skill has no SKILL.md"
+    skill_service.validate_skill_md(
+        await _db_pool.fetchval(
+            "SELECT content_markdown FROM pages WHERE folder_id = $1 AND name = 'SKILL.md' "
+            "AND deleted_at IS NULL",
+            folder_id,
+        )
+        or ""
+    )
 
 
 @pytest.mark.asyncio
 async def test_service_create_skill(scope, _db_pool):
     """What the web New-skill button and POST /me/skills/new call."""
     folder = await files_tree_service.create_skill(
-        scope, scope, "Via create_skill", "Use when testing the service create path."
+        scope,
+        scope,
+        "Via create_skill",
+        "Use when testing the service create path.",
+        "Follow this skill's steps.",
     )
     await _assert_is_a_usable_skill(scope, folder["id"], _db_pool, via="create_skill")
 
@@ -59,7 +73,6 @@ async def test_service_create_skill(scope, _db_pool):
 async def test_convert_a_plain_folder(scope, _db_pool):
     """The Convert-to-Skill button on a folder page."""
     folder = await files_tree_service.create_folder(scope, "Plain", scope)
-    await files_tree_service.set_folder_is_skill(folder["id"], scope, True)
     await shared_skill_service.ensure_skill_md(
         scope, folder["id"], scope, "Plain", "Use when testing folder conversion."
     )
@@ -80,7 +93,7 @@ async def test_publishing_a_folder(scope, _db_pool):
 async def test_forking_into_another_scope(scope, _db_pool):
     """`stash skills install` and the Discover fork button land here."""
     source = await files_tree_service.create_skill(
-        scope, scope, "Forkable", "Use when testing skill forking."
+        scope, scope, "Forkable", "Use when testing skill forking.", "Follow this skill's steps."
     )
     published = await shared_skill_service.publish_folder(
         scope, scope, source["id"], title="Forkable", description="d"
@@ -100,11 +113,20 @@ async def test_forking_into_another_scope(scope, _db_pool):
 
 @pytest.mark.asyncio
 async def test_bulk_file_write(scope, _db_pool):
-    """GitHub import and `stash skills sync` push both write a file set that
+    """Curator imports and `stash skills sync` both write a file set that
     carries a SKILL.md — the folder must come out marked."""
     folder = await files_tree_service.create_folder(scope, "imported", scope)
     await files_tree_service.write_folder_files(
-        scope, scope, folder["id"], [("SKILL.md", b"---\nname: imported\n---\n"), ("ref.md", b"x")]
+        scope,
+        scope,
+        folder["id"],
+        [
+            (
+                "SKILL.md",
+                b"---\nname: imported\ndescription: Use imported context.\n---\n\nRead ref.md.",
+            ),
+            ("ref.md", b"x"),
+        ],
     )
     await _assert_is_a_usable_skill(scope, folder["id"], _db_pool, via="write_folder_files")
 
@@ -120,7 +142,13 @@ async def test_agent_create_skill_tool(scope, _db_pool):
         created = json.loads(
             (
                 await agent_runtime._create_skill.handler(
-                    {"name": "Via agent", "skill_md": "---\nname: Via agent\n---\n\n# go\n"}
+                    {
+                        "name": "Via agent",
+                        "skill_md": (
+                            "---\nname: Via agent\ndescription: Use for agent-created work.\n---\n\n"
+                            "Follow the agent workflow."
+                        ),
+                    }
                 )
             )["content"][0]["text"]
         )

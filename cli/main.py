@@ -937,7 +937,7 @@ def whoami(as_json: bool = typer.Option(False, "--json")):
 
 
 # ===========================================================================
-# Discover (public catalog of Skills)
+# Web-app URLs
 # ===========================================================================
 
 
@@ -947,108 +947,12 @@ def _web_app_url() -> str:
     if api.startswith("https://api."):
         return api.replace("https://api.", "https://app.", 1)
     if "localhost" in api or "127.0.0.1" in api:
-        return "http://localhost:3000"
+        return "http://localhost:3457"
     return api
 
 
 def _skill_url(skill: dict) -> str:
     return f"{_web_app_url()}/skills/{skill['slug']}"
-
-
-@app.command("browse")
-def browse(
-    query: str = typer.Argument("", help="Optional search query."),
-    sort: str = typer.Option("trending", "--sort", help="trending | newest | popular"),
-    pick: bool = typer.Option(
-        True, "--pick/--no-pick", help="Open an interactive picker (default) or print a flat list."
-    ),
-    as_json: bool = typer.Option(False, "--json"),
-):
-    """Browse the public Skill catalog."""
-    with _client() as c:
-        try:
-            data = c.list_discover_skills(query=query, sort=sort)
-        except StashError as e:
-            _err(e)
-
-    skills = data.get("skills", [])
-    if as_json:
-        output_json(skills)
-        return
-
-    if not skills:
-        console.print("[yellow]No public Skills match your filters.[/yellow]")
-        return
-
-    if not pick:
-        for skill in skills:
-            owner = skill.get("owner_display_name") or skill.get("owner_name") or "unknown"
-            console.print(
-                f"[bold]{skill['title']}[/bold]  [dim]by {owner}[/dim]  "
-                f"{skill['item_count']} items, {skill['view_count']} views"
-            )
-            if skill.get("description"):
-                console.print(f"  [dim]{skill['description']}[/dim]")
-        return
-
-    choices = []
-    for skill in skills:
-        owner = skill.get("owner_display_name") or skill.get("owner_name") or "unknown"
-        label = (
-            f"{skill['title']:<32} by {owner:<14} "
-            f"({skill['item_count']} items, {skill['view_count']} views)"
-        )
-        choices.append(questionary.Choice(label, value=skill))
-    choices.append(questionary.Choice("(quit)", value=None))
-
-    picked = questionary.select("Pick a Skill:", choices=choices).ask()
-    if not picked:
-        return
-
-    summary = picked.get("description") or "(no description)"
-    console.print(
-        Panel(
-            Text.assemble(
-                (picked["title"] + "\n", "bold"),
-                (summary + "\n\n", ""),
-                (f"by {picked.get('owner_display_name') or picked['owner_name']}  ", "dim"),
-                (
-                    f"{picked['item_count']} items, {picked['view_count']} views",
-                    "dim",
-                ),
-            ),
-            title="Skill",
-            border_style="cyan",
-        )
-    )
-
-    action = questionary.select(
-        "What now?",
-        choices=[
-            questionary.Choice("Open in browser", value="open"),
-            questionary.Choice("Add to your Skills", value="add"),
-            questionary.Choice("Print share URL", value="url"),
-            questionary.Choice("Cancel", value=None),
-        ],
-    ).ask()
-    if not action:
-        return
-
-    url = f"{_web_app_url()}/skills/{picked['slug']}"
-    if action == "open":
-        import webbrowser
-
-        webbrowser.open(url)
-        console.print(f"[green]Opened[/green] {url}")
-    elif action == "url":
-        console.print(url)
-    elif action == "add":
-        with _client() as c:
-            try:
-                c.fork_skill(picked["slug"])
-            except StashError as e:
-                _err(e)
-        console.print(f"[green]Added[/green] {picked['title']} to your Skills")
 
 
 # ===========================================================================
@@ -1503,6 +1407,11 @@ def upload(
     root_name = name or (target.stem if target.is_file() else target.name)
     skill_title = skill.strip() or root_name
     create_skill = bool(skill)
+    has_root_skill_md = any(
+        (file_path.relative_to(target) if target.is_dir() else Path(file_path.name))
+        == Path("SKILL.md")
+        for file_path in files
+    )
     console.print(f"[dim]Uploading {len(files)} file(s) as '{root_name}'...[/dim]")
 
     with _client() as c:
@@ -1563,16 +1472,13 @@ def upload(
         if create_skill:
             # Skill membership is a stored flag: writing a SKILL.md does not
             # make a folder a skill, the convert verb does.
-            try:
+            if not has_root_skill_md:
                 c.create_page(
                     name="SKILL.md",
                     content=f"---\nname: {skill_title}\ndescription: Uploaded from {target.name}\n---\n\n# {skill_title}\n",
                     folder_id=root_folder["id"],
                     content_type="markdown",
                 )
-            except StashError as e:
-                if e.status_code != 409:
-                    raise
             c.convert_folder_to_skill(root_folder["id"])
             if public:
                 skill_row = c.publish_skill_folder(
@@ -1709,13 +1615,9 @@ def skills_create(
     name: str = typer.Argument(..., help="Skill name (becomes the folder name)."),
     description: str = typer.Option(..., "--description"),
     public: bool = typer.Option(False, "--public", help="Publish immediately."),
-    discover: bool = typer.Option(False, "--discover", help="List the public Skill in Discover."),
     as_json: bool = typer.Option(False, "--json"),
 ):
     """Create a skill: a folder with a SKILL.md template. Pass --public to publish."""
-    if discover and not public:
-        console.print("[red]--discover requires --public.[/red]")
-        raise typer.Exit(1)
     name = name.strip()
     description = description.strip()
     if not name or len(name) > 64:
@@ -1741,10 +1643,7 @@ def skills_create(
             c.convert_folder_to_skill(folder["id"])
             skill = None
             if public:
-                skill = c.publish_skill_folder(
-                    folder["id"],
-                    discoverable=discover,
-                )
+                skill = c.publish_skill_folder(folder["id"])
         except StashError as e:
             _err(e)
     if _use_json(as_json):
@@ -1758,24 +1657,19 @@ def skills_create(
 @skills_app.command("publish")
 def skills_publish(
     folder_id: str = typer.Argument(..., help="Skill folder ID to publish."),
-    discover: bool = typer.Option(False, "--discover", help="List the public Skill in Discover."),
     as_json: bool = typer.Option(False, "--json"),
 ):
     """Publish a skill folder: mint its share record and print the public URL."""
     with _client() as c:
         try:
-            skill = c.publish_skill_folder(
-                folder_id,
-                discoverable=discover,
-            )
+            skill = c.publish_skill_folder(folder_id)
         except StashError as e:
             _err(e)
     if _use_json(as_json):
         output_json(skill)
         return
-    label = "Published to Discover" if skill.get("discoverable") else "Published"
     console.print(
-        f"[green]{label}[/green] '{skill['title']}' -> "
+        f"[green]Published[/green] '{skill['title']}' -> "
         f"[cyan]{_web_app_url()}/skills/{skill['slug']}[/cyan]"
     )
 
@@ -1785,21 +1679,14 @@ def skills_update(
     skill_id: str = typer.Argument(...),
     title: str | None = typer.Option(None, "--title"),
     description: str | None = typer.Option(None, "--description"),
-    discover: bool | None = typer.Option(
-        None,
-        "--discover/--no-discover",
-        help="Whether a public Skill appears in Discover.",
-    ),
     as_json: bool = typer.Option(False, "--json"),
 ):
-    """Update a published skill's metadata or Discover flag."""
+    """Update a published skill's metadata."""
     fields = {}
     if title is not None:
         fields["title"] = title
     if description is not None:
         fields["description"] = description
-    if discover is not None:
-        fields["discoverable"] = discover
     if not fields:
         console.print("[red]Pass at least one field to update.[/red]")
         raise typer.Exit(1)
@@ -1812,8 +1699,7 @@ def skills_update(
     if _use_json(as_json):
         output_json(skill)
         return
-    flag = "[cyan]discover[/cyan]" if skill.get("discoverable") else "[cyan]public[/cyan]"
-    console.print(f"[green]Updated Skill[/green] '{skill['title']}'  {flag}")
+    console.print(f"[green]Updated Skill[/green] '{skill['title']}'")
 
 
 @skills_app.command("unpublish")
@@ -2331,6 +2217,120 @@ def _sync_installed(c, root: Path, entry: dict, fetch_bytes) -> tuple[list[str],
         skills[target.name] = {**rec, "remote_hash": remote_hash}
         updated.append(target.name)
     return updated, notes
+
+
+# Where coding agents keep the user's own skills. Codex, Gemini, and OpenCode
+# all read the cross-agent ~/.agents/skills; Claude Code has its own. Cursor is
+# project-only (.cursor/skills) and has no global location to scan.
+_LOCAL_SKILL_ROOTS = (
+    "~/.claude/skills",
+    "~/.agents/skills",
+    "~/.openclaw/skills",
+    "~/.hermes/skills",
+)
+
+
+def _discover_local_skills() -> dict[str, tuple[Path, Path]]:
+    """Every local skill dir by name, with the root it lives in. When two
+    roots hold the same name the first root in _LOCAL_SKILL_ROOTS wins."""
+    found: dict[str, tuple[Path, Path]] = {}
+    for root_str in _LOCAL_SKILL_ROOTS:
+        root = Path(root_str).expanduser()
+        for name, skill_dir in _local_skill_dirs(root).items():
+            if name not in found:
+                found[name] = (root, skill_dir)
+    return found
+
+
+def _import_local_skills(c, found: dict[str, tuple[Path, Path]], fetch_bytes) -> dict:
+    """Push each local skill that Stash does not already have, then record it
+    in that root's sync state so the next `stash skills sync` treats the two
+    copies as in step instead of flagging a never-synced conflict.
+
+    Returns {"imported": [...], "skipped": [...], "failed": [...]}, where a
+    skipped entry names a skill Stash already holds and a failed one carries
+    the reason."""
+    remote_names = {s["name"].casefold() for s in c.list_skills()}
+    summary: dict = {"imported": [], "skipped": [], "failed": []}
+    state_by_root: dict[Path, dict] = {}
+
+    for name, (root, skill_dir) in sorted(found.items()):
+        if name.casefold() in remote_names:
+            summary["skipped"].append(name)
+            continue
+        try:
+            _validate_skill_markdown((skill_dir / "SKILL.md").read_text())
+            folder_id = c.create_folder(name)["id"]
+            c.replace_skill_contents(folder_id, _collect_local_files(skill_dir))
+            detail = c.get_skill_contents(folder_id)
+        except (StashError, ValueError) as e:
+            reason = e.detail if isinstance(e, StashError) else str(e)
+            summary["failed"].append(f"{name} ({reason})")
+            continue
+        if root not in state_by_root:
+            state_path = _sync_state_path(root)
+            state_by_root[root] = json.loads(state_path.read_text()) if state_path.exists() else {}
+        state_by_root[root][name] = {
+            "folder_id": folder_id,
+            "local_hash": _hash_local_skill(skill_dir),
+            "remote_hash": _hash_remote_contents(detail["contents"]),
+        }
+        summary["imported"].append(name)
+
+    for root, state in state_by_root.items():
+        state_path = _sync_state_path(root)
+        state_path.parent.mkdir(parents=True, exist_ok=True)
+        state_path.write_text(json.dumps(state, indent=2))
+    return summary
+
+
+def _print_skill_import_summary(summary: dict) -> None:
+    for name in summary["imported"]:
+        console.print(f"  [green]✓[/green] Imported skill {name}")
+    for name in summary["skipped"]:
+        console.print(f"  [dim]– {name} is already in your Stash[/dim]")
+    for line in summary["failed"]:
+        console.print(f"  [yellow]! Could not import {line}[/yellow]")
+
+
+def _onboarding_import_skills() -> None:
+    """Bring the skills a new user already has into Stash, so the Skills
+    page shows what they brought alongside what Stash creates."""
+    found = _discover_local_skills()
+    if not found:
+        return
+    roots = sorted({str(root) for root, _ in found.values()})
+    console.print(
+        f"\n[bold]Importing {len(found)} local skill{'s' if len(found) != 1 else ''}[/bold] "
+        f"from {', '.join(roots)}"
+    )
+    with _client(auto=True) as c:
+        try:
+            summary = _import_local_skills(c, found, _fetch_bytes)
+        except StashError as e:
+            _err(e)
+    _print_skill_import_summary(summary)
+
+
+@skills_app.command("import")
+def skills_import(
+    as_json: bool = typer.Option(False, "--json"),
+):
+    """Import every local skill (~/.claude/skills, ~/.agents/skills, …) that
+    Stash does not already have. Skills already in Stash are left alone."""
+    found = _discover_local_skills()
+    with _client() as c:
+        try:
+            summary = _import_local_skills(c, found, _fetch_bytes)
+        except StashError as e:
+            _err(e)
+    if _use_json(as_json):
+        output_json(summary)
+        return
+    if not found:
+        console.print("No local skills found.")
+        return
+    _print_skill_import_summary(summary)
 
 
 @skills_app.command("sync")
@@ -3269,20 +3269,12 @@ def _poll_recompute_outcome(
     return "queued", None
 
 
-memory_app = typer.Typer(
-    help="Your Memory wiki — status, recompute, and direct page writes.",
-    invoke_without_command=True,
-)
-app.add_typer(memory_app, name="memory")
-
-
-@memory_app.callback()
-def memory_default(
-    ctx: typer.Context,
+@skills_app.command("curate")
+def skills_curate(
     recompute: bool = typer.Option(
         False,
         "--recompute",
-        help="Run the Memory curator now instead of waiting for the daily pass.",
+        help="Run the Skills curator now instead of waiting for the daily pass.",
     ),
     curator: str = typer.Option(
         None,
@@ -3292,9 +3284,7 @@ def memory_default(
     ),
     as_json: bool = typer.Option(False, "--json"),
 ):
-    """Show your reserved Memory folder (its id is where the wiki lives)."""
-    if ctx.invoked_subcommand is not None:
-        return
+    """Show your reserved curated Skill folder (its id is where the skill lives)."""
     if curator is not None and curator not in ("on", "off"):
         console.print("[red]--curator takes 'on' or 'off'.[/red]")
         raise typer.Exit(1)
@@ -3302,7 +3292,7 @@ def memory_default(
         if curator is not None:
             row = c.get_curator()
             if not row:
-                console.print("[red]No Memory curator found for this account.[/red]")
+                console.print("[red]No Skills curator found for this account.[/red]")
                 raise typer.Exit(1)
             updated = c.set_curator_scheduled(row["id"], curator == "on")
             if _use_json(as_json):
@@ -3314,12 +3304,12 @@ def memory_default(
             else:
                 console.print(
                     "Curator nightly cloud run: [yellow]off[/yellow] — "
-                    "run it yourself with `stash memory --recompute` or locally."
+                    "run it yourself with `stash skills curate --recompute` or locally."
                 )
             return
         if recompute:
             before = c.get_curator()
-            data = c.recompute_memory()
+            data = c.curate_skills()
             outcome, run_error = _poll_recompute_outcome(c, before)
             if _use_json(as_json):
                 output_json({**data, "outcome": outcome, "last_run_error": run_error})
@@ -3328,22 +3318,22 @@ def memory_default(
             elif outcome == "queued":
                 console.print(
                     "[yellow]Curator run was enqueued but no worker picked it up "
-                    "within 30s — it may still run; check `stash memory` later.[/yellow]"
+                    "within 30s — it may still run; check `stash skills curate` later.[/yellow]"
                 )
             else:
                 console.print(
-                    "Curator run started — the Memory wiki will update shortly. "
-                    "Check `stash memory` for the outcome."
+                    "Curator run started — the curated Skill will update shortly. "
+                    "Check `stash skills curate` for the outcome."
                 )
             if outcome == "failed":
                 raise typer.Exit(1)
             return
-        folder = c.get_memory_folder()
+        folder = c.get_curated_skill()
         row = c.get_curator()
     if _use_json(as_json):
         output_json({**folder, "curator": row})
         return
-    console.print(f"Memory folder: [cyan]{folder['name']}[/cyan] (id {folder['id']})")
+    console.print(f"curated Skill folder: [cyan]{folder['name']}[/cyan] (id {folder['id']})")
     if row:
         schedule = "nightly (cloud)" if row["run_mode"] == "scheduled" else "off — on-demand only"
         console.print(f"Curator schedule: {schedule}")
@@ -3353,18 +3343,22 @@ def memory_default(
             console.print(f"[red]Curator last run failed:[/red] {row['last_run_error']}")
 
 
-def _resolve_memory_target(c: StashClient, path: str) -> tuple[dict | None, str, str]:
-    """Walk `path` (relative to the Memory folder) to its page slot.
+def _resolve_skill_target(c: StashClient, path: str) -> tuple[dict | None, str, str]:
+    """Walk `path` (relative to the curated Skill folder) to its page slot.
 
     Returns (existing_page | None, folder_id, page_name), creating missing
     intermediate folders along the way. A trailing `.md` on the page segment
     is stripped — the VFS shows page names with that suffix."""
     segments = [s for s in path.split("/") if s]
-    page_name = segments[-1].removesuffix(".md") if segments else ""
+    page_name = (
+        (segments[-1] if segments[-1] == "SKILL.md" else segments[-1].removesuffix(".md"))
+        if segments
+        else ""
+    )
     if not page_name:
         raise ValueError(f"not a page path: {path!r}")
-    folder_id = c.get_memory_folder()["id"]
-    node: dict | None = c.get_memory_tree()
+    folder_id = c.get_curated_skill()["id"]
+    node: dict | None = c.get_curated_skill_tree()
     for segment in segments[:-1]:
         child = next((f for f in node["folders"] if f["name"] == segment), None) if node else None
         if child is None:
@@ -3378,18 +3372,18 @@ def _resolve_memory_target(c: StashClient, path: str) -> tuple[dict | None, str,
     return page, folder_id, page_name
 
 
-@memory_app.command("write")
-def memory_write(
+@skills_app.command("write")
+def skills_write(
     path: str = typer.Argument(
         ...,
-        help="Page path under the Memory folder, e.g. 'Product/Chainbase'. "
+        help="Page path under the curated Skill folder, e.g. 'Product/Chainbase'. "
         "Missing subfolders are created; a trailing .md is stripped.",
     ),
     content: str = typer.Option(None, "--content", help="Page body. Reads stdin if omitted."),
     as_json: bool = typer.Option(False, "--json"),
 ):
-    """Create or update a Memory wiki page at a path — the direct write
-    surface for agents that maintain the wiki themselves."""
+    """Create or update a curated Skill page at a path — the direct write
+    surface for agents that maintain the skill themselves."""
     if content is None and not sys.stdin.isatty():
         content = sys.stdin.read()
     if content is None:
@@ -3397,7 +3391,7 @@ def memory_write(
         raise typer.Exit(1)
     with _client() as c:
         try:
-            page, folder_id, page_name = _resolve_memory_target(c, path)
+            page, folder_id, page_name = _resolve_skill_target(c, path)
         except ValueError as e:
             console.print(f"[red]{e}[/red]")
             raise typer.Exit(1)
@@ -3418,30 +3412,30 @@ def memory_write(
         console.print(f"[green]Page '{data['name']}' {action}.[/green]  ID: {data['id']}")
 
 
-def _print_memory_tree(node: dict, indent: int) -> None:
+def _print_curated_skill_tree(node: dict, indent: int) -> None:
     pad = "  " * indent
     for f in node["folders"]:
         console.print(f"{pad}[cyan]{f['name']}/[/cyan]  [dim]{f['id']}[/dim]")
-        _print_memory_tree(f, indent + 1)
+        _print_curated_skill_tree(f, indent + 1)
     for p in node["pages"]:
         console.print(f"{pad}{p['name']}  [dim]{p['id']}[/dim]")
 
 
-@memory_app.command("ls")
-def memory_ls(as_json: bool = typer.Option(False, "--json")):
-    """The Memory wiki tree with ids — page ids feed `stash files edit-page`
+@skills_app.command("tree")
+def skills_tree(as_json: bool = typer.Option(False, "--json")):
+    """The curated Skill tree with ids — page ids feed `stash files edit-page`
     and `stash rm page:<id>`."""
     with _client() as c:
         try:
-            folder = c.get_memory_folder()
-            tree = c.get_memory_tree()
+            folder = c.get_curated_skill()
+            tree = c.get_curated_skill_tree()
         except StashError as e:
             _err(e)
     if _use_json(as_json):
         output_json({"id": folder["id"], "name": folder["name"], **tree})
         return
     console.print(f"[cyan]{folder['name']}/[/cyan]  [dim]{folder['id']}[/dim]")
-    _print_memory_tree(tree, indent=1)
+    _print_curated_skill_tree(tree, indent=1)
 
 
 @app.command("changes")
@@ -3450,7 +3444,7 @@ def changes(
     as_json: bool = typer.Option(False, "--json"),
 ):
     """What changed since a timestamp — history, pages, files, saves, sources.
-    Feeds the Memory curator's incremental pass."""
+    Feeds the Skills curator's incremental pass."""
     with _client() as c:
         data = c.get_changes(since or None)
     if _use_json(as_json):
@@ -4586,69 +4580,34 @@ def _auto_connect_repo(repo_root: Path, cfg: dict) -> None:
         )
 
 
+_CLAUDE_MD_MARKER = "<!-- stash-context -->"
+
+
 def _append_claude_md(repo_root: Path) -> None:
     """Append Stash context block to CLAUDE.md in the repo."""
     claude_md = repo_root / "CLAUDE.md"
-    marker = "<!-- stash-context -->"
 
     if claude_md.exists():
         existing = claude_md.read_text()
-        if marker in existing:
+        if _CLAUDE_MD_MARKER in existing:
             return
     else:
         existing = ""
 
-    block = f"""
-{marker}
-## Stash
-
-This repo uses [Stash](https://joinstash.ai) for shared agent sessions.
-Your coding agent has the `stash` CLI on its PATH. Run `stash --help` to see commands.
-
-**Before starting work, use Stash to check for relevant context.** When you need to understand
-why something was built a certain way, what's been tried before, or what teammates are working on,
-search Stash first — it has the full session record and human decisions across the team.
-
-### What a Skill is
-
-A Skill is a *special folder* — one containing a SKILL.md — holding related artifacts
-(pages, files, tables) that shares like any folder and gains a public URL when
-published. Use one when you're publishing a *collection* of related things together — a
-project writeup with its supporting files, a research thread with its sources, a session
-transcript frozen as a page plus the files it produced.
-
-A Skill is **not** a wrapper to slap on every single file you happen to share. One-item Skills
-clutter Discover and defeat the model. Pick the right tool:
-
-- Share a single file or a folder/project → `stash upload <path> --json`, hand over `app_url` (no Skill).
-- Publishing a curated bundle → `stash upload <path> --skill "<title>" --json`.
-- Creating a fresh skill → `stash skills create "<name>" --public --json`.
-- Share a coding session → `stash share` (this one), or `stash share --session "<title>"` for another.
-
-Run `stash prompts agent-guidance` to reprint this rule mid-session.
-
-### Browsing Stash
-
-Use `stash vfs` when you want to browse Stash like a filesystem without mounting anything into the OS:
-- `stash vfs ls /`
-- `stash vfs "find / -maxdepth 3 -type f"`
-- `stash vfs "rg 'query' /"`
-- `stash vfs "cat '/files/README.md'"`
-
-Common reads:
-- `stash search "<query>" --json` — full-text search across files, sessions, and connected sources
-- `stash vfs "ls /"` — browse your files, sessions, tables, skills, and connected sources
-- `stash sql "SELECT ..."` — query your tables with SQL (tables live in the folder tree; bare name when unique, '"files/<folder>".<name>' otherwise)
-- `stash vfs "cat '/sessions/_index.jsonl'"` — recent sessions
-- `stash sessions agents` — who's been active
-
-Common writes:
-- `stash memory write "<Topic>/<Page>" --content "..."` — fold what you learned into the Memory wiki
-- `stash share --title "..."` — share this session as a public Skill
-- `stash read <url>` — read a public Skill URL
-"""
-    claude_md.write_text(existing.rstrip() + "\n" + block)
+    claude_md.write_text(existing.rstrip() + "\n" + _claude_md_block())
     console.print("  Appended Stash context to [cyan]CLAUDE.md[/cyan]")
+
+
+def _claude_md_block() -> str:
+    """The exact block `_append_claude_md` appends — also printed as the setup
+    wizard's preview, so what the user reads is byte-for-byte what lands in
+    their CLAUDE.md. The text lives in claude_md_block.md, which the backend
+    serves at /api/v1/claude-md-block so the web onboarding preview shows the
+    same bytes."""
+    text = (Path(__file__).resolve().parent / "claude_md_block.md").read_text()
+    if not text.startswith(_CLAUDE_MD_MARKER):
+        raise RuntimeError("claude_md_block.md must start with the stash-context marker")
+    return "\n" + text
 
 
 _AGENT_LABEL = {
@@ -4685,7 +4644,8 @@ def _pick_agents(message: str, agents: list[str], checked: list[str]) -> list[st
             (
                 "class:instruction",
                 "   [x] = uploads its sessions to your Stash. Unchecked agents upload "
-                "nothing\n   but can still use the stash CLI — anyone can use a CLI.\n",
+                "nothing.\n   Unchecked agents can still read Stash, but won't write.\n"
+                "   Common API keys and access tokens are automatically redacted before upload.\n",
             ),
         ]
         for i, agent in enumerate(agents):
@@ -4877,6 +4837,21 @@ def signin(
 
     cfg = load_config()
 
+    # Two explicit entry contexts. A user arriving from the web onboarding
+    # page has unconsumed choices stored server-side — apply those and print
+    # each one instead of asking the wizard's questions. Everyone else keeps
+    # today's behavior: returning users just re-auth, first-timers get the
+    # interactive wizard.
+    try:
+        with StashClient(base_url=base_url, api_key=cfg["api_key"]) as c:
+            prefs = c.get_onboarding_preferences()
+    except StashError as e:
+        console.print(f"[red]Could not check your web onboarding choices: {e.detail}[/red]")
+        raise typer.Exit(1)
+    if prefs is not None and prefs["consumed_at"] is None:
+        _apply_web_onboarding(prefs, cfg)
+        return
+
     # Returning user — just re-auth, no wizard
     if has_key:
         _install_all_hooks(load_enabled_agents())
@@ -5026,6 +5001,14 @@ def _pick_record_folder(start: Path) -> Path | None:
     return Path(picked)
 
 
+def _pick_custom_record_folder(start: Path) -> Path | None:
+    """The setup wizard's explicit custom-folder choice opens the native
+    chooser immediately on macOS. Other platforms use the terminal picker."""
+    if sys.platform == "darwin":
+        return _choose_folder_finder(start)
+    return _pick_record_folder(start)
+
+
 def _run_setup_wizard() -> None:
     """First-run setup: session recording, agent hooks, folder context, history
     import. Re-runnable anytime via `stash setup` — no answer here is final."""
@@ -5068,7 +5051,7 @@ def _run_setup_wizard() -> None:
     if where == everywhere:
         save_recorded_paths([])
     elif where == custom:
-        picked = _pick_record_folder(cwd)
+        picked = _pick_custom_record_folder(cwd)
         if picked is None:
             raise typer.Exit(1)
         save_recorded_paths([str(picked)])
@@ -5101,20 +5084,97 @@ def _run_setup_wizard() -> None:
     # --- Folder context (any folder works — git repo not required) ---
     repo_root = _git_toplevel() or Path.cwd()
     _reserve_bottom_padding(4)
-    connect = questionary.confirm(
-        f"Add Stash instructions to CLAUDE.md in {repo_root.name}, so agents "
-        "working there know how to use Stash?",
-        default=True,
-    ).ask()
-    if connect is None:
-        raise typer.Exit(1)
-    if connect:
+    # Appending to someone's CLAUDE.md is a write into their repo — the exact
+    # block is one keypress away, so nobody has to say yes to unseen text.
+    show_choice = "Show me exactly what gets appended"
+    while True:
+        answer = questionary.select(
+            f"Add Stash instructions to CLAUDE.md in {repo_root.name}, so agents "
+            "working there know how to use Stash?",
+            choices=["Yes", show_choice, "No"],
+        ).ask()
+        if answer is None:
+            raise typer.Exit(1)
+        if answer != show_choice:
+            break
+        console.print(_claude_md_block(), markup=False, highlight=False, style="dim")
+    if answer == "Yes":
         _auto_connect_repo(repo_root, cfg)
     else:
         console.print("  [dim]Run stash connect from any project folder later.[/dim]")
 
+    # --- Bring in the skills the user already has ---
+    _onboarding_import_skills()
+
     # --- Import historical conversations ---
     _onboarding_import_history(detected)
+
+    _show_setup_complete_splash()
+
+
+ONBOARDING_HISTORY_LIMIT = 5
+
+
+def _apply_web_onboarding(prefs: dict, cfg: dict) -> None:
+    """Apply the setup choices the user already made on the web onboarding
+    page, printing one line per choice — transparent, but not interactive.
+
+    The one exception is folder scope: a browser can't see local folders, so
+    when the stored scope is "selected_folders" the folder picker still runs.
+    Afterwards the choices are marked consumed on the server, so a later
+    standalone `stash signin` runs the wizard instead of re-applying them."""
+    console.print("\n[bold]Applying the setup choices you made on the web:[/bold]\n")
+
+    if prefs["record_scope"] == "selected_folders":
+        # The one local question. Ctrl-C aborts before anything is applied or
+        # consumed, so the next signin starts over from the stored choices.
+        picked = _pick_record_folder(Path.cwd())
+        if picked is None:
+            raise typer.Exit(1)
+        save_recorded_paths([str(picked)])
+        console.print(f"  [green]✓[/green] Recording sessions only in {_pretty_path(picked)}")
+    else:
+        save_recorded_paths([])
+        console.print("  [green]✓[/green] Recording sessions everywhere on this machine")
+    start_streaming()
+
+    detected = _detected_agents()
+    chosen = prefs["enabled_agents"]
+    selected = [a for a in detected if a in chosen]
+    save_enabled_agents(selected)
+    _install_all_hooks(selected)
+    for agent in selected:
+        console.print(f"  [green]✓[/green] Recording {_AGENT_LABEL.get(agent, agent)}")
+    for agent in (a for a in chosen if a not in detected):
+        console.print(
+            f"  [dim]– {_AGENT_LABEL.get(agent, agent)} isn't on this machine — skipped[/dim]"
+        )
+    if not selected:
+        console.print(
+            "  [yellow]None of the agents you picked are installed here, so nothing\n"
+            "  will be recorded yet. Re-run [bold]stash setup[/bold] after installing one.[/yellow]"
+        )
+
+    if prefs["claude_md_opt_in"]:
+        repo_root = _git_toplevel() or Path.cwd()
+        console.print(f"  [green]✓[/green] Adding Stash instructions to CLAUDE.md in {repo_root}")
+        _auto_connect_repo(repo_root, cfg)
+    else:
+        console.print("  [green]✓[/green] Leaving CLAUDE.md untouched")
+
+    _onboarding_import_skills()
+
+    if prefs["import_history"]:
+        conversations = _conversations_to_import(detected or None)[:ONBOARDING_HISTORY_LIMIT]
+        if conversations:
+            _spawn_history_import(len(conversations), limit=ONBOARDING_HISTORY_LIMIT)
+        else:
+            console.print("  No historical conversations found to import.")
+    else:
+        console.print("  [green]✓[/green] Skipping history import")
+
+    with _client() as c:
+        c.consume_onboarding_preferences()
 
     _show_setup_complete_splash()
 
@@ -5222,6 +5282,8 @@ def _run_setup_headless(
         _auto_connect_repo(_git_toplevel() or Path.cwd(), cfg)
     else:
         console.print("  [green]✓[/green] Folder context skipped")
+
+    _onboarding_import_skills()
 
     if import_history:
         conversations = _conversations_to_import(selected)
@@ -5459,19 +5521,34 @@ def _write_import_status(total: int, done: int, errors: int, finished: bool) -> 
     os.replace(tmp, IMPORT_STATUS_FILE)
 
 
-def _spawn_history_import(count: int) -> None:
+def _report_import_progress(c: StashClient, total: int, done: int, errors: int, finished: bool):
+    """Mirror the status to the server so the web app can show the import.
+    Best-effort: a failed progress ping must never kill the import itself."""
+    try:
+        c.report_import_progress(total=total, done=done, errors=errors, finished=finished)
+    except (StashError, httpx.HTTPError):
+        pass
+
+
+def _spawn_history_import(count: int, *, limit: int | None = None) -> None:
     """Kick off the history import as a detached `stash import-history`
     process — thousands of uploads must not hold setup hostage."""
     import subprocess as _sp
 
-    # Seed the status file so the setup-complete splash can show the import
-    # immediately; the spawned process takes over updating it.
+    # Seed the status file (and the server) so the setup-complete splash and
+    # the web app can show the import immediately; the spawned process takes
+    # over updating both.
     _write_import_status(total=count, done=0, errors=0, finished=False)
+    with _client() as c:
+        _report_import_progress(c, total=count, done=0, errors=0, finished=False)
 
     IMPORT_LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+    command = [sys.argv[0], "import-history"]
+    if limit is not None:
+        command.extend(["--limit", str(limit)])
     with open(IMPORT_LOG_FILE, "ab") as log:
         _sp.Popen(
-            [sys.argv[0], "import-history"],
+            command,
             stdout=log,
             stderr=log,
             start_new_session=True,
@@ -5507,7 +5584,7 @@ def _conversations_to_import(agents: list[str] | None) -> list:
 
 
 def _onboarding_import_history(detected_agents: list[str]) -> None:
-    """Offer to import historical conversations during onboarding."""
+    """Let a new user start small instead of importing their entire history."""
     from .import_history import summarize_discovery
 
     agents = detected_agents or None
@@ -5522,14 +5599,23 @@ def _onboarding_import_history(detected_agents: list[str]) -> None:
         label = f"{sz // 1024 // 1024} MB" if sz > 1024 * 1024 else f"{sz // 1024} KB"
         console.print(f"  {ag:<12} {info['count']:>4} conversations   ({label})")
 
-    _reserve_bottom_padding(4)
-    ok = questionary.confirm(
-        f"Import {len(conversations)} historical conversations? (runs in the background)",
-        default=True,
+    five_recent = "Start with my 5 most recent sessions"
+    import_all = f"Import all {len(conversations)} sessions"
+    skip = "Don't import past sessions"
+    _reserve_bottom_padding(6)
+    choice = questionary.select(
+        "How much history should Stash import to get started?",
+        choices=[five_recent, import_all, skip],
+        default=five_recent,
     ).ask()
-    if not ok:
+    if choice is None:
+        raise typer.Exit(1)
+    if choice == skip:
         return
-
+    if choice == five_recent:
+        count = min(ONBOARDING_HISTORY_LIMIT, len(conversations))
+        _spawn_history_import(count, limit=ONBOARDING_HISTORY_LIMIT)
+        return
     _spawn_history_import(len(conversations))
 
 
@@ -5568,6 +5654,12 @@ def import_history_cmd(
     status: bool = typer.Option(
         False, "--status", help="Show progress of the running or last-finished import."
     ),
+    limit: int | None = typer.Option(
+        None,
+        "--limit",
+        min=1,
+        help="Import only the most recent N conversations.",
+    ),
 ):
     """Import all historical agent conversations into your Stash.
 
@@ -5589,6 +5681,8 @@ def import_history_cmd(
     from .import_history import upload_conversation
 
     conversations = _conversations_to_import(load_enabled_agents() or None)
+    if limit is not None:
+        conversations = conversations[:limit]
     if not conversations:
         console.print("No historical conversations found.")
         return
@@ -5601,6 +5695,7 @@ def import_history_cmd(
     # httpx.Client is thread-safe; sequential uploads were taking >1h for a
     # machine with a few thousand conversations.
     with _client() as c, Progress(console=console) as progress:
+        _report_import_progress(c, total=total, done=0, errors=0, finished=False)
         task = progress.add_task("Importing…", total=total)
         with ThreadPoolExecutor(max_workers=8) as pool:
             futures = [pool.submit(upload_conversation, c, conv) for conv in conversations]
@@ -5615,6 +5710,9 @@ def import_history_cmd(
                 if done % 25 == 0 or done == total:
                     _write_import_status(
                         total=total, done=done, errors=errors, finished=done == total
+                    )
+                    _report_import_progress(
+                        c, total=total, done=done, errors=errors, finished=done == total
                     )
 
     console.print(f"  [green]✓[/green] Imported {done - errors} conversations")
@@ -5642,8 +5740,6 @@ def _setup_complete_intro(
     importing: dict | None,
     recorded_paths: list[str] | None = None,
 ) -> str:
-    # Home *is* the memory dashboard — there is no /memory route.
-    memory_url = frontend_url
     # Empty = everywhere, the contract `recorded_paths` carries everywhere else
     # (cli/config.py, the plugin's gate). The splash has to say which one the
     # user just chose — promising machine-wide capture to someone who scoped
@@ -5674,14 +5770,14 @@ def _setup_complete_intro(
         "to its CLAUDE.md — agents working there will know how to use your Stash."
     )
     return (
-        "[bold]Your agents just got a memory[/bold]\n"
+        "[bold]Your agents now have Stash[/bold]\n"
         f"Every coding session {where} now lands in your private Stash.\n"
         "Your agents can draw on everything you've worked on before — past fixes,\n"
         "decisions, dead ends — instead of starting every session from zero.\n"
         "\n"
         "[bold]Your knowledge base[/bold]\n"
-        f"  [link={memory_url}][bold #1e3a8a]{memory_url}[/bold #1e3a8a][/link]\n"
-        "Stash compiles your sessions into memory your agents check before they\n"
+        f"  [link={frontend_url}][bold #1e3a8a]{frontend_url}[/bold #1e3a8a][/link]\n"
+        "Stash compiles your sessions into Skills your agents check before they\n"
         "work. The more you use it, the better they get.\n"
         "\n"
         f"{recording_section}"
@@ -5714,7 +5810,7 @@ def _show_setup_complete_splash() -> None:
                     load_config().get("recorded_paths"),
                 )
             ),
-            title="[bold #1e3a8a]Your agent memory[/bold #1e3a8a]",
+            title="[bold #1e3a8a]Your agent Skills[/bold #1e3a8a]",
             border_style="#1e3a8a",
             padding=(1, 2),
         )
@@ -6279,8 +6375,8 @@ Commands to reach for
   touched) into a Skill folder; `--session "<title>"` picks another one
   by the title search and the VFS show. Sessions are inherently a
   collection, so this is the right unit.
-- `stash skills install <slug>` — install a public Skill (e.g. from
-  Discover) into ~/.claude/skills so the local agent loads it next
+- `stash skills install <slug>` — install a public Skill by slug
+  into ~/.claude/skills so the local agent loads it next
   session. `--project` targets ./.claude/skills instead.
 - `stash skills sync` — two-way sync between the local skills directory
   and your skills: your skills materialize locally, local edits to synced
@@ -6308,7 +6404,7 @@ virtual Stash tree:
 
 Anti-pattern: minting one Stash per file you happen to share. Skills
 exist to group related things; one item per Stash defeats the model and
-clutters Discover.
+clutters your Skills.
 """
 
 

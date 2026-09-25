@@ -8,6 +8,10 @@ from backend.services.embeddings.base import BaseEmbedder, TransientEmbeddingErr
 class _TransientFailureEmbedder(BaseEmbedder):
     name = "redaction-test"
 
+    @property
+    def space_id(self) -> str:
+        return "redaction-test:v1"
+
     async def embed_batch(self, texts: list[str]):
         raise TransientEmbeddingError(
             "customer transcript text with token=secret-token",

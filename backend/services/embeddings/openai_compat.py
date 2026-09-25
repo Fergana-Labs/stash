@@ -37,6 +37,10 @@ class OpenAICompatEmbedder(BaseEmbedder):
         self.dims = dims or int(os.getenv("EMBEDDING_DIMS", "384"))
         self._client: httpx.AsyncClient | None = None
 
+    @property
+    def space_id(self) -> str:
+        return f"openai:{self.api_url}:{self.model}:{self.dims}:v1"
+
     def _get_client(self) -> httpx.AsyncClient:
         if self._client is None or self._client.is_closed:
             self._client = httpx.AsyncClient(timeout=10.0)

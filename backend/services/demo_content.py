@@ -84,7 +84,7 @@ other agent had already tried.
 
 ## What makes Stash different from …
 
-- **… Notion / Confluence.** Those are human-first wikis. Stash is
+- **… Notion / Confluence.** Those are human-first skills. Stash is
   agent-first: built for write-heavy automated input, with a CLI,
   MCP server, and VFS shell that any agent can use as a first-class
   filesystem.

@@ -33,6 +33,15 @@ async def test_migration_preserves_existing_accounts_and_flags_future_accounts(p
             "existing": False,
             "new": True,
         }
+        skills_migration = importlib.import_module(
+            "backend.migrations.versions.0221_skills_signup_default"
+        )
+        with Operations.context(MigrationContext.configure(conn)):
+            skills_migration.upgrade()
+        conn.execute(text("INSERT INTO users (name) VALUES ('skills')"))
+        assert dict(
+            conn.execute(text("SELECT name, developer_platform_only FROM users")).all()
+        ) == {"existing": False, "new": True, "skills": False}
 
     try:
         async with engine.begin() as conn:
@@ -42,7 +51,7 @@ async def test_migration_preserves_existing_accounts_and_flags_future_accounts(p
 
 
 @pytest.mark.asyncio
-async def test_signup_flag_survives_profile_edits_and_can_be_disabled(client, pool):
+async def test_skills_signup_flag_survives_profile_edits_and_can_be_restricted(client, pool):
     response = await client.post(
         "/api/v1/users/register", json={"name": unique_name(), "password": "securepassword1"}
     )
@@ -51,15 +60,15 @@ async def test_signup_flag_survives_profile_edits_and_can_be_disabled(client, po
     headers = {"Authorization": f"Bearer {registered['api_key']}"}
     profile = await client.get("/api/v1/users/me", headers=headers)
     assert profile.status_code == 200
-    assert profile.json()["developer_platform_only"] is True
+    assert profile.json()["developer_platform_only"] is False
 
     for update in [{"display_name": "Developer"}, {}]:
         edited = await client.patch("/api/v1/users/me", headers=headers, json=update)
         assert edited.status_code == 200
-        assert edited.json()["developer_platform_only"] is True
+        assert edited.json()["developer_platform_only"] is False
 
     await pool.execute(
-        "UPDATE users SET developer_platform_only = false WHERE id = $1", UUID(registered["id"])
+        "UPDATE users SET developer_platform_only = true WHERE id = $1", UUID(registered["id"])
     )
     profile = await client.get("/api/v1/users/me", headers=headers)
-    assert profile.json()["developer_platform_only"] is False
+    assert profile.json()["developer_platform_only"] is True

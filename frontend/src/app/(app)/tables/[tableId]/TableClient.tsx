@@ -41,7 +41,6 @@ import { findInSkillContents } from "../../../../lib/localSkill";
 import type { Table, TableColumn, TableRow, TableView } from "../../../../lib/types";
 import FileViewerHeader from "../../../../components/content/FileViewerHeader";
 import { parseCsv, inferColumnType, detectDelimiter } from "../../../../lib/csv";
-import { useTabTitle } from "../../../../lib/workspace-store";
 
 const TYPE_ICONS: Record<string, string> = {
   text: "Aa", number: "#", boolean: "\u2713", date: "\uD83D\uDCC5", datetime: "\uD83D\uDD53",
@@ -282,7 +281,6 @@ function TableEditorPageInner({
 
   // Core state.
   const [table, setTable] = useState<Table | null>(null);
-  useTabTitle("table", tableId, table?.name);
   const [rows, setRows] = useState<TableRow[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [error, setError] = useState("");

@@ -1,7 +1,7 @@
 """Prove External Multiplayer end to end, as a customer's backend would.
 
 Two repair shops talk to the same agent. Acme hits a fault and finds the fix.
-The curator distils that into the shared wiki, anonymized. Beta then hits the
+The curator distils that into the shared skill, anonymized. Beta then hits the
 same fault — and its agent already knows, without ever learning that Acme
 exists.
 
@@ -76,7 +76,7 @@ def verify() -> int:
     )
 
     say("Can Beta tell where that came from?")
-    leaked = stash.read(BETA[0], "grep -ri 'acme' /memory /files 2>/dev/null")
+    leaked = stash.read(BETA[0], "grep -ri 'acme' /skills /files 2>/dev/null")
     print(indent(leaked) if leaked.strip() else "  Nothing. Beta cannot see that Acme exists.\n")
     return 0
 

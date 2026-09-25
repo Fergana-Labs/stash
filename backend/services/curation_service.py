@@ -1,8 +1,8 @@
-"""The change feed the daily Memory curator reads.
+"""The change feed the daily Skills curator reads.
 
 `changes_since` is the incremental delta since the curator's watermark: new
 history events (excluding the curator's own run sessions), changed pages
-(excluding the Memory subtree), new files, changed Drive-folder documents,
+(excluding the curated Skill subtree), new files, changed Drive-folder documents,
 and the user's connected sources as pointers (the agent pulls source
 specifics with `stash search`) — the curator never sees its own output.
 `has_changes_since` is the cheap EXISTS the beat task uses to skip idle users
@@ -11,7 +11,8 @@ without waking a sprite.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from contextlib import asynccontextmanager
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from ..database import get_pool
@@ -28,6 +29,9 @@ _MAX_SAVES = 100
 _MAX_SOURCE_DOCS = 100
 _SNIPPET = 280
 
+# The initial history import is a small sample; curation has no minimum trace count.
+ONBOARDING_TRACE_TARGET = 5
+
 
 async def has_changes_since(owner_user_id: UUID, user_id: UUID, since: datetime | None) -> bool:
     """True if anything the curator cares about changed after `since`. A cheap
@@ -35,7 +39,7 @@ async def has_changes_since(owner_user_id: UUID, user_id: UUID, since: datetime 
     if since is None:
         return True  # never curated → bootstrap.
     pool = get_pool()
-    memory_ids = await files_tree_service.memory_subtree_folder_ids(owner_user_id)
+    memory_ids = await files_tree_service.curated_skill_subtree_folder_ids(owner_user_id)
     exists = await pool.fetchval(
         """
         SELECT
@@ -66,15 +70,20 @@ async def has_changes_since(owner_user_id: UUID, user_id: UUID, since: datetime 
     return bool(exists)
 
 
-async def changes_since(owner_user_id: UUID, user_id: UUID, since: datetime | None) -> dict:
-    """The delta the curator reads: history events, changed pages (excl. Memory),
+async def changes_since(
+    owner_user_id: UUID,
+    user_id: UUID,
+    since: datetime | None,
+    until: datetime | None = None,
+) -> dict:
+    """The delta the curator reads: history events, changed pages (excluding curated knowledge),
     new files, changed Drive-folder documents, newly hydrated X/Instagram
     saves, and connected-source pointers."""
     pool = get_pool()
-    memory_ids = await files_tree_service.memory_subtree_folder_ids(owner_user_id)
+    memory_ids = await files_tree_service.curated_skill_subtree_folder_ids(owner_user_id)
     exclude = list(memory_ids) or None
 
-    events, history_has_more = await _feed_events(owner_user_id, since, None, _MAX_EVENTS)
+    events, history_has_more = await _feed_events(owner_user_id, since, until, _MAX_EVENTS)
     history = [
         {
             "session_id": e.get("session_id"),
@@ -83,7 +92,7 @@ async def changes_since(owner_user_id: UUID, user_id: UUID, since: datetime | No
             "content": (e.get("content") or "")[:_SNIPPET],
             "created_at": _iso(e.get("created_at")),
             "user": e.get("user"),
-            "user_share_wiki": e.get("user_share_wiki"),
+            "user_share_skill": e.get("user_share_skill"),
         }
         for e in events
     ]
@@ -96,6 +105,7 @@ async def changes_since(owner_user_id: UUID, user_id: UUID, since: datetime | No
         WHERE owner_user_id = $1
           AND ($5::uuid[] IS NULL OR folder_id IS NULL OR folder_id <> ALL($5))
           AND ($2::timestamptz IS NULL OR updated_at > $2)
+          AND ($6::timestamptz IS NULL OR updated_at <= $6)
         ORDER BY updated_at DESC LIMIT $3
         """,
         owner_user_id,
@@ -103,6 +113,7 @@ async def changes_since(owner_user_id: UUID, user_id: UUID, since: datetime | No
         _MAX_PAGES,
         _SNIPPET,
         exclude,
+        until,
     )
     pages = [
         {
@@ -120,12 +131,14 @@ async def changes_since(owner_user_id: UUID, user_id: UUID, since: datetime | No
         SELECT id, name, created_at, left(coalesce(extracted_text, ''), $4) AS snippet
         FROM files
         WHERE owner_user_id = $1 AND ($2::timestamptz IS NULL OR created_at > $2)
+          AND ($5::timestamptz IS NULL OR created_at <= $5)
         ORDER BY created_at DESC LIMIT $3
         """,
         owner_user_id,
         since,
         _MAX_FILES,
         _SNIPPET,
+        until,
     )
     files = [
         {
@@ -149,6 +162,7 @@ async def changes_since(owner_user_id: UUID, user_id: UUID, since: datetime | No
         FROM drive_documents
         WHERE owner_user_id = $1
           AND ($2::timestamptz IS NULL OR updated_at > $2)
+          AND ($5::timestamptz IS NULL OR updated_at <= $5)
           AND extraction_status = 'done' AND deleted_at IS NULL
         ORDER BY updated_at DESC LIMIT $3
         """,
@@ -156,6 +170,7 @@ async def changes_since(owner_user_id: UUID, user_id: UUID, since: datetime | No
         since,
         _MAX_SOURCE_DOCS,
         _SNIPPET,
+        until,
     )
     source_docs = [
         {
@@ -178,6 +193,7 @@ async def changes_since(owner_user_id: UUID, user_id: UUID, since: datetime | No
             FROM x_save_docs
             WHERE owner_user_id = $1
               AND ($2::timestamptz IS NULL OR updated_at > $2)
+              AND ($5::timestamptz IS NULL OR updated_at <= $5)
               AND hydration_status = 'done' AND deleted_at IS NULL
             UNION ALL
             SELECT 'instagram', kind, name,
@@ -186,6 +202,7 @@ async def changes_since(owner_user_id: UUID, user_id: UUID, since: datetime | No
             FROM instagram_save_docs
             WHERE owner_user_id = $1
               AND ($2::timestamptz IS NULL OR updated_at > $2)
+              AND ($5::timestamptz IS NULL OR updated_at <= $5)
               AND hydration_status = 'done' AND deleted_at IS NULL
         ) all_saves
         ORDER BY updated_at DESC LIMIT $3
@@ -194,6 +211,7 @@ async def changes_since(owner_user_id: UUID, user_id: UUID, since: datetime | No
         since,
         _MAX_SAVES,
         _SNIPPET,
+        until,
     )
     saves = [
         {
@@ -234,6 +252,56 @@ async def changes_since(owner_user_id: UUID, user_id: UUID, since: datetime | No
     }
 
 
+async def curatable_trace_count(owner_user_id: UUID) -> int:
+    """Personal traces with an assistant response: enough substance to learn from."""
+    return int(
+        await get_pool().fetchval(
+            """
+            SELECT count(*) FROM sessions s
+            WHERE s.owner_user_id = $1 AND s.deleted_at IS NULL
+              AND s.session_id NOT LIKE 'agent-curate-%'
+              AND EXISTS (
+                  SELECT 1 FROM history_events he
+                  WHERE he.owner_user_id = s.owner_user_id
+                    AND he.session_id = s.session_id
+                    AND he.event_type = 'assistant_message'
+              )
+            """,
+            owner_user_id,
+        )
+    )
+
+
+async def recent_curatable_trace_ids(owner_user_id: UUID, limit: int) -> list[str]:
+    rows = await get_pool().fetch(
+        """
+        SELECT s.session_id FROM sessions s
+        WHERE s.owner_user_id = $1 AND s.deleted_at IS NULL
+          AND s.session_id NOT LIKE 'agent-curate-%'
+          AND EXISTS (
+              SELECT 1 FROM history_events he
+              WHERE he.owner_user_id = s.owner_user_id
+                AND he.session_id = s.session_id
+                AND he.event_type = 'assistant_message'
+          )
+        ORDER BY s.last_event_at DESC
+        LIMIT $2
+        """,
+        owner_user_id,
+        limit,
+    )
+    return [row["session_id"] for row in rows]
+
+
+async def curation_allowance(owner_user_id: UUID, now: datetime) -> dict | None:
+    from . import developer_contract_service, transcript_usage_service
+
+    if await developer_contract_service.uses_wiki(owner_user_id):
+        return None
+    budget = await transcript_usage_service.allowance(owner_user_id, now)
+    return None if budget["limit"] is None else budget
+
+
 async def _feed_events(
     owner_user_id: UUID,
     since: datetime | None,
@@ -244,14 +312,23 @@ async def _feed_events(
 
     The curator's own run transcripts (`agent-curate-%` sessions) are excluded
     in SQL — feeding them back would echo-loop the daily gate and pollute the
-    wiki, and filtering after the query would let them consume feed slots that
+    skill, and filtering after the query would let them consume feed slots that
     belong to real activity.
 
-    Each event carries its session's end user (name and wiki opt-out) when it
+    Each event carries its session's end user (name and skill opt-out) when it
     has one — the external curator routes by it: every user's material feeds
-    that user's own wiki, and only share_wiki users feed the shared anonymized
-    wiki."""
+    that user's own skill, and only share_skill users feed the shared anonymized
+    skill."""
     pool = get_pool()
+    batch = await pool.fetchrow(
+        "SELECT events,has_more FROM curation_batches WHERE owner_user_id=$1 AND expires_at>now()",
+        owner_user_id,
+    )
+    if batch is not None:
+        return [
+            {**event, "created_at": datetime.fromisoformat(event["created_at"])}
+            for event in batch["events"]
+        ], batch["has_more"]
     args: list = [owner_user_id]
     where = "he.owner_user_id = $1 AND (he.session_id IS NULL OR he.session_id NOT LIKE 'agent-curate-%')"
     if since is not None:
@@ -260,9 +337,16 @@ async def _feed_events(
     if until is not None:
         args.append(until)
         where += f" AND he.created_at <= ${len(args)}"
+    where += " AND (s.id IS NULL OR s.deleted_at IS NULL)"
+    # Process each transcript body once, including when uploads replace event IDs.
+    where += (
+        " AND NOT EXISTS (SELECT 1 FROM transcript_usage u WHERE u.owner_user_id=he.owner_user_id "
+        "AND u.content_key=transcript_usage_key(he.session_id,he.event_type,he.content))"
+    )
     rows = await pool.fetch(
         f"SELECT he.session_id, he.agent_name, he.event_type, he.content, he.created_at, "
-        f"eu.name AS user, eu.share_wiki AS user_share_wiki "
+        f"transcript_usage_key(he.session_id,he.event_type,he.content) AS content_key, "
+        f"eu.name AS user, eu.share_skill AS user_share_skill "
         f"FROM history_events he "
         f"LEFT JOIN sessions s ON s.owner_user_id = he.owner_user_id "
         f"  AND s.session_id = he.session_id "
@@ -271,8 +355,55 @@ async def _feed_events(
         f"ORDER BY he.created_at, he.id LIMIT {limit + 1}",
         *args,
     )
-    has_more = len(rows) > limit
-    return [dict(r) for r in rows[:limit]], has_more
+    from . import transcript_usage_service
+
+    budget = await transcript_usage_service.allowance(owner_user_id, datetime.now(UTC))
+    remaining = budget["remaining"]
+    events = []
+    seen = set()
+    for row in rows[:limit]:
+        tokens = 0
+        if row["session_id"] is not None and row["content_key"] not in seen:
+            tokens = transcript_usage_service.count_tokens(row["content"])
+        if remaining is not None and tokens > remaining:
+            return events, True
+        if remaining is not None:
+            remaining -= tokens
+        seen.add(row["content_key"])
+        events.append(dict(row))
+    return events, len(rows) > limit
+
+
+@asynccontextmanager
+async def batch(owner: UUID, since: datetime | None, until: datetime):
+    """Freeze billable input for the CLI feed and the success receipt together."""
+    from ..config import settings
+
+    events, more = await _feed_events(owner, since, until, _MAX_EVENTS)
+    through = until
+    if more:
+        through = events[-1]["created_at"] - timedelta(microseconds=1) if events else since
+    if through is None:
+        through = datetime.min.replace(tzinfo=UTC)
+    serialized = [{**e, "created_at": e["created_at"].isoformat()} for e in events]
+    batch_id = await get_pool().fetchval(
+        "INSERT INTO curation_batches(owner_user_id,events,has_more,expires_at) VALUES ($1,$2,$3,$4) "
+        "ON CONFLICT (owner_user_id) DO UPDATE SET id=gen_random_uuid(),events=excluded.events,"
+        "has_more=excluded.has_more,expires_at=excluded.expires_at "
+        "WHERE curation_batches.expires_at<now() RETURNING id",
+        owner,
+        serialized,
+        more,
+        datetime.now(UTC) + timedelta(seconds=settings.AGENT_TURN_TIMEOUT_SECONDS + 60),
+    )
+    if batch_id is None:
+        raise RuntimeError("Skills curation is already running for this account")
+    try:
+        yield events, through, batch_id
+    finally:
+        await get_pool().execute(
+            "DELETE FROM curation_batches WHERE owner_user_id=$1 AND id=$2", owner, batch_id
+        )
 
 
 async def complete_through(
@@ -288,6 +419,8 @@ async def complete_through(
     events, has_more = await _feed_events(owner_user_id, since, until, _MAX_EVENTS)
     if not has_more:
         return until
+    if not events:
+        return since if since is not None else datetime.min.replace(tzinfo=UTC)
     return events[-1]["created_at"] - timedelta(microseconds=1)
 
 

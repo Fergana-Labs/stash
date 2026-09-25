@@ -146,7 +146,7 @@ async def _run_from_row(row: dict) -> dict:
 @router.get("/{agent_id}/prompt")
 async def get_agent_prompt(agent_id: UUID, current_user: dict = Depends(get_current_user)):
     """The exact prompts a scheduled agent runs: the appended system prompt and
-    the per-run instruction. For the Memory curator this is built server-side
+    the per-run instruction. For the Skills curator this is built server-side
     (not a user field), so the UI shows it read-only."""
     from fastapi import HTTPException
 
@@ -157,7 +157,7 @@ async def get_agent_prompt(agent_id: UUID, current_user: dict = Depends(get_curr
 
     workspace = await scoped_curation_service.workspace_for_agent(agent)
     if workspace is not None:
-        if agent["curator_wiki"] == "external":
+        if agent["curator_skill"] == "external":
             system = await end_user_service.external_curator_prompt(
                 workspace, agent["curated_through"]
             )

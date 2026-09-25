@@ -1,6 +1,6 @@
 [project]
 name = "stashai"
-version = "0.1.367"
+version = "0.1.368"
 description = "CLI for Stash — shared memory for AI coding agents"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -38,6 +38,7 @@ include = ["cli*", "stashai*", "stashvfs*"]
 
 [tool.setuptools.package-data]
 stashai = ["plugin/assets/**/*"]
+cli = ["claude_md_block.md"]
 
 [build-system]
 requires = ["setuptools>=68.0"]

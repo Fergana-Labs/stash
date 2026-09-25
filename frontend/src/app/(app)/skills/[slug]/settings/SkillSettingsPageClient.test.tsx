@@ -134,17 +134,6 @@ describe("SkillSettingsPageClient", () => {
     // Person-to-person access is folder shares now, not skill members.
     expect(screen.queryByText("Members")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Visibility")).not.toBeInTheDocument();
-    expect(screen.getByLabelText("List on Discover")).not.toBeChecked();
-  });
-
-  it("toggles the Discover listing", async () => {
-    render(<SkillSettingsPageClient slug="shared-skill" />);
-
-    fireEvent.click(await screen.findByLabelText("List on Discover"));
-
-    await waitFor(() =>
-      expect(updateSkill).toHaveBeenCalledWith("skill-1", { discoverable: true }),
-    );
   });
 
   it("saves title changes only", async () => {

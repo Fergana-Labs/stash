@@ -33,13 +33,13 @@ celery = Celery(
         "backend.tasks.embeddings",
         "backend.tasks.enrichment",
         "backend.tasks.link_check",
-        "backend.tasks.linear_tickets",
         "backend.tasks.session_titles",
         "backend.tasks.viz",
         "backend.tasks.demo_janitor",
         "backend.tasks.cli_auth",
         "backend.tasks.sources",
         "backend.tasks.agent_schedules",
+        "backend.tasks.transcript_billing",
         "backend.integrations.google.exporters.slides",
         "backend.integrations.x_saves.tasks",
         "backend.exports.pdf",
@@ -81,6 +81,10 @@ celery.conf.update(
     timezone="UTC",
     enable_utc=True,
     beat_schedule={
+        "transcript-usage-report": {
+            "task": "backend.tasks.transcript_billing.report_usage",
+            "schedule": 60.0,
+        },
         "embedding-reconcile": {
             "task": "backend.tasks.embeddings.reconcile",
             "schedule": 60.0,
@@ -118,14 +122,6 @@ celery.conf.update(
         "session-title-reconcile": {
             "task": "backend.tasks.session_titles.reconcile_missing",
             "schedule": 60.0,
-        },
-        "linear-ticket-reconcile": {
-            "task": "backend.tasks.linear_tickets.reconcile",
-            "schedule": 300.0,
-        },
-        "github-pr-linear-ticket-reconcile": {
-            "task": "backend.tasks.linear_tickets.reconcile_github_prs",
-            "schedule": 300.0,
         },
         "demo-janitor-purge-orphans": {
             "task": "backend.tasks.demo_janitor.purge_orphans",

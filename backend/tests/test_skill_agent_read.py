@@ -160,7 +160,7 @@ async def test_llms_txt_documents_agent_skill_reads(client: AsyncClient):
 async def test_skill_skill_manifest_includes_agent_install_pitch(client: AsyncClient):
     resp = await client.get("/skill/stash/SKILL.md")
     assert resp.status_code == 200
-    assert "Stash — Files, Skills, and Memory System" in resp.text
+    assert "Stash — Files, Sessions, and Skills" in resp.text
     assert "## Connect This Repo To Stash" in resp.text
     assert "Ask the user:" in resp.text
     assert (

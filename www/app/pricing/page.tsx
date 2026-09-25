@@ -11,7 +11,7 @@ export const metadata: Metadata = {
   alternates: { canonical: "/pricing" },
   title: "Pricing · Stash",
   description:
-    "Free to start. Pro is $20/month for unlimited integrations and curator runs. The Developer Platform is priced with you.",
+    "Transcript uploads and search are free. Plans include monthly transcript tokens for Skills curation, with optional usage billing on Pro.",
 };
 
 // Every claim on this page mirrors what the backend actually enforces
@@ -31,11 +31,11 @@ const TIERS: {
     price: "$0",
     blurb: "Everything you need to give your coding agents memory.",
     features: [
-      "Unlimited sessions, recorded from all 7 supported agents",
-      "Full-text search across everything",
-      "2 connected accounts (GitHub, Drive, Gmail, Notion, Slack…)",
-      "10 curator runs a month, with your own model key",
-      "Skills: publish, share, and install",
+      "Unlimited trace ingestion from supported coding agents",
+      "Browse and search every trace",
+      "Use all of your existing Skills",
+      "100,000 transcript tokens per month for Skills curation",
+      "Stash-managed inference — no model key required",
     ],
     cta: { label: "Sign up free", href: SIGNUP_URL },
   },
@@ -43,12 +43,13 @@ const TIERS: {
     name: "Pro",
     price: "$20/month",
     priceDetail: "or $200/year — 2 months free",
-    blurb: "Limits off. The managed model included, no API key needed.",
+    blurb: "More included curation, with usage billing when you need it.",
     features: [
       "Everything in Free",
-      "Unlimited connected accounts",
-      "Unlimited curator runs — your wiki updates every night",
-      "Managed model included: the curator and chat run without your own key",
+      "2 million transcript tokens per month for Skills curation",
+      "$10 per additional million tokens, with an opt-in spending cap",
+      "Monthly usage billing, including on annual subscriptions",
+      "Stash-managed inference — no model key required",
     ],
     cta: { label: "Start with Pro", href: SIGNUP_URL },
     featured: true,
@@ -58,9 +59,10 @@ const TIERS: {
     price: "Let's talk",
     blurb: "Memory for the agents inside your product, per end user.",
     features: [
-      "A private wiki for each of your users",
-      "One shared, anonymized wiki every user's agent reads",
+      "A private skill for each of your users",
+      "One shared, anonymized skill every user's agent reads",
       "Workspace keys, console, and curator controls",
+      "Custom included usage and volume pricing",
       "Self-hosting support — MIT licensed, run it on your infra",
     ],
     cta: { label: "Book a call", href: "/contact-sales" },
@@ -77,8 +79,8 @@ export default function PricingPage() {
           Simple pricing.
         </h1>
         <p className="mx-auto mt-5 max-w-[52ch] text-[17px] leading-[1.6] text-dim">
-          Free to start, one flat price for limits off, and the Developer Platform priced
-          with you.
+          Upload and search transcripts for free. Pay for new transcript text processed
+          by Skills curation, with usage included in every plan.
         </p>
       </section>
 
@@ -123,6 +125,13 @@ export default function PricingPage() {
           ))}
         </div>
 
+        <p className="mx-auto mt-10 max-w-[65ch] text-center text-[14px] leading-[1.6] text-muted">
+          New transcript content counts once when successfully curated. Rereads and retries
+          do not add charges. Included usage resets on the first of each month at 00:00 UTC
+          and does not roll over. Overages are off by default; curation pauses when the next
+          transcript entry would exceed your allowance or spending cap. Uploads and existing
+          Skills remain available. Prices are before tax.
+        </p>
         <p className="mx-auto mt-10 max-w-[60ch] text-center text-[14px] leading-[1.6] text-muted">
           At a hackathon? Your event code unlocks everything for free — redeem it during
           signup, or later under Settings → Subscription.

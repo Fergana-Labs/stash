@@ -8,13 +8,13 @@ A Tauri app that makes the local-curator setup feel stable and real:
   `~/.stash/config.json`, so the CLI and plugins share it.
 - **Health** — backend reachability, connected integrations (with
   needs-reconnect warnings), and per-source sync status.
-- **Memory curator** — status of the server-side curator (last run, errors,
-  runs this month) with a "Run now" that hits `/api/v1/me/memory/recompute`.
+- **Skills curator** — status of the server-side curator (last run, errors,
+  runs this month) with a "Run now" that hits `/api/v1/me/skills/curate`.
 - **Local curator** — runs `claude -p` headlessly on this machine with the
   user's own credentials and MCP connectors, on a schedule, from the tray.
   Off by default; enabled with one switch. Each run maintains the user's
-  **personal** knowledge base — the wiki in their personal scope's Memory
-  folder — directly (`stash memory write "<Path>"`), pinned to the
+  **personal** knowledge base — the skill in their personal scope's curated Skill
+  folder — directly (`stash skills write "<Path>"`), pinned to the
   personal scope via `STASH_SCOPE=""` regardless of workspace config. One
   curator per person; nothing is shared with the team. The curation prompt
   is served by the backend (`GET /api/v1/me/local-curator-prompt`, defined
@@ -23,8 +23,8 @@ A Tauri app that makes the local-curator setup feel stable and real:
   run history, logs) lives in `~/.stash/curator/`.
 
   Onboarding note: accounts using the local curator should have the
-  server-side Memory curator's nightly run turned off (`stash memory
-  --curator off`) — one agent maintains the wiki, not two. On-demand
+  server-side Skills curator's nightly run turned off (`stash skills curate
+  --curator off`) — one agent maintains the skill, not two. On-demand
   recomputes keep working either way.
 
 Closing the window hides to the tray; the scheduler keeps running. "Launch at

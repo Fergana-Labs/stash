@@ -109,6 +109,24 @@ async def test_no_credential_free_is_gated(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_free_curator_uses_managed_inference(monkeypatch):
+    monkeypatch.setattr(settings, "AGENT_EXEC_MODE", "sprites")
+    monkeypatch.setattr(settings, "OPENROUTER_API_KEY", "sk-managed-or")
+
+    async def no_cred(_uid):
+        return None
+
+    async def not_pro(_uid):
+        return False
+
+    monkeypatch.setattr(agent_auth, "_get_credential", no_cred)
+    monkeypatch.setattr(billing_service, "is_pro", not_pro)
+    auth = await agent_auth.resolve(uuid.uuid4(), allow_free_managed=True)
+    assert auth.harness is h.OPENCODE
+    assert auth.env == {"OPENROUTER_API_KEY": "sk-managed-or"}
+
+
+@pytest.mark.asyncio
 async def test_managed_but_no_openrouter_key(monkeypatch):
     monkeypatch.setattr(settings, "AGENT_EXEC_MODE", "sprites")
     monkeypatch.setattr(settings, "OPENROUTER_API_KEY", None)

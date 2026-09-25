@@ -3,9 +3,9 @@ import type { SessionSummary } from "./api";
 import {
   groupSessionsByAgent,
   groupSessionsByDayAndUser,
-  groupSessionsByLinearTicket,
   groupSessionsByUser,
   requireSessionUserName,
+  sortSessionsByColumn,
 } from "./sessionGrouping";
 
 function session(fields: Partial<SessionSummary> & { session_id: string }): SessionSummary {
@@ -13,7 +13,6 @@ function session(fields: Partial<SessionSummary> & { session_id: string }): Sess
     session_id: fields.session_id,
     id: fields.id ?? fields.session_id,
     title: fields.title ?? fields.session_id,
-    linear_tickets: fields.linear_tickets ?? [],
     owner_user_id: "user-1",
     user_name: fields.user_name ?? "Test User",
     agent_name: fields.agent_name ?? null,
@@ -21,6 +20,7 @@ function session(fields: Partial<SessionSummary> & { session_id: string }): Sess
     event_count: fields.event_count ?? 1,
     started_at: fields.started_at ?? "2026-05-14T09:00:00Z",
     last_event_at: fields.last_event_at ?? fields.started_at ?? "2026-05-14T09:00:00Z",
+    rating: fields.rating ?? null,
   };
 }
 
@@ -88,56 +88,39 @@ describe("groupSessionsByAgent", () => {
   });
 });
 
-describe("groupSessionsByLinearTicket", () => {
-  it("groups by the primary Linear ticket and keeps unlabeled sessions visible", () => {
-    const grouped = groupSessionsByLinearTicket([
-      session({
-        session_id: "fer-19-a",
-        linear_tickets: [
-          {
-            ticket_identifier: "FER-19",
-            ticket_title: "Customize Skill homepage cover",
-            ticket_url: "https://linear.app/ferganalabs/issue/FER-19/customize-skill-homepage-cover",
-            source: "linear_preamble",
-            confidence: 1,
-            linear_issue_id: null,
-            ticket_status: null,
-            ticket_assignee_name: null,
-            ticket_team_key: null,
-            ticket_team_name: null,
-            ticket_project_name: null,
-            linear_updated_at: null,
-            enriched_at: null,
-          },
-        ],
-      }),
-      session({
-        session_id: "fer-19-b",
-        linear_tickets: [
-          {
-            ticket_identifier: "FER-19",
-            ticket_title: "Customize Skill homepage cover",
-            ticket_url: "https://linear.app/ferganalabs/issue/FER-19/customize-skill-homepage-cover",
-            source: "linear_preamble",
-            confidence: 1,
-            linear_issue_id: null,
-            ticket_status: null,
-            ticket_assignee_name: null,
-            ticket_team_key: null,
-            ticket_team_name: null,
-            ticket_project_name: null,
-            linear_updated_at: null,
-            enriched_at: null,
-          },
-        ],
-      }),
-      session({ session_id: "unlabeled" }),
-    ]);
+describe("sortSessionsByColumn", () => {
+  const rows = [
+    session({
+      session_id: "codex-new",
+      title: "Zebra fix",
+      user_name: "Ada",
+      agent_name: "codex",
+      event_count: 8,
+      started_at: "2026-05-14T10:00:00Z",
+      last_event_at: "2026-05-14T12:00:00Z",
+    }),
+    session({
+      session_id: "claude-old",
+      title: "API cleanup",
+      user_name: "Ben",
+      agent_name: "claude-code",
+      event_count: 3,
+      started_at: "2026-05-13T10:00:00Z",
+      last_event_at: "2026-05-13T12:00:00Z",
+    }),
+  ];
 
-    expect(grouped.map((g) => g.key)).toEqual([
-      "FER-19: Customize Skill homepage cover",
-      "Unlabeled",
-    ]);
-    expect(grouped[0].count).toBe(2);
+  it("sorts text columns alphabetically in either direction", () => {
+    expect(sortSessionsByColumn(rows, "session", "ascending").map((row) => row.session_id))
+      .toEqual(["claude-old", "codex-new"]);
+    expect(sortSessionsByColumn(rows, "user", "descending").map((row) => row.session_id))
+      .toEqual(["claude-old", "codex-new"]);
+  });
+
+  it("sorts numeric and date columns by their underlying values", () => {
+    expect(sortSessionsByColumn(rows, "events", "descending").map((row) => row.session_id))
+      .toEqual(["codex-new", "claude-old"]);
+    expect(sortSessionsByColumn(rows, "updated", "ascending").map((row) => row.session_id))
+      .toEqual(["claude-old", "codex-new"]);
   });
 });

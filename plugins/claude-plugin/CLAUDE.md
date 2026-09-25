@@ -6,7 +6,7 @@ IMPORTANT: You have the `stash` CLI on your PATH. When the user mentions "Stash"
 
 A **Skill** is a *special folder* — one containing a SKILL.md — holding related artifacts (pages, files, tables) that shares like any folder and gains a public URL when published. It is the unit you reach for when you want to publish a *collection* of things together — a project writeup with its supporting files, a research thread with its sources, a session transcript plus the files it produced.
 
-A Skill is **not** a wrapper around every single file you happen to share. One-item Skills clutter Discover and your Stash sidebar, and they defeat the model.
+A Skill is **not** a wrapper around every single file you happen to share. One-item Skills clutter your Stash sidebar and defeat the model.
 
 ### Decision rule for sharing
 
@@ -56,9 +56,9 @@ stash stop                         # Pause session recording across every plugin
 
 ### Memory
 ```bash
-stash memory ls                                # The Memory wiki tree with ids
-stash memory write "Topic/Page" --content "…"  # Create or update a wiki page (stdin for long bodies)
-stash memory --curator off                     # Turn the nightly cloud curator off (on to resume)
+stash skills tree                                # The Memory wiki tree with ids
+stash skills write "Topic/Page" --content "…"  # Create or update a wiki page (stdin for long bodies)
+stash skills curate --curator off                     # Turn the nightly cloud curator off (on to resume)
 ```
 
 ### Files, history, tables

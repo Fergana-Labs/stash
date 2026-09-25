@@ -7,7 +7,7 @@ pathological query is one capped, interrupted DuckDB connection.
 
 Addressing mirrors the VFS: every table exists as `"<folder path>"."<name>"`
 (schema "files" for the root, "files/Jobs" for a folder, "memory/…" under the
-Memory wiki), plus a bare-name view in `main` when the name is unique across
+curated Skill), plus a bare-name view in `main` when the name is unique across
 the scope, so `SELECT * FROM jobs` just works. Because it is real DuckDB,
 `information_schema` reflects all of this truthfully.
 """
@@ -89,10 +89,10 @@ async def run_query(owner_user_id: UUID, user_id: UUID, query: str) -> dict:
 
 async def _folder_schema_names(owner_user_id: UUID) -> dict[UUID, str]:
     """Each folder's DuckDB schema name, mirroring its VFS path: the root is
-    "files", a folder is "files/<name>/…", and the Memory wiki is "memory"."""
+    "files", a folder is "files/<name>/…", and the curated Skill is "memory"."""
     pool = get_pool()
     folders = await pool.fetch(
-        "SELECT id, name, parent_folder_id, is_memory FROM folders WHERE owner_user_id = $1",
+        "SELECT id, name, parent_folder_id, is_curated_skill FROM folders WHERE owner_user_id = $1",
         owner_user_id,
     )
     by_id = {f["id"]: f for f in folders}
@@ -102,7 +102,7 @@ async def _folder_schema_names(owner_user_id: UUID) -> dict[UUID, str]:
         if folder_id in paths:
             return paths[folder_id]
         folder = by_id[folder_id]
-        if folder["is_memory"]:
+        if folder["is_curated_skill"]:
             result = "memory"
         elif folder["parent_folder_id"] is None:
             result = f"files/{folder['name']}"

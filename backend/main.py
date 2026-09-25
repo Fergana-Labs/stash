@@ -30,7 +30,6 @@ from .routers import (
     curator_log,
     demo,
     developer,
-    discover,
     exports,
     files,
     files_tree,
@@ -39,6 +38,7 @@ from .routers import (
     mcp_servers,
     memory,
     mini_programs,
+    onboarding,
     pins,
     publish,
     security_audit,
@@ -118,7 +118,6 @@ app.add_middleware(
 )
 app.include_router(users.router)
 app.include_router(user_knowledge.router)
-app.include_router(discover.router)
 app.include_router(skills.me_router)
 app.include_router(skills.public_router)
 app.include_router(files_tree.router)
@@ -135,6 +134,7 @@ app.include_router(curator_log.router)
 app.include_router(mini_programs.router)
 app.include_router(batch.router)
 app.include_router(transcripts.router)
+app.include_router(onboarding.router)
 app.include_router(aggregate.router)
 app.include_router(agent_docs.router)
 app.include_router(admin.router)

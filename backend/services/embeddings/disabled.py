@@ -13,6 +13,10 @@ from .base import BaseEmbedder
 class DisabledEmbedder(BaseEmbedder):
     name = "none"
 
+    @property
+    def space_id(self) -> str:
+        return "none:v1"
+
     def is_configured(self) -> bool:
         return False
 

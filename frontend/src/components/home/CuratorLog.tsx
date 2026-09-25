@@ -1,0 +1,183 @@
+"use client";
+
+import Link from "next/link";
+import { useEffect, useState } from "react";
+import { SkeletonBlock } from "@/components/SkeletonStates";
+import { getCuratorLog, type CuratorLogEntry } from "@/lib/api";
+
+function entryDate(entry: CuratorLogEntry): string {
+  return new Date(entry.started_at).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+  });
+}
+
+// Runs shown before "+N more runs" — the log flows with the page, so the
+// tail is revealed, never scrolled inside its own box.
+const ENTRY_ROWS = 5;
+
+/** The curator log — what each nightly curation learned, newest first. One
+ *  entry per run: its one-sentence summary, straight from the stored run.
+ *  A failed run shows as failed. */
+export default function CuratorLog() {
+  const [entries, setEntries] = useState<CuratorLogEntry[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  const [showOlder, setShowOlder] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    getCuratorLog()
+      .then((log) => {
+        if (!cancelled) setEntries(log.entries);
+      })
+      .catch((e) => {
+        if (!cancelled) setError(e instanceof Error ? e.message : "Failed to load the curator log");
+      })
+      .finally(() => {
+        if (!cancelled) setLoaded(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (!loaded) {
+    return (
+      <section>
+        <div className="sys-label mb-1.5">Curator log</div>
+        <SkeletonBlock className="h-[120px] w-full" />
+      </section>
+    );
+  }
+
+  // An empty log and an unreachable log look identical from here, and "no
+  // entries yet" is a claim about the curator — never make it on a failure.
+  if (error) {
+    return (
+      <section>
+        <div className="sys-label mb-1.5">Curator log</div>
+        <div className="card-soft px-4 py-6 text-center text-[12.5px] text-destructive">
+          Couldn&apos;t load the curator log: {error}
+        </div>
+      </section>
+    );
+  }
+
+  const visible = showOlder ? entries : entries?.slice(0, ENTRY_ROWS);
+
+  return (
+    <section>
+      <div className="sys-label mb-1.5">Curator log</div>
+      {!entries || !visible || entries.length === 0 ? (
+        <div className="card-soft px-4 py-6 text-center text-[12.5px] text-muted-foreground">
+          No entries yet. The curator writes one after every run — the first
+          appears after tonight&apos;s pass.
+        </div>
+      ) : (
+        <div className="flex flex-col gap-2.5">
+          {visible.map((entry) => (
+            <LogEntry key={entry.session_id} entry={entry} />
+          ))}
+          {!showOlder && entries.length > ENTRY_ROWS && (
+            <button
+              type="button"
+              onClick={() => setShowOlder(true)}
+              className="self-start text-[12.5px] text-muted-foreground underline decoration-dotted underline-offset-2 hover:text-foreground"
+            >
+              +{entries.length - ENTRY_ROWS} more {entries.length - ENTRY_ROWS === 1 ? "run" : "runs"}
+            </button>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function LogEntry({ entry }: { entry: CuratorLogEntry }) {
+  return (
+    <article className="card px-4 py-3.5">
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="sys-label" style={{ fontSize: 10.5 }}>
+          {entryDate(entry)}
+        </span>
+        {/* A skipped night has no run to view — its session is just this note. */}
+        {entry.status !== "skipped" && (
+          <Link
+            href={`/sessions/${encodeURIComponent(entry.session_id)}`}
+            className="text-[11.5px] text-dim hover:text-foreground"
+          >
+            View run →
+          </Link>
+        )}
+      </div>
+
+      {entry.status === "skipped" ? (
+        <p className="mt-1.5 text-[13px] text-muted-foreground">{entry.summary}</p>
+      ) : entry.status === "failed" ? (
+        <p className="mt-1.5 text-[13px] text-muted-foreground">
+          Run failed{entry.error ? `: ${entry.error}` : "."}
+        </p>
+      ) : entry.status === "stopped" ? (
+        <p className="mt-1.5 text-[13px] text-muted-foreground">Run stopped mid-pass.</p>
+      ) : entry.status === "running" ? (
+        <p className="mt-1.5 text-[13px] text-muted-foreground">
+          Processing new activity now…
+        </p>
+      ) : entry.status === "interrupted" ? (
+        <p className="mt-1.5 text-[13px] text-muted-foreground">
+          Run ended before the curator wrote a takeaway.
+        </p>
+      ) : (
+        <CompletedRun entry={entry} />
+      )}
+    </article>
+  );
+}
+
+function CompletedRun({ entry }: { entry: CuratorLogEntry }) {
+  return (
+    <div className="mt-1.5 space-y-1.5">
+      <p className="text-[13.5px] font-medium text-foreground">
+        {entry.processed
+          ? processedSummary(entry.processed)
+          : "Completed before processing totals were recorded."}
+      </p>
+      {entry.processed?.more_queued && (
+        <p className="text-[12.5px] text-muted-foreground">
+          More activity is queued for the next run.
+        </p>
+      )}
+      {entry.summary ? (
+        <p className="line-clamp-2 text-[13px] leading-[1.55] text-muted-foreground">
+          <span className="font-medium text-foreground">Learned:</span> {entry.summary}
+        </p>
+      ) : (
+        <p className="text-[13px] text-muted-foreground">Run ended without a takeaway.</p>
+      )}
+    </div>
+  );
+}
+
+type Processed = NonNullable<CuratorLogEntry["processed"]>;
+
+function processedSummary(processed: Processed): string {
+  const items = [
+    countLabel(processed.traces, "trace"),
+    countLabel(processed.activity_events, "activity event"),
+    countLabel(processed.files, "file"),
+    countLabel(processed.pages, "page"),
+    countLabel(processed.source_docs, "source document"),
+    countLabel(processed.saves, "save"),
+  ].filter((item): item is string => item !== null);
+
+  if (items.length === 0) return "Processed 0 new items.";
+  if (items.length === 1) return `Processed ${items[0]}.`;
+  if (items.length === 2) return `Processed ${items[0]} and ${items[1]}.`;
+  return `Processed ${items.slice(0, -1).join(", ")}, and ${items.at(-1)}.`;
+}
+
+function countLabel(count: number, singular: string): string | null {
+  if (count === 0) return null;
+  return `${count} ${singular}${count === 1 ? "" : "s"}`;
+}

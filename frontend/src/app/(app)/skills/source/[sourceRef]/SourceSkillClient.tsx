@@ -64,31 +64,11 @@ export default function SourceSkillClient({ sourceRef }: { sourceRef: string }) 
           <ResyncSourceButton sourceId={skill.source_id} onRefresh={load} />
         </div>
 
-        {skill.has_instructions ? (
-          // The exact stored text, not a markdown render. This page is where
-          // you verify what the agent will read — rendering interprets escape
-          // noise and line structure away, which hid a real extraction bug.
-          <pre className="mt-6 whitespace-pre-wrap break-words font-mono text-[12.5px] leading-[1.6] text-foreground">
-            {skill.body}
-          </pre>
-        ) : (
-          // A document only reaches this page by declaring itself a skill, so
-          // the empty case is always the same one: a frontmatter block with
-          // nothing written under it.
-          <div className="mt-6 rounded-lg border border-border bg-surface px-4 py-3 text-[13px] text-muted-foreground">
-            This document declares itself a skill but has nothing below its frontmatter, so there
-            are no instructions for an agent to follow.{" "}
-            <a
-              href={`https://drive.google.com/open?id=${skill.source_ref}`}
-              target="_blank"
-              rel="noreferrer"
-              className="font-medium text-[var(--color-brand-700)] underline"
-            >
-              Add them in Google Drive
-            </a>
-            .
-          </div>
-        )}
+        {/* Show the exact stored instructions: rendering can hide meaningful
+            escape sequences and line structure. */}
+        <pre className="mt-6 whitespace-pre-wrap break-words font-mono text-[12.5px] leading-[1.6] text-foreground">
+          {skill.body}
+        </pre>
       </div>
     </div>
   );

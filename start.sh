@@ -4,12 +4,20 @@ set -euo pipefail
 # -------------------------------------------------------
 # start.sh — Start all Stash services locally:
 # database, redis, backend, celery worker, celery beat,
-# and frontend.
+# and frontend. Use --production for an optimized frontend
+# when trying the app locally; the default keeps hot reload.
 # Each worktree gets its own pgvector database and redis
 # containers, created on demand and garbage-collected
 # after the worktree is deleted. Set DATABASE_URL /
 # REDIS_URL to use your own instances instead.
 # -------------------------------------------------------
+
+FRONTEND_SCRIPT=dev
+case "$*" in
+    "") ;;
+    --production) FRONTEND_SCRIPT=start ;;
+    *) echo "Usage: ./start.sh [--production]" >&2; exit 1 ;;
+esac
 
 PROJECT_ROOT="$(cd "$(dirname "$0")" && pwd)"
 PIDS=()
@@ -585,20 +593,26 @@ celery -A backend.celery_app beat --loglevel=info \
 PIDS+=($!)
 
 # --- Frontend (Next.js) ---
-echo "[frontend] Starting on port ${FRONTEND_PORT}..."
 cd "$PROJECT_ROOT/frontend"
-BACKEND_INTERNAL_URL="http://localhost:${BACKEND_PORT}" \
+export BACKEND_INTERNAL_URL="http://localhost:${BACKEND_PORT}"
+if [ "$FRONTEND_SCRIPT" = start ]; then
+    echo "[frontend] Building optimized local frontend (no on-demand compilation)..."
+    npm run build
+fi
+echo "[frontend] Starting on port ${FRONTEND_PORT}..."
 PORT="$FRONTEND_PORT" \
-npm run dev &
+npm run "$FRONTEND_SCRIPT" &
 PIDS+=($!)
 
 # --- Frontend type-check watcher ---
 # `next dev` compiles with SWC and never type-checks, so a type error that
 # fails `next build` (and therefore CI and the prod deploy) stays invisible
 # during dev. The watcher streams those errors into this terminal as you edit.
-echo "[types]    Starting frontend type-check watcher..."
-npx tsc --noEmit --watch --preserveWatchOutput &
-TSC_WATCH_PID=$!
+if [ "$FRONTEND_SCRIPT" = dev ]; then
+    echo "[types]    Starting frontend type-check watcher..."
+    npx tsc --noEmit --watch --preserveWatchOutput &
+    TSC_WATCH_PID=$!
+fi
 
 echo "================================"
 echo "All services started. Press Ctrl+C to stop."

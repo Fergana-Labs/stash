@@ -10,8 +10,20 @@ from . import security_audit_service
 
 _SELECT_COLS = (
     "id, owner_user_id, session_id, agent_name, cwd, files_touched, "
-    "started_at, finished_at, created_by, end_user_id, last_event_at"
+    "started_at, finished_at, created_by, end_user_id, last_event_at, rating"
 )
+
+SESSION_RATINGS = ("good", "bad")
+
+CLIENT_NAMES = {
+    "claude_code": "Claude Code",
+    "codex_cli": "Codex",
+    "cursor": "Cursor",
+    "opencode": "OpenCode",
+    "gemini_cli": "Gemini CLI",
+    "openclaw": "OpenClaw",
+    "hermes": "Hermes",
+}
 
 
 async def upsert_session(
@@ -49,6 +61,17 @@ async def upsert_session(
     replayed old transcript never rewinds a session's recency.
     """
     pool = get_pool()
+    # Plugin events identify the harness separately from the signed-in user's
+    # handle. API-only agents supply their own name instead.
+    client = await pool.fetchval(
+        "SELECT metadata->>'client' FROM history_events "
+        "WHERE owner_user_id=$1 AND session_id=$2 AND metadata ? 'client' "
+        "ORDER BY created_at DESC,id DESC LIMIT 1",
+        owner_user_id,
+        session_id,
+    )
+    if client is not None:
+        agent_name = CLIENT_NAMES[client] if client in CLIENT_NAMES else client
     row = await pool.fetchrow(
         "INSERT INTO sessions "
         "  (owner_user_id, session_id, agent_name, cwd, created_by, end_user_id, "
@@ -84,6 +107,20 @@ async def get_session(owner_user_id: UUID, session_id: str) -> dict | None:
         session_id,
     )
     return dict(row) if row else None
+
+
+async def set_rating(owner_user_id: UUID, session_id: str, rating: str | None) -> None:
+    """Record the user's verdict on a session; None clears it."""
+    if rating is not None and rating not in SESSION_RATINGS:
+        raise ValueError(f"rating must be one of {', '.join(SESSION_RATINGS)}")
+    pool = get_pool()
+    await pool.execute(
+        "UPDATE sessions SET rating = $3 "
+        "WHERE owner_user_id = $1 AND session_id = $2 AND deleted_at IS NULL",
+        owner_user_id,
+        session_id,
+        rating,
+    )
 
 
 async def list_sessions_for_session_id(session_id: str) -> list[dict]:

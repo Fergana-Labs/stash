@@ -8,7 +8,7 @@ agent, whose config shapes the turn.
 
 from __future__ import annotations
 
-from datetime import UTC, date, datetime
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from fastapi import HTTPException
@@ -19,12 +19,12 @@ _COLUMNS = (
     "id, user_id, name, model_provider, system_prompt, run_mode, "
     "schedule_cron, schedule_prompt, is_default, is_curator, slack_bound, "
     "telegram_bound, last_run_at, last_run_error, last_run_outcome, curated_through, "
-    "curator_wiki, month_run_count, month_run_anchor, created_at"
+    "curator_skill, created_at"
 )
 
 
 # The curator runs nightly, inside a quiet window (08:00–11:59 UTC = midnight–4am
-# Pacific): users are asleep so the wiki isn't chasing live edits, and no deploys
+# Pacific): users are asleep so the skill isn't chasing live edits, and no deploys
 # are restarting the worker mid-run (the cron tick is consumed up front, so a
 # killed run is lost until the next night). Staggered per user within the window
 # so sprite wakes don't all fire at once.
@@ -113,15 +113,15 @@ async def get_or_create_default(user_id: UUID) -> dict:
     return _row(row)
 
 
-# How far back the first curation looks (the wiki bootstraps from this window).
+# How far back the first curation looks (the skill bootstraps from this window).
 CURATOR_BACKFILL_DAYS = 90
 
 
-async def get_or_create_curator(user_id: UUID, wiki: str = "internal") -> dict:
-    """The scope's reserved curator for one wiki, created on first use.
+async def get_or_create_curator(user_id: UUID, skill: str = "internal") -> dict:
+    """The scope's reserved curator for one skill, created on first use.
 
-    `wiki` is "internal" (the scope's own Memory wiki) or "external" (the
-    workspace's cross-user anonymized wiki). They are separate agents: separate
+    `skill` is "internal" (the scope's own curated Skill) or "external" (the
+    workspace's cross-user anonymized skill). They are separate agents: separate
     schedules, watermarks and run histories, because they write to different
     places under opposite privacy rules.
 
@@ -130,35 +130,35 @@ async def get_or_create_curator(user_id: UUID, wiki: str = "internal") -> dict:
     first run is due immediately and bootstraps from real history."""
     pool = get_pool()
     row = await pool.fetchrow(
-        f"SELECT {_COLUMNS} FROM agents WHERE user_id = $1 AND is_curator AND curator_wiki = $2",
+        f"SELECT {_COLUMNS} FROM agents WHERE user_id = $1 AND is_curator AND curator_skill = $2",
         user_id,
-        wiki,
+        skill,
     )
     if row is not None:
         return _row(row)
-    name = "Memory curator" if wiki == "internal" else "External wiki curator"
+    name = "Skills curator" if skill == "internal" else "External skill curator"
     row = await pool.fetchrow(
         f"""
         INSERT INTO agents (user_id, name, run_mode, schedule_cron, is_curator,
-                            curator_wiki, last_run_at, curated_through)
+                            curator_skill, last_run_at, curated_through)
         SELECT $1, $4, 'scheduled', $2, true, $5, backfill, backfill
         FROM (SELECT greatest((SELECT created_at FROM users WHERE id = $1),
                               now() - make_interval(days => $3)) AS backfill) seed
-        ON CONFLICT (user_id, curator_wiki) WHERE is_curator DO NOTHING
+        ON CONFLICT (user_id, curator_skill) WHERE is_curator DO NOTHING
         RETURNING {_COLUMNS}
         """,
         user_id,
         _staggered_nightly_cron(user_id),
         CURATOR_BACKFILL_DAYS,
         name,
-        wiki,
+        skill,
     )
     if row is None:  # lost the race — read the winner.
         row = await pool.fetchrow(
             f"SELECT {_COLUMNS} FROM agents "
-            "WHERE user_id = $1 AND is_curator AND curator_wiki = $2",
+            "WHERE user_id = $1 AND is_curator AND curator_skill = $2",
             user_id,
-            wiki,
+            skill,
         )
     return _row(row)
 
@@ -203,7 +203,7 @@ async def update_agent(user_id: UUID, agent_id: UUID, fields: dict) -> dict:
     if current["is_curator"] and set(fields) - {"run_mode"}:
         raise HTTPException(
             status_code=400,
-            detail="only run_mode can change on the Memory curator (its schedule on/off switch)",
+            detail="only run_mode can change on the Skills curator (its schedule on/off switch)",
         )
     merged = {**current, **fields}
     _validate(
@@ -259,7 +259,7 @@ async def delete_agent(user_id: UUID, agent_id: UUID) -> None:
         raise HTTPException(status_code=400, detail="cannot delete the default agent")
     if agent["is_curator"]:
         raise HTTPException(
-            status_code=400, detail="cannot delete the Memory curator (turn it off instead)"
+            status_code=400, detail="cannot delete the Skills curator (turn it off instead)"
         )
     await get_pool().execute("DELETE FROM agents WHERE id = $1 AND user_id = $2", agent_id, user_id)
 
@@ -275,74 +275,31 @@ async def list_scheduled() -> list[dict]:
     return [_row(r) for r in rows]
 
 
-def month_runs_used(agent: dict) -> int:
-    """Scheduled runs consumed in the current calendar month. An anchor from a
-    prior month means the counter is stale; mark_run resets it on the next run."""
-    anchor = agent.get("month_run_anchor")
-    today = date.today()
-    if anchor is None or (anchor.year, anchor.month) != (today.year, today.month):
-        return 0
-    return agent["month_run_count"]
-
-
-async def mark_run(agent_id: UUID, metered: bool = True) -> int:
-    """Consume the cron tick and meter the run against the calendar month.
-    Returns the run count within the current month (including this one) —
-    the free-tier curator credit gate reads it.
-
-    `metered=False` consumes the tick without touching the month counter —
-    for runs the platform initiates on its own (the first-day curator), which
-    must not eat the user's free allowance.
-
-    Also clears last_run_error and stamps the outcome as started. Every path
-    after this call must resolve the outcome as ran, failed, or skipped."""
-    if not metered:
-        return await get_pool().fetchval(
-            """
-            UPDATE agents SET
-                last_run_at = now(),
-                last_run_error = NULL,
-                last_run_outcome = 'started'
-            WHERE id = $1
-            RETURNING month_run_count
-            """,
-            agent_id,
-        )
-    return await get_pool().fetchval(
+async def mark_run(agent_id: UUID) -> None:
+    """Consume a cron tick and mark the run as started."""
+    await get_pool().execute(
         """
         UPDATE agents SET
             last_run_at = now(),
             last_run_error = NULL,
-            last_run_outcome = 'started',
-            month_run_count = CASE
-                WHEN month_run_anchor = date_trunc('month', now())::date
-                THEN month_run_count + 1 ELSE 1 END,
-            month_run_anchor = date_trunc('month', now())::date
+            last_run_outcome = 'started'
         WHERE id = $1
-        RETURNING month_run_count
         """,
         agent_id,
     )
 
 
-async def mark_run_failed(agent_id: UUID, error: str, metered: bool = True) -> None:
-    """Stamp the failure where the API can surface it, and refund the month
-    credit — an outage shouldn't eat the free allowance. An unmetered run
-    (`metered=False`) never charged one, so it has nothing to refund. The tick
-    itself stays consumed (last_run_at), so the beat won't re-fire the same
-    window."""
+async def mark_run_failed(agent_id: UUID, error: str) -> None:
+    """Stamp a failed run where the API can surface it."""
     await get_pool().execute(
         """
         UPDATE agents SET
             last_run_error = left($2, 500),
-            last_run_outcome = 'failed',
-            month_run_count = CASE WHEN $3
-                THEN greatest(month_run_count - 1, 0) ELSE month_run_count END
+            last_run_outcome = 'failed'
         WHERE id = $1
         """,
         agent_id,
         error,
-        metered,
     )
 
 
@@ -363,12 +320,35 @@ async def mark_run_succeeded(agent_id: UUID) -> None:
     )
 
 
-async def mark_curated(agent_id: UUID, through) -> None:
-    """Advance the curator's delta watermark — only after a successful run, so
-    a failed run's window is re-covered next time."""
-    await get_pool().execute(
-        "UPDATE agents SET curated_through = $2 WHERE id = $1", agent_id, through
-    )
+async def mark_curated(
+    agent_id: UUID, through: datetime, *, events: list[dict], batch_id: UUID
+) -> None:
+    from . import transcript_usage_service
+
+    agent = await get_agent_by_id(agent_id)
+    async with get_pool().acquire() as conn, conn.transaction():
+        await conn.fetchval("SELECT id FROM agents WHERE id=$1 FOR UPDATE", agent_id)
+        active = await conn.fetchval(
+            "SELECT id FROM curation_batches WHERE owner_user_id=$1 AND id=$2 AND expires_at>now() FOR UPDATE",
+            agent["user_id"],
+            batch_id,
+        )
+        if active is None:
+            raise RuntimeError("Curation input expired before completion; no usage was charged")
+        await transcript_usage_service.record(conn, agent["user_id"], events, datetime.now(UTC))
+        pending = await conn.fetchval(
+            "SELECT min(he.created_at) FROM history_events he "
+            "JOIN sessions s ON s.owner_user_id=he.owner_user_id AND s.session_id=he.session_id "
+            "WHERE he.owner_user_id=$1 AND s.deleted_at IS NULL "
+            "AND he.session_id NOT LIKE 'agent-curate-%' AND he.created_at<=$2 "
+            "AND NOT EXISTS (SELECT 1 FROM transcript_usage u WHERE u.owner_user_id=he.owner_user_id "
+            "AND u.content_key=transcript_usage_key(he.session_id,he.event_type,he.content))",
+            agent["user_id"],
+            through,
+        )
+        if pending is not None:
+            through = pending - timedelta(microseconds=1)
+        await conn.execute("UPDATE agents SET curated_through=$2 WHERE id=$1", agent_id, through)
 
 
 async def set_system_prompt(agent_id: UUID, text: str | None) -> dict:

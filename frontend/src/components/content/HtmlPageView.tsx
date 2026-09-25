@@ -43,12 +43,6 @@ type Props = {
   /** Strip the wrapper for the named thread (after the user deletes it).
    *  Pass a fresh `nonce` each time so the iframe re-runs the unwrap. */
   stripCommentToken?: { id: string; nonce: number } | null;
-  /** Light WYSIWYG: when true, the iframe's body becomes `contenteditable`
-   *  and posts debounced `stash:html-mutated` events as the user types.
-   *  The iframe is the source of truth while editable — we don't reflow
-   *  it from `html` prop changes, so the user's caret position survives
-   *  the save round-trip. */
-  editable?: boolean;
 };
 
 // Iframes don't auto-size to their content — the parent has to decide the
@@ -77,7 +71,6 @@ export default function HtmlPageView({
   onNavigateLink,
   activeThreadId,
   stripCommentToken,
-  editable = false,
 }: Props) {
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const presentWrapRef = useRef<HTMLDivElement | null>(null);
@@ -210,14 +203,6 @@ export default function HtmlPageView({
       "*",
     );
   }, [stripCommentToken, channel]);
-
-  // Push edit-mode to the iframe whenever it changes.
-  useEffect(() => {
-    iframeRef.current?.contentWindow?.postMessage(
-      { type: "skill:set-editable", channel, enabled: editable },
-      "*",
-    );
-  }, [editable, channel]);
 
   // Push the active slide index to the iframe so the bootstrap shows
   // just that section.

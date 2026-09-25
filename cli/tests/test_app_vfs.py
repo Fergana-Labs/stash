@@ -304,7 +304,7 @@ def test_app_vfs_xargs_feeds_paths_with_spaces_into_a_command():
     shell, _client = _shell()
 
     # Skill titles contain spaces; xargs must treat each line as one argument.
-    result = shell.run("find /skills -type f -name '*.md' | xargs cat")
+    result = shell.run("find '/skills/Demo Skill' -type f -name '*.md' | xargs cat")
 
     assert result.exit_code == 0
     assert result.stdout == "# Demo Stash\n"

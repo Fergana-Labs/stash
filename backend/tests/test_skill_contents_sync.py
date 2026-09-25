@@ -37,7 +37,7 @@ async def _make_skill(client: AsyncClient, api_key: str) -> tuple[str, str]:
         "/api/v1/me/pages/new",
         json={
             "name": "SKILL.md",
-            "content": "---\nname: my-skill\n---\nv1",
+            "content": "---\nname: my-skill\ndescription: Test syncing a Skill.\n---\nv1",
             "folder_id": folder_id,
         },
         headers=_auth(api_key),
@@ -74,7 +74,14 @@ async def test_put_contents_replaces_subtree(client: AsyncClient, pool):
     resp = await client.put(
         f"/api/v1/me/skills/{folder_id}/contents",
         files=[
-            ("files", ("SKILL.md", b"---\nname: my-skill\n---\nv2", "text/markdown")),
+            (
+                "files",
+                (
+                    "SKILL.md",
+                    b"---\nname: my-skill\ndescription: Test syncing a Skill.\n---\nv2",
+                    "text/markdown",
+                ),
+            ),
             ("files", ("references/guide.md", b"# guide", "text/markdown")),
         ],
         headers=_auth(api_key),
@@ -95,7 +102,16 @@ async def test_put_contents_replaces_subtree(client: AsyncClient, pool):
     # nothing may orphan into the scope root (folder FKs are SET NULL).
     resp = await client.put(
         f"/api/v1/me/skills/{folder_id}/contents",
-        files=[("files", ("SKILL.md", b"v3", "text/markdown"))],
+        files=[
+            (
+                "files",
+                (
+                    "SKILL.md",
+                    b"---\nname: my-skill\ndescription: Test syncing a Skill.\n---\n# my-skill",
+                    "text/markdown",
+                ),
+            )
+        ],
         headers=_auth(api_key),
     )
     assert resp.status_code == 200
@@ -103,7 +119,9 @@ async def test_put_contents_replaces_subtree(client: AsyncClient, pool):
         f"/api/v1/me/skills/{folder_id}/contents",
         headers=_auth(api_key),
     )
-    assert {p["name"] for p in got.json()["contents"]["pages"]} == {"SKILL.md"}
+    [page] = got.json()["contents"]["pages"]
+    assert page["name"] == "SKILL.md"
+    assert page["content_markdown"].endswith("# my-skill")
     orphans = await pool.fetchval(
         "SELECT COUNT(*) FROM pages WHERE owner_user_id = $1 AND folder_id IS NULL",
         owner_user_id,
@@ -139,3 +157,35 @@ async def test_put_contents_requires_skill_md_and_ownership(client: AsyncClient)
         headers=_auth(outsider_key),
     )
     assert outsider.status_code == 404
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "path, content",
+    [
+        ("SKILL.md", b"---\nname: broken\n---\n"),
+        ("nested/SKILL.md", b"---\nname: broken\n---\n"),
+        ("SKILL.md", b"\xff"),
+    ],
+)
+async def test_invalid_sync_preserves_existing_skill(client, path, content):
+    api_key = await _register(client)
+    _, folder_id = await _make_skill(client, api_key)
+    url = f"/api/v1/me/skills/{folder_id}/contents"
+    before = (await client.get(url, headers=_auth(api_key))).json()
+    uploads = [("files", (path, content, "text/markdown"))]
+    if path != "SKILL.md":
+        uploads.append(
+            (
+                "files",
+                (
+                    "SKILL.md",
+                    b"---\nname: valid\ndescription: Valid metadata.\n---\n",
+                    "text/markdown",
+                ),
+            )
+        )
+    response = await client.put(url, files=uploads, headers=_auth(api_key))
+    assert response.status_code == 400
+    after = (await client.get(url, headers=_auth(api_key))).json()
+    assert after == before

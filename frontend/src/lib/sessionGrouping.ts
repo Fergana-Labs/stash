@@ -86,21 +86,66 @@ export type SessionFlatGroup = {
   sessions: SessionSummary[];
 };
 
+export type SessionSortColumn =
+  | "user"
+  | "session"
+  | "folder"
+  | "events"
+  | "agent"
+  | "date"
+  | "updated";
+
+export type SessionSortDirection = "ascending" | "descending";
+
+export function sortSessionsByColumn(
+  sessions: SessionSummary[],
+  column: SessionSortColumn,
+  direction: SessionSortDirection
+): SessionSummary[] {
+  const multiplier = direction === "ascending" ? 1 : -1;
+
+  return [...sessions].sort((a, b) => {
+    const comparison = compareSessionColumn(a, b, column);
+    if (comparison !== 0) return comparison * multiplier;
+    return a.session_id.localeCompare(b.session_id);
+  });
+}
+
+function compareSessionColumn(
+  a: SessionSummary,
+  b: SessionSummary,
+  column: SessionSortColumn
+): number {
+  if (column === "user") {
+    return requireSessionUserName(a.user_name).localeCompare(requireSessionUserName(b.user_name));
+  }
+  if (column === "session") return a.title.localeCompare(b.title);
+  if (column === "folder") return compareNullableText(a.session_folder_name, b.session_folder_name);
+  if (column === "events") return a.event_count - b.event_count;
+  if (column === "agent") return compareNullableText(a.agent_name, b.agent_name);
+  if (column === "date") return parseSessionDate(a.started_at) - parseSessionDate(b.started_at);
+  return parseSessionDate(a.last_event_at) - parseSessionDate(b.last_event_at);
+}
+
+function compareNullableText(a: string | null, b: string | null): number {
+  if (a === null && b === null) return 0;
+  if (a === null) return 1;
+  if (b === null) return -1;
+  return a.localeCompare(b);
+}
+
+function parseSessionDate(value: string): number {
+  const timestamp = new Date(value).getTime();
+  if (Number.isNaN(timestamp)) throw new Error(`Invalid session timestamp: ${value}`);
+  return timestamp;
+}
+
 export function groupSessionsByUser(sessions: SessionSummary[]): SessionFlatGroup[] {
   return groupBy(sessions, (s) => requireSessionUserName(s.user_name));
 }
 
 export function groupSessionsByAgent(sessions: SessionSummary[]): SessionFlatGroup[] {
   return groupBy(sessions, (s) => (s.agent_name || "").trim() || "Unknown agent");
-}
-
-export function groupSessionsByLinearTicket(sessions: SessionSummary[]): SessionFlatGroup[] {
-  return groupBy(sessions, (s) => {
-    const ticket = s.linear_tickets[0];
-    if (!ticket) return "Unlabeled";
-    if (ticket.ticket_title) return `${ticket.ticket_identifier}: ${ticket.ticket_title}`;
-    return ticket.ticket_identifier;
-  });
 }
 
 // Groups + sorts: largest groups first, sessions inside groups reverse-chronological.
