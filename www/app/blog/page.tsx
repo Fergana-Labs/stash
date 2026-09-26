@@ -20,6 +20,13 @@ type Post = {
 
 const POSTS: Post[] = [
   {
+    title: "Agent traces are the new oil",
+    blurb:
+      "Traces are the currency AI companies transact over, yet most teams deploying agents treat them as disposable logs. What traces are worth to you, and why extracting that value is hard.",
+    href: "/blog/agent-traces-are-the-new-oil",
+    author: "Sam Liu",
+  },
+  {
     title: "Why Memory Is Unsolved",
     blurb:
       "Memory is not retrieval. Why today's benchmarks mostly measure search, how we nearly saturated STALE, and the two problems actually holding memory back: blast radius and stability.",

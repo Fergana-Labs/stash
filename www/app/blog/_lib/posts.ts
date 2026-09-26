@@ -32,6 +32,15 @@ export type Post = {
 };
 
 export const POSTS: Record<string, Post> = {
+  "agent-traces-are-the-new-oil": {
+    slug: "agent-traces-are-the-new-oil",
+    headline: "Agent traces are the new oil",
+    description:
+      "Agent traces are the currency AI companies transact over, yet most enterprises deploying agents treat them as disposable logs. Why traces matter, why extracting value from them is hard, and why they are the new oil.",
+    author: AUTHORS["Sam Liu"],
+    datePublished: "2026-09-25",
+    byline: "September 2026",
+  },
   "why-memory-is-unsolved": {
     slug: "why-memory-is-unsolved",
     headline: "Why Memory Is Unsolved",
