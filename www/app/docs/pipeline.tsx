@@ -35,6 +35,9 @@ const STAGES = [
   },
 ];
 
+// The recordings are real-time; at 3x the four steps cycle in about 20 seconds.
+const PLAYBACK_RATE = 3;
+
 export function Pipeline() {
   // The recordings play through in order on their own, so a reader sees the
   // whole flow without clicking. Closing the open card stops the cycle.
@@ -106,6 +109,13 @@ export function Pipeline() {
           autoPlay
           muted
           playsInline
+          ref={(video) => {
+            // Set on mount: the first clip's metadata can load before React hydrates,
+            // so a loadedmetadata handler would miss it.
+            if (!video) return;
+            video.defaultPlaybackRate = PLAYBACK_RATE;
+            video.playbackRate = PLAYBACK_RATE;
+          }}
           onTimeUpdate={(e) => setProgress(e.currentTarget.currentTime / e.currentTarget.duration)}
           onEnded={playNext}
           className="block aspect-[8/5] w-full border-t border-border-subtle bg-surface"
