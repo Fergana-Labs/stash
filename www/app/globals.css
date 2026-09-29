@@ -229,3 +229,28 @@ html, body {
 @media (prefers-reduced-motion: reduce) {
   .rise-in { animation: none; }
 }
+
+/* Syntax highlighting for docs code blocks: muted, warm, no reds. */
+.code-block { color: #3d3830; }
+.code-block .hljs-comment,
+.code-block .hljs-quote { color: #9a9187; font-style: italic; }
+.code-block .hljs-keyword,
+.code-block .hljs-selector-tag,
+.code-block .hljs-built_in,
+.code-block .hljs-literal { color: #6d4fa8; }
+.code-block .hljs-string,
+.code-block .hljs-regexp,
+.code-block .hljs-template-variable { color: #3f7a3a; }
+.code-block .hljs-number,
+.code-block .hljs-symbol { color: #9a6200; }
+.code-block .hljs-attr,
+.code-block .hljs-attribute,
+.code-block .hljs-property,
+.code-block .hljs-variable,
+.code-block .hljs-params { color: #25689a; }
+.code-block .hljs-title,
+.code-block .hljs-title.function_,
+.code-block .hljs-section,
+.code-block .hljs-name { color: #1f5f6b; }
+.code-block .hljs-meta { color: #7a7066; }
+.code-block .hljs-subst { color: inherit; }

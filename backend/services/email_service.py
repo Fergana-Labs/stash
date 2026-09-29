@@ -113,7 +113,7 @@ trajectories.</p>
 <p><strong>Getting started. There are two ways to get started:</strong></p>
 
 <ol>
-  <li><a href="https://joinstash.ai/docs/quickstart"><strong>Install Stash for your Coding Agent</strong></a> &mdash; Just run a cURL command and it will walk you through how to install Stash. You&rsquo;ll start uploading transcripts, and your agent will get access to Skills created from those transcripts (eg if you tell your agent &ldquo;never use useEffect&rdquo;, it will make a skill called &ldquo;don&rsquo;t use useEffect&rdquo;)</li>
+  <li><a href="https://github.com/Fergana-Labs/stash#quick-start"><strong>Install Stash for your Coding Agent</strong></a> &mdash; Just run a cURL command and it will walk you through how to install Stash. You&rsquo;ll start uploading transcripts, and your agent will get access to Skills created from those transcripts (eg if you tell your agent &ldquo;never use useEffect&rdquo;, it will make a skill called &ldquo;don&rsquo;t use useEffect&rdquo;)</li>
   <li><a href="{app_url}/developer"><strong>Install Stash for your Product</strong></a> &mdash; You can do the same operation for your product. If you&rsquo;re building an agent, copy an API key and copy the prompt provided to give your agent learning across rollouts in minutes! A cool feature here is we let your agent merge learnings across multiple end users with anonymization</li>
 </ol>
 

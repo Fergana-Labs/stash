@@ -103,7 +103,7 @@ export default function DeveloperShell({
           </div>
           <nav className="flex items-center gap-6 text-[14px] text-dim">
             <a
-              href="https://joinstash.ai/docs"
+              href="https://github.com/Fergana-Labs/stash#readme"
               target="_blank"
               rel="noreferrer"
               className="hidden hover:text-foreground sm:block"

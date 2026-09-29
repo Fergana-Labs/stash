@@ -1,282 +1,105 @@
 import type { Metadata } from "next";
-
 import Link from "next/link";
-import { Callout, Code, H3, P, Title, Subtitle } from "./components";
+
+import { Code, CodeBlock, H2, P, Title } from "./components";
+import { DemoClip, NextPage, Pipeline } from "./parts";
 
 export const metadata: Metadata = {
-  title: "Docs · Stash Overview",
+  title: "Stash Docs",
   description:
-    "Stash does two things: memory for the coding agents your team runs, and memory for the agents inside your product.",
+    "Annotate agent traces with + / − comments, train a reward model from them, and use it to post-train or to write a skill for your agent with GEPA.",
   alternates: { canonical: "/docs" },
 };
 
-export default function DocsOverview() {
+const CONNECT = `export OTEL_EXPORTER_OTLP_ENDPOINT=https://api.joinstash.ai/api/v1/rm/otel
+export OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+export OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer%20$STASH_API_KEY"
+
+opentelemetry-instrument python agent.py`;
+
+const INSTALL = `pip install opentelemetry-distro \\
+  opentelemetry-exporter-otlp-proto-http \\
+  openinference-instrumentation-anthropic`;
+
+const ONE_SPAN = `with tracer.start_as_current_span("agent-run"):
+    run_agent(task)`;
+
+// Excerpt of the skill produced in skill.mp4.
+const SKILL_EXAMPLE = `---
+name: refund-requests
+description: Use this skill whenever a user requests a refund
+  or reports a broken/damaged order. Always look up the order
+  details and check the applicable refund policy before
+  responding, and explain the next steps to the user rather
+  than promising a refund outright.
+---
+
+## Hard rules
+
+- **Never** promise a refund, replacement, or specific dollar
+  amount as a done deal before eligibility is confirmed.
+- **Never** claim to have looked something up that you did
+  not actually look up.
+- **Never** ask the user to repeat information already given
+  in the conversation.`;
+
+export default function RewardModelsOverviewPage() {
   return (
     <>
-      <Title>Stash Overview</Title>
-      <Subtitle>
-        Stash does two things: memory for the coding agents your team runs, and memory
-        for the agents inside your product.
-      </Subtitle>
-
-      <Callout type="tip">
-        <strong>Ready to get started?</strong> Go straight to the{" "}
-        <Link href="/docs/quickstart" className="text-brand underline underline-offset-2">
-          Quickstart
-        </Link>{" "}
-        to install in one click.
-      </Callout>
-
-      <H3>Internal agents: self-improving skills</H3>
+      <Title>Overview</Title>
       <P>
-        The Stash plugin records the sessions your coding agents already produce — Claude
-        Code, Cursor, Codex, and the rest — into one shared, searchable store. A nightly
-        curator refines them into a wiki of pages and reusable skills, and every agent
-        reads that memory back through the CLI or MCP on its next run. One engineer&apos;s
-        debugging session becomes something every teammate&apos;s agent already knows.
+        Stash makes it easy to annotate traces so that you can emphasize what you wish the agent would
+        have done better. Once you submit your annotations, Stash converts that into an easy-to-use reward
+        model that you can use to either post-train or prompt-optimize with GEPA.
       </P>
+      <Pipeline />
 
-      <H3>External agents: the Developer Platform</H3>
+      <H2>1. Connect Stash to your agent</H2>
       <P>
-        The same memory loop for the agents inside your product. Your agents push their
-        conversations to Stash per end user; the curator writes each user a private wiki
-        plus one shared, anonymized wiki that every user&apos;s agent reads. Your product
-        gets smarter with every conversation, without you building a memory system.
+        Stash reads your agent&apos;s traces over OpenTelemetry. Install the instrumentation for your
+        framework, set three variables, and every run shows up on the Traces page.
       </P>
-
-      <H3>Example: Don&apos;t Duplicate Work</H3>
+      <CodeBlock lang="bash">{CONNECT}</CodeBlock>
+      <DemoClip src="/docs/demo/connect.mp4" />
       <P>
-        Henry asks his coding agent to investigate a memory leak. His teammate Sam
-        already spent hours debugging the same issue the night before. Without Stash,
-        the agent starts from scratch. With Stash, it picks up where Sam left off.
+        The instrumentation for an Anthropic agent, for example (the{" "}
+        <Link href="https://github.com/Arize-ai/openinference" className="text-brand hover:underline">OpenInference</Link>{" "}
+        packages cover OpenAI, the OpenAI Agents SDK, LangChain, LlamaIndex, CrewAI, DSPy, Bedrock, and
+        more; the Vercel AI SDK emits OpenTelemetry on its own):
       </P>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 my-6">
-        {/* Without Stash */}
-        <div className="rounded-xl border border-zinc-200 overflow-hidden flex flex-col shadow-sm">
-          <div className="bg-[#e4e4e4] px-4 py-2.5 border-b border-zinc-300 relative flex items-center">
-            <div className="flex gap-1.5">
-              <span className="w-[10px] h-[10px] rounded-full bg-[#ff5f57]" />
-              <span className="w-[10px] h-[10px] rounded-full bg-[#febc2e]" />
-              <span className="w-[10px] h-[10px] rounded-full bg-[#28c840]" />
-            </div>
-            <span className="absolute inset-0 flex items-center justify-center text-[11px] font-medium text-zinc-500">Without Stash</span>
-          </div>
-          <div className="bg-white font-mono text-[12px] leading-[1.7] flex-1 max-h-[280px] overflow-y-auto">
-            <div className="sticky top-0 bg-white z-10 px-4 pt-4 pb-3">
-              <span className="text-zinc-400">&gt;</span>{" "}
-              <span className="text-zinc-900">Investigate the memory leak with our calendar service</span>
-            </div>
-            <div className="px-4 py-1 space-y-3">
-              <div className="text-zinc-600">
-                <span className="text-zinc-400">●</span> Reading server logs and source code...
-              </div>
-              <div className="text-zinc-600">
-                <span className="text-zinc-400">●</span> Found 11 <span className="text-blue-600">CalendarClient</span> creation sites, only 1 has cleanup
-              </div>
-              <div className="text-zinc-600">
-                <span className="text-zinc-400">●</span> Found 10 <span className="text-blue-600">GmailClient</span> creation sites, only 3 have <span className="text-blue-600">close()</span>
-              </div>
-              <div className="text-zinc-600">
-                <span className="text-zinc-400">●</span> Hypothesis: unclosed <span className="text-blue-600">httplib2</span> connections from <span className="text-blue-600">build()</span> calls
-              </div>
-              <div className="text-zinc-600">
-                <span className="text-zinc-400">●</span> Testing whether webhooks or <span className="text-blue-600">_draft_refresh_loop</span> is the source...
-              </div>
-              <div className="text-zinc-600">
-                <span className="text-zinc-400">●</span> Confirmed: <span className="text-blue-600">_draft_refresh_loop</span> creates 10 <span className="text-blue-600">build()</span> calls/min
-              </div>
-              <div className="text-zinc-800 mt-1">
-                The root cause is unclosed <span className="text-blue-600">httplib2</span>+SSL connections. Each <span className="text-blue-600">build()</span> call
-                leaks ~100KB. At 2-3/sec over 2 hours = ~1.15GB.
-              </div>
-            </div>
-            <div className="sticky bottom-0 bg-white z-10 px-4 pt-2 pb-4 border-t border-zinc-200">
-              <div className="text-zinc-400 text-[12px]">
-                <span className="text-zinc-400">✱</span> Sautéed for 12m 42s
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* With Stash */}
-        <div className="rounded-xl border border-zinc-200 overflow-hidden flex flex-col shadow-sm">
-          <div className="bg-[#e4e4e4] px-4 py-2.5 border-b border-zinc-300 relative flex items-center">
-            <div className="flex gap-1.5">
-              <span className="w-[10px] h-[10px] rounded-full bg-[#ff5f57]" />
-              <span className="w-[10px] h-[10px] rounded-full bg-[#febc2e]" />
-              <span className="w-[10px] h-[10px] rounded-full bg-[#28c840]" />
-            </div>
-            <span className="absolute inset-0 flex items-center justify-center text-[11px] font-medium text-zinc-500">With Stash</span>
-          </div>
-          <div className="bg-white font-mono text-[12px] leading-[1.7] flex-1 max-h-[280px] overflow-y-auto">
-            <div className="sticky top-0 bg-white z-10 px-4 pt-4 pb-3">
-              <span className="text-zinc-400">&gt;</span>{" "}
-              <span className="text-zinc-900">Investigate the memory leak with our calendar service</span>
-            </div>
-            <div className="px-4 py-1 space-y-3">
-              <div className="text-zinc-600">
-                <span className="text-zinc-400">●</span>{" "}
-                <span className="text-zinc-500">stash sessions search</span>{" "}
-                <span className="text-blue-600">&quot;memory leak build gmail calendar&quot;</span>
-              </div>
-              <div className="pl-3 border-l border-zinc-300 text-zinc-600 space-y-1">
-                <div className="text-zinc-400 text-[11px]">Sam&apos;s session from last night (22 events):</div>
-                <div>Sam identified 10 <span className="text-blue-600">build()</span> calls/min from <span className="text-blue-600">_draft_refresh_loop</span>, not webhooks.</div>
-                <div>Sam fixed <span className="text-blue-600">GmailClient</span> with lazy init + context managers.</div>
-                <div>Leak is still active post-fix: <span className="text-blue-600">CalendarClient</span> has no <span className="text-blue-600">close()</span> in any path.</div>
-              </div>
-              <div className="text-zinc-600">
-                <span className="text-zinc-400">●</span> Checking Sam&apos;s commit <span className="text-blue-600">4bc908f</span>...
-              </div>
-              <div className="text-zinc-600">
-                <span className="text-zinc-400">●</span> Adding <span className="text-blue-600">__del__</span> and context managers to <span className="text-blue-600">CalendarClient</span> across 11 sites
-              </div>
-              <div className="text-zinc-800 mt-1">
-                Done. Sam&apos;s fix covered <span className="text-blue-600">GmailClient</span>. Applied the same pattern
-                to <span className="text-blue-600">CalendarClient</span> to close the remaining leak.
-              </div>
-            </div>
-            <div className="sticky bottom-0 bg-white z-10 px-4 pt-2 pb-4 border-t border-zinc-200">
-              <div className="text-zinc-400 text-[12px]">
-                <span className="text-zinc-400">✱</span> Crunched for 2m 55s
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <H3>Example: Managing Upwards</H3>
+      <CodeBlock lang="bash">{INSTALL}</CodeBlock>
       <P>
-        After a long day of working with coding agents, I ask &ldquo;what did I get done
-        today?&rdquo;
+        Frameworks group each run into one trace. If your agent calls a model SDK directly in a loop,
+        wrap each run in a span so its calls land in the same trace:
       </P>
+      <CodeBlock lang="python">{ONE_SPAN}</CodeBlock>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 my-6">
-        {/* Without Stash */}
-        <div className="rounded-xl border border-zinc-200 overflow-hidden flex flex-col shadow-sm">
-          <div className="bg-[#e4e4e4] px-4 py-2.5 border-b border-zinc-300 relative flex items-center">
-            <div className="flex gap-1.5">
-              <span className="w-[10px] h-[10px] rounded-full bg-[#ff5f57]" />
-              <span className="w-[10px] h-[10px] rounded-full bg-[#febc2e]" />
-              <span className="w-[10px] h-[10px] rounded-full bg-[#28c840]" />
-            </div>
-            <span className="absolute inset-0 flex items-center justify-center text-[11px] font-medium text-zinc-500">Without Stash</span>
-          </div>
-          <div className="bg-white font-mono text-[12px] leading-[1.7] flex-1 max-h-[280px] overflow-y-auto">
-            <div className="sticky top-0 bg-white z-10 px-4 pt-4 pb-3">
-              <span className="text-zinc-400">&gt;</span>{" "}
-              <span className="text-zinc-900">What did I get done today?</span>
-            </div>
-            <div className="px-4 py-1 space-y-3">
-              <div className="text-zinc-600">
-                <span className="text-zinc-400">●</span> Reading git log for today&apos;s commits...
-              </div>
-              <div className="text-zinc-600">
-                <span className="text-zinc-400">●</span> Found 6 commits across 3 PRs
-              </div>
-              <div className="text-zinc-800 mt-1 space-y-1">
-                <div>6 Things:</div>
-                <div className="pl-2 text-zinc-600 space-y-0.5">
-                  <div>• Page tree: d3-force stabilization, pan/zoom/drag, hover links</div>
-                  <div>• Files navigation: browser back/forward, URL sync</div>
-                  <div>• ID-based page links with autocomplete</div>
-                  <div>• Fixed embedding space click/drag, loading blink</div>
-                  <div>• Share dropdown separated from home link</div>
-                  <div>• Share link UX: copied feedback, owner-only rotate</div>
-                </div>
-              </div>
-            </div>
-            <div className="sticky bottom-0 bg-white z-10 px-4 pt-2 pb-4 border-t border-zinc-200">
-              <div className="text-zinc-400 text-[12px]">
-                <span className="text-zinc-400">✱</span> Sautéed for 8s
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* With Stash */}
-        <div className="rounded-xl border border-zinc-200 overflow-hidden flex flex-col shadow-sm">
-          <div className="bg-[#e4e4e4] px-4 py-2.5 border-b border-zinc-300 relative flex items-center">
-            <div className="flex gap-1.5">
-              <span className="w-[10px] h-[10px] rounded-full bg-[#ff5f57]" />
-              <span className="w-[10px] h-[10px] rounded-full bg-[#febc2e]" />
-              <span className="w-[10px] h-[10px] rounded-full bg-[#28c840]" />
-            </div>
-            <span className="absolute inset-0 flex items-center justify-center text-[11px] font-medium text-zinc-500">With Stash</span>
-          </div>
-          <div className="bg-white font-mono text-[12px] leading-[1.7] flex-1 max-h-[280px] overflow-y-auto">
-            <div className="sticky top-0 bg-white z-10 px-4 pt-4 pb-3">
-              <span className="text-zinc-400">&gt;</span>{" "}
-              <span className="text-zinc-900">What did I get done today?</span>
-            </div>
-            <div className="px-4 py-1 space-y-3">
-              <div className="text-zinc-600">
-                <span className="text-zinc-400">●</span>{" "}
-                <span className="text-zinc-500">stash sessions query</span>{" "}
-                <span className="text-blue-600">--since today</span>
-              </div>
-              <div className="pl-3 border-l border-zinc-300 text-zinc-600 space-y-1">
-                <div className="text-zinc-400 text-[11px]">Found 14 sessions across git, ops, and collaboration</div>
-              </div>
-              <div className="text-zinc-600">
-                <span className="text-zinc-400">●</span> Cross-referencing with git log...
-              </div>
-              <div className="text-zinc-800 mt-1 space-y-1">
-                <div>9 Things:</div>
-                <div className="pl-2 space-y-0.5">
-                  <div className="text-zinc-400 text-[11px] mt-1 mb-0.5">From git:</div>
-                  <div className="text-zinc-600">• Page tree: d3-force stabilization, pan/zoom/drag, hover links</div>
-                  <div className="text-zinc-600">• Files navigation: browser back/forward, URL sync</div>
-                  <div className="text-zinc-600">• ID-based page links with autocomplete</div>
-                  <div className="text-zinc-600">• Fixed embedding space click/drag, loading blink</div>
-                  <div className="text-zinc-600">• Share dropdown separated from home link</div>
-                  <div className="text-zinc-600">• Share link UX: copied feedback, owner-only rotate</div>
-                  <div className="text-zinc-400 text-[11px] mt-1 mb-0.5">From stash:</div>
-                  <div className="text-zinc-600">• Cleaned up old Render servers in production</div>
-                  <div className="text-zinc-600">• Wrote installation docs for new users</div>
-                  <div className="text-zinc-600">• Helped sam@joinstash.ai onboard to enterprise</div>
-                </div>
-              </div>
-            </div>
-            <div className="sticky bottom-0 bg-white z-10 px-4 pt-2 pb-4 border-t border-zinc-200">
-              <div className="text-zinc-400 text-[12px]">
-                <span className="text-zinc-400">✱</span> Crunched for 12s
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <H3>FAQ</H3>
-      <p className="text-[15px] font-semibold text-foreground leading-7 mb-2">Do I have to upload my transcripts?</p>
+      <H2>2. Annotate them</H2>
       <P>
-        No. Session recording is on by default during setup, but it&apos;s entirely yours to
-        control: decline it in the wizard, pause globally with <Code>stash stop</Code>, pick
-        which agents record, or exclude folders in <Code>stash settings</Code>. Your coding
-        agent keeps read access to your Stash either way.
+        Open a trace and mark it, or any step in it, + or −. To say what went wrong, highlight the text
+        and leave a comment.
       </P>
+      <DemoClip src="/docs/demo/annotate.mp4" />
 
-      <H3>Quick links</H3>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 my-4">
-        {[
-          { href: "/docs/quickstart", label: "Quickstart", desc: "Connect your coding agent and start in 5 minutes." },
-          { href: "/docs/concepts", label: "Concepts", desc: "What your Stash, agent names, and sessions are." },
-          { href: "/docs/cli", label: "CLI", desc: "Push events and manage resources from the terminal." },
-          { href: "/docs/self-hosting", label: "Self-Hosting", desc: "Run Stash on your own infra with Postgres + pgvector." },
-        ].map((l) => (
-          <Link
-            key={l.href}
-            href={l.href}
-            className="group rounded-2xl border border-border bg-surface px-5 py-4 hover:border-brand/40 hover:bg-brand/3 transition-colors"
-          >
-            <div className="text-[14px] font-semibold text-foreground group-hover:text-brand transition-colors mb-1">
-              {l.label}
-            </div>
-            <div className="text-[13px] text-dim">{l.desc}</div>
-          </Link>
-        ))}
-      </div>
+      <H2>3. Train a reward model</H2>
+      <P>
+        Select the traces to train on and press <strong>Train reward model</strong>. Stash trains a
+        reward model on their + and − marks, then scores every trace, including the ones nobody
+        annotated. Download the weights to use the model as the reward function when you post-train.
+      </P>
+      <DemoClip src="/docs/demo/train.mp4" />
+
+      <H2>4. Write a skill</H2>
+      <P>
+        On a trained reward model, press <strong>Create skill</strong>. GEPA reads your comments, writes a{" "}
+        <Code>SKILL.md</Code> that teaches your agent to score well on that reward model, and names it.
+        Your agent loads the skill next to its system prompt, which Stash leaves alone.
+      </P>
+      <DemoClip src="/docs/demo/skill.mp4" />
+      <P>An excerpt from the skill in that recording:</P>
+      <CodeBlock lang="markdown">{SKILL_EXAMPLE}</CodeBlock>
+
+      <NextPage href="/docs/trace-format" label="Trace format" />
     </>
   );
 }
