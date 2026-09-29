@@ -1,13 +1,13 @@
 import type { Metadata } from "next";
 
-import { Callout, Code, CodeBlock, CodeTabs, H2, H3, P, ParamTable, Title, Subtitle } from "../../components";
+import { Callout, Code, CodeBlock, CodeTabs, H2, H3, P, ParamTable, Title, Subtitle } from "../../docs/components";
 import { Endpoint, Table } from "../parts";
 
 export const metadata: Metadata = {
-  title: "API Reference · Reward Models · Stash Docs",
+  title: "API Reference · Stash reward model fine-tuning",
   description:
     "REST reference for /api/v1/rm: import traces, annotate, export, train reward models, run GEPA, and query your data with read-only DuckDB SQL.",
-  alternates: { canonical: "/docs/reward-models/api" },
+  alternates: { canonical: "/reward-model-fine-tuning/api" },
 };
 
 const AUTH = `-H "Authorization: Bearer $STASH_API_KEY"`;
@@ -120,7 +120,7 @@ print(resp.json())`,
         parse as its format, a trace with only system steps, and a trace with no title and no user
         step. Re-importing a trace with the same <Code>id</Code> replaces its steps and deletes the
         annotations on them. See{" "}
-        <a href="/docs/reward-models/trace-format" className="text-brand hover:underline">Trace format</a>.
+        <a href="/reward-model-fine-tuning/trace-format" className="text-brand hover:underline">Trace format</a>.
       </P>
 
       <Endpoint method="GET" path="/traces">List traces, paginated.</Endpoint>
@@ -179,7 +179,7 @@ print(resp.json())`,
       </P>
       <Endpoint method="GET" path="/export/traces">Traces in the Stash Trace Format. Re-importable as-is.</Endpoint>
       <Endpoint method="GET" path="/export/annotations">
-        One annotation per line; fields in <a href="/docs/reward-models/annotations#exporting-annotations" className="text-brand hover:underline">Annotations</a>.
+        One annotation per line; fields in <a href="/reward-model-fine-tuning/annotations#exporting-annotations" className="text-brand hover:underline">Annotations</a>.
       </Endpoint>
       <Endpoint method="GET" path="/export/pairs">
         The training pairs your current labels produce, capped at 4000:{" "}

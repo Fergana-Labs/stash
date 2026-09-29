@@ -1,13 +1,13 @@
 import type { Metadata } from "next";
 
-import { Callout, Code, CodeBlock, CodeTabs, H2, H3, P, ParamTable, Title, Subtitle } from "../../components";
+import { Callout, Code, CodeBlock, CodeTabs, H2, H3, P, ParamTable, Title, Subtitle } from "../../docs/components";
 import { NextPage, Table } from "../parts";
 
 export const metadata: Metadata = {
-  title: "GEPA · Reward Models · Stash Docs",
+  title: "GEPA · Stash reward model fine-tuning",
   description:
     "Optimize an agent's system prompt with GEPA, using your reviewers' comments as feedback and your trained reward model as the metric. Works with any OpenAI-compatible endpoint.",
-  alternates: { canonical: "/docs/reward-models/gepa" },
+  alternates: { canonical: "/reward-model-fine-tuning/gepa" },
 };
 
 export default function GepaPage() {
@@ -54,7 +54,7 @@ export default function GepaPage() {
       />
       <P>
         The scored text is rendered like training text (see{" "}
-        <a href="/docs/reward-models/annotations#3-render-each-target-to-text" className="text-brand hover:underline">Annotations</a>),
+        <a href="/reward-model-fine-tuning/annotations#3-render-each-target-to-text" className="text-brand hover:underline">Annotations</a>),
         and it leaves out the system prompt. That matters here more than anywhere: if the reward model
         read the candidate prompt, GEPA could raise its score by writing what the reward model likes into
         the prompt, without changing what the agent says.
@@ -181,7 +181,7 @@ Human reviewer comment: Promised a refund without checking the policy`}</CodeBlo
         model left open.
       </P>
 
-      <NextPage href="/docs/reward-models/api" label="API reference" />
+      <NextPage href="/reward-model-fine-tuning/api" label="API reference" />
     </>
   );
 }

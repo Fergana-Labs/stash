@@ -1,13 +1,13 @@
 import type { Metadata } from "next";
 
-import { Callout, Code, CodeBlock, H2, H3, P, ParamTable, Title, Subtitle } from "../../components";
+import { Callout, Code, CodeBlock, H2, H3, P, ParamTable, Title, Subtitle } from "../../docs/components";
 import { NextPage, Table } from "../parts";
 
 export const metadata: Metadata = {
-  title: "Annotations · Reward Models · Stash Docs",
+  title: "Annotations · Stash reward model fine-tuning",
   description:
     "Rate and comment on agent traces, anchor comments to quoted spans, flag bad labels, and see exactly how annotations become reward model training pairs.",
-  alternates: { canonical: "/docs/reward-models/annotations" },
+  alternates: { canonical: "/reward-model-fine-tuning/annotations" },
 };
 
 const RENDERED = `user: I want a refund for order 1182
@@ -158,7 +158,7 @@ export default function AnnotationsPage() {
         agent had. Each step is <Code>&lt;role&gt;: &lt;content&gt;</Code>, steps are joined with blank
         lines, and tool calls are written as{" "}
         <Code>assistant → &lt;tool_name&gt;(&lt;tool_input json&gt;)</Code>. The trace on{" "}
-        <a href="/docs/reward-models/trace-format#stash-trace-format" className="text-brand hover:underline">Trace format</a>{" "}
+        <a href="/reward-model-fine-tuning/trace-format#stash-trace-format" className="text-brand hover:underline">Trace format</a>{" "}
         renders as:
       </P>
       <CodeBlock>{RENDERED}</CodeBlock>
@@ -208,7 +208,7 @@ export default function AnnotationsPage() {
         ]}
       />
 
-      <NextPage href="/docs/reward-models/training" label="Training" />
+      <NextPage href="/reward-model-fine-tuning/training" label="Training" />
     </>
   );
 }

@@ -1,15 +1,15 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
-import { Callout, Code, CodeBlock, H2, H3, P, Title, Subtitle } from "../components";
+import { Callout, Code, CodeBlock, H2, H3, P, Title, Subtitle } from "../docs/components";
 import { QUICKSTART_TRACES } from "./examples";
 import { NextPage, Pipeline, Table } from "./parts";
 
 export const metadata: Metadata = {
-  title: "Reward Models · Stash Docs",
+  title: "Stash reward model fine-tuning",
   description:
     "Import agent traces, annotate them with + / − comments, train a Bradley–Terry reward model, and optimize system prompts with GEPA.",
-  alternates: { canonical: "/docs/reward-models" },
+  alternates: { canonical: "/reward-model-fine-tuning" },
 };
 
 const SAMPLE = `cat > traces.jsonl <<'EOF'
@@ -19,7 +19,7 @@ EOF`;
 export default function RewardModelsOverviewPage() {
   return (
     <>
-      <Title>Reward models</Title>
+      <Title>Stash reward model fine-tuning</Title>
       <Subtitle>
         Turn reviewed agent traces into a reward model, then use it to rewrite your agent&apos;s system prompt.
       </Subtitle>
@@ -53,23 +53,23 @@ export default function RewardModelsOverviewPage() {
         head={["Piece", "What it does"]}
         rows={[
           [
-            <Link key="l" href="/docs/reward-models/trace-format" className="hover:text-brand">Format adapters</Link>,
+            <Link key="l" href="/reward-model-fine-tuning/trace-format" className="hover:text-brand">Format adapters</Link>,
             "Convert OpenAI, Anthropic, OpenTelemetry, Langfuse, LangSmith, Claude Code, and Codex exports into the Stash Trace Format.",
           ],
           [
-            <Link key="l" href="/docs/reward-models/annotations" className="hover:text-brand">Annotations</Link>,
+            <Link key="l" href="/reward-model-fine-tuning/annotations" className="hover:text-brand">Annotations</Link>,
             "A rating (+1 / −1), a comment, or both, on a whole trace or one step, optionally anchored to a quoted span.",
           ],
           [
-            <Link key="l" href="/docs/reward-models/training" className="hover:text-brand">Training worker</Link>,
+            <Link key="l" href="/reward-model-fine-tuning/training" className="hover:text-brand">Training worker</Link>,
             "A separate Python process (torch + transformers) that trains the reward model and scores every trace you own.",
           ],
           [
-            <Link key="l" href="/docs/reward-models/gepa" className="hover:text-brand">GEPA runs</Link>,
+            <Link key="l" href="/reward-model-fine-tuning/gepa" className="hover:text-brand">GEPA runs</Link>,
             "Evolve a system prompt against your reward model, using your task model and reflection model.",
           ],
           [
-            <Link key="l" href="/docs/reward-models/api" className="hover:text-brand">REST + SQL</Link>,
+            <Link key="l" href="/reward-model-fine-tuning/api" className="hover:text-brand">REST + SQL</Link>,
             "Everything is under /api/v1/rm, plus read-only DuckDB SQL over your own traces, steps, annotations, and scores.",
           ],
         ]}
@@ -86,7 +86,7 @@ export default function RewardModelsOverviewPage() {
       <P>
         Set <Code>STASH_URL</Code> to the backend of the Stash instance you use. To run your own,
         see <Link href="/docs/self-hosting" className="text-brand hover:underline">Self-hosting</Link>{" "}
-        and <Link href="/docs/reward-models/training#self-hosting-the-worker" className="text-brand hover:underline">Self-hosting the worker</Link>.
+        and <Link href="/reward-model-fine-tuning/training#self-hosting-the-worker" className="text-brand hover:underline">Self-hosting the worker</Link>.
         Every request uses a bearer token; <Code>stash signin</Code> stores one:
       </P>
       <CodeBlock>{`export STASH_URL=http://localhost:3456   # your Stash backend
@@ -95,7 +95,7 @@ export STASH_API_KEY=$(jq -r .api_key ~/.stash/config.json)`}</CodeBlock>
 
       <H3>2. Import traces</H3>
       <P>
-        Three traces in the <Link href="/docs/reward-models/trace-format" className="text-brand hover:underline">Stash Trace Format</Link>:
+        Three traces in the <Link href="/reward-model-fine-tuning/trace-format" className="text-brand hover:underline">Stash Trace Format</Link>:
         two where the agent checks the refund policy, one where it doesn&apos;t.
       </P>
       <CodeBlock>{SAMPLE}</CodeBlock>
@@ -149,11 +149,11 @@ export STASH_API_KEY=$(jq -r .api_key ~/.stash/config.json)`}</CodeBlock>
   -d '{"sql": "SELECT * FROM scores LIMIT 20"}'`}</CodeBlock>
       <P>
         From here, keep annotating and retrain, or hand the model to{" "}
-        <Link href="/docs/reward-models/gepa" className="text-brand hover:underline">GEPA</Link> to
+        <Link href="/reward-model-fine-tuning/gepa" className="text-brand hover:underline">GEPA</Link> to
         optimize your system prompt against it.
       </P>
 
-      <NextPage href="/docs/reward-models/trace-format" label="Trace format" />
+      <NextPage href="/reward-model-fine-tuning/trace-format" label="Trace format" />
     </>
   );
 }
