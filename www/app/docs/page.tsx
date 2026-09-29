@@ -11,18 +11,11 @@ export const metadata: Metadata = {
   alternates: { canonical: "/docs" },
 };
 
-const AUTO_UPLOAD = `import json, os, requests
-
-STASH_URL = os.environ["STASH_URL"]
-KEY = os.environ["STASH_API_KEY"]
-
-# At the end of each agent run:
-trace = json.dumps({"messages": messages})
-requests.post(
+const AUTO_UPLOAD = `requests.post(
     f"{STASH_URL}/api/v1/rm/traces/import",
-    headers={"Authorization": f"Bearer {KEY}"},
-    json={"format": "openai_chat", "data": trace},
-).raise_for_status()`;
+    headers={"Authorization": f"Bearer {STASH_API_KEY}"},
+    json={"format": "openai_chat", "data": json.dumps(trace)},
+)`;
 
 // A real skill from the demo above, shortened.
 const SKILL_EXAMPLE = `---
@@ -86,7 +79,10 @@ export default function RewardModelsOverviewPage() {
         Langfuse, LangSmith, Claude Code, and Codex logs as they are; see{" "}
         <Link href="/docs/trace-format" className="text-brand hover:underline">Trace format</Link>.
       </P>
-      <P>To upload automatically, have your agent send each trace when a run ends:</P>
+      <P>
+        To upload automatically, send each run when it finishes. Here <Code>trace</Code> is the run in
+        OpenAI chat format, <Code>{"{\"messages\": [...]}"}</Code>:
+      </P>
       <CodeBlock lang="python">{AUTO_UPLOAD}</CodeBlock>
 
       <H2>2. Annotate them</H2>

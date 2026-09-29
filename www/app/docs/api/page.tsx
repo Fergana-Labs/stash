@@ -106,15 +106,11 @@ curl -s "$STASH_URL/api/v1/rm/formats" ${AUTH}`}</CodeBlock>
           {
             label: "Python",
             lang: "python",
-            code: `import os, pathlib, requests
-
-resp = requests.post(
-    f"{os.environ['STASH_URL']}/api/v1/rm/traces/import",
-    headers={"Authorization": f"Bearer {os.environ['STASH_API_KEY']}"},
-    json={"format": "auto", "data": pathlib.Path("traces.jsonl").read_text()},
-)
-resp.raise_for_status()
-print(resp.json())`,
+            code: `requests.post(
+    f"{STASH_URL}/api/v1/rm/traces/import",
+    headers={"Authorization": f"Bearer {STASH_API_KEY}"},
+    json={"format": "auto", "data": open("traces.jsonl").read()},
+)`,
           },
         ]}
       />
@@ -277,14 +273,11 @@ curl -s "$STASH_URL/api/v1/rm/export/pairs"       ${AUTH} > pairs.jsonl`}</CodeB
           {
             label: "Python",
             lang: "python",
-            code: `import os, requests
-
-resp = requests.post(
-    f"{os.environ['STASH_URL']}/api/v1/rm/query",
-    headers={"Authorization": f"Bearer {os.environ['STASH_API_KEY']}"},
+            code: `body = requests.post(
+    f"{STASH_URL}/api/v1/rm/query",
+    headers={"Authorization": f"Bearer {STASH_API_KEY}"},
     json={"sql": "SELECT source_format, count(*) AS n FROM traces GROUP BY 1"},
-)
-body = resp.json()
+).json()
 rows = [dict(zip(body["columns"], row)) for row in body["rows"]]`,
           },
         ]}

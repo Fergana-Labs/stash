@@ -159,12 +159,10 @@ export default function TrainingPage() {
         <Code>RM_ARTIFACT_DIR/&lt;reward_model_id&gt;/model</Code>, along with{" "}
         <Code>reward_stats.json</Code>: the mean and standard deviation of the model&apos;s scores over
         your traces at training time, which GEPA uses to calibrate. On a self-hosted install, score new
-        text with the worker&apos;s own loader, which truncates exactly like training did. Run it with
-        the worker&apos;s Python from the repo root:
+        text with the worker&apos;s own loader, <Code>rm_worker.scoring.RewardModel</Code>, which
+        truncates exactly like training did. Run it with the worker&apos;s Python from the repo root:
       </P>
-      <CodeBlock lang="python">{`from rm_worker.scoring import RewardModel
-
-model = RewardModel("/var/stash/rm/<reward_model_id>/model")
+      <CodeBlock lang="python">{`model = RewardModel("/var/stash/rm/<reward_model_id>/model")
 rewards = model.score([rendered_trace])   # raw rewards, one per text`}</CodeBlock>
       <P>
         Render input text the same way training does (see{" "}
@@ -189,12 +187,11 @@ tar xzf refund-policy-reward-model.tar.gz`}</CodeBlock>
   chat_template.jinja
   reward_stats.json      # mean and std of scores at training time`}</CodeBlock>
       <P>
-        It loads with Transformers. Truncate from the left, as training did, so long conversations
-        keep their end:
+        It loads with Transformers&apos; <Code>AutoTokenizer</Code> and{" "}
+        <Code>AutoModelForSequenceClassification</Code>. Truncate from the left, as training did, so
+        long conversations keep their end:
       </P>
-      <CodeBlock lang="python">{`from transformers import AutoModelForSequenceClassification, AutoTokenizer
-
-path = "refund-policy-reward-model"
+      <CodeBlock lang="python">{`path = "refund-policy-reward-model"
 tokenizer = AutoTokenizer.from_pretrained(path, truncation_side="left")
 model = AutoModelForSequenceClassification.from_pretrained(path)
 
