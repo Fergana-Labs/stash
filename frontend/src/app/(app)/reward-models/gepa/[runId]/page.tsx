@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { RmPageSkeleton } from "@/components/reward-models/RmSkeletons";
 import { StatusBadge, isActiveJob, pendingSkillTitle } from "@/components/reward-models/rm-ui";
 import { diffLines, errorMessage, formatScore, relativeTime, skillFirstLine } from "@/components/reward-models/rm-text";
+import { JobError } from "@/components/reward-models/JobError";
 import { rmDownloadSkill, rmGetGepaRun, rmGetRewardModel } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import type { RmGepaCandidate, RmGepaRun, RmRewardModel } from "@/lib/types";
@@ -89,9 +90,7 @@ export default function GepaRunPage({ params }: { params: Promise<{ runId: strin
         </div>
 
         {run.status === "failed" && run.error && (
-          <pre className="m-0 mt-5 max-h-60 overflow-auto rounded-md border border-red-500/25 bg-red-500/8 px-3 py-2 font-mono text-[12px] whitespace-pre-wrap text-red-600">
-            {run.error}
-          </pre>
+          <JobError error={run.error} className="mt-5" />
         )}
 
         {run.seed_score !== null && run.best_score !== null && (

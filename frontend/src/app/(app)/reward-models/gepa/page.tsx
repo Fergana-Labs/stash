@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { useBreadcrumbs } from "@/components/BreadcrumbContext";
 import { RmListSkeleton } from "@/components/reward-models/RmSkeletons";
 import { EmptyState, RmPage, StatusBadge, isActiveJob, pendingSkillTitle } from "@/components/reward-models/rm-ui";
-import { errorMessage, formatScore, relativeTime } from "@/components/reward-models/rm-text";
+import { errorSummary, errorMessage, formatScore, relativeTime } from "@/components/reward-models/rm-text";
 import { rmListGepaRuns, rmListRewardModels } from "@/lib/api";
 import type { RmGepaRun, RmRewardModel } from "@/lib/types";
 
@@ -94,7 +94,7 @@ function RunRow({ run, model }: { run: RmGepaRun; model: RmRewardModel }) {
       )}
       <div className="mt-1.5 text-[11.5px] text-muted-foreground">from reward model {model.name}</div>
       {run.status === "failed" && run.error && (
-        <div className="mt-1.5 line-clamp-2 font-mono text-[11.5px] text-red-600">{run.error}</div>
+        <div className="mt-1.5 line-clamp-2 font-mono text-[11.5px] text-muted-foreground">{errorSummary(run.error)}</div>
       )}
     </Link>
   );

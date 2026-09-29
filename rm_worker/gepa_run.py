@@ -67,8 +67,7 @@ Rules:
 - "description": one to three sentences, at most 1024 characters, saying when the agent should use \
 the skill.
 
-Reply with only a JSON object {"name": "...", "description": "..."} and nothing else: no code fence, \
-no commentary.
+Call set_skill_identity with the name and description.
 
 Annotated conversations:
 
@@ -96,6 +95,31 @@ def sigmoid(x: float) -> float:
     return 1 / (1 + math.exp(-x))
 
 
+SKILL_IDENTITY_TOOL_NAME = "set_skill_identity"
+SKILL_IDENTITY_TOOL = {
+    "type": "function",
+    "function": {
+        "name": SKILL_IDENTITY_TOOL_NAME,
+        "description": "Set the skill's name and description.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "description": "Lowercase letters, digits and single hyphens, at most 64 characters.",
+                },
+                "description": {
+                    "type": "string",
+                    "description": "When the agent should use this skill, at most 1024 characters.",
+                },
+            },
+            "required": ["name", "description"],
+            "additionalProperties": False,
+        },
+    },
+}
+
+
 def derive_skill_identity(reflection_model: str, examples: list[dict]) -> tuple[str, str]:
     """Ask the reflection model for the skill's name and description; fail on anything invalid."""
     sections = []
@@ -107,19 +131,22 @@ def derive_skill_identity(reflection_model: str, examples: list[dict]) -> tuple[
         )
     prompt = SKILL_IDENTITY_PROMPT.replace("<examples>", "\n\n".join(sections))
 
+    # A forced tool call makes the provider return structured arguments, so the
+    # answer never arrives wrapped in prose or a Markdown code fence.
     response = litellm.completion(
-        model=reflection_model, messages=[{"role": "user", "content": prompt}]
+        model=reflection_model,
+        messages=[{"role": "user", "content": prompt}],
+        tools=[SKILL_IDENTITY_TOOL],
+        tool_choice={"type": "function", "function": {"name": SKILL_IDENTITY_TOOL_NAME}},
     )
-    content = response.choices[0].message.content
-    try:
-        identity = json.loads(content)
-    except json.JSONDecodeError as error:
-        raise ValueError(
-            f"reflection model did not return a JSON object for the skill identity: {content!r}"
-        ) from error
+    tool_calls = response.choices[0].message.tool_calls
+    if not tool_calls or tool_calls[0].function.name != SKILL_IDENTITY_TOOL_NAME:
+        raise ValueError(f"reflection model did not call {SKILL_IDENTITY_TOOL_NAME}: {response}")
+    arguments = tool_calls[0].function.arguments
+    identity = json.loads(arguments)
 
     if not isinstance(identity, dict) or set(identity) != {"name", "description"}:
-        raise ValueError(f"skill identity must be exactly {{name, description}}, got {content!r}")
+        raise ValueError(f"skill identity must be exactly {{name, description}}, got {arguments!r}")
     name = identity["name"]
     description = identity["description"]
     if (

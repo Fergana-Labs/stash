@@ -11,6 +11,7 @@ import TrainSheet from "@/components/reward-models/TrainSheet";
 import { SELECTED_PARAM } from "@/components/reward-models/trace-selection";
 import { EmptyState, RmPage, StatusBadge, isActiveJob } from "@/components/reward-models/rm-ui";
 import { errorMessage, formatSeconds, relativeTime } from "@/components/reward-models/rm-text";
+import { JobError } from "@/components/reward-models/JobError";
 import { rmCreateGepaRun, rmDownloadWeights, rmGetRewardModel, rmListRewardModels } from "@/lib/api";
 import type { RmRewardModel } from "@/lib/types";
 
@@ -104,9 +105,7 @@ function ModelCard({ model }: { model: RmRewardModel }) {
       )}
 
       {model.status === "failed" && model.error && (
-        <pre className="m-0 mt-3 max-h-40 overflow-auto rounded-md border border-red-500/25 bg-red-500/8 px-3 py-2 font-mono text-[12px] whitespace-pre-wrap text-red-600">
-          {model.error}
-        </pre>
+        <JobError error={model.error} className="mt-3" />
       )}
     </div>
   );

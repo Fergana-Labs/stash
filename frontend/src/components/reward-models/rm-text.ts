@@ -140,3 +140,10 @@ export function errorMessage(e: unknown): string {
   if (e instanceof Error) return e.message;
   return String(e);
 }
+
+/** The line that says what went wrong: the last non-empty line of a worker log tail. */
+export function errorSummary(log: string): string {
+  const lines = log.split("\n").map((line) => line.trim()).filter(Boolean);
+  if (lines.length === 0) throw new Error("errorSummary: empty error text");
+  return lines[lines.length - 1];
+}
