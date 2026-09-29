@@ -26,24 +26,24 @@ const SIDEBAR: [string, [string, string][]][] = [
     "Internal agents",
     [
       ["Overview", "/internal-agents"],
-      ["Plugins and capture", "/docs/quickstart"],
-      ["Skills", "/docs/cli"],
+      ["Plugins and capture", "https://github.com/Fergana-Labs/stash#quick-start"],
+      ["Skills", "https://github.com/Fergana-Labs/stash#cli-reference"],
     ],
   ],
   [
     "API",
     [
-      ["Quickstart", "/docs/quickstart"],
-      ["CLI reference", "/docs/cli"],
-      ["MCP server", "/docs"],
-      ["Virtual filesystem", "/docs"],
+      ["Quickstart", "https://github.com/Fergana-Labs/stash#quick-start"],
+      ["CLI reference", "https://github.com/Fergana-Labs/stash#cli-reference"],
+      ["MCP server", "https://github.com/Fergana-Labs/stash#coding-agents"],
+      ["Virtual filesystem", "https://github.com/Fergana-Labs/stash#how-it-works"],
     ],
   ],
   [
     "Operate",
     [
-      ["Self-hosting", "/docs/self-hosting"],
-      ["Postgres", "/docs/self-hosting"],
+      ["Self-hosting", "https://github.com/Fergana-Labs/stash#self-hosted"],
+      ["Postgres", "https://github.com/Fergana-Labs/stash#self-hosted"],
       ["Retention and deletion", "/privacy"],
     ],
   ],
@@ -106,7 +106,7 @@ export default function ExternalAgentsPage() {
             <span className="font-mono text-brand">&gt;_</span>
             <span>Building with a coding agent?</span>
             <Link
-              href="/docs/quickstart"
+              href="https://github.com/Fergana-Labs/stash#quick-start"
               className="ml-auto inline-flex h-8 items-center rounded-lg border border-border-subtle bg-surface px-3 font-mono text-[12.5px] text-ink transition hover:border-brand"
             >
               stash skills install stash-memory
@@ -290,9 +290,9 @@ export default function ExternalAgentsPage() {
           <H2 id="next">Next steps</H2>
           <div className="mt-6 grid grid-cols-1 gap-3.5 sm:grid-cols-2">
             {[
-              ["Quickstart →", "Connect one production agent and see the first refined page.", "/docs/quickstart"],
-              ["MCP server →", "Serve memory to any agent that speaks MCP.", "/docs"],
-              ["Self-hosting →", "Run the whole stack on your own Postgres.", "/docs/self-hosting"],
+              ["Quickstart →", "Connect one production agent and see the first refined page.", "https://github.com/Fergana-Labs/stash#quick-start"],
+              ["MCP server →", "Serve memory to any agent that speaks MCP.", "https://github.com/Fergana-Labs/stash#coding-agents"],
+              ["Self-hosting →", "Run the whole stack on your own Postgres.", "https://github.com/Fergana-Labs/stash#self-hosted"],
               ["Internal agents →", "The same layer for the agents your team runs.", "/internal-agents"],
             ].map(([title, body, href]) => (
               <Link

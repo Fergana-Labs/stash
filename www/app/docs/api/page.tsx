@@ -1,13 +1,13 @@
 import type { Metadata } from "next";
 
-import { Callout, Code, CodeBlock, CodeTabs, H2, H3, P, ParamTable, Title, Subtitle } from "../../docs/components";
+import { Callout, Code, CodeBlock, CodeTabs, H2, H3, P, ParamTable, Title, Subtitle } from "../components";
 import { Endpoint, Table } from "../parts";
 
 export const metadata: Metadata = {
   title: "API Reference · Stash Reward Models",
   description:
     "REST reference for /api/v1/rm: import traces, annotate, export, train reward models, run GEPA, and query your data with read-only DuckDB SQL.",
-  alternates: { canonical: "/reward-models/api" },
+  alternates: { canonical: "/docs/api" },
 };
 
 const AUTH = `-H "Authorization: Bearer $STASH_API_KEY"`;
@@ -66,9 +66,9 @@ curl -s "$STASH_URL/api/v1/rm/formats" ${AUTH}`}</CodeBlock>
           ["GET", <span key="p" className="font-mono">{"/export/traces"}</span>, "Export traces as JSONL"],
           ["GET", <span key="p" className="font-mono">{"/export/annotations"}</span>, "Export annotations as JSONL"],
           ["GET", <span key="p" className="font-mono">{"/export/pairs"}</span>, "Export training pairs as JSONL"],
-          ["POST", <span key="p" className="font-mono">{"/reward-models"}</span>, "Train a reward model"],
-          ["GET", <span key="p" className="font-mono">{"/reward-models"}</span>, "List reward models"],
-          ["GET", <span key="p" className="font-mono">{"/reward-models/{id}"}</span>, "Get a reward model"],
+          ["POST", <span key="p" className="font-mono">{"/docs"}</span>, "Train a reward model"],
+          ["GET", <span key="p" className="font-mono">{"/docs"}</span>, "List reward models"],
+          ["GET", <span key="p" className="font-mono">{"/docs/{id}"}</span>, "Get a reward model"],
           ["POST", <span key="p" className="font-mono">{"/gepa-runs"}</span>, "Start a GEPA run"],
           ["GET", <span key="p" className="font-mono">{"/gepa-runs"}</span>, "List GEPA runs"],
           ["GET", <span key="p" className="font-mono">{"/gepa-runs/{id}"}</span>, "Get a GEPA run"],
@@ -120,7 +120,7 @@ print(resp.json())`,
         parse as its format, a trace with only system steps, and a trace with no title and no user
         step. Re-importing a trace with the same <Code>id</Code> replaces its steps and deletes the
         annotations on them. See{" "}
-        <a href="/reward-models/trace-format" className="text-brand hover:underline">Trace format</a>.
+        <a href="/docs/trace-format" className="text-brand hover:underline">Trace format</a>.
       </P>
 
       <Endpoint method="GET" path="/traces">List traces, paginated.</Endpoint>
@@ -179,7 +179,7 @@ print(resp.json())`,
       </P>
       <Endpoint method="GET" path="/export/traces">Traces in the Stash Trace Format. Re-importable as-is.</Endpoint>
       <Endpoint method="GET" path="/export/annotations">
-        One annotation per line; fields in <a href="/reward-models/annotations#exporting-annotations" className="text-brand hover:underline">Annotations</a>.
+        One annotation per line; fields in <a href="/docs/annotations#exporting-annotations" className="text-brand hover:underline">Annotations</a>.
       </Endpoint>
       <Endpoint method="GET" path="/export/pairs">
         The training pairs your current labels produce, capped at 4000:{" "}
@@ -190,7 +190,7 @@ curl -s "$STASH_URL/api/v1/rm/export/annotations" ${AUTH} > annotations.jsonl
 curl -s "$STASH_URL/api/v1/rm/export/pairs"       ${AUTH} > pairs.jsonl`}</CodeBlock>
 
       <H2>Reward models</H2>
-      <Endpoint method="POST" path="/reward-models">Queue a training job.</Endpoint>
+      <Endpoint method="POST" path="/docs">Queue a training job.</Endpoint>
       <ParamTable
         params={[
           { name: "name", type: "string", desc: "Display name.", required: true },
@@ -200,14 +200,14 @@ curl -s "$STASH_URL/api/v1/rm/export/pairs"       ${AUTH} > pairs.jsonl`}</CodeB
           { name: "max_pairs", type: "integer", desc: "Cap on training pairs. Default 4000." },
         ]}
       />
-      <CodeBlock>{`curl -s "$STASH_URL/api/v1/rm/reward-models" \\
+      <CodeBlock>{`curl -s "$STASH_URL/api/v1/rm/docs" \\
   ${JSON_HEADERS} \\
   -d '{"name": "refund-policy", "compute": "modal"}'`}</CodeBlock>
       <P>Returns a <Code>RewardModel</Code> with status <Code>queued</Code>.</P>
 
-      <Endpoint method="GET" path="/reward-models">List your reward models, newest first.</Endpoint>
-      <Endpoint method="GET" path="/reward-models/{id}">Get one reward model. Poll this for status and metrics.</Endpoint>
-      <CodeBlock>{`curl -s "$STASH_URL/api/v1/rm/reward-models/<id>" ${AUTH}`}</CodeBlock>
+      <Endpoint method="GET" path="/docs">List your reward models, newest first.</Endpoint>
+      <Endpoint method="GET" path="/docs/{id}">Get one reward model. Poll this for status and metrics.</Endpoint>
+      <CodeBlock>{`curl -s "$STASH_URL/api/v1/rm/docs/<id>" ${AUTH}`}</CodeBlock>
 
       <H2>GEPA runs</H2>
       <Endpoint method="POST" path="/gepa-runs">Queue a GEPA prompt optimization run.</Endpoint>

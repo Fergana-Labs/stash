@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 
-import { Callout, Code, CodeBlock, CodeTabs, H2, H3, P, ParamTable, Title, Subtitle } from "../../docs/components";
+import { Callout, Code, CodeBlock, CodeTabs, H2, H3, P, ParamTable, Title, Subtitle } from "../components";
 import {
   ANTHROPIC_MESSAGES,
   CLAUDE_CODE,
@@ -19,7 +19,7 @@ export const metadata: Metadata = {
   title: "Trace Format · Stash Reward Models",
   description:
     "The Stash Trace Format spec and the eight input formats Stash imports: OpenAI, Anthropic, OpenTelemetry, Langfuse, LangSmith, Claude Code, Codex, and Stash JSONL.",
-  alternates: { canonical: "/reward-models/trace-format" },
+  alternates: { canonical: "/docs/trace-format" },
 };
 
 export default function TraceFormatPage() {
@@ -256,7 +256,7 @@ done`}</CodeBlock>
         trace&apos;s metadata.
       </P>
 
-      <NextPage href="/reward-models/annotations" label="Annotations" />
+      <NextPage href="/docs/annotations" label="Annotations" />
     </>
   );
 }
