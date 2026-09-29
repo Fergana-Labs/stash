@@ -43,28 +43,28 @@ const STAGES = [
     title: "Import",
     artifact: "traces.jsonl",
     body: "Eight formats in, one trace shape out.",
-    href: "/reward-model-fine-tuning/trace-format",
+    href: "/reward-models/trace-format",
   },
   {
     n: "02",
     title: "Annotate",
     artifact: "+1 / −1 · comment",
     body: "Highlight a span, rate it, say why.",
-    href: "/reward-model-fine-tuning/annotations",
+    href: "/reward-models/annotations",
   },
   {
     n: "03",
     title: "Train",
     artifact: "r(trace) → score",
     body: "Bradley–Terry on + / − preference pairs.",
-    href: "/reward-model-fine-tuning/training",
+    href: "/reward-models/training",
   },
   {
     n: "04",
     title: "Optimize",
     artifact: "best_prompt",
     body: "GEPA rewrites the system prompt.",
-    href: "/reward-model-fine-tuning/gepa",
+    href: "/reward-models/gepa",
   },
 ];
 

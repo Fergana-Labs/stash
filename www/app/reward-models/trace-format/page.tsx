@@ -16,10 +16,10 @@ import {
 import { NextPage, Table } from "../parts";
 
 export const metadata: Metadata = {
-  title: "Trace Format · Stash reward model fine-tuning",
+  title: "Trace Format · Stash Reward Models",
   description:
     "The Stash Trace Format spec and the eight input formats Stash imports: OpenAI, Anthropic, OpenTelemetry, Langfuse, LangSmith, Claude Code, Codex, and Stash JSONL.",
-  alternates: { canonical: "/reward-model-fine-tuning/trace-format" },
+  alternates: { canonical: "/reward-models/trace-format" },
 };
 
 export default function TraceFormatPage() {
@@ -256,7 +256,7 @@ done`}</CodeBlock>
         trace&apos;s metadata.
       </P>
 
-      <NextPage href="/reward-model-fine-tuning/annotations" label="Annotations" />
+      <NextPage href="/reward-models/annotations" label="Annotations" />
     </>
   );
 }

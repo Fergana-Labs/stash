@@ -4,10 +4,10 @@ import { Callout, Code, CodeBlock, H2, H3, P, ParamTable, Title, Subtitle } from
 import { NextPage, Table } from "../parts";
 
 export const metadata: Metadata = {
-  title: "Training · Stash reward model fine-tuning",
+  title: "Training · Stash Reward Models",
   description:
     "Train a Bradley–Terry reward model on your annotations, locally on MPS, CUDA, or CPU, or on Modal. Metrics, weights, and self-hosting the training worker.",
-  alternates: { canonical: "/reward-model-fine-tuning/training" },
+  alternates: { canonical: "/reward-models/training" },
 };
 
 const JOB_DIR = `<RM_ARTIFACT_DIR>/<reward_model_id or gepa_run_id>/
@@ -42,7 +42,7 @@ export default function TrainingPage() {
       </P>
       <P>
         Pairs come from your annotations, and the reward model never sees system steps;{" "}
-        <a href="/reward-model-fine-tuning/annotations#from-annotations-to-training-pairs" className="text-brand hover:underline">Annotations</a>{" "}
+        <a href="/reward-models/annotations#from-annotations-to-training-pairs" className="text-brand hover:underline">Annotations</a>{" "}
         describes exactly how pairs are built and rendered.
       </P>
 
@@ -144,7 +144,7 @@ export default function TrainingPage() {
         is the model&apos;s raw reward: any real number, higher is better. Scores appear on each trace in
         the app, in <Code>GET /traces/&#123;trace_id&#125;</Code> (the latest one also in{" "}
         <Code>latest_score</Code> on the trace list), and in the <Code>scores</Code> table of the{" "}
-        <a href="/reward-model-fine-tuning/api#sql-query" className="text-brand hover:underline">SQL endpoint</a>.
+        <a href="/reward-models/api#sql-query" className="text-brand hover:underline">SQL endpoint</a>.
         Sorting unannotated traces by score is a fast way to find what to review next.
       </P>
       <P>
@@ -164,7 +164,7 @@ model = RewardModel("/var/stash/rm/<reward_model_id>/model")
 rewards = model.score([rendered_trace])   # raw rewards, one per text`}</CodeBlock>
       <P>
         Render input text the same way training does (see{" "}
-        <a href="/reward-model-fine-tuning/annotations#3-render-each-target-to-text" className="text-brand hover:underline">rendering</a>),
+        <a href="/reward-models/annotations#3-render-each-target-to-text" className="text-brand hover:underline">rendering</a>),
         or scores won&apos;t be comparable.
       </P>
 
@@ -197,7 +197,7 @@ RM_ARTIFACT_DIR=/var/stash/rm`}</CodeBlock>
         For <Code>compute: &quot;modal&quot;</Code>, the worker&apos;s environment also needs Modal
         credentials: run <Code>modal token new</Code> there, or set <Code>MODAL_TOKEN_ID</Code> and{" "}
         <Code>MODAL_TOKEN_SECRET</Code>. GEPA runs need the API keys for their models; see{" "}
-        <a href="/reward-model-fine-tuning/gepa#start-a-run" className="text-brand hover:underline">GEPA</a>.
+        <a href="/reward-models/gepa#start-a-run" className="text-brand hover:underline">GEPA</a>.
       </P>
 
       <H3>Job directory contract</H3>
@@ -232,7 +232,7 @@ RM_ARTIFACT_DIR=/var/stash/rm`}</CodeBlock>
         reason is at the end of it.
       </P>
 
-      <NextPage href="/reward-model-fine-tuning/gepa" label="GEPA prompt optimization" />
+      <NextPage href="/reward-models/gepa" label="GEPA prompt optimization" />
     </>
   );
 }
