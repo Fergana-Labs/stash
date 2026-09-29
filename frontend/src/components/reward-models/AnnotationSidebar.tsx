@@ -1,6 +1,7 @@
+// Aside layout from Priyadarshan's trace viewer (projects/trace_viewer)
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Flag, FlagOff, Loader2, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -18,6 +19,7 @@ export default function AnnotationSidebar({
   onFlag,
   onUnflag,
   onDelete,
+  overview,
 }: {
   /** Already in document order. */
   annotations: RmAnnotation[];
@@ -30,25 +32,29 @@ export default function AnnotationSidebar({
   onFlag: (annotation: RmAnnotation, note: string) => void;
   onUnflag: (annotation: RmAnnotation) => void;
   onDelete: (annotation: RmAnnotation) => void;
+  /** Shown above the annotations, like the trace viewer's aside blocks. */
+  overview: ReactNode;
 }) {
   const stepById = new Map(steps.map((s) => [s.id, s]));
   const flagged = annotations.filter((a) => a.label_error).length;
 
   return (
-    <aside className="scroll-thin flex w-[360px] shrink-0 flex-col overflow-y-auto border-l border-border bg-surface/50">
-      <div className="sticky top-0 z-10 flex items-baseline justify-between border-b border-border bg-surface/95 px-4 py-3 backdrop-blur">
-        <span className="sys-label">Annotations</span>
-        <span className="text-[11.5px] text-muted-foreground tabular-nums">
-          {annotations.length}
-          {flagged > 0 && ` · ${flagged} flagged`}
-        </span>
-      </div>
+    <aside className="scroll-thin flex w-[360px] shrink-0 flex-col gap-4 overflow-y-auto border-l border-border bg-surface/50 p-4">
+      {overview}
+      <section className="rounded-xl border border-border bg-background">
+        <div className="flex items-baseline justify-between px-4 pt-3.5 pb-2.5">
+          <h3 className="sys-label m-0">Annotations</h3>
+          <span className="font-mono text-[11px] text-muted-foreground tabular-nums">
+            {annotations.length}
+            {flagged > 0 && ` · ${flagged} flagged`}
+          </span>
+        </div>
       {annotations.length === 0 ? (
-        <p className="m-0 px-4 py-6 text-[12.5px] leading-relaxed text-muted-foreground">
+        <p className="m-0 px-4 pb-4 text-[12.5px] leading-relaxed text-muted-foreground">
           Rate a step with + or −, or select text in any step to comment on it. Everything you add shows up here.
         </p>
       ) : (
-        <div className="flex flex-col gap-2 p-3">
+        <div className="flex flex-col gap-2 px-3 pb-3">
           {annotations.map((annotation) => (
             <AnnotationCard
               key={annotation.id}
@@ -65,6 +71,7 @@ export default function AnnotationSidebar({
           ))}
         </div>
       )}
+      </section>
     </aside>
   );
 }
