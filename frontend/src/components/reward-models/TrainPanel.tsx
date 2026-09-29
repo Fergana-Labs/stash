@@ -73,6 +73,21 @@ export default function TrainPanel({
   return (
     <div className="relative flex items-center gap-3">
       <TrainStatus summary={summary} error={error} />
+      <label className="flex items-center gap-2 text-[12px] text-muted-foreground">
+        Base model
+        <Input
+          value={baseModel}
+          onChange={(e) => setBaseModel(e.target.value)}
+          list="rm-base-models"
+          title="Any Hugging Face model that loads with AutoModelForSequenceClassification."
+          className="h-8 w-48 font-mono text-[12.5px] text-foreground md:text-[12.5px]"
+        />
+        <datalist id="rm-base-models">
+          {BASE_MODEL_SUGGESTIONS.map((m) => (
+            <option key={m} value={m} />
+          ))}
+        </datalist>
+      </label>
       <Button variant="outline" onClick={() => setShowOptions(!showOptions)} aria-expanded={showOptions}>
         Options
         <ChevronDown className={cn("transition-transform", showOptions && "rotate-180")} />
@@ -91,19 +106,6 @@ export default function TrainPanel({
         >
           <Field label="Name">
             <Input value={name} onChange={(e) => setNameOverride(e.target.value)} />
-          </Field>
-          <Field label="Base model" hint="Any Hugging Face model that loads with AutoModelForSequenceClassification.">
-            <Input
-              value={baseModel}
-              onChange={(e) => setBaseModel(e.target.value)}
-              list="rm-base-models"
-              className="font-mono text-[12.5px] md:text-[12.5px]"
-            />
-            <datalist id="rm-base-models">
-              {BASE_MODEL_SUGGESTIONS.map((m) => (
-                <option key={m} value={m} />
-              ))}
-            </datalist>
           </Field>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Compute">
