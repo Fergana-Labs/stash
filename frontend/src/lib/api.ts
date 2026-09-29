@@ -21,6 +21,15 @@ import {
   MiniProgramResolved,
   CuratedSkill,
   AppFacets,
+  RmAnnotation,
+  RmCompute,
+  RmFormat,
+  RmGepaRun,
+  RmImportResult,
+  RmQuote,
+  RmRewardModel,
+  RmTraceDetail,
+  RmTraceSummary,
 } from "./types";
 import { getScopeUserId, SCOPE_HEADER } from "./scope-store";
 
@@ -2654,4 +2663,90 @@ export async function bulkEditRows(
     method: "POST",
     body: JSON.stringify(body),
   });
+}
+
+// ── Reward model platform (/api/v1/rm) ────────────────────────────────────
+
+const RM = "/api/v1/rm";
+
+export async function rmListFormats(): Promise<RmFormat[]> {
+  return apiFetch(`${RM}/formats`);
+}
+
+export async function rmImportTraces(format: string, data: string): Promise<RmImportResult> {
+  return apiFetch(`${RM}/traces/import`, {
+    method: "POST",
+    body: JSON.stringify({ format, data }),
+  });
+}
+
+export async function rmListTraces(
+  limit: number,
+  offset: number,
+): Promise<{ traces: RmTraceSummary[]; total: number }> {
+  return apiFetch(`${RM}/traces?limit=${limit}&offset=${offset}`);
+}
+
+export async function rmGetTrace(traceId: string): Promise<RmTraceDetail> {
+  return apiFetch(`${RM}/traces/${traceId}`);
+}
+
+export async function rmDeleteTrace(traceId: string): Promise<void> {
+  return apiFetch(`${RM}/traces/${traceId}`, { method: "DELETE" });
+}
+
+export async function rmCreateAnnotation(
+  traceId: string,
+  body: { step_id?: string; rating?: 1 | -1; comment?: string; quote?: RmQuote },
+): Promise<RmAnnotation> {
+  return apiFetch(`${RM}/traces/${traceId}/annotations`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function rmUpdateAnnotation(
+  annotationId: string,
+  body: { rating?: 1 | -1; comment?: string; label_error?: boolean; label_error_note?: string },
+): Promise<RmAnnotation> {
+  return apiFetch(`${RM}/annotations/${annotationId}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function rmDeleteAnnotation(annotationId: string): Promise<void> {
+  return apiFetch(`${RM}/annotations/${annotationId}`, { method: "DELETE" });
+}
+
+export async function rmListRewardModels(): Promise<RmRewardModel[]> {
+  return apiFetch(`${RM}/reward-models`);
+}
+
+export async function rmCreateRewardModel(body: {
+  name: string;
+  base_model: string;
+  compute: RmCompute;
+  epochs: number;
+}): Promise<RmRewardModel> {
+  return apiFetch(`${RM}/reward-models`, { method: "POST", body: JSON.stringify(body) });
+}
+
+export async function rmListGepaRuns(): Promise<RmGepaRun[]> {
+  return apiFetch(`${RM}/gepa-runs`);
+}
+
+export async function rmGetGepaRun(runId: string): Promise<RmGepaRun> {
+  return apiFetch(`${RM}/gepa-runs/${runId}`);
+}
+
+export async function rmCreateGepaRun(body: {
+  reward_model_id: string;
+  seed_prompt: string;
+  task_model: string;
+  task_api_base?: string;
+  reflection_model: string;
+  max_metric_calls: number;
+}): Promise<RmGepaRun> {
+  return apiFetch(`${RM}/gepa-runs`, { method: "POST", body: JSON.stringify(body) });
 }

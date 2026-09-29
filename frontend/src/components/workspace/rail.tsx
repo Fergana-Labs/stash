@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Bot, FolderTree, MessagesSquare, GraduationCap, Home, Wrench, Settings } from "lucide-react";
+import { Bot, FolderTree, MessagesSquare, GraduationCap, Home, Scale, Wrench, Settings } from "lucide-react";
 import AccountMenu from "@/components/workspace/account-menu";
 import { cn } from "@/lib/utils";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
@@ -19,6 +19,7 @@ const PRIMARY: RailItem[] = [
   { key: "files", label: "Files", icon: FolderTree, match: (p) => p === "/files" || p.startsWith("/f/") || p.startsWith("/p/") || p.startsWith("/folders/") || p.startsWith("/tables/") },
   { key: "sessions", label: "Sessions", icon: MessagesSquare, match: (p) => p.startsWith("/sessions") },
   { key: "skills", label: "Skills", icon: GraduationCap, match: (p) => p.startsWith("/skills") },
+  { key: "reward-models", label: "Rewards", icon: Scale, match: (p) => p.startsWith("/reward-models") },
   { key: "tools", label: "Tools", icon: Wrench, match: (p) => p.startsWith("/tools") || p.startsWith("/integrations") },
   { key: "agents", label: "Chat", icon: Bot, match: (p) => p.startsWith("/agents") },
 ];
@@ -87,6 +88,7 @@ export default function Rail({ user, onLogout }: { user: User; onLogout: () => v
       agents: "/agents",
       sessions: "/sessions",
       skills: "/skills",
+      "reward-models": "/reward-models",
       tools: "/tools",
     };
     setRailSection(section);

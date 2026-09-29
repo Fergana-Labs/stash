@@ -26,6 +26,17 @@ const NAV: NavSection[] = [
     ],
   },
   {
+    title: "Reward Models",
+    items: [
+      { href: "/docs/reward-models", label: "Overview" },
+      { href: "/docs/reward-models/trace-format", label: "Trace format" },
+      { href: "/docs/reward-models/annotations", label: "Annotations" },
+      { href: "/docs/reward-models/training", label: "Training" },
+      { href: "/docs/reward-models/gepa", label: "GEPA" },
+      { href: "/docs/reward-models/api", label: "API reference" },
+    ],
+  },
+  {
     title: "Reference",
     items: [
       {
