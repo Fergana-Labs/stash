@@ -67,7 +67,7 @@ export default function InternalAgentsPage() {
               Sign up free
             </Link>
             <Link
-              href="/docs/quickstart"
+              href="https://github.com/Fergana-Labs/stash#quick-start"
               className="inline-flex h-[46px] items-center rounded-[10px] border border-border px-5 text-[15px] font-medium text-ink transition hover:border-ink"
             >
               Set up for an agent

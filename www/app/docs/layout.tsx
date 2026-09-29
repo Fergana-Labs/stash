@@ -20,41 +20,21 @@ const NAV: NavSection[] = [
     title: "Getting Started",
     items: [
       { href: "/docs", label: "Overview" },
-      { href: "/docs/quickstart", label: "Quickstart" },
-      { href: "/docs/concepts", label: "Concepts" },
-      { href: "/docs/self-hosting", label: "Self-Hosting" },
+      { href: "/docs/trace-format", label: "Trace format" },
+      { href: "/docs/annotations", label: "Annotations" },
+      { href: "/docs/implementation", label: "Implementation" },
+    ],
+  },
+  {
+    title: "Train and optimize",
+    items: [
+      { href: "/docs/training", label: "Training" },
+      { href: "/docs/gepa", label: "Skills (GEPA)" },
     ],
   },
   {
     title: "Reference",
-    items: [
-      {
-        href: "/docs/cli",
-        label: "CLI",
-        children: [
-          { href: "/docs/cli#install", label: "Install" },
-          { href: "/docs/cli#first-time-setup", label: "First-time setup" },
-          { href: "/docs/cli#virtual-filesystem", label: "Virtual filesystem" },
-          { href: "/docs/cli#authentication", label: "Authentication" },
-          { href: "/docs/cli#files", label: "Files" },
-          { href: "/docs/cli#sessions", label: "Sessions" },
-          { href: "/docs/cli#memory", label: "Memory" },
-          { href: "/docs/cli#sources-search", label: "Sources & search" },
-          { href: "/docs/cli#tables", label: "Tables" },
-          { href: "/docs/cli#uploaded-files", label: "Uploaded Files" },
-          { href: "/docs/cli#skills", label: "Skills" },
-          { href: "/docs/cli#mcp-servers", label: "MCP servers" },
-          { href: "/docs/cli#keys", label: "Keys" },
-          { href: "/docs/cli#streaming-hooks", label: "Streaming & hooks" },
-        ],
-      },
-    ],
-  },
-  {
-    title: "Project",
-    items: [
-      { href: "/docs/contributing", label: "Contributing" },
-    ],
+    items: [{ href: "/docs/api", label: "API reference" }],
   },
 ];
 
@@ -110,7 +90,7 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
       </header>
 
       <div className="max-w-[1440px] mx-auto px-6 md:px-8 py-8">
-        <div className="grid grid-cols-1 md:grid-cols-[200px_minmax(0,1fr)] lg:grid-cols-[240px_minmax(0,1fr)] xl:grid-cols-[240px_minmax(0,1fr)_220px] gap-8 md:gap-8 lg:gap-10">
+        <div className="grid grid-cols-1 md:grid-cols-[200px_minmax(0,1fr)] lg:grid-cols-[240px_minmax(0,1fr)] min-[1360px]:grid-cols-[240px_minmax(0,1fr)_220px] gap-8 md:gap-8 lg:gap-10">
           <aside className="hidden md:block">
             <div className="sticky top-24 rounded-2xl border border-border bg-surface p-4">
               {NAV.map((section) => (
@@ -164,7 +144,7 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
             </article>
           </main>
 
-          <aside className="hidden xl:block">
+          <aside className="hidden min-[1360px]:block">
             <div className="sticky top-24 rounded-2xl border border-border bg-surface p-4">
               <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted">
                 On this page

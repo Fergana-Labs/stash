@@ -159,7 +159,7 @@ Stash supports opt in per-coding agent. `stash signin` detects every agent on yo
 
 ## CLI Reference
 
-See [here](https://www.joinstash.ai/docs/cli) for a CLI reference.
+Run `stash --help`, or `stash <command> --help` for any command.
 
 ## Self-Hosted
 

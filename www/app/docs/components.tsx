@@ -1,6 +1,31 @@
 "use client";
 
+import hljs from "highlight.js/lib/core";
+import bash from "highlight.js/lib/languages/bash";
+import json from "highlight.js/lib/languages/json";
+import markdown from "highlight.js/lib/languages/markdown";
+import python from "highlight.js/lib/languages/python";
+import sql from "highlight.js/lib/languages/sql";
+import typescript from "highlight.js/lib/languages/typescript";
+import yaml from "highlight.js/lib/languages/yaml";
 import { useState } from "react";
+
+hljs.registerLanguage("bash", bash);
+hljs.registerLanguage("json", json);
+hljs.registerLanguage("markdown", markdown);
+hljs.registerLanguage("python", python);
+hljs.registerLanguage("sql", sql);
+hljs.registerLanguage("typescript", typescript);
+hljs.registerLanguage("yaml", yaml);
+
+// "text" is for output and other things that aren't code; it renders unhighlighted.
+export type CodeLang = "bash" | "json" | "markdown" | "python" | "sql" | "typescript" | "yaml" | "text";
+
+function Highlighted({ code, lang }: { code: string; lang: CodeLang }) {
+  if (lang === "text") return <code>{code}</code>;
+  // highlight.js escapes the source, so its HTML output is safe to inject.
+  return <code dangerouslySetInnerHTML={{ __html: hljs.highlight(code, { language: lang }).value }} />;
+}
 
 function slugify(children: React.ReactNode) {
   const text = String(children)
@@ -12,7 +37,7 @@ function slugify(children: React.ReactNode) {
 
 export function Callout({ children, type = "info" }: { children: React.ReactNode; type?: "info" | "tip" | "warning" }) {
   const styles = {
-    info: "border-brand/30 bg-brand/5",
+    info: "border-border bg-surface",
     tip: "border-green-500/30 bg-green-500/5",
     warning: "border-yellow-500/30 bg-yellow-500/5",
   };
@@ -23,7 +48,7 @@ export function Callout({ children, type = "info" }: { children: React.ReactNode
   );
 }
 
-export function CodeTabs({ tabs }: { tabs: { label: string; code: string }[] }) {
+export function CodeTabs({ tabs }: { tabs: { label: string; lang: CodeLang; code: string }[] }) {
   const [active, setActive] = useState(0);
   return (
     <div className="my-6 rounded-2xl border border-border overflow-hidden bg-surface">
@@ -40,21 +65,21 @@ export function CodeTabs({ tabs }: { tabs: { label: string; code: string }[] }) 
           </button>
         ))}
       </div>
-      <pre className="bg-base p-5 overflow-x-auto text-sm text-dim font-mono">
-        <code>{tabs[active].code}</code>
+      <pre className="code-block bg-base p-5 overflow-x-auto text-[13px] leading-6 font-mono">
+        <Highlighted code={tabs[active].code} lang={tabs[active].lang} />
       </pre>
     </div>
   );
 }
 
 export function Code({ children }: { children: React.ReactNode }) {
-  return <code className="bg-surface text-brand px-1.5 py-0.5 rounded-md text-[13px] font-mono">{children}</code>;
+  return <code className="bg-surface text-ink px-1.5 py-0.5 rounded-md text-[13px] font-mono">{children}</code>;
 }
 
-export function CodeBlock({ children }: { children: string }) {
+export function CodeBlock({ children, lang }: { children: string; lang: CodeLang }) {
   return (
-    <pre className="bg-surface border border-border rounded-2xl p-5 overflow-x-auto text-sm text-dim my-6 font-mono">
-      <code>{children}</code>
+    <pre className="code-block bg-surface border border-border rounded-2xl p-5 overflow-x-auto text-[13px] leading-6 my-6 font-mono">
+      <Highlighted code={children} lang={lang} />
     </pre>
   );
 }
