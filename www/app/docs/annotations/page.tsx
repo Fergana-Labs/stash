@@ -4,7 +4,7 @@ import { Callout, Code, CodeBlock, H2, H3, P, ParamTable, Title, Subtitle } from
 import { NextPage, Table } from "../parts";
 
 export const metadata: Metadata = {
-  title: "Annotations · Stash Reward Models",
+  title: "Annotations · Stash Docs",
   description:
     "Rate and comment on agent traces, anchor comments to quoted spans, flag bad labels, and see exactly how annotations become reward model training pairs.",
   alternates: { canonical: "/docs/annotations" },
@@ -70,9 +70,9 @@ export default function AnnotationsPage() {
       <H3>System steps</H3>
       <P>
         You can comment on a system step but not rate it. The reward model never sees system steps:
-        GEPA rewrites the system prompt, and a reward model that scored the prompt could be satisfied
-        by the prompt itself rather than by what the agent does. Comments on a system prompt still
-        reach GEPA as feedback, which is where they&apos;re useful.
+        GEPA puts the skill it writes into the system message, and a reward model that read the
+        system message could be satisfied by the skill&apos;s text rather than by what the agent does.
+        Comments on a system prompt still reach GEPA as feedback, which is where they&apos;re useful.
       </P>
 
       <H3>Quoted spans</H3>
@@ -208,7 +208,7 @@ export default function AnnotationsPage() {
         ]}
       />
 
-      <NextPage href="/docs/training" label="Training" />
+      <NextPage href="/docs/implementation" label="Implementation" />
     </>
   );
 }

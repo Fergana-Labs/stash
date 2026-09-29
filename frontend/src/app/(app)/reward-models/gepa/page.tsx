@@ -20,9 +20,13 @@ const TASK_MODEL_SUGGESTIONS = ["anthropic/claude-haiku-4-5", "anthropic/claude-
 const DEFAULT_TASK_MODEL = "anthropic/claude-haiku-4-5";
 const DEFAULT_REFLECTION_MODEL = "anthropic/claude-sonnet-5";
 const DEFAULT_MAX_METRIC_CALLS = 150;
+// Same rules the server enforces on skill_name / skill_description.
+const SKILL_NAME_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+const SKILL_NAME_MAX = 64;
+const SKILL_DESCRIPTION_MAX = 1024;
 
 export default function GepaRunsPage() {
-  useBreadcrumbs([{ label: "Reward models", href: "/reward-models" }, { label: "Prompt optimization" }], "rm-gepa");
+  useBreadcrumbs([{ label: "Reward models", href: "/reward-models" }, { label: "Skills" }], "rm-gepa");
   const [runs, setRuns] = useState<RmGepaRun[] | null>(null);
   const [models, setModels] = useState<RmRewardModel[] | null>(null);
 
@@ -52,15 +56,15 @@ export default function GepaRunsPage() {
 
   return (
     <RmPage
-      title="Prompt optimization"
-      description="GEPA rewrites your agent's system prompt. Each candidate is scored by a trained reward model, and annotators' comments are the feedback for the next rewrite."
+      title="Skills"
+      description="GEPA writes a skill for your agent: a SKILL.md it loads into context. Each draft is scored by a trained reward model, and annotators' comments are the feedback for the next draft."
     >
       <div className="grid grid-cols-[minmax(0,1fr)_360px] items-start gap-8">
         <section>
           {runs === null ? (
             <RmListSkeleton />
           ) : runs.length === 0 ? (
-            <EmptyState title="No optimization runs yet">Train a reward model, then optimize a prompt against it.</EmptyState>
+            <EmptyState title="No skills yet">Train a reward model, then create a skill scored by it.</EmptyState>
           ) : (
             <div className="flex flex-col gap-2">
               {runs.map((run) => (
@@ -83,7 +87,7 @@ function RunRow({ run, modelName }: { run: RmGepaRun; modelName: string | undefi
     >
       <div className="flex items-center gap-2.5">
         <StatusBadge status={run.status} />
-        <span className="truncate font-mono text-[12.5px] text-foreground">{run.task_model}</span>
+        <span className="truncate font-mono text-[13px] font-medium text-foreground">{run.skill_name}</span>
         <span className="flex-1" />
         {run.seed_score !== null && run.best_score !== null && (
           <span className="font-mono text-[12.5px] tabular-nums">
@@ -94,9 +98,9 @@ function RunRow({ run, modelName }: { run: RmGepaRun; modelName: string | undefi
         )}
         <span className="text-[11.5px] text-muted-foreground">{relativeTime(run.created_at)}</span>
       </div>
-      <p className="m-0 mt-1.5 line-clamp-2 text-[12.5px] leading-snug text-dim">{run.seed_prompt}</p>
+      <p className="m-0 mt-1.5 line-clamp-2 text-[12.5px] leading-snug text-dim">{run.skill_description}</p>
       <div className="mt-1.5 text-[11.5px] text-muted-foreground">
-        scored by {modelName ?? run.reward_model_id} · reflection {run.reflection_model}
+        scored by {modelName ?? run.reward_model_id} · task {run.task_model} · reflection {run.reflection_model}
       </div>
       {run.status === "failed" && run.error && (
         <div className="mt-1.5 line-clamp-2 font-mono text-[11.5px] text-red-600">{run.error}</div>
@@ -108,7 +112,8 @@ function RunRow({ run, modelName }: { run: RmGepaRun; modelName: string | undefi
 function OptimizeForm({ models, onCreated }: { models: RmRewardModel[] | null; onCreated: () => void }) {
   const ready = (models ?? []).filter((m) => m.status === "succeeded");
   const [rewardModelId, setRewardModelId] = useState("");
-  const [seedPrompt, setSeedPrompt] = useState("");
+  const [skillName, setSkillName] = useState("");
+  const [description, setDescription] = useState("");
   const [taskModel, setTaskModel] = useState(DEFAULT_TASK_MODEL);
   const [apiBase, setApiBase] = useState("");
   const [reflectionModel, setReflectionModel] = useState(DEFAULT_REFLECTION_MODEL);
@@ -122,7 +127,8 @@ function OptimizeForm({ models, onCreated }: { models: RmRewardModel[] | null; o
     try {
       await rmCreateGepaRun({
         reward_model_id: selectedId,
-        seed_prompt: seedPrompt,
+        skill_name: skillName,
+        skill_description: description.trim(),
         task_model: taskModel.trim(),
         ...(apiBase.trim() !== "" && { task_api_base: apiBase.trim() }),
         reflection_model: reflectionModel.trim(),
@@ -136,7 +142,11 @@ function OptimizeForm({ models, onCreated }: { models: RmRewardModel[] | null; o
     }
   }
 
-  const canSubmit = selectedId !== "" && seedPrompt.trim() !== "" && taskModel.trim() !== "" && reflectionModel.trim() !== "";
+  const nameValid = SKILL_NAME_PATTERN.test(skillName) && skillName.length <= SKILL_NAME_MAX;
+  const descriptionLength = description.trim().length;
+  const descriptionValid = descriptionLength >= 1 && descriptionLength <= SKILL_DESCRIPTION_MAX;
+  const canSubmit =
+    selectedId !== "" && nameValid && descriptionValid && taskModel.trim() !== "" && reflectionModel.trim() !== "";
 
   return (
     <form
@@ -146,7 +156,7 @@ function OptimizeForm({ models, onCreated }: { models: RmRewardModel[] | null; o
         void submit();
       }}
     >
-      <h2 className="m-0 mb-3 text-[14px] font-semibold text-foreground">Optimize prompt</h2>
+      <h2 className="m-0 mb-3 text-[14px] font-semibold text-foreground">Create a skill</h2>
       <div className="flex flex-col gap-3">
         <Field
           label="Reward model"
@@ -167,12 +177,43 @@ function OptimizeForm({ models, onCreated }: { models: RmRewardModel[] | null; o
             className="h-8 w-full px-2.5 text-[13px]"
           />
         </Field>
-        <Field label="Seed system prompt">
+        <Field
+          label="Skill name"
+          hint={
+            skillName !== "" && !nameValid ? (
+              <span className="text-red-600">Lowercase letters, digits, and single hyphens; up to 64 characters.</span>
+            ) : (
+              "e.g. refund-requests"
+            )
+          }
+        >
+          <Input
+            value={skillName}
+            onChange={(e) => setSkillName(e.target.value)}
+            placeholder="refund-requests"
+            maxLength={SKILL_NAME_MAX}
+            aria-invalid={skillName !== "" && !nameValid}
+            className="font-mono text-[12.5px] md:text-[12.5px]"
+            required
+          />
+        </Field>
+        <Field
+          label="Description"
+          hint={
+            <span className="flex justify-between gap-2">
+              <span>When should the agent use this skill?</span>
+              <span className="tabular-nums">
+                {descriptionLength}/{SKILL_DESCRIPTION_MAX}
+              </span>
+            </span>
+          }
+        >
           <Textarea
-            value={seedPrompt}
-            onChange={(e) => setSeedPrompt(e.target.value)}
-            placeholder="You are a support agent for…"
-            className="field-sizing-fixed h-36 resize-y font-mono text-[12px] leading-relaxed md:text-[12px]"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="Use when a customer asks for a refund, return, or replacement."
+            maxLength={SKILL_DESCRIPTION_MAX}
+            className="field-sizing-fixed h-24 resize-y text-[13px] leading-snug md:text-[13px]"
             required
           />
         </Field>
@@ -206,12 +247,12 @@ function OptimizeForm({ models, onCreated }: { models: RmRewardModel[] | null; o
             required
           />
         </Field>
-        <Field label="Max metric calls" hint="Budget of reward-model evaluations across all candidates.">
+        <Field label="Max metric calls" hint="Budget of reward-model evaluations across all skill drafts.">
           <Input type="number" min={1} value={maxMetricCalls} onChange={(e) => setMaxMetricCalls(Number(e.target.value))} required />
         </Field>
         <Button type="submit" disabled={submitting || !canSubmit}>
           {submitting && <Loader2 className="animate-spin" />}
-          {submitting ? "Queuing…" : "Optimize"}
+          {submitting ? "Queuing…" : "Create skill"}
         </Button>
       </div>
     </form>

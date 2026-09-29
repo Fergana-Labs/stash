@@ -16,7 +16,7 @@ import {
 import { NextPage, Table } from "../parts";
 
 export const metadata: Metadata = {
-  title: "Trace Format · Stash Reward Models",
+  title: "Trace Format · Stash Docs",
   description:
     "The Stash Trace Format spec and the eight input formats Stash imports: OpenAI, Anthropic, OpenTelemetry, Langfuse, LangSmith, Claude Code, Codex, and Stash JSONL.",
   alternates: { canonical: "/docs/trace-format" },
@@ -86,9 +86,9 @@ export default function TraceFormatPage() {
 
       <H3>System steps</H3>
       <P>
-        System steps are stored and shown, but the reward model never sees them. GEPA optimizes the
-        system prompt, so a reward model that scored it could be satisfied by the prompt itself instead
-        of by what the agent does. You can comment on a system step, but not rate it, and a trace with
+        System steps are stored and shown, but the reward model never sees them. GEPA puts the skill it
+        writes into the system message, so a reward model that read the system message could be
+        satisfied by the skill&apos;s text instead of by what the agent does. You can comment on a system step, but not rate it, and a trace with
         only system steps fails import.
       </P>
 

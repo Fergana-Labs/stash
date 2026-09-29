@@ -374,7 +374,8 @@ async def test_other_owners_rows_are_404(client, monkeypatch):
             "/api/v1/rm/gepa-runs",
             {
                 "reward_model_id": model["id"],
-                "seed_prompt": "p",
+                "skill_name": "refund-policy",
+                "skill_description": "Use when a customer asks for a refund.",
                 "task_model": "openai/x",
                 "reflection_model": "openai/y",
             },
@@ -426,7 +427,8 @@ async def test_gepa_run_needs_a_trained_reward_model(client, monkeypatch):
     ).json()
     body = {
         "reward_model_id": model["id"],
-        "seed_prompt": "You are a support agent.",
+        "skill_name": "refund-policy",
+        "skill_description": "Use when a customer asks for a refund.",
         "task_model": "openai/qwen3-8b",
         "task_api_base": "http://localhost:8000/v1",
         "reflection_model": "anthropic/claude-sonnet-5",
@@ -523,3 +525,33 @@ async def test_patch_cannot_rate_a_system_step(client):
     )
     assert resp.status_code == 422
     assert (await _detail(client, auth, trace_id))["annotations"][0]["rating"] is None
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "rule"),
+    [
+        ("skill_name", "Refund", "lowercase"),
+        ("skill_name", "refund--policy", "lowercase"),
+        ("skill_name", "-refund", "lowercase"),
+        ("skill_name", "", "lowercase"),
+        ("skill_name", "a" * 65, "1–64"),
+        ("skill_description", "", "1–1024"),
+        ("skill_description", "x" * 1025, "1–1024"),
+    ],
+)
+async def test_gepa_skill_name_and_description_rules(client, field, value, rule):
+    """The name and description go into SKILL.md frontmatter an agent must be able to load."""
+    auth = await _register(client)
+    body = {
+        "reward_model_id": "00000000-0000-0000-0000-000000000000",
+        "skill_name": "refund-policy",
+        "skill_description": "Use when a customer asks for a refund.",
+        "task_model": "openai/x",
+        "reflection_model": "openai/y",
+        field: value,
+    }
+    resp = await client.post("/api/v1/rm/gepa-runs", json=body, headers=auth)
+    assert resp.status_code == 422
+    [error] = resp.json()["detail"]
+    assert error["loc"][-1] == field
+    assert rule in error["msg"]

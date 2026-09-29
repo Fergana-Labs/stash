@@ -74,9 +74,18 @@ export function sortAnnotations(annotations: RmAnnotation[], steps: RmStep[]): R
   });
 }
 
+/** First non-empty line of a SKILL.md body, skipping the YAML frontmatter. */
+export function skillFirstLine(skill: string): string {
+  const match = skill.match(/^---\n[\s\S]*?\n---\n/);
+  if (!match) throw new Error("SKILL.md is missing its --- frontmatter block");
+  const body = skill.slice(match[0].length);
+  const line = body.split("\n").find((l) => l.trim() !== "");
+  return line === undefined ? "" : line.trim();
+}
+
 export type DiffLine = { kind: "same" | "add" | "del"; text: string };
 
-/** Line diff via longest common subsequence. Prompts are short, so O(n·m) is fine. */
+/** Line diff via longest common subsequence. Skills are short, so O(n·m) is fine. */
 export function diffLines(before: string, after: string): DiffLine[] {
   const a = before.split("\n");
   const b = after.split("\n");

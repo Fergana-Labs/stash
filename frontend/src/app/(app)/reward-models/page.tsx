@@ -56,7 +56,7 @@ export default function TracesPage() {
   return (
     <RmPage
       title="Reward models"
-      description="Annotate agent traces with + / − and comments, train a reward model on those labels, then use it to optimize your agent's system prompt."
+      description="Annotate agent traces with + / − and comments, train a reward model on those labels, then use it to write skills for your agent."
       actions={<ImportTracesDialog onImported={() => void load()} />}
     >
       {page === null ? (

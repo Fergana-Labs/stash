@@ -14,6 +14,7 @@ const ROUTES = [
   "/docs",
   "/docs/trace-format",
   "/docs/annotations",
+  "/docs/implementation",
   "/docs/training",
   "/docs/gepa",
   "/docs/api",

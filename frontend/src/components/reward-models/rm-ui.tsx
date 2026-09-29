@@ -10,7 +10,7 @@ import type { RmJobStatus } from "@/lib/types";
 const TABS = [
   { href: "/reward-models", label: "Traces", match: (p: string) => p === "/reward-models" || p.startsWith("/reward-models/traces") },
   { href: "/reward-models/models", label: "Reward models", match: (p: string) => p.startsWith("/reward-models/models") },
-  { href: "/reward-models/gepa", label: "Prompt optimization", match: (p: string) => p.startsWith("/reward-models/gepa") },
+  { href: "/reward-models/gepa", label: "Skills", match: (p: string) => p.startsWith("/reward-models/gepa") },
 ];
 
 /** Page frame shared by the list pages: title, description, the section tabs, and an actions slot. */

@@ -2742,11 +2742,35 @@ export async function rmGetGepaRun(runId: string): Promise<RmGepaRun> {
 
 export async function rmCreateGepaRun(body: {
   reward_model_id: string;
-  seed_prompt: string;
+  skill_name: string;
+  skill_description: string;
   task_model: string;
   task_api_base?: string;
   reflection_model: string;
   max_metric_calls: number;
 }): Promise<RmGepaRun> {
   return apiFetch(`${RM}/gepa-runs`, { method: "POST", body: JSON.stringify(body) });
+}
+
+/** The run's best skill as SKILL.md text. Plain markdown, so this reads the raw response instead of apiFetch's JSON. */
+export async function rmDownloadSkill(runId: string): Promise<string> {
+  const res = await fetchAuthed(`${RM}/gepa-runs/${runId}/skill`);
+  if (!res.ok) {
+    const body: { detail: string } = await res.json();
+    throw new ApiError(res.status, body.detail);
+  }
+  return res.text();
+}
+
+/** A succeeded reward model's weights as a .tar.gz, named by the server's Content-Disposition. */
+export async function rmDownloadWeights(modelId: string): Promise<{ blob: Blob; filename: string }> {
+  const res = await fetchAuthed(`${RM}/reward-models/${modelId}/weights`);
+  if (!res.ok) {
+    const body: { detail: string } = await res.json();
+    throw new ApiError(res.status, body.detail);
+  }
+  const disposition = res.headers.get("Content-Disposition") ?? "";
+  const match = disposition.match(/filename="?([^";]+)"?/);
+  if (!match) throw new Error(`Weights download has no filename in Content-Disposition: "${disposition}"`);
+  return { blob: await res.blob(), filename: match[1] };
 }

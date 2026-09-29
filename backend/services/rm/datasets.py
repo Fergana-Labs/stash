@@ -1,7 +1,7 @@
 """Training data built from annotations: preference pairs, score items, GEPA examples.
 
 These rules are the contract in docs/reward-models/DESIGN.md ("Reward model
-training" and "GEPA prompt optimization"). Annotations flagged with
+training" and "Skill creation (GEPA)"). Annotations flagged with
 `label_error` never reach any of them: a label someone marked as wrong must
 not teach the reward model or steer GEPA.
 """
@@ -38,7 +38,7 @@ def render_step(step: dict) -> str:
 
 
 def render_steps(steps: list[dict]) -> str:
-    # GEPA's candidate is the system prompt; a reward model that saw it could be gamed by it.
+    # GEPA's skill is injected into the system message; a reward model that saw it could be gamed.
     return "\n\n".join(render_step(step) for step in steps if step["role"] != "system")
 
 
@@ -111,9 +111,10 @@ async def score_items(owner_user_id: UUID) -> list[dict]:
 async def gepa_examples(owner_user_id: UUID) -> list[dict]:
     """Annotated traces as GEPA inputs: the conversation before the first assistant turn.
 
-    The system step is dropped because the candidate prompt replaces it. A
-    trace that opens with an assistant step has no input to replay, so it
-    cannot be an example.
+    The trace's own system prompt travels separately (`system`) because the
+    worker appends the candidate skill to it. A trace with no non-system step
+    before its first assistant step has no input to replay, so it cannot be an
+    example.
     """
     annotated = await get_pool().fetch(
         """
@@ -134,8 +135,10 @@ async def gepa_examples(owner_user_id: UUID) -> list[dict]:
 
     examples = []
     for row in annotated:
+        steps = steps_by_trace[row["trace_id"]]
+        system_parts = [step["content"] for step in steps if step["role"] == "system"]
         messages = []
-        for step in steps_by_trace[row["trace_id"]]:
+        for step in steps:
             if step["role"] == "assistant":
                 break
             if step["role"] == "system":
@@ -144,6 +147,11 @@ async def gepa_examples(owner_user_id: UUID) -> list[dict]:
         if not messages:
             continue
         examples.append(
-            {"trace_id": str(row["trace_id"]), "messages": messages, "feedback": row["comments"]}
+            {
+                "trace_id": str(row["trace_id"]),
+                "system": "\n\n".join(system_parts) if system_parts else None,
+                "messages": messages,
+                "feedback": row["comments"],
+            }
         )
     return examples

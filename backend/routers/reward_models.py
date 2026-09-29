@@ -4,17 +4,22 @@ Contract: docs/reward-models/DESIGN.md ("REST API"). Every row is private to
 its owner; another owner's id is a 404, never a 403, so ids don't leak.
 """
 
+import asyncio
 import json
+import re
+import tempfile
+from pathlib import Path
 from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import Response
-from pydantic import BaseModel, Field
+from fastapi.responses import FileResponse, Response
+from pydantic import BaseModel, Field, field_validator
+from starlette.background import BackgroundTask
 
 from ..auth import get_current_user
 from ..database import get_pool
-from ..services.rm import annotations, datasets, query, traces
+from ..services.rm import annotations, datasets, jobs, query, traces
 from ..services.rm.adapters import TraceFormatError, list_formats
 from ..tasks import reward_models as rm_tasks
 
@@ -23,6 +28,9 @@ router = APIRouter(prefix="/api/v1/rm", tags=["reward-models"])
 DEFAULT_BASE_MODEL = "Qwen/Qwen3-0.6B"
 DEFAULT_EPOCHS = 1
 DEFAULT_MAX_METRIC_CALLS = 150
+SKILL_NAME_PATTERN = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
+SKILL_NAME_MAX_CHARS = 64
+SKILL_DESCRIPTION_MAX_CHARS = 1024
 
 
 class ImportRequest(BaseModel):
@@ -60,11 +68,31 @@ class CreateRewardModelRequest(BaseModel):
 
 class CreateGepaRunRequest(BaseModel):
     reward_model_id: UUID
-    seed_prompt: str = Field(min_length=1)
+    skill_name: str
+    skill_description: str
     task_model: str = Field(min_length=1)
     task_api_base: str | None = None
     reflection_model: str = Field(min_length=1)
     max_metric_calls: int = Field(default=DEFAULT_MAX_METRIC_CALLS, ge=1)
+
+    @field_validator("skill_name")
+    @classmethod
+    def _skill_name(cls, value: str) -> str:
+        if len(value) > SKILL_NAME_MAX_CHARS or not SKILL_NAME_PATTERN.match(value):
+            raise ValueError(
+                f"skill_name must be 1–{SKILL_NAME_MAX_CHARS} characters of lowercase "
+                "letters, digits, and single hyphens between them (e.g. refund-policy)"
+            )
+        return value
+
+    @field_validator("skill_description")
+    @classmethod
+    def _skill_description(cls, value: str) -> str:
+        if not 1 <= len(value) <= SKILL_DESCRIPTION_MAX_CHARS:
+            raise ValueError(
+                f"skill_description must be 1–{SKILL_DESCRIPTION_MAX_CHARS} characters"
+            )
+        return value
 
 
 class QueryRequest(BaseModel):
@@ -229,6 +257,37 @@ async def get_reward_model(model_id: UUID, current_user: dict = Depends(get_curr
     return _reward_model(row)
 
 
+@router.get("/reward-models/{model_id}/weights")
+async def download_reward_model_weights(
+    model_id: UUID, current_user: dict = Depends(get_current_user)
+) -> FileResponse:
+    name = await get_pool().fetchval(
+        "SELECT name FROM rm_reward_models "
+        "WHERE owner_user_id = $1 AND id = $2 AND status = 'succeeded'",
+        current_user["id"],
+        model_id,
+    )
+    if name is None:
+        raise HTTPException(status_code=404, detail="No trained weights for this reward model")
+
+    safe_name = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
+    stem = "-".join(part for part in (safe_name, "reward-model") if part)
+    # The archive can be gigabytes: build it on disk, stream it, delete it after sending.
+    temp_dir = tempfile.TemporaryDirectory()
+    archive = Path(temp_dir.name) / f"{stem}.tar.gz"
+    try:
+        await asyncio.to_thread(jobs.pack_model, model_id, stem, archive)
+    except BaseException:
+        temp_dir.cleanup()
+        raise
+    return FileResponse(
+        archive,
+        media_type="application/gzip",
+        filename=f"{stem}.tar.gz",
+        background=BackgroundTask(temp_dir.cleanup),
+    )
+
+
 def _reward_model(row) -> dict:
     return {
         key: row[key]
@@ -270,14 +329,15 @@ async def create_gepa_run(
 
     row = await pool.fetchrow(
         """
-        INSERT INTO rm_gepa_runs (owner_user_id, reward_model_id, seed_prompt, task_model,
-                                  task_api_base, reflection_model, max_metric_calls)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        INSERT INTO rm_gepa_runs (owner_user_id, reward_model_id, skill_name, skill_description,
+                                  task_model, task_api_base, reflection_model, max_metric_calls)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         RETURNING *
         """,
         current_user["id"],
         req.reward_model_id,
-        req.seed_prompt,
+        req.skill_name,
+        req.skill_description,
         req.task_model,
         req.task_api_base,
         req.reflection_model,
@@ -306,6 +366,25 @@ async def get_gepa_run(run_id: UUID, current_user: dict = Depends(get_current_us
     if row is None:
         raise HTTPException(status_code=404, detail="GEPA run not found")
     return _gepa_run(row)
+
+
+@router.get("/gepa-runs/{run_id}/skill")
+async def download_gepa_skill(
+    run_id: UUID, current_user: dict = Depends(get_current_user)
+) -> Response:
+    best_skill = await get_pool().fetchval(
+        "SELECT best_skill FROM rm_gepa_runs "
+        "WHERE owner_user_id = $1 AND id = $2 AND status = 'succeeded'",
+        current_user["id"],
+        run_id,
+    )
+    if best_skill is None:
+        raise HTTPException(status_code=404, detail="No finished skill for this GEPA run")
+    return Response(
+        content=best_skill,
+        media_type="text/markdown",
+        headers={"Content-Disposition": 'attachment; filename="SKILL.md"'},
+    )
 
 
 def _gepa_run(row) -> dict:

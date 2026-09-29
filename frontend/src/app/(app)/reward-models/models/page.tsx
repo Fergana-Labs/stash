@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { AlertTriangle, Loader2 } from "lucide-react";
+import { AlertTriangle, Download, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useBreadcrumbs } from "@/components/BreadcrumbContext";
 import { Button } from "@/components/ui/button";
@@ -10,7 +10,7 @@ import { Select } from "@/components/ui/select";
 import { RmListSkeleton } from "@/components/reward-models/RmSkeletons";
 import { EmptyState, Field, RmPage, StatusBadge, isActiveJob } from "@/components/reward-models/rm-ui";
 import { errorMessage, formatSeconds, relativeTime } from "@/components/reward-models/rm-text";
-import { rmCreateRewardModel, rmListRewardModels, rmListTraces } from "@/lib/api";
+import { rmCreateRewardModel, rmDownloadWeights, rmListRewardModels, rmListTraces } from "@/lib/api";
 import type { RmCompute, RmRewardModel } from "@/lib/types";
 
 const POLL_MS = 3000;
@@ -99,6 +99,7 @@ function ModelCard({ model }: { model: RmRewardModel }) {
         <StatusBadge status={model.status} />
         <span className="flex-1" />
         <span className="text-[11.5px] text-muted-foreground">{relativeTime(model.created_at)}</span>
+        {model.status === "succeeded" && <DownloadWeightsButton modelId={model.id} />}
       </div>
       <div className="mt-1 flex flex-wrap gap-x-3 font-mono text-[11.5px] text-muted-foreground">
         <span>{model.base_model}</span>
@@ -123,6 +124,34 @@ function ModelCard({ model }: { model: RmRewardModel }) {
         </pre>
       )}
     </div>
+  );
+}
+
+function DownloadWeightsButton({ modelId }: { modelId: string }) {
+  const [downloading, setDownloading] = useState(false);
+
+  async function download() {
+    setDownloading(true);
+    try {
+      const { blob, filename } = await rmDownloadWeights(modelId);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      toast.error(errorMessage(e));
+    } finally {
+      setDownloading(false);
+    }
+  }
+
+  return (
+    <Button variant="outline" size="xs" onClick={() => void download()} disabled={downloading}>
+      {downloading ? <Loader2 className="animate-spin" /> : <Download />}
+      {downloading ? "Downloading…" : "Download weights"}
+    </Button>
   );
 }
 
@@ -238,7 +267,7 @@ function TrainForm({ labels, onCreated }: { labels: LabelCounts | null; onCreate
         </p>
         <Button type="submit" disabled={submitting || name.trim() === "" || baseModel.trim() === ""}>
           {submitting && <Loader2 className="animate-spin" />}
-          {submitting ? "Queuing…" : "Train"}
+          {submitting ? "Queuing…" : "Train reward model"}
         </Button>
       </div>
     </form>

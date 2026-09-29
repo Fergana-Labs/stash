@@ -4,7 +4,7 @@ import { Callout, Code, CodeBlock, H2, H3, P, ParamTable, Title, Subtitle } from
 import { NextPage, Table } from "../parts";
 
 export const metadata: Metadata = {
-  title: "Training · Stash Reward Models",
+  title: "Training · Stash Docs",
   description:
     "Train a Bradley–Terry reward model on your annotations, locally on MPS, CUDA, or CPU, or on Modal. Metrics, weights, and self-hosting the training worker.",
   alternates: { canonical: "/docs/training" },
@@ -14,10 +14,10 @@ const JOB_DIR = `<RM_ARTIFACT_DIR>/<reward_model_id or gepa_run_id>/
   job.json             # backend: {"kind": "train" | "gepa", ...params}
   pairs.jsonl          # train, backend: {"chosen": str, "rejected": str}
   score_items.jsonl    # train, backend: {"trace_id": str, "text": str}
-  gepa_examples.jsonl  # gepa, backend: {"trace_id", "messages": [{role, content}], "feedback": [str]}
+  gepa_examples.jsonl  # gepa, backend: {"trace_id", "system": str | null, "messages": [{role, content}], "feedback": [str]}
   result.json          # worker
   scores.jsonl         # train, worker: {"trace_id": str, "score": float}
-  model/               # train, worker
+  model/               # train, worker: weights, tokenizer, reward_stats.json
   worker.log           # worker`;
 
 export default function TrainingPage() {
@@ -47,7 +47,7 @@ export default function TrainingPage() {
       </P>
 
       <H2>Start a training job</H2>
-      <CodeBlock>{`curl -s "$STASH_URL/api/v1/rm/docs" \\
+      <CodeBlock>{`curl -s "$STASH_URL/api/v1/rm/reward-models" \\
   -H "Authorization: Bearer $STASH_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -148,13 +148,17 @@ export default function TrainingPage() {
         Sorting unannotated traces by score is a fast way to find what to review next.
       </P>
       <P>
-        GEPA uses <Code>sigmoid(reward)</Code> instead, so its scores fall between 0 and 1.
+        GEPA calibrates rewards against the mean and standard deviation of these scores, so its
+        scores fall between 0 and 1 with 0.5 at your average trace; see{" "}
+        <a href="/docs/gepa#the-calibrated-score" className="text-brand hover:underline">the calibrated score</a>.
       </P>
 
       <H2>Where the weights go</H2>
       <P>
         The model and its tokenizer are saved together in{" "}
-        <Code>RM_ARTIFACT_DIR/&lt;reward_model_id&gt;/model</Code>. On a self-hosted install, score new
+        <Code>RM_ARTIFACT_DIR/&lt;reward_model_id&gt;/model</Code>, along with{" "}
+        <Code>reward_stats.json</Code>: the mean and standard deviation of the model&apos;s scores over
+        your traces at training time, which GEPA uses to calibrate. On a self-hosted install, score new
         text with the worker&apos;s own loader, which truncates exactly like training did. Run it with
         the worker&apos;s Python from the repo root:
       </P>
@@ -167,6 +171,36 @@ rewards = model.score([rendered_trace])   # raw rewards, one per text`}</CodeBlo
         <a href="/docs/annotations#3-render-each-target-to-text" className="text-brand hover:underline">rendering</a>),
         or scores won&apos;t be comparable.
       </P>
+
+      <H3>Downloading the weights</H3>
+      <P>
+        Once a model has succeeded, download its <Code>model/</Code> directory as a <Code>.tar.gz</Code>{" "}
+        from the API or the Download weights button in the app. Before that, the endpoint returns{" "}
+        <Code>404</Code>. The archive holds one folder named after the model:
+      </P>
+      <CodeBlock>{`curl -s "$STASH_URL/api/v1/rm/reward-models/<id>/weights" \\
+  -H "Authorization: Bearer $STASH_API_KEY" -OJ
+tar xzf refund-policy-reward-model.tar.gz
+
+refund-policy-reward-model/
+  config.json
+  model.safetensors
+  tokenizer.json
+  tokenizer_config.json
+  chat_template.jinja
+  reward_stats.json      # mean and std of scores at training time`}</CodeBlock>
+      <P>
+        It loads with Transformers. Truncate from the left, as training did, so long conversations
+        keep their end:
+      </P>
+      <CodeBlock>{`from transformers import AutoModelForSequenceClassification, AutoTokenizer
+
+path = "refund-policy-reward-model"
+tokenizer = AutoTokenizer.from_pretrained(path, truncation_side="left")
+model = AutoModelForSequenceClassification.from_pretrained(path)
+
+batch = tokenizer([rendered_trace], truncation=True, return_tensors="pt")
+reward = model(**batch).logits[0, 0].item()   # raw reward; higher is better`}</CodeBlock>
 
       <H2>Self-hosting the worker</H2>
       <P>
@@ -219,20 +253,21 @@ RM_ARTIFACT_DIR=/var/stash/rm`}</CodeBlock>
       <CodeBlock>{`{"kind": "train", "base_model": "Qwen/Qwen3-0.6B", "epochs": 1, "compute": "local"}
 
 {"kind": "gepa", "reward_model_dir": "<RM_ARTIFACT_DIR>/<reward_model_id>/model",
- "seed_prompt": "…", "task_model": "…", "task_api_base": null,
+ "skill_name": "…", "skill_description": "…", "task_model": "…", "task_api_base": null,
  "reflection_model": "…", "max_metric_calls": 150}`}</CodeBlock>
       <P><Code>result.json</Code> for a training job:</P>
       <CodeBlock>{`{"metrics": {"train_pairs": …, "eval_pairs": …, "eval_accuracy": …,
              "final_loss": …, "epochs": …, "device": "…", "seconds": …}}`}</CodeBlock>
       <P>For a GEPA job:</P>
-      <CodeBlock>{`{"best_prompt": "…", "best_score": …, "seed_score": …,
- "candidates": [{"prompt": "…", "score": …}]}`}</CodeBlock>
+      <CodeBlock>{`{"best_skill": "…", "best_score": …, "seed_skill": "…", "seed_score": …,
+ "candidates": [{"skill": "…", "score": …}]}`}</CodeBlock>
+      <P>Each skill in it is the full rendered <Code>SKILL.md</Code>, frontmatter included.</P>
       <P>
         A non-zero exit fails the job. <Code>worker.log</Code> holds the worker&apos;s output, and the
         reason is at the end of it.
       </P>
 
-      <NextPage href="/docs/gepa" label="GEPA prompt optimization" />
+      <NextPage href="/docs/gepa" label="Skills (GEPA)" />
     </>
   );
 }

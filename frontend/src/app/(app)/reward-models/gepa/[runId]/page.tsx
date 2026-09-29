@@ -2,16 +2,16 @@
 
 import Link from "next/link";
 import { use, useCallback, useEffect, useState, type ReactNode } from "react";
-import { ArrowLeft, Check, Copy } from "lucide-react";
+import { ArrowLeft, Check, Copy, Download, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useBreadcrumbs } from "@/components/BreadcrumbContext";
 import { Button } from "@/components/ui/button";
 import { RmPageSkeleton } from "@/components/reward-models/RmSkeletons";
 import { StatusBadge, isActiveJob } from "@/components/reward-models/rm-ui";
-import { diffLines, errorMessage, formatScore, relativeTime } from "@/components/reward-models/rm-text";
-import { rmGetGepaRun } from "@/lib/api";
+import { diffLines, errorMessage, formatScore, relativeTime, skillFirstLine } from "@/components/reward-models/rm-text";
+import { rmDownloadSkill, rmGetGepaRun } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import type { RmGepaRun } from "@/lib/types";
+import type { RmGepaCandidate, RmGepaRun } from "@/lib/types";
 
 const POLL_MS = 3000;
 
@@ -23,10 +23,10 @@ export default function GepaRunPage({ params }: { params: Promise<{ runId: strin
   useBreadcrumbs(
     [
       { label: "Reward models", href: "/reward-models" },
-      { label: "Prompt optimization", href: "/reward-models/gepa" },
-      { label: "Run" },
+      { label: "Skills", href: "/reward-models/gepa" },
+      { label: run?.skill_name ?? "Skill" },
     ],
-    `rm-gepa-${runId}`,
+    `rm-gepa-${runId}-${run?.skill_name ?? ""}`,
   );
 
   const load = useCallback(async () => {
@@ -55,14 +55,15 @@ export default function GepaRunPage({ params }: { params: Promise<{ runId: strin
       <div className="mx-auto max-w-6xl px-10 pt-6 pb-16">
         <Link href="/reward-models/gepa" className="inline-flex items-center gap-1 text-[12px] text-muted-foreground hover:text-foreground">
           <ArrowLeft className="h-3.5 w-3.5" />
-          Prompt optimization
+          Skills
         </Link>
         <div className="mt-3 flex items-center gap-3">
-          <h1 className="m-0 font-display text-[21px] font-semibold tracking-tight text-foreground">Optimization run</h1>
+          <h1 className="m-0 font-mono text-[20px] font-semibold tracking-tight text-foreground">{run.skill_name}</h1>
           <StatusBadge status={run.status} />
           <span className="text-[12px] text-muted-foreground">started {relativeTime(run.created_at)}</span>
         </div>
-        <div className="mt-1.5 flex flex-wrap gap-x-4 font-mono text-[11.5px] text-muted-foreground">
+        <p className="m-0 mt-1.5 max-w-3xl text-[13px] leading-relaxed text-dim">{run.skill_description}</p>
+        <div className="mt-2 flex flex-wrap gap-x-4 font-mono text-[11.5px] text-muted-foreground">
           <span>task {run.task_model}</span>
           {run.task_api_base && <span>@ {run.task_api_base}</span>}
           <span>reflection {run.reflection_model}</span>
@@ -79,21 +80,73 @@ export default function GepaRunPage({ params }: { params: Promise<{ runId: strin
           <ScoreSummary seed={run.seed_score} best={run.best_score} candidates={run.candidates?.length ?? 0} />
         )}
 
-        {run.best_prompt !== null ? (
-          <PromptComparison seed={run.seed_prompt} best={run.best_prompt} />
+        {run.best_skill !== null ? (
+          <BestSkill runId={run.id} skill={run.best_skill} />
         ) : (
-          <section className="mt-6">
-            <h2 className="sys-label m-0 mb-2">Seed prompt</h2>
-            <PromptBlock text={run.seed_prompt} />
-            {isActiveJob(run.status) && (
-              <p className="mt-3 text-[12.5px] text-muted-foreground">The optimized prompt appears here when the run finishes.</p>
-            )}
-          </section>
+          isActiveJob(run.status) && (
+            <p className="mt-6 text-[12.5px] text-muted-foreground">The skill appears here when the run finishes.</p>
+          )
         )}
 
-        {run.candidates && run.candidates.length > 0 && <Candidates candidates={run.candidates} best={run.best_prompt} />}
+        {run.seed_skill !== null && run.best_skill !== null && <SkillComparison seed={run.seed_skill} best={run.best_skill} />}
+
+        {run.candidates && run.candidates.length > 0 && <Candidates candidates={run.candidates} best={run.best_skill} />}
       </div>
     </div>
+  );
+}
+
+function BestSkill({ runId, skill }: { runId: string; skill: string }) {
+  const [downloading, setDownloading] = useState(false);
+
+  async function download() {
+    setDownloading(true);
+    try {
+      const text = await rmDownloadSkill(runId);
+      const url = URL.createObjectURL(new Blob([text], { type: "text/markdown" }));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "SKILL.md";
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      toast.error(errorMessage(e));
+    } finally {
+      setDownloading(false);
+    }
+  }
+
+  return (
+    <section className="mt-8">
+      <div className="mb-2 flex items-center justify-between">
+        <h2 className="sys-label m-0">Best skill · SKILL.md</h2>
+        <div className="flex gap-1.5">
+          <CopyButton text={skill} />
+          <Button size="sm" onClick={() => void download()} disabled={downloading}>
+            {downloading ? <Loader2 className="animate-spin" /> : <Download />}
+            Download SKILL.md
+          </Button>
+        </div>
+      </div>
+      <pre className="scroll-thin m-0 max-h-[640px] overflow-auto rounded-lg border border-green-600/25 bg-surface/50 px-4 py-3.5 font-mono text-[12.5px] leading-relaxed whitespace-pre-wrap text-foreground">
+        {skill}
+      </pre>
+    </section>
+  );
+}
+
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  async function copy() {
+    await navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  }
+  return (
+    <Button variant="outline" size="sm" onClick={() => void copy()}>
+      {copied ? <Check /> : <Copy />}
+      {copied ? "Copied" : "Copy"}
+    </Button>
   );
 }
 
@@ -130,12 +183,12 @@ function Stat({ label, value, detail, emphasis }: { label: string; value: string
   );
 }
 
-function PromptComparison({ seed, best }: { seed: string; best: string }) {
-  const [view, setView] = useState<CompareView>("side");
+function SkillComparison({ seed, best }: { seed: string; best: string }) {
+  const [view, setView] = useState<CompareView>("diff");
   return (
     <section className="mt-8">
       <div className="mb-2 flex items-center justify-between">
-        <h2 className="sys-label m-0">Seed vs best prompt</h2>
+        <h2 className="sys-label m-0">Seed vs best skill</h2>
         <div className="flex rounded-md border border-border p-0.5 text-[12px]">
           {(["side", "diff"] as const).map((v) => (
             <button
@@ -156,11 +209,11 @@ function PromptComparison({ seed, best }: { seed: string; best: string }) {
         <div className="grid grid-cols-2 gap-3">
           <div>
             <div className="mb-1 text-[11.5px] font-medium text-muted-foreground">Seed</div>
-            <PromptBlock text={seed} />
+            <SkillBlock text={seed} />
           </div>
           <div>
             <div className="mb-1 text-[11.5px] font-medium text-green-700 dark:text-green-400">Best</div>
-            <PromptBlock text={best} copyable />
+            <SkillBlock text={best} />
           </div>
         </div>
       ) : (
@@ -170,30 +223,11 @@ function PromptComparison({ seed, best }: { seed: string; best: string }) {
   );
 }
 
-function PromptBlock({ text, copyable }: { text: string; copyable?: boolean }) {
-  const [copied, setCopied] = useState(false);
-  async function copy() {
-    await navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
-  }
+function SkillBlock({ text }: { text: string }) {
   return (
-    <div className="group relative rounded-lg border border-border bg-surface/50">
-      {copyable && (
-        <Button
-          variant="outline"
-          size="xs"
-          onClick={() => void copy()}
-          className="absolute top-2 right-2 opacity-0 group-hover:opacity-100"
-        >
-          {copied ? <Check /> : <Copy />}
-          {copied ? "Copied" : "Copy"}
-        </Button>
-      )}
-      <pre className="scroll-thin m-0 max-h-[480px] overflow-auto px-3.5 py-3 font-mono text-[12.5px] leading-relaxed whitespace-pre-wrap text-foreground">
-        {text}
-      </pre>
-    </div>
+    <pre className="scroll-thin m-0 max-h-[480px] overflow-auto rounded-lg border border-border bg-surface/50 px-3.5 py-3 font-mono text-[12.5px] leading-relaxed whitespace-pre-wrap text-foreground">
+      {text}
+    </pre>
   );
 }
 
@@ -220,7 +254,7 @@ function DiffBlock({ before, after }: { before: string; after: string }) {
   );
 }
 
-function Candidates({ candidates, best }: { candidates: { prompt: string; score: number }[]; best: string | null }) {
+function Candidates({ candidates, best }: { candidates: RmGepaCandidate[]; best: string | null }) {
   const [open, setOpen] = useState<number | null>(null);
   const ranked = candidates.map((c, i) => ({ ...c, tried: i + 1 })).sort((a, b) => b.score - a.score);
   const top = ranked[0].score;
@@ -247,12 +281,12 @@ function Candidates({ candidates, best }: { candidates: { prompt: string; score:
                   style={{ width: `${barWidth(c.score)}%` }}
                 />
               </span>
-              <span className="min-w-0 flex-1 truncate text-[12.5px] text-dim">{c.prompt}</span>
-              {c.prompt === best && <span className="tag tag-success">best</span>}
+              <span className="min-w-0 flex-1 truncate text-[12.5px] text-dim">{skillFirstLine(c.skill)}</span>
+              {c.skill === best && <span className="tag tag-success">best</span>}
             </button>
             {open === c.tried && (
               <div className="px-3 pb-3">
-                <PromptBlock text={c.prompt} copyable />
+                <SkillBlock text={c.skill} />
               </div>
             )}
           </div>

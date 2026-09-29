@@ -1,8 +1,8 @@
 # rm_worker
 
 The ML side of the reward model training platform: trains Bradley–Terry reward
-models, scores traces with them, and runs GEPA prompt optimization against
-them. It has its own venv because it depends on torch; the backend never
+models, scores traces with them, and uses GEPA to write a skill (a SKILL.md
+the agent loads into its context) with a trained reward model as the metric. It has its own venv because it depends on torch; the backend never
 imports it.
 
 ## How the backend calls it
@@ -30,7 +30,17 @@ A non-zero exit means the job failed; the reason is at the end of `worker.log`.
   Qwen3-0.6B in fp32); base models much larger than that will need a Modal Volume.
 - `gepa_run` needs the API key for the LiteLLM model strings it is given
   (for example `ANTHROPIC_API_KEY` for `anthropic/...`) in its environment.
-  The reward score GEPA sees is `sigmoid(reward)`, in [0, 1].
+  The score GEPA sees is `sigmoid((reward - mean) / std)`, in [0, 1], where
+  mean and std come from `model/reward_stats.json`. Training writes that file
+  from the rewards of every scored trace. The raw rewards of a confident
+  model push the sigmoid to 0 or 1, which leaves GEPA nothing to improve.
+  `scores.jsonl` keeps raw rewards.
+  GEPA evolves only the skill's body; `skill_name` and `skill_description` are
+  fixed and the seed body is the description. Each candidate is loaded into the
+  task model's system message (after the example's own system prompt) as
+  `<skill name="...">` + the rendered SKILL.md + `</skill>`. The system message
+  is left out of the text the reward model scores. A failed reflection model
+  call fails the job, and so does a run that never reached the reflection model.
 
 ## Setup
 

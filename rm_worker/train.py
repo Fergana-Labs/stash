@@ -9,6 +9,7 @@ and result.json (see docs/reward-models/DESIGN.md, "Job directory contract").
 import argparse
 import json
 import random
+import statistics
 import time
 from pathlib import Path
 
@@ -45,6 +46,22 @@ def split_pairs(pairs: list[dict]) -> tuple[list[dict], list[dict]]:
     random.Random(0).shuffle(shuffled)
     eval_count = max(1, round(len(shuffled) * EVAL_FRACTION))
     return shuffled[eval_count:], shuffled[:eval_count]
+
+
+def write_reward_stats(model_dir: Path, scores: list[float]) -> None:
+    """Mean and population std of the rewards on the owner's traces, for gepa_run's calibration."""
+    if len(scores) < 2:
+        raise ValueError(
+            f"need at least 2 scored traces to calibrate the reward model, got {len(scores)}"
+        )
+    std = statistics.pstdev(scores)
+    if std == 0:
+        raise ValueError(
+            "every scored trace got the same reward, so the reward model cannot be calibrated"
+        )
+    stats = {"mean": statistics.fmean(scores), "std": std}
+    (model_dir / "reward_stats.json").write_text(json.dumps(stats))
+    log(f"reward stats: {json.dumps(stats)}")
 
 
 def pair_rewards(model, tokenizer, batch: list[dict], device) -> tuple[torch.Tensor, torch.Tensor]:
@@ -121,6 +138,7 @@ def train(job_dir: Path) -> dict:
         ],
     )
     log(f"scored {len(scores)} traces")
+    write_reward_stats(job_dir / "model", scores)
 
     result = {
         "metrics": {

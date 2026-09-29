@@ -1,156 +1,131 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
-import { Callout, Code, CodeBlock, H2, H3, P, Title, Subtitle } from "./components";
-import { QUICKSTART_TRACES } from "./examples";
-import { NextPage, Pipeline, Table } from "./parts";
+import { Callout, Code, CodeBlock, H2, H3, P, Title } from "./components";
+import { NextPage, Pipeline } from "./parts";
 
 export const metadata: Metadata = {
-  title: "Stash Reward Models",
+  title: "Stash Docs",
   description:
-    "Import agent traces, annotate them with + / − comments, train a Bradley–Terry reward model, and optimize system prompts with GEPA.",
+    "Annotate agent traces with + / − comments, train a reward model from them, and use it to post-train or to write a skill for your agent with GEPA.",
   alternates: { canonical: "/docs" },
 };
 
-const SAMPLE = `cat > traces.jsonl <<'EOF'
-${QUICKSTART_TRACES}
-EOF`;
+const AUTO_UPLOAD = `import json, os, requests
+
+STASH_URL = os.environ["STASH_URL"]
+KEY = os.environ["STASH_API_KEY"]
+
+# At the end of each agent run:
+trace = json.dumps({"messages": messages})
+requests.post(
+    f"{STASH_URL}/api/v1/rm/traces/import",
+    headers={"Authorization": f"Bearer {KEY}"},
+    json={"format": "openai_chat", "data": trace},
+).raise_for_status()`;
+
+// A real skill from the demo above, shortened.
+const SKILL_EXAMPLE = `---
+name: refund-requests
+description: Use when a customer asks for a refund
+  or reports a damaged order.
+---
+
+## Required steps (always, in order)
+
+1. **Look up the order before responding.**
+   Never promise a refund based only on the
+   customer's claim.
+2. **Check the refund policy before committing.**
+   Don't imply a refund is approved until then.
+3. **Explain next steps**, with a realistic timeline.`;
+
+const API_STEPS = `export STASH_URL=https://api.joinstash.ai
+export STASH_API_KEY=<your key>
+AUTH="Authorization: Bearer $STASH_API_KEY"
+JSON="Content-Type: application/json"
+
+# 1. Upload
+jq -Rs '{format: "auto", data: .}' traces.jsonl \\
+  | curl -s "$STASH_URL/api/v1/rm/traces/import" \\
+      -H "$AUTH" -H "$JSON" --data @-
+
+# 3a. Train a reward model, then download its weights
+curl -s "$STASH_URL/api/v1/rm/reward-models" \\
+  -H "$AUTH" -H "$JSON" \\
+  -d '{"name": "refunds", "compute": "local"}'
+curl -s "$STASH_URL/api/v1/rm/reward-models/<id>/weights" \\
+  -H "$AUTH" -OJ
+
+# 3b. Create a skill, then download it
+curl -s "$STASH_URL/api/v1/rm/gepa-runs" \\
+  -H "$AUTH" -H "$JSON" -d '{
+    "reward_model_id": "<id>",
+    "skill_name": "refund-requests",
+    "skill_description": "Use for refund requests.",
+    "task_model": "anthropic/claude-haiku-4-5",
+    "reflection_model": "anthropic/claude-sonnet-5"
+  }'
+curl -s "$STASH_URL/api/v1/rm/gepa-runs/<id>/skill" \\
+  -H "$AUTH" -o SKILL.md`;
 
 export default function RewardModelsOverviewPage() {
   return (
     <>
-      <Title>Stash Reward Models</Title>
-      <Subtitle>
-        Turn reviewed agent traces into a reward model, then use it to rewrite your agent&apos;s system prompt.
-      </Subtitle>
-
+      <Title>Stash</Title>
       <P>
-        You bring traces from whatever your agent already logs. Your team reviews them the way
-        they&apos;d review a Google Doc: highlight a span, leave a comment, mark it + or −. Stash
-        turns the ratings into preference pairs and trains a reward model on them, the same kind
-        of model used in RLHF. The written comments go to GEPA, a prompt optimizer that reads them
-        as feedback while it searches for a better system prompt, and uses your reward model to
-        score each candidate.
+        Stash makes it easy to annotate traces so that you can emphasize what you wish the agent would
+        have done better. Once you submit your annotations, Stash converts that into an easy-to-use reward
+        model that you can use to either post-train or prompt-optimize with GEPA.
       </P>
-
       <Pipeline />
 
-      <H2>Who it&apos;s for</H2>
+      <H2>1. Upload your traces</H2>
       <P>
-        Teams running an agent in production who already have people reading its transcripts. If
-        your reviewers are writing notes like &quot;promised a refund without checking the
-        policy&quot; in a spreadsheet or a Slack thread, this puts those notes next to the exact
-        step they refer to and makes them trainable.
+        Paste or upload a file on the Traces page. Stash reads OpenAI, Anthropic, OpenTelemetry,
+        Langfuse, LangSmith, Claude Code, and Codex logs as they are; see{" "}
+        <Link href="/docs/trace-format" className="text-brand hover:underline">Trace format</Link>.
       </P>
-      <P>
-        You don&apos;t need GPUs to start. The default base model is{" "}
-        <Code>Qwen/Qwen3-0.6B</Code>, which trains on Apple silicon, a single CUDA GPU, or CPU,
-        and the same job can run on a Modal A10G instead.
-      </P>
+      <P>To upload automatically, have your agent send each trace when a run ends:</P>
+      <CodeBlock>{AUTO_UPLOAD}</CodeBlock>
 
-      <H2>How the pieces fit</H2>
-      <Table
-        head={["Piece", "What it does"]}
-        rows={[
-          [
-            <Link key="l" href="/docs/trace-format" className="hover:text-brand">Format adapters</Link>,
-            "Convert OpenAI, Anthropic, OpenTelemetry, Langfuse, LangSmith, Claude Code, and Codex exports into the Stash Trace Format.",
-          ],
-          [
-            <Link key="l" href="/docs/annotations" className="hover:text-brand">Annotations</Link>,
-            "A rating (+1 / −1), a comment, or both, on a whole trace or one step, optionally anchored to a quoted span.",
-          ],
-          [
-            <Link key="l" href="/docs/training" className="hover:text-brand">Training worker</Link>,
-            "A separate Python process (torch + transformers) that trains the reward model and scores every trace you own.",
-          ],
-          [
-            <Link key="l" href="/docs/gepa" className="hover:text-brand">GEPA runs</Link>,
-            "Evolve a system prompt against your reward model, using your task model and reflection model.",
-          ],
-          [
-            <Link key="l" href="/docs/api" className="hover:text-brand">REST + SQL</Link>,
-            "Everything is under /api/v1/rm, plus read-only DuckDB SQL over your own traces, steps, annotations, and scores.",
-          ],
-        ]}
-      />
+      <H2>2. Annotate them</H2>
       <P>
-        Reward model data is separate from Stash sessions. Traces you import here don&apos;t appear
-        in your session history, and your sessions aren&apos;t imported here automatically.
-      </P>
-
-      <H2>Quickstart</H2>
-      <P>Five minutes from a JSONL file to scored traces.</P>
-
-      <H3>1. Point at your Stash</H3>
-      <P>
-        Set <Code>STASH_URL</Code> to the backend of the Stash instance you use. To run your own,
-        see <Link href="https://github.com/Fergana-Labs/stash#self-hosted" className="text-brand hover:underline">Self-hosting</Link>{" "}
-        and <Link href="/docs/training#self-hosting-the-worker" className="text-brand hover:underline">Self-hosting the worker</Link>.
-        Every request uses a bearer token; <Code>stash signin</Code> stores one:
-      </P>
-      <CodeBlock>{`export STASH_URL=http://localhost:3456   # your Stash backend
-stash signin --api "$STASH_URL"
-export STASH_API_KEY=$(jq -r .api_key ~/.stash/config.json)`}</CodeBlock>
-
-      <H3>2. Import traces</H3>
-      <P>
-        Three traces in the <Link href="/docs/trace-format" className="text-brand hover:underline">Stash Trace Format</Link>:
-        two where the agent checks the refund policy, one where it doesn&apos;t.
-      </P>
-      <CodeBlock>{SAMPLE}</CodeBlock>
-      <P>
-        The import endpoint takes the file&apos;s contents as a string. <Code>auto</Code> detects the
-        format, so the same command works for an OpenAI or Langfuse export.
-      </P>
-      <CodeBlock>{`jq -Rs '{format: "auto", data: .}' traces.jsonl \\
-  | curl -s "$STASH_URL/api/v1/rm/traces/import" \\
-      -H "Authorization: Bearer $STASH_API_KEY" \\
-      -H "Content-Type: application/json" \\
-      --data @-`}</CodeBlock>
-      <CodeBlock>{`{"format": "stash", "imported": 3, "trace_ids": ["…", "…", "…"]}`}</CodeBlock>
-
-      <H3>3. Annotate</H3>
-      <P>
-        Open <Code>/docs</Code> in the Stash app and pick a trace. Select text inside any step to comment on it, or rate the whole trace.
-        For this example, give <Code>refund-1</Code> and <Code>refund-3</Code> a +, and give{" "}
-        <Code>refund-2</Code> a − with the comment &quot;Promised a refund without checking the
-        policy&quot;.
+        Open a trace and mark it, or any step in it, + or −. To say what went wrong, highlight the text
+        and leave a comment. The + and − marks train the reward model. The comments tell GEPA what to fix.
       </P>
       <Callout>
-        Each + target is paired with each − target, and one pair is always held out for evaluation,
-        so training needs at least two pairs: here, (refund-1, refund-2) and (refund-3, refund-2).
-        With one + and one − there is only one pair, and the job fails.
+        Training needs at least two + / − pairs, for example two traces marked + and one marked −.
+        See <Link href="/docs/annotations" className="text-brand hover:underline">Annotations</Link>.
       </Callout>
 
-      <H3>4. Train</H3>
-      <CodeBlock>{`curl -s "$STASH_URL/api/v1/rm/docs" \\
-  -H "Authorization: Bearer $STASH_API_KEY" \\
-  -H "Content-Type: application/json" \\
-  -d '{"name": "refund-policy", "compute": "local"}'`}</CodeBlock>
+      <H2>3. Press a button</H2>
+      <H3>Train reward model</H3>
       <P>
-        This trains the default base model, <Code>Qwen/Qwen3-0.6B</Code>, for one epoch on the
-        machine running your Stash worker. The response is a reward model with{" "}
-        <Code>status: &quot;queued&quot;</Code>. Poll it until it reaches <Code>succeeded</Code> or{" "}
-        <Code>failed</Code>:
+        On the Reward models tab. Stash trains a reward model on your + and − marks and scores every
+        trace, including the ones nobody annotated. Press <strong>Download weights</strong> to take the
+        model and use it as the reward function when you post-train.
       </P>
-      <CodeBlock>{`curl -s "$STASH_URL/api/v1/rm/docs/<id>" \\
-  -H "Authorization: Bearer $STASH_API_KEY" | jq '{status, num_pairs, metrics, error}'`}</CodeBlock>
+      <H3>Create skill</H3>
+      <P>
+        On the Skills tab. Name the skill and say when your agent should use it. GEPA writes the{" "}
+        <Code>SKILL.md</Code> from your comments and keeps the version your reward model scores highest.
+        Your agent loads it next to its system prompt, which Stash leaves alone. This one came out of
+        the demo above:
+      </P>
+      <CodeBlock>{SKILL_EXAMPLE}</CodeBlock>
 
-      <H3>5. Read the scores</H3>
+      <H2>The same steps over the API</H2>
       <P>
-        When training finishes, the worker scores every trace you own, including ones nobody
-        rated. Higher means closer to what your reviewers marked +. The trace view in the app shows
-        each score, and the SQL endpoint returns them all at once:
+        Create an API key at{" "}
+        <Link href="https://app.joinstash.ai/developer/keys" className="text-brand hover:underline">app.joinstash.ai/developer/keys</Link>.
+        Step 2, annotating, happens in the app. Full reference:{" "}
+        <Link href="/docs/api" className="text-brand hover:underline">API</Link>.
       </P>
-      <CodeBlock>{`curl -s "$STASH_URL/api/v1/rm/query" \\
-  -H "Authorization: Bearer $STASH_API_KEY" \\
-  -H "Content-Type: application/json" \\
-  -d '{"sql": "SELECT * FROM scores LIMIT 20"}'`}</CodeBlock>
+      <CodeBlock>{API_STEPS}</CodeBlock>
       <P>
-        From here, keep annotating and retrain, or hand the model to{" "}
-        <Link href="/docs/gepa" className="text-brand hover:underline">GEPA</Link> to
-        optimize your system prompt against it.
+        Running your own Stash? Point <Code>STASH_URL</Code> at your backend; see{" "}
+        <Link href="/docs/training#self-hosting-the-worker" className="text-brand hover:underline">Self-hosting the worker</Link>.
       </P>
 
       <NextPage href="/docs/trace-format" label="Trace format" />

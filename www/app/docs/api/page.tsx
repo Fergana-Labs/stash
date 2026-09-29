@@ -4,9 +4,9 @@ import { Callout, Code, CodeBlock, CodeTabs, H2, H3, P, ParamTable, Title, Subti
 import { Endpoint, Table } from "../parts";
 
 export const metadata: Metadata = {
-  title: "API Reference · Stash Reward Models",
+  title: "API Reference · Stash Docs",
   description:
-    "REST reference for /api/v1/rm: import traces, annotate, export, train reward models, run GEPA, and query your data with read-only DuckDB SQL.",
+    "REST reference for /api/v1/rm: import traces, annotate, export, train reward models, write skills with GEPA, and query your data with read-only DuckDB SQL.",
   alternates: { canonical: "/docs/api" },
 };
 
@@ -35,11 +35,13 @@ export default function RewardModelsApiPage() {
 
       <H2>Authentication</H2>
       <P>
-        Send your Stash API key as a bearer token. Every endpoint reads and writes only the
-        caller&apos;s own traces, annotations, models, and runs.
+        Send a Stash API key as a bearer token. Create one on the{" "}
+        <a href="https://app.joinstash.ai/developer/keys" className="text-brand hover:underline">API Keys</a>{" "}
+        page. Every endpoint reads and writes only the caller&apos;s own traces, annotations, models,
+        and runs. If you run your own Stash, set <Code>STASH_URL</Code> to your backend instead.
       </P>
-      <CodeBlock>{`export STASH_URL=http://localhost:3456   # your Stash backend
-export STASH_API_KEY=$(jq -r .api_key ~/.stash/config.json)
+      <CodeBlock>{`export STASH_URL=https://api.joinstash.ai
+export STASH_API_KEY=<your key>
 
 curl -s "$STASH_URL/api/v1/rm/formats" ${AUTH}`}</CodeBlock>
       <P>Examples on this page use those two variables. Request and response bodies are JSON unless noted.</P>
@@ -66,12 +68,14 @@ curl -s "$STASH_URL/api/v1/rm/formats" ${AUTH}`}</CodeBlock>
           ["GET", <span key="p" className="font-mono">{"/export/traces"}</span>, "Export traces as JSONL"],
           ["GET", <span key="p" className="font-mono">{"/export/annotations"}</span>, "Export annotations as JSONL"],
           ["GET", <span key="p" className="font-mono">{"/export/pairs"}</span>, "Export training pairs as JSONL"],
-          ["POST", <span key="p" className="font-mono">{"/docs"}</span>, "Train a reward model"],
-          ["GET", <span key="p" className="font-mono">{"/docs"}</span>, "List reward models"],
-          ["GET", <span key="p" className="font-mono">{"/docs/{id}"}</span>, "Get a reward model"],
+          ["POST", <span key="p" className="font-mono">{"/reward-models"}</span>, "Train a reward model"],
+          ["GET", <span key="p" className="font-mono">{"/reward-models"}</span>, "List reward models"],
+          ["GET", <span key="p" className="font-mono">{"/reward-models/{id}"}</span>, "Get a reward model"],
+          ["GET", <span key="p" className="font-mono">{"/reward-models/{id}/weights"}</span>, "Download the trained weights"],
           ["POST", <span key="p" className="font-mono">{"/gepa-runs"}</span>, "Start a GEPA run"],
           ["GET", <span key="p" className="font-mono">{"/gepa-runs"}</span>, "List GEPA runs"],
           ["GET", <span key="p" className="font-mono">{"/gepa-runs/{id}"}</span>, "Get a GEPA run"],
+          ["GET", <span key="p" className="font-mono">{"/gepa-runs/{id}/skill"}</span>, "Download the best skill as SKILL.md"],
           ["POST", <span key="p" className="font-mono">{"/query"}</span>, "Run read-only SQL"],
         ]}
       />
@@ -190,7 +194,7 @@ curl -s "$STASH_URL/api/v1/rm/export/annotations" ${AUTH} > annotations.jsonl
 curl -s "$STASH_URL/api/v1/rm/export/pairs"       ${AUTH} > pairs.jsonl`}</CodeBlock>
 
       <H2>Reward models</H2>
-      <Endpoint method="POST" path="/docs">Queue a training job.</Endpoint>
+      <Endpoint method="POST" path="/reward-models">Queue a training job.</Endpoint>
       <ParamTable
         params={[
           { name: "name", type: "string", desc: "Display name.", required: true },
@@ -200,24 +204,34 @@ curl -s "$STASH_URL/api/v1/rm/export/pairs"       ${AUTH} > pairs.jsonl`}</CodeB
           { name: "max_pairs", type: "integer", desc: "Cap on training pairs. Default 4000." },
         ]}
       />
-      <CodeBlock>{`curl -s "$STASH_URL/api/v1/rm/docs" \\
+      <CodeBlock>{`curl -s "$STASH_URL/api/v1/rm/reward-models" \\
   ${JSON_HEADERS} \\
   -d '{"name": "refund-policy", "compute": "modal"}'`}</CodeBlock>
       <P>Returns a <Code>RewardModel</Code> with status <Code>queued</Code>.</P>
 
-      <Endpoint method="GET" path="/docs">List your reward models, newest first.</Endpoint>
-      <Endpoint method="GET" path="/docs/{id}">Get one reward model. Poll this for status and metrics.</Endpoint>
-      <CodeBlock>{`curl -s "$STASH_URL/api/v1/rm/docs/<id>" ${AUTH}`}</CodeBlock>
+      <Endpoint method="GET" path="/reward-models">List your reward models, newest first.</Endpoint>
+      <Endpoint method="GET" path="/reward-models/{id}">Get one reward model. Poll this for status and metrics.</Endpoint>
+      <CodeBlock>{`curl -s "$STASH_URL/api/v1/rm/reward-models/<id>" ${AUTH}`}</CodeBlock>
+      <Endpoint method="GET" path="/reward-models/{id}/weights">The trained model directory as a .tar.gz.</Endpoint>
+      <P>
+        The archive (<Code>application/gzip</Code>, named <Code>&lt;name&gt;-reward-model.tar.gz</Code>)
+        holds one folder, <Code>&lt;name&gt;-reward-model/</Code>, with <Code>config.json</Code>,{" "}
+        <Code>model.safetensors</Code>, <Code>tokenizer.json</Code>, <Code>tokenizer_config.json</Code>,{" "}
+        <Code>chat_template.jinja</Code>, and <Code>reward_stats.json</Code>. A <Code>404</Code> until the
+        model has succeeded.
+      </P>
+      <CodeBlock>{`curl -s "$STASH_URL/api/v1/rm/reward-models/<id>/weights" ${AUTH} -OJ`}</CodeBlock>
 
       <H2>GEPA runs</H2>
-      <Endpoint method="POST" path="/gepa-runs">Queue a GEPA prompt optimization run.</Endpoint>
+      <Endpoint method="POST" path="/gepa-runs">Queue a GEPA run that writes a skill.</Endpoint>
       <ParamTable
         params={[
           { name: "reward_model_id", type: "string", desc: "One of your reward models with status succeeded, used as the metric. Another user's is a 404; an unfinished one is a 422.", required: true },
-          { name: "seed_prompt", type: "string", desc: "The system prompt to start from.", required: true },
+          { name: "skill_name", type: "string", desc: "Lowercase letters and digits, with single hyphens between words (refund-policy); 1 to 64 characters.", required: true },
+          { name: "skill_description", type: "string", desc: "When the agent should use the skill; 1 to 1024 characters. Also the seed body.", required: true },
           { name: "task_model", type: "string", desc: "LiteLLM model string, e.g. openai/gpt-4.1-mini or openai/<served name>.", required: true },
           { name: "task_api_base", type: "string", desc: "OpenAI-compatible base URL (vLLM, SGLang, …) for the task model." },
-          { name: "reflection_model", type: "string", desc: "LiteLLM model string for the model that proposes new prompts.", required: true },
+          { name: "reflection_model", type: "string", desc: "LiteLLM model string for the model that writes new skill bodies.", required: true },
           { name: "max_metric_calls", type: "integer", desc: "Budget of example evaluations. Default 150." },
         ]}
       />
@@ -225,7 +239,8 @@ curl -s "$STASH_URL/api/v1/rm/export/pairs"       ${AUTH} > pairs.jsonl`}</CodeB
   ${JSON_HEADERS} \\
   -d '{
     "reward_model_id": "<reward_model_id>",
-    "seed_prompt": "You are a support agent for Acme.",
+    "skill_name": "refund-policy",
+    "skill_description": "Use when a customer asks for a refund, return, or exchange.",
     "task_model": "openai/Qwen/Qwen3-8B",
     "task_api_base": "http://gpu-box.internal:8000/v1",
     "reflection_model": "anthropic/claude-sonnet-5"
@@ -234,6 +249,9 @@ curl -s "$STASH_URL/api/v1/rm/export/pairs"       ${AUTH} > pairs.jsonl`}</CodeB
 
       <Endpoint method="GET" path="/gepa-runs">List your GEPA runs, newest first.</Endpoint>
       <Endpoint method="GET" path="/gepa-runs/{id}">Get one run, including its result once it succeeds.</Endpoint>
+      <Endpoint method="GET" path="/gepa-runs/{id}/skill">The best skill as a text/markdown attachment named SKILL.md.</Endpoint>
+      <CodeBlock>{`curl -s "$STASH_URL/api/v1/rm/gepa-runs/<id>/skill" ${AUTH} -o SKILL.md`}</CodeBlock>
+      <P>A <Code>404</Code> until the run has succeeded.</P>
 
       <H2>SQL query</H2>
       <Endpoint method="POST" path="/query">Run one read-only SELECT over your data.</Endpoint>
@@ -393,16 +411,18 @@ HAVING plus > 0 AND minus > 0`}</CodeBlock>
         params={[
           { name: "id", type: "string", desc: "Run id." },
           { name: "reward_model_id", type: "string", desc: "The reward model used as the metric." },
-          { name: "seed_prompt", type: "string", desc: "The prompt the run started from." },
+          { name: "skill_name", type: "string", desc: "The skill's name." },
+          { name: "skill_description", type: "string", desc: "The skill's description." },
           { name: "task_model", type: "string", desc: "LiteLLM model string." },
           { name: "task_api_base", type: "string | null", desc: "OpenAI-compatible base URL, if set." },
           { name: "reflection_model", type: "string", desc: "LiteLLM model string." },
           { name: "max_metric_calls", type: "integer", desc: "Evaluation budget." },
           { name: "status", type: "string", desc: "queued, running, succeeded, or failed." },
-          { name: "best_prompt", type: "string | null", desc: "The winning system prompt." },
-          { name: "best_score", type: "number | null", desc: "Its mean sigmoid(reward) over all examples, 0 to 1." },
-          { name: "seed_score", type: "number | null", desc: "The seed prompt's mean score, for comparison." },
-          { name: "candidates", type: "array | null", desc: "Every prompt tried: [{prompt, score}], seed first." },
+          { name: "seed_skill", type: "string | null", desc: "The starting SKILL.md, with the description as its body." },
+          { name: "seed_score", type: "number | null", desc: "The seed skill's mean score, for comparison." },
+          { name: "best_skill", type: "string | null", desc: "The winning SKILL.md, frontmatter included." },
+          { name: "best_score", type: "number | null", desc: "Its mean calibrated score over all examples, 0 to 1; 0.5 is your average trace." },
+          { name: "candidates", type: "array | null", desc: "Every skill tried, as a full SKILL.md: [{skill, score}]." },
           { name: "error", type: "string | null", desc: "Failure message when status is failed." },
           { name: "created_at", type: "string", desc: "ISO 8601." },
           { name: "started_at", type: "string | null", desc: "ISO 8601." },

@@ -9,6 +9,7 @@ with RM_WORKER_PYTHON, and reads result.json / scores.jsonl back.
 import asyncio
 import json
 import os
+import tarfile
 from pathlib import Path
 from uuid import UUID
 
@@ -32,6 +33,18 @@ def _required_env(name: str) -> str:
 
 def job_dir(job_id: UUID) -> Path:
     return Path(_required_env("RM_ARTIFACT_DIR")) / str(job_id)
+
+
+def pack_model(model_id: UUID, archive_stem: str, destination: Path) -> None:
+    """Write the trained model directory as a .tar.gz with one top-level folder.
+
+    Compression level 1: the weights barely compress, so more effort buys only CPU time.
+    """
+    source = job_dir(model_id) / "model"
+    if not source.is_dir():
+        raise FileNotFoundError(f"trained model directory is missing: {source}")
+    with tarfile.open(destination, "w:gz", compresslevel=1) as tar:
+        tar.add(source, arcname=archive_stem)
 
 
 def _write_jsonl(path: Path, rows: list[dict]) -> None:
@@ -128,7 +141,8 @@ async def run_gepa(run_id: UUID) -> None:
     job = {
         "kind": "gepa",
         "reward_model_dir": str(job_dir(run["reward_model_id"]) / "model"),
-        "seed_prompt": run["seed_prompt"],
+        "skill_name": run["skill_name"],
+        "skill_description": run["skill_description"],
         "task_model": run["task_model"],
         "task_api_base": run["task_api_base"],
         "reflection_model": run["reflection_model"],
@@ -143,13 +157,14 @@ async def run_gepa(run_id: UUID) -> None:
     await pool.execute(
         """
         UPDATE rm_gepa_runs
-        SET best_prompt = $2, best_score = $3, seed_score = $4, candidates = $5,
-            status = 'succeeded', finished_at = now()
+        SET best_skill = $2, best_score = $3, seed_skill = $4, seed_score = $5,
+            candidates = $6, status = 'succeeded', finished_at = now()
         WHERE id = $1
         """,
         run_id,
-        result["best_prompt"],
+        result["best_skill"],
         result["best_score"],
+        result["seed_skill"],
         result["seed_score"],
         result["candidates"],
     )

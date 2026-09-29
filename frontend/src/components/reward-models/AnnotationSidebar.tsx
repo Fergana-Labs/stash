@@ -176,7 +176,7 @@ function AnnotationCard({
           <div>
             <span className="font-medium">Label error</span>
             {annotation.label_error_note && <span> — {annotation.label_error_note}</span>}
-            <div className="text-[11px] opacity-80">Excluded from training and prompt optimization.</div>
+            <div className="text-[11px] opacity-80">Excluded from training and skill creation.</div>
           </div>
         </div>
       )}

@@ -22,13 +22,14 @@ const NAV: NavSection[] = [
       { href: "/docs", label: "Overview" },
       { href: "/docs/trace-format", label: "Trace format" },
       { href: "/docs/annotations", label: "Annotations" },
+      { href: "/docs/implementation", label: "Implementation" },
     ],
   },
   {
     title: "Train and optimize",
     items: [
       { href: "/docs/training", label: "Training" },
-      { href: "/docs/gepa", label: "GEPA" },
+      { href: "/docs/gepa", label: "Skills (GEPA)" },
     ],
   },
   {

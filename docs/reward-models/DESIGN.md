@@ -3,8 +3,9 @@
 Teams bring agent traces, annotate them the way they'd comment on a Google Doc
 (highlight text, leave a comment, give it a + or −), and train a reward model
 from those annotations, the same kind of reward model used in RLHF. A second
-optimizer, GEPA, rewrites an agent's system prompt using the written comments
-as feedback and the trained reward model as the metric.
+optimizer, GEPA, writes a skill for the agent (a SKILL.md it loads into its
+context) using the written comments as feedback and the trained reward model
+as the metric.
 
 This is a separate product area inside the Stash monorepo. It does not read or
 write the existing `sessions` / `history_events` tables; connecting the two is
@@ -38,7 +39,7 @@ flowchart LR
 | Celery tasks | `backend/tasks/reward_models.py` | `heavy` queue; shells out to `rm_worker` |
 | Worker | `rm_worker/` (top-level, own venv, own `requirements.txt`) | training, scoring, GEPA; never imported by the backend |
 | UI | `frontend/src/app/(app)/reward-models/` | traces, annotation view, models, GEPA |
-| Public docs | `www/app/docs/reward-models/` | overview, trace format, annotations, training, GEPA, API |
+| Public docs | `www/app/docs/` (Stash Reward Models is the docs site) | overview, trace format, annotations, training, GEPA, API |
 
 The backend never imports torch. It writes a job directory, runs the worker as
 a subprocess with `RM_WORKER_PYTHON`, and reads the results back. Both
@@ -123,9 +124,9 @@ Training data is preference pairs built from the + and − ratings:
    → chosen, negative → rejected, zero → skipped.
 3. Render each target to text. A trace renders all its non-system steps; a
    step renders the trace's non-system steps up to and including that step.
-   The reward model never sees system steps: GEPA's candidate is the system
-   prompt, so scoring it would let GEPA write the reward model's preferences
-   into the prompt instead of into the agent's behavior. Rendering is
+   The reward model never sees system steps: GEPA's skill is injected into
+   the system message, so scoring it would let GEPA write the reward model's
+   preferences into the skill instead of into the agent's behavior. Rendering is
    `"<role>: <content>"` per step joined with blank lines, with tool calls as
    `"assistant → <tool_name>(<tool_input json>)"`. An assistant step with both
    text and a tool call renders the text line, then the tool-call line.
@@ -152,7 +153,7 @@ trained weights go to `RM_ARTIFACT_DIR/<reward_model_id>/model`.
   job.json          # written by backend: {"kind": "train"|"gepa", ...params}
   pairs.jsonl       # train: {"chosen": str, "rejected": str}
   score_items.jsonl # train: {"trace_id": str, "text": str}
-  gepa_examples.jsonl # gepa: {"trace_id", "messages": [{role, content}], "feedback": [str]}
+  gepa_examples.jsonl # gepa: {"trace_id", "system": str|null, "messages": [{role, content}], "feedback": [str]}
   result.json       # written by worker
   scores.jsonl      # train, written by worker: {"trace_id": str, "score": float}
   model/            # train, written by worker
@@ -161,32 +162,56 @@ trained weights go to `RM_ARTIFACT_DIR/<reward_model_id>/model`.
 
 `result.json` for training: `{"metrics": {"train_pairs", "eval_pairs",
 "eval_accuracy", "final_loss", "epochs", "device", "seconds"}}`. For GEPA:
-`{"best_prompt", "best_score", "seed_score", "candidates": [{"prompt", "score"}]}`.
+`{"best_skill", "best_score", "seed_skill", "seed_score", "candidates": [{"skill", "score"}]}`
+(each skill is the full rendered SKILL.md). GEPA job.json: `{"kind": "gepa",
+"reward_model_dir", "skill_name", "skill_description", "task_model",
+"task_api_base" (null when unset), "reflection_model", "max_metric_calls"}`.
 
 Request defaults: `base_model` `Qwen/Qwen3-0.6B`, `epochs` 1, `max_pairs`
 4000. A quote's `text` must occur in the step's content (422 otherwise).
 
-## GEPA prompt optimization
+## Skill creation (GEPA)
 
-GEPA (Agrawal et al., 2025) evolves a prompt by running it, reading textual
-feedback on the results, and asking a reflection model to propose a better
-prompt, keeping a Pareto front of candidates. Here:
+The output is a **skill for your agent**: a `SKILL.md` (YAML frontmatter with
+`name` and `description`, then Markdown instructions) that the agent loads
+into its context. The agent's own system prompt is never rewritten.
 
-- **Examples** = traces with at least one non-flagged annotation. The input is
-  the trace's steps before the first assistant step (system step removed; the
-  candidate prompt replaces it).
-- **Candidate** = one text field, `system_prompt`, seeded by the user.
+GEPA (Agrawal et al., 2025) evolves text by running it, reading textual
+feedback on the results, and asking a reflection model to propose better
+text, keeping a Pareto front of candidates. Here the text it evolves is the
+skill's body:
+
+- **Request** = `skill_name` (lowercase letters, digits, hyphens; 1–64
+  chars) and `skill_description` (1–1024 chars; says when the agent should
+  use the skill). Name and description are fixed for the run; GEPA only
+  writes the body. The seed body is the description as a single line.
+- **Examples** = traces with at least one non-flagged annotation. Each
+  example carries the trace's own system prompt (`system`: the concatenated
+  system steps, or null) and the input = the non-system steps before the
+  first assistant step.
+- **Candidate** = one text component, `skill_body`. The worker renders the
+  full skill as
+  `---\nname: <skill_name>\ndescription: <skill_description>\n---\n\n<skill_body>`.
 - **Evaluation** = run `task_model` (any LiteLLM model string, including
-  `openai/<name>` with `api_base` for vLLM/SGLang/any OpenAI-compatible server)
-  on the input with the candidate prompt, then score the rendered
-  conversation with the chosen trained reward model.
-- **Feedback** for reflection = the reward score plus every comment human
-  annotators left on that trace.
+  `openai/<name>` with `api_base` for vLLM/SGLang/any OpenAI-compatible
+  server) with system message = the example's own system prompt (when
+  present), a blank line, then
+  `<skill name="<skill_name>">\n<rendered SKILL.md>\n</skill>`, followed by
+  the example's input messages. The rendered conversation (reply included,
+  system message excluded) is scored by the chosen trained reward model.
+  GEPA's score is sigmoid((reward − mean) / std), where mean and std are the
+  reward model's scores over the owner's traces at training time
+  (`model/reward_stats.json`). Raw rewards saturate the sigmoid (a confident
+  model scores a decent reply ~0.99) and leave GEPA no headroom.
+- **Feedback** for reflection = the reward score plus every non-flagged
+  comment annotators left on that trace. The reflection model is told it is
+  writing the body of a SKILL.md for an agent and must return only the body.
 - Traces with no input before their first assistant step are skipped; no
   examples left → the run fails. `max_metric_calls` defaults to 150. The
   reward model must be the caller's and `succeeded`.
-- **Result** = the best prompt, its score, the seed's score, and every
-  candidate tried.
+- **Result** = the best skill (full rendered SKILL.md), its score, the seed
+  skill and its score, and every candidate tried (full SKILL.md each).
+  `GET /gepa-runs/{id}/skill` downloads the best one as `SKILL.md`.
 
 ## Querying
 
@@ -215,9 +240,11 @@ prompt, keeping a Pareto front of candidates. Here:
 | POST | `/reward-models` | `{name, base_model, compute, epochs?, max_pairs?}` | `RewardModel` (status `queued`) |
 | GET | `/reward-models` | | `[RewardModel]` |
 | GET | `/reward-models/{id}` | | `RewardModel` |
-| POST | `/gepa-runs` | `{reward_model_id, seed_prompt, task_model, task_api_base?, reflection_model, max_metric_calls?}` | `GepaRun` (status `queued`) |
+| GET | `/reward-models/{id}/weights` | | `.tar.gz` of the trained model dir (weights, tokenizer, `reward_stats.json`), attachment `<name>-reward-model.tar.gz`; 404 until `succeeded` |
+| POST | `/gepa-runs` | `{reward_model_id, skill_name, skill_description, task_model, task_api_base?, reflection_model, max_metric_calls?}` | `GepaRun` (status `queued`) |
 | GET | `/gepa-runs` | | `[GepaRun]` |
 | GET | `/gepa-runs/{id}` | | `GepaRun` |
+| GET | `/gepa-runs/{id}/skill` | | best skill as `text/markdown` attachment `SKILL.md` (404 until succeeded) |
 | POST | `/query` | `{sql}` | `{columns, rows, truncated}` |
 
 `TraceSummary`: `{id, external_id, title, source_format, step_count,

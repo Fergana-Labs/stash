@@ -477,23 +477,26 @@ export interface RmRewardModel {
 }
 
 export interface RmGepaCandidate {
-  prompt: string;
+  /** The full rendered SKILL.md. */
+  skill: string;
   score: number;
 }
 
 export interface RmGepaRun {
   id: string;
   reward_model_id: string;
-  seed_prompt: string;
+  skill_name: string;
+  skill_description: string;
   task_model: string;
   task_api_base: string | null;
   reflection_model: string;
   max_metric_calls: number;
   status: RmJobStatus;
   error: string | null;
-  best_prompt: string | null;
-  best_score: number | null;
+  seed_skill: string | null;
+  best_skill: string | null;
   seed_score: number | null;
+  best_score: number | null;
   candidates: RmGepaCandidate[] | null;
   created_at: string;
   started_at: string | null;

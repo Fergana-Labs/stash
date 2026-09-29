@@ -1,7 +1,9 @@
 """Pair construction, GEPA examples, and job result ingestion (fake worker, no torch)."""
 
+import io
 import json
 import sys
+import tarfile
 from pathlib import Path
 
 import pytest
@@ -114,17 +116,24 @@ async def test_gepa_examples_replay_the_input_and_carry_unflagged_comments(clien
     await client.patch(
         f"/api/v1/rm/annotations/{wrong['id']}", json={"label_error": True}, headers=auth
     )
-    # The greeting has no annotations, so it is not an example.
+    await _annotate(client, auth, greeting_id, rating=1)
 
     examples = await datasets.gepa_examples(await _user_id(client, auth))
-    assert examples == [
-        {
-            "trace_id": refund_id,
-            # System step dropped (the candidate prompt replaces it); stops at the first assistant turn.
-            "messages": [{"role": "user", "content": "I want a refund for order 1182"}],
-            "feedback": ["Check the refund policy first"],
-        }
-    ]
+    by_trace = {example["trace_id"]: example for example in examples}
+    # The trace's own system prompt travels separately: the worker appends the skill to it.
+    # The input stops at the first assistant turn.
+    assert by_trace[refund_id] == {
+        "trace_id": refund_id,
+        "system": "You are a support agent.",
+        "messages": [{"role": "user", "content": "I want a refund for order 1182"}],
+        "feedback": ["Check the refund policy first"],
+    }
+    assert by_trace[greeting_id] == {
+        "trace_id": greeting_id,
+        "system": None,
+        "messages": [{"role": "user", "content": "hi there"}],
+        "feedback": [],
+    }
 
 
 @pytest.fixture
@@ -289,7 +298,7 @@ async def test_missing_env_var_is_named_in_the_error(client, monkeypatch, artifa
     assert "RM_WORKER_PYTHON" in model["error"]
 
 
-async def test_gepa_run_ingests_the_best_prompt(client, monkeypatch, artifact_dir):
+async def test_gepa_run_ingests_the_best_skill(client, monkeypatch, artifact_dir):
     auth = await _register(client)
     await _labelled_pair(client, auth)
     model_id = await _create_model(client, auth, monkeypatch)
@@ -301,7 +310,8 @@ async def test_gepa_run_ingests_the_best_prompt(client, monkeypatch, artifact_di
         "/api/v1/rm/gepa-runs",
         json={
             "reward_model_id": model_id,
-            "seed_prompt": "Be brief.",
+            "skill_name": "short-answers",
+            "skill_description": "Use when answering yes/no questions.",
             "task_model": "openai/qwen3-8b",
             "task_api_base": "http://localhost:8000/v1",
             "reflection_model": "anthropic/claude-sonnet-5",
@@ -310,21 +320,32 @@ async def test_gepa_run_ingests_the_best_prompt(client, monkeypatch, artifact_di
     )
     assert resp.status_code == 200, resp.text
     run_id = resp.json()["id"]
-    candidates = [
-        {"prompt": "Be brief.", "score": 0.1},
-        {"prompt": "Be brief and kind.", "score": 0.9},
-    ]
+    header = "---\nname: short-answers\ndescription: Use when answering yes/no questions.\n---\n\n"
+    seed_skill = header + "Use when answering yes/no questions."
+    best_skill = header + "Answer in one sentence, then offer help."
+    candidates = [{"skill": seed_skill, "score": 0.1}, {"skill": best_skill, "score": 0.9}]
+    skill_url = f"/api/v1/rm/gepa-runs/{run_id}/skill"
+    assert (await client.get(skill_url, headers=auth)).status_code == 404  # not finished
 
     def write_outputs(directory: Path) -> None:
         job = json.loads((directory / "job.json").read_text())
-        assert job["reward_model_dir"] == str(artifact_dir / model_id / "model")
-        assert job["task_api_base"] == "http://localhost:8000/v1"
+        assert job == {
+            "kind": "gepa",
+            "reward_model_dir": str(artifact_dir / model_id / "model"),
+            "skill_name": "short-answers",
+            "skill_description": "Use when answering yes/no questions.",
+            "task_model": "openai/qwen3-8b",
+            "task_api_base": "http://localhost:8000/v1",
+            "reflection_model": "anthropic/claude-sonnet-5",
+            "max_metric_calls": 150,
+        }
         assert len((directory / "gepa_examples.jsonl").read_text().splitlines()) == 3
         (directory / "result.json").write_text(
             json.dumps(
                 {
-                    "best_prompt": "Be brief and kind.",
+                    "best_skill": best_skill,
                     "best_score": 0.9,
+                    "seed_skill": seed_skill,
                     "seed_score": 0.1,
                     "candidates": candidates,
                 }
@@ -337,12 +358,18 @@ async def test_gepa_run_ingests_the_best_prompt(client, monkeypatch, artifact_di
     assert calls == ["rm_worker.gepa_run"]
     run = (await client.get(f"/api/v1/rm/gepa-runs/{run_id}", headers=auth)).json()
     assert run["status"] == "succeeded"
-    assert (run["best_prompt"], run["best_score"], run["seed_score"]) == (
-        "Be brief and kind.",
-        0.9,
-        0.1,
-    )
+    assert (run["best_skill"], run["best_score"]) == (best_skill, 0.9)
+    assert (run["seed_skill"], run["seed_score"]) == (seed_skill, 0.1)
     assert run["candidates"] == candidates
+    assert "owner_user_id" not in run
+
+    resp = await client.get(skill_url, headers=auth)
+    assert resp.status_code == 200
+    assert resp.text == best_skill
+    assert resp.headers["content-type"].startswith("text/markdown")
+    assert resp.headers["content-disposition"] == 'attachment; filename="SKILL.md"'
+    intruder = await _register(client)
+    assert (await client.get(skill_url, headers=intruder)).status_code == 404
 
 
 async def test_scores_from_unfinished_models_are_not_shown(client, monkeypatch):
@@ -386,3 +413,46 @@ async def test_bad_worker_output_leaves_no_half_succeeded_model(client, monkeypa
         "SELECT count(*) FROM rm_trace_scores WHERE reward_model_id = $1::uuid", model_id
     )
     assert count == 0
+
+
+async def test_trained_weights_download_as_a_tarball(client, monkeypatch, artifact_dir):
+    """Users take the reward model away to post-train with it."""
+    auth = await _register(client)
+    await _labelled_pair(client, auth)
+    monkeypatch.setattr(rm_tasks.train_reward_model, "delay", lambda *a: None)
+    resp = await client.post(
+        "/api/v1/rm/reward-models",
+        json={"name": "Support RM (v2)!", "compute": "local"},
+        headers=auth,
+    )
+    model_id = resp.json()["id"]
+    weights_url = f"/api/v1/rm/reward-models/{model_id}/weights"
+    assert (await client.get(weights_url, headers=auth)).status_code == 404  # still queued
+
+    model_dir = artifact_dir / model_id / "model"
+    model_dir.mkdir(parents=True)
+    (model_dir / "model.safetensors").write_bytes(b"\x00" * 1024)
+    (model_dir / "tokenizer.json").write_text("{}")
+    (model_dir / "reward_stats.json").write_text('{"mean": 0.0, "std": 1.0}')
+    await get_pool().execute(
+        "UPDATE rm_reward_models SET status = 'succeeded' WHERE id = $1::uuid", model_id
+    )
+
+    intruder = await _register(client)
+    assert (await client.get(weights_url, headers=intruder)).status_code == 404
+
+    resp = await client.get(weights_url, headers=auth)
+    assert resp.status_code == 200
+    assert resp.headers["content-disposition"] == (
+        'attachment; filename="support-rm-v2-reward-model.tar.gz"'
+    )
+    with tarfile.open(fileobj=io.BytesIO(resp.content), mode="r:gz") as tar:
+        names = set(tar.getnames())
+        stats = tar.extractfile("support-rm-v2-reward-model/reward_stats.json").read()
+    assert names == {
+        "support-rm-v2-reward-model",
+        "support-rm-v2-reward-model/model.safetensors",
+        "support-rm-v2-reward-model/tokenizer.json",
+        "support-rm-v2-reward-model/reward_stats.json",
+    }
+    assert json.loads(stats) == {"mean": 0.0, "std": 1.0}

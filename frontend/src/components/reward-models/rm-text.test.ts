@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { RmAnnotation, RmStep } from "@/lib/types";
-import { buildSegments, diffLines, locateQuote, quoteFromOffsets, sortAnnotations } from "./rm-text";
+import { buildSegments, diffLines, locateQuote, quoteFromOffsets, skillFirstLine, sortAnnotations } from "./rm-text";
 
 describe("quote anchoring", () => {
   // The same phrase appears twice; the annotator highlighted the second one.
@@ -86,12 +86,21 @@ describe("sortAnnotations", () => {
 });
 
 describe("diffLines", () => {
-  it("marks removed and added lines between seed and best prompt", () => {
+  it("marks removed and added lines between seed and best skill", () => {
     expect(diffLines("keep\nold\nend", "keep\nnew\nend")).toEqual([
       { kind: "same", text: "keep" },
       { kind: "del", text: "old" },
       { kind: "add", text: "new" },
       { kind: "same", text: "end" },
     ]);
+  });
+});
+
+describe("skillFirstLine", () => {
+  // Every candidate shares the same frontmatter, so the list would be useless
+  // if it showed "---" or the name line instead of the body.
+  it("skips the frontmatter and blank lines to the first body line", () => {
+    const skill = "---\nname: refund-requests\ndescription: Handling refunds\n---\n\nCheck the refund policy first.\nThen reply.";
+    expect(skillFirstLine(skill)).toBe("Check the refund policy first.");
   });
 });
