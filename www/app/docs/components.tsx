@@ -65,7 +65,7 @@ export function CodeTabs({ tabs }: { tabs: { label: string; lang: CodeLang; code
           </button>
         ))}
       </div>
-      <pre className="code-block bg-base p-5 overflow-x-auto text-sm font-mono">
+      <pre className="code-block bg-base p-5 overflow-x-auto text-[13px] leading-6 font-mono">
         <Highlighted code={tabs[active].code} lang={tabs[active].lang} />
       </pre>
     </div>
@@ -78,7 +78,7 @@ export function Code({ children }: { children: React.ReactNode }) {
 
 export function CodeBlock({ children, lang }: { children: string; lang: CodeLang }) {
   return (
-    <pre className="code-block bg-surface border border-border rounded-2xl p-5 overflow-x-auto text-sm my-6 font-mono">
+    <pre className="code-block bg-surface border border-border rounded-2xl p-5 overflow-x-auto text-[13px] leading-6 my-6 font-mono">
       <Highlighted code={children} lang={lang} />
     </pre>
   );

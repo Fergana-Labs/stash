@@ -151,7 +151,7 @@ export default function GepaPage() {
           { name: "task_model", type: "string", desc: "LiteLLM model string for the model your agent runs on.", required: true },
           { name: "task_api_base", type: "string", desc: "Base URL for an OpenAI-compatible server. Use with an openai/<name> task_model." },
           { name: "reflection_model", type: "string", desc: "LiteLLM model string for the model that reads feedback and writes new skill bodies.", required: true },
-          { name: "max_metric_calls", type: "integer", desc: "Budget: how many example evaluations GEPA may run, each one a task model call plus a reward model score. Default 150." },
+          { name: "max_metric_calls", type: "integer", desc: "Budget: how many example evaluations GEPA may run, each one a task model call plus a reward model score. Default 40." },
         ]}
       />
       <P>

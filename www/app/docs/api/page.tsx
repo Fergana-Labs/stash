@@ -230,7 +230,7 @@ curl -s "$STASH_URL/api/v1/rm/export/pairs"       ${AUTH} > pairs.jsonl`}</CodeB
           { name: "task_model", type: "string", desc: "LiteLLM model string, e.g. openai/gpt-4.1-mini or openai/<served name>.", required: true },
           { name: "task_api_base", type: "string", desc: "OpenAI-compatible base URL (vLLM, SGLang, …) for the task model." },
           { name: "reflection_model", type: "string", desc: "LiteLLM model string for the model that writes new skill bodies.", required: true },
-          { name: "max_metric_calls", type: "integer", desc: "Budget of example evaluations. Default 150." },
+          { name: "max_metric_calls", type: "integer", desc: "Budget of example evaluations. Default 40." },
         ]}
       />
       <CodeBlock lang="bash">{`curl -s "$STASH_URL/api/v1/rm/gepa-runs" \\

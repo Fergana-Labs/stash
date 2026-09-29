@@ -7,10 +7,10 @@ import { useState } from "react";
 const STAGES = [
   {
     n: "01",
-    title: "Import",
-    artifact: "traces.jsonl",
-    body: "Paste or upload your agent's traces.",
-    video: "/docs/demo/import.mp4",
+    title: "Connect",
+    artifact: "OpenTelemetry",
+    body: "Your agent's runs stream into Stash.",
+    video: "/docs/demo/connect.mp4",
   },
   {
     n: "02",

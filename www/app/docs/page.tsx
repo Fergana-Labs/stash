@@ -11,56 +11,37 @@ export const metadata: Metadata = {
   alternates: { canonical: "/docs" },
 };
 
-const AUTO_UPLOAD = `requests.post(
-    f"{STASH_URL}/api/v1/rm/traces/import",
-    headers={"Authorization": f"Bearer {STASH_API_KEY}"},
-    json={"format": "openai_chat", "data": json.dumps(trace)},
-)`;
+const CONNECT = `export OTEL_EXPORTER_OTLP_ENDPOINT=https://api.joinstash.ai/api/v1/rm/otel
+export OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+export OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer%20$STASH_API_KEY"
 
-// A real skill from the demo above, shortened.
+opentelemetry-instrument python agent.py`;
+
+const INSTALL = `pip install opentelemetry-distro \\
+  opentelemetry-exporter-otlp-proto-http \\
+  openinference-instrumentation-anthropic`;
+
+const ONE_SPAN = `with tracer.start_as_current_span("agent-run"):
+    run_agent(task)`;
+
+// Excerpt of the skill produced in skill.mp4.
 const SKILL_EXAMPLE = `---
 name: refund-requests
-description: Use when a customer asks for a refund
-  or reports a damaged order.
+description: Use this skill whenever a user requests a refund
+  or reports a broken/damaged order. Always look up the order
+  details and check the applicable refund policy before
+  responding, and explain the next steps to the user rather
+  than promising a refund outright.
 ---
 
-## Required steps (always, in order)
+## Hard rules
 
-1. **Look up the order before responding.**
-   Never promise a refund based only on the
-   customer's claim.
-2. **Check the refund policy before committing.**
-   Don't imply a refund is approved until then.
-3. **Explain next steps**, with a realistic timeline.`;
-
-const API_STEPS = `export STASH_URL=https://api.joinstash.ai
-export STASH_API_KEY=<your key>
-AUTH="Authorization: Bearer $STASH_API_KEY"
-JSON="Content-Type: application/json"
-
-# 1. Upload
-jq -Rs '{format: "auto", data: .}' traces.jsonl \\
-  | curl -s "$STASH_URL/api/v1/rm/traces/import" \\
-      -H "$AUTH" -H "$JSON" --data @-
-
-# 3. Train a reward model, then download its weights
-curl -s "$STASH_URL/api/v1/rm/reward-models" \\
-  -H "$AUTH" -H "$JSON" \\
-  -d '{"name": "refunds", "compute": "local"}'
-curl -s "$STASH_URL/api/v1/rm/reward-models/<id>/weights" \\
-  -H "$AUTH" -OJ
-
-# 4. Write a skill, then download it
-curl -s "$STASH_URL/api/v1/rm/gepa-runs" \\
-  -H "$AUTH" -H "$JSON" -d '{
-    "reward_model_id": "<id>",
-    "skill_name": "refund-requests",
-    "skill_description": "Use for refund requests.",
-    "task_model": "anthropic/claude-haiku-4-5",
-    "reflection_model": "anthropic/claude-sonnet-5"
-  }'
-curl -s "$STASH_URL/api/v1/rm/gepa-runs/<id>/skill" \\
-  -H "$AUTH" -o SKILL.md`;
+- **Never** promise a refund, replacement, or specific dollar
+  amount as a done deal before eligibility is confirmed.
+- **Never** claim to have looked something up that you did
+  not actually look up.
+- **Never** ask the user to repeat information already given
+  in the conversation.`;
 
 export default function RewardModelsOverviewPage() {
   return (
@@ -73,17 +54,25 @@ export default function RewardModelsOverviewPage() {
       </P>
       <Pipeline />
 
-      <H2>1. Upload your traces</H2>
+      <H2>1. Connect Stash to your agent</H2>
       <P>
-        Paste or upload a file on the Traces page. Stash reads OpenAI, Anthropic, OpenTelemetry,
-        Langfuse, LangSmith, Claude Code, and Codex logs as they are; see{" "}
-        <Link href="/docs/trace-format" className="text-brand hover:underline">Trace format</Link>.
+        Stash reads your agent&apos;s traces over OpenTelemetry. Install the instrumentation for your
+        framework, set three variables, and every run shows up on the Traces page.
       </P>
+      <CodeBlock lang="bash">{CONNECT}</CodeBlock>
+      <DemoClip src="/docs/demo/connect.mp4" />
       <P>
-        To upload automatically, send each run when it finishes. Here <Code>trace</Code> is the run in
-        OpenAI chat format, <Code>{"{\"messages\": [...]}"}</Code>:
+        The instrumentation for an Anthropic agent, for example (the{" "}
+        <Link href="https://github.com/Arize-ai/openinference" className="text-brand hover:underline">OpenInference</Link>{" "}
+        packages cover OpenAI, the OpenAI Agents SDK, LangChain, LlamaIndex, CrewAI, DSPy, Bedrock, and
+        more; the Vercel AI SDK emits OpenTelemetry on its own):
       </P>
-      <CodeBlock lang="python">{AUTO_UPLOAD}</CodeBlock>
+      <CodeBlock lang="bash">{INSTALL}</CodeBlock>
+      <P>
+        Frameworks group each run into one trace. If your agent calls a model SDK directly in a loop,
+        wrap each run in a span so its calls land in the same trace:
+      </P>
+      <CodeBlock lang="python">{ONE_SPAN}</CodeBlock>
 
       <H2>2. Annotate them</H2>
       <P>
@@ -98,28 +87,17 @@ export default function RewardModelsOverviewPage() {
         on your + and − marks and scores every trace, including the ones nobody annotated. Download the
         weights to use the model as the reward function when you post-train.
       </P>
+      <DemoClip src="/docs/demo/train.mp4" />
 
       <H2>4. Write a skill</H2>
       <P>
-        On the Skills tab, name the skill and say when your agent should use it. GEPA writes the{" "}
-        <Code>SKILL.md</Code> from your comments and keeps the version your reward model scores highest.
-        Your agent loads it next to its system prompt, which Stash leaves alone. This one came out of the
-        demo above:
+        On a trained reward model, press <strong>Create skill</strong>. GEPA reads your comments, writes a{" "}
+        <Code>SKILL.md</Code> that teaches your agent to score well on that reward model, and names it.
+        Your agent loads the skill next to its system prompt, which Stash leaves alone.
       </P>
+      <DemoClip src="/docs/demo/skill.mp4" />
+      <P>An excerpt from the skill in that recording:</P>
       <CodeBlock lang="markdown">{SKILL_EXAMPLE}</CodeBlock>
-
-      <H2>The same steps over the API</H2>
-      <P>
-        Create an API key at{" "}
-        <Link href="https://app.joinstash.ai/developer/keys" className="text-brand hover:underline">app.joinstash.ai/developer/keys</Link>.
-        Step 2, annotating, happens in the app. Full reference:{" "}
-        <Link href="/docs/api" className="text-brand hover:underline">API</Link>.
-      </P>
-      <CodeBlock lang="bash">{API_STEPS}</CodeBlock>
-      <P>
-        Running your own Stash? Point <Code>STASH_URL</Code> at your backend; see{" "}
-        <Link href="/docs/training#self-hosting-the-worker" className="text-brand hover:underline">Self-hosting the worker</Link>.
-      </P>
 
       <NextPage href="/docs/trace-format" label="Trace format" />
     </>

@@ -90,7 +90,7 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
       </header>
 
       <div className="max-w-[1440px] mx-auto px-6 md:px-8 py-8">
-        <div className="grid grid-cols-1 md:grid-cols-[200px_minmax(0,1fr)] lg:grid-cols-[240px_minmax(0,1fr)] xl:grid-cols-[240px_minmax(0,1fr)_220px] gap-8 md:gap-8 lg:gap-10">
+        <div className="grid grid-cols-1 md:grid-cols-[200px_minmax(0,1fr)] lg:grid-cols-[240px_minmax(0,1fr)] min-[1360px]:grid-cols-[240px_minmax(0,1fr)_220px] gap-8 md:gap-8 lg:gap-10">
           <aside className="hidden md:block">
             <div className="sticky top-24 rounded-2xl border border-border bg-surface p-4">
               {NAV.map((section) => (
@@ -144,7 +144,7 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
             </article>
           </main>
 
-          <aside className="hidden xl:block">
+          <aside className="hidden min-[1360px]:block">
             <div className="sticky top-24 rounded-2xl border border-border bg-surface p-4">
               <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted">
                 On this page
