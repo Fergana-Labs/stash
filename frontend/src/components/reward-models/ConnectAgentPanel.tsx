@@ -17,9 +17,11 @@ export default function ConnectAgentPanel({ collapsible }: { collapsible: boolea
   const expanded = open || !collapsible;
 
   const endpointLine = `export OTEL_EXPORTER_OTLP_ENDPOINT=${apiBase}/api/v1/rm/otel`;
+  // opentelemetry-instrument defaults to the gRPC exporter; the receiver speaks OTLP/HTTP only.
+  const protocolLine = "export OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf";
   const headersPrefix = 'export OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer%20';
   const runLine = "opentelemetry-instrument python agent.py";
-  const commands = `${endpointLine}\n${headersPrefix}${API_KEY_PLACEHOLDER}"\n${runLine}`;
+  const commands = `${endpointLine}\n${protocolLine}\n${headersPrefix}${API_KEY_PLACEHOLDER}"\n\n${runLine}`;
 
   async function copy() {
     await navigator.clipboard.writeText(commands);
@@ -50,11 +52,13 @@ export default function ConnectAgentPanel({ collapsible }: { collapsible: boolea
             <pre className="scroll-thin m-0 overflow-x-auto rounded-md border border-border bg-background px-3.5 py-3 pr-24 font-mono text-[12px] leading-relaxed text-foreground">
               {endpointLine}
               {"\n"}
+              {protocolLine}
+              {"\n"}
               {headersPrefix}
               <Link href="/developer/keys" className="text-brand-600 underline decoration-brand-300 underline-offset-2 hover:text-brand-700">
                 {API_KEY_PLACEHOLDER}
               </Link>
-              {'"\n'}
+              {'"\n\n'}
               {runLine}
             </pre>
             <Button variant="outline" size="xs" onClick={() => void copy()} className="absolute top-2 right-2">
@@ -65,6 +69,9 @@ export default function ConnectAgentPanel({ collapsible }: { collapsible: boolea
           <p className="m-0 mt-2.5 text-[12px] leading-relaxed text-muted-foreground">
             Works with any OpenTelemetry or OpenInference instrumentation: OpenAI, Anthropic, OpenAI Agents SDK,
             LangChain, LlamaIndex, CrewAI, DSPy, Vercel AI SDK. New runs appear here automatically.
+          </p>
+          <p className="m-0 mt-1 text-[12px] leading-relaxed text-muted-foreground/80">
+            Calling a model SDK directly in a loop? Wrap each run in one span so its calls share a trace.
           </p>
         </div>
       )}

@@ -88,6 +88,8 @@ def upgrade() -> None:
             compute text NOT NULL CHECK (compute IN ('local', 'modal')),
             epochs integer NOT NULL CHECK (epochs > 0),
             max_pairs integer NOT NULL CHECK (max_pairs > 0),
+            -- The traces chosen for training. A trace deleted later just drops out.
+            trace_ids uuid[] NOT NULL CHECK (cardinality(trace_ids) > 0),
             status text NOT NULL DEFAULT 'queued'
                 CHECK (status IN ('queued', 'running', 'succeeded', 'failed')),
             num_pairs integer,
@@ -119,8 +121,8 @@ def upgrade() -> None:
             id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
             owner_user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
             reward_model_id uuid NOT NULL REFERENCES rm_reward_models(id) ON DELETE CASCADE,
-            skill_name text NOT NULL,
-            skill_description text NOT NULL,
+            skill_name text,
+            skill_description text,
             task_model text NOT NULL,
             task_api_base text,
             reflection_model text NOT NULL,

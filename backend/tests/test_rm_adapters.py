@@ -23,6 +23,7 @@ FIXTURE_FORMATS = [
     ("anthropic_messages.jsonl", "anthropic_messages"),
     ("otel.json", "otel"),
     ("otel_genai.jsonl", "otel"),
+    ("otel_openinference_anthropic.json", "otel"),
     ("langfuse.json", "langfuse"),
     ("langsmith.jsonl", "langsmith"),
     ("claude_code.jsonl", "claude_code"),
@@ -159,6 +160,29 @@ def test_otel_openinference_merges_llm_spans_without_duplicating_history():
         ("user", "Translate 'hello' to French."),
         ("assistant", "Bonjour"),
     ]
+
+
+def test_otel_openinference_anthropic_real_span():
+    """A real span from openinference-instrumentation-anthropic. It reports each
+    tool call twice (message.contents and message.tool_calls) and the tool
+    result as a "user" message with a tool_call_id; neither may leak through as
+    a duplicate call or a user turn."""
+    _, traces = parse_traces(_read("otel_openinference_anthropic.json"), "otel")
+    assert len(traces) == 1
+    steps = traces[0].steps
+    assert _roles(traces[0]) == ["system", "user", "assistant", "assistant", "tool", "assistant"]
+    assert steps[2].content.startswith("I'm sorry to hear")
+    call, result = steps[3], steps[4]
+    assert (call.tool_name, call.tool_input, call.tool_call_id) == (
+        "lookup_order",
+        {"order_id": "A7731"},
+        "toolu_01EjS4pd5jHtAxZcCEf9EPXR",
+    )
+    assert (result.tool_name, result.tool_call_id) == (
+        "lookup_order",
+        "toolu_01EjS4pd5jHtAxZcCEf9EPXR",
+    )
+    assert '"delivered_days_ago": 41' in result.content
 
 
 def test_otel_gen_ai_message_attributes_structured_and_json_string():

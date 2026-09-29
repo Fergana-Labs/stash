@@ -35,8 +35,12 @@ A non-zero exit means the job failed; the reason is at the end of `worker.log`.
   from the rewards of every scored trace. The raw rewards of a confident
   model push the sigmoid to 0 or 1, which leaves GEPA nothing to improve.
   `scores.jsonl` keeps raw rewards.
-  GEPA evolves only the skill's body; `skill_name` and `skill_description` are
-  fixed and the seed body is the description. Each candidate is loaded into the
+  Before GEPA starts, one call to the reflection model reads every example's
+  annotator comments (and the start of each conversation) and returns the
+  skill's `name` and `description` as JSON. An invalid name or description
+  fails the job. GEPA then evolves only the skill's body; the seed body is the
+  description. The skill's purpose is to teach the agent to behave the way the
+  annotators rewarded. Each candidate is loaded into the
   task model's system message (after the example's own system prompt) as
   `<skill name="...">` + the rendered SKILL.md + `</skill>`. The system message
   is left out of the text the reward model scores. A failed reflection model

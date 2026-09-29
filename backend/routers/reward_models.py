@@ -14,7 +14,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse, Response
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
 from starlette.background import BackgroundTask
 
 from ..auth import get_current_user
@@ -27,10 +27,9 @@ router = APIRouter(prefix="/api/v1/rm", tags=["reward-models"])
 
 DEFAULT_BASE_MODEL = "Qwen/Qwen3-0.6B"
 DEFAULT_EPOCHS = 1
-DEFAULT_MAX_METRIC_CALLS = 150
-SKILL_NAME_PATTERN = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
-SKILL_NAME_MAX_CHARS = 64
-SKILL_DESCRIPTION_MAX_CHARS = 1024
+DEFAULT_MAX_METRIC_CALLS = 40
+DEFAULT_TASK_MODEL = "anthropic/claude-haiku-4-5"
+DEFAULT_REFLECTION_MODEL = "anthropic/claude-sonnet-5"
 
 
 class ImportRequest(BaseModel):
@@ -64,35 +63,15 @@ class CreateRewardModelRequest(BaseModel):
     compute: Literal["local", "modal"]
     epochs: int = Field(default=DEFAULT_EPOCHS, ge=1)
     max_pairs: int = Field(default=datasets.DEFAULT_MAX_PAIRS, ge=1)
+    trace_ids: list[UUID] = Field(min_length=1)
 
 
 class CreateGepaRunRequest(BaseModel):
     reward_model_id: UUID
-    skill_name: str
-    skill_description: str
-    task_model: str = Field(min_length=1)
+    task_model: str = Field(default=DEFAULT_TASK_MODEL, min_length=1)
     task_api_base: str | None = None
-    reflection_model: str = Field(min_length=1)
+    reflection_model: str = Field(default=DEFAULT_REFLECTION_MODEL, min_length=1)
     max_metric_calls: int = Field(default=DEFAULT_MAX_METRIC_CALLS, ge=1)
-
-    @field_validator("skill_name")
-    @classmethod
-    def _skill_name(cls, value: str) -> str:
-        if len(value) > SKILL_NAME_MAX_CHARS or not SKILL_NAME_PATTERN.match(value):
-            raise ValueError(
-                f"skill_name must be 1–{SKILL_NAME_MAX_CHARS} characters of lowercase "
-                "letters, digits, and single hyphens between them (e.g. refund-policy)"
-            )
-        return value
-
-    @field_validator("skill_description")
-    @classmethod
-    def _skill_description(cls, value: str) -> str:
-        if not 1 <= len(value) <= SKILL_DESCRIPTION_MAX_CHARS:
-            raise ValueError(
-                f"skill_description must be 1–{SKILL_DESCRIPTION_MAX_CHARS} characters"
-            )
-        return value
 
 
 class QueryRequest(BaseModel):
@@ -223,7 +202,9 @@ async def export_annotations(current_user: dict = Depends(get_current_user)) -> 
 
 @router.get("/export/pairs")
 async def export_pairs(current_user: dict = Depends(get_current_user)) -> Response:
-    return _ndjson(await datasets.build_pairs(current_user["id"]))
+    owner_user_id = current_user["id"]
+    trace_ids = await datasets.all_trace_ids(owner_user_id)
+    return _ndjson(await datasets.build_pairs(owner_user_id, trace_ids))
 
 
 # ── Reward models ─────────────────────────────────────────────────────────
@@ -233,15 +214,29 @@ async def export_pairs(current_user: dict = Depends(get_current_user)) -> Respon
 async def create_reward_model(
     req: CreateRewardModelRequest, current_user: dict = Depends(get_current_user)
 ) -> dict:
+    owner_user_id = current_user["id"]
+    trace_ids = list(dict.fromkeys(req.trace_ids))
+    owned = await get_pool().fetch(
+        "SELECT id FROM rm_traces WHERE owner_user_id = $1 AND id = ANY($2::uuid[])",
+        owner_user_id,
+        trace_ids,
+    )
+    owned_ids = {row["id"] for row in owned}
+    for trace_id in trace_ids:
+        if trace_id not in owned_ids:
+            raise HTTPException(status_code=404, detail=f"Trace {trace_id} not found")
+
     # Checked again when the job runs: labels can change while it is queued.
+    pairs = await datasets.build_pairs(owner_user_id, trace_ids, req.max_pairs)
     try:
-        datasets.check_enough_pairs(await datasets.build_pairs(current_user["id"], req.max_pairs))
+        datasets.check_enough_pairs(pairs)
     except datasets.NotEnoughPairs as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     row = await get_pool().fetchrow(
         """
-        INSERT INTO rm_reward_models (owner_user_id, name, base_model, compute, epochs, max_pairs)
-        VALUES ($1, $2, $3, $4, $5, $6)
+        INSERT INTO rm_reward_models
+          (owner_user_id, name, base_model, compute, epochs, max_pairs, trace_ids)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
         RETURNING *
         """,
         current_user["id"],
@@ -250,6 +245,7 @@ async def create_reward_model(
         req.compute,
         req.epochs,
         req.max_pairs,
+        trace_ids,
     )
     rm_tasks.train_reward_model.delay(str(row["id"]))
     return _reward_model(row)
@@ -273,7 +269,7 @@ async def get_reward_model(model_id: UUID, current_user: dict = Depends(get_curr
     )
     if row is None:
         raise HTTPException(status_code=404, detail="Reward model not found")
-    return _reward_model(row)
+    return {**_reward_model(row), "trace_ids": row["trace_ids"]}
 
 
 @router.get("/reward-models/{model_id}/weights")
@@ -307,25 +303,27 @@ async def download_reward_model_weights(
     )
 
 
+REWARD_MODEL_FIELDS = (
+    "id",
+    "name",
+    "base_model",
+    "compute",
+    "epochs",
+    "max_pairs",
+    "status",
+    "num_pairs",
+    "metrics",
+    "error",
+    "created_at",
+    "started_at",
+    "finished_at",
+)
+
+
 def _reward_model(row) -> dict:
-    return {
-        key: row[key]
-        for key in (
-            "id",
-            "name",
-            "base_model",
-            "compute",
-            "epochs",
-            "max_pairs",
-            "status",
-            "num_pairs",
-            "metrics",
-            "error",
-            "created_at",
-            "started_at",
-            "finished_at",
-        )
-    }
+    model = {key: row[key] for key in REWARD_MODEL_FIELDS}
+    model["trace_count"] = len(row["trace_ids"])
+    return model
 
 
 # ── GEPA runs ─────────────────────────────────────────────────────────────
@@ -348,15 +346,13 @@ async def create_gepa_run(
 
     row = await pool.fetchrow(
         """
-        INSERT INTO rm_gepa_runs (owner_user_id, reward_model_id, skill_name, skill_description,
-                                  task_model, task_api_base, reflection_model, max_metric_calls)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        INSERT INTO rm_gepa_runs (owner_user_id, reward_model_id, task_model, task_api_base,
+                                  reflection_model, max_metric_calls)
+        VALUES ($1, $2, $3, $4, $5, $6)
         RETURNING *
         """,
         current_user["id"],
         req.reward_model_id,
-        req.skill_name,
-        req.skill_description,
         req.task_model,
         req.task_api_base,
         req.reflection_model,

@@ -117,9 +117,11 @@ Annotation export (`GET /api/v1/rm/export/annotations`), one per line:
 
 ## Reward model training
 
-Training data is preference pairs built from the + and − ratings:
+Training data is preference pairs built from the + and − ratings on the
+traces the user selected for this model (`trace_ids`, stored on the model):
 
-1. Drop annotations with `label_error = true`.
+1. Keep only annotations on the selected traces; a selected trace deleted
+   before the job runs drops out. Drop annotations with `label_error = true`.
 2. Collapse ratings per target (trace, or step): sum the ratings; positive sum
    → chosen, negative → rejected, zero → skipped.
 3. Render each target to text. A trace renders all its non-system steps; a
@@ -133,14 +135,17 @@ Training data is preference pairs built from the + and − ratings:
 4. Pairs = every (chosen, rejected) combination within the same granularity
    (trace with trace, step with step), shuffled with seed 0 and capped at
    `max_pairs` (default 4000).
-5. Fewer than one chosen and one rejected target → the job fails with
-   "need at least one + and one − label".
+5. Fewer than 2 pairs (the worker holds at least one out for eval) → "the
+   selected traces have N preference pairs; need at least 2 (e.g. two + and
+   one −)". `POST /reward-models` checks this up front (422) and the job
+   checks again, since labels can change while it is queued.
 
 The model is `AutoModelForSequenceClassification(num_labels=1)` on the chosen
 base model, trained with the Bradley–Terry loss
 `-log σ(r(chosen) − r(rejected))`. A 10% held-out split (at least one pair)
 reports pairwise accuracy. After training, the worker scores every trace the
-owner has and the scores are stored in `rm_trace_scores`.
+owner has, selected or not (that is the point: the model generalizes), and the
+scores are stored in `rm_trace_scores`.
 
 Default base model: `Qwen/Qwen3-0.6B`. Compute: `local` (MPS on Apple
 silicon, CUDA when present, else CPU) or `modal` (A10G, same code). The
@@ -162,10 +167,10 @@ trained weights go to `RM_ARTIFACT_DIR/<reward_model_id>/model`.
 
 `result.json` for training: `{"metrics": {"train_pairs", "eval_pairs",
 "eval_accuracy", "final_loss", "epochs", "device", "seconds"}}`. For GEPA:
-`{"best_skill", "best_score", "seed_skill", "seed_score", "candidates": [{"skill", "score"}]}`
+`{"skill_name", "skill_description", "best_skill", "best_score", "seed_skill", "seed_score", "candidates": [{"skill", "score"}]}`
 (each skill is the full rendered SKILL.md). GEPA job.json: `{"kind": "gepa",
-"reward_model_dir", "skill_name", "skill_description", "task_model",
-"task_api_base" (null when unset), "reflection_model", "max_metric_calls"}`.
+"reward_model_dir", "task_model", "task_api_base" (null when unset),
+"reflection_model", "max_metric_calls"}`.
 
 Request defaults: `base_model` `Qwen/Qwen3-0.6B`, `epochs` 1, `max_pairs`
 4000. A quote's `text` must occur in the step's content (422 otherwise).
@@ -181,11 +186,16 @@ feedback on the results, and asking a reflection model to propose better
 text, keeping a Pareto front of candidates. Here the text it evolves is the
 skill's body:
 
-- **Request** = `skill_name` (lowercase letters, digits, hyphens; 1–64
-  chars) and `skill_description` (1–1024 chars; says when the agent should
-  use the skill). Name and description are fixed for the run; GEPA only
-  writes the body. The seed body is the description as a single line.
-- **Examples** = traces with at least one non-flagged annotation. Each
+- **Request** = one button per reward model: only `reward_model_id` is
+  required. `task_model` defaults to `anthropic/claude-haiku-4-5`,
+  `reflection_model` to `anthropic/claude-sonnet-5`, `max_metric_calls` to
+  40, and `task_api_base` is unset. The worker chooses the skill's `name`
+  (lowercase letters, digits, hyphens; 1–64 chars) and `description`
+  (1–1024 chars; says when the agent should use the skill) and returns them
+  in `result.json`; the run's `skill_name` / `skill_description` are null
+  until it succeeds.
+- **Examples** = the reward model's selected traces with at least one
+  non-flagged annotation. Each
   example carries the trace's own system prompt (`system`: the concatenated
   system steps, or null) and the input = the non-system steps before the
   first assistant step.
@@ -207,11 +217,45 @@ skill's body:
   comment annotators left on that trace. The reflection model is told it is
   writing the body of a SKILL.md for an agent and must return only the body.
 - Traces with no input before their first assistant step are skipped; no
-  examples left → the run fails. `max_metric_calls` defaults to 150. The
+  examples left → the run fails. `max_metric_calls` defaults to 40. The
   reward model must be the caller's and `succeeded`.
 - **Result** = the best skill (full rendered SKILL.md), its score, the seed
   skill and its score, and every candidate tried (full SKILL.md each).
   `GET /gepa-runs/{id}/skill` downloads the best one as `SKILL.md`.
+
+## Connecting an agent (OpenTelemetry)
+
+Agents send traces to Stash live over OTLP/HTTP; no files to export. Any
+harness with OpenTelemetry instrumentation (OpenInference, OpenLLMetry, or the
+OTel GenAI conventions) needs three settings:
+
+```
+OTEL_EXPORTER_OTLP_ENDPOINT=https://api.joinstash.ai/api/v1/rm/otel
+OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer <stash api key>"
+OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf   # or http/json
+```
+
+- The receiver is `POST /api/v1/rm/otel/v1/traces`. It accepts
+  `application/x-protobuf` (the Python SDK default) and `application/json`
+  (the JS SDK default), optionally `Content-Encoding: gzip`, and answers 200
+  with an empty `ExportTraceServiceResponse` in the same content type. Any
+  other content type or encoding → 415. It needs a full-access API key;
+  read-only keys cannot ingest.
+- A `BatchSpanProcessor` sends one trace's spans across several requests.
+  Raw spans are stored per (owner, OTel trace id, span id) in `rm_otel_spans`,
+  and each request rebuilds every trace it touched from **all** of that
+  trace's stored spans with the `otel` adapter, then upserts it as an
+  `rm_trace` with `external_id` = the OTel trace id (hex) and
+  `source_format` = `otel`. Re-sent spans overwrite themselves, so retries
+  never duplicate a trace.
+- A trace whose spans carry no LLM messages yet (say only the agent's root
+  span has arrived) is stored but not shown until an LLM span arrives. A
+  trace whose messages fail to parse fails the request with 400 and the
+  reason, and none of that request's spans are stored.
+- Rebuilding is the re-import path: the trace's steps are replaced. Trace-level
+  annotations survive; step-level annotations on a trace that is still
+  receiving spans are deleted with the old steps. Annotate a trace once the
+  agent run has finished.
 
 ## Querying
 
@@ -228,6 +272,7 @@ skill's body:
 |---|---|---|---|
 | GET | `/formats` | | `[{name, description}]` |
 | POST | `/traces/import` | `{format: str, data: str}` | `{format, imported, trace_ids}` |
+| POST | `/otel/v1/traces` | OTLP `ExportTraceServiceRequest` (protobuf or JSON, optional gzip) | empty `ExportTraceServiceResponse` in the same content type; 400 bad spans, 415 other content types |
 | GET | `/traces` | `?limit=50&offset=0` | `{traces: [TraceSummary], total}` |
 | GET | `/traces/{trace_id}` | | `TraceDetail` (steps + annotations + scores) |
 | DELETE | `/traces/{trace_id}` | | 204 |
@@ -237,11 +282,11 @@ skill's body:
 | GET | `/export/traces` | | JSONL (Stash Trace Format) |
 | GET | `/export/annotations` | | JSONL |
 | GET | `/export/pairs` | | JSONL `{chosen, rejected}` |
-| POST | `/reward-models` | `{name, base_model, compute, epochs?, max_pairs?}` | `RewardModel` (status `queued`) |
+| POST | `/reward-models` | `{name, base_model, compute, trace_ids: [uuid, …] (≥1), epochs?, max_pairs?}` | `RewardModel` (status `queued`); 404 naming the first trace id the caller doesn't own; 422 when the selection has < 2 pairs |
 | GET | `/reward-models` | | `[RewardModel]` |
-| GET | `/reward-models/{id}` | | `RewardModel` |
+| GET | `/reward-models/{id}` | | `RewardModel` + `trace_ids` |
 | GET | `/reward-models/{id}/weights` | | `.tar.gz` of the trained model dir (weights, tokenizer, `reward_stats.json`), attachment `<name>-reward-model.tar.gz`; 404 until `succeeded` |
-| POST | `/gepa-runs` | `{reward_model_id, skill_name, skill_description, task_model, task_api_base?, reflection_model, max_metric_calls?}` | `GepaRun` (status `queued`) |
+| POST | `/gepa-runs` | `{reward_model_id, task_model?, task_api_base?, reflection_model?, max_metric_calls?}` | `GepaRun` (status `queued`; `skill_name`/`skill_description` null until succeeded) |
 | GET | `/gepa-runs` | | `[GepaRun]` |
 | GET | `/gepa-runs/{id}` | | `GepaRun` |
 | GET | `/gepa-runs/{id}/skill` | | best skill as `text/markdown` attachment `SKILL.md` (404 until succeeded) |
@@ -262,7 +307,8 @@ score, created_at}]` (latest per model).
 `Annotation`: `{id, trace_id, step_id, rating, comment, quote, label_error,
 label_error_note, author_id, author_name, created_at}`.
 
-`RewardModel`: `{id, name, base_model, compute, status, num_pairs, metrics,
-error, created_at, started_at, finished_at}`; status ∈ `queued | running |
+`RewardModel`: `{id, name, base_model, compute, epochs, max_pairs,
+trace_count, status, num_pairs, metrics, error, created_at, started_at,
+finished_at}` (`trace_count` = how many traces were selected); status ∈ `queued | running |
 succeeded | failed`. `GepaRun` has the same status field plus the GEPA result
 fields.

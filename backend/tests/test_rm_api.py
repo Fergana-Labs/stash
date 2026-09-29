@@ -109,6 +109,11 @@ async def _trainable_labels(client: AsyncClient, auth: dict) -> list[str]:
     return ids
 
 
+async def _all_trace_ids(client: AsyncClient, auth: dict) -> list[str]:
+    listing = (await client.get("/api/v1/rm/traces?limit=500", headers=auth)).json()
+    return [trace["id"] for trace in listing["traces"]]
+
+
 async def test_import_list_and_detail(client):
     auth = await _register(client)
     resp = await client.post(
@@ -358,7 +363,13 @@ async def test_other_owners_rows_are_404(client, monkeypatch):
     await _trainable_labels(client, owner)
     model = (
         await client.post(
-            "/api/v1/rm/reward-models", json={"name": "m", "compute": "local"}, headers=owner
+            "/api/v1/rm/reward-models",
+            json={
+                "name": "m",
+                "compute": "local",
+                "trace_ids": await _all_trace_ids(client, owner),
+            },
+            headers=owner,
         )
     ).json()
 
@@ -374,10 +385,6 @@ async def test_other_owners_rows_are_404(client, monkeypatch):
             "/api/v1/rm/gepa-runs",
             {
                 "reward_model_id": model["id"],
-                "skill_name": "refund-policy",
-                "skill_description": "Use when a customer asks for a refund.",
-                "task_model": "openai/x",
-                "reflection_model": "openai/y",
             },
         ),
     ]
@@ -400,7 +407,12 @@ async def test_create_reward_model_enqueues_training(client, monkeypatch):
 
     resp = await client.post(
         "/api/v1/rm/reward-models",
-        json={"name": "support rm", "compute": "local", "epochs": 2},
+        json={
+            "name": "support rm",
+            "compute": "local",
+            "epochs": 2,
+            "trace_ids": await _all_trace_ids(client, auth),
+        },
         headers=auth,
     )
     assert resp.status_code == 200, resp.text
@@ -422,13 +434,13 @@ async def test_gepa_run_needs_a_trained_reward_model(client, monkeypatch):
     await _trainable_labels(client, auth)
     model = (
         await client.post(
-            "/api/v1/rm/reward-models", json={"name": "m", "compute": "modal"}, headers=auth
+            "/api/v1/rm/reward-models",
+            json={"name": "m", "compute": "modal", "trace_ids": await _all_trace_ids(client, auth)},
+            headers=auth,
         )
     ).json()
     body = {
         "reward_model_id": model["id"],
-        "skill_name": "refund-policy",
-        "skill_description": "Use when a customer asks for a refund.",
         "task_model": "openai/qwen3-8b",
         "task_api_base": "http://localhost:8000/v1",
         "reflection_model": "anthropic/claude-sonnet-5",
@@ -503,11 +515,13 @@ async def test_reward_model_needs_two_pairs_up_front(client, monkeypatch):
     await _annotate(client, auth, bad, rating=-1)
 
     resp = await client.post(
-        "/api/v1/rm/reward-models", json={"name": "m", "compute": "local"}, headers=auth
+        "/api/v1/rm/reward-models",
+        json={"name": "m", "compute": "local", "trace_ids": [good, bad]},
+        headers=auth,
     )
     assert resp.status_code == 422
     assert resp.json()["detail"] == (
-        "need at least 2 preference pairs (e.g. two + and one −); got 1"
+        "the selected traces have 1 preference pairs; need at least 2 (e.g. two + and one −)"
     )
     assert queued == []
     assert (await client.get("/api/v1/rm/reward-models", headers=auth)).json() == []
@@ -527,31 +541,59 @@ async def test_patch_cannot_rate_a_system_step(client):
     assert (await _detail(client, auth, trace_id))["annotations"][0]["rating"] is None
 
 
-@pytest.mark.parametrize(
-    ("field", "value", "rule"),
-    [
-        ("skill_name", "Refund", "lowercase"),
-        ("skill_name", "refund--policy", "lowercase"),
-        ("skill_name", "-refund", "lowercase"),
-        ("skill_name", "", "lowercase"),
-        ("skill_name", "a" * 65, "1–64"),
-        ("skill_description", "", "1–1024"),
-        ("skill_description", "x" * 1025, "1–1024"),
-    ],
-)
-async def test_gepa_skill_name_and_description_rules(client, field, value, rule):
-    """The name and description go into SKILL.md frontmatter an agent must be able to load."""
+async def test_reward_model_trains_on_the_selected_traces_only(client, monkeypatch):
+    """Labels outside the selection must not count toward, or into, the training set."""
+    monkeypatch.setattr(rm_tasks.train_reward_model, "delay", lambda *a: None)
     auth = await _register(client)
-    body = {
-        "reward_model_id": "00000000-0000-0000-0000-000000000000",
-        "skill_name": "refund-policy",
-        "skill_description": "Use when a customer asks for a refund.",
-        "task_model": "openai/x",
-        "reflection_model": "openai/y",
-        field: value,
-    }
-    resp = await client.post("/api/v1/rm/gepa-runs", json=body, headers=auth)
+    selected = await _trainable_labels(client, auth)
+    others = await _import(client, auth, _short_trace("x", "Nope"), _short_trace("y", "Never"))
+    for trace_id in others:
+        await _annotate(client, auth, trace_id, rating=-1)
+
+    # Plenty of pairs overall, but only one within this pick.
+    resp = await client.post(
+        "/api/v1/rm/reward-models",
+        json={"name": "m", "compute": "local", "trace_ids": [selected[0], selected[2]]},
+        headers=auth,
+    )
     assert resp.status_code == 422
-    [error] = resp.json()["detail"]
-    assert error["loc"][-1] == field
-    assert rule in error["msg"]
+    assert resp.json()["detail"].startswith("the selected traces have 1 preference pairs")
+
+    resp = await client.post(
+        "/api/v1/rm/reward-models",
+        json={"name": "m", "compute": "local", "trace_ids": selected + [selected[0]]},
+        headers=auth,
+    )
+    assert resp.status_code == 200, resp.text
+    model = resp.json()
+    assert model["trace_count"] == 3  # duplicates collapse
+    detail = (await client.get(f"/api/v1/rm/reward-models/{model['id']}", headers=auth)).json()
+    assert detail["trace_ids"] == selected
+    [listed] = (await client.get("/api/v1/rm/reward-models", headers=auth)).json()
+    assert listed["trace_count"] == 3
+    assert "trace_ids" not in listed
+
+
+async def test_reward_model_rejects_traces_the_caller_does_not_own(client, monkeypatch):
+    queued = []
+    monkeypatch.setattr(rm_tasks.train_reward_model, "delay", queued.append)
+    auth = await _register(client)
+    other = await _register(client)
+    mine = await _trainable_labels(client, auth)
+    [foreign] = await _import(client, other, _short_trace("theirs", "Yes"))
+
+    resp = await client.post(
+        "/api/v1/rm/reward-models",
+        json={"name": "m", "compute": "local", "trace_ids": mine + [foreign]},
+        headers=auth,
+    )
+    assert resp.status_code == 404
+    assert resp.json()["detail"] == f"Trace {foreign} not found"
+    assert queued == []
+
+    resp = await client.post(
+        "/api/v1/rm/reward-models",
+        json={"name": "m", "compute": "local", "trace_ids": []},
+        headers=auth,
+    )
+    assert resp.status_code == 422

@@ -83,9 +83,9 @@ export default function RewardModelsOverviewPage() {
 
       <H2>3. Train a reward model</H2>
       <P>
-        On the Reward models tab, press <strong>Train reward model</strong>. Stash trains a reward model
-        on your + and − marks and scores every trace, including the ones nobody annotated. Download the
-        weights to use the model as the reward function when you post-train.
+        Select the traces to train on and press <strong>Train reward model</strong>. Stash trains a
+        reward model on their + and − marks, then scores every trace, including the ones nobody
+        annotated. Download the weights to use the model as the reward function when you post-train.
       </P>
       <DemoClip src="/docs/demo/train.mp4" />
 

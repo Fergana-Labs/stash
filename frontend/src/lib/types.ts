@@ -469,11 +469,18 @@ export interface RmRewardModel {
   epochs: number;
   status: RmJobStatus;
   num_pairs: number | null;
+  /** How many traces the user picked to train on. */
+  trace_count: number;
   metrics: RmTrainMetrics | null;
   error: string | null;
   created_at: string;
   started_at: string | null;
   finished_at: string | null;
+}
+
+/** GET /reward-models/{id} also returns which traces it trained on. */
+export interface RmRewardModelDetail extends RmRewardModel {
+  trace_ids: string[];
 }
 
 export interface RmGepaCandidate {
@@ -485,8 +492,9 @@ export interface RmGepaCandidate {
 export interface RmGepaRun {
   id: string;
   reward_model_id: string;
-  skill_name: string;
-  skill_description: string;
+  /** Written by the run; null until it succeeds. */
+  skill_name: string | null;
+  skill_description: string | null;
   task_model: string;
   task_api_base: string | null;
   reflection_model: string;

@@ -28,6 +28,7 @@ import {
   RmImportResult,
   RmQuote,
   RmRewardModel,
+  RmRewardModelDetail,
   RmTraceDetail,
   RmTraceSummary,
 } from "./types";
@@ -2687,6 +2688,18 @@ export async function rmListTraces(
   return apiFetch(`${RM}/traces?limit=${limit}&offset=${offset}`);
 }
 
+const ALL_TRACES_PAGE = 200;
+
+/** Every trace the caller has, fetched page by page. Selection and filtering happen client-side over this list. */
+export async function rmListAllTraces(): Promise<RmTraceSummary[]> {
+  const traces: RmTraceSummary[] = [];
+  for (let offset = 0; ; offset += ALL_TRACES_PAGE) {
+    const page = await rmListTraces(ALL_TRACES_PAGE, offset);
+    traces.push(...page.traces);
+    if (offset + ALL_TRACES_PAGE >= page.total) return traces;
+  }
+}
+
 export async function rmGetTrace(traceId: string): Promise<RmTraceDetail> {
   return apiFetch(`${RM}/traces/${traceId}`);
 }
@@ -2724,12 +2737,17 @@ export async function rmListRewardModels(): Promise<RmRewardModel[]> {
 }
 
 export async function rmCreateRewardModel(body: {
+  trace_ids: string[];
   name: string;
   base_model: string;
   compute: RmCompute;
   epochs: number;
 }): Promise<RmRewardModel> {
   return apiFetch(`${RM}/reward-models`, { method: "POST", body: JSON.stringify(body) });
+}
+
+export async function rmGetRewardModel(modelId: string): Promise<RmRewardModelDetail> {
+  return apiFetch(`${RM}/reward-models/${modelId}`);
 }
 
 export async function rmListGepaRuns(): Promise<RmGepaRun[]> {
@@ -2740,15 +2758,7 @@ export async function rmGetGepaRun(runId: string): Promise<RmGepaRun> {
   return apiFetch(`${RM}/gepa-runs/${runId}`);
 }
 
-export async function rmCreateGepaRun(body: {
-  reward_model_id: string;
-  skill_name: string;
-  skill_description: string;
-  task_model: string;
-  task_api_base?: string;
-  reflection_model: string;
-  max_metric_calls: number;
-}): Promise<RmGepaRun> {
+export async function rmCreateGepaRun(body: { reward_model_id: string }): Promise<RmGepaRun> {
   return apiFetch(`${RM}/gepa-runs`, { method: "POST", body: JSON.stringify(body) });
 }
 

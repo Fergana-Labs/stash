@@ -9,6 +9,7 @@ Reads job.json and gepa_examples.jsonl; writes result.json
 import argparse
 import json
 import math
+import re
 import sys
 from pathlib import Path
 
@@ -23,7 +24,9 @@ COMPONENT = "skill_body"
 
 # GEPA fills in <curr_param> (the current skill body) and <side_info> (the examples with feedback).
 REFLECTION_PROMPT_TEMPLATE = """You are writing the body of a SKILL.md for an AI agent. The agent loads the \
-skill into its context and follows it when the skill's description applies. The skill's name and \
+skill into its context and follows it when the skill's description applies. The skill's purpose is \
+to teach the agent to behave the way human annotators rewarded: its replies are scored by a reward \
+model trained on their ratings, and the skill should make those scores high. The skill's name and \
 description are fixed; you only write the body.
 
 Skill name: <skill_name>
@@ -48,6 +51,30 @@ for any future conversation this skill applies to, not only these examples. Use 
 Return only the body inside a single ``` block, with no YAML frontmatter, no name and no description."""
 
 
+SKILL_NAME_PATTERN = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
+MAX_SKILL_NAME_LENGTH = 64
+MAX_SKILL_DESCRIPTION_LENGTH = 1024
+# The identity prompt sees every comment but only the start of each conversation, to stay small.
+MAX_IDENTITY_CONVERSATION_CHARS = 1500
+
+SKILL_IDENTITY_PROMPT = """Human annotators reviewed conversations between users and an AI agent and \
+left the comments below. A skill (a SKILL.md the agent loads into its context) will be written to \
+teach the agent to behave the way the annotators rewarded. Name that skill and describe it.
+
+Rules:
+- "name": lowercase letters, digits and single hyphens only (for example "refund-requests"), at most \
+64 characters.
+- "description": one to three sentences, at most 1024 characters, saying when the agent should use \
+the skill.
+
+Reply with only a JSON object {"name": "...", "description": "..."} and nothing else: no code fence, \
+no commentary.
+
+Annotated conversations:
+
+<examples>"""
+
+
 def log(message: str) -> None:
     print(message, flush=True)
 
@@ -67,6 +94,46 @@ def render_skill(name: str, description: str, body: str) -> str:
 
 def sigmoid(x: float) -> float:
     return 1 / (1 + math.exp(-x))
+
+
+def derive_skill_identity(reflection_model: str, examples: list[dict]) -> tuple[str, str]:
+    """Ask the reflection model for the skill's name and description; fail on anything invalid."""
+    sections = []
+    for number, example in enumerate(examples, start=1):
+        conversation = render(example["messages"])[:MAX_IDENTITY_CONVERSATION_CHARS]
+        comments = "\n".join(f"- {comment}" for comment in example["feedback"])
+        sections.append(
+            f"## Conversation {number}\n{conversation}\n\nAnnotator comments:\n{comments}"
+        )
+    prompt = SKILL_IDENTITY_PROMPT.replace("<examples>", "\n\n".join(sections))
+
+    response = litellm.completion(
+        model=reflection_model, messages=[{"role": "user", "content": prompt}]
+    )
+    content = response.choices[0].message.content
+    try:
+        identity = json.loads(content)
+    except json.JSONDecodeError as error:
+        raise ValueError(
+            f"reflection model did not return a JSON object for the skill identity: {content!r}"
+        ) from error
+
+    if not isinstance(identity, dict) or set(identity) != {"name", "description"}:
+        raise ValueError(f"skill identity must be exactly {{name, description}}, got {content!r}")
+    name = identity["name"]
+    description = identity["description"]
+    if (
+        not isinstance(name, str)
+        or not SKILL_NAME_PATTERN.match(name)
+        or len(name) > MAX_SKILL_NAME_LENGTH
+    ):
+        raise ValueError(f"invalid skill name from reflection model: {name!r}")
+    if (
+        not isinstance(description, str)
+        or not 1 <= len(description) <= MAX_SKILL_DESCRIPTION_LENGTH
+    ):
+        raise ValueError(f"invalid skill description from reflection model: {description!r}")
+    return name, description
 
 
 class RecordingReflectionLM:
@@ -218,8 +285,9 @@ def run(job_dir: Path) -> dict:
         if not example["messages"]:
             raise ValueError(f"example for trace {example['trace_id']} has no input messages")
 
-    skill_name = job["skill_name"]
-    skill_description = job["skill_description"]
+    skill_name, skill_description = derive_skill_identity(job["reflection_model"], examples)
+    log(f"skill name: {skill_name}")
+    log(f"skill description: {skill_description}")
 
     log(f"loading reward model from {job['reward_model_dir']}")
     adapter = RewardModelAdapter(
@@ -263,6 +331,8 @@ def run(job_dir: Path) -> dict:
 
     # GEPA puts the seed candidate at index 0.
     output = {
+        "skill_name": skill_name,
+        "skill_description": skill_description,
         "best_skill": skill(result.best_candidate),
         "best_score": result.val_aggregate_scores[result.best_idx],
         "seed_skill": skill(result.candidates[0]),

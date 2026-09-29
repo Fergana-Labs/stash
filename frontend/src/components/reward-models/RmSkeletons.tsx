@@ -13,7 +13,7 @@ export function RmListSkeleton() {
 
 export function RmPageSkeleton() {
   return (
-    <div className="scroll-thin flex-1 overflow-y-auto">
+    <div className="scroll-thin h-full overflow-y-auto">
       <div className="mx-auto max-w-6xl px-10 pt-7">
         <SkeletonBlock className="h-7 w-48" />
         <SkeletonBlock className="mt-2 h-4 w-96" />

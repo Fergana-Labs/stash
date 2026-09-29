@@ -7,11 +7,11 @@ import { toast } from "sonner";
 import { useBreadcrumbs } from "@/components/BreadcrumbContext";
 import { Button } from "@/components/ui/button";
 import { RmPageSkeleton } from "@/components/reward-models/RmSkeletons";
-import { StatusBadge, isActiveJob } from "@/components/reward-models/rm-ui";
+import { StatusBadge, isActiveJob, pendingSkillTitle } from "@/components/reward-models/rm-ui";
 import { diffLines, errorMessage, formatScore, relativeTime, skillFirstLine } from "@/components/reward-models/rm-text";
-import { rmDownloadSkill, rmGetGepaRun } from "@/lib/api";
+import { rmDownloadSkill, rmGetGepaRun, rmGetRewardModel } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import type { RmGepaCandidate, RmGepaRun } from "@/lib/types";
+import type { RmGepaCandidate, RmGepaRun, RmRewardModel } from "@/lib/types";
 
 const POLL_MS = 3000;
 
@@ -20,6 +20,7 @@ type CompareView = "side" | "diff";
 export default function GepaRunPage({ params }: { params: Promise<{ runId: string }> }) {
   const { runId } = use(params);
   const [run, setRun] = useState<RmGepaRun | null>(null);
+  const [model, setModel] = useState<RmRewardModel | null>(null);
   useBreadcrumbs(
     [
       { label: "Reward models", href: "/reward-models" },
@@ -41,6 +42,14 @@ export default function GepaRunPage({ params }: { params: Promise<{ runId: strin
     void load();
   }, [load]);
 
+  const rewardModelId = run?.reward_model_id ?? null;
+  useEffect(() => {
+    if (rewardModelId === null) return;
+    rmGetRewardModel(rewardModelId)
+      .then(setModel)
+      .catch((e) => toast.error(errorMessage(e)));
+  }, [rewardModelId]);
+
   const polling = run !== null && isActiveJob(run.status);
   useEffect(() => {
     if (!polling) return;
@@ -48,7 +57,7 @@ export default function GepaRunPage({ params }: { params: Promise<{ runId: strin
     return () => clearInterval(timer);
   }, [polling, load]);
 
-  if (run === null) return <RmPageSkeleton />;
+  if (run === null || model === null) return <RmPageSkeleton />;
 
   return (
     <div className="scroll-thin flex-1 overflow-y-auto">
@@ -58,12 +67,21 @@ export default function GepaRunPage({ params }: { params: Promise<{ runId: strin
           Skills
         </Link>
         <div className="mt-3 flex items-center gap-3">
-          <h1 className="m-0 font-mono text-[20px] font-semibold tracking-tight text-foreground">{run.skill_name}</h1>
+          {run.skill_name !== null ? (
+            <h1 className="m-0 font-mono text-[20px] font-semibold tracking-tight text-foreground">{run.skill_name}</h1>
+          ) : (
+            <h1 className="m-0 font-display text-[20px] font-semibold tracking-tight text-muted-foreground">
+              {pendingSkillTitle(run.status)}
+            </h1>
+          )}
           <StatusBadge status={run.status} />
           <span className="text-[12px] text-muted-foreground">started {relativeTime(run.created_at)}</span>
         </div>
-        <p className="m-0 mt-1.5 max-w-3xl text-[13px] leading-relaxed text-dim">{run.skill_description}</p>
+        {run.skill_description !== null && (
+          <p className="m-0 mt-1.5 max-w-3xl text-[13px] leading-relaxed text-dim">{run.skill_description}</p>
+        )}
         <div className="mt-2 flex flex-wrap gap-x-4 font-mono text-[11.5px] text-muted-foreground">
+          <span>reward model {model.name}</span>
           <span>task {run.task_model}</span>
           {run.task_api_base && <span>@ {run.task_api_base}</span>}
           <span>reflection {run.reflection_model}</span>
@@ -84,7 +102,11 @@ export default function GepaRunPage({ params }: { params: Promise<{ runId: strin
           <BestSkill runId={run.id} skill={run.best_skill} />
         ) : (
           isActiveJob(run.status) && (
-            <p className="mt-6 text-[12.5px] text-muted-foreground">The skill appears here when the run finishes.</p>
+            <p className="mt-6 flex items-center gap-2 text-[12.5px] text-muted-foreground">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              Writing skill… with reward model <span className="font-medium text-foreground">{model.name}</span>. The SKILL.md
+              appears here when the run finishes.
+            </p>
           )
         )}
 

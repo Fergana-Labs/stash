@@ -203,3 +203,15 @@ async def test_requires_auth(client):
         URL, content=json.dumps(_payload(_llm_span())), headers={"Content-Type": "application/json"}
     )
     assert resp.status_code == 401
+
+
+async def test_read_only_keys_cannot_ingest(client):
+    """Read keys live in agent sandboxes; ingesting traces needs a full-access key."""
+    auth = await _register(client)
+    resp = await client.post(
+        "/api/v1/users/me/keys", json={"name": "sandbox", "access": "read"}, headers=auth
+    )
+    read_auth = {"Authorization": f"Bearer {resp.json()['api_key']}"}
+    resp = await _send_json(client, read_auth, _payload(_llm_span()))
+    assert resp.status_code == 403
+    assert await _traces(client, auth) == []

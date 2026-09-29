@@ -15,6 +15,7 @@ from backend.tasks import reward_models as rm_tasks
 from .test_rm_api import (
     GREETING_TRACE,
     REFUND_TRACE,
+    _all_trace_ids,
     _annotate,
     _detail,
     _import,
@@ -25,6 +26,11 @@ from .test_rm_api import (
 
 async def _user_id(client, auth) -> str:
     return (await client.get("/api/v1/users/me", headers=auth)).json()["id"]
+
+
+async def _all_pairs(client, auth, max_pairs: int = datasets.DEFAULT_MAX_PAIRS) -> list[dict]:
+    owner = await _user_id(client, auth)
+    return await datasets.build_pairs(owner, await datasets.all_trace_ids(owner), max_pairs)
 
 
 def _trace(external_id: str, answer: str) -> dict:
@@ -65,7 +71,7 @@ async def test_ratings_collapse_per_target(client):
         await _annotate(client, auth, b, rating=rating)  # sums to zero: skipped
     await _annotate(client, auth, c, rating=-1)
 
-    pairs = await datasets.build_pairs(await _user_id(client, auth))
+    pairs = await _all_pairs(client, auth)
     assert len(pairs) == 1
     assert pairs == [
         {
@@ -84,7 +90,7 @@ async def test_step_targets_render_the_prefix_and_never_pair_with_traces(client)
     [greeting_id] = await _import(client, auth, GREETING_TRACE)
     await _annotate(client, auth, greeting_id, rating=1)  # trace-level, no trace-level partner
 
-    pairs = await datasets.build_pairs(await _user_id(client, auth))
+    pairs = await _all_pairs(client, auth)
     assert len(pairs) == 1
     chosen, rejected = pairs[0]["chosen"], pairs[0]["rejected"]
     # The good step is judged in context of what came before it, not after.
@@ -99,13 +105,12 @@ async def test_pairs_are_shuffled_deterministically_and_capped(client):
     ids = await _import(client, auth, *[_trace(str(i), f"answer {i}") for i in range(6)])
     for i, trace_id in enumerate(ids):
         await _annotate(client, auth, trace_id, rating=1 if i < 3 else -1)
-    owner = await _user_id(client, auth)
 
-    everything = await datasets.build_pairs(owner)
+    everything = await _all_pairs(client, auth)
     assert len(everything) == 9
-    capped = await datasets.build_pairs(owner, max_pairs=4)
+    capped = await _all_pairs(client, auth, max_pairs=4)
     assert capped == everything[:4]
-    assert await datasets.build_pairs(owner) == everything
+    assert await _all_pairs(client, auth) == everything
 
 
 async def test_gepa_examples_replay_the_input_and_carry_unflagged_comments(client):
@@ -118,7 +123,8 @@ async def test_gepa_examples_replay_the_input_and_carry_unflagged_comments(clien
     )
     await _annotate(client, auth, greeting_id, rating=1)
 
-    examples = await datasets.gepa_examples(await _user_id(client, auth))
+    owner = await _user_id(client, auth)
+    examples = await datasets.gepa_examples(owner, await datasets.all_trace_ids(owner))
     by_trace = {example["trace_id"]: example for example in examples}
     # The trace's own system prompt travels separately: the worker appends the skill to it.
     # The input stops at the first assistant turn.
@@ -154,11 +160,17 @@ def _fake_worker(monkeypatch, write_outputs):
     return calls
 
 
-async def _create_model(client, auth, monkeypatch, compute="local") -> str:
+async def _create_model(client, auth, monkeypatch, compute="local", trace_ids=None) -> str:
+    """A queued model trained on `trace_ids`, or on every trace the owner has."""
     monkeypatch.setattr(rm_tasks.train_reward_model, "delay", lambda *a: None)
+    if trace_ids is None:
+        trace_ids = await _all_trace_ids(client, auth)
     resp = await client.post(
-        "/api/v1/rm/reward-models", json={"name": "rm", "compute": compute}, headers=auth
+        "/api/v1/rm/reward-models",
+        json={"name": "rm", "compute": compute, "trace_ids": trace_ids},
+        headers=auth,
     )
+    assert resp.status_code == 200, resp.text
     return resp.json()["id"]
 
 
@@ -257,7 +269,9 @@ async def test_labels_flagged_while_queued_fail_the_job_before_the_worker(
     assert calls == []
     model = (await client.get(f"/api/v1/rm/reward-models/{model_id}", headers=auth)).json()
     assert model["status"] == "failed"
-    assert model["error"] == ("need at least 2 preference pairs (e.g. two + and one −); got 0")
+    assert model["error"] == (
+        "the selected traces have 0 preference pairs; need at least 2 (e.g. two + and one −)"
+    )
     assert model["metrics"] is None
 
 
@@ -310,8 +324,6 @@ async def test_gepa_run_ingests_the_best_skill(client, monkeypatch, artifact_dir
         "/api/v1/rm/gepa-runs",
         json={
             "reward_model_id": model_id,
-            "skill_name": "short-answers",
-            "skill_description": "Use when answering yes/no questions.",
             "task_model": "openai/qwen3-8b",
             "task_api_base": "http://localhost:8000/v1",
             "reflection_model": "anthropic/claude-sonnet-5",
@@ -319,7 +331,10 @@ async def test_gepa_run_ingests_the_best_skill(client, monkeypatch, artifact_dir
         headers=auth,
     )
     assert resp.status_code == 200, resp.text
-    run_id = resp.json()["id"]
+    run = resp.json()
+    run_id = run["id"]
+    # The worker names the skill; until it succeeds there is no name.
+    assert (run["skill_name"], run["skill_description"]) == (None, None)
     header = "---\nname: short-answers\ndescription: Use when answering yes/no questions.\n---\n\n"
     seed_skill = header + "Use when answering yes/no questions."
     best_skill = header + "Answer in one sentence, then offer help."
@@ -332,17 +347,17 @@ async def test_gepa_run_ingests_the_best_skill(client, monkeypatch, artifact_dir
         assert job == {
             "kind": "gepa",
             "reward_model_dir": str(artifact_dir / model_id / "model"),
-            "skill_name": "short-answers",
-            "skill_description": "Use when answering yes/no questions.",
             "task_model": "openai/qwen3-8b",
             "task_api_base": "http://localhost:8000/v1",
             "reflection_model": "anthropic/claude-sonnet-5",
-            "max_metric_calls": 150,
+            "max_metric_calls": 40,
         }
         assert len((directory / "gepa_examples.jsonl").read_text().splitlines()) == 3
         (directory / "result.json").write_text(
             json.dumps(
                 {
+                    "skill_name": "short-answers",
+                    "skill_description": "Use when answering yes/no questions.",
                     "best_skill": best_skill,
                     "best_score": 0.9,
                     "seed_skill": seed_skill,
@@ -358,6 +373,8 @@ async def test_gepa_run_ingests_the_best_skill(client, monkeypatch, artifact_dir
     assert calls == ["rm_worker.gepa_run"]
     run = (await client.get(f"/api/v1/rm/gepa-runs/{run_id}", headers=auth)).json()
     assert run["status"] == "succeeded"
+    assert run["skill_name"] == "short-answers"
+    assert run["skill_description"] == "Use when answering yes/no questions."
     assert (run["best_skill"], run["best_score"]) == (best_skill, 0.9)
     assert (run["seed_skill"], run["seed_score"]) == (seed_skill, 0.1)
     assert run["candidates"] == candidates
@@ -422,7 +439,11 @@ async def test_trained_weights_download_as_a_tarball(client, monkeypatch, artifa
     monkeypatch.setattr(rm_tasks.train_reward_model, "delay", lambda *a: None)
     resp = await client.post(
         "/api/v1/rm/reward-models",
-        json={"name": "Support RM (v2)!", "compute": "local"},
+        json={
+            "name": "Support RM (v2)!",
+            "compute": "local",
+            "trace_ids": await _all_trace_ids(client, auth),
+        },
         headers=auth,
     )
     model_id = resp.json()["id"]
@@ -456,3 +477,83 @@ async def test_trained_weights_download_as_a_tarball(client, monkeypatch, artifa
         "support-rm-v2-reward-model/reward_stats.json",
     }
     assert json.loads(stats) == {"mean": 0.0, "std": 1.0}
+
+
+async def test_one_button_skill_run_uses_the_documented_defaults(client, monkeypatch):
+    """The UI's one button sends only the reward model."""
+    auth = await _register(client)
+    await _labelled_pair(client, auth)
+    model_id = await _create_model(client, auth, monkeypatch)
+    await get_pool().execute(
+        "UPDATE rm_reward_models SET status = 'succeeded' WHERE id = $1::uuid", model_id
+    )
+    queued = []
+    monkeypatch.setattr(rm_tasks.run_gepa, "delay", queued.append)
+
+    resp = await client.post(
+        "/api/v1/rm/gepa-runs", json={"reward_model_id": model_id}, headers=auth
+    )
+    assert resp.status_code == 200, resp.text
+    run = resp.json()
+    assert run["task_model"] == "anthropic/claude-haiku-4-5"
+    assert run["reflection_model"] == "anthropic/claude-sonnet-5"
+    assert run["max_metric_calls"] == 40
+    assert run["task_api_base"] is None
+    assert queued == [run["id"]]
+
+
+async def test_training_and_skills_use_only_the_selected_traces(client, monkeypatch, artifact_dir):
+    """Pairs and GEPA examples come from the selection; scoring still covers every trace."""
+    auth = await _register(client)
+    selected = await _trainable_labels(client, auth)
+    [outside] = await _import(client, auth, _trace("outside", "Maybe"))
+    await _annotate(client, auth, outside, rating=-1, comment="hedging")
+    model_id = await _create_model(client, auth, monkeypatch, trace_ids=selected)
+    seen = {}
+
+    def write_training_outputs(directory: Path) -> None:
+        pairs = (directory / "pairs.jsonl").read_text()
+        items = [
+            json.loads(line) for line in (directory / "score_items.jsonl").read_text().splitlines()
+        ]
+        seen["pairs_mention_outside"] = "Maybe" in pairs
+        seen["scored"] = {item["trace_id"] for item in items}
+        (directory / "result.json").write_text(json.dumps({"metrics": {}}))
+        (directory / "scores.jsonl").write_text("")
+
+    _fake_worker(monkeypatch, write_training_outputs)
+    await rm_tasks.train_reward_model_async(model_id)
+    assert seen["pairs_mention_outside"] is False
+    assert seen["scored"] == set(selected) | {outside}
+
+    monkeypatch.setattr(rm_tasks.run_gepa, "delay", lambda *a: None)
+    resp = await client.post(
+        "/api/v1/rm/gepa-runs", json={"reward_model_id": model_id}, headers=auth
+    )
+    run_id = resp.json()["id"]
+
+    def write_gepa_outputs(directory: Path) -> None:
+        lines = (directory / "gepa_examples.jsonl").read_text().splitlines()
+        seen["examples"] = {json.loads(line)["trace_id"] for line in lines}
+        raise RuntimeError("stop after inspecting the inputs")
+
+    _fake_worker(monkeypatch, write_gepa_outputs)
+    with pytest.raises(RuntimeError):
+        await rm_tasks.run_gepa_async(run_id)
+    assert seen["examples"] == set(selected)
+
+
+async def test_selected_trace_deleted_before_the_job_drops_out(client, monkeypatch, artifact_dir):
+    auth = await _register(client)
+    good, bad = await _labelled_pair(client, auth)
+    model_id = await _create_model(client, auth, monkeypatch)
+    resp = await client.delete(f"/api/v1/rm/traces/{bad}", headers=auth)
+    assert resp.status_code == 204
+    calls = _fake_worker(monkeypatch, lambda directory: None)
+
+    with pytest.raises(datasets.NotEnoughPairs):
+        await rm_tasks.train_reward_model_async(model_id)
+
+    assert calls == []
+    model = (await client.get(f"/api/v1/rm/reward-models/{model_id}", headers=auth)).json()
+    assert model["error"].startswith("the selected traces have 0 preference pairs")

@@ -79,7 +79,7 @@ async def run_training(model_id: UUID) -> None:
     model = await pool.fetchrow("SELECT * FROM rm_reward_models WHERE id = $1", model_id)
     owner_user_id = model["owner_user_id"]
 
-    pairs = await datasets.build_pairs(owner_user_id, model["max_pairs"])
+    pairs = await datasets.build_pairs(owner_user_id, model["trace_ids"], model["max_pairs"])
     datasets.check_enough_pairs(pairs)
     await pool.execute(
         "UPDATE rm_reward_models SET num_pairs = $2 WHERE id = $1", model_id, len(pairs)
@@ -132,7 +132,11 @@ async def run_gepa(run_id: UUID) -> None:
     pool = get_pool()
     run = await pool.fetchrow("SELECT * FROM rm_gepa_runs WHERE id = $1", run_id)
 
-    examples = await datasets.gepa_examples(run["owner_user_id"])
+    # The skill learns from the same traces its reward model was trained on.
+    trace_ids = await pool.fetchval(
+        "SELECT trace_ids FROM rm_reward_models WHERE id = $1", run["reward_model_id"]
+    )
+    examples = await datasets.gepa_examples(run["owner_user_id"], trace_ids)
     if not examples:
         raise ValueError("need at least one annotated trace with a user turn")
 
@@ -141,8 +145,6 @@ async def run_gepa(run_id: UUID) -> None:
     job = {
         "kind": "gepa",
         "reward_model_dir": str(job_dir(run["reward_model_id"]) / "model"),
-        "skill_name": run["skill_name"],
-        "skill_description": run["skill_description"],
         "task_model": run["task_model"],
         "task_api_base": run["task_api_base"],
         "reflection_model": run["reflection_model"],
@@ -157,7 +159,8 @@ async def run_gepa(run_id: UUID) -> None:
     await pool.execute(
         """
         UPDATE rm_gepa_runs
-        SET best_skill = $2, best_score = $3, seed_skill = $4, seed_score = $5,
+        SET skill_name = $7, skill_description = $8,
+            best_skill = $2, best_score = $3, seed_skill = $4, seed_score = $5,
             candidates = $6, status = 'succeeded', finished_at = now()
         WHERE id = $1
         """,
@@ -167,4 +170,6 @@ async def run_gepa(run_id: UUID) -> None:
         result["seed_skill"],
         result["seed_score"],
         result["candidates"],
+        result["skill_name"],
+        result["skill_description"],
     )

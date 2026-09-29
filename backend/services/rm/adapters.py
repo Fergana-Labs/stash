@@ -463,7 +463,10 @@ def _openinference_content_steps(role: str, content: dict[str, Any]) -> list[Can
 
 def _openinference_message_steps(fields: dict[str, Any]) -> list[CanonicalStep]:
     role = fields["message.role"]
-    if role == "tool":
+    # A message with a tool_call_id is a tool result whatever its role:
+    # openinference-instrumentation-anthropic reports Anthropic tool_result
+    # blocks (which travel inside user messages) as role "user".
+    if role == "tool" or "message.tool_call_id" in fields:
         return [
             CanonicalStep(
                 role="tool",
@@ -481,7 +484,13 @@ def _openinference_message_steps(fields: dict[str, Any]) -> list[CanonicalStep]:
         steps.extend(_openinference_content_steps(role, content))
     if fields.get("message.content"):
         steps.append(CanonicalStep(role=role, content=fields["message.content"]))
+    # Some instrumentations (openinference-instrumentation-anthropic) report each
+    # tool call twice: as a `tool_use` part in message.contents, which keeps its
+    # order among the text parts, and again in message.tool_calls. Keep the first.
+    content_call_ids = {s.tool_call_id for s in steps if s.tool_call_id is not None}
     for call in _indexed(fields, "message.tool_calls"):
+        if call.get("tool_call.id") in content_call_ids:
+            continue
         steps.append(
             _tool_call_step(
                 call["tool_call.function.name"],

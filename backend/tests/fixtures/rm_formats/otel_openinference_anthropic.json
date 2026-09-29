@@ -1,0 +1,255 @@
+{
+ "resourceSpans": [
+  {
+   "resource": {
+    "attributes": [
+     {
+      "key": "service.name",
+      "value": {
+       "stringValue": "acme-support-agent"
+      }
+     }
+    ]
+   },
+   "scopeSpans": [
+    {
+     "scope": {
+      "name": "openinference.instrumentation.anthropic"
+     },
+     "spans": [
+      {
+       "kind": "SPAN_KIND_INTERNAL",
+       "name": "messages.create",
+       "flags": 256,
+       "spanId": "5706e865958603b8",
+       "status": {
+        "code": "STATUS_CODE_OK"
+       },
+       "traceId": "0a9838d9b8eebe6ccf958a8e7749746b",
+       "attributes": [
+        {
+         "key": "llm.provider",
+         "value": {
+          "stringValue": "anthropic"
+         }
+        },
+        {
+         "key": "llm.system",
+         "value": {
+          "stringValue": "anthropic"
+         }
+        },
+        {
+         "key": "input.value",
+         "value": {
+          "stringValue": "{\"model\": \"claude-haiku-4-5\", \"max_tokens\": 400, \"system\": \"You are Acme's support agent. Refunds are allowed within 30 days of delivery.\", \"tools\": [{\"name\": \"lookup_order\", \"description\": \"Look up a"
+         }
+        },
+        {
+         "key": "input.mime_type",
+         "value": {
+          "stringValue": "application/json"
+         }
+        },
+        {
+         "key": "llm.request.model_name",
+         "value": {
+          "stringValue": "claude-haiku-4-5"
+         }
+        },
+        {
+         "key": "llm.input_messages.1.message.role",
+         "value": {
+          "stringValue": "user"
+         }
+        },
+        {
+         "key": "llm.input_messages.1.message.content",
+         "value": {
+          "stringValue": "Hi, order A7731 arrived broken."
+         }
+        },
+        {
+         "key": "llm.input_messages.2.message.role",
+         "value": {
+          "stringValue": "assistant"
+         }
+        },
+        {
+         "key": "llm.input_messages.2.message.contents.0.message_content.type",
+         "value": {
+          "stringValue": "text"
+         }
+        },
+        {
+         "key": "llm.input_messages.2.message.contents.0.message_content.text",
+         "value": {
+          "stringValue": "I'm sorry to hear that your order arrived broken! Let me look up the details of your order to help you."
+         }
+        },
+        {
+         "key": "llm.input_messages.2.message.tool_calls.0.tool_call.id",
+         "value": {
+          "stringValue": "toolu_01EjS4pd5jHtAxZcCEf9EPXR"
+         }
+        },
+        {
+         "key": "llm.input_messages.2.message.tool_calls.0.tool_call.function.name",
+         "value": {
+          "stringValue": "lookup_order"
+         }
+        },
+        {
+         "key": "llm.input_messages.2.message.tool_calls.0.tool_call.function.arguments",
+         "value": {
+          "stringValue": "{\"order_id\": \"A7731\"}"
+         }
+        },
+        {
+         "key": "llm.input_messages.2.message.contents.1.message_content.type",
+         "value": {
+          "stringValue": "tool_use"
+         }
+        },
+        {
+         "key": "llm.input_messages.2.message.contents.1.tool_call.id",
+         "value": {
+          "stringValue": "toolu_01EjS4pd5jHtAxZcCEf9EPXR"
+         }
+        },
+        {
+         "key": "llm.input_messages.2.message.contents.1.tool_call.function.name",
+         "value": {
+          "stringValue": "lookup_order"
+         }
+        },
+        {
+         "key": "llm.input_messages.2.message.contents.1.tool_call.function.arguments",
+         "value": {
+          "stringValue": "{\"order_id\": \"A7731\"}"
+         }
+        },
+        {
+         "key": "llm.input_messages.3.message.role",
+         "value": {
+          "stringValue": "user"
+         }
+        },
+        {
+         "key": "llm.input_messages.3.message.tool_call_id",
+         "value": {
+          "stringValue": "toolu_01EjS4pd5jHtAxZcCEf9EPXR"
+         }
+        },
+        {
+         "key": "llm.input_messages.3.message.content",
+         "value": {
+          "stringValue": "{\"order_id\": \"A7731\", \"status\": \"delivered\", \"delivered_days_ago\": 41}"
+         }
+        },
+        {
+         "key": "llm.input_messages.0.message.role",
+         "value": {
+          "stringValue": "system"
+         }
+        },
+        {
+         "key": "llm.input_messages.0.message.content",
+         "value": {
+          "stringValue": "You are Acme's support agent. Refunds are allowed within 30 days of delivery."
+         }
+        },
+        {
+         "key": "llm.tools.0.tool.json_schema",
+         "value": {
+          "stringValue": "{\"name\": \"lookup_order\", \"description\": \"Look up an order's status and delivery date.\", \"input_schema\": {\"type\": \"object\", \"properties\": {\"order_id\": {\"type\": \"string\"}}, \"required\": [\"order_id\"]}}"
+         }
+        },
+        {
+         "key": "llm.invocation_parameters",
+         "value": {
+          "stringValue": "{\"max_tokens\": 400}"
+         }
+        },
+        {
+         "key": "llm.model_name",
+         "value": {
+          "stringValue": "claude-haiku-4-5-20251001"
+         }
+        },
+        {
+         "key": "llm.response.model_name",
+         "value": {
+          "stringValue": "claude-haiku-4-5-20251001"
+         }
+        },
+        {
+         "key": "llm.output_messages.0.message.role",
+         "value": {
+          "stringValue": "assistant"
+         }
+        },
+        {
+         "key": "llm.finish_reason",
+         "value": {
+          "stringValue": "end_turn"
+         }
+        },
+        {
+         "key": "llm.output_messages.0.message.contents.0.message_content.type",
+         "value": {
+          "stringValue": "text"
+         }
+        },
+        {
+         "key": "llm.output_messages.0.message.contents.0.message_content.text",
+         "value": {
+          "stringValue": "Unfortunately, I see that your order was delivered 41 days ago. Our refund policy allows refunds within 30 days of delivery, and your order is outside that window.\n\nHowever, I understand you received a broken item, which is frustrating. I'd recommend contacting our support team directly to explain the situation. While I'm not able to process a refund based on our standard policy, they may be able to make an exception or offer alternative solutions for damaged items, such as:\n\n- A replacement item\n- A partial refund or store credit\n- Other remedies for the defect\n\nWould you like me to provide you with contact information for our support team, or is there anything else I can help you with?"
+         }
+        },
+        {
+         "key": "llm.token_count.prompt",
+         "value": {
+          "intValue": "716"
+         }
+        },
+        {
+         "key": "llm.token_count.completion",
+         "value": {
+          "intValue": "156"
+         }
+        },
+        {
+         "key": "llm.token_count.total",
+         "value": {
+          "intValue": "872"
+         }
+        },
+        {
+         "key": "output.value",
+         "value": {
+          "stringValue": "{\"id\":\"msg_011CfXGAiETHpa3eTomTPEsq\",\"container\":null,\"content\":[{\"citations\":null,\"text\":\"Unfortunately, I see that your order was delivered 41 days ago. Our refund policy allows refunds within 30 da"
+         }
+        },
+        {
+         "key": "output.mime_type",
+         "value": {
+          "stringValue": "application/json"
+         }
+        },
+        {
+         "key": "openinference.span.kind",
+         "value": {
+          "stringValue": "LLM"
+         }
+        }
+       ],
+       "endTimeUnixNano": "1790663530781586000",
+       "startTimeUnixNano": "1790663528757523000"
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

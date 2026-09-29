@@ -26,8 +26,9 @@ export function RmPage({
   children: ReactNode;
 }) {
   const pathname = usePathname();
+  // h-full makes this the page's scroll container, so sticky bars inside it (the trace selection bar) stick.
   return (
-    <div className="scroll-thin flex-1 overflow-y-auto">
+    <div className="scroll-thin h-full overflow-y-auto">
       <div className="mx-auto max-w-6xl px-10 pt-7 pb-16">
         <div className="flex items-start justify-between gap-6">
           <div className="min-w-0">
@@ -149,4 +150,9 @@ export function Field({ label, hint, children }: { label: string; hint?: ReactNo
       {hint && <span className="mt-1 block text-[11.5px] leading-snug text-muted-foreground">{hint}</span>}
     </label>
   );
+}
+
+/** Title for a skill run with no skill name yet: it is still being written, or the run failed. */
+export function pendingSkillTitle(status: RmJobStatus): string {
+  return status === "failed" ? "Skill creation failed" : "Writing skill…";
 }

@@ -1,44 +1,57 @@
 "use client";
 
-import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
-import { ChevronLeft, ChevronRight, Flag, MessageSquare, Trash2 } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useBreadcrumbs } from "@/components/BreadcrumbContext";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { Button } from "@/components/ui/button";
 import ImportTracesDialog from "@/components/reward-models/ImportTracesDialog";
 import ConnectAgentPanel from "@/components/reward-models/ConnectAgentPanel";
+import TraceTable from "@/components/reward-models/TraceTable";
+import TrainPanel from "@/components/reward-models/TrainPanel";
 import { RmPage } from "@/components/reward-models/rm-ui";
-import { errorMessage, formatScore, relativeTime } from "@/components/reward-models/rm-text";
-import { RmListSkeleton } from "@/components/reward-models/RmSkeletons";
-import { rmDeleteTrace, rmListTraces } from "@/lib/api";
+import { errorMessage } from "@/components/reward-models/rm-text";
+import { RmListSkeleton, RmPageSkeleton } from "@/components/reward-models/RmSkeletons";
+import { SELECTED_PARAM, summarizeSelection } from "@/components/reward-models/trace-selection";
+import { rmDeleteTrace, rmListAllTraces } from "@/lib/api";
 import type { RmTraceSummary } from "@/lib/types";
 
-const PAGE_SIZE = 50;
 // New runs stream in over OpenTelemetry, so the list refreshes itself.
 const POLL_MS = 5000;
 
 export default function TracesPage() {
+  return (
+    <Suspense fallback={<RmPageSkeleton />}>
+      <Traces />
+    </Suspense>
+  );
+}
+
+function Traces() {
   useBreadcrumbs([{ label: "Reward models" }], "reward-models");
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const confirm = useConfirm();
-  const [page, setPage] = useState<{ traces: RmTraceSummary[]; total: number } | null>(null);
-  const [offset, setOffset] = useState(0);
+  const [traces, setTraces] = useState<RmTraceSummary[] | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(
+    () => new Set(searchParams.get(SELECTED_PARAM)?.split(",").filter((id) => id !== "") ?? []),
+  );
   const [deleting, setDeleting] = useState<string | null>(null);
   // Background refresh runs only after a successful load. A failure stops it,
   // so a down backend shows one toast instead of one every POLL_MS; the next
-  // successful load (page visit, paging, import, delete) turns it back on.
+  // successful load (page visit, import, delete) turns it back on.
   const [polling, setPolling] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      setPage(await rmListTraces(PAGE_SIZE, offset));
+      setTraces(await rmListAllTraces());
       setPolling(true);
     } catch (e) {
       setPolling(false);
       toast.error(errorMessage(e));
     }
-  }, [offset]);
+  }, []);
 
   useEffect(() => {
     void load();
@@ -62,6 +75,9 @@ export default function TracesPage() {
     setDeleting(trace.id);
     try {
       await rmDeleteTrace(trace.id);
+      const next = new Set(selected);
+      next.delete(trace.id);
+      setSelected(next);
       await load();
     } catch (e) {
       toast.error(errorMessage(e));
@@ -70,142 +86,56 @@ export default function TracesPage() {
     }
   }
 
+  // Only ids that still exist count: a deleted trace from ?selected= must not be sent to training.
+  const selectedIds = (traces ?? []).filter((t) => selected.has(t.id)).map((t) => t.id);
+  const summary = summarizeSelection(traces ?? [], selected);
+
   return (
     <RmPage
       title="Reward models"
       description="Annotate agent traces with + / − and comments, train a reward model on those labels, then use it to write skills for your agent."
       actions={<ImportTracesDialog onImported={() => void load()} />}
     >
-      {page !== null && <ConnectAgentPanel collapsible={page.total > 0} />}
-      {page === null ? (
+      {traces !== null && <ConnectAgentPanel collapsible={traces.length > 0} />}
+      {traces === null ? (
         <RmListSkeleton />
-      ) : page.total === 0 ? (
+      ) : traces.length === 0 ? (
         <p className="m-0 text-center text-[12.5px] text-muted-foreground">Waiting for the first trace…</p>
       ) : (
         <>
-          <div className="overflow-hidden rounded-lg border border-border">
-            <table className="w-full table-fixed border-collapse text-[13px]">
-              <thead>
-                <tr className="border-b border-border bg-surface text-left text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
-                  <th className="px-3 py-2 font-medium">Trace</th>
-                  <th className="w-36 px-3 py-2 font-medium">Format</th>
-                  <th className="w-16 px-3 py-2 text-right font-medium">Steps</th>
-                  <th className="w-48 px-3 py-2 text-right font-medium">Labels</th>
-                  <th className="w-24 px-3 py-2 text-right font-medium">Reward</th>
-                  <th className="w-24 px-3 py-2 text-right font-medium">Imported</th>
-                  <th className="w-10 px-2 py-2" />
-                </tr>
-              </thead>
-              <tbody>
-                {page.traces.map((trace) => (
-                  <TraceRow
-                    key={trace.id}
-                    trace={trace}
-                    deleting={deleting === trace.id}
-                    onDelete={() => void remove(trace)}
-                  />
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <Pager offset={offset} total={page.total} onChange={setOffset} />
+          {summary.count > 0 && (
+            <div className="sticky top-0 z-20 -mx-3 mb-3 flex items-center gap-3 rounded-lg border border-brand-500/25 bg-background/95 px-3 py-2 shadow-sm backdrop-blur">
+              <span className="text-[13px] font-medium text-foreground tabular-nums">
+                {summary.count} trace{summary.count === 1 ? "" : "s"} selected
+              </span>
+              <span className="text-[12.5px] text-muted-foreground">·</span>
+              <span className="font-mono text-[12.5px] tabular-nums">
+                <span className="text-green-700 dark:text-green-400">+{summary.positive}</span>{" "}
+                <span className="text-red-600 dark:text-red-400">−{summary.negative}</span>{" "}
+                <span className="font-sans text-muted-foreground">labels</span>
+              </span>
+              <Button variant="ghost" size="sm" onClick={() => setSelected(new Set())}>
+                Clear
+              </Button>
+              <span className="flex-1" />
+              <TrainPanel
+                traceIds={selectedIds}
+                summary={summary}
+                optionsPlacement="below"
+                onTrained={() => router.push("/reward-models/models")}
+              />
+            </div>
+          )}
+          <TraceTable
+            traces={traces}
+            selected={selected}
+            onSelectedChange={setSelected}
+            mode="browse"
+            onDelete={(t) => void remove(t)}
+            deletingId={deleting}
+          />
         </>
       )}
     </RmPage>
-  );
-}
-
-function TraceRow({ trace, deleting, onDelete }: { trace: RmTraceSummary; deleting: boolean; onDelete: () => void }) {
-  const href = `/reward-models/traces/${trace.id}`;
-  return (
-    <tr className="group border-b border-border-subtle last:border-b-0 hover:bg-surface/60">
-      <td className="px-3 py-2.5">
-        <Link href={href} className="block truncate font-medium text-foreground hover:text-brand-600">
-          {trace.title}
-        </Link>
-        {trace.external_id && (
-          <div className="truncate font-mono text-[11px] text-muted-foreground">{trace.external_id}</div>
-        )}
-      </td>
-      <td className="px-3 py-2.5">
-        <span className="tag tag-muted">{trace.source_format}</span>
-      </td>
-      <td className="px-3 py-2.5 text-right font-mono text-[12px] text-dim tabular-nums">{trace.step_count}</td>
-      <td className="px-3 py-2.5">
-        <LabelCounts trace={trace} />
-      </td>
-      <td className="px-3 py-2.5 text-right">
-        {trace.latest_score ? (
-          <span title={trace.latest_score.reward_model_name} className="font-mono text-[12px] text-foreground tabular-nums">
-            {formatScore(trace.latest_score.score)}
-          </span>
-        ) : (
-          <span className="text-muted-foreground">—</span>
-        )}
-      </td>
-      <td className="px-3 py-2.5 text-right text-[12px] whitespace-nowrap text-muted-foreground">
-        {relativeTime(trace.created_at)}
-      </td>
-      <td className="px-2 py-2.5 text-right">
-        <Button
-          variant="ghost"
-          size="icon-xs"
-          onClick={onDelete}
-          disabled={deleting}
-          aria-label="Delete trace"
-          className="opacity-0 group-hover:opacity-100 hover:text-red-600 disabled:opacity-100"
-        >
-          <Trash2 />
-        </Button>
-      </td>
-    </tr>
-  );
-}
-
-function LabelCounts({ trace }: { trace: RmTraceSummary }) {
-  return (
-    <div className="flex items-center justify-end gap-2.5 font-mono text-[12px] tabular-nums">
-      <span className={trace.positive_count ? "text-green-700 dark:text-green-400" : "text-muted-foreground/60"}>
-        +{trace.positive_count}
-      </span>
-      <span className={trace.negative_count ? "text-red-600 dark:text-red-400" : "text-muted-foreground/60"}>
-        −{trace.negative_count}
-      </span>
-      <span
-        title="Comments"
-        className={`inline-flex items-center gap-0.5 ${trace.comment_count ? "text-dim" : "text-muted-foreground/60"}`}
-      >
-        <MessageSquare className="h-3 w-3" />
-        {trace.comment_count}
-      </span>
-      {trace.label_error_count > 0 && (
-        <span title="Flagged label errors" className="inline-flex items-center gap-0.5 text-amber-600">
-          <Flag className="h-3 w-3" />
-          {trace.label_error_count}
-        </span>
-      )}
-    </div>
-  );
-}
-
-function Pager({ offset, total, onChange }: { offset: number; total: number; onChange: (offset: number) => void }) {
-  if (total <= PAGE_SIZE) {
-    return <p className="mt-3 text-[12px] text-muted-foreground">{total} traces</p>;
-  }
-  const last = Math.min(offset + PAGE_SIZE, total);
-  return (
-    <div className="mt-3 flex items-center justify-between text-[12px] text-muted-foreground">
-      <span>
-        {offset + 1}–{last} of {total} traces
-      </span>
-      <div className="flex gap-1">
-        <Button variant="outline" size="icon-sm" disabled={offset === 0} onClick={() => onChange(offset - PAGE_SIZE)} aria-label="Previous page">
-          <ChevronLeft />
-        </Button>
-        <Button variant="outline" size="icon-sm" disabled={last >= total} onClick={() => onChange(offset + PAGE_SIZE)} aria-label="Next page">
-          <ChevronRight />
-        </Button>
-      </div>
-    </div>
   );
 }

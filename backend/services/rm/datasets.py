@@ -24,8 +24,16 @@ class NotEnoughPairs(ValueError):
 def check_enough_pairs(pairs: list[dict]) -> None:
     if len(pairs) < MIN_PAIRS:
         raise NotEnoughPairs(
-            f"need at least {MIN_PAIRS} preference pairs (e.g. two + and one −); got {len(pairs)}"
+            f"the selected traces have {len(pairs)} preference pairs; need at least "
+            f"{MIN_PAIRS} (e.g. two + and one −)"
         )
+
+
+async def all_trace_ids(owner_user_id: UUID) -> list[UUID]:
+    rows = await get_pool().fetch(
+        "SELECT id FROM rm_traces WHERE owner_user_id = $1 ORDER BY id", owner_user_id
+    )
+    return [row["id"] for row in rows]
 
 
 def render_step(step: dict) -> str:
@@ -59,18 +67,25 @@ async def _steps_by_trace(owner_user_id: UUID) -> dict[UUID, list[dict]]:
     return grouped
 
 
-async def build_pairs(owner_user_id: UUID, max_pairs: int = DEFAULT_MAX_PAIRS) -> list[dict]:
-    """Every (chosen, rejected) combination within a granularity, seeded shuffle, capped."""
+async def build_pairs(
+    owner_user_id: UUID, trace_ids: list[UUID], max_pairs: int = DEFAULT_MAX_PAIRS
+) -> list[dict]:
+    """Every (chosen, rejected) combination within a granularity, seeded shuffle, capped.
+
+    Only annotations on `trace_ids` count; ids that no longer exist add nothing.
+    """
     targets = await get_pool().fetch(
         """
         SELECT a.trace_id, s.idx AS step_idx, SUM(a.rating)::int AS total
         FROM rm_annotations a
         LEFT JOIN rm_trace_steps s ON s.id = a.step_id
-        WHERE a.owner_user_id = $1 AND a.rating IS NOT NULL AND NOT a.label_error
+        WHERE a.owner_user_id = $1 AND a.trace_id = ANY($2::uuid[])
+          AND a.rating IS NOT NULL AND NOT a.label_error
         GROUP BY a.trace_id, a.step_id, s.idx
         ORDER BY a.trace_id, s.idx NULLS FIRST
         """,
         owner_user_id,
+        trace_ids,
     )
     steps_by_trace = await _steps_by_trace(owner_user_id)
 
@@ -108,8 +123,9 @@ async def score_items(owner_user_id: UUID) -> list[dict]:
     ]
 
 
-async def gepa_examples(owner_user_id: UUID) -> list[dict]:
-    """Annotated traces as GEPA inputs: the conversation before the first assistant turn.
+async def gepa_examples(owner_user_id: UUID, trace_ids: list[UUID]) -> list[dict]:
+    """Annotated traces among `trace_ids` as GEPA inputs: the conversation before
+    the first assistant turn.
 
     The trace's own system prompt travels separately (`system`) because the
     worker appends the candidate skill to it. A trace with no non-system step
@@ -125,11 +141,12 @@ async def gepa_examples(owner_user_id: UUID) -> list[dict]:
             '{}'
           ) AS comments
         FROM rm_annotations a
-        WHERE a.owner_user_id = $1 AND NOT a.label_error
+        WHERE a.owner_user_id = $1 AND a.trace_id = ANY($2::uuid[]) AND NOT a.label_error
         GROUP BY a.trace_id
         ORDER BY a.trace_id
         """,
         owner_user_id,
+        trace_ids,
     )
     steps_by_trace = await _steps_by_trace(owner_user_id)
 
