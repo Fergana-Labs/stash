@@ -2,6 +2,8 @@
 
 from uuid import UUID
 
+import asyncpg
+
 from ...database import get_pool
 from . import annotations
 from .adapters import CanonicalTrace, TraceFormatError, parse_traces
@@ -83,55 +85,66 @@ def _step(row) -> dict:
 async def import_traces(owner_user_id: UUID, format: str, data: str) -> dict:
     """Parse and store traces. Re-importing an `id` replaces that trace's steps."""
     resolved_format, traces = parse_traces(data, format)
+    async with get_pool().acquire() as conn, conn.transaction():
+        trace_ids = await store_traces(conn, owner_user_id, resolved_format, traces)
+    return {"format": resolved_format, "imported": len(trace_ids), "trace_ids": trace_ids}
+
+
+async def store_traces(
+    conn: asyncpg.Connection,
+    owner_user_id: UUID,
+    source_format: str,
+    traces: list[CanonicalTrace],
+) -> list[UUID]:
+    """Upsert parsed traces by external id on the caller's connection (and transaction)."""
     for index, trace in enumerate(traces):
         if all(step.role == "system" for step in trace.steps):
             raise TraceFormatError(f"trace {index} has only system steps; nothing to judge")
     titles = [_title(trace, index) for index, trace in enumerate(traces)]
 
     trace_ids = []
-    async with get_pool().acquire() as conn, conn.transaction():
-        for trace, title in zip(traces, titles, strict=True):
-            trace_id = await conn.fetchval(
-                """
-                INSERT INTO rm_traces (owner_user_id, external_id, title, source_format, metadata)
-                VALUES ($1, $2, $3, $4, $5)
-                ON CONFLICT (owner_user_id, external_id) DO UPDATE SET
-                  title = EXCLUDED.title,
-                  source_format = EXCLUDED.source_format,
-                  metadata = EXCLUDED.metadata,
-                  updated_at = now()
-                RETURNING id
-                """,
-                owner_user_id,
-                trace.external_id,
-                title,
-                resolved_format,
-                trace.metadata,
-            )
-            # Step-level annotations cascade away with the replaced steps.
-            await conn.execute("DELETE FROM rm_trace_steps WHERE trace_id = $1", trace_id)
-            await conn.executemany(
-                """
-                INSERT INTO rm_trace_steps
-                  (trace_id, idx, role, content, tool_name, tool_input, tool_call_id, metadata)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-                """,
-                [
-                    (
-                        trace_id,
-                        idx,
-                        step.role,
-                        step.content,
-                        step.tool_name,
-                        step.tool_input,
-                        step.tool_call_id,
-                        step.metadata if step.metadata else None,
-                    )
-                    for idx, step in enumerate(trace.steps)
-                ],
-            )
-            trace_ids.append(trace_id)
-    return {"format": resolved_format, "imported": len(trace_ids), "trace_ids": trace_ids}
+    for trace, title in zip(traces, titles, strict=True):
+        trace_id = await conn.fetchval(
+            """
+            INSERT INTO rm_traces (owner_user_id, external_id, title, source_format, metadata)
+            VALUES ($1, $2, $3, $4, $5)
+            ON CONFLICT (owner_user_id, external_id) DO UPDATE SET
+              title = EXCLUDED.title,
+              source_format = EXCLUDED.source_format,
+              metadata = EXCLUDED.metadata,
+              updated_at = now()
+            RETURNING id
+            """,
+            owner_user_id,
+            trace.external_id,
+            title,
+            source_format,
+            trace.metadata,
+        )
+        # Step-level annotations cascade away with the replaced steps.
+        await conn.execute("DELETE FROM rm_trace_steps WHERE trace_id = $1", trace_id)
+        await conn.executemany(
+            """
+            INSERT INTO rm_trace_steps
+              (trace_id, idx, role, content, tool_name, tool_input, tool_call_id, metadata)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            """,
+            [
+                (
+                    trace_id,
+                    idx,
+                    step.role,
+                    step.content,
+                    step.tool_name,
+                    step.tool_input,
+                    step.tool_call_id,
+                    step.metadata if step.metadata else None,
+                )
+                for idx, step in enumerate(trace.steps)
+            ],
+        )
+        trace_ids.append(trace_id)
+    return trace_ids
 
 
 async def list_traces(owner_user_id: UUID, limit: int, offset: int) -> dict:

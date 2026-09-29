@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
-import { Callout, Code, CodeBlock, H2, H3, P, Title } from "./components";
-import { NextPage, Pipeline } from "./parts";
+import { Code, CodeBlock, H2, P, Title } from "./components";
+import { DemoClip, NextPage, Pipeline } from "./parts";
 
 export const metadata: Metadata = {
   title: "Stash Docs",
@@ -50,14 +50,14 @@ jq -Rs '{format: "auto", data: .}' traces.jsonl \\
   | curl -s "$STASH_URL/api/v1/rm/traces/import" \\
       -H "$AUTH" -H "$JSON" --data @-
 
-# 3a. Train a reward model, then download its weights
+# 3. Train a reward model, then download its weights
 curl -s "$STASH_URL/api/v1/rm/reward-models" \\
   -H "$AUTH" -H "$JSON" \\
   -d '{"name": "refunds", "compute": "local"}'
 curl -s "$STASH_URL/api/v1/rm/reward-models/<id>/weights" \\
   -H "$AUTH" -OJ
 
-# 3b. Create a skill, then download it
+# 4. Write a skill, then download it
 curl -s "$STASH_URL/api/v1/rm/gepa-runs" \\
   -H "$AUTH" -H "$JSON" -d '{
     "reward_model_id": "<id>",
@@ -72,7 +72,7 @@ curl -s "$STASH_URL/api/v1/rm/gepa-runs/<id>/skill" \\
 export default function RewardModelsOverviewPage() {
   return (
     <>
-      <Title>Stash</Title>
+      <Title>Overview</Title>
       <P>
         Stash makes it easy to annotate traces so that you can emphasize what you wish the agent would
         have done better. Once you submit your annotations, Stash converts that into an easy-to-use reward
@@ -87,33 +87,30 @@ export default function RewardModelsOverviewPage() {
         <Link href="/docs/trace-format" className="text-brand hover:underline">Trace format</Link>.
       </P>
       <P>To upload automatically, have your agent send each trace when a run ends:</P>
-      <CodeBlock>{AUTO_UPLOAD}</CodeBlock>
+      <CodeBlock lang="python">{AUTO_UPLOAD}</CodeBlock>
 
       <H2>2. Annotate them</H2>
       <P>
         Open a trace and mark it, or any step in it, + or −. To say what went wrong, highlight the text
-        and leave a comment. The + and − marks train the reward model. The comments tell GEPA what to fix.
+        and leave a comment.
       </P>
-      <Callout>
-        Training needs at least two + / − pairs, for example two traces marked + and one marked −.
-        See <Link href="/docs/annotations" className="text-brand hover:underline">Annotations</Link>.
-      </Callout>
+      <DemoClip src="/docs/demo/annotate.mp4" />
 
-      <H2>3. Press a button</H2>
-      <H3>Train reward model</H3>
+      <H2>3. Train a reward model</H2>
       <P>
-        On the Reward models tab. Stash trains a reward model on your + and − marks and scores every
-        trace, including the ones nobody annotated. Press <strong>Download weights</strong> to take the
-        model and use it as the reward function when you post-train.
+        On the Reward models tab, press <strong>Train reward model</strong>. Stash trains a reward model
+        on your + and − marks and scores every trace, including the ones nobody annotated. Download the
+        weights to use the model as the reward function when you post-train.
       </P>
-      <H3>Create skill</H3>
+
+      <H2>4. Write a skill</H2>
       <P>
-        On the Skills tab. Name the skill and say when your agent should use it. GEPA writes the{" "}
+        On the Skills tab, name the skill and say when your agent should use it. GEPA writes the{" "}
         <Code>SKILL.md</Code> from your comments and keeps the version your reward model scores highest.
-        Your agent loads it next to its system prompt, which Stash leaves alone. This one came out of
-        the demo above:
+        Your agent loads it next to its system prompt, which Stash leaves alone. This one came out of the
+        demo above:
       </P>
-      <CodeBlock>{SKILL_EXAMPLE}</CodeBlock>
+      <CodeBlock lang="markdown">{SKILL_EXAMPLE}</CodeBlock>
 
       <H2>The same steps over the API</H2>
       <P>
@@ -122,7 +119,7 @@ export default function RewardModelsOverviewPage() {
         Step 2, annotating, happens in the app. Full reference:{" "}
         <Link href="/docs/api" className="text-brand hover:underline">API</Link>.
       </P>
-      <CodeBlock>{API_STEPS}</CodeBlock>
+      <CodeBlock lang="bash">{API_STEPS}</CodeBlock>
       <P>
         Running your own Stash? Point <Code>STASH_URL</Code> at your backend; see{" "}
         <Link href="/docs/training#self-hosting-the-worker" className="text-brand hover:underline">Self-hosting the worker</Link>.

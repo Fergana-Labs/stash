@@ -8,13 +8,16 @@ import { useBreadcrumbs } from "@/components/BreadcrumbContext";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { Button } from "@/components/ui/button";
 import ImportTracesDialog from "@/components/reward-models/ImportTracesDialog";
-import { EmptyState, RmPage } from "@/components/reward-models/rm-ui";
+import ConnectAgentPanel from "@/components/reward-models/ConnectAgentPanel";
+import { RmPage } from "@/components/reward-models/rm-ui";
 import { errorMessage, formatScore, relativeTime } from "@/components/reward-models/rm-text";
 import { RmListSkeleton } from "@/components/reward-models/RmSkeletons";
 import { rmDeleteTrace, rmListTraces } from "@/lib/api";
 import type { RmTraceSummary } from "@/lib/types";
 
 const PAGE_SIZE = 50;
+// New runs stream in over OpenTelemetry, so the list refreshes itself.
+const POLL_MS = 5000;
 
 export default function TracesPage() {
   useBreadcrumbs([{ label: "Reward models" }], "reward-models");
@@ -22,11 +25,17 @@ export default function TracesPage() {
   const [page, setPage] = useState<{ traces: RmTraceSummary[]; total: number } | null>(null);
   const [offset, setOffset] = useState(0);
   const [deleting, setDeleting] = useState<string | null>(null);
+  // Background refresh runs only after a successful load. A failure stops it,
+  // so a down backend shows one toast instead of one every POLL_MS; the next
+  // successful load (page visit, paging, import, delete) turns it back on.
+  const [polling, setPolling] = useState(false);
 
   const load = useCallback(async () => {
     try {
       setPage(await rmListTraces(PAGE_SIZE, offset));
+      setPolling(true);
     } catch (e) {
+      setPolling(false);
       toast.error(errorMessage(e));
     }
   }, [offset]);
@@ -34,6 +43,14 @@ export default function TracesPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (!polling) return;
+    const timer = setInterval(() => {
+      if (document.visibilityState === "visible") void load();
+    }, POLL_MS);
+    return () => clearInterval(timer);
+  }, [polling, load]);
 
   async function remove(trace: RmTraceSummary) {
     const ok = await confirm({
@@ -59,13 +76,11 @@ export default function TracesPage() {
       description="Annotate agent traces with + / − and comments, train a reward model on those labels, then use it to write skills for your agent."
       actions={<ImportTracesDialog onImported={() => void load()} />}
     >
+      {page !== null && <ConnectAgentPanel collapsible={page.total > 0} />}
       {page === null ? (
         <RmListSkeleton />
       ) : page.total === 0 ? (
-        <EmptyState title="No traces yet">
-          Import traces from OpenAI, Anthropic, OpenTelemetry, Langfuse, LangSmith, Claude Code, or Codex to start
-          annotating.
-        </EmptyState>
+        <p className="m-0 text-center text-[12.5px] text-muted-foreground">Waiting for the first trace…</p>
       ) : (
         <>
           <div className="overflow-hidden rounded-lg border border-border">

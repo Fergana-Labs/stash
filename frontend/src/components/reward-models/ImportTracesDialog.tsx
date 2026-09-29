@@ -83,9 +83,9 @@ export default function ImportTracesDialog({ onImported }: { onImported: () => v
       }}
     >
       <DialogTrigger asChild>
-        <Button>
+        <Button variant="outline">
           <Upload />
-          Import traces
+          Import a file
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-2xl">

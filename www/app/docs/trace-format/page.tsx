@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 
-import { Callout, Code, CodeBlock, CodeTabs, H2, H3, P, ParamTable, Title, Subtitle } from "../components";
+import { Code, CodeBlock, CodeTabs, H2, H3, P, ParamTable, Title, Subtitle } from "../components";
 import {
   ANTHROPIC_MESSAGES,
   CLAUDE_CODE,
@@ -36,7 +36,7 @@ export default function TraceFormatPage() {
         <Code>GET /api/v1/rm/export/traces</Code> returns, so an export re-imports cleanly with{" "}
         <Code>format: &quot;stash&quot;</Code>. Pretty-printed here; in a file, each trace is one line.
       </P>
-      <CodeBlock>{STASH_TRACE}</CodeBlock>
+      <CodeBlock lang="json">{STASH_TRACE}</CodeBlock>
 
       <H3>Trace fields</H3>
       <ParamTable
@@ -72,12 +72,10 @@ export default function TraceFormatPage() {
           { name: "metadata", type: "object", desc: 'Free-form, per step. Adapters set {"thinking": true} on model reasoning and {"is_error": true} on failed tool results.' },
         ]}
       />
-      <Callout>
-        A tool call and its result are two steps: an <Code>assistant</Code> step carrying{" "}
-        <Code>tool_name</Code> and <Code>tool_input</Code>, then a <Code>tool</Code> step carrying the
-        output in <Code>content</Code>, joined by <Code>tool_call_id</Code>. Every adapter below produces
-        this pair, and fills in the tool step&apos;s <Code>tool_name</Code> from the matching call.
-      </Callout>
+      <P>
+        Every adapter below writes a tool call and its result as that pair of steps, and fills in the
+        tool step&apos;s <Code>tool_name</Code> from the matching call.
+      </P>
       <P>
         Adapters put an assistant message&apos;s text and each of its tool calls in separate steps. In the
         Stash format you can also put both on one assistant step; the reward model then sees the text
@@ -123,7 +121,7 @@ export default function TraceFormatPage() {
         <Code>format</Code> field tells you which one it picked. When nothing matches, the import fails
         with a <Code>422</Code>:
       </P>
-      <CodeBlock>{`could not detect the trace format; tried: stash, openai_chat, anthropic_messages, otel, langfuse, langsmith, claude_code, codex`}</CodeBlock>
+      <CodeBlock lang="text">{`could not detect the trace format; tried: stash, openai_chat, anthropic_messages, otel, langfuse, langsmith, claude_code, codex`}</CodeBlock>
       <P>
         The whole payload is parsed and checked before anything is stored, so a failed import stores
         nothing. Parse errors name the format, for example <Code>could not parse as otel: …</Code>. Pass an explicit format when you want a payload to
@@ -151,7 +149,7 @@ export default function TraceFormatPage() {
       </P>
 
       <H3>openai_chat</H3>
-      <CodeBlock>{OPENAI_CHAT.code}</CodeBlock>
+      <CodeBlock lang="json">{OPENAI_CHAT.code}</CodeBlock>
       <P>
         <Code>system</Code> and <Code>developer</Code> messages become system steps. Each entry in{" "}
         <Code>tool_calls</Code> becomes an assistant step with <Code>tool_name</Code> from{" "}
@@ -162,7 +160,7 @@ export default function TraceFormatPage() {
       </P>
 
       <H3>anthropic_messages</H3>
-      <CodeBlock>{ANTHROPIC_MESSAGES.code}</CodeBlock>
+      <CodeBlock lang="json">{ANTHROPIC_MESSAGES.code}</CodeBlock>
       <P>
         <Code>system</Code> becomes the first step. Content blocks become steps in order:{" "}
         <Code>text</Code> keeps its role, <Code>tool_use</Code> becomes an assistant tool call step,{" "}
@@ -177,6 +175,7 @@ export default function TraceFormatPage() {
       <CodeTabs
         tabs={[OTEL_OPENINFERENCE, OTEL_GENAI, OTEL_OPENLLMETRY].map((example) => ({
           label: example.label,
+          lang: "json",
           code: example.code,
         }))}
       />
@@ -208,7 +207,7 @@ export default function TraceFormatPage() {
       </P>
 
       <H3>langfuse</H3>
-      <CodeBlock>{LANGFUSE.code}</CodeBlock>
+      <CodeBlock lang="json">{LANGFUSE.code}</CodeBlock>
       <P>
         Send the body of Langfuse&apos;s <Code>GET /api/public/traces/&#123;traceId&#125;</Code>, or a JSON
         array of them. Each trace keeps its Langfuse <Code>id</Code> and uses its <Code>name</Code> as the
@@ -219,7 +218,7 @@ export default function TraceFormatPage() {
       </P>
 
       <H3>langsmith</H3>
-      <CodeBlock>{LANGSMITH.code}</CodeBlock>
+      <CodeBlock lang="json">{LANGSMITH.code}</CodeBlock>
       <P>
         One run per line, grouped by <Code>trace_id</Code>. Only <Code>llm</Code> runs are read, in{" "}
         <Code>start_time</Code> order. Messages can be role/content objects, LangChain-serialized messages
@@ -229,7 +228,7 @@ export default function TraceFormatPage() {
       </P>
 
       <H3>claude_code</H3>
-      <CodeBlock>{CLAUDE_CODE.code}</CodeBlock>
+      <CodeBlock lang="json">{CLAUDE_CODE.code}</CodeBlock>
       <P>
         One session file is one trace, keyed by <Code>sessionId</Code> and titled with the last{" "}
         <Code>ai-title</Code> line. Only <Code>user</Code> and <Code>assistant</Code> lines are read, and
@@ -238,7 +237,7 @@ export default function TraceFormatPage() {
         <Code>anthropic_messages</Code>. <Code>cwd</Code> and <Code>gitBranch</Code> go into the
         trace&apos;s metadata. To import every session in a project, send one request per file:
       </P>
-      <CodeBlock>{`for f in ~/.claude/projects/-Users-me-myrepo/*.jsonl; do
+      <CodeBlock lang="bash">{`for f in ~/.claude/projects/-Users-me-myrepo/*.jsonl; do
   jq -Rs '{format: "claude_code", data: .}' "$f" \\
     | curl -s "$STASH_URL/api/v1/rm/traces/import" \\
         -H "Authorization: Bearer $STASH_API_KEY" \\
@@ -246,7 +245,7 @@ export default function TraceFormatPage() {
 done`}</CodeBlock>
 
       <H3>codex</H3>
-      <CodeBlock>{CODEX.code}</CodeBlock>
+      <CodeBlock lang="json">{CODEX.code}</CodeBlock>
       <P>
         One rollout file is one trace, keyed by the <Code>session_meta</Code> id. Only{" "}
         <Code>response_item</Code> lines are read. <Code>developer</Code> messages become system steps,{" "}

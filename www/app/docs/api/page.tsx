@@ -40,7 +40,7 @@ export default function RewardModelsApiPage() {
         page. Every endpoint reads and writes only the caller&apos;s own traces, annotations, models,
         and runs. If you run your own Stash, set <Code>STASH_URL</Code> to your backend instead.
       </P>
-      <CodeBlock>{`export STASH_URL=https://api.joinstash.ai
+      <CodeBlock lang="bash">{`export STASH_URL=https://api.joinstash.ai
 export STASH_API_KEY=<your key>
 
 curl -s "$STASH_URL/api/v1/rm/formats" ${AUTH}`}</CodeBlock>
@@ -82,7 +82,7 @@ curl -s "$STASH_URL/api/v1/rm/formats" ${AUTH}`}</CodeBlock>
 
       <H2>Formats</H2>
       <Endpoint method="GET" path="/formats">List the import formats this server accepts.</Endpoint>
-      <CodeBlock>{`[{"name": "stash", "description": "…"}, {"name": "openai_chat", "description": "…"}, …]`}</CodeBlock>
+      <CodeBlock lang="json">{`[{"name": "stash", "description": "…"}, {"name": "openai_chat", "description": "…"}, …]`}</CodeBlock>
 
       <H2>Traces</H2>
       <Endpoint method="POST" path="/traces/import">Import one payload of traces.</Endpoint>
@@ -96,6 +96,7 @@ curl -s "$STASH_URL/api/v1/rm/formats" ${AUTH}`}</CodeBlock>
         tabs={[
           {
             label: "curl",
+            lang: "bash",
             code: `jq -Rs '{format: "auto", data: .}' traces.jsonl \\
   | curl -s "$STASH_URL/api/v1/rm/traces/import" \\
       -H "Authorization: Bearer $STASH_API_KEY" \\
@@ -104,6 +105,7 @@ curl -s "$STASH_URL/api/v1/rm/formats" ${AUTH}`}</CodeBlock>
           },
           {
             label: "Python",
+            lang: "python",
             code: `import os, pathlib, requests
 
 resp = requests.post(
@@ -116,7 +118,7 @@ print(resp.json())`,
           },
         ]}
       />
-      <CodeBlock>{`{"format": "openai_chat", "imported": 128, "trace_ids": ["…", …]}`}</CodeBlock>
+      <CodeBlock lang="json">{`{"format": "openai_chat", "imported": 128, "trace_ids": ["…", …]}`}</CodeBlock>
       <P>
         <Code>format</Code> in the response is the format that was used, which tells you what{" "}
         <Code>auto</Code> detected. The import is all or nothing: any error is a <Code>422</Code> and
@@ -134,15 +136,15 @@ print(resp.json())`,
           { name: "offset", type: "integer", desc: "Rows to skip. Default 0." },
         ]}
       />
-      <CodeBlock>{`curl -s "$STASH_URL/api/v1/rm/traces?limit=50&offset=0" ${AUTH}`}</CodeBlock>
+      <CodeBlock lang="bash">{`curl -s "$STASH_URL/api/v1/rm/traces?limit=50&offset=0" ${AUTH}`}</CodeBlock>
       <P>Returns <Code>{`{"traces": [TraceSummary], "total": int}`}</Code>, newest first.</P>
 
       <Endpoint method="GET" path="/traces/{trace_id}">A trace with its steps, annotations, and reward model scores.</Endpoint>
-      <CodeBlock>{`curl -s "$STASH_URL/api/v1/rm/traces/<trace_id>" ${AUTH}`}</CodeBlock>
+      <CodeBlock lang="bash">{`curl -s "$STASH_URL/api/v1/rm/traces/<trace_id>" ${AUTH}`}</CodeBlock>
       <P>Returns a <Code>TraceDetail</Code>. Step ids for annotating come from this response.</P>
 
       <Endpoint method="DELETE" path="/traces/{trace_id}">Delete a trace and its annotations. Returns 204.</Endpoint>
-      <CodeBlock>{`curl -s -X DELETE "$STASH_URL/api/v1/rm/traces/<trace_id>" ${AUTH}`}</CodeBlock>
+      <CodeBlock lang="bash">{`curl -s -X DELETE "$STASH_URL/api/v1/rm/traces/<trace_id>" ${AUTH}`}</CodeBlock>
 
       <H2>Annotations</H2>
       <Endpoint method="POST" path="/traces/{trace_id}/annotations">Annotate a whole trace, or one step.</Endpoint>
@@ -154,7 +156,7 @@ print(resp.json())`,
           { name: "quote", type: "object", desc: "{text, prefix, suffix}: the highlighted span. Requires step_id, and text must appear in the step's content." },
         ]}
       />
-      <CodeBlock>{`curl -s "$STASH_URL/api/v1/rm/traces/<trace_id>/annotations" \\
+      <CodeBlock lang="bash">{`curl -s "$STASH_URL/api/v1/rm/traces/<trace_id>/annotations" \\
   ${JSON_HEADERS} \\
   -d '{"step_id": "<step_id>", "rating": -1, "comment": "Skipped the policy check"}'`}</CodeBlock>
       <P>Returns the <Code>Annotation</Code>. Breaking any rule in the table is a <Code>422</Code>.</P>
@@ -169,12 +171,12 @@ print(resp.json())`,
           { name: "label_error_note", type: "string", desc: "Why the label is wrong." },
         ]}
       />
-      <CodeBlock>{`curl -s -X PATCH "$STASH_URL/api/v1/rm/annotations/<annotation_id>" \\
+      <CodeBlock lang="bash">{`curl -s -X PATCH "$STASH_URL/api/v1/rm/annotations/<annotation_id>" \\
   ${JSON_HEADERS} \\
   -d '{"label_error": true, "label_error_note": "Refund was within policy"}'`}</CodeBlock>
 
       <Endpoint method="DELETE" path="/annotations/{annotation_id}">Delete an annotation. Returns 204.</Endpoint>
-      <CodeBlock>{`curl -s -X DELETE "$STASH_URL/api/v1/rm/annotations/<annotation_id>" ${AUTH}`}</CodeBlock>
+      <CodeBlock lang="bash">{`curl -s -X DELETE "$STASH_URL/api/v1/rm/annotations/<annotation_id>" ${AUTH}`}</CodeBlock>
 
       <H2>Export</H2>
       <P>
@@ -189,7 +191,7 @@ print(resp.json())`,
         The training pairs your current labels produce, capped at 4000:{" "}
         <Code>{`{"chosen": str, "rejected": str}`}</Code>.
       </Endpoint>
-      <CodeBlock>{`curl -s "$STASH_URL/api/v1/rm/export/traces"      ${AUTH} > traces.jsonl
+      <CodeBlock lang="bash">{`curl -s "$STASH_URL/api/v1/rm/export/traces"      ${AUTH} > traces.jsonl
 curl -s "$STASH_URL/api/v1/rm/export/annotations" ${AUTH} > annotations.jsonl
 curl -s "$STASH_URL/api/v1/rm/export/pairs"       ${AUTH} > pairs.jsonl`}</CodeBlock>
 
@@ -204,14 +206,14 @@ curl -s "$STASH_URL/api/v1/rm/export/pairs"       ${AUTH} > pairs.jsonl`}</CodeB
           { name: "max_pairs", type: "integer", desc: "Cap on training pairs. Default 4000." },
         ]}
       />
-      <CodeBlock>{`curl -s "$STASH_URL/api/v1/rm/reward-models" \\
+      <CodeBlock lang="bash">{`curl -s "$STASH_URL/api/v1/rm/reward-models" \\
   ${JSON_HEADERS} \\
   -d '{"name": "refund-policy", "compute": "modal"}'`}</CodeBlock>
       <P>Returns a <Code>RewardModel</Code> with status <Code>queued</Code>.</P>
 
       <Endpoint method="GET" path="/reward-models">List your reward models, newest first.</Endpoint>
       <Endpoint method="GET" path="/reward-models/{id}">Get one reward model. Poll this for status and metrics.</Endpoint>
-      <CodeBlock>{`curl -s "$STASH_URL/api/v1/rm/reward-models/<id>" ${AUTH}`}</CodeBlock>
+      <CodeBlock lang="bash">{`curl -s "$STASH_URL/api/v1/rm/reward-models/<id>" ${AUTH}`}</CodeBlock>
       <Endpoint method="GET" path="/reward-models/{id}/weights">The trained model directory as a .tar.gz.</Endpoint>
       <P>
         The archive (<Code>application/gzip</Code>, named <Code>&lt;name&gt;-reward-model.tar.gz</Code>)
@@ -220,7 +222,7 @@ curl -s "$STASH_URL/api/v1/rm/export/pairs"       ${AUTH} > pairs.jsonl`}</CodeB
         <Code>chat_template.jinja</Code>, and <Code>reward_stats.json</Code>. A <Code>404</Code> until the
         model has succeeded.
       </P>
-      <CodeBlock>{`curl -s "$STASH_URL/api/v1/rm/reward-models/<id>/weights" ${AUTH} -OJ`}</CodeBlock>
+      <CodeBlock lang="bash">{`curl -s "$STASH_URL/api/v1/rm/reward-models/<id>/weights" ${AUTH} -OJ`}</CodeBlock>
 
       <H2>GEPA runs</H2>
       <Endpoint method="POST" path="/gepa-runs">Queue a GEPA run that writes a skill.</Endpoint>
@@ -235,7 +237,7 @@ curl -s "$STASH_URL/api/v1/rm/export/pairs"       ${AUTH} > pairs.jsonl`}</CodeB
           { name: "max_metric_calls", type: "integer", desc: "Budget of example evaluations. Default 150." },
         ]}
       />
-      <CodeBlock>{`curl -s "$STASH_URL/api/v1/rm/gepa-runs" \\
+      <CodeBlock lang="bash">{`curl -s "$STASH_URL/api/v1/rm/gepa-runs" \\
   ${JSON_HEADERS} \\
   -d '{
     "reward_model_id": "<reward_model_id>",
@@ -250,7 +252,7 @@ curl -s "$STASH_URL/api/v1/rm/export/pairs"       ${AUTH} > pairs.jsonl`}</CodeB
       <Endpoint method="GET" path="/gepa-runs">List your GEPA runs, newest first.</Endpoint>
       <Endpoint method="GET" path="/gepa-runs/{id}">Get one run, including its result once it succeeds.</Endpoint>
       <Endpoint method="GET" path="/gepa-runs/{id}/skill">The best skill as a text/markdown attachment named SKILL.md.</Endpoint>
-      <CodeBlock>{`curl -s "$STASH_URL/api/v1/rm/gepa-runs/<id>/skill" ${AUTH} -o SKILL.md`}</CodeBlock>
+      <CodeBlock lang="bash">{`curl -s "$STASH_URL/api/v1/rm/gepa-runs/<id>/skill" ${AUTH} -o SKILL.md`}</CodeBlock>
       <P>A <Code>404</Code> until the run has succeeded.</P>
 
       <H2>SQL query</H2>
@@ -267,12 +269,14 @@ curl -s "$STASH_URL/api/v1/rm/export/pairs"       ${AUTH} > pairs.jsonl`}</CodeB
         tabs={[
           {
             label: "curl",
+            lang: "bash",
             code: `curl -s "$STASH_URL/api/v1/rm/query" \\
   ${JSON_HEADERS} \\
   -d '{"sql": "SELECT source_format, count(*) AS n FROM traces GROUP BY 1"}'`,
           },
           {
             label: "Python",
+            lang: "python",
             code: `import os, requests
 
 resp = requests.post(
@@ -285,7 +289,9 @@ rows = [dict(zip(body["columns"], row)) for row in body["rows"]]`,
           },
         ]}
       />
-      <CodeBlock>{`{"columns": ["source_format", "n"], "rows": [["openai_chat", 128], ["otel", 40]], "truncated": false}`}</CodeBlock>
+      <CodeBlock lang="json">{`{"columns": ["source_format", "n"],
+ "rows": [["openai_chat", 128], ["otel", 40]],
+ "truncated": false}`}</CodeBlock>
 
       <H3>Tables</H3>
       <Table
@@ -303,10 +309,10 @@ rows = [dict(zip(body["columns"], row)) for row in body["rows"]]`,
 
       <H3>Example: negative rate per tool</H3>
       <P>Which tools are your reviewers rating down most often?</P>
-      <CodeBlock>{NEGATIVE_RATE_SQL}</CodeBlock>
+      <CodeBlock lang="sql">{NEGATIVE_RATE_SQL}</CodeBlock>
 
       <H3>Example: worst-scored traces nobody has reviewed</H3>
-      <CodeBlock>{`SELECT t.title, sc.score
+      <CodeBlock lang="sql">{`SELECT t.title, sc.score
 FROM scores sc
 JOIN traces t ON t.id = sc.trace_id
 WHERE sc.reward_model_name = 'refund-policy'
@@ -315,7 +321,7 @@ ORDER BY sc.score ASC
 LIMIT 20`}</CodeBlock>
 
       <H3>Example: where reviewers disagree</H3>
-      <CodeBlock>{`SELECT trace_id, step_index,
+      <CodeBlock lang="sql">{`SELECT trace_id, step_index,
        count(*) FILTER (WHERE rating = 1)  AS plus,
        count(*) FILTER (WHERE rating = -1) AS minus
 FROM annotations

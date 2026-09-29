@@ -30,7 +30,7 @@ export default function ImplementationPage() {
         and skill writing happen in <Code>rm_worker</Code>, a separate Python process with its own
         virtualenv (torch, transformers, gepa, litellm), which the backend starts once per job.
       </P>
-      <CodeBlock>{FLOW}</CodeBlock>
+      <CodeBlock lang="text">{FLOW}</CodeBlock>
       <P>
         This data is separate from Stash sessions: traces imported here don&apos;t appear in your
         session history, and sessions aren&apos;t imported here.

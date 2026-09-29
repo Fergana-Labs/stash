@@ -34,7 +34,7 @@ export default function TrainingPage() {
         <Code>AutoModelForSequenceClassification</Code> with <Code>num_labels=1</Code>, so the output is a
         single score <Code>r(x)</Code>, and trains it with the Bradley–Terry loss:
       </P>
-      <CodeBlock>{`loss = −log σ( r(chosen) − r(rejected) )`}</CodeBlock>
+      <CodeBlock lang="text">{`loss = −log σ( r(chosen) − r(rejected) )`}</CodeBlock>
       <P>
         The loss only cares about the gap between the two scores: it pushes the chosen text above the
         rejected one. A score has no fixed scale on its own. Compare scores from the same model, never
@@ -47,7 +47,7 @@ export default function TrainingPage() {
       </P>
 
       <H2>Start a training job</H2>
-      <CodeBlock>{`curl -s "$STASH_URL/api/v1/rm/reward-models" \\
+      <CodeBlock lang="bash">{`curl -s "$STASH_URL/api/v1/rm/reward-models" \\
   -H "Authorization: Bearer $STASH_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -162,7 +162,7 @@ export default function TrainingPage() {
         text with the worker&apos;s own loader, which truncates exactly like training did. Run it with
         the worker&apos;s Python from the repo root:
       </P>
-      <CodeBlock>{`from rm_worker.scoring import RewardModel
+      <CodeBlock lang="python">{`from rm_worker.scoring import RewardModel
 
 model = RewardModel("/var/stash/rm/<reward_model_id>/model")
 rewards = model.score([rendered_trace])   # raw rewards, one per text`}</CodeBlock>
@@ -178,11 +178,10 @@ rewards = model.score([rendered_trace])   # raw rewards, one per text`}</CodeBlo
         from the API or the Download weights button in the app. Before that, the endpoint returns{" "}
         <Code>404</Code>. The archive holds one folder named after the model:
       </P>
-      <CodeBlock>{`curl -s "$STASH_URL/api/v1/rm/reward-models/<id>/weights" \\
+      <CodeBlock lang="bash">{`curl -s "$STASH_URL/api/v1/rm/reward-models/<id>/weights" \\
   -H "Authorization: Bearer $STASH_API_KEY" -OJ
-tar xzf refund-policy-reward-model.tar.gz
-
-refund-policy-reward-model/
+tar xzf refund-policy-reward-model.tar.gz`}</CodeBlock>
+      <CodeBlock lang="text">{`refund-policy-reward-model/
   config.json
   model.safetensors
   tokenizer.json
@@ -193,7 +192,7 @@ refund-policy-reward-model/
         It loads with Transformers. Truncate from the left, as training did, so long conversations
         keep their end:
       </P>
-      <CodeBlock>{`from transformers import AutoModelForSequenceClassification, AutoTokenizer
+      <CodeBlock lang="python">{`from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
 path = "refund-policy-reward-model"
 tokenizer = AutoTokenizer.from_pretrained(path, truncation_side="left")
@@ -210,7 +209,7 @@ reward = model(**batch).logits[0, 0].item()   # raw reward; higher is better`}</
         repo root, and reads the results back. Jobs are dispatched on the Celery <Code>heavy</Code>{" "}
         queue, so a Celery worker must be consuming that queue.
       </P>
-      <CodeBlock>{`# from the repo root
+      <CodeBlock lang="bash">{`# from the repo root
 uv venv -p 3.12 rm_worker/.venv
 uv pip install --python rm_worker/.venv/bin/python -r rm_worker/requirements.txt
 
@@ -248,18 +247,18 @@ RM_ARTIFACT_DIR=/var/stash/rm`}</CodeBlock>
           ["python -m rm_worker.gepa_run --job-dir DIR", "job.json, gepa_examples.jsonl", "result.json"],
         ]}
       />
-      <CodeBlock>{JOB_DIR}</CodeBlock>
+      <CodeBlock lang="text">{JOB_DIR}</CodeBlock>
       <P><Code>job.json</Code> for each kind:</P>
-      <CodeBlock>{`{"kind": "train", "base_model": "Qwen/Qwen3-0.6B", "epochs": 1, "compute": "local"}
+      <CodeBlock lang="json">{`{"kind": "train", "base_model": "Qwen/Qwen3-0.6B", "epochs": 1, "compute": "local"}
 
 {"kind": "gepa", "reward_model_dir": "<RM_ARTIFACT_DIR>/<reward_model_id>/model",
  "skill_name": "…", "skill_description": "…", "task_model": "…", "task_api_base": null,
  "reflection_model": "…", "max_metric_calls": 150}`}</CodeBlock>
       <P><Code>result.json</Code> for a training job:</P>
-      <CodeBlock>{`{"metrics": {"train_pairs": …, "eval_pairs": …, "eval_accuracy": …,
+      <CodeBlock lang="json">{`{"metrics": {"train_pairs": …, "eval_pairs": …, "eval_accuracy": …,
              "final_loss": …, "epochs": …, "device": "…", "seconds": …}}`}</CodeBlock>
       <P>For a GEPA job:</P>
-      <CodeBlock>{`{"best_skill": "…", "best_score": …, "seed_skill": "…", "seed_score": …,
+      <CodeBlock lang="json">{`{"best_skill": "…", "best_score": …, "seed_skill": "…", "seed_score": …,
  "candidates": [{"skill": "…", "score": …}]}`}</CodeBlock>
       <P>Each skill in it is the full rendered <Code>SKILL.md</Code>, frontmatter included.</P>
       <P>

@@ -82,7 +82,7 @@ export default function AnnotationsPage() {
         the same scheme Stash uses for comments on pages. The surrounding context tells two identical
         phrases in the same step apart.
       </P>
-      <CodeBlock>{`{"text": "I've issued a full refund", "prefix": "Sure! ", "suffix": " to your card"}`}</CodeBlock>
+      <CodeBlock lang="json">{`{"text": "I've issued a full refund", "prefix": "Sure! ", "suffix": " to your card"}`}</CodeBlock>
       <P>
         The quote&apos;s <Code>text</Code> must appear in the step&apos;s content, or the request fails
         with a <Code>422</Code>. The quote shows reviewers what the comment is about. A step-level
@@ -95,7 +95,7 @@ export default function AnnotationsPage() {
         <Code>label_error: true</Code> and a note. The annotation stays visible in the trace, and
         training and GEPA skip it.
       </P>
-      <CodeBlock>{`curl -s -X PATCH "$STASH_URL/api/v1/rm/annotations/<annotation_id>" \\
+      <CodeBlock lang="bash">{`curl -s -X PATCH "$STASH_URL/api/v1/rm/annotations/<annotation_id>" \\
   -H "Authorization: Bearer $STASH_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{"label_error": true, "label_error_note": "Policy allows refunds on damaged items"}'`}</CodeBlock>
@@ -112,7 +112,7 @@ export default function AnnotationsPage() {
         annotation, with its <Code>id</Code>, <Code>author_id</Code>, <Code>author_name</Code>, and{" "}
         <Code>created_at</Code>.
       </P>
-      <CodeBlock>{`curl -s "$STASH_URL/api/v1/rm/traces/<trace_id>/annotations" \\
+      <CodeBlock lang="bash">{`curl -s "$STASH_URL/api/v1/rm/traces/<trace_id>/annotations" \\
   -H "Authorization: Bearer $STASH_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -161,9 +161,9 @@ export default function AnnotationsPage() {
         <a href="/docs/trace-format#stash-trace-format" className="text-brand hover:underline">Trace format</a>{" "}
         renders as:
       </P>
-      <CodeBlock>{RENDERED}</CodeBlock>
+      <CodeBlock lang="text">{RENDERED}</CodeBlock>
       <P>An assistant step with both text and a tool call renders both lines, text first:</P>
-      <CodeBlock>{RENDERED_TEXT_AND_CALL}</CodeBlock>
+      <CodeBlock lang="text">{RENDERED_TEXT_AND_CALL}</CodeBlock>
 
       <H3>4. Pair within the same granularity</H3>
       <P>
@@ -192,7 +192,7 @@ export default function AnnotationsPage() {
         annotations are included, with <Code>label_error: true</Code>, so the export is a complete
         record.
       </P>
-      <CodeBlock>{EXPORT_LINE}</CodeBlock>
+      <CodeBlock lang="json">{EXPORT_LINE}</CodeBlock>
       <ParamTable
         params={[
           { name: "trace_id", type: "string", desc: "Stash's id for the trace." },

@@ -39,6 +39,20 @@ export function Table({ head, rows }: { head: string[]; rows: React.ReactNode[][
 
 export { Pipeline } from "./pipeline";
 
+// A looping, muted recording of a step in the Stash app, shown inline.
+export function DemoClip({ src }: { src: string }) {
+  return (
+    <video
+      src={src}
+      autoPlay
+      loop
+      muted
+      playsInline
+      className="my-6 block aspect-[8/5] w-full rounded-2xl border border-border bg-surface"
+    />
+  );
+}
+
 export function Endpoint({ method, path, children }: { method: string; path: string; children?: React.ReactNode }) {
   const color: Record<string, string> = {
     GET: "text-green-700",

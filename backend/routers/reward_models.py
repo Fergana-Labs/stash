@@ -12,14 +12,14 @@ from pathlib import Path
 from typing import Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field, field_validator
 from starlette.background import BackgroundTask
 
 from ..auth import get_current_user
 from ..database import get_pool
-from ..services.rm import annotations, datasets, jobs, query, traces
+from ..services.rm import annotations, datasets, jobs, otel_ingest, query, traces
 from ..services.rm.adapters import TraceFormatError, list_formats
 from ..tasks import reward_models as rm_tasks
 
@@ -141,6 +141,25 @@ async def get_trace(trace_id: UUID, current_user: dict = Depends(get_current_use
 async def delete_trace(trace_id: UUID, current_user: dict = Depends(get_current_user)) -> None:
     if not await traces.delete_trace(current_user["id"], trace_id):
         raise HTTPException(status_code=404, detail="Trace not found")
+
+
+@router.post("/otel/v1/traces")
+async def receive_otlp_traces(
+    request: Request, current_user: dict = Depends(get_current_user)
+) -> Response:
+    """OTLP/HTTP trace receiver: OTEL_EXPORTER_OTLP_ENDPOINT=<base>/api/v1/rm/otel."""
+    content_type = request.headers.get("content-type", "")
+    try:
+        payload = otel_ingest.decode_request(
+            await request.body(), content_type, request.headers.get("content-encoding")
+        )
+        await otel_ingest.ingest(current_user["id"], payload)
+    except otel_ingest.UnsupportedContentType as exc:
+        raise HTTPException(status_code=415, detail=str(exc)) from exc
+    except TraceFormatError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    body, media_type = otel_ingest.encode_response(content_type)
+    return Response(content=body, media_type=media_type)
 
 
 # ── Annotations ───────────────────────────────────────────────────────────

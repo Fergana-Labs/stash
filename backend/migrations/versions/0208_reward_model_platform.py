@@ -28,6 +28,19 @@ def upgrade() -> None:
     """)
     op.execute("CREATE INDEX rm_traces_owner_created ON rm_traces (owner_user_id, created_at DESC)")
 
+    # Raw OTLP/JSON spans from the live receiver. A trace's spans arrive across
+    # several export batches, so each batch rebuilds the trace from all of them.
+    op.execute("""
+        CREATE TABLE rm_otel_spans (
+            owner_user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            otel_trace_id text NOT NULL,
+            span_id text NOT NULL,
+            span jsonb NOT NULL,
+            received_at timestamptz NOT NULL DEFAULT now(),
+            PRIMARY KEY (owner_user_id, otel_trace_id, span_id)
+        )
+    """)
+
     op.execute("""
         CREATE TABLE rm_trace_steps (
             id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -136,4 +149,5 @@ def downgrade() -> None:
     op.execute("DROP TABLE rm_reward_models")
     op.execute("DROP TABLE rm_annotations")
     op.execute("DROP TABLE rm_trace_steps")
+    op.execute("DROP TABLE rm_otel_spans")
     op.execute("DROP TABLE rm_traces")

@@ -704,6 +704,17 @@ def _parse_otel(data: str) -> list[CanonicalTrace]:
     return traces
 
 
+def otel_spans_have_messages(spans: list[dict]) -> bool:
+    """Whether any OTLP/JSON span carries an LLM conversation.
+
+    A live trace's spans arrive in batches; until an LLM span is among them
+    there is nothing to build a trace from yet, and that is not an error.
+    """
+    return any(
+        _otel_attribute_steps(_otel_attributes(span.get("attributes", []))) for span in spans
+    )
+
+
 # ---------------------------------------------------------------------------
 # langfuse: GET /api/public/traces/{traceId} responses (TraceWithFullDetails in
 # the Langfuse OpenAPI spec), one object or a JSON array of them

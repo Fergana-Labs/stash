@@ -44,7 +44,7 @@ export default function GepaPage() {
         <Code>name</Code> and <Code>description</Code>) followed by Markdown instructions. Your agent
         loads it into its context. Your agent&apos;s own system prompt is never rewritten.
       </P>
-      <CodeBlock>{SKILL_EXAMPLE}</CodeBlock>
+      <CodeBlock lang="markdown">{SKILL_EXAMPLE}</CodeBlock>
       <P>
         You choose the name and the description, which says when the agent should use the skill. GEPA
         writes the body.
@@ -94,7 +94,7 @@ export default function GepaPage() {
         The task model&apos;s system message is the example&apos;s own system prompt, a blank line, then
         the skill. A trace with no system steps gets the skill block alone.
       </P>
-      <CodeBlock>{SYSTEM_MESSAGE}</CodeBlock>
+      <CodeBlock lang="text">{SYSTEM_MESSAGE}</CodeBlock>
       <P>
         The conversation the reward model scores is rendered like training text (see{" "}
         <a href="/docs/annotations#3-render-each-target-to-text" className="text-brand hover:underline">Annotations</a>),
@@ -110,7 +110,7 @@ export default function GepaPage() {
       </P>
       <H3>The calibrated score</H3>
       <P>GEPA&apos;s score for one example is</P>
-      <CodeBlock>{`score = sigmoid( (reward − mean) / std )`}</CodeBlock>
+      <CodeBlock lang="text">{`score = sigmoid( (reward − mean) / std )`}</CodeBlock>
       <P>
         where <Code>mean</Code> and <Code>std</Code> are the mean and standard deviation of the reward
         model&apos;s scores over all your traces at training time, saved with the model in{" "}
@@ -127,17 +127,13 @@ export default function GepaPage() {
         A trace with no input before its first assistant step has nothing to replay, so it is skipped.
         If no examples are left, the run fails.
       </P>
-      <Callout>
-        Traces with only ratings still count as examples; their feedback is the score alone.
-        Traces with comments give the reflection model much more to work with.
-      </Callout>
 
       <H2>Start a run</H2>
       <P>
         You need one of your reward models with status <Code>succeeded</Code>. Another user&apos;s
         model is a <Code>404</Code>; one that hasn&apos;t finished training is a <Code>422</Code>.
       </P>
-      <CodeBlock>{`curl -s "$STASH_URL/api/v1/rm/gepa-runs" \\
+      <CodeBlock lang="bash">{`curl -s "$STASH_URL/api/v1/rm/gepa-runs" \\
   -H "Authorization: Bearer $STASH_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -180,6 +176,7 @@ export default function GepaPage() {
         tabs={[
           {
             label: "vLLM",
+            lang: "bash",
             code: `vllm serve Qwen/Qwen3-8B --port 8000
 
 # in the run request:
@@ -188,6 +185,7 @@ export default function GepaPage() {
           },
           {
             label: "SGLang",
+            lang: "bash",
             code: `python -m sglang.launch_server --model-path Qwen/Qwen3-8B --port 30000
 
 # in the run request:
@@ -202,7 +200,7 @@ export default function GepaPage() {
       </Callout>
 
       <H2>Reading the results</H2>
-      <CodeBlock>{`curl -s "$STASH_URL/api/v1/rm/gepa-runs/<id>" \\
+      <CodeBlock lang="bash">{`curl -s "$STASH_URL/api/v1/rm/gepa-runs/<id>" \\
   -H "Authorization: Bearer $STASH_API_KEY" \\
   | jq '{status, seed_score, best_score}'`}</CodeBlock>
       <Table
@@ -231,7 +229,7 @@ export default function GepaPage() {
         Download the best skill as <Code>SKILL.md</Code>. Until the run succeeds, this is a{" "}
         <Code>404</Code>.
       </P>
-      <CodeBlock>{`mkdir -p .claude/skills/refund-policy
+      <CodeBlock lang="bash">{`mkdir -p .claude/skills/refund-policy
 curl -s "$STASH_URL/api/v1/rm/gepa-runs/<id>/skill" \\
   -H "Authorization: Bearer $STASH_API_KEY" \\
   -o .claude/skills/refund-policy/SKILL.md`}</CodeBlock>
