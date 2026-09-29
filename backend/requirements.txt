@@ -20,6 +20,9 @@ nh3>=0.2
 claude-agent-sdk>=0.1.50
 mcp>=1.23.0,<2
 celery[redis]>=5.4
+# billiard 4.3.0 (Celery's process pool) breaks Celery 5.6.3 on macOS: every task
+# fails with "not enough values to unpack (expected 3, got 0)" in celery/app/trace.py.
+billiard<4.3
 duckdb>=1.1
 redis>=5.0
 cryptography>=42.0
