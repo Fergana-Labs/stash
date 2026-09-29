@@ -35,9 +35,25 @@ const STAGES = [
   },
 ];
 
+// The recordings are real-time; at 3x the four steps cycle in about 20 seconds.
+const PLAYBACK_RATE = 3;
+
 export function Pipeline() {
-  const [openN, setOpenN] = useState<string | null>(null);
+  // The recordings play through in order on their own, so a reader sees the
+  // whole flow without clicking. Closing the open card stops the cycle.
+  const [openN, setOpenN] = useState<string | null>(STAGES[0].n);
+  const [progress, setProgress] = useState(0);
   const open = STAGES.find((s) => s.n === openN);
+
+  function select(n: string | null) {
+    setProgress(0);
+    setOpenN(n);
+  }
+
+  function playNext() {
+    const index = STAGES.findIndex((s) => s.n === openN);
+    select(STAGES[(index + 1) % STAGES.length].n);
+  }
 
   return (
     <figure className="my-8 overflow-hidden rounded-2xl border border-border bg-white">
@@ -49,8 +65,8 @@ export function Pipeline() {
               key={s.n}
               type="button"
               aria-expanded={isOpen}
-              onClick={() => setOpenN(isOpen ? null : s.n)}
-              className={`group flex h-full flex-col items-start justify-start px-5 py-5 text-left transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 ${
+              onClick={() => select(isOpen ? null : s.n)}
+              className={`group relative flex h-full flex-col items-start justify-start px-5 py-5 text-left transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 ${
                 isOpen ? "bg-surface" : "bg-white hover:bg-surface"
               }`}
             >
@@ -74,6 +90,14 @@ export function Pipeline() {
                 <PlayIcon />
                 {isOpen ? "Hide" : "Watch"}
               </div>
+              {isOpen && (
+                <div className="absolute inset-x-0 bottom-0 h-[3px] bg-border-subtle">
+                  <div
+                    className="h-full bg-brand transition-[width] duration-200 ease-linear"
+                    style={{ width: `${progress * 100}%` }}
+                  />
+                </div>
+              )}
             </button>
           );
         })}
@@ -83,9 +107,17 @@ export function Pipeline() {
           key={open.video}
           src={open.video}
           autoPlay
-          loop
           muted
           playsInline
+          ref={(video) => {
+            // Set on mount: the first clip's metadata can load before React hydrates,
+            // so a loadedmetadata handler would miss it.
+            if (!video) return;
+            video.defaultPlaybackRate = PLAYBACK_RATE;
+            video.playbackRate = PLAYBACK_RATE;
+          }}
+          onTimeUpdate={(e) => setProgress(e.currentTarget.currentTime / e.currentTarget.duration)}
+          onEnded={playNext}
           className="block aspect-[8/5] w-full border-t border-border-subtle bg-surface"
         />
       )}
