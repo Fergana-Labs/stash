@@ -10,6 +10,7 @@ import type { User } from "@/lib/types";
 import { Toaster } from "@/components/ui/sonner";
 import Persistence from "./persistence";
 import Rail from "./rail";
+import RewardRail from "./reward-rail";
 import Topbar from "./topbar";
 import Explorer, { type ExplorerSection } from "./explorer";
 import Workbench from "./workbench";
@@ -126,12 +127,15 @@ export default function WorkspaceShell({
   // The console links to these shared viewers for its users' data and sources.
   // DeveloperGate requires a platform workspace before mounting their content.
   const isPlatformResource = /^\/(p|f|folders|tables|sessions|integrations)\/[^/]+$/.test(pathname);
-  const redirectToPlatform = user.developer_platform_only &&
+  const developerOnly = user.developer_platform_only && !user.reward_models_enabled;
+  const redirectToRewards = user.reward_models_enabled && (pathname === "/" || pathname === "/developer");
+  const redirectToPlatform = developerOnly &&
     !isPlatformResource && pathname !== "/settings" &&
     pathname !== "/developer" && !pathname.startsWith("/developer/");
   useEffect(() => {
     if (redirectToPlatform) router.replace("/developer");
-  }, [redirectToPlatform, router]);
+    if (redirectToRewards) router.replace("/reward-models");
+  }, [redirectToPlatform, redirectToRewards, router]);
   const scope = useScope();
   const routeSection = sectionForPath(pathname);
   const requestedSection = searchParams.get("section");
@@ -158,9 +162,9 @@ export default function WorkspaceShell({
 
   // A Developer Console context gets its own chrome — the infra-dashboard
   // shell, not the consumer app's rail and workbench.
-  if (redirectToPlatform) return null;
+  if (redirectToPlatform || redirectToRewards) return null;
 
-  if (user.developer_platform_only || scope?.view === "developer") {
+  if (!user.reward_models_enabled && (developerOnly || scope?.view === "developer")) {
     return (
       <>
         <DeveloperShell user={user} onLogout={onLogout}>
@@ -179,7 +183,9 @@ export default function WorkspaceShell({
       <Persistence />
       <Topbar />
       <div className="flex min-h-0 flex-1">
-        <Rail user={user} onLogout={onLogout} />
+        {user.reward_models_enabled
+          ? <RewardRail user={user} onLogout={onLogout} />
+          : <Rail user={user} onLogout={onLogout} />}
         <div className="min-w-0 flex-1 pb-0">
           {section && !isFilesHome ? (
             <div className="flex h-full">

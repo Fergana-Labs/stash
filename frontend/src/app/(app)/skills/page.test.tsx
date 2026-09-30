@@ -24,6 +24,9 @@ function render(ui: ReactNode) {
   return renderBase(ui, { wrapper: ConfirmDialogProvider });
 }
 
+const auth = vi.hoisted(() => ({ user: { reward_models_enabled: true } }));
+vi.mock("@/hooks/useAuth", () => ({ useAuth: () => auth }));
+
 const router = vi.hoisted(() => ({
   push: vi.fn(),
 }));
@@ -372,4 +375,14 @@ describe("SkillsPage", () => {
       screen.getByText("Use when a customer reports boost loss."),
     ).toBeInTheDocument();
   });
+});
+
+
+it("keeps the existing Skills empty state for accounts outside the rollout", async () => {
+  auth.user.reward_models_enabled = false;
+  vi.mocked(listSkills).mockResolvedValue([]);
+  render(<SkillsPage />);
+  expect(await screen.findByText("Create one from your terminal:")).toBeVisible();
+  expect(screen.getByRole("button", { name: "Grid" })).toBeVisible();
+  auth.user.reward_models_enabled = true;
 });

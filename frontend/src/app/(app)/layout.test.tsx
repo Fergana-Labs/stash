@@ -15,7 +15,7 @@ const route = vi.hoisted(() => ({
       description: string;
       created_at: string;
       last_seen: string;
-      developer_platform_only: boolean;
+      developer_platform_only: boolean; reward_models_enabled: boolean;
     },
     loading: false,
     logout: vi.fn(),
@@ -45,7 +45,7 @@ vi.mock("../../hooks/useAuth", () => ({
 
 const user = {
   id: "user-1",
-  developer_platform_only: false,
+  developer_platform_only: false, reward_models_enabled: false,
   name: "henry",
   display_name: "Henry",
   description: "",

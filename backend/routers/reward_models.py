@@ -23,7 +23,17 @@ from ..services.rm import annotations, datasets, jobs, otel_ingest, query, trace
 from ..services.rm.adapters import TraceFormatError, list_formats
 from ..tasks import reward_models as rm_tasks
 
-router = APIRouter(prefix="/api/v1/rm", tags=["reward-models"])
+
+async def require_reward_models(user: dict = Depends(get_current_user)) -> None:
+    if not user["reward_models_enabled"]:
+        raise HTTPException(
+            status_code=404, detail="Reward models are not enabled for this account"
+        )
+
+
+router = APIRouter(
+    prefix="/api/v1/rm", tags=["reward-models"], dependencies=[Depends(require_reward_models)]
+)
 
 DEFAULT_BASE_MODEL = "Qwen/Qwen3-0.6B"
 DEFAULT_EPOCHS = 1

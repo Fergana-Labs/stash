@@ -11,6 +11,21 @@ This is a separate product area inside the Stash monorepo. It does not read or
 write the existing `sessions` / `history_events` tables; connecting the two is
 later work.
 
+## Rollout
+
+`users.reward_models_enabled` gates the reward-model API, routes, and sidebar.
+Migration 0210 leaves every existing account disabled and sets the database
+insert default to true for future accounts, including password and Auth0 signups.
+The stored flag survives profile edits and later sign-ins. Existing accounts
+retain their current workspace or developer console; new accounts land on Traces.
+An operator can disable the flag for an individual account without deleting data.
+
+The UI supports comments; training currently still requires preference ratings
+stored through the API. Comment-only or automatic feedback training is not implemented.
+Production also needs the `rm_worker` runtime and durable job artifacts accessible
+to both the worker and API. The current backend Dockerfile does not package that
+runtime, so merging this branch alone does not deploy a working training service.
+
 ## Components
 
 ```mermaid

@@ -66,6 +66,11 @@ function LoginPageInner() {
       return;
     }
 
+    if (user.reward_models_enabled) {
+      router.push("/reward-models");
+      return;
+    }
+
     if (user.developer_platform_only) {
       router.push("/developer");
       return;
