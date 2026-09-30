@@ -1,12 +1,12 @@
 import type { Metadata } from "next";
 
-import { Callout, Code, CodeBlock, H2, H3, P, ParamTable, Title, Subtitle } from "../components";
+import { Code, CodeBlock, H2, H3, P, ParamTable, Title, Subtitle } from "../components";
 import { NextPage, Table } from "../parts";
 
 export const metadata: Metadata = {
   title: "Annotations · Stash Docs",
   description:
-    "Rate and comment on agent traces, anchor comments to quoted spans, flag bad labels, and see exactly how annotations become reward model training pairs.",
+    "Comment on agent traces, anchor feedback to quoted spans, and see how comments, user corrections, and API ratings become training pairs.",
   alternates: { canonical: "/docs/annotations" },
 };
 
@@ -32,19 +32,19 @@ export default function AnnotationsPage() {
     <>
       <Title>Annotations</Title>
       <Subtitle>
-        Review traces like a Google Doc: highlight, comment, rate. Ratings train the reward model; comments steer GEPA.
+        Highlight a response and explain what should change. Comments and explicit user corrections can train reward models and guide skill generation.
       </Subtitle>
 
       <H2>What an annotation is</H2>
       <P>
         An annotation belongs to one trace and, optionally, one step in it. It carries a rating, a
-        comment, or both. A trace can have any number of annotations.
+        comment, or both. The UI creates comments; ratings are available through the API. A trace can have any number of annotations.
       </P>
       <ParamTable
         params={[
           { name: "step_id", type: "string | null", desc: "null annotates the whole trace. Set it to one of the trace's step ids to annotate that step." },
           { name: "rating", type: "1 | -1 | null", desc: "1 is +, −1 is −, null is a comment with no rating. Not allowed on system steps." },
-          { name: "comment", type: "string | null", desc: "Free text. Sent to GEPA as feedback on this trace." },
+          { name: "comment", type: "string | null", desc: "Free text. Actionable feedback can produce training pairs and is also sent to GEPA." },
           {
             name: "quote",
             type: "object | null",
@@ -59,7 +59,7 @@ export default function AnnotationsPage() {
         the table gets a <Code>422</Code> that says which one.
       </P>
 
-      <H3>Rating the trace or one step</H3>
+      <H3>API ratings</H3>
       <P>
         Rate the whole trace when the outcome is what matters (&quot;resolved the ticket&quot;). Rate a
         step when one decision is the problem (&quot;called <Code>issue_refund</Code> before{" "}
@@ -101,8 +101,7 @@ export default function AnnotationsPage() {
   -d '{"label_error": true, "label_error_note": "Policy allows refunds on damaged items"}'`}</CodeBlock>
       <P>
         On each trace summary, <Code>label_error_count</Code> counts flagged annotations, and{" "}
-        <Code>positive_count</Code> / <Code>negative_count</Code> leave them out, so they count exactly
-        the ratings that train.
+        <Code>positive_count</Code> / <Code>negative_count</Code> leave them out. These count explicit API ratings; feedback-derived pairs are not included.
       </P>
 
       <H2>Annotating over the API</H2>
@@ -117,7 +116,6 @@ export default function AnnotationsPage() {
   -H "Content-Type: application/json" \\
   -d '{
     "step_id": "<step_id>",
-    "rating": -1,
     "comment": "Promised a refund without checking the policy",
     "quote": {"text": "I'"'"'ve issued a full refund", "prefix": "Sure! ", "suffix": " to your card"}
   }'`}</CodeBlock>
@@ -129,8 +127,32 @@ export default function AnnotationsPage() {
       <H2>From annotations to training pairs</H2>
       <P>
         The reward model trains on preference pairs: one text that should score higher (chosen) and
-        one that should score lower (rejected). Stash builds them from your ratings in five steps.
+        one that should score lower (rejected). Only the model&apos;s selected traces supply pairs.
+        There are two sources: feedback-derived alternatives and explicit API ratings.
       </P>
+
+      <H3>Comments and user corrections</H3>
+      <P>
+        The worker uses a model to identify explicit, actionable feedback about an assistant response
+        and generate an alternative to the same context. Each pair records which response the feedback
+        prefers, the source ID, a verbatim evidence quote, and a rationale. These are interpretations
+        of feedback, not direct human preference votes.
+      </P>
+      <P>
+        Silence, a new question, or a tool error is not a preference. Ambiguous feedback is skipped.
+        The cited source must exist, a user correction must follow the response, and a step comment
+        must refer to that response. Tool calls and system steps cannot be revision targets.
+        Malformed extraction fails the job. Flagged comments are excluded.
+      </P>
+      <P>
+        Both responses share the original conversation prefix. System steps and later messages,
+        including the correction, are excluded from the training text. The exact pairs and evidence
+        are persisted with the model. Training combines API-rating pairs followed by feedback pairs,
+        caps them at <Code>max_pairs</Code> (default 4000), and requires at least two usable pairs.
+      </P>
+
+      <H3>Explicit API ratings</H3>
+      <P>Ratings supplied through the API produce pairs as follows:</P>
 
       <H3>1. Drop flagged annotations</H3>
       <P>Every annotation with <Code>label_error = true</Code> is removed before anything else.</P>
@@ -172,19 +194,6 @@ export default function AnnotationsPage() {
         step 4). The pairs are shuffled with seed 0 and capped at <Code>max_pairs</Code> (default
         4000), so the same labels always produce the same training set.
       </P>
-
-      <H3>5. Check there is something to learn</H3>
-      <P>
-        With no pairs, meaning no chosen and rejected target at the same granularity, the job fails
-        with <Code>need at least one + and one − label</Code>. Training also holds one pair out for
-        evaluation, so it needs at least two pairs; with exactly one, it fails with{" "}
-        <Code>need at least 2 preference pairs to hold one out for evaluation, got 1</Code>. Two +
-        traces and one − trace are the smallest set that trains.
-      </P>
-      <Callout type="tip">
-        See the pairs before you train: <Code>GET /api/v1/rm/export/pairs</Code> returns them as JSONL{" "}
-        <Code>{`{"chosen": "...", "rejected": "..."}`}</Code>.
-      </Callout>
 
       <H2>Exporting annotations</H2>
       <P>

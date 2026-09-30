@@ -14,7 +14,7 @@ export const metadata: Metadata = {
 const FLOW = `import   trace file ─ adapter ─▶ traces, steps
 annotate annotations ─────────▶ annotations
 
-train    pairs.jsonl ─ rm_worker ─▶ model/, scores
+train    selected feedback ─ pairs.jsonl ─ rm_worker ─▶ private S3 checkpoint, scores
 skill    gepa_examples.jsonl ─ rm_worker ─▶ SKILL.md
 
 query    your rows ─▶ in-memory DuckDB ─▶ result`;
@@ -26,9 +26,10 @@ export default function ImplementationPage() {
     <>
       <Title>Implementation</Title>
       <P>
-        The backend stores traces and annotations in Postgres and never runs a model itself. Training
-        and skill writing happen in <Code>rm_worker</Code>, a separate Python process with its own
-        virtualenv (torch, transformers, gepa, litellm), which the backend starts once per job.
+        The backend stores traces, annotations, and training evidence in Postgres. A dedicated
+        reward worker extracts preferences through a model-provider API, then dispatches training
+        and skill generation to <Code>rm_worker</Code>. GPU libraries run in a local ML environment
+        or inside Modal; the API never imports torch.
       </P>
       <CodeBlock lang="text">{FLOW}</CodeBlock>
       <P>
@@ -50,7 +51,11 @@ export default function ImplementationPage() {
 
       <H2>Annotations to preference pairs</H2>
       <P>
-        Training uses pairs of texts where one should score higher than the other. Stash drops
+        Training uses only selected traces. Comments and explicit later user corrections can
+        produce an original/revised response pair with a shared context and cited evidence. The
+        model-generated revision and preference are interpretations of feedback, not direct human votes.
+        Ambiguous feedback is skipped; invalid extraction fails the job. Explicit API ratings also
+        produce pairs: Stash drops
         annotations flagged as label errors, sums the ratings on each trace and each step, and calls a
         target chosen if its sum is positive and rejected if negative. Each target is rendered as{" "}
         <Code>&lt;role&gt;: &lt;content&gt;</Code> lines without system steps; a step target includes
@@ -61,7 +66,7 @@ export default function ImplementationPage() {
 
       <H2>Training</H2>
       <P>
-        A training job runs on the Celery <Code>heavy</Code> queue. The backend writes the pairs and
+        A training job runs on the dedicated Celery <Code>reward</Code> exchange/queue. The backend writes the pairs and
         the traces to score into a job directory under <Code>RM_ARTIFACT_DIR</Code>, runs{" "}
         <Code>rm_worker</Code> with <Code>RM_WORKER_PYTHON</Code>, and reads the results back. The worker
         fine-tunes the base model (<Code>Qwen/Qwen3-0.6B</Code> by default) as a single-output
@@ -73,27 +78,36 @@ export default function ImplementationPage() {
       <H2>Scoring</H2>
       <P>
         After training, the worker scores every trace the owner has, and those raw rewards are what the
-        app and the API show. It also saves their mean and standard deviation in{" "}
+        app and the API show, attributed to their model. Separately, it scores both chosen and
+        rejected texts from the training and held-out pairs and saves their mean and standard deviation in{" "}
         <Code>model/reward_stats.json</Code>. GEPA uses them to calibrate each reward to{" "}
-        <Code>sigmoid((reward − mean) / std)</Code>, so 0.5 is an average trace and a good reply still
+        <Code>sigmoid((reward − mean) / std)</Code>, so 0.5 corresponds to the calibration mean and a good reply still
         has room to score higher. Details:{" "}
         <Link href="/docs/gepa#the-calibrated-score" className={link}>The calibrated score</Link>.
       </P>
 
       <H2>Skill writing (GEPA)</H2>
       <P>
-        Each annotated trace becomes an example: its own system prompt, plus the non-system steps before
+        Each selected trace with replayable input becomes an example: its own system prompt, plus the non-system steps before
         the agent&apos;s first reply. For each candidate skill, the worker calls your task model with the
         system prompt and the skill in the system message, scores the reply with the reward model, and
-        sends the score and your reviewers&apos; comments to a reflection model, which writes the next
+        sends the score, unflagged comments, and recorded feedback evidence to a reflection model, which writes the next
         skill body. The reward model never sees the system message, so a skill can only raise its score
         by changing what the agent says. The result is the highest-scoring skill. Details:{" "}
         <Link href="/docs/gepa" className={link}>Skills (GEPA)</Link>.
       </P>
 
+      <H2>Checkpoint storage</H2>
+      <P>
+        Training uploads a private S3 checkpoint before succeeding. The API authorizes a five-minute
+        download URL; GEPA downloads that checkpoint into a fresh temporary workspace. The API never
+        needs access to the training worker&apos;s filesystem. Modal returns only JSON results and
+        scores, and receives no database or queue credentials.
+      </P>
+
       <H2>REST and SQL</H2>
       <P>
-        Everything is under <Code>/api/v1/rm</Code> with bearer auth, and every row belongs to one user.
+        Everything is under <Code>/api/v1/rm</Code> with bearer auth, and every row belongs to one user. Accounts outside the new-account experiment receive 404 from every reward-model endpoint.
         The SQL endpoint loads only the caller&apos;s traces, steps, annotations, and scores into a new
         in-memory DuckDB per query, with file and network access turned off, a 1000-row cap, and a
         10-second limit. Details: <Link href="/docs/api" className={link}>API reference</Link>.

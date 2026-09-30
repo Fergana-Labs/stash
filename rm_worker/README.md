@@ -1,56 +1,88 @@
 # rm_worker
 
-The ML side of the reward model training platform: trains Bradley–Terry reward
-models, scores traces with them, and uses GEPA to write a skill (a SKILL.md
-the agent loads into its context) with a trained reward model as the metric. It has its own venv because it depends on torch; the backend never
-imports it.
+Trains Bradley–Terry reward models, scores traces, and uses GEPA to write
+`SKILL.md` instructions. GPU libraries run in this package's own environment;
+the API imports only the lightweight artifact helper, never torch.
 
-## How the backend calls it
+## Execution and storage
 
-The backend writes a job directory (see "Job directory contract" in
-`docs/reward-models/DESIGN.md`) and runs one of these with `RM_WORKER_PYTHON`
-from the repo root, capturing stdout/stderr into `worker.log`:
+The API records `RM_COMPUTE` (`local` or `modal`) on each model. Clients cannot
+set `compute` in a training request. A dedicated Celery worker consumes the
+`reward` exchange/queue, builds pairs from selected traces, and runs a subprocess
+with `RM_WORKER_PYTHON`. Comments and explicit later user corrections can supply
+pairs; at least two are required. Exact pairs and cited evidence are saved in
+Postgres before training.
 
-| command | reads | writes |
+| command | reads | returns to the job directory |
 |---|---|---|
 | `python -m rm_worker.train --job-dir DIR` | `job.json`, `pairs.jsonl`, `score_items.jsonl` | `model/`, `scores.jsonl`, `result.json` |
-| `python -m rm_worker.modal_train --job-dir DIR` | same | same, trained on a Modal A10G |
+| `python -m rm_worker.modal_runner --job-dir DIR` | training or GEPA inputs | `result.json`, plus `scores.jsonl` for training |
 | `python -m rm_worker.gepa_run --job-dir DIR` | `job.json`, `gepa_examples.jsonl` | `result.json` |
 
-A non-zero exit means the job failed; the reason is at the end of `worker.log`.
+Local training uses MPS, CUDA, or CPU according to the machine. Modal runs
+training and GEPA on an A10G with a 20-minute limit. Its GPU process receives
+only inputs plus storage/model-provider credentials; no database or queue
+credentials. It returns JSON results, not checkpoint bytes.
 
-- Training runs on MPS on Apple silicon, CUDA when present, otherwise CPU.
-  `job.json` is `{"kind": "train", "base_model", "epochs", "compute"}`.
-  Max length (1024 tokens; long texts are truncated from the left so the end
-  of the conversation survives), learning rate (1e-5) and batch size (4) are
-  constants in `train.py`.
-- `modal_train` needs Modal credentials (`~/.modal.toml` or `MODAL_TOKEN_ID` /
-  `MODAL_TOKEN_SECRET`). The first run builds the image (about 2 minutes).
-  The trained model comes back from Modal as one in-memory tarball (2.4 GB for
-  Qwen3-0.6B in fp32); base models much larger than that will need a Modal Volume.
-- `gepa_run` needs the API key for the LiteLLM model strings it is given
-  (for example `ANTHROPIC_API_KEY` for `anthropic/...`) in its environment.
-  The score GEPA sees is `sigmoid((reward - mean) / std)`, in [0, 1], where
-  mean and std come from `model/reward_stats.json`. Training writes that file
-  from the rewards of every scored trace. The raw rewards of a confident
-  model push the sigmoid to 0 or 1, which leaves GEPA nothing to improve.
-  `scores.jsonl` keeps raw rewards.
-  Before GEPA starts, one call to the reflection model reads every example's
-  annotator comments (and the start of each conversation) and returns the
-  skill's `name` and `description` as JSON. An invalid name or description
-  fails the job. GEPA then evolves only the skill's body; the seed body is the
-  description. The skill's purpose is to teach the agent to behave the way the
-  annotators rewarded. Each candidate is loaded into the
-  task model's system message (after the example's own system prompt) as
-  `<skill name="...">` + the rendered SKILL.md + `</skill>`. The system message
-  is left out of the text the reward model scores. A failed reflection model
-  call fails the job, and so does a run that never reached the reflection model.
+Both runtimes upload checkpoint archives to private S3 before marking training
+successful. `RM_ARTIFACT_DIR` is temporary job storage, not durable model storage.
+GEPA downloads the model identified by `reward_model_key` into its own temporary
+workspace. The API returns a five-minute signed URL for weights downloads.
+Archives contain a `reward-model/` directory with weights, tokenizer, and
+`reward_stats.json`.
 
-## Setup
+See the [job directory contract](../docs/reward-models/DESIGN.md#job-directory-contract-backend--worker)
+for input/output fields. A non-zero exit fails the job; `worker.log` holds the
+subprocess output. Model settings are 1024 tokens (left truncation), learning
+rate 1e-5, and batch size 4.
+
+GEPA uses `sigmoid((reward - mean) / std)`. The saved mean and standard deviation
+come from rewards for both chosen and rejected texts in the training and held-out
+pairs. The reflection model generates the skill's name and description, then
+GEPA evolves its body. Each candidate is included in the task model's system
+message; the reward model scores the conversation without that system message.
+
+## Local setup
+
+From the repository root:
 
 ```bash
 uv venv -p 3.12 rm_worker/.venv
 uv pip install --python rm_worker/.venv/bin/python -r rm_worker/requirements.txt
 ```
 
-Then point the backend at it: `RM_WORKER_PYTHON=<repo>/rm_worker/.venv/bin/python`.
+Set these in the root `.env`, which `start.sh` loads:
+
+```dotenv
+RM_COMPUTE=local
+RM_WORKER_PYTHON=/absolute/path/to/stash/rm_worker/.venv/bin/python
+RM_ARTIFACT_DIR=/absolute/path/to/rm-job-scratch
+ANTHROPIC_API_KEY=<provider-key>
+S3_ENDPOINT=<storage-origin>
+S3_BUCKET=<private-bucket>
+S3_ACCESS_KEY=<access-key>
+S3_SECRET_KEY=<secret-key>
+S3_REGION=<region>
+```
+
+S3 is required even for local training. The API and reward worker need the same
+storage configuration. `ANTHROPIC_API_KEY` supports feedback extraction and the
+default GEPA models. Other task/reflection models need their provider keys.
+Start the local stack with `./start.sh`; it includes a reward worker with
+concurrency 1. A standalone worker uses the backend environment:
+
+```bash
+celery -A backend.celery_app worker --loglevel=info --concurrency=1 -Q reward
+```
+
+## Hosted setup
+
+Set `RM_COMPUTE=modal` on the API and reward worker. The backend image includes
+the runner and sets `RM_WORKER_PYTHON=/usr/local/bin/python` and
+`RM_ARTIFACT_DIR=/tmp/stash-rm`. Add `MODAL_TOKEN_ID` and `MODAL_TOKEN_SECRET` to
+the reward worker, along with the storage/provider settings above and the
+same `DATABASE_URL` and `REDIS_URL` as the API. Modal builds the ML environment
+from `rm_worker/requirements.txt`; torch is not installed in the API image.
+
+See [Hosted rollout](../docs/reward-models/ROLLOUT.md) for account gating and
+verification. New accounts enter the experiment; existing accounts stay disabled.

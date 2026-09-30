@@ -35,42 +35,48 @@ flowchart LR
 Stash's broader work focuses on extracting reliable feedback signals from messy
 production traces and using them to improve prompts, skills, and ultimately
 model weights. The [reward-model product docs](https://www.joinstash.ai/docs)
-cover trace annotation, reward-model training, and skill optimization with GEPA;
-those training and optimization implementations are not included in this
-repository. Our research focuses on improving the reliability of feedback
-extracted from production traces.
+cover trace review, reward-model training, and skill optimization with GEPA.
+The implementation is included in `backend/services/rm/` and `rm_worker/`.
+Our research focuses on improving the reliability of feedback extracted from
+production traces.
+
+The reward-model experiment is enabled for accounts created after the rollout.
+Existing accounts retain their current experience. Access is enforced in both
+the UI and API; see the [rollout guide](docs/reward-models/ROLLOUT.md).
 
 ## Reward models in action
 
-**Manual annotation is optional.** Use **Auto** mode to learn from traces
-without manually labeling them. If you want to provide explicit feedback, you
-can add ratings and comments yourself.
+**Train from feedback in your traces.** Stash derives preference pairs from
+reviewer comments and explicit later user corrections. You can add comments by
+highlighting a response. There is no separate Auto mode or rating control in the
+UI; existing explicit ratings can be supplied through the API. Training needs
+at least two usable pairs, so traces without actionable feedback may not qualify.
 
-The [product demo](https://www.joinstash.ai/docs) below shows the optional
-manual-annotation workflow for a refund-support agent, from reviewer feedback
-to a reusable skill. These screenshots use demo traces; the displayed scores
-are from that example run.
+The [product demo](https://www.joinstash.ai/docs) below follows a refund-support
+agent from reviewer feedback to a reusable skill. These screenshots show an
+earlier interface with demo data; the current controls are described below.
 
-**1. Add feedback if desired, or use Auto mode.** For manual annotation, label a
-trace or step, highlight the response, and explain the correction.
+**1. Review a trace.** Highlight a response and explain what should change.
+Later user corrections already present in a trace can also supply evidence.
 
 <!-- Frame from www/public/docs/demo/annotate.mp4 at 10 seconds. -->
 <p align="center">
   <img src="docs/assets/reward-trace-feedback.png" alt="Refund-support trace with a highlighted refusal and reviewer feedback explaining how to handle a damaged order" width="900" />
 </p>
 
-**2. Train a reward model from trace feedback.** In the manual workflow shown
-here, select examples with positive and negative labels to teach the model
-what reviewers prefer.
+**2. Train a reward model from trace feedback.** Select traces and choose
+**Create new reward model**. The worker extracts supported preferences, records
+their evidence, and trains the model. Derived pairs are interpretations of
+feedback, not direct human votes.
 
 <!-- Frame from www/public/docs/demo/train.mp4 at 3 seconds. -->
 <p align="center">
   <img src="docs/assets/reward-model-training.png" alt="Six annotated traces selected for reward-model training, with three positive and three negative labels" width="900" />
 </p>
 
-**3. Turn the reward signal into a skill.** GEPA uses the reward model and
-reviewer comments to optimize instructions. Download the resulting `SKILL.md`
-for your agent to use in future runs.
+**3. Turn the reward signal into a skill.** Choose **View skill** on a trained
+model. It opens an existing run or starts one using GEPA, the selected traces,
+and their feedback. Download the resulting `SKILL.md` for your agent.
 
 <!-- Frame from www/public/docs/demo/skill.mp4 at 20 seconds. -->
 <p align="center">

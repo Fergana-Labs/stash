@@ -10,22 +10,12 @@ export const metadata: Metadata = {
   alternates: { canonical: "/docs/training" },
 };
 
-const JOB_DIR = `<RM_ARTIFACT_DIR>/<reward_model_id or gepa_run_id>/
-  job.json             # backend: {"kind": "train" | "gepa", ...params}
-  pairs.jsonl          # train, backend: {"chosen": str, "rejected": str}
-  score_items.jsonl    # train, backend: {"trace_id": str, "text": str}
-  gepa_examples.jsonl  # gepa, backend: {"trace_id", "system": str | null, "messages": [{role, content}], "feedback": [str]}
-  result.json          # worker
-  scores.jsonl         # train, worker: {"trace_id": str, "score": float}
-  model/               # train, worker: weights, tokenizer, reward_stats.json
-  worker.log           # worker`;
-
 export default function TrainingPage() {
   return (
     <>
       <Title>Training</Title>
       <Subtitle>
-        A small language model with a scalar head, trained on your + / − pairs to score traces the way your reviewers would.
+        A small language model with a scalar head, trained on supported feedback from selected traces.
       </Subtitle>
 
       <H2>The model</H2>
@@ -41,39 +31,51 @@ export default function TrainingPage() {
         across models.
       </P>
       <P>
-        Pairs come from your annotations, and the reward model never sees system steps;{" "}
+        Pairs come from actionable comments, explicit later user corrections, and API ratings on the selected traces. The reward model never sees system steps;{" "}
         <a href="/docs/annotations#from-annotations-to-training-pairs" className="text-brand hover:underline">Annotations</a>{" "}
         describes exactly how pairs are built and rendered.
       </P>
 
       <H2>Start a training job</H2>
+      <P>
+        In the app, select traces and choose <strong>Create new reward model</strong>. There is no
+        separate Auto mode or rating control in the UI. The experiment is enabled for new accounts;
+        accounts that existed at rollout receive 404 from reward-model APIs.
+      </P>
       <CodeBlock lang="bash">{`curl -s "$STASH_URL/api/v1/rm/reward-models" \\
   -H "Authorization: Bearer $STASH_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
     "name": "refund-policy-v2",
-    "compute": "local",
+    "trace_ids": ["<trace_id>"],
     "epochs": 2
   }'`}</CodeBlock>
       <ParamTable
         params={[
           { name: "name", type: "string", desc: "Display name.", required: true },
-          { name: "compute", type: "string", desc: "local or modal.", required: true },
+          { name: "trace_ids", type: "string[]", desc: "At least one trace UUID owned by you. Only these traces supply training pairs.", required: true },
           { name: "base_model", type: "string", desc: "Hugging Face model id to fine-tune. Default Qwen/Qwen3-0.6B." },
           { name: "epochs", type: "integer", desc: "Passes over the training pairs. Default 1." },
-          { name: "max_pairs", type: "integer", desc: "Cap on pairs after shuffling with seed 0. Default 4000." },
+          { name: "max_pairs", type: "integer", desc: "Cap on combined API-rating and feedback-derived pairs. Default 4000." },
         ]}
       />
       <P>
-        Pairs are built from your labels when the job starts. <Code>num_pairs</Code> on the reward
-        model is how many it used, held-out pairs included.
+        The worker extracts supported preferences and saves each generated alternative with its
+        source ID, verbatim evidence quote, and rationale. These are model interpretations of
+        feedback, not direct human votes. Ambiguous feedback is skipped; invalid extraction fails
+        the job. At least two usable pairs are required. <Code>num_pairs</Code> includes held-out pairs.
+      </P>
+      <P>
+        The deployment selects <Code>RM_COMPUTE</Code>; sending <Code>compute</Code> or any unknown
+        request field returns 422. Extraction and the minimum pair count are checked after queueing,
+        before downloading the base model.
       </P>
 
       <H3>Status</H3>
       <P>
         A reward model moves through <Code>queued</Code> → <Code>running</Code> →{" "}
         <Code>succeeded</Code> or <Code>failed</Code>. Metrics and scores are stored in the same step that
-        marks it succeeded, so a succeeded model always has both. On failure, <Code>error</Code> holds the
+        marks it succeeded, so a succeeded model has scores, metrics, and a private stored checkpoint. On failure, <Code>error</Code> holds the
         reason: the last 2000 characters of <Code>worker.log</Code> when the worker failed.
       </P>
 
@@ -92,7 +94,7 @@ export default function TrainingPage() {
 
       <H2>Choosing a base model</H2>
       <P>
-        Any Hugging Face model that loads as <Code>AutoModelForSequenceClassification</Code> works.
+        The base model must support <Code>AutoModelForSequenceClassification</Code> and fit the deployment&apos;s memory and time limits.
         Start with the default, <Code>Qwen/Qwen3-0.6B</Code>: it is small enough to train on a laptop,
         so you can check your labels produce a useful model before paying for a bigger one. Move to a
         larger base model when held-out accuracy stops improving as you add labels.
@@ -103,14 +105,14 @@ export default function TrainingPage() {
         head={["compute", "runs on"]}
         rows={[
           ["local", "The machine running the Stash worker: MPS on Apple silicon, CUDA when a GPU is present, otherwise CPU."],
-          ["modal", "A Modal A10G GPU, with a 6-hour limit. Same training code; only the device changes."],
+          ["modal", "A Modal A10G GPU, with a 20-minute limit per training or GEPA invocation. Same training code; only the device changes."],
         ]}
       />
       <P>
-        With <Code>modal</Code>, the worker uploads the job&apos;s inputs, trains remotely, and gets
-        the model, scores, and metrics back as one download, so the job directory ends up the same as
-        after a local run. Returning the weights in one piece is practical up to about 3B parameters.
-        The first Modal run also builds the container image, which takes about 2 minutes.
+        With <Code>modal</Code>, the GPU process receives the inputs, uploads the checkpoint directly
+        to private S3, and returns only JSON results and scores. It receives storage and model-provider
+        credentials, but no database, queue, or integration credentials. The ML image is built from{" "}
+        <Code>rm_worker/requirements.txt</Code>.
       </P>
       <P>
         The device used is recorded in <Code>metrics.device</Code>.
@@ -118,8 +120,8 @@ export default function TrainingPage() {
 
       <H2>Metrics</H2>
       <P>
-        The model never trains on the held-out pairs; they measure whether it learned your preference
-        or memorized your examples.
+        The held-out pairs are not used to update the model. The split is by pair, so related examples
+        may appear in both sets; accuracy alone does not establish performance on independent traces.
       </P>
       <Table
         head={["metrics field", "meaning"]}
@@ -130,12 +132,12 @@ export default function TrainingPage() {
           ["final_loss", "Mean Bradley–Terry loss over the last epoch's batches."],
           ["epochs", "Epochs run."],
           ["device", "mps, cuda, or cpu."],
-          ["seconds", "Wall-clock time of the worker run, including scoring."],
+          ["seconds", "Worker training time, including scoring and checkpoint upload."],
         ]}
       />
       <Callout type="warning">
         With a handful of pairs, the held-out split is one or two pairs and <Code>eval_accuracy</Code>{" "}
-        is close to meaningless. Read it once you have dozens of labels.
+        is too noisy to establish quality. Check behavior on separate traces before relying on scores.
       </Callout>
 
       <H2>Scores</H2>
@@ -148,119 +150,79 @@ export default function TrainingPage() {
         Sorting unannotated traces by score is a fast way to find what to review next.
       </P>
       <P>
-        GEPA calibrates rewards against the mean and standard deviation of these scores, so its
-        scores fall between 0 and 1 with 0.5 at your average trace; see{" "}
+        GEPA uses the mean and standard deviation of rewards for both chosen and rejected texts in
+        the training and held-out pairs. Its score falls between 0 and 1, with 0.5 at that calibration
+        mean, not a probability of correctness; see{" "}
         <a href="/docs/gepa#the-calibrated-score" className="text-brand hover:underline">the calibrated score</a>.
       </P>
 
-      <H2>Where the weights go</H2>
+      <H2>Downloading the weights</H2>
       <P>
-        The model and its tokenizer are saved together in{" "}
-        <Code>RM_ARTIFACT_DIR/&lt;reward_model_id&gt;/model</Code>, along with{" "}
-        <Code>reward_stats.json</Code>: the mean and standard deviation of the model&apos;s scores over
-        your traces at training time, which GEPA uses to calibrate. On a self-hosted install, score new
-        text with the worker&apos;s own loader, <Code>rm_worker.scoring.RewardModel</Code>, which
-        truncates exactly like training did. Run it with the worker&apos;s Python from the repo root:
+        Choose <strong>Download weights</strong> on a succeeded model. The owner-authorized API
+        returns <Code>{`{"url": "https://…"}`}</Code> with a five-minute signed URL, not archive bytes.
+        Download from that URL without forwarding your Stash API key. Unowned or unfinished models
+        return 404. Checkpoints live in private S3 storage, independent of the training filesystem.
       </P>
-      <CodeBlock lang="python">{`model = RewardModel("/var/stash/rm/<reward_model_id>/model")
-rewards = model.score([rendered_trace])   # raw rewards, one per text`}</CodeBlock>
-      <P>
-        Render input text the same way training does (see{" "}
-        <a href="/docs/annotations#3-render-each-target-to-text" className="text-brand hover:underline">rendering</a>),
-        or scores won&apos;t be comparable.
-      </P>
-
-      <H3>Downloading the weights</H3>
-      <P>
-        Once a model has succeeded, download its <Code>model/</Code> directory as a <Code>.tar.gz</Code>{" "}
-        from the API or the Download weights button in the app. Before that, the endpoint returns{" "}
-        <Code>404</Code>. The archive holds one folder named after the model:
-      </P>
-      <CodeBlock lang="bash">{`curl -s "$STASH_URL/api/v1/rm/reward-models/<id>/weights" \\
-  -H "Authorization: Bearer $STASH_API_KEY" -OJ
-tar xzf refund-policy-reward-model.tar.gz`}</CodeBlock>
-      <CodeBlock lang="text">{`refund-policy-reward-model/
+      <CodeBlock lang="bash">{`set -euo pipefail
+reward_weights_url="$(curl -fsS "$STASH_URL/api/v1/rm/reward-models/<id>/weights" -H "Authorization: Bearer $STASH_API_KEY" | jq -er '.url')"
+curl -fL "$reward_weights_url" --output reward-model.tar.gz
+tar xzf reward-model.tar.gz`}</CodeBlock>
+      <CodeBlock lang="text">{`reward-model/
   config.json
   model.safetensors
   tokenizer.json
   tokenizer_config.json
   chat_template.jinja
-  reward_stats.json      # mean and std of scores at training time`}</CodeBlock>
+  reward_stats.json`}</CodeBlock>
       <P>
-        It loads with Transformers&apos; <Code>AutoTokenizer</Code> and{" "}
-        <Code>AutoModelForSequenceClassification</Code>. Truncate from the left, as training did, so
-        long conversations keep their end:
+        With worker dependencies installed, run this from the repository root after extracting the
+        archive. The loader applies the same truncation as training:
       </P>
-      <CodeBlock lang="python">{`path = "refund-policy-reward-model"
-tokenizer = AutoTokenizer.from_pretrained(path, truncation_side="left")
-model = AutoModelForSequenceClassification.from_pretrained(path)
+      <CodeBlock lang="python">{`from rm_worker.scoring import RewardModel
 
-batch = tokenizer([rendered_trace], truncation=True, return_tensors="pt")
-reward = model(**batch).logits[0, 0].item()   # raw reward; higher is better`}</CodeBlock>
+model = RewardModel("reward-model")
+rewards = model.score([rendered_trace])`}</CodeBlock>
+      <P>
+        Render input as described in <a href="/docs/annotations#3-render-each-target-to-text" className="text-brand hover:underline">Annotations</a>.
+        GEPA downloads this same checkpoint into a fresh temporary workspace.
+      </P>
 
       <H2>Self-hosting the worker</H2>
       <P>
-        Training runs in <Code>rm_worker</Code>, a separate Python package with its own virtualenv and{" "}
-        <Code>requirements.txt</Code> (torch, transformers, gepa, litellm, modal). The backend never
-        imports torch. For each job it writes a job directory, runs the worker as a subprocess from the
-        repo root, and reads the results back. Jobs are dispatched on the Celery <Code>heavy</Code>{" "}
-        queue, so a Celery worker must be consuming that queue.
+        A dedicated Celery worker consumes the <Code>reward</Code> exchange/queue with concurrency 1.
+        The API and ingestion workers do not load torch. For local execution, install the ML
+        environment from the repository root:
       </P>
-      <CodeBlock lang="bash">{`# from the repo root
-uv venv -p 3.12 rm_worker/.venv
-uv pip install --python rm_worker/.venv/bin/python -r rm_worker/requirements.txt
-
-# backend/.env
-RM_WORKER_PYTHON=/path/to/stash/rm_worker/.venv/bin/python
-RM_ARTIFACT_DIR=/var/stash/rm`}</CodeBlock>
-      <ParamTable
-        params={[
-          { name: "RM_WORKER_PYTHON", type: "path", desc: "Python interpreter of the rm_worker virtualenv. The backend runs the worker with it.", required: true },
-          { name: "RM_ARTIFACT_DIR", type: "path", desc: "Directory for job directories and trained weights. Must be writable by both the backend and the worker.", required: true },
-        ]}
-      />
+      <CodeBlock lang="bash">{`uv venv -p 3.12 rm_worker/.venv
+uv pip install --python rm_worker/.venv/bin/python -r rm_worker/requirements.txt`}</CodeBlock>
+      <P>Set these in the root <Code>.env</Code>, loaded by <Code>./start.sh</Code>:</P>
+      <CodeBlock lang="text">{`RM_COMPUTE=local
+RM_WORKER_PYTHON=/absolute/path/to/stash/rm_worker/.venv/bin/python
+RM_ARTIFACT_DIR=/absolute/path/to/rm-job-scratch
+ANTHROPIC_API_KEY=<provider-key>
+S3_ENDPOINT=<storage-origin>
+S3_BUCKET=<private-bucket>
+S3_ACCESS_KEY=<access-key>
+S3_SECRET_KEY=<secret-key>
+S3_REGION=<region>`}</CodeBlock>
       <P>
-        Both variables are read when a job runs, not at startup. A missing value fails the job with a
-        message naming the variable. The rest of Stash runs without them.
+        S3 is required even for local training. The API and worker need the same storage settings.{" "}
+        <Code>RM_ARTIFACT_DIR</Code> is temporary scratch space; the API does not need that directory.{" "}
+        <Code>ANTHROPIC_API_KEY</Code> supports feedback extraction and default GEPA models.
+        Start the local stack with <Code>./start.sh</Code>, which includes the reward worker.
       </P>
       <P>
-        For <Code>compute: &quot;modal&quot;</Code>, the worker&apos;s environment also needs Modal
-        credentials: run <Code>modal token new</Code> there, or set <Code>MODAL_TOKEN_ID</Code> and{" "}
-        <Code>MODAL_TOKEN_SECRET</Code>. GEPA runs need the API keys for their models; see{" "}
-        <a href="/docs/gepa#start-a-run" className="text-brand hover:underline">GEPA</a>.
+        For hosted Modal execution, set <Code>RM_COMPUTE=modal</Code> on the API and reward worker.
+        The backend image includes the runner and sets <Code>RM_WORKER_PYTHON=/usr/local/bin/python</Code>{" "}
+        and <Code>RM_ARTIFACT_DIR=/tmp/stash-rm</Code>. The reward worker also needs{" "}
+        <Code>MODAL_TOKEN_ID</Code>, <Code>MODAL_TOKEN_SECRET</Code>, and the same{" "}
+        <Code>DATABASE_URL</Code> and <Code>REDIS_URL</Code> as the API. Its command is:
       </P>
-
-      <H3>Job directory contract</H3>
+      <CodeBlock lang="bash">{`celery -A backend.celery_app worker --loglevel=info --concurrency=1 -Q reward`}</CodeBlock>
       <P>
-        The backend and the worker share nothing but files. A job&apos;s directory is named after the
-        reward model or GEPA run it belongs to. If you want to run the worker by hand or replace it,
-        this is the whole interface:
-      </P>
-      <Table
-        head={["command", "reads", "writes"]}
-        rows={[
-          ["python -m rm_worker.train --job-dir DIR", "job.json, pairs.jsonl, score_items.jsonl", "model/, scores.jsonl, result.json"],
-          ["python -m rm_worker.modal_train --job-dir DIR", "same", "same, trained on a Modal A10G"],
-          ["python -m rm_worker.gepa_run --job-dir DIR", "job.json, gepa_examples.jsonl", "result.json"],
-        ]}
-      />
-      <CodeBlock lang="text">{JOB_DIR}</CodeBlock>
-      <P><Code>job.json</Code> for each kind:</P>
-      <CodeBlock lang="json">{`{"kind": "train", "base_model": "Qwen/Qwen3-0.6B", "epochs": 1, "compute": "local"}
-
-{"kind": "gepa", "reward_model_dir": "<RM_ARTIFACT_DIR>/<reward_model_id>/model",
- "skill_name": "…", "skill_description": "…", "task_model": "…", "task_api_base": null,
- "reflection_model": "…", "max_metric_calls": 150}`}</CodeBlock>
-      <P><Code>result.json</Code> for a training job:</P>
-      <CodeBlock lang="json">{`{"metrics": {"train_pairs": …, "eval_pairs": …, "eval_accuracy": …,
-             "final_loss": …, "epochs": …, "device": "…", "seconds": …}}`}</CodeBlock>
-      <P>For a GEPA job:</P>
-      <CodeBlock lang="json">{`{"best_skill": "…", "best_score": …, "seed_skill": "…", "seed_score": …,
- "candidates": [{"skill": "…", "score": …}]}`}</CodeBlock>
-      <P>Each skill in it is the full rendered <Code>SKILL.md</Code>, frontmatter included.</P>
-      <P>
-        A non-zero exit fails the job. <Code>worker.log</Code> holds the worker&apos;s output, and the
-        reason is at the end of it.
+        The <a href="https://github.com/Fergana-Labs/stash/blob/main/rm_worker/README.md" className="text-brand hover:underline">worker README</a>{" "}
+        and <a href="https://github.com/Fergana-Labs/stash/blob/main/docs/reward-models/DESIGN.md#job-directory-contract-backend--worker" className="text-brand hover:underline">job directory contract</a>{" "}
+        describe subprocess inputs, outputs, and failure handling.
       </P>
 
       <NextPage href="/docs/gepa" label="Skills (GEPA)" />
