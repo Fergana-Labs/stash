@@ -214,7 +214,7 @@ function ActiveSessions() {
   }
 
   return (
-    <section className="rounded-2xl border border-border bg-surface p-6 space-y-4">
+    <section id="api-keys" className="rounded-2xl border border-border bg-surface p-6 space-y-4">
       <div className="flex items-baseline justify-between">
         <div>
           <h2 className="text-base font-semibold text-foreground">API keys & sessions</h2>
