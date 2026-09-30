@@ -499,6 +499,7 @@ export interface RmRewardModelDetail extends RmRewardModel {
 }
 
 export interface RmInferredFeedback {
+  source: "user_feedback" | "ai_judgment";
   trace_id: string;
   step_index: number;
   label: "positive" | "negative" | "unclear";

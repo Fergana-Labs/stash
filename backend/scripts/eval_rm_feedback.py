@@ -29,6 +29,7 @@ async def main() -> None:
         }
         async with semaphore:
             result = await extract_preferences(steps, evidence)
+        result.feedback = [item for item in result.feedback if item.source == "user_feedback"]
         try:
             pairs = render_preferences(uuid4(), steps, evidence, result)
         except ValueError as error:

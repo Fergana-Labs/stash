@@ -52,7 +52,8 @@ corrections. A classifier attributes each judgment to a response and keeps the
 source quote; unclear reactions are excluded from training. You can add comments by
 highlighting a response. There is no separate Auto mode or rating control in the
 UI; existing explicit ratings can be supplied through the API. Training needs
-at least two usable pairs, so traces without actionable feedback may not qualify.
+at least two grounded comparisons. User reactions are used when available; an AI
+assessor also evaluates response quality without manual annotations or reactions.
 
 The [product demo](https://www.joinstash.ai/docs) below follows a refund-support
 agent from reviewer feedback to a reusable skill. These screenshots show an
@@ -66,11 +67,13 @@ Feedback already present in the conversation is extracted automatically during t
   <img src="docs/assets/reward-trace-feedback.png" alt="Refund-support trace with a highlighted refusal and reviewer feedback explaining how to handle a damaged order" width="900" />
 </p>
 
-**2. Train a reward model from trace feedback.** Select traces and choose
+**2. Train a reward model from traces.** Select traces and choose
 **Create new reward model**. The worker extracts supported preferences, records
-their evidence, and trains the model. Derived pairs are interpretations of
-feedback, not direct human votes. **View feedback** shows inferred labels, source
-quotes, and whether each finding was included in the training data.
+their source, and trains the model. AI-generated comparisons receive a separate
+review for grounding and preference quality. **View learning** distinguishes user
+feedback from AI judgments, shows the supporting response or quote, and records
+whether each finding was included in training. AI judgments are model preferences,
+not measured customer satisfaction.
 
 <!-- Frame from www/public/docs/demo/train.mp4 at 3 seconds. -->
 <p align="center">

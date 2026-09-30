@@ -139,6 +139,17 @@ Annotation export (`GET /api/v1/rm/export/annotations`), one per line:
 
 ## Reward model training
 
+No manual annotations or user reactions are required. Each assistant response is
+assessed for task completion, instruction adherence, evidence grounding and
+appropriate uncertainty. A finding's `source` distinguishes `user_feedback` from
+`ai_judgment`. AI judgments cite the target response, never fabricate user reactions,
+and generate a grounded improvement or a plausible weaker alternative. A separate
+model call reviews those comparisons using only the prior context; unsupported
+revisions, ties and reversed preferences are excluded. Failed comparisons remain
+visible in the learning report. These are model preferences, not measured customer
+satisfaction, and held-out accuracy measures agreement with this supervision.
+There is no promise that arbitrary empty or unassessable traces yield a dataset.
+
 Training uses only the traces selected for the model. Explicit ratings supplied
 through the API produce chosen/rejected pairs. A structured LLM classifier extracts
 positive, negative, or unclear feedback from reviewer comments and later user
@@ -146,18 +157,20 @@ reactions, including implicit disappointment and approval. Labels attach to spec
 assistant responses, so a failed response and a successful repair remain distinct.
 The classifier distinguishes complaints about the task from reactions to the agent;
 silence, new tasks, tool errors, and the assistant's own claims are not feedback.
-For each eligible assistant response it generates an alternative to the same
-context, cites a verbatim feedback excerpt, and records which response the
-feedback prefers. Only high-confidence positive/negative findings with a supported
+For each assessable assistant response it generates an alternative to the same
+context and records which response the assessment prefers. Human feedback cites
+a verbatim excerpt; AI judgments carry a code-selected excerpt of the target
+response. Only high-confidence positive/negative findings with a supported
 alternative produce pairs. Confidence is the classifier's judgment, not a calibrated
 probability. Generic disappointment can be recorded without inventing a correction.
 Ambiguous feedback contributes no pair. System prompts and
 future messages are excluded from the rendered training examples.
 
-Code selects each target response and supplies only eligible later user messages or
-reviewer comments to the classifier. Each call returns at most one judgment; code
-assigns its step index. Initial requests and feedback preceding a response cannot
-be cited. Calls use schema-constrained output and run with bounded concurrency
+Code selects each target response, supplies its current text, and limits human
+feedback evidence to later user messages or comments attached to that response.
+Each call returns at most one judgment; code assigns its step index. Initial
+requests and earlier feedback cannot be cited as evaluations of a later response.
+Calls use schema-constrained output and run with bounded concurrency
 (three per trace).
 Evidence is also validated against the original source: the target must be an
 assistant response, corrections must follow it, and step comments must belong
@@ -165,12 +178,12 @@ to it. Malformed extraction fails the job. The exact pairs and evidence are
 stored in `rm_reward_models.training_pairs`. Findings, including abstentions, quotes,
 classifier model, and inclusion in training data, are stored separately in
 `rm_reward_models.feedback` before the minimum-pair check. Failed jobs retain this
-report. The owner-only model detail API and **View feedback** expose it; inferred
+report. The owner-only model detail API and **View learning** expose it; inferred
 findings never create or overwrite human annotations. A null report means extraction
-was not recorded; an empty list means no feedback was found. Extraction stops once
-enough pairs have been collected to reach `max_pairs`.
-Generated alternatives are model
-interpretations of human feedback, not direct human preference votes.
+was not recorded; an empty list means no learning opportunity was found. Extraction
+stops once enough pairs reach `max_pairs`. Explicit human ratings take precedence
+over AI judgments at the same scope. Generated alternatives are model-written,
+not direct human preference votes.
 
 Training is queued immediately; extraction runs in the dedicated `reward`
 worker. Fewer than two pairs fails with an actionable error before downloading
@@ -180,7 +193,10 @@ a model. Flagged comments are excluded. The combined dataset is capped by
 Run `uv run --env-file .env python -m backend.scripts.eval_rm_feedback` for the
 synthetic classifier evaluation (calls the configured LLM API). It checks indirect
 criticism, approval, sarcasm, mixed outcomes, abstention, and prompt injection.
-This small evaluation is not a production accuracy estimate.
+Run `uv run --env-file .env python -m backend.scripts.eval_rm_learning` to assess
+responses without any annotations or user reactions. A correct answer may be
+recognized without producing a pair when its alternative is merely cosmetic.
+These small evaluations are not production accuracy estimates.
 
 The model is `AutoModelForSequenceClassification(num_labels=1)` on the chosen
 base model, trained with the Bradley–Terry loss
@@ -369,7 +385,7 @@ fields.
 
 `RewardModelDetail`: RewardModel fields + `trace_ids` and `feedback` (null before
 extraction is recorded, otherwise an array of `{trace_id, step_index, label,
-confidence, evidence_id, evidence_quote, reason, classifier_model, included_in_training}`).
+confidence, source, evidence_id, evidence_quote, reason, classifier_model, included_in_training}`).
 Labels are `positive | negative | unclear`, confidence is `high | low`, and
 `step_index` is zero-based. `included_in_training` means inclusion in a dataset
 that met the minimum size, not confirmation that the training worker succeeded.
