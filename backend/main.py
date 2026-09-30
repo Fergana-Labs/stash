@@ -1,4 +1,5 @@
 import logging
+import traceback
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -78,6 +79,8 @@ async def lifespan(app: FastAPI):
     # precompute, session summarizer) now run in the Celery `worker` and
     # `beat` services — see backend/celery_app.py.
     await init_db()
+    # Alembic's fileConfig disables loggers created before migrations run.
+    logger.disabled = False
     try:
         await demo_service.seed_demo()
     except Exception:
@@ -183,10 +186,14 @@ async def add_security_headers(request: Request, call_next):
         response = await call_next(request)
     except Exception as exc:
         logger.error(
-            "Unhandled request failed method=%s path=%s exception_type=%s",
+            "Unhandled request failed method=%s path=%s exception_type=%s frames=%s",
             request.method,
             request.url.path,
             type(exc).__name__,
+            [
+                (frame.filename, frame.lineno, frame.name)
+                for frame in traceback.extract_tb(exc.__traceback__)
+            ],
         )
         response = JSONResponse(status_code=500, content={"detail": "Internal server error"})
     for key, value in SECURITY_HEADERS.items():
