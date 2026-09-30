@@ -13,6 +13,7 @@ on:
     paths:
       - "backend/requirements.txt"
       - "backend/requirements-dev.txt"
+      - "rm_worker/requirements.txt"
       - "pyproject.toml"
       - "sdk/pyproject.toml"
       - "frontend/package-lock.json"
@@ -40,6 +41,9 @@ jobs:
       # release yet. Suppressed 2026-07-13; drop the flag once a fix ships.
       - name: Audit backend Python requirements
         run: python -m pip_audit -r backend/requirements.txt -r backend/requirements-dev.txt --ignore-vuln PYSEC-2026-1325
+
+      - name: Audit training worker Python requirements
+        run: python -m pip_audit -r rm_worker/requirements.txt
 
       - name: Audit CLI Python package
         run: python -m pip_audit . --ignore-vuln PYSEC-2026-1325
