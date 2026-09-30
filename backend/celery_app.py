@@ -18,7 +18,7 @@ the same scheduled task multiple times.
 
 from celery import Celery
 from celery.schedules import crontab
-from kombu import Queue
+from kombu import Exchange, Queue
 
 from .config import settings
 
@@ -52,7 +52,12 @@ celery.conf.update(
     task_default_queue="default",
     # Source crawls have their own pool so extraction retries cannot block syncing.
     # Slow extraction, exports, and agent runs use heavy; beat sweeps use default.
-    task_queues=(Queue("default"), Queue("heavy"), Queue("sync"), Queue("reward")),
+    task_queues=(
+        Queue("default"),
+        Queue("heavy"),
+        Queue("sync"),
+        Queue("reward", exchange=Exchange("reward"), routing_key="reward"),
+    ),
     task_routes={
         "backend.tasks.extraction.extract_file_text": {"queue": "heavy"},
         "backend.tasks.drive_extraction.extract_drive_document": {"queue": "heavy"},

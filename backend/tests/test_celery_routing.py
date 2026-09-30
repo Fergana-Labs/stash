@@ -57,3 +57,17 @@ def test_bare_worker_consumes_declared_queues():
     # task_queues. If "heavy" is missing here, a worker whose command
     # predates the split strands every routed task the moment routing ships.
     assert {q.name for q in celery.conf.task_queues} == {"default", "heavy", "sync", "reward"}
+
+
+def test_reward_queue_does_not_subscribe_to_existing_workers_exchange():
+    # A bare Queue("reward") inherits the default exchange/routing key and can
+    # consume ingestion work. Both sides of the reward route must be distinct.
+    queue = celery.amqp.queues["reward"]
+    assert queue.exchange.name == "reward"
+    assert queue.routing_key == "reward"
+    for name in ("default", "heavy", "sync"):
+        assert celery.amqp.queues[name].exchange.name != queue.exchange.name
+    for name in REWARD_TASKS:
+        route = celery.amqp.router.route({}, name)
+        assert route["queue"].exchange.name == "reward"
+        assert route["queue"].routing_key == "reward"
