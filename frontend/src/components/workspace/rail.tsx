@@ -1,12 +1,11 @@
 "use client";
 
-import { Fragment, useEffect, useRef, useState } from "react";
+import { Fragment } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Bot, FolderTree, MessagesSquare, GraduationCap, Home, Wrench, Settings } from "lucide-react";
 import AccountMenu from "@/components/workspace/account-menu";
 import { cn } from "@/lib/utils";
-import { useEscapeKey } from "@/hooks/useEscapeKey";
 import { useWorkspace, type RailSection } from "@/lib/workspace-store";
 import { showToolsAndChat } from "@/lib/flags";
 import type { User } from "@/lib/types";

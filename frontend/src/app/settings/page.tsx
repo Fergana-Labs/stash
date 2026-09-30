@@ -42,7 +42,7 @@ export default function SettingsPage() {
         <div className="w-full max-w-2xl mx-auto space-y-8">
           <button
             type="button"
-            onClick={() => router.push(user.developer_platform_only ? "/developer" : "/")}
+            onClick={() => router.push(user.reward_models_enabled ? "/reward-models" : user.developer_platform_only ? "/developer" : "/")}
             className="cursor-pointer text-sm text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5"
           >
             <span aria-hidden>←</span> Home

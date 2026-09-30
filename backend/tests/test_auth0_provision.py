@@ -52,10 +52,16 @@ async def test_managed_profile_returns_platform_flag(client, pool, monkeypatch):
     profile = await client.get("/api/v1/users/me", headers=headers)
     assert profile.status_code == 200
     assert profile.json()["developer_platform_only"] is True
+    assert profile.json()["reward_models_enabled"] is True
 
     await pool.execute("UPDATE users SET developer_platform_only = false WHERE id = $1", user["id"])
     profile = await client.get("/api/v1/users/me", headers=headers)
     assert profile.json()["developer_platform_only"] is False
+
+    await pool.execute("UPDATE users SET reward_models_enabled = false WHERE id = $1", user["id"])
+    profile = await client.get("/api/v1/users/me", headers=headers)
+    assert profile.json()["reward_models_enabled"] is False
+    assert (await client.get("/api/v1/rm/traces", headers=headers)).status_code == 404
 
 
 @pytest.mark.asyncio

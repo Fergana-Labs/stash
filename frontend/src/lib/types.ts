@@ -1,6 +1,7 @@
 export interface User {
   id: string;
   developer_platform_only: boolean;
+  reward_models_enabled: boolean;
   name: string;
   display_name: string;
   email?: string | null;
@@ -371,4 +372,155 @@ export interface AppFacets {
   untagged: number;
   duplicates: number;
   broken: number;
+}
+
+// ── Reward model platform (/api/v1/rm) ────────────────────────────────────
+// Shapes follow docs/reward-models/DESIGN.md.
+
+export type RmRole = "system" | "user" | "assistant" | "tool";
+export type RmJobStatus = "queued" | "running" | "succeeded" | "failed";
+export type RmCompute = "local" | "modal";
+
+export interface RmFormat {
+  name: string;
+  description: string;
+}
+
+export interface RmImportResult {
+  format: string;
+  imported: number;
+  trace_ids: string[];
+}
+
+export interface RmScore {
+  reward_model_id: string;
+  reward_model_name: string;
+  score: number;
+  created_at: string;
+}
+
+export interface RmTraceSummary {
+  id: string;
+  external_id: string | null;
+  title: string;
+  source_format: string;
+  step_count: number;
+  positive_count: number;
+  negative_count: number;
+  comment_count: number;
+  label_error_count: number;
+  latest_score: Omit<RmScore, "created_at"> | null;
+  created_at: string;
+}
+
+export interface RmStep {
+  id: string;
+  index: number;
+  role: RmRole;
+  content: string;
+  tool_name: string | null;
+  tool_input: Record<string, unknown> | null;
+  tool_call_id: string | null;
+  metadata: Record<string, unknown> | null;
+}
+
+/** The highlighted span inside a step's content, anchored by surrounding text. */
+export interface RmQuote {
+  text: string;
+  prefix: string;
+  suffix: string;
+}
+
+export interface RmAnnotation {
+  id: string;
+  trace_id: string;
+  step_id: string | null;
+  rating: 1 | -1 | null;
+  comment: string | null;
+  quote: RmQuote | null;
+  label_error: boolean;
+  label_error_note: string | null;
+  author_id: string;
+  author_name: string;
+  created_at: string;
+}
+
+export interface RmTraceSpan {
+  id: string;
+  parent_id: string | null;
+  name: string;
+  kind: string | null;
+  start_ns: string;
+  end_ns: string;
+  input: string | null;
+  output: string | null;
+  step_indices: number[];
+}
+
+export interface RmTraceDetail extends RmTraceSummary {
+  spans: RmTraceSpan[];
+  metadata: Record<string, unknown> | null;
+  steps: RmStep[];
+  annotations: RmAnnotation[];
+  scores: RmScore[];
+}
+
+export interface RmTrainMetrics {
+  train_pairs: number;
+  eval_pairs: number;
+  eval_accuracy: number;
+  final_loss: number;
+  epochs: number;
+  device: string;
+  seconds: number;
+}
+
+export interface RmRewardModel {
+  id: string;
+  name: string;
+  base_model: string;
+  compute: RmCompute;
+  epochs: number;
+  status: RmJobStatus;
+  num_pairs: number | null;
+  /** How many traces the user picked to train on. */
+  trace_count: number;
+  metrics: RmTrainMetrics | null;
+  error: string | null;
+  created_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+}
+
+/** GET /reward-models/{id} also returns which traces it trained on. */
+export interface RmRewardModelDetail extends RmRewardModel {
+  trace_ids: string[];
+}
+
+export interface RmGepaCandidate {
+  /** The full rendered SKILL.md. */
+  skill: string;
+  score: number;
+}
+
+export interface RmGepaRun {
+  id: string;
+  reward_model_id: string;
+  /** Written by the run; null until it succeeds. */
+  skill_name: string | null;
+  skill_description: string | null;
+  task_model: string;
+  task_api_base: string | null;
+  reflection_model: string;
+  max_metric_calls: number;
+  status: RmJobStatus;
+  error: string | null;
+  seed_skill: string | null;
+  best_skill: string | null;
+  seed_score: number | null;
+  best_score: number | null;
+  candidates: RmGepaCandidate[] | null;
+  created_at: string;
+  started_at: string | null;
+  finished_at: string | null;
 }

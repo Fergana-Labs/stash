@@ -40,3 +40,4 @@ coverage/
 
 # Local env backup written when rotating keys
 .env.bak
+.rm-artifacts/

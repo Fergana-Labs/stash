@@ -204,3 +204,14 @@ def sprite_exec(monkeypatch):
     seam = Seam()
     seam.calls, seam.replies, seam.redis, seam.writes = calls, replies, fake_redis, writes
     return seam
+
+
+@pytest.fixture
+def rm_title_generator(monkeypatch):
+    from unittest.mock import AsyncMock
+
+    from backend.services.rm import trace_titles
+
+    generate = AsyncMock(return_value="Generated trace title")
+    monkeypatch.setattr(trace_titles, "generate_title", generate)
+    return generate

@@ -65,6 +65,10 @@ function OnboardingInner() {
 
   useEffect(() => {
     if (!loading && !user) router.replace("/login");
+    if (!loading && user?.reward_models_enabled) {
+      router.replace("/reward-models");
+      return;
+    }
     if (!loading && user?.developer_platform_only) router.replace("/developer");
   }, [loading, user, router]);
 
@@ -101,7 +105,7 @@ function OnboardingInner() {
     exitToHome();
   }, [exitToHome, stepIdx]);
 
-  if (loading || !user || user.developer_platform_only) {
+  if (loading || !user || user.reward_models_enabled || user.developer_platform_only) {
     return (
       <div className="min-h-screen flex items-center justify-center text-muted-foreground">Loading…</div>
     );

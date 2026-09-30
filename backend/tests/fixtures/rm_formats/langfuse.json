@@ -1,0 +1,150 @@
+[
+ {
+  "id": "lf-trace-1",
+  "name": "support-chat",
+  "timestamp": "2026-09-01T10:00:00.000Z",
+  "metadata": {},
+  "input": {
+   "question": "Where is my package?"
+  },
+  "output": "It arrives Friday.",
+  "observations": [
+   {
+    "id": "obs-2",
+    "type": "GENERATION",
+    "name": "answer",
+    "startTime": "2026-09-01T10:00:03.000Z",
+    "model": "gpt-4o",
+    "input": [
+     {
+      "role": "system",
+      "content": "You are a support agent."
+     },
+     {
+      "role": "user",
+      "content": "Where is my package?"
+     },
+     {
+      "role": "assistant",
+      "content": null,
+      "tool_calls": [
+       {
+        "id": "call_t1",
+        "type": "function",
+        "function": {
+         "name": "track",
+         "arguments": "{\"id\": \"PKG9\"}"
+        }
+       }
+      ]
+     },
+     {
+      "role": "tool",
+      "tool_call_id": "call_t1",
+      "content": "in transit, ETA Friday"
+     }
+    ],
+    "output": {
+     "role": "assistant",
+     "content": "It arrives Friday."
+    },
+    "traceId": "lf-trace-1",
+    "endTime": "2026-09-01T10:00:03.000Z",
+    "parentObservationId": null,
+    "level": "DEFAULT",
+    "statusMessage": null,
+    "version": null,
+    "metadata": {},
+    "environment": "default"
+   },
+   {
+    "id": "obs-1",
+    "type": "GENERATION",
+    "name": "plan",
+    "startTime": "2026-09-01T10:00:01.000Z",
+    "model": "gpt-4o",
+    "input": {
+     "messages": [
+      {
+       "role": "system",
+       "content": "You are a support agent."
+      },
+      {
+       "role": "user",
+       "content": "Where is my package?"
+      }
+     ]
+    },
+    "output": {
+     "role": "assistant",
+     "content": null,
+     "tool_calls": [
+      {
+       "id": "call_t1",
+       "type": "function",
+       "function": {
+        "name": "track",
+        "arguments": "{\"id\": \"PKG9\"}"
+       }
+      }
+     ]
+    },
+    "traceId": "lf-trace-1",
+    "endTime": "2026-09-01T10:00:01.000Z",
+    "parentObservationId": null,
+    "level": "DEFAULT",
+    "statusMessage": null,
+    "version": null,
+    "metadata": {},
+    "environment": "default"
+   },
+   {
+    "id": "obs-t",
+    "type": "TOOL",
+    "name": "track",
+    "startTime": "2026-09-01T10:00:02.000Z",
+    "input": {
+     "id": "PKG9"
+    },
+    "output": "in transit, ETA Friday",
+    "traceId": "lf-trace-1",
+    "endTime": "2026-09-01T10:00:02.000Z",
+    "parentObservationId": null,
+    "level": "DEFAULT",
+    "statusMessage": null,
+    "version": null,
+    "metadata": {},
+    "environment": "default",
+    "model": null
+   },
+   {
+    "id": "obs-s",
+    "type": "SPAN",
+    "name": "retrieve",
+    "startTime": "2026-09-01T10:00:00.500Z",
+    "input": null,
+    "output": null,
+    "traceId": "lf-trace-1",
+    "endTime": "2026-09-01T10:00:00.500Z",
+    "parentObservationId": null,
+    "level": "DEFAULT",
+    "statusMessage": null,
+    "version": null,
+    "metadata": {},
+    "environment": "default",
+    "model": null
+   }
+  ],
+  "sessionId": null,
+  "release": null,
+  "version": null,
+  "userId": "user-42",
+  "tags": [],
+  "public": false,
+  "environment": "default",
+  "htmlPath": "/project/demo/traces/lf-trace-1",
+  "latency": 3.2,
+  "totalCost": 0.0012,
+  "scores": []
+ }
+]

@@ -1,10 +1,10 @@
 "use client";
 
 import Link from "next/link";
+import CopyableCommandBlock from "@/components/CopyableCommandBlock";
 import { useRouter, useSearchParams } from "next/navigation";
 import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useConfirm } from "@/components/ConfirmDialog";
-import CopyableCommandBlock from "@/components/CopyableCommandBlock";
 import {
   CardGridSkeleton,
   SkillsGridSkeleton,
@@ -202,7 +202,7 @@ export default function SkillsPage() {
             onClick={showComposer}
             className="inline-flex cursor-pointer items-center gap-1.5 rounded-md bg-[var(--color-brand-600)] px-2.5 py-1.5 text-[12.5px] font-medium text-white hover:bg-[var(--color-brand-700)]"
           >
-            <PlusGlyph /> New Skill
+            {user?.reward_models_enabled ? "New skill" : <><PlusGlyph /> New Skill</>}
           </button>
         </div>
 
@@ -233,7 +233,7 @@ export default function SkillsPage() {
           />
         )}
 
-        {tab === "yours" && (
+        {tab === "yours" && (!user?.reward_models_enabled || visible.length > 0) && (
           <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
             <SkillViewToggle view={view} onChange={setViewPersisted} />
           </div>
@@ -252,7 +252,9 @@ export default function SkillsPage() {
                 onRefresh={load}
               />
             ) : (
-              <NoSkillsYet onBrowseDiscover={() => setTab("discover")} />
+              user?.reward_models_enabled
+                ? <p className="m-0 py-3 text-[13px] text-muted-foreground">No skills yet.</p>
+                : <NoSkillsYet onBrowseDiscover={() => setTab("discover")} />
             )}
             <ExternalSkillLinkForm onAdded={() => void load()} />
           </div>
@@ -418,13 +420,7 @@ function ExternalSkillLinkForm({ onAdded }: { onAdded: () => void }) {
   );
 }
 
-function PlusGlyph() {
-  return (
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-      <path d="M12 5v14M5 12h14" />
-    </svg>
-  );
-}
+
 
 // The primary selector as an underline tab bar. Yours/Shared carry a live count;
 // Discover is the public library (no owned count).
@@ -464,31 +460,6 @@ function SkillTabs({
           </button>
         );
       })}
-    </div>
-  );
-}
-
-// Empty state for the Yours tab: point at the CLI create command and the
-// public library instead of dead-ending.
-function NoSkillsYet({ onBrowseDiscover }: { onBrowseDiscover: () => void }) {
-  return (
-    <div className="rounded-lg border border-dashed border-border bg-surface/30 px-4 py-10 text-center text-[12.5px] text-muted-foreground">
-      <p className="m-0">No skills yet.</p>
-      <p className="m-0 mt-1.5">Create one from your terminal:</p>
-      <div className="mt-3">
-        <CopyableCommandBlock commands={'stash skills create "<name>"'} />
-      </div>
-      <p className="m-0 mt-3">
-        Or{" "}
-        <button
-          type="button"
-          onClick={onBrowseDiscover}
-          className="cursor-pointer text-[var(--color-brand-600)] underline underline-offset-2 hover:text-[var(--color-brand-700)]"
-        >
-          browse Discover
-        </button>{" "}
-        and fork a public skill into your Skills.
-      </p>
     </div>
   );
 }
@@ -1057,4 +1028,36 @@ function relativeTime(iso: string): string {
   const d = Math.floor(h / 24);
   if (d < 30) return `${d}d ago`;
   return new Date(iso).toLocaleDateString();
+}
+
+function PlusGlyph() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+      <path d="M12 5v14M5 12h14" />
+    </svg>
+  );
+}
+
+
+function NoSkillsYet({ onBrowseDiscover }: { onBrowseDiscover: () => void }) {
+  return (
+    <div className="rounded-lg border border-dashed border-border bg-surface/30 px-4 py-10 text-center text-[12.5px] text-muted-foreground">
+      <p className="m-0">No skills yet.</p>
+      <p className="m-0 mt-1.5">Create one from your terminal:</p>
+      <div className="mt-3">
+        <CopyableCommandBlock commands={'stash skills create "<name>"'} />
+      </div>
+      <p className="m-0 mt-3">
+        Or{" "}
+        <button
+          type="button"
+          onClick={onBrowseDiscover}
+          className="cursor-pointer text-[var(--color-brand-600)] underline underline-offset-2 hover:text-[var(--color-brand-700)]"
+        >
+          browse Discover
+        </button>{" "}
+        and fork a public skill into your Skills.
+      </p>
+    </div>
+  );
 }

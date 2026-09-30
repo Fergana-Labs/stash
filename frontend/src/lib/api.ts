@@ -21,6 +21,15 @@ import {
   MiniProgramResolved,
   CuratedSkill,
   AppFacets,
+  RmAnnotation,
+  RmFormat,
+  RmGepaRun,
+  RmImportResult,
+  RmQuote,
+  RmRewardModel,
+  RmRewardModelDetail,
+  RmTraceDetail,
+  RmTraceSummary,
 } from "./types";
 import { getScopeUserId, SCOPE_HEADER } from "./scope-store";
 
@@ -2654,4 +2663,114 @@ export async function bulkEditRows(
     method: "POST",
     body: JSON.stringify(body),
   });
+}
+
+// ── Reward model platform (/api/v1/rm) ────────────────────────────────────
+
+const RM = "/api/v1/rm";
+
+export async function rmListFormats(): Promise<RmFormat[]> {
+  return apiFetch(`${RM}/formats`);
+}
+
+export async function rmImportTraces(format: string, data: string): Promise<RmImportResult> {
+  return apiFetch(`${RM}/traces/import`, {
+    method: "POST",
+    body: JSON.stringify({ format, data }),
+  });
+}
+
+export async function rmListTraces(
+  limit: number,
+  offset: number,
+): Promise<{ traces: RmTraceSummary[]; total: number }> {
+  return apiFetch(`${RM}/traces?limit=${limit}&offset=${offset}`);
+}
+
+const ALL_TRACES_PAGE = 200;
+
+/** Every trace the caller has, fetched page by page. Selection and filtering happen client-side over this list. */
+export async function rmListAllTraces(): Promise<RmTraceSummary[]> {
+  const traces: RmTraceSummary[] = [];
+  for (let offset = 0; ; offset += ALL_TRACES_PAGE) {
+    const page = await rmListTraces(ALL_TRACES_PAGE, offset);
+    traces.push(...page.traces);
+    if (offset + ALL_TRACES_PAGE >= page.total) return traces;
+  }
+}
+
+export async function rmGetTrace(traceId: string): Promise<RmTraceDetail> {
+  return apiFetch(`${RM}/traces/${traceId}`);
+}
+
+export async function rmDeleteTrace(traceId: string): Promise<void> {
+  return apiFetch(`${RM}/traces/${traceId}`, { method: "DELETE" });
+}
+
+export async function rmCreateAnnotation(
+  traceId: string,
+  body: { step_id?: string; rating?: 1 | -1; comment?: string; quote?: RmQuote },
+): Promise<RmAnnotation> {
+  return apiFetch(`${RM}/traces/${traceId}/annotations`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function rmUpdateAnnotation(
+  annotationId: string,
+  body: { rating?: 1 | -1; comment?: string; label_error?: boolean; label_error_note?: string },
+): Promise<RmAnnotation> {
+  return apiFetch(`${RM}/annotations/${annotationId}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function rmDeleteAnnotation(annotationId: string): Promise<void> {
+  return apiFetch(`${RM}/annotations/${annotationId}`, { method: "DELETE" });
+}
+
+export async function rmListRewardModels(): Promise<RmRewardModel[]> {
+  return apiFetch(`${RM}/reward-models`);
+}
+
+export async function rmCreateRewardModel(body: {
+  trace_ids: string[];
+  name: string;
+  base_model: string;
+  epochs: number;
+}): Promise<RmRewardModel> {
+  return apiFetch(`${RM}/reward-models`, { method: "POST", body: JSON.stringify(body) });
+}
+
+export async function rmGetRewardModel(modelId: string): Promise<RmRewardModelDetail> {
+  return apiFetch(`${RM}/reward-models/${modelId}`);
+}
+
+export async function rmListGepaRuns(): Promise<RmGepaRun[]> {
+  return apiFetch(`${RM}/gepa-runs`);
+}
+
+export async function rmGetGepaRun(runId: string): Promise<RmGepaRun> {
+  return apiFetch(`${RM}/gepa-runs/${runId}`);
+}
+
+export async function rmCreateGepaRun(body: { reward_model_id: string }): Promise<RmGepaRun> {
+  return apiFetch(`${RM}/gepa-runs`, { method: "POST", body: JSON.stringify(body) });
+}
+
+/** The run's best skill as SKILL.md text. Plain markdown, so this reads the raw response instead of apiFetch's JSON. */
+export async function rmDownloadSkill(runId: string): Promise<string> {
+  const res = await fetchAuthed(`${RM}/gepa-runs/${runId}/skill`);
+  if (!res.ok) {
+    const body: { detail: string } = await res.json();
+    throw new ApiError(res.status, body.detail);
+  }
+  return res.text();
+}
+
+/** Short-lived, owner-authorized URL for the browser's native download manager. */
+export function rmDownloadWeights(modelId: string): Promise<{ url: string }> {
+  return apiFetch(`${RM}/reward-models/${modelId}/weights`);
 }

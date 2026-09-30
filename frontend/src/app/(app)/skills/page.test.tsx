@@ -24,6 +24,9 @@ function render(ui: ReactNode) {
   return renderBase(ui, { wrapper: ConfirmDialogProvider });
 }
 
+const auth = vi.hoisted(() => ({ user: { reward_models_enabled: true } }));
+vi.mock("@/hooks/useAuth", () => ({ useAuth: () => auth }));
+
 const router = vi.hoisted(() => ({
   push: vi.fn(),
 }));
@@ -182,16 +185,15 @@ describe("SkillsPage", () => {
     }
   });
 
-  it("sells the CLI create command and Discover when there are no skills", async () => {
+  it("keeps an empty library simple while making skill creation available", async () => {
     vi.mocked(listSkills).mockResolvedValue([]);
 
     render(<SkillsPage />);
 
     expect(await screen.findByText("No skills yet.")).toBeInTheDocument();
-    expect(screen.getByText('stash skills create "<name>"')).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: /browse Discover/ }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /new skill/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Grid" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "List" })).not.toBeInTheDocument();
   });
 
   it("creates the skill through the inline composer and navigates to it", async () => {
@@ -199,7 +201,7 @@ describe("SkillsPage", () => {
 
     render(<SkillsPage />);
 
-    fireEvent.click(await screen.findByRole("button", { name: /New Skill/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /new skill/i }));
 
     // Both fields are required: a skill can never be created without the
     // agent-trigger description. Submitting incomplete shows why instead of
@@ -373,4 +375,14 @@ describe("SkillsPage", () => {
       screen.getByText("Use when a customer reports boost loss."),
     ).toBeInTheDocument();
   });
+});
+
+
+it("keeps the existing Skills empty state for accounts outside the rollout", async () => {
+  auth.user.reward_models_enabled = false;
+  vi.mocked(listSkills).mockResolvedValue([]);
+  render(<SkillsPage />);
+  expect(await screen.findByText("Create one from your terminal:")).toBeVisible();
+  expect(screen.getByRole("button", { name: "Grid" })).toBeVisible();
+  auth.user.reward_models_enabled = true;
 });

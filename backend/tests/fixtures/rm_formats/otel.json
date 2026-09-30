@@ -1,0 +1,318 @@
+{
+ "resourceSpans": [
+  {
+   "resource": {
+    "attributes": [
+     {
+      "key": "service.name",
+      "value": {
+       "stringValue": "travel-agent"
+      }
+     }
+    ]
+   },
+   "scopeSpans": [
+    {
+     "scope": {
+      "name": "openinference.instrumentation.openai"
+     },
+     "spans": [
+      {
+       "traceId": "5b8efff798038103d269b633813fc60c",
+       "spanId": "a1",
+       "name": "agent",
+       "kind": 1,
+       "startTimeUnixNano": "1000",
+       "endTimeUnixNano": "2000",
+       "attributes": [
+        {
+         "key": "openinference.span.kind",
+         "value": {
+          "stringValue": "AGENT"
+         }
+        }
+       ]
+      },
+      {
+       "traceId": "5b8efff798038103d269b633813fc60c",
+       "spanId": "a4",
+       "name": "ChatCompletion",
+       "kind": 1,
+       "startTimeUnixNano": "4000",
+       "endTimeUnixNano": "5000",
+       "attributes": [
+        {
+         "key": "openinference.span.kind",
+         "value": {
+          "stringValue": "LLM"
+         }
+        },
+        {
+         "key": "llm.model_name",
+         "value": {
+          "stringValue": "gpt-4o"
+         }
+        },
+        {
+         "key": "llm.input_messages.0.message.role",
+         "value": {
+          "stringValue": "system"
+         }
+        },
+        {
+         "key": "llm.input_messages.0.message.content",
+         "value": {
+          "stringValue": "You are a travel agent."
+         }
+        },
+        {
+         "key": "llm.input_messages.1.message.role",
+         "value": {
+          "stringValue": "user"
+         }
+        },
+        {
+         "key": "llm.input_messages.1.message.content",
+         "value": {
+          "stringValue": "Find a flight to Rome."
+         }
+        },
+        {
+         "key": "llm.input_messages.2.message.role",
+         "value": {
+          "stringValue": "assistant"
+         }
+        },
+        {
+         "key": "llm.input_messages.2.message.tool_calls.0.tool_call.id",
+         "value": {
+          "stringValue": "call_f1"
+         }
+        },
+        {
+         "key": "llm.input_messages.2.message.tool_calls.0.tool_call.function.name",
+         "value": {
+          "stringValue": "search_flights"
+         }
+        },
+        {
+         "key": "llm.input_messages.2.message.tool_calls.0.tool_call.function.arguments",
+         "value": {
+          "stringValue": "{\"to\": \"FCO\"}"
+         }
+        },
+        {
+         "key": "llm.input_messages.3.message.role",
+         "value": {
+          "stringValue": "tool"
+         }
+        },
+        {
+         "key": "llm.input_messages.3.message.tool_call_id",
+         "value": {
+          "stringValue": "call_f1"
+         }
+        },
+        {
+         "key": "llm.input_messages.3.message.content",
+         "value": {
+          "stringValue": "AZ610 at 9am"
+         }
+        },
+        {
+         "key": "llm.input_messages.3.message.name",
+         "value": {
+          "stringValue": "search_flights"
+         }
+        },
+        {
+         "key": "llm.output_messages.0.message.role",
+         "value": {
+          "stringValue": "assistant"
+         }
+        },
+        {
+         "key": "llm.output_messages.0.message.content",
+         "value": {
+          "stringValue": "Book AZ610 departing 9am."
+         }
+        }
+       ],
+       "parentSpanId": "a1"
+      },
+      {
+       "traceId": "5b8efff798038103d269b633813fc60c",
+       "spanId": "a2",
+       "name": "ChatCompletion",
+       "kind": 1,
+       "startTimeUnixNano": "2000",
+       "endTimeUnixNano": "3000",
+       "attributes": [
+        {
+         "key": "openinference.span.kind",
+         "value": {
+          "stringValue": "LLM"
+         }
+        },
+        {
+         "key": "llm.model_name",
+         "value": {
+          "stringValue": "gpt-4o"
+         }
+        },
+        {
+         "key": "llm.input_messages.0.message.role",
+         "value": {
+          "stringValue": "system"
+         }
+        },
+        {
+         "key": "llm.input_messages.0.message.content",
+         "value": {
+          "stringValue": "You are a travel agent."
+         }
+        },
+        {
+         "key": "llm.input_messages.1.message.role",
+         "value": {
+          "stringValue": "user"
+         }
+        },
+        {
+         "key": "llm.input_messages.1.message.content",
+         "value": {
+          "stringValue": "Find a flight to Rome."
+         }
+        },
+        {
+         "key": "llm.output_messages.0.message.role",
+         "value": {
+          "stringValue": "assistant"
+         }
+        },
+        {
+         "key": "llm.output_messages.0.message.contents.0.message_content.type",
+         "value": {
+          "stringValue": "reasoning"
+         }
+        },
+        {
+         "key": "llm.output_messages.0.message.contents.0.message_content.text",
+         "value": {
+          "stringValue": "I need flight options first."
+         }
+        },
+        {
+         "key": "llm.output_messages.0.message.contents.1.message_content.type",
+         "value": {
+          "stringValue": "tool_use"
+         }
+        },
+        {
+         "key": "llm.output_messages.0.message.contents.1.tool_call.id",
+         "value": {
+          "stringValue": "call_f1"
+         }
+        },
+        {
+         "key": "llm.output_messages.0.message.contents.1.tool_call.function.name",
+         "value": {
+          "stringValue": "search_flights"
+         }
+        },
+        {
+         "key": "llm.output_messages.0.message.contents.1.tool_call.function.arguments",
+         "value": {
+          "stringValue": "{\"to\": \"FCO\"}"
+         }
+        }
+       ],
+       "parentSpanId": "a1"
+      },
+      {
+       "traceId": "5b8efff798038103d269b633813fc60c",
+       "spanId": "a3",
+       "name": "search_flights",
+       "kind": 1,
+       "startTimeUnixNano": "3000",
+       "endTimeUnixNano": "4000",
+       "attributes": [
+        {
+         "key": "openinference.span.kind",
+         "value": {
+          "stringValue": "TOOL"
+         }
+        },
+        {
+         "key": "tool.name",
+         "value": {
+          "stringValue": "search_flights"
+         }
+        },
+        {
+         "key": "input.value",
+         "value": {
+          "stringValue": "{\"to\": \"FCO\"}"
+         }
+        },
+        {
+         "key": "output.value",
+         "value": {
+          "stringValue": "AZ610 at 9am"
+         }
+        }
+       ],
+       "parentSpanId": "a1"
+      },
+      {
+       "traceId": "0af7651916cd43dd8448eb211c80319c",
+       "spanId": "b1",
+       "name": "chat gpt-4o-mini",
+       "kind": 1,
+       "startTimeUnixNano": "5000",
+       "endTimeUnixNano": "6000",
+       "attributes": [
+        {
+         "key": "gen_ai.system",
+         "value": {
+          "stringValue": "openai"
+         }
+        },
+        {
+         "key": "gen_ai.request.model",
+         "value": {
+          "stringValue": "gpt-4o-mini"
+         }
+        },
+        {
+         "key": "gen_ai.prompt.0.role",
+         "value": {
+          "stringValue": "user"
+         }
+        },
+        {
+         "key": "gen_ai.prompt.0.content",
+         "value": {
+          "stringValue": "Translate 'hello' to French."
+         }
+        },
+        {
+         "key": "gen_ai.completion.0.role",
+         "value": {
+          "stringValue": "assistant"
+         }
+        },
+        {
+         "key": "gen_ai.completion.0.content",
+         "value": {
+          "stringValue": "Bonjour"
+         }
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

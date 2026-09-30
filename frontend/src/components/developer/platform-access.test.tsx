@@ -12,7 +12,7 @@ const state = vi.hoisted(() => ({
   logout: vi.fn(),
   user: {
     id: "user-1", name: "developer", display_name: "Developer", description: "",
-    created_at: "2026-09-15", last_seen: "2026-09-15", developer_platform_only: true,
+    created_at: "2026-09-15", last_seen: "2026-09-15", developer_platform_only: true, reward_models_enabled: false,
   },
 }));
 
@@ -36,6 +36,7 @@ vi.mock("@/lib/api", () => ({
 }));
 vi.mock("@/components/workspace/topbar", () => ({ default: () => <div>Internal navigation</div> }));
 vi.mock("@/components/workspace/rail", () => ({ default: () => null }));
+vi.mock("@/components/workspace/reward-rail", () => ({ default: () => <div>Reward navigation</div> }));
 vi.mock("@/components/workspace/persistence", () => ({ default: () => null }));
 vi.mock("@/components/workspace/explorer", () => ({ default: () => null }));
 vi.mock("@/components/workspace/workbench", () => ({ default: () => null }));
@@ -45,6 +46,7 @@ beforeEach(() => {
   state.pathname = "/developer";
   state.scope = null;
   state.user.developer_platform_only = true;
+  state.user.reward_models_enabled = false;
   state.replace.mockClear();
   state.logout.mockClear();
 });
@@ -124,4 +126,20 @@ it("preserves existing users' internal interface", async () => {
   await waitFor(() => expect(screen.getByText("Internal content")).toBeInTheDocument());
   expect(screen.getByText("Internal navigation")).toBeInTheDocument();
   expect(state.replace).not.toHaveBeenCalled();
+});
+
+it.each(["/", "/developer"])("new accounts enter traces from %s", (pathname) => {
+  state.user.reward_models_enabled = true;
+  state.pathname = pathname;
+  render(<WorkspaceShell user={state.user} onLogout={vi.fn()}>Old home</WorkspaceShell>);
+  expect(state.replace).toHaveBeenCalledWith("/reward-models");
+  expect(screen.queryByText("Old home")).not.toBeInTheDocument();
+});
+
+it.each([true, false])("the stored rollout flag controls reward navigation (%s)", (enabled) => {
+  state.user.developer_platform_only = false;
+  state.user.reward_models_enabled = enabled;
+  state.pathname = "/skills";
+  render(<WorkspaceShell user={state.user} onLogout={vi.fn()}>Skills</WorkspaceShell>);
+  expect(screen.queryByText("Reward navigation") !== null).toBe(enabled);
 });

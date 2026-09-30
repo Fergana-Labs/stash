@@ -18,7 +18,7 @@ the same scheduled task multiple times.
 
 from celery import Celery
 from celery.schedules import crontab
-from kombu import Queue
+from kombu import Exchange, Queue
 
 from .config import settings
 
@@ -40,6 +40,7 @@ celery = Celery(
         "backend.tasks.cli_auth",
         "backend.tasks.sources",
         "backend.tasks.agent_schedules",
+        "backend.tasks.reward_models",
         "backend.integrations.google.exporters.slides",
         "backend.integrations.x_saves.tasks",
         "backend.exports.pdf",
@@ -51,7 +52,12 @@ celery.conf.update(
     task_default_queue="default",
     # Source crawls have their own pool so extraction retries cannot block syncing.
     # Slow extraction, exports, and agent runs use heavy; beat sweeps use default.
-    task_queues=(Queue("default"), Queue("heavy"), Queue("sync")),
+    task_queues=(
+        Queue("default"),
+        Queue("heavy"),
+        Queue("sync"),
+        Queue("reward", exchange=Exchange("reward"), routing_key="reward"),
+    ),
     task_routes={
         "backend.tasks.extraction.extract_file_text": {"queue": "heavy"},
         "backend.tasks.drive_extraction.extract_drive_document": {"queue": "heavy"},
@@ -63,6 +69,8 @@ celery.conf.update(
         "backend.tasks.agent_schedules.run_scheduled_agent": {"queue": "heavy"},
         "backend.tasks.agent_schedules.run_curator_now": {"queue": "heavy"},
         "backend.tasks.viz.precompute": {"queue": "heavy"},
+        "backend.tasks.reward_models.train_reward_model": {"queue": "reward"},
+        "backend.tasks.reward_models.run_gepa": {"queue": "reward"},
     },
     task_acks_late=True,
     task_reject_on_worker_lost=True,

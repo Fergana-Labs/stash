@@ -10,7 +10,7 @@ vi.mock("next/navigation", () => ({
 
 const authUser = vi.hoisted(() => ({
   id: "user-1",
-  developer_platform_only: false,
+  developer_platform_only: false, reward_models_enabled: false,
   name: "Henry",
   display_name: "Henry",
   description: "",

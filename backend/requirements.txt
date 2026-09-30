@@ -21,6 +21,7 @@ claude-agent-sdk>=0.1.50
 mcp>=1.23.0,<2
 celery[redis]>=5.4
 duckdb>=1.1
+opentelemetry-proto>=1.27
 redis>=5.0
 cryptography>=42.0
 google-auth>=2.30
@@ -35,3 +36,7 @@ stripe>=12.0
 websockets>=13.0
 croniter>=2.0
 trafilatura>=2.0
+
+# Lightweight clients; ML libraries run on the isolated reward worker.
+boto3>=1.40
+modal==1.6.0

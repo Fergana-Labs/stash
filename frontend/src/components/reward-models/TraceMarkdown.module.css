@@ -1,0 +1,90 @@
+/* Design from Priyadarshan's trace viewer (projects/trace_viewer): .prose-trace and .out, on the app's tokens. */
+
+.prose {
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+.prose > * + * {
+  margin-top: 0.3em;
+}
+.prose h1,
+.prose h2,
+.prose h3,
+.prose h4 {
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin-top: 1.1em;
+}
+.prose h1 { font-size: 17px; }
+.prose h2 { font-size: 15.5px; }
+.prose h3 { font-size: 14.5px; }
+.prose p { margin: 0; }
+.prose ul,
+.prose ol { padding-left: 1.3em; }
+.prose ul { list-style: disc; }
+.prose ol { list-style: decimal; }
+.prose li + li { margin-top: 0.25em; }
+.prose a {
+  color: var(--brand-600);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.prose code {
+  font-family: var(--font-mono-stack);
+  font-size: 12.25px;
+  background: var(--bg-raised);
+  border-radius: 4px;
+  padding: 0.1em 0.35em;
+}
+.prose pre {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle-color);
+  border-radius: 8px;
+  padding: 6px 10px;
+  overflow-x: auto;
+  font-size: 12.25px;
+  line-height: 1.4;
+}
+.prose pre code {
+  background: transparent;
+  padding: 0;
+  font-size: inherit;
+}
+.prose blockquote {
+  border-left: 2px solid var(--divider-color);
+  padding-left: 12px;
+  color: var(--text-dim);
+}
+.prose table {
+  border-collapse: collapse;
+  font-size: 13px;
+  width: 100%;
+}
+.prose th,
+.prose td {
+  border: 1px solid var(--border-color);
+  padding: 4px 8px;
+  text-align: left;
+  vertical-align: top;
+}
+.prose th {
+  background: var(--bg-surface);
+  font-weight: 600;
+}
+.prose hr {
+  border: 0;
+  height: 1px;
+  background: var(--border-color);
+}
+.prose strong { font-weight: 600; }
+
+.out {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--text-dim);
+}
