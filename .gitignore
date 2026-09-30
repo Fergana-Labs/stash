@@ -37,6 +37,7 @@ coverage/
 .codex/
 .global-agents/
 .celerybeat-schedule*
+celerybeat-schedule*
 
 # Local env backup written when rotating keys
 .env.bak

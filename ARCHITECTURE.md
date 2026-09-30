@@ -78,7 +78,6 @@ of the current architecture. Privacy is mediated by Skills.
 - `backend/routers/tables.py`: structured table CRUD + row search.
 - `backend/routers/shares.py`: person-to-person folder shares.
 - `backend/routers/sources.py`: GitHub / Google Drive / Notion OAuth + imports.
-- `backend/routers/collab.py`: Yjs WebSocket sidecar for live page editing.
 - `backend/routers/trash.py`: soft-delete listing + restore/purge.
 
 Object-level privacy is enforced inline in each router that returns a
