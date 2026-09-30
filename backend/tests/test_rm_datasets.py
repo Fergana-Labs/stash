@@ -283,7 +283,7 @@ async def test_labels_flagged_while_queued_fail_the_job_before_the_worker(
     model = (await client.get(f"/api/v1/rm/reward-models/{model_id}", headers=auth)).json()
     assert model["status"] == "failed"
     assert "0 preference pairs; need at least 2" in model["error"]
-    assert "Unclear reactions are not training labels" in model["error"]
+    assert "Automatic assessment could not establish enough grounded comparisons" in model["error"]
     assert model["metrics"] is None
 
 

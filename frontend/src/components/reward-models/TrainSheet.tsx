@@ -60,7 +60,7 @@ function SheetBody({ onTrained }: { onTrained: (model: RmRewardModel) => void })
             Create new reward model
           </DialogPrimitive.Title>
           <DialogPrimitive.Description className="m-0 mt-0.5 text-[12.5px] text-muted-foreground">
-            We find feedback in these conversations automatically. Unclear reactions are excluded from training.
+            We extract user feedback and assess response quality automatically. No manual annotations required.
           </DialogPrimitive.Description>
         </div>
         <DialogPrimitive.Close asChild>

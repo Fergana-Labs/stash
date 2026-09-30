@@ -18,6 +18,7 @@ pytestmark = pytest.mark.usefixtures("rm_title_generator")
 def extraction(**changes):
     item = dict(
         step_index=1,
+        source="user_feedback",
         revision="Please provide the order number first.",
         label="negative",
         confidence="high",
@@ -83,21 +84,38 @@ async def test_classifier_sees_only_eligible_evidence_and_code_assigns_the_targe
     monkeypatch.setattr(feedback.llm, "complete_structured", complete)
     sources = {**evidence(), "initial": dict(kind="user", step_index=0, text="Refund my order")}
     result = await feedback.extract_preferences(conversation(), sources)
-    assert result == extraction()
+    assert result == extraction(evidence_quote=evidence()["step:2"]["text"])
 
 
-async def test_no_response_before_user_message_needs_no_classifier_call(monkeypatch):
+async def test_no_reaction_still_receives_ai_assessment(monkeypatch):
+    steps = conversation()[:2]
+
     async def complete(**kwargs):
-        pytest.fail("An initial request cannot evaluate the final answer")
+        payload = json.loads(kwargs["prompt"])
+        assert payload["eligible_evidence"] == {}
+        parsed = feedback.ResponseExtraction(
+            reason="Unsupported refund claim",
+            feedback=feedback.Judgment(
+                source="ai_judgment",
+                evidence_id=None,
+                evidence_quote=None,
+                label="negative",
+                confidence="high",
+                revision="What is your order number?",
+            ),
+        )
+
+        return kwargs["output_model"].model_validate(parsed.model_dump())
+
+    async def review(*args):
+        return feedback.ComparisonReview(preferred="revision", grounded=True, reason="Verify first")
 
     monkeypatch.setattr(feedback.llm, "complete_structured", complete)
-    steps = [
-        dict(idx=0, role="assistant", content="", tool_name="ask_user"),
-        dict(idx=1, role="user", content="A steering pump", tool_name=None),
-        dict(idx=2, role="assistant", content="Here are the results.", tool_name=None),
-    ]
-    sources = {"step:1": dict(kind="user", step_index=1, text="A steering pump")}
-    assert (await feedback.extract_preferences(steps, sources)).feedback == []
+    monkeypatch.setattr(feedback, "review_comparison", review)
+    result = await feedback.extract_preferences(steps, {})
+    [pair] = feedback.render_preferences(uuid4(), steps, {}, result)
+    assert pair["evidence"]["source"] == "ai_judgment"
+    assert pair["chosen"].endswith("What is your order number?")
 
 
 async def test_classifier_cannot_cite_an_earlier_request(monkeypatch):
@@ -316,3 +334,149 @@ async def test_user_feedback_alone_builds_a_training_dataset(client, monkeypatch
     assert all(f["included_in_training"] for f in detail["feedback"])
     for trace_id in selected:
         assert (await _detail(client, auth, trace_id))["annotations"] == []
+
+
+@pytest.mark.parametrize(
+    "preferred,grounded", [("tie", True), ("original", True), ("revision", False)]
+)
+async def test_ai_comparison_must_pass_independent_review(monkeypatch, preferred, grounded):
+    async def complete(**kwargs):
+        return feedback.ResponseExtraction(
+            reason="Check the order",
+            feedback=feedback.Judgment(
+                source="ai_judgment",
+                evidence_id=None,
+                evidence_quote=None,
+                label="negative",
+                confidence="high",
+                revision="What is the order number?",
+            ),
+        )
+
+    async def review(*args):
+        return feedback.ComparisonReview(
+            preferred=preferred, grounded=grounded, reason="Review decision"
+        )
+
+    monkeypatch.setattr(feedback.llm, "complete_structured", complete)
+    monkeypatch.setattr(feedback, "review_comparison", review)
+    result = await feedback.extract_preferences(conversation()[:2], {})
+    assert result.feedback[0].revision is None
+    assert "Review decision" in result.feedback[0].reason
+    assert feedback.render_preferences(uuid4(), conversation()[:2], {}, result) == []
+
+
+async def test_comparison_review_cannot_see_future_facts(monkeypatch):
+    steps = conversation() + [dict(idx=3, role="user", content="FUTURE SECRET")]
+
+    async def complete(**kwargs):
+        assert "FUTURE SECRET" not in kwargs["prompt"]
+        assert "You need to" not in kwargs["prompt"]
+        return feedback.ComparisonReview(preferred="revision", grounded=True, reason="Verify first")
+
+    monkeypatch.setattr(feedback.llm, "complete_structured", complete)
+    await feedback.review_comparison(steps, steps[1], extraction().feedback[0])
+
+
+@pytest.mark.usefixtures("artifact_dir")
+async def test_no_annotations_or_user_reactions_can_complete_training(client, monkeypatch):
+    auth = await _register(client)
+    selected = await _import(
+        client, auth, _trace("first", "Refund issued"), _trace("second", "Refund issued")
+    )
+
+    async def extract(steps, sources):
+        assert not any(source["step_index"] > 2 for source in sources.values())
+        return extraction(
+            step_index=2,
+            source="ai_judgment",
+            evidence_id="response:2",
+            evidence_quote="Refund issued",
+        )
+
+    monkeypatch.setattr(feedback, "extract_preferences", extract)
+    model_id = await _create_model(client, auth, monkeypatch, trace_ids=selected)
+
+    def outputs(directory):
+        pairs = [json.loads(line) for line in (directory / "pairs.jsonl").read_text().splitlines()]
+        assert len(pairs) == 2
+        assert all(pair["evidence"]["source"] == "ai_judgment" for pair in pairs)
+        (directory / "result.json").write_text('{"metrics": {}}')
+        (directory / "scores.jsonl").write_text("")
+
+    _fake_worker(monkeypatch, outputs)
+    await tasks.train_reward_model_async(UUID(model_id))
+    detail = (await client.get(f"/api/v1/rm/reward-models/{model_id}", headers=auth)).json()
+    assert detail["status"] == "succeeded"
+    assert all(
+        f["source"] == "ai_judgment" and f["included_in_training"] for f in detail["feedback"]
+    )
+    for trace_id in selected:
+        assert (await _detail(client, auth, trace_id))["annotations"] == []
+
+
+async def test_human_rating_prevents_conflicting_ai_supervision(client, monkeypatch):
+    auth = await _register(client)
+    [trace_id] = await _import(client, auth, _trace("rated", "Refund issued"))
+    await _annotate(client, auth, trace_id, rating=1)
+
+    async def extract(steps, sources):
+        return extraction(
+            step_index=2,
+            source="ai_judgment",
+            evidence_id="response:2",
+            evidence_quote="Refund issued",
+        )
+
+    monkeypatch.setattr(feedback, "extract_preferences", extract)
+    from backend.services.rm.datasets import all_trace_ids
+
+    owner = UUID((await client.get("/api/v1/users/me", headers=auth)).json()["id"])
+    pairs, findings = await feedback.build_feedback_pairs(owner, await all_trace_ids(owner), 10)
+    assert pairs == []
+    assert "human rating takes precedence" in findings[0]["reason"]
+
+
+@pytest.mark.parametrize("evidence_id", ["step:0", "response:1", None])
+def test_schema_prevents_ineligible_human_citations(evidence_id):
+    from pydantic import ValidationError
+
+    schema = feedback.extraction_schema(evidence())
+    finding = (
+        extraction(evidence_id="step:2").feedback[0].model_dump(exclude={"reason", "step_index"})
+    )
+    finding["evidence_id"] = evidence_id
+    finding["evidence_quote"] = None
+    with pytest.raises(ValidationError):
+        schema.model_validate({"reason": "Assessment", "feedback": finding})
+
+
+def test_schema_without_reactions_only_allows_ai_judgments():
+    from pydantic import ValidationError
+
+    schema = feedback.extraction_schema({})
+    finding = extraction().feedback[0].model_dump(exclude={"reason", "step_index"})
+    with pytest.raises(ValidationError):
+        schema.model_validate({"reason": "Assessment", "feedback": finding})
+    finding.update(source="ai_judgment", evidence_id=None, evidence_quote=None)
+    assert (
+        schema.model_validate({"reason": "Assessment", "feedback": finding}).feedback.source
+        == "ai_judgment"
+    )
+
+
+async def test_duplicate_alternative_is_reported_without_aborting_other_learning(monkeypatch):
+    async def complete(**kwargs):
+        finding = (
+            extraction(revision="Refund issued")
+            .feedback[0]
+            .model_dump(exclude={"reason", "step_index"})
+        )
+        finding["evidence_quote"] = None
+        return kwargs["output_model"].model_validate({"reason": "Evaluation", "feedback": finding})
+
+    monkeypatch.setattr(feedback.llm, "complete_structured", complete)
+    result = await feedback.extract_preferences(conversation(), evidence())
+    assert result.feedback[0].revision is None
+    assert "excluded from training" in result.feedback[0].reason
+    assert feedback.render_preferences(uuid4(), conversation(), evidence(), result) == []

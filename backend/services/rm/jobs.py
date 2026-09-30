@@ -156,7 +156,10 @@ async def run_gepa(run_id: UUID) -> None:
                 and pair.get("source") == "feedback_revision"
             ):
                 evidence = pair["evidence"]
-                example["feedback"].append(evidence["evidence_quote"] + " — " + evidence["reason"])
+                source = "AI judgment" if evidence["source"] == "ai_judgment" else "User feedback"
+                example["feedback"].append(
+                    f"{source}: {evidence['evidence_quote']} — {evidence['reason']}"
+                )
     if not examples:
         raise ValueError("need at least one selected trace with a user turn")
 
