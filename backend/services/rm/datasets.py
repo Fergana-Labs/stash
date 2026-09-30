@@ -25,7 +25,8 @@ def check_enough_pairs(pairs: list[dict]) -> None:
     if len(pairs) < MIN_PAIRS:
         raise NotEnoughPairs(
             f"the selected traces have {len(pairs)} preference pairs; need at least "
-            f"{MIN_PAIRS}. Add specific feedback to more responses or include traces with user corrections."
+            f"{MIN_PAIRS}. Include conversations with clear approval, corrections, or disappointment, "
+            "or add specific reviewer comments. Unclear reactions are not training labels."
         )
 
 

@@ -495,6 +495,19 @@ export interface RmRewardModel {
 /** GET /reward-models/{id} also returns which traces it trained on. */
 export interface RmRewardModelDetail extends RmRewardModel {
   trace_ids: string[];
+  feedback: RmInferredFeedback[] | null;
+}
+
+export interface RmInferredFeedback {
+  trace_id: string;
+  step_index: number;
+  label: "positive" | "negative" | "unclear";
+  confidence: "high" | "low";
+  evidence_id: string;
+  evidence_quote: string;
+  reason: string;
+  classifier_model: string;
+  included_in_training: boolean;
 }
 
 export interface RmGepaCandidate {

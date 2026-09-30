@@ -80,11 +80,11 @@ export default function RewardModelsOverviewPage() {
       </P>
       <CodeBlock lang="python">{ONE_SPAN}</CodeBlock>
 
-      <H2>2. Annotate them</H2>
+      <H2>2. Review feedback</H2>
       <P>
-        Open a trace, highlight a response, and leave an actionable comment. Explicit later user
-        corrections already in the trace can also supply training evidence. There is no separate
-        Auto mode or rating control in the UI.
+        Training automatically looks for approval, disappointment, and corrections in the
+        conversation. No annotations are required when the trace contains usable feedback.
+        You can also highlight a response and leave an actionable comment.
       </P>
       <DemoClip src="/docs/demo/annotate.mp4" />
 
@@ -92,7 +92,9 @@ export default function RewardModelsOverviewPage() {
       <P>
         Select traces and choose <strong>Create new reward model</strong>. The worker derives
         preferences from supported feedback and records the evidence for each pair. Training needs
-        at least two usable pairs; ambiguous feedback is skipped. The trained model scores every
+        at least two usable pairs; ambiguous feedback is skipped. Choose <strong>View feedback</strong>
+        {" "}on the model to inspect inferred labels and source quotes. These are classifier judgments,
+        not human ratings. The trained model scores every
         trace you own, including unselected traces. You can also download its weights.
       </P>
       <DemoClip src="/docs/demo/train.mp4" />

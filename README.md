@@ -47,7 +47,9 @@ the UI and API; see the [rollout guide](docs/reward-models/ROLLOUT.md).
 ## Reward models in action
 
 **Train from feedback in your traces.** Stash derives preference pairs from
-reviewer comments and explicit later user corrections. You can add comments by
+reviewer comments and user reactions, including approval, disappointment, and
+corrections. A classifier attributes each judgment to a response and keeps the
+source quote; unclear reactions are excluded from training. You can add comments by
 highlighting a response. There is no separate Auto mode or rating control in the
 UI; existing explicit ratings can be supplied through the API. Training needs
 at least two usable pairs, so traces without actionable feedback may not qualify.
@@ -57,7 +59,7 @@ agent from reviewer feedback to a reusable skill. These screenshots show an
 earlier interface with demo data; the current controls are described below.
 
 **1. Review a trace.** Highlight a response and explain what should change.
-Later user corrections already present in a trace can also supply evidence.
+Feedback already present in the conversation is extracted automatically during training.
 
 <!-- Frame from www/public/docs/demo/annotate.mp4 at 10 seconds. -->
 <p align="center">
@@ -67,7 +69,8 @@ Later user corrections already present in a trace can also supply evidence.
 **2. Train a reward model from trace feedback.** Select traces and choose
 **Create new reward model**. The worker extracts supported preferences, records
 their evidence, and trains the model. Derived pairs are interpretations of
-feedback, not direct human votes.
+feedback, not direct human votes. **View feedback** shows inferred labels, source
+quotes, and whether each finding was included in the training data.
 
 <!-- Frame from www/public/docs/demo/train.mp4 at 3 seconds. -->
 <p align="center">

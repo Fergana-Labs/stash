@@ -19,13 +19,14 @@ def extraction(**changes):
     item = dict(
         step_index=1,
         revision="Please provide the order number first.",
-        revision_preferred=True,
+        label="negative",
+        confidence="high",
         evidence_id="step:2",
         evidence_quote="ask for the order number",
         reason="Verify the order before refunding",
     )
     item.update(changes)
-    return feedback.Extraction(preferences=[feedback.Preference(**item)])
+    return feedback.Extraction(feedback=[feedback.Feedback(**item)])
 
 
 def conversation():
@@ -63,6 +64,10 @@ def test_preferences_share_context_and_exclude_later_correction():
         {"evidence_id": "comment:invented"},
         {"step_index": 0},
         {"revision": "Refund issued"},
+        {"revision": "   "},
+        {"evidence_quote": " "},
+        {"label": "unclear"},
+        {"confidence": "low"},
     ],
 )
 def test_unsupported_preferences_fail_loud(changes):
@@ -82,6 +87,47 @@ def test_step_comment_cannot_evaluate_another_step():
     sources["step:2"].update(kind="comment", step_index=0)
     with pytest.raises(ValueError, match="different step"):
         feedback.render_preferences(uuid4(), conversation(), sources, extraction())
+
+
+def test_positive_feedback_prefers_original_and_negative_prefers_revision():
+    positive = extraction(label="positive", evidence_quote="ask for the order number")
+    negative = extraction()
+    [preferred] = feedback.render_preferences(uuid4(), conversation(), evidence(), positive)
+    [corrected] = feedback.render_preferences(uuid4(), conversation(), evidence(), negative)
+    assert preferred["chosen"] == corrected["rejected"]
+    assert preferred["rejected"] == corrected["chosen"]
+
+
+@pytest.mark.parametrize(
+    "changes", [{"label": "unclear"}, {"confidence": "low"}, {"label": "negative"}]
+)
+def test_uncertainty_or_no_supported_alternative_contributes_no_pair(changes):
+    result = extraction(revision=None, **changes)
+    assert feedback.render_preferences(uuid4(), conversation(), evidence(), result) == []
+
+
+def test_mixed_conversation_labels_do_not_spread_to_other_responses():
+    steps = conversation() + [
+        dict(idx=3, role="assistant", content="What is the order number?", tool_name=None),
+        dict(idx=4, role="user", content="Yes, checking the order first is right.", tool_name=None),
+    ]
+    sources = {**evidence(), "step:4": dict(kind="user", step_index=4, text=steps[4]["content"])}
+    result = feedback.Extraction(
+        feedback=[
+            extraction().feedback[0],
+            extraction(
+                step_index=3,
+                label="positive",
+                revision="Refund issued.",
+                evidence_id="step:4",
+                evidence_quote="checking the order first is right",
+            ).feedback[0],
+        ]
+    )
+    bad, good = feedback.render_preferences(uuid4(), steps, sources, result)
+    assert bad["rejected"].endswith("assistant: Refund issued")
+    assert good["chosen"].endswith("assistant: What is the order number?")
+    assert "Yes, checking" not in good["chosen"]
 
 
 @pytest.mark.usefixtures("artifact_dir")
@@ -135,3 +181,72 @@ async def test_comment_training_is_owned_selected_auditable_and_uses_no_ratings(
     )
     assert row["artifact_key"].endswith(f"/{model_id}.tar.gz")
     assert len(seen) == 2
+    detail = await client.get(f"/api/v1/rm/reward-models/{model_id}", headers=auth)
+    assert len(detail.json()["feedback"]) == 2
+    assert all(
+        f["label"] == "negative" and f["included_in_training"] for f in detail.json()["feedback"]
+    )
+    assert (
+        await client.get(f"/api/v1/rm/reward-models/{model_id}", headers=other)
+    ).status_code == 404
+
+
+@pytest.mark.parametrize("label", ["negative", "unclear"])
+async def test_unannotated_conversations_extract_feedback_and_fail_before_compute(
+    client, monkeypatch, label
+):
+    auth = await _register(client)
+    [trace_id] = await _import(client, auth, {"steps": conversation()})
+
+    async def extract(steps, sources):
+        assert all(s["kind"] == "user" for s in sources.values())
+        return extraction(label=label, revision=None)
+
+    async def no_compute(*args):
+        pytest.fail("Insufficient feedback must not launch training compute")
+
+    monkeypatch.setattr(feedback, "extract_preferences", extract)
+    from backend.services.rm import jobs
+
+    monkeypatch.setattr(jobs, "run_worker", no_compute)
+    model_id = await _create_model(client, auth, monkeypatch, trace_ids=[trace_id])
+    with pytest.raises(ValueError, match="need at least 2"):
+        await tasks.train_reward_model_async(UUID(model_id))
+    detail = (await client.get(f"/api/v1/rm/reward-models/{model_id}", headers=auth)).json()
+    assert detail["status"] == "failed"
+    assert detail["feedback"][0]["label"] == label
+    assert not detail["feedback"][0]["included_in_training"]
+    assert (await _detail(client, auth, trace_id))["annotations"] == []
+
+
+@pytest.mark.usefixtures("artifact_dir")
+async def test_user_feedback_alone_builds_a_training_dataset(client, monkeypatch):
+    auth = await _register(client)
+    selected = await _import(
+        client,
+        auth,
+        {"id": "first", "steps": conversation()},
+        {"id": "second", "steps": conversation()},
+    )
+
+    async def extract(steps, sources):
+        assert all(source["kind"] == "user" for source in sources.values())
+        return extraction()
+
+    monkeypatch.setattr(feedback, "extract_preferences", extract)
+    model_id = await _create_model(client, auth, monkeypatch, trace_ids=selected)
+
+    def outputs(directory):
+        pairs = [json.loads(line) for line in (directory / "pairs.jsonl").read_text().splitlines()]
+        assert len(pairs) == 2
+        assert all(pair["evidence"]["label"] == "negative" for pair in pairs)
+        (directory / "result.json").write_text('{"metrics": {}}')
+        (directory / "scores.jsonl").write_text("")
+
+    _fake_worker(monkeypatch, outputs)
+    await tasks.train_reward_model_async(UUID(model_id))
+    detail = (await client.get(f"/api/v1/rm/reward-models/{model_id}", headers=auth)).json()
+    assert detail["status"] == "succeeded"
+    assert all(f["included_in_training"] for f in detail["feedback"])
+    for trace_id in selected:
+        assert (await _detail(client, auth, trace_id))["annotations"] == []

@@ -8,6 +8,7 @@ import { useBreadcrumbs } from "@/components/BreadcrumbContext";
 import { Button } from "@/components/ui/button";
 import { RmListSkeleton } from "@/components/reward-models/RmSkeletons";
 import ViewSkillButton from "@/components/reward-models/ViewSkillButton";
+import FeedbackDialog from "@/components/reward-models/FeedbackDialog";
 import TrainSheet from "@/components/reward-models/TrainSheet";
 import { SELECTED_PARAM } from "@/components/reward-models/trace-selection";
 import { EmptyState, RmPage, StatusBadge, isActiveJob } from "@/components/reward-models/rm-ui";
@@ -58,7 +59,7 @@ export default function RewardModelsPage() {
       {models === null ? (
         <RmListSkeleton />
       ) : models.length === 0 ? (
-        <EmptyState title="No reward models yet">Label some traces with + and −, then train your first model.</EmptyState>
+        <EmptyState title="No reward models yet">Create a model to learn from feedback in your traces.</EmptyState>
       ) : (
         <div className="flex flex-col gap-2.5">
           {models.map((m) => (
@@ -79,6 +80,7 @@ function ModelCard({ model }: { model: RmRewardModel }) {
         <StatusBadge status={model.status} />
         <span className="flex-1" />
         <span className="text-[11.5px] text-muted-foreground">{relativeTime(model.created_at)}</span>
+        {!isActiveJob(model.status) && <FeedbackDialog modelId={model.id} />}
         {model.status === "succeeded" && (
           <>
             <DownloadWeightsButton modelId={model.id} />
