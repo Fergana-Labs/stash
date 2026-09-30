@@ -201,7 +201,7 @@ export default function TraceClient({ traceId }: { traceId: string }) {
       const container = scroller.current;
       if (!element || !container || !navigation.current) return;
       const top = container.scrollTop + element.getBoundingClientRect().top - container.getBoundingClientRect().top - navigation.current.offsetHeight - 12;
-      container.scrollTo({ top, behavior: "smooth" });
+      container.scrollTo({ top, behavior: "instant" });
     });
   }
 
