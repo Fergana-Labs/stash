@@ -106,7 +106,7 @@ function Traces() {
           <RmListSkeleton />
         ) : traces.length === 0 ? (
           <div className="py-24 text-center">
-            <p className="m-0 text-[16px] font-medium text-foreground">Drop trace files anywhere here</p>
+            <p className="m-0 text-[16px] font-medium text-foreground">Drop trace files or folders anywhere here</p>
             <p className="m-0 mt-2 text-[13px] text-muted-foreground">JSON, JSONL, or NDJSON. Or connect your agent to send runs automatically.</p>
           </div>
         ) : (

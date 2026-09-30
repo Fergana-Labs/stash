@@ -3,8 +3,8 @@
 import { useRef, useState, type DragEvent, type ReactNode } from "react";
 import { Loader2, Upload } from "lucide-react";
 import { toast } from "sonner";
-import { rmImportTraces } from "@/lib/api";
 import { errorMessage } from "./rm-text";
+import { importTraceFiles, readTraceEntries } from "./trace-files";
 
 export default function TraceDropzone({ children, onImported }: {
   children: ReactNode;
@@ -20,32 +20,33 @@ export default function TraceDropzone({ children, onImported }: {
       && event.dataTransfer.types.includes("Files");
   }
 
-  async function importFiles(files: File[]) {
+  async function importEntries(entries: (FileSystemEntry | null)[]) {
     if (busy.current) {
       toast.error("Wait for the current import to finish before dropping more files.");
       return;
     }
     busy.current = true;
-    let imported = 0;
+    setUploading("folder contents");
     try {
-      for (const file of files) {
-        setUploading(file.name);
-        try {
-          if (!/\.(json|jsonl|ndjson|txt)$/i.test(file.name)) {
-            throw new Error(file.name.toLowerCase().endsWith(".zip")
-              ? "Unzip this archive, then drop the trace files inside."
-              : "Choose a JSON, JSONL, NDJSON, or text file.");
-          }
-          const result = await rmImportTraces("auto", await file.text());
-          imported += result.imported;
-        } catch (error) {
-          toast.error(`${file.name}: ${errorMessage(error)}`);
-        }
+      if (entries.some((entry) => entry === null)) {
+        throw new Error("Cannot read the dropped item. Select it using Import traces.");
       }
-      if (imported > 0) {
-        toast.success(`Imported ${imported} trace${imported === 1 ? "" : "s"}`);
+      const files = await readTraceEntries(entries as FileSystemEntry[]);
+      const result = await importTraceFiles(files, "auto", setUploading);
+      for (const failure of result.failed) toast.error(failure.message);
+      if (result.skipped.length > 0) {
+        toast.info(`Skipped ${result.skipped.length} supporting file${result.skipped.length === 1 ? "" : "s"}`, {
+          description: result.skipped.join(", "),
+        });
+      }
+      if (result.imported > 0) {
+        toast.success(`Imported ${result.imported} trace${result.imported === 1 ? "" : "s"}`);
         onImported();
+      } else if (result.failed.length === 0) {
+        toast.error("No trace files found. Choose JSON, JSONL, NDJSON, or text trace files.");
       }
+    } catch (error) {
+      toast.error(errorMessage(error));
     } finally {
       busy.current = false;
       setUploading(null);
@@ -79,7 +80,11 @@ export default function TraceDropzone({ children, onImported }: {
         event.preventDefault();
         depth.current = 0;
         setDragging(false);
-        void importFiles(Array.from(event.dataTransfer.files));
+        // Capture entries before awaiting: browsers protect the drag data after this event.
+        const entries = Array.from(event.dataTransfer.items)
+          .filter((item) => item.kind === "file")
+          .map((item) => item.webkitGetAsEntry());
+        void importEntries(entries);
       }}
     >
       {children}
@@ -87,7 +92,7 @@ export default function TraceDropzone({ children, onImported }: {
         <div className="pointer-events-none absolute inset-0 z-40 flex flex-col items-center justify-center gap-3 border-2 border-brand-500 bg-background/95 px-8 text-center">
           {uploading ? <Loader2 className="size-6 animate-spin text-muted-foreground" /> : <Upload className="size-6 text-brand-500" />}
           <p role="status" className="m-0 max-w-full truncate text-[15px] font-medium">
-            {uploading ? `Importing ${uploading}…` : "Drop files to import traces"}
+            {uploading ? `Importing ${uploading}…` : "Drop files or folders to import traces"}
           </p>
         </div>
       )}
