@@ -38,11 +38,31 @@ async def test_unhandled_errors_are_redacted_and_keep_security_headers(
     assert resp.headers["X-Content-Type-Options"] == "nosniff"
     assert "secret-token" not in resp.text
     assert "customer transcript" not in resp.text
-    assert captured_logs == [
-        (
-            "Unhandled request failed method=%s path=%s exception_type=%s",
-            ("GET", "/__test_unhandled_error_redaction", "RuntimeError"),
-        )
-    ]
+    assert len(captured_logs) == 1
+    _, args = captured_logs[0]
+    assert args[:3] == ("GET", "/__test_unhandled_error_redaction", "RuntimeError")
+    filename, line, function = args[3][-1]
+    assert filename.endswith("test_security_headers.py")
+    assert line > 0
+    assert function == "_raise_secret_error"
     assert "secret-token" not in str(captured_logs)
     assert "customer transcript" not in str(captured_logs)
+
+
+async def test_startup_restores_request_error_logging_after_migrations(monkeypatch, caplog):
+    from unittest.mock import AsyncMock
+
+    from backend import main
+
+    async def migrations_disable_logger():
+        main.logger.disabled = True
+
+    monkeypatch.setattr(main.logger, "disabled", False)
+    monkeypatch.setattr(main, "init_db", migrations_disable_logger)
+    monkeypatch.setattr(main, "close_db", AsyncMock())
+    monkeypatch.setattr(main.demo_service, "seed_demo", AsyncMock())
+
+    async with main.lifespan(main.app):
+        main.logger.error("Request errors remain visible after startup")
+
+    assert "Request errors remain visible after startup" in caplog.text

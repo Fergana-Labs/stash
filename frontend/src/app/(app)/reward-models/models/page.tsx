@@ -22,13 +22,15 @@ const POLL_MS = 3000;
 export default function RewardModelsPage() {
   useBreadcrumbs([{ label: "Reward models", href: "/reward-models" }, { label: "Models" }], "rm-models");
   const [models, setModels] = useState<RmRewardModel[] | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
 
   const load = useCallback(async () => {
+    setLoadError(null);
     try {
       setModels(await rmListRewardModels());
     } catch (e) {
-      toast.error(errorMessage(e));
+      setLoadError(errorMessage(e));
     }
   }, []);
 
@@ -36,7 +38,7 @@ export default function RewardModelsPage() {
     void load();
   }, [load]);
 
-  const polling = models?.some((m) => isActiveJob(m.status)) ?? false;
+  const polling = loadError === null && (models?.some((m) => isActiveJob(m.status)) ?? false);
   useEffect(() => {
     if (!polling) return;
     const timer = setInterval(() => void load(), POLL_MS);
@@ -56,7 +58,15 @@ export default function RewardModelsPage() {
           void load();
         }}
       />
-      {models === null ? (
+      {loadError !== null ? (
+        <div role="alert" className="py-6 text-sm">
+          <p className="font-medium">Couldn’t load reward models.</p>
+          <p className="mt-1 text-muted-foreground">{loadError}</p>
+          <Button variant="outline" size="sm" className="mt-3" onClick={() => void load()}>
+            Try again
+          </Button>
+        </div>
+      ) : models === null ? (
         <RmListSkeleton />
       ) : models.length === 0 ? (
         <EmptyState title="No reward models yet">Create a model to learn from feedback in your traces.</EmptyState>
