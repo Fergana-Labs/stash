@@ -27,13 +27,6 @@ export function sortTraces(traces: RmTraceSummary[], key: TraceSortKey, directio
 /** `?selected=id1,id2` on the Traces tab preselects traces, e.g. from a model card's "Trained on N traces". */
 export const SELECTED_PARAM = "selected";
 
-// Training fails below this many preference pairs.
-export const MIN_PAIRS = 2;
-
-export function hasLabels(t: RmTraceSummary): boolean {
-  return t.positive_count + t.negative_count > 0;
-}
-
 export function searchTraces(traces: RmTraceSummary[], query: string): RmTraceSummary[] {
   const needle = query.trim().toLowerCase();
   return traces.filter((trace) => trace.title.toLowerCase().includes(needle));
@@ -69,25 +62,8 @@ export function toggleAllVisible(visibleIds: string[], selected: Set<string>): S
 
 export interface SelectionSummary {
   count: number;
-  positive: number;
-  negative: number;
 }
 
 export function summarizeSelection(traces: RmTraceSummary[], selected: Set<string>): SelectionSummary {
-  const picked = traces.filter((t) => selected.has(t.id));
-  return {
-    count: picked.length,
-    positive: picked.reduce((sum, t) => sum + t.positive_count, 0),
-    negative: picked.reduce((sum, t) => sum + t.negative_count, 0),
-  };
-}
-
-/**
- * Pairs are chosen × rejected targets within a granularity, and collapsing
- * ratings per target only lowers that, so positive × negative is an upper
- * bound. Below MIN_PAIRS the selection certainly can't train; above it the
- * server has the final word.
- */
-export function tooFewPairs(summary: SelectionSummary): boolean {
-  return summary.positive * summary.negative < MIN_PAIRS;
+  return { count: traces.filter((trace) => selected.has(trace.id)).length };
 }

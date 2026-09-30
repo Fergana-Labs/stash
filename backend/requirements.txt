@@ -36,3 +36,7 @@ stripe>=12.0
 websockets>=13.0
 croniter>=2.0
 trafilatura>=2.0
+
+# Lightweight clients; ML libraries run on the isolated reward worker.
+boto3>=1.40
+modal==1.6.0

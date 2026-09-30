@@ -4,18 +4,16 @@ Contract: docs/reward-models/DESIGN.md ("REST API"). Every row is private to
 its owner; another owner's id is a 404, never a 403, so ids don't leak.
 """
 
-import asyncio
 import json
 import re
-import tempfile
-from pathlib import Path
 from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from fastapi.responses import FileResponse, Response
-from pydantic import BaseModel, Field
-from starlette.background import BackgroundTask
+from fastapi.responses import Response, StreamingResponse
+from pydantic import BaseModel, ConfigDict, Field
+
+from rm_worker.artifacts import stream_model
 
 from ..auth import get_current_user
 from ..database import get_pool
@@ -68,9 +66,9 @@ class UpdateAnnotationRequest(BaseModel):
 
 
 class CreateRewardModelRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     name: str = Field(min_length=1)
     base_model: str = DEFAULT_BASE_MODEL
-    compute: Literal["local", "modal"]
     epochs: int = Field(default=DEFAULT_EPOCHS, ge=1)
     max_pairs: int = Field(default=datasets.DEFAULT_MAX_PAIRS, ge=1)
     trace_ids: list[UUID] = Field(min_length=1)
@@ -236,12 +234,9 @@ async def create_reward_model(
         if trace_id not in owned_ids:
             raise HTTPException(status_code=404, detail=f"Trace {trace_id} not found")
 
-    # Checked again when the job runs: labels can change while it is queued.
-    pairs = await datasets.build_pairs(owner_user_id, trace_ids, req.max_pairs)
-    try:
-        datasets.check_enough_pairs(pairs)
-    except datasets.NotEnoughPairs as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    compute = jobs.required_env("RM_COMPUTE")
+    if compute not in ("local", "modal"):
+        raise ValueError("RM_COMPUTE must be local or modal")
     row = await get_pool().fetchrow(
         """
         INSERT INTO rm_reward_models
@@ -252,7 +247,7 @@ async def create_reward_model(
         current_user["id"],
         req.name,
         req.base_model,
-        req.compute,
+        compute,
         req.epochs,
         req.max_pairs,
         trace_ids,
@@ -285,31 +280,23 @@ async def get_reward_model(model_id: UUID, current_user: dict = Depends(get_curr
 @router.get("/reward-models/{model_id}/weights")
 async def download_reward_model_weights(
     model_id: UUID, current_user: dict = Depends(get_current_user)
-) -> FileResponse:
-    name = await get_pool().fetchval(
-        "SELECT name FROM rm_reward_models "
+) -> StreamingResponse:
+    model = await get_pool().fetchrow(
+        "SELECT name, artifact_key FROM rm_reward_models "
         "WHERE owner_user_id = $1 AND id = $2 AND status = 'succeeded'",
         current_user["id"],
         model_id,
     )
-    if name is None:
+    if model is None:
         raise HTTPException(status_code=404, detail="No trained weights for this reward model")
-
-    safe_name = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
+    if model["artifact_key"] is None:
+        raise HTTPException(status_code=500, detail="Reward model has no stored checkpoint")
+    safe_name = re.sub(r"[^a-z0-9]+", "-", model["name"].lower()).strip("-")
     stem = "-".join(part for part in (safe_name, "reward-model") if part)
-    # The archive can be gigabytes: build it on disk, stream it, delete it after sending.
-    temp_dir = tempfile.TemporaryDirectory()
-    archive = Path(temp_dir.name) / f"{stem}.tar.gz"
-    try:
-        await asyncio.to_thread(jobs.pack_model, model_id, stem, archive)
-    except BaseException:
-        temp_dir.cleanup()
-        raise
-    return FileResponse(
-        archive,
+    return StreamingResponse(
+        stream_model(model["artifact_key"]),
         media_type="application/gzip",
-        filename=f"{stem}.tar.gz",
-        background=BackgroundTask(temp_dir.cleanup),
+        headers={"Content-Disposition": f'attachment; filename="{stem}.tar.gz"'},
     )
 
 

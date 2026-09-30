@@ -17,6 +17,7 @@ import torch
 import torch.nn.functional as F
 from transformers import AutoModelForSequenceClassification
 
+from rm_worker.artifacts import upload_model
 from rm_worker.scoring import load_tokenizer, pick_device, score_texts, tokenize
 
 MAX_LENGTH = 1024
@@ -52,12 +53,12 @@ def write_reward_stats(model_dir: Path, scores: list[float]) -> None:
     """Mean and population std of the rewards on the owner's traces, for gepa_run's calibration."""
     if len(scores) < 2:
         raise ValueError(
-            f"need at least 2 scored traces to calibrate the reward model, got {len(scores)}"
+            f"need at least 2 preference responses to calibrate the reward model, got {len(scores)}"
         )
     std = statistics.pstdev(scores)
     if std == 0:
         raise ValueError(
-            "every scored trace got the same reward, so the reward model cannot be calibrated"
+            "every preference response got the same reward, so the reward model cannot be calibrated"
         )
     stats = {"mean": statistics.fmean(scores), "std": std}
     (model_dir / "reward_stats.json").write_text(json.dumps(stats))
@@ -138,7 +139,12 @@ def train(job_dir: Path) -> dict:
         ],
     )
     log(f"scored {len(scores)} traces")
-    write_reward_stats(job_dir / "model", scores)
+    calibration_texts = [
+        pair[key] for pair in train_pairs + eval_pairs for key in ("chosen", "rejected")
+    ]
+    calibration_scores = score_texts(model, tokenizer, calibration_texts, device, BATCH_SIZE)
+    write_reward_stats(job_dir / "model", calibration_scores)
+    upload_model(job_dir / "model", job["artifact_key"])
 
     result = {
         "metrics": {

@@ -1,4 +1,4 @@
-"""Reward model training and GEPA skill creation tasks (heavy queue)."""
+"""Reward model training and GEPA skill creation tasks (dedicated reward queue)."""
 
 from __future__ import annotations
 

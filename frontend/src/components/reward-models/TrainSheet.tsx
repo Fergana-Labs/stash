@@ -11,9 +11,9 @@ import TraceTable from "./TraceTable";
 import TrainPanel from "./TrainPanel";
 import { RmListSkeleton } from "./RmSkeletons";
 import { errorMessage } from "./rm-text";
-import { hasLabels, summarizeSelection } from "./trace-selection";
+import { summarizeSelection } from "./trace-selection";
 
-/** Right-side sheet: pick traces (every labeled trace preselected), then train on them. */
+/** Right-side sheet: pick traces (every trace preselected), then train on them. */
 export default function TrainSheet({
   open,
   onOpenChange,
@@ -44,7 +44,7 @@ function SheetBody({ onTrained }: { onTrained: (model: RmRewardModel) => void })
     rmListAllTraces()
       .then((all) => {
         setTraces(all);
-        setSelected(new Set(all.filter(hasLabels).map((t) => t.id)));
+        setSelected(new Set(all.map((t) => t.id)));
       })
       .catch((e) => toast.error(errorMessage(e)));
   }, []);

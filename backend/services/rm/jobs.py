@@ -9,12 +9,11 @@ with RM_WORKER_PYTHON, and reads result.json / scores.jsonl back.
 import asyncio
 import json
 import os
-import tarfile
 from pathlib import Path
 from uuid import UUID
 
 from ...database import get_pool
-from . import datasets
+from . import datasets, feedback
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 LOG_TAIL_CHARS = 2000
@@ -24,7 +23,7 @@ class WorkerFailed(RuntimeError):
     """The worker exited non-zero; the message is the tail of worker.log."""
 
 
-def _required_env(name: str) -> str:
+def required_env(name: str) -> str:
     value = os.environ.get(name)
     if not value:
         raise RuntimeError(f"{name} is not set; it is required to run reward model jobs")
@@ -32,19 +31,7 @@ def _required_env(name: str) -> str:
 
 
 def job_dir(job_id: UUID) -> Path:
-    return Path(_required_env("RM_ARTIFACT_DIR")) / str(job_id)
-
-
-def pack_model(model_id: UUID, archive_stem: str, destination: Path) -> None:
-    """Write the trained model directory as a .tar.gz with one top-level folder.
-
-    Compression level 1: the weights barely compress, so more effort buys only CPU time.
-    """
-    source = job_dir(model_id) / "model"
-    if not source.is_dir():
-        raise FileNotFoundError(f"trained model directory is missing: {source}")
-    with tarfile.open(destination, "w:gz", compresslevel=1) as tar:
-        tar.add(source, arcname=archive_stem)
+    return Path(required_env("RM_ARTIFACT_DIR")) / str(job_id)
 
 
 def _write_jsonl(path: Path, rows: list[dict]) -> None:
@@ -56,7 +43,7 @@ def _read_jsonl(path: Path) -> list[dict]:
 
 
 async def run_worker(module: str, directory: Path) -> None:
-    python = _required_env("RM_WORKER_PYTHON")
+    python = required_env("RM_WORKER_PYTHON")
     log_path = directory / "worker.log"
     with log_path.open("w") as log:
         process = await asyncio.create_subprocess_exec(
@@ -80,9 +67,16 @@ async def run_training(model_id: UUID) -> None:
     owner_user_id = model["owner_user_id"]
 
     pairs = await datasets.build_pairs(owner_user_id, model["trace_ids"], model["max_pairs"])
+    pairs.extend(
+        await feedback.build_feedback_pairs(owner_user_id, model["trace_ids"], model["max_pairs"])
+    )
+    pairs = pairs[: model["max_pairs"]]
     datasets.check_enough_pairs(pairs)
     await pool.execute(
-        "UPDATE rm_reward_models SET num_pairs = $2 WHERE id = $1", model_id, len(pairs)
+        "UPDATE rm_reward_models SET num_pairs = $2, training_pairs = $3 WHERE id = $1",
+        model_id,
+        len(pairs),
+        pairs,
     )
 
     directory = job_dir(model_id)
@@ -92,12 +86,13 @@ async def run_training(model_id: UUID) -> None:
         "base_model": model["base_model"],
         "epochs": model["epochs"],
         "compute": model["compute"],
+        "artifact_key": f"reward-models/{owner_user_id}/{model_id}.tar.gz",
     }
     (directory / "job.json").write_text(json.dumps(job))
     _write_jsonl(directory / "pairs.jsonl", pairs)
     _write_jsonl(directory / "score_items.jsonl", await datasets.score_items(owner_user_id))
 
-    module = "rm_worker.modal_train" if model["compute"] == "modal" else "rm_worker.train"
+    module = "rm_worker.modal_runner" if model["compute"] == "modal" else "rm_worker.train"
     await run_worker(module, directory)
 
     result = json.loads((directory / "result.json").read_text())
@@ -108,11 +103,12 @@ async def run_training(model_id: UUID) -> None:
         await conn.execute(
             """
             UPDATE rm_reward_models
-            SET metrics = $2, status = 'succeeded', finished_at = now()
+            SET metrics = $2, artifact_key = $3, status = 'succeeded', finished_at = now()
             WHERE id = $1
             """,
             model_id,
             result["metrics"],
+            job["artifact_key"],
         )
         await conn.execute("DELETE FROM rm_trace_scores WHERE reward_model_id = $1", model_id)
         # A trace deleted while the job ran has nothing left to attach a score to.
@@ -133,18 +129,22 @@ async def run_gepa(run_id: UUID) -> None:
     run = await pool.fetchrow("SELECT * FROM rm_gepa_runs WHERE id = $1", run_id)
 
     # The skill learns from the same traces its reward model was trained on.
-    trace_ids = await pool.fetchval(
-        "SELECT trace_ids FROM rm_reward_models WHERE id = $1", run["reward_model_id"]
+    model = await pool.fetchrow(
+        "SELECT trace_ids, artifact_key, compute FROM rm_reward_models WHERE id = $1",
+        run["reward_model_id"],
     )
+    trace_ids = model["trace_ids"]
+    if model["artifact_key"] is None:
+        raise ValueError("Reward model has no stored checkpoint")
     examples = await datasets.gepa_examples(run["owner_user_id"], trace_ids)
     if not examples:
-        raise ValueError("need at least one annotated trace with a user turn")
+        raise ValueError("need at least one selected trace with a user turn")
 
     directory = job_dir(run_id)
     directory.mkdir(parents=True, exist_ok=True)
     job = {
         "kind": "gepa",
-        "reward_model_dir": str(job_dir(run["reward_model_id"]) / "model"),
+        "reward_model_key": model["artifact_key"],
         "task_model": run["task_model"],
         "task_api_base": run["task_api_base"],
         "reflection_model": run["reflection_model"],
@@ -153,7 +153,8 @@ async def run_gepa(run_id: UUID) -> None:
     (directory / "job.json").write_text(json.dumps(job))
     _write_jsonl(directory / "gepa_examples.jsonl", examples)
 
-    await run_worker("rm_worker.gepa_run", directory)
+    module = "rm_worker.modal_runner" if model["compute"] == "modal" else "rm_worker.gepa_run"
+    await run_worker(module, directory)
 
     result = json.loads((directory / "result.json").read_text())
     await pool.execute(

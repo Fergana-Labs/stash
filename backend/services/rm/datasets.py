@@ -25,7 +25,7 @@ def check_enough_pairs(pairs: list[dict]) -> None:
     if len(pairs) < MIN_PAIRS:
         raise NotEnoughPairs(
             f"the selected traces have {len(pairs)} preference pairs; need at least "
-            f"{MIN_PAIRS} (e.g. two + and one −)"
+            f"{MIN_PAIRS}. Add specific feedback to more responses or include traces with user corrections."
         )
 
 
@@ -124,7 +124,7 @@ async def score_items(owner_user_id: UUID) -> list[dict]:
 
 
 async def gepa_examples(owner_user_id: UUID, trace_ids: list[UUID]) -> list[dict]:
-    """Annotated traces among `trace_ids` as GEPA inputs: the conversation before
+    """Selected traces among `trace_ids` as GEPA inputs: the conversation before
     the first assistant turn.
 
     The trace's own system prompt travels separately (`system`) because the
@@ -132,18 +132,19 @@ async def gepa_examples(owner_user_id: UUID, trace_ids: list[UUID]) -> list[dict
     before its first assistant step has no input to replay, so it cannot be an
     example.
     """
-    annotated = await get_pool().fetch(
+    selected = await get_pool().fetch(
         """
         SELECT
-          a.trace_id,
+          t.id AS trace_id,
           COALESCE(
             array_agg(a.comment ORDER BY a.created_at) FILTER (WHERE a.comment IS NOT NULL),
             '{}'
           ) AS comments
-        FROM rm_annotations a
-        WHERE a.owner_user_id = $1 AND a.trace_id = ANY($2::uuid[]) AND NOT a.label_error
-        GROUP BY a.trace_id
-        ORDER BY a.trace_id
+        FROM rm_traces t
+        LEFT JOIN rm_annotations a ON a.trace_id = t.id AND NOT a.label_error
+        WHERE t.owner_user_id = $1 AND t.id = ANY($2::uuid[])
+        GROUP BY t.id
+        ORDER BY t.id
         """,
         owner_user_id,
         trace_ids,
@@ -151,7 +152,7 @@ async def gepa_examples(owner_user_id: UUID, trace_ids: list[UUID]) -> list[dict
     steps_by_trace = await _steps_by_trace(owner_user_id)
 
     examples = []
-    for row in annotated:
+    for row in selected:
         steps = steps_by_trace[row["trace_id"]]
         system_parts = [step["content"] for step in steps if step["role"] == "system"]
         messages = []

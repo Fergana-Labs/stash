@@ -18,6 +18,7 @@ import litellm
 from gepa import EvaluationBatch
 from gepa.lm import LM
 
+from rm_worker.artifacts import download_model
 from rm_worker.scoring import RewardModel
 
 COMPONENT = "skill_body"
@@ -316,10 +317,11 @@ def run(job_dir: Path) -> dict:
     log(f"skill name: {skill_name}")
     log(f"skill description: {skill_description}")
 
-    log(f"loading reward model from {job['reward_model_dir']}")
+    model_dir = download_model(job["reward_model_key"], job_dir / "checkpoint")
+    log("loading stored reward model")
     adapter = RewardModelAdapter(
-        RewardModel(job["reward_model_dir"]),
-        reward_stats=load_reward_stats(Path(job["reward_model_dir"])),
+        RewardModel(model_dir),
+        reward_stats=load_reward_stats(model_dir),
         skill_name=skill_name,
         skill_description=skill_description,
         task_model=job["task_model"],

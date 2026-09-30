@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from backend.database import get_pool
-from backend.services.rm import datasets, jobs
+from backend.services.rm import datasets, feedback, jobs
 from backend.tasks import reward_models as rm_tasks
 
 from .test_rm_api import (
@@ -24,6 +24,16 @@ from .test_rm_api import (
 )
 
 pytestmark = pytest.mark.usefixtures("rm_title_generator")
+
+
+@pytest.fixture(autouse=True)
+def no_feedback_inference(monkeypatch):
+    monkeypatch.setenv("RM_COMPUTE", "local")
+
+    async def extract(steps, evidence):
+        return feedback.Extraction(preferences=[])
+
+    monkeypatch.setattr(feedback, "extract_preferences", extract)
 
 
 async def _user_id(client, auth) -> str:
@@ -165,11 +175,12 @@ def _fake_worker(monkeypatch, write_outputs):
 async def _create_model(client, auth, monkeypatch, compute="local", trace_ids=None) -> str:
     """A queued model trained on `trace_ids`, or on every trace the owner has."""
     monkeypatch.setattr(rm_tasks.train_reward_model, "delay", lambda *a: None)
+    monkeypatch.setenv("RM_COMPUTE", compute)
     if trace_ids is None:
         trace_ids = await _all_trace_ids(client, auth)
     resp = await client.post(
         "/api/v1/rm/reward-models",
-        json={"name": "rm", "compute": compute, "trace_ids": trace_ids},
+        json={"name": "rm", "trace_ids": trace_ids},
         headers=auth,
     )
     assert resp.status_code == 200, resp.text
@@ -186,6 +197,7 @@ async def test_training_ingests_metrics_and_scores(client, monkeypatch, artifact
     auth = await _register(client)
     good, bad = await _labelled_pair(client, auth)
     model_id = await _create_model(client, auth, monkeypatch)
+    owner = await _user_id(client, auth)
     metrics = {
         "train_pairs": 1,
         "eval_pairs": 1,
@@ -203,6 +215,7 @@ async def test_training_ingests_metrics_and_scores(client, monkeypatch, artifact
             "base_model": "Qwen/Qwen3-0.6B",
             "epochs": 1,
             "compute": "local",
+            "artifact_key": f"reward-models/{owner}/{model_id}.tar.gz",
         }
         assert len((directory / "pairs.jsonl").read_text().splitlines()) == 2
         items = [
@@ -249,7 +262,7 @@ async def test_modal_compute_runs_the_modal_module(client, monkeypatch, artifact
 
     calls = _fake_worker(monkeypatch, write_outputs)
     await rm_tasks.train_reward_model_async(model_id)
-    assert calls == ["rm_worker.modal_train"]
+    assert calls == ["rm_worker.modal_runner"]
 
 
 async def test_labels_flagged_while_queued_fail_the_job_before_the_worker(
@@ -272,7 +285,7 @@ async def test_labels_flagged_while_queued_fail_the_job_before_the_worker(
     model = (await client.get(f"/api/v1/rm/reward-models/{model_id}", headers=auth)).json()
     assert model["status"] == "failed"
     assert model["error"] == (
-        "the selected traces have 0 preference pairs; need at least 2 (e.g. two + and one −)"
+        "the selected traces have 0 preference pairs; need at least 2. Add specific feedback to more responses or include traces with user corrections."
     )
     assert model["metrics"] is None
 
@@ -283,7 +296,7 @@ async def test_worker_crash_stores_the_log_tail(client, monkeypatch, artifact_di
     await _labelled_pair(client, auth)
     model_id = await _create_model(client, auth, monkeypatch)
 
-    # The backend's venv has no rm_worker.modal_train deps; any missing module
+    # The backend's venv has no rm_worker.modal_runner deps; any missing module
     # exercises the same path. Point the module at one that cannot exist.
     real_run_worker = jobs.run_worker
 
@@ -319,7 +332,8 @@ async def test_gepa_run_ingests_the_best_skill(client, monkeypatch, artifact_dir
     await _labelled_pair(client, auth)
     model_id = await _create_model(client, auth, monkeypatch)
     await get_pool().execute(
-        "UPDATE rm_reward_models SET status = 'succeeded' WHERE id = $1::uuid", model_id
+        "UPDATE rm_reward_models SET status = 'succeeded', artifact_key = 'test/model.tar.gz' WHERE id = $1::uuid",
+        model_id,
     )
     monkeypatch.setattr(rm_tasks.run_gepa, "delay", lambda *a: None)
     resp = await client.post(
@@ -348,7 +362,7 @@ async def test_gepa_run_ingests_the_best_skill(client, monkeypatch, artifact_dir
         job = json.loads((directory / "job.json").read_text())
         assert job == {
             "kind": "gepa",
-            "reward_model_dir": str(artifact_dir / model_id / "model"),
+            "reward_model_key": "test/model.tar.gz",
             "task_model": "openai/qwen3-8b",
             "task_api_base": "http://localhost:8000/v1",
             "reflection_model": "anthropic/claude-sonnet-5",
@@ -443,7 +457,6 @@ async def test_trained_weights_download_as_a_tarball(client, monkeypatch, artifa
         "/api/v1/rm/reward-models",
         json={
             "name": "Support RM (v2)!",
-            "compute": "local",
             "trace_ids": await _all_trace_ids(client, auth),
         },
         headers=auth,
@@ -457,8 +470,21 @@ async def test_trained_weights_download_as_a_tarball(client, monkeypatch, artifa
     (model_dir / "model.safetensors").write_bytes(b"\x00" * 1024)
     (model_dir / "tokenizer.json").write_text("{}")
     (model_dir / "reward_stats.json").write_text('{"mean": 0.0, "std": 1.0}')
+    archive = io.BytesIO()
+    with tarfile.open(fileobj=archive, mode="w:gz") as tar:
+        tar.add(model_dir, arcname="reward-model")
+    import shutil
+
+    shutil.rmtree(artifact_dir / model_id)
+
+    def stored_checkpoint(key):
+        assert key == "test/model.tar.gz"
+        return iter([archive.getvalue()])
+
+    monkeypatch.setattr("backend.routers.reward_models.stream_model", stored_checkpoint)
     await get_pool().execute(
-        "UPDATE rm_reward_models SET status = 'succeeded' WHERE id = $1::uuid", model_id
+        "UPDATE rm_reward_models SET status = 'succeeded', artifact_key = 'test/model.tar.gz' WHERE id = $1::uuid",
+        model_id,
     )
 
     intruder = await _register(client)
@@ -471,12 +497,12 @@ async def test_trained_weights_download_as_a_tarball(client, monkeypatch, artifa
     )
     with tarfile.open(fileobj=io.BytesIO(resp.content), mode="r:gz") as tar:
         names = set(tar.getnames())
-        stats = tar.extractfile("support-rm-v2-reward-model/reward_stats.json").read()
+        stats = tar.extractfile("reward-model/reward_stats.json").read()
     assert names == {
-        "support-rm-v2-reward-model",
-        "support-rm-v2-reward-model/model.safetensors",
-        "support-rm-v2-reward-model/tokenizer.json",
-        "support-rm-v2-reward-model/reward_stats.json",
+        "reward-model",
+        "reward-model/model.safetensors",
+        "reward-model/tokenizer.json",
+        "reward-model/reward_stats.json",
     }
     assert json.loads(stats) == {"mean": 0.0, "std": 1.0}
 
@@ -487,7 +513,8 @@ async def test_one_button_skill_run_uses_the_documented_defaults(client, monkeyp
     await _labelled_pair(client, auth)
     model_id = await _create_model(client, auth, monkeypatch)
     await get_pool().execute(
-        "UPDATE rm_reward_models SET status = 'succeeded' WHERE id = $1::uuid", model_id
+        "UPDATE rm_reward_models SET status = 'succeeded', artifact_key = 'test/model.tar.gz' WHERE id = $1::uuid",
+        model_id,
     )
     queued = []
     monkeypatch.setattr(rm_tasks.run_gepa, "delay", queued.append)

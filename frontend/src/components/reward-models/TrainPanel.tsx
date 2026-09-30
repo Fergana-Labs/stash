@@ -5,13 +5,12 @@ import { ChevronDown, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Select } from "@/components/ui/select";
 import { rmCreateRewardModel, rmListRewardModels } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import type { RmCompute, RmRewardModel } from "@/lib/types";
+import type { RmRewardModel } from "@/lib/types";
 import { Field } from "./rm-ui";
 import { errorMessage } from "./rm-text";
-import { tooFewPairs, type SelectionSummary } from "./trace-selection";
+import { type SelectionSummary } from "./trace-selection";
 
 const DEFAULT_BASE_MODEL = "Qwen/Qwen3-0.6B";
 const BASE_MODEL_SUGGESTIONS = ["Qwen/Qwen3-0.6B", "Qwen/Qwen3-1.7B", "Qwen/Qwen3-4B", "HuggingFaceTB/SmolLM2-360M-Instruct"];
@@ -39,7 +38,6 @@ export default function TrainPanel({
   // null = the generated name, which follows the model count.
   const [nameOverride, setNameOverride] = useState<string | null>(null);
   const [baseModel, setBaseModel] = useState(DEFAULT_BASE_MODEL);
-  const [compute, setCompute] = useState<RmCompute>("local");
   const [epochs, setEpochs] = useState(1);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -60,7 +58,6 @@ export default function TrainPanel({
         trace_ids: traceIds,
         name: name.trim(),
         base_model: baseModel.trim(),
-        compute,
         epochs,
       });
       onTrained(model);
@@ -108,28 +105,11 @@ export default function TrainPanel({
             <Input value={name} onChange={(e) => setNameOverride(e.target.value)} />
           </Field>
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Compute">
-              <Select
-                value={compute}
-                onChange={(v) => setCompute(v as RmCompute)}
-                options={[
-                  { value: "local", label: "Local" },
-                  { value: "modal", label: "Modal GPU" },
-                ]}
-                aria-label="Compute"
-                portal={false}
-                className="h-8 w-full px-2.5 text-[13px]"
-              />
-            </Field>
             <Field label="Epochs">
               <Input type="number" min={1} max={20} value={epochs} onChange={(e) => setEpochs(Number(e.target.value))} />
             </Field>
           </div>
-          <p className="m-0 text-[11.5px] leading-snug text-muted-foreground">
-            {compute === "local"
-              ? "Runs on this server: Apple MPS, CUDA when present, else CPU."
-              : "Runs the same code on a Modal A10G."}
-          </p>
+
         </div>
       )}
     </div>
@@ -138,10 +118,10 @@ export default function TrainPanel({
 
 function TrainStatus({ summary, error }: { summary: SelectionSummary; error: string | null }) {
   if (error) return <p className="m-0 max-w-sm text-right text-[12px] leading-snug text-red-600">{error}</p>;
-  if (!tooFewPairs(summary)) return null;
+  if (summary.count > 0) return null;
   return (
     <p className="m-0 max-w-xs text-right text-[12px] leading-snug text-amber-700 dark:text-amber-400">
-      These traces don’t contain enough preference data to train a model.
+      Select traces to train a model.
     </p>
   );
 }

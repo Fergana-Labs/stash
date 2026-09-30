@@ -22,7 +22,6 @@ import {
   CuratedSkill,
   AppFacets,
   RmAnnotation,
-  RmCompute,
   RmFormat,
   RmGepaRun,
   RmImportResult,
@@ -2740,7 +2739,6 @@ export async function rmCreateRewardModel(body: {
   trace_ids: string[];
   name: string;
   base_model: string;
-  compute: RmCompute;
   epochs: number;
 }): Promise<RmRewardModel> {
   return apiFetch(`${RM}/reward-models`, { method: "POST", body: JSON.stringify(body) });

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { RmTraceSummary } from "@/lib/types";
-import { searchTraces, selectRange, sortTraces, summarizeSelection, toggleAllVisible, tooFewPairs } from "./trace-selection";
+import { searchTraces, selectRange, sortTraces, summarizeSelection, toggleAllVisible } from "./trace-selection";
 
 function trace(id: string, title: string, positive: number, negative: number, comments = 0): RmTraceSummary {
   return {
@@ -77,14 +77,8 @@ describe("toggleAllVisible", () => {
   });
 });
 
-describe("training readiness", () => {
-  it("sums labels over the selected rows only", () => {
-    expect(summarizeSelection(traces, new Set(["a", "c"]))).toEqual({ count: 2, positive: 2, negative: 3 });
-  });
-
-  it("flags a selection that can't possibly make two pairs", () => {
-    expect(tooFewPairs({ count: 2, positive: 1, negative: 1 })).toBe(true);
-    expect(tooFewPairs({ count: 1, positive: 5, negative: 0 })).toBe(true);
-    expect(tooFewPairs({ count: 2, positive: 2, negative: 1 })).toBe(false);
+describe("training selection", () => {
+  it("includes selected traces regardless of ratings and ignores deleted selections", () => {
+    expect(summarizeSelection(traces, new Set(["b", "d", "deleted"]))).toEqual({ count: 2 });
   });
 });
