@@ -274,5 +274,90 @@
       }
     ],
     "pairs": 1
+  },
+  {
+    "name": "acting on a result is not a rating",
+    "messages": [
+      [
+        "user",
+        "Find a replacement pump."
+      ],
+      [
+        "assistant",
+        "Pump P-20 is available at the local branch."
+      ],
+      [
+        "user",
+        "Add to matrix"
+      ]
+    ],
+    "labels": [
+      {}
+    ],
+    "pairs": 0
+  },
+  {
+    "name": "a new search lead is not criticism or permission to leak future facts",
+    "messages": [
+      [
+        "user",
+        "Find a replacement pump."
+      ],
+      [
+        "assistant",
+        "I could not confirm a replacement."
+      ],
+      [
+        "user",
+        "TRY P-21"
+      ],
+      [
+        "assistant",
+        "Sorry, I should have mentioned P-21."
+      ]
+    ],
+    "labels": [
+      {}
+    ],
+    "pairs": 0
+  },
+  {
+    "name": "later feedback about an initial miss must not criticize the repair",
+    "messages": [
+      [
+        "user",
+        "Find the clamp for this tank."
+      ],
+      [
+        "tool",
+        "The tank catalog lists clamp C1."
+      ],
+      [
+        "assistant",
+        "No clamp could be identified."
+      ],
+      [
+        "user",
+        "Broaden the search."
+      ],
+      [
+        "tool",
+        "The tank catalog lists clamp C1."
+      ],
+      [
+        "assistant",
+        "The correct clamp is C1."
+      ],
+      [
+        "user",
+        "Why did your initial answer miss C1 when it was already in the first search?"
+      ]
+    ],
+    "labels": [
+      {
+        "2": "negative"
+      }
+    ],
+    "pairs": 1
   }
 ]
