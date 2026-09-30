@@ -47,7 +47,8 @@ Attribute evaluations to the actual response being judged:
 - Context after the response can clarify attribution; it cannot supply facts that
   the assistant should supposedly have known earlier.
 
-Quote a verbatim excerpt and explain the evaluation and its source.
+Set evidence_quote=null; code attaches an exact source excerpt. Explain the
+evaluation and its source in reason.
 Labels: positive, negative, unclear. Confidence: high or low, not a probability.
 Generate a revision ONLY for high-confidence positive/negative judgments identifying
 an actionable behavior in the target response. Otherwise revision=null.
@@ -106,7 +107,7 @@ def extraction_schema(evidence: dict[str, dict]) -> type[ResponseExtraction]:
             __base__=Judgment,
             source=(Literal["user_feedback"], ...),
             evidence_id=(Literal[tuple(evidence)], ...),
-            evidence_quote=(str, Field(min_length=1)),
+            evidence_quote=(type(None), ...),
         )
         judgment = human_judgment | AIJudgment
     return create_model(
@@ -180,11 +181,28 @@ async def extract_preferences(steps: list[dict], evidence: dict[str, dict]) -> E
         if finding is None:
             return None
         if finding.source == "ai_judgment":
-            finding = finding.model_copy(
-                update={"evidence_id": response_id, "evidence_quote": step["content"][:500]}
+            evidence_id = response_id
+            evidence_text = step["content"]
+        else:
+            if finding.evidence_id not in evidence or finding.evidence_id not in eligible:
+                raise ValueError("Feedback classifier cited evidence ineligible for this response")
+            evidence_id = finding.evidence_id
+            evidence_text = eligible[evidence_id]["text"]
+        finding = Judgment(
+            **finding.model_dump(exclude={"evidence_id", "evidence_quote"}),
+            evidence_id=evidence_id,
+            evidence_quote=evidence_text.strip()[:500],
+        )
+        if finding.revision is not None and (
+            finding.label == "unclear"
+            or finding.confidence == "low"
+            or not finding.revision.strip()
+            or finding.revision.strip() == step["content"].strip()
+        ):
+            finding = finding.model_copy(update={"revision": None})
+            result.reason += (
+                " No distinct, confident comparison was generated; excluded from training."
             )
-        elif finding.evidence_id not in evidence or finding.evidence_id not in eligible:
-            raise ValueError("Feedback classifier cited evidence ineligible for this response")
         if finding.source == "ai_judgment" and finding.revision is not None:
             async with semaphore:
                 review = await review_comparison(steps, step, finding)

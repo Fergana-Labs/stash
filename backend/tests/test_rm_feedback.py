@@ -84,7 +84,7 @@ async def test_classifier_sees_only_eligible_evidence_and_code_assigns_the_targe
     monkeypatch.setattr(feedback.llm, "complete_structured", complete)
     sources = {**evidence(), "initial": dict(kind="user", step_index=0, text="Refund my order")}
     result = await feedback.extract_preferences(conversation(), sources)
-    assert result == extraction()
+    assert result == extraction(evidence_quote=evidence()["step:2"]["text"])
 
 
 async def test_no_reaction_still_receives_ai_assessment(monkeypatch):
@@ -93,7 +93,7 @@ async def test_no_reaction_still_receives_ai_assessment(monkeypatch):
     async def complete(**kwargs):
         payload = json.loads(kwargs["prompt"])
         assert payload["eligible_evidence"] == {}
-        return feedback.ResponseExtraction(
+        parsed = feedback.ResponseExtraction(
             reason="Unsupported refund claim",
             feedback=feedback.Judgment(
                 source="ai_judgment",
@@ -104,6 +104,8 @@ async def test_no_reaction_still_receives_ai_assessment(monkeypatch):
                 revision="What is your order number?",
             ),
         )
+
+        return kwargs["output_model"].model_validate(parsed.model_dump())
 
     async def review(*args):
         return feedback.ComparisonReview(preferred="revision", grounded=True, reason="Verify first")
@@ -444,6 +446,7 @@ def test_schema_prevents_ineligible_human_citations(evidence_id):
         extraction(evidence_id="step:2").feedback[0].model_dump(exclude={"reason", "step_index"})
     )
     finding["evidence_id"] = evidence_id
+    finding["evidence_quote"] = None
     with pytest.raises(ValidationError):
         schema.model_validate({"reason": "Assessment", "feedback": finding})
 
@@ -460,3 +463,20 @@ def test_schema_without_reactions_only_allows_ai_judgments():
         schema.model_validate({"reason": "Assessment", "feedback": finding}).feedback.source
         == "ai_judgment"
     )
+
+
+async def test_duplicate_alternative_is_reported_without_aborting_other_learning(monkeypatch):
+    async def complete(**kwargs):
+        finding = (
+            extraction(revision="Refund issued")
+            .feedback[0]
+            .model_dump(exclude={"reason", "step_index"})
+        )
+        finding["evidence_quote"] = None
+        return kwargs["output_model"].model_validate({"reason": "Evaluation", "feedback": finding})
+
+    monkeypatch.setattr(feedback.llm, "complete_structured", complete)
+    result = await feedback.extract_preferences(conversation(), evidence())
+    assert result.feedback[0].revision is None
+    assert "excluded from training" in result.feedback[0].reason
+    assert feedback.render_preferences(uuid4(), conversation(), evidence(), result) == []
