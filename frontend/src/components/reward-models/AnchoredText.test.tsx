@@ -47,7 +47,7 @@ describe("AnchoredText (markdown)", () => {
 });
 
 describe("AnchoredText (plain)", () => {
-  it("anchors raw tool output one-to-one", () => {
+  it("anchors each formatted tool output token to the original source", () => {
     const content = "{\"status\": \"delivered\", \"days\": 41}";
     const start = content.indexOf("41");
     const { container } = render(
@@ -59,7 +59,11 @@ describe("AnchoredText (plain)", () => {
         onSelectAnnotation={() => {}}
       />,
     );
-    expect(container.textContent).toBe(content);
+    expect(JSON.parse(container.textContent!)).toEqual(JSON.parse(content));
+    for (const run of container.querySelectorAll<HTMLElement>("[data-o]")) {
+      const offset = Number(run.dataset.o);
+      expect(content.slice(offset, offset + run.textContent!.length)).toBe(run.textContent);
+    }
     expect(container.querySelector("mark[data-ids='a2']")!.textContent).toBe("41");
   });
 });

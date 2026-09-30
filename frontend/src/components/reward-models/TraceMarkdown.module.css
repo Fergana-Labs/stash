@@ -81,9 +81,9 @@
 .prose strong { font-weight: 600; }
 
 .out {
-  font-family: var(--font-mono-stack);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 12px;
-  line-height: 1.4;
+  line-height: 1.5;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   color: var(--text-dim);

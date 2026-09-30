@@ -7,6 +7,7 @@ import type { RmStep } from "@/lib/types";
 import AnchoredText from "./AnchoredText";
 import { firstLine, isThinking, looksLikeError, toolLabel, toolSummary, type TraceRow } from "./trace-rows";
 import type { Highlight } from "./source-anchors";
+import styles from "./TraceMarkdown.module.css";
 
 /** Everything a row needs to show and change one step's annotations. Built once per render by the trace page. */
 export interface StepAnnotations {
@@ -205,11 +206,11 @@ function ToolRow({
         <span className="text-[11px] text-muted-foreground">{expanded ? "Hide" : "Show"}</span>
       </div>
       {expanded && (
-        <div className="mb-1 grid grid-cols-2 gap-3 text-[13px]">
+        <div className={cn("mb-1 grid gap-3 text-[13px]", call?.tool_input != null && result !== null && "grid-cols-2")}>
           {call && call.tool_input !== null && (
-            <Section title="Input" right={<CopyButton text={JSON.stringify(call.tool_input)} />}>
-              <pre className="m-0 bg-surface/60 px-2 py-1 font-mono text-[12px] leading-[1.4] break-words whitespace-pre-wrap text-dim">
-                {JSON.stringify(call.tool_input)}
+            <Section title="Input" right={<CopyButton text={JSON.stringify(call.tool_input, null, 2)} />}>
+              <pre className={cn(styles.out, "m-0 bg-surface/60 px-3 py-2")}>
+                {JSON.stringify(call.tool_input, null, 2)}
               </pre>
             </Section>
           )}
@@ -225,7 +226,7 @@ function ToolRow({
                   </span>
                 }
               >
-                <div className="bg-surface/60 px-2 py-1">
+                <div className="bg-surface/60 px-3 py-2">
                   <StepContent step={result} ann={ann} markdown={false} max={320} />
                 </div>
               </Section>
