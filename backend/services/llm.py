@@ -17,6 +17,7 @@ import logging
 import re
 
 from anthropic import AsyncAnthropic
+from pydantic import BaseModel
 
 from ..config import settings
 
@@ -116,3 +117,24 @@ async def complete_json(
     m = _JSON_FENCE.search(text)
     payload = (m.group(1) if m else text).strip()
     return json.loads(payload)
+
+
+async def complete_structured[ResponseModel: BaseModel](
+    *,
+    prompt: str,
+    system: str,
+    output_model: type[ResponseModel],
+    tier: ModelTier,
+    max_tokens: int,
+) -> ResponseModel:
+    """Constrain generation to the schema and validate it with the SDK."""
+    response = await _get_client().messages.parse(
+        model=_model_for(tier),
+        max_tokens=max_tokens,
+        messages=[{"role": "user", "content": prompt}],
+        system=system,
+        output_format=output_model,
+    )
+    if response.parsed_output is None:
+        raise ValueError(f"Structured completion returned no result ({response.stop_reason})")
+    return response.parsed_output

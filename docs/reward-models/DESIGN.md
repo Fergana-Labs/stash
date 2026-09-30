@@ -154,7 +154,12 @@ probability. Generic disappointment can be recorded without inventing a correcti
 Ambiguous feedback contributes no pair. System prompts and
 future messages are excluded from the rendered training examples.
 
-Evidence is validated against the original source: the target must be an
+Code selects each target response and supplies only eligible later user messages or
+reviewer comments to the classifier. Each call returns at most one judgment; code
+assigns its step index. Initial requests and feedback preceding a response cannot
+be cited. Calls use schema-constrained output and run with bounded concurrency
+(three per trace).
+Evidence is also validated against the original source: the target must be an
 assistant response, corrections must follow it, and step comments must belong
 to it. Malformed extraction fails the job. The exact pairs and evidence are
 stored in `rm_reward_models.training_pairs`. Findings, including abstentions, quotes,

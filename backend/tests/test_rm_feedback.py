@@ -46,6 +46,72 @@ def evidence():
     return {"step:2": dict(kind="user", step_index=2, text=conversation()[2]["content"])}
 
 
+def test_eligible_evidence_cannot_reverse_time_or_reassign_step_comments():
+    steps = conversation() + [
+        dict(idx=3, role="assistant", content="What is the order number?", tool_name=None),
+        dict(idx=4, role="assistant", content="", tool_name="lookup_order"),
+    ]
+    sources = {
+        **evidence(),
+        "initial": dict(kind="user", step_index=0, text="Refund my order"),
+        "comment:1": dict(kind="comment", step_index=1, text="Check first"),
+        "comment:trace": dict(kind="comment", step_index=None, text="Check first"),
+    }
+    links = [
+        {"step_index": step["idx"], "evidence_id": key}
+        for step in steps
+        for key in feedback.eligible_evidence(step, sources)
+    ]
+    assert links == [
+        {"step_index": 1, "evidence_id": "step:2"},
+        {"step_index": 1, "evidence_id": "comment:1"},
+        {"step_index": 1, "evidence_id": "comment:trace"},
+        {"step_index": 3, "evidence_id": "comment:trace"},
+    ]
+
+
+async def test_classifier_sees_only_eligible_evidence_and_code_assigns_the_target(monkeypatch):
+    async def complete(**kwargs):
+        payload = json.loads(kwargs["prompt"])
+        assert payload["target_response"]["idx"] == 1
+        assert set(payload["eligible_evidence"]) == {"step:2"}
+        item = extraction().feedback[0].model_dump(exclude={"step_index"})
+        return feedback.ResponseExtraction.model_validate(
+            {"reason": item.pop("reason"), "feedback": item}
+        )
+
+    monkeypatch.setattr(feedback.llm, "complete_structured", complete)
+    sources = {**evidence(), "initial": dict(kind="user", step_index=0, text="Refund my order")}
+    result = await feedback.extract_preferences(conversation(), sources)
+    assert result == extraction()
+
+
+async def test_no_response_before_user_message_needs_no_classifier_call(monkeypatch):
+    async def complete(**kwargs):
+        pytest.fail("An initial request cannot evaluate the final answer")
+
+    monkeypatch.setattr(feedback.llm, "complete_structured", complete)
+    steps = [
+        dict(idx=0, role="assistant", content="", tool_name="ask_user"),
+        dict(idx=1, role="user", content="A steering pump", tool_name=None),
+        dict(idx=2, role="assistant", content="Here are the results.", tool_name=None),
+    ]
+    sources = {"step:1": dict(kind="user", step_index=1, text="A steering pump")}
+    assert (await feedback.extract_preferences(steps, sources)).feedback == []
+
+
+async def test_classifier_cannot_cite_an_earlier_request(monkeypatch):
+    async def complete(**kwargs):
+        item = extraction(evidence_id="step:0").feedback[0].model_dump(exclude={"step_index"})
+        return feedback.ResponseExtraction.model_validate(
+            {"reason": item.pop("reason"), "feedback": item}
+        )
+
+    monkeypatch.setattr(feedback.llm, "complete_structured", complete)
+    with pytest.raises(ValueError, match="ineligible for this response"):
+        await feedback.extract_preferences(conversation(), evidence())
+
+
 def test_preferences_share_context_and_exclude_later_correction():
     [pair] = feedback.render_preferences(uuid4(), conversation(), evidence(), extraction())
     assert (

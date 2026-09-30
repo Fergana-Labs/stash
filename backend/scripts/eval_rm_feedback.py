@@ -29,7 +29,10 @@ async def main() -> None:
         }
         async with semaphore:
             result = await extract_preferences(steps, evidence)
-        pairs = render_preferences(uuid4(), steps, evidence, result)
+        try:
+            pairs = render_preferences(uuid4(), steps, evidence, result)
+        except ValueError as error:
+            raise ValueError(f"{case['name']}: {result.model_dump_json()}") from error
         labels = {str(item.step_index): item.label for item in result.feedback}
         passed = labels in case["labels"] and len(pairs) == case["pairs"]
         print(
