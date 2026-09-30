@@ -1,7 +1,7 @@
 # Stash reward model training platform — design
 
 Teams bring agent traces, annotate them the way they'd comment on a Google Doc
-(highlight text, leave a comment, give it a + or −), and train a reward model
+(highlight text and leave a comment), and train a reward model
 from those annotations, the same kind of reward model used in RLHF. A second
 optimizer, GEPA, writes a skill for the agent (a SKILL.md it loads into its
 context) using the written comments as feedback and the trained reward model
@@ -20,11 +20,11 @@ The stored flag survives profile edits and later sign-ins. Existing accounts
 retain their current workspace or developer console; new accounts land on Traces.
 An operator can disable the flag for an individual account without deleting data.
 
-The UI supports comments; training currently still requires preference ratings
-stored through the API. Comment-only or automatic feedback training is not implemented.
-Production also needs the `rm_worker` runtime and durable job artifacts accessible
-to both the worker and API. The current backend Dockerfile does not package that
-runtime, so merging this branch alone does not deploy a working training service.
+The UI uses comments. Training derives attributable preferences from reviewer
+comments and explicit later user corrections; API-supplied ratings also contribute
+pairs. The backend image packages the lightweight Modal runner, a dedicated
+`reward` worker coordinates jobs, and private S3 storage holds checkpoints.
+See [Hosted rollout](ROLLOUT.md) for deployment settings and account isolation.
 
 ## Components
 
@@ -36,10 +36,13 @@ flowchart LR
   A --> DB[(Postgres<br/>rm_* tables)]
   UI[Annotation UI<br/>frontend /reward-models] <--> API[REST API<br/>/api/v1/rm]
   API <--> DB
-  API -->|enqueue| C[Celery heavy queue]
+  API -->|enqueue| C[Celery reward queue]
   C -->|job dir| W[rm_worker<br/>torch + transformers + gepa]
   W -->|local MPS/CUDA/CPU| W
   W -->|or| M[Modal GPU]
+  W -->|checkpoint| S[(Private S3)]
+  M -->|checkpoint| S
+  API -->|signed download URL| S
   W -->|result.json, scores.jsonl| C
   C --> DB
   API -->|/query| D[DuckDB over the<br/>caller's own rows]
@@ -51,15 +54,17 @@ flowchart LR
 | Adapters | `backend/services/rm/adapters.py` | every input format → canonical trace |
 | Services | `backend/services/rm/*.py` | traces, annotations, datasets, jobs, query |
 | Router | `backend/routers/reward_models.py` | prefix `/api/v1/rm` |
-| Celery tasks | `backend/tasks/reward_models.py` | `heavy` queue; shells out to `rm_worker` |
-| Worker | `rm_worker/` (top-level, own venv, own `requirements.txt`) | training, scoring, GEPA; never imported by the backend |
+| Celery tasks | `backend/tasks/reward_models.py` | dedicated `reward` exchange and queue; shells out to `rm_worker` |
+| Worker | `rm_worker/` (top-level, own venv, own `requirements.txt`) | training, scoring, GEPA; API imports only the lightweight artifact helper |
 | UI | `frontend/src/app/(app)/reward-models/` | traces, annotation view, models, GEPA |
 | Public docs | `www/app/docs/` (Stash Reward Models is the docs site) | overview, trace format, annotations, training, GEPA, API |
 
 The backend never imports torch. It writes a job directory, runs the worker as
 a subprocess with `RM_WORKER_PYTHON`, and reads the results back. Both
 `RM_WORKER_PYTHON` and `RM_ARTIFACT_DIR` are required the moment a job runs;
-a missing value raises with a message naming the variable.
+a missing value raises with a message naming the variable. The API requires
+`RM_COMPUTE` (`local` or `modal`) when it accepts a training request. Both the
+API and worker need the private S3 settings.
 
 ## Canonical trace format (Stash Trace Format, JSONL)
 
@@ -178,7 +183,7 @@ workspace. No API instance depends on a worker's filesystem.
   gepa_examples.jsonl # gepa: {"trace_id", "system": str|null, "messages": [{role, content}], "feedback": [str]}
   result.json       # written by worker
   scores.jsonl      # train, written by worker: {"trace_id": str, "score": float}
-  model/            # train, written by worker
+  model/            # local train only; Modal uploads from its temporary workspace
   worker.log
 ```
 
@@ -211,8 +216,8 @@ skill's body:
   (1–1024 chars; says when the agent should use the skill) and returns them
   in `result.json`; the run's `skill_name` / `skill_description` are null
   until it succeeds.
-- **Examples** = the reward model's selected traces with at least one
-  non-flagged annotation. Each
+- **Examples** = the reward model's selected traces with input before the
+  first assistant step, whether or not they have annotations. Each
   example carries the trace's own system prompt (`system`: the concatenated
   system steps, or null) and the input = the non-system steps before the
   first assistant step.
@@ -227,11 +232,12 @@ skill's body:
   the example's input messages. The rendered conversation (reply included,
   system message excluded) is scored by the chosen trained reward model.
   GEPA's score is sigmoid((reward − mean) / std), where mean and std are the
-  reward model's scores over the owner's traces at training time
+  reward model's scores over both chosen and rejected training/held-out texts
   (`model/reward_stats.json`). Raw rewards saturate the sigmoid (a confident
   model scores a decent reply ~0.99) and leave GEPA no headroom.
 - **Feedback** for reflection = the reward score plus every non-flagged
-  comment annotators left on that trace. The reflection model is told it is
+  comment annotators left on that trace, plus recorded feedback evidence from
+  the model's training pairs. The reflection model is told it is
   writing the body of a SKILL.md for an agent and must return only the body.
 - Traces with no input before their first assistant step are skipped; no
   examples left → the run fails. `max_metric_calls` defaults to 40. The
@@ -299,7 +305,7 @@ OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf   # or http/json
 | GET | `/export/traces` | | JSONL (Stash Trace Format) |
 | GET | `/export/annotations` | | JSONL |
 | GET | `/export/pairs` | | JSONL `{chosen, rejected}` |
-| POST | `/reward-models` | `{name, base_model, trace_ids: [uuid, …] (≥1), epochs?, max_pairs?}` | `RewardModel` (status `queued`); 404 naming the first trace id the caller doesn't own; evidence extraction and minimum-pair validation happen in the worker |
+| POST | `/reward-models` | `{name, trace_ids: [uuid, …] (≥1), base_model?, epochs?, max_pairs?}` | `RewardModel` (status `queued`); 404 naming the first trace id the caller doesn't own; evidence extraction and minimum-pair validation happen in the worker |
 | GET | `/reward-models` | | `[RewardModel]` |
 | GET | `/reward-models/{id}` | | `RewardModel` + `trace_ids` |
 | GET | `/reward-models/{id}/weights` | | `{url}`: a five-minute signed download of the private checkpoint archive; owner-only, 404 until `succeeded` |

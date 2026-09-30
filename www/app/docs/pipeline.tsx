@@ -15,7 +15,7 @@ const STAGES = [
   {
     n: "02",
     title: "Annotate",
-    artifact: "+ / − · comment",
+    artifact: "comments · corrections",
     body: "Highlight what went wrong and say why.",
     video: "/docs/demo/annotate.mp4",
   },
@@ -23,7 +23,7 @@ const STAGES = [
     n: "03",
     title: "Train",
     artifact: "reward model",
-    body: "Your labels become a reward model.",
+    body: "Supported feedback becomes training pairs.",
     video: "/docs/demo/train.mp4",
   },
   {

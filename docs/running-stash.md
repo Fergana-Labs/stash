@@ -1,9 +1,11 @@
 # Running Stash
 
 This guide covers the open-source code in this repository: session collection,
-persistent knowledge, skills, and the CLI. Reward-model training and GEPA skill
-optimization are described in the [product docs](https://www.joinstash.ai/docs);
-their implementations are not included in this repository.
+persistent knowledge, skills, the CLI, and the reward-model experiment. Training
+and GEPA are included in `backend/services/rm/` and `rm_worker/`; the
+[product docs](https://www.joinstash.ai/docs) describe the workflow. Existing
+accounts keep their current experience; new accounts enter the experiment.
+See [Hosted rollout](reward-models/ROLLOUT.md) for the account boundary.
 
 ## Connect your coding agent to hosted Stash
 
@@ -77,6 +79,11 @@ For editable CLI development, run `uv pip install -e .` in the activated virtual
 environment. See [Contributing](../CONTRIBUTING.md) for tests and contribution
 guidance. Optional provider keys and integration settings are documented in
 [.env.example](../.env.example).
+
+To run reward-model training, configure the [reward worker](../rm_worker/README.md)
+with `RM_COMPUTE`, its Python interpreter, scratch space, provider credentials,
+and private S3 storage. `./start.sh` includes a dedicated `reward` queue consumer;
+training is separate from the ingestion workers. Local compute still requires S3.
 
 ## Self-host on a domain
 

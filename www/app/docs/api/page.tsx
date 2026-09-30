@@ -41,10 +41,16 @@ export default function RewardModelsApiPage() {
         and runs. If you run your own Stash, set <Code>STASH_URL</Code> to your backend instead.
       </P>
       <CodeBlock lang="bash">{`export STASH_URL=https://api.joinstash.ai
-export STASH_API_KEY=<your key>
+export STASH_API_KEY="<your key>"
 
 curl -s "$STASH_URL/api/v1/rm/formats" ${AUTH}`}</CodeBlock>
       <P>Examples on this page use those two variables. Request and response bodies are JSON unless noted.</P>
+
+      <P>
+        Reward-model APIs require an account enrolled in the experiment. Accounts that existed at
+        rollout remain disabled and receive 404 from every endpoint here. New accounts are enabled
+        by default; eligibility is per account, including new accounts in existing organizations.
+      </P>
 
       <H3>Errors</H3>
       <P>
@@ -191,12 +197,17 @@ curl -s "$STASH_URL/api/v1/rm/formats" ${AUTH}`}</CodeBlock>
 curl -s "$STASH_URL/api/v1/rm/export/annotations" ${AUTH} > annotations.jsonl
 curl -s "$STASH_URL/api/v1/rm/export/pairs"       ${AUTH} > pairs.jsonl`}</CodeBlock>
 
+      <P>
+        The pairs export contains pairs built from explicit API ratings. It does not run feedback
+        extraction or export a model&apos;s saved feedback-derived training evidence.
+      </P>
+
       <H2>Reward models</H2>
       <Endpoint method="POST" path="/reward-models">Queue a training job.</Endpoint>
       <ParamTable
         params={[
           { name: "name", type: "string", desc: "Display name.", required: true },
-          { name: "compute", type: "string", desc: "local or modal.", required: true },
+          { name: "trace_ids", type: "string[]", desc: "At least one trace UUID owned by you. Only these traces supply training pairs.", required: true },
           { name: "base_model", type: "string", desc: "Hugging Face model id. Default Qwen/Qwen3-0.6B." },
           { name: "epochs", type: "integer", desc: "Training epochs. Default 1." },
           { name: "max_pairs", type: "integer", desc: "Cap on training pairs. Default 4000." },
@@ -204,32 +215,37 @@ curl -s "$STASH_URL/api/v1/rm/export/pairs"       ${AUTH} > pairs.jsonl`}</CodeB
       />
       <CodeBlock lang="bash">{`curl -s "$STASH_URL/api/v1/rm/reward-models" \\
   ${JSON_HEADERS} \\
-  -d '{"name": "refund-policy", "compute": "modal"}'`}</CodeBlock>
-      <P>Returns a <Code>RewardModel</Code> with status <Code>queued</Code>.</P>
+  -d '{"name": "refund-policy", "trace_ids": ["<trace_id>"]}'`}</CodeBlock>
+      <P>
+        Returns a <Code>RewardModel</Code> with status <Code>queued</Code>. Feedback extraction and
+        the minimum of two usable pairs are checked in the worker. The deployment sets{" "}
+        <Code>RM_COMPUTE</Code>; sending <Code>compute</Code> or any unknown request field returns 422.
+        An unowned trace ID returns 404.
+      </P>
 
       <Endpoint method="GET" path="/reward-models">List your reward models, newest first.</Endpoint>
       <Endpoint method="GET" path="/reward-models/{id}">Get one reward model. Poll this for status and metrics.</Endpoint>
       <CodeBlock lang="bash">{`curl -s "$STASH_URL/api/v1/rm/reward-models/<id>" ${AUTH}`}</CodeBlock>
-      <Endpoint method="GET" path="/reward-models/{id}/weights">The trained model directory as a .tar.gz.</Endpoint>
+      <Endpoint method="GET" path="/reward-models/{id}/weights">Get a private checkpoint download URL.</Endpoint>
       <P>
-        The archive (<Code>application/gzip</Code>, named <Code>&lt;name&gt;-reward-model.tar.gz</Code>)
-        holds one folder, <Code>&lt;name&gt;-reward-model/</Code>, with <Code>config.json</Code>,{" "}
-        <Code>model.safetensors</Code>, <Code>tokenizer.json</Code>, <Code>tokenizer_config.json</Code>,{" "}
-        <Code>chat_template.jinja</Code>, and <Code>reward_stats.json</Code>. A <Code>404</Code> until the
-        model has succeeded.
+        Returns <Code>{`{"url": "https://…"}`}</Code> after checking ownership and succeeded status;
+        otherwise 404. The URL expires after five minutes. Download from that URL without forwarding
+        your Stash API key. The gzip archive contains a <Code>reward-model/</Code> directory with
+        model weights, tokenizer files, and <Code>reward_stats.json</Code>.
       </P>
-      <CodeBlock lang="bash">{`curl -s "$STASH_URL/api/v1/rm/reward-models/<id>/weights" ${AUTH} -OJ`}</CodeBlock>
+      <CodeBlock lang="bash">{`set -euo pipefail
+reward_weights_url="$(curl -fsS "$STASH_URL/api/v1/rm/reward-models/<id>/weights" ${AUTH} | jq -er '.url')"
+curl -fL "$reward_weights_url" --output reward-model.tar.gz
+tar xzf reward-model.tar.gz`}</CodeBlock>
 
       <H2>GEPA runs</H2>
       <Endpoint method="POST" path="/gepa-runs">Queue a GEPA run that writes a skill.</Endpoint>
       <ParamTable
         params={[
           { name: "reward_model_id", type: "string", desc: "One of your reward models with status succeeded, used as the metric. Another user's is a 404; an unfinished one is a 422.", required: true },
-          { name: "skill_name", type: "string", desc: "Lowercase letters and digits, with single hyphens between words (refund-policy); 1 to 64 characters.", required: true },
-          { name: "skill_description", type: "string", desc: "When the agent should use the skill; 1 to 1024 characters. Also the seed body.", required: true },
-          { name: "task_model", type: "string", desc: "LiteLLM model string, e.g. openai/gpt-4.1-mini or openai/<served name>.", required: true },
+          { name: "task_model", type: "string", desc: "LiteLLM task model. Default anthropic/claude-haiku-4-5." },
           { name: "task_api_base", type: "string", desc: "OpenAI-compatible base URL (vLLM, SGLang, …) for the task model." },
-          { name: "reflection_model", type: "string", desc: "LiteLLM model string for the model that writes new skill bodies.", required: true },
+          { name: "reflection_model", type: "string", desc: "Model that writes skill bodies. Default anthropic/claude-sonnet-5." },
           { name: "max_metric_calls", type: "integer", desc: "Budget of example evaluations. Default 40." },
         ]}
       />
@@ -237,13 +253,11 @@ curl -s "$STASH_URL/api/v1/rm/export/pairs"       ${AUTH} > pairs.jsonl`}</CodeB
   ${JSON_HEADERS} \\
   -d '{
     "reward_model_id": "<reward_model_id>",
-    "skill_name": "refund-policy",
-    "skill_description": "Use when a customer asks for a refund, return, or exchange.",
     "task_model": "openai/Qwen/Qwen3-8B",
     "task_api_base": "http://gpu-box.internal:8000/v1",
     "reflection_model": "anthropic/claude-sonnet-5"
   }'`}</CodeBlock>
-      <P>Returns a <Code>GepaRun</Code> with status <Code>queued</Code>.</P>
+      <P>Returns a <Code>GepaRun</Code> with status <Code>queued</Code>. Only <Code>reward_model_id</Code> is required. The worker generates the skill name and description; they are null until success.</P>
 
       <Endpoint method="GET" path="/gepa-runs">List your GEPA runs, newest first.</Endpoint>
       <Endpoint method="GET" path="/gepa-runs/{id}">Get one run, including its result once it succeeds.</Endpoint>
@@ -335,7 +349,7 @@ HAVING plus > 0 AND minus > 0`}</CodeBlock>
           { name: "title", type: "string", desc: "Title, or the first 80 characters of the first user step." },
           { name: "source_format", type: "string", desc: "The format it was imported from." },
           { name: "step_count", type: "integer", desc: "Number of steps." },
-          { name: "positive_count", type: "integer", desc: "+ ratings on the trace and its steps, not counting flagged ones. Exactly what trains." },
+          { name: "positive_count", type: "integer", desc: "+ ratings on the trace and its steps, not counting flagged ones. API-rating counts only; feedback-derived pairs are not counted here." },
           { name: "negative_count", type: "integer", desc: "− ratings on the trace and its steps, not counting flagged ones." },
           { name: "comment_count", type: "integer", desc: "Annotations with a comment." },
           { name: "label_error_count", type: "integer", desc: "Annotations flagged as label errors." },
@@ -392,11 +406,13 @@ HAVING plus > 0 AND minus > 0`}</CodeBlock>
           { name: "id", type: "string", desc: "Reward model id." },
           { name: "name", type: "string", desc: "Display name." },
           { name: "base_model", type: "string", desc: "Hugging Face model id it was trained from." },
-          { name: "compute", type: "string", desc: "local or modal." },
+          { name: "compute", type: "string", desc: "Deployment-selected runtime: local or modal. Read-only." },
+          { name: "trace_count", type: "integer", desc: "Number of selected traces." },
+          { name: "trace_ids", type: "string[]", desc: "Selected trace UUIDs; included by GET /reward-models/{id}." },
           { name: "epochs", type: "integer", desc: "Requested epochs." },
           { name: "max_pairs", type: "integer", desc: "Requested cap on pairs." },
           { name: "status", type: "string", desc: "queued, running, succeeded, or failed." },
-          { name: "num_pairs", type: "integer | null", desc: "Pairs built from your labels when the job started, held-out pairs included." },
+          { name: "num_pairs", type: "integer | null", desc: "Usable pairs from selected traces, including feedback-derived pairs and the held-out split." },
           { name: "metrics", type: "object | null", desc: "train_pairs, eval_pairs, eval_accuracy, final_loss, epochs, device, seconds." },
           { name: "error", type: "string | null", desc: "Failure message when status is failed." },
           { name: "created_at", type: "string", desc: "ISO 8601." },
@@ -410,8 +426,8 @@ HAVING plus > 0 AND minus > 0`}</CodeBlock>
         params={[
           { name: "id", type: "string", desc: "Run id." },
           { name: "reward_model_id", type: "string", desc: "The reward model used as the metric." },
-          { name: "skill_name", type: "string", desc: "The skill's name." },
-          { name: "skill_description", type: "string", desc: "The skill's description." },
+          { name: "skill_name", type: "string | null", desc: "Generated name; null until success." },
+          { name: "skill_description", type: "string | null", desc: "Generated description; null until success." },
           { name: "task_model", type: "string", desc: "LiteLLM model string." },
           { name: "task_api_base", type: "string | null", desc: "OpenAI-compatible base URL, if set." },
           { name: "reflection_model", type: "string", desc: "LiteLLM model string." },
@@ -420,7 +436,7 @@ HAVING plus > 0 AND minus > 0`}</CodeBlock>
           { name: "seed_skill", type: "string | null", desc: "The starting SKILL.md, with the description as its body." },
           { name: "seed_score", type: "number | null", desc: "The seed skill's mean score, for comparison." },
           { name: "best_skill", type: "string | null", desc: "The winning SKILL.md, frontmatter included." },
-          { name: "best_score", type: "number | null", desc: "Its mean calibrated score over all examples, 0 to 1; 0.5 is your average trace." },
+          { name: "best_score", type: "number | null", desc: "Its mean calibrated score over all examples, 0 to 1; 0.5 is the calibration mean of chosen/rejected texts." },
           { name: "candidates", type: "array | null", desc: "Every skill tried, as a full SKILL.md: [{skill, score}]." },
           { name: "error", type: "string | null", desc: "Failure message when status is failed." },
           { name: "created_at", type: "string", desc: "ISO 8601." },

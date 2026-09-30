@@ -7,7 +7,7 @@ import { DemoClip, NextPage, Pipeline } from "./parts";
 export const metadata: Metadata = {
   title: "Stash Docs",
   description:
-    "Annotate agent traces with + / − comments, train a reward model from them, and use it to post-train or to write a skill for your agent with GEPA.",
+    "Review agent traces, train a reward model from comments and user corrections, and generate reusable skills with GEPA.",
   alternates: { canonical: "/docs" },
 };
 
@@ -48,11 +48,17 @@ export default function RewardModelsOverviewPage() {
     <>
       <Title>Overview</Title>
       <P>
-        Stash makes it easy to annotate traces so that you can emphasize what you wish the agent would
-        have done better. Once you submit your annotations, Stash converts that into an easy-to-use reward
-        model that you can use to either post-train or prompt-optimize with GEPA.
+        Review agent traces, select the ones to learn from, and create a reward model from their
+        feedback. Use the model to score traces, download its weights, or generate instructions
+        for your agent with GEPA.
+      </P>
+      <P>
+        This experiment is enabled for accounts created after the rollout. Existing accounts keep
+        their current experience and cannot access reward-model pages or APIs. Eligibility is per
+        account, so a new account in an existing organization also enters the experiment.
       </P>
       <Pipeline />
+      <P>The recordings below show an earlier interface; follow the current controls described here.</P>
 
       <H2>1. Connect Stash to your agent</H2>
       <P>
@@ -76,23 +82,26 @@ export default function RewardModelsOverviewPage() {
 
       <H2>2. Annotate them</H2>
       <P>
-        Open a trace and mark it, or any step in it, + or −. To say what went wrong, highlight the text
-        and leave a comment.
+        Open a trace, highlight a response, and leave an actionable comment. Explicit later user
+        corrections already in the trace can also supply training evidence. There is no separate
+        Auto mode or rating control in the UI.
       </P>
       <DemoClip src="/docs/demo/annotate.mp4" />
 
       <H2>3. Train a reward model</H2>
       <P>
-        Select the traces to train on and press <strong>Train reward model</strong>. Stash trains a
-        reward model on their + and − marks, then scores every trace, including the ones nobody
-        annotated. Download the weights to use the model as the reward function when you post-train.
+        Select traces and choose <strong>Create new reward model</strong>. The worker derives
+        preferences from supported feedback and records the evidence for each pair. Training needs
+        at least two usable pairs; ambiguous feedback is skipped. The trained model scores every
+        trace you own, including unselected traces. You can also download its weights.
       </P>
       <DemoClip src="/docs/demo/train.mp4" />
 
       <H2>4. Write a skill</H2>
       <P>
-        On a trained reward model, press <strong>Create skill</strong>. GEPA reads your comments, writes a{" "}
-        <Code>SKILL.md</Code> that teaches your agent to score well on that reward model, and names it.
+        On a trained reward model, choose <strong>View skill</strong>. It opens an existing run or
+        starts one. GEPA uses the selected traces and their feedback to write and name a{" "}
+        <Code>SKILL.md</Code> that teaches your agent to score well on that model.
         Your agent loads the skill next to its system prompt, which Stash leaves alone.
       </P>
       <DemoClip src="/docs/demo/skill.mp4" />
