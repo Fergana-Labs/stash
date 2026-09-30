@@ -5,7 +5,7 @@ import SiteHeader from "../_components/SiteHeader";
 
 export const metadata: Metadata = {
   alternates: { canonical: "/external-agents" },
-  title: "External agents · Stash docs",
+  title: "External agents | Stash docs",
   description:
     "Memory for the agents that answer your customers: capture production runs, refine them into context, and serve that context back before the next answer.",
 };
@@ -308,7 +308,7 @@ export default function ExternalAgentsPage() {
 
           <div className="mt-16 flex flex-wrap justify-between gap-3 border-t border-border-subtle pt-5 font-mono text-[11.5px] text-muted">
             <span>© {new Date().getFullYear()} Fergana Labs</span>
-            <span>MIT licensed · self-hostable</span>
+            <span>MIT licensed, self-hostable</span>
           </div>
         </article>
 

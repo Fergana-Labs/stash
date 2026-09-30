@@ -4,7 +4,7 @@ import LegalShell from "../_components/LegalShell";
 
 export const metadata: Metadata = {
   alternates: { canonical: "/terms" },
-  title: "Terms of Service · Stash",
+  title: "Terms of Service | Stash",
   description:
     "The rules that govern your use of Stash, the managed service operated by Fergana Labs.",
 };

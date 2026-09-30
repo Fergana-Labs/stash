@@ -1,23 +1,26 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { Flag, MessageSquare, Search, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { RmTraceSummary } from "@/lib/types";
 import { formatScore, relativeTime } from "./rm-text";
-import { filterTraces, selectRange, toggleAllVisible, type TraceFilter } from "./trace-selection";
+import { searchTraces, selectRange, sortTraces, toggleAllVisible, type TraceSortKey, type TraceSortDirection } from "./trace-selection";
 
-const FILTERS: { key: TraceFilter; label: string }[] = [
-  { key: "all", label: "All" },
-  { key: "annotated", label: "Annotated" },
-  { key: "unannotated", label: "Unannotated" },
+const COLUMNS: { key: TraceSortKey; label: string; className: string }[] = [
+  { key: "title", label: "Trace", className: "" },
+  { key: "steps", label: "Steps", className: "w-20 text-right" },
+  { key: "labels", label: "Labels", className: "w-44 text-right" },
+  { key: "reward", label: "Latest score", className: "w-36 text-right" },
+  { key: "imported", label: "Imported", className: "w-28 text-right" },
 ];
 
 /**
- * The trace list with filters, search, and multi-select (header checkbox,
- * shift-click ranges). "browse" is the Traces tab: titles link to the
+ * The trace list with search, sorting, and multi-select (header checkbox,
+ * shift-click ranges). "browse" is the Traces tab: rows open the
  * annotation view and rows can be deleted. "picker" is the train sheet:
  * clicking anywhere on a row toggles it.
  */
@@ -36,12 +39,12 @@ export default function TraceTable({
   onDelete?: (trace: RmTraceSummary) => void;
   deletingId?: string | null;
 }) {
-  const [filter, setFilter] = useState<TraceFilter>("all");
   const [query, setQuery] = useState("");
+  const [sort, setSort] = useState<{ key: TraceSortKey; direction: TraceSortDirection }>({ key: "imported", direction: "descending" });
   // Index (in the visible list) of the last row clicked without shift: the anchor for shift-click ranges.
   const anchor = useRef<number | null>(null);
 
-  const visible = filterTraces(traces, filter, query);
+  const visible = sortTraces(searchTraces(traces, query), sort.key, sort.direction);
   const visibleIds = visible.map((t) => t.id);
   const selectedVisible = visibleIds.filter((id) => selected.has(id)).length;
 
@@ -59,24 +62,6 @@ export default function TraceTable({
   return (
     <div>
       <div className="mb-3 flex items-center gap-3">
-        <div className="flex rounded-md border border-border p-0.5 text-[12px]">
-          {FILTERS.map((f) => (
-            <button
-              key={f.key}
-              type="button"
-              onClick={() => {
-                setFilter(f.key);
-                anchor.current = null;
-              }}
-              className={cn(
-                "cursor-pointer rounded px-2.5 py-0.5 transition-colors",
-                filter === f.key ? "bg-raised font-medium text-foreground" : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              {f.label}
-            </button>
-          ))}
-        </div>
         <label className="flex h-7 w-64 items-center gap-1.5 rounded-md border border-border bg-background px-2 focus-within:border-brand-400 focus-within:ring-2 focus-within:ring-brand-400/20">
           <Search className="h-3.5 w-3.5 text-muted-foreground" />
           <input
@@ -106,12 +91,21 @@ export default function TraceTable({
                   label="Select all shown traces"
                 />
               </th>
-              <th className="px-3 py-2 font-medium">Trace</th>
-              <th className="w-32 px-3 py-2 font-medium">Format</th>
-              <th className="w-16 px-3 py-2 text-right font-medium">Steps</th>
-              <th className="w-44 px-3 py-2 text-right font-medium">Labels</th>
-              <th className="w-24 px-3 py-2 text-right font-medium">Reward</th>
-              <th className="w-24 px-3 py-2 text-right font-medium">Imported</th>
+              {COLUMNS.map((column) => (
+                <th key={column.key} scope="col" aria-sort={sort.key === column.key ? sort.direction : "none"} className={cn("px-3 py-2 font-medium", column.className)}>
+                  <button
+                    type="button"
+                    className="cursor-pointer whitespace-nowrap hover:text-foreground"
+                    title={column.key === "labels" ? "Sort by total positive and negative labels" : `Sort by ${column.label.toLowerCase()}`}
+                    onClick={() => {
+                      setSort({ key: column.key, direction: sort.key === column.key && sort.direction === "ascending" ? "descending" : "ascending" });
+                      anchor.current = null;
+                    }}
+                  >
+                    {column.label}{sort.key === column.key && <span aria-hidden="true">{sort.direction === "ascending" ? " ↑" : " ↓"}</span>}
+                  </button>
+                </th>
+              ))}
               {mode === "browse" && <th className="w-10 px-2 py-2" />}
             </tr>
           </thead>
@@ -153,13 +147,28 @@ function TraceRow({
   onDelete: (() => void) | undefined;
 }) {
   const picker = mode === "picker";
+  const router = useRouter();
+  const href = `/reward-models/traces/${trace.id}`;
+
+  function openRow(event: MouseEvent) {
+    if ((event.target as Element).closest("a, button, input")) return;
+    if (picker) {
+      onToggle(event);
+      return;
+    }
+    if (event.metaKey || event.ctrlKey) {
+      window.open(href, "_blank", "noopener,noreferrer");
+      return;
+    }
+    router.push(href);
+  }
+
   return (
     <tr
-      onClick={picker ? onToggle : undefined}
+      onClick={openRow}
       className={cn(
-        "group border-b border-border-subtle select-none last:border-b-0",
+        "group cursor-pointer border-b border-border-subtle select-none last:border-b-0",
         checked ? "bg-brand-500/[0.06] hover:bg-brand-500/10" : "hover:bg-surface/60",
-        picker && "cursor-pointer",
       )}
     >
       <td className="py-2.5 pl-3" onClick={(e) => e.stopPropagation()}>
@@ -169,14 +178,11 @@ function TraceRow({
         {picker ? (
           <div className="truncate font-medium text-foreground">{trace.title}</div>
         ) : (
-          <Link href={`/reward-models/traces/${trace.id}`} className="block truncate font-medium text-foreground hover:text-brand-600">
+          <Link href={href} className="block truncate font-medium text-foreground hover:text-brand-600">
             {trace.title}
           </Link>
         )}
         {trace.external_id && <div className="truncate font-mono text-[11px] text-muted-foreground">{trace.external_id}</div>}
-      </td>
-      <td className="px-3 py-2.5">
-        <span className="tag tag-muted">{trace.source_format}</span>
       </td>
       <td className="px-3 py-2.5 text-right font-mono text-[12px] text-dim tabular-nums">{trace.step_count}</td>
       <td className="px-3 py-2.5">
@@ -184,9 +190,10 @@ function TraceRow({
       </td>
       <td className="px-3 py-2.5 text-right">
         {trace.latest_score ? (
-          <span title={trace.latest_score.reward_model_name} className="font-mono text-[12px] text-foreground tabular-nums">
-            {formatScore(trace.latest_score.score)}
-          </span>
+          <div>
+            <span className="font-mono text-[12px] text-foreground tabular-nums">{formatScore(trace.latest_score.score)}</span>
+            <div className="truncate text-[11px] text-muted-foreground" title={trace.latest_score.reward_model_name}>{trace.latest_score.reward_model_name}</div>
+          </div>
         ) : (
           <span className="text-muted-foreground">—</span>
         )}

@@ -7,7 +7,6 @@ import { useBreadcrumbs } from "@/components/BreadcrumbContext";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { Button } from "@/components/ui/button";
 import ImportTracesDialog from "@/components/reward-models/ImportTracesDialog";
-import ConnectAgentPanel from "@/components/reward-models/ConnectAgentPanel";
 import TraceTable from "@/components/reward-models/TraceTable";
 import TrainPanel from "@/components/reward-models/TrainPanel";
 import { RmPage } from "@/components/reward-models/rm-ui";
@@ -29,7 +28,7 @@ export default function TracesPage() {
 }
 
 function Traces() {
-  useBreadcrumbs([{ label: "Reward models" }], "reward-models");
+  useBreadcrumbs([{ label: "Traces" }], "reward-models");
   const router = useRouter();
   const searchParams = useSearchParams();
   const confirm = useConfirm();
@@ -92,11 +91,10 @@ function Traces() {
 
   return (
     <RmPage
-      title="Reward models"
+      title="Traces"
       description="Annotate agent traces with + / − and comments, train a reward model on those labels, then use it to write skills for your agent."
       actions={<ImportTracesDialog onImported={() => void load()} />}
     >
-      {traces !== null && <ConnectAgentPanel collapsible={traces.length > 0} />}
       {traces === null ? (
         <RmListSkeleton />
       ) : traces.length === 0 ? (
@@ -108,7 +106,6 @@ function Traces() {
               <span className="text-[13px] font-medium text-foreground tabular-nums">
                 {summary.count} trace{summary.count === 1 ? "" : "s"} selected
               </span>
-              <span className="text-[12.5px] text-muted-foreground">·</span>
               <span className="font-mono text-[12.5px] tabular-nums">
                 <span className="text-green-700 dark:text-green-400">+{summary.positive}</span>{" "}
                 <span className="text-red-600 dark:text-red-400">−{summary.negative}</span>{" "}

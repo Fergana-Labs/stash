@@ -7,7 +7,7 @@ import { POSTS, blogPostingJsonLd } from "../_lib/posts";
 
 export const metadata: Metadata = {
   alternates: { canonical: "/blog/why-memory-is-unsolved" },
-  title: "Why Memory Is Unsolved · Stash",
+  title: "Why Memory Is Unsolved | Stash",
   description:
     "Most memory systems are still retrieval under the hood, and today's benchmarks mostly measure retrieval. Why perfect search is not enough, and the two problems actually holding memory back: blast radius and stability.",
 };
@@ -30,7 +30,7 @@ export default function WhyMemoryIsUnsolvedPage() {
           Why Memory Is Unsolved
         </h1>
         <p className="mt-5 text-[14px] text-muted">
-          By {post.author.name} ·{" "}
+          By {post.author.name},{" "}
           <time dateTime={post.datePublished}>{post.byline}</time>
         </p>
         <p className="mt-2 text-[14px] text-muted">

@@ -8,7 +8,10 @@ formats"). Everything here is a pure function over a string: no DB, no network.
 import json
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any
+
+from .spans import TraceSpan, validate_spans
 
 ROLES = {"system", "user", "assistant", "tool"}
 
@@ -33,6 +36,7 @@ class CanonicalTrace:
     title: str | None
     metadata: dict
     steps: list[CanonicalStep]
+    spans: list[TraceSpan] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -250,12 +254,15 @@ def _parse_stash(data: str) -> list[CanonicalTrace]:
             )
             for step in record["steps"]
         ]
+        for step in steps:
+            _with_timestamp([step], step.metadata.get("timestamp"))
         traces.append(
             CanonicalTrace(
                 external_id=record.get("id"),
                 title=record.get("title"),
                 metadata=record.get("metadata", {}),
                 steps=steps,
+                spans=[TraceSpan.model_validate(span) for span in record.get("spans", [])],
             )
         )
     return traces
@@ -278,6 +285,20 @@ def _openai_tool_call_step(call: dict) -> CanonicalStep:
     if "function" in call:
         return _tool_call_step(call["function"]["name"], call["function"]["arguments"], call["id"])
     return _tool_call_step(call["name"], call["args"], call["id"])
+
+
+def _with_timestamp(steps: list[CanonicalStep], timestamp: str | None) -> list[CanonicalStep]:
+    if timestamp is None:
+        return steps
+    try:
+        parsed = datetime.fromisoformat(timestamp)
+    except (TypeError, ValueError) as exc:
+        raise TraceFormatError("message timestamp must be an ISO 8601 datetime") from exc
+    if parsed.tzinfo is None:
+        raise TraceFormatError("message timestamp must include a timezone")
+    for step in steps:
+        step.metadata["timestamp"] = parsed.isoformat()
+    return steps
 
 
 def _openai_message_steps(message: dict) -> list[CanonicalStep]:
@@ -311,7 +332,11 @@ def _openai_message_steps(message: dict) -> list[CanonicalStep]:
 
 
 def _openai_steps(messages: list[dict]) -> list[CanonicalStep]:
-    steps = [step for message in messages for step in _openai_message_steps(message)]
+    steps = [
+        step
+        for message in messages
+        for step in _with_timestamp(_openai_message_steps(message), message.get("timestamp"))
+    ]
     return _fill_tool_names(steps)
 
 
@@ -645,9 +670,9 @@ def _otlp_payloads(data: str) -> list[dict]:
     return payloads
 
 
-def _otel_calls(payloads: list[dict]) -> dict[str, list[tuple[int, list[CanonicalStep]]]]:
+def _otel_calls(payloads: list[dict]) -> dict[str, list[tuple[int, str, list[CanonicalStep]]]]:
     """Every LLM call in the payloads, as (start time in ns, steps), grouped by trace id."""
-    calls: dict[str, list[tuple[int, list[CanonicalStep]]]] = {}
+    calls: dict[str, list[tuple[int, str, list[CanonicalStep]]]] = {}
     event_groups: dict[tuple[str, str], list[tuple[int, dict]]] = {}
 
     for payload in payloads:
@@ -656,7 +681,7 @@ def _otel_calls(payloads: list[dict]) -> dict[str, list[tuple[int, list[Canonica
                 for span in scope_spans.get("spans", []):
                     steps = _otel_attribute_steps(_otel_attributes(span.get("attributes", [])))
                     if steps:
-                        entry = (int(span["startTimeUnixNano"]), steps)
+                        entry = (int(span["startTimeUnixNano"]), span["spanId"], steps)
                         calls.setdefault(span["traceId"], []).append(entry)
 
         for resource_logs in payload.get("resourceLogs", []):
@@ -673,17 +698,19 @@ def _otel_calls(payloads: list[dict]) -> dict[str, list[tuple[int, list[Canonica
                     time = int(record["observedTimeUnixNano"])
                     if event_name == _GEN_AI_DETAILS_EVENT:
                         steps = _otel_attribute_steps(attributes)
-                        calls.setdefault(record["traceId"], []).append((time, steps))
+                        calls.setdefault(record["traceId"], []).append(
+                            (time, record["spanId"], steps)
+                        )
                         continue
                     message = _gen_ai_event_message(event_name, _otel_value(record["body"]))
                     key = (record["traceId"], record["spanId"])
                     event_groups.setdefault(key, []).append((time, message))
 
     # The per-message events of one span together make up that span's LLM call.
-    for (trace_id, _), timed_messages in event_groups.items():
+    for (trace_id, span_id), timed_messages in event_groups.items():
         start = min(time for time, _ in timed_messages)
         steps = _openai_steps([message for _, message in timed_messages])
-        calls.setdefault(trace_id, []).append((start, steps))
+        calls.setdefault(trace_id, []).append((start, span_id, steps))
     return calls
 
 
@@ -696,20 +723,42 @@ def _detect_otel(data: str) -> bool:
 
 
 def _parse_otel(data: str) -> list[CanonicalTrace]:
+    payloads = _otlp_payloads(data)
+    spans_by_trace: dict[str, list[TraceSpan]] = {}
+    for payload in payloads:
+        for resource in payload.get("resourceSpans", []):
+            for scope in resource.get("scopeSpans", []):
+                for raw in scope.get("spans", []):
+                    attributes = _otel_attributes(raw.get("attributes", []))
+                    span = TraceSpan(
+                        id=raw["spanId"],
+                        parent_id=raw.get("parentSpanId"),
+                        name=raw["name"],
+                        kind=attributes.get("openinference.span.kind"),
+                        start_ns=str(raw["startTimeUnixNano"]),
+                        end_ns=str(raw["endTimeUnixNano"]),
+                        input=_json_text(attributes["input.value"])
+                        if "input.value" in attributes
+                        else None,
+                        output=_json_text(attributes["output.value"])
+                        if "output.value" in attributes
+                        else None,
+                    )
+                    spans_by_trace.setdefault(raw["traceId"], []).append(span)
+
     traces = []
-    for trace_id, calls in _otel_calls(_otlp_payloads(data)).items():
-        # sorted() is stable, so the per-message events of one call keep their order.
-        calls = sorted(calls, key=lambda call: call[0])
-        # Tool spans are not read: each tool call and its result also appear in
-        # the LLM calls' messages, so reading both would duplicate every tool step.
-        traces.append(
-            CanonicalTrace(
-                external_id=trace_id,
-                title=None,
-                metadata={},
-                steps=_merge_conversations([steps for _, steps in calls]),
-            )
-        )
+    for trace_id, calls in _otel_calls(payloads).items():
+        calls.sort(key=lambda call: call[0])
+        steps = _merge_conversations([messages for _, _, messages in calls])
+        indices = {id(step): index for index, step in enumerate(steps)}
+        spans = spans_by_trace.get(trace_id, [])
+        by_id = {span.id: span for span in spans}
+        for _, span_id, messages in calls:
+            if span_id in by_id:
+                by_id[span_id].step_indices = [
+                    indices[id(step)] for step in messages if id(step) in indices
+                ]
+        traces.append(CanonicalTrace(trace_id, None, {}, steps, spans))
     return traces
 
 
@@ -923,7 +972,9 @@ def _parse_claude_code(data: str) -> list[CanonicalTrace]:
     for record in records:
         if not _is_claude_code_conversation_line(record):
             continue
-        steps.extend(_anthropic_message_steps(record["message"]))
+        steps.extend(
+            _with_timestamp(_anthropic_message_steps(record["message"]), record.get("timestamp"))
+        )
 
     session_ids = [r["sessionId"] for r in records if "sessionId" in r]
     titles = [r["aiTitle"] for r in records if r.get("type") == "ai-title"]
@@ -1010,7 +1061,7 @@ def _parse_codex(data: str) -> list[CanonicalTrace]:
     for record in records:
         if record["type"] != "response_item":
             continue
-        steps.extend(_codex_item_steps(record["payload"]))
+        steps.extend(_with_timestamp(_codex_item_steps(record["payload"]), record.get("timestamp")))
 
     meta = next(r["payload"] for r in records if r["type"] == "session_meta")
     return [
@@ -1096,6 +1147,10 @@ def _resolve_format(data: str, format: str) -> str:
 
 def _validate(trace: CanonicalTrace, index: int) -> None:
     where = f"trace {index} ({trace.external_id})" if trace.external_id else f"trace {index}"
+    try:
+        validate_spans(trace.spans, len(trace.steps))
+    except ValueError as exc:
+        raise TraceFormatError(f"{where}: {exc}") from exc
     if not trace.steps:
         raise TraceFormatError(f"{where} has no steps")
     for step_index, step in enumerate(trace.steps):

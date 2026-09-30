@@ -23,6 +23,8 @@ from .test_rm_api import (
     _trainable_labels,
 )
 
+pytestmark = pytest.mark.usefixtures("rm_title_generator")
+
 
 async def _user_id(client, auth) -> str:
     return (await client.get("/api/v1/users/me", headers=auth)).json()["id"]

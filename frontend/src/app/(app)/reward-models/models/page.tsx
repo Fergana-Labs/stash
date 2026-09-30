@@ -2,17 +2,18 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import { Download, Loader2, Sparkles } from "lucide-react";
+import { Download, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useBreadcrumbs } from "@/components/BreadcrumbContext";
 import { Button } from "@/components/ui/button";
 import { RmListSkeleton } from "@/components/reward-models/RmSkeletons";
+import ViewSkillButton from "@/components/reward-models/ViewSkillButton";
 import TrainSheet from "@/components/reward-models/TrainSheet";
 import { SELECTED_PARAM } from "@/components/reward-models/trace-selection";
 import { EmptyState, RmPage, StatusBadge, isActiveJob } from "@/components/reward-models/rm-ui";
 import { errorMessage, formatSeconds, relativeTime } from "@/components/reward-models/rm-text";
 import { JobError } from "@/components/reward-models/JobError";
-import { rmCreateGepaRun, rmDownloadWeights, rmGetRewardModel, rmListRewardModels } from "@/lib/api";
+import { rmDownloadWeights, rmGetRewardModel, rmListRewardModels } from "@/lib/api";
 import type { RmRewardModel } from "@/lib/types";
 
 const POLL_MS = 3000;
@@ -44,8 +45,7 @@ export default function RewardModelsPage() {
   return (
     <RmPage
       title="Reward models"
-      description="Train a Bradley–Terry reward model on preference pairs built from your + / − labels. After training, every trace is scored."
-      actions={<Button onClick={() => setSheetOpen(true)}>Train reward model</Button>}
+      actions={<Button onClick={() => setSheetOpen(true)}>Create new reward model</Button>}
     >
       <TrainSheet
         open={sheetOpen}
@@ -82,7 +82,7 @@ function ModelCard({ model }: { model: RmRewardModel }) {
         {model.status === "succeeded" && (
           <>
             <DownloadWeightsButton modelId={model.id} />
-            <CreateSkillButton modelId={model.id} />
+            <ViewSkillButton modelId={model.id} />
           </>
         )}
       </div>
@@ -137,29 +137,6 @@ function TrainedOnLink({ model }: { model: RmRewardModel }) {
       {opening && <Loader2 className="h-3 w-3 animate-spin" />}
       Trained on {model.trace_count} trace{model.trace_count === 1 ? "" : "s"}
     </button>
-  );
-}
-
-function CreateSkillButton({ modelId }: { modelId: string }) {
-  const router = useRouter();
-  const [creating, setCreating] = useState(false);
-
-  async function create() {
-    setCreating(true);
-    try {
-      const run = await rmCreateGepaRun({ reward_model_id: modelId });
-      router.push(`/reward-models/gepa/${run.id}`);
-    } catch (e) {
-      toast.error(errorMessage(e));
-      setCreating(false);
-    }
-  }
-
-  return (
-    <Button size="xs" onClick={() => void create()} disabled={creating}>
-      {creating ? <Loader2 className="animate-spin" /> : <Sparkles />}
-      Create skill
-    </Button>
   );
 }
 

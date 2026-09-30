@@ -97,7 +97,7 @@ export function toolLabel(name: string | null): string {
   if (name === null) return "Tool";
   if (name.startsWith("mcp__")) {
     const parts = name.split("__").filter(Boolean);
-    return `${parts[1] ?? "mcp"} · ${parts.slice(2).join(" ") || "tool"}`;
+    return `${parts[1] ?? "mcp"}, ${parts.slice(2).join(" ") || "tool"}`;
   }
   return name.replace(/[_-]+/g, " ").replace(/^\w/, (c) => c.toUpperCase());
 }

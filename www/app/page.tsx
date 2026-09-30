@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 
 import HomePage from "./_components/HomePage";
 
-const title = "Stash · Agents That Learn From the Real World";
+const title = "Stash | Agents That Learn From the Real World";
 const description =
   "Stash is an applied AI lab building continual learning. We refine raw agent logs into context any agent can read, and use the same logs to train models that improve with every run.";
 

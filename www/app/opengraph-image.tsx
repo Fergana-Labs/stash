@@ -62,7 +62,7 @@ export default function Image() {
         </div>
 
         <div style={{ fontSize: 26, color: "#7C7469" }}>
-          Open source · MIT licensed · Self-hostable
+          Open source, MIT licensed, Self-hostable
         </div>
       </div>
     ),

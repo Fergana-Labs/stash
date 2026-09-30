@@ -11,6 +11,8 @@ from backend.tasks import reward_models as rm_tasks
 
 from .conftest import unique_name
 
+pytestmark = pytest.mark.usefixtures("rm_title_generator")
+
 REFUND_TRACE = {
     "id": "refund-1182",
     "title": "Refund request for order 1182",
@@ -129,9 +131,9 @@ async def test_import_list_and_detail(client):
     listing = (await client.get("/api/v1/rm/traces", headers=auth)).json()
     assert listing["total"] == 2
     titles = {t["title"]: t for t in listing["traces"]}
-    # Untitled traces are named after their first user turn.
-    assert set(titles) == {"Refund request for order 1182", "hi there"}
-    assert titles["hi there"]["step_count"] == 2
+    # Supplied titles stay intact; untitled traces use generated summaries.
+    assert set(titles) == {"Refund request for order 1182", "Generated trace title"}
+    assert titles["Generated trace title"]["step_count"] == 2
 
     detail = await _detail(client, auth, body["trace_ids"][0])
     assert [s["index"] for s in detail["steps"]] == [0, 1, 2, 3, 4]
@@ -280,7 +282,7 @@ async def test_exports_round_trip(client):
     await _annotate(client, auth, trace_id, step_id=step["id"], rating=-1, comment="too eager")
 
     [exported] = _ndjson((await client.get("/api/v1/rm/export/traces", headers=auth)).text)
-    assert exported == REFUND_TRACE
+    assert exported == {**REFUND_TRACE, "spans": []}
 
     [annotation] = _ndjson((await client.get("/api/v1/rm/export/annotations", headers=auth)).text)
     assert annotation["trace_external_id"] == "refund-1182"
@@ -324,7 +326,7 @@ async def test_query_sees_only_the_callers_rows(client):
     resp = await client.post(
         "/api/v1/rm/query", json={"sql": "SELECT title FROM traces"}, headers=other
     )
-    assert resp.json()["rows"] == [["hi there"]]
+    assert resp.json()["rows"] == [["Generated trace title"]]
 
 
 async def test_query_caps_rows(client):
@@ -597,3 +599,26 @@ async def test_reward_model_rejects_traces_the_caller_does_not_own(client, monke
         headers=auth,
     )
     assert resp.status_code == 422
+
+
+async def test_timed_operations_survive_storage_and_export(client):
+    auth = await _register(client)
+    spans = [
+        dict(
+            id="refund",
+            parent_id=None,
+            name="Refund agent",
+            kind="AGENT",
+            start_ns="1000000000",
+            end_ns="4000000000",
+            input="Refund order",
+            output="Refund completed",
+            step_indices=[1, 4],
+        )
+    ]
+    [trace_id] = await _import(client, auth, {**REFUND_TRACE, "spans": spans})
+    assert (await _detail(client, auth, trace_id))["spans"] == spans
+    [exported] = _ndjson((await client.get("/api/v1/rm/export/traces", headers=auth)).text)
+    assert exported["spans"] == spans
+    [reimported] = await _import(client, auth, exported)
+    assert (await _detail(client, auth, reimported))["spans"] == spans

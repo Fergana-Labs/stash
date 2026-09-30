@@ -1,6 +1,28 @@
 import type { RmTraceSummary } from "@/lib/types";
 
-export type TraceFilter = "all" | "annotated" | "unannotated";
+export type TraceSortKey = "title" | "steps" | "labels" | "reward" | "imported";
+export type TraceSortDirection = "ascending" | "descending";
+
+export function sortTraces(traces: RmTraceSummary[], key: TraceSortKey, direction: TraceSortDirection): RmTraceSummary[] {
+  const sign = direction === "ascending" ? 1 : -1;
+  return [...traces].sort((a, b) => {
+    // Unscored traces belong after scored traces in either direction.
+    if (key === "reward") {
+      if (a.latest_score === null && b.latest_score === null) return a.id.localeCompare(b.id);
+      if (a.latest_score === null) return 1;
+      if (b.latest_score === null) return -1;
+      return sign * (a.latest_score.score - b.latest_score.score) || a.id.localeCompare(b.id);
+    }
+    let difference: number;
+    switch (key) {
+      case "title": difference = a.title.localeCompare(b.title); break;
+      case "steps": difference = a.step_count - b.step_count; break;
+      case "labels": difference = (a.positive_count + a.negative_count) - (b.positive_count + b.negative_count); break;
+      case "imported": difference = Date.parse(a.created_at) - Date.parse(b.created_at); break;
+    }
+    return sign * difference || a.id.localeCompare(b.id);
+  });
+}
 
 /** `?selected=id1,id2` on the Traces tab preselects traces, e.g. from a model card's "Trained on N traces". */
 export const SELECTED_PARAM = "selected";
@@ -8,21 +30,13 @@ export const SELECTED_PARAM = "selected";
 // Training fails below this many preference pairs.
 export const MIN_PAIRS = 2;
 
-function isAnnotated(t: RmTraceSummary): boolean {
-  return t.positive_count + t.negative_count + t.comment_count + t.label_error_count > 0;
-}
-
 export function hasLabels(t: RmTraceSummary): boolean {
   return t.positive_count + t.negative_count > 0;
 }
 
-export function filterTraces(traces: RmTraceSummary[], filter: TraceFilter, query: string): RmTraceSummary[] {
+export function searchTraces(traces: RmTraceSummary[], query: string): RmTraceSummary[] {
   const needle = query.trim().toLowerCase();
-  return traces.filter((t) => {
-    if (filter === "annotated" && !isAnnotated(t)) return false;
-    if (filter === "unannotated" && isAnnotated(t)) return false;
-    return needle === "" || t.title.toLowerCase().includes(needle);
-  });
+  return traces.filter((trace) => trace.title.toLowerCase().includes(needle));
 }
 
 /** Sets every id between two rows (inclusive, either direction) to `value`. This is shift-click. */

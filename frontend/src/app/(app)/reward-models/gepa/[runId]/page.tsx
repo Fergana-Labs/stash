@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { use, useCallback, useEffect, useState, type ReactNode } from "react";
 import { ArrowLeft, Check, Copy, Download, Loader2 } from "lucide-react";
 import { toast } from "sonner";
@@ -10,7 +11,7 @@ import { RmPageSkeleton } from "@/components/reward-models/RmSkeletons";
 import { StatusBadge, isActiveJob, pendingSkillTitle } from "@/components/reward-models/rm-ui";
 import { diffLines, errorMessage, formatScore, relativeTime, skillFirstLine } from "@/components/reward-models/rm-text";
 import { JobError } from "@/components/reward-models/JobError";
-import { rmDownloadSkill, rmGetGepaRun, rmGetRewardModel } from "@/lib/api";
+import { rmCreateGepaRun, rmDownloadSkill, rmGetGepaRun, rmGetRewardModel } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import type { RmGepaCandidate, RmGepaRun, RmRewardModel } from "@/lib/types";
 
@@ -20,12 +21,13 @@ type CompareView = "side" | "diff";
 
 export default function GepaRunPage({ params }: { params: Promise<{ runId: string }> }) {
   const { runId } = use(params);
+  const router = useRouter();
+  const [retrying, setRetrying] = useState(false);
   const [run, setRun] = useState<RmGepaRun | null>(null);
   const [model, setModel] = useState<RmRewardModel | null>(null);
   useBreadcrumbs(
     [
-      { label: "Reward models", href: "/reward-models" },
-      { label: "Skills", href: "/reward-models/gepa" },
+      { label: "Reward models", href: "/reward-models/models" },
       { label: run?.skill_name ?? "Skill" },
     ],
     `rm-gepa-${runId}-${run?.skill_name ?? ""}`,
@@ -58,14 +60,26 @@ export default function GepaRunPage({ params }: { params: Promise<{ runId: strin
     return () => clearInterval(timer);
   }, [polling, load]);
 
+  async function retry() {
+    if (run === null) return;
+    setRetrying(true);
+    try {
+      const next = await rmCreateGepaRun({ reward_model_id: run.reward_model_id });
+      router.push(`/reward-models/gepa/${next.id}`);
+    } catch (e) {
+      toast.error(errorMessage(e));
+      setRetrying(false);
+    }
+  }
+
   if (run === null || model === null) return <RmPageSkeleton />;
 
   return (
     <div className="scroll-thin flex-1 overflow-y-auto">
       <div className="mx-auto max-w-6xl px-10 pt-6 pb-16">
-        <Link href="/reward-models/gepa" className="inline-flex items-center gap-1 text-[12px] text-muted-foreground hover:text-foreground">
+        <Link href="/reward-models/models" className="inline-flex items-center gap-1 text-[12px] text-muted-foreground hover:text-foreground">
           <ArrowLeft className="h-3.5 w-3.5" />
-          Skills
+          Back to reward models
         </Link>
         <div className="mt-3 flex items-center gap-3">
           {run.skill_name !== null ? (
@@ -90,7 +104,10 @@ export default function GepaRunPage({ params }: { params: Promise<{ runId: strin
         </div>
 
         {run.status === "failed" && run.error && (
-          <JobError error={run.error} className="mt-5" />
+          <div className="mt-5">
+            <JobError error={run.error} />
+            <Button className="mt-3" onClick={() => void retry()} disabled={retrying}>{retrying ? "Starting…" : "Retry generation"}</Button>
+          </div>
         )}
 
         {run.seed_score !== null && run.best_score !== null && (
@@ -140,7 +157,7 @@ function BestSkill({ runId, skill }: { runId: string; skill: string }) {
   return (
     <section className="mt-8">
       <div className="mb-2 flex items-center justify-between">
-        <h2 className="sys-label m-0">Best skill · SKILL.md</h2>
+        <h2 className="sys-label m-0">Best skill (SKILL.md)</h2>
         <div className="flex gap-1.5">
           <CopyButton text={skill} />
           <Button size="sm" onClick={() => void download()} disabled={downloading}>
@@ -285,7 +302,7 @@ function Candidates({ candidates, best }: { candidates: RmGepaCandidate[]; best:
 
   return (
     <section className="mt-8">
-      <h2 className="sys-label m-0 mb-2">Candidates · {candidates.length}</h2>
+      <h2 className="sys-label m-0 mb-2">Candidates ({candidates.length})</h2>
       <div className="overflow-hidden rounded-lg border border-border">
         {ranked.map((c) => (
           <div key={c.tried} className="border-b border-border-subtle last:border-b-0">

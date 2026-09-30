@@ -5,7 +5,7 @@ import { Code, CodeBlock, H2, P, Title } from "../components";
 import { NextPage } from "../parts";
 
 export const metadata: Metadata = {
-  title: "Implementation · Stash Docs",
+  title: "Implementation | Stash Docs",
   description:
     "How Stash turns trace files and annotations into a Bradley–Terry reward model, calibrated scores, and a GEPA-written skill.",
   alternates: { canonical: "/docs/implementation" },

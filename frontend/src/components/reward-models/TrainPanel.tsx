@@ -94,7 +94,7 @@ export default function TrainPanel({
       </Button>
       <Button onClick={() => void train()} disabled={submitting}>
         {submitting && <Loader2 className="animate-spin" />}
-        {submitting ? "Queuing…" : "Train reward model"}
+        {submitting ? "Queuing…" : "Create new reward model"}
       </Button>
 
       {showOptions && (

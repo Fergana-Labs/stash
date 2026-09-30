@@ -4,7 +4,7 @@ import { Callout, Code, CodeBlock, CodeTabs, H2, H3, P, ParamTable, Title, Subti
 import { Endpoint, Table } from "../parts";
 
 export const metadata: Metadata = {
-  title: "API Reference · Stash Docs",
+  title: "API Reference | Stash Docs",
   description:
     "REST reference for /api/v1/rm: import traces, annotate, export, train reward models, write skills with GEPA, and query your data with read-only DuckDB SQL.",
   alternates: { canonical: "/docs/api" },
@@ -119,8 +119,7 @@ curl -s "$STASH_URL/api/v1/rm/formats" ${AUTH}`}</CodeBlock>
         <Code>format</Code> in the response is the format that was used, which tells you what{" "}
         <Code>auto</Code> detected. The import is all or nothing: any error is a <Code>422</Code> and
         stores no traces. That includes <Code>auto</Code> matching no format, a payload that doesn&apos;t
-        parse as its format, a trace with only system steps, and a trace with no title and no user
-        step. Re-importing a trace with the same <Code>id</Code> replaces its steps and deletes the
+        parse as its format, or a trace with only system steps. Re-importing a trace with the same <Code>id</Code> replaces its steps and deletes the
         annotations on them. See{" "}
         <a href="/docs/trace-format" className="text-brand hover:underline">Trace format</a>.
       </P>
@@ -332,7 +331,7 @@ HAVING plus > 0 AND minus > 0`}</CodeBlock>
         params={[
           { name: "id", type: "string", desc: "Stash's trace id." },
           { name: "external_id", type: "string | null", desc: "The id you imported it with." },
-          { name: "title", type: "string", desc: "Title, or the first 80 characters of the first user step." },
+          { name: "title", type: "string", desc: "Supplied title, or a generated task summary." },
           { name: "source_format", type: "string", desc: "The format it was imported from." },
           { name: "step_count", type: "integer", desc: "Number of steps." },
           { name: "positive_count", type: "integer", desc: "+ ratings on the trace and its steps, not counting flagged ones. Exactly what trains." },

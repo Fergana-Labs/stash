@@ -301,7 +301,7 @@ def test_claude_code_keeps_only_the_conversation():
     assert read_call.tool_name == "Read"
     assert read_call.tool_input == {"file_path": "/work/demo/calc.py"}
     assert (read_result.tool_name, read_result.tool_call_id) == ("Read", "toolu_r1")
-    assert trace.steps[5].metadata == {"is_error": True}
+    assert trace.steps[5].metadata == {"is_error": True, "timestamp": "2026-09-03T12:00:00+00:00"}
 
 
 def test_codex_response_items():
@@ -321,7 +321,7 @@ def test_codex_response_items():
         "tool",
         "assistant",
     ]
-    assert trace.steps[2].metadata == {"thinking": True}
+    assert trace.steps[2].metadata == {"thinking": True, "timestamp": "2026-09-04T08:00:00+00:00"}
     shell = trace.steps[3]
     assert shell.tool_input == {"command": ["wc", "-l", "main.py"]}
     assert (trace.steps[4].tool_name, trace.steps[4].content) == ("shell", "42 main.py")
@@ -380,3 +380,102 @@ def test_codex_session_without_conversation_is_rejected():
     empty_rollout = '{"type": "session_meta", "payload": {"id": "s1", "cwd": "/w"}}\n'
     with pytest.raises(TraceFormatError, match=r"trace 0 \(s1\) has no steps"):
         parse_traces(empty_rollout, "auto")
+
+
+@pytest.mark.parametrize("name", ["claude_code.jsonl", "codex.jsonl"])
+def test_session_import_keeps_recorded_message_times(name):
+    _, traces = parse_traces(_read(name), "auto")
+    assert all("timestamp" in step.metadata for step in traces[0].steps)
+
+
+def test_message_timestamp_is_not_replaced_by_import_time():
+    import json
+
+    _, traces = parse_traces(
+        json.dumps(
+            {
+                "messages": [
+                    {"role": "user", "content": "Refund?", "timestamp": "2026-09-29T12:00:00Z"},
+                    {"role": "assistant", "content": "Done"},
+                ]
+            }
+        ),
+        "openai_chat",
+    )
+    assert traces[0].steps[0].metadata["timestamp"] == "2026-09-29T12:00:00+00:00"
+    assert "timestamp" not in traces[0].steps[1].metadata
+
+
+@pytest.mark.parametrize("timestamp", ["yesterday", "2026-09-29T12:00:00"])
+def test_invalid_message_timestamp_is_rejected(timestamp):
+    import json
+
+    data = json.dumps({"messages": [{"role": "user", "content": "hi", "timestamp": timestamp}]})
+    with pytest.raises(TraceFormatError, match="timestamp"):
+        parse_traces(data, "openai_chat")
+
+
+def test_otel_preserves_parallel_spans_and_their_parent_relationships():
+    import json
+
+    payload = json.loads(_read("otel.json"))
+    raw = payload["resourceSpans"][0]["scopeSpans"][0]["spans"]
+    raw.extend(
+        [
+            {
+                "traceId": raw[0]["traceId"],
+                "spanId": "research",
+                "parentSpanId": "a1",
+                "name": "Research agent",
+                "startTimeUnixNano": "1200",
+                "endTimeUnixNano": "1900",
+            },
+            {
+                "traceId": raw[0]["traceId"],
+                "spanId": "verify",
+                "parentSpanId": "a1",
+                "name": "Verify agent",
+                "startTimeUnixNano": "1300",
+                "endTimeUnixNano": "1800",
+            },
+        ]
+    )
+    _, traces = parse_traces(json.dumps(payload), "otel")
+    spans = {span.id: span for span in traces[0].spans}
+    assert spans["research"].parent_id == spans["verify"].parent_id == "a1"
+    assert (
+        int(spans["research"].start_ns)
+        < int(spans["verify"].start_ns)
+        < int(spans["research"].end_ns)
+    )
+    assert any(span.step_indices for span in spans.values())
+    assert len(traces[0].steps) == len(parse_traces(_read("otel.json"), "otel")[1][0].steps)
+
+
+@pytest.mark.parametrize("invalid", ["cycle", "reversed", "missing_step"])
+def test_invalid_span_structure_fails_import(invalid):
+    import json
+
+    spans = [
+        dict(
+            id="agent",
+            parent_id=None,
+            name="Agent",
+            kind="AGENT",
+            start_ns="1",
+            end_ns="9",
+            input=None,
+            output=None,
+            step_indices=[0],
+        )
+    ]
+    if invalid == "cycle":
+        spans[0]["parent_id"] = "child"
+        spans.append({**spans[0], "id": "child", "parent_id": "agent"})
+    elif invalid == "reversed":
+        spans[0]["end_ns"] = "0"
+    else:
+        spans[0]["step_indices"] = [99]
+    data = json.dumps({"steps": [{"role": "user", "content": "hi"}], "spans": spans})
+    with pytest.raises(TraceFormatError):
+        parse_traces(data, "stash")

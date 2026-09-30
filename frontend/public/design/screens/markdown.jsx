@@ -37,10 +37,10 @@ function MarkdownScreen() {
             <div style={{
               display: 'flex', alignItems: 'center', gap: 10, fontSize: 12, color: 'var(--text-muted)',
             }}>
-              <span>Last edited May 17 · 10:31 by Aiyana</span>
-              <span>·</span>
+              <span>Last edited May 17, 10:31 by Aiyana</span>
+
               <span style={{ color: 'var(--success)' }}>Saved</span>
-              <span>·</span>
+
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                 <span className="avatar av-rose" style={{ width: 16, height: 16, fontSize: 8 }}>AC</span>
                 <span className="avatar av-indigo" style={{ width: 16, height: 16, fontSize: 8, marginLeft: -6 }}>HP</span>
@@ -143,8 +143,8 @@ function MarkdownScreen() {
               display: 'flex', alignItems: 'center', gap: 8,
             }}>
               <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-dim)' }}>/</span>
-              press <span style={{ fontFamily: 'var(--font-mono)', background: 'var(--bg-raised)', padding: '0 5px', borderRadius: 3 }}>/</span> for blocks ·
-              <span style={{ fontFamily: 'var(--font-mono)', background: 'var(--bg-raised)', padding: '0 5px', borderRadius: 3 }}>@</span> for pages or people ·
+              press <span style={{ fontFamily: 'var(--font-mono)', background: 'var(--bg-raised)', padding: '0 5px', borderRadius: 3 }}>/</span> for blocks,
+              <span style={{ fontFamily: 'var(--font-mono)', background: 'var(--bg-raised)', padding: '0 5px', borderRadius: 3 }}>@</span> for pages or people,
               <span style={{ fontFamily: 'var(--font-mono)', background: 'var(--bg-raised)', padding: '0 5px', borderRadius: 3 }}>⌘+J</span> to ask the workspace
             </div>
           </article>
@@ -172,7 +172,7 @@ function MarkdownScreen() {
             <div className="card-soft" style={{ padding: 14 }}>
               <div className="sys-label">In stashes</div>
               <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {[['v0 launch prep', 14, false], ['Customer interviews · oct', 22, false]].map(([t, n], i) => (
+                {[['v0 launch prep', 14, false], ['Customer interviews, oct', 22, false]].map(([t, n], i) => (
                   <a key={i} className="linkrow" style={{ padding: '6px 8px' }}>
                     <span style={{ color: 'var(--brand-600)' }}><Icon name="Stash" /></span>
                     <span style={{ fontSize: 12.5, fontWeight: 500, flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t}</span>
@@ -194,7 +194,7 @@ function MarkdownScreen() {
                   <span className="avatar av-violet" style={{ width: 16, height: 16, fontSize: 8 }}>AG</span>
                   <span><strong style={{ color: 'var(--text-primary)' }}>agent</strong> rewrote the intro paragraph</span>
                 </div>
-                <div style={{ marginLeft: 22, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: 10.5 }}>2h ago · session #aiyana-claude-3146</div>
+                <div style={{ marginLeft: 22, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: 10.5 }}>2h ago, session #aiyana-claude-3146</div>
               </div>
             </div>
           </aside>

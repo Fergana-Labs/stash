@@ -15,7 +15,7 @@ window.MOCK = {
 
   pinnedStashes: [
     { name: 'v0 launch prep', visibility: 'workspace', items: 14 },
-    { name: 'Customer interviews · oct', visibility: 'workspace', items: 22 },
+    { name: 'Customer interviews, oct', visibility: 'workspace', items: 22 },
     { name: 'Eval harness rewrite', visibility: 'private', items: 9 },
     { name: 'Series A deck research', visibility: 'public', items: 31 },
   ],
@@ -58,48 +58,48 @@ window.MOCK = {
   // Sessions grouped by date then user — matches sidebar pattern in DESIGN
   sessionDays: [
     {
-      label: 'Today · May 17',
+      label: 'Today, May 17',
       users: [
         {
           user: 'Henry', avClass: 'av-indigo',
           sessions: [
-            { id: 'henry-codex-3148', title: 'Wire up Stash MCP cli surface', time: '14:22', agent: 'Codex · GPT-5.5 ultra' },
-            { id: 'henry-claude-3147', title: 'Sketch session-detail page', time: '11:08', agent: 'Claude Code · Sonnet 5' },
+            { id: 'henry-codex-3148', title: 'Wire up Stash MCP cli surface', time: '14:22', agent: 'Codex, GPT-5.5 ultra' },
+            { id: 'henry-claude-3147', title: 'Sketch session-detail page', time: '11:08', agent: 'Claude Code, Sonnet 5' },
           ]
         },
         {
           user: 'Aiyana', avClass: 'av-rose',
           sessions: [
-            { id: 'aiyana-claude-3146', title: 'Stash homepage newsfeed v1', time: '10:31', agent: 'Claude Code · Sonnet 5' },
+            { id: 'aiyana-claude-3146', title: 'Stash homepage newsfeed v1', time: '10:31', agent: 'Claude Code, Sonnet 5' },
           ]
         },
       ]
     },
     {
-      label: 'Yesterday · May 16',
+      label: 'Yesterday, May 16',
       users: [
         {
           user: 'Mara', avClass: 'av-emerald',
           sessions: [
-            { id: 'mara-codex-3140', title: 'CSV → table conversion path', time: '17:55', agent: 'Codex · GPT-5.5 high' },
-            { id: 'mara-codex-3138', title: 'Eval harness rewrite', time: '16:01', agent: 'Codex · GPT-5.5 ultra' },
+            { id: 'mara-codex-3140', title: 'CSV → table conversion path', time: '17:55', agent: 'Codex, GPT-5.5 high' },
+            { id: 'mara-codex-3138', title: 'Eval harness rewrite', time: '16:01', agent: 'Codex, GPT-5.5 ultra' },
           ]
         },
         {
           user: 'Priya', avClass: 'av-fuchsia',
           sessions: [
-            { id: 'priya-claude-3136', title: 'Customer interview synth', time: '13:44', agent: 'Claude Code · Sonnet 5' },
+            { id: 'priya-claude-3136', title: 'Customer interview synth', time: '13:44', agent: 'Claude Code, Sonnet 5' },
           ]
         },
       ]
     },
     {
-      label: 'Thu · May 15',
+      label: 'Thu, May 15',
       users: [
         {
           user: 'Sam', avClass: 'av-sky',
           sessions: [
-            { id: 'sam-cursor-3122', title: 'Markdown editor — TipTap setup', time: '18:09', agent: 'Cursor · GPT-5.5 ultra' },
+            { id: 'sam-cursor-3122', title: 'Markdown editor — TipTap setup', time: '18:09', agent: 'Cursor, GPT-5.5 ultra' },
           ]
         },
       ]
@@ -114,7 +114,7 @@ window.MOCK = {
       time: '12 min ago',
       title: 'Wire up Stash MCP cli surface',
       summary: 'Added stash mcp list-stashes, mcp create-page, mcp add-to-stash. Touched 7 files in /cli/mcp. 3 tests added.',
-      meta: { agent: 'Codex · GPT-5.5 ultra', files: 7, turns: 31 },
+      meta: { agent: 'Codex, GPT-5.5 ultra', files: 7, turns: 31 },
       stashes: ['v0 launch prep'],
     },
     {
@@ -124,7 +124,7 @@ window.MOCK = {
       title: 'PRD — Stash v0',
       summary: 'Resolved 4 open questions: privacy model, table-as-page, external stash semantics, sessions ordering.',
       meta: { folder: 'product' },
-      stashes: ['v0 launch prep', 'Customer interviews · oct'],
+      stashes: ['v0 launch prep', 'Customer interviews, oct'],
     },
     {
       kind: 'stash-published',
@@ -147,7 +147,7 @@ window.MOCK = {
       time: '4 h ago',
       title: 'Stash homepage newsfeed v1',
       summary: 'Cleaned up the recent-activity feed: collapsed multi-edit sessions, surfaced stash chips, added discover row.',
-      meta: { agent: 'Claude Code · Sonnet 5', turns: 18 },
+      meta: { agent: 'Claude Code, Sonnet 5', turns: 18 },
       stashes: ['v0 launch prep'],
     },
   ],

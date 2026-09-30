@@ -2,12 +2,12 @@
 
 .prose {
   font-size: 14px;
-  line-height: 1.6;
+  line-height: 1.45;
   color: var(--text-primary);
   overflow-wrap: anywhere;
 }
 .prose > * + * {
-  margin-top: 0.7em;
+  margin-top: 0.45em;
 }
 .prose h1,
 .prose h2,
@@ -42,10 +42,10 @@
   background: var(--bg-surface);
   border: 1px solid var(--border-subtle-color);
   border-radius: 8px;
-  padding: 10px 12px;
+  padding: 6px 10px;
   overflow-x: auto;
   font-size: 12.25px;
-  line-height: 1.55;
+  line-height: 1.4;
 }
 .prose pre code {
   background: transparent;
@@ -83,7 +83,7 @@
 .out {
   font-family: var(--font-mono-stack);
   font-size: 12px;
-  line-height: 1.55;
+  line-height: 1.4;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   color: var(--text-dim);

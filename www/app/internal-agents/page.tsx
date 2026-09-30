@@ -10,7 +10,7 @@ const SIGNUP_URL = `${APP_URL}/login?mode=register`;
 
 export const metadata: Metadata = {
   alternates: { canonical: "/internal-agents" },
-  title: "Internal agents · Stash",
+  title: "Internal agents | Stash",
   description:
     "Stash is memory for your agents. Import your existing agent logs, and stop repeating yourself immediately.",
 };
@@ -109,7 +109,7 @@ export default function InternalAgentsPage() {
               <span className="text-brand">$</span>{" "}
               <span className="text-ink">stash import</span> ~/.claude/projects
               {"\n"}
-              <span className="text-muted">412 sessions · 18.4M tokens</span>
+              <span className="text-muted">412 sessions, 18.4M tokens</span>
               {"\n"}
               <span className="text-muted">capture is on for new runs</span>
             </Terminal>
@@ -141,9 +141,9 @@ export default function InternalAgentsPage() {
               <span className="text-brand">›</span> <span className="text-ink">stash vfs</span>{" "}
               &quot;rg &apos;rate-limit&apos; /&quot;
               {"\n"}
-              <span className="text-muted">8 hits · files/gateway-limits.md</span>
+              <span className="text-muted">8 hits, files/gateway-limits.md</span>
               {"\n"}
-              <span className="text-muted">{"        · sessions/sam:tue-14:22"}</span>
+              <span className="text-muted">{"       , sessions/sam:tue-14:22"}</span>
             </Terminal>
           </Step>
         </div>

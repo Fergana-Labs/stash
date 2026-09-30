@@ -61,7 +61,7 @@ export default function CodePanel() {
               {"\n\n"}
               <span className={P}>$</span> <span className={W}>stash import</span> ~/.claude/projects
               {"\n"}
-              <span className={OK}>✓</span> 412 sessions <span className={C}>· 18.4M tokens</span>
+              <span className={OK}>✓</span> 412 sessions <span className={C}>18.4M tokens</span>
               {"\n\n"}
               <span className={P}>$</span> <span className={W}>stash refine</span>
               {"\n"}

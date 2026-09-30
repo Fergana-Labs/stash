@@ -16,7 +16,7 @@ import {
 import { NextPage, Table } from "../parts";
 
 export const metadata: Metadata = {
-  title: "Trace Format · Stash Docs",
+  title: "Trace Format | Stash Docs",
   description:
     "The Stash Trace Format spec and the eight input formats Stash imports: OpenAI, Anthropic, OpenTelemetry, Langfuse, LangSmith, Claude Code, Codex, and Stash JSONL.",
   alternates: { canonical: "/docs/trace-format" },
@@ -50,9 +50,10 @@ export default function TraceFormatPage() {
           {
             name: "title",
             type: "string",
-            desc: "Display title. Defaults to the first 80 characters of the first user step. A trace with no title and no user step fails import.",
+            desc: "Display title. When omitted, Stash generates a short task summary from the trace using the configured fast model.",
           },
           { name: "metadata", type: "object", desc: "Free-form key/value data about the trace, such as agent name or model." },
+          { name: "spans", type: "array", desc: "Timed agent, model, and tool operations. OpenTelemetry imports preserve these automatically. Omit for an untimed trace; exports include an empty array." },
         ]}
       />
 
@@ -69,7 +70,7 @@ export default function TraceFormatPage() {
           { name: "tool_name", type: "string", desc: "On an assistant step: the tool it calls. On a tool step: the tool that produced the result." },
           { name: "tool_input", type: "object", desc: "The arguments of the tool call. Must be an object." },
           { name: "tool_call_id", type: "string", desc: "Links a tool step to the assistant step that called it." },
-          { name: "metadata", type: "object", desc: 'Free-form, per step. Adapters set {"thinking": true} on model reasoning and {"is_error": true} on failed tool results.' },
+          { name: "metadata", type: "object", desc: 'Free-form, per step. Use timestamp for the recorded ISO 8601 datetime with timezone. Claude Code and Codex imports preserve their message timestamps. Adapters also set {"thinking": true} on model reasoning and {"is_error": true} on failed tool results.' },
         ]}
       />
       <P>
@@ -81,6 +82,24 @@ export default function TraceFormatPage() {
         Stash format you can also put both on one assistant step; the reward model then sees the text
         line followed by the tool call line.
       </P>
+
+      <H3>Span fields</H3>
+      <P>
+        Spans power the execution timeline. Each operation occupies one bar from start to finish,
+        including its input and result. Parent relationships nest subagents, and overlapping time
+        intervals show concurrent work. Message order alone does not establish timing.
+      </P>
+      <ParamTable params={[
+        { name: "id", type: "string", desc: "Unique operation ID within this trace.", required: true },
+        { name: "parent_id", type: "string | null", desc: "Parent operation ID, or null for a root. A parent outside a partial export is allowed.", required: true },
+        { name: "name", type: "string", desc: "Operation name.", required: true },
+        { name: "kind", type: "string | null", desc: "Recorded operation kind, such as AGENT, TOOL, or LLM.", required: true },
+        { name: "start_ns", type: "string", desc: "Start time in Unix nanoseconds, encoded as a decimal string to preserve precision.", required: true },
+        { name: "end_ns", type: "string", desc: "End time in Unix nanoseconds. Must not precede start_ns.", required: true },
+        { name: "input", type: "string | null", desc: "Recorded operation input. Structured values are serialized JSON.", required: true },
+        { name: "output", type: "string | null", desc: "Recorded operation result.", required: true },
+        { name: "step_indices", type: "integer[]", desc: "Zero-based indices of messages belonging to this operation. Empty when no messages are associated." },
+      ]} />
 
       <H3>System steps</H3>
       <P>

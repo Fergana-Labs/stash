@@ -32,7 +32,7 @@ export default function SkillsAdminClient({ repos }: { repos: ImportedRepo[] }) 
               stash
             </Link>
             <span className="text-xs uppercase tracking-[0.14em] text-gray-400">
-              Admin · Discover Skills
+              Admin, Discover Skills
             </span>
           </div>
           <Link href="/admin/analytics" className="text-sm text-gray-500 hover:text-gray-800">
@@ -77,7 +77,7 @@ export default function SkillsAdminClient({ repos }: { repos: ImportedRepo[] }) 
             Imported repos
           </h2>
           <span className="text-xs text-gray-400">
-            {repos.length} repo{repos.length === 1 ? "" : "s"} · {total} skill
+            {repos.length} repo{repos.length === 1 ? "" : "s"}, {total} skill
             {total === 1 ? "" : "s"}
           </span>
         </div>

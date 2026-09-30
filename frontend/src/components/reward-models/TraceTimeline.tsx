@@ -2,65 +2,29 @@
 "use client";
 
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { Bot, Brain, Check, ChevronDown, ChevronRight, Cog, Copy, MessageSquarePlus, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { RmStep } from "@/lib/types";
 import AnchoredText from "./AnchoredText";
-import ToolIcon from "./ToolIcon";
-import { RatingButton } from "./rm-ui";
-import { firstLine, isThinking, looksLikeError, toolFamily, toolLabel, toolSummary, type TraceRow } from "./trace-rows";
+import { firstLine, isThinking, looksLikeError, toolLabel, toolSummary, type TraceRow } from "./trace-rows";
 import type { Highlight } from "./source-anchors";
-
-/** The reward model never sees system steps, so the server rejects ratings on them. Comments are still allowed. */
-export function isRateable(step: RmStep): boolean {
-  return step.role !== "system";
-}
-
-export interface StepRatingState {
-  positive: number;
-  negative: number;
-  mine: 1 | -1 | null;
-  pending: 1 | -1 | null;
-}
 
 /** Everything a row needs to show and change one step's annotations. Built once per render by the trace page. */
 export interface StepAnnotations {
   highlights: (step: RmStep) => Highlight[];
-  rating: (step: RmStep) => StepRatingState;
   commentCount: (step: RmStep) => number;
   hasQuotes: (step: RmStep) => boolean;
   flashing: (step: RmStep) => boolean;
-  onRate: (step: RmStep, rating: 1 | -1) => void;
-  onComment: (step: RmStep, anchor: HTMLElement) => void;
+  onComment: (step: RmStep) => void;
   onSelectAnnotation: (ids: string[]) => void;
 }
 
-type Tone = "user" | "asst" | "tool" | "sys" | "err" | "think";
-
-const NODE_TONE: Record<Tone, string> = {
-  user: "border-amber-300/60 bg-amber-50 text-amber-800 dark:bg-amber-400/15 dark:text-amber-300",
-  asst: "border-foreground bg-foreground text-background",
-  tool: "border-border bg-background text-dim",
-  sys: "border-slate-300/60 bg-slate-100 text-slate-500 dark:bg-slate-400/15 dark:text-slate-300",
-  err: "border-red-300/60 bg-red-50 text-red-600 dark:bg-red-500/15 dark:text-red-400",
-  think: "border-violet-300/50 bg-violet-50 text-violet-600 dark:bg-violet-400/15 dark:text-violet-300",
-};
-
-function Node({ tone, children }: { tone: Tone; children: ReactNode }) {
-  return (
-    <span className={cn("absolute top-[3px] left-0 grid size-[22px] place-items-center rounded-full border", NODE_TONE[tone])}>
-      {children}
-    </span>
-  );
-}
-
-/** Row frame: the timeline node sits in the left gutter; the id is the scroll target for click-to-scroll. */
+/** The id is the scroll target for the minimap and comments. */
 function RowFrame({ step, flashing, children, className }: { step: RmStep; flashing: boolean; children: ReactNode; className?: string }) {
   return (
     <div
       id={`step-${step.id}`}
       className={cn(
-        "relative scroll-mt-24 rounded-lg pl-9 transition-colors duration-700",
+        "relative scroll-mt-44 border-b border-border-subtle py-1 transition-colors duration-700",
         flashing && "bg-amber-100/60 ring-1 ring-amber-400/50 dark:bg-amber-400/10",
         className,
       )}
@@ -103,11 +67,10 @@ function Clamp({ children, max, open: forcedOpen }: { children: ReactNode; max: 
   );
 }
 
-/** + / − / comment for one step. Hidden until hover unless the step already has labels. */
+/** Keep empty comment controls quiet until the row is focused or hovered. */
 function StepActions({ step, ann }: { step: RmStep; ann: StepAnnotations }) {
-  const rating = ann.rating(step);
   const comments = ann.commentCount(step);
-  const quiet = rating.positive + rating.negative + comments === 0;
+  const quiet = comments === 0;
   return (
     <span
       onClick={(e) => e.stopPropagation()}
@@ -116,34 +79,27 @@ function StepActions({ step, ann }: { step: RmStep; ann: StepAnnotations }) {
         quiet && "opacity-0 group-hover/row:opacity-100 focus-within:opacity-100",
       )}
     >
-      {isRateable(step) && (
-        <>
-          <RatingButton rating={1} count={rating.positive} mine={rating.mine === 1} pending={rating.pending === 1} onClick={() => ann.onRate(step, 1)} />
-          <RatingButton rating={-1} count={rating.negative} mine={rating.mine === -1} pending={rating.pending === -1} onClick={() => ann.onRate(step, -1)} />
-        </>
-      )}
       <button
         type="button"
-        onClick={(e) => ann.onComment(step, e.currentTarget)}
+        onClick={() => ann.onComment(step)}
         title="Comment on this step"
         aria-label="Comment on this step"
         className="inline-flex h-6 cursor-pointer items-center gap-1 rounded-md border border-border bg-background px-1.5 font-mono text-[11px] text-muted-foreground transition-colors hover:border-foreground/20 hover:text-foreground"
       >
-        <MessageSquarePlus className="h-3 w-3" />
-        {comments > 0 && <span>{comments}</span>}
+        Comment{comments > 0 && ` (${comments})`}
       </button>
     </span>
   );
 }
 
-function RatedBar({ step, ann }: { step: RmStep; ann: StepAnnotations }) {
-  const mine = ann.rating(step).mine;
-  if (mine === null) return null;
+function StepTime({ step }: { step: RmStep }) {
+  const timestamp = step.metadata?.timestamp;
+  if (typeof timestamp !== "string") return null;
+  const time = new Date(timestamp);
   return (
-    <span
-      aria-hidden
-      className={cn("absolute top-1 bottom-1 -left-0.5 w-[3px] rounded-full", mine === 1 ? "bg-green-600/60" : "bg-red-500/60")}
-    />
+    <time dateTime={timestamp} title={time.toLocaleString()} className="shrink-0 text-[11px] text-muted-foreground tabular-nums">
+      {time.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+    </time>
   );
 }
 
@@ -163,18 +119,14 @@ function StepContent({ step, ann, markdown, max }: { step: RmStep; ann: StepAnno
 
 /* ── user prompt (turn header) ──────────────────────────────────────── */
 
-function PromptRow({ step, turn, ann }: { step: RmStep; turn: number; ann: StepAnnotations }) {
+function PromptRow({ step, ann }: { step: RmStep; ann: StepAnnotations }) {
   return (
     <RowFrame step={step} flashing={ann.flashing(step)} className="group/row">
-      <Node tone="user">
-        <User size={12} />
-      </Node>
-      <div className="relative rounded-xl border border-amber-200/70 bg-amber-50/60 px-4 py-3 dark:border-amber-400/20 dark:bg-amber-400/5">
-        <RatedBar step={step} ann={ann} />
-        <div className="mb-1.5 flex items-center gap-3">
-          <span className="font-mono text-[11px] tracking-wide text-amber-800 dark:text-amber-300">TURN {turn}</span>
+      <div className="relative py-1.5">
+        <div className="mb-0.5 flex items-center gap-2">
           <span className="text-[12px] font-medium text-dim">User</span>
-          <span className="font-mono text-[11px] text-muted-foreground tabular-nums">#{step.index}</span>
+          <span className="font-mono text-[11px] text-muted-foreground tabular-nums">Step {step.index + 1}</span>
+          <StepTime step={step} />
           <span className="flex-1" />
           <StepActions step={step} ann={ann} />
         </div>
@@ -189,13 +141,12 @@ function PromptRow({ step, turn, ann }: { step: RmStep; turn: number; ann: StepA
 function AssistantRow({ step, ann }: { step: RmStep; ann: StepAnnotations }) {
   const thinking = isThinking(step);
   return (
-    <RowFrame step={step} flashing={ann.flashing(step)} className="group/row py-1.5">
-      <Node tone={thinking ? "think" : "asst"}>{thinking ? <Brain size={12} /> : <Bot size={12} />}</Node>
-      <div className="relative -mx-2 rounded-lg px-2 py-1">
-        <RatedBar step={step} ann={ann} />
+    <RowFrame step={step} flashing={ann.flashing(step)} className="group/row py-0.5">
+      <div className="relative -mx-2 px-2 py-1">
         <div className="mb-1 flex items-center gap-3">
-          <span className="text-[12px] font-medium text-dim">{thinking ? "Thinking" : "Assistant"}</span>
-          <span className="font-mono text-[11px] text-muted-foreground tabular-nums">#{step.index}</span>
+          <span className="text-[12px] font-medium text-dim">{thinking ? "Thinking" : "Response"}</span>
+          <span className="font-mono text-[11px] text-muted-foreground tabular-nums">Step {step.index + 1}</span>
+          <StepTime step={step} />
           <span className="flex-1" />
           <StepActions step={step} ann={ann} />
         </div>
@@ -224,15 +175,11 @@ function ToolRow({
 }) {
   const head = (call ?? result)!;
   const name = call?.tool_name ?? result!.tool_name;
-  const family = toolFamily(name);
   const isError = result !== null && looksLikeError(result.content);
   const summary = call ? toolSummary(call.tool_input) : firstLine(result!.content);
 
   return (
-    <RowFrame step={head} flashing={ann.flashing(head)}>
-      <Node tone={isError ? "err" : "tool"}>
-        <ToolIcon family={family} />
-      </Node>
+    <RowFrame step={head} flashing={ann.flashing(head)} className="ml-4 border-l border-border pl-3">
       {call && call.content !== "" && (
         <div className="group/row relative mb-1 pt-[3px]">
           <StepContent step={call} ann={ann} markdown max={300} />
@@ -242,45 +189,43 @@ function ToolRow({
         role="button"
         tabIndex={-1}
         onClick={onToggle}
-        className="group/row relative -mx-2 flex cursor-pointer items-center gap-2.5 rounded-lg px-2 py-[5px] transition-colors hover:bg-surface/80"
+        className="group/row relative -mx-2 flex cursor-pointer items-center gap-2.5 px-2 py-[5px] transition-colors hover:bg-surface/80"
       >
-        <RatedBar step={head} ann={ann} />
-        <span className="w-[110px] shrink-0 truncate text-[12.5px] font-medium text-dim" title={name ?? undefined}>
+        <span className="shrink-0 text-[10.5px] text-muted-foreground">{call ? "Tool call" : "Tool result"}</span>
+        <span className="max-w-[140px] shrink-0 truncate text-[12.5px] font-medium text-dim" title={name ?? undefined}>
           {toolLabel(name)}
         </span>
         <span className="min-w-0 flex-1 truncate font-mono text-[12.25px] text-foreground" title={summary}>
           {summary}
         </span>
-        <span className="font-mono text-[11px] text-muted-foreground tabular-nums">#{head.index}</span>
-        <StatusDot status={result === null ? "unknown" : isError ? "error" : "ok"} />
+        <span className="font-mono text-[11px] text-muted-foreground tabular-nums">Step {head.index + 1}</span>
+        <StepTime step={head} />
+        {isError && <span className="text-[11px] text-red-600">Error</span>}
         <StepActions step={head} ann={ann} />
-        <span className="text-muted-foreground">{expanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}</span>
+        <span className="text-[11px] text-muted-foreground">{expanded ? "Hide" : "Show"}</span>
       </div>
       {expanded && (
-        <div className="mt-1.5 mb-3 space-y-3 rounded-lg border border-border-subtle bg-background p-3.5 text-[13px] animate-in fade-in-0 slide-in-from-top-1">
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-[11px] text-muted-foreground">
-            <span>{name}</span>
-            {head.tool_call_id && <span className="truncate">{head.tool_call_id}</span>}
-          </div>
+        <div className="mb-1 grid grid-cols-2 gap-3 text-[13px]">
           {call && call.tool_input !== null && (
-            <Section title="Input" right={<CopyButton text={JSON.stringify(call.tool_input, null, 2)} />}>
-              <pre className="m-0 rounded-md border border-border-subtle bg-surface px-3 py-2 font-mono text-[12px] leading-[1.55] break-words whitespace-pre-wrap text-dim">
-                {JSON.stringify(call.tool_input, null, 2)}
+            <Section title="Input" right={<CopyButton text={JSON.stringify(call.tool_input)} />}>
+              <pre className="m-0 bg-surface/60 px-2 py-1 font-mono text-[12px] leading-[1.4] break-words whitespace-pre-wrap text-dim">
+                {JSON.stringify(call.tool_input)}
               </pre>
             </Section>
           )}
           {result && (
-            <div id={call ? `step-${result.id}` : undefined} className={cn("group/row rounded-md", call && ann.flashing(result) && "bg-amber-100/60 dark:bg-amber-400/10")}>
+            <div id={call ? `step-${result.id}` : undefined} className={cn("group/row", call && ann.flashing(result) && "bg-amber-100/60 dark:bg-amber-400/10")}>
               <Section
-                title={`Result · #${result.index}`}
+                title={`Result (Step ${result.index + 1})`}
                 right={
                   <span className="flex items-center gap-1">
+                    <StepTime step={result} />
                     {call && <StepActions step={result} ann={ann} />}
                     <CopyButton text={result.content} />
                   </span>
                 }
               >
-                <div className="rounded-md border border-border-subtle bg-surface px-3 py-2">
+                <div className="bg-surface/60 px-2 py-1">
                   <StepContent step={result} ann={ann} markdown={false} max={320} />
                 </div>
               </Section>
@@ -293,22 +238,10 @@ function ToolRow({
   );
 }
 
-function StatusDot({ status }: { status: "ok" | "error" | "unknown" }) {
-  return (
-    <span
-      aria-label={status}
-      className={cn(
-        "inline-block size-1.5 shrink-0 rounded-full",
-        status === "error" ? "bg-red-500" : status === "ok" ? "bg-green-600" : "border border-muted-foreground",
-      )}
-    />
-  );
-}
-
 function Section({ title, right, children }: { title: string; right?: ReactNode; children: ReactNode }) {
   return (
     <div>
-      <div className="mb-1 flex items-center justify-between gap-2">
+      <div className="mb-1 flex h-6 items-center justify-between gap-2">
         <span className="sys-label">{title}</span>
         {right}
       </div>
@@ -329,11 +262,11 @@ function CopyButton({ text }: { text: string }) {
           setTimeout(() => setCopied(false), 1200);
         });
       }}
-      className="cursor-pointer rounded p-1 text-muted-foreground hover:bg-raised hover:text-foreground"
+      className="cursor-pointer rounded px-1 text-[11px] text-muted-foreground hover:bg-raised hover:text-foreground"
       aria-label="Copy"
       title="Copy"
     >
-      {copied ? <Check size={12} /> : <Copy size={12} />}
+      {copied ? "Copied" : "Copy"}
     </button>
   );
 }
@@ -343,25 +276,22 @@ function CopyButton({ text }: { text: string }) {
 function SystemRow({ step, ann, expanded, onToggle }: { step: RmStep; ann: StepAnnotations; expanded: boolean; onToggle: () => void }) {
   return (
     <RowFrame step={step} flashing={ann.flashing(step)}>
-      <Node tone="sys">
-        <Cog size={11} />
-      </Node>
       <div
         role="button"
         tabIndex={-1}
         onClick={onToggle}
-        className="group/row -mx-2 flex cursor-pointer items-center gap-2.5 rounded-lg px-2 py-[5px] hover:bg-surface/80"
+        className="group/row -mx-2 flex cursor-pointer items-center gap-2.5 px-2 py-[5px] hover:bg-surface/80"
       >
         <span className="w-[110px] shrink-0 truncate text-[12.5px] font-medium text-muted-foreground">System</span>
-        <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-muted-foreground">{firstLine(step.content)}</span>
-        <span className="font-mono text-[11px] text-muted-foreground tabular-nums">#{step.index}</span>
+        <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-muted-foreground">{expanded ? "" : firstLine(step.content)}</span>
+        <span className="font-mono text-[11px] text-muted-foreground tabular-nums">Step {step.index + 1}</span>
+        <StepTime step={step} />
         <StepActions step={step} ann={ann} />
-        <span className="text-muted-foreground">{expanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}</span>
+        <span className="text-[11px] text-muted-foreground">{expanded ? "Hide" : "Show"}</span>
       </div>
       {expanded && (
-        <div className="mt-1.5 mb-3 space-y-2 rounded-lg border border-border-subtle bg-background p-3.5 animate-in fade-in-0 slide-in-from-top-1">
+        <div className="mb-1 pl-3">
           <StepContent step={step} ann={ann} markdown={false} max={420} />
-          <p className="m-0 text-[11.5px] text-muted-foreground">System prompts aren&apos;t rated — the reward model judges behavior.</p>
         </div>
       )}
     </RowFrame>
@@ -381,25 +311,31 @@ export default function TraceTimeline({
   isExpanded: (row: TraceRow) => boolean;
   onToggle: (row: TraceRow) => void;
 }) {
+  const groups: { assistant: boolean; rows: TraceRow[] }[] = [];
+  for (const row of rows) {
+    const assistant = row.kind === "tool" || row.kind === "assistant";
+    const last = groups.at(-1);
+    if (assistant && last?.assistant) last.rows.push(row);
+    else groups.push({ assistant, rows: [row] });
+  }
+
+  function renderRow(row: TraceRow) {
+    if (row.kind === "system") {
+      return <SystemRow key={row.key} step={row.step} ann={ann} expanded={isExpanded(row)} onToggle={() => onToggle(row)} />;
+    }
+    if (row.kind === "prompt") return <PromptRow key={row.key} step={row.step} ann={ann} />;
+    if (row.kind === "assistant") return <AssistantRow key={row.key} step={row.step} ann={ann} />;
+    return <ToolRow key={row.key} call={row.call} result={row.result} ann={ann} expanded={isExpanded(row)} onToggle={() => onToggle(row)} />;
+  }
+
   return (
-    <div className="relative">
-      <span aria-hidden className="absolute top-2 bottom-2 left-[10.5px] w-px bg-border" />
-      <div className="space-y-1.5">
-        {rows.map((row) => {
-          if (row.kind === "system") {
-            return <SystemRow key={row.key} step={row.step} ann={ann} expanded={isExpanded(row)} onToggle={() => onToggle(row)} />;
-          }
-          if (row.kind === "prompt") {
-            return (
-              <div key={row.key} className={cn(row.turn > 1 && "pt-4")}>
-                <PromptRow step={row.step} turn={row.turn} ann={ann} />
-              </div>
-            );
-          }
-          if (row.kind === "assistant") return <AssistantRow key={row.key} step={row.step} ann={ann} />;
-          return <ToolRow key={row.key} call={row.call} result={row.result} ann={ann} expanded={isExpanded(row)} onToggle={() => onToggle(row)} />;
-        })}
-      </div>
+    <div className="space-y-2">
+      {groups.map((group) => group.assistant ? (
+        <section key={group.rows[0].key} aria-label="Assistant turn">
+          <h3 className="m-0 mb-1 text-[12px] font-medium text-dim">Assistant</h3>
+          <div className="space-y-1">{group.rows.map(renderRow)}</div>
+        </section>
+      ) : <div key={group.rows[0].key}>{group.rows.map(renderRow)}</div>)}
     </div>
   );
 }

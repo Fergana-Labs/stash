@@ -14,6 +14,8 @@ from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import (
 
 from .test_rm_api import _annotate, _detail, _register
 
+pytestmark = pytest.mark.usefixtures("rm_title_generator")
+
 URL = "/api/v1/rm/otel/v1/traces"
 TRACE_ID = "5b8efff798038103d269b633813fc60c"
 
@@ -98,7 +100,7 @@ async def test_json_export_becomes_a_trace(client):
     [summary] = await _traces(client, auth)
     assert summary["external_id"] == TRACE_ID
     assert summary["source_format"] == "otel"
-    assert summary["title"] == "Where is order 1182?"
+    assert summary["title"] == "Generated trace title"
     steps = (await _detail(client, auth, summary["id"]))["steps"]
     assert [(s["role"], s["content"]) for s in steps] == [
         ("system", "You are a support agent."),

@@ -56,7 +56,7 @@ function DiscoverStashCard({ s }) {
           display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden',
         }}>{s.desc}</p>
         <div className="sys-label" style={{ marginTop: 12, fontSize: 10.5 }}>
-          {s.items} items · {s.views} views
+          {s.items} items, {s.views} views
         </div>
         <div style={{ flex: 1 }} />
         <div style={{
@@ -65,7 +65,7 @@ function DiscoverStashCard({ s }) {
           fontSize: 11.5, color: 'var(--text-muted)',
         }}>
           <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {s.owner} · <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-dim)' }}>{s.org}</span>
+            {s.owner}, <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-dim)' }}>{s.org}</span>
           </span>
           <button className="btn btn-sm" style={{ flexShrink: 0 }}>
             <Icon name="Plus" /> Add

@@ -7,7 +7,7 @@ import { POSTS, blogPostingJsonLd } from "../_lib/posts";
 
 export const metadata: Metadata = {
   alternates: { canonical: "/blog/open-questions-in-memory" },
-  title: "Open Questions in Memory, and Our Predictions · Stash",
+  title: "Open Questions in Memory, and Our Predictions | Stash",
   description:
     "The questions we argue about most with others building AI memory — labs vs startups, weight vs token space, retrieval vs blast radius, benchmarks, context windows — and where we think each one lands.",
 };
@@ -34,7 +34,7 @@ export default function OpenQuestionsInMemoryPage() {
           Open Questions in Memory, and Our Predictions
         </h1>
         <p className="mt-5 text-[14px] text-muted">
-          By {post.author.name} ·{" "}
+          By {post.author.name},{" "}
           <time dateTime={post.datePublished}>{post.byline}</time>
         </p>
         <p className="mt-2 text-[14px] text-muted">

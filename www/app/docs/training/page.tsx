@@ -4,7 +4,7 @@ import { Callout, Code, CodeBlock, H2, H3, P, ParamTable, Title, Subtitle } from
 import { NextPage, Table } from "../parts";
 
 export const metadata: Metadata = {
-  title: "Training · Stash Docs",
+  title: "Training | Stash Docs",
   description:
     "Train a Bradley–Terry reward model on your annotations, locally on MPS, CUDA, or CPU, or on Modal. Metrics, weights, and self-hosting the training worker.",
   alternates: { canonical: "/docs/training" },

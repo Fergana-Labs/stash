@@ -2,14 +2,15 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { Flag, FlagOff, Loader2, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { RmAnnotation, RmStep } from "@/lib/types";
-import { RatingPill } from "./rm-ui";
 import { relativeTime } from "./rm-text";
 
 export default function AnnotationSidebar({
+  visible,
+  onClose,
+  onAddComment,
   annotations,
   steps,
   viewerId,
@@ -19,8 +20,11 @@ export default function AnnotationSidebar({
   onFlag,
   onUnflag,
   onDelete,
-  overview,
+  composer,
 }: {
+  visible: boolean;
+  onClose: () => void;
+  onAddComment: () => void;
   /** Already in document order. */
   annotations: RmAnnotation[];
   steps: RmStep[];
@@ -32,45 +36,46 @@ export default function AnnotationSidebar({
   onFlag: (annotation: RmAnnotation, note: string) => void;
   onUnflag: (annotation: RmAnnotation) => void;
   onDelete: (annotation: RmAnnotation) => void;
-  /** Shown above the annotations, like the trace viewer's aside blocks. */
-  overview: ReactNode;
+  composer: ReactNode;
 }) {
   const stepById = new Map(steps.map((s) => [s.id, s]));
   const flagged = annotations.filter((a) => a.label_error).length;
 
   return (
-    <aside className="scroll-thin flex w-[360px] shrink-0 flex-col gap-4 overflow-y-auto border-l border-border bg-surface/50 p-4">
-      {overview}
-      <section className="rounded-xl border border-border bg-background">
-        <div className="flex items-baseline justify-between px-4 pt-3.5 pb-2.5">
-          <h3 className="sys-label m-0">Annotations</h3>
+    <aside aria-label="Trace comments" className={cn("scroll-thin flex w-[360px] shrink-0 flex-col gap-4 overflow-y-auto border-l border-border bg-surface/50 p-4", !visible && "hidden")}>
+      <div className="flex justify-end"><Button variant="ghost" size="xs" onClick={onClose}>Close comments</Button></div>
+      <section id="trace-comments">
+        <div className="flex items-baseline justify-between px-3 pt-2 pb-3">
+          <h3 className="sys-label m-0">Comments</h3>
           <span className="font-mono text-[11px] text-muted-foreground tabular-nums">
             {annotations.length}
-            {flagged > 0 && ` · ${flagged} flagged`}
+            {flagged > 0 && `, ${flagged} flagged`}
           </span>
         </div>
-      {annotations.length === 0 ? (
-        <p className="m-0 px-4 pb-4 text-[12.5px] leading-relaxed text-muted-foreground">
-          Rate a step with + or −, or select text in any step to comment on it. Everything you add shows up here.
-        </p>
-      ) : (
-        <div className="flex flex-col gap-2 px-3 pb-3">
-          {annotations.map((annotation) => (
-            <AnnotationCard
-              key={annotation.id}
-              annotation={annotation}
-              target={annotation.step_id === null ? null : stepById.get(annotation.step_id)!}
-              mine={annotation.author_id === viewerId}
-              active={annotation.id === activeId}
-              pending={annotation.id === pendingId}
-              onSelect={() => onSelect(annotation)}
-              onFlag={(note) => onFlag(annotation, note)}
-              onUnflag={() => onUnflag(annotation)}
-              onDelete={() => onDelete(annotation)}
-            />
-          ))}
-        </div>
-      )}
+        {!composer && <Button variant="ghost" size="sm" className="mb-2 ml-1" onClick={onAddComment}>Add comment</Button>}
+        {composer && <div className="mx-3 mb-1 border-b border-border pb-4">{composer}</div>}
+        {annotations.length === 0 ? (
+          <p className="m-0 px-3 pb-4 text-[12.5px] leading-relaxed text-muted-foreground">
+            Select text or use Comment on any step. Your comments appear here.
+          </p>
+        ) : (
+          <div className="flex flex-col divide-y divide-border">
+            {annotations.map((annotation) => (
+              <AnnotationCard
+                key={annotation.id}
+                annotation={annotation}
+                target={annotation.step_id === null ? null : stepById.get(annotation.step_id)!}
+                mine={annotation.author_id === viewerId}
+                active={annotation.id === activeId}
+                pending={annotation.id === pendingId}
+                onSelect={() => onSelect(annotation)}
+                onFlag={(note) => onFlag(annotation, note)}
+                onUnflag={() => onUnflag(annotation)}
+                onDelete={() => onDelete(annotation)}
+              />
+            ))}
+          </div>
+        )}
       </section>
     </aside>
   );
@@ -107,8 +112,8 @@ function AnnotationCard({
       id={`annotation-${annotation.id}`}
       onClick={onSelect}
       className={cn(
-        "group/card cursor-pointer rounded-lg border bg-background px-3 py-2.5 text-[12.5px] transition-shadow",
-        active ? "border-amber-400/70 shadow-sm ring-2 ring-amber-400/20" : "border-border hover:shadow-sm",
+        "group/card cursor-pointer border-l-2 px-3 py-3 text-[12.5px] transition-colors",
+        active ? "border-l-amber-400 bg-amber-400/5" : "border-l-transparent hover:bg-background/60",
       )}
     >
       <div className="flex items-center gap-1.5">
@@ -122,49 +127,44 @@ function AnnotationCard({
           )}
           onClick={(e) => e.stopPropagation()}
         >
-          {pending && <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin text-muted-foreground" />}
+          {pending && <span>Saving…</span>}
           {flagged ? (
-            <Button variant="ghost" size="icon-xs" disabled={pending} onClick={onUnflag} title="Unflag: include this label again" aria-label="Unflag label error" className="text-muted-foreground">
-              <FlagOff />
+            <Button variant="ghost" size="xs" disabled={pending} onClick={onUnflag} title="Unflag: include this label again" aria-label="Unflag label error" className="text-muted-foreground">
+              Unflag
             </Button>
           ) : (
             <Button
               variant="ghost"
-              size="icon-xs"
+              size="xs"
               disabled={pending || flagging}
               onClick={() => setFlagging(true)}
               title="Reward model label error: exclude this label from training"
               aria-label="Flag reward model label error"
               className="text-muted-foreground hover:text-amber-700"
             >
-              <Flag />
+              Flag
             </Button>
           )}
           {mine && (
             <Button
               variant="ghost"
-              size="icon-xs"
+              size="xs"
               disabled={pending}
               onClick={onDelete}
               aria-label="Delete annotation"
               title="Delete"
               className="text-muted-foreground hover:text-red-600"
             >
-              <Trash2 />
+              Delete
             </Button>
           )}
         </div>
         <span className="shrink-0 font-mono text-[10.5px] tracking-wide text-muted-foreground uppercase">
-          {target === null ? "Trace" : `Step ${target.index} · ${target.role}`}
+          {target === null ? "Trace" : `Step ${target.index + 1} (${target.role})`}
         </span>
       </div>
 
       <div className={cn("mt-1.5 flex flex-col gap-1.5", flagged && "opacity-55")}>
-        {annotation.rating !== null && (
-          <div className={cn(flagged && "line-through")}>
-            <RatingPill rating={annotation.rating} />
-          </div>
-        )}
         {annotation.quote && (
           <div className="line-clamp-3 border-l-2 border-amber-400/80 pl-2 leading-snug text-dim italic">
             {annotation.quote.text}
@@ -179,7 +179,6 @@ function AnnotationCard({
 
       {flagged && (
         <div className="mt-2 flex gap-1.5 rounded-md bg-amber-500/10 px-2 py-1.5 text-[12px] text-amber-800 dark:text-amber-300">
-          <Flag className="mt-0.5 h-3 w-3 shrink-0" />
           <div>
             <span className="font-medium">Label error</span>
             {annotation.label_error_note && <span> — {annotation.label_error_note}</span>}

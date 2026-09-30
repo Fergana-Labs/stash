@@ -444,7 +444,20 @@ export interface RmAnnotation {
   created_at: string;
 }
 
+export interface RmTraceSpan {
+  id: string;
+  parent_id: string | null;
+  name: string;
+  kind: string | null;
+  start_ns: string;
+  end_ns: string;
+  input: string | null;
+  output: string | null;
+  step_indices: number[];
+}
+
 export interface RmTraceDetail extends RmTraceSummary {
+  spans: RmTraceSpan[];
   metadata: Record<string, unknown> | null;
   steps: RmStep[];
   annotations: RmAnnotation[];

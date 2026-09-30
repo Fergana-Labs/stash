@@ -4,7 +4,7 @@ import { Callout, Code, CodeBlock, H2, H3, P, ParamTable, Title, Subtitle } from
 import { NextPage, Table } from "../parts";
 
 export const metadata: Metadata = {
-  title: "Annotations · Stash Docs",
+  title: "Annotations | Stash Docs",
   description:
     "Rate and comment on agent traces, anchor comments to quoted spans, flag bad labels, and see exactly how annotations become reward model training pairs.",
   alternates: { canonical: "/docs/annotations" },

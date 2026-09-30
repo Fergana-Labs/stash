@@ -72,7 +72,9 @@ shape every adapter produces.
 - `tool_name`, `tool_input` (object), `tool_call_id`, `metadata` are optional per step.
 - `id` is optional; when present, re-importing the same `id` for the same owner
   replaces the trace's steps (annotations on the old steps are deleted with them).
-- `title` is optional; the default is the first 80 characters of the first user step.
+- `title` is optional; when absent, the fast model generates a short task summary from the trace. Title generation requires the server Anthropic key and fails import if generation fails.
+- Step `metadata.timestamp` holds a recorded ISO 8601 datetime with timezone. Claude Code, Codex, and timestamped OpenAI messages preserve their timestamps. Untimed messages stay untimed.
+- `spans` records timed operations independently of conversation steps. OpenTelemetry imports preserve span IDs, parent IDs, nanosecond start/end times, operation names/kinds, recorded inputs/outputs, and references to retained message indices. The viewer plots overlapping operations on a shared time axis and nests subagents by parent ID. Untimed traces have an empty span list; no durations are inferred from step order.
 
 ### Supported input formats
 
@@ -298,11 +300,18 @@ latest_score: {reward_model_id, reward_model_name, score} | null}`.
 `positive_count` / `negative_count` exclude label-error annotations, so they
 count exactly what trains.
 
-`TraceDetail`: TraceSummary fields + `metadata`, `steps: [Step]`,
+`TraceDetail`: TraceSummary fields + `metadata`, `steps: [Step]`, `spans: [Span]`,
 `annotations: [Annotation]`, `scores: [{reward_model_id, reward_model_name,
 score, created_at}]` (latest per model).
 
 `Step`: `{id, index, role, content, tool_name, tool_input, tool_call_id, metadata}`.
+
+`Span`: `{id, parent_id, name, kind, start_ns, end_ns, input, output, step_indices}`.
+Nanosecond timestamps are decimal strings to retain precision in JavaScript.
+`parent_id`, `kind`, `input`, and `output` are nullable. `step_indices` contains
+zero-based indices into the trace's steps. Span IDs must be unique, parents must
+not form a cycle, end times must not precede start times, and referenced step
+indices must exist. An absent parent span is permitted for partial exports.
 
 `Annotation`: `{id, trace_id, step_id, rating, comment, quote, label_error,
 label_error_note, author_id, author_name, created_at}`.

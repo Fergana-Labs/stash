@@ -5,14 +5,12 @@ from uuid import UUID
 import asyncpg
 
 from ...database import get_pool
-from . import annotations
+from . import annotations, trace_titles
 from .adapters import CanonicalTrace, TraceFormatError, parse_traces
-
-TITLE_CHARS = 80
 
 SUMMARY_SELECT = """
     SELECT
-      t.id, t.external_id, t.title, t.source_format, t.metadata, t.created_at,
+      t.id, t.external_id, t.title, t.source_format, t.metadata, t.spans, t.created_at,
       (SELECT count(*) FROM rm_trace_steps s WHERE s.trace_id = t.id)::int AS step_count,
       a.positive_count, a.negative_count, a.comment_count, a.label_error_count,
       ls.reward_model_id AS latest_reward_model_id,
@@ -35,15 +33,6 @@ SUMMARY_SELECT = """
       LIMIT 1
     ) ls ON true
 """
-
-
-def _title(trace: CanonicalTrace, index: int) -> str:
-    if trace.title:
-        return trace.title
-    for step in trace.steps:
-        if step.role == "user":
-            return step.content[:TITLE_CHARS]
-    raise TraceFormatError(f"trace {index} has no title and no user step to derive one from")
 
 
 def _summary(row) -> dict:
@@ -100,18 +89,22 @@ async def store_traces(
     for index, trace in enumerate(traces):
         if all(step.role == "system" for step in trace.steps):
             raise TraceFormatError(f"trace {index} has only system steps; nothing to judge")
-    titles = [_title(trace, index) for index, trace in enumerate(traces)]
+    titles = [
+        trace.title if trace.title is not None else await trace_titles.generate_title(trace)
+        for trace in traces
+    ]
 
     trace_ids = []
     for trace, title in zip(traces, titles, strict=True):
         trace_id = await conn.fetchval(
             """
-            INSERT INTO rm_traces (owner_user_id, external_id, title, source_format, metadata)
-            VALUES ($1, $2, $3, $4, $5)
+            INSERT INTO rm_traces (owner_user_id, external_id, title, source_format, metadata, spans)
+            VALUES ($1, $2, $3, $4, $5, $6)
             ON CONFLICT (owner_user_id, external_id) DO UPDATE SET
               title = EXCLUDED.title,
               source_format = EXCLUDED.source_format,
               metadata = EXCLUDED.metadata,
+              spans = EXCLUDED.spans,
               updated_at = now()
             RETURNING id
             """,
@@ -120,6 +113,7 @@ async def store_traces(
             title,
             source_format,
             trace.metadata,
+            [span.model_dump() for span in trace.spans],
         )
         # Step-level annotations cascade away with the replaced steps.
         await conn.execute("DELETE FROM rm_trace_steps WHERE trace_id = $1", trace_id)
@@ -184,6 +178,7 @@ async def get_trace(owner_user_id: UUID, trace_id: UUID) -> dict | None:
     return {
         **_summary(row),
         "metadata": row["metadata"],
+        "spans": row["spans"],
         "steps": [_step(step) for step in steps],
         "annotations": await annotations.list_for_trace(trace_id),
         "scores": [dict(score) for score in scores],
@@ -202,7 +197,7 @@ async def export_traces(owner_user_id: UUID) -> list[dict]:
     pool = get_pool()
     traces = await pool.fetch(
         """
-        SELECT id, external_id, title, metadata FROM rm_traces
+        SELECT id, external_id, title, metadata, spans FROM rm_traces
         WHERE owner_user_id = $1 ORDER BY created_at, id
         """,
         owner_user_id,
@@ -224,7 +219,7 @@ async def export_traces(owner_user_id: UUID) -> list[dict]:
 
     lines = []
     for trace in traces:
-        line = {"title": trace["title"], "metadata": trace["metadata"]}
+        line = {"title": trace["title"], "metadata": trace["metadata"], "spans": trace["spans"]}
         if trace["external_id"] is not None:
             line["id"] = trace["external_id"]
         line["steps"] = steps_by_trace[trace["id"]]

@@ -7,7 +7,7 @@ import ContactSalesForm from "./ContactSalesForm";
 
 export const metadata: Metadata = {
   alternates: { canonical: "/contact-sales" },
-  title: "Contact sales · Stash",
+  title: "Contact sales | Stash",
   description:
     "Book a demo of Stash for your team. Bring the agents you already run and we import real sessions on the call.",
 };

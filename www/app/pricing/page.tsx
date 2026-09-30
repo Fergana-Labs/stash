@@ -9,7 +9,7 @@ const SIGNUP_URL = `${APP_URL}/login?mode=register`;
 
 export const metadata: Metadata = {
   alternates: { canonical: "/pricing" },
-  title: "Pricing · Stash",
+  title: "Pricing | Stash",
   description:
     "Free to start. Pro is $20/month for unlimited integrations and curator runs. The Developer Platform is priced with you.",
 };

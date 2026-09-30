@@ -245,7 +245,7 @@ export default function AnalyticsClient({
               stash
             </Link>
             <span className="text-xs uppercase tracking-[0.14em] text-gray-400">
-              Admin · Analytics
+              Admin, Analytics
             </span>
           </div>
           <div className="flex items-center gap-4">

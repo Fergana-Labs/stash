@@ -6,7 +6,7 @@ import AnalyticsClient, {
 } from "./AnalyticsClient";
 
 export const metadata: Metadata = {
-  title: "Analytics · Admin",
+  title: "Analytics | Admin",
   robots: { index: false, follow: false },
 };
 
@@ -153,7 +153,7 @@ export default async function AnalyticsAdminPage({
     ["cohorts", cohorts],
   ] as const) {
     if (typeof v === "string") {
-      return <ErrorShell title={`Backend error · ${name}`} body={v} />;
+      return <ErrorShell title={`Backend error, ${name}`} body={v} />;
     }
   }
 

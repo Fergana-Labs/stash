@@ -15,7 +15,7 @@ const STAGES = [
   {
     n: "02",
     title: "Annotate",
-    artifact: "+ / − · comment",
+    artifact: "+ / −, comment",
     body: "Highlight what went wrong and say why.",
     video: "/docs/demo/annotate.mp4",
   },
