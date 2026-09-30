@@ -127,7 +127,7 @@ function PageLine({ page }: { page: DeveloperPageRow }) {
     >
       <span className="min-w-0 flex-1 truncate text-[14px] text-foreground">{page.name}</span>
       <span className="shrink-0 font-mono text-[12px] text-muted-foreground">
-        page, {formatDate(page.updated_at)}
+        page · {formatDate(page.updated_at)}
       </span>
     </Link>
   );
@@ -141,7 +141,7 @@ function FileLine({ file }: { file: DeveloperFileRow }) {
     >
       <span className="min-w-0 flex-1 truncate text-[14px] text-foreground">{file.name}</span>
       <span className="shrink-0 font-mono text-[12px] text-muted-foreground">
-        {formatBytes(file.size_bytes)}, {formatDate(file.created_at)}
+        {formatBytes(file.size_bytes)} · {formatDate(file.created_at)}
       </span>
     </Link>
   );

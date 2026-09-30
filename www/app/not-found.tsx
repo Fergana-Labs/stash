@@ -113,7 +113,7 @@ export default function NotFound() {
       <LostOctopus />
 
       <p className="mt-8 font-mono text-[11px] font-medium uppercase tracking-[0.14em] text-muted">
-        404, not found
+        404 · not found
       </p>
 
       <p className="mt-3 font-display text-[28px] font-bold tracking-[-0.02em] text-ink">

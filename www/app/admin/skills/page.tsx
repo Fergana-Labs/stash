@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import SkillsAdminClient, { type ImportedRepo } from "./SkillsAdminClient";
 
 export const metadata: Metadata = {
-  title: "Discover Skills | Admin",
+  title: "Discover Skills · Admin",
   robots: { index: false, follow: false },
 };
 

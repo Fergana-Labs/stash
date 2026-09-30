@@ -7,7 +7,7 @@ import { POSTS, blogPostingJsonLd } from "../_lib/posts";
 
 export const metadata: Metadata = {
   alternates: { canonical: "/blog/why-no-great-consumer-ai" },
-  title: "Why hasn't there been any great consumer AI (still) | Stash",
+  title: "Why hasn't there been any great consumer AI (still) · Stash",
   description:
     "When models stop getting smarter, context engineering becomes the battleground. A case for the inevitable AI memory infrastructure buildout.",
 };
@@ -32,7 +32,7 @@ export default function WhyNoGreatConsumerAiPage() {
           Why hasn&rsquo;t there been any great consumer AI (still)
         </h1>
         <p className="mt-5 text-[14px] text-muted">
-          By {post.author.name},{" "}
+          By {post.author.name} ·{" "}
           <time dateTime={post.datePublished}>{post.byline}</time>
         </p>
 

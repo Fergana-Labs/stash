@@ -3,9 +3,9 @@
 // Chat-style transcript with date dividers + right aside
 
 const SESSION_TURNS = [
-  { who: 'human', name: 'henry', time: '14:22', date: 'Today, May 17, 2026',
+  { who: 'human', name: 'henry', time: '14:22', date: 'Today · May 17, 2026',
     content: "We need to wire the MCP server into our CLI surface so agents can call list-stashes, create-page, add-to-stash. Start with a plan in /cli/mcp/PLAN.md before touching any code." },
-  { who: 'agent', name: 'agent', time: '14:22', agent: 'Codex, GPT-5.5 ultra',
+  { who: 'agent', name: 'agent', time: '14:22', agent: 'Codex · GPT-5.5 ultra',
     content: "Reading the existing CLI surface and our stash MCP draft. I'll scope this to the three commands you mentioned and identify auth touchpoints first." },
   { who: 'agent', name: 'agent', time: '14:23', toolName: 'read_file',
     content: "→ /cli/mcp/server.py (228 lines)\n→ /sdk/python/stash/__init__.py (412 lines)\n→ /backend/api/v1/stashes.py (180 lines)" },
@@ -83,7 +83,7 @@ function SessionScreen() {
           }}>
             <div style={{ minWidth: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span className="tag tag-agent">agent, codex</span>
+                <span className="tag tag-agent">agent · codex</span>
                 <span className="sys-label">session</span>
               </div>
               <h1 style={{
@@ -91,13 +91,13 @@ function SessionScreen() {
                 letterSpacing: '-0.02em', margin: '6px 0 0',
               }}>Wire up Stash MCP cli surface</h1>
               <div style={{ marginTop: 6, fontSize: 12, color: 'var(--text-muted)', display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-                <span>Today, May 17, 2026</span>
-
+                <span>Today · May 17, 2026</span>
+                <span>·</span>
                 <span>9 messages</span>
-
+                <span>·</span>
                 <span>kicked off by <span className="avatar av-indigo" style={{ width: 14, height: 14, fontSize: 8, marginRight: 4 }}>HP</span> Henry Patel</span>
-
-                <span style={{ fontFamily: 'var(--font-mono)' }}>codex, gpt-5.5 ultra, thinking-high</span>
+                <span>·</span>
+                <span style={{ fontFamily: 'var(--font-mono)' }}>codex · gpt-5.5 ultra · thinking-high</span>
               </div>
             </div>
             <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
@@ -110,7 +110,7 @@ function SessionScreen() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '12px 0 4px', fontSize: 11, color: 'var(--text-muted)' }}>
               <span style={{ flex: 1, height: 1, background: 'var(--border-color)' }} />
-              <span style={{ fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Today, May 17, 2026</span>
+              <span style={{ fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Today · May 17, 2026</span>
               <span style={{ flex: 1, height: 1, background: 'var(--border-color)' }} />
             </div>
             {SESSION_TURNS.map((t, i) => (
@@ -138,7 +138,7 @@ function SessionScreen() {
                 marginTop: 6, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                 fontSize: 11, color: 'var(--text-muted)',
               }}>
-                <span style={{ fontFamily: 'var(--font-mono)' }}>↳ continues this session in Codex, GPT-5.5 ultra</span>
+                <span style={{ fontFamily: 'var(--font-mono)' }}>↳ continues this session in Codex · GPT-5.5 ultra</span>
                 <div style={{ display: 'flex', gap: 6 }}>
                   <span className="tag tag-muted">/plan</span>
                   <span className="tag tag-muted">/files</span>
@@ -170,10 +170,10 @@ function SessionScreen() {
             <div className="sys-label" style={{ fontSize: 11 }}>Tool calls</div>
             <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
               {[
-                ['read_file', '14:23, 3 files'],
-                ['write_file', '14:24, PLAN.md'],
-                ['edit_file', '14:31, server.py'],
-                ['run_tests', '14:32, 8 passed'],
+                ['read_file', '14:23 · 3 files'],
+                ['write_file', '14:24 · PLAN.md'],
+                ['edit_file', '14:31 · server.py'],
+                ['run_tests', '14:32 · 8 passed'],
               ].map(([t, sub], i) => (
                 <a key={i} className="linkrow" style={{ padding: '6px 8px' }}>
                   <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5, color: 'var(--text-primary)' }}>{t}</span>
@@ -205,12 +205,12 @@ function SessionScreen() {
           <div className="card-soft" style={{ padding: 14 }}>
             <div className="sys-label" style={{ fontSize: 11 }}>Session metadata</div>
             <div style={{ marginTop: 8, fontSize: 11.5, color: 'var(--text-dim)', lineHeight: 1.7, fontFamily: 'var(--font-mono)' }}>
-              <div>repo, /backend</div>
-              <div>branch, feat/mcp-cli</div>
-              <div>commit, 8f3a21d</div>
-              <div>duration, 11m 04s</div>
-              <div>turns, 31</div>
-              <div>cost, $0.42</div>
+              <div>repo · /backend</div>
+              <div>branch · feat/mcp-cli</div>
+              <div>commit · 8f3a21d</div>
+              <div>duration · 11m 04s</div>
+              <div>turns · 31</div>
+              <div>cost · $0.42</div>
             </div>
           </div>
         </aside>

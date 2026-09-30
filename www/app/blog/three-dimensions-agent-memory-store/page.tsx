@@ -7,7 +7,7 @@ import { POSTS, blogPostingJsonLd } from "../_lib/posts";
 
 export const metadata: Metadata = {
   alternates: { canonical: "/blog/three-dimensions-agent-memory-store" },
-  title: "Three Dimensions That Matter To An Agent Memory Store | Stash",
+  title: "Three Dimensions That Matter To An Agent Memory Store · Stash",
   description:
     "An opinionated take on three key decisions memory builders need to make: retrieval, injection policy, and what to store.",
 };
@@ -32,7 +32,7 @@ export default function ThreeDimensionsPage() {
           Three Dimensions That Matter To An Agent Memory Store
         </h1>
         <p className="mt-5 text-[14px] text-muted">
-          By {post.author.name},{" "}
+          By {post.author.name} ·{" "}
           <time dateTime={post.datePublished}>{post.byline}</time>
         </p>
 

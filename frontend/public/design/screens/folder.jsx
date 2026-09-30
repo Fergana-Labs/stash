@@ -2,16 +2,16 @@
 // Breadcrumb + folder icon + grid of items
 
 const FOLDER_ITEMS = [
-  { kind: 'folder', name: 'interviews', sub: '8 pages, 1 table', icon: 'FolderOpen' },
+  { kind: 'folder', name: 'interviews', sub: '8 pages · 1 table', icon: 'FolderOpen' },
   { kind: 'folder', name: 'discovery research', sub: '12 pages', icon: 'Folder' },
   { kind: 'folder', name: 'old briefs', sub: '4 pages', icon: 'Folder' },
-  { kind: 'page', name: 'PRD — Stash v0', sub: 'Page, markdown, edited 38m ago', icon: 'Page' },
-  { kind: 'page', name: 'Open questions', sub: 'Page, markdown, edited 1d ago', icon: 'Page' },
-  { kind: 'page', name: 'Naming brainstorm', sub: 'Page, markdown, edited 3d ago', icon: 'Page' },
-  { kind: 'html', name: 'launch-narrative-v3.html', sub: 'Page, html, edited 4h ago', icon: 'Html' },
-  { kind: 'table', name: 'interview-themes.csv', sub: 'Table, 12 rows, synced 4m ago', icon: 'Table' },
-  { kind: 'file', name: 'persona-deck.pdf', sub: 'pdf, 1.4 MB', icon: 'File' },
-  { kind: 'image', name: 'whiteboard-may-12.png', sub: 'image, 480 KB', icon: 'Image' },
+  { kind: 'page', name: 'PRD — Stash v0', sub: 'Page · markdown · edited 38m ago', icon: 'Page' },
+  { kind: 'page', name: 'Open questions', sub: 'Page · markdown · edited 1d ago', icon: 'Page' },
+  { kind: 'page', name: 'Naming brainstorm', sub: 'Page · markdown · edited 3d ago', icon: 'Page' },
+  { kind: 'html', name: 'launch-narrative-v3.html', sub: 'Page · html · edited 4h ago', icon: 'Html' },
+  { kind: 'table', name: 'interview-themes.csv', sub: 'Table · 12 rows · synced 4m ago', icon: 'Table' },
+  { kind: 'file', name: 'persona-deck.pdf', sub: 'pdf · 1.4 MB', icon: 'File' },
+  { kind: 'image', name: 'whiteboard-may-12.png', sub: 'image · 480 KB', icon: 'Image' },
 ];
 
 function FolderTile({ item }) {
@@ -81,10 +81,10 @@ function FolderScreen() {
               letterSpacing: '-0.02em', margin: '10px 0 4px',
             }}>product</h1>
             <div style={{ fontSize: 12.5, color: 'var(--text-muted)', display: 'flex', gap: 8, alignItems: 'center' }}>
-              <span>3 folders, 6 pages, 1 table, 2 files</span>
-
+              <span>3 folders · 6 pages · 1 table · 2 files</span>
+              <span>·</span>
               <span className="stash-chip"><span className="dot" />v0 launch prep</span>
-              <span className="stash-chip"><span className="dot" />Customer interviews, oct</span>
+              <span className="stash-chip"><span className="dot" />Customer interviews · oct</span>
             </div>
           </div>
           <div style={{ display: 'flex', gap: 6 }}>
@@ -100,7 +100,7 @@ function FolderScreen() {
           paddingBottom: 8, borderBottom: '1px solid var(--border-color)',
         }}>
           <button className="btn btn-sm" style={{ background: 'var(--bg-raised)' }}>
-            <span style={{ color: 'var(--text-muted)' }}>sort,</span>
+            <span style={{ color: 'var(--text-muted)' }}>sort ·</span>
             <span style={{ fontWeight: 500 }}>edited</span>
             <Icon name="ChevDown" />
           </button>

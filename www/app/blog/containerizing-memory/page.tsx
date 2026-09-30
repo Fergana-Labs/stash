@@ -8,7 +8,7 @@ import { POSTS, blogPostingJsonLd } from "../_lib/posts";
 export const metadata: Metadata = {
   alternates: { canonical: "/blog/containerizing-memory" },
   title:
-    "Containerizing memory: the real barrier to continual learning and enterprise AI adoption | Stash",
+    "Containerizing memory: the real barrier to continual learning and enterprise AI adoption · Stash",
   description:
     "The shipping container standardized freight and the world's economy followed. Agent memory has no such standard yet, and that missing consistency is why enterprise agent adoption has been mixed.",
 };
@@ -32,7 +32,7 @@ export default function ContainerizingMemoryPage() {
           adoption
         </h1>
         <p className="mt-5 text-[14px] text-muted">
-          By {post.author.name},{" "}
+          By {post.author.name} ·{" "}
           <time dateTime={post.datePublished}>{post.byline}</time>
         </p>
         <p className="mt-2 text-[14px] text-muted">

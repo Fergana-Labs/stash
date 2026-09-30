@@ -18,7 +18,7 @@ function StashDetailScreen() {
           display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16,
         }}>
           <div style={{ minWidth: 0 }}>
-            <p className="sys-label">Fergana Labs, workspace</p>
+            <p className="sys-label">Fergana Labs · workspace</p>
             <h1 style={{
               fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 700,
               letterSpacing: '-0.015em', margin: '2px 0 0', display: 'flex', alignItems: 'center', gap: 10,
@@ -86,7 +86,7 @@ function StashDetailScreen() {
         <div style={{ minWidth: 0 }}>
           {/* Hero */}
           <div style={{ borderBottom: '1px solid var(--border-subtle-color)', paddingBottom: 28 }}>
-            <p className="sys-label">Stash, 14 items, 184 views</p>
+            <p className="sys-label">Stash · 14 items · 184 views</p>
             <h2 style={{
               fontFamily: 'var(--font-display)', fontSize: 44, fontWeight: 900,
               letterSpacing: '-0.025em', lineHeight: 1.05, margin: '14px 0 0',
@@ -122,24 +122,24 @@ function StashDetailScreen() {
           {/* Pages section */}
           <StashSection title="Pages" count={8}>
             {[
-              { icon: 'Page', name: 'PRD — Stash v0', sub: 'Page, markdown, in /product', kind: 'page' },
-              { icon: 'Page', name: 'Open questions', sub: 'Page, markdown, in /product', kind: 'page' },
-              { icon: 'Html', name: 'launch-narrative-v3.html', sub: 'Page, html, in /product', kind: 'html' },
-              { icon: 'Page', name: 'ARCHITECTURE', sub: 'Page, markdown, in /engineering', kind: 'page' },
-              { icon: 'Html', name: 'session-replay mockup', sub: 'Page, html, in /engineering', kind: 'html' },
-              { icon: 'Page', name: 'launch-list', sub: 'Page, markdown, in /gtm', kind: 'page' },
-              { icon: 'Page', name: 'pricing draft', sub: 'Page, markdown, in /gtm', kind: 'page' },
-              { icon: 'Page', name: 'README', sub: 'Page, markdown, in /', kind: 'page' },
+              { icon: 'Page', name: 'PRD — Stash v0', sub: 'Page · markdown · in /product', kind: 'page' },
+              { icon: 'Page', name: 'Open questions', sub: 'Page · markdown · in /product', kind: 'page' },
+              { icon: 'Html', name: 'launch-narrative-v3.html', sub: 'Page · html · in /product', kind: 'html' },
+              { icon: 'Page', name: 'ARCHITECTURE', sub: 'Page · markdown · in /engineering', kind: 'page' },
+              { icon: 'Html', name: 'session-replay mockup', sub: 'Page · html · in /engineering', kind: 'html' },
+              { icon: 'Page', name: 'launch-list', sub: 'Page · markdown · in /gtm', kind: 'page' },
+              { icon: 'Page', name: 'pricing draft', sub: 'Page · markdown · in /gtm', kind: 'page' },
+              { icon: 'Page', name: 'README', sub: 'Page · markdown · in /', kind: 'page' },
             ].map((it, i) => <StashItemRow key={i} it={it} />)}
           </StashSection>
 
           {/* Sessions section */}
           <StashSection title="Sessions" count={4}>
             {[
-              { name: 'Wire up Stash MCP cli surface', sub: 'Today, Henry, 31 turns, Codex GPT-5.5 ultra' },
-              { name: 'Stash homepage newsfeed v1', sub: 'Today, Aiyana, 18 turns, Claude Sonnet 5' },
-              { name: 'Eval harness rewrite', sub: 'Yesterday, Mara, 42 turns, Codex GPT-5.5 ultra' },
-              { name: 'Customer interview synth', sub: 'Yesterday, Priya, 24 turns, Claude Sonnet 5' },
+              { name: 'Wire up Stash MCP cli surface', sub: 'Today · Henry · 31 turns · Codex GPT-5.5 ultra' },
+              { name: 'Stash homepage newsfeed v1', sub: 'Today · Aiyana · 18 turns · Claude Sonnet 5' },
+              { name: 'Eval harness rewrite', sub: 'Yesterday · Mara · 42 turns · Codex GPT-5.5 ultra' },
+              { name: 'Customer interview synth', sub: 'Yesterday · Priya · 24 turns · Claude Sonnet 5' },
             ].map((it, i) => (
               <a key={i} className="linkrow" style={{ padding: '10px 12px' }}>
                 <span style={{ color: 'var(--agent)' }}><Icon name="Session" /></span>
@@ -158,7 +158,7 @@ function StashDetailScreen() {
               <span style={{ color: '#16A34A' }}><Icon name="Table" /></span>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 13.5, fontWeight: 600 }}>interview-themes.csv</div>
-                <div className="sys-label" style={{ fontSize: 10.5, marginTop: 2 }}>Table, 12 rows, /product/interviews</div>
+                <div className="sys-label" style={{ fontSize: 10.5, marginTop: 2 }}>Table · 12 rows · /product/interviews</div>
               </div>
             </a>
           </StashSection>
@@ -169,7 +169,7 @@ function StashDetailScreen() {
               <span style={{ color: 'var(--brand-600)' }}><Icon name="Page" /></span>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 13.5, fontWeight: 600 }}>Acme&apos;s 2026 dev-tools roadmap</div>
-                <div className="sys-label" style={{ fontSize: 10.5, marginTop: 2 }}>added by Lila (Acme), 3 days ago</div>
+                <div className="sys-label" style={{ fontSize: 10.5, marginTop: 2 }}>added by Lila (Acme) · 3 days ago</div>
               </div>
               <span className="tag tag-warning">shared</span>
             </a>

@@ -22,7 +22,7 @@ const instrumentSerif = Instrument_Serif({
   style: ["normal", "italic"],
 });
 
-const title = "Stash | Agents that learn from the real world";
+const title = "Stash · Agents that learn from the real world";
 const description =
   "Stash is an applied AI lab building continual learning. Search, share, and learn from agent traces, and improve your agents automatically. Open source, MIT licensed, self-hostable.";
 

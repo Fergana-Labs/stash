@@ -4,7 +4,7 @@
 const WS_STASHES = [
   { name: 'v0 launch prep', visibility: 'public', items: 14, sessions: 4, pages: 9, views: 184, owner: 'Aiyana', edited: '38m ago',
     desc: 'PRD, design explorations, customer interview synth, and the agent sessions that produced each one.', cover: 'cover-1' },
-  { name: 'Customer interviews, oct', visibility: 'workspace', items: 22, sessions: 12, pages: 9, views: 84, owner: 'Priya', edited: '2h ago',
+  { name: 'Customer interviews · oct', visibility: 'workspace', items: 22, sessions: 12, pages: 9, views: 84, owner: 'Priya', edited: '2h ago',
     desc: 'Every dev-tools interview from October with raw transcripts, the synth doc, and the themes table.', cover: 'cover-2' },
   { name: 'Eval harness rewrite', visibility: 'private', items: 9, sessions: 7, pages: 2, views: 12, owner: 'Mara', edited: '4h ago',
     desc: 'Private — only Mara + Henry. Sessions and notes for the eval framework rebuild.', cover: 'cover-3' },
@@ -59,7 +59,7 @@ function StashCard({ s }) {
         }}>{s.desc}</p>
 
         <div className="sys-label" style={{ marginTop: 10, fontSize: 10.5 }}>
-          {s.items} items, {s.sessions} sessions, {s.pages} pages, {s.views} views
+          {s.items} items · {s.sessions} sessions · {s.pages} pages · {s.views} views
         </div>
 
         <div style={{ flex: 1 }} />
@@ -121,7 +121,7 @@ function WorkspaceStashesScreen() {
           ))}
           <span style={{ flex: 1 }} />
           <button className="btn btn-sm">
-            <span style={{ color: 'var(--text-muted)' }}>sort,</span>
+            <span style={{ color: 'var(--text-muted)' }}>sort ·</span>
             <span style={{ fontWeight: 500 }}>edited</span>
             <Icon name="ChevDown" />
           </button>

@@ -89,17 +89,17 @@ function FeedItem({ item }) {
           {item.meta?.agent && (
             <span style={{ fontFamily: 'var(--font-mono)' }}>{item.meta.agent}</span>
           )}
-          {item.meta?.turns && <span>{item.meta.turns} turns</span>}
-          {item.meta?.files && <span>{item.meta.files} files</span>}
-          {item.meta?.folder && <span>in <span style={{ color: 'var(--text-dim)' }}>{item.meta.folder}</span></span>}
+          {item.meta?.turns && <span>· {item.meta.turns} turns</span>}
+          {item.meta?.files && <span>· {item.meta.files} files</span>}
+          {item.meta?.folder && <span>· in <span style={{ color: 'var(--text-dim)' }}>{item.meta.folder}</span></span>}
           {item.meta?.visibility && (
             <span className={'stash-chip ' + item.meta.visibility} style={{ padding: '1px 7px' }}>
               <span className="dot" />{item.meta.visibility}
             </span>
           )}
-          {item.meta?.items && <span>{item.meta.items} items</span>}
-          {item.meta?.views && <span>{item.meta.views} views</span>}
-          {item.meta?.source && <span>{item.meta.source}</span>}
+          {item.meta?.items && <span>· {item.meta.items} items</span>}
+          {item.meta?.views && <span>· {item.meta.views} views</span>}
+          {item.meta?.source && <span>· {item.meta.source}</span>}
 
           {item.stashes && (
             <>
@@ -129,7 +129,7 @@ function WorkspaceHomeScreen() {
         {/* Hero */}
         <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 24 }}>
           <div>
-            <div className="sys-label">Workspace, 6 members, 4 GitHub repos</div>
+            <div className="sys-label">Workspace · 6 members · 4 GitHub repos</div>
             <h1 style={{
               fontFamily: 'var(--font-display)', fontSize: 40, fontWeight: 900,
               letterSpacing: '-0.025em', margin: '6px 0 4px', lineHeight: 1.05,
@@ -188,7 +188,7 @@ function WorkspaceHomeScreen() {
               >{label}</button>
             ))}
           </div>
-          <span className="sys-label">sorted, recent</span>
+          <span className="sys-label">sorted · recent</span>
         </div>
 
         {/* Feed */}

@@ -8,7 +8,7 @@ import { POSTS, blogPostingJsonLd } from "../_lib/posts";
 export const metadata: Metadata = {
   alternates: { canonical: "/blog/how-to-build-a-company-brain" },
   title:
-    "Giving yourself superpowers: Advice on building a simple company brain | Stash",
+    "Giving yourself superpowers: Advice on building a simple company brain · Stash",
   description:
     "An opinionated take on the right way to build a company brain so your AI agents can do real knowledge work: integrations, retrieval, memory, and privacy.",
 };
@@ -33,7 +33,7 @@ export default function HowToBuildACompanyBrainPage() {
           Giving yourself superpowers: Advice on building a simple company brain
         </h1>
         <p className="mt-5 text-[14px] text-muted">
-          By {post.author.name},{" "}
+          By {post.author.name} ·{" "}
           <time dateTime={post.datePublished}>{post.byline}</time>
         </p>
 

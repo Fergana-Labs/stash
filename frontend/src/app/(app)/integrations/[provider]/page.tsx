@@ -838,7 +838,7 @@ function SourceRow({
           >
             {source.skills === undefined
               ? "Used for Skills →"
-              : `Used for Skills, ${source.skills} of ${source.documents} →`}
+              : `Used for Skills · ${source.skills} of ${source.documents} →`}
           </Link>
         )}
         {source.type === "google_drive_folder" && !source.binds_skills && (

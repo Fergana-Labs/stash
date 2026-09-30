@@ -4,7 +4,7 @@ import LegalShell from "../_components/LegalShell";
 
 export const metadata: Metadata = {
   alternates: { canonical: "/security" },
-  title: "Security | Stash",
+  title: "Security · Stash",
   description: "How to report security vulnerabilities in Stash.",
 };
 

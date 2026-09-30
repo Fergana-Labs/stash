@@ -200,7 +200,7 @@ async function renderHealth() {
       const state =
         s.sync_error ? "bad" : s.sync_status === "syncing" ? "warn" : "ok";
       const detail =
-        s.sync_error ?? `${s.sync_status ?? "idle"}, synced ${fmtTime(s.last_synced_at)}`;
+        s.sync_error ?? `${s.sync_status ?? "idle"} · synced ${fmtTime(s.last_synced_at)}`;
       sources.append(statusItem(state, s.display_name, detail));
     }
     if (!sources.hasChildNodes()) {
@@ -356,7 +356,7 @@ async function renderLocal() {
         "Last run",
         !last
           ? "never"
-          : `${fmtTime(last.finished_at)}, exit ${last.exit_code ?? "?"}`,
+          : `${fmtTime(last.finished_at)} · exit ${last.exit_code ?? "?"}`,
       ),
     );
     box.append(list);

@@ -15,7 +15,7 @@ export default function SiteFooter() {
           <a href="/terms" className="transition hover:text-ink">
             Terms
           </a>
-          <span>MIT licensed, self-hostable</span>
+          <span>MIT licensed · self-hostable</span>
         </span>
       </div>
     </footer>

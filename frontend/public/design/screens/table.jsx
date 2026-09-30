@@ -64,7 +64,7 @@ function TableScreen() {
             <div style={{ minWidth: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span style={{ color: '#16A34A' }}><Icon name="Table" /></span>
-                <span className="sys-label">csv, 12 rows, 7 cols</span>
+                <span className="sys-label">csv · 12 rows · 7 cols</span>
                 <span className="tag tag-success">linked</span>
               </div>
               <h1 style={{
@@ -84,7 +84,7 @@ function TableScreen() {
           {/* Filter row */}
           <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
             <button className="btn btn-sm" style={{ background: 'var(--bg-raised)' }}>
-              <span style={{ color: 'var(--text-muted)' }}>view,</span>
+              <span style={{ color: 'var(--text-muted)' }}>view ·</span>
               <span style={{ fontWeight: 500 }}>all rows</span>
               <Icon name="ChevDown" />
             </button>
@@ -92,7 +92,7 @@ function TableScreen() {
             <button className="btn btn-sm">+ Sort</button>
             <button className="btn btn-sm">Group</button>
             <span style={{ flex: 1 }} />
-            <span className="sys-label" style={{ fontSize: 10.5 }}>linked from /product/interviews/interview-themes.csv, synced 4 min ago</span>
+            <span className="sys-label" style={{ fontSize: 10.5 }}>linked from /product/interviews/interview-themes.csv · synced 4 min ago</span>
           </div>
         </div>
 
@@ -186,13 +186,13 @@ function TableScreen() {
             fontSize: 11.5, color: 'var(--text-muted)',
           }}>
             <div style={{ display: 'flex', gap: 16, fontFamily: 'var(--font-mono)' }}>
-              <span>count, 12</span>
-              <span>sum(mentions), 74</span>
-              <span>open, 6</span>
+              <span>count · 12</span>
+              <span>sum(mentions) · 74</span>
+              <span>open · 6</span>
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
               <span className="stash-chip"><span className="dot" />v0 launch prep</span>
-              <span className="stash-chip"><span className="dot" />Customer interviews, oct</span>
+              <span className="stash-chip"><span className="dot" />Customer interviews · oct</span>
             </div>
           </div>
         </div>

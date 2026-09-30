@@ -5,7 +5,7 @@ import { APP_URL, fetchCatalog, type PublicSkillCard } from "../../lib/discover"
 
 export const metadata: Metadata = {
   alternates: { canonical: "/discover" },
-  title: "Discover Skills | Stash",
+  title: "Discover Skills · Stash",
   description:
     "Browse public Skills — shared sessions, pages, tables, and files from teams building in the open.",
 };

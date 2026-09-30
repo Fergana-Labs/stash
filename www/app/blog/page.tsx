@@ -6,7 +6,7 @@ import SiteHeader from "../_components/SiteHeader";
 
 export const metadata: Metadata = {
   alternates: { canonical: "/blog" },
-  title: "Blog | Stash",
+  title: "Blog · Stash",
   description:
     "Writing on memory, research, and the messy human side of building products from the team at Fergana Labs.",
 };

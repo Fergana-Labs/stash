@@ -7,7 +7,7 @@ import { POSTS, blogPostingJsonLd } from "../_lib/posts";
 
 export const metadata: Metadata = {
   alternates: { canonical: "/blog/context-gold-rush" },
-  title: "The context gold rush: why everyone is building the same thing | Stash",
+  title: "The context gold rush: why everyone is building the same thing · Stash",
   description:
     "Context graph, company brain, LLM wiki — a map of who is building the context layer, the patterns that have converged, and the pieces still missing before any of it reaches mass adoption.",
 };
@@ -30,7 +30,7 @@ export default function ContextGoldRushPage() {
           The context gold rush: why everyone is building the same thing
         </h1>
         <p className="mt-5 text-[14px] text-muted">
-          By {post.author.name},{" "}
+          By {post.author.name} ·{" "}
           <time dateTime={post.datePublished}>{post.byline}</time>
         </p>
         <p className="mt-2 text-[14px] text-muted">
