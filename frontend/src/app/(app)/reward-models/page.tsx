@@ -7,6 +7,8 @@ import { useBreadcrumbs } from "@/components/BreadcrumbContext";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { Button } from "@/components/ui/button";
 import ImportTracesDialog from "@/components/reward-models/ImportTracesDialog";
+import ConnectAgentDialog from "@/components/reward-models/ConnectAgentDialog";
+import TraceDropzone from "@/components/reward-models/TraceDropzone";
 import TraceTable from "@/components/reward-models/TraceTable";
 import TrainPanel from "@/components/reward-models/TrainPanel";
 import { RmPage } from "@/components/reward-models/rm-ui";
@@ -90,43 +92,53 @@ function Traces() {
   const summary = summarizeSelection(traces ?? [], selected);
 
   return (
-    <RmPage
-      title="Traces"
-      actions={<ImportTracesDialog onImported={() => void load()} />}
-    >
-      {traces === null ? (
-        <RmListSkeleton />
-      ) : traces.length === 0 ? (
-        <p className="m-0 text-center text-[12.5px] text-muted-foreground">Waiting for the first trace…</p>
-      ) : (
-        <>
-          {summary.count > 0 && (
-            <div className="sticky top-0 z-20 -mx-3 mb-3 flex items-center gap-3 rounded-lg border border-brand-500/25 bg-background/95 px-3 py-2 shadow-sm backdrop-blur">
-              <span className="text-[13px] font-medium text-foreground tabular-nums">
-                {summary.count} trace{summary.count === 1 ? "" : "s"} selected
-              </span>
-              <Button variant="ghost" size="sm" onClick={() => setSelected(new Set())}>
-                Clear
-              </Button>
-              <span className="flex-1" />
-              <TrainPanel
-                traceIds={selectedIds}
-                summary={summary}
-                optionsPlacement="below"
-                onTrained={() => router.push("/reward-models/models")}
-              />
-            </div>
-          )}
-          <TraceTable
-            traces={traces}
-            selected={selected}
-            onSelectedChange={setSelected}
-            mode="browse"
-            onDelete={(t) => void remove(t)}
-            deletingId={deleting}
-          />
-        </>
-      )}
-    </RmPage>
+    <TraceDropzone onImported={() => void load()}>
+      <RmPage
+        title="Traces"
+        actions={(
+          <>
+            <ConnectAgentDialog />
+            <ImportTracesDialog onImported={() => void load()} />
+          </>
+        )}
+      >
+        {traces === null ? (
+          <RmListSkeleton />
+        ) : traces.length === 0 ? (
+          <div className="py-24 text-center">
+            <p className="m-0 text-[16px] font-medium text-foreground">Drop trace files anywhere here</p>
+            <p className="m-0 mt-2 text-[13px] text-muted-foreground">JSON, JSONL, or NDJSON. Or connect your agent to send runs automatically.</p>
+          </div>
+        ) : (
+          <>
+            {summary.count > 0 && (
+              <div className="sticky top-0 z-20 -mx-3 mb-3 flex items-center gap-3 rounded-lg border border-brand-500/25 bg-background/95 px-3 py-2 shadow-sm backdrop-blur">
+                <span className="text-[13px] font-medium text-foreground tabular-nums">
+                  {summary.count} trace{summary.count === 1 ? "" : "s"} selected
+                </span>
+                <Button variant="ghost" size="sm" onClick={() => setSelected(new Set())}>
+                  Clear
+                </Button>
+                <span className="flex-1" />
+                <TrainPanel
+                  traceIds={selectedIds}
+                  summary={summary}
+                  optionsPlacement="below"
+                  onTrained={() => router.push("/reward-models/models")}
+                />
+              </div>
+            )}
+            <TraceTable
+              traces={traces}
+              selected={selected}
+              onSelectedChange={setSelected}
+              mode="browse"
+              onDelete={(t) => void remove(t)}
+              deletingId={deleting}
+            />
+          </>
+        )}
+      </RmPage>
+    </TraceDropzone>
   );
 }
