@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type RefObject } from "react";
+import { useEffect, useRef, useState, type PointerEvent, type RefObject } from "react";
 import { cn } from "@/lib/utils";
 import { isThinking, looksLikeError } from "./trace-rows";
 import type { RmAnnotation, RmStep } from "@/lib/types";
@@ -29,6 +29,7 @@ export default function TraceMinimap({ steps, annotations, scroller, navigation,
   onJump: (index: number) => void;
 }) {
   const [activeIndex, setActiveIndex] = useState(0);
+  const drag = useRef<{ pointerId: number; index: number } | null>(null);
 
   useEffect(() => {
     const container = scroller.current!;
@@ -73,6 +74,16 @@ export default function TraceMinimap({ steps, annotations, scroller, navigation,
     onJump(index);
   }
 
+  function indexAt(event: PointerEvent<HTMLDivElement>) {
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const index = Math.floor((event.clientX - bounds.left) / bounds.width * steps.length);
+    return Math.max(0, Math.min(steps.length - 1, index));
+  }
+
+  function endDrag(event: PointerEvent<HTMLDivElement>) {
+    if (drag.current?.pointerId === event.pointerId) drag.current = null;
+  }
+
   return (
     <nav aria-label="Trace steps" className="select-none py-2">
       <div className="mb-2 flex items-center gap-3 text-[11px] text-muted-foreground">
@@ -84,7 +95,30 @@ export default function TraceMinimap({ steps, annotations, scroller, navigation,
         <span className="inline-flex items-center gap-1"><span className="size-1.5 rounded-full bg-amber-400" />Comment</span>
         <span className="ml-auto shrink-0 tabular-nums">Step {activeIndex + 1} of {steps.length}</span>
       </div>
-      <div className="relative flex h-[52px] items-end gap-px" role="group" aria-label="Step map">
+      <div
+        className="relative flex h-[52px] touch-none items-end gap-px"
+        role="group"
+        aria-label="Step map"
+        onPointerDown={(event) => {
+          if (event.button !== 0 || drag.current !== null) return;
+          event.preventDefault();
+          const index = indexAt(event);
+          drag.current = { pointerId: event.pointerId, index };
+          event.currentTarget.setPointerCapture(event.pointerId);
+          (event.currentTarget.children[index] as HTMLButtonElement).focus({ preventScroll: true });
+          jump(index);
+        }}
+        onPointerMove={(event) => {
+          if (drag.current?.pointerId !== event.pointerId) return;
+          const index = indexAt(event);
+          if (index === drag.current.index) return;
+          drag.current.index = index;
+          jump(index);
+        }}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
+        onLostPointerCapture={endDrag}
+      >
         {steps.map((step, index) => {
           const kind = KINDS[kindOf(step)];
           const label = `Step ${index + 1}: ${kind.label}${step.tool_name === null ? "" : `, ${step.tool_name}`}`;
@@ -96,7 +130,9 @@ export default function TraceMinimap({ steps, annotations, scroller, navigation,
               aria-label={label}
               aria-current={index === activeIndex ? "step" : undefined}
               tabIndex={index === activeIndex ? 0 : -1}
-              onClick={() => jump(index)}
+              onClick={(event) => {
+                if (event.detail === 0) jump(index);
+              }}
               onKeyDown={(event) => {
                 let next: number;
                 if (event.key === "ArrowRight") next = Math.min(steps.length - 1, index + 1);
