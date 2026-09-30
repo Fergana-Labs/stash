@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type PointerEvent, type RefObject } from "react";
 import { cn } from "@/lib/utils";
 import { isThinking, looksLikeError } from "./trace-rows";
+import { visibleStepElement } from "./trace-scroll";
 import type { RmAnnotation, RmStep } from "@/lib/types";
 
 // Design from Priyadarshan's trace viewer (projects/trace_viewer).
@@ -37,19 +38,10 @@ export default function TraceMinimap({ steps, annotations, scroller, navigation,
     const indices = new Map(steps.map((step, index) => [`step-${step.id}`, index]));
     let frame = 0;
     function update() {
-      const boundary = header.getBoundingClientRect().bottom + 12;
-      const elements = [...container.querySelectorAll<HTMLElement>('[id^="step-"]')];
-      // The last row may be too short to reach the top beneath the sticky graph.
-      const atBottom = container.scrollHeight > container.clientHeight
-        && container.scrollHeight - container.scrollTop - container.clientHeight <= 1;
-      if (atBottom) elements.reverse();
-      for (const element of elements) {
-        if (element.getClientRects().length === 0) continue;
-        if (element.getBoundingClientRect().bottom <= boundary) continue;
-        const index = indices.get(element.id);
-        if (index !== undefined) setActiveIndex(index);
-        break;
-      }
+      const element = visibleStepElement(container, header);
+      if (element === null) return;
+      const index = indices.get(element.id);
+      if (index !== undefined) setActiveIndex(index);
     }
     function schedule() {
       cancelAnimationFrame(frame);

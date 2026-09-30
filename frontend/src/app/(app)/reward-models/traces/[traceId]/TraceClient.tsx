@@ -14,6 +14,7 @@ import TraceTimeline, { type StepAnnotations } from "@/components/reward-models/
 import { errorMessage, locateQuote, quoteFromOffsets, relativeTime, sortAnnotations } from "@/components/reward-models/rm-text";
 import { domSourceOffset, type Highlight } from "@/components/reward-models/source-anchors";
 import { buildRows, rowSteps, type TraceRow } from "@/components/reward-models/trace-rows";
+import { visibleStepElement } from "@/components/reward-models/trace-scroll";
 import { useAuth } from "@/hooks/useAuth";
 import { rmCreateAnnotation, rmDeleteAnnotation, rmGetTrace, rmUpdateAnnotation } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -126,6 +127,36 @@ export default function TraceClient({ traceId }: { traceId: string }) {
 
   function toggleRow(row: TraceRow) {
     setRowChoice(new Map(rowChoice).set(row.key, !isExpanded(row)));
+  }
+
+  function changeView(nextView: View) {
+    if (nextView === view) return;
+    const container = scroller.current!;
+    const header = navigation.current!;
+    const current = visibleStepElement(container, header);
+    setView(nextView);
+    if (current === null) return;
+
+    const currentStep = trace!.steps.find((step) => `step-${step.id}` === current.id)!;
+    const candidates = rows.filter((row) => inView(row, nextView));
+    if (candidates.length === 0) return;
+    const staysVisible = candidates.some((row) => rowSteps(row).some((step) => step.id === currentStep.id));
+    let target = currentStep;
+    if (!staysVisible) {
+      target = rowSteps(candidates[0])[0];
+      for (const row of candidates) {
+        const step = rowSteps(row)[0];
+        if (Math.abs(step.index - currentStep.index) < Math.abs(target.index - currentStep.index)) target = step;
+      }
+    }
+    const offset = staysVisible
+      ? current.getBoundingClientRect().top - container.getBoundingClientRect().top
+      : header.offsetHeight + 12;
+    requestAnimationFrame(() => {
+      const element = document.getElementById(`step-${target.id}`)!;
+      const top = container.scrollTop + element.getBoundingClientRect().top - container.getBoundingClientRect().top - offset;
+      container.scrollTo({ top, behavior: "instant" });
+    });
   }
 
   async function submitComment(target: ComposerTarget, comment: string) {
@@ -245,7 +276,6 @@ export default function TraceClient({ traceId }: { traceId: string }) {
             <div className="min-w-0 flex-1">
               <h1 className="m-0 font-display text-[21px] leading-snug font-semibold tracking-tight text-foreground">{trace.title}</h1>
               <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[12px] text-muted-foreground">
-                {trace.external_id && <span className="font-mono">{trace.external_id}</span>}
                 <span>imported {relativeTime(trace.created_at)}</span>
               </div>
             </div>
@@ -273,7 +303,7 @@ export default function TraceClient({ traceId }: { traceId: string }) {
 
             <div className="-mx-2 mt-1 flex items-center gap-2 border-b border-border-subtle bg-background px-2 py-1.5">
               {VIEWS.map(([key, label]) => (
-                <ToolbarButton key={key} active={view === key} onClick={() => setView(key)}>
+                <ToolbarButton key={key} active={view === key} onClick={() => changeView(key)}>
                   {label}
                 </ToolbarButton>
               ))}
