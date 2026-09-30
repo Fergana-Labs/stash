@@ -4,7 +4,7 @@ import { Callout, Code, CodeBlock, CodeTabs, H2, H3, P, ParamTable, Title, Subti
 import { NextPage, Table } from "../parts";
 
 export const metadata: Metadata = {
-  title: "Skills (GEPA) | Stash Docs",
+  title: "Skills (GEPA) · Stash Docs",
   description:
     "Write a SKILL.md for your agent with GEPA, using your reviewers' comments as feedback and your trained reward model as the metric. Works with any OpenAI-compatible endpoint.",
   alternates: { canonical: "/docs/gepa" },
