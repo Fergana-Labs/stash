@@ -15,10 +15,6 @@ services:
     ports:
       - "3457:3457"
 
-  collab:
-    ports:
-      - "3458:3458"
-
   caddy:
     profiles:
       - production-domain

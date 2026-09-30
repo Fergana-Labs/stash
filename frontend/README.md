@@ -1,36 +1,46 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Stash frontend
 
-## Getting Started
+The Stash product UI: a Next.js (App Router) app that talks to the FastAPI
+backend in [`../backend`](../backend). The landing page and public docs are a
+separate app in [`../www`](../www).
 
-First, run the development server:
+## Running it
+
+The usual path is `./start.sh` from the repo root, which starts the backend,
+workers, and this app together (frontend on port 3457, backend on 3456). See
+[Running this repository](../docs/running-stash.md).
+
+To run only the frontend against a backend that is already up:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm ci
+npm run dev -- -p 3457   # proxies API calls to http://localhost:3456 by default
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Commands
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+| Command | What it does |
+|---|---|
+| `npm run dev` | Dev server |
+| `npm run build` | Production build |
+| `npm run lint` | ESLint |
+| `npm test` | Vitest unit and component tests |
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Configuration
 
-## Learn More
+API requests are proxied to the backend by Next.js rewrites
+([`next.config.ts`](next.config.ts)). The build fails if neither backend
+variable is set.
 
-To learn more about Next.js, take a look at the following resources:
+| Variable | Purpose |
+|---|---|
+| `BACKEND_INTERNAL_URL` | Backend origin reachable from the Next.js server (local dev, Docker, self-host) |
+| `NEXT_PUBLIC_API_URL` | Backend origin for deployments with a separate public API host |
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Layout
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- `src/app/` — routes. Signed-in product pages live under `src/app/(app)/`.
+- `src/components/` — shared UI components.
+- `src/lib/` — API client and utilities.
+- `managed/` — code for the hosted deployment only (Auth0 sign-in). See
+  [`docs/managed-overlay.md`](../docs/managed-overlay.md).
