@@ -67,17 +67,29 @@ async def run_training(model_id: UUID) -> None:
     owner_user_id = model["owner_user_id"]
 
     pairs = await datasets.build_pairs(owner_user_id, model["trace_ids"], model["max_pairs"])
-    pairs.extend(
-        await feedback.build_feedback_pairs(owner_user_id, model["trace_ids"], model["max_pairs"])
+    inferred_pairs, findings = await feedback.build_feedback_pairs(
+        owner_user_id, model["trace_ids"], model["max_pairs"]
     )
+    pairs.extend(inferred_pairs)
     pairs = pairs[: model["max_pairs"]]
-    datasets.check_enough_pairs(pairs)
+    included = {
+        (pair["trace_id"], pair["evidence"]["step_index"])
+        for pair in pairs
+        if pair.get("source") == "feedback_revision"
+    }
+    for finding in findings:
+        finding["included_in_training"] = (
+            finding["trace_id"],
+            finding["step_index"],
+        ) in included and len(pairs) >= datasets.MIN_PAIRS
     await pool.execute(
-        "UPDATE rm_reward_models SET num_pairs = $2, training_pairs = $3 WHERE id = $1",
+        "UPDATE rm_reward_models SET num_pairs = $2, training_pairs = $3, feedback = $4 WHERE id = $1",
         model_id,
         len(pairs),
         pairs,
+        findings,
     )
+    datasets.check_enough_pairs(pairs)
 
     directory = job_dir(model_id)
     directory.mkdir(parents=True, exist_ok=True)

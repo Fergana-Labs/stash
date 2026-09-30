@@ -275,7 +275,7 @@ async def get_reward_model(model_id: UUID, current_user: dict = Depends(get_curr
     )
     if row is None:
         raise HTTPException(status_code=404, detail="Reward model not found")
-    return {**_reward_model(row), "trace_ids": row["trace_ids"]}
+    return {**_reward_model(row), "trace_ids": row["trace_ids"], "feedback": row["feedback"]}
 
 
 @router.get("/reward-models/{model_id}/weights")

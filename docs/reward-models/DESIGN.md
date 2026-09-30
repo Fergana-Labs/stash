@@ -21,7 +21,7 @@ retain their current workspace or developer console; new accounts land on Traces
 An operator can disable the flag for an individual account without deleting data.
 
 The UI uses comments. Training derives attributable preferences from reviewer
-comments and explicit later user corrections; API-supplied ratings also contribute
+comments and later user approval, disappointment, and corrections; API-supplied ratings also contribute
 pairs. The backend image packages the lightweight Modal runner, a dedicated
 `reward` worker coordinates jobs, and private S3 storage holds checkpoints.
 See [Hosted rollout](ROLLOUT.md) for deployment settings and account isolation.
@@ -140,23 +140,42 @@ Annotation export (`GET /api/v1/rm/export/annotations`), one per line:
 ## Reward model training
 
 Training uses only the traces selected for the model. Explicit ratings supplied
-through the API produce chosen/rejected pairs. The UI uses comments: the worker
-extracts supported preferences from reviewer comments and later user corrections.
+through the API produce chosen/rejected pairs. A structured LLM classifier extracts
+positive, negative, or unclear feedback from reviewer comments and later user
+reactions, including implicit disappointment and approval. Labels attach to specific
+assistant responses, so a failed response and a successful repair remain distinct.
+The classifier distinguishes complaints about the task from reactions to the agent;
+silence, new tasks, tool errors, and the assistant's own claims are not feedback.
 For each eligible assistant response it generates an alternative to the same
 context, cites a verbatim feedback excerpt, and records which response the
-feedback prefers. Ambiguous feedback contributes no pair. System prompts and
+feedback prefers. Only high-confidence positive/negative findings with a supported
+alternative produce pairs. Confidence is the classifier's judgment, not a calibrated
+probability. Generic disappointment can be recorded without inventing a correction.
+Ambiguous feedback contributes no pair. System prompts and
 future messages are excluded from the rendered training examples.
 
 Evidence is validated against the original source: the target must be an
 assistant response, corrections must follow it, and step comments must belong
 to it. Malformed extraction fails the job. The exact pairs and evidence are
-stored in `rm_reward_models.training_pairs`. Generated alternatives are model
+stored in `rm_reward_models.training_pairs`. Findings, including abstentions, quotes,
+classifier model, and inclusion in training data, are stored separately in
+`rm_reward_models.feedback` before the minimum-pair check. Failed jobs retain this
+report. The owner-only model detail API and **View feedback** expose it; inferred
+findings never create or overwrite human annotations. A null report means extraction
+was not recorded; an empty list means no feedback was found. Extraction stops once
+enough pairs have been collected to reach `max_pairs`.
+Generated alternatives are model
 interpretations of human feedback, not direct human preference votes.
 
 Training is queued immediately; extraction runs in the dedicated `reward`
 worker. Fewer than two pairs fails with an actionable error before downloading
 a model. Flagged comments are excluded. The combined dataset is capped by
 `max_pairs` (default 4000).
+
+Run `uv run --env-file .env python -m backend.scripts.eval_rm_feedback` for the
+synthetic classifier evaluation (calls the configured LLM API). It checks indirect
+criticism, approval, sarcasm, mixed outcomes, abstention, and prompt injection.
+This small evaluation is not a production accuracy estimate.
 
 The model is `AutoModelForSequenceClassification(num_labels=1)` on the chosen
 base model, trained with the Bradley–Terry loss
@@ -342,3 +361,10 @@ trace_count, status, num_pairs, metrics, error, created_at, started_at,
 finished_at}` (`trace_count` = how many traces were selected); status ∈ `queued | running |
 succeeded | failed`. `GepaRun` has the same status field plus the GEPA result
 fields.
+
+`RewardModelDetail`: RewardModel fields + `trace_ids` and `feedback` (null before
+extraction is recorded, otherwise an array of `{trace_id, step_index, label,
+confidence, evidence_id, evidence_quote, reason, classifier_model, included_in_training}`).
+Labels are `positive | negative | unclear`, confidence is `high | low`, and
+`step_index` is zero-based. `included_in_training` means inclusion in a dataset
+that met the minimum size, not confirmation that the training worker succeeded.

@@ -29,7 +29,7 @@ def no_feedback_inference(monkeypatch):
     monkeypatch.setenv("RM_COMPUTE", "local")
 
     async def extract(steps, evidence):
-        return feedback.Extraction(preferences=[])
+        return feedback.Extraction(feedback=[])
 
     monkeypatch.setattr(feedback, "extract_preferences", extract)
 
@@ -282,9 +282,8 @@ async def test_labels_flagged_while_queued_fail_the_job_before_the_worker(
     assert calls == []
     model = (await client.get(f"/api/v1/rm/reward-models/{model_id}", headers=auth)).json()
     assert model["status"] == "failed"
-    assert model["error"] == (
-        "the selected traces have 0 preference pairs; need at least 2. Add specific feedback to more responses or include traces with user corrections."
-    )
+    assert "0 preference pairs; need at least 2" in model["error"]
+    assert "Unclear reactions are not training labels" in model["error"]
     assert model["metrics"] is None
 
 
