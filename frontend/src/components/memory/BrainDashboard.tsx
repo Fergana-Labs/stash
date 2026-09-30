@@ -28,6 +28,8 @@ import {
 import type { EmbeddingProjection } from "@/lib/types";
 
 const PAGE_SIZE = 50;
+// How often the first-run screen checks whether anything has landed yet.
+const EMPTY_POLL_MS = 5000;
 
 // The feed pages back indefinitely, so a bare "Mar 3" would read as this
 // year's March once the reader scrolls past the year boundary.
@@ -62,6 +64,9 @@ export default function BrainDashboard() {
   const [vitalsError, setVitalsError] = useState<string | null>(null);
   const [vitalsLoaded, setVitalsLoaded] = useState(false);
 
+  const stashIsEmpty =
+    vitals !== null && vitals.pages === 0 && vitals.files === 0 && vitals.sessions === 0;
+
   // The vitals decide whether this stash is brand new, so losing them isn't
   // cosmetic: without them Home would drop a first-run user into a grid of
   // empty panels instead of the setup instruction.
@@ -74,6 +79,22 @@ export default function BrainDashboard() {
       .catch((e) => setVitalsError(e instanceof Error ? e.message : "Failed to load your stash"))
       .finally(() => setVitalsLoaded(true));
   }, []);
+
+  // An empty stash is usually a stash mid-arrival: the user just ran the
+  // installer and their history is uploading in the background. Watch for the
+  // first transcript so this page turns into the dashboard on its own, instead
+  // of sitting there telling them to run the command they already ran.
+  //
+  // A failed poll is left alone rather than surfaced: the load that decides
+  // what this page *is* already reports its failure above, and a blip here
+  // changes nothing we know — still nothing in the stash, retry in 5s.
+  useEffect(() => {
+    if (!stashIsEmpty) return;
+    const timer = setInterval(() => {
+      getMeOverview().then(setVitals).catch(() => {});
+    }, EMPTY_POLL_MS);
+    return () => clearInterval(timer);
+  }, [stashIsEmpty]);
 
   useEffect(() => {
     let cancelled = false;
@@ -167,7 +188,7 @@ export default function BrainDashboard() {
 
   // A brand-new stash has nothing to dashboard. Until the first transcripts
   // arrive, Home is a single instruction: upload your agent transcripts.
-  if (vitalsLoaded && vitals && vitals.pages === 0 && vitals.files === 0 && vitals.sessions === 0) {
+  if (vitalsLoaded && stashIsEmpty) {
     return <EmptyStashSetup />;
   }
 
@@ -374,6 +395,11 @@ function EmptyStashSetup() {
           The installer signs you in and sets up session recording. Then use your coding
           agent like you always do — this page becomes your agents&apos; shared memory as
           transcripts arrive.
+        </p>
+        <p className="mt-3 flex items-center justify-center gap-2 text-[12.5px] text-dim">
+          <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-brand" />
+          Already ran it? Your sessions import in the background — this page opens as soon
+          as the first one lands.
         </p>
       </div>
     </div>
