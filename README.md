@@ -42,6 +42,37 @@ those training and optimization implementations are not included in this
 repository. Our research direction is to make feedback extraction increasingly
 automatic, starting from human labels.
 
+## Reward models in action
+
+The [product demo](https://www.joinstash.ai/docs) follows a refund-support agent
+from reviewer feedback to a reusable skill. These screenshots use demo traces;
+the displayed scores are from that example run.
+
+**1. Give feedback on what the agent should have done.** Label a trace or step,
+highlight the response, and explain the correction.
+
+<!-- Frame from www/public/docs/demo/annotate.mp4 at 10 seconds. -->
+<p align="center">
+  <img src="docs/assets/reward-trace-feedback.png" alt="Refund-support trace with a highlighted refusal and reviewer feedback explaining how to handle a damaged order" width="900" />
+</p>
+
+**2. Train a reward model from labeled traces.** Select examples with positive
+and negative feedback to teach the model what reviewers prefer.
+
+<!-- Frame from www/public/docs/demo/train.mp4 at 3 seconds. -->
+<p align="center">
+  <img src="docs/assets/reward-model-training.png" alt="Six annotated traces selected for reward-model training, with three positive and three negative labels" width="900" />
+</p>
+
+**3. Turn the reward signal into a skill.** GEPA uses the reward model and
+reviewer comments to optimize instructions. Download the resulting `SKILL.md`
+for your agent to use in future runs.
+
+<!-- Frame from www/public/docs/demo/skill.mp4 at 20 seconds. -->
+<p align="center">
+  <img src="docs/assets/reward-generated-skill.png" alt="Generated refund-requests skill showing candidate scores, reusable instructions, and a Download SKILL.md button" width="900" />
+</p>
+
 ## How it works
 
 1. **Capture experience.** Hooks for coding agents record prompts, tool calls,
@@ -76,14 +107,6 @@ subsequent tasks.
 In an [internal experiment](https://henrydowling.com/agent-velocity.html), we
 measured a **49% speedup** for long-running Claude Code instances using Stash.
 See the experiment for its setup and results.
-
-<p align="center">
-  <img src="docs/assets/memory.png" alt="Stash Memory — wiki knowledge graph, file system, and recent agent activity" width="900" />
-</p>
-
-<p align="center">
-  <img src="docs/assets/product.gif" alt="Stash in action — agent queries shared memory and gets cited answers" width="900" />
-</p>
 
 ## Quick Start
 
