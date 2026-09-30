@@ -167,7 +167,7 @@ function TraceRow({
     <tr
       onClick={openRow}
       className={cn(
-        "group cursor-pointer border-b border-border-subtle select-none last:border-b-0",
+        "group h-14 cursor-pointer border-b border-border-subtle select-none last:border-b-0",
         checked ? "bg-brand-500/[0.06] hover:bg-brand-500/10" : "hover:bg-surface/60",
       )}
     >
@@ -189,7 +189,7 @@ function TraceRow({
       </td>
       <td className="px-3 py-2.5 text-right">
         {trace.latest_score ? (
-          <div>
+          <div className="leading-4">
             <span className="font-mono text-[12px] text-foreground tabular-nums">{formatScore(trace.latest_score.score)}</span>
             <div className="truncate text-[11px] text-muted-foreground" title={trace.latest_score.reward_model_name}>{trace.latest_score.reward_model_name}</div>
           </div>
