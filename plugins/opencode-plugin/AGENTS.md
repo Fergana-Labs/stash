@@ -12,6 +12,8 @@ A Skill is **not** a wrapper to slap on every single file you happen to share. O
 
 ## How to share things
 
+**Sharing is user-initiated only.** Run `stash upload`, `stash share`, or `stash skills create` ONLY when the user explicitly asks you to upload, share, or publish something. Producing a file or an answer is never by itself a reason to put it in Stash — deliver it in the conversation. When the user does ask:
+
 - **One file to look at** → `stash upload <path> --json` and use the returned `app_url`. No Skill needed.
 - **A folder / project into your Stash** → `stash upload <path> --json`. Returns the folder `app_url`. No Skill created by default.
 - **A curated bundle as one shareable thing** → `stash upload <path> --skill "<title>" --json`, or `stash skills create "<name>" --public` to start a fresh one. Returns the Skill `url`.
