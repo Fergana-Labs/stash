@@ -60,7 +60,7 @@ function SheetBody({ onTrained }: { onTrained: (model: RmRewardModel) => void })
             Create new reward model
           </DialogPrimitive.Title>
           <DialogPrimitive.Description className="m-0 mt-0.5 text-[12.5px] text-muted-foreground">
-            Choose the traces to train on. Every trace with a + or − label is selected to start.
+            Choose the traces to train on.
           </DialogPrimitive.Description>
         </div>
         <DialogPrimitive.Close asChild>
@@ -81,12 +81,6 @@ function SheetBody({ onTrained }: { onTrained: (model: RmRewardModel) => void })
       <div className="flex items-center gap-4 border-t border-border bg-surface/60 px-6 py-3">
         <span className="text-[13px] text-foreground">
           Train on <span className="font-medium tabular-nums">{summary.count}</span> trace{summary.count === 1 ? "" : "s"}
-          {" with "}
-          <span className="font-mono tabular-nums">
-            <span className="text-green-700 dark:text-green-400">+{summary.positive}</span>{" "}
-            <span className="text-red-600 dark:text-red-400">−{summary.negative}</span>
-          </span>{" "}
-          <span className="text-muted-foreground">labels</span>
         </span>
         <span className="flex-1" />
         <TrainPanel traceIds={selectedIds} summary={summary} optionsPlacement="above" onTrained={onTrained} />

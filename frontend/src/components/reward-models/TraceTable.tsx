@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type MouseEvent } from "react";
-import { Flag, MessageSquare, Search, Trash2 } from "lucide-react";
+import { Search, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { RmTraceSummary } from "@/lib/types";
@@ -13,7 +13,7 @@ import { searchTraces, selectRange, sortTraces, toggleAllVisible, type TraceSort
 const COLUMNS: { key: TraceSortKey; label: string; className: string }[] = [
   { key: "title", label: "Trace", className: "" },
   { key: "steps", label: "Steps", className: "w-20 text-right" },
-  { key: "labels", label: "Labels", className: "w-44 text-right" },
+  { key: "comments", label: "Comments", className: "w-28 text-right" },
   { key: "reward", label: "Latest score", className: "w-36 text-right" },
   { key: "imported", label: "Imported", className: "w-28 text-right" },
 ];
@@ -96,7 +96,7 @@ export default function TraceTable({
                   <button
                     type="button"
                     className="cursor-pointer whitespace-nowrap hover:text-foreground"
-                    title={column.key === "labels" ? "Sort by total positive and negative labels" : `Sort by ${column.label.toLowerCase()}`}
+                    title={`Sort by ${column.label.toLowerCase()}`}
                     onClick={() => {
                       setSort({ key: column.key, direction: sort.key === column.key && sort.direction === "ascending" ? "descending" : "ascending" });
                       anchor.current = null;
@@ -184,9 +184,7 @@ function TraceRow({
         )}
       </td>
       <td className="px-3 py-2.5 text-right font-mono text-[12px] text-dim tabular-nums">{trace.step_count}</td>
-      <td className="px-3 py-2.5">
-        <LabelCounts trace={trace} />
-      </td>
+      <td className="px-3 py-2.5 text-right font-mono text-[12px] text-dim tabular-nums">{trace.comment_count}</td>
       <td className="px-3 py-2.5 text-right">
         {trace.latest_score ? (
           <div className="leading-4">
@@ -243,28 +241,5 @@ function Checkbox({
       aria-label={label}
       className="size-3.5 cursor-pointer accent-brand-500"
     />
-  );
-}
-
-function LabelCounts({ trace }: { trace: RmTraceSummary }) {
-  return (
-    <div className="flex items-center justify-end gap-2.5 font-mono text-[12px] tabular-nums">
-      <span className={trace.positive_count ? "text-green-700 dark:text-green-400" : "text-muted-foreground/60"}>
-        +{trace.positive_count}
-      </span>
-      <span className={trace.negative_count ? "text-red-600 dark:text-red-400" : "text-muted-foreground/60"}>
-        −{trace.negative_count}
-      </span>
-      <span title="Comments" className={cn("inline-flex items-center gap-0.5", trace.comment_count ? "text-dim" : "text-muted-foreground/60")}>
-        <MessageSquare className="h-3 w-3" />
-        {trace.comment_count}
-      </span>
-      {trace.label_error_count > 0 && (
-        <span title="Flagged label errors" className="inline-flex items-center gap-0.5 text-amber-600">
-          <Flag className="h-3 w-3" />
-          {trace.label_error_count}
-        </span>
-      )}
-    </div>
   );
 }

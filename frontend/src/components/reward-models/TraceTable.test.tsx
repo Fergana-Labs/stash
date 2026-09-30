@@ -62,3 +62,15 @@ it("identifies the model behind a displayed score without requiring hover", () =
   render(<TraceTable traces={[trace]} selected={new Set()} onSelectedChange={vi.fn()} mode="browse" />);
   expect(screen.getByRole("cell", { name: "6.011 Refund quality" })).toBeVisible();
 });
+
+it("shows and sorts comment counts independently of stored ratings", () => {
+  const rows = traces.map((trace, i) => ({ ...trace, comment_count: [12, 2, 0][i], positive_count: 7, negative_count: 8 }));
+  render(<TraceTable traces={rows} selected={new Set()} onSelectedChange={vi.fn()} mode="browse" />);
+  expect(screen.queryByRole("columnheader", { name: "Labels" })).not.toBeInTheDocument();
+  expect(screen.queryByText("+7")).not.toBeInTheDocument();
+  expect(screen.queryByText("−8")).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Comments" }));
+  expect(screen.getAllByRole("row").slice(1).map((row) => within(row).getByRole("link").textContent))
+    .toEqual(["Trace 10", "Trace 3", "Trace 20"]);
+  expect(screen.getByRole("cell", { name: "12" })).toBeVisible();
+});

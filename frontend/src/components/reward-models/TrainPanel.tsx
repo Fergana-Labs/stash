@@ -141,7 +141,7 @@ function TrainStatus({ summary, error }: { summary: SelectionSummary; error: str
   if (!tooFewPairs(summary)) return null;
   return (
     <p className="m-0 max-w-xs text-right text-[12px] leading-snug text-amber-700 dark:text-amber-400">
-      Needs at least two + / − pairs. Select traces with more labels.
+      These traces don’t contain enough preference data to train a model.
     </p>
   );
 }

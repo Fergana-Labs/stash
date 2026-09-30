@@ -92,7 +92,6 @@ function Traces() {
   return (
     <RmPage
       title="Traces"
-      description="Annotate agent traces with + / − and comments, train a reward model on those labels, then use it to write skills for your agent."
       actions={<ImportTracesDialog onImported={() => void load()} />}
     >
       {traces === null ? (
@@ -105,11 +104,6 @@ function Traces() {
             <div className="sticky top-0 z-20 -mx-3 mb-3 flex items-center gap-3 rounded-lg border border-brand-500/25 bg-background/95 px-3 py-2 shadow-sm backdrop-blur">
               <span className="text-[13px] font-medium text-foreground tabular-nums">
                 {summary.count} trace{summary.count === 1 ? "" : "s"} selected
-              </span>
-              <span className="font-mono text-[12.5px] tabular-nums">
-                <span className="text-green-700 dark:text-green-400">+{summary.positive}</span>{" "}
-                <span className="text-red-600 dark:text-red-400">−{summary.negative}</span>{" "}
-                <span className="font-sans text-muted-foreground">labels</span>
               </span>
               <Button variant="ghost" size="sm" onClick={() => setSelected(new Set())}>
                 Clear

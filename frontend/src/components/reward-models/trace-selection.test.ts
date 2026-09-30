@@ -30,7 +30,7 @@ describe("sortTraces", () => {
     const rows = [{ ...traces[0], step_count: 20 }, { ...traces[1], step_count: 3 }];
     expect(sortTraces(rows, "steps", "ascending").map((t) => t.id)).toEqual(["b", "a"]);
     expect(rows.map((t) => t.id)).toEqual(["a", "b"]);
-    expect(sortTraces(traces, "labels", "descending").map((t) => t.id)).toEqual(["c", "a", "b", "d"]);
+    expect(sortTraces(traces, "comments", "descending").map((t) => t.id)).toEqual(["d", "a", "b", "c"]);
   });
 
   it("keeps unscored traces last while respecting zero and negative rewards", () => {

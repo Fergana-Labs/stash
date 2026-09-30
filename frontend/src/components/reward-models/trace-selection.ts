@@ -1,6 +1,6 @@
 import type { RmTraceSummary } from "@/lib/types";
 
-export type TraceSortKey = "title" | "steps" | "labels" | "reward" | "imported";
+export type TraceSortKey = "title" | "steps" | "comments" | "reward" | "imported";
 export type TraceSortDirection = "ascending" | "descending";
 
 export function sortTraces(traces: RmTraceSummary[], key: TraceSortKey, direction: TraceSortDirection): RmTraceSummary[] {
@@ -17,7 +17,7 @@ export function sortTraces(traces: RmTraceSummary[], key: TraceSortKey, directio
     switch (key) {
       case "title": difference = a.title.localeCompare(b.title); break;
       case "steps": difference = a.step_count - b.step_count; break;
-      case "labels": difference = (a.positive_count + a.negative_count) - (b.positive_count + b.negative_count); break;
+      case "comments": difference = a.comment_count - b.comment_count; break;
       case "imported": difference = Date.parse(a.created_at) - Date.parse(b.created_at); break;
     }
     return sign * difference || a.id.localeCompare(b.id);
