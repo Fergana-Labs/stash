@@ -25,7 +25,7 @@ function RowFrame({ step, flashing, children, className }: { step: RmStep; flash
     <div
       id={`step-${step.id}`}
       className={cn(
-        "relative scroll-mt-44 border-b border-border-subtle py-1 transition-colors duration-700",
+        "relative scroll-mt-44 transition-colors duration-700",
         flashing && "bg-amber-100/60 ring-1 ring-amber-400/50 dark:bg-amber-400/10",
         className,
       )}
@@ -76,7 +76,7 @@ function StepActions({ step, ann }: { step: RmStep; ann: StepAnnotations }) {
     <span
       onClick={(e) => e.stopPropagation()}
       className={cn(
-        "flex shrink-0 items-center gap-1 transition-opacity",
+        "flex shrink-0 items-center gap-1",
         quiet && "opacity-0 group-hover/row:opacity-100 focus-within:opacity-100",
       )}
     >
@@ -85,7 +85,7 @@ function StepActions({ step, ann }: { step: RmStep; ann: StepAnnotations }) {
         onClick={() => ann.onComment(step)}
         title="Comment on this step"
         aria-label="Comment on this step"
-        className="inline-flex h-6 cursor-pointer items-center gap-1 rounded-md border border-border bg-background px-1.5 font-mono text-[11px] text-muted-foreground transition-colors hover:border-foreground/20 hover:text-foreground"
+        className="inline-flex h-5 cursor-pointer items-center gap-1 text-[11px] font-medium text-dim hover:text-foreground hover:underline underline-offset-4"
       >
         Comment{comments > 0 && ` (${comments})`}
       </button>
@@ -120,40 +120,52 @@ function StepContent({ step, ann, markdown, max }: { step: RmStep; ann: StepAnno
 
 /* ── user prompt (turn header) ──────────────────────────────────────── */
 
-function PromptRow({ step, ann }: { step: RmStep; ann: StepAnnotations }) {
+function StepMetadata({ step, ann, children }: { step: RmStep; ann: StepAnnotations; children?: ReactNode }) {
+  return (
+    <div className="ml-auto flex shrink-0 items-center gap-3 text-[11px] text-muted-foreground tabular-nums">
+      <StepTime step={step} />
+      <span>Step {step.index + 1}</span>
+      <div className="flex w-28 items-center justify-end gap-3">
+        <StepActions step={step} ann={ann} />
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function PromptRow({ step, ann, repeated, expanded, onToggle }: {
+  step: RmStep; ann: StepAnnotations; repeated: boolean; expanded: boolean; onToggle: () => void;
+}) {
   return (
     <RowFrame step={step} flashing={ann.flashing(step)} className="group/row">
-      <div className="relative py-1.5">
-        <div className="mb-0.5 flex items-center gap-2">
-          <span className="text-[12px] font-medium text-dim">User</span>
-          <span className="font-mono text-[11px] text-muted-foreground tabular-nums">Step {step.index + 1}</span>
-          <StepTime step={step} />
-          <span className="flex-1" />
-          <StepActions step={step} ann={ann} />
-        </div>
-        <StepContent step={step} ann={ann} markdown max={300} />
+      <div className="mb-1 flex min-h-5 items-center gap-3">
+        {repeated ? (
+          <button type="button" onClick={onToggle} aria-expanded={expanded}
+            className="cursor-pointer text-[11px] text-muted-foreground hover:text-foreground hover:underline underline-offset-4">
+            Repeated user message{expanded ? " — hide" : " — show"}
+          </button>
+        ) : <span className="text-[13px] font-semibold text-foreground">User</span>}
+        <StepMetadata step={step} ann={ann} />
       </div>
+      {(!repeated || expanded) && <StepContent step={step} ann={ann} markdown max={300} />}
     </RowFrame>
   );
 }
 
 /* ── assistant message (or reasoning) ───────────────────────────────── */
 
-function AssistantRow({ step, ann }: { step: RmStep; ann: StepAnnotations }) {
+function AssistantRow({ step, ann, first }: { step: RmStep; ann: StepAnnotations; first: boolean }) {
   const thinking = isThinking(step);
   return (
-    <RowFrame step={step} flashing={ann.flashing(step)} className="group/row py-0.5">
-      <div className="relative -mx-2 px-2 py-1">
-        <div className="mb-1 flex items-center gap-3">
-          <span className="text-[12px] font-medium text-dim">{thinking ? "Thinking" : "Response"}</span>
-          <span className="font-mono text-[11px] text-muted-foreground tabular-nums">Step {step.index + 1}</span>
-          <StepTime step={step} />
-          <span className="flex-1" />
-          <StepActions step={step} ann={ann} />
-        </div>
-        <div className={cn(thinking && "text-dim italic")}>
-          <StepContent step={step} ann={ann} markdown max={440} />
-        </div>
+    <RowFrame step={step} flashing={ann.flashing(step)} className={cn("group/row", !first && "pt-3")}>
+      <div className="mb-1 flex min-h-5 items-center gap-3">
+        <span className={cn(first ? "text-[13px] font-semibold text-foreground" : "text-[11px] text-muted-foreground")}>
+          {first ? "Assistant" : thinking ? "Thinking" : "Response"}
+        </span>
+        <StepMetadata step={step} ann={ann} />
+      </div>
+      <div className={cn(thinking && "text-dim italic")}>
+        <StepContent step={step} ann={ann} markdown max={440} />
       </div>
     </RowFrame>
   );
@@ -177,33 +189,31 @@ function ToolRow({
   const head = (call ?? result)!;
   const name = call?.tool_name ?? result!.tool_name;
   const isError = result !== null && looksLikeError(result.content);
-  const summary = call ? toolSummary(call.tool_input) : firstLine(result!.content);
+  const summary = call ? toolSummary(call.tool_input)
+    : /^\s*[\[{]/.test(result!.content) ? "" : firstLine(result!.content);
 
   return (
-    <RowFrame step={head} flashing={ann.flashing(head)} className="ml-4 border-l border-border pl-3">
+    <RowFrame step={head} flashing={ann.flashing(head)} className="group/row ml-2 border-l border-border pl-3">
       {call && call.content !== "" && (
         <div className="group/row relative mb-1 pt-[3px]">
           <StepContent step={call} ann={ann} markdown max={300} />
         </div>
       )}
-      <div
-        role="button"
-        tabIndex={-1}
-        onClick={onToggle}
-        className="group/row relative -mx-2 flex cursor-pointer items-center gap-2.5 px-2 py-[5px] transition-colors hover:bg-surface/80"
-      >
-        <span className="shrink-0 text-[10.5px] text-muted-foreground">{call ? "Tool call" : "Tool result"}</span>
-        <span className="max-w-[140px] shrink-0 truncate text-[12.5px] font-medium text-dim" title={name ?? undefined}>
-          {toolLabel(name)}
-        </span>
-        <span className="min-w-0 flex-1 truncate font-mono text-[12.25px] text-foreground" title={summary}>
-          {summary}
-        </span>
-        <span className="font-mono text-[11px] text-muted-foreground tabular-nums">Step {head.index + 1}</span>
-        <StepTime step={head} />
+      <div className="flex min-h-8 items-center gap-3">
+        <button type="button" onClick={onToggle} aria-expanded={expanded}
+          aria-label={`${expanded ? "Collapse" : "Expand"} ${toolLabel(name)} ${call ? "tool call" : "tool result"}`}
+          className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-left hover:text-foreground">
+          <span className="max-w-44 shrink-0 truncate text-[12px] font-medium text-foreground" title={name ?? undefined}>{toolLabel(name)}</span>
+          <span className="shrink-0 text-[10px] text-muted-foreground">{call ? "Tool call" : "Tool result"}</span>
+          <span className="min-w-0 truncate text-[12px] text-muted-foreground" title={summary}>{expanded ? "" : summary}</span>
+        </button>
         {isError && <span className="text-[11px] text-red-600">Error</span>}
-        <StepActions step={head} ann={ann} />
-        <span className="text-[11px] text-muted-foreground">{expanded ? "Hide" : "Show"}</span>
+        <StepMetadata step={head} ann={ann}>
+          <button type="button" onClick={onToggle} aria-expanded={expanded}
+            className="shrink-0 cursor-pointer text-[11px] font-medium text-dim hover:text-foreground hover:underline underline-offset-4">
+            {expanded ? "Hide" : "Details"}
+          </button>
+        </StepMetadata>
       </div>
       {expanded && (
         <div className={cn("mb-1 grid gap-3 text-[13px]", call?.tool_input != null && result !== null && "grid-cols-2")}>
@@ -217,10 +227,11 @@ function ToolRow({
           {result && (
             <div id={call ? `step-${result.id}` : undefined} className={cn("group/row", call && ann.flashing(result) && "bg-amber-100/60 dark:bg-amber-400/10")}>
               <Section
-                title={`Result (Step ${result.index + 1})`}
+                title="Result"
                 right={
-                  <span className="flex items-center gap-1">
-                    <StepTime step={result} />
+                  <span className="flex items-center gap-3">
+                    {call && <StepTime step={result} />}
+                    {call && <span className="text-[11px] text-muted-foreground">Step {result.index + 1}</span>}
                     {call && <StepActions step={result} ann={ann} />}
                     <CopyButton text={result.content} />
                   </span>
@@ -243,7 +254,7 @@ function Section({ title, right, children }: { title: string; right?: ReactNode;
   return (
     <div>
       <div className="mb-1 flex h-6 items-center justify-between gap-2">
-        <span className="sys-label">{title}</span>
+        <span className="text-[11px] font-medium text-muted-foreground">{title}</span>
         {right}
       </div>
       {children}
@@ -263,7 +274,7 @@ function CopyButton({ text }: { text: string }) {
           setTimeout(() => setCopied(false), 1200);
         });
       }}
-      className="cursor-pointer rounded px-1 text-[11px] text-muted-foreground hover:bg-raised hover:text-foreground"
+      className="cursor-pointer text-[11px] font-medium text-dim hover:text-foreground hover:underline underline-offset-4"
       aria-label="Copy"
       title="Copy"
     >
@@ -277,18 +288,18 @@ function CopyButton({ text }: { text: string }) {
 function SystemRow({ step, ann, expanded, onToggle }: { step: RmStep; ann: StepAnnotations; expanded: boolean; onToggle: () => void }) {
   return (
     <RowFrame step={step} flashing={ann.flashing(step)}>
-      <div
-        role="button"
-        tabIndex={-1}
-        onClick={onToggle}
-        className="group/row -mx-2 flex cursor-pointer items-center gap-2.5 px-2 py-[5px] hover:bg-surface/80"
-      >
-        <span className="w-[110px] shrink-0 truncate text-[12.5px] font-medium text-muted-foreground">System</span>
-        <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-muted-foreground">{expanded ? "" : firstLine(step.content)}</span>
-        <span className="font-mono text-[11px] text-muted-foreground tabular-nums">Step {step.index + 1}</span>
-        <StepTime step={step} />
-        <StepActions step={step} ann={ann} />
-        <span className="text-[11px] text-muted-foreground">{expanded ? "Hide" : "Show"}</span>
+      <div className="group/row flex min-h-7 items-center gap-3">
+        <button type="button" onClick={onToggle} aria-expanded={expanded} aria-label={`${expanded ? "Collapse" : "Expand"} system prompt`}
+          className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-left text-[12px] text-muted-foreground hover:text-foreground">
+          <span className="shrink-0 font-medium">System</span>
+          <span className="truncate">{expanded ? "" : firstLine(step.content)}</span>
+        </button>
+        <StepMetadata step={step} ann={ann}>
+          <button type="button" onClick={onToggle} aria-expanded={expanded}
+            className="cursor-pointer text-[11px] font-medium text-dim hover:text-foreground hover:underline underline-offset-4">
+            {expanded ? "Hide" : "Details"}
+          </button>
+        </StepMetadata>
       </div>
       {expanded && (
         <div className="mb-1 pl-3">
@@ -316,27 +327,33 @@ export default function TraceTimeline({
   for (const row of rows) {
     const assistant = row.kind === "tool" || row.kind === "assistant";
     const last = groups.at(-1);
-    if (assistant && last?.assistant) last.rows.push(row);
+    if (last && last.assistant === assistant) last.rows.push(row);
     else groups.push({ assistant, rows: [row] });
   }
 
-  function renderRow(row: TraceRow) {
+  function renderRow(row: TraceRow, index: number, groupRows: TraceRow[]) {
     if (row.kind === "system") {
       return <SystemRow key={row.key} step={row.step} ann={ann} expanded={isExpanded(row)} onToggle={() => onToggle(row)} />;
     }
-    if (row.kind === "prompt") return <PromptRow key={row.key} step={row.step} ann={ann} />;
-    if (row.kind === "assistant") return <AssistantRow key={row.key} step={row.step} ann={ann} />;
+    if (row.kind === "prompt") {
+      const previous = groupRows[index - 1];
+      const repeated = previous?.kind === "prompt" && previous.step.index + 1 === row.step.index
+        && previous.step.content === row.step.content;
+      return <PromptRow key={row.key} step={row.step} ann={ann} repeated={repeated}
+        expanded={isExpanded(row)} onToggle={() => onToggle(row)} />;
+    }
+    if (row.kind === "assistant") return <AssistantRow key={row.key} step={row.step} ann={ann} first={index === 0} />;
     return <ToolRow key={row.key} call={row.call} result={row.result} ann={ann} expanded={isExpanded(row)} onToggle={() => onToggle(row)} />;
   }
 
   return (
-    <div className="space-y-2">
-      {groups.map((group) => group.assistant ? (
-        <section key={group.rows[0].key} aria-label="Assistant turn">
-          <h3 className="m-0 mb-1 text-[12px] font-medium text-dim">Assistant</h3>
-          <div className="space-y-1">{group.rows.map(renderRow)}</div>
+    <div className="divide-y divide-border-subtle">
+      {groups.map((group) => (
+        <section key={group.rows[0].key} aria-label={group.assistant ? "Assistant turn" : "Conversation messages"} className="py-3">
+          {group.assistant && group.rows[0].kind === "tool" && <h3 className="m-0 mb-1 text-[13px] font-semibold text-foreground">Assistant</h3>}
+          <div className={cn(!group.assistant && "space-y-2")}>{group.rows.map((row, index) => renderRow(row, index, group.rows))}</div>
         </section>
-      ) : <div key={group.rows[0].key}>{group.rows.map(renderRow)}</div>)}
+      ))}
     </div>
   );
 }

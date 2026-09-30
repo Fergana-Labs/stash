@@ -7,7 +7,7 @@
   overflow-wrap: anywhere;
 }
 .prose > * + * {
-  margin-top: 0.45em;
+  margin-top: 0.3em;
 }
 .prose h1,
 .prose h2,

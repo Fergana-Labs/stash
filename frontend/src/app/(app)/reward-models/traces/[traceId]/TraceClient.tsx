@@ -225,7 +225,7 @@ export default function TraceClient({ traceId }: { traceId: string }) {
   function revealStep(stepId: string) {
     const row = rows.find((r) => rowSteps(r).some((s) => s.id === stepId))!;
     if (!inView(row, view)) setView("all");
-    if (!isExpanded(row) && (row.kind === "tool" || row.kind === "system")) toggleRow(row);
+    if (!isExpanded(row) && row.kind !== "assistant") toggleRow(row);
     setFlashStepId(stepId);
     requestAnimationFrame(() => {
       const element = document.getElementById(`step-${stepId}`);
@@ -364,9 +364,10 @@ function ToolbarButton({ active, onClick, children }: { active: boolean; onClick
     <button
       type="button"
       onClick={onClick}
+      aria-pressed={active}
       className={cn(
-        "inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-lg border px-2.5 text-[12.5px] font-medium transition-colors",
-        active ? "border-foreground bg-foreground text-background" : "border-border bg-background text-dim hover:bg-surface",
+        "inline-flex h-7 cursor-pointer items-center gap-1.5 border-b-2 px-2 text-[12px] transition-colors",
+        active ? "border-foreground font-medium text-foreground" : "border-transparent text-muted-foreground hover:text-foreground",
       )}
     >
       {children}
