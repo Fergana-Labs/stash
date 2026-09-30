@@ -46,13 +46,14 @@ def download_model(key: str, destination: Path) -> Path:
     return destination / "reward-model"
 
 
-def stream_model(key: str):
-    body = client().get_object(Bucket=required("S3_BUCKET"), Key=key)["Body"]
-
-    def chunks():
-        try:
-            yield from body.iter_chunks(chunk_size=1024 * 1024)
-        finally:
-            body.close()
-
-    return chunks()
+def download_url(key: str, filename: str) -> str:
+    return client().generate_presigned_url(
+        "get_object",
+        Params={
+            "Bucket": required("S3_BUCKET"),
+            "Key": key,
+            "ResponseContentDisposition": f'attachment; filename="{filename}"',
+            "ResponseContentType": "application/gzip",
+        },
+        ExpiresIn=300,
+    )

@@ -26,7 +26,8 @@ Required on the reward worker:
 - `ANTHROPIC_API_KEY` for feedback extraction and default skill generation.
 - `S3_ENDPOINT`, `S3_BUCKET`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `S3_REGION`.
 
-The API also needs the S3 settings for authenticated checkpoint downloads.
+The API also needs the S3 settings to authorize five-minute signed checkpoint download URLs. The browser downloads
+directly from storage without buffering the checkpoint in JavaScript.
 Modal receives only the storage and model-provider credentials; it never
 receives database, queue, OAuth, or integration credentials. Each GPU invocation
 is limited to 20 minutes, within Celery's existing 25-minute soft timeout.

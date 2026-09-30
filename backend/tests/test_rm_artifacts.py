@@ -1,6 +1,5 @@
 """A checkpoint remains usable when the machine that trained it is gone."""
 
-import io
 import shutil
 from pathlib import Path
 
@@ -17,17 +16,13 @@ def test_checkpoint_round_trip_across_workers(tmp_path, monkeypatch):
         def download_file(self, bucket, key, path):
             Path(path).write_bytes(objects[(bucket, key)])
 
-        def get_object(self, *, Bucket, Key):
-            class Body(io.BytesIO):
-                def iter_chunks(self, chunk_size):
-                    while chunk := self.read(chunk_size):
-                        yield chunk
+        def generate_presigned_url(self, operation, *, Params, ExpiresIn):
+            assert operation == "get_object" and ExpiresIn == 300
+            assert Params["Bucket"] == "private-models"
+            assert Params["Key"] == "owner/model.tar.gz"
+            assert Params["ResponseContentDisposition"] == 'attachment; filename="model.tar.gz"'
+            return "https://storage.example/temporary-download"
 
-            body = Body(objects[(Bucket, Key)])
-            bodies.append(body)
-            return {"Body": body}
-
-    bodies = []
     monkeypatch.setattr(artifacts, "client", Store)
     monkeypatch.setenv("S3_BUCKET", "private-models")
     training = tmp_path / "training" / "model"
@@ -40,7 +35,6 @@ def test_checkpoint_round_trip_across_workers(tmp_path, monkeypatch):
     assert (inference / "model.safetensors").read_bytes() == b"weights"
     assert (inference / "reward_stats.json").is_file()
     assert (
-        b"".join(artifacts.stream_model("owner/model.tar.gz"))
-        == objects[("private-models", "owner/model.tar.gz")]
+        artifacts.download_url("owner/model.tar.gz", "model.tar.gz")
+        == "https://storage.example/temporary-download"
     )
-    assert bodies[0].closed

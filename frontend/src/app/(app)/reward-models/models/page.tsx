@@ -146,13 +146,10 @@ function DownloadWeightsButton({ modelId }: { modelId: string }) {
   async function download() {
     setDownloading(true);
     try {
-      const { blob, filename } = await rmDownloadWeights(modelId);
-      const url = URL.createObjectURL(blob);
+      const { url } = await rmDownloadWeights(modelId);
       const link = document.createElement("a");
       link.href = url;
-      link.download = filename;
       link.click();
-      URL.revokeObjectURL(url);
     } catch (e) {
       toast.error(errorMessage(e));
     } finally {

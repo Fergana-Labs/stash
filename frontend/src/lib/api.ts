@@ -2770,15 +2770,7 @@ export async function rmDownloadSkill(runId: string): Promise<string> {
   return res.text();
 }
 
-/** A succeeded reward model's weights as a .tar.gz, named by the server's Content-Disposition. */
-export async function rmDownloadWeights(modelId: string): Promise<{ blob: Blob; filename: string }> {
-  const res = await fetchAuthed(`${RM}/reward-models/${modelId}/weights`);
-  if (!res.ok) {
-    const body: { detail: string } = await res.json();
-    throw new ApiError(res.status, body.detail);
-  }
-  const disposition = res.headers.get("Content-Disposition") ?? "";
-  const match = disposition.match(/filename="?([^";]+)"?/);
-  if (!match) throw new Error(`Weights download has no filename in Content-Disposition: "${disposition}"`);
-  return { blob: await res.blob(), filename: match[1] };
+/** Short-lived, owner-authorized URL for the browser's native download manager. */
+export function rmDownloadWeights(modelId: string): Promise<{ url: string }> {
+  return apiFetch(`${RM}/reward-models/${modelId}/weights`);
 }

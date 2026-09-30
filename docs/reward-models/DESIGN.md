@@ -165,7 +165,7 @@ Default base model: `Qwen/Qwen3-0.6B`. The deployment sets `RM_COMPUTE` to
 uses MPS, CUDA, or CPU according to the machine. `RM_ARTIFACT_DIR` is scratch
 space. Successful training uploads a private S3 archive under
 `reward-models/<owner_id>/<model_id>.tar.gz` and persists its `artifact_key`.
-Downloads stream that object; GEPA downloads it into its own temporary
+Downloads use a five-minute signed URL after an ownership check; GEPA downloads it into its own temporary
 workspace. No API instance depends on a worker's filesystem.
 
 ### Job directory contract (backend ↔ worker)
@@ -302,7 +302,7 @@ OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf   # or http/json
 | POST | `/reward-models` | `{name, base_model, trace_ids: [uuid, …] (≥1), epochs?, max_pairs?}` | `RewardModel` (status `queued`); 404 naming the first trace id the caller doesn't own; evidence extraction and minimum-pair validation happen in the worker |
 | GET | `/reward-models` | | `[RewardModel]` |
 | GET | `/reward-models/{id}` | | `RewardModel` + `trace_ids` |
-| GET | `/reward-models/{id}/weights` | | `.tar.gz` of the trained model dir (weights, tokenizer, `reward_stats.json`), attachment `<name>-reward-model.tar.gz`; 404 until `succeeded` |
+| GET | `/reward-models/{id}/weights` | | `{url}`: a five-minute signed download of the private checkpoint archive; owner-only, 404 until `succeeded` |
 | POST | `/gepa-runs` | `{reward_model_id, task_model?, task_api_base?, reflection_model?, max_metric_calls?}` | `GepaRun` (status `queued`; `skill_name`/`skill_description` null until succeeded) |
 | GET | `/gepa-runs` | | `[GepaRun]` |
 | GET | `/gepa-runs/{id}` | | `GepaRun` |

@@ -1,9 +1,7 @@
 """Pair construction, GEPA examples, and job result ingestion (fake worker, no torch)."""
 
-import io
 import json
 import sys
-import tarfile
 from pathlib import Path
 
 import pytest
@@ -448,63 +446,30 @@ async def test_bad_worker_output_leaves_no_half_succeeded_model(client, monkeypa
     assert count == 0
 
 
-async def test_trained_weights_download_as_a_tarball(client, monkeypatch, artifact_dir):
-    """Users take the reward model away to post-train with it."""
+async def test_trained_weights_download_is_owned_and_uses_durable_storage(client, monkeypatch):
     auth = await _register(client)
     await _labelled_pair(client, auth)
-    monkeypatch.setattr(rm_tasks.train_reward_model, "delay", lambda *a: None)
-    resp = await client.post(
-        "/api/v1/rm/reward-models",
-        json={
-            "name": "Support RM (v2)!",
-            "trace_ids": await _all_trace_ids(client, auth),
-        },
-        headers=auth,
-    )
-    model_id = resp.json()["id"]
-    weights_url = f"/api/v1/rm/reward-models/{model_id}/weights"
-    assert (await client.get(weights_url, headers=auth)).status_code == 404  # still queued
-
-    model_dir = artifact_dir / model_id / "model"
-    model_dir.mkdir(parents=True)
-    (model_dir / "model.safetensors").write_bytes(b"\x00" * 1024)
-    (model_dir / "tokenizer.json").write_text("{}")
-    (model_dir / "reward_stats.json").write_text('{"mean": 0.0, "std": 1.0}')
-    archive = io.BytesIO()
-    with tarfile.open(fileobj=archive, mode="w:gz") as tar:
-        tar.add(model_dir, arcname="reward-model")
-    import shutil
-
-    shutil.rmtree(artifact_dir / model_id)
-
-    def stored_checkpoint(key):
-        assert key == "test/model.tar.gz"
-        return iter([archive.getvalue()])
-
-    monkeypatch.setattr("backend.routers.reward_models.stream_model", stored_checkpoint)
+    model_id = await _create_model(client, auth, monkeypatch)
+    url = f"/api/v1/rm/reward-models/{model_id}/weights"
+    assert (await client.get(url, headers=auth)).status_code == 404
     await get_pool().execute(
-        "UPDATE rm_reward_models SET status = 'succeeded', artifact_key = 'test/model.tar.gz' WHERE id = $1::uuid",
+        "UPDATE rm_reward_models SET status='succeeded', artifact_key='test/model.tar.gz' WHERE id=$1::uuid",
         model_id,
     )
+    calls = []
 
+    def signed_download(key, filename):
+        calls.append((key, filename))
+        return "https://storage.example/checkpoint?expires=300"
+
+    monkeypatch.setattr("backend.routers.reward_models.download_url", signed_download)
     intruder = await _register(client)
-    assert (await client.get(weights_url, headers=intruder)).status_code == 404
-
-    resp = await client.get(weights_url, headers=auth)
-    assert resp.status_code == 200
-    assert resp.headers["content-disposition"] == (
-        'attachment; filename="support-rm-v2-reward-model.tar.gz"'
-    )
-    with tarfile.open(fileobj=io.BytesIO(resp.content), mode="r:gz") as tar:
-        names = set(tar.getnames())
-        stats = tar.extractfile("reward-model/reward_stats.json").read()
-    assert names == {
-        "reward-model",
-        "reward-model/model.safetensors",
-        "reward-model/tokenizer.json",
-        "reward-model/reward_stats.json",
-    }
-    assert json.loads(stats) == {"mean": 0.0, "std": 1.0}
+    assert (await client.get(url, headers=intruder)).status_code == 404
+    assert calls == []
+    response = await client.get(url, headers=auth)
+    assert response.status_code == 200
+    assert response.json() == {"url": "https://storage.example/checkpoint?expires=300"}
+    assert calls == [("test/model.tar.gz", "rm-reward-model.tar.gz")]
 
 
 async def test_one_button_skill_run_uses_the_documented_defaults(client, monkeypatch):

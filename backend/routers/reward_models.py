@@ -10,11 +10,11 @@ from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from fastapi.responses import Response, StreamingResponse
+from fastapi.responses import Response
 from pydantic import BaseModel, ConfigDict, Field
 from starlette.concurrency import run_in_threadpool
 
-from rm_worker.artifacts import stream_model
+from rm_worker.artifacts import download_url
 
 from ..auth import get_current_user
 from ..database import get_pool
@@ -281,7 +281,7 @@ async def get_reward_model(model_id: UUID, current_user: dict = Depends(get_curr
 @router.get("/reward-models/{model_id}/weights")
 async def download_reward_model_weights(
     model_id: UUID, current_user: dict = Depends(get_current_user)
-) -> StreamingResponse:
+) -> dict:
     model = await get_pool().fetchrow(
         "SELECT name, artifact_key FROM rm_reward_models "
         "WHERE owner_user_id = $1 AND id = $2 AND status = 'succeeded'",
@@ -294,11 +294,8 @@ async def download_reward_model_weights(
         raise HTTPException(status_code=500, detail="Reward model has no stored checkpoint")
     safe_name = re.sub(r"[^a-z0-9]+", "-", model["name"].lower()).strip("-")
     stem = "-".join(part for part in (safe_name, "reward-model") if part)
-    return StreamingResponse(
-        await run_in_threadpool(stream_model, model["artifact_key"]),
-        media_type="application/gzip",
-        headers={"Content-Disposition": f'attachment; filename="{stem}.tar.gz"'},
-    )
+    url = await run_in_threadpool(download_url, model["artifact_key"], f"{stem}.tar.gz")
+    return {"url": url}
 
 
 REWARD_MODEL_FIELDS = (
