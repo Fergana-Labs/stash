@@ -3,12 +3,12 @@
   <a href="https://joinstash.ai"><img src="docs/assets/logo.svg" alt="Stash" width="320" /></a>
 </p>
 
-<h3 align="center">Knowledge bases for the agent era.</h3>
+<h3 align="center">Help your agents learn from experience.</h3>
 
 <p align="center">
-  The one place your agents connect to all your data — GitHub, Drive, Gmail, Notion, <br>
-  Slack, Linear, Jira, Asana, Granola and more — plus an agent-native Drive in <br>
-  Markdown and HTML where their sessions, files, and pages all land.
+  Agents generate valuable experience every time they work: successful approaches, <br>
+  failed attempts, and human corrections. Stash captures that history and makes <br>
+  its lessons available to future runs.
 </p>
 
 
@@ -20,58 +20,70 @@
   <a href="#privacy"><img src="https://img.shields.io/badge/Transcripts-opt--in-3B82F6" alt="Opt-in transcripts" /></a>
   <a href="https://discord.gg/PVFdcQx2u3"><img src="https://img.shields.io/badge/Discord-Join%20us-5865F2?logo=discord&logoColor=white" alt="Discord" /></a>
 </p>
-<p align="center">
-  When we tested this internally, we found that it sped up long-running instances of Claude Code by <a href="https://henrydowling.com/agent-velocity.html"><b>49%</b></a>.<br/>
-</p>
 
+This repository provides the open-source foundation: trace collection, persistent
+knowledge, and reusable skills, accessible through a [Python SDK](sdk/README.md),
+REST API, MCP, and CLI. It works alongside your existing agents and models.
 
-<!-- Screenshot #1 — The Memory page: wiki graph, knowledge map, recent edits -->
+```mermaid
+flowchart LR
+    A[Agent runs and human corrections] --> B[Capture sessions via hooks or API]
+    B --> C[Curate durable knowledge]
+    C --> D[Retrieve knowledge or package skills]
+    D --> E[Use in the next agent run]
+    E --> A
+```
+
+Stash's broader work focuses on extracting reliable feedback signals from messy
+production traces and using them to improve prompts, skills, and ultimately
+model weights. The [reward-model product docs](https://www.joinstash.ai/docs)
+cover trace annotation, reward-model training, and skill optimization with GEPA;
+those training and optimization implementations are not included in this
+repository. Our research direction is to make feedback extraction increasingly
+automatic, starting from human labels.
+
+## How it works
+
+1. **Capture experience.** Hooks for coding agents record prompts, tool calls,
+   and responses when session recording is enabled. Use the SDK or API to send
+   events from your own agents.
+2. **Extract durable lessons.** A scheduled curator reads new sessions and
+   source material, then updates linked pages in your Memory wiki. The knowledge
+   stays available after the original session ends.
+3. **Make lessons reusable.** Agents search and read that knowledge through the
+   CLI, MCP, API, or virtual filesystem. You and your agents can package related
+   instructions and files into a Skill: a folder containing a `SKILL.md`.
+4. **Carry them into future runs.** Install skills into your agent with
+   `stash skills install`. Installed skills auto-update at session start, so
+   changes to shared instructions can reach the next run without changing the
+   underlying model's weights.
+
+### Example: a correction becomes a reusable instruction
+
+Illustrative workflow:
+
+| Stage | What happens |
+|---|---|
+| **Trace** | An agent proposes a database migration. The reviewer points out that it would discard existing customer data. |
+| **Durable lesson** | Record the project rule: schema changes must migrate existing data forward. |
+| **Reusable skill** | Package a migration checklist that requires a data migration and verification that existing records survive. |
+| **Next run** | The agent loads the checklist while planning another schema change. Reviewers check whether it applied the lesson. |
+
+The output is inspectable knowledge and instructions that another agent can
+read, use, and revise. Whether they improve results should be checked on
+subsequent tasks.
+
+In an [internal experiment](https://henrydowling.com/agent-velocity.html), we
+measured a **49% speedup** for long-running Claude Code instances using Stash.
+See the experiment for its setup and results.
+
 <p align="center">
   <img src="docs/assets/memory.png" alt="Stash Memory — wiki knowledge graph, file system, and recent agent activity" width="900" />
 </p>
-<!-- GIF #2 — The product in action: agent runs `stash search`, gets a cited answer -->
 
 <p align="center">
   <img src="docs/assets/product.gif" alt="Stash in action — agent queries shared memory and gets cited answers" width="900" />
 </p>
-
-## How it works
-
-- **Sessions stream in automatically.** A hook for your coding agent pushes every transcript — prompts, tool calls, artifacts — into your Stash.
-- **Files and sessions live side by side.** Markdown, HTML, tables, PDFs. You and your agents both write here; both sides see edits in real time.
-- **Agents query it like a filesystem.** A CLI, MCP server (~70 read/write tools), REST API, and virtual-filesystem shell expose your Stash to any agent. One search spans your pages, sessions, and every connected source at once.
-- **There's an agent in the box too.** Chat with an agent that already has all of this — in the app, from Slack, or from Telegram. It's a real coding-agent CLI (Claude Code, Codex, or opencode) running on your own cloud VM, so it can read, write, and run things. Give it a cron and it becomes a scheduled agent.
-- **Memory is a wiki an agent keeps for you.** A scheduled curator reads whatever is new since its last run — sessions, files, saves — and compiles it into linked pages: entities, concepts, and a running log. It writes only inside the reserved Memory folder, and never reads its own output.
-- **Skills are the shareable slice.** A Skill is just a folder with a `SKILL.md` in it — put the pages, files, and tables that belong together in one folder and it becomes shareable as a unit. Publish it to the world, fork a public Skill into your own Stash, or `stash skills install` one into your agent — installed skills auto-update at session start, and `stash skills follow` auto-installs skills people share with you.
-- **Bring your own MCP servers.** Register MCP servers once (Tools page or `stash tools add`); your cloud agent gets them automatically and `stash tools install` writes them into any local agent's `.mcp.json`.
-
-## Why persistent beats per-session
-
-When you run Claude on a repo, you generate valuable session transcripts. However, your coding agent can only access transcripts generated on the machine where the agent is currently running. As a result, work is duplicated and velocity is decreased. This is especially true as coding agents begin to run autonomously for significant periods of time.
-
-With Stash, every agent run has context about every session you've created. Here are some use cases:
-
-- **Code Faster / Don't Duplicate Work**: "Have I tried fixing the memory leak in our API gateway before? What was attempted?"
-- **Stay Organized**: "What did I get done this week? What other work did I do that isn't tracked in Git?"
-- **Recover Lost Context**: "Why did I increase the timeout to 30s? The git history is unhelpful."
-- **Pick Up Where You Left Off**: "Please add a feedback endpoint to our API" -> Claude: "FYI, you decided earlier not to add a feedback endpoint since we want to encourage churned users to hop on a call directly"
-
-> "raw data from a given number of sources is collected, then compiled by an LLM into a .md knowledge base, then operated on by various CLIs by the LLM to do Q&A and to incrementally enhance it… **I think there is room here for an incredible new product instead of a hacky collection of scripts.**"
->
-> — Andrej Karpathy, *LLM Knowledge Bases*
-
-**Stash is that product.** The one place your agents connect to all your data, with an agent-native Drive they write it back into — not a stack of shell scripts wrapped around a folder of markdown.
-
-Built for —
-
-| Use case | What teams put in it |
-|---|---|
-| **Engineering live docs** | coding-agent plans, ADRs, and design notes that stay current |
-| **Second brain** | the persistent context every one of your agents reads from |
-| **Research knowledge base** | long-running PKBs with sources, transcripts, and tables |
-| **Ops playbooks** | release runbooks and on-call procedures |
-| **Brand voice** | editorial guidelines and copy standards agents write to |
-| **Personal knowledge management** | notes, drafts, and scratch files for a single operator |
 
 ## Quick Start
 
@@ -119,6 +131,14 @@ stash vfs "tree / -L 2"
 stash vfs "find / -maxdepth 3 -type f | head -n 20"
 stash vfs "rg \"database migration\" /"
 ```
+
+## Shared workspace and tools
+
+- **Files and sessions live side by side.** Markdown, HTML, tables, PDFs. You and your agents both write here; both sides see edits in real time.
+- **Agents query it like a filesystem.** A CLI, MCP server, REST API, and virtual-filesystem shell expose your Stash to any agent. One search spans your pages, sessions, and every connected source at once.
+- **Share skills across agents and teammates.** Publish a Skill, fork a public Skill into your own Stash, or use `stash skills follow` to auto-install skills people share with you.
+- **Run agents with this context.** Chat with an agent in the app, from Slack, or from Telegram. It runs a coding-agent CLI (Claude Code, Codex, or opencode) on your own cloud VM. Give it a cron to schedule it.
+- **Bring your own MCP servers.** Register MCP servers once (Tools page or `stash tools add`); your cloud agent gets them automatically and `stash tools install` writes them into any local agent's `.mcp.json`.
 
 ## Connected sources
 
