@@ -100,6 +100,9 @@ def train(job_dir: Path) -> dict:
         base_model, num_labels=1, dtype=torch.float32
     )
     model.config.pad_token_id = tokenizer.pad_token_id
+    model.config.use_cache = False
+    # Long trace pairs otherwise retain every layer's activations for both responses.
+    model.gradient_checkpointing_enable()
     model.to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=LEARNING_RATE)
 
