@@ -39,25 +39,31 @@ production traces and using them to improve prompts, skills, and ultimately
 model weights. The [reward-model product docs](https://www.joinstash.ai/docs)
 cover trace annotation, reward-model training, and skill optimization with GEPA;
 those training and optimization implementations are not included in this
-repository. Our research direction is to make feedback extraction increasingly
-automatic, starting from human labels.
+repository. Our research focuses on improving the reliability of feedback
+extracted from production traces.
 
 ## Reward models in action
 
-The [product demo](https://www.joinstash.ai/docs) follows a refund-support agent
-from reviewer feedback to a reusable skill. These screenshots use demo traces;
-the displayed scores are from that example run.
+**Manual annotation is optional.** Use **Auto** mode to learn from traces
+without manually labeling them. If you want to provide explicit feedback, you
+can add ratings and comments yourself.
 
-**1. Give feedback on what the agent should have done.** Label a trace or step,
-highlight the response, and explain the correction.
+The [product demo](https://www.joinstash.ai/docs) below shows the optional
+manual-annotation workflow for a refund-support agent, from reviewer feedback
+to a reusable skill. These screenshots use demo traces; the displayed scores
+are from that example run.
+
+**1. Add feedback if desired, or use Auto mode.** For manual annotation, label a
+trace or step, highlight the response, and explain the correction.
 
 <!-- Frame from www/public/docs/demo/annotate.mp4 at 10 seconds. -->
 <p align="center">
   <img src="docs/assets/reward-trace-feedback.png" alt="Refund-support trace with a highlighted refusal and reviewer feedback explaining how to handle a damaged order" width="900" />
 </p>
 
-**2. Train a reward model from labeled traces.** Select examples with positive
-and negative feedback to teach the model what reviewers prefer.
+**2. Train a reward model from trace feedback.** In the manual workflow shown
+here, select examples with positive and negative labels to teach the model
+what reviewers prefer.
 
 <!-- Frame from www/public/docs/demo/train.mp4 at 3 seconds. -->
 <p align="center">
