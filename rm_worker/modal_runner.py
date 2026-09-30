@@ -63,7 +63,7 @@ def main() -> None:
     secret = modal.Secret.from_dict(
         {key: os.environ[key] for key in SECRET_KEYS if key in os.environ}
     )
-    remote = app.function(gpu="A10G", timeout=6 * 60 * 60, secrets=[secret])(run_job)
+    remote = app.function(gpu="A10G", timeout=20 * 60, secrets=[secret])(run_job)
     with modal.enable_output(), app.run():
         outputs = remote.remote(inputs)
     for name, data in outputs.items():

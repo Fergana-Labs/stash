@@ -48,7 +48,11 @@ def download_model(key: str, destination: Path) -> Path:
 
 def stream_model(key: str):
     body = client().get_object(Bucket=required("S3_BUCKET"), Key=key)["Body"]
-    try:
-        yield from body.iter_chunks(chunk_size=1024 * 1024)
-    finally:
-        body.close()
+
+    def chunks():
+        try:
+            yield from body.iter_chunks(chunk_size=1024 * 1024)
+        finally:
+            body.close()
+
+    return chunks()

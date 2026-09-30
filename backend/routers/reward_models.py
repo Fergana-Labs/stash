@@ -12,6 +12,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
+from starlette.concurrency import run_in_threadpool
 
 from rm_worker.artifacts import stream_model
 
@@ -294,7 +295,7 @@ async def download_reward_model_weights(
     safe_name = re.sub(r"[^a-z0-9]+", "-", model["name"].lower()).strip("-")
     stem = "-".join(part for part in (safe_name, "reward-model") if part)
     return StreamingResponse(
-        stream_model(model["artifact_key"]),
+        await run_in_threadpool(stream_model, model["artifact_key"]),
         media_type="application/gzip",
         headers={"Content-Disposition": f'attachment; filename="{stem}.tar.gz"'},
     )

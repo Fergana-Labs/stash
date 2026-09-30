@@ -50,7 +50,7 @@ def split_pairs(pairs: list[dict]) -> tuple[list[dict], list[dict]]:
 
 
 def write_reward_stats(model_dir: Path, scores: list[float]) -> None:
-    """Mean and population std of the rewards on the owner's traces, for gepa_run's calibration."""
+    """Mean and population std of preference-response rewards, for GEPA calibration."""
     if len(scores) < 2:
         raise ValueError(
             f"need at least 2 preference responses to calibrate the reward model, got {len(scores)}"

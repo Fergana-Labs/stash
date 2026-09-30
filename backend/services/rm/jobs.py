@@ -130,13 +130,21 @@ async def run_gepa(run_id: UUID) -> None:
 
     # The skill learns from the same traces its reward model was trained on.
     model = await pool.fetchrow(
-        "SELECT trace_ids, artifact_key, compute FROM rm_reward_models WHERE id = $1",
+        "SELECT trace_ids, artifact_key, compute, training_pairs FROM rm_reward_models WHERE id = $1",
         run["reward_model_id"],
     )
     trace_ids = model["trace_ids"]
     if model["artifact_key"] is None:
         raise ValueError("Reward model has no stored checkpoint")
     examples = await datasets.gepa_examples(run["owner_user_id"], trace_ids)
+    for example in examples:
+        for pair in model["training_pairs"]:
+            if (
+                pair.get("trace_id") == example["trace_id"]
+                and pair.get("source") == "feedback_revision"
+            ):
+                evidence = pair["evidence"]
+                example["feedback"].append(evidence["evidence_quote"] + " — " + evidence["reason"])
     if not examples:
         raise ValueError("need at least one selected trace with a user turn")
 

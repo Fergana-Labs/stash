@@ -134,28 +134,24 @@ Annotation export (`GET /api/v1/rm/export/annotations`), one per line:
 
 ## Reward model training
 
-Training data is preference pairs built from the + and − ratings on the
-traces the user selected for this model (`trace_ids`, stored on the model):
+Training uses only the traces selected for the model. Explicit ratings supplied
+through the API produce chosen/rejected pairs. The UI uses comments: the worker
+extracts supported preferences from reviewer comments and later user corrections.
+For each eligible assistant response it generates an alternative to the same
+context, cites a verbatim feedback excerpt, and records which response the
+feedback prefers. Ambiguous feedback contributes no pair. System prompts and
+future messages are excluded from the rendered training examples.
 
-1. Keep only annotations on the selected traces; a selected trace deleted
-   before the job runs drops out. Drop annotations with `label_error = true`.
-2. Collapse ratings per target (trace, or step): sum the ratings; positive sum
-   → chosen, negative → rejected, zero → skipped.
-3. Render each target to text. A trace renders all its non-system steps; a
-   step renders the trace's non-system steps up to and including that step.
-   The reward model never sees system steps: GEPA's skill is injected into
-   the system message, so scoring it would let GEPA write the reward model's
-   preferences into the skill instead of into the agent's behavior. Rendering is
-   `"<role>: <content>"` per step joined with blank lines, with tool calls as
-   `"assistant → <tool_name>(<tool_input json>)"`. An assistant step with both
-   text and a tool call renders the text line, then the tool-call line.
-4. Pairs = every (chosen, rejected) combination within the same granularity
-   (trace with trace, step with step), shuffled with seed 0 and capped at
-   `max_pairs` (default 4000).
-5. Fewer than 2 pairs (the worker holds at least one out for eval) → "the
-   selected traces have N preference pairs; need at least 2 (e.g. two + and
-   one −)". `POST /reward-models` checks this up front (422) and the job
-   checks again, since labels can change while it is queued.
+Evidence is validated against the original source: the target must be an
+assistant response, corrections must follow it, and step comments must belong
+to it. Malformed extraction fails the job. The exact pairs and evidence are
+stored in `rm_reward_models.training_pairs`. Generated alternatives are model
+interpretations of human feedback, not direct human preference votes.
+
+Training is queued immediately; extraction runs in the dedicated `reward`
+worker. Fewer than two pairs fails with an actionable error before downloading
+a model. Flagged comments are excluded. The combined dataset is capped by
+`max_pairs` (default 4000).
 
 The model is `AutoModelForSequenceClassification(num_labels=1)` on the chosen
 base model, trained with the Bradley–Terry loss
@@ -164,9 +160,13 @@ reports pairwise accuracy. After training, the worker scores every trace the
 owner has, selected or not (that is the point: the model generalizes), and the
 scores are stored in `rm_trace_scores`.
 
-Default base model: `Qwen/Qwen3-0.6B`. Compute: `local` (MPS on Apple
-silicon, CUDA when present, else CPU) or `modal` (A10G, same code). The
-trained weights go to `RM_ARTIFACT_DIR/<reward_model_id>/model`.
+Default base model: `Qwen/Qwen3-0.6B`. The deployment sets `RM_COMPUTE` to
+`local` or `modal` (A10G); clients cannot choose the runtime. Local execution
+uses MPS, CUDA, or CPU according to the machine. `RM_ARTIFACT_DIR` is scratch
+space. Successful training uploads a private S3 archive under
+`reward-models/<owner_id>/<model_id>.tar.gz` and persists its `artifact_key`.
+Downloads stream that object; GEPA downloads it into its own temporary
+workspace. No API instance depends on a worker's filesystem.
 
 ### Job directory contract (backend ↔ worker)
 
@@ -186,7 +186,7 @@ trained weights go to `RM_ARTIFACT_DIR/<reward_model_id>/model`.
 "eval_accuracy", "final_loss", "epochs", "device", "seconds"}}`. For GEPA:
 `{"skill_name", "skill_description", "best_skill", "best_score", "seed_skill", "seed_score", "candidates": [{"skill", "score"}]}`
 (each skill is the full rendered SKILL.md). GEPA job.json: `{"kind": "gepa",
-"reward_model_dir", "task_model", "task_api_base" (null when unset),
+"reward_model_key", "task_model", "task_api_base" (null when unset),
 "reflection_model", "max_metric_calls"}`.
 
 Request defaults: `base_model` `Qwen/Qwen3-0.6B`, `epochs` 1, `max_pairs`
@@ -299,7 +299,7 @@ OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf   # or http/json
 | GET | `/export/traces` | | JSONL (Stash Trace Format) |
 | GET | `/export/annotations` | | JSONL |
 | GET | `/export/pairs` | | JSONL `{chosen, rejected}` |
-| POST | `/reward-models` | `{name, base_model, compute, trace_ids: [uuid, …] (≥1), epochs?, max_pairs?}` | `RewardModel` (status `queued`); 404 naming the first trace id the caller doesn't own; 422 when the selection has < 2 pairs |
+| POST | `/reward-models` | `{name, base_model, trace_ids: [uuid, …] (≥1), epochs?, max_pairs?}` | `RewardModel` (status `queued`); 404 naming the first trace id the caller doesn't own; evidence extraction and minimum-pair validation happen in the worker |
 | GET | `/reward-models` | | `[RewardModel]` |
 | GET | `/reward-models/{id}` | | `RewardModel` + `trace_ids` |
 | GET | `/reward-models/{id}/weights` | | `.tar.gz` of the trained model dir (weights, tokenizer, `reward_stats.json`), attachment `<name>-reward-model.tar.gz`; 404 until `succeeded` |
