@@ -958,6 +958,15 @@ async def test_legacy_path_shapes_still_serve(client: AsyncClient):
     )
     assert events.status_code == 200
     assert events.json()["events"][0]["content"] == "legacy shape check"
+    # stashai ≤0.1.366 sends no limit at all; the legacy alias serves a
+    # default instead of a 422. The canonical route stays strict.
+    bare = await client.get("/api/v1/me/transcripts/legacy-shape-1/events", headers=headers)
+    assert bare.status_code == 200
+    assert bare.json()["events"][0]["content"] == "legacy shape check"
+    strict = await client.get(
+        "/api/v1/me/transcripts/events", params={"session_id": "legacy-shape-1"}, headers=headers
+    )
+    assert strict.status_code == 422
     export = await client.get("/api/v1/me/transcripts/legacy-shape-1/export.jsonl", headers=headers)
     assert export.status_code == 200
     detail = await client.get("/api/v1/me/sessions/legacy-shape-1", headers=headers)
