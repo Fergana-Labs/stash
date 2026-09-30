@@ -77,6 +77,10 @@ for your agent to use in future runs.
   <img src="docs/assets/reward-generated-skill.png" alt="Generated refund-requests skill showing candidate scores, reusable instructions, and a Download SKILL.md button" width="900" />
 </p>
 
+[**Try Stash**](https://app.joinstash.ai) · [**Read the docs**](https://www.joinstash.ai/docs)
+
+For CLI setup, local development, and self-hosting, see [Running this repository](docs/running-stash.md).
+
 ## How it works
 
 1. **Capture experience.** Hooks for coding agents record prompts, tool calls,
