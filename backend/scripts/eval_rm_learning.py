@@ -30,7 +30,7 @@ async def main() -> None:
             dict(idx=i, role=role, content=text, tool_name=None, tool_input=None)
             for i, (role, text) in enumerate([("user", request), ("assistant", response)])
         ]
-        result = await extract_preferences(steps, {})
+        result = await extract_preferences(steps, {}, rubric_dropout=0)
         pairs = render_preferences(uuid4(), steps, {}, result)
         if len(pairs) < minimum_pairs or not any(item.label == label for item in result.feedback):
             raise AssertionError(f"{name}: {result.model_dump_json()}")

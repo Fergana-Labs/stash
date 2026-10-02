@@ -150,6 +150,20 @@ visible in the learning report. These are model preferences, not measured custom
 satisfaction, and held-out accuracy measures agreement with this supervision.
 There is no promise that arbitrary empty or unassessable traces yield a dataset.
 
+AI preference generation uses 50% rubric dropout: for each target response, code
+uniformly samples two of the four criteria above. Generation and independent
+comparison review use the same subset for both candidates. The sampled criteria
+are recorded in the finding's reason. Human feedback attribution and the mandatory
+grounding, safety and evidence checks are never dropped. The classifier evaluation
+scripts pass `rubric_dropout=0` to use all criteria.
+
+This is an adaptation of [Rubric Dropout](https://arxiv.org/abs/2608.11669) to
+offline preference generation, not the paper's online GRPO reward masking.
+The scalar reward model and GEPA scorer do not consume rubrics. Held-out pairwise
+accuracy still measures agreement with the generated preferences, not a full-rubric
+quality evaluation. Reduced reward hacking in Stash has not yet been measured;
+existing checkpoints require retraining to incorporate the changed supervision.
+
 Training uses only the traces selected for the model. Explicit ratings supplied
 through the API produce chosen/rejected pairs. A structured LLM classifier extracts
 positive, negative, or unclear feedback from reviewer comments and later user
