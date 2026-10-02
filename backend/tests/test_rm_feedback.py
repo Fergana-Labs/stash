@@ -1,6 +1,7 @@
 """Feedback must ground preferences without leaking later answers into the context."""
 
 import json
+import random
 from uuid import UUID, uuid4
 
 import pytest
@@ -13,6 +14,56 @@ from .test_rm_api import _annotate, _detail, _import, _register
 from .test_rm_datasets import _create_model, _fake_worker, _trace, artifact_dir  # noqa: F401
 
 pytestmark = pytest.mark.usefixtures("rm_title_generator")
+
+
+def test_rubric_dropout_keeps_a_nonempty_subset_and_eval_uses_every_criterion(monkeypatch):
+    monkeypatch.setattr(feedback.random, "sample", random.Random(0).sample)
+    masks = {feedback.sample_rubric(0.5) for _ in range(100)}
+    assert len(masks) > 1
+    assert all(len(mask) == 2 and set(mask) < set(feedback.RUBRIC) for mask in masks)
+    assert set().union(*map(set, masks)) == set(feedback.RUBRIC)
+    assert feedback.sample_rubric(0) == feedback.RUBRIC
+    assert len(feedback.sample_rubric(0.99)) == 1
+
+
+@pytest.mark.parametrize("dropout", [-0.1, 1, float("nan")])
+async def test_invalid_rubric_dropout_fails_even_without_responses(dropout):
+    with pytest.raises(ValueError, match="Rubric dropout"):
+        await feedback.extract_preferences([], {}, rubric_dropout=dropout)
+
+
+@pytest.mark.parametrize("dropout", [0, 0.5])
+async def test_generation_and_review_share_criteria_and_record_them(monkeypatch, dropout):
+    systems = []
+
+    async def complete(**kwargs):
+        systems.append(kwargs["system"])
+        if kwargs["output_model"] is feedback.ComparisonReview:
+            return feedback.ComparisonReview(
+                preferred="revision", grounded=True, reason="Verify first"
+            )
+        return feedback.ResponseExtraction(
+            reason="Unsupported refund",
+            feedback=feedback.Judgment(
+                source="ai_judgment",
+                evidence_id=None,
+                evidence_quote=None,
+                label="negative",
+                confidence="high",
+                revision="What is the order number?",
+            ),
+        )
+
+    monkeypatch.setattr(feedback.llm, "complete_structured", complete)
+    result = await feedback.extract_preferences(conversation()[:2], {}, rubric_dropout=dropout)
+    assert len(systems) == 2
+    criteria = [text.split("\nAI preference criteria", 1)[1] for text in systems]
+    assert criteria[0] == criteria[1]
+    selected = [c for c in feedback.RUBRIC if f"- {c}" in criteria[0]]
+    assert len(selected) == (4 if dropout == 0 else 2)
+    assert all(c in result.feedback[0].reason for c in selected)
+    assert "grounded=false" in systems[1]
+    assert result.feedback[0].revision is not None
 
 
 def extraction(**changes):
