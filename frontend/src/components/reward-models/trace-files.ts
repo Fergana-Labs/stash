@@ -41,7 +41,10 @@ export async function importTraceFiles(
   const result: FileImportResult = { imported: 0, failed: [], skipped: [] };
   for (const entry of files) {
     const { file, path } = entry;
-    const hidden = path.split("/").some((part) => part.startsWith("."));
+    const directories = path.split("/").slice(0, -1);
+    const hidden = file.name.startsWith(".") || directories.some(
+      (part) => part.startsWith(".") && part !== ".claude" && part !== ".codex",
+    );
     const supported = /\.(json|jsonl|ndjson|txt)$/i.test(file.name);
     const archive = file.name.toLowerCase().endsWith(".zip");
     if (hidden || file.name.toLowerCase() === "manifest.json" || (!supported && !archive)) {

@@ -71,7 +71,7 @@ class CreateRewardModelRequest(BaseModel):
     name: str = Field(min_length=1)
     base_model: str = DEFAULT_BASE_MODEL
     epochs: int = Field(default=DEFAULT_EPOCHS, ge=1)
-    max_pairs: int = Field(default=datasets.DEFAULT_MAX_PAIRS, ge=1)
+    max_pairs: int = Field(default=datasets.DEFAULT_MAX_PAIRS, ge=datasets.MIN_PAIRS)
     trace_ids: list[UUID] = Field(min_length=1)
 
 
