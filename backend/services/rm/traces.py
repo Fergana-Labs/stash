@@ -213,7 +213,7 @@ async def export_traces(owner_user_id: UUID) -> list[dict]:
     for step in steps:
         exported = {"role": step["role"], "content": step["content"]}
         for key in ("tool_name", "tool_input", "tool_call_id", "metadata"):
-            if step[key]:
+            if step[key] is not None:
                 exported[key] = step[key]
         steps_by_trace.setdefault(step["trace_id"], []).append(exported)
 

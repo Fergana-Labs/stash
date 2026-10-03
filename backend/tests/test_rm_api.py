@@ -306,6 +306,27 @@ async def test_exports_round_trip(client):
     assert resp.status_code == 200, resp.text
 
 
+async def test_export_preserves_empty_tool_arguments_on_reimport(client):
+    auth = await _register(client)
+    trace = {
+        "id": "no-argument-tool",
+        "title": "Check status",
+        "steps": [
+            {"role": "user", "content": "Check status"},
+            {"role": "assistant", "content": "", "tool_name": "get_status", "tool_input": {}},
+        ],
+    }
+    await _import(client, auth, trace)
+    [exported] = _ndjson((await client.get("/api/v1/rm/export/traces", headers=auth)).text)
+    assert exported["steps"][1]["tool_input"] == {}
+
+    other = await _register(client)
+    [trace_id] = await _import(client, other, exported)
+    detail = await _detail(client, other, trace_id)
+    assert detail["steps"][1]["tool_input"] == {}
+    assert detail["steps"][0]["tool_input"] is None
+
+
 async def test_query_sees_only_the_callers_rows(client):
     auth = await _register(client)
     other = await _register(client)
@@ -430,6 +451,25 @@ async def test_create_reward_model_enqueues_training(client, monkeypatch):
 
     listed = (await client.get("/api/v1/rm/reward-models", headers=auth)).json()
     assert [m["id"] for m in listed] == [model["id"]]
+
+
+async def test_training_pair_limit_must_allow_training_and_evaluation(client, monkeypatch):
+    queued = []
+    monkeypatch.setattr(rm_tasks.train_reward_model, "delay", queued.append)
+    auth = await _register(client)
+    [trace_id] = await _import(client, auth, REFUND_TRACE)
+    payload = {"name": "small model", "trace_ids": [trace_id], "max_pairs": 1}
+
+    resp = await client.post("/api/v1/rm/reward-models", json=payload, headers=auth)
+    assert resp.status_code == 422
+    assert resp.json()["detail"][0]["loc"] == ["body", "max_pairs"]
+    assert queued == []
+    assert (await client.get("/api/v1/rm/reward-models", headers=auth)).json() == []
+
+    payload["max_pairs"] = 2
+    resp = await client.post("/api/v1/rm/reward-models", json=payload, headers=auth)
+    assert resp.status_code == 200, resp.text
+    assert queued == [resp.json()["id"]]
 
 
 async def test_gepa_run_needs_a_trained_reward_model(client, monkeypatch):

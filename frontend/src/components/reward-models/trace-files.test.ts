@@ -49,3 +49,22 @@ it("reports unreadable folders instead of silently importing incomplete contents
   await expect(readTraceEntries([unreadable])).rejects.toThrow("Access denied");
   expect(rmImportTraces).not.toHaveBeenCalled();
 });
+
+it("imports agent traces inside .claude and .codex while still skipping hidden supporting files", async () => {
+  vi.mocked(rmImportTraces).mockResolvedValue({ imported: 1, format: "auto", trace_ids: [] });
+  const files = await readTraceEntries([
+    entry("/.claude/projects/project/session.jsonl", "claude trace"),
+    entry("/backup/.codex/sessions/2026/09/29/session.jsonl", "codex trace"),
+    entry("/.claude/projects/.private/config.json", "private"),
+    entry("/.codex/sessions/.metadata.json", "metadata"),
+  ]);
+  const result = await importTraceFiles(files, "auto", vi.fn());
+  expect(result.imported).toBe(2);
+  expect(result.failed).toEqual([]);
+  expect(vi.mocked(rmImportTraces).mock.calls).toEqual([
+    ["auto", "claude trace"], ["auto", "codex trace"],
+  ]);
+  expect(result.skipped).toEqual([
+    ".claude/projects/.private/config.json", ".codex/sessions/.metadata.json",
+  ]);
+});
