@@ -249,65 +249,73 @@ class ExternalVfsClient(InProcessVfsClient):
         """Only the sources connected for this user — a customer's Drive folder
         belongs to that customer, never to the developer's other customers."""
         allowed = self._end_user["source_ids"]
+        if not allowed:
+            return []
         return [s for s in super().list_sources() if s.get("source") in allowed]
 
     def get_overview(self) -> dict:
-        overview = super().get_overview()
-        external_id = self._end_user["external_id"]
-        tree = overview.get("files", {})
-        folders = tree.get("folders", [])
+        params = {}
+        if self._end_user["external_id"] is not None:
+            params["user_id"] = self._end_user["external_id"]
+        return self._get("/api/v1/me/vfs/overview", **params)
 
-        # Descendant closure of the shared-wiki and user-wiki roots. Everything
-        # else in the workspace — other users' wikis included — is invisible.
-        children: dict[str | None, list[dict]] = {}
-        for folder in folders:
-            children.setdefault(folder["parent_folder_id"], []).append(folder)
-        kept_ids: set[str] = set()
-        # A customer with no wiki folder yet has not been written for — they still
-        # read the shared wiki, they just own nothing.
-        frontier = [self._end_user["shared_wiki_folder_id"]]
-        if self._end_user["wiki_folder_id"]:
-            frontier.append(self._end_user["wiki_folder_id"])
-        while frontier:
-            folder_id = frontier.pop()
-            if folder_id in kept_ids:
-                continue
-            kept_ids.add(folder_id)
-            frontier.extend(f["id"] for f in children.get(folder_id, []))
 
-        kept_folders = []
-        for folder in folders:
-            if folder["id"] not in kept_ids:
-                continue
-            if folder["id"] == self._end_user["wiki_folder_id"]:
-                # The user-wiki root's parent (the workspace's "User Wikis"
-                # container) is filtered out, so mount it at /files/wiki.
-                folder = {**folder, "parent_folder_id": None, "name": "wiki"}
-            kept_folders.append(folder)
+def filter_external_overview(overview: dict, end_user_ctx: dict) -> dict:
+    external_id = end_user_ctx["external_id"]
+    tree = overview.get("files", {})
+    folders = tree.get("folders", [])
 
-        return {
-            **overview,
-            "sessions": (
-                []
-                if external_id is None
-                else [
-                    s
-                    for s in overview.get("sessions", [])
-                    if s.get("end_user_external_id") == external_id
-                ]
-            ),
-            "skills": [],
-            "files": {
-                "folders": kept_folders,
-                "pages": [p for p in tree.get("pages", []) if p["folder_id"] in kept_ids],
-                "files": [
-                    f
-                    for f in tree.get("files", [])
-                    if f["folder_id"] in kept_ids
-                    or (external_id is not None and f.get("end_user_external_id") == external_id)
-                ],
-            },
-        }
+    # Descendant closure of the shared-wiki and user-wiki roots. Everything
+    # else in the workspace — other users' wikis included — is invisible.
+    children: dict[str | None, list[dict]] = {}
+    for folder in folders:
+        children.setdefault(folder["parent_folder_id"], []).append(folder)
+    kept_ids: set[str] = set()
+    # A customer with no wiki folder yet has not been written for — they still
+    # read the shared wiki, they just own nothing.
+    frontier = [end_user_ctx["shared_wiki_folder_id"]]
+    if end_user_ctx["wiki_folder_id"]:
+        frontier.append(end_user_ctx["wiki_folder_id"])
+    while frontier:
+        folder_id = frontier.pop()
+        if folder_id in kept_ids:
+            continue
+        kept_ids.add(folder_id)
+        frontier.extend(f["id"] for f in children.get(folder_id, []))
+
+    kept_folders = []
+    for folder in folders:
+        if folder["id"] not in kept_ids:
+            continue
+        if folder["id"] == end_user_ctx["wiki_folder_id"]:
+            # The user-wiki root's parent (the workspace's "User Wikis"
+            # container) is filtered out, so mount it at /files/wiki.
+            folder = {**folder, "parent_folder_id": None, "name": "wiki"}
+        kept_folders.append(folder)
+
+    return {
+        **overview,
+        "sessions": (
+            []
+            if external_id is None
+            else [
+                s
+                for s in overview.get("sessions", [])
+                if s.get("end_user_external_id") == external_id
+            ]
+        ),
+        "skills": [],
+        "files": {
+            "folders": kept_folders,
+            "pages": [p for p in tree.get("pages", []) if p["folder_id"] in kept_ids],
+            "files": [
+                f
+                for f in tree.get("files", [])
+                if f["folder_id"] in kept_ids
+                or (external_id is not None and f.get("end_user_external_id") == external_id)
+            ],
+        },
+    }
 
 
 def _build_model(

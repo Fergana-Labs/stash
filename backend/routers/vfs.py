@@ -4,6 +4,8 @@ Same surface as `stash vfs "<command>"`, for agents with no shell to install the
 CLI into. Read-only: the shell has no write commands and rejects redirects.
 """
 
+import asyncio
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -79,6 +81,38 @@ async def _external_vfs_ctx(current_user: dict, user_id: str | None) -> dict | N
         "wiki_folder_id": str(end_user["wiki_folder_id"]),
         "source_ids": {s["id"] for s in connected},
     }
+
+
+@router.get("/overview")
+async def external_overview(
+    user_id: str | None = None,
+    current_user: dict = Depends(get_current_user),
+):
+    """Build only the listings that a developer's customer can use."""
+    from .user_knowledge import _files_tree, _list_sessions
+
+    ctx = await _external_vfs_ctx(current_user, user_id)
+    if ctx is None:
+        raise HTTPException(status_code=400, detail="A developer workspace is required")
+    owner_id = current_user["id"]
+    if ctx["wiki_folder_id"] is None:
+        files = await _files_tree(owner_id, owner_id)
+        sessions = []
+    else:
+        files, sessions = await asyncio.gather(
+            _files_tree(owner_id, owner_id),
+            _list_sessions(owner_id, owner_id, end_user_external_id=ctx["external_id"]),
+        )
+    overview = vfs_service.filter_external_overview(
+        {"files": files, "sessions": sessions, "skills": []}, ctx
+    )
+    await security_audit_service.record_entries_listed(
+        target_type="overview",
+        actor_user_id=owner_id,
+        owner_user_id=owner_id,
+        metadata={"result_count": len(sessions) + len(files)},
+    )
+    return overview
 
 
 class VfsSearch(BaseModel):
