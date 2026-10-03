@@ -71,6 +71,18 @@ def _wire(monkeypatch) -> list:
     return calls
 
 
+def test_sync_in_progress_is_neutral_and_does_not_claim_another_job(monkeypatch, capsys):
+    _wire(monkeypatch)
+    monkeypatch.setattr(
+        _FakeClient, "sync_source", lambda self, source_id: {"status": "in_progress"}, raising=False
+    )
+    monkeypatch.setattr(main, "_use_json", lambda explicit: False)
+    main.sources_sync("source-1", as_json=False)
+    output = capsys.readouterr().out
+    assert "Sync in progress" in output
+    assert "queued" not in output
+
+
 def test_search_everything_passes_no_source(monkeypatch) -> None:
     calls = _wire(monkeypatch)
     main.search(

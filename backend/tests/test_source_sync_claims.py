@@ -68,17 +68,34 @@ async def test_scheduler_ticks_do_not_multiply_waiting_jobs(client, pool, monkey
 
 
 @pytest.mark.asyncio
-async def test_repeated_manual_sync_is_rejected_without_new_job(client, monkeypatch):
+@pytest.mark.parametrize("running", [False, True])
+async def test_repeated_manual_sync_is_successful_without_new_job(client, monkeypatch, running):
     key, sid = await make_source(client)
     published = []
     monkeypatch.setattr(
         source_sync_service.celery, "send_task", lambda *a, **kw: published.append(kw)
     )
     first = await client.post(f"/api/v1/me/sources/{sid}/sync", headers=_auth(key))
+    if running:
+        assert await source_sync_service.start_sync(sid, first.json()["task_id"])
     second = await client.post(f"/api/v1/me/sources/{sid}/sync", headers=_auth(key))
     assert first.status_code == 200
-    assert second.status_code == 409
+    assert first.json()["status"] == "queued"
+    assert second.status_code == 200
+    assert second.json() == {"status": "in_progress"}
     assert len(published) == 1
+
+
+@pytest.mark.asyncio
+async def test_disabled_manual_sync_is_not_reported_as_in_progress(client, pool, monkeypatch):
+    key, sid = await make_source(client)
+    await pool.execute("UPDATE user_sources SET sync_enabled=false WHERE id=$1", sid)
+    publish = AsyncMock()
+    monkeypatch.setattr(source_sync_service, "enqueue_sync", publish)
+    response = await client.post(f"/api/v1/me/sources/{sid}/sync", headers=_auth(key))
+    assert response.status_code == 409
+    assert response.json() == {"detail": "Syncing is disabled for this source."}
+    publish.assert_not_awaited()
 
 
 @pytest.mark.asyncio
