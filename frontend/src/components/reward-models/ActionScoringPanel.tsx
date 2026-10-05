@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { ChevronDown } from "lucide-react";
+import { Popover } from "radix-ui";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { rmListRewardModels, rmScoreTrace, rmSetTrainingContribution } from "@/lib/api";
@@ -63,7 +65,15 @@ export default function ActionScoringPanel({ trace, selectedModelId, onModelChan
   }
 
   return (
-    <section aria-label="Action credit" className="mb-4 rounded-md border border-border px-3 py-2.5 text-[12px]">
+    <Popover.Root>
+      <Popover.Trigger asChild>
+        <button type="button" aria-label="Action credit" className="inline-flex h-7 cursor-pointer items-center gap-1 rounded-md border border-border bg-background px-2 text-[12px] text-muted-foreground transition-colors hover:border-foreground/20 hover:text-foreground">
+          Credit{active || pending ? " · scoring…" : scored ? ` · ${scored}/${eligible.length}` : selectedModelId === null ? " · hidden" : " · unscored"}
+          <ChevronDown className="size-3" />
+        </button>
+      </Popover.Trigger>
+      <Popover.Portal>
+      <Popover.Content aria-label="Action credit settings" align="end" sideOffset={6} className="z-50 w-80 max-w-[calc(100vw-2rem)] rounded-lg border border-border bg-popover p-3 text-[12px] text-popover-foreground shadow-md">
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-medium">Action credit</span>
         {isDefault && <span className="text-muted-foreground">{trace.default_evaluator ? `Stash evaluator · v${trace.default_evaluator.revision}` : "Stash evaluator"}</span>}
@@ -75,7 +85,7 @@ export default function ActionScoringPanel({ trace, selectedModelId, onModelChan
           </button>
         </>}
       </div>
-      {isDefault && !trace.default_evaluator && <p className="mt-2 text-muted-foreground">Waiting for the first Stash evaluator release. This trace will be scored automatically when it is available.</p>}
+      {isDefault && !trace.default_evaluator && <p className="mt-2 text-muted-foreground">No evaluator is available yet. Credit will appear beside each assistant action and tool call once this trace is scored.</p>}
       {pending && !active && <p className="mt-2 text-muted-foreground">Automatic scoring is queued.</p>}
       {effectiveModelId && <p className="mt-2 text-muted-foreground">Learned reward from −1 to +1. Higher means this model prefers the action in context; zero is the training reference midpoint. These scores are not correctness probabilities or contributions that add up to the trace score. Use Comment on an action to correct its assessment.</p>}
       {effectiveModelId && run?.status === "failed" && <p role="alert" className="mt-2 text-red-600">Scoring failed: {run.error ?? "Please try again."}{pending ? " Retrying automatically." : ""}</p>}
@@ -97,6 +107,8 @@ export default function ActionScoringPanel({ trace, selectedModelId, onModelChan
         {loadError && <p role="alert" className="mt-1 text-red-600">Could not load personal models: {loadError}</p>}
         <p className="mt-1"><Link className="underline" href="/reward-models">Train a reward model</Link> for a custom rubric. Older models need new training to score actions.</p>
       </details>
-    </section>
+      </Popover.Content>
+      </Popover.Portal>
+    </Popover.Root>
   );
 }
