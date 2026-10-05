@@ -47,3 +47,19 @@ it("offers keyboard-accessible tool disclosure and identifies the result step", 
   expect(onToggle).toHaveBeenCalledWith(rows[0]);
   expect(screen.getByText("Step 2")).toBeVisible();
 });
+
+it("shows learned credit on a collapsed tool call and response, with no badge on its observation", () => {
+  const call = { ...step(1, "", "assistant"), tool_name: "lookup", tool_input: {}, tool_call_id: "call1" };
+  const result = { ...step(2, "Found", "tool"), tool_name: "lookup", tool_call_id: "call1" };
+  const rows = buildRows([step(0, "Find a part"), call, result, step(3, "Here it is", "assistant")]);
+  const scoredAnn = { ...ann, actionScore: (s: RmStep) => s.role === "assistant" ? {
+    reward_model_id: "model", reward_model_name: "Parts evaluator", step_id: s.id,
+    score: s.index === 1 ? -2 : 2, credit: s.index === 1 ? -0.5 : 0.5, created_at: "now",
+  } : undefined };
+  const { container } = render(<TraceTimeline rows={rows} ann={scoredAnn} isExpanded={() => false} onToggle={vi.fn()} />);
+  expect(screen.getByText("Credit -0.50")).toBeVisible();
+  expect(screen.getByText("Credit +0.50")).toBeVisible();
+  expect(screen.getAllByText(/Credit [+-]/)).toHaveLength(2);
+  expect(container.querySelector("#step-s1")?.getAttribute("style")).toContain("box-shadow");
+  expect(container.querySelector("#step-s0")?.getAttribute("style")).toBeNull();
+});

@@ -114,7 +114,7 @@ export default function GepaPage() {
       <CodeBlock lang="text">{`score = sigmoid( (reward − mean) / std )`}</CodeBlock>
       <P>
         where <Code>mean</Code> and <Code>std</Code> are the mean and standard deviation of the reward
-        model&apos;s scores over both chosen and rejected texts in the training and held-out pairs,
+        model&apos;s scores over both chosen and rejected texts in the training pairs only,
         saved in <Code>reward_stats.json</Code> inside the checkpoint. A score of 0.5 corresponds to
         that calibration mean; higher is better. It is not a probability of correctness. Raw rewards are the wrong scale for this: a confident reward model
         gives a decent reply a raw <Code>sigmoid(reward)</Code> of about 0.99, which leaves GEPA no room

@@ -108,11 +108,15 @@ function ModelCard({ model }: { model: RmRewardModel }) {
       </div>
 
       {metrics && (
-        <dl className="m-0 mt-3 grid grid-cols-4 gap-px overflow-hidden rounded-md border border-border-subtle bg-border-subtle">
-          <Metric label="Eval accuracy" value={`${(metrics.eval_accuracy * 100).toFixed(1)}%`} emphasis />
+        <dl className={`m-0 mt-3 grid grid-cols-2 gap-px overflow-hidden rounded-md border border-border-subtle bg-border-subtle ${metrics.action_scoring_version === 1 ? "sm:grid-cols-3" : "sm:grid-cols-4"}`}>
+          <Metric label="Eval accuracy" value={metrics.eval_accuracy == null ? "Not available" : `${(metrics.eval_accuracy * 100).toFixed(1)}%`} hint={metrics.eval_split === "trace" ? "held-out traces" : undefined} emphasis />
           <Metric label="Pairs" value={`${metrics.train_pairs} + ${metrics.eval_pairs}`} hint="train + held-out" />
           <Metric label="Device" value={metrics.device} />
           <Metric label="Time" value={formatSeconds(metrics.seconds)} hint={`loss ${metrics.final_loss.toFixed(3)}`} />
+          {metrics.action_scoring_version === 1 && <>
+            <Metric label="Action accuracy" value={metrics.action_eval_accuracy == null ? "Not available" : `${(metrics.action_eval_accuracy * 100).toFixed(1)}%`} hint={`${metrics.action_eval_pairs ?? 0} held-out action pairs`} />
+            <Metric label="Tool-call accuracy" value={metrics.tool_eval_accuracy == null ? "Not available" : `${(metrics.tool_eval_accuracy * 100).toFixed(1)}%`} hint={`${metrics.tool_eval_pairs ?? 0} held-out tool pairs`} />
+          </>}
         </dl>
       )}
 

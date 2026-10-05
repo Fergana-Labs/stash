@@ -87,6 +87,9 @@ async def test_ratings_collapse_per_target(client):
         {
             "chosen": "user: question a\n\nassistant: A",
             "rejected": "user: question c\n\nassistant: C",
+            "trace_ids": sorted([a, c]),
+            "granularity": "trace",
+            "action_type": "response",
         }
     ]
 
@@ -164,6 +167,7 @@ def _fake_worker(monkeypatch, write_outputs):
 
     async def fake_run_worker(module: str, directory: Path) -> None:
         calls.append(module)
+        (directory / "action_scores.jsonl").write_text("")
         write_outputs(directory)
 
     monkeypatch.setattr(jobs, "run_worker", fake_run_worker)

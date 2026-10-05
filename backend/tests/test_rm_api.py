@@ -255,6 +255,9 @@ async def test_label_error_annotations_do_not_train_the_model(client):
     assert pairs == [
         {
             "chosen": "user: hi there\n\nassistant: Hello! How can I help?",
+            "trace_ids": sorted([refund_id, greeting_id]),
+            "granularity": "trace",
+            "action_type": "response",
             "rejected": (
                 "user: I want a refund for order 1182\n\n"
                 'assistant → lookup_order({"order_id": "1182"})\n\n'

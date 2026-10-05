@@ -145,6 +145,22 @@ curl -s "$STASH_URL/api/v1/rm/formats" ${AUTH}`}</CodeBlock>
       <CodeBlock lang="bash">{`curl -s "$STASH_URL/api/v1/rm/traces/<trace_id>" ${AUTH}`}</CodeBlock>
       <P>Returns a <Code>TraceDetail</Code>. Step ids for annotating come from this response.</P>
 
+      <Endpoint method="POST" path="/traces/{trace_id}/score">Score assistant actions with a saved trained model.</Endpoint>
+      <P>
+        Send <Code>{`{}`}</Code> for the current shared evaluator, or
+        <Code>{`{"reward_model_id": "<model_id>"}`}</Code> for a personal or previously released shared model. Returns 202 with a scoring job
+        (id, trace_id, reward_model_id, status, error and timestamps). Poll trace detail&apos;s
+        {" "}<Code>scoring_runs</Code> for its status and <Code>action_scores</Code> for results.
+        Repeated requests reuse an active job. Unowned traces or unreleased models owned by others return 404; models without
+        action training, unfinished models and traces without assistant actions return 422.
+        This invokes the trained checkpoint, without LLM labeling or retraining.
+      </P>
+
+      <Endpoint method="GET" path="/evaluator">Current shared release, or null before bootstrap.</Endpoint>
+      <P>Returns <Code>{`{"default": {"id": "…", "name": "…", "revision": 1, "updated_at": "…"}}`}</Code>. Shared weights and pooled training data are not exposed.</P>
+      <Endpoint method="PATCH" path="/traces/{trace_id}/training-contribution">Set permission to use this trace in shared training.</Endpoint>
+      <P>Send <Code>{`{"allowed": true}`}</Code> to opt in, or false to revoke future contribution. Scoring does not require contribution permission. Revocation does not unlearn released models.</P>
+
       <Endpoint method="DELETE" path="/traces/{trace_id}">Delete a trace and its annotations. Returns 204.</Endpoint>
       <CodeBlock lang="bash">{`curl -s -X DELETE "$STASH_URL/api/v1/rm/traces/<trace_id>" ${AUTH}`}</CodeBlock>
 
@@ -191,7 +207,7 @@ curl -s "$STASH_URL/api/v1/rm/formats" ${AUTH}`}</CodeBlock>
       </Endpoint>
       <Endpoint method="GET" path="/export/pairs">
         The training pairs your current labels produce, capped at 4000:{" "}
-        <Code>{`{"chosen": str, "rejected": str}`}</Code>.
+        <Code>{`{"chosen": str, "rejected": str, "trace_ids": [str], "granularity": str, "action_type": str}`}</Code>.
       </Endpoint>
       <CodeBlock lang="bash">{`curl -s "$STASH_URL/api/v1/rm/export/traces"      ${AUTH} > traces.jsonl
 curl -s "$STASH_URL/api/v1/rm/export/annotations" ${AUTH} > annotations.jsonl
@@ -231,7 +247,8 @@ curl -s "$STASH_URL/api/v1/rm/export/pairs"       ${AUTH} > pairs.jsonl`}</CodeB
         Returns <Code>{`{"url": "https://…"}`}</Code> after checking ownership and succeeded status;
         otherwise 404. The URL expires after five minutes. Download from that URL without forwarding
         your Stash API key. The gzip archive contains a <Code>reward-model/</Code> directory with
-        model weights, tokenizer files, and <Code>reward_stats.json</Code>.
+        model weights, tokenizer files, <Code>reward_stats.json</Code>, and
+        {" "}<Code>action_reward_stats.json</Code> when trained on action comparisons.
       </P>
       <CodeBlock lang="bash">{`set -euo pipefail
 reward_weights_url="$(curl -fsS "$STASH_URL/api/v1/rm/reward-models/<id>/weights" ${AUTH} | jq -er '.url')"
@@ -308,6 +325,7 @@ rows = [dict(zip(body["columns"], row)) for row in body["rows"]]`,
           ["steps", "id, trace_id, idx, role, content, tool_name, tool_input (JSON), tool_call_id, metadata (JSON)"],
           ["annotations", "id, trace_id, step_id, step_index, rating, comment, quote (JSON), label_error, label_error_note, created_at"],
           ["scores", "reward_model_id, reward_model_name, trace_id, score, created_at"],
+          ["action_scores", "reward_model_id, reward_model_name, trace_id, step_id, step_index, score, credit, created_at"],
         ]}
       />
       <P>
@@ -354,6 +372,8 @@ HAVING plus > 0 AND minus > 0`}</CodeBlock>
           { name: "comment_count", type: "integer", desc: "Annotations with a comment." },
           { name: "label_error_count", type: "integer", desc: "Annotations flagged as label errors." },
           { name: "latest_score", type: "object | null", desc: "{reward_model_id, reward_model_name, score} from the most recently finished reward model that scored this trace." },
+          { name: "action_credit", type: "object | null", desc: "{mean, count, revision}: average action reward and coverage for the current shared evaluator; not an outcome score." },
+          { name: "shared_training_allowed", type: "boolean", desc: "Owner permission to contribute this trace and feedback to shared training. Defaults false." },
           { name: "created_at", type: "string", desc: "ISO 8601." },
         ]}
       />
@@ -366,6 +386,11 @@ HAVING plus > 0 AND minus > 0`}</CodeBlock>
           { name: "steps", type: "[Step]", desc: "In order." },
           { name: "annotations", type: "[Annotation]", desc: "Oldest first." },
           { name: "scores", type: "array", desc: "[{reward_model_id, reward_model_name, score, created_at}], one per reward model that scored this trace, most recent model first." },
+          { name: "action_scores", type: "array", desc: "[{reward_model_id, reward_model_name, step_id, score, credit, created_at}]. Raw learned rewards and relative credit in [-1, 1] for assistant actions only." },
+          { name: "scoring_runs", type: "array", desc: "Latest job per model: id, trace_id, reward_model_id, status, error, created_at, started_at, finished_at. Status is queued, running, succeeded or failed." },
+          { name: "default_evaluator", type: "object | null", desc: "{id, name, revision, updated_at} for the released Stash evaluator." },
+          { name: "automatic_scoring", type: "object | null", desc: "{attempts, error} while automatic scoring is pending. Automatic attempts are capped at three." },
+          { name: "training_collection", type: "object | null", desc: "{status, error} for an opted-in trace's contribution extraction." },
         ]}
       />
 
@@ -413,7 +438,7 @@ HAVING plus > 0 AND minus > 0`}</CodeBlock>
           { name: "max_pairs", type: "integer", desc: "Requested cap on pairs." },
           { name: "status", type: "string", desc: "queued, running, succeeded, or failed." },
           { name: "num_pairs", type: "integer | null", desc: "Usable pairs from selected traces, including feedback-derived pairs and the held-out split." },
-          { name: "metrics", type: "object | null", desc: "train_pairs, eval_pairs, eval_accuracy, final_loss, epochs, device, seconds." },
+          { name: "metrics", type: "object | null", desc: "Training counts, trace-held-out accuracy (nullable), action_scoring_version, action/tool evaluation counts and accuracy, loss, epochs, device and seconds. See Training for the full schema." },
           { name: "error", type: "string | null", desc: "Failure message when status is failed." },
           { name: "created_at", type: "string", desc: "ISO 8601." },
           { name: "started_at", type: "string | null", desc: "ISO 8601." },

@@ -8,6 +8,7 @@ with RM_WORKER_PYTHON, and reads result.json / scores.jsonl back.
 
 import asyncio
 import json
+import math
 import os
 from pathlib import Path
 from uuid import UUID
@@ -103,15 +104,22 @@ async def run_training(model_id: UUID) -> None:
     (directory / "job.json").write_text(json.dumps(job))
     _write_jsonl(directory / "pairs.jsonl", pairs)
     _write_jsonl(directory / "score_items.jsonl", await datasets.score_items(owner_user_id))
+    action_items = await datasets.action_score_items(owner_user_id)
+    _write_jsonl(directory / "action_score_items.jsonl", action_items)
 
     module = "rm_worker.modal_runner" if model["compute"] == "modal" else "rm_worker.train"
     await run_worker(module, directory)
 
     result = json.loads((directory / "result.json").read_text())
     scores = _read_jsonl(directory / "scores.jsonl")
+    action_scores = _read_jsonl(directory / "action_scores.jsonl")
+    validate_action_scores(
+        action_items if result["metrics"].get("action_scoring_version") else [], action_scores
+    )
     # Scores, metrics and the succeeded status land together: a model is either
     # fully succeeded or not at all.
     async with pool.acquire() as conn, conn.transaction():
+        await store_action_scores(conn, owner_user_id, model_id, action_scores)
         await conn.execute(
             """
             UPDATE rm_reward_models
@@ -133,6 +141,103 @@ async def run_training(model_id: UUID) -> None:
                 (model_id, UUID(row["trace_id"]), float(row["score"]), owner_user_id)
                 for row in scores
             ],
+        )
+
+
+def validate_action_scores(items: list[dict], scores: list[dict]) -> None:
+    expected = {(item["trace_id"], item["step_id"]) for item in items}
+    actual = [(row["trace_id"], row["step_id"]) for row in scores]
+    if set(actual) != expected or len(actual) != len(expected):
+        raise ValueError("Worker did not return exactly the requested action scores")
+    if any(
+        not math.isfinite(row["score"])
+        or not math.isfinite(row["credit"])
+        or not -1 <= row["credit"] <= 1
+        for row in scores
+    ):
+        raise ValueError("Worker returned an invalid action score")
+
+
+async def store_action_scores(
+    conn, owner_user_id: UUID, model_id: UUID, scores: list[dict]
+) -> None:
+    # Step UUIDs change on re-import: stale results can never attach to replacement steps.
+    await conn.executemany(
+        """
+        INSERT INTO rm_action_scores (reward_model_id, step_id, score, credit)
+        SELECT m.id, s.id, $4, $5 FROM rm_trace_steps s
+        JOIN rm_traces t ON t.id = s.trace_id
+        JOIN rm_reward_models m ON m.id = $1 AND (m.owner_user_id = t.owner_user_id
+            OR EXISTS (SELECT 1 FROM rm_evaluator_releases r WHERE r.reward_model_id = m.id))
+        WHERE s.id = $2 AND t.id = $3 AND t.owner_user_id = $6 AND s.role = 'assistant'
+        ON CONFLICT (reward_model_id, step_id)
+        DO UPDATE SET score = EXCLUDED.score, credit = EXCLUDED.credit, created_at = now()
+        """,
+        [
+            (
+                model_id,
+                UUID(row["step_id"]),
+                UUID(row["trace_id"]),
+                row["score"],
+                row["credit"],
+                owner_user_id,
+            )
+            for row in scores
+        ],
+    )
+
+
+async def run_scoring(run_id: UUID) -> None:
+    pool = get_pool()
+    run = await pool.fetchrow(
+        """
+        SELECT r.*, m.artifact_key, m.compute, m.metrics FROM rm_scoring_runs r
+        JOIN rm_reward_models m ON m.id = r.reward_model_id AND (m.owner_user_id = r.owner_user_id
+            OR EXISTS (SELECT 1 FROM rm_evaluator_releases er WHERE er.reward_model_id = m.id))
+        WHERE r.id = $1 AND m.status = 'succeeded'
+        """,
+        run_id,
+    )
+    if run is None or run["artifact_key"] is None:
+        raise ValueError("Reward model is unavailable")
+    items = await datasets.action_score_items(
+        run["owner_user_id"],
+        run["trace_id"],
+        input_version=(run["metrics"] or {}).get("input_version", 1),
+    )
+    if not items:
+        raise ValueError("Trace has no assistant actions to score")
+    directory = job_dir(run_id)
+    directory.mkdir(parents=True, exist_ok=True)
+    (directory / "job.json").write_text(
+        json.dumps({"kind": "score", "reward_model_key": run["artifact_key"]})
+    )
+    _write_jsonl(directory / "action_score_items.jsonl", items)
+    module = "rm_worker.modal_runner" if run["compute"] == "modal" else "rm_worker.score_run"
+    await run_worker(module, directory)
+    scores = _read_jsonl(directory / "action_scores.jsonl")
+    validate_action_scores(items, scores)
+    async with pool.acquire() as conn, conn.transaction():
+        # Ingestion locks the trace row while replacing its steps. Lock it through publication.
+        await conn.fetchrow(
+            "SELECT id FROM rm_traces WHERE id = $1 FOR NO KEY UPDATE", run["trace_id"]
+        )
+        current = await conn.fetch(
+            "SELECT id FROM rm_trace_steps WHERE trace_id = $1", run["trace_id"]
+        )
+        if not {UUID(item["step_id"]) for item in items} <= {s["id"] for s in current}:
+            raise ValueError("Trace changed while scoring; score it again")
+        await store_action_scores(conn, run["owner_user_id"], run["reward_model_id"], scores)
+        await conn.execute(
+            "UPDATE rm_scoring_runs SET status = 'succeeded', finished_at = now() WHERE id = $1",
+            run_id,
+        )
+        await conn.execute(
+            """DELETE FROM rm_auto_scores q USING rm_traces t, rm_evaluator_registry er
+            WHERE q.trace_id = $1 AND t.id = q.trace_id AND t.updated_at = $2 AND er.model_id = $3""",
+            run["trace_id"],
+            run["trace_updated_at"],
+            run["reward_model_id"],
         )
 
 

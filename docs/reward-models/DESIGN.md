@@ -1,8 +1,15 @@
 # Stash reward model training platform — design
 
-Teams bring agent traces, annotate them the way they'd comment on a Google Doc
-(highlight text and leave a comment), and train a reward model
-from those annotations, the same kind of reward model used in RLHF. A second
+Stash automatically scores imported traces with a shared, versioned action evaluator.
+An explicitly permissioned corpus of corrections and independently reviewed action
+comparisons improves future candidates, with frozen benchmarks and gated releases.
+See [Shared evaluator and learning loop](SHARED_EVALUATOR.md) for the default product
+path, operator bootstrap, consent, evaluation policy and recurring training controls.
+The first checkpoint requires reviewed data and remote training; no pretrained shared
+model ships with the code.
+
+Teams can also train personal reward models from selected traces and annotations,
+the same kind of reward model used in RLHF. A second
 optimizer, GEPA, writes a skill for the agent (a SKILL.md it loads into its
 context) using the written comments as feedback and the trained reward model
 as the metric.
@@ -124,7 +131,7 @@ rating, a comment, or both.
 | `rating` | `1` (+), `-1` (−), or null |
 | `comment` | free text, or null |
 | `quote` | `{text, prefix, suffix}` — the highlighted span inside the step's content, anchored the same way page comments are (`page_comment_threads`). Requires `step_id`. |
-| (system steps) | can carry comments (they feed GEPA) but not ratings: the reward model never sees system steps, so a rating there is a 422. A trace with only system steps fails import. |
+| (system steps) | can carry comments but not ratings: they are context, not agent actions. Shared input version 2 includes system context; personal models omit it. A trace with only system steps fails import. |
 | `label_error` | true = someone flagged this label as wrong. Flagged annotations are excluded from training and GEPA. |
 | `label_error_note` | why it's wrong |
 
@@ -137,9 +144,9 @@ Annotation export (`GET /api/v1/rm/export/annotations`), one per line:
  "label_error": false, "author": "henry", "created_at": "2026-09-29T03:12:00Z"}
 ```
 
-## Reward model training
+## Personal reward model training
 
-No manual annotations or user reactions are required. Each assistant response is
+No manual annotations or user reactions are required. Each assistant response or tool call is
 assessed for task completion, instruction adherence, evidence grounding and
 appropriate uncertainty. A finding's `source` distinguishes `user_feedback` from
 `ai_judgment`. AI judgments cite the target response, never fabricate user reactions,
@@ -168,7 +175,7 @@ Training uses only the traces selected for the model. Explicit ratings supplied
 through the API produce chosen/rejected pairs. A structured LLM classifier extracts
 positive, negative, or unclear feedback from reviewer comments and later user
 reactions, including implicit disappointment and approval. Labels attach to specific
-assistant responses, so a failed response and a successful repair remain distinct.
+assistant responses or tool calls, so a failed action and a successful repair remain distinct.
 The classifier distinguishes complaints about the task from reactions to the agent;
 silence, new tasks, tool errors, and the assistant's own claims are not feedback.
 For each assessable assistant response it generates an alternative to the same
@@ -187,7 +194,7 @@ requests and earlier feedback cannot be cited as evaluations of a later response
 Calls use schema-constrained output and run with bounded concurrency
 (three per trace).
 Evidence is also validated against the original source: the target must be an
-assistant response, corrections must follow it, and step comments must belong
+assistant response or tool call, corrections must follow it, and step comments must belong
 to it. Malformed extraction fails the job. The exact pairs and evidence are
 stored in `rm_reward_models.training_pairs`. Findings, including abstentions, quotes,
 classifier model, and inclusion in training data, are stored separately in
@@ -198,6 +205,18 @@ was not recorded; an empty list means no learning opportunity was found. Extract
 stops once enough pairs reach `max_pairs`. Explicit human ratings take precedence
 over AI judgments at the same scope. Generated alternatives are model-written,
 not direct human preference votes.
+
+Assistant tool calls are assessed even when their text content is empty. The
+evaluator considers tool choice, arguments, timing and necessity using the context
+available before the call. Tool results remain observations, not evaluation targets
+or human feedback. AI evidence renders the actual tool name and arguments. Tool-call
+revisions are JSON-encoded `{tool_name, tool_input, content}` replacements; they must
+change the tool or its arguments. Invalid or duplicate alternatives retain their
+assessment but produce no training pair. All tool-call comparisons, including ones
+derived from user feedback, receive an independent grounding and preference review
+without later results. A pair ends at the original or revised call and never reuses
+the original call's result after changing its arguments. Learning reports store
+`tool_name` alongside the step index and identify these findings as tool calls.
 
 Training is queued immediately; extraction runs in the dedicated `reward`
 worker. Fewer than two pairs fails with an actionable error before downloading
@@ -214,10 +233,48 @@ These small evaluations are not production accuracy estimates.
 
 The model is `AutoModelForSequenceClassification(num_labels=1)` on the chosen
 base model, trained with the Bradley–Terry loss
-`-log σ(r(chosen) − r(rejected))`. A 10% held-out split (at least one pair)
-reports pairwise accuracy. After training, the worker scores every trace the
-owner has, selected or not (that is the point: the model generalizes), and the
-scores are stored in `rm_trace_scores`.
+`-log σ(r(chosen) − r(rejected))`. It is a learned preference scorer, not a
+prompted LLM at inference time. Pairs retain their source trace IDs and whether
+they compare assistant actions. A seeded 10% split by **trace** keeps neighboring
+actions together. Explicit pairs spanning the two partitions are excluded and
+counted in `excluded_cross_trace_pairs`. When no usable independent split exists,
+all pairs train and evaluation is unavailable (`null`), never evaluated on the
+training set. Overall, action, and tool-call held-out accuracy are reported with
+their sample counts. They measure agreement with the generated/human preference
+supervision, not verified task success.
+
+### Learned action credit
+
+After training, the worker scores every trace the owner has and, when action
+comparisons were trained, every nonempty assistant response and tool call.
+Training and inference use the same rendering: prior context followed by the
+target action, ending before any later tool result or user message. System steps
+are excluded and long inputs are left-truncated to the saved 1024-token limit.
+Tool results, user messages and system messages have no action score.
+
+Raw trace rewards remain in `rm_trace_scores`. Migration 0214 adds
+`rm_action_scores`, keyed by model and immutable step UUID, with raw `score` and
+display `credit = tanh((score − mean) / (2 × std))`. Mean and standard deviation
+come from the **training action pairs** only and are saved in
+`action_reward_stats.json` alongside the checkpoint. The display scale is [-1, 1]:
+higher means the model prefers the action, relative to its training reference.
+Zero is the reference mean. It is neither a calibrated probability nor a causal
+decomposition whose values sum to a trace reward. Compare within one model.
+
+The trace viewer selects a trained action model and shows action badges, row
+highlights and a minimap heatmap, including collapsed tool calls. New traces can
+be scored using **Score actions**, or `POST /traces/{trace_id}/score` with
+`reward_model_id`. This queues saved-checkpoint inference without another round
+of labeling or training. `rm_scoring_runs` stores status/error; trace detail
+returns the latest run per model and the UI polls active runs. Concurrent requests
+reuse the active job; duplicate task deliveries do not run inference twice.
+Errors are visible and retryable. Reimports delete old scores with their steps;
+in-flight inference fails if its input steps were replaced. Models trained before
+this feature, or solely on trace-level pairs, need new action training before
+they can supply action scores (`metrics.action_scoring_version = 1`).
+
+Learned scores are stored separately from generated supervision and human
+annotations. No inference job fabricates comments or reruns the LLM judge.
 
 Default base model: `Qwen/Qwen3-0.6B`. The deployment sets `RM_COMPUTE` to
 `local` or `modal` (A10G); clients cannot choose the runtime. Local execution
@@ -231,18 +288,27 @@ workspace. No API instance depends on a worker's filesystem.
 
 ```
 <RM_ARTIFACT_DIR>/<job_id>/
-  job.json          # written by backend: {"kind": "train"|"gepa", ...params}
-  pairs.jsonl       # train: {"chosen": str, "rejected": str}
+  job.json          # written by backend: {"kind": "train"|"score"|"gepa", ...params}
+  pairs.jsonl       # train: {"chosen", "rejected", "trace_id" or "trace_ids", "granularity", "action_type", ...evidence}
   score_items.jsonl # train: {"trace_id": str, "text": str}
+  action_score_items.jsonl # train/score: {"trace_id", "step_id", "text"} ending at an assistant action
   gepa_examples.jsonl # gepa: {"trace_id", "system": str|null, "messages": [{role, content}], "feedback": [str]}
   result.json       # written by worker
   scores.jsonl      # train, written by worker: {"trace_id": str, "score": float}
+  action_scores.jsonl # train/score, written by worker: {"trace_id", "step_id", "score", "credit"}
   model/            # local train only; Modal uploads from its temporary workspace
   worker.log
 ```
 
 `result.json` for training: `{"metrics": {"train_pairs", "eval_pairs",
-"eval_accuracy", "final_loss", "epochs", "device", "seconds"}}`. For GEPA:
+"eval_accuracy", "eval_split": "trace", "excluded_cross_trace_pairs",
+"action_scoring_version": 1|null, "action_train_pairs", "action_eval_pairs",
+"action_eval_accuracy", "tool_eval_pairs", "tool_eval_accuracy", "final_loss",
+"epochs", "device", "seconds"}}`. Accuracy fields are null when their evaluation
+set is empty. Score job.json: `{"kind": "score", "reward_model_key"}`;
+score result.json: `{"action_count"}`. The backend validates exact action IDs,
+finite scores and bounded credit before publishing all results atomically.
+For GEPA:
 `{"skill_name", "skill_description", "best_skill", "best_score", "seed_skill", "seed_score", "candidates": [{"skill", "score"}]}`
 (each skill is the full rendered SKILL.md). GEPA job.json: `{"kind": "gepa",
 "reward_model_key", "task_model", "task_api_base" (null when unset),
@@ -286,7 +352,7 @@ skill's body:
   the example's input messages. The rendered conversation (reply included,
   system message excluded) is scored by the chosen trained reward model.
   GEPA's score is sigmoid((reward − mean) / std), where mean and std are the
-  reward model's scores over both chosen and rejected training/held-out texts
+  reward model's scores over both chosen and rejected training texts
   (`model/reward_stats.json`). Raw rewards saturate the sigmoid (a confident
   model scores a decent reply ~0.99) and leave GEPA no headroom.
 - **Feedback** for reflection = the reward score plus every non-flagged
@@ -339,7 +405,7 @@ OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf   # or http/json
 - REST for everything above.
 - `POST /api/v1/rm/query {"sql": "..."}` runs read-only SQL in an in-memory
   DuckDB loaded with only the caller's rows, as tables `traces`, `steps`,
-  `annotations`, `scores`. Exactly one SELECT statement (checked with DuckDB's
+  `annotations`, `scores`, `action_scores`. Exactly one SELECT statement (checked with DuckDB's
   own parser), external access disabled, results capped at 1000 rows, and a
   10-second limit.
 
@@ -352,13 +418,14 @@ OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf   # or http/json
 | POST | `/otel/v1/traces` | OTLP `ExportTraceServiceRequest` (protobuf or JSON, optional gzip) | empty `ExportTraceServiceResponse` in the same content type; 400 bad spans, 415 other content types |
 | GET | `/traces` | `?limit=50&offset=0` | `{traces: [TraceSummary], total}` |
 | GET | `/traces/{trace_id}` | | `TraceDetail` (steps + annotations + scores) |
+| POST | `/traces/{trace_id}/score` | `{reward_model_id}` | 202 `ScoringRun`; 404 unowned trace/model; 422 no actions or incompatible model |
 | DELETE | `/traces/{trace_id}` | | 204 |
 | POST | `/traces/{trace_id}/annotations` | `{step_id?, rating?, comment?, quote?}` | `Annotation` |
 | PATCH | `/annotations/{annotation_id}` | `{rating?, comment?, label_error?, label_error_note?}` | `Annotation` |
 | DELETE | `/annotations/{annotation_id}` | | 204 |
 | GET | `/export/traces` | | JSONL (Stash Trace Format) |
 | GET | `/export/annotations` | | JSONL |
-| GET | `/export/pairs` | | JSONL `{chosen, rejected}` |
+| GET | `/export/pairs` | | JSONL `{chosen, rejected, trace_ids, granularity, action_type}` |
 | POST | `/reward-models` | `{name, trace_ids: [uuid, …] (≥1), base_model?, epochs?, max_pairs?}` | `RewardModel` (status `queued`); 404 naming the first trace id the caller doesn't own; evidence extraction and minimum-pair validation happen in the worker |
 | GET | `/reward-models` | | `[RewardModel]` |
 | GET | `/reward-models/{id}` | | `RewardModel` + `trace_ids` |
@@ -378,6 +445,11 @@ count exactly what trains.
 `TraceDetail`: TraceSummary fields + `metadata`, `steps: [Step]`, `spans: [Span]`,
 `annotations: [Annotation]`, `scores: [{reward_model_id, reward_model_name,
 score, created_at}]` (latest per model).
+Also `action_scores: [{reward_model_id, reward_model_name, step_id, score,
+credit, created_at}]` and `scoring_runs: [ScoringRun]` (latest per model).
+`ScoringRun`: `{id, trace_id, reward_model_id, status, error, created_at,
+started_at, finished_at}`. Action scores can be queried through SQL's
+`action_scores` table, which adds `trace_id` and zero-based `step_index`.
 
 `Step`: `{id, index, role, content, tool_name, tool_input, tool_call_id, metadata}`.
 

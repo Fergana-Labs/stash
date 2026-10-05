@@ -14,6 +14,7 @@ const COLUMNS: { key: TraceSortKey; label: string; className: string }[] = [
   { key: "title", label: "Trace", className: "" },
   { key: "steps", label: "Steps", className: "w-20 text-right" },
   { key: "comments", label: "Comments", className: "w-28 text-right" },
+  { key: "credit", label: "Mean action credit", className: "w-40 text-right" },
   { key: "reward", label: "Latest score", className: "w-36 text-right" },
   { key: "imported", label: "Imported", className: "w-28 text-right" },
 ];
@@ -185,6 +186,12 @@ function TraceRow({
       </td>
       <td className="px-3 py-2.5 text-right font-mono text-[12px] text-dim tabular-nums">{trace.step_count}</td>
       <td className="px-3 py-2.5 text-right font-mono text-[12px] text-dim tabular-nums">{trace.comment_count}</td>
+      <td className="px-3 py-2.5 text-right" title="Mean of the shared evaluator’s action rewards, not a whole-trace outcome score">
+        {trace.action_credit ? <div className="leading-4">
+          <span className="font-mono text-[12px] text-foreground tabular-nums">{formatScore(trace.action_credit.mean)}</span>
+          <div className="text-[11px] text-muted-foreground">{trace.action_credit.count} actions · Stash v{trace.action_credit.revision}</div>
+        </div> : <span className="text-muted-foreground">—</span>}
+      </td>
       <td className="px-3 py-2.5 text-right">
         {trace.latest_score ? (
           <div className="leading-4">

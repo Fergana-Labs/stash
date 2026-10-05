@@ -13,7 +13,7 @@ from uuid import UUID
 from ...database import get_pool
 
 DEFAULT_MAX_PAIRS = 4000
-# The worker holds out at least one pair for eval, so it needs one more to train on.
+# Minimum useful preference dataset; evaluation also needs independent source traces.
 MIN_PAIRS = 2
 
 
@@ -46,21 +46,34 @@ def render_step(step: dict) -> str:
     return f"{step['role']}: {step['content']}"
 
 
-def render_steps(steps: list[dict]) -> str:
+def render_steps(steps: list[dict], *, include_system: bool = False) -> str:
     # GEPA's skill is injected into the system message; a reward model that saw it could be gamed.
-    return "\n\n".join(render_step(step) for step in steps if step["role"] != "system")
+    return "\n\n".join(
+        render_step(step) for step in steps if include_system or step["role"] != "system"
+    )
 
 
-async def _steps_by_trace(owner_user_id: UUID) -> dict[UUID, list[dict]]:
+def render_action_context(steps: list[dict], context: dict | None = None) -> str:
+    """Shared evaluator input v2: supplied task/tool context and all preceding roles."""
+    prefix = (
+        "Task and tool context: " + json.dumps(context, sort_keys=True) + "\n\n" if context else ""
+    )
+    return prefix + render_steps(steps, include_system=True)
+
+
+async def _steps_by_trace(
+    owner_user_id: UUID, trace_id: UUID | None = None
+) -> dict[UUID, list[dict]]:
     rows = await get_pool().fetch(
         """
-        SELECT s.trace_id, s.idx, s.role, s.content, s.tool_name, s.tool_input
+        SELECT s.id, s.trace_id, s.idx, s.role, s.content, s.tool_name, s.tool_input
         FROM rm_trace_steps s
         JOIN rm_traces t ON t.id = s.trace_id
-        WHERE t.owner_user_id = $1
+        WHERE t.owner_user_id = $1 AND ($2::uuid IS NULL OR t.id = $2)
         ORDER BY s.trace_id, s.idx
         """,
         owner_user_id,
+        trace_id,
     )
     grouped: dict[UUID, list[dict]] = {}
     for row in rows:
@@ -90,8 +103,8 @@ async def build_pairs(
     )
     steps_by_trace = await _steps_by_trace(owner_user_id)
 
-    chosen: dict[str, list[str]] = {"trace": [], "step": []}
-    rejected: dict[str, list[str]] = {"trace": [], "step": []}
+    chosen: dict[str, list[dict]] = {"trace": [], "step": []}
+    rejected: dict[str, list[dict]] = {"trace": [], "step": []}
     for target in targets:
         if target["total"] == 0:
             continue
@@ -103,10 +116,24 @@ async def build_pairs(
             level = "step"
             text = render_steps([s for s in steps if s["idx"] <= target["step_idx"]])
         bucket = chosen if target["total"] > 0 else rejected
-        bucket[level].append(text)
+        target_step = next((s for s in steps if s["idx"] == target["step_idx"]), None)
+        bucket[level].append(
+            {
+                "text": text,
+                "trace_id": str(target["trace_id"]),
+                "tool": bool(target_step and target_step["tool_name"]),
+                "action": bool(target_step and target_step["role"] == "assistant"),
+            }
+        )
 
     pairs = [
-        {"chosen": good, "rejected": bad}
+        {
+            "chosen": good["text"],
+            "rejected": bad["text"],
+            "trace_ids": sorted({good["trace_id"], bad["trace_id"]}),
+            "granularity": "action" if good["action"] and bad["action"] else level,
+            "action_type": "tool_call" if good["tool"] and bad["tool"] else "response",
+        }
         for level in ("trace", "step")
         for good in chosen[level]
         for bad in rejected[level]
@@ -121,6 +148,36 @@ async def score_items(owner_user_id: UUID) -> list[dict]:
     return [
         {"trace_id": str(trace_id), "text": render_steps(steps)}
         for trace_id, steps in steps_by_trace.items()
+    ]
+
+
+async def action_score_items(
+    owner_user_id: UUID, trace_id: UUID | None = None, *, input_version: int = 1
+) -> list[dict]:
+    """Use exactly the same prefix + action representation as preference training."""
+    steps_by_trace = await _steps_by_trace(owner_user_id, trace_id)
+    contexts = {}
+    if input_version == 2:
+        contexts = {
+            r["id"]: (r["metadata"] or {}).get("evaluation_context")
+            for r in await get_pool().fetch(
+                "SELECT id, metadata FROM rm_traces WHERE owner_user_id = $1 AND ($2::uuid IS NULL OR id = $2)",
+                owner_user_id,
+                trace_id,
+            )
+        }
+    return [
+        {
+            "trace_id": str(tid),
+            "step_id": str(step["id"]),
+            "text": render_action_context(steps[: index + 1], contexts.get(tid))
+            if input_version == 2
+            else render_steps(steps[: index + 1]),
+        }
+        for tid, steps in steps_by_trace.items()
+        if trace_id is None or tid == trace_id
+        for index, step in enumerate(steps)
+        if step["role"] == "assistant" and (step["tool_name"] or step["content"].strip())
     ]
 
 

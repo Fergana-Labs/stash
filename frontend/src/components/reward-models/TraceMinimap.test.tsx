@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import type { RmStep } from "@/lib/types";
+import type { RmActionScore, RmStep } from "@/lib/types";
 import TraceMinimap from "./TraceMinimap";
 
 const steps: RmStep[] = [0, 1, 2].map((index) => ({
@@ -16,7 +16,7 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllGlobals());
 
-function renderMap(visibleSteps = steps, onJump = vi.fn()) {
+function renderMap(visibleSteps = steps, onJump = vi.fn(), actionScores?: Map<string, RmActionScore>) {
   const container = document.createElement("div");
   const content = document.createElement("div");
   container.append(content);
@@ -35,7 +35,7 @@ function renderMap(visibleSteps = steps, onJump = vi.fn()) {
     element.getClientRects = () => [rect] as unknown as DOMRectList;
     content.append(element);
   }
-  render(<TraceMinimap steps={steps} annotations={[]} scroller={{ current: container }} navigation={{ current: header }} onJump={onJump} />);
+  render(<TraceMinimap steps={steps} annotations={[]} actionScores={actionScores} scroller={{ current: container }} navigation={{ current: header }} onJump={onJump} />);
   return container;
 }
 
@@ -47,6 +47,16 @@ it("reaches the final step at the bottom even when earlier steps are still visib
   container.scrollTop = 400;
   fireEvent.scroll(container);
   await waitFor(() => expect(screen.getByRole("button", { name: "Step 1: Assistant" })).toHaveAttribute("aria-current", "step"));
+});
+
+it("shows the selected model's action credit and retains keyboard step navigation", () => {
+  const onJump = vi.fn();
+  renderMap(steps, onJump, new Map([["0", { step_id: "0", credit: -0.4 } as RmActionScore]]));
+  const scored = screen.getByRole("button", { name: "Step 1: Assistant, credit -0.40" });
+  expect(scored.lastElementChild?.getAttribute("style")).toContain("background-color");
+  expect(screen.getByRole("button", { name: "Step 2: Assistant" }).lastElementChild?.getAttribute("style")).toBeNull();
+  fireEvent.keyDown(scored, { key: "ArrowRight" });
+  expect(onJump).toHaveBeenCalledWith(1);
 });
 
 it("uses the final displayed step when filters hide the end of the trace", async () => {

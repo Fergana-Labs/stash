@@ -1,12 +1,18 @@
 import type { RmTraceSummary } from "@/lib/types";
 
-export type TraceSortKey = "title" | "steps" | "comments" | "reward" | "imported";
+export type TraceSortKey = "title" | "steps" | "comments" | "reward" | "credit" | "imported";
 export type TraceSortDirection = "ascending" | "descending";
 
 export function sortTraces(traces: RmTraceSummary[], key: TraceSortKey, direction: TraceSortDirection): RmTraceSummary[] {
   const sign = direction === "ascending" ? 1 : -1;
   return [...traces].sort((a, b) => {
     // Unscored traces belong after scored traces in either direction.
+    if (key === "credit") {
+      if (!a.action_credit && !b.action_credit) return a.id.localeCompare(b.id);
+      if (!a.action_credit) return 1;
+      if (!b.action_credit) return -1;
+      return sign * (a.action_credit.mean - b.action_credit.mean) || a.id.localeCompare(b.id);
+    }
     if (key === "reward") {
       if (a.latest_score === null && b.latest_score === null) return a.id.localeCompare(b.id);
       if (a.latest_score === null) return 1;

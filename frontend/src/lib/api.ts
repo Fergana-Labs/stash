@@ -30,6 +30,7 @@ import {
   RmRewardModelDetail,
   RmTraceDetail,
   RmTraceSummary,
+  RmScoringRun,
 } from "./types";
 import { getScopeUserId, SCOPE_HEADER } from "./scope-store";
 
@@ -2701,6 +2702,19 @@ export async function rmListAllTraces(): Promise<RmTraceSummary[]> {
 
 export async function rmGetTrace(traceId: string): Promise<RmTraceDetail> {
   return apiFetch(`${RM}/traces/${traceId}`);
+}
+
+export async function rmScoreTrace(traceId: string, modelId?: string): Promise<RmScoringRun> {
+  return apiFetch(`${RM}/traces/${traceId}/score`, {
+    method: "POST",
+    body: JSON.stringify({ reward_model_id: modelId }),
+  });
+}
+
+export async function rmSetTrainingContribution(traceId: string, allowed: boolean): Promise<void> {
+  await apiFetch(`${RM}/traces/${traceId}/training-contribution`, {
+    method: "PATCH", body: JSON.stringify({ allowed }),
+  });
 }
 
 export async function rmDeleteTrace(traceId: string): Promise<void> {

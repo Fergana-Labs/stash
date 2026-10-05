@@ -71,6 +71,9 @@ celery.conf.update(
         "backend.tasks.viz.precompute": {"queue": "heavy"},
         "backend.tasks.reward_models.train_reward_model": {"queue": "reward"},
         "backend.tasks.reward_models.run_gepa": {"queue": "reward"},
+        "backend.tasks.reward_models.score_trace": {"queue": "reward"},
+        "backend.tasks.reward_models.collect_examples": {"queue": "reward"},
+        "backend.tasks.reward_models.train_evaluator": {"queue": "reward"},
     },
     task_acks_late=True,
     task_reject_on_worker_lost=True,
@@ -89,6 +92,10 @@ celery.conf.update(
     timezone="UTC",
     enable_utc=True,
     beat_schedule={
+        "shared-evaluator-reconcile": {
+            "task": "backend.tasks.reward_models.reconcile",
+            "schedule": 30.0,
+        },
         "embedding-reconcile": {
             "task": "backend.tasks.embeddings.reconcile",
             "schedule": 60.0,

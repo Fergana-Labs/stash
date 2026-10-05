@@ -9,7 +9,6 @@ and result.json (see docs/reward-models/DESIGN.md, "Job directory contract").
 import argparse
 import json
 import random
-import statistics
 import time
 from pathlib import Path
 
@@ -18,12 +17,13 @@ import torch.nn.functional as F
 from transformers import AutoModelForSequenceClassification
 
 from rm_worker.artifacts import upload_model
+from rm_worker.evaluation import action_score_rows, reward_stats, split_pairs
+from rm_worker.release_gate import check_partition
 from rm_worker.scoring import load_tokenizer, pick_device, score_texts, tokenize
 
 MAX_LENGTH = 1024
 LEARNING_RATE = 1e-5
 BATCH_SIZE = 4
-EVAL_FRACTION = 0.1
 
 
 def log(message: str) -> None:
@@ -38,29 +38,9 @@ def write_jsonl(path: Path, rows: list[dict]) -> None:
     path.write_text("".join(json.dumps(row) + "\n" for row in rows))
 
 
-def split_pairs(pairs: list[dict]) -> tuple[list[dict], list[dict]]:
-    if len(pairs) < 2:
-        raise ValueError(
-            f"need at least 2 preference pairs to hold one out for evaluation, got {len(pairs)}"
-        )
-    shuffled = list(pairs)
-    random.Random(0).shuffle(shuffled)
-    eval_count = max(1, round(len(shuffled) * EVAL_FRACTION))
-    return shuffled[eval_count:], shuffled[:eval_count]
-
-
 def write_reward_stats(model_dir: Path, scores: list[float]) -> None:
     """Mean and population std of preference-response rewards, for GEPA calibration."""
-    if len(scores) < 2:
-        raise ValueError(
-            f"need at least 2 preference responses to calibrate the reward model, got {len(scores)}"
-        )
-    std = statistics.pstdev(scores)
-    if std == 0:
-        raise ValueError(
-            "every preference response got the same reward, so the reward model cannot be calibrated"
-        )
-    stats = {"mean": statistics.fmean(scores), "std": std}
+    stats = reward_stats(scores)
     (model_dir / "reward_stats.json").write_text(json.dumps(stats))
     log(f"reward stats: {json.dumps(stats)}")
 
@@ -73,7 +53,9 @@ def pair_rewards(model, tokenizer, batch: list[dict], device) -> tuple[torch.Ten
 
 
 @torch.no_grad()
-def pairwise_accuracy(model, tokenizer, pairs: list[dict], device) -> float:
+def pairwise_accuracy(model, tokenizer, pairs: list[dict], device) -> float | None:
+    if not pairs:
+        return None
     model.eval()
     correct = 0
     for start in range(0, len(pairs), BATCH_SIZE):
@@ -88,7 +70,10 @@ def train(job_dir: Path) -> dict:
     base_model = job["base_model"]
     epochs = job["epochs"]
 
-    train_pairs, eval_pairs = split_pairs(read_jsonl(job_dir / "pairs.jsonl"))
+    pairs = read_jsonl(job_dir / "pairs.jsonl")
+    train_pairs, eval_pairs = (
+        check_partition(pairs) if job.get("fixed_split") else split_pairs(pairs)
+    )
     score_items = read_jsonl(job_dir / "score_items.jsonl")
     device = pick_device()
     log(
@@ -126,7 +111,7 @@ def train(job_dir: Path) -> dict:
         log(f"epoch {epoch}/{epochs} mean loss {final_loss:.4f}")
 
     eval_accuracy = pairwise_accuracy(model, tokenizer, eval_pairs, device)
-    log(f"eval accuracy {eval_accuracy:.3f} on {len(eval_pairs)} held-out pairs")
+    log(f"eval accuracy {eval_accuracy} on {len(eval_pairs)} trace-disjoint held-out pairs")
 
     model.save_pretrained(job_dir / "model")
     tokenizer.save_pretrained(job_dir / "model")
@@ -142,11 +127,32 @@ def train(job_dir: Path) -> dict:
         ],
     )
     log(f"scored {len(scores)} traces")
-    calibration_texts = [
-        pair[key] for pair in train_pairs + eval_pairs for key in ("chosen", "rejected")
-    ]
+    calibration_texts = [pair[key] for pair in train_pairs for key in ("chosen", "rejected")]
     calibration_scores = score_texts(model, tokenizer, calibration_texts, device, BATCH_SIZE)
     write_reward_stats(job_dir / "model", calibration_scores)
+    action_train = [p for p in train_pairs if p.get("granularity") == "action"]
+    action_eval = [p for p in eval_pairs if p.get("granularity") == "action"]
+    tool_eval = [p for p in action_eval if p.get("action_type") == "tool_call"]
+    action_scores = []
+    if action_train:
+        reference = score_texts(
+            model,
+            tokenizer,
+            [p[key] for p in action_train for key in ("chosen", "rejected")],
+            device,
+            BATCH_SIZE,
+        )
+        stats = reward_stats(reference)
+        (job_dir / "model" / "action_reward_stats.json").write_text(json.dumps(stats))
+        action_items = read_jsonl(job_dir / "action_score_items.jsonl")
+        action_scores = action_score_rows(
+            action_items,
+            score_texts(
+                model, tokenizer, [item["text"] for item in action_items], device, BATCH_SIZE
+            ),
+            stats,
+        )
+    write_jsonl(job_dir / "action_scores.jsonl", action_scores)
     upload_model(job_dir / "model", job["artifact_key"])
 
     result = {
@@ -154,6 +160,15 @@ def train(job_dir: Path) -> dict:
             "train_pairs": len(train_pairs),
             "eval_pairs": len(eval_pairs),
             "eval_accuracy": eval_accuracy,
+            "eval_split": "curated_task_groups" if job.get("fixed_split") else "trace",
+            "input_version": job.get("input_version", 1),
+            "excluded_cross_trace_pairs": len(pairs) - len(train_pairs) - len(eval_pairs),
+            "action_scoring_version": 1 if action_train else None,
+            "action_train_pairs": len(action_train),
+            "action_eval_pairs": len(action_eval),
+            "action_eval_accuracy": pairwise_accuracy(model, tokenizer, action_eval, device),
+            "tool_eval_pairs": len(tool_eval),
+            "tool_eval_accuracy": pairwise_accuracy(model, tokenizer, tool_eval, device),
             # Mean Bradley–Terry loss over the last epoch's training batches.
             "final_loss": final_loss,
             "epochs": epochs,

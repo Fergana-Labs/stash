@@ -18,7 +18,7 @@ from rm_worker.artifacts import download_url
 
 from ..auth import get_current_user
 from ..database import get_pool
-from ..services.rm import annotations, datasets, jobs, otel_ingest, query, traces
+from ..services.rm import annotations, datasets, evaluator, jobs, otel_ingest, query, traces
 from ..services.rm.adapters import TraceFormatError, list_formats
 from ..tasks import reward_models as rm_tasks
 
@@ -83,6 +83,14 @@ class CreateGepaRunRequest(BaseModel):
     max_metric_calls: int = Field(default=DEFAULT_MAX_METRIC_CALLS, ge=1)
 
 
+class ScoreTraceRequest(BaseModel):
+    reward_model_id: UUID | None = None
+
+
+class ContributionRequest(BaseModel):
+    allowed: bool
+
+
 class QueryRequest(BaseModel):
     sql: str
 
@@ -129,6 +137,66 @@ async def get_trace(trace_id: UUID, current_user: dict = Depends(get_current_use
 async def delete_trace(trace_id: UUID, current_user: dict = Depends(get_current_user)) -> None:
     if not await traces.delete_trace(current_user["id"], trace_id):
         raise HTTPException(status_code=404, detail="Trace not found")
+
+
+@router.post("/traces/{trace_id}/score", status_code=202)
+async def score_trace(
+    trace_id: UUID, req: ScoreTraceRequest, current_user: dict = Depends(get_current_user)
+) -> dict:
+    pool = get_pool()
+    owner = current_user["id"]
+    if not await pool.fetchval(
+        "SELECT 1 FROM rm_traces WHERE id = $1 AND owner_user_id = $2", trace_id, owner
+    ):
+        raise HTTPException(status_code=404, detail="Trace not found")
+    model_id = req.reward_model_id
+    if model_id is None:
+        default = await evaluator.default_evaluator()
+        if default is None:
+            raise HTTPException(
+                status_code=422, detail="Stash's shared evaluator has not been released yet"
+            )
+        model_id = default["id"]
+    model = await evaluator.can_score(owner, model_id)
+    if model is None:
+        raise HTTPException(status_code=404, detail="Reward model not found")
+    if (
+        model["status"] != "succeeded"
+        or not model["artifact_key"]
+        or (model["metrics"] or {}).get("action_scoring_version") != 1
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail="Train a reward model with action comparisons to enable action scoring",
+        )
+    if not await pool.fetchval(
+        "SELECT 1 FROM rm_trace_steps WHERE trace_id = $1 AND role = 'assistant' AND (tool_name IS NOT NULL OR btrim(content) <> '')",
+        trace_id,
+    ):
+        raise HTTPException(status_code=422, detail="Trace has no assistant actions to score")
+    run, created = await evaluator.enqueue_score(owner, trace_id, model_id)
+    if created:
+        try:
+            rm_tasks.score_trace.delay(str(run["id"]))
+        except Exception:
+            # The periodic dispatcher retries the durable queued row.
+            pass
+    return run
+
+
+@router.get("/evaluator")
+async def get_evaluator() -> dict:
+    return {"default": await evaluator.default_evaluator()}
+
+
+@router.patch("/traces/{trace_id}/training-contribution")
+async def set_training_contribution(
+    trace_id: UUID, req: ContributionRequest, current_user: dict = Depends(get_current_user)
+) -> dict:
+    result = await evaluator.set_contribution(current_user["id"], trace_id, req.allowed)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Trace not found")
+    return result
 
 
 @router.post("/otel/v1/traces")
@@ -260,7 +328,7 @@ async def create_reward_model(
 @router.get("/reward-models")
 async def list_reward_models(current_user: dict = Depends(get_current_user)) -> list[dict]:
     rows = await get_pool().fetch(
-        "SELECT * FROM rm_reward_models WHERE owner_user_id = $1 ORDER BY created_at DESC",
+        "SELECT * FROM rm_reward_models WHERE owner_user_id = $1 AND scope = 'personal' ORDER BY created_at DESC",
         current_user["id"],
     )
     return [_reward_model(row) for row in rows]
