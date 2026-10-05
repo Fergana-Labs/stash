@@ -98,6 +98,193 @@ def evidence():
     return {"step:2": dict(kind="user", step_index=2, text=conversation()[2]["content"])}
 
 
+def tool_conversation():
+    return [
+        dict(
+            idx=0,
+            role="user",
+            content="Check inventory for part 800259. Use check_inventory or find_crossreferences.",
+            tool_name=None,
+            tool_input=None,
+        ),
+        dict(
+            idx=1,
+            role="assistant",
+            content="",
+            tool_name="check_inventory",
+            tool_input={"part_number": "800258", "options": {"sources": ["warehouse"]}},
+        ),
+        dict(idx=2, role="tool", content="FUTURE RESULT", tool_name="check_inventory"),
+        dict(idx=3, role="user", content="You looked up the wrong part.", tool_name=None),
+        dict(idx=4, role="assistant", content="", tool_name=None),
+    ]
+
+
+def tool_revision(tool_name="check_inventory"):
+    return json.dumps(
+        {
+            "tool_name": tool_name,
+            "tool_input": {"part_number": "800259", "options": {"sources": ["warehouse"]}},
+            "content": "Checking the requested part.",
+        }
+    )
+
+
+@pytest.mark.parametrize("source", ["ai_judgment", "user_feedback"])
+@pytest.mark.parametrize("content", ["", "Checking the available inventory. " * 30])
+async def test_tool_only_calls_are_assessed_and_reviewed_without_future_results(
+    monkeypatch, source, content
+):
+    steps = tool_conversation()
+    steps[1]["content"] = content
+    sources = {"step:3": dict(kind="user", step_index=3, text=steps[3]["content"])}
+    calls = []
+
+    async def complete(**kwargs):
+        payload = json.loads(kwargs["prompt"])
+        calls.append(payload)
+        if kwargs["output_model"] is feedback.ComparisonReview:
+            assert "FUTURE RESULT" not in kwargs["prompt"]
+            assert "You looked up" not in kwargs["prompt"]
+            assert 'check_inventory({"part_number": "800258"' in payload["original"]
+            assert 'check_inventory({"part_number": "800259"' in payload["revision"]
+            return feedback.ComparisonReview(
+                preferred="revision", grounded=True, reason="Use the requested part number."
+            )
+        assert payload["target_response"] == steps[1]
+        assert "assistant TOOL CALL" in kwargs["system"]
+        return kwargs["output_model"].model_validate(
+            {
+                "reason": "Looked up a different part.",
+                "feedback": {
+                    "source": source,
+                    "evidence_id": "step:3" if source == "user_feedback" else None,
+                    "evidence_quote": None,
+                    "label": "negative",
+                    "confidence": "high",
+                    "revision": tool_revision(),
+                },
+            }
+        )
+
+    monkeypatch.setattr(feedback.llm, "complete_structured", complete)
+    result = await feedback.extract_preferences(steps, sources)
+    assert len(calls) == 2  # One call decision and its review; no tool results or empty prose.
+    [finding] = result.feedback
+    assert finding.step_index == 1
+    assert finding.evidence_quote == (
+        feedback.action_text(steps[1])[:500] if source == "ai_judgment" else steps[3]["content"]
+    )
+    [pair] = feedback.render_preferences(uuid4(), steps, sources, result)
+    assert '"part_number": "800259"' in pair["chosen"]
+    assert '"part_number": "800258"' not in pair["chosen"]
+    assert "FUTURE RESULT" not in pair["chosen"] + pair["rejected"]
+    assert "You looked up" not in pair["chosen"] + pair["rejected"]
+
+
+@pytest.mark.parametrize("tool_name", ["check_inventory", "find_crossreferences"])
+@pytest.mark.parametrize("label", ["positive", "negative"])
+def test_tool_preferences_replace_name_and_arguments_and_preserve_preference_direction(
+    tool_name, label
+):
+    steps = tool_conversation()
+    original = feedback.action_text(steps[1])
+    result = extraction(
+        source="ai_judgment",
+        evidence_id="response:1",
+        evidence_quote=original,
+        revision=tool_revision(tool_name),
+        label=label,
+    )
+    [pair] = feedback.render_preferences(uuid4(), steps, {}, result)
+    original_key, revision_key = (
+        ("chosen", "rejected") if label == "positive" else ("rejected", "chosen")
+    )
+    assert pair[original_key].endswith(original)
+    assert pair[revision_key].endswith(
+        f'assistant → {tool_name}({{"part_number": "800259", "options": {{"sources": ["warehouse"]}}}})'
+    )
+    assert "800258" not in pair[revision_key]
+
+
+@pytest.mark.parametrize(
+    "revision",
+    [
+        "Call check_inventory with the right part number.",
+        '{"tool_name": "lookup"}',
+        '{"tool_name": "lookup", "tool_input": []}',
+        '{"tool_name": " ", "tool_input": {}}',
+        '{"tool_name": "lookup", "tool_input": {}, "result": "in stock"}',
+        # Reordered keys and changed prose still represent the same action.
+        '{"tool_name": "check_inventory", "tool_input": {"options": {"sources": ["warehouse"]}, "part_number": "800258"}, "content": "Better wording"}',
+    ],
+)
+async def test_invalid_tool_alternatives_keep_assessment_without_training(monkeypatch, revision):
+    async def complete(**kwargs):
+        assert kwargs["output_model"] is not feedback.ComparisonReview
+        return feedback.ResponseExtraction(
+            reason="Wrong part number.",
+            feedback=feedback.Judgment(
+                source="ai_judgment",
+                evidence_id=None,
+                evidence_quote=None,
+                label="negative",
+                confidence="high",
+                revision=revision,
+            ),
+        )
+
+    monkeypatch.setattr(feedback.llm, "complete_structured", complete)
+    steps = tool_conversation()
+    result = await feedback.extract_preferences(steps, {})
+    assert result.feedback[0].label == "negative"
+    assert result.feedback[0].revision is None
+    assert feedback.render_preferences(uuid4(), steps, {}, result) == []
+
+
+@pytest.mark.parametrize("source", ["ai_judgment", "user_feedback"])
+async def test_unsupported_tool_alternatives_fail_independent_review(monkeypatch, source):
+    steps = tool_conversation()
+    sources = {"step:3": dict(kind="user", step_index=3, text=steps[3]["content"])}
+
+    async def complete(**kwargs):
+        if kwargs["output_model"] is feedback.ComparisonReview:
+            return feedback.ComparisonReview(
+                preferred="revision", grounded=False, reason="Tool does not exist."
+            )
+        return feedback.ResponseExtraction(
+            reason="Wrong part number.",
+            feedback=feedback.Judgment(
+                source=source,
+                evidence_id="step:3" if source == "user_feedback" else None,
+                evidence_quote=None,
+                label="negative",
+                confidence="high",
+                revision=tool_revision("invented_tool"),
+            ),
+        )
+
+    monkeypatch.setattr(feedback.llm, "complete_structured", complete)
+    result = await feedback.extract_preferences(steps, sources)
+    assert result.feedback[0].revision is None
+    assert "Tool does not exist" in result.feedback[0].reason
+    assert feedback.render_preferences(uuid4(), steps, sources, result) == []
+
+
+def test_tool_results_cannot_become_assistant_preferences_or_human_evidence():
+    steps = tool_conversation()
+    assert feedback.eligible_evidence(steps[2], evidence()) == {}
+    result = extraction(
+        step_index=2,
+        source="ai_judgment",
+        evidence_id="response:2",
+        evidence_quote="FUTURE RESULT",
+        revision=tool_revision(),
+    )
+    with pytest.raises(ValueError, match="not a tool result"):
+        feedback.render_preferences(uuid4(), steps, {}, result)
+
+
 def test_eligible_evidence_cannot_reverse_time_or_reassign_step_comments():
     steps = conversation() + [
         dict(idx=3, role="assistant", content="What is the order number?", tool_name=None),
@@ -119,6 +306,7 @@ def test_eligible_evidence_cannot_reverse_time_or_reassign_step_comments():
         {"step_index": 1, "evidence_id": "comment:1"},
         {"step_index": 1, "evidence_id": "comment:trace"},
         {"step_index": 3, "evidence_id": "comment:trace"},
+        {"step_index": 4, "evidence_id": "comment:trace"},
     ]
 
 
@@ -461,6 +649,66 @@ async def test_no_annotations_or_user_reactions_can_complete_training(client, mo
     assert detail["status"] == "succeeded"
     assert all(
         f["source"] == "ai_judgment" and f["included_in_training"] for f in detail["feedback"]
+    )
+    for trace_id in selected:
+        assert (await _detail(client, auth, trace_id))["annotations"] == []
+
+
+@pytest.mark.usefixtures("artifact_dir")
+async def test_tool_call_learning_is_saved_with_its_step_and_tool_name(client, monkeypatch):
+    auth = await _register(client)
+    traces = [
+        {
+            "id": f"tool-{i}",
+            "steps": [
+                {key: value for key, value in step.items() if key != "idx"}
+                for step in tool_conversation()[:3]
+            ],
+        }
+        for i in range(2)
+    ]
+    selected = await _import(client, auth, *traces)
+
+    async def complete(**kwargs):
+        if kwargs["output_model"] is feedback.ComparisonReview:
+            return feedback.ComparisonReview(
+                preferred="revision", grounded=True, reason="Use the requested part."
+            )
+        return kwargs["output_model"].model_validate(
+            {
+                "reason": "Wrong part number.",
+                "feedback": dict(
+                    source="ai_judgment",
+                    evidence_id=None,
+                    evidence_quote=None,
+                    label="negative",
+                    confidence="high",
+                    revision=tool_revision(),
+                ),
+            }
+        )
+
+    monkeypatch.setattr(feedback.llm, "complete_structured", complete)
+    model_id = await _create_model(client, auth, monkeypatch, trace_ids=selected)
+
+    def outputs(directory):
+        pairs = [json.loads(line) for line in (directory / "pairs.jsonl").read_text().splitlines()]
+        assert len(pairs) == 2
+        assert all('check_inventory({"part_number": "800259"' in p["chosen"] for p in pairs)
+        assert all("FUTURE RESULT" not in p["chosen"] + p["rejected"] for p in pairs)
+        (directory / "result.json").write_text('{"metrics": {}}')
+        (directory / "scores.jsonl").write_text("")
+
+    _fake_worker(monkeypatch, outputs)
+    await tasks.train_reward_model_async(UUID(model_id))
+    detail = (await client.get(f"/api/v1/rm/reward-models/{model_id}", headers=auth)).json()
+    assert detail["status"] == "succeeded"
+    assert {item["trace_id"] for item in detail["feedback"]} == set(selected)
+    assert all(
+        item["tool_name"] == "check_inventory"
+        and item["step_index"] == 1
+        and item["included_in_training"]
+        for item in detail["feedback"]
     )
     for trace_id in selected:
         assert (await _detail(client, auth, trace_id))["annotations"] == []

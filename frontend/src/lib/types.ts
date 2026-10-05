@@ -502,6 +502,7 @@ export interface RmInferredFeedback {
   source: "user_feedback" | "ai_judgment";
   trace_id: string;
   step_index: number;
+  tool_name?: string | null;
   label: "positive" | "negative" | "unclear";
   confidence: "high" | "low";
   evidence_id: string;

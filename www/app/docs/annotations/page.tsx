@@ -131,17 +131,27 @@ export default function AnnotationsPage() {
         There are two sources: feedback-derived alternatives and explicit API ratings.
       </P>
 
-      <H3>Comments and user corrections</H3>
+      <H3>Automatic assessments, comments and user corrections</H3>
       <P>
-        The worker uses a model to identify explicit, actionable feedback about an assistant response
-        and generate an alternative to the same context. Each pair records which response the feedback
-        prefers, the source ID, a verbatim evidence quote, and a rationale. These are interpretations
-        of feedback, not direct human preference votes.
+        The worker assesses assistant responses and tool calls, including tool choice and arguments,
+        and identifies explicit, actionable feedback about them. Tool calls with no accompanying text
+        are included. Results from tools provide context; they are not assistant decisions or user feedback.
+      </P>
+      <P>
+        For tool calls, generated alternatives change the tool or its arguments and are independently
+        reviewed against the context available before the call. Later results are excluded from the
+        comparison. Choose <strong>View learning</strong> on a reward model to see these assessments
+        and their step numbers. These findings do not automatically create comments.
+      </P>
+      <P>
+        Each pair compares an original response or tool call with a generated alternative in the same
+        context. It records the preference, source ID, evidence quote, and rationale, distinguishing
+        AI judgments from interpretations of user feedback. These are not direct human preference votes.
       </P>
       <P>
         Silence, a new question, or a tool error is not a preference. Ambiguous feedback is skipped.
         The cited source must exist, a user correction must follow the response, and a step comment
-        must refer to that response. Tool calls and system steps cannot be revision targets.
+        must refer to that response or call. Tool results and system steps cannot be revision targets.
         Malformed extraction fails the job. Flagged comments are excluded.
       </P>
       <P>

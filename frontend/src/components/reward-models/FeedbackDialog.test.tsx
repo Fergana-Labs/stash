@@ -41,3 +41,16 @@ it("identifies autonomous assessments as AI judgments", async () => {
   expect(await screen.findByText("AI judgment · negative")).toBeVisible();
   expect(screen.getByText(/Included in training data/)).toBeVisible();
 });
+
+it("identifies tool-call learning and shows the actual call as evidence", async () => {
+  const call = 'assistant → check_inventory({"part_number": "800258"})';
+  vi.mocked(rmGetRewardModel).mockResolvedValue({
+    feedback: [{ source: "ai_judgment", trace_id: "trace", step_index: 1, tool_name: "check_inventory",
+      label: "negative", confidence: "high", evidence_id: "response:1", evidence_quote: call,
+      reason: "The user requested part 800259.", classifier_model: "classifier", included_in_training: true }],
+  } as RmRewardModelDetail);
+  render(<FeedbackDialog modelId="model" />);
+  fireEvent.click(screen.getByRole("button", { name: "View learning" }));
+  expect(await screen.findByText(call)).toBeVisible();
+  expect(screen.getByRole("link", { name: "Tool call at step 2" })).toHaveAttribute("href", "/reward-models/traces/trace");
+});

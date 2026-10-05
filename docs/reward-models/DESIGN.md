@@ -139,7 +139,7 @@ Annotation export (`GET /api/v1/rm/export/annotations`), one per line:
 
 ## Reward model training
 
-No manual annotations or user reactions are required. Each assistant response is
+No manual annotations or user reactions are required. Each assistant response or tool call is
 assessed for task completion, instruction adherence, evidence grounding and
 appropriate uncertainty. A finding's `source` distinguishes `user_feedback` from
 `ai_judgment`. AI judgments cite the target response, never fabricate user reactions,
@@ -168,7 +168,7 @@ Training uses only the traces selected for the model. Explicit ratings supplied
 through the API produce chosen/rejected pairs. A structured LLM classifier extracts
 positive, negative, or unclear feedback from reviewer comments and later user
 reactions, including implicit disappointment and approval. Labels attach to specific
-assistant responses, so a failed response and a successful repair remain distinct.
+assistant responses or tool calls, so a failed action and a successful repair remain distinct.
 The classifier distinguishes complaints about the task from reactions to the agent;
 silence, new tasks, tool errors, and the assistant's own claims are not feedback.
 For each assessable assistant response it generates an alternative to the same
@@ -187,7 +187,7 @@ requests and earlier feedback cannot be cited as evaluations of a later response
 Calls use schema-constrained output and run with bounded concurrency
 (three per trace).
 Evidence is also validated against the original source: the target must be an
-assistant response, corrections must follow it, and step comments must belong
+assistant response or tool call, corrections must follow it, and step comments must belong
 to it. Malformed extraction fails the job. The exact pairs and evidence are
 stored in `rm_reward_models.training_pairs`. Findings, including abstentions, quotes,
 classifier model, and inclusion in training data, are stored separately in
@@ -198,6 +198,18 @@ was not recorded; an empty list means no learning opportunity was found. Extract
 stops once enough pairs reach `max_pairs`. Explicit human ratings take precedence
 over AI judgments at the same scope. Generated alternatives are model-written,
 not direct human preference votes.
+
+Assistant tool calls are assessed even when their text content is empty. The
+evaluator considers tool choice, arguments, timing and necessity using the context
+available before the call. Tool results remain observations, not evaluation targets
+or human feedback. AI evidence renders the actual tool name and arguments. Tool-call
+revisions are JSON-encoded `{tool_name, tool_input, content}` replacements; they must
+change the tool or its arguments. Invalid or duplicate alternatives retain their
+assessment but produce no training pair. All tool-call comparisons, including ones
+derived from user feedback, receive an independent grounding and preference review
+without later results. A pair ends at the original or revised call and never reuses
+the original call's result after changing its arguments. Learning reports store
+`tool_name` alongside the step index and identify these findings as tool calls.
 
 Training is queued immediately; extraction runs in the dedicated `reward`
 worker. Fewer than two pairs fails with an actionable error before downloading
