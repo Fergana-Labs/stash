@@ -367,6 +367,8 @@ def render_preferences(
                 "chosen": chosen,
                 "rejected": rejected,
                 "trace_id": str(trace_id),
+                "granularity": "action",
+                "action_type": "tool_call" if step.get("tool_name") else "response",
                 "source": "feedback_revision",
                 "evidence": preference.model_dump(),
             }

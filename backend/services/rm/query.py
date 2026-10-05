@@ -61,6 +61,16 @@ SCHEMA = {
         ("score", "DOUBLE"),
         ("created_at", "TIMESTAMPTZ"),
     ],
+    "action_scores": [
+        ("reward_model_id", "VARCHAR"),
+        ("reward_model_name", "VARCHAR"),
+        ("trace_id", "VARCHAR"),
+        ("step_id", "VARCHAR"),
+        ("step_index", "INTEGER"),
+        ("score", "DOUBLE"),
+        ("credit", "DOUBLE"),
+        ("created_at", "TIMESTAMPTZ"),
+    ],
 }
 
 # Postgres side: one SELECT per DuckDB table, columns in SCHEMA order.
@@ -85,6 +95,13 @@ SOURCE_SQL = {
         SELECT sc.reward_model_id::text, m.name, sc.trace_id::text, sc.score, sc.created_at
         FROM rm_trace_scores sc JOIN rm_reward_models m ON m.id = sc.reward_model_id
         WHERE m.owner_user_id = $1
+    """,
+    "action_scores": """
+        SELECT sc.reward_model_id::text, m.name, s.trace_id::text, sc.step_id::text,
+               s.idx, sc.score, sc.credit, sc.created_at
+        FROM rm_action_scores sc JOIN rm_reward_models m ON m.id = sc.reward_model_id
+        JOIN rm_trace_steps s ON s.id = sc.step_id JOIN rm_traces t ON t.id = s.trace_id
+        WHERE m.owner_user_id = $1 AND t.owner_user_id = $1 AND m.status = 'succeeded'
     """,
 }
 

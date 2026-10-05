@@ -83,6 +83,10 @@ class CreateGepaRunRequest(BaseModel):
     max_metric_calls: int = Field(default=DEFAULT_MAX_METRIC_CALLS, ge=1)
 
 
+class ScoreTraceRequest(BaseModel):
+    reward_model_id: UUID
+
+
 class QueryRequest(BaseModel):
     sql: str
 
@@ -129,6 +133,67 @@ async def get_trace(trace_id: UUID, current_user: dict = Depends(get_current_use
 async def delete_trace(trace_id: UUID, current_user: dict = Depends(get_current_user)) -> None:
     if not await traces.delete_trace(current_user["id"], trace_id):
         raise HTTPException(status_code=404, detail="Trace not found")
+
+
+@router.post("/traces/{trace_id}/score", status_code=202)
+async def score_trace(
+    trace_id: UUID, req: ScoreTraceRequest, current_user: dict = Depends(get_current_user)
+) -> dict:
+    pool = get_pool()
+    owner = current_user["id"]
+    if not await pool.fetchval(
+        "SELECT 1 FROM rm_traces WHERE id = $1 AND owner_user_id = $2", trace_id, owner
+    ):
+        raise HTTPException(status_code=404, detail="Trace not found")
+    model = await pool.fetchrow(
+        "SELECT * FROM rm_reward_models WHERE id = $1 AND owner_user_id = $2",
+        req.reward_model_id,
+        owner,
+    )
+    if model is None:
+        raise HTTPException(status_code=404, detail="Reward model not found")
+    if (
+        model["status"] != "succeeded"
+        or not model["artifact_key"]
+        or (model["metrics"] or {}).get("action_scoring_version") != 1
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail="Train a reward model with action comparisons to enable action scoring",
+        )
+    if not await pool.fetchval(
+        "SELECT 1 FROM rm_trace_steps WHERE trace_id = $1 AND role = 'assistant' AND (tool_name IS NOT NULL OR btrim(content) <> '')",
+        trace_id,
+    ):
+        raise HTTPException(status_code=422, detail="Trace has no assistant actions to score")
+    run = await pool.fetchrow(
+        """
+        INSERT INTO rm_scoring_runs (owner_user_id, trace_id, reward_model_id) VALUES ($1, $2, $3)
+        ON CONFLICT (trace_id, reward_model_id) WHERE status IN ('queued', 'running') DO NOTHING RETURNING *
+        """,
+        owner,
+        trace_id,
+        req.reward_model_id,
+    )
+    if run is None:
+        # The conflicting job may finish between statements; return that completed job too.
+        run = await pool.fetchrow(
+            "SELECT * FROM rm_scoring_runs WHERE trace_id = $1 AND reward_model_id = $2 ORDER BY created_at DESC, id DESC LIMIT 1",
+            trace_id,
+            req.reward_model_id,
+        )
+        if run is None:
+            raise HTTPException(status_code=404, detail="Trace or reward model was deleted")
+    else:
+        try:
+            rm_tasks.score_trace.delay(str(run["id"]))
+        except Exception:
+            await pool.execute(
+                "UPDATE rm_scoring_runs SET status = 'failed', error = 'Could not queue scoring; try again', finished_at = now() WHERE id = $1",
+                run["id"],
+            )
+            raise
+    return dict(run)
 
 
 @router.post("/otel/v1/traces")

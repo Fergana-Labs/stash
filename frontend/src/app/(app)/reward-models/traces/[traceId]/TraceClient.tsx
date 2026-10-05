@@ -7,6 +7,7 @@ import { useBreadcrumbs } from "@/components/BreadcrumbContext";
 import { useConfirm } from "@/components/ConfirmDialog";
 import AnnotationComposer, { type ComposerTarget } from "@/components/reward-models/AnnotationComposer";
 import AnnotationSidebar from "@/components/reward-models/AnnotationSidebar";
+import ActionScoringPanel from "@/components/reward-models/ActionScoringPanel";
 import { TraceSkeleton } from "@/components/reward-models/RmSkeletons";
 import TraceFlamegraph from "@/components/reward-models/TraceFlamegraph";
 import TraceMinimap from "@/components/reward-models/TraceMinimap";
@@ -57,6 +58,7 @@ export default function TraceClient({ traceId }: { traceId: string }) {
   const { user } = useAuth();
   const confirm = useConfirm();
   const [trace, setTrace] = useState<RmTraceDetail | null>(null);
+  const [scoreModelId, setScoreModelId] = useState<string | null>(null);
   const [commentsOpen, setCommentsOpen] = useState(true);
   const [composer, setComposer] = useState<ComposerTarget | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -99,6 +101,7 @@ export default function TraceClient({ traceId }: { traceId: string }) {
   const viewerId = user.id;
   const ordered = sortAnnotations(trace.annotations.filter((a) => a.comment !== null), trace.steps);
   const rows = buildRows(trace.steps);
+  const actionScores = new Map((trace.action_scores ?? []).filter((s) => s.reward_model_id === scoreModelId).map((s) => [s.step_id, s]));
 
   function annotationsOn(step: RmStep): RmAnnotation[] {
     return trace!.annotations.filter((a) => a.step_id === step.id);
@@ -254,6 +257,7 @@ export default function TraceClient({ traceId }: { traceId: string }) {
   }
 
   const ann: StepAnnotations = {
+    actionScore: (step) => actionScores.get(step.id),
     highlights: highlightsFor,
     commentCount: (step) => annotationsOn(step).filter((a) => a.comment !== null).length,
     hasQuotes: (step) => annotationsOn(step).some((a) => a.quote !== null) || composer?.stepId === step.id,
@@ -297,8 +301,10 @@ export default function TraceClient({ traceId }: { traceId: string }) {
             </div>
           </header>
 
+          <ActionScoringPanel trace={trace} selectedModelId={scoreModelId} onModelChange={setScoreModelId} onReload={load} />
+
           <div ref={navigation} className="sticky top-0 z-20 bg-background pb-2">
-            <TraceMinimap steps={trace.steps} annotations={trace.annotations} scroller={scroller} navigation={navigation} onJump={(index) => revealStep(trace.steps[index].id)} />
+            <TraceMinimap steps={trace.steps} annotations={trace.annotations} actionScores={actionScores} scroller={scroller} navigation={navigation} onJump={(index) => revealStep(trace.steps[index].id)} />
             <TraceFlamegraph spans={trace.spans} onJump={(index) => revealStep(trace.steps[index].id)} />
 
             <div className="-mx-2 mt-1 flex items-center gap-2 border-b border-border-subtle bg-background px-2 py-1.5">

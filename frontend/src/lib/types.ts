@@ -463,12 +463,39 @@ export interface RmTraceDetail extends RmTraceSummary {
   steps: RmStep[];
   annotations: RmAnnotation[];
   scores: RmScore[];
+  action_scores?: RmActionScore[];
+  scoring_runs?: RmScoringRun[];
+}
+
+export interface RmActionScore {
+  reward_model_id: string;
+  reward_model_name: string;
+  step_id: string;
+  score: number;
+  /** Training-reference relative reward in [-1, 1], not a probability. */
+  credit: number;
+  created_at: string;
+}
+
+export interface RmScoringRun {
+  id: string;
+  trace_id: string;
+  reward_model_id: string;
+  status: RmJobStatus;
+  error: string | null;
 }
 
 export interface RmTrainMetrics {
   train_pairs: number;
   eval_pairs: number;
-  eval_accuracy: number;
+  eval_accuracy: number | null;
+  eval_split?: "trace";
+  action_scoring_version?: number | null;
+  action_train_pairs?: number;
+  action_eval_pairs?: number;
+  action_eval_accuracy?: number | null;
+  tool_eval_pairs?: number;
+  tool_eval_accuracy?: number | null;
   final_loss: number;
   epochs: number;
   device: string;

@@ -4,7 +4,8 @@ import { useEffect, useRef, useState, type PointerEvent, type RefObject } from "
 import { cn } from "@/lib/utils";
 import { isThinking, looksLikeError } from "./trace-rows";
 import { visibleStepElement } from "./trace-scroll";
-import type { RmAnnotation, RmStep } from "@/lib/types";
+import type { RmActionScore, RmAnnotation, RmStep } from "@/lib/types";
+import { creditColor, formatCredit } from "./action-credit";
 
 // Design from Priyadarshan's trace viewer (projects/trace_viewer).
 const KINDS = {
@@ -22,9 +23,10 @@ function kindOf(step: RmStep): keyof typeof KINDS {
   return step.tool_name === null ? "assistant" : "tool";
 }
 
-export default function TraceMinimap({ steps, annotations, scroller, navigation, onJump }: {
+export default function TraceMinimap({ steps, annotations, actionScores, scroller, navigation, onJump }: {
   steps: RmStep[];
   annotations: RmAnnotation[];
+  actionScores?: Map<string, RmActionScore>;
   scroller: RefObject<HTMLDivElement | null>;
   navigation: RefObject<HTMLDivElement | null>;
   onJump: (index: number) => void;
@@ -87,6 +89,9 @@ export default function TraceMinimap({ steps, annotations, scroller, navigation,
         <span className="inline-flex items-center gap-1"><span className="size-1.5 rounded-full bg-amber-400" />Comment</span>
         <span className="ml-auto shrink-0 tabular-nums">Step {activeIndex + 1} of {steps.length}</span>
       </div>
+      {!!actionScores?.size && <div className="mb-1 flex items-center gap-2 text-[10px] text-muted-foreground">
+        Action credit: lower <span className="h-1.5 w-16" style={{ background: `linear-gradient(to right, ${creditColor(-1)}, ${creditColor(0)}, ${creditColor(1)})` }} /> higher. Unscored steps keep their role color.
+      </div>}
       <div
         className="relative flex h-[52px] touch-none items-end gap-px"
         role="group"
@@ -113,7 +118,8 @@ export default function TraceMinimap({ steps, annotations, scroller, navigation,
       >
         {steps.map((step, index) => {
           const kind = KINDS[kindOf(step)];
-          const label = `Step ${index + 1}: ${kind.label}${step.tool_name === null ? "" : `, ${step.tool_name}`}`;
+          const score = actionScores?.get(step.id);
+          const label = `Step ${index + 1}: ${kind.label}${step.tool_name === null ? "" : `, ${step.tool_name}`}${score ? `, credit ${formatCredit(score.credit)}` : ""}`;
           return (
             <button
               key={step.id}
@@ -139,7 +145,7 @@ export default function TraceMinimap({ steps, annotations, scroller, navigation,
               className="group relative flex h-full min-w-0 flex-1 cursor-pointer items-end focus-visible:outline-2 focus-visible:outline-brand-500"
             >
               {commented.has(step.id) && <span className="absolute top-0 left-1/2 size-1.5 -translate-x-1/2 rounded-full bg-amber-400" />}
-              <span className={cn("w-full transition-opacity group-hover:opacity-60", kind.height, kind.color)} />
+              <span style={score ? { backgroundColor: creditColor(score.credit) } : undefined} className={cn("w-full transition-opacity group-hover:opacity-60", kind.height, kind.color)} />
             </button>
           );
         })}

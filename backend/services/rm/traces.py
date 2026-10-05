@@ -175,6 +175,27 @@ async def get_trace(owner_user_id: UUID, trace_id: UUID) -> dict | None:
         """,
         trace_id,
     )
+    action_scores = await pool.fetch(
+        """
+        SELECT sc.reward_model_id, m.name AS reward_model_name, sc.step_id, sc.score, sc.credit, sc.created_at
+        FROM rm_action_scores sc JOIN rm_trace_steps s ON s.id = sc.step_id
+        JOIN rm_reward_models m ON m.id = sc.reward_model_id
+        WHERE s.trace_id = $1 AND m.owner_user_id = $2 AND m.status = 'succeeded'
+        ORDER BY m.finished_at DESC, s.idx
+        """,
+        trace_id,
+        owner_user_id,
+    )
+    scoring_runs = await pool.fetch(
+        """
+        SELECT DISTINCT ON (reward_model_id) id, trace_id, reward_model_id, status, error,
+               created_at, started_at, finished_at
+        FROM rm_scoring_runs WHERE trace_id = $1 AND owner_user_id = $2
+        ORDER BY reward_model_id, created_at DESC, id DESC
+        """,
+        trace_id,
+        owner_user_id,
+    )
     return {
         **_summary(row),
         "metadata": row["metadata"],
@@ -182,6 +203,8 @@ async def get_trace(owner_user_id: UUID, trace_id: UUID) -> dict | None:
         "steps": [_step(step) for step in steps],
         "annotations": await annotations.list_for_trace(trace_id),
         "scores": [dict(score) for score in scores],
+        "action_scores": [dict(score) for score in action_scores],
+        "scoring_runs": [dict(run) for run in scoring_runs],
     }
 
 

@@ -15,8 +15,9 @@ Postgres before training.
 
 | command | reads | returns to the job directory |
 |---|---|---|
-| `python -m rm_worker.train --job-dir DIR` | `job.json`, `pairs.jsonl`, `score_items.jsonl` | `model/`, `scores.jsonl`, `result.json` |
-| `python -m rm_worker.modal_runner --job-dir DIR` | training or GEPA inputs | `result.json`, plus `scores.jsonl` for training |
+| `python -m rm_worker.train --job-dir DIR` | `job.json`, `pairs.jsonl`, `score_items.jsonl`, `action_score_items.jsonl` | `model/`, `scores.jsonl`, `action_scores.jsonl`, `result.json` |
+| `python -m rm_worker.score_run --job-dir DIR` | `job.json`, `action_score_items.jsonl` | `action_scores.jsonl`, `result.json` |
+| `python -m rm_worker.modal_runner --job-dir DIR` | training, scoring or GEPA inputs | the corresponding worker outputs above |
 | `python -m rm_worker.gepa_run --job-dir DIR` | `job.json`, `gepa_examples.jsonl` | `result.json` |
 
 Local training uses MPS, CUDA, or CPU according to the machine. Modal runs
@@ -29,7 +30,7 @@ successful. `RM_ARTIFACT_DIR` is temporary job storage, not durable model storag
 GEPA downloads the model identified by `reward_model_key` into its own temporary
 workspace. The API returns a five-minute signed URL for weights downloads.
 Archives contain a `reward-model/` directory with weights, tokenizer, and
-`reward_stats.json`.
+`reward_stats.json`, plus `action_reward_stats.json` when trained on action pairs.
 
 See the [job directory contract](../docs/reward-models/DESIGN.md#job-directory-contract-backend--worker)
 for input/output fields. A non-zero exit fails the job; `worker.log` holds the
@@ -37,10 +38,24 @@ subprocess output. Model settings are 1024 tokens (left truncation), learning
 rate 1e-5, and batch size 4.
 
 GEPA uses `sigmoid((reward - mean) / std)`. The saved mean and standard deviation
-come from rewards for both chosen and rejected texts in the training and held-out
-pairs. The reflection model generates the skill's name and description, then
+come from rewards for both chosen and rejected texts in the training pairs only.
+Action credit uses `tanh((reward - mean) / (2 * std))` with a separate reference
+from training action pairs. This is a relative display scale, not a correctness
+probability or causal contribution. Saved-checkpoint action inference never
+calls the labeling LLM. Evaluation holds out complete source traces, excludes
+cross-partition pairs and reports null accuracy when independent evaluation is
+unavailable, plus separate action and tool-call accuracy and counts.
+The reflection model generates the skill's name and description, then
 GEPA evolves its body. Each candidate is included in the task model's system
 message; the reward model scores the conversation without that system message.
+
+In an environment with the worker dependencies and pytest, the tiny CPU smoke
+test exercises training, checkpoint saving and reloaded action inference without
+network access, production weights or storage:
+
+```bash
+HF_HUB_OFFLINE=1 python -m pytest rm_worker/tests/test_action_training.py --no-cov -q
+```
 
 ## Local setup
 

@@ -71,6 +71,7 @@ celery.conf.update(
         "backend.tasks.viz.precompute": {"queue": "heavy"},
         "backend.tasks.reward_models.train_reward_model": {"queue": "reward"},
         "backend.tasks.reward_models.run_gepa": {"queue": "reward"},
+        "backend.tasks.reward_models.score_trace": {"queue": "reward"},
     },
     task_acks_late=True,
     task_reject_on_worker_lost=True,

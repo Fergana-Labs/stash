@@ -31,7 +31,7 @@ export default function TrainingPage() {
         across models.
       </P>
       <P>
-        Pairs come from actionable comments, explicit later user corrections, and API ratings on the selected traces. The reward model never sees system steps;{" "}
+        Pairs come from automatic assessment of assistant actions (including tool calls), actionable comments, later user corrections, and API ratings on the selected traces. Manual comments are optional. The reward model never sees system steps;{" "}
         <a href="/docs/annotations#from-annotations-to-training-pairs" className="text-brand hover:underline">Annotations</a>{" "}
         describes exactly how pairs are built and rendered.
       </P>
@@ -86,7 +86,7 @@ export default function TrainingPage() {
           ["max length", "1024 tokens. Longer texts lose their beginning, so the end of the conversation, the part being judged, is kept."],
           ["learning rate", "1e-5, AdamW"],
           ["batch size", "4 pairs"],
-          ["held-out split", "10% of pairs, at least 1. Training needs at least 2 pairs."],
+          ["held-out split", "10% of source traces, at least 1 when possible. Cross-partition pairs are excluded. If no independent split is usable, evaluation is unavailable. Training needs at least 2 pairs."],
           ["shuffling", "Seed 0, for both the split and the batch order."],
         ]}
       />
@@ -95,8 +95,7 @@ export default function TrainingPage() {
       <H2>Choosing a base model</H2>
       <P>
         The base model must support <Code>AutoModelForSequenceClassification</Code> and fit the deployment&apos;s memory and time limits.
-        Start with the default, <Code>Qwen/Qwen3-0.6B</Code>: it is small enough to train on a laptop,
-        so you can check your labels produce a useful model before paying for a bigger one. Move to a
+        Start with the default, <Code>Qwen/Qwen3-0.6B</Code>, on a worker with sufficient memory, such as the hosted Modal GPU. Move to a
         larger base model when held-out accuracy stops improving as you add labels.
       </P>
 
@@ -120,8 +119,10 @@ export default function TrainingPage() {
 
       <H2>Metrics</H2>
       <P>
-        The held-out pairs are not used to update the model. The split is by pair, so related examples
-        may appear in both sets; accuracy alone does not establish performance on independent traces.
+        The split is by source trace: neighboring actions stay together, and pairs spanning training
+        and evaluation traces are excluded. Held-out pairs are used neither to update the model nor
+        to set its display scale. Accuracy measures agreement with the preference supervision;
+        it does not establish task success. When no usable independent split exists, accuracy is null.
       </P>
       <Table
         head={["metrics field", "meaning"]}
@@ -129,6 +130,11 @@ export default function TrainingPage() {
           ["train_pairs", "Pairs the model trained on."],
           ["eval_pairs", "Held-out pairs."],
           ["eval_accuracy", "Fraction of held-out pairs where r(chosen) > r(rejected). 0.5 is chance."],
+          ["action_scoring_version", "1 when trained on action comparisons; null otherwise. Older models lack this field."],
+          ["action_train_pairs", "Action comparisons used to train the scorer."],
+          ["action_eval_pairs / action_eval_accuracy", "Number of held-out action comparisons and their pairwise accuracy; accuracy is null if none."],
+          ["tool_eval_pairs / tool_eval_accuracy", "Number of held-out tool-call comparisons and their pairwise accuracy; accuracy is null if none."],
+          ["excluded_cross_trace_pairs", "Comparisons excluded because their source traces span both partitions."],
           ["final_loss", "Mean Bradley–Terry loss over the last epoch's batches."],
           ["epochs", "Epochs run."],
           ["device", "mps, cuda, or cpu."],
@@ -141,6 +147,30 @@ export default function TrainingPage() {
       </Callout>
 
       <H2>Scores</H2>
+      <H3>Action credit</H3>
+      <P>
+        A model trained on action comparisons automatically scores each assistant response and tool
+        call in your existing traces. Open a trace and choose a model under <strong>Action credit</strong>
+        {" "}to see badges and a heatmap, including collapsed tool calls. User messages, system messages,
+        and tool results are observations and have no action score. Each action is scored using its
+        preceding context, without later tool results or replies.
+      </P>
+      <P>
+        For a newly imported trace, choose <strong>Score actions</strong>. This runs the saved trained
+        model without labeling calls or retraining. Status and failures appear beside the model
+        selector. Older models need new training with action comparisons to support this feature.
+        Reimporting a trace clears its old action scores.
+      </P>
+      <CodeBlock lang="text">{`credit = tanh((raw_reward − action_training_mean) / (2 × action_training_std))`}</CodeBlock>
+      <P>
+        Credit ranges from −1 to +1. Higher means the model prefers the action relative to its
+        training reference; zero is the reference midpoint. It is not a correctness probability or
+        an exact causal contribution, and action credits do not add up to the whole-trace score.
+        The learned scores are separate from human comments and AI-generated training judgments.
+        The API returns them in <Code>action_scores</Code>, and the SQL endpoint exposes an
+        {" "}<Code>action_scores</Code> table.
+      </P>
+      <H3>Whole-trace reward</H3>
       <P>
         After training, the worker scores every trace you own, including ones nobody annotated. A score
         is the model&apos;s raw reward: any real number, higher is better. Scores appear on each trace in
@@ -151,7 +181,7 @@ export default function TrainingPage() {
       </P>
       <P>
         GEPA uses the mean and standard deviation of rewards for both chosen and rejected texts in
-        the training and held-out pairs. Its score falls between 0 and 1, with 0.5 at that calibration
+        the training pairs only. Its score falls between 0 and 1, with 0.5 at that calibration
         mean, not a probability of correctness; see{" "}
         <a href="/docs/gepa#the-calibrated-score" className="text-brand hover:underline">the calibrated score</a>.
       </P>
@@ -173,7 +203,8 @@ tar xzf reward-model.tar.gz`}</CodeBlock>
   tokenizer.json
   tokenizer_config.json
   chat_template.jinja
-  reward_stats.json`}</CodeBlock>
+  reward_stats.json
+  action_reward_stats.json  # when trained on action comparisons`}</CodeBlock>
       <P>
         With worker dependencies installed, run this from the repository root after extracting the
         archive. The loader applies the same truncation as training:

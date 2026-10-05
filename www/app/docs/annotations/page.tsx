@@ -126,6 +126,11 @@ export default function AnnotationsPage() {
 
       <H2>From annotations to training pairs</H2>
       <P>
+        Manual comments are optional. Automatic judgments provide training supervision; the trained
+        reward model then supplies per-action credit in the trace viewer. Those learned scores stay
+        separate from annotations. See <a href="/docs/training#action-credit" className="text-brand hover:underline">Action credit</a> for scoring new traces and interpreting the heatmap.
+      </P>
+      <P>
         The reward model trains on preference pairs: one text that should score higher (chosen) and
         one that should score lower (rejected). Only the model&apos;s selected traces supply pairs.
         There are two sources: feedback-derived alternatives and explicit API ratings.

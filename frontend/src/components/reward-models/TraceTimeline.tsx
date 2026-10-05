@@ -3,7 +3,8 @@
 
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
-import type { RmStep } from "@/lib/types";
+import type { RmActionScore, RmStep } from "@/lib/types";
+import { creditColor, formatCredit } from "./action-credit";
 import AnchoredText from "./AnchoredText";
 import { firstLine, isThinking, looksLikeError, toolLabel, toolSummary, type TraceRow } from "./trace-rows";
 import type { Highlight } from "./source-anchors";
@@ -11,6 +12,7 @@ import styles from "./TraceMarkdown.module.css";
 
 /** Everything a row needs to show and change one step's annotations. Built once per render by the trace page. */
 export interface StepAnnotations {
+  actionScore?: (step: RmStep) => RmActionScore | undefined;
   highlights: (step: RmStep) => Highlight[];
   commentCount: (step: RmStep) => number;
   hasQuotes: (step: RmStep) => boolean;
@@ -20,12 +22,14 @@ export interface StepAnnotations {
 }
 
 /** The id is the scroll target for the minimap and comments. */
-function RowFrame({ step, flashing, children, className }: { step: RmStep; flashing: boolean; children: ReactNode; className?: string }) {
+function RowFrame({ step, flashing, children, className, credit }: { step: RmStep; flashing: boolean; children: ReactNode; className?: string; credit?: number }) {
   return (
     <div
       id={`step-${step.id}`}
+      style={credit === undefined ? undefined : { backgroundColor: creditColor(credit, 0.07), boxShadow: `inset 3px 0 ${creditColor(credit)}` }}
       className={cn(
         "relative scroll-mt-44 transition-colors duration-700",
+        credit !== undefined && "pl-3",
         flashing && "bg-amber-100/60 ring-1 ring-amber-400/50 dark:bg-amber-400/10",
         className,
       )}
@@ -121,9 +125,14 @@ function StepContent({ step, ann, markdown, max }: { step: RmStep; ann: StepAnno
 /* ── user prompt (turn header) ──────────────────────────────────────── */
 
 function StepMetadata({ step, ann, children }: { step: RmStep; ann: StepAnnotations; children?: ReactNode }) {
+  const score = ann.actionScore?.(step);
   return (
     <div className="ml-auto flex shrink-0 items-center gap-3 text-[11px] text-muted-foreground tabular-nums">
       <StepTime step={step} />
+      {score && <span className="rounded px-1.5 py-0.5 font-medium text-foreground" style={{ backgroundColor: creditColor(score.credit, 0.15) }}
+        title={`${score.reward_model_name}: relative learned reward ${formatCredit(score.credit)}; raw score ${score.score.toFixed(3)}`}>
+        Credit {formatCredit(score.credit)}
+      </span>}
       <span>Step {step.index + 1}</span>
       <div className="flex w-28 items-center justify-end gap-3">
         <StepActions step={step} ann={ann} />
@@ -157,7 +166,7 @@ function PromptRow({ step, ann, repeated, expanded, onToggle }: {
 function AssistantRow({ step, ann, first }: { step: RmStep; ann: StepAnnotations; first: boolean }) {
   const thinking = isThinking(step);
   return (
-    <RowFrame step={step} flashing={ann.flashing(step)} className={cn("group/row", !first && "pt-3")}>
+    <RowFrame step={step} flashing={ann.flashing(step)} credit={ann.actionScore?.(step)?.credit} className={cn("group/row", !first && "pt-3")}>
       <div className="mb-1 flex min-h-5 items-center gap-3">
         <span className={cn(first ? "text-[13px] font-semibold text-foreground" : "text-[11px] text-muted-foreground")}>
           {first ? "Assistant" : thinking ? "Thinking" : "Response"}
@@ -193,7 +202,7 @@ function ToolRow({
     : /^\s*[\[{]/.test(result!.content) ? "" : firstLine(result!.content);
 
   return (
-    <RowFrame step={head} flashing={ann.flashing(head)} className="group/row ml-2 border-l border-border pl-3">
+    <RowFrame step={head} flashing={ann.flashing(head)} credit={ann.actionScore?.(head)?.credit} className="group/row ml-2 border-l border-border pl-3">
       {call && call.content !== "" && (
         <div className="group/row relative mb-1 pt-[3px]">
           <StepContent step={call} ann={ann} markdown max={300} />

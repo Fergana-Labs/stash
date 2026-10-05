@@ -30,7 +30,13 @@ def run_job(inputs: dict[str, bytes]) -> dict[str, bytes]:
     with tempfile.TemporaryDirectory() as temp:
         directory = Path(temp)
         for name, data in inputs.items():
-            if name not in ("job.json", "pairs.jsonl", "score_items.jsonl", "gepa_examples.jsonl"):
+            if name not in (
+                "job.json",
+                "pairs.jsonl",
+                "score_items.jsonl",
+                "action_score_items.jsonl",
+                "gepa_examples.jsonl",
+            ):
                 raise ValueError(f"Unexpected job input: {name}")
             (directory / name).write_bytes(data)
         kind = json.loads(inputs["job.json"])["kind"]
@@ -38,7 +44,12 @@ def run_job(inputs: dict[str, bytes]) -> dict[str, bytes]:
             from rm_worker.train import train
 
             train(directory)
-            outputs = ["result.json", "scores.jsonl"]
+            outputs = ["result.json", "scores.jsonl", "action_scores.jsonl"]
+        elif kind == "score":
+            from rm_worker.score_run import run
+
+            run(directory)
+            outputs = ["result.json", "action_scores.jsonl"]
         elif kind == "gepa":
             from rm_worker.gepa_run import run
 
@@ -54,11 +65,11 @@ def main() -> None:
     parser.add_argument("--job-dir", type=Path, required=True)
     directory = parser.parse_args().job_dir
     job = json.loads((directory / "job.json").read_text())
-    names = (
-        ["job.json", "pairs.jsonl", "score_items.jsonl"]
-        if job["kind"] == "train"
-        else ["job.json", "gepa_examples.jsonl"]
-    )
+    names = {
+        "train": ["job.json", "pairs.jsonl", "score_items.jsonl", "action_score_items.jsonl"],
+        "score": ["job.json", "action_score_items.jsonl"],
+        "gepa": ["job.json", "gepa_examples.jsonl"],
+    }[job["kind"]]
     inputs = {name: (directory / name).read_bytes() for name in names}
     secret = modal.Secret.from_dict(
         {key: os.environ[key] for key in SECRET_KEYS if key in os.environ}

@@ -43,6 +43,22 @@ async def run_gepa_async(run_id: UUID) -> None:
     await _run_tracked("rm_gepa_runs", run_id, jobs.run_gepa)
 
 
+async def score_trace_async(run_id: UUID) -> None:
+    # Duplicate deliveries must not run inference twice or overwrite a completed job.
+    claimed = await get_pool().fetchval(
+        "UPDATE rm_scoring_runs SET status = 'running', started_at = now() WHERE id = $1 AND status = 'queued' RETURNING id",
+        run_id,
+    )
+    if claimed is None:
+        return
+    await _run_tracked("rm_scoring_runs", run_id, jobs.run_scoring)
+
+
+@celery.task(name="backend.tasks.reward_models.score_trace")
+def score_trace(run_id: str) -> None:
+    run_async(score_trace_async(UUID(run_id)))
+
+
 @celery.task(name="backend.tasks.reward_models.train_reward_model")
 def train_reward_model(model_id: str) -> None:
     run_async(train_reward_model_async(UUID(model_id)))
