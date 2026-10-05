@@ -4,6 +4,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { rmListRewardModels, rmScoreTrace, rmSetTrainingContribution } from "@/lib/api";
 import type { RmRewardModel, RmScoringRun, RmTraceDetail } from "@/lib/types";
 import ActionScoringPanel from "./ActionScoringPanel";
+import { actionModelId } from "./action-credit";
 
 vi.mock("@/lib/api", () => ({ rmListRewardModels: vi.fn(), rmScoreTrace: vi.fn(), rmSetTrainingContribution: vi.fn() }));
 
@@ -73,7 +74,7 @@ it("polls only while the selected model's job is active and shows failures", asy
 it("shows shared bootstrap status without selecting a personal model or contributing data", async () => {
   vi.mocked(rmListRewardModels).mockResolvedValue([models[1]]);
   const onModelChange = vi.fn();
-  renderPanel(<ActionScoringPanel trace={trace} selectedModelId="default" onModelChange={onModelChange} onReload={vi.fn()} />);
+  renderPanel(<ActionScoringPanel trace={{ ...trace, action_scores: [] }} selectedModelId="default" onModelChange={onModelChange} onReload={vi.fn()} />);
   expect(screen.getByText(/No evaluator is available yet/)).toBeVisible();
   expect(screen.getByRole("checkbox")).not.toBeChecked();
   fireEvent.click(screen.getByText("Advanced: personal reward models"));
@@ -81,6 +82,20 @@ it("shows shared bootstrap status without selecting a personal model or contribu
   expect(screen.queryByRole("button", { name: /Score/ })).not.toBeInTheDocument();
   expect(onModelChange).not.toHaveBeenCalled();
   expect(rmSetTrainingContribution).not.toHaveBeenCalled();
+});
+
+it("shows saved action scores automatically before a shared evaluator exists", async () => {
+  const onReload = vi.fn().mockResolvedValue(undefined);
+  expect(actionModelId(trace, "default")).toBe("model1");
+  expect(actionModelId(trace, null)).toBeNull();
+  expect(actionModelId(trace, "model2")).toBe("model2");
+  const shared = { ...trace, default_evaluator: { id: "shared", name: "Stash", revision: 1, updated_at: "today" } };
+  expect(actionModelId(shared, "default")).toBe("shared");
+  renderPanel(<ActionScoringPanel trace={trace} selectedModelId="default" onModelChange={vi.fn()} onReload={onReload} />);
+  expect(screen.getByText("1 / 2 actions scored")).toBeVisible();
+  expect(screen.queryByText(/No evaluator is available/)).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Score again" }));
+  await waitFor(() => expect(rmScoreTrace).toHaveBeenCalledWith("trace", "model1"));
 });
 
 it("uses the shared default without requiring personal training and explicitly saves contribution permission", async () => {

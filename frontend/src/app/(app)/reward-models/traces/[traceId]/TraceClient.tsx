@@ -8,6 +8,7 @@ import { useConfirm } from "@/components/ConfirmDialog";
 import AnnotationComposer, { type ComposerTarget } from "@/components/reward-models/AnnotationComposer";
 import AnnotationSidebar from "@/components/reward-models/AnnotationSidebar";
 import ActionScoringPanel from "@/components/reward-models/ActionScoringPanel";
+import { actionModelId } from "@/components/reward-models/action-credit";
 import { TraceSkeleton } from "@/components/reward-models/RmSkeletons";
 import TraceFlamegraph from "@/components/reward-models/TraceFlamegraph";
 import TraceMinimap from "@/components/reward-models/TraceMinimap";
@@ -101,7 +102,7 @@ export default function TraceClient({ traceId }: { traceId: string }) {
   const viewerId = user.id;
   const ordered = sortAnnotations(trace.annotations.filter((a) => a.comment !== null), trace.steps);
   const rows = buildRows(trace.steps);
-  const effectiveModelId = scoreModelId === "default" ? trace.default_evaluator?.id : scoreModelId;
+  const effectiveModelId = actionModelId(trace, scoreModelId);
   const actionScores = new Map((trace.action_scores ?? []).filter((s) => s.reward_model_id === effectiveModelId).map((s) => [s.step_id, s]));
 
   function annotationsOn(step: RmStep): RmAnnotation[] {
