@@ -93,7 +93,8 @@ export default function TraceMinimap({ steps, annotations, actionScores, scrolle
         Action credit: lower <span className="h-1.5 w-16" style={{ background: `linear-gradient(to right, ${creditColor(-1)}, ${creditColor(0)}, ${creditColor(1)})` }} /> higher. Unscored steps keep their role color.
       </div>}
       <div
-        className="relative flex h-[52px] touch-none items-end gap-px"
+        className="relative flex h-[52px] touch-none items-end"
+        style={{ columnGap: `min(1px, ${25 / steps.length}%)` }}
         role="group"
         aria-label="Step map"
         onPointerDown={(event) => {
