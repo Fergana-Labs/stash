@@ -58,7 +58,7 @@ export default function TraceClient({ traceId }: { traceId: string }) {
   const { user } = useAuth();
   const confirm = useConfirm();
   const [trace, setTrace] = useState<RmTraceDetail | null>(null);
-  const [scoreModelId, setScoreModelId] = useState<string | null>(null);
+  const [scoreModelId, setScoreModelId] = useState<string | null>("default");
   const [commentsOpen, setCommentsOpen] = useState(true);
   const [composer, setComposer] = useState<ComposerTarget | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -101,7 +101,8 @@ export default function TraceClient({ traceId }: { traceId: string }) {
   const viewerId = user.id;
   const ordered = sortAnnotations(trace.annotations.filter((a) => a.comment !== null), trace.steps);
   const rows = buildRows(trace.steps);
-  const actionScores = new Map((trace.action_scores ?? []).filter((s) => s.reward_model_id === scoreModelId).map((s) => [s.step_id, s]));
+  const effectiveModelId = scoreModelId === "default" ? trace.default_evaluator?.id : scoreModelId;
+  const actionScores = new Map((trace.action_scores ?? []).filter((s) => s.reward_model_id === effectiveModelId).map((s) => [s.step_id, s]));
 
   function annotationsOn(step: RmStep): RmAnnotation[] {
     return trace!.annotations.filter((a) => a.step_id === step.id);

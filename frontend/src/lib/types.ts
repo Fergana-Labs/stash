@@ -410,6 +410,8 @@ export interface RmTraceSummary {
   comment_count: number;
   label_error_count: number;
   latest_score: Omit<RmScore, "created_at"> | null;
+  shared_training_allowed?: boolean;
+  action_credit?: { mean: number; count: number; revision: number } | null;
   created_at: string;
 }
 
@@ -465,6 +467,9 @@ export interface RmTraceDetail extends RmTraceSummary {
   scores: RmScore[];
   action_scores?: RmActionScore[];
   scoring_runs?: RmScoringRun[];
+  default_evaluator?: { id: string; name: string; revision: number; updated_at: string } | null;
+  automatic_scoring?: { attempts: number; error: string | null } | null;
+  training_collection?: { status: RmJobStatus; error: string | null } | null;
 }
 
 export interface RmActionScore {
@@ -489,7 +494,7 @@ export interface RmTrainMetrics {
   train_pairs: number;
   eval_pairs: number;
   eval_accuracy: number | null;
-  eval_split?: "trace";
+  eval_split?: "trace" | "curated_task_groups";
   action_scoring_version?: number | null;
   action_train_pairs?: number;
   action_eval_pairs?: number;

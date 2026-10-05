@@ -236,7 +236,11 @@ Do not assume the generated revision is better. Explain the comparison briefly."
 
 
 async def extract_preferences(
-    steps: list[dict], evidence: dict[str, dict], *, rubric_dropout: float = RUBRIC_DROPOUT
+    steps: list[dict],
+    evidence: dict[str, dict],
+    *,
+    rubric_dropout: float = RUBRIC_DROPOUT,
+    review_all: bool = False,
 ) -> Extraction:
     if not 0 <= rubric_dropout < 1:
         raise ValueError("Rubric dropout must be between 0 (inclusive) and 1 (exclusive)")
@@ -293,7 +297,7 @@ async def extract_preferences(
                 finding = finding.model_copy(update={"revision": None})
                 result.reason += " No valid, distinct, confident comparison was generated; excluded from training."
         if finding.revision is not None and (
-            finding.source == "ai_judgment" or step.get("tool_name")
+            review_all or finding.source == "ai_judgment" or step.get("tool_name")
         ):
             async with semaphore:
                 review = await review_comparison(steps, step, finding, criteria)
@@ -319,7 +323,12 @@ def eligible_evidence(step: dict, evidence: dict[str, dict]) -> dict[str, dict]:
 
 
 def render_preferences(
-    trace_id: UUID, steps: list[dict], evidence: dict[str, dict], result: Extraction
+    trace_id: UUID,
+    steps: list[dict],
+    evidence: dict[str, dict],
+    result: Extraction,
+    *,
+    include_system: bool = False,
 ) -> list[dict]:
     by_index = {step["idx"]: step for step in steps}
     seen: set[int] = set()
@@ -357,8 +366,10 @@ def render_preferences(
         if preference.revision is None:
             continue
         prefix = [s for s in steps if s["idx"] < index]
-        original = render_steps([*prefix, step])
-        revision = render_steps([*prefix, revised_step(step, preference.revision)])
+        original = render_steps([*prefix, step], include_system=include_system)
+        revision = render_steps(
+            [*prefix, revised_step(step, preference.revision)], include_system=include_system
+        )
         chosen, rejected = (
             (revision, original) if preference.label == "negative" else (original, revision)
         )
@@ -377,7 +388,7 @@ def render_preferences(
 
 
 async def build_feedback_pairs(
-    owner_user_id: UUID, trace_ids: list[UUID], max_pairs: int
+    owner_user_id: UUID, trace_ids: list[UUID], max_pairs: int, *, shared: bool = False
 ) -> tuple[list[dict], list[dict]]:
     pool = get_pool()
     steps = await pool.fetch(
@@ -416,7 +427,48 @@ async def build_feedback_pairs(
                 if c["trace_id"] == trace_id and c["comment"] is not None
             }
         )
-        extracted = await extract_preferences(trace_steps, evidence)
+        if shared:
+            # A step rating supplies a human judgment, but still needs a grounded,
+            # independently reviewed alternative before becoming a preference pair.
+            evidence.update(
+                {
+                    f"comment:{c['id']}": {
+                        "kind": "comment",
+                        "step_index": c["idx"],
+                        "text": "Reviewer rated this action "
+                        + ("positively." if c["rating"] == 1 else "negatively."),
+                    }
+                    for c in comments
+                    if c["trace_id"] == trace_id
+                    and c["idx"] is not None
+                    and c["rating"] is not None
+                    and c["comment"] is None
+                }
+            )
+        context_prefix = ""
+        if shared:
+            from .datasets import render_action_context
+
+            metadata = await pool.fetchval("SELECT metadata FROM rm_traces WHERE id = $1", trace_id)
+            context_prefix = render_action_context([], (metadata or {}).get("evaluation_context"))
+            context_steps = (
+                [
+                    {
+                        "idx": -1,
+                        "role": "system",
+                        "content": context_prefix,
+                        "tool_name": None,
+                        "tool_input": None,
+                    }
+                ]
+                if context_prefix
+                else []
+            )
+            extracted = await extract_preferences(
+                [*context_steps, *trace_steps], evidence, review_all=True
+            )
+        else:
+            extracted = await extract_preferences(trace_steps, evidence)
         rated_indices = {
             c["idx"] for c in comments if c["trace_id"] == trace_id and c["rating"] is not None
         }
@@ -426,7 +478,13 @@ async def build_feedback_pairs(
             ):
                 finding.revision = None
                 finding.reason += " Excluded: an explicit human rating takes precedence."
-        pairs.extend(render_preferences(trace_id, trace_steps, evidence, extracted))
+        rendered = render_preferences(
+            trace_id, trace_steps, evidence, extracted, include_system=shared
+        )
+        for pair in rendered:
+            pair["chosen"] = context_prefix + pair["chosen"]
+            pair["rejected"] = context_prefix + pair["rejected"]
+        pairs.extend(rendered)
         findings.extend(
             {
                 **item.model_dump(exclude={"revision"}),

@@ -101,7 +101,8 @@ SOURCE_SQL = {
                s.idx, sc.score, sc.credit, sc.created_at
         FROM rm_action_scores sc JOIN rm_reward_models m ON m.id = sc.reward_model_id
         JOIN rm_trace_steps s ON s.id = sc.step_id JOIN rm_traces t ON t.id = s.trace_id
-        WHERE m.owner_user_id = $1 AND t.owner_user_id = $1 AND m.status = 'succeeded'
+        WHERE t.owner_user_id = $1 AND m.status = 'succeeded' AND (m.owner_user_id = $1 OR EXISTS
+            (SELECT 1 FROM rm_evaluator_releases er WHERE er.reward_model_id = m.id))
     """,
 }
 

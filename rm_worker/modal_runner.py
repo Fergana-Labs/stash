@@ -35,6 +35,7 @@ def run_job(inputs: dict[str, bytes]) -> dict[str, bytes]:
                 "pairs.jsonl",
                 "score_items.jsonl",
                 "action_score_items.jsonl",
+                "evaluation_pairs.jsonl",
                 "gepa_examples.jsonl",
             ):
                 raise ValueError(f"Unexpected job input: {name}")
@@ -50,6 +51,11 @@ def run_job(inputs: dict[str, bytes]) -> dict[str, bytes]:
 
             run(directory)
             outputs = ["result.json", "action_scores.jsonl"]
+        elif kind == "evaluate":
+            from rm_worker.evaluate_run import run
+
+            run(directory)
+            outputs = ["evaluation.json"]
         elif kind == "gepa":
             from rm_worker.gepa_run import run
 
@@ -68,6 +74,7 @@ def main() -> None:
     names = {
         "train": ["job.json", "pairs.jsonl", "score_items.jsonl", "action_score_items.jsonl"],
         "score": ["job.json", "action_score_items.jsonl"],
+        "evaluate": ["job.json", "evaluation_pairs.jsonl"],
         "gepa": ["job.json", "gepa_examples.jsonl"],
     }[job["kind"]]
     inputs = {name: (directory / name).read_bytes() for name in names}

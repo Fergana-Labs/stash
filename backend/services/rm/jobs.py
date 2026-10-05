@@ -167,7 +167,8 @@ async def store_action_scores(
         INSERT INTO rm_action_scores (reward_model_id, step_id, score, credit)
         SELECT m.id, s.id, $4, $5 FROM rm_trace_steps s
         JOIN rm_traces t ON t.id = s.trace_id
-        JOIN rm_reward_models m ON m.id = $1 AND m.owner_user_id = t.owner_user_id
+        JOIN rm_reward_models m ON m.id = $1 AND (m.owner_user_id = t.owner_user_id
+            OR EXISTS (SELECT 1 FROM rm_evaluator_releases r WHERE r.reward_model_id = m.id))
         WHERE s.id = $2 AND t.id = $3 AND t.owner_user_id = $6 AND s.role = 'assistant'
         ON CONFLICT (reward_model_id, step_id)
         DO UPDATE SET score = EXCLUDED.score, credit = EXCLUDED.credit, created_at = now()
@@ -190,15 +191,20 @@ async def run_scoring(run_id: UUID) -> None:
     pool = get_pool()
     run = await pool.fetchrow(
         """
-        SELECT r.*, m.artifact_key, m.compute FROM rm_scoring_runs r
-        JOIN rm_reward_models m ON m.id = r.reward_model_id AND m.owner_user_id = r.owner_user_id
+        SELECT r.*, m.artifact_key, m.compute, m.metrics FROM rm_scoring_runs r
+        JOIN rm_reward_models m ON m.id = r.reward_model_id AND (m.owner_user_id = r.owner_user_id
+            OR EXISTS (SELECT 1 FROM rm_evaluator_releases er WHERE er.reward_model_id = m.id))
         WHERE r.id = $1 AND m.status = 'succeeded'
         """,
         run_id,
     )
     if run is None or run["artifact_key"] is None:
         raise ValueError("Reward model is unavailable")
-    items = await datasets.action_score_items(run["owner_user_id"], run["trace_id"])
+    items = await datasets.action_score_items(
+        run["owner_user_id"],
+        run["trace_id"],
+        input_version=(run["metrics"] or {}).get("input_version", 1),
+    )
     if not items:
         raise ValueError("Trace has no assistant actions to score")
     directory = job_dir(run_id)
@@ -213,7 +219,9 @@ async def run_scoring(run_id: UUID) -> None:
     validate_action_scores(items, scores)
     async with pool.acquire() as conn, conn.transaction():
         # Ingestion locks the trace row while replacing its steps. Lock it through publication.
-        await conn.fetchrow("SELECT id FROM rm_traces WHERE id = $1 FOR UPDATE", run["trace_id"])
+        await conn.fetchrow(
+            "SELECT id FROM rm_traces WHERE id = $1 FOR NO KEY UPDATE", run["trace_id"]
+        )
         current = await conn.fetch(
             "SELECT id FROM rm_trace_steps WHERE trace_id = $1", run["trace_id"]
         )
@@ -223,6 +231,13 @@ async def run_scoring(run_id: UUID) -> None:
         await conn.execute(
             "UPDATE rm_scoring_runs SET status = 'succeeded', finished_at = now() WHERE id = $1",
             run_id,
+        )
+        await conn.execute(
+            """DELETE FROM rm_auto_scores q USING rm_traces t, rm_evaluator_registry er
+            WHERE q.trace_id = $1 AND t.id = q.trace_id AND t.updated_at = $2 AND er.model_id = $3""",
+            run["trace_id"],
+            run["trace_updated_at"],
+            run["reward_model_id"],
         )
 
 

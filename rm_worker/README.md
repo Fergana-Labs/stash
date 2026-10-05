@@ -4,6 +4,13 @@ Trains Bradley–Terry reward models, scores traces, and uses GEPA to write
 `SKILL.md` instructions. GPU libraries run in this package's own environment;
 the API imports only the lightweight artifact helper, never torch.
 
+The default product path is a shared Stash evaluator. Shared candidates always use
+Modal, freeze explicit train/eval task partitions, and evaluate the candidate and
+incumbent on the same benchmark before release. Recurring training is off until an
+operator enables it. See [Shared evaluator](../docs/reward-models/SHARED_EVALUATOR.md)
+for bootstrap, permissions, release gates and rollback. Personal models retain the
+selected-trace workflow described below.
+
 ## Execution and storage
 
 The API records `RM_COMPUTE` (`local` or `modal`) on each model. Clients cannot
@@ -17,6 +24,7 @@ Postgres before training.
 |---|---|---|
 | `python -m rm_worker.train --job-dir DIR` | `job.json`, `pairs.jsonl`, `score_items.jsonl`, `action_score_items.jsonl` | `model/`, `scores.jsonl`, `action_scores.jsonl`, `result.json` |
 | `python -m rm_worker.score_run --job-dir DIR` | `job.json`, `action_score_items.jsonl` | `action_scores.jsonl`, `result.json` |
+| `python -m rm_worker.evaluate_run --job-dir DIR` | `job.json`, `evaluation_pairs.jsonl` | `evaluation.json` (example ID + whether chosen beats rejected) |
 | `python -m rm_worker.modal_runner --job-dir DIR` | training, scoring or GEPA inputs | the corresponding worker outputs above |
 | `python -m rm_worker.gepa_run --job-dir DIR` | `job.json`, `gepa_examples.jsonl` | `result.json` |
 

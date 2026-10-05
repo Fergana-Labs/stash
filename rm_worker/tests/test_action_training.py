@@ -5,11 +5,12 @@ import json
 import pytest
 
 
-def test_train_save_reload_and_score_actions(tmp_path, monkeypatch):
+@pytest.mark.parametrize("shared", [False, True])
+def test_train_save_reload_and_score_actions(tmp_path, monkeypatch, shared):
     torch = pytest.importorskip("torch")
     transformers = pytest.importorskip("transformers")
     tokenizers = pytest.importorskip("tokenizers")
-    from rm_worker import score_run, scoring, train
+    from rm_worker import evaluate_run, score_run, scoring, train
 
     torch.set_num_threads(1)
     torch.manual_seed(0)
@@ -55,14 +56,19 @@ def test_train_save_reload_and_score_actions(tmp_path, monkeypatch):
                 "base_model": str(base),
                 "epochs": 1,
                 "artifact_key": "test/checkpoint",
+                "fixed_split": shared,
+                "input_version": 2 if shared else 1,
             }
         )
     )
     pairs = [
         {
             "trace_id": str(i),
-            "chosen": "user assistant lookup good",
-            "rejected": "user assistant lookup bad",
+            "chosen": f"user {i} assistant lookup good",
+            "rejected": f"user {i} assistant lookup bad",
+            "example_id": str(i),
+            "partition": "eval" if i == 9 else "train",
+            "task_group": str(i),
             "granularity": "action",
             "action_type": "tool_call",
         }
@@ -79,6 +85,8 @@ def test_train_save_reload_and_score_actions(tmp_path, monkeypatch):
     train.write_jsonl(tmp_path / "action_score_items.jsonl", items)
     result = train.train(tmp_path)
     assert result["metrics"]["action_scoring_version"] == 1
+    assert result["metrics"]["input_version"] == (2 if shared else 1)
+    assert result["metrics"]["eval_split"] == ("curated_task_groups" if shared else "trace")
     assert result["metrics"]["action_train_pairs"] == 9
     assert result["metrics"]["action_eval_pairs"] == 1
     assert result["metrics"]["tool_eval_pairs"] == 1
@@ -99,3 +107,9 @@ def test_train_save_reload_and_score_actions(tmp_path, monkeypatch):
         assert original["step_id"] == restored["step_id"]
         assert original["score"] == pytest.approx(restored["score"])
         assert original["credit"] == pytest.approx(restored["credit"])
+    train.write_jsonl(inference / "evaluation_pairs.jsonl", pairs[-1:])
+    monkeypatch.setattr(evaluate_run, "download_model", lambda key, directory: tmp_path / "model")
+    evaluate_run.run(inference)
+    evaluation = json.loads((inference / "evaluation.json").read_text())
+    assert evaluation[0]["example_id"] == "9"
+    assert type(evaluation[0]["correct"]) is bool

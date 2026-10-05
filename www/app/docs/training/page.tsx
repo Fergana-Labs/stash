@@ -15,8 +15,30 @@ export default function TrainingPage() {
     <>
       <Title>Training</Title>
       <Subtitle>
-        A small language model with a scalar head, trained on supported feedback from selected traces.
+        A shared action evaluator that improves from permitted feedback, with personal models for custom rubrics.
       </Subtitle>
+
+      <H2>The shared evaluator</H2>
+      <P>
+        The trace viewer uses Stash&apos;s released evaluator by default. It automatically scores
+        imported and updated traces, including tool calls, without asking you to train a model or
+        write comments. Shared inputs include system instructions and optional task/tool context in
+        <Code>metadata.evaluation_context</Code>. Only include information available before the action.
+        Inputs currently retain the last 1024 tokens; early context may be truncated on long traces.
+      </P>
+      <P>
+        Scoring does not contribute your data to training. Opt in per trace to contribute corrections,
+        step ratings and independently reviewed comparisons. Turning contribution off excludes them
+        from future candidates, but cannot remove what previously released weights have learned.
+        Human-reviewed or verified-outcome comparisons form a separate benchmark. Candidates must
+        beat the incumbent overall without regressions on sufficiently populated tool, domain or
+        agent slices. Predictions from the evaluator are never reused as their own training labels.
+      </P>
+      <Callout>
+        A deployment needs reviewed training data, a separate benchmark and an initial remote
+        training run before its first shared evaluator release. Until then, traces wait for the
+        first release. Release gates test benchmark performance, not universal correctness.
+      </Callout>
 
       <H2>The model</H2>
       <P>
@@ -31,12 +53,12 @@ export default function TrainingPage() {
         across models.
       </P>
       <P>
-        Pairs come from automatic assessment of assistant actions (including tool calls), actionable comments, later user corrections, and API ratings on the selected traces. Manual comments are optional. The reward model never sees system steps;{" "}
+        Personal models use automatic assessment of assistant actions (including tool calls), actionable comments, later user corrections, and API ratings on the selected traces. Manual comments are optional. Personal models omit system steps;{" "}
         <a href="/docs/annotations#from-annotations-to-training-pairs" className="text-brand hover:underline">Annotations</a>{" "}
         describes exactly how pairs are built and rendered.
       </P>
 
-      <H2>Start a training job</H2>
+      <H2>Start a personal training job</H2>
       <P>
         In the app, select traces and choose <strong>Create new reward model</strong>. There is no
         separate Auto mode or rating control in the UI. The experiment is enabled for new accounts;
@@ -149,17 +171,19 @@ export default function TrainingPage() {
       <H2>Scores</H2>
       <H3>Action credit</H3>
       <P>
-        A model trained on action comparisons automatically scores each assistant response and tool
-        call in your existing traces. Open a trace and choose a model under <strong>Action credit</strong>
-        {" "}to see badges and a heatmap, including collapsed tool calls. User messages, system messages,
+        The shared evaluator automatically scores each assistant response and tool call in imported
+        traces. Open a trace to see badges and a heatmap under <strong>Action credit</strong>,
+        including collapsed tool calls. User messages, system messages,
         and tool results are observations and have no action score. Each action is scored using its
         preceding context, without later tool results or replies.
       </P>
       <P>
-        For a newly imported trace, choose <strong>Score actions</strong>. This runs the saved trained
-        model without labeling calls or retraining. Status and failures appear beside the model
-        selector. Older models need new training with action comparisons to support this feature.
-        Reimporting a trace clears its old action scores.
+        <strong>Score again</strong> requests a fresh run of the saved checkpoint without labeling
+        calls or retraining. Advanced options let you select a personal model and choose
+        <strong>Score actions</strong>. Older personal models need new training with action comparisons.
+        Reimporting clears old action scores and queues the current shared evaluator again.
+        The trace list shows mean action credit and the number of actions scored, separately from
+        personal whole-trace scores.
       </P>
       <CodeBlock lang="text">{`credit = tanh((raw_reward − action_training_mean) / (2 × action_training_std))`}</CodeBlock>
       <P>

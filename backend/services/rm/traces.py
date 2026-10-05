@@ -5,17 +5,18 @@ from uuid import UUID
 import asyncpg
 
 from ...database import get_pool
-from . import annotations, trace_titles
+from . import annotations, evaluator, trace_titles
 from .adapters import CanonicalTrace, TraceFormatError, parse_traces
 
 SUMMARY_SELECT = """
     SELECT
-      t.id, t.external_id, t.title, t.source_format, t.metadata, t.spans, t.created_at,
+      t.id, t.external_id, t.title, t.source_format, t.metadata, t.spans, t.created_at, t.shared_training_allowed,
       (SELECT count(*) FROM rm_trace_steps s WHERE s.trace_id = t.id)::int AS step_count,
       a.positive_count, a.negative_count, a.comment_count, a.label_error_count,
       ls.reward_model_id AS latest_reward_model_id,
       ls.reward_model_name AS latest_reward_model_name,
-      ls.score AS latest_score
+      ls.score AS latest_score,
+      ac.mean_credit, ac.scored_actions, ac.revision AS evaluator_revision
     FROM rm_traces t
     CROSS JOIN LATERAL (
       SELECT
@@ -32,6 +33,11 @@ SUMMARY_SELECT = """
       ORDER BY m.finished_at DESC
       LIMIT 1
     ) ls ON true
+    LEFT JOIN LATERAL (
+      SELECT avg(sc.credit) AS mean_credit, count(*)::int AS scored_actions, r.revision
+      FROM rm_evaluator_registry r JOIN rm_action_scores sc ON sc.reward_model_id = r.model_id
+      JOIN rm_trace_steps s ON s.id = sc.step_id WHERE s.trace_id = t.id GROUP BY r.revision
+    ) ac ON true
 """
 
 
@@ -55,6 +61,14 @@ def _summary(row) -> dict:
         "label_error_count": row["label_error_count"],
         "latest_score": latest_score,
         "created_at": row["created_at"],
+        "shared_training_allowed": row["shared_training_allowed"],
+        "action_credit": {
+            "mean": row["mean_credit"],
+            "count": row["scored_actions"],
+            "revision": row["evaluator_revision"],
+        }
+        if row["mean_credit"] is not None
+        else None,
     }
 
 
@@ -180,7 +194,8 @@ async def get_trace(owner_user_id: UUID, trace_id: UUID) -> dict | None:
         SELECT sc.reward_model_id, m.name AS reward_model_name, sc.step_id, sc.score, sc.credit, sc.created_at
         FROM rm_action_scores sc JOIN rm_trace_steps s ON s.id = sc.step_id
         JOIN rm_reward_models m ON m.id = sc.reward_model_id
-        WHERE s.trace_id = $1 AND m.owner_user_id = $2 AND m.status = 'succeeded'
+        WHERE s.trace_id = $1 AND (m.owner_user_id = $2 OR EXISTS
+            (SELECT 1 FROM rm_evaluator_releases er WHERE er.reward_model_id = m.id)) AND m.status = 'succeeded'
         ORDER BY m.finished_at DESC, s.idx
         """,
         trace_id,
@@ -196,6 +211,12 @@ async def get_trace(owner_user_id: UUID, trace_id: UUID) -> dict | None:
         trace_id,
         owner_user_id,
     )
+    automatic = await pool.fetchrow(
+        "SELECT attempts, error FROM rm_auto_scores WHERE trace_id = $1", trace_id
+    )
+    collection = await pool.fetchrow(
+        "SELECT status, error FROM rm_example_collection WHERE trace_id = $1", trace_id
+    )
     return {
         **_summary(row),
         "metadata": row["metadata"],
@@ -205,6 +226,9 @@ async def get_trace(owner_user_id: UUID, trace_id: UUID) -> dict | None:
         "scores": [dict(score) for score in scores],
         "action_scores": [dict(score) for score in action_scores],
         "scoring_runs": [dict(run) for run in scoring_runs],
+        "default_evaluator": await evaluator.default_evaluator(),
+        "automatic_scoring": dict(automatic) if automatic else None,
+        "training_collection": dict(collection) if collection else None,
     }
 
 

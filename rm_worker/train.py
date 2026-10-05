@@ -18,6 +18,7 @@ from transformers import AutoModelForSequenceClassification
 
 from rm_worker.artifacts import upload_model
 from rm_worker.evaluation import action_score_rows, reward_stats, split_pairs
+from rm_worker.release_gate import check_partition
 from rm_worker.scoring import load_tokenizer, pick_device, score_texts, tokenize
 
 MAX_LENGTH = 1024
@@ -70,7 +71,9 @@ def train(job_dir: Path) -> dict:
     epochs = job["epochs"]
 
     pairs = read_jsonl(job_dir / "pairs.jsonl")
-    train_pairs, eval_pairs = split_pairs(pairs)
+    train_pairs, eval_pairs = (
+        check_partition(pairs) if job.get("fixed_split") else split_pairs(pairs)
+    )
     score_items = read_jsonl(job_dir / "score_items.jsonl")
     device = pick_device()
     log(
@@ -157,7 +160,8 @@ def train(job_dir: Path) -> dict:
             "train_pairs": len(train_pairs),
             "eval_pairs": len(eval_pairs),
             "eval_accuracy": eval_accuracy,
-            "eval_split": "trace",
+            "eval_split": "curated_task_groups" if job.get("fixed_split") else "trace",
+            "input_version": job.get("input_version", 1),
             "excluded_cross_trace_pairs": len(pairs) - len(train_pairs) - len(eval_pairs),
             "action_scoring_version": 1 if action_train else None,
             "action_train_pairs": len(action_train),

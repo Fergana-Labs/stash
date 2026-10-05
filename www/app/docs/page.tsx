@@ -48,9 +48,9 @@ export default function RewardModelsOverviewPage() {
     <>
       <Title>Overview</Title>
       <P>
-        Review agent traces, select the ones to learn from, and create a reward model from their
-        feedback. Use the model to score traces, download its weights, or generate instructions
-        for your agent with GEPA.
+        Connect your agent to see action credit from Stash&apos;s shared evaluator, including
+        tool calls. Contribute traces and corrections explicitly to improve future versions.
+        You can also train a personal reward model and generate instructions with GEPA.
       </P>
       <P>
         This experiment is enabled for accounts created after the rollout. Existing accounts keep
@@ -80,15 +80,24 @@ export default function RewardModelsOverviewPage() {
       </P>
       <CodeBlock lang="python">{ONE_SPAN}</CodeBlock>
 
-      <H2>2. Review feedback</H2>
+      <H2>2. Review action credit</H2>
       <P>
-        Training automatically looks for approval, disappointment, and corrections in the
-        conversation. No annotations are required when the trace contains usable feedback.
-        You can also highlight a response and leave an actionable comment.
+        Once a shared evaluator is released, imported traces are scored automatically.
+        Open a trace to see credit on responses and tool calls. No annotations are required.
+        Use Comment on an action to correct its assessment. Before the first release, the
+        viewer reports that it is waiting for an evaluator.
       </P>
       <DemoClip src="/docs/demo/annotate.mp4" />
 
-      <H2>3. Train a reward model</H2>
+      <H2>3. Help improve the shared evaluator</H2>
+      <P>
+        Enable the trace&apos;s training-contribution checkbox to let its feedback and independently
+        reviewed comparisons contribute to future candidates. Scoring alone does not grant this
+        permission. Stash compares candidates with the current evaluator on a separate reviewed
+        benchmark before releasing an improvement. Model predictions never serve as their own labels.
+      </P>
+
+      <H2>Optional: train a personal reward model</H2>
       <P>
         Select traces and choose <strong>Create new reward model</strong>. The worker derives
         preferences from supported feedback and records the evidence for each pair. Training needs
@@ -99,7 +108,7 @@ export default function RewardModelsOverviewPage() {
       </P>
       <DemoClip src="/docs/demo/train.mp4" />
 
-      <H2>4. Write a skill</H2>
+      <H2>Optional: write a skill</H2>
       <P>
         On a trained reward model, choose <strong>View skill</strong>. It opens an existing run or
         starts one. GEPA uses the selected traces and their feedback to write and name a{" "}

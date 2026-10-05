@@ -46,9 +46,19 @@ def render_step(step: dict) -> str:
     return f"{step['role']}: {step['content']}"
 
 
-def render_steps(steps: list[dict]) -> str:
+def render_steps(steps: list[dict], *, include_system: bool = False) -> str:
     # GEPA's skill is injected into the system message; a reward model that saw it could be gamed.
-    return "\n\n".join(render_step(step) for step in steps if step["role"] != "system")
+    return "\n\n".join(
+        render_step(step) for step in steps if include_system or step["role"] != "system"
+    )
+
+
+def render_action_context(steps: list[dict], context: dict | None = None) -> str:
+    """Shared evaluator input v2: supplied task/tool context and all preceding roles."""
+    prefix = (
+        "Task and tool context: " + json.dumps(context, sort_keys=True) + "\n\n" if context else ""
+    )
+    return prefix + render_steps(steps, include_system=True)
 
 
 async def _steps_by_trace(
@@ -141,11 +151,29 @@ async def score_items(owner_user_id: UUID) -> list[dict]:
     ]
 
 
-async def action_score_items(owner_user_id: UUID, trace_id: UUID | None = None) -> list[dict]:
+async def action_score_items(
+    owner_user_id: UUID, trace_id: UUID | None = None, *, input_version: int = 1
+) -> list[dict]:
     """Use exactly the same prefix + action representation as preference training."""
     steps_by_trace = await _steps_by_trace(owner_user_id, trace_id)
+    contexts = {}
+    if input_version == 2:
+        contexts = {
+            r["id"]: (r["metadata"] or {}).get("evaluation_context")
+            for r in await get_pool().fetch(
+                "SELECT id, metadata FROM rm_traces WHERE owner_user_id = $1 AND ($2::uuid IS NULL OR id = $2)",
+                owner_user_id,
+                trace_id,
+            )
+        }
     return [
-        {"trace_id": str(tid), "step_id": str(step["id"]), "text": render_steps(steps[: index + 1])}
+        {
+            "trace_id": str(tid),
+            "step_id": str(step["id"]),
+            "text": render_action_context(steps[: index + 1], contexts.get(tid))
+            if input_version == 2
+            else render_steps(steps[: index + 1]),
+        }
         for tid, steps in steps_by_trace.items()
         if trace_id is None or tid == trace_id
         for index, step in enumerate(steps)

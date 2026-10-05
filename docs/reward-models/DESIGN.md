@@ -1,8 +1,15 @@
 # Stash reward model training platform — design
 
-Teams bring agent traces, annotate them the way they'd comment on a Google Doc
-(highlight text and leave a comment), and train a reward model
-from those annotations, the same kind of reward model used in RLHF. A second
+Stash automatically scores imported traces with a shared, versioned action evaluator.
+An explicitly permissioned corpus of corrections and independently reviewed action
+comparisons improves future candidates, with frozen benchmarks and gated releases.
+See [Shared evaluator and learning loop](SHARED_EVALUATOR.md) for the default product
+path, operator bootstrap, consent, evaluation policy and recurring training controls.
+The first checkpoint requires reviewed data and remote training; no pretrained shared
+model ships with the code.
+
+Teams can also train personal reward models from selected traces and annotations,
+the same kind of reward model used in RLHF. A second
 optimizer, GEPA, writes a skill for the agent (a SKILL.md it loads into its
 context) using the written comments as feedback and the trained reward model
 as the metric.
@@ -124,7 +131,7 @@ rating, a comment, or both.
 | `rating` | `1` (+), `-1` (−), or null |
 | `comment` | free text, or null |
 | `quote` | `{text, prefix, suffix}` — the highlighted span inside the step's content, anchored the same way page comments are (`page_comment_threads`). Requires `step_id`. |
-| (system steps) | can carry comments (they feed GEPA) but not ratings: the reward model never sees system steps, so a rating there is a 422. A trace with only system steps fails import. |
+| (system steps) | can carry comments but not ratings: they are context, not agent actions. Shared input version 2 includes system context; personal models omit it. A trace with only system steps fails import. |
 | `label_error` | true = someone flagged this label as wrong. Flagged annotations are excluded from training and GEPA. |
 | `label_error_note` | why it's wrong |
 
@@ -137,7 +144,7 @@ Annotation export (`GET /api/v1/rm/export/annotations`), one per line:
  "label_error": false, "author": "henry", "created_at": "2026-09-29T03:12:00Z"}
 ```
 
-## Reward model training
+## Personal reward model training
 
 No manual annotations or user reactions are required. Each assistant response or tool call is
 assessed for task completion, instruction adherence, evidence grounding and

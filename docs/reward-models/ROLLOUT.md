@@ -31,11 +31,28 @@ settings to authorize five-minute signed checkpoint download URLs. The browser
 downloads directly from storage without buffering the checkpoint in JavaScript.
 Modal receives only the storage and model-provider credentials; it never
 receives database, queue, OAuth, or integration credentials. Each GPU invocation
-is limited to 20 minutes, within Celery's existing 25-minute soft timeout.
+is limited to 20 minutes. Shared candidate jobs run training and two benchmark
+evaluations sequentially under a 65-minute Celery hard limit; personal jobs retain
+their existing timeout.
 
 Checkpoint archives live in private S3 storage. Migration 0211 records their
 keys and the exact training pairs/evidence. A successful job can be downloaded
 and used for skill generation after its worker filesystem is discarded.
+
+## Shared evaluator bootstrap
+
+Migration 0215 queues existing and new traces for the shared evaluator, but leaves
+shared-training consent and recurring training off. Celery beat's 30-second sweep
+is required for scoring, contribution collection and candidate dispatch. No shared
+checkpoint or benchmark is installed by migration. Until the first candidate passes
+and is released, the UI reports that it is waiting for the first evaluator.
+
+Follow [Shared evaluator and learning loop](SHARED_EVALUATOR.md) to seed a permitted,
+reviewed corpus, train remotely, inspect the release gate and promote the first
+model. The operator API uses the existing `ADMIN_PASSWORD` / `X-Admin-Token`
+boundary. Enabling automation authorizes recurring GPU jobs; `auto_promote` enables
+gated releases. Turning automation off blocks new candidates and automatic releases.
+Never use customer data without its applicable shared-training permission.
 
 ## Verification boundary
 
