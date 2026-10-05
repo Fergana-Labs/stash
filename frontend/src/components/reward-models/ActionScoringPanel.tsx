@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { rmListRewardModels, rmScoreTrace, rmSetTrainingContribution } from "@/lib/api";
 import type { RmRewardModel, RmTraceDetail } from "@/lib/types";
 import { errorMessage } from "./rm-text";
+import { actionModelId } from "./action-credit";
 
 export default function ActionScoringPanel({ trace, selectedModelId, onModelChange, onReload }: {
   trace: RmTraceDetail;
@@ -30,7 +31,9 @@ export default function ActionScoringPanel({ trace, selectedModelId, onModelChan
   }, []);
 
   const isDefault = selectedModelId === "default";
-  const effectiveModelId = isDefault ? trace.default_evaluator?.id : selectedModelId;
+  const effectiveModelId = actionModelId(trace, selectedModelId);
+  const usesShared = isDefault && !!trace.default_evaluator;
+  const savedModelName = trace.action_scores?.find((s) => s.reward_model_id === effectiveModelId)?.reward_model_name;
   const eligible = trace.steps.filter((s) => s.role === "assistant" && (s.tool_name || s.content.trim()));
   const run = trace.scoring_runs?.find((r) => r.reward_model_id === effectiveModelId);
   const active = run?.status === "queued" || run?.status === "running";
@@ -46,7 +49,7 @@ export default function ActionScoringPanel({ trace, selectedModelId, onModelChan
     if (!effectiveModelId) return;
     setRequesting(true);
     try {
-      await rmScoreTrace(trace.id, isDefault ? undefined : effectiveModelId);
+      await rmScoreTrace(trace.id, usesShared ? undefined : effectiveModelId);
       await onReload();
     } catch (e) {
       toast.error(errorMessage(e));
@@ -76,7 +79,7 @@ export default function ActionScoringPanel({ trace, selectedModelId, onModelChan
       <Popover.Content aria-label="Action credit settings" align="end" sideOffset={6} className="z-50 w-80 max-w-[calc(100vw-2rem)] rounded-lg border border-border bg-popover p-3 text-[12px] text-popover-foreground shadow-md">
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-medium">Action credit</span>
-        {isDefault && <span className="text-muted-foreground">{trace.default_evaluator ? `Stash evaluator · v${trace.default_evaluator.revision}` : "Stash evaluator"}</span>}
+        <span className="text-muted-foreground">{usesShared ? `Stash evaluator · v${trace.default_evaluator!.revision}` : savedModelName ?? models?.find((m) => m.id === effectiveModelId)?.name ?? "Stash evaluator"}</span>
         {effectiveModelId && <>
           <span className="text-muted-foreground">{scored} / {eligible.length} actions scored</span>
           <button type="button" onClick={() => void score()} disabled={requesting || active || !eligible.length}
@@ -85,7 +88,7 @@ export default function ActionScoringPanel({ trace, selectedModelId, onModelChan
           </button>
         </>}
       </div>
-      {isDefault && !trace.default_evaluator && <p className="mt-2 text-muted-foreground">No evaluator is available yet. Credit will appear beside each assistant action and tool call once this trace is scored.</p>}
+      {isDefault && !effectiveModelId && <p className="mt-2 text-muted-foreground">No evaluator is available yet. Credit will appear beside each assistant action and tool call once this trace is scored.</p>}
       {pending && !active && <p className="mt-2 text-muted-foreground">Automatic scoring is queued.</p>}
       {effectiveModelId && <p className="mt-2 text-muted-foreground">Learned reward from −1 to +1. Higher means this model prefers the action in context; zero is the training reference midpoint. These scores are not correctness probabilities or contributions that add up to the trace score. Use Comment on an action to correct its assessment.</p>}
       {effectiveModelId && run?.status === "failed" && <p role="alert" className="mt-2 text-red-600">Scoring failed: {run.error ?? "Please try again."}{pending ? " Retrying automatically." : ""}</p>}
@@ -100,7 +103,7 @@ export default function ActionScoringPanel({ trace, selectedModelId, onModelChan
         <summary className="cursor-pointer">Advanced: personal reward models</summary>
         <select aria-label="Action credit model" value={selectedModelId ?? ""} onChange={(e) => onModelChange(e.target.value || null)}
           className="mt-2 min-w-0 max-w-64 rounded border border-border bg-background px-2 py-1">
-          <option value="default">Stash evaluator (automatic)</option>
+          <option value="default">Automatic</option>
           <option value="">Hide scores</option>
           {(models ?? []).map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
         </select>
