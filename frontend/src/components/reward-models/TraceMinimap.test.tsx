@@ -54,7 +54,12 @@ it("shows the selected model's action credit and retains keyboard step navigatio
   renderMap(steps, onJump, new Map([["0", { step_id: "0", credit: -0.4 } as RmActionScore]]));
   const scored = screen.getByRole("button", { name: "Step 1: Assistant, credit -0.40" });
   expect(scored.lastElementChild?.getAttribute("style")).toContain("background-color");
-  expect(screen.getByRole("button", { name: "Step 2: Assistant" }).lastElementChild?.getAttribute("style")).toBeNull();
+  const unscored = screen.getByRole("button", { name: "Step 2: Assistant, unscored" });
+  expect(unscored.lastElementChild?.getAttribute("style")).toBeNull();
+  expect(unscored.lastElementChild).toHaveClass("bg-muted-foreground/30");
+  expect(screen.getByText("Unscored")).toBeVisible();
+  expect(screen.queryByText("User", { exact: true })).not.toBeInTheDocument();
+  expect(screen.queryByText("Assistant", { exact: true })).not.toBeInTheDocument();
   fireEvent.keyDown(scored, { key: "ArrowRight" });
   expect(onJump).toHaveBeenCalledWith(1);
 });

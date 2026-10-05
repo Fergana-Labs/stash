@@ -61,6 +61,7 @@ export default function TraceMinimap({ steps, annotations, actionScores, scrolle
   }, [steps, scroller, navigation]);
 
   if (steps.length === 0) return null;
+  const showingCredit = !!actionScores?.size;
   const commented = new Set(annotations.filter((a) => a.comment !== null).map((a) => a.step_id));
 
   function jump(index: number) {
@@ -81,7 +82,12 @@ export default function TraceMinimap({ steps, annotations, actionScores, scrolle
   return (
     <nav aria-label="Trace steps" className="select-none py-2">
       <div className="mb-2 flex items-center gap-3 text-[11px] text-muted-foreground">
-        {Object.entries(KINDS).map(([kind, style]) => (
+        {showingCredit ? <>
+          <span className="inline-flex items-center gap-2">
+            Action credit: lower <span className="h-1.5 w-16" style={{ background: `linear-gradient(to right, ${creditColor(-1)}, ${creditColor(0)}, ${creditColor(1)})` }} /> higher
+          </span>
+          <span className="inline-flex items-center gap-1"><span className="h-2 w-2 bg-muted-foreground/30" />Unscored</span>
+        </> : Object.entries(KINDS).map(([kind, style]) => (
           <span key={kind} className="inline-flex items-center gap-1">
             <span className={cn("h-2 w-2", style.color)} />{style.label}
           </span>
@@ -89,9 +95,6 @@ export default function TraceMinimap({ steps, annotations, actionScores, scrolle
         <span className="inline-flex items-center gap-1"><span className="size-1.5 rounded-full bg-amber-400" />Comment</span>
         <span className="ml-auto shrink-0 tabular-nums">Step {activeIndex + 1} of {steps.length}</span>
       </div>
-      {!!actionScores?.size && <div className="mb-1 flex items-center gap-2 text-[10px] text-muted-foreground">
-        Action credit: lower <span className="h-1.5 w-16" style={{ background: `linear-gradient(to right, ${creditColor(-1)}, ${creditColor(0)}, ${creditColor(1)})` }} /> higher. Unscored steps keep their role color.
-      </div>}
       <div
         className="relative flex h-[52px] touch-none items-end"
         style={{ columnGap: `min(1px, ${25 / steps.length}%)` }}
@@ -120,7 +123,8 @@ export default function TraceMinimap({ steps, annotations, actionScores, scrolle
         {steps.map((step, index) => {
           const kind = KINDS[kindOf(step)];
           const score = actionScores?.get(step.id);
-          const label = `Step ${index + 1}: ${kind.label}${step.tool_name === null ? "" : `, ${step.tool_name}`}${score ? `, credit ${formatCredit(score.credit)}` : ""}`;
+          const actionType = step.tool_name !== null ? (step.role === "assistant" ? "Tool call" : "Tool result") : kind.label;
+          const label = `Step ${index + 1}: ${actionType}${step.tool_name === null ? "" : `, ${step.tool_name}`}${score ? `, credit ${formatCredit(score.credit)}` : showingCredit ? ", unscored" : ""}`;
           return (
             <button
               key={step.id}
@@ -146,7 +150,7 @@ export default function TraceMinimap({ steps, annotations, actionScores, scrolle
               className="group relative flex h-full min-w-0 flex-1 cursor-pointer items-end focus-visible:outline-2 focus-visible:outline-brand-500"
             >
               {commented.has(step.id) && <span className="absolute top-0 left-1/2 size-1.5 -translate-x-1/2 rounded-full bg-amber-400" />}
-              <span style={score ? { backgroundColor: creditColor(score.credit) } : undefined} className={cn("w-full transition-opacity group-hover:opacity-60", kind.height, kind.color)} />
+              <span style={score ? { backgroundColor: creditColor(score.credit) } : undefined} className={cn("w-full transition-opacity group-hover:opacity-60", kind.height, showingCredit ? "bg-muted-foreground/30" : kind.color)} />
             </button>
           );
         })}
