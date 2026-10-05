@@ -1,3 +1,4 @@
+import type { ReactElement } from "react";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { rmListRewardModels, rmScoreTrace, rmSetTrainingContribution } from "@/lib/api";
@@ -20,6 +21,13 @@ const trace = {
   ], action_scores: [{ reward_model_id: "model1", step_id: "call", credit: 0.4 }], scoring_runs: [],
 } as unknown as RmTraceDetail;
 
+function renderPanel(ui: ReactElement) {
+  const result = render(ui);
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Action credit" }));
+  return result;
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(rmListRewardModels).mockResolvedValue(models);
@@ -29,7 +37,7 @@ afterEach(() => vi.useRealTimers());
 it("keeps personal models in advanced options and requests saved-model inference", async () => {
   const onModelChange = vi.fn(), onReload = vi.fn().mockResolvedValue(undefined);
   vi.mocked(rmScoreTrace).mockResolvedValue({ id: "run" } as RmScoringRun);
-  render(<ActionScoringPanel trace={trace} selectedModelId="model1" onModelChange={onModelChange} onReload={onReload} />);
+  renderPanel(<ActionScoringPanel trace={trace} selectedModelId="model1" onModelChange={onModelChange} onReload={onReload} />);
   fireEvent.click(screen.getByText("Advanced: personal reward models"));
   const selector = await screen.findByRole("combobox", { name: "Action credit model" });
   expect(onModelChange).not.toHaveBeenCalled();
@@ -46,7 +54,7 @@ it("keeps personal models in advanced options and requests saved-model inference
 it("polls only while the selected model's job is active and shows failures", async () => {
   const onReload = vi.fn().mockResolvedValue(undefined), onModelChange = vi.fn();
   const props = { trace, selectedModelId: "model1", onModelChange, onReload };
-  const { rerender } = render(<ActionScoringPanel {...props} />);
+  const { rerender } = renderPanel(<ActionScoringPanel {...props} />);
   await screen.findByRole("button", { name: "Score again" });
   vi.useFakeTimers();
   const active = { ...trace, scoring_runs: [{ id: "run", reward_model_id: "model1", status: "running" } as RmScoringRun] };
@@ -65,8 +73,8 @@ it("polls only while the selected model's job is active and shows failures", asy
 it("shows shared bootstrap status without selecting a personal model or contributing data", async () => {
   vi.mocked(rmListRewardModels).mockResolvedValue([models[1]]);
   const onModelChange = vi.fn();
-  render(<ActionScoringPanel trace={trace} selectedModelId="default" onModelChange={onModelChange} onReload={vi.fn()} />);
-  expect(screen.getByText(/Waiting for the first Stash evaluator/)).toBeVisible();
+  renderPanel(<ActionScoringPanel trace={trace} selectedModelId="default" onModelChange={onModelChange} onReload={vi.fn()} />);
+  expect(screen.getByText(/No evaluator is available yet/)).toBeVisible();
   expect(screen.getByRole("checkbox")).not.toBeChecked();
   fireEvent.click(screen.getByText("Advanced: personal reward models"));
   expect(await screen.findByRole("link", { name: "Train a reward model" })).toHaveAttribute("href", "/reward-models");
@@ -80,7 +88,7 @@ it("uses the shared default without requiring personal training and explicitly s
   vi.mocked(rmSetTrainingContribution).mockResolvedValue(undefined);
   const onReload = vi.fn().mockResolvedValue(undefined);
   const shared = { ...trace, default_evaluator: { id: "model1", name: "Stash", revision: 3, updated_at: "today" } };
-  render(<ActionScoringPanel trace={shared} selectedModelId="default" onModelChange={vi.fn()} onReload={onReload} />);
+  renderPanel(<ActionScoringPanel trace={shared} selectedModelId="default" onModelChange={vi.fn()} onReload={onReload} />);
   expect(screen.getByText("Stash evaluator · v3")).toBeVisible();
   expect(screen.getByText("1 / 2 actions scored")).toBeVisible();
   fireEvent.click(screen.getByRole("button", { name: "Score again" }));
@@ -94,7 +102,7 @@ it("polls automatic scoring before a run starts, then stops after bounded failur
   const onReload = vi.fn().mockResolvedValue(undefined);
   const shared = { ...trace, default_evaluator: { id: "model1", name: "Stash", revision: 1, updated_at: "today" }, automatic_scoring: { attempts: 0, error: null } };
   const props = { trace: shared, selectedModelId: "default", onModelChange: vi.fn(), onReload };
-  const { rerender } = render(<ActionScoringPanel {...props} />);
+  const { rerender } = renderPanel(<ActionScoringPanel {...props} />);
   await waitFor(() => expect(rmListRewardModels).toHaveBeenCalled());
   vi.useFakeTimers();
   // Recreate the timer under the fake clock.

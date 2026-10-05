@@ -285,6 +285,7 @@ export default function TraceClient({ traceId }: { traceId: string }) {
               </div>
             </div>
             <div className="flex shrink-0 items-center gap-1.5 pt-1">
+              <ActionScoringPanel trace={trace} selectedModelId={scoreModelId} onModelChange={setScoreModelId} onReload={load} />
               <button
                 type="button"
                 aria-expanded={commentsOpen}
@@ -301,8 +302,6 @@ export default function TraceClient({ traceId }: { traceId: string }) {
               </button>
             </div>
           </header>
-
-          <ActionScoringPanel trace={trace} selectedModelId={scoreModelId} onModelChange={setScoreModelId} onReload={load} />
 
           <div ref={navigation} className="sticky top-0 z-20 bg-background pb-2">
             <TraceMinimap steps={trace.steps} annotations={trace.annotations} actionScores={actionScores} scroller={scroller} navigation={navigation} onJump={(index) => revealStep(trace.steps[index].id)} />
