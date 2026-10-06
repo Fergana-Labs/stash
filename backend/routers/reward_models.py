@@ -6,7 +6,7 @@ its owner; another owner's id is a 404, never a 403, so ids don't leak.
 
 import json
 import re
-from typing import Literal
+from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -20,6 +20,7 @@ from ..auth import get_current_user
 from ..database import get_pool
 from ..services.rm import annotations, datasets, evaluator, jobs, otel_ingest, query, traces
 from ..services.rm.adapters import TraceFormatError, list_formats
+from ..services.rm.feedback import RUBRIC
 from ..tasks import reward_models as rm_tasks
 
 
@@ -66,6 +67,19 @@ class UpdateAnnotationRequest(BaseModel):
     label_error_note: str | None = None
 
 
+class PersonalTrainingConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    input_version: Literal[3] = 3
+    rubric: list[Annotated[str, Field(min_length=1, max_length=600)]] = Field(
+        default_factory=lambda: list(RUBRIC), min_length=1, max_length=8
+    )
+    max_actions_per_trace: int = Field(default=24, ge=2, le=64)
+    task_groups: dict[UUID, Annotated[str, Field(min_length=1, max_length=120)]] = Field(
+        default_factory=dict
+    )
+    evaluation_groups: list[str] = Field(default_factory=list)
+
+
 class CreateRewardModelRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: str = Field(min_length=1)
@@ -73,6 +87,7 @@ class CreateRewardModelRequest(BaseModel):
     epochs: int = Field(default=DEFAULT_EPOCHS, ge=1)
     max_pairs: int = Field(default=datasets.DEFAULT_MAX_PAIRS, ge=datasets.MIN_PAIRS)
     trace_ids: list[UUID] = Field(min_length=1)
+    training_config: PersonalTrainingConfig | None = None
 
 
 class CreateGepaRunRequest(BaseModel):
@@ -303,14 +318,42 @@ async def create_reward_model(
         if trace_id not in owned_ids:
             raise HTTPException(status_code=404, detail=f"Trace {trace_id} not found")
 
+    config = req.training_config.model_dump(mode="json") if req.training_config else None
+    if config is not None:
+        configured = config["task_groups"]
+        if configured and set(configured) != {str(tid) for tid in trace_ids}:
+            raise HTTPException(
+                status_code=422, detail="Assign every selected trace to one task group"
+            )
+        config["task_groups"] = configured or {str(tid): str(tid) for tid in trace_ids}
+        groups = sorted(set(config["task_groups"].values()))
+        if len(groups) < 2:
+            raise HTTPException(
+                status_code=422,
+                detail="Select at least two independent tasks for held-out evaluation",
+            )
+        config["evaluation_groups"] = (
+            config["evaluation_groups"] or groups[: max(1, round(len(groups) * 0.2))]
+        )
+        if not set(config["evaluation_groups"]) < set(groups):
+            raise HTTPException(
+                status_code=422,
+                detail="Evaluation groups must be selected tasks and leave tasks for training",
+            )
+        if req.max_pairs < len(trace_ids) * 2:
+            raise HTTPException(
+                status_code=422,
+                detail="max_pairs must allow at least two targets per selected trace",
+            )
+
     compute = jobs.required_env("RM_COMPUTE")
     if compute not in ("local", "modal"):
         raise ValueError("RM_COMPUTE must be local or modal")
     row = await get_pool().fetchrow(
         """
         INSERT INTO rm_reward_models
-          (owner_user_id, name, base_model, compute, epochs, max_pairs, trace_ids)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
+          (owner_user_id, name, base_model, compute, epochs, max_pairs, trace_ids, training_config)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         RETURNING *
         """,
         current_user["id"],
@@ -320,6 +363,7 @@ async def create_reward_model(
         req.epochs,
         req.max_pairs,
         trace_ids,
+        config,
     )
     rm_tasks.train_reward_model.delay(str(row["id"]))
     return _reward_model(row)
@@ -380,6 +424,7 @@ REWARD_MODEL_FIELDS = (
     "created_at",
     "started_at",
     "finished_at",
+    "training_config",
 )
 
 

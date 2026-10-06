@@ -5,12 +5,25 @@ import json
 import pytest
 
 
-@pytest.mark.parametrize("shared", [False, True])
-def test_train_save_reload_and_score_actions(tmp_path, monkeypatch, shared):
+@pytest.mark.parametrize("input_version", [1, 2, 3])
+def test_train_save_reload_and_score_actions(tmp_path, monkeypatch, input_version):
+    shared = input_version >= 2
     torch = pytest.importorskip("torch")
     transformers = pytest.importorskip("transformers")
     tokenizers = pytest.importorskip("tokenizers")
     from rm_worker import evaluate_run, score_run, scoring, train
+    from rm_worker.context import render_action_input
+
+    def text(value):
+        if input_version != 3:
+            return value
+        return render_action_input(
+            [
+                {"role": "user", "content": "Follow the coding task"},
+                {"role": "assistant", "content": value},
+            ],
+            ["Be correct"],
+        )
 
     torch.set_num_threads(1)
     torch.manual_seed(0)
@@ -36,7 +49,7 @@ def test_train_save_reload_and_score_actions(tmp_path, monkeypatch, shared):
             num_hidden_layers=1,
             num_attention_heads=1,
             intermediate_size=16,
-            max_position_embeddings=32,
+            max_position_embeddings=128,
             num_labels=1,
             hidden_dropout_prob=0,
             attention_probs_dropout_prob=0,
@@ -47,6 +60,7 @@ def test_train_save_reload_and_score_actions(tmp_path, monkeypatch, shared):
     monkeypatch.setattr(train, "pick_device", lambda: torch.device("cpu"))
     monkeypatch.setattr(scoring, "pick_device", lambda: torch.device("cpu"))
     monkeypatch.setattr(train, "MAX_LENGTH", 32)
+    monkeypatch.setattr(train, "ACTION_MAX_LENGTH", 128)
     uploaded = []
     monkeypatch.setattr(train, "upload_model", lambda path, key: uploaded.append((path, key)))
     (tmp_path / "job.json").write_text(
@@ -57,15 +71,16 @@ def test_train_save_reload_and_score_actions(tmp_path, monkeypatch, shared):
                 "epochs": 1,
                 "artifact_key": "test/checkpoint",
                 "fixed_split": shared,
-                "input_version": 2 if shared else 1,
+                "input_version": input_version,
+                "rubric": ["Be correct"],
             }
         )
     )
     pairs = [
         {
             "trace_id": str(i),
-            "chosen": f"user {i} assistant lookup good",
-            "rejected": f"user {i} assistant lookup bad",
+            "chosen": text(f"user {i} assistant lookup good"),
+            "rejected": text(f"user {i} assistant lookup bad"),
             "example_id": str(i),
             "partition": "eval" if i == 9 else "train",
             "task_group": str(i),
@@ -75,17 +90,17 @@ def test_train_save_reload_and_score_actions(tmp_path, monkeypatch, shared):
         for i in range(10)
     ]
     items = [
-        {"trace_id": "0", "step_id": "call", "text": "user assistant lookup good"},
-        {"trace_id": "0", "step_id": "reply", "text": "user assistant bad"},
+        {"trace_id": "0", "step_id": "call", "text": text("user assistant lookup good")},
+        {"trace_id": "0", "step_id": "reply", "text": text("user assistant bad")},
     ]
     train.write_jsonl(tmp_path / "pairs.jsonl", pairs)
     train.write_jsonl(
-        tmp_path / "score_items.jsonl", [{"trace_id": "0", "text": "user assistant good"}]
+        tmp_path / "score_items.jsonl", [{"trace_id": "0", "text": text("user assistant good")}]
     )
     train.write_jsonl(tmp_path / "action_score_items.jsonl", items)
     result = train.train(tmp_path)
     assert result["metrics"]["action_scoring_version"] == 1
-    assert result["metrics"]["input_version"] == (2 if shared else 1)
+    assert result["metrics"]["input_version"] == input_version
     assert result["metrics"]["eval_split"] == ("curated_task_groups" if shared else "trace")
     assert result["metrics"]["action_train_pairs"] == 9
     assert result["metrics"]["action_eval_pairs"] == 1

@@ -2,12 +2,15 @@
 
 import asyncio
 import json
+import logging
 import math
 import random
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, create_model
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, create_model
+
+from rm_worker.context import action_context, clip, render_action_input
 
 from ...config import settings
 from ...database import get_pool
@@ -21,6 +24,7 @@ RUBRIC = (
     "Appropriate uncertainty",
 )
 RUBRIC_DROPOUT = 0.5
+logger = logging.getLogger(__name__)
 
 
 def sample_rubric(dropout: float) -> tuple[str, ...]:
@@ -114,6 +118,22 @@ or a completed action. If no valid alternative call can be established, keep the
 assessment but set revision=null. Do not replace the call with prose.
 """
 
+ACTION_REVIEW_INSTRUCTION = """
+Assess this action at its actual point in an ongoing coding session. A short
+progress update or a plan before a tool call is not a failed final answer.
+Do not replace it with a fabricated completion, a long recap, or unsolicited
+permission requests. Do not prefer verbosity, more checks, or adherence to a
+repeated habit without a concrete task-specific benefit.
+Claims that an API, command, file or tool exists need support in the supplied
+context. 'Or an equivalent operation' is not evidence. A planned real run is
+not a fabricated result. Do not invent safety objections to authorized routine
+work. Never reward printing credentials or secrets when checking their presence
+or using them without disclosure suffices.
+Alternatives must be plausible actions at this same stage of the task, not
+deliberately lazy caricatures. If the meaningful difference cannot be assessed
+from the available context, abstain (feedback=null or preferred=tie).
+"""
+
 
 class ToolCallRevision(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
@@ -204,7 +224,12 @@ class ComparisonReview(BaseModel):
 
 
 async def review_comparison(
-    steps: list[dict], step: dict, finding: Judgment, criteria: tuple[str, ...] = RUBRIC
+    steps: list[dict],
+    step: dict,
+    finding: Judgment,
+    criteria: tuple[str, ...] = RUBRIC,
+    *,
+    input_version: int = 1,
 ) -> ComparisonReview:
     return await llm.complete_structured(
         system="""Independently review two candidate assistant responses or tool calls to the same task.
@@ -219,10 +244,11 @@ appropriate at this point in the task. Mark unsupported tool names, schemas or
 arguments grounded=false. Tool results after the call are unavailable to both candidates.
 Return tie for equivalent answers, cosmetic edits, or no defensible preference.
 Do not assume the generated revision is better. Explain the comparison briefly."""
-        + rubric_instruction(criteria),
+        + rubric_instruction(criteria)
+        + (ACTION_REVIEW_INSTRUCTION if input_version == 3 else ""),
         prompt=json.dumps(
             {
-                "context_before_response": [s for s in steps if s["idx"] < step["idx"]],
+                "context_before_response": _prior_context(steps, step, input_version),
                 "original": action_text(step),
                 "revision": action_text(revised_step(step, finding.revision)),
             },
@@ -241,6 +267,9 @@ async def extract_preferences(
     *,
     rubric_dropout: float = RUBRIC_DROPOUT,
     review_all: bool = False,
+    input_version: int = 1,
+    rubric: tuple[str, ...] | None = None,
+    max_actions: int | None = None,
 ) -> Extraction:
     if not 0 <= rubric_dropout < 1:
         raise ValueError("Rubric dropout must be between 0 (inclusive) and 1 (exclusive)")
@@ -250,18 +279,25 @@ async def extract_preferences(
         if not is_assistant_action(step):
             return None
         eligible = eligible_evidence(step, evidence)
+        if input_version == 3:
+            eligible = {
+                key: {**value, "text": clip(value["text"], 3000)} for key, value in eligible.items()
+            }
         response_id = f"response:{step['idx']}"
-        criteria = sample_rubric(rubric_dropout)
+        criteria = rubric or sample_rubric(rubric_dropout)
         async with semaphore:
             result = await llm.complete_structured(
                 system=SYSTEM
                 + (TOOL_CALL_INSTRUCTION if step.get("tool_name") else "")
-                + rubric_instruction(criteria),
+                + rubric_instruction(criteria)
+                + (ACTION_REVIEW_INSTRUCTION if input_version == 3 else ""),
                 prompt=json.dumps(
                     {
-                        "context_before_response": [s for s in steps if s["idx"] < step["idx"]],
+                        "context_before_response": _prior_context(steps, step, input_version),
                         "target_response": step,
-                        "context_after_response": [s for s in steps if s["idx"] > step["idx"]],
+                        "context_after_response": []
+                        if input_version == 3
+                        else [s for s in steps if s["idx"] > step["idx"]],
                         "eligible_evidence": eligible,
                     },
                     ensure_ascii=False,
@@ -300,15 +336,81 @@ async def extract_preferences(
             review_all or finding.source == "ai_judgment" or step.get("tool_name")
         ):
             async with semaphore:
-                review = await review_comparison(steps, step, finding, criteria)
+                review = (
+                    await review_comparison(
+                        steps, step, finding, criteria, input_version=input_version
+                    )
+                    if input_version == 3
+                    else await review_comparison(steps, step, finding, criteria)
+                )
             expected = "revision" if finding.label == "negative" else "original"
             if not review.grounded or review.preferred != expected:
                 finding = finding.model_copy(update={"revision": None})
             result.reason += f" Comparison review: {review.reason}"
         return Feedback(**finding.model_dump(), reason=result.reason, step_index=step["idx"])
 
-    findings = await asyncio.gather(*(classify(step) for step in steps))
+    async def classify_checked(step: dict) -> Feedback | None:
+        for attempt in range(2):
+            try:
+                return await classify(step)
+            except ValidationError:
+                if input_version != 3:
+                    raise
+                logger.warning(
+                    "Invalid feedback for action %s (attempt %s)", step["idx"], attempt + 1
+                )
+        # Unparseable judgments abstain; never turn them into preference labels.
+        return None
+
+    targets = sample_actions(steps, max_actions) if max_actions is not None else steps
+    findings = await asyncio.gather(*(classify_checked(step) for step in targets))
     return Extraction(feedback=[finding for finding in findings if finding is not None])
+
+
+def _prior_context(steps: list[dict], step: dict, input_version: int):
+    prior = [s for s in steps if s["idx"] < step["idx"]]
+    if input_version != 3:
+        return prior
+    context = action_context([*prior, step])
+    return {key: value for key, value in context.items() if key not in {"action", "rubric"}}
+
+
+def sample_actions(steps: list[dict], limit: int) -> list[dict]:
+    """Deterministic coverage across time and action type, bounded before LLM calls."""
+    actions = [
+        s
+        for s in steps
+        if is_assistant_action(s)
+        and not (s.get("metadata") or {}).get("thinking")
+        and len(action_text(s)) <= 3500
+    ]
+    selected = {}
+    for tool in (True, False):
+        bucket = [s for s in actions if bool(s.get("tool_name")) == tool]
+        count = min(len(bucket), limit // 2)
+        for i in range(count):
+            item = bucket[round(i * (len(bucket) - 1) / max(1, count - 1))]
+            selected[item["idx"]] = item
+    for item in actions:
+        if len(selected) >= limit:
+            break
+        selected[item["idx"]] = item
+    return [selected[idx] for idx in sorted(selected)]
+
+
+def user_feedback_evidence(steps: list[dict]) -> dict[str, dict]:
+    # Harness-injected agent messages are not the user's approval or criticism.
+    excluded = (
+        "<teammate-message",
+        "<heartbeat>",
+        "<external_codex_apps_",
+        "# AGENTS.md instructions",
+    )
+    return {
+        f"step:{s['idx']}": {"kind": "user", "step_index": s["idx"], "text": s["content"]}
+        for s in steps
+        if s["role"] == "user" and not s["content"].lstrip().startswith(excluded)
+    }
 
 
 def eligible_evidence(step: dict, evidence: dict[str, dict]) -> dict[str, dict]:
@@ -329,6 +431,8 @@ def render_preferences(
     result: Extraction,
     *,
     include_system: bool = False,
+    input_version: int = 1,
+    rubric: tuple[str, ...] = (),
 ) -> list[dict]:
     by_index = {step["idx"]: step for step in steps}
     seen: set[int] = set()
@@ -370,6 +474,11 @@ def render_preferences(
         revision = render_steps(
             [*prefix, revised_step(step, preference.revision)], include_system=include_system
         )
+        if input_version == 3:
+            original = render_action_input([*prefix, step], rubric)
+            revision = render_action_input(
+                [*prefix, revised_step(step, preference.revision)], rubric
+            )
         chosen, rejected = (
             (revision, original) if preference.label == "negative" else (original, revision)
         )
@@ -388,7 +497,12 @@ def render_preferences(
 
 
 async def build_feedback_pairs(
-    owner_user_id: UUID, trace_ids: list[UUID], max_pairs: int, *, shared: bool = False
+    owner_user_id: UUID,
+    trace_ids: list[UUID],
+    max_pairs: int,
+    *,
+    shared: bool = False,
+    training_config: dict | None = None,
 ) -> tuple[list[dict], list[dict]]:
     pool = get_pool()
     steps = await pool.fetch(
@@ -408,6 +522,7 @@ async def build_feedback_pairs(
     )
     pairs = []
     findings = []
+    v3 = bool(training_config)
     for trace_id in sorted(set(trace_ids)):
         trace_steps = [dict(step) for step in steps if step["trace_id"] == trace_id]
         by_index = {step["idx"]: step for step in trace_steps}
@@ -416,6 +531,8 @@ async def build_feedback_pairs(
             for s in trace_steps
             if s["role"] == "user"
         }
+        if v3:
+            evidence = user_feedback_evidence(trace_steps)
         evidence.update(
             {
                 f"comment:{c['id']}": {
@@ -427,7 +544,7 @@ async def build_feedback_pairs(
                 if c["trace_id"] == trace_id and c["comment"] is not None
             }
         )
-        if shared:
+        if shared or v3:
             # A step rating supplies a human judgment, but still needs a grounded,
             # independently reviewed alternative before becoming a preference pair.
             evidence.update(
@@ -446,7 +563,19 @@ async def build_feedback_pairs(
                 }
             )
         context_prefix = ""
-        if shared:
+        if v3:
+            extracted = await extract_preferences(
+                trace_steps,
+                evidence,
+                input_version=3,
+                rubric=tuple(training_config["rubric"]),
+                rubric_dropout=0,
+                review_all=True,
+                max_actions=min(
+                    training_config["max_actions_per_trace"], max_pairs // len(trace_ids)
+                ),
+            )
+        elif shared:
             from .datasets import render_action_context
 
             metadata = await pool.fetchval("SELECT metadata FROM rm_traces WHERE id = $1", trace_id)
@@ -479,7 +608,13 @@ async def build_feedback_pairs(
                 finding.revision = None
                 finding.reason += " Excluded: an explicit human rating takes precedence."
         rendered = render_preferences(
-            trace_id, trace_steps, evidence, extracted, include_system=shared
+            trace_id,
+            trace_steps,
+            evidence,
+            extracted,
+            include_system=shared,
+            input_version=3 if v3 else 1,
+            rubric=tuple(training_config["rubric"]) if v3 else (),
         )
         for pair in rendered:
             pair["chosen"] = context_prefix + pair["chosen"]
@@ -491,6 +626,14 @@ async def build_feedback_pairs(
                 "tool_name": by_index[item.step_index].get("tool_name"),
                 "trace_id": str(trace_id),
                 "classifier_model": settings.ANTHROPIC_MODEL,
+                **(
+                    {
+                        "original_action": action_text(by_index[item.step_index]),
+                        "alternative_action": item.revision,
+                    }
+                    if v3
+                    else {}
+                ),
             }
             for item in extracted.feedback
         )

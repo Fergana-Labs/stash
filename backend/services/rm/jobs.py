@@ -7,11 +7,14 @@ with RM_WORKER_PYTHON, and reads result.json / scores.jsonl back.
 """
 
 import asyncio
+import hashlib
 import json
 import math
 import os
 from pathlib import Path
 from uuid import UUID
+
+from rm_worker.release_gate import check_partition
 
 from ...database import get_pool
 from . import datasets, feedback
@@ -66,23 +69,45 @@ async def run_training(model_id: UUID) -> None:
     pool = get_pool()
     model = await pool.fetchrow("SELECT * FROM rm_reward_models WHERE id = $1", model_id)
     owner_user_id = model["owner_user_id"]
+    config = model.get("training_config")
 
-    pairs = await datasets.build_pairs(owner_user_id, model["trace_ids"], model["max_pairs"])
+    pairs = (
+        []
+        if config
+        else await datasets.build_pairs(owner_user_id, model["trace_ids"], model["max_pairs"])
+    )
+    kwargs = {"training_config": config} if config else {}
     inferred_pairs, findings = await feedback.build_feedback_pairs(
-        owner_user_id, model["trace_ids"], model["max_pairs"]
+        owner_user_id, model["trace_ids"], model["max_pairs"], **kwargs
     )
     pairs.extend(inferred_pairs)
     pairs = pairs[: model["max_pairs"]]
+    if config:
+        for pair in pairs:
+            pair["task_group"] = config["task_groups"][pair["trace_id"]]
+            pair["partition"] = (
+                "eval" if pair["task_group"] in config["evaluation_groups"] else "train"
+            )
+            pair["example_id"] = hashlib.sha256(
+                (pair["chosen"] + pair["rejected"]).encode()
+            ).hexdigest()
     included = {
         (pair["trace_id"], pair["evidence"]["step_index"])
         for pair in pairs
-        if pair.get("source") == "feedback_revision"
+        if pair.get("source") == "feedback_revision" and pair.get("partition") != "eval"
     }
     for finding in findings:
         finding["included_in_training"] = (
             finding["trace_id"],
             finding["step_index"],
         ) in included and len(pairs) >= datasets.MIN_PAIRS
+        if config:
+            finding["included_in_evaluation"] = any(
+                p["partition"] == "eval"
+                and p["trace_id"] == finding["trace_id"]
+                and p["evidence"]["step_index"] == finding["step_index"]
+                for p in pairs
+            )
     await pool.execute(
         "UPDATE rm_reward_models SET num_pairs = $2, training_pairs = $3, feedback = $4 WHERE id = $1",
         model_id,
@@ -91,6 +116,8 @@ async def run_training(model_id: UUID) -> None:
         findings,
     )
     datasets.check_enough_pairs(pairs)
+    if config:
+        check_partition(pairs)
 
     directory = job_dir(model_id)
     directory.mkdir(parents=True, exist_ok=True)
@@ -101,10 +128,30 @@ async def run_training(model_id: UUID) -> None:
         "compute": model["compute"],
         "artifact_key": f"reward-models/{owner_user_id}/{model_id}.tar.gz",
     }
+    if config:
+        job.update(input_version=3, fixed_split=True, rubric=config["rubric"])
     (directory / "job.json").write_text(json.dumps(job))
     _write_jsonl(directory / "pairs.jsonl", pairs)
-    _write_jsonl(directory / "score_items.jsonl", await datasets.score_items(owner_user_id))
-    action_items = await datasets.action_score_items(owner_user_id)
+    _write_jsonl(
+        directory / "score_items.jsonl", [] if config else await datasets.score_items(owner_user_id)
+    )
+    ids = None
+    if config:
+        # Initial training scores the sampled actions from these tasks. Further
+        # traces are scored explicitly via the existing score endpoint.
+        targets = {(f["trace_id"], f["step_index"]) for f in findings}
+        rows = await pool.fetch(
+            "SELECT id, trace_id, idx FROM rm_trace_steps WHERE trace_id = ANY($1::uuid[])",
+            model["trace_ids"],
+        )
+        ids = {str(r["id"]) for r in rows if (str(r["trace_id"]), r["idx"]) in targets}
+    action_items = await datasets.action_score_items(
+        owner_user_id,
+        input_version=3 if config else 1,
+        rubric=config["rubric"] if config else (),
+        trace_ids=model["trace_ids"] if config else None,
+        step_ids=ids,
+    )
     _write_jsonl(directory / "action_score_items.jsonl", action_items)
 
     module = "rm_worker.modal_runner" if model["compute"] == "modal" else "rm_worker.train"
@@ -191,7 +238,7 @@ async def run_scoring(run_id: UUID) -> None:
     pool = get_pool()
     run = await pool.fetchrow(
         """
-        SELECT r.*, m.artifact_key, m.compute, m.metrics FROM rm_scoring_runs r
+        SELECT r.*, m.artifact_key, m.compute, m.metrics, m.training_config FROM rm_scoring_runs r
         JOIN rm_reward_models m ON m.id = r.reward_model_id AND (m.owner_user_id = r.owner_user_id
             OR EXISTS (SELECT 1 FROM rm_evaluator_releases er WHERE er.reward_model_id = m.id))
         WHERE r.id = $1 AND m.status = 'succeeded'
@@ -204,6 +251,7 @@ async def run_scoring(run_id: UUID) -> None:
         run["owner_user_id"],
         run["trace_id"],
         input_version=(run["metrics"] or {}).get("input_version", 1),
+        rubric=(run.get("training_config") or {}).get("rubric", ()),
     )
     if not items:
         raise ValueError("Trace has no assistant actions to score")
@@ -247,10 +295,17 @@ async def run_gepa(run_id: UUID) -> None:
 
     # The skill learns from the same traces its reward model was trained on.
     model = await pool.fetchrow(
-        "SELECT trace_ids, artifact_key, compute, training_pairs FROM rm_reward_models WHERE id = $1",
+        "SELECT trace_ids, artifact_key, compute, training_pairs, training_config FROM rm_reward_models WHERE id = $1",
         run["reward_model_id"],
     )
     trace_ids = model["trace_ids"]
+    config = model.get("training_config")
+    if config:
+        trace_ids = [
+            tid
+            for tid in trace_ids
+            if config["task_groups"][str(tid)] not in config["evaluation_groups"]
+        ]
     if model["artifact_key"] is None:
         raise ValueError("Reward model has no stored checkpoint")
     examples = await datasets.gepa_examples(run["owner_user_id"], trace_ids)
@@ -259,6 +314,7 @@ async def run_gepa(run_id: UUID) -> None:
             if (
                 pair.get("trace_id") == example["trace_id"]
                 and pair.get("source") == "feedback_revision"
+                and pair.get("partition") != "eval"
             ):
                 evidence = pair["evidence"]
                 source = "AI judgment" if evidence["source"] == "ai_judgment" else "User feedback"

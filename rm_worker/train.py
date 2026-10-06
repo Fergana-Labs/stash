@@ -22,6 +22,7 @@ from rm_worker.release_gate import check_partition
 from rm_worker.scoring import load_tokenizer, pick_device, score_texts, tokenize
 
 MAX_LENGTH = 1024
+ACTION_MAX_LENGTH = 4096
 LEARNING_RATE = 1e-5
 BATCH_SIZE = 4
 
@@ -58,8 +59,9 @@ def pairwise_accuracy(model, tokenizer, pairs: list[dict], device) -> float | No
         return None
     model.eval()
     correct = 0
-    for start in range(0, len(pairs), BATCH_SIZE):
-        chosen, rejected = pair_rewards(model, tokenizer, pairs[start : start + BATCH_SIZE], device)
+    batch_size = 1 if tokenizer.init_kwargs.get("stash_input_version") == 3 else BATCH_SIZE
+    for start in range(0, len(pairs), batch_size):
+        chosen, rejected = pair_rewards(model, tokenizer, pairs[start : start + batch_size], device)
         correct += int((chosen > rejected).sum().item())
     return correct / len(pairs)
 
@@ -80,7 +82,13 @@ def train(job_dir: Path) -> dict:
         f"base_model={base_model} device={device} train_pairs={len(train_pairs)} eval_pairs={len(eval_pairs)}"
     )
 
-    tokenizer = load_tokenizer(base_model, MAX_LENGTH)
+    input_version = job.get("input_version", 1)
+    tokenizer = load_tokenizer(
+        base_model,
+        ACTION_MAX_LENGTH if input_version == 3 else MAX_LENGTH,
+        input_version,
+        job.get("rubric"),
+    )
     model = AutoModelForSequenceClassification.from_pretrained(
         base_model, num_labels=1, dtype=torch.float32
     )
@@ -97,9 +105,10 @@ def train(job_dir: Path) -> dict:
         model.train()
         shuffler.shuffle(train_pairs)
         epoch_losses: list[float] = []
-        for start in range(0, len(train_pairs), BATCH_SIZE):
+        batch_size = 1 if input_version == 3 else BATCH_SIZE
+        for start in range(0, len(train_pairs), batch_size):
             chosen, rejected = pair_rewards(
-                model, tokenizer, train_pairs[start : start + BATCH_SIZE], device
+                model, tokenizer, train_pairs[start : start + batch_size], device
             )
             loss = -F.logsigmoid(chosen - rejected).mean()
             optimizer.zero_grad()
@@ -162,6 +171,9 @@ def train(job_dir: Path) -> dict:
             "eval_accuracy": eval_accuracy,
             "eval_split": "curated_task_groups" if job.get("fixed_split") else "trace",
             "input_version": job.get("input_version", 1),
+            "max_length": tokenizer.model_max_length,
+            "context_policy": "section_budgets" if input_version == 3 else "left_truncation",
+            "initial_scored_actions": len(action_scores),
             "excluded_cross_trace_pairs": len(pairs) - len(train_pairs) - len(eval_pairs),
             "action_scoring_version": 1 if action_train else None,
             "action_train_pairs": len(action_train),
