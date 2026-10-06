@@ -33,7 +33,7 @@ async def test_missing_structured_output_is_not_treated_as_abstention(monkeypatc
     parse = AsyncMock(return_value=SimpleNamespace(parsed_output=None, stop_reason=stop_reason))
     monkeypatch.setattr(llm, "_client", SimpleNamespace(messages=SimpleNamespace(parse=parse)))
 
-    with pytest.raises(ValueError, match=stop_reason):
+    with pytest.raises(llm.StructuredCompletionError, match=stop_reason):
         await llm.complete_structured(
             prompt="Example",
             system="Classify",

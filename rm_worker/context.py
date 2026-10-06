@@ -32,7 +32,14 @@ def action_text(step: dict) -> str:
 
 def is_instruction(step: dict) -> bool:
     return step["role"] == "system" or (
-        step["role"] == "user" and step.get("content", "").startswith("# AGENTS.md instructions")
+        step["role"] == "user"
+        and (step.get("content") or "").lstrip().startswith("# AGENTS.md instructions")
+    )
+
+
+def is_harness_message(step: dict) -> bool:
+    return step["role"] == "user" and (step.get("content") or "").lstrip().startswith(
+        ("<teammate-message", "<heartbeat>", "<external_codex_apps_")
     )
 
 
@@ -42,13 +49,21 @@ def action_context(steps: list[dict], rubric: list[str] | tuple[str, ...] = ()) 
     prior = steps[:-1]
     repo_rules = [s["content"] for s in prior if is_instruction(s) and s["role"] == "user"]
     system = [s["content"] for s in prior if s["role"] == "system"]
-    requests = [
+    user_turns = [
         s["content"]
         for s in prior
         if s["role"] == "user"
         and not is_instruction(s)
-        and not s["content"].startswith("<external_codex_apps_")
+        and not s["content"].lstrip().startswith("<external_codex_apps_")
     ]
+    requests = [
+        s["content"]
+        for s in prior
+        if s["role"] == "user" and not is_instruction(s) and not is_harness_message(s)
+    ]
+    # A subagent may receive its entire task in a teammate envelope. Retain the
+    # initial assignment in that case, without promoting later status pings.
+    requests = requests or user_turns[:1]
     # Preserve the most recent repo instructions separately from the much larger
     # harness prompt. Updated AGENTS.md blocks replace their earlier versions.
     instructions = "\n\n".join([*repo_rules[-1:], *system])

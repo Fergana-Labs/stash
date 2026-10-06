@@ -186,8 +186,10 @@ def test_sampling_covers_the_trace_and_does_not_treat_agent_messages_as_human_fe
     )
 
 
+@pytest.mark.parametrize("missing_output", [False, True])
 async def test_invalid_model_judgment_retries_then_abstains_without_losing_valid_findings(
     monkeypatch,
+    missing_output,
 ):
     attempts = {}
 
@@ -196,6 +198,8 @@ async def test_invalid_model_judgment_retries_then_abstains_without_losing_valid
         idx = target["idx"]
         attempts[idx] = attempts.get(idx, 0) + 1
         if idx == 1:
+            if missing_output:
+                raise feedback.llm.StructuredCompletionError("No structured output (max_tokens)")
             return feedback.ResponseExtraction.model_validate({})
         return feedback.ResponseExtraction(reason="No comparison needed", feedback=None)
 
