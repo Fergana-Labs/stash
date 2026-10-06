@@ -40,7 +40,7 @@ def main():
     spawn_transcript_upload(
         data_dir=DATA_DIR,
         transcript_path=event.transcript_path,
-        session_id=state.get("session_id", ""),
+        session_id=event.session_id or state.get("session_id", ""),
         agent_name=cfg["agent_name"],
         cwd=event.cwd,
         base_url=cfg["api_endpoint"],
