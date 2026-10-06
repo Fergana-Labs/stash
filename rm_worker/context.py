@@ -63,7 +63,8 @@ def action_context(steps: list[dict], rubric: list[str] | tuple[str, ...] = ()) 
     ]
     # A subagent may receive its entire task in a teammate envelope. Retain the
     # initial assignment in that case, without promoting later status pings.
-    requests = requests or user_turns[:1]
+    assignments = [text for text in user_turns if text.lstrip().startswith("<teammate-message")]
+    requests = requests or assignments[:1] or user_turns[:1]
     # Preserve the most recent repo instructions separately from the much larger
     # harness prompt. Updated AGENTS.md blocks replace their earlier versions.
     instructions = "\n\n".join([*repo_rules[-1:], *system])
