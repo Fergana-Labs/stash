@@ -14,8 +14,10 @@ Credential injection differs by kind:
   - api_key → an env var the CLI reads (ANTHROPIC_API_KEY / OPENAI_API_KEY).
   - oauth   → a credential FILE the CLI reads, written to the box before the
      turn (Claude: ~/.claude/.credentials.json + CLAUDE_CONFIG_DIR; Codex:
-     ~/.codex/auth.json). The OAuth acquisition flow is a separate follow-up;
-     this module already injects a stored OAuth token if one exists.
+     ~/.codex/auth.json). The CLI refreshes the token in that file itself —
+     and the provider rotates the refresh token when it does — so the file is
+     read back after the turn and stored (save_refreshed). Without that, the
+     next turn would overwrite the box with a spent refresh token.
 """
 
 from __future__ import annotations
@@ -70,12 +72,24 @@ _OPENCODE_PRIVACY_CONFIG = json.dumps(
 )
 
 
+@dataclass(frozen=True)
+class OAuthFile:
+    """The on-box credential file an OAuth harness reads, and rewrites when it
+    refreshes the token mid-turn."""
+
+    user_id: UUID
+    provider: str
+    path: str
+
+
 @dataclass
 class RunAuth:
     harness: harness_mod.Harness
     env: dict[str, str] = field(default_factory=dict)
     # Files to write on the box before the turn: {path: contents}. For OAuth.
     files: dict[str, str] = field(default_factory=dict)
+    # Set for a stored OAuth credential: the file to read back after the turn.
+    oauth_file: OAuthFile | None = None
 
 
 async def _get_credential(user_id: UUID, provider: str | None = None) -> dict | None:
@@ -96,7 +110,12 @@ async def _get_credential(user_id: UUID, provider: str | None = None) -> dict | 
         )
     if row is None:
         return None
-    return {"provider": row["provider"], "kind": row["kind"], "secret": _decrypt(row["secret_enc"])}
+    return {
+        "user_id": user_id,
+        "provider": row["provider"],
+        "kind": row["kind"],
+        "secret": _decrypt(row["secret_enc"]),
+    }
 
 
 async def store_credential(user_id: UUID, provider: str, kind: str, secret: str) -> None:
@@ -183,17 +202,78 @@ def _byo_auth(cred: dict) -> RunAuth:
     # OAuth: the CLI reads a credential file, not an env var.
     if harness is harness_mod.CLAUDE:
         config_dir = f"{_SPRITE_HOME}/.claude"
+        path = f"{config_dir}/.credentials.json"
         return RunAuth(
             harness=harness,
             env={"CLAUDE_CONFIG_DIR": config_dir},
-            files={f"{config_dir}/.credentials.json": cred["secret"]},
+            files={path: cred["secret"]},
+            oauth_file=OAuthFile(cred["user_id"], cred["provider"], path),
         )
     # Codex ChatGPT sign-in → ~/.codex/auth.json.
+    path = f"{_SPRITE_HOME}/.codex/auth.json"
     return RunAuth(
         harness=harness,
         env={},
-        files={f"{_SPRITE_HOME}/.codex/auth.json": _codex_auth_json(cred["secret"])},
+        files={path: _codex_auth_json(cred["secret"])},
+        oauth_file=OAuthFile(cred["user_id"], cred["provider"], path),
     )
+
+
+def _oauth_tokens(provider: str, blob: dict) -> tuple[str | None, str | None, int]:
+    """(access token, refresh token, expiry ms) from a stored secret or an
+    on-box credential file. Codex carries no expiry, so its is always 0."""
+    if provider == "anthropic":
+        tokens = blob.get("claudeAiOauth") or {}
+        return (
+            tokens.get("accessToken"),
+            tokens.get("refreshToken"),
+            int(tokens.get("expiresAt") or 0),
+        )
+    # A stored Codex secret is either a full auth.json or the bare token set.
+    tokens = blob.get("tokens") or blob
+    return tokens.get("access_token"), tokens.get("refresh_token"), 0
+
+
+async def save_refreshed(oauth_file: OAuthFile, contents: str) -> bool:
+    """Store the credential file as the harness left it, if it refreshed the
+    token during the turn. Returns whether anything was stored.
+
+    The provider rotates the refresh token on every refresh, so the copy on
+    the box is the only valid one afterwards. A file that is unparseable,
+    missing a token, or older than what is stored (the user reconnected
+    mid-turn) is ignored — a bad write here would break a working credential."""
+    try:
+        fresh = json.loads(contents)
+    except ValueError:
+        return False
+    if not isinstance(fresh, dict):
+        return False
+    access, refresh, expires = _oauth_tokens(oauth_file.provider, fresh)
+    if not access or not refresh:
+        return False
+
+    async with get_pool().acquire() as conn, conn.transaction():
+        secret_enc = await conn.fetchval(
+            "SELECT secret_enc FROM user_agent_credentials "
+            "WHERE user_id = $1 AND provider = $2 AND kind = 'oauth' FOR UPDATE",
+            oauth_file.user_id,
+            oauth_file.provider,
+        )
+        if secret_enc is None:
+            return False  # disconnected (or switched to an API key) mid-turn
+        stored_access, stored_refresh, stored_expires = _oauth_tokens(
+            oauth_file.provider, json.loads(_decrypt(secret_enc))
+        )
+        if (access, refresh) == (stored_access, stored_refresh) or expires < stored_expires:
+            return False
+        await conn.execute(
+            "UPDATE user_agent_credentials SET secret_enc = $3 "
+            "WHERE user_id = $1 AND provider = $2",
+            oauth_file.user_id,
+            oauth_file.provider,
+            _encrypt(contents),
+        )
+    return True
 
 
 _SPRITE_HOME = "/home/sprite"

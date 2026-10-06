@@ -187,13 +187,21 @@ def sprite_exec(monkeypatch):
     # through write_file, which execs on the box — capture them instead so
     # they can't consume the canned exec replies.
     writes: list[tuple[str, str]] = []
+    # The box's files as the last write left them; a test stands in for the
+    # harness CLI by editing this (e.g. a refreshed OAuth credential file).
+    files: dict[str, str] = {}
 
     async def fake_write_file(sprite, abs_path, contents):
         writes.append((abs_path, contents))
+        files[abs_path] = contents
+
+    async def fake_read_file(sprite, abs_path):
+        return files.get(abs_path)
 
     monkeypatch.setattr(sprite_service, "acquire", fake_acquire)
     monkeypatch.setattr(sprite_service, "exec_stream", fake_exec_stream)
     monkeypatch.setattr(sprite_service, "write_file", fake_write_file)
+    monkeypatch.setattr(sprite_service, "read_file", fake_read_file)
     fake_redis = FakeRedis()
     monkeypatch.setattr(sprite_agent_service, "_get_redis", lambda: fake_redis)
     monkeypatch.setattr(settings, "ANTHROPIC_API_KEY", "sk-ant-test-key")
@@ -203,6 +211,7 @@ def sprite_exec(monkeypatch):
 
     seam = Seam()
     seam.calls, seam.replies, seam.redis, seam.writes = calls, replies, fake_redis, writes
+    seam.files = files
     return seam
 
 
