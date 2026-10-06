@@ -151,7 +151,7 @@ def parse_jsonl_to_events(
     text = _decompress(blob)
     events: list[dict] = []
     fallback_idx = 0
-    for line in text.splitlines():
+    for line in text.split("\n"):
         line = line.strip()
         if not line:
             continue

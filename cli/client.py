@@ -529,8 +529,12 @@ class StashClient:
     ) -> dict:
         import gzip as _gzip
 
-        with open(transcript_path, "rb") as f:
-            raw = f.read()
+        from stashai.plugin.codex_transcript import read_transcript
+
+        try:
+            raw = read_transcript(Path(transcript_path))
+        except ValueError as exc:
+            raise StashError(422, str(exc)) from exc
         body = _gzip.compress(raw)
         name = os.path.basename(transcript_path)
         if not name.endswith(".gz"):
@@ -552,7 +556,10 @@ class StashClient:
                     files={"file": (name, body, "application/gzip")},
                     timeout=120,
                 )
-                return resp.json()
+                result = resp.json()
+                if result.get("trace_sync_error"):
+                    raise StashError(422, f"Trace sync failed: {result['trace_sync_error']}")
+                return result
             except httpx.TransportError:
                 if attempt == 2:
                     raise

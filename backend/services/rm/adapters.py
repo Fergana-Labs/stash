@@ -53,7 +53,8 @@ def _load_json(data: str) -> Any:
 
 def _load_jsonl(data: str) -> list[Any]:
     records = []
-    for line_number, line in enumerate(data.splitlines(), start=1):
+    # JSONL uses LF records. Unicode separators are legal inside JSON strings.
+    for line_number, line in enumerate(data.split("\n"), start=1):
         if not line.strip():
             continue
         try:
@@ -1054,6 +1055,12 @@ def _detect_codex(data: str) -> bool:
 
 def _parse_codex(data: str) -> list[CanonicalTrace]:
     records = _load_jsonl(data)
+    meta = next(r["payload"] for r in records if r["type"] == "session_meta")
+    if meta.get("history_base"):
+        raise TraceFormatError(
+            "Codex transcript references earlier history; upload with the latest Stash CLI "
+            "to include its base files"
+        )
     # Only `response_item` lines are the model-visible conversation; `event_msg`,
     # `turn_context`, token counts and `compacted` are Codex bookkeeping that
     # restate or annotate those items.
@@ -1063,7 +1070,6 @@ def _parse_codex(data: str) -> list[CanonicalTrace]:
             continue
         steps.extend(_with_timestamp(_codex_item_steps(record["payload"]), record.get("timestamp")))
 
-    meta = next(r["payload"] for r in records if r["type"] == "session_meta")
     return [
         CanonicalTrace(
             external_id=meta["id"],

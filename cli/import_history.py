@@ -391,12 +391,16 @@ def _discover_codex() -> list[ConversationInfo]:
     if not CODEX_SESSIONS_DIR.is_dir():
         return []
 
-    results = []
+    results: dict[str, ConversationInfo] = {}
     for jsonl in CODEX_SESSIONS_DIR.rglob("*.jsonl"):
         info = _parse_codex_meta(jsonl)
         if info:
-            results.append(info)
-    return results
+            previous = results.get(info.session_id)
+            # A resumed session can have several rollout pages with the same
+            # id. Upload the newest one; the shared client resolves its base.
+            if previous is None or info.timestamp > previous.timestamp:
+                results[info.session_id] = info
+    return list(results.values())
 
 
 def _parse_codex_meta(path: Path) -> ConversationInfo | None:
