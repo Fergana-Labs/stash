@@ -4,13 +4,13 @@ Codex fires Stop on every turn but has no session-end lifecycle event.
 This module spawns a detached Python process that uploads the transcript
 file, with a per-session cooldown so we don't POST on every single turn.
 
-The backend stores each upload as a new row keyed by session_id and
-returns the latest on read, so repeated uploads are safe — they just
-replace the previous snapshot.
+The backend appends new trace steps and preserves existing review IDs, so
+duplicate snapshots are safe to resend.
 """
 
 from __future__ import annotations
 
+import hashlib
 import os
 import subprocess
 import sys
@@ -22,12 +22,13 @@ from stashai.plugin.upload_status import record_upload_failure
 UPLOAD_COOLDOWN_SECONDS = 60
 
 
-def _last_upload_path(data_dir: Path) -> Path:
-    return data_dir / "last_transcript_upload"
+def _last_upload_path(data_dir: Path, session_id: str) -> Path:
+    key = hashlib.sha256(session_id.encode()).hexdigest()
+    return data_dir / "transcript_uploads" / key
 
 
-def _cooldown_active(data_dir: Path) -> bool:
-    p = _last_upload_path(data_dir)
+def _cooldown_active(data_dir: Path, session_id: str) -> bool:
+    p = _last_upload_path(data_dir, session_id)
     if not p.exists():
         return False
     try:
@@ -36,8 +37,8 @@ def _cooldown_active(data_dir: Path) -> bool:
         return False
 
 
-def _record_upload(data_dir: Path) -> None:
-    p = _last_upload_path(data_dir)
+def _record_upload(data_dir: Path, session_id: str) -> None:
+    p = _last_upload_path(data_dir, session_id)
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(str(time.time()))
 
@@ -57,10 +58,10 @@ def spawn_transcript_upload(
     path = Path(transcript_path)
     if not path.is_file():
         return False
-    if _cooldown_active(data_dir):
+    if _cooldown_active(data_dir, session_id):
         return False
 
-    _record_upload(data_dir)
+    _record_upload(data_dir, session_id)
 
     script = Path(__file__).parent / "_do_upload.py"
     env = os.environ.copy()
