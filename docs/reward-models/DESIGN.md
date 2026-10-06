@@ -438,7 +438,7 @@ OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf   # or http/json
 | GET | `/export/traces` | | JSONL (Stash Trace Format) |
 | GET | `/export/annotations` | | JSONL |
 | GET | `/export/pairs` | | JSONL `{chosen, rejected, trace_ids, granularity, action_type}` |
-| POST | `/reward-models` | `{name, trace_ids: [uuid, …] (≥1), base_model?, epochs?, max_pairs?}` | `RewardModel` (status `queued`); 404 naming the first trace id the caller doesn't own; evidence extraction and minimum-pair validation happen in the worker |
+| POST | `/reward-models` | `{name, trace_ids: [uuid, …] (≥1), base_model?, epochs?, max_pairs?, training_config?}` | `RewardModel` (status `queued`); 404 naming the first trace id the caller doesn't own; evidence extraction and minimum-pair validation happen in the worker |
 | GET | `/reward-models` | | `[RewardModel]` |
 | GET | `/reward-models/{id}` | | `RewardModel` + `trace_ids` |
 | GET | `/reward-models/{id}/weights` | | `{url}`: a five-minute signed download of the private checkpoint archive; owner-only, 404 until `succeeded` |
@@ -487,3 +487,12 @@ confidence, source, evidence_id, evidence_quote, reason, classifier_model, inclu
 Labels are `positive | negative | unclear`, confidence is `high | low`, and
 `step_index` is zero-based. `included_in_training` means inclusion in a dataset
 that met the minimum size, not confirmation that the training worker succeeded.
+
+Personal models can opt into action input version 3 with `training_config`;
+the UI uses this version. It records custom criteria, sampled action limits,
+and a frozen task-group evaluation split, and preserves separate context sections
+in a 4,096-token window. Its learning report adds `original_action`,
+`alternative_action`, and `included_in_evaluation`. See
+[Personal coding reward models](CODING-DOGFOOD.md) for the API shape, context
+limits, held-out skill-generation boundary, and experimental evaluation protocol.
+Legacy model requests and checkpoints retain the rendering described above.

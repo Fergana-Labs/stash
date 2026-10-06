@@ -10,6 +10,8 @@ import json
 import random
 from uuid import UUID
 
+from rm_worker.context import render_action_input
+
 from ...database import get_pool
 
 DEFAULT_MAX_PAIRS = 4000
@@ -62,18 +64,20 @@ def render_action_context(steps: list[dict], context: dict | None = None) -> str
 
 
 async def _steps_by_trace(
-    owner_user_id: UUID, trace_id: UUID | None = None
+    owner_user_id: UUID, trace_id: UUID | None = None, *, trace_ids: list[UUID] | None = None
 ) -> dict[UUID, list[dict]]:
     rows = await get_pool().fetch(
         """
-        SELECT s.id, s.trace_id, s.idx, s.role, s.content, s.tool_name, s.tool_input
+        SELECT s.id, s.trace_id, s.idx, s.role, s.content, s.tool_name, s.tool_input, s.metadata
         FROM rm_trace_steps s
         JOIN rm_traces t ON t.id = s.trace_id
         WHERE t.owner_user_id = $1 AND ($2::uuid IS NULL OR t.id = $2)
+          AND ($3::uuid[] IS NULL OR t.id = ANY($3))
         ORDER BY s.trace_id, s.idx
         """,
         owner_user_id,
         trace_id,
+        trace_ids,
     )
     grouped: dict[UUID, list[dict]] = {}
     for row in rows:
@@ -152,10 +156,16 @@ async def score_items(owner_user_id: UUID) -> list[dict]:
 
 
 async def action_score_items(
-    owner_user_id: UUID, trace_id: UUID | None = None, *, input_version: int = 1
+    owner_user_id: UUID,
+    trace_id: UUID | None = None,
+    *,
+    input_version: int = 1,
+    rubric: list[str] | tuple[str, ...] = (),
+    trace_ids: list[UUID] | None = None,
+    step_ids: set[str] | None = None,
 ) -> list[dict]:
     """Use exactly the same prefix + action representation as preference training."""
-    steps_by_trace = await _steps_by_trace(owner_user_id, trace_id)
+    steps_by_trace = await _steps_by_trace(owner_user_id, trace_id, trace_ids=trace_ids)
     contexts = {}
     if input_version == 2:
         contexts = {
@@ -170,14 +180,19 @@ async def action_score_items(
         {
             "trace_id": str(tid),
             "step_id": str(step["id"]),
-            "text": render_action_context(steps[: index + 1], contexts.get(tid))
+            "text": render_action_input(steps[: index + 1], rubric)
+            if input_version == 3
+            else render_action_context(steps[: index + 1], contexts.get(tid))
             if input_version == 2
             else render_steps(steps[: index + 1]),
         }
         for tid, steps in steps_by_trace.items()
         if trace_id is None or tid == trace_id
         for index, step in enumerate(steps)
-        if step["role"] == "assistant" and (step["tool_name"] or step["content"].strip())
+        if step["role"] == "assistant"
+        and (step["tool_name"] or step["content"].strip())
+        and (step_ids is None or str(step["id"]) in step_ids)
+        and (input_version != 3 or not (step.get("metadata") or {}).get("thinking"))
     ]
 
 

@@ -542,6 +542,9 @@ export interface RmInferredFeedback {
   reason: string;
   classifier_model: string;
   included_in_training: boolean;
+  included_in_evaluation?: boolean;
+  original_action?: string;
+  alternative_action?: string | null;
 }
 
 export interface RmGepaCandidate {

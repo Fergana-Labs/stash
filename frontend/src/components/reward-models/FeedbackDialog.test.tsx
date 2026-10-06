@@ -42,6 +42,23 @@ it("identifies autonomous assessments as AI judgments", async () => {
   expect(screen.getByText(/Included in training data/)).toBeVisible();
 });
 
+it("shows both alternatives and distinguishes held-out evaluation from training", async () => {
+  vi.mocked(rmGetRewardModel).mockResolvedValue({
+    feedback: [{ source: "ai_judgment", trace_id: "trace", step_index: 1, label: "negative", confidence: "high",
+      evidence_id: "response:1", evidence_quote: "Claim", reason: "Missing verification",
+      original_action: "Everything passed", alternative_action: "The test failed; investigating",
+      classifier_model: "classifier", included_in_training: false, included_in_evaluation: true }],
+  } as RmRewardModelDetail);
+  render(<FeedbackDialog modelId="model" />);
+  fireEvent.click(screen.getByRole("button", { name: "View learning" }));
+  expect(await screen.findByText(/Held-out evaluation data/)).toBeVisible();
+  fireEvent.click(screen.getByText("Compare actions"));
+  expect(screen.getByText("Everything passed")).toBeVisible();
+  expect(screen.getByText("The test failed; investigating")).toBeVisible();
+  expect(screen.getByText("Alternative (preferred)")).toBeVisible();
+  expect(screen.queryByText(/Included in training data/)).not.toBeInTheDocument();
+});
+
 it("identifies tool-call learning and shows the actual call as evidence", async () => {
   const call = 'assistant → check_inventory({"part_number": "800258"})';
   vi.mocked(rmGetRewardModel).mockResolvedValue({

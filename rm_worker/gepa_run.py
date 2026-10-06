@@ -19,6 +19,7 @@ from gepa import EvaluationBatch
 from gepa.lm import LM
 
 from rm_worker.artifacts import download_model
+from rm_worker.context import render_action_input
 from rm_worker.scoring import RewardModel
 
 COMPONENT = "skill_body"
@@ -253,10 +254,19 @@ class RewardModelAdapter:
             trajectories.append({"example": example, "reply": reply, "error": None, "score": None})
 
         succeeded = [t for t in trajectories if t["error"] is None]
-        # The reward model never sees system steps (in training, scoring or here), so GEPA
-        # cannot raise the score by writing things the reward model likes into the skill itself.
+        # Score the reply against the original task context, never the candidate
+        # skill. Legacy checkpoints retain their original system-free rendering.
         texts = [
-            render(t["example"]["messages"] + [{"role": "assistant", "content": t["reply"]}])
+            render_action_input(
+                [
+                    {"role": "system", "content": t["example"].get("system") or ""},
+                    *t["example"]["messages"],
+                    {"role": "assistant", "content": t["reply"]},
+                ],
+                self.reward_model.rubric,
+            )
+            if getattr(self.reward_model, "input_version", 1) == 3
+            else render(t["example"]["messages"] + [{"role": "assistant", "content": t["reply"]}])
             for t in succeeded
         ]
         for trajectory, reward in zip(succeeded, self.reward_model.score(texts), strict=True):
