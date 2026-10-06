@@ -305,7 +305,7 @@ async def test_worker_turns_x_status_url_into_tweet_page(
         assert tweet_id == "9001"
         return {"title": "@someone - 2026-07-01", "markdown": "a banger\n\n— @someone"}
 
-    monkeypatch.setattr(clip_router.x_indexer, "fetch_tweet_markdown", fake_tweet)
+    monkeypatch.setattr(clip_router.tweet_fetch, "fetch_tweet_markdown", fake_tweet)
     await clips_tasks._process_batch([import_id])
 
     row = await pool.fetchrow("SELECT * FROM url_imports WHERE id = $1", import_id)

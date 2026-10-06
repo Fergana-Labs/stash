@@ -79,9 +79,11 @@ function ToolsSection() {
   if (allowed === null) return <LoadingRow />;
   return (
     <div className="py-1">
-      {CONNECTORS.filter((c) => c.kind === "extension" || allowed.has(c.provider)).map((c) => {
+      {CONNECTORS.filter((c) =>
+        c.kind === "retired" ? sourceProviders.has(c.provider) : allowed.has(c.provider),
+      ).map((c) => {
         const isConnected =
-          c.kind === "extension" ? sourceProviders.has(c.provider) : connectedProviders.has(c.provider);
+          c.kind === "retired" ? sourceProviders.has(c.provider) : connectedProviders.has(c.provider);
         return (
           <LeafRow
             key={c.provider}
@@ -89,7 +91,7 @@ function ToolsSection() {
             label={c.label}
             trailing={
               <span className={cn("text-[10px]", isConnected ? "text-[var(--color-success)]" : "text-muted-foreground opacity-0 group-hover:opacity-100")}>
-                {isConnected ? "Connected" : "Connect"}
+                {c.kind === "retired" ? "Archived" : isConnected ? "Connected" : "Connect"}
               </span>
             }
             onOpen={() => open("tool", c.provider, c.label)}

@@ -124,9 +124,9 @@ async def test_reconnect_reenables_source_and_preserves_settings(pool) -> None:
     user_id = await _user()
     source = await source_service.create_source(
         owner_user_id=user_id,
-        source_type="x_saves",
+        source_type="notion",
         external_ref="111",
-        display_name="X",
+        display_name="Notion",
         settings={},
     )
     source_id = UUID(source["id"])
@@ -138,11 +138,10 @@ async def test_reconnect_reenables_source_and_preserves_settings(pool) -> None:
     )
     # Sync state accumulated while connected (cursors, one-time-walk marks).
     await pool.execute(
-        "UPDATE user_sources SET settings = settings || '{\"x_timeline_complete\": true}' "
-        "WHERE id = $1",
+        "UPDATE user_sources SET settings = settings || '{\"walk_complete\": true}' WHERE id = $1",
         source_id,
     )
-    await source_service.disable_sources_for_provider(user_id, "x")
+    await source_service.disable_sources_for_provider(user_id, "notion")
     assert (
         await pool.fetchval("SELECT sync_enabled FROM user_sources WHERE id = $1", source_id)
         is False
@@ -151,9 +150,9 @@ async def test_reconnect_reenables_source_and_preserves_settings(pool) -> None:
     # The connect flow runs the same create_source again.
     reconnected = await source_service.create_source(
         owner_user_id=user_id,
-        source_type="x_saves",
+        source_type="notion",
         external_ref="111",
-        display_name="X",
+        display_name="Notion",
         settings={},
     )
     assert UUID(reconnected["id"]) == source_id  # same row, same documents
@@ -161,7 +160,7 @@ async def test_reconnect_reenables_source_and_preserves_settings(pool) -> None:
         "SELECT sync_enabled, settings FROM user_sources WHERE id = $1", source_id
     )
     assert row["sync_enabled"] is True
-    assert row["settings"]["x_timeline_complete"] is True  # walk state survived
+    assert row["settings"]["walk_complete"] is True  # walk state survived
 
 
 @pytest.mark.asyncio

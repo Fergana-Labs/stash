@@ -21,8 +21,8 @@ export type IntegrationProvider =
   | "gong"
   | "heavi"
   | "posthog"
-  // Extension-fed connectors — no OAuth integration, "connected" once the
-  // browser extension has pushed a source.
+  // Retired connectors — no longer connectable; kept so archived saves stay
+  // browsable.
   | "x"
   | "instagram";
 

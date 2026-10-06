@@ -47,15 +47,12 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { routes } from "@/lib/workspace-routes";
 import { useTabTitle } from "@/lib/workspace-store";
 
 // How often a row re-checks a source that is mid-sync, and how many times before
 // it gives up. A sync that hasn't settled in ~5 minutes is wedged; polling it for
 // as long as the tab happens to be open buys nothing.
 const SYNC_POLL_INTERVAL_MS = 3000;
-// The extension auto-syncs daily; silence for two cycles means it's dead.
-const EXTENSION_STALE_AFTER_MS = 48 * 3600 * 1000;
 const SYNC_POLL_MAX_ATTEMPTS = 100;
 
 export default function IntegrationRoute() {
@@ -127,8 +124,8 @@ export function IntegrationDetail({ provider }: { provider: string }) {
   }, [user, loading, router]);
 
   useEffect(() => {
-    // X auto-creates one source; open it straight into browse so the page
-    // reads as "connected + your saves", not a source picker.
+    // X has exactly one source; open it straight into browse so the page
+    // reads as "your saves", not a source picker.
     if (connector?.singleSource && sources.length === 1 && !openSourceId) {
       setOpenSourceId(sources[0].source);
     }
@@ -137,7 +134,7 @@ export function IntegrationDetail({ provider }: { provider: string }) {
   if (loading) return null;
   if (!user) return null;
 
-  if (!connector || (providerAllowed === false && connector.kind !== "extension")) {
+  if (!connector || (providerAllowed === false && connector.kind !== "retired")) {
     return (
       <div className="scroll-thin flex-1 overflow-y-auto">
         <div className="mx-auto max-w-3xl px-12 py-8">
@@ -154,20 +151,11 @@ export function IntegrationDetail({ provider }: { provider: string }) {
     );
   }
 
-  // Extension-fed connectors (X, Instagram) have no OAuth integration — they're
-  // "connected" once the browser extension has pushed at least one source.
-  const isExtension = connector.kind === "extension";
-  // Extension-fed sources have no token to health-check — the server stamps
-  // extension_last_push_at on every push, and silence beyond two daily push
-  // cycles means the pipeline is dead (extension uninstalled, IG logged out).
-  const extensionLastPush = isExtension
-    ? ((sources[0]?.settings?.extension_last_push_at as string | undefined) ?? null)
-    : null;
-  const extensionStale =
-    !!extensionLastPush &&
-    Date.now() - new Date(extensionLastPush).getTime() > EXTENSION_STALE_AFTER_MS;
+  // Retired connectors (X, Instagram) have no integration to connect and no
+  // longer sync — the page only browses the saves they archived.
+  const isRetired = connector.kind === "retired";
   const singleSource = !!connector.singleSource;
-  const connected = isExtension ? sources.length > 0 : !!status?.connected;
+  const connected = isRetired ? sources.length > 0 : !!status?.connected;
   const account = connectedAccountLabel(status);
   const canConnectAnother = connected && connector.provider === "gmail" && status?.auth_kind !== "api_key";
   // Deliberately-disconnected accounts get the "data kept" header state, not
@@ -325,20 +313,11 @@ export function IntegrationDetail({ provider }: { provider: string }) {
                 {account}
               </span>
             )}
-            {isExtension ? (
+            {isRetired ? (
               <>
                 <span className="text-[12.5px] text-muted-foreground">
-                  {extensionLastPush
-                    ? `Extension ${relativeTime(extensionLastPush)}`
-                    : connected
-                    ? "Synced from the browser extension"
-                    : null}
+                  Retired — no longer syncing
                 </span>
-                {!connected && (
-                  <Link href={routes.extension} className="text-[12.5px] font-semibold text-brand hover:underline">
-                    Get the extension
-                  </Link>
-                )}
                 {sources.length > 0 && (
                   <button
                     type="button"
@@ -413,18 +392,6 @@ export function IntegrationDetail({ provider }: { provider: string }) {
           </Link>
         </div>
 
-        {extensionStale && (
-          <div className="mt-4 flex items-center justify-between gap-3 rounded-md border border-warning/40 bg-warning-muted px-3 py-2 text-[12px] text-foreground">
-            <span>
-              {`The browser extension hasn't synced since ${new Date(
-                extensionLastPush!,
-              ).toLocaleDateString()} — check that it's installed and that you're signed in to ${connector.label}.`}
-            </span>
-            <Link href={routes.extension} className={secondaryButton()}>
-              Extension setup
-            </Link>
-          </div>
-        )}
         {staleAccounts.length > 0 && (
           <div className="mt-4 flex items-center justify-between gap-3 rounded-md border border-error/30 bg-error/10 px-3 py-2 text-[12px] text-error">
             <span>
@@ -539,9 +506,8 @@ export function IntegrationDetail({ provider }: { provider: string }) {
         )}
 
         {/* Add a <thing> (for GitHub: the all-vs-select repository access chooser).
-            Extension-fed and single-source connectors (X) have nothing to add by
-            hand — their one source is created on connect. */}
-        {connected && !isExtension && !singleSource && (
+            Retired and single-source connectors have nothing to add by hand. */}
+        {connected && !isRetired && !singleSource && (
           <section className="mt-6">
             <SectionLabel>
               {connector.kind === "github" ? "Repository access" : `Add a ${itemNoun}`}
@@ -564,13 +530,8 @@ export function IntegrationDetail({ provider }: { provider: string }) {
           )}
           {sources.length === 0 ? (
             <div className="py-3 text-[12.5px] text-muted-foreground">
-              {isExtension ? (
-                <>
-                  <Link href={routes.extension} className="font-semibold text-brand hover:underline">
-                    Install the Stash browser extension
-                  </Link>{" "}
-                  and save on {connector.label} — your items will appear here.
-                </>
+              {isRetired ? (
+                `The ${connector.label} integration has been retired.`
               ) : connected ? (
                 "Nothing added yet."
               ) : (

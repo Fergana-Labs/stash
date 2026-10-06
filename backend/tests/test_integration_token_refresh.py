@@ -17,7 +17,6 @@ from httpx import AsyncClient, HTTPError
 from backend.integrations import crypto as integration_crypto
 from backend.integrations import storage
 from backend.integrations.base import AccountInfo, TokenSet
-from backend.integrations.x_saves import tasks as x_tasks
 
 from .conftest import unique_name
 
@@ -159,29 +158,3 @@ class _MixedRefreshProvider:
             expires_at=datetime.now(UTC) + timedelta(hours=2),
             scopes=["tweet.read"],
         )
-
-
-@pytest.mark.asyncio
-async def test_keep_tokens_fresh_refreshes_x_and_survives_dead_grants(client, monkeypatch):
-    # The keep-warm beat tick must exercise every connected X grant (X kills
-    # refresh tokens that idle ~a day), and one user's dead grant must not
-    # stop other users' tokens from refreshing.
-    alive_user = await _register(client)
-    dead_user = await _register(client)
-    for user_id, refresh_token in ((alive_user, "rt-good"), (dead_user, "rt-dead")):
-        await storage.store_token(
-            user_id,
-            "x",
-            TokenSet(
-                access_token="at-old",
-                refresh_token=refresh_token,
-                expires_at=datetime.now(UTC) - timedelta(minutes=5),
-                scopes=["tweet.read"],
-            ),
-            AccountInfo(email=None, display_name="@someone"),
-        )
-    monkeypatch.setattr(storage, "get_provider", lambda name: _MixedRefreshProvider())
-
-    assert await x_tasks._keep_tokens_fresh() == 1
-
-    assert await storage.get_valid_token(alive_user, "x") == "at-new"

@@ -26,7 +26,8 @@ export type ConnectorKind =
   | "jira"
   | "asana"
   | "auto"
-  | "extension";
+  // No longer offered or synced; the page only browses what was archived.
+  | "retired";
 
 export type Connector = {
   provider: IntegrationProvider;
@@ -34,8 +35,8 @@ export type Connector = {
   sourceType: string;
   kind: ConnectorKind;
   blurb: string;
-  // Connecting auto-creates exactly one source (X) — there's nothing to "add",
-  // so the page hides the add-source UI and browses that source directly.
+  // The provider has exactly one source (X) — there's nothing to "add", so
+  // the page hides the add-source UI and browses that source directly.
   singleSource?: boolean;
 };
 
@@ -131,16 +132,16 @@ export const CONNECTORS: Connector[] = [
     provider: "x",
     label: "X",
     sourceType: "x_saves",
-    kind: "auto",
+    kind: "retired",
     singleSource: true,
-    blurb: "Connect X to sync your bookmarks, posts, and replies.",
+    blurb: "Archived X bookmarks, posts, and replies.",
   },
   {
     provider: "instagram",
     label: "Instagram",
     sourceType: "instagram_saves",
-    kind: "extension",
-    blurb: "Your Instagram saves, captured by the Stash browser extension.",
+    kind: "retired",
+    blurb: "Archived Instagram saves.",
   },
 ];
 

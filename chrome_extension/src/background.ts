@@ -17,12 +17,6 @@ import {
 } from './background/clip';
 import { initImportFetch } from './background/import_fetch';
 import { clearSurfaceError, getSurfaceErrors, setSurfaceError } from './lib/errors';
-import {
-  initInstagram,
-  receiveSavedItems,
-  savedItemsFailed,
-  shouldFetchSaves,
-} from './background/instagram';
 import { platformStatus, syncNow } from './background/status';
 import { setSyncEnabled, isSyncEnabled } from './background/sync_settings';
 import type { ConversationSnapshot } from './content/sync';
@@ -31,7 +25,6 @@ const DEFAULT_API_BASE = 'https://api.joinstash.ai';
 
 initClipper();
 initChatPoll(syncConversation);
-initInstagram();
 initImportFetch();
 
 initImportWatch();
@@ -67,12 +60,6 @@ async function handle(message: any, sender: chrome.runtime.MessageSender): Promi
       return importBookmarks(message.name, message.content);
     case 'IMPORT_PROGRESS':
       return importProgress(message.id);
-    case 'SHOULD_FETCH_SAVES':
-      return shouldFetchSaves();
-    case 'SAVED_ITEMS':
-      return receiveSavedItems(message.items, sender);
-    case 'SAVED_ITEMS_FAILED':
-      return savedItemsFailed(message.error, sender);
     case 'CLIP_FAILED':
       await setSurfaceError('clip', `Save failed: ${message.error}`);
       await setBadge('!', 'Save failed — click for details');

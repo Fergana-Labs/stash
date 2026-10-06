@@ -1,6 +1,6 @@
 "use client";
 
-import { BookMarked, Bookmark, Globe, MessagesSquare } from "lucide-react";
+import { BookMarked, Globe, MessagesSquare } from "lucide-react";
 
 // The one stable URL for getting the extension. Every CTA in the product
 // links here, so when the Chrome Web Store listing goes live only this
@@ -18,11 +18,6 @@ const FEATURES = [
     icon: BookMarked,
     title: "Bring your bookmarks",
     body: "Import the whole file. We fetch what's behind every link.",
-  },
-  {
-    icon: Bookmark,
-    title: "Twitter bookmarks",
-    body: "Your X bookmarks, synced. Text, images, and threads kept.",
   },
   {
     icon: MessagesSquare,

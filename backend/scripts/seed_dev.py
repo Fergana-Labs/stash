@@ -63,8 +63,6 @@ SEED_SOURCES = [
     {"source_type": "asana_project", "external_ref": "demo-asana", "display_name": "Roadmap"},
     {"source_type": "linear", "external_ref": "me", "display_name": "Linear"},
     {"source_type": "gong_calls", "external_ref": "demo-gong", "display_name": "Gong"},
-    {"source_type": "x_saves", "external_ref": "saves", "display_name": "X saves"},
-    {"source_type": "instagram_saves", "external_ref": "saves", "display_name": "Instagram saves"},
 ]
 
 

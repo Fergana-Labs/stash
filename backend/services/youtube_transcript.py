@@ -2,8 +2,8 @@
 
 Server-side yt-dlp was the old path; YouTube bot-detects datacenter IPs,
 which is fatal at bulk-import scale (a real bookmark export is a quarter
-YouTube). The transcript comes from ScrapeCreators — the same vendor,
-key, and header as Instagram saves — and the title/channel from YouTube's
+YouTube). The transcript comes from ScrapeCreators, and the title/channel
+from YouTube's
 official oEmbed endpoint, which is key-free and not bot-gated. oEmbed is
 checked first: it failing means the video is private or deleted, so no
 transcript can exist and no ScrapeCreators credit should be spent.

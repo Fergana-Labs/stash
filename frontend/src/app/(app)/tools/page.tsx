@@ -156,19 +156,22 @@ function IntegrationsGrid() {
   }
 
   // The server omits providers this user may not use (customer-specific
-  // integrations like Heavi) — extension connectors are always available.
-  const rows = CONNECTORS.filter((c) => c.kind === "extension" || c.provider in statuses);
+  // integrations like Heavi). Retired connectors only appear for users who
+  // still have archived saves to browse.
+  const rows = CONNECTORS.filter((c) =>
+    c.kind === "retired" ? sourceProviders.has(c.provider) : c.provider in statuses,
+  );
   return (
     <div className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-surface">
       {rows.map((c) => {
         const status = statuses[c.provider];
         const oauth =
-          c.kind !== "extension" && status?.auth_kind !== "api_key" && !status?.disabled_reason;
+          c.kind !== "retired" && status?.auth_kind !== "api_key" && !status?.disabled_reason;
         return (
           <IntegrationRow
             key={c.provider}
             connector={c}
-            connected={c.kind === "extension" ? sourceProviders.has(c.provider) : !!status?.connected}
+            connected={c.kind === "retired" ? sourceProviders.has(c.provider) : !!status?.connected}
             busy={busy === c.provider}
             onOauthConnect={oauth ? () => void connectNow(c) : null}
           />
