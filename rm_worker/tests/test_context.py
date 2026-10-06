@@ -104,10 +104,14 @@ def test_harness_messages_cannot_replace_human_task_or_steering():
     assert "Check progress" in context["history"]
 
 
-def test_subagent_keeps_wrapped_task_assignment_without_promoting_later_pings():
+@pytest.mark.parametrize(
+    "earlier_pings", [[], [{"role": "user", "content": "<heartbeat>Waiting</heartbeat>"}]]
+)
+def test_subagent_keeps_wrapped_task_assignment_without_promoting_later_pings(earlier_pings):
     assignment = "<teammate-message>Implement the parser</teammate-message>"
     context = action_context(
         [
+            *earlier_pings,
             {"role": "user", "content": assignment},
             {"role": "user", "content": "<teammate-message>Status?</teammate-message>"},
             {"role": "assistant", "content": "Running tests"},
