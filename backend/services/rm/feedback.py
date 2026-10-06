@@ -10,7 +10,13 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, create_model
 
-from rm_worker.context import action_context, clip, render_action_input
+from rm_worker.context import (
+    action_context,
+    clip,
+    is_harness_message,
+    is_instruction,
+    render_action_input,
+)
 
 from ...config import settings
 from ...database import get_pool
@@ -353,7 +359,7 @@ async def extract_preferences(
         for attempt in range(2):
             try:
                 return await classify(step)
-            except ValidationError:
+            except (ValidationError, llm.StructuredCompletionError):
                 if input_version != 3:
                     raise
                 logger.warning(
@@ -400,16 +406,10 @@ def sample_actions(steps: list[dict], limit: int) -> list[dict]:
 
 def user_feedback_evidence(steps: list[dict]) -> dict[str, dict]:
     # Harness-injected agent messages are not the user's approval or criticism.
-    excluded = (
-        "<teammate-message",
-        "<heartbeat>",
-        "<external_codex_apps_",
-        "# AGENTS.md instructions",
-    )
     return {
         f"step:{s['idx']}": {"kind": "user", "step_index": s["idx"], "text": s["content"]}
         for s in steps
-        if s["role"] == "user" and not s["content"].lstrip().startswith(excluded)
+        if s["role"] == "user" and not is_harness_message(s) and not is_instruction(s)
     }
 
 

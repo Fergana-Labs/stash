@@ -88,3 +88,29 @@ def test_input_version_is_explicit_and_json_cannot_inject_sections():
         encode_action_input(CharacterTokenizer(), PREFIX + json.dumps({"action": "hi"}))
     with pytest.raises(ValueError, match="end at"):
         action_context([{"role": "tool", "content": "a later result"}])
+
+
+def test_harness_messages_cannot_replace_human_task_or_steering():
+    steps = [
+        {"role": "user", "content": "<teammate-message>Idle</teammate-message>"},
+        {"role": "user", "content": "Fix the upload parser"},
+        {"role": "user", "content": "Preserve step IDs"},
+        {"role": "user", "content": "  <heartbeat>Check progress</heartbeat>"},
+        {"role": "assistant", "content": "Running parser tests"},
+    ]
+    context = action_context(steps)
+    assert context["task"] == "Fix the upload parser"
+    assert context["request"] == "Preserve step IDs"
+    assert "Check progress" in context["history"]
+
+
+def test_subagent_keeps_wrapped_task_assignment_without_promoting_later_pings():
+    assignment = "<teammate-message>Implement the parser</teammate-message>"
+    context = action_context(
+        [
+            {"role": "user", "content": assignment},
+            {"role": "user", "content": "<teammate-message>Status?</teammate-message>"},
+            {"role": "assistant", "content": "Running tests"},
+        ]
+    )
+    assert context["task"] == context["request"] == assignment
