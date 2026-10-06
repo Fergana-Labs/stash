@@ -324,8 +324,8 @@ class StashClient:
     ) -> dict:
         import gzip
 
-        raw = transcript_path.read_bytes()
-        body = gzip.compress(raw)
+        from stashai.plugin.codex_transcript import read_transcript
+
         name = transcript_path.name
         if not name.endswith(".gz"):
             name = name + ".gz"
@@ -334,6 +334,7 @@ class StashClient:
 
         record_upload_attempt(self._data_dir, "transcript")
         try:
+            body = gzip.compress(read_transcript(transcript_path))
             resp = self._http.request(
                 "POST",
                 "/api/v1/me/transcripts",
@@ -344,11 +345,14 @@ class StashClient:
             )
             if not resp.is_success:
                 raise StashError(resp.status_code, resp.text)
+            result = resp.json()
+            if result.get("trace_sync_error"):
+                raise ValueError(f"Trace sync failed: {result['trace_sync_error']}")
         except Exception as e:
             record_upload_failure(self._data_dir, "transcript", e)
             raise
         record_upload_success(self._data_dir, "transcript")
-        return resp.json()
+        return result
 
     # --- Sessions ---
 

@@ -3,6 +3,7 @@ that annotators comment on and the reward model trains on. A wrong role, a
 dropped tool result, or a duplicated turn here silently corrupts every label
 built on top, so each format is checked step by step."""
 
+import json
 from pathlib import Path
 
 import pytest
@@ -58,6 +59,17 @@ def test_list_formats_matches_design_doc():
 def test_auto_detects_each_format(fixture, expected):
     name, _ = parse_traces(_read(fixture), "auto")
     assert name == expected
+
+
+def test_codex_page_without_its_local_base_is_not_accepted_as_a_complete_trace():
+    records = [json.loads(line) for line in _read("codex.jsonl").split("\n") if line]
+    records[0]["payload"]["history_base"] = {
+        "thread_id": "parent",
+        "end_ordinal_exclusive": 10,
+        "end_byte_offset": 1000,
+    }
+    with pytest.raises(TraceFormatError, match="earlier history"):
+        parse_traces("\n".join(json.dumps(r) for r in records), "auto")
 
 
 @pytest.mark.parametrize("fixture,expected", FIXTURE_FORMATS)

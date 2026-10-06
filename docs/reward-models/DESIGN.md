@@ -24,6 +24,12 @@ duplicate and older snapshots are no-ops. Divergent snapshots report
 and accounts without reward models retain their existing behavior. Other native
 transcript formats still require a supported trace import or OpenTelemetry.
 
+The CLI reconstructs Codex `history_base` pages locally before upload, using
+their exact byte and ordinal boundaries; history imports select the newest page
+per session. Missing or ambiguous bases fail explicitly, and the trace API rejects
+unresolved pages rather than storing an incomplete conversation. JSONL readers
+split on LF, preserving Unicode line separators inside message strings.
+
 ## Rollout
 
 `users.reward_models_enabled` gates the reward-model API, routes, and sidebar.

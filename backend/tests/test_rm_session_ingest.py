@@ -4,6 +4,8 @@ import gzip
 import json
 from uuid import UUID
 
+import pytest
+
 from .conftest import unique_name
 
 
@@ -80,6 +82,22 @@ async def test_native_upload_creates_review_trace_and_preserves_review_on_append
     assert len(updated["steps"]) == 5
     assert updated["annotations"][0]["step_id"] == step_id
     assert await pool.fetchval("SELECT count(*) FROM rm_traces WHERE owner_user_id=$1", owner) == 1
+
+
+@pytest.mark.parametrize("separator", ["\u2028", "\u2029", "\u0085"])
+async def test_unicode_separators_inside_json_strings_reach_sessions_and_traces(client, separator):
+    auth, _ = await register(client)
+    answer = f"Before{separator}after"
+    body = codex(answer).decode().replace(f"\\u{ord(separator):04x}", separator).encode()
+    result = await upload(client, auth, body)
+    detail = (await client.get(f"/api/v1/rm/traces/{result['trace']['id']}", headers=auth)).json()
+    assert detail["steps"][-1]["content"] == answer
+    from backend.services.transcript_import import parse_jsonl_to_events
+
+    assert (
+        parse_jsonl_to_events(body, session_id="session1", agent_name="codex")[-1]["content"]
+        == answer
+    )
 
 
 async def test_duplicate_and_stale_uploads_do_not_change_trace_or_scoring_queue(client, pool):

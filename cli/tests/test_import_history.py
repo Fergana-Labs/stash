@@ -81,3 +81,13 @@ def test_discovers_codex_sessions_from_other_worktrees_of_same_repo(monkeypatch,
     assert [conversation.session_id for conversation in conversations] == ["same-repo"]
     assert conversations[0].cwd == str(worktree)
     assert conversations[0].timestamp == datetime(2026, 5, 28, 12, 0, tzinfo=UTC)
+
+
+def test_codex_discovery_uploads_only_latest_page_of_each_session(monkeypatch, tmp_path):
+    _write_codex_session(tmp_path, session_id="session1", cwd=tmp_path, repository_url="")
+    old = next(tmp_path.rglob("session1.jsonl"))
+    new = old.with_name("session1_resume.jsonl")
+    new.write_text(old.read_text().replace("12:00:00Z", "13:00:00Z"))
+    monkeypatch.setattr(import_history, "CODEX_SESSIONS_DIR", tmp_path)
+    discovered = import_history.discover_conversations(["codex"])
+    assert [(c.session_id, c.path) for c in discovered] == [("session1", new)]
