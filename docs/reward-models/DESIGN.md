@@ -14,9 +14,15 @@ optimizer, GEPA, writes a skill for the agent (a SKILL.md it loads into its
 context) using the written comments as feedback and the trained reward model
 as the metric.
 
-This is a separate product area inside the Stash monorepo. It does not read or
-write the existing `sessions` / `history_events` tables; connecting the two is
-later work.
+This is a separate product area inside the Stash monorepo. For enabled personal
+accounts, native Codex and Claude Code uploads through `/api/v1/me/transcripts`
+also populate Traces. Existing recording hooks and `stash sessions import` use
+that endpoint, including when the session's legacy events were already recorded.
+Growing snapshots append steps while retaining their IDs and review comments;
+duplicate and older snapshots are no-ops. Divergent snapshots report
+`trace_sync_error` and preserve the existing review. Workspace/end-user uploads
+and accounts without reward models retain their existing behavior. Other native
+transcript formats still require a supported trace import or OpenTelemetry.
 
 ## Rollout
 
