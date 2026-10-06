@@ -28,6 +28,8 @@ from ..services import (
     transcript_import,
     user_scope_service,
 )
+from ..services.rm import session_ingest
+from ..services.rm.adapters import TraceFormatError
 from ..tasks.agent_schedules import first_day_curator_tick
 
 router = APIRouter(prefix="/api/v1/me/transcripts", tags=["transcripts"])
@@ -94,6 +96,26 @@ async def upload_transcript(
             raise HTTPException(status_code=400, detail=str(e))
 
     pool = get_pool()
+
+    async def with_review_trace(result: dict) -> dict:
+        # The review product is personal. Never copy workspace or developer
+        # end-user data across its existing privacy boundary.
+        if (
+            current_user.get("reward_models_enabled")
+            and owner_user_id == current_user["id"]
+            and user_id is None
+        ):
+            session = await session_service.get_session(owner_user_id, session_id)
+            if session is None or session.get("end_user_id") is not None:
+                return result
+            try:
+                result["trace"] = await session_ingest.sync_transcript(
+                    owner_user_id, session_id, body
+                )
+            except TraceFormatError as exc:
+                result["trace_sync_error"] = str(exc)
+        return result
+
     existing = await pool.fetchval(
         "SELECT COUNT(*) FROM history_events WHERE owner_user_id = $1 AND session_id = $2",
         owner_user_id,
@@ -140,12 +162,14 @@ async def upload_transcript(
                 end_user_id=end_user["id"] if end_user else None,
                 session_folder_id=session_folder_id,
             )
-            return {
-                "session_id": session_id,
-                "imported": 0,
-                "skipped": True,
-                "reason": "session already has events",
-            }
+            return await with_review_trace(
+                {
+                    "session_id": session_id,
+                    "imported": 0,
+                    "skipped": True,
+                    "reason": "session already has events",
+                }
+            )
 
     events = transcript_import.parse_jsonl_to_events(
         body, session_id=session_id, agent_name=agent_name
@@ -176,11 +200,13 @@ async def upload_transcript(
     inserted = await memory_service.push_events_batch(owner_user_id, current_user["id"], events)
     if inserted:
         first_day_curator_tick.delay(str(owner_user_id))
-    return {
-        "session_id": session_id,
-        "imported": len(inserted),
-        "skipped": False,
-    }
+    return await with_review_trace(
+        {
+            "session_id": session_id,
+            "imported": len(inserted),
+            "skipped": False,
+        }
+    )
 
 
 def _event_role(event_type: str | None) -> str | None:
