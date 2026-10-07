@@ -18,12 +18,13 @@ import TraceMinimap from "@/components/reward-models/TraceMinimap";
 import TraceTimeline, { type StepAnnotations } from "@/components/reward-models/TraceTimeline";
 import { errorMessage, locateQuote, quoteFromOffsets, relativeTime, sortAnnotations } from "@/components/reward-models/rm-text";
 import { domSourceOffset, type Highlight } from "@/components/reward-models/source-anchors";
-import { buildRows, rowSteps, type TraceRow } from "@/components/reward-models/trace-rows";
+import { buildRows, rowSteps, toolLabel, toolSummary, type TraceRow } from "@/components/reward-models/trace-rows";
 import { visibleStepElement } from "@/components/reward-models/trace-scroll";
 import { useAuth } from "@/hooks/useAuth";
 import { rmCreateAnnotation, rmDeleteAnnotation, rmGetTrace, rmUpdateAnnotation } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import type { RmAnnotation, RmStep, RmTraceDetail } from "@/lib/types";
+import ConversationScrollRail, { conversationExcerpt, conversationMarkers } from "@/components/ConversationScrollRail";
 
 const FLASH_MS = 1400;
 /** Highlight id for the not-yet-saved quote while the composer is open. */
@@ -302,9 +303,26 @@ export default function TraceClient({ traceId }: { traceId: string }) {
   };
 
   const visibleRows = rows.filter((row) => inView(row, view));
+  const exchanges = conversationMarkers(visibleRows.filter((row) => row.kind === "prompt" || row.kind === "assistant").map((row) => {
+    const step = rowSteps(row)[0];
+    return { targetId: `step-${step.id}`, role: step.role, content: step.content };
+  }));
+  // A single-request trace can still contain hundreds of actions. In that case
+  // (and in Tools view), provide destinations for the individual visible rows.
+  const scrollMarkers = exchanges.length > 1 ? exchanges : visibleRows.map((row) => {
+    const step = rowSteps(row)[0];
+    return {
+      targetId: `step-${step.id}`,
+      title: row.kind === "tool" ? toolLabel(step.tool_name) : row.kind === "prompt" ? "User" : row.kind === "assistant" ? "Assistant" : "System",
+      preview: conversationExcerpt(toolSummary(step.tool_input) || step.content),
+      label: `Step ${step.index + 1}`,
+      emphasis: row.kind === "prompt",
+    };
+  });
 
   return (
     <div className="flex h-full min-h-0">
+      <ConversationScrollRail items={scrollMarkers} scroller={scroller} header={navigation} onJump={(item) => revealStep(item.targetId.slice("step-".length))} />
       <div ref={scroller} className="scroll-thin min-w-0 flex-1 overflow-y-auto">
         <div ref={canvas} className="relative mx-auto max-w-4xl px-8 pt-6 pb-24" onMouseUp={onCanvasMouseUp}>
           <Link href="/reward-models" aria-label="Back to traces" className="inline-flex h-7 items-center rounded-md border border-border px-2.5 text-[12px] text-muted-foreground hover:bg-surface hover:text-foreground">
