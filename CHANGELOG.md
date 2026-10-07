@@ -5,6 +5,9 @@ everything before it is captured in git history (`git log`), not here.
 
 ## Unreleased
 
+- Accounts can be assigned the October 5 Floodgate product checkpoint, retaining
+  its Traces, Reward models, and Skills experience in the main app.
+
 - Automatic Jev evaluations no longer stop at a daily call limit. Traces paused
   by the previous cap resume automatically and reuse their saved results.
 

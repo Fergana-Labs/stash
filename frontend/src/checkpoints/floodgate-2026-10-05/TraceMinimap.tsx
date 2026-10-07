@@ -1,14 +1,11 @@
 "use client";
 
-import { useProductCheckpoint } from "@/components/ProductCheckpointContext";
-import FloodgateComponent from "@/checkpoints/floodgate-2026-10-05/TraceMinimap";
-
 import { useEffect, useRef, useState, type PointerEvent, type RefObject } from "react";
 import { cn } from "@/lib/utils";
-import { isThinking, looksLikeError } from "./trace-rows";
-import { visibleStepElement } from "./trace-scroll";
+import { isThinking, looksLikeError } from "@/components/reward-models/trace-rows";
+import { visibleStepElement } from "@/components/reward-models/trace-scroll";
 import type { RmActionScore, RmAnnotation, RmStep } from "@/lib/types";
-import { creditColor, formatCredit } from "./action-credit";
+import { creditColor, formatCredit } from "@/components/reward-models/action-credit";
 
 // Design from Priyadarshan's trace viewer (projects/trace_viewer).
 const KINDS = {
@@ -26,7 +23,7 @@ function kindOf(step: RmStep): keyof typeof KINDS {
   return step.tool_name === null ? "assistant" : "tool";
 }
 
-function LatestTraceMinimap({ steps, annotations, actionScores, scroller, navigation, onJump }: {
+export default function TraceMinimap({ steps, annotations, actionScores, scroller, navigation, onJump }: {
   steps: RmStep[];
   annotations: RmAnnotation[];
   actionScores?: Map<string, RmActionScore>;
@@ -64,7 +61,6 @@ function LatestTraceMinimap({ steps, annotations, actionScores, scroller, naviga
   }, [steps, scroller, navigation]);
 
   if (steps.length === 0) return null;
-  const showingCredit = !!actionScores?.size;
   const commented = new Set(annotations.filter((a) => a.comment !== null).map((a) => a.step_id));
 
   function jump(index: number) {
@@ -85,12 +81,7 @@ function LatestTraceMinimap({ steps, annotations, actionScores, scroller, naviga
   return (
     <nav aria-label="Trace steps" className="select-none py-2">
       <div className="mb-2 flex items-center gap-3 text-[11px] text-muted-foreground">
-        {showingCredit ? <>
-          <span className="inline-flex items-center gap-2">
-            Action credit: lower <span className="h-1.5 w-16" style={{ background: `linear-gradient(to right, ${creditColor(-1)}, ${creditColor(0)}, ${creditColor(1)})` }} /> higher
-          </span>
-          <span className="inline-flex items-center gap-1"><span className="h-2 w-2 bg-muted-foreground/30" />Unscored</span>
-        </> : Object.entries(KINDS).map(([kind, style]) => (
+        {Object.entries(KINDS).map(([kind, style]) => (
           <span key={kind} className="inline-flex items-center gap-1">
             <span className={cn("h-2 w-2", style.color)} />{style.label}
           </span>
@@ -98,9 +89,11 @@ function LatestTraceMinimap({ steps, annotations, actionScores, scroller, naviga
         <span className="inline-flex items-center gap-1"><span className="size-1.5 rounded-full bg-amber-400" />Comment</span>
         <span className="ml-auto shrink-0 tabular-nums">Step {activeIndex + 1} of {steps.length}</span>
       </div>
+      {!!actionScores?.size && <div className="mb-1 flex items-center gap-2 text-[10px] text-muted-foreground">
+        Action credit: lower <span className="h-1.5 w-16" style={{ background: `linear-gradient(to right, ${creditColor(-1)}, ${creditColor(0)}, ${creditColor(1)})` }} /> higher. Unscored steps keep their role color.
+      </div>}
       <div
-        className="relative flex h-[52px] touch-none items-end"
-        style={{ columnGap: `min(1px, ${25 / steps.length}%)` }}
+        className="relative flex h-[52px] touch-none items-end gap-px"
         role="group"
         aria-label="Step map"
         onPointerDown={(event) => {
@@ -126,8 +119,7 @@ function LatestTraceMinimap({ steps, annotations, actionScores, scroller, naviga
         {steps.map((step, index) => {
           const kind = KINDS[kindOf(step)];
           const score = actionScores?.get(step.id);
-          const actionType = step.tool_name !== null ? (step.role === "assistant" ? "Tool call" : "Tool result") : kind.label;
-          const label = `Step ${index + 1}: ${actionType}${step.tool_name === null ? "" : `, ${step.tool_name}`}${score ? `, credit ${formatCredit(score.credit)}` : showingCredit ? ", unscored" : ""}`;
+          const label = `Step ${index + 1}: ${kind.label}${step.tool_name === null ? "" : `, ${step.tool_name}`}${score ? `, credit ${formatCredit(score.credit)}` : ""}`;
           return (
             <button
               key={step.id}
@@ -153,7 +145,7 @@ function LatestTraceMinimap({ steps, annotations, actionScores, scroller, naviga
               className="group relative flex h-full min-w-0 flex-1 cursor-pointer items-end focus-visible:outline-2 focus-visible:outline-brand-500"
             >
               {commented.has(step.id) && <span className="absolute top-0 left-1/2 size-1.5 -translate-x-1/2 rounded-full bg-amber-400" />}
-              <span style={score ? { backgroundColor: creditColor(score.credit) } : undefined} className={cn("w-full transition-opacity group-hover:opacity-60", kind.height, showingCredit ? "bg-muted-foreground/30" : kind.color)} />
+              <span style={score ? { backgroundColor: creditColor(score.credit) } : undefined} className={cn("w-full transition-opacity group-hover:opacity-60", kind.height, kind.color)} />
             </button>
           );
         })}
@@ -164,10 +156,4 @@ function LatestTraceMinimap({ steps, annotations, actionScores, scroller, naviga
       </div>
     </nav>
   );
-}
-
-export default function TraceMinimap(props: React.ComponentProps<typeof LatestTraceMinimap>) {
-  return useProductCheckpoint() === "floodgate-2026-10-05"
-    ? <FloodgateComponent {...props} />
-    : <LatestTraceMinimap {...props} />;
 }
