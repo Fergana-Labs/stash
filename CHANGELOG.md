@@ -11,6 +11,9 @@ everything before it is captured in git history (`git log`), not here.
   and reviewed; only instruction creation remains unavailable. Recovery respects
   accounts using an older product checkpoint or with workbench access disabled.
 
+- Skill generation automatically retries invalid model-generated names and
+  descriptions, so an overlong description no longer immediately fails the job.
+
 - Open traces, session transcripts, and chats have a slim conversation rail:
   hover a tick to preview a turn, click to jump, or navigate with the keyboard.
   Reading an earlier chat turn now holds your place while a response streams.

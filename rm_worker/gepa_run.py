@@ -9,7 +9,6 @@ Reads job.json and gepa_examples.jsonl; writes result.json
 import argparse
 import json
 import math
-import re
 import sys
 from pathlib import Path
 
@@ -21,6 +20,7 @@ from gepa.lm import LM
 from rm_worker.artifacts import download_model
 from rm_worker.context import render_action_input
 from rm_worker.scoring import RewardModel
+from rm_worker.skill_identity import derive_skill_identity, render_skill
 
 COMPONENT = "skill_body"
 
@@ -53,29 +53,6 @@ for any future conversation this skill applies to, not only these examples. Use 
 Return only the body inside a single ``` block, with no YAML frontmatter, no name and no description."""
 
 
-SKILL_NAME_PATTERN = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
-MAX_SKILL_NAME_LENGTH = 64
-MAX_SKILL_DESCRIPTION_LENGTH = 1024
-# The identity prompt sees every comment but only the start of each conversation, to stay small.
-MAX_IDENTITY_CONVERSATION_CHARS = 1500
-
-SKILL_IDENTITY_PROMPT = """Human annotators reviewed conversations between users and an AI agent and \
-left the comments below. A skill (a SKILL.md the agent loads into its context) will be written to \
-teach the agent to behave the way the annotators rewarded. Name that skill and describe it.
-
-Rules:
-- "name": lowercase letters, digits and single hyphens only (for example "refund-requests"), at most \
-64 characters.
-- "description": one to three sentences, at most 1024 characters, saying when the agent should use \
-the skill.
-
-Call set_skill_identity with the name and description.
-
-Annotated conversations:
-
-<examples>"""
-
-
 def log(message: str) -> None:
     print(message, flush=True)
 
@@ -89,80 +66,8 @@ def render(messages: list[dict]) -> str:
     return "\n\n".join(f"{message['role']}: {message['content']}" for message in messages)
 
 
-def render_skill(name: str, description: str, body: str) -> str:
-    return f"---\nname: {name}\ndescription: {description}\n---\n\n{body}"
-
-
 def sigmoid(x: float) -> float:
     return 1 / (1 + math.exp(-x))
-
-
-SKILL_IDENTITY_TOOL_NAME = "set_skill_identity"
-SKILL_IDENTITY_TOOL = {
-    "type": "function",
-    "function": {
-        "name": SKILL_IDENTITY_TOOL_NAME,
-        "description": "Set the skill's name and description.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "name": {
-                    "type": "string",
-                    "description": "Lowercase letters, digits and single hyphens, at most 64 characters.",
-                },
-                "description": {
-                    "type": "string",
-                    "description": "When the agent should use this skill, at most 1024 characters.",
-                },
-            },
-            "required": ["name", "description"],
-            "additionalProperties": False,
-        },
-    },
-}
-
-
-def derive_skill_identity(reflection_model: str, examples: list[dict]) -> tuple[str, str]:
-    """Ask the reflection model for the skill's name and description; fail on anything invalid."""
-    sections = []
-    for number, example in enumerate(examples, start=1):
-        conversation = render(example["messages"])[:MAX_IDENTITY_CONVERSATION_CHARS]
-        comments = "\n".join(f"- {comment}" for comment in example["feedback"])
-        sections.append(
-            f"## Conversation {number}\n{conversation}\n\nAnnotator comments:\n{comments}"
-        )
-    prompt = SKILL_IDENTITY_PROMPT.replace("<examples>", "\n\n".join(sections))
-
-    # A forced tool call makes the provider return structured arguments, so the
-    # answer never arrives wrapped in prose or a Markdown code fence.
-    response = litellm.completion(
-        model=reflection_model,
-        messages=[{"role": "user", "content": prompt}],
-        tools=[SKILL_IDENTITY_TOOL],
-        tool_choice={"type": "function", "function": {"name": SKILL_IDENTITY_TOOL_NAME}},
-    )
-    tool_calls = response.choices[0].message.tool_calls
-    if not tool_calls or tool_calls[0].function.name != SKILL_IDENTITY_TOOL_NAME:
-        raise ValueError(f"reflection model did not call {SKILL_IDENTITY_TOOL_NAME}: {response}")
-    arguments = tool_calls[0].function.arguments
-    identity = json.loads(arguments)
-
-    if not isinstance(identity, dict) or set(identity) != {"name", "description"}:
-        raise ValueError(f"skill identity must be exactly {{name, description}}, got {arguments!r}")
-    name = identity["name"]
-    description = identity["description"]
-    if (
-        not isinstance(name, str)
-        or not SKILL_NAME_PATTERN.match(name)
-        or len(name) > MAX_SKILL_NAME_LENGTH
-    ):
-        raise ValueError(f"invalid skill name from reflection model: {name!r}")
-    if (
-        not isinstance(description, str)
-        or not 1 <= len(description) <= MAX_SKILL_DESCRIPTION_LENGTH
-    ):
-        raise ValueError(f"invalid skill description from reflection model: {description!r}")
-    return name, description
 
 
 class RecordingReflectionLM:
@@ -323,7 +228,9 @@ def run(job_dir: Path) -> dict:
         if not example["messages"]:
             raise ValueError(f"example for trace {example['trace_id']} has no input messages")
 
-    skill_name, skill_description = derive_skill_identity(job["reflection_model"], examples)
+    skill_name, skill_description = derive_skill_identity(
+        job["reflection_model"], examples, complete=litellm.completion
+    )
     log(f"skill name: {skill_name}")
     log(f"skill description: {skill_description}")
 
