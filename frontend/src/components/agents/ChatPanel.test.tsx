@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import ChatPanel from "./ChatPanel";
@@ -6,6 +6,7 @@ import { getAgentChat, streamAgentChat } from "@/lib/agentChat";
 
 vi.mock("@/lib/agentChat", () => ({
   getAgentChat: vi.fn(),
+  agentTurnRunning: vi.fn().mockResolvedValue(false),
   streamAgentChat: vi.fn(),
 }));
 
@@ -22,6 +23,7 @@ describe("ChatPanel", () => {
   afterEach(() => {
     cleanup();
     vi.clearAllMocks();
+    vi.unstubAllGlobals();
   });
 
   // The empty state is chat-only: setup/onboarding for local agents lives in
@@ -89,5 +91,33 @@ describe("ChatPanel", () => {
 
     await waitFor(() => expect(getAgentChat).not.toHaveBeenCalled());
     expect(streamAgentChat).not.toHaveBeenCalled();
+  });
+
+  it("keeps an earlier turn visible while the next response streams", async () => {
+    vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
+    vi.stubGlobal("CSS", { escape: (id: string) => id.replace(/[^a-zA-Z0-9_-]/g, "\\$&") });
+    vi.mocked(getAgentChat).mockResolvedValue([
+      { role: "user", content: "First question" },
+      { role: "assistant", content: "First answer" },
+      { role: "user", content: "Second question" },
+      { role: "assistant", content: "Second answer" },
+    ]);
+    let handlers: Parameters<typeof streamAgentChat>[0];
+    let finish!: () => void;
+    vi.mocked(streamAgentChat).mockImplementation((options) => {
+      handlers = options;
+      return new Promise<void>((resolve) => { finish = resolve; });
+    });
+    render(<ChatPanel sessionId="existing-chat" onSessionId={vi.fn()} />);
+    await screen.findByText("First answer");
+    fireEvent.change(screen.getByPlaceholderText("Ask your agent anything..."), { target: { value: "Third question" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(streamAgentChat).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole("button", { name: "Message 1: First question" }));
+    vi.mocked(Element.prototype.scrollTo).mockClear();
+    await act(async () => { handlers.onText?.("Streaming the third answer"); });
+    expect(Element.prototype.scrollTo).not.toHaveBeenCalled();
+    await act(async () => { finish(); });
+    expect(Element.prototype.scrollTo).not.toHaveBeenCalled();
   });
 });

@@ -8,7 +8,16 @@ everything before it is captured in git history (`git log`), not here.
 - Automatic Jev evaluation recovers traces skipped during rolling deployments
   and retries stale database query plans. Migration backfill preserves active
   workers. Corrections without a recorded repository can still be interpreted
-  and reviewed; only instruction creation remains unavailable.
+  and reviewed; only instruction creation remains unavailable. Recovery respects
+  accounts using an older product checkpoint or with workbench access disabled.
+
+- Open traces, session transcripts, and chats have a slim conversation rail:
+  hover a tick to preview a turn, click to jump, or navigate with the keyboard.
+  Reading an earlier chat turn now holds your place while a response streams.
+
+- Accounts can be assigned the October 5 Floodgate product checkpoint, retaining
+  its Traces, Reward models, and Skills experience in the main app.
+
 - Automatic Jev evaluations no longer stop at a daily call limit. Traces paused
   by the previous cap resume automatically and reuse their saved results.
 

@@ -9,14 +9,23 @@ from pydantic import BaseModel, ConfigDict, Field
 from ..auth import get_current_user
 from ..config import settings
 from ..database import get_pool
+from ..product_checkpoints import has_workbench
 from ..services.rm import workbench as service
 from ..services.rm import workbench_auto as automatic
 from ..services.rm import workbench_grader as engine
 from ..services.rm import workbench_instructions as instructions
 from .reward_models import require_reward_models
 
+
+async def require_workbench(user: dict = Depends(get_current_user)) -> None:
+    if not has_workbench(user):
+        raise HTTPException(status_code=404, detail="Workbench is not enabled for this account")
+
+
 router = APIRouter(
-    prefix="/api/v1/rm/workbench", tags=["workbench"], dependencies=[Depends(require_reward_models)]
+    prefix="/api/v1/rm/workbench",
+    tags=["workbench"],
+    dependencies=[Depends(require_reward_models), Depends(require_workbench)],
 )
 Verdict = Literal["meets", "violates", "insufficient_evidence", "not_applicable"]
 Kind = Literal["judge_error", "agent_error", "both", "requirement_change", "unclear", "label_only"]

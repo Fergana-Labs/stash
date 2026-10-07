@@ -8,6 +8,7 @@ import asyncpg
 
 from ...config import settings
 from ...database import get_pool
+from ...product_checkpoints import has_workbench
 from . import workbench as legacy
 from . import workbench_evaluation as policy
 from . import workbench_grader as jev
@@ -81,7 +82,7 @@ async def ensure_instruction_scope(trace):
 async def _read_trace(trace_id):
     async with get_pool().acquire() as conn, conn.transaction(isolation="repeatable_read"):
         row = await conn.fetchrow(
-            "SELECT t.*,u.reward_models_enabled FROM rm_traces t JOIN users u ON u.id=t.owner_user_id WHERE t.id=$1",
+            "SELECT t.*,u.reward_models_enabled,u.product_checkpoint FROM rm_traces t JOIN users u ON u.id=t.owner_user_id WHERE t.id=$1",
             trace_id,
         )
         if not row:
@@ -106,12 +107,12 @@ async def process_trace(trace_id):
     evaluation = None
     try:
         trace, steps = await _read_trace(trace_id)
+        if not has_workbench(trace):
+            await _finish_queue(trace_id, claim, "completed")
+            return
         await instructions.observe_trace(
             trace["owner_user_id"], trace["external_id"], trace_id, steps
         )
-        if not trace["reward_models_enabled"]:
-            await _finish_queue(trace_id, claim, "completed")
-            return
         if policy.boundary(steps) is None:
             await _finish_queue(trace_id, claim, "waiting")
             return
@@ -368,7 +369,10 @@ async def recover():
     pool = get_pool()
     # Resume work deferred by the removed daily Jev cap, retaining saved calls.
     await pool.execute(
-        "UPDATE rm_wb_queue SET due_at=now(),error=NULL WHERE status='queued' AND error='Daily Jev evaluation budget reached; resumes tomorrow'"
+        """UPDATE rm_wb_queue q SET due_at=now(),error=NULL
+        FROM rm_traces t JOIN users u ON u.id=t.owner_user_id
+        WHERE q.trace_id=t.id AND u.reward_models_enabled AND u.product_checkpoint='latest'
+        AND q.status='queued' AND q.error='Daily Jev evaluation budget reached; resumes tomorrow'"""
     )
     await pool.execute(
         "UPDATE rm_wb_evaluation_calls SET status='failed',error='Worker lease expired',finished_at=now() WHERE status='running' AND created_at<now()-interval '20 minutes'"
@@ -377,7 +381,10 @@ async def recover():
     # queued traces automatically once the worker actually has a provider key.
     if settings.TYPESAFE_API_KEY:
         await pool.execute(
-            "UPDATE rm_wb_queue SET status='queued',due_at=now(),attempts=0 WHERE status='failed' AND error LIKE 'TYPESAFE_API_KEY is not configured%'"
+            """UPDATE rm_wb_queue q SET status='queued',due_at=now(),attempts=0
+            FROM rm_traces t JOIN users u ON u.id=t.owner_user_id
+            WHERE q.trace_id=t.id AND u.reward_models_enabled AND u.product_checkpoint='latest'
+            AND q.status='failed' AND q.error LIKE 'TYPESAFE_API_KEY is not configured%'"""
         )
 
     # A pre-upgrade worker could consume migration backfill without creating a
@@ -388,7 +395,7 @@ async def recover():
         """WITH repairable AS (
             SELECT q.trace_id FROM rm_wb_queue q
             JOIN rm_traces t ON t.id=q.trace_id JOIN users u ON u.id=t.owner_user_id
-            WHERE u.reward_models_enabled AND (
+            WHERE u.reward_models_enabled AND u.product_checkpoint='latest' AND (
                 (q.status='completed' AND NOT EXISTS (
                     SELECT 1 FROM rm_wb_evaluations e WHERE e.trace_id=t.id
                     AND e.policy_version=$1 AND e.model=$2
@@ -406,6 +413,7 @@ async def recover():
     await pool.execute(
         """UPDATE rm_wb_feedback f SET status='queued',error=NULL,updated_at=now()
         FROM users u WHERE f.owner_user_id=u.id AND u.reward_models_enabled
+        AND u.product_checkpoint='latest'
         AND f.status='failed' AND f.review_status='pending' AND f.error=$1""",
         MISSING_REPOSITORY,
     )

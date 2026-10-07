@@ -153,8 +153,16 @@ async def test_revising_label_only_stays_human_only_and_preserves_review_history
     assert response.status_code == 200, response.text
     assert response.json()["status"] == "completed"
     assert response.json()["change_kind"] == "label_only"
-    await service.reconcile()
     assert model_and_queue_boundaries == before
+    await service.reconcile()
+    # The fixture has legacy assessments but no automatic evaluation. Recovery
+    # should grade that trace, without scheduling interpretation of its audit label.
+    assert model_and_queue_boundaries == before + [("assess_trace", (str(tid),))]
+    revised = await pool.fetchrow("SELECT * FROM rm_wb_feedback WHERE id=$1", label["id"])
+    assert revised["status"] == "completed"
+    assert revised["review_status"] == "accepted"
+    assert revised["proposed_verdict"] == "violates"
+    assert revised["interpretation"] == label["interpretation"]
     history = await pool.fetchval(
         "SELECT snapshot FROM rm_wb_history WHERE record_id=$1 AND action='accept'", label["id"]
     )

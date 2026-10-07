@@ -47,9 +47,9 @@ export default function AgentChatView({
   if (agentId && agent === null) return null;
   const scheduled = agent !== null && (agent.run_mode === "scheduled" || agent.is_curator);
   return (
-    <div className="mx-auto flex h-full w-full max-w-3xl flex-col">
+    <div className="flex h-full w-full min-w-0 flex-col">
       {scheduled && agentId ? (
-        <AgentRunsView agentId={agentId} />
+        <div className="mx-auto flex h-full w-full max-w-3xl flex-col"><AgentRunsView agentId={agentId} /></div>
       ) : (
         <ChatPanel
           sessionId={sessionId}
