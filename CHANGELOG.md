@@ -5,6 +5,9 @@ everything before it is captured in git history (`git log`), not here.
 
 ## Unreleased
 
+- Skill generation automatically retries invalid model-generated names and
+  descriptions, so an overlong description no longer immediately fails the job.
+
 - Accounts can be assigned the October 5 Floodgate product checkpoint, retaining
   its Traces, Reward models, and Skills experience in the main app.
 
