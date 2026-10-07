@@ -1,8 +1,11 @@
 """Annotations on traces: a + or − rating, a comment, or both, on a trace or one step."""
 
+import logging
 from uuid import UUID
 
 from ...database import get_pool
+
+log = logging.getLogger(__name__)
 
 ANNOTATION_SELECT = """
     SELECT a.*, u.name AS author_name
@@ -103,7 +106,47 @@ async def create(
         comment,
         quote,
     )
-    return await _get(owner_user_id, annotation_id)
+    annotation = await _get(owner_user_id, annotation_id)
+    if comment and comment.strip():
+        # Annotation persistence is the primary action. Optional workbench
+        # preparation must never turn a saved comment into a failed request.
+        try:
+            from . import workbench
+
+            trace = await workbench.trace_access(owner_user_id, trace_id)
+            graders = [
+                g
+                for g in await workbench.list_graders(owner_user_id)
+                if g["enabled"] and workbench.in_scope(trace, g["scope"])
+            ]
+            if graders:
+                assessment_id = (
+                    await pool.fetchval(
+                        "SELECT id FROM rm_wb_assessments WHERE trace_id=$1 AND target_step_id=$2 "
+                        "AND grader_id=ANY($3::uuid[]) AND status='completed' ORDER BY created_at DESC LIMIT 1",
+                        trace_id,
+                        step_id,
+                        [g["id"] for g in graders],
+                    )
+                    if step_id
+                    else None
+                )
+                await workbench.create_feedback(
+                    owner_user_id,
+                    {
+                        "trace_id": trace_id,
+                        "target_step_id": step_id,
+                        "assessment_id": assessment_id,
+                        "comment": comment,
+                    },
+                    source="human_comment",
+                    source_event_id=annotation_id,
+                )
+        except Exception:
+            log.warning(
+                "Annotation saved; workbench feedback preparation unavailable", exc_info=True
+            )
+    return annotation
 
 
 async def update(owner_user_id: UUID, annotation_id: UUID, changes: dict) -> dict | None:

@@ -60,6 +60,7 @@ from .routers import (
     users,
     vfs,
     webhooks,
+    workbench,
 )
 from .services import demo_service
 from .services.row_validation import RowValidationError
@@ -154,6 +155,7 @@ app.include_router(trash.router)
 app.include_router(pins.router)
 app.include_router(reward_models.router)
 app.include_router(rm_evaluators.router)
+app.include_router(workbench.router)
 app.include_router(mcp_servers.router)
 app.include_router(publish.router)
 app.include_router(security_audit.router)

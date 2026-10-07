@@ -412,6 +412,14 @@ export interface RmTraceSummary {
   latest_score: Omit<RmScore, "created_at"> | null;
   shared_training_allowed?: boolean;
   action_credit?: { mean: number; count: number; revision: number } | null;
+  workbench?: {
+    assessed_actions: number;
+    total_actions: number;
+    violations: number;
+    pending: number;
+    failed: number;
+    queue_status: string | null;
+  };
   created_at: string;
 }
 

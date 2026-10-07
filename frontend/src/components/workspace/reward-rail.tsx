@@ -9,8 +9,11 @@ import type { User } from "@/lib/types";
 
 const PRIMARY = [
   { label: "Traces", href: "/reward-models", match: (path: string) => path === "/reward-models" || path.startsWith("/reward-models/traces/") },
-  { label: "Reward models", href: "/reward-models/models", match: (path: string) => path.startsWith("/reward-models/models") || path.startsWith("/reward-models/gepa/") },
+  { label: "Review", href: "/reward-models/review", match: (path: string) => path.startsWith("/reward-models/review") },
+  { label: "Graders", href: "/reward-models/graders", match: (path: string) => path.startsWith("/reward-models/graders") },
+  { label: "Changes", href: "/reward-models/changes", match: (path: string) => path.startsWith("/reward-models/changes") },
   { label: "Skills", href: "/skills", match: (path: string) => path === "/skills" || path.startsWith("/skills/") },
+  { label: "Research", href: "/reward-models/models", match: (path: string) => path.startsWith("/reward-models/models") || path.startsWith("/reward-models/gepa/") },
 ];
 
 export default function RewardRail({ user, onLogout }: { user: User; onLogout: () => void }) {

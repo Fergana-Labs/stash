@@ -41,11 +41,16 @@ export default function TraceTable({
   deletingId?: string | null;
 }) {
   const [query, setQuery] = useState("");
+  const [assessmentFilter, setAssessmentFilter] = useState("all");
   const [sort, setSort] = useState<{ key: TraceSortKey; direction: TraceSortDirection }>({ key: "imported", direction: "descending" });
   // Index (in the visible list) of the last row clicked without shift: the anchor for shift-click ranges.
   const anchor = useRef<number | null>(null);
 
-  const visible = sortTraces(searchTraces(traces, query), sort.key, sort.direction);
+  const filtered = searchTraces(traces, query).filter((trace) => assessmentFilter === "all"
+    || (assessmentFilter === "violations" && (trace.workbench?.violations ?? 0) > 0)
+    || (assessmentFilter === "failed" && ((trace.workbench?.failed ?? 0) > 0 || trace.workbench?.queue_status === "failed"))
+    || (assessmentFilter === "pending" && ((trace.workbench?.pending ?? 0) > 0 || ["queued", "running"].includes(trace.workbench?.queue_status ?? ""))));
+  const visible = sortTraces(filtered, sort.key, sort.direction);
   const visibleIds = visible.map((t) => t.id);
   const selectedVisible = visibleIds.filter((id) => selected.has(id)).length;
 
@@ -62,7 +67,7 @@ export default function TraceTable({
 
   return (
     <div>
-      <div className="mb-3 flex items-center gap-3">
+      <div className="mb-3 flex flex-wrap items-center gap-3">
         <label className="flex h-7 w-64 items-center gap-1.5 rounded-md border border-border bg-background px-2 focus-within:border-brand-400 focus-within:ring-2 focus-within:ring-brand-400/20">
           <Search className="h-3.5 w-3.5 text-muted-foreground" />
           <input
@@ -75,13 +80,14 @@ export default function TraceTable({
             className="min-w-0 flex-1 bg-transparent text-[12.5px] text-foreground outline-none placeholder:text-muted-foreground"
           />
         </label>
+        {mode === "browse" && <select aria-label="Filter assessment status" value={assessmentFilter} onChange={(e) => { setAssessmentFilter(e.target.value); anchor.current = null; }} className="h-7 rounded-md border border-border bg-background px-2 text-[12px] text-muted-foreground"><option value="all">All assessment states</option><option value="violations">With criterion violations</option><option value="failed">Grading failures</option><option value="pending">Pending grading</option></select>}
         <span className="ml-auto text-[12px] text-muted-foreground tabular-nums">
           {visible.length === traces.length ? `${traces.length} traces` : `${visible.length} of ${traces.length} traces`}
         </span>
       </div>
 
-      <div className="overflow-hidden rounded-lg border border-border">
-        <table className="w-full table-fixed border-collapse text-[13px]">
+      <div className="overflow-x-auto rounded-lg border border-border">
+        <table className={cn("w-full table-fixed border-collapse text-[13px]", mode === "browse" && "min-w-[980px]")}>
           <thead>
             <tr className="border-b border-border bg-surface text-left text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
               <th className="w-10 py-2 pl-3">
@@ -107,6 +113,7 @@ export default function TraceTable({
                   </button>
                 </th>
               ))}
+              {mode === "browse" && <th scope="col" className="w-44 px-3 py-2 text-right font-medium">Assessments</th>}
               {mode === "browse" && <th className="w-10 px-2 py-2" />}
             </tr>
           </thead>
@@ -203,6 +210,13 @@ function TraceRow({
         )}
       </td>
       <td className="px-3 py-2.5 text-right text-[12px] whitespace-nowrap text-muted-foreground">{relativeTime(trace.created_at)}</td>
+      {mode === "browse" && <td className="px-3 py-2.5 text-right text-[11px]" title="Coverage counts actions with any completed assessment. Violations use the active grader’s latest assessment; grading failures are not agent violations.">
+        {trace.workbench ? <div className="space-y-0.5"><div className="text-dim tabular-nums">{trace.workbench.assessed_actions} / {trace.workbench.total_actions} actions assessed</div>
+          {trace.workbench.violations > 0 && <div className="text-red-700 dark:text-red-400">{trace.workbench.violations} criterion violation{trace.workbench.violations === 1 ? "" : "s"}</div>}
+          {(trace.workbench.failed > 0 || trace.workbench.queue_status === "failed") && <div className="text-amber-700 dark:text-amber-400">Grading failed{trace.workbench.failed > 0 ? ` (${trace.workbench.failed})` : ""}</div>}
+          {(trace.workbench.pending > 0 || ["queued", "running"].includes(trace.workbench.queue_status ?? "")) && <div className="text-muted-foreground">{trace.workbench.pending > 0 ? `${trace.workbench.pending} pending` : "Grading queued"}</div>}
+        </div> : <span className="text-muted-foreground">Not assessed</span>}
+      </td>}
       {mode === "browse" && (
         <td className="px-2 py-2.5 text-right">
           {onDelete && (

@@ -971,6 +971,34 @@ def _parse_claude_code(data: str) -> list[CanonicalTrace]:
     records = _load_jsonl(data)
     steps: list[CanonicalStep] = []
     for record in records:
+        # Preserve our identifiable model-visible instruction context even
+        # when Claude marks the injected user message as isMeta. This is not
+        # a blanket change to historic trace filtering: other meta messages
+        # and hook bookkeeping stay excluded, keeping existing step indices.
+        if (
+            record.get("type") == "user"
+            and record.get("isMeta")
+            and not any(
+                record.get(k) for k in ("isSidechain", "isCompactSummary", "isApiErrorMessage")
+            )
+            and isinstance(record.get("message"), dict)
+            and record["message"].get("role") == "user"
+        ):
+            text = _content_text(record["message"].get("content", ""))
+            if '<stash-workbench-instruction delivery="' in text:
+                steps.extend(
+                    _with_timestamp(
+                        [
+                            CanonicalStep(
+                                role="system",
+                                content=text,
+                                metadata={"harness_instruction_context": True},
+                            )
+                        ],
+                        record.get("timestamp"),
+                    )
+                )
+                continue
         if not _is_claude_code_conversation_line(record):
             continue
         steps.extend(

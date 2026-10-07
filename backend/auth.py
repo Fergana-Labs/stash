@@ -22,6 +22,9 @@ API_KEY_ACCESS_LEVELS = {"read", "full"}
 # and /ask is read semantics. Matched on FastAPI route templates.
 _READ_KEY_WRITE_ALLOWLIST = {
     ("POST", "/api/v1/me/transcripts"),
+    # Native recording hooks receive only already released, session-scoped
+    # instructions. This writes delivery bookkeeping, never a release/change.
+    ("POST", "/api/v1/rm/workbench/instruction-deliveries"),
     ("POST", "/api/v1/me/sessions"),
     ("POST", "/api/v1/me/sessions/{session_row_id}/artifacts"),
     ("POST", "/api/v1/me/sessions/events"),

@@ -41,6 +41,7 @@ celery = Celery(
         "backend.tasks.sources",
         "backend.tasks.agent_schedules",
         "backend.tasks.reward_models",
+        "backend.tasks.workbench",
         "backend.integrations.google.exporters.slides",
         "backend.integrations.x_saves.tasks",
         "backend.exports.pdf",
@@ -92,6 +93,10 @@ celery.conf.update(
     timezone="UTC",
     enable_utc=True,
     beat_schedule={
+        "workbench-reconcile": {
+            "task": "backend.tasks.workbench.reconcile",
+            "schedule": 15.0,
+        },
         "shared-evaluator-reconcile": {
             "task": "backend.tasks.reward_models.reconcile",
             "schedule": 30.0,
