@@ -5,6 +5,11 @@ everything before it is captured in git history (`git log`), not here.
 
 ## Unreleased
 
+- Automatic Jev evaluation recovers traces skipped during rolling deployments
+  and retries stale database query plans. Migration backfill preserves active
+  workers. Corrections without a recorded repository can still be interpreted
+  and reviewed; only instruction creation remains unavailable.
+
 - Agent Workbench automatically uses Jev to judge trace success and estimate each
   action’s credit from recorded results. No grader setup is required. Inspect
   saved evidence, confidence, previous trace versions, and evaluation errors

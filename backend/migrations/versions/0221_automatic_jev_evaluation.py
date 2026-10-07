@@ -53,7 +53,10 @@ def upgrade():
     # records only for accounts with reward-model access; no grader creation.
     op.execute("""INSERT INTO rm_wb_queue(trace_id)
         SELECT t.id FROM rm_traces t JOIN users u ON u.id=t.owner_user_id WHERE u.reward_models_enabled
-        ON CONFLICT(trace_id) DO UPDATE SET status='queued',due_at=now(),requested_at=now(),attempts=0,error=NULL""")
+        ON CONFLICT(trace_id) DO UPDATE SET
+        status=CASE WHEN rm_wb_queue.status='running' THEN 'running' ELSE 'queued' END,
+        due_at=now(),requested_at=now(),
+        attempts=CASE WHEN rm_wb_queue.status='running' THEN rm_wb_queue.attempts ELSE 0 END,error=NULL""")
 
 
 def downgrade():

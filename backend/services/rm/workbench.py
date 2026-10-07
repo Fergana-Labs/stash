@@ -386,7 +386,7 @@ async def process_trace(trace_id):
             """UPDATE rm_wb_queue SET status=CASE WHEN requested_at>$2 OR $3 OR $4 THEN 'queued' ELSE 'completed' END,
             processed_at=now(),due_at=CASE WHEN $4 AND NOT $3 AND requested_at<=$2
                 THEN (date_trunc('day',now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC')+interval '1 day'
-                ELSE now()+interval '15 seconds' END,error=NULL WHERE trace_id=$1""",
+                ELSE now()+interval '15 seconds' END,error=NULL WHERE trace_id=$1 AND status='running' AND started_at=$2""",
             trace_id,
             claimed["started_at"],
             more,
@@ -395,9 +395,10 @@ async def process_trace(trace_id):
     except Exception as exc:
         log.exception("Workbench assessment failed for %s", trace_id)
         await pool.execute(
-            """UPDATE rm_wb_queue SET status='failed',error=$2,processed_at=now() WHERE trace_id=$1""",
+            """UPDATE rm_wb_queue SET status='failed',error=$2,processed_at=now() WHERE trace_id=$1 AND status='running' AND started_at=$3""",
             trace_id,
             str(exc)[:1500],
+            claimed["started_at"],
         )
 
 
@@ -741,7 +742,7 @@ async def prepare_feedback(feedback_id):
             from .workbench_auto import ensure_instruction_scope
 
             grader = await ensure_instruction_scope(trace)
-        if not grader:
+        if assessment and not grader:
             raise ValueError("The original grader is no longer available")
         steps = [
             dict(s)
@@ -764,7 +765,17 @@ async def prepare_feedback(feedback_id):
             target = next((s for s in reversed(steps) if is_assistant_action(s)), None)
         if target is None:
             raise ValueError("No captured assistant event to attach this feedback to")
-        config = grader["active_version"]["config"]
+        from .workbench_auto import instruction_config
+
+        config = grader["active_version"]["config"] if grader else instruction_config()
+        instruction_block_reason = (
+            None
+            if grader
+            else (
+                "This trace has no recorded repository directory. The interpretation is saved, "
+                "but no instruction change can be created without a repository scope."
+            )
+        )
         evaluation_result = None
         if row.get("evaluation_id"):
             from . import workbench_auto, workbench_evaluation
@@ -790,7 +801,11 @@ async def prepare_feedback(feedback_id):
         )
         from . import workbench_instructions
 
-        head = await workbench_instructions.get_head(row["owner_user_id"], grader["id"])
+        head = (
+            await workbench_instructions.get_head(row["owner_user_id"], grader["id"])
+            if grader
+            else None
+        )
         current_instruction = (
             await pool.fetchval("SELECT content->>'text' FROM rm_wb_changes WHERE id=$1", head)
             if head
@@ -809,6 +824,7 @@ async def prepare_feedback(feedback_id):
                         "input": snapshot,
                         "grader_config": config,
                         "current_instruction": current_instruction,
+                        "instruction_draft_blocked_reason": instruction_block_reason,
                     }
                 ),
                 ensure_ascii=False,
@@ -825,6 +841,7 @@ async def prepare_feedback(feedback_id):
             "input_snapshot": snapshot,
             "drafting_model": llm._model_for(llm.ModelTier.QUALITY),
             "human_reviewed": False,
+            "instruction_draft_blocked_reason": instruction_block_reason,
         }
         async with pool.acquire() as conn, conn.transaction():
             await mutation_lock(conn, row["owner_user_id"])
@@ -851,7 +868,8 @@ async def prepare_feedback(feedback_id):
                 current_target,
             )
             if (
-                not grader.get("builtin")
+                grader
+                and not grader.get("builtin")
                 and kind in {"judge_error", "both", "requirement_change"}
                 and draft.grader_prompt
             ):
@@ -866,7 +884,11 @@ async def prepare_feedback(feedback_id):
                     {"config": next_config, "requirement_change": kind == "requirement_change"},
                     grader["active_version_id"],
                 )
-            if kind in {"agent_error", "both", "requirement_change"} and draft.instruction_text:
+            if (
+                grader
+                and kind in {"agent_error", "both", "requirement_change"}
+                and draft.instruction_text
+            ):
                 await conn.execute(
                     """INSERT INTO rm_wb_changes(owner_user_id,grader_id,feedback_id,kind,title,content,parent_version_id)
                     VALUES($1,$2,$3,'instruction',$4,$5,$6)""",

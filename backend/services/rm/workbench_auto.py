@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import logging
 
+import asyncpg
+
 from ...config import settings
 from ...database import get_pool
 from . import workbench as legacy
@@ -14,6 +16,26 @@ from . import workbench_instructions as instructions
 log = logging.getLogger(__name__)
 MAX_CALLS_PER_PASS = 12
 MAX_CALLS_PER_OWNER_DAY = 500
+SCHEMA_CACHE_ERROR = (
+    "cached statement plan is invalid due to a database schema or configuration change"
+)
+MISSING_REPOSITORY = (
+    "The capture has no repository directory; instruction changes need a recorded repository scope"
+)
+
+
+def instruction_config():
+    return jev.validate_config(
+        {
+            "criteria": [
+                {
+                    "id": "agent_behavior",
+                    "name": "Fulfill the user request",
+                    "description": "Propose agent instructions supported by the recorded requests, results and human corrections.",
+                }
+            ]
+        }
+    )
 
 
 class BudgetReached(ValueError):
@@ -28,11 +50,9 @@ async def ensure_instruction_scope(trace):
     """An internal release channel, never a user-created evaluation configuration."""
     scope = {"source_format": trace["source_format"]}
     cwd = (trace.get("metadata") or {}).get("cwd")
-    if not cwd:
-        raise ValueError(
-            "The capture has no repository directory; instruction changes need a recorded repository scope"
-        )
-    scope["repository"] = str(cwd).rstrip("/") or "/"
+    if not isinstance(cwd, str) or not cwd.strip():
+        return None  # Interpretation is still possible; a safe release scope is not.
+    scope["repository"] = cwd.strip().rstrip("/") or "/"
     owner = trace["owner_user_id"]
     async with get_pool().acquire() as conn, conn.transaction():
         await legacy.mutation_lock(conn, owner)
@@ -47,17 +67,7 @@ async def ensure_instruction_scope(trace):
                 owner,
                 scope,
             )
-            config = jev.validate_config(
-                {
-                    "criteria": [
-                        {
-                            "id": "agent_behavior",
-                            "name": "Fulfill the user request",
-                            "description": "Propose agent instructions supported by the recorded requests, results and human corrections.",
-                        }
-                    ]
-                }
-            )
+            config = instruction_config()
             version = await conn.fetchval(
                 "INSERT INTO rm_wb_grader_versions(grader_id,version,config) VALUES($1,1,$2) RETURNING id",
                 row["id"],
@@ -171,7 +181,7 @@ async def process_trace(trace_id):
         log.warning("Automatic Jev evaluation failed: %s", type(exc).__name__)
         retry = (
             isinstance(exc, jev.GradingError) and exc.retryable and getattr(exc, "attempt", 1) < 3
-        )
+        ) or (isinstance(exc, asyncpg.InvalidCachedStatementError) and claim["attempts"] < 3)
         await _finish_queue(trace_id, claim, "queued" if retry else "failed", str(exc)[:1500])
 
 
@@ -381,3 +391,32 @@ async def recover():
         await pool.execute(
             "UPDATE rm_wb_queue SET status='queued',due_at=now(),attempts=0 WHERE status='failed' AND error LIKE 'TYPESAFE_API_KEY is not configured%'"
         )
+
+    # A pre-upgrade worker could consume migration backfill without creating a
+    # fixed-policy evaluation. A completed queue row is not evidence of grading.
+    # Never disturb running leases, waiting responses, or budget-deferred work.
+    await pool.execute(
+        """WITH repairable AS (
+            SELECT q.trace_id FROM rm_wb_queue q
+            JOIN rm_traces t ON t.id=q.trace_id JOIN users u ON u.id=t.owner_user_id
+            WHERE u.reward_models_enabled AND (
+                (q.status='completed' AND NOT EXISTS (
+                    SELECT 1 FROM rm_wb_evaluations e WHERE e.trace_id=t.id
+                    AND e.policy_version=$1 AND e.model=$2
+                    AND e.trace_updated_at>=t.updated_at AND e.status='completed'
+                )) OR (q.status='failed' AND q.error=$3 AND q.attempts<3)
+            ) ORDER BY q.due_at,q.trace_id LIMIT 30 FOR UPDATE OF q SKIP LOCKED
+        ) UPDATE rm_wb_queue q SET status='queued',due_at=now(),requested_at=now(),error=NULL
+        FROM repairable r WHERE q.trace_id=r.trace_id""",
+        policy.POLICY_VERSION,
+        settings.JEV_MODEL,
+        SCHEMA_CACHE_ERROR,
+    )
+    # Earlier code incorrectly failed the whole interpretation when only the
+    # instruction-release scope was unavailable. Preserve review decisions.
+    await pool.execute(
+        """UPDATE rm_wb_feedback f SET status='queued',error=NULL,updated_at=now()
+        FROM users u WHERE f.owner_user_id=u.id AND u.reward_models_enabled
+        AND f.status='failed' AND f.review_status='pending' AND f.error=$1""",
+        MISSING_REPOSITORY,
+    )
