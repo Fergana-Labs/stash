@@ -80,10 +80,13 @@ export default function DeveloperShell({
   children: ReactNode;
 }) {
   const pathname = usePathname();
+  // The transcript and its navigation rail own scrolling. Other console pages
+  // use document flow, but sessions need a bounded pane all the way down.
+  const isSession = pathname.startsWith("/sessions/");
 
   return (
-    <div data-surface="developer" className="min-h-screen bg-base">
-      <header className="sticky top-0 z-30 border-b border-border-subtle bg-base/95 backdrop-blur">
+    <div data-surface="developer" className={cn("bg-base", isSession ? "flex h-dvh min-h-0 flex-col overflow-hidden" : "min-h-screen")}>
+      <header className="sticky top-0 z-30 shrink-0 border-b border-border-subtle bg-base/95 backdrop-blur">
         <div className="mx-auto flex h-16 max-w-[1440px] items-center justify-between gap-4 px-6 md:px-8">
           <div className="flex min-w-0 items-center gap-4">
             <Link
@@ -115,10 +118,10 @@ export default function DeveloperShell({
         </div>
       </header>
 
-      <div className="mx-auto max-w-[1440px] px-6 py-8 md:px-8">
-        <div className="grid grid-cols-1 gap-8 md:grid-cols-[220px_minmax(0,1fr)] lg:grid-cols-[240px_minmax(0,1fr)] lg:gap-10">
-          <aside className="hidden md:block">
-            <nav className="sticky top-24 rounded border border-border bg-surface p-4">
+      <div className={cn("mx-auto w-full max-w-[1440px] px-6 py-8 md:px-8", isSession && "min-h-0 flex-1")}>
+        <div className={cn("grid grid-cols-1 gap-8 md:grid-cols-[220px_minmax(0,1fr)] lg:grid-cols-[240px_minmax(0,1fr)] lg:gap-10", isSession && "h-full min-h-0")}>
+          <aside className={cn("hidden md:block", isSession && "min-h-0 overflow-y-auto")}>
+            <nav className={cn("rounded border border-border bg-surface p-4", !isSession && "sticky top-24")}>
               {NAV.map((section) => (
                 <div key={section.title} className="mb-5 last:mb-0">
                   <div className="px-2 pb-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
@@ -145,8 +148,8 @@ export default function DeveloperShell({
             </nav>
           </aside>
 
-          <main className="min-w-0">
-            <div className="rounded border border-border bg-base px-6 py-8 sm:px-8 md:px-10">
+          <main className="min-h-0 min-w-0">
+            <div className={cn("rounded border border-border bg-base px-6 py-8 sm:px-8 md:px-10", isSession && "flex h-full min-h-0 flex-col")}>
               {children}
             </div>
           </main>

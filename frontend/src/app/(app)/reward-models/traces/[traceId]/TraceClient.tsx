@@ -21,13 +21,13 @@ import TraceMinimap from "@/components/reward-models/TraceMinimap";
 import TraceTimeline, { type StepAnnotations } from "@/components/reward-models/TraceTimeline";
 import { errorMessage, locateQuote, quoteFromOffsets, relativeTime, sortAnnotations } from "@/components/reward-models/rm-text";
 import { domSourceOffset, type Highlight } from "@/components/reward-models/source-anchors";
-import { buildRows, rowSteps, toolLabel, toolSummary, type TraceRow } from "@/components/reward-models/trace-rows";
-import { visibleStepElement } from "@/components/reward-models/trace-scroll";
+import { buildRows, rowSteps, type TraceRow } from "@/components/reward-models/trace-rows";
+import { traceScrollMarkers, visibleStepElement } from "@/components/reward-models/trace-scroll";
 import { useAuth } from "@/hooks/useAuth";
 import { rmCreateAnnotation, rmDeleteAnnotation, rmGetTrace, rmUpdateAnnotation } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import type { RmAnnotation, RmStep, RmTraceDetail } from "@/lib/types";
-import ConversationScrollRail, { conversationExcerpt, conversationMarkers } from "@/components/ConversationScrollRail";
+import ConversationScrollRail from "@/components/ConversationScrollRail";
 
 const FLASH_MS = 1400;
 /** Highlight id for the not-yet-saved quote while the composer is open. */
@@ -306,22 +306,7 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
   };
 
   const visibleRows = rows.filter((row) => inView(row, view));
-  const exchanges = conversationMarkers(visibleRows.filter((row) => row.kind === "prompt" || row.kind === "assistant").map((row) => {
-    const step = rowSteps(row)[0];
-    return { targetId: `step-${step.id}`, role: step.role, content: step.content };
-  }));
-  // A single-request trace can still contain hundreds of actions. In that case
-  // (and in Tools view), provide destinations for the individual visible rows.
-  const scrollMarkers = exchanges.length > 1 ? exchanges : visibleRows.map((row) => {
-    const step = rowSteps(row)[0];
-    return {
-      targetId: `step-${step.id}`,
-      title: row.kind === "tool" ? toolLabel(step.tool_name) : row.kind === "prompt" ? "User" : row.kind === "assistant" ? "Assistant" : "System",
-      preview: conversationExcerpt(toolSummary(step.tool_input) || step.content),
-      label: `Step ${step.index + 1}`,
-      emphasis: row.kind === "prompt",
-    };
-  });
+  const scrollMarkers = traceScrollMarkers(visibleRows);
 
   return (
     <div className="flex h-full min-h-0">
