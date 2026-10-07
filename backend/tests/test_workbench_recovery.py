@@ -217,3 +217,26 @@ async def test_legacy_worker_cannot_finish_or_fail_a_replacement_lease(
     assert (
         dict(await pool.fetchrow("SELECT * FROM rm_wb_queue WHERE trace_id=$1", tid)) == replacement
     )
+
+
+async def test_successful_batches_reset_worker_failure_budget(client, pool, monkeypatch):
+    user = await account(client)
+    tid = await upload(client, user)
+    monkeypatch.setattr(auto, "MAX_CALLS_PER_PASS", 1)
+
+    async def grade(snapshot):
+        return answer(snapshot)
+
+    monkeypatch.setattr(wire, "grade", grade)
+    await pool.execute("UPDATE rm_wb_queue SET attempts=12 WHERE trace_id=$1", tid)
+    await auto.process_trace(tid)
+    row = await pool.fetchrow("SELECT status,attempts FROM rm_wb_queue WHERE trace_id=$1", tid)
+    assert row["status"] == "queued" and row["attempts"] == 0
+
+    async def stale(trace_id):
+        raise asyncpg.InvalidCachedStatementError(auto.SCHEMA_CACHE_ERROR)
+
+    monkeypatch.setattr(auto, "_read_trace", stale)
+    await auto.process_trace(tid)
+    row = await pool.fetchrow("SELECT status,attempts FROM rm_wb_queue WHERE trace_id=$1", tid)
+    assert row["status"] == "queued" and row["attempts"] == 1

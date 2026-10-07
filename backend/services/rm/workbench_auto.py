@@ -190,7 +190,8 @@ async def _finish_queue(trace_id, claim, status, error=None, *, tomorrow=False):
         """UPDATE rm_wb_queue SET
         status=CASE WHEN requested_at>$2 THEN 'queued' ELSE $3 END,
         due_at=CASE WHEN $5 AND requested_at<=$2 THEN (date_trunc('day',now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC')+interval '1 day' ELSE now()+interval '30 seconds' END,
-        error=$4,processed_at=now() WHERE trace_id=$1 AND status='running' AND started_at=$2""",
+        error=$4,attempts=CASE WHEN $4::text IS NULL THEN 0 ELSE attempts END,
+        processed_at=now() WHERE trace_id=$1 AND status='running' AND started_at=$2""",
         trace_id,
         claim["started_at"],
         status,
