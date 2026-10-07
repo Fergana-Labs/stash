@@ -5,6 +5,11 @@ everything before it is captured in git history (`git log`), not here.
 
 ## Unreleased
 
+- Automatically extracted corrections retain the conversation and tool results
+  through the user's feedback when drafting agent instructions. Unreviewed target
+  guesses can be corrected or left unresolved. Older untouched drafts are archived
+  and regenerated once; human reviews and released instructions are preserved.
+
 - Automatic Jev evaluation recovers traces skipped during rolling deployments
   and retries stale database query plans. Migration backfill preserves active
   workers. Corrections without a recorded repository can still be interpreted

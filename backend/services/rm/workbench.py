@@ -23,6 +23,7 @@ MAX_ACTIONS_PER_PASS = 12
 MAX_ACTIONS_PER_DAY = 500
 VERDICTS = {"meets", "violates", "insufficient_evidence", "not_applicable"}
 KINDS = {"judge_error", "agent_error", "both", "requirement_change", "unclear", "label_only"}
+DRAFT_CONTEXT_VERSION = 2
 
 
 def serial(value):
@@ -480,9 +481,10 @@ async def assess_target(trace, grader, target, snapshot, fingerprint):
 async def reconcile():
     """Durable dispatch: a broker failure leaves rows queued for the next sweep."""
     from ...tasks import workbench as tasks
-    from . import workbench_auto
+    from . import workbench_auto, workbench_feedback_recovery
 
     await workbench_auto.recover()
+    await workbench_feedback_recovery.recover()
     pool = get_pool()
     await pool.execute("""UPDATE rm_wb_queue SET status='queued',due_at=now(),error='Worker lease expired; retrying'
         WHERE status='running' AND started_at<now()-interval '20 minutes'""")
@@ -700,6 +702,7 @@ class CorrectionDraft(BaseModel):
     grader_prompt: str | None = Field(default=None, max_length=4000)
     instruction_text: str | None = Field(default=None, max_length=6000)
     title: str = Field(min_length=1, max_length=160)
+    target_step_id: str | None = None
 
 
 DRAFT_SYSTEM = """Prepare a reviewable correction from a recorded agent interaction.
@@ -713,6 +716,31 @@ a trace requests it. Preserve existing useful instructions when the current inst
 Neither new text nor the comment proves quality. Ambiguous feedback: unclear, no proposed text.
 Verdicts: meets, violates, insufficient_evidence, not_applicable, or null.
 No fabricated tool results, citations, APIs, or past actions. All output remains a draft for review.
+For automatically extracted, unreviewed feedback, the previous target, kind, verdict and attribution
+are model guesses, not human decisions. Reconsider them using the full source_event and chronological
+context_events through that user's correction. Return target_step_id from target_candidates only
+when the correction has a defensible target. A supported new requirement may instead use
+requirement_change with a null target_step_id and null proposed_verdict: anchor its instruction to
+the user's source_event without falsely accusing a past action. Otherwise, if no target is
+defensible, return unclear, null target and no proposed text.
+For manually submitted or human-reviewed feedback, preserve its explicit target and decisions.
+Use recorded event indices and adjacency, never assume the quoted correction immediately followed
+the proposed target. Consider intervening questions, clarifications, actions and tool results.
+A commentary plan is not a completed-task claim. Do not fault it for missing work performed in
+subsequent recorded events. An interruption marker alone does not cancel the task or revoke prior
+authorization; a later user message may add requirements or steer the same task. Repeated requests
+alone do not prove a violation or a requirement change. Compare a repeated request with the earlier
+user request: if the rule was already present and no violation is recorded, return unclear and no
+instruction. Do not treat an absent future tool result as evidence of noncompliance.
+Do not turn interruptions into blanket stop/confirmation rules.
+Keep an instruction tied to the supported correction; do not invent word counts, section-title
+requirements, customer-specific rules, or other constraints absent from the user's request.
+Preserve the condition and scope of a requirement: a request for synthetic data in a demo does not
+mean all future tasks must avoid real data. One task's requested output is not a permanent policy.
+A screenshot reference is not evidence that its image contents are available in the supplied text;
+never invent its fields, values or layout. A reusable instruction needs explicit support in the
+source message or a demonstrated error; a routine task continuation does not supply that support.
+Omitted evidence is unknown, not proof of failure. Preserve uncertainty and abstain when needed.
 """
 
 
@@ -725,6 +753,8 @@ async def prepare_feedback(feedback_id):
     if not row:
         return
     try:
+        extracted = row["source"] == "trace_extraction"
+        reconsider_attribution = extracted and row["review_status"] == "pending"
         trace = dict(await pool.fetchrow("SELECT * FROM rm_traces WHERE id=$1", row["trace_id"]))
         assessment = (
             await pool.fetchrow("SELECT * FROM rm_wb_assessments WHERE id=$1", row["assessment_id"])
@@ -761,9 +791,9 @@ async def prepare_feedback(feedback_id):
                 steps = frozen
         target_id = row.get("evaluation_target_step_id") or row["target_step_id"]
         target = next((s for s in steps if str(s["id"]) == str(target_id)), None)
-        if target is None:
+        if target is None and not extracted:
             target = next((s for s in reversed(steps) if is_assistant_action(s)), None)
-        if target is None:
+        if target is None and (not extracted or target_id is not None):
             raise ValueError("No captured assistant event to attach this feedback to")
         from .workbench_auto import instruction_config
 
@@ -777,7 +807,30 @@ async def prepare_feedback(feedback_id):
             )
         )
         evaluation_result = None
-        if row.get("evaluation_id"):
+        extraction = None
+        if extracted:
+            from . import workbench_capture
+
+            source = next((s for s in steps if str(s["id"]) == str(row["source_event_id"])), None)
+            if source is None or row["comment"] not in (source.get("content") or ""):
+                raise ValueError("Captured correction source is missing or changed")
+            scan = await pool.fetchrow(
+                "SELECT input_snapshot,raw_output FROM rm_wb_feedback_scans WHERE source_event_id=$1 AND trace_id=$2",
+                row["source_event_id"],
+                trace["id"],
+            )
+            if scan:
+                source_hash = scan["input_snapshot"].get("source_sha256")
+                if (
+                    source_hash
+                    and hashlib.sha256(source["content"].encode()).hexdigest() != source_hash
+                ):
+                    raise ValueError("Captured correction source changed since extraction")
+                extraction = scan["raw_output"]
+            snapshot = serial(
+                workbench_capture.build_correction_context(steps, source, target_id=target_id)
+            )
+        elif row.get("evaluation_id"):
             from . import workbench_auto, workbench_evaluation
 
             snapshot = workbench_evaluation.build_input(steps, [target])
@@ -794,11 +847,6 @@ async def prepare_feedback(feedback_id):
                 if assessment
                 else serial(engine.build_input(steps, target, config))
             )
-        current_target = await pool.fetchval(
-            "SELECT id FROM rm_trace_steps WHERE id=$1 AND trace_id=$2",
-            UUID(str(target["id"])),
-            trace["id"],
-        )
         from . import workbench_instructions
 
         head = (
@@ -811,37 +859,100 @@ async def prepare_feedback(feedback_id):
             if head
             else None
         )
+        drafting_input = serial(
+            {
+                "comment": row["comment"],
+                "feedback_source": row["source"],
+                "reconsider_attribution": reconsider_attribution,
+                "explicit_kind": None if reconsider_attribution else row["change_kind"],
+                "explicit_verdict": None if reconsider_attribution else row["proposed_verdict"],
+                "previous_extraction": extraction,
+                "assessment": dict(assessment) if assessment else None,
+                "evaluation": evaluation_result,
+                # Keep every omitted-event ID in the audit snapshot, not in
+                # the model prompt for an arbitrarily long conversation.
+                "input": {k: v for k, v in snapshot.items() if k != "omission_details"},
+                "grader_config": config,
+                "current_instruction": current_instruction,
+                "instruction_draft_blocked_reason": instruction_block_reason,
+            }
+        )
+        draft_provenance = {
+            "draft_context_version": DRAFT_CONTEXT_VERSION,
+            "input_snapshot": snapshot,
+            "drafting_input": drafting_input,
+            "drafting_system": DRAFT_SYSTEM,
+            "drafting_model": llm._model_for(llm.ModelTier.QUALITY),
+            "human_reviewed": False,
+            "instruction_draft_blocked_reason": instruction_block_reason,
+        }
+        # Keep failed provider attempts inspectable and distinguish them from
+        # legacy drafts needing the one-time context repair. A concurrent review
+        # invalidates the claim and must not be overwritten by this worker.
+        claimed = await pool.fetchval(
+            """UPDATE rm_wb_feedback SET interpretation=$3
+            WHERE id=$1 AND status='running' AND updated_at=$2 RETURNING id""",
+            feedback_id,
+            row["updated_at"],
+            draft_provenance,
+        )
+        if not claimed:
+            return
         draft = await llm.complete_structured(
             system=DRAFT_SYSTEM,
-            prompt=json.dumps(
-                serial(
-                    {
-                        "comment": row["comment"],
-                        "explicit_kind": row["change_kind"],
-                        "explicit_verdict": row["proposed_verdict"],
-                        "assessment": dict(assessment) if assessment else None,
-                        "evaluation": evaluation_result,
-                        "input": snapshot,
-                        "grader_config": config,
-                        "current_instruction": current_instruction,
-                        "instruction_draft_blocked_reason": instruction_block_reason,
-                    }
-                ),
-                ensure_ascii=False,
-            ),
+            prompt=json.dumps(drafting_input, ensure_ascii=False),
             output_model=CorrectionDraft,
             tier=llm.ModelTier.QUALITY,
             max_tokens=5000,
         )
-        kind = row["change_kind"] if row["change_kind"] != "unclear" else draft.change_kind
+        if reconsider_attribution:
+            if draft.target_step_id is None:
+                # A new requirement can be grounded in the user message alone;
+                # an accusation of past error needs an identifiable action.
+                if draft.change_kind == "requirement_change":
+                    draft = draft.model_copy(
+                        update={"proposed_verdict": None, "grader_prompt": None}
+                    )
+                else:
+                    draft = draft.model_copy(
+                        update={
+                            "change_kind": "unclear",
+                            "proposed_verdict": None,
+                            "instruction_text": None,
+                            "grader_prompt": None,
+                        }
+                    )
+                target = None
+            elif draft.target_step_id not in snapshot["target_candidates"]:
+                raise ValueError(
+                    "Draft attribution must target a supplied preceding assistant event"
+                )
+            else:
+                target = next(s for s in steps if str(s["id"]) == draft.target_step_id)
+            kind = draft.change_kind
+        else:
+            kind = row["change_kind"] if row["change_kind"] != "unclear" else draft.change_kind
         if kind not in KINDS or draft.proposed_verdict not in VERDICTS | {None}:
             raise ValueError("Draft returned an invalid correction type or verdict")
+        current_target = (
+            await pool.fetchval(
+                "SELECT id FROM rm_trace_steps WHERE id=$1 AND trace_id=$2",
+                UUID(str(target["id"])),
+                trace["id"],
+            )
+            if target
+            else None
+        )
         interpretation = {
             **draft.model_dump(),
-            "input_snapshot": snapshot,
-            "drafting_model": llm._model_for(llm.ModelTier.QUALITY),
-            "human_reviewed": False,
-            "instruction_draft_blocked_reason": instruction_block_reason,
+            "change_kind": kind,
+            "proposed_verdict": (
+                draft.proposed_verdict
+                if reconsider_attribution
+                else row["proposed_verdict"] or draft.proposed_verdict
+            ),
+            "target_step_id": str(target["id"]) if target else None,
+            **draft_provenance,
         }
         async with pool.acquire() as conn, conn.transaction():
             await mutation_lock(conn, row["owner_user_id"])
@@ -857,15 +968,28 @@ async def prepare_feedback(feedback_id):
                     feedback_id,
                 )
                 return
+            if extracted:
+                # Trace replacement during the provider call must not publish
+                # an instruction against a different or deleted user message.
+                current_source = await conn.fetchval(
+                    "SELECT content FROM rm_trace_steps WHERE id=$1 AND trace_id=$2",
+                    row["source_event_id"],
+                    trace["id"],
+                )
+                if current_source != source["content"]:
+                    raise ValueError("Captured correction source changed during interpretation")
             await conn.execute(
                 """UPDATE rm_wb_feedback SET status='completed',interpretation=$2,
-                proposed_verdict=coalesce(proposed_verdict,$3),change_kind=CASE WHEN change_kind='unclear' THEN $4 ELSE change_kind END,
-                target_step_id=coalesce(target_step_id,$5),updated_at=now() WHERE id=$1""",
+                proposed_verdict=CASE WHEN $6 THEN $3 ELSE coalesce(proposed_verdict,$3) END,
+                change_kind=CASE WHEN $6 OR change_kind='unclear' THEN $4 ELSE change_kind END,
+                target_step_id=CASE WHEN $6 THEN $5 ELSE coalesce(target_step_id,$5) END,
+                error=NULL,updated_at=now() WHERE id=$1""",
                 feedback_id,
                 interpretation,
                 draft.proposed_verdict,
                 kind,
                 current_target,
+                reconsider_attribution,
             )
             if (
                 grader

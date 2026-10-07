@@ -28,6 +28,6 @@ function Review() {
     <div className="mb-4 flex flex-wrap items-center gap-2">{["pending", "accepted", "rejected", "all"].map((status) => <Button key={status} variant={filter === status ? "secondary" : "ghost"} size="sm" aria-pressed={filter === status} onClick={() => setFilter(status)}>{status === "all" ? "All feedback" : status[0].toUpperCase() + status.slice(1)}{data ? ` (${data.filter((f) => status === "all" || f.review_status === status).length})` : ""}</Button>)}</div>
     {loading && <p className="text-[13px] text-muted-foreground">Loading feedback…</p>}
     {!loading && !error && visible.length === 0 && <EmptyState title={filter === "pending" ? "No corrections awaiting review" : "No matching feedback"}>Open an assessment in <Link href="/reward-models" className="underline">Traces</Link> to correct its verdict or the agent’s behavior.</EmptyState>}
-    <div className="space-y-4">{visible.map((item) => <FeedbackReview key={`${item.id}-${item.review_status}-${item.status}`} feedback={item} onReviewed={reload} />)}</div>
+    <div className="space-y-4">{visible.map((item) => <FeedbackReview key={`${item.id}-${item.review_status}-${item.status}-${item.updated_at ?? ""}`} feedback={item} onReviewed={reload} />)}</div>
   </RmPage>;
 }
