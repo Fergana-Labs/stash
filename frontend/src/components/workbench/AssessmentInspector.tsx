@@ -6,35 +6,26 @@ import { Button } from "@/components/ui/button";
 import { Field } from "@/components/reward-models/rm-ui";
 import { errorMessage, relativeTime } from "@/components/reward-models/rm-text";
 import type { RmStep } from "@/lib/types";
-import { wbAssess, wbAssessments, wbCreateFeedback, verdictOptions, type Assessment, type ChangeKind, type Verdict, type WorkbenchFeedback } from "@/lib/workbench-api";
+import { wbAssessments, wbCreateFeedback, verdictOptions, type Assessment, type ChangeKind, type Verdict, type WorkbenchFeedback } from "@/lib/workbench-api";
 import { ErrorNotice, inputClass, JsonDetails, RecordBadge, useWorkbenchLoad } from "./workbench-ui";
 
-export default function AssessmentInspector({ traceId, steps, onJump, viewerId }: { traceId: string; steps: RmStep[]; onJump: (stepId: string) => void; viewerId?: string }) {
+export default function AssessmentInspector({ traceId, steps, onJump }: { traceId: string; steps: RmStep[]; onJump: (stepId: string) => void; viewerId?: string }) {
   const loader = useCallback(() => wbAssessments(traceId), [traceId]);
   const { data, loading, error, reload } = useWorkbenchLoad(loader, 5000);
   const [selectedId, setSelectedId] = useState<string | null>(() => typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("assessment"));
-  const [busy, setBusy] = useState(false);
-  const [actionError, setActionError] = useState<string | null>(null);
   const selected = data?.assessments.find((a) => a.id === selectedId) ?? data?.assessments[0];
   const completed = data?.assessments.filter((a) => a.status === "completed").length ?? 0;
   const failed = data?.coverage.failed ?? 0;
 
-  async function assess() {
-    setBusy(true); setActionError(null);
-    try { await wbAssess(traceId); await reload(); }
-    catch (e) { setActionError(errorMessage(e)); }
-    finally { setBusy(false); }
-  }
-
-  return <section aria-label="Automatic assessments" className="my-5 rounded-lg border border-border bg-surface/30">
+  return <section aria-label="Earlier rubric assessments" className="my-5 rounded-lg border border-border bg-surface/30">
     <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3">
-      <div><h2 className="m-0 text-[14px] font-medium">Assessments</h2><p className="m-0 mt-1 text-[11.5px] text-muted-foreground">{loading ? "Loading assessments…" : `${data?.coverage.assessed_actions ?? 0} / ${data?.coverage.total_actions ?? 0} actions assessed · ${completed} assessments${failed ? ` · ${failed} failed` : ""} · ${data?.coverage.pending ?? 0} pending`}</p></div>
-      <div className="flex gap-2"><Button asChild variant="ghost" size="sm"><Link href="/reward-models/graders">Graders</Link></Button>{(!data?.owner_user_id || data.owner_user_id === viewerId) && <Button variant="outline" size="sm" disabled={busy} onClick={() => void assess()}>{busy ? "Scheduling…" : "Assess saved trace"}</Button>}</div>
+      <div><h2 className="m-0 text-[14px] font-medium">Earlier rubric assessments</h2><p className="m-0 mt-1 text-[11.5px] text-muted-foreground">{loading ? "Loading assessments…" : `${data?.coverage.assessed_actions ?? 0} / ${data?.coverage.total_actions ?? 0} actions assessed · ${completed} assessments${failed ? ` · ${failed} failed` : ""} · ${data?.coverage.pending ?? 0} pending`}</p></div>
+
     </div>
-    <div className="p-4"><ErrorNotice error={error ?? actionError} onRetry={() => void reload()} />
+    <div className="p-4"><ErrorNotice error={error} onRetry={() => void reload()} />
       <ErrorNotice error={data?.coverage.last_error ?? null} />
       {data?.coverage.queue_status && <p className="mt-0 text-[11px] text-muted-foreground">Background queue: {data.coverage.queue_status}. Coverage counts recorded actions with at least one completed assessment; it is not a success rate.</p>}
-      {!loading && !error && data?.assessments.length === 0 && <p className="m-0 text-[12.5px] text-muted-foreground">No assessment is recorded yet. <Link href="/reward-models/graders" className="underline">Configure a grader</Link> for automatic grading of incoming runs. Unassessed events have no verdict.</p>}
+      {!loading && !error && data?.assessments.length === 0 && <p className="m-0 text-[12.5px] text-muted-foreground">No earlier rubric assessments are recorded. Trace success and action credit are evaluated automatically above.</p>}
       {data && data.assessments.length > 0 && <div className="grid gap-4 lg:grid-cols-[200px_minmax(0,1fr)]">
         <div role="list" aria-label="Saved assessments" className="max-h-96 space-y-1 overflow-y-auto">
           {data.assessments.map((assessment) => <button key={assessment.id} type="button" role="listitem" aria-current={selected?.id === assessment.id ? "true" : undefined} onClick={() => setSelectedId(assessment.id)} className={`block w-full rounded-md border p-2.5 text-left ${selected?.id === assessment.id ? "border-brand-400/50 bg-brand-500/5" : "border-transparent hover:bg-surface"}`}>

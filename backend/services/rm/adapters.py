@@ -1001,9 +1001,10 @@ def _parse_claude_code(data: str) -> list[CanonicalTrace]:
                 continue
         if not _is_claude_code_conversation_line(record):
             continue
-        steps.extend(
-            _with_timestamp(_anthropic_message_steps(record["message"]), record.get("timestamp"))
-        )
+        message_steps = _anthropic_message_steps(record["message"])
+        if record["message"].get("stop_reason") and message_steps:
+            message_steps[-1].metadata["stop_reason"] = record["message"]["stop_reason"]
+        steps.extend(_with_timestamp(message_steps, record.get("timestamp")))
 
     session_ids = [r["sessionId"] for r in records if "sessionId" in r]
     titles = [r["aiTitle"] for r in records if r.get("type") == "ai-title"]
@@ -1030,7 +1031,11 @@ def _codex_item_steps(item: dict) -> list[CanonicalStep]:
     kind = item["type"]
     if kind == "message":
         return [
-            CanonicalStep(role=_CODEX_ROLES[item["role"]], content=_content_text(item["content"]))
+            CanonicalStep(
+                role=_CODEX_ROLES[item["role"]],
+                content=_content_text(item["content"]),
+                metadata={"phase": item["phase"]} if item.get("phase") else {},
+            )
         ]
     if kind == "function_call":
         return [

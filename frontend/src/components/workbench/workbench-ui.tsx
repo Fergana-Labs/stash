@@ -36,7 +36,7 @@ export function ErrorNotice({ error, onRetry }: { error: string | null; onRetry?
 }
 
 export function RecordBadge({ value }: { value: string }) {
-  return <span className={cn("inline-flex rounded-md px-2 py-0.5 text-[11px] font-medium", value === "violates" || value === "failed" || value === "rejected" ? "bg-red-500/10 text-red-700 dark:text-red-400" : value === "meets" || value === "released" || value === "accepted" || value === "passed" ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400" : "bg-surface text-muted-foreground")}>{value.replaceAll("_", " ")}</span>;
+  return <span className={cn("inline-flex rounded-md px-2 py-0.5 text-[11px] font-medium", value === "failure" || value === "violates" || value === "failed" || value === "rejected" ? "bg-red-500/10 text-red-700 dark:text-red-400" : value === "success" || value === "meets" || value === "released" || value === "accepted" || value === "passed" ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400" : "bg-surface text-muted-foreground")}>{value.replaceAll("_", " ")}</span>;
 }
 
 export function RecordPanel({ title, children, actions }: { title: ReactNode; children: ReactNode; actions?: ReactNode }) {

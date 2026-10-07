@@ -411,6 +411,7 @@ export interface RmTraceSummary {
   label_error_count: number;
   latest_score: Omit<RmScore, "created_at"> | null;
   shared_training_allowed?: boolean;
+  evaluation?: { id: string; status: string; outcome: string | null; current: boolean; total_actions: number; credited_actions: number } | null;
   action_credit?: { mean: number; count: number; revision: number } | null;
   workbench?: {
     assessed_actions: number;

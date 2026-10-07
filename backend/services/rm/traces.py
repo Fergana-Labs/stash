@@ -4,8 +4,9 @@ from uuid import UUID
 
 import asyncpg
 
+from ...config import settings
 from ...database import get_pool
-from . import annotations, evaluator, trace_titles
+from . import annotations, evaluator, trace_titles, workbench_evaluation
 from .adapters import CanonicalTrace, TraceFormatError, parse_traces
 
 SUMMARY_SELECT = """
@@ -190,6 +191,19 @@ async def list_traces(owner_user_id: UUID, limit: int, offset: int) -> dict:
         by_id = {r["id"]: {k: v for k, v in dict(r).items() if k != "id"} for r in coverage}
         for summary in summaries:
             summary["workbench"] = by_id[summary["id"]]
+    if rows:
+        evaluations = await pool.fetch(
+            """SELECT DISTINCT ON (e.trace_id) e.trace_id,e.id,e.outcome,e.status,
+            e.total_actions,e.credited_actions,(e.trace_updated_at>=t.updated_at AND e.policy_version=$2 AND e.model=$3) AS current
+            FROM rm_wb_evaluations e JOIN rm_traces t ON t.id=e.trace_id WHERE e.trace_id=ANY($1::uuid[])
+            ORDER BY e.trace_id,e.created_at DESC""",
+            [r["id"] for r in rows],
+            workbench_evaluation.POLICY_VERSION,
+            settings.JEV_MODEL,
+        )
+        evaluations = {r["trace_id"]: dict(r) for r in evaluations}
+        for summary in summaries:
+            summary["evaluation"] = evaluations.get(summary["id"])
     return {"traces": summaries, "total": total}
 
 

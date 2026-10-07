@@ -27,7 +27,7 @@ export default function ChangeEditor({ change, onChanged }: { change: WorkbenchC
     finally { setBusy(null); }
   }
   return <div className="space-y-4">
-    <div className="flex flex-wrap gap-3 text-[12px] text-muted-foreground">{change.feedback_id && <Link href={`/reward-models/review?feedback=${change.feedback_id}`} className="underline">Source reviewed correction</Link>}{change.grader_id && <Link href="/reward-models/graders" className="underline">Grader and scope</Link>}{change.parent_version_id && <span>Parent version: {change.parent_version_id}</span>}</div>
+    <div className="flex flex-wrap gap-3 text-[12px] text-muted-foreground">{change.feedback_id && <Link href={`/reward-models/review?feedback=${change.feedback_id}`} className="underline">Source reviewed correction</Link>}{change.scope && <span>Scope: {change.scope.repository ?? "All repositories"} · {change.scope.source_format ?? "All harnesses"}</span>}{change.parent_version_id && <span>Parent version: {change.parent_version_id}</span>}</div>
     {change.scope && <p className="text-[12px] text-muted-foreground">Scope: {change.scope.repository || "all repositories"} · {change.scope.source_format || "all captured harnesses"}</p>}
     {change.previous_content && <JsonDetails title="Previous released content" value={change.previous_content.text ?? change.previous_content.config} />}
     {change.previous_content && <ContentDiff before={change.previous_content.text ?? JSON.stringify(change.previous_content.config, null, 2)} after={content.text ?? JSON.stringify(content.config, null, 2)} />}

@@ -9,6 +9,7 @@ import AnnotationComposer, { type ComposerTarget } from "@/components/reward-mod
 import AnnotationSidebar from "@/components/reward-models/AnnotationSidebar";
 import ActionScoringPanel from "@/components/reward-models/ActionScoringPanel";
 import AssessmentInspector from "@/components/workbench/AssessmentInspector";
+import TraceEvaluationPanel from "@/components/workbench/TraceEvaluationPanel";
 import TraceReviewAccess from "@/components/workbench/TraceReviewAccess";
 import { actionModelId } from "@/components/reward-models/action-credit";
 import { TraceSkeleton } from "@/components/reward-models/RmSkeletons";
@@ -318,7 +319,7 @@ export default function TraceClient({ traceId }: { traceId: string }) {
               </div>
             </div>
             <div className="flex shrink-0 items-center gap-1.5 pt-1">
-              <ActionScoringPanel trace={trace} selectedModelId={scoreModelId} onModelChange={setScoreModelId} onReload={load} />
+              <details><summary className="text-[12px] text-muted-foreground cursor-pointer">Research model scores</summary><ActionScoringPanel trace={trace} selectedModelId={scoreModelId} onModelChange={setScoreModelId} onReload={load} /></details>
               <button
                 type="button"
                 aria-expanded={commentsOpen}
@@ -337,7 +338,8 @@ export default function TraceClient({ traceId }: { traceId: string }) {
           </header>
 
           <TraceReviewAccess traceId={traceId} viewerId={viewerId} />
-          <AssessmentInspector traceId={traceId} steps={trace.steps} onJump={revealStep} viewerId={viewerId} />
+          <TraceEvaluationPanel traceId={traceId} onJump={revealStep} viewerId={viewerId} />
+          <details className="mb-4"><summary className="cursor-pointer text-[12px] text-muted-foreground">Earlier rubric assessments</summary><AssessmentInspector traceId={traceId} steps={trace.steps} onJump={revealStep} viewerId={viewerId} /></details>
 
           <div ref={navigation} className="sticky top-0 z-20 bg-background pb-2">
             <TraceMinimap steps={trace.steps} annotations={trace.annotations} actionScores={actionScores} scroller={scroller} navigation={navigation} onJump={(index) => revealStep(trace.steps[index].id)} />

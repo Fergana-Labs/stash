@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
-import { wbAssess, wbAssessments, wbCreateFeedback, type Assessment, type AssessmentResponse } from "@/lib/workbench-api";
+import { wbAssessments, wbCreateFeedback, type Assessment, type AssessmentResponse } from "@/lib/workbench-api";
 import type { RmStep } from "@/lib/types";
 import AssessmentInspector from "./AssessmentInspector";
 
@@ -42,12 +42,10 @@ it("shows failed execution as an error rather than a negative agent verdict", as
   expect(screen.queryByRole("button", { name: "Assess saved trace" })).not.toBeInTheDocument();
 });
 
-it("schedules saved trace assessment without asking for a task assignment", async () => {
+it("historical records do not require grader configuration or manual scheduling", async () => {
   vi.mocked(wbAssessments).mockResolvedValue({ ...response, assessments: [] });
-  vi.mocked(wbAssess).mockResolvedValue({ status: "queued" });
   render(<AssessmentInspector traceId="trace-1" steps={steps} onJump={vi.fn()} viewerId="owner" />);
-  await screen.findByText(/No assessment is recorded yet/);
-  fireEvent.click(screen.getByRole("button", { name: "Assess saved trace" }));
-  await waitFor(() => expect(wbAssess).toHaveBeenCalledWith("trace-1"));
-  expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+  expect(await screen.findByText(/No earlier rubric assessments/)).toBeVisible();
+  expect(screen.queryByRole("link", { name: "Graders" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Assess saved trace" })).not.toBeInTheDocument();
 });

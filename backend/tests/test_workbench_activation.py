@@ -112,7 +112,7 @@ async def test_release_and_rollback_grade_only_future_events_without_rewriting_h
 
 
 @pytest.mark.parametrize("mode", ["enabled", "paused", "different_scope", "failure"])
-async def test_existing_annotation_comment_prepares_feedback_only_when_enabled_and_survives_failure(
+async def test_annotation_feedback_is_independent_of_legacy_graders_and_survives_failure(
     client, pool, monkeypatch, mode
 ):
     user = await account(client)
@@ -151,7 +151,7 @@ async def test_existing_annotation_comment_prepares_feedback_only_when_enabled_a
         == comment
     )
     rows = await pool.fetch("SELECT * FROM rm_wb_feedback WHERE trace_id=$1", tid)
-    if mode == "enabled":
+    if mode != "failure":
         assert len(rows) == 1
         assert rows[0]["comment"] == comment and rows[0]["target_step_id"] == step
         assert rows[0]["source_event_id"] == UUID(response.json()["id"])
