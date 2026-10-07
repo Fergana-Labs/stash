@@ -31,6 +31,15 @@ const nextConfig: NextConfig = {
   experimental: {
     middlewareClientMaxBodySize: "100mb",
   },
+  async redirects() {
+    return [
+      {
+        source: "/reward-models/traces",
+        destination: "/reward-models",
+        permanent: false,
+      },
+    ];
+  },
   async rewrites() {
     return {
       // These run before App Router pages so `.md` and `.json` are content

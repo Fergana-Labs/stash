@@ -5,6 +5,9 @@ everything before it is captured in git history (`git log`), not here.
 
 ## Unreleased
 
+- Reward-model links on the marketing site open the app, and the trace-list
+  alias `/reward-models/traces` redirects to `/reward-models` instead of a 404.
+
 - Automatically extracted corrections retain the conversation and tool results
   through the user's feedback when drafting agent instructions. Unreviewed target
   guesses can be corrected or left unresolved. Older untouched drafts are archived

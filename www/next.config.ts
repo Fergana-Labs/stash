@@ -15,6 +15,16 @@ const nextConfig: NextConfig = {
   async redirects() {
     return [
       {
+        source: "/reward-models/traces",
+        destination: `${MANAGED_APP_URL}/reward-models`,
+        permanent: false,
+      },
+      {
+        source: "/reward-models/:path*",
+        destination: `${MANAGED_APP_URL}/reward-models/:path*`,
+        permanent: false,
+      },
+      {
         source: "/install",
         destination:
           "https://raw.githubusercontent.com/Fergana-Labs/stash/main/install.sh",
