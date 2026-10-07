@@ -5,6 +5,12 @@ everything before it is captured in git history (`git log`), not here.
 
 ## Unreleased
 
+- Automatic Jev evaluation recovers traces skipped during rolling deployments
+  and retries stale database query plans. Migration backfill preserves active
+  workers. Corrections without a recorded repository can still be interpreted
+  and reviewed; only instruction creation remains unavailable. Recovery respects
+  accounts using an older product checkpoint or with workbench access disabled.
+
 - Skill generation automatically retries invalid model-generated names and
   descriptions, so an overlong description no longer immediately fails the job.
 

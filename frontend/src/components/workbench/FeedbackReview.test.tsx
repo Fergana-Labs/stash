@@ -26,3 +26,13 @@ it("keeps an unprocessed interpretation out of accepted human labels", () => {
   expect(screen.getByText("Preparing interpretation…")).toBeVisible();
   expect(screen.getByRole("button", { name: "Accept interpretation and prepare changes" })).toBeDisabled();
 });
+
+it("allows accepting an interpretation without promising a change when repository scope is absent", async () => {
+  const blockReason = "This trace has no recorded repository directory. The interpretation is saved, but no instruction change can be created without a repository scope.";
+  vi.mocked(wbReviewFeedback).mockResolvedValue({ ...feedback, review_status: "accepted" });
+  render(<FeedbackReview feedback={{ ...feedback, assessment_id: null, proposed_verdict: null, change_kind: "both", interpretation: { explanation: "Verify tests", instruction_draft_blocked_reason: blockReason } }} onReviewed={vi.fn().mockResolvedValue(undefined)} />);
+  expect(screen.getByRole("status")).toHaveTextContent(blockReason);
+  expect(screen.queryByRole("button", { name: "Accept interpretation and prepare changes" })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Accept interpretation" }));
+  await waitFor(() => expect(wbReviewFeedback).toHaveBeenCalledWith("feedback", { decision: "accept", change_kind: "both" }));
+});
