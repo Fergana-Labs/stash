@@ -132,17 +132,72 @@ async def test_failed_credit_call_retries_without_repeating_success_call(client,
     assert [c["status"] for c in done["calls"]] == ["completed", "failed", "completed"]
 
 
-async def test_budget_defers_and_resumes_without_erasing_partial_results(client, pool, monkeypatch):
-    monkeypatch.setattr(auto, "MAX_CALLS_PER_OWNER_DAY", 1)
+async def test_evaluation_continues_past_500_daily_calls(client, pool, monkeypatch):
+    user, tid, calls = await evaluate(client, pool, monkeypatch)
+    previous = (await get_eval(client, user, tid))["current"]
+    # Failed attempts also counted toward the old daily cap. Seed prior calls
+    # without invoking the provider hundreds of times.
+    await pool.execute(
+        """INSERT INTO rm_wb_evaluation_calls
+        (evaluation_id,owner_user_id,batch_index,attempt,input_snapshot,status)
+        SELECT $1,$2,0,n,'{}'::jsonb,'failed' FROM generate_series(2,499) n""",
+        UUID(previous["id"]),
+        user["uuid"],
+    )
+    assert await pool.fetchval("SELECT count(*) FROM rm_wb_evaluation_calls") == 500
+    later = await upload(client, user, "later-run")
+    await auto.process_trace(later)
+    result = await get_eval(client, user, later)
+    assert result["current"]["status"] == "completed"
+    assert result["queue"]["error"] is None
+    assert len(calls) == 4
+    assert await pool.fetchval("SELECT count(*) FROM rm_wb_evaluation_calls") == 502
+
+
+async def test_recover_resumes_old_budget_pause_without_repeating_saved_calls(
+    client, pool, monkeypatch
+):
+    monkeypatch.setattr(auto, "MAX_CALLS_PER_PASS", 1)
     user, tid, calls = await evaluate(client, pool, monkeypatch)
     queued = await get_eval(client, user, tid)
     assert queued["queue"]["status"] == "queued"
-    assert "budget" in queued["queue"]["error"]
+    assert queued["queue"]["error"] is None
     assert queued["current"]["outcome"] == "failure" and len(calls) == 1
-    monkeypatch.setattr(auto, "MAX_CALLS_PER_OWNER_DAY", 10)
+    await pool.execute(
+        """UPDATE rm_wb_queue SET due_at=now()+interval '1 day',
+        error='Daily Jev evaluation budget reached; resumes tomorrow' WHERE trace_id=$1""",
+        tid,
+    )
+    await auto.recover()
+    row = await pool.fetchrow(
+        "SELECT status,error,due_at<=now() AS ready FROM rm_wb_queue WHERE trace_id=$1", tid
+    )
+    assert dict(row) == {"status": "queued", "error": None, "ready": True}
     await auto.process_trace(tid)
     assert (await get_eval(client, user, tid))["current"]["status"] == "completed"
     assert len(calls) == 2
+
+
+@pytest.mark.parametrize(
+    ("status", "error"),
+    [
+        ("running", "Daily Jev evaluation budget reached; resumes tomorrow"),
+        ("queued", "An unrelated failure"),
+        ("queued", None),
+    ],
+)
+async def test_budget_recovery_leaves_other_queue_entries_unchanged(client, pool, status, error):
+    user = await account(client)
+    tid = await upload(client, user)
+    before = await pool.fetchrow(
+        """UPDATE rm_wb_queue SET status=$2,error=$3,due_at=now()+interval '1 day'
+        WHERE trace_id=$1 RETURNING *""",
+        tid,
+        status,
+        error,
+    )
+    await auto.recover()
+    assert await pool.fetchrow("SELECT * FROM rm_wb_queue WHERE trace_id=$1", tid) == before
 
 
 async def test_lost_worker_lease_cannot_complete_an_evaluation(client, pool, monkeypatch):

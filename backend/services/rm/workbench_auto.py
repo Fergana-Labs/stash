@@ -13,11 +13,6 @@ from . import workbench_instructions as instructions
 
 log = logging.getLogger(__name__)
 MAX_CALLS_PER_PASS = 12
-MAX_CALLS_PER_OWNER_DAY = 500
-
-
-class BudgetReached(ValueError):
-    pass
 
 
 class LeaseLost(Exception):
@@ -158,8 +153,6 @@ async def process_trace(trace_id):
         )
     except LeaseLost:
         return  # A replacement worker owns the queue and any further status changes.
-    except BudgetReached as exc:
-        await _finish_queue(trace_id, claim, "queued", str(exc), tomorrow=True)
     except Exception as exc:
         if evaluation:
             await pool.execute(
@@ -192,10 +185,6 @@ async def _finish_queue(trace_id, claim, status, error=None, *, tomorrow=False):
 async def _call(evaluation, index, snapshot, claim):
     pool = get_pool()
     async with pool.acquire() as conn, conn.transaction():
-        await conn.execute(
-            "SELECT pg_advisory_xact_lock(hashtextextended('jev-budget:' || $1,0))",
-            str(evaluation["owner_user_id"]),
-        )
         if not await conn.fetchval(
             "SELECT 1 FROM rm_wb_queue WHERE trace_id=$1 AND status='running' AND started_at=$2 FOR UPDATE",
             evaluation["trace_id"],
@@ -208,12 +197,6 @@ async def _call(evaluation, index, snapshot, claim):
             index,
         ):
             return
-        count = await conn.fetchval(
-            "SELECT count(*) FROM rm_wb_evaluation_calls WHERE owner_user_id=$1 AND created_at>=(date_trunc('day',now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC')",
-            evaluation["owner_user_id"],
-        )
-        if count >= MAX_CALLS_PER_OWNER_DAY:
-            raise BudgetReached("Daily Jev evaluation budget reached; resumes tomorrow")
         attempt = await conn.fetchval(
             "SELECT coalesce(max(attempt),0)+1 FROM rm_wb_evaluation_calls WHERE evaluation_id=$1 AND batch_index=$2",
             evaluation["id"],
@@ -372,6 +355,10 @@ async def _evaluation_detail(row):
 
 async def recover():
     pool = get_pool()
+    # Resume work deferred by the removed daily Jev cap, retaining saved calls.
+    await pool.execute(
+        "UPDATE rm_wb_queue SET due_at=now(),error=NULL WHERE status='queued' AND error='Daily Jev evaluation budget reached; resumes tomorrow'"
+    )
     await pool.execute(
         "UPDATE rm_wb_evaluation_calls SET status='failed',error='Worker lease expired',finished_at=now() WHERE status='running' AND created_at<now()-interval '20 minutes'"
     )
