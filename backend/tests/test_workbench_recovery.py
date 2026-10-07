@@ -15,7 +15,7 @@ from .test_rm_workbench import BASE, account, model_and_queue_boundaries, upload
 from .test_workbench_automatic import answer, evaluate, get_eval
 
 
-async def test_reconcile_repairs_skipped_and_schema_failed_work_without_touching_leases_or_budgets(
+async def test_reconcile_combines_deployment_repair_and_removed_cap_recovery(
     client, pool, monkeypatch
 ):
     user, done, calls = await evaluate(client, pool, monkeypatch)
@@ -24,7 +24,8 @@ async def test_reconcile_repairs_skipped_and_schema_failed_work_without_touching
     exhausted = await upload(client, user, "three-failed-attempts")
     active = await upload(client, user, "running")
     waiting = await upload(client, user, "waiting")
-    budget = await upload(client, user, "tomorrow")
+    budget = await upload(client, user, "correction-extraction-deferral")
+    former_cap = await upload(client, user, "removed-jev-cap")
     invalid = await upload(client, user, "malformed-provider-response")
     disabled_user = await account(client)
     disabled = await upload(client, disabled_user, "disabled")
@@ -37,7 +38,8 @@ async def test_reconcile_repairs_skipped_and_schema_failed_work_without_touching
         (exhausted, "failed", auto.SCHEMA_CACHE_ERROR, 3),
         (active, "running", None, 1),
         (waiting, "waiting", None, 1),
-        (budget, "queued", "Daily Jev evaluation budget reached; resumes tomorrow", 2),
+        (budget, "queued", None, 2),
+        (former_cap, "queued", "Daily Jev evaluation budget reached; resumes tomorrow", 2),
         (invalid, "failed", "Jev returned an invalid grading response", 1),
         (disabled, "completed", None, 1),
     ]:
@@ -58,7 +60,11 @@ async def test_reconcile_repairs_skipped_and_schema_failed_work_without_touching
         assert (
             dict(await pool.fetchrow("SELECT * FROM rm_wb_queue WHERE trace_id=$1", t)) == original
         )
-    for t in (missing, stale):
+    former = await pool.fetchrow(
+        "SELECT status,error,due_at<=now() AS ready FROM rm_wb_queue WHERE trace_id=$1", former_cap
+    )
+    assert dict(former) == {"status": "queued", "error": None, "ready": True}
+    for t in (missing, stale, former_cap):
         assert (
             await pool.fetchval("SELECT status FROM rm_wb_queue WHERE trace_id=$1", t) == "queued"
         )
@@ -68,6 +74,7 @@ async def test_reconcile_repairs_skipped_and_schema_failed_work_without_touching
     await auto.recover()
     await auto.process_trace(missing)
     await auto.process_trace(stale)
+    await auto.process_trace(former_cap)
     assert len(calls) == count  # Repeated sweeps don't regrade finished work.
 
 

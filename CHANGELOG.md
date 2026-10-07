@@ -9,6 +9,8 @@ everything before it is captured in git history (`git log`), not here.
   and retries stale database query plans. Migration backfill preserves active
   workers. Corrections without a recorded repository can still be interpreted
   and reviewed; only instruction creation remains unavailable.
+- Automatic Jev evaluations no longer stop at a daily call limit. Traces paused
+  by the previous cap resume automatically and reuse their saved results.
 
 - Agent Workbench automatically uses Jev to judge trace success and estimate each
   action’s credit from recorded results. No grader setup is required. Inspect
