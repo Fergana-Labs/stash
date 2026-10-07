@@ -1,0 +1,72 @@
+"use client";
+
+import Link from "next/link";
+import { useCallback, useEffect, useState } from "react";
+import { Copy, Pause, Play, RotateCcw } from "lucide-react";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { RmPage, Field } from "@/components/reward-models/rm-ui";
+import { errorMessage, relativeTime } from "@/components/reward-models/rm-text";
+import { useBreadcrumbs } from "@/components/BreadcrumbContext";
+import { abandonOptimizationRun, controlOptimization, getOptimization, getOptimizationRun, recordBusinessOutcome, type OptimizationDetail as Detail, type OptimizationRun } from "@/lib/optimization-api";
+import TrendChart, { number } from "./TrendChart";
+import { fieldClass } from "./CreateOptimization";
+
+export default function OptimizationDetail({ id }: { id: string }) {
+  const [data, setData] = useState<Detail | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const load = useCallback(async () => { try { setData(await getOptimization(id)); setError(null); } catch (e) { setError(errorMessage(e)); } }, [id]);
+  useEffect(() => { void load(); const timer = setInterval(() => { if (document.visibilityState === "visible") void load(); }, 5000); return () => clearInterval(timer); }, [load]);
+  useBreadcrumbs([{ label: "Optimization", href: "/reward-models/optimization" }, { label: data?.name ?? "Loading…" }], `optimization-${id}`);
+  async function control(action: "pause" | "resume" | "rollback", revisionId?: string) {
+    setBusy(true); setError(null);
+    try { setData(await controlOptimization(id, action, revisionId)); } catch (e) { setError(errorMessage(e)); } finally { setBusy(false); }
+  }
+  if (!data) return <RmPage title="Optimization">{error ? <p role="alert">{error}<Button onClick={() => void load()}>Retry</Button></p> : <p className="text-sm text-muted-foreground">Loading…</p>}</RmPage>;
+  const current = data.revisions.find((r) => r.id === data.active_revision_id);
+  const latest = data.rounds[0];
+  const version = (revisionId: string | null) => data.revisions.find((r) => r.id === revisionId)?.version ?? "—";
+  const totals = data.trends.reduce((all, p) => ({ assigned: all.assigned + p.assigned, scored: all.scored + p.scored, measured: all.measured + p.measured }), { assigned: 0, scored: 0, measured: 0 });
+  const inactive = ["paused", "failed"].includes(data.status);
+  return <RmPage title={data.name} description={`${data.agent} · ${data.scope}`} actions={<><span className="rounded-md bg-surface px-2 py-1 text-xs">{data.status.replaceAll("_", " ")}</span><Button variant="outline" disabled={busy} onClick={() => void control(inactive ? "resume" : "pause")}>{inactive ? <Play /> : <Pause />}{inactive ? "Resume" : "Pause"}</Button></>}>
+    <div className="space-y-6">
+      {(error || data.error) && <p role="alert" className="rounded-lg border border-red-500/20 p-4 text-sm text-red-600">{error ?? data.error}</p>}
+      {data.status === "waiting_model" && <p role="status" className="rounded-lg bg-surface p-4 text-sm">Waiting for {data.reward_model.name} to finish training. Optimization starts automatically when the model is ready.</p>}
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">{[["Current prompt", `v${current?.version ?? 1}`], ["Real runs", totals.assigned], ["Reward scored", `${totals.scored} / ${totals.assigned}`], ["Business measured", `${totals.measured} / ${totals.assigned}`]].map(([label, value]) => <div key={label} className="rounded-xl border border-border p-4"><p className="m-0 text-xs text-muted-foreground">{label}</p><p className="mb-0 mt-2 text-2xl font-medium tabular-nums">{value}</p></div>)}</div>
+      <Connection data={data} />
+      <div className="grid gap-4 lg:grid-cols-2"><TrendChart title="Stash reward over time" subtitle={`${data.reward_model.name} · fixed reward model · mean action credit per run`} data={data.trends} revisions={data.revisions} metric="reward" range={[-1, 1]} /><TrendChart title={data.metric.name} subtitle={`${data.metric.direction === "higher" ? "Higher" : "Lower"} is better${data.metric.unit ? ` · ${data.metric.unit}` : ""} · reported business measurements`} data={data.trends} revisions={data.revisions} metric="business" range={[data.metric.minimum, data.metric.maximum]} /></div>
+      {latest && <section className="rounded-xl border border-border p-5"><div className="flex items-center justify-between"><h2 className="m-0 text-base font-medium">Round {latest.number} of {data.max_rounds}</h2><span className="text-xs text-muted-foreground">{latest.status}</span></div>
+        <p className="text-sm text-muted-foreground">{latest.status === "queued" || latest.status === "generating" ? "Preparing a candidate from your feedback and observed runs." : latest.report?.reason ?? "The next comparison will appear after the candidate is ready."}</p>
+        {latest.error && <p className="text-sm text-red-600">{latest.error}</p>}
+        {latest.report && <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead><tr className="text-xs text-muted-foreground"><th className="pb-2">Prompt</th><th>Assigned</th><th>Scored</th><th>Mean reward</th><th>{data.metric.name}</th><th>Outcomes</th></tr></thead><tbody>{(["baseline", "candidate"] as const).map((arm) => { const a = latest.report?.arms[arm]; return a ? <tr key={arm} className="border-t border-border"><td className="py-3">{arm === "baseline" ? "Current" : "Candidate"} · v{version(arm === "baseline" ? latest.baseline_id : latest.candidate_id)}</td><td>{a.assigned} / {data.runs_per_arm}</td><td>{a.completed}</td><td>{number(a.reward.mean)}</td><td>{number(a.business.mean)}</td><td>{a.business.n} / {a.assigned}</td></tr> : null; })}</tbody></table></div>}
+        <p className="mb-0 text-xs leading-relaxed text-muted-foreground">Runs are assigned randomly before the task. Promotion waits for the full cohort and every business outcome. Reward must improve; the business comparison must stay within {number(data.metric.regression_tolerance)} {data.metric.unit} of regression. Comparison intervals are approximate; trends alone do not establish causation.</p>
+      </section>}
+      <section className="rounded-xl border border-border p-5"><h2 className="m-0 text-base font-medium">Prompt versions</h2><div className="mt-3 space-y-3">{[...data.revisions].reverse().map((r) => { const released = r.version === 1 || data.rounds.some((round) => round.candidate_id === r.id && round.status === "promoted"); return <details key={r.id} className="rounded-lg border border-border p-4"><summary className="cursor-pointer text-sm"><span className="font-medium">v{r.version}</span> · {r.id === data.active_revision_id ? "Current" : released ? "Previously active" : "Candidate"}<span className="ml-3 text-xs text-muted-foreground">{relativeTime(r.created_at)}</span></summary><p className="text-sm text-muted-foreground">{r.rationale}</p><pre className="whitespace-pre-wrap rounded-md bg-surface p-3 text-xs">{r.content || "Uses the agent’s existing instructions."}</pre>{released && r.id !== data.active_revision_id && <Button variant="outline" size="sm" disabled={busy} onClick={() => void control("rollback", r.id)}><RotateCcw />Roll back to v{r.version} and pause</Button>}</details>; })}</div></section>
+      <section className="rounded-xl border border-border p-5"><h2 className="m-0 text-base font-medium">Recent runs</h2><p className="text-xs text-muted-foreground">Latest 100 runs. Each result stays tied to the prompt, agent version and recorded evidence it used.</p>{data.runs.length === 0 ? <p className="text-sm text-muted-foreground">Connect the agent above to record its first run.</p> : <div className="space-y-3">{data.runs.map((run) => <RunRow key={run.id} run={run} version={version(run.revision_id)} data={data} onChanged={load} />)}</div>}</section>
+      {!!data.rounds.length && <details className="rounded-xl border border-border p-5"><summary className="cursor-pointer text-sm font-medium">Comparison and release history</summary><div className="mt-3 space-y-3">{data.rounds.map((round) => <details key={round.id} className="border-t border-border pt-3"><summary className="cursor-pointer text-sm">Round {round.number} · {round.status} · v{version(round.baseline_id)} → v{version(round.candidate_id)}</summary><p className="text-xs text-muted-foreground">{round.report?.reason}</p><pre className="overflow-auto text-xs">{JSON.stringify(round.report, null, 2)}</pre></details>)}<details><summary className="cursor-pointer text-xs">Control and outcome audit trail</summary><pre className="overflow-auto text-xs">{JSON.stringify(data.events, null, 2)}</pre></details></div></details>}
+    </div>
+  </RmPage>;
+}
+
+function Connection({ data }: { data: Detail }) {
+  const instruction = `Use Stash optimization ${data.id} for agent ${JSON.stringify(data.agent)} in scope ${JSON.stringify(data.scope)}. Before each new task, call stash_optimization_start_run with this optimization_id, a unique stable work_key, agent, scope, and the actual agent_version. For native captured sessions, pass session_id. Keep the returned exact instruction wrapper in the recorded context and apply it subject to existing instructions and permissions. Stash scores completed captured responses automatically. For other runners, import the real completed trace with external id=work_key or call stash_optimization_finish_run after completion. Report the actual ${data.metric.name} (${data.metric.unit}, ${data.metric.direction} is better) with stash_optimization_record_outcome and the source measurement. Never guess a business outcome. Report incomplete tasks with stash_optimization_abandon_run. Do not reroll assignments.`;
+  async function copy() { try { await navigator.clipboard.writeText(instruction); toast.success("Agent instructions copied"); } catch { toast.error("Could not copy. Select the instructions below."); } }
+  return <details open={data.runs.length === 0} className="rounded-xl border border-border bg-surface/30 p-5"><summary className="cursor-pointer text-sm font-medium">Connect your agent through MCP</summary><p className="text-sm text-muted-foreground">Add the Stash MCP server to your agent, then provide these instructions. Your runner or business system can report outcomes when they become available.</p><pre className="rounded-md bg-background p-3 text-xs">{JSON.stringify({ mcpServers: { stash: { command: "stash-mcp" } } }, null, 2)}</pre><p className="text-xs text-muted-foreground">Use the latest Stash CLI: <code>uv tool install --upgrade stashai</code></p><pre className="whitespace-pre-wrap rounded-md bg-background p-3 text-xs leading-relaxed">{instruction}</pre><Button variant="outline" size="sm" onClick={() => void copy()}><Copy />Copy agent instructions</Button></details>;
+}
+
+function RunRow({ run, version, data, onChanged }: { run: OptimizationRun; version: number | string; data: Detail; onChanged: () => Promise<void> }) {
+  const [value, setValue] = useState("");
+  const [source, setSource] = useState("");
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  async function save(event: React.FormEvent) { event.preventDefault(); setBusy(true); setError(null); try { await recordBusinessOutcome(run.id, Number(value), source.trim()); await onChanged(); } catch (e) { setError(errorMessage(e)); } finally { setBusy(false); } }
+  const [evidence, setEvidence] = useState<Record<string, unknown> | null>(null);
+  async function inspect() { setBusy(true); try { setEvidence(await getOptimizationRun(run.id)); } catch (e) { setError(errorMessage(e)); } finally { setBusy(false); } }
+  async function abandon(event: React.FormEvent) { event.preventDefault(); setBusy(true); setError(null); try { await abandonOptimizationRun(run.id, reason.trim()); await onChanged(); } catch (e) { setError(errorMessage(e)); } finally { setBusy(false); } }
+  return <details className="rounded-lg border border-border p-4"><summary className="cursor-pointer text-sm"><span className="font-medium">{run.work_key}</span><span className="ml-3 text-xs text-muted-foreground">v{version} · {run.status} · reward {number(run.reward)} · {data.metric.name} {number(run.outcome)}</span></summary><div className="mt-3 space-y-3"><p className="text-xs text-muted-foreground">{run.agent_version} · {run.arm} · {relativeTime(run.assigned_at)}</p>{run.trace_id && <Link href={`/reward-models/traces/${run.trace_id}`} className="text-sm underline">View trace and action credit</Link>}<Button variant="link" size="sm" disabled={busy} onClick={() => void inspect()}>Saved run evidence</Button>{evidence && <pre className="max-h-96 overflow-auto rounded-md bg-surface p-3 text-xs">{JSON.stringify(evidence, null, 2)}</pre>}{(run.error || error) && <p role="alert" className="text-sm text-red-600">{error ?? run.error}</p>}
+    {run.outcome != null ? <p className="text-xs text-muted-foreground">Measurement source: {run.outcome_source}</p> : run.status !== "abandoned" && <form onSubmit={(event) => void save(event)} className="grid items-end gap-3 md:grid-cols-[1fr_2fr_auto]"><Field label={data.metric.name}><input required type="number" step="any" min={data.metric.minimum} max={data.metric.maximum} className={fieldClass} value={value} onChange={(e) => setValue(e.target.value)} /></Field><Field label="Measurement source"><input required maxLength={2000} className={fieldClass} value={source} onChange={(e) => setSource(e.target.value)} placeholder="Ticket ID, analytics record, or human review" /></Field><Button type="submit" disabled={busy}>Record outcome</Button></form>}
+    {!["completed", "abandoned"].includes(run.status) && <details><summary className="cursor-pointer text-xs text-muted-foreground">This task could not complete</summary><form onSubmit={(event) => void abandon(event)} className="mt-2 flex gap-2"><input aria-label="Reason task could not complete" required className={fieldClass} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Explain why this run is incomplete" /><Button type="submit" variant="outline" disabled={busy}>Record incomplete run</Button></form><p className="text-xs text-muted-foreground">The run stays in the comparison. An incomplete cohort cannot promote a candidate.</p></details>}
+  </div></details>;
+}

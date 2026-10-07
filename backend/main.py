@@ -40,6 +40,7 @@ from .routers import (
     mcp_servers,
     memory,
     mini_programs,
+    optimization,
     pins,
     publish,
     reward_models,
@@ -154,6 +155,7 @@ app.include_router(sessions.router)
 app.include_router(trash.router)
 app.include_router(pins.router)
 app.include_router(reward_models.router)
+app.include_router(optimization.router)
 app.include_router(rm_evaluators.router)
 app.include_router(workbench.router)
 app.include_router(mcp_servers.router)

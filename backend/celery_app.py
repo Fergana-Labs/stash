@@ -42,6 +42,7 @@ celery = Celery(
         "backend.tasks.agent_schedules",
         "backend.tasks.reward_models",
         "backend.tasks.workbench",
+        "backend.tasks.optimization",
         "backend.integrations.google.exporters.slides",
         "backend.exports.pdf",
         "backend.exports.pptx",
@@ -74,6 +75,7 @@ celery.conf.update(
         "backend.tasks.reward_models.score_trace": {"queue": "reward"},
         "backend.tasks.reward_models.collect_examples": {"queue": "reward"},
         "backend.tasks.reward_models.train_evaluator": {"queue": "reward"},
+        "backend.tasks.optimization.score_run": {"queue": "reward"},
     },
     task_acks_late=True,
     task_reject_on_worker_lost=True,
@@ -92,6 +94,10 @@ celery.conf.update(
     timezone="UTC",
     enable_utc=True,
     beat_schedule={
+        "prompt-optimization-reconcile": {
+            "task": "backend.tasks.optimization.reconcile",
+            "schedule": 30.0,
+        },
         "workbench-reconcile": {
             "task": "backend.tasks.workbench.reconcile",
             "schedule": 15.0,

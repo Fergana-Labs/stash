@@ -46,6 +46,12 @@ the UI and API; see the [rollout guide](docs/reward-models/ROLLOUT.md).
 
 ## Reward models in action
 
+**Continuously improve prompts.** The Optimization tab connects a personal reward
+model to future agent runs through MCP. It proposes instructions, compares current
+and candidate prompts on real tasks, and tracks reward alongside a chosen business
+metric. See [continuous prompt optimization](docs/reward-models/CONTINUOUS-OPTIMIZATION.md)
+for setup, promotion criteria, pause/rollback and prototype limits.
+
 **Train from feedback in your traces.** Stash derives preference pairs from
 reviewer comments and user reactions, including approval, disappointment, and
 corrections. A classifier attributes each judgment to a response and keeps the

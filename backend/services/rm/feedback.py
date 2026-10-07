@@ -520,6 +520,27 @@ async def build_feedback_pairs(
         owner_user_id,
         trace_ids,
     )
+    # Evaluation comments are annotations too. Preserve their original action
+    # target and exclude rejected interpretations, stale versions and copies of
+    # ordinary annotations (including ones the owner later flagged as wrong).
+    comments = list(comments) + list(
+        await pool.fetch(
+            """SELECT f.id,f.trace_id,f.comment,NULL::integer AS rating,s.idx
+           FROM rm_wb_feedback f
+           LEFT JOIN rm_wb_evaluations e ON e.id=f.evaluation_id
+           LEFT JOIN rm_trace_steps s ON s.id=COALESCE(f.evaluation_target_step_id,
+               f.target_step_id,(e.boundary->>'step_id')::uuid) AND s.trace_id=f.trace_id
+           WHERE f.owner_user_id=$1 AND f.trace_id=ANY($2::uuid[])
+             AND f.review_status<>'rejected'
+             AND (f.source='human_comment' OR f.review_status='accepted')
+             AND NOT EXISTS(SELECT 1 FROM rm_annotations a WHERE a.id=f.source_event_id)
+             AND (f.evaluation_id IS NULL OR s.id IS NOT NULL)
+             AND (f.target_step_id IS NULL OR s.id IS NOT NULL)
+           ORDER BY f.created_at,f.id""",
+            owner_user_id,
+            trace_ids,
+        )
+    )
     pairs = []
     findings = []
     v3 = bool(training_config)
