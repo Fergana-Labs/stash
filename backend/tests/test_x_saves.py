@@ -1,153 +1,46 @@
-"""X (Twitter) saves: OAuth bookmarks + twitterapi.io hydration.
+"""Archived X (Twitter) saves and tweet fetching.
 
-X connects over OAuth. Each sync the indexer pulls bookmark ids from the X API
-(with the OAuth token) and the user's own posts/replies/articles from
-twitterapi.io by account id, then hydrates every tweet the same way — full
-text (long-form body for articles), the author's thread + the reply's
-direct parent for context, archived media.
-Bookmarks sit behind a paid X API tier, so a 402/403 is best-effort (an
-owner-facing warning, never fatal) and must not stop posts/replies/articles.
+The X saves integration is retired: nothing syncs any more, but the saves it
+archived stay readable. Tweet fetching survives for web clips of x.com status
+URLs (tweet_fetch).
 """
 
-from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from uuid import UUID
 
 import pytest
-from fastapi import HTTPException
 from httpx import AsyncClient
 
 from backend.config import settings
-from backend.integrations import storage as integration_storage
-from backend.integrations.x_saves import indexer as x_indexer
-from backend.services import source_service, storage_service
+from backend.services import source_service, tweet_fetch
 
 from .conftest import unique_name
 
-# twitterapi.io tweet shape (native Twitter media under extendedEntities); a
-# reply carries conversationId = the thread root's id.
-_REPLY = {
-    "id": "1001",
-    "text": "totally agree with this",
-    "author": {"userName": "alice", "name": "Alice"},
+_THREAD_ROOT = {
+    "id": "500",
+    "text": "thread: why agents need memory 1/",
+    "author": {"userName": "me"},
     "createdAt": "Wed Jul 01 12:00:00 +0000 2025",
-    "conversationId": "1000",
-    "inReplyToId": "1000",
-    "extendedEntities": {"media": [{"type": "photo", "media_url_https": "https://cdn.x/img.jpg"}]},
-}
-_ROOT = {
-    "id": "1000",
-    "text": "here is a hot take",
-    "author": {"userName": "bob", "name": "Bob"},
-    "createdAt": "Wed Jul 01 11:00:00 +0000 2025",
-    "conversationId": "1000",
-}
-_TIMELINE = {
-    "data": {
-        "tweets": [
-            {"id": "200", "isReply": False, "isRetweet": False},
-            {"id": "201", "isReply": True, "isRetweet": False},
-            {"id": "202", "isReply": False, "isRetweet": True},  # retweet — skipped
-            # An article tweet: last_tweets carries a stub `article` object;
-            # the full body comes from the article endpoint at hydration.
-            {
-                "id": "203",
-                "isReply": False,
-                "isRetweet": False,
-                "article": {"title": "On agents", "preview_text": "For years..."},
-            },
-        ]
-    },
-    "has_next_page": False,
-}
-_BOOKMARKS = {"data": [{"id": "900"}, {"id": "901"}], "meta": {}}
-_ARTICLE = {
-    "status": "success",
-    "article": {
-        "id": "203",
-        "title": "On agents",
-        "preview_text": "For years...",
-        "cover_media_img_url": "https://cdn.x/img.jpg",
-        "createdAt": "Sat Jul 18 22:20:40 +0000 2026",
-        "author": {"userName": "me"},
-        "contents": [
-            {"type": "unstyled", "text": "For years, tech went one way."},
-            {"type": "header-one", "text": "The shift"},
-            {"type": "unordered-list-item", "text": "copy the crowd"},
-            {"type": "divider"},
-        ],
-    },
+    "conversationId": "500",
+    "replyCount": 12,
 }
 
 
 class _FakeResponse:
-    def __init__(self, payload=None, content=b"", content_type="image/jpeg", status_code=200):
+    def __init__(self, payload: dict):
         self._payload = payload
-        self.content = content
-        self.headers = {"content-type": content_type}
-        self.status_code = status_code
-        self.text = "{}"
 
     def raise_for_status(self):
-        if self.status_code >= 400:
-            raise RuntimeError(f"HTTP {self.status_code}")
+        pass
 
     def json(self):
         return self._payload
 
 
-def _generic_tweet(tweet_id: str) -> dict:
-    return {
-        "id": tweet_id,
-        "text": f"tweet {tweet_id}",
-        "author": {"userName": "me"},
-        "createdAt": "Wed Jul 01 12:00:00 +0000 2025",
-        "conversationId": tweet_id,
-    }
-
-
-class _FakeStreamResponse:
-    """Streaming media response: the indexer must read it chunk-wise under a
-    running byte cap, never `.content`-style all at once."""
-
-    def __init__(self, content: bytes, headers: dict):
-        self._content = content
-        self.headers = headers
-        self.reads = 0
-
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self, *args):
-        return False
-
-    def raise_for_status(self):
-        pass
-
-    async def aiter_bytes(self, chunk_size):
-        for i in range(0, len(self._content), chunk_size):
-            self.reads += 1
-            yield self._content[i : i + chunk_size]
-
-
 class _FakeApi:
-    """One fake for every HTTP the indexer makes: twitterapi.io tweet-by-id +
-    user-timeline, the X API bookmarks endpoint, and the CDN media URL."""
+    """twitterapi.io tweet-by-id and thread-context lookups."""
 
-    media_bytes = b"fake image bytes"
-    media_headers = {"content-type": "image/jpeg"}
-    media_streams: list = []
-
-    bookmarks_status = 200
-    thread_status = 200
-    # cursor/token (None = first page) -> payload; overridable per test.
-    timeline_pages: dict = {}
-    bookmarks_pages: dict = {}
-    thread_pages: dict = {}
-    # Per-test tweet-by-id overrides, consulted before the shared fixtures.
-    tweets: dict = {}
-    # (pagination_token, max_results) per bookmarks request, for read-cost asserts.
-    bookmarks_calls: list = []
+    thread_tweets: list = []
 
     def __init__(self, **kwargs):
         pass
@@ -159,73 +52,59 @@ class _FakeApi:
         return False
 
     async def get(self, url, params=None):
-        if url == x_indexer.TAPI_TWEETS_URL:
-            tid = params["tweet_ids"]
-            tweet = (
-                type(self).tweets.get(tid)
-                or {"1001": _REPLY, "1000": _ROOT}.get(tid)
-                or _generic_tweet(tid)
-            )
-            return _FakeResponse(payload={"tweets": [tweet]})
-        if url == x_indexer.TAPI_THREAD_URL:
-            if type(self).thread_status != 200:
-                return _FakeResponse(payload={}, status_code=type(self).thread_status)
-            return _FakeResponse(payload=type(self).thread_pages[params.get("cursor")])
-        if url == x_indexer.TAPI_USER_TWEETS_URL:
-            # Replies must be requested explicitly; twitterapi.io omits them
-            # from last_tweets by default.
-            assert params.get("includeReplies") == "true"
-            return _FakeResponse(payload=type(self).timeline_pages[params.get("cursor")])
-        if url == x_indexer.TAPI_ARTICLE_URL:
-            assert params == {"tweet_id": "203"}
-            return _FakeResponse(payload=_ARTICLE)
-        if url.startswith("https://api.x.com/2/users/") and url.endswith("/bookmarks"):
-            if type(self).bookmarks_status != 200:
-                return _FakeResponse(payload={}, status_code=type(self).bookmarks_status)
-            type(self).bookmarks_calls.append(
-                (params.get("pagination_token"), params["max_results"])
-            )
-            return _FakeResponse(payload=type(self).bookmarks_pages[params.get("pagination_token")])
+        if url == tweet_fetch.TAPI_TWEETS_URL:
+            assert params["tweet_ids"] == "500"
+            return _FakeResponse({"tweets": [_THREAD_ROOT]})
+        if url == tweet_fetch.TAPI_THREAD_URL:
+            return _FakeResponse({"tweets": type(self).thread_tweets, "has_next_page": False})
         raise AssertionError(f"unexpected URL {url}")
 
-    def stream(self, method, url):
-        assert url == "https://cdn.x/img.jpg", f"unexpected media URL {url}"
-        response = _FakeStreamResponse(type(self).media_bytes, dict(type(self).media_headers))
-        type(self).media_streams.append(response)
-        return response
 
-
-@pytest.fixture
-def fake_sync(monkeypatch):
-    uploads: list[tuple[str, str]] = []
-
-    async def _upload(owner, filename, content, content_type):
-        uploads.append((filename, content_type))
-        return f"store/{filename}"
-
-    async def _url(key):
-        return f"https://blob.example/{key}"
-
-    async def _token(user_id, provider, account_key=None):
-        return "oauth-token"
-
-    _FakeApi.bookmarks_status = 200
-    _FakeApi.thread_status = 200
-    _FakeApi.bookmarks_pages = {None: _BOOKMARKS}
-    _FakeApi.bookmarks_calls = []
-    _FakeApi.timeline_pages = {None: _TIMELINE}
-    _FakeApi.thread_pages = {None: {"tweets": [_ROOT], "has_next_page": False}}
-    _FakeApi.tweets = {}
-    _FakeApi.media_bytes = b"fake image bytes"
-    _FakeApi.media_headers = {"content-type": "image/jpeg"}
-    _FakeApi.media_streams = []
+@pytest.mark.asyncio
+async def test_fetch_tweet_markdown_renders_the_whole_author_chain(monkeypatch) -> None:
+    # Thread context mixes the author's continuation with a stranger's reply;
+    # only the author's connected chain belongs in the clip.
+    _FakeApi.thread_tweets = [
+        {
+            "id": "501",
+            "text": "it compounds 2/",
+            "author": {"userName": "me"},
+            "createdAt": "Wed Jul 01 12:01:00 +0000 2025",
+            "inReplyToId": "500",
+        },
+        {
+            "id": "601",
+            "text": "wrong take",
+            "author": {"userName": "stranger"},
+            "createdAt": "Wed Jul 01 12:02:00 +0000 2025",
+            "inReplyToId": "500",
+        },
+        {
+            "id": "502",
+            "text": "ship it 3/",
+            "author": {"userName": "me"},
+            "createdAt": "Wed Jul 01 12:03:00 +0000 2025",
+            "inReplyToId": "501",
+        },
+    ]
     monkeypatch.setattr(settings, "TWITTERAPI_IO_KEY", "tapi-key")
-    monkeypatch.setattr(storage_service, "is_configured", lambda: True)
-    monkeypatch.setattr(storage_service, "upload_file", _upload)
-    monkeypatch.setattr(storage_service, "get_file_url", _url)
-    monkeypatch.setattr(integration_storage, "get_valid_token", _token)
-    monkeypatch.setattr(x_indexer, "httpx", SimpleNamespace(AsyncClient=_FakeApi))
-    return uploads
+    monkeypatch.setattr(tweet_fetch, "httpx", SimpleNamespace(AsyncClient=_FakeApi))
+
+    tweet = await tweet_fetch.fetch_tweet_markdown("500")
+
+    assert tweet["title"] == "@me - 2025-07-01"
+    content = tweet["markdown"]
+    assert content.startswith("thread: why agents need memory 1/")
+    assert "## Thread by @me (3 posts)" in content
+    assert content.index("it compounds 2/") < content.index("ship it 3/")
+    assert "wrong take" not in content
+
+
+@pytest.mark.asyncio
+async def test_fetch_tweet_markdown_requires_the_api_key(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "TWITTERAPI_IO_KEY", None)
+    with pytest.raises(RuntimeError, match="TWITTERAPI_IO_KEY"):
+        await tweet_fetch.fetch_tweet_markdown("500")
 
 
 async def _register(client: AsyncClient) -> tuple[dict, str]:
@@ -237,21 +116,14 @@ async def _register(client: AsyncClient) -> tuple[dict, str]:
     return {"Authorization": f"Bearer {body['api_key']}"}, body["id"]
 
 
-async def _x_source(pool, owner_id: str, x_user_id: str | None = None) -> dict:
+async def _x_source(owner_id: str) -> dict:
     source = await source_service.create_source(
         owner_user_id=owner_id,
         source_type="x_saves",
-        external_ref=x_user_id or "me",
+        external_ref="me",
         display_name="X",
         settings={},
     )
-    if x_user_id:
-        await pool.execute(
-            "UPDATE user_sources SET settings = coalesce(settings, '{}'::jsonb) || $2::jsonb "
-            "WHERE id = $1",
-            UUID(source["id"]),
-            {"x_user_id": x_user_id},
-        )
     return await source_service.get_source_for_sync(UUID(source["id"]))
 
 
@@ -264,610 +136,6 @@ async def _insert_pending(pool, owner_id, source_id, path, kind):
         path,
         kind,
     )
-
-
-@pytest.mark.asyncio
-async def test_hydrates_content_thread_root_and_media(client, pool, fake_sync) -> None:
-    headers, owner_id = await _register(client)
-    source = await _x_source(pool, owner_id)  # no x_user_id -> no backfills, just hydrate
-    await _insert_pending(pool, owner_id, source["id"], "1001", "Bookmark")
-
-    await x_indexer.index_x_saves(source)
-
-    row = await pool.fetchrow("SELECT * FROM x_save_docs WHERE source_id = $1", UUID(source["id"]))
-    assert row["hydration_status"] == "done"
-    assert row["name"] == "@alice - 2025-07-01"
-    assert "totally agree with this" in row["content"]
-    assert "In reply to @bob" in row["content"]  # thread root kept for context
-    assert "here is a hot take" in row["content"]
-    assert row["media"] == [{"storage_key": "store/x-1001-0.jpg", "content_type": "image/jpeg"}]
-    assert fake_sync == [("x-1001-0.jpg", "image/jpeg")]
-
-    ok, doc = await source_service.source_document(
-        UUID(owner_id), UUID(owner_id), str(source["id"]), "1001"
-    )
-    assert ok
-    assert doc["url"] == "https://x.com/i/status/1001"
-    assert doc["media"] == [
-        {"url": "https://blob.example/store/x-1001-0.jpg", "content_type": "image/jpeg"}
-    ]
-
-    # The browse list previews the tweet text (not the raw id).
-    entries = await source_service.source_entries(UUID(owner_id), UUID(owner_id), str(source["id"]))
-    entry = next(e for e in entries if e["path"] == "1001")
-    assert entry["snippet"] == "totally agree with this"
-
-
-_THREAD_ROOT = {
-    "id": "500",
-    "text": "thread: why agents need memory 1/",
-    "author": {"userName": "me"},
-    "createdAt": "Wed Jul 01 12:00:00 +0000 2025",
-    "conversationId": "500",
-    "replyCount": 12,
-}
-
-
-@pytest.mark.asyncio
-async def test_self_thread_renders_the_whole_author_chain(client, pool, fake_sync) -> None:
-    headers, owner_id = await _register(client)
-    source = await _x_source(pool, owner_id)
-    _FakeApi.tweets = {"500": _THREAD_ROOT}
-    # Thread context mixes the author's continuation with a stranger's reply;
-    # only the author's connected chain belongs in the save.
-    _FakeApi.thread_pages = {
-        None: {
-            "tweets": [
-                {
-                    "id": "501",
-                    "text": "it compounds 2/",
-                    "author": {"userName": "me"},
-                    "createdAt": "Wed Jul 01 12:01:00 +0000 2025",
-                    "inReplyToId": "500",
-                },
-                {
-                    "id": "601",
-                    "text": "wrong take",
-                    "author": {"userName": "stranger"},
-                    "createdAt": "Wed Jul 01 12:02:00 +0000 2025",
-                    "inReplyToId": "500",
-                },
-                {
-                    "id": "502",
-                    "text": "ship it 3/",
-                    "author": {"userName": "me"},
-                    "createdAt": "Wed Jul 01 12:03:00 +0000 2025",
-                    "inReplyToId": "501",
-                },
-            ],
-            "has_next_page": False,
-        }
-    }
-    await _insert_pending(pool, owner_id, source["id"], "500", "Post")
-
-    await x_indexer.index_x_saves(source)
-
-    row = await pool.fetchrow("SELECT * FROM x_save_docs WHERE source_id = $1", UUID(source["id"]))
-    assert row["hydration_status"] == "done"
-    content = row["content"]
-    assert content.startswith("thread: why agents need memory 1/")  # preview stays the tweet
-    assert "## Thread by @me (3 posts)" in content
-    assert content.index("it compounds 2/") < content.index("ship it 3/")
-    assert "wrong take" not in content
-
-
-@pytest.mark.asyncio
-async def test_thread_context_failure_never_fails_the_save(client, pool, fake_sync) -> None:
-    headers, owner_id = await _register(client)
-    source = await _x_source(pool, owner_id)
-    _FakeApi.thread_status = 500
-    await _insert_pending(pool, owner_id, source["id"], "1001", "Bookmark")
-
-    await x_indexer.index_x_saves(source)
-
-    row = await pool.fetchrow("SELECT * FROM x_save_docs WHERE source_id = $1", UUID(source["id"]))
-    assert row["hydration_status"] == "done"
-    assert "totally agree with this" in row["content"]
-    assert "In reply to" not in row["content"]  # context lost, save kept
-
-
-@pytest.mark.asyncio
-async def test_thread_media_is_capped_with_saved_tweet_first(
-    client, pool, fake_sync, monkeypatch
-) -> None:
-    headers, owner_id = await _register(client)
-    source = await _x_source(pool, owner_id)
-    monkeypatch.setattr(x_indexer, "MAX_MEDIA_PER_SAVE", 2)
-    photo = {"media": [{"type": "photo", "media_url_https": "https://cdn.x/img.jpg"}]}
-    _FakeApi.tweets = {
-        "700": {
-            "id": "700",
-            "text": "look 1/",
-            "author": {"userName": "me"},
-            "createdAt": "Wed Jul 01 12:00:00 +0000 2025",
-            "conversationId": "700",
-            "replyCount": 2,
-            "extendedEntities": photo,
-        }
-    }
-    _FakeApi.thread_pages = {
-        None: {
-            "tweets": [
-                {
-                    "id": "701",
-                    "text": "more 2/",
-                    "author": {"userName": "me"},
-                    "inReplyToId": "700",
-                    "extendedEntities": photo,
-                },
-                {
-                    "id": "702",
-                    "text": "even more 3/",
-                    "author": {"userName": "me"},
-                    "inReplyToId": "701",
-                    "extendedEntities": photo,
-                },
-            ],
-            "has_next_page": False,
-        }
-    }
-    await _insert_pending(pool, owner_id, source["id"], "700", "Post")
-
-    await x_indexer.index_x_saves(source)
-
-    row = await pool.fetchrow("SELECT * FROM x_save_docs WHERE source_id = $1", UUID(source["id"]))
-    assert row["hydration_status"] == "done"
-    assert fake_sync == [("x-700-0.jpg", "image/jpeg"), ("x-701-0.jpg", "image/jpeg")]
-    assert row["media"] == [
-        {"storage_key": "store/x-700-0.jpg", "content_type": "image/jpeg"},
-        {"storage_key": "store/x-701-0.jpg", "content_type": "image/jpeg"},
-    ]
-
-
-@pytest.mark.asyncio
-async def test_media_over_cap_is_skipped_while_streaming(
-    client, pool, fake_sync, monkeypatch
-) -> None:
-    # The cap must abort the download mid-stream. The old code buffered the
-    # whole highest-bitrate video into memory before measuring it, which
-    # spiked the worker past its 2GB limit and OOM-killed the box.
-    monkeypatch.setattr(x_indexer, "MAX_MEDIA_BYTES", 100)
-    _FakeApi.media_bytes = b"x" * 100_000  # over the cap; no content-length header
-    _FakeApi.media_headers = {"content-type": "video/mp4"}
-    headers, owner_id = await _register(client)
-    source = await _x_source(pool, owner_id)
-    await _insert_pending(pool, owner_id, source["id"], "1001", "Bookmark")
-
-    await x_indexer.index_x_saves(source)
-
-    row = await pool.fetchrow("SELECT * FROM x_save_docs WHERE source_id = $1", UUID(source["id"]))
-    assert row["hydration_status"] == "done"  # the save survives, minus the blob
-    assert row["media"] == []
-    assert fake_sync == []  # nothing uploaded
-    # Aborted after the first over-cap chunk, not read to the end.
-    assert _FakeApi.media_streams[0].reads == 1
-
-
-@pytest.mark.asyncio
-async def test_media_with_oversized_content_length_is_never_read(
-    client, pool, fake_sync, monkeypatch
-) -> None:
-    # When the CDN declares the size up front, skip without reading any body.
-    monkeypatch.setattr(x_indexer, "MAX_MEDIA_BYTES", 100)
-    _FakeApi.media_headers = {"content-type": "video/mp4", "content-length": "500000000"}
-    headers, owner_id = await _register(client)
-    source = await _x_source(pool, owner_id)
-    await _insert_pending(pool, owner_id, source["id"], "1001", "Bookmark")
-
-    await x_indexer.index_x_saves(source)
-
-    row = await pool.fetchrow("SELECT * FROM x_save_docs WHERE source_id = $1", UUID(source["id"]))
-    assert row["hydration_status"] == "done"
-    assert row["media"] == []
-    assert fake_sync == []
-    assert _FakeApi.media_streams[0].reads == 0
-
-
-@pytest.mark.asyncio
-async def test_hydration_failure_lands_on_the_row(client, pool, fake_sync, monkeypatch) -> None:
-    async def boom(client_, tweet_id):
-        raise ValueError("twitterapi exploded")
-
-    monkeypatch.setattr(x_indexer, "_fetch_tweet", boom)
-    headers, owner_id = await _register(client)
-    source = await _x_source(pool, owner_id)
-    await _insert_pending(pool, owner_id, source["id"], "1001", "Bookmark")
-
-    await x_indexer.index_x_saves(source)
-
-    row = await pool.fetchrow(
-        "SELECT hydration_status, hydration_error, hydration_attempts "
-        "FROM x_save_docs WHERE source_id = $1",
-        UUID(source["id"]),
-    )
-    assert row["hydration_status"] == "failed"
-    assert "twitterapi exploded" in row["hydration_error"]
-    assert row["hydration_attempts"] == 1
-
-    ok, doc = await source_service.source_document(
-        UUID(owner_id), UUID(owner_id), str(source["id"]), "1001"
-    )
-    assert ok and doc["http_status"] == 422
-
-
-@pytest.mark.asyncio
-async def test_backfills_bookmarks_and_own_posts(client, pool, fake_sync) -> None:
-    headers, owner_id = await _register(client)
-    source = await _x_source(pool, owner_id, x_user_id="999")
-
-    await x_indexer.index_x_saves(source)
-
-    rows = await pool.fetch(
-        "SELECT path, kind, hydration_status FROM x_save_docs WHERE source_id = $1 ORDER BY path",
-        UUID(source["id"]),
-    )
-    got = [(r["path"], r["kind"], r["hydration_status"]) for r in rows]
-    # bookmarks (900/901) from the X API + own post/reply/article (200/201/203)
-    # from the timeline; the retweet (202) is skipped. Each lands under its
-    # kind folder, all hydrated in this one pass.
-    assert got == [
-        ("Articles/203", "Article", "done"),
-        ("Bookmarks/900", "Bookmark", "done"),
-        ("Bookmarks/901", "Bookmark", "done"),
-        ("Posts/200", "Post", "done"),
-        ("Replies/201", "Reply", "done"),
-    ]
-
-
-@pytest.mark.asyncio
-async def test_article_hydrates_full_body_with_title_name(client, pool, fake_sync) -> None:
-    headers, owner_id = await _register(client)
-    source = await _x_source(pool, owner_id, x_user_id="999")
-
-    await x_indexer.index_x_saves(source)
-
-    row = await pool.fetchrow(
-        "SELECT * FROM x_save_docs WHERE source_id = $1 AND path = 'Articles/203'",
-        UUID(source["id"]),
-    )
-    assert row["hydration_status"] == "done"
-    assert row["name"] == "On agents"  # articles are named by title, not @author-date
-    assert "For years, tech went one way." in row["content"]
-    assert "# The shift" in row["content"]  # heading blocks render as markdown
-    assert "- copy the crowd" in row["content"]
-    assert "— @me, 2026-07-18" in row["content"]
-    # The cover image is archived like tweet media.
-    assert row["media"] == [{"storage_key": "store/x-203-0.jpg", "content_type": "image/jpeg"}]
-
-
-@pytest.mark.asyncio
-async def test_article_previously_synced_as_post_is_rekinded(client, pool, fake_sync) -> None:
-    # Articles synced before article detection existed landed as Posts; the
-    # backfill must replace that row, not duplicate the save under two folders.
-    headers, owner_id = await _register(client)
-    source = await _x_source(pool, owner_id, x_user_id="999")
-    await _insert_pending(pool, owner_id, source["id"], "Posts/203", "Post")
-
-    await x_indexer.index_x_saves(source)
-
-    paths = [
-        r["path"]
-        for r in await pool.fetch(
-            "SELECT path FROM x_save_docs WHERE source_id = $1 AND path LIKE '%/203'",
-            UUID(source["id"]),
-        )
-    ]
-    assert paths == ["Articles/203"]
-
-
-@pytest.mark.asyncio
-async def test_bookmark_probe_is_small_and_history_walk_runs_once(client, pool, fake_sync) -> None:
-    # Every bookmark returned costs paid X API reads, so the steady-state
-    # check must be one small probe page (bookmarks are newest-first — a probe
-    # with nothing new proves the rest is known). Deeper history is ingested
-    # exactly once by the walk, then never refetched.
-    _FakeApi.bookmarks_pages = {
-        None: {"data": [{"id": "900"}, {"id": "901"}], "meta": {"next_token": "b2"}},
-        "b2": {"data": [{"id": "902"}], "meta": {}},
-    }
-    headers, owner_id = await _register(client)
-    source = await _x_source(pool, owner_id, x_user_id="999")
-    await _insert_pending(pool, owner_id, source["id"], "Bookmarks/900", "Bookmark")
-    await _insert_pending(pool, owner_id, source["id"], "Bookmarks/901", "Bookmark")
-
-    await x_indexer.index_x_saves(source)
-
-    assert _FakeApi.bookmarks_calls[0] == (None, 10)  # the probe page is small
-    count = await pool.fetchval(
-        "SELECT count(*) FROM x_save_docs WHERE source_id = $1 AND path = 'Bookmarks/902'",
-        UUID(source["id"]),
-    )
-    assert count == 1  # the walk reached the deep page
-    settings_ = await pool.fetchval(
-        "SELECT settings FROM user_sources WHERE id = $1", UUID(source["id"])
-    )
-    assert settings_["x_bookmarks_complete"] is True
-    deep_fetches = [c for c in _FakeApi.bookmarks_calls if c[0] == "b2"]
-    assert len(deep_fetches) == 1
-
-    # Next-day check (the daily gate would skip a same-day one): one 10-item
-    # probe, no history refetch.
-    await _age_bookmark_check(pool, source["id"])
-    source = await source_service.get_source_for_sync(UUID(source["id"]))
-    await x_indexer.index_x_saves(source)
-
-    assert _FakeApi.bookmarks_calls[-1] == (None, 10)
-    assert [c for c in _FakeApi.bookmarks_calls if c[0] == "b2"] == deep_fetches
-
-
-@pytest.mark.asyncio
-async def test_full_page_without_next_token_is_not_the_end(client, pool, fake_sync) -> None:
-    # X's pagination bug drops next_token on a FULL page with thousands of
-    # bookmarks still below. Believing it once stranded a user at 109 of
-    # 2,895 — a full page without a token must leave the walk incomplete so
-    # the next daily check retries the page.
-    full_page = [{"id": str(9000 + i)} for i in range(x_indexer.BOOKMARK_PAGE_SIZE)]
-    _FakeApi.bookmarks_pages = {None: {"data": full_page, "meta": {}}}
-    headers, owner_id = await _register(client)
-    source = await _x_source(pool, owner_id, x_user_id="999")
-
-    await x_indexer.index_x_saves(source)
-
-    settings_ = await pool.fetchval(
-        "SELECT settings FROM user_sources WHERE id = $1", UUID(source["id"])
-    )
-    assert "x_bookmarks_complete" not in settings_
-
-    # Next day X paginates properly: the walk picks up the page below and a
-    # short final page marks the true end.
-    _FakeApi.bookmarks_pages = {
-        None: {"data": full_page, "meta": {"next_token": "b2"}},
-        "b2": {"data": [{"id": "9999"}], "meta": {}},
-    }
-    await _age_bookmark_check(pool, source["id"])
-    source = await source_service.get_source_for_sync(UUID(source["id"]))
-    await x_indexer.index_x_saves(source)
-
-    count = await pool.fetchval(
-        "SELECT count(*) FROM x_save_docs WHERE source_id = $1 AND path = 'Bookmarks/9999'",
-        UUID(source["id"]),
-    )
-    assert count == 1
-    settings_ = await pool.fetchval(
-        "SELECT settings FROM user_sources WHERE id = $1", UUID(source["id"])
-    )
-    assert settings_["x_bookmarks_complete"] is True
-
-
-@pytest.mark.asyncio
-async def test_bookmark_walk_pages_small_and_resumes_across_checks(
-    client, pool, fake_sync, monkeypatch
-) -> None:
-    # Deep archives outrun one check's page budget: the walk must park its
-    # cursor after every page and resume there next check — never refetching
-    # (re-billing) pages it already walked, and never at the 100-item page
-    # size whose pagination X silently truncates.
-    monkeypatch.setattr(x_indexer, "MAX_BOOKMARK_WALK_PAGES", 1)
-    _FakeApi.bookmarks_pages = {
-        None: {"data": [{"id": "910"}], "meta": {"next_token": "b2"}},
-        "b2": {"data": [{"id": "911"}], "meta": {}},
-    }
-    headers, owner_id = await _register(client)
-    source = await _x_source(pool, owner_id, x_user_id="999")
-    # 910 is already known so the probe stops at the top; only the walk digs.
-    await _insert_pending(pool, owner_id, source["id"], "Bookmarks/910", "Bookmark")
-
-    await x_indexer.index_x_saves(source)
-
-    settings_ = await pool.fetchval(
-        "SELECT settings FROM user_sources WHERE id = $1", UUID(source["id"])
-    )
-    assert settings_["x_bookmarks_cursor"] == "b2"
-    assert "x_bookmarks_complete" not in settings_
-
-    await _age_bookmark_check(pool, source["id"])
-    source = await source_service.get_source_for_sync(UUID(source["id"]))
-    await x_indexer.index_x_saves(source)
-
-    settings_ = await pool.fetchval(
-        "SELECT settings FROM user_sources WHERE id = $1", UUID(source["id"])
-    )
-    assert settings_["x_bookmarks_complete"] is True
-    walk_sizes = {size for token, size in _FakeApi.bookmarks_calls if token is not None}
-    assert walk_sizes == {x_indexer.BOOKMARK_PAGE_SIZE}
-    # The deep page was fetched exactly once across both checks.
-    assert [c for c in _FakeApi.bookmarks_calls if c[0] == "b2"] == [
-        ("b2", x_indexer.BOOKMARK_PAGE_SIZE)
-    ]
-
-
-async def _age_bookmark_check(pool, source_id: str) -> None:
-    """Backdate x_bookmarks_checked_at so the daily gate lets the next
-    check through."""
-    stale = (datetime.now(UTC) - timedelta(days=2)).isoformat()
-    await pool.execute(
-        "UPDATE user_sources SET settings = settings || $2::jsonb WHERE id = $1",
-        UUID(source_id),
-        {"x_bookmarks_checked_at": stale},
-    )
-
-
-@pytest.mark.asyncio
-async def test_bookmarks_checked_at_most_daily(client, pool, fake_sync) -> None:
-    # Bookmark reads cost paid X API credits, so a sync inside the daily
-    # window must not touch the bookmarks endpoint at all — while the
-    # twitterapi.io timeline keeps syncing at the source's normal cadence.
-    headers, owner_id = await _register(client)
-    source = await _x_source(pool, owner_id, x_user_id="999")
-
-    await x_indexer.index_x_saves(source)
-    calls_after_first = len(_FakeApi.bookmarks_calls)
-    assert calls_after_first > 0
-
-    source = await source_service.get_source_for_sync(UUID(source["id"]))
-    await x_indexer.index_x_saves(source)
-
-    assert len(_FakeApi.bookmarks_calls) == calls_after_first  # gate held
-    replies = await pool.fetchval(
-        "SELECT count(*) FROM x_save_docs WHERE source_id = $1 AND kind = 'Reply'",
-        UUID(source["id"]),
-    )
-    assert replies > 0  # the timeline side still synced
-
-
-@pytest.mark.asyncio
-async def test_timeline_history_walk_resumes_across_syncs(
-    client, pool, fake_sync, monkeypatch
-) -> None:
-    # The whole timeline must be ingested even when one sync's page budget
-    # can't cover it: the walk parks its cursor in source settings, the next
-    # sync resumes there, and once the end is reached the walk never runs
-    # again.
-    monkeypatch.setattr(x_indexer, "MAX_USER_TWEET_PAGES", 1)
-    monkeypatch.setattr(x_indexer, "MAX_TIMELINE_BACKFILL_PAGES", 1)
-    _FakeApi.timeline_pages = {
-        None: {
-            "data": {"tweets": [{"id": "300", "isReply": False, "isRetweet": False}]},
-            "has_next_page": True,
-            "next_cursor": "c2",
-        },
-        "c2": {
-            "data": {"tweets": [{"id": "301", "isReply": True, "isRetweet": False}]},
-            "has_next_page": False,
-        },
-    }
-    headers, owner_id = await _register(client)
-    source = await _x_source(pool, owner_id, x_user_id="999")
-
-    await x_indexer.index_x_saves(source)
-
-    # Sync 1: the fresh pass took page 1; the walk's budget ran out at c2.
-    settings_ = await pool.fetchval(
-        "SELECT settings FROM user_sources WHERE id = $1", UUID(source["id"])
-    )
-    assert settings_["x_timeline_cursor"] == "c2"
-    assert "x_timeline_complete" not in settings_
-
-    source = await source_service.get_source_for_sync(UUID(source["id"]))
-    await x_indexer.index_x_saves(source)
-
-    # Sync 2: the walk resumed at c2 and reached the end of the timeline.
-    settings_ = await pool.fetchval(
-        "SELECT settings FROM user_sources WHERE id = $1", UUID(source["id"])
-    )
-    assert settings_["x_timeline_complete"] is True
-    paths = [
-        r["path"]
-        for r in await pool.fetch(
-            "SELECT path FROM x_save_docs WHERE source_id = $1 AND kind != 'Bookmark' "
-            "ORDER BY path",
-            UUID(source["id"]),
-        )
-    ]
-    assert paths == ["Posts/300", "Replies/301"]
-
-
-@pytest.mark.asyncio
-async def test_bookmarks_paid_tier_gate_is_best_effort(client, pool, fake_sync) -> None:
-    # A 403 on the bookmarks endpoint (paid X tier) must not stop the user's
-    # own posts/replies/articles from syncing — but the owner must be able to
-    # see WHY bookmarks stopped, so it lands as a warning on the source.
-    _FakeApi.bookmarks_status = 403
-    headers, owner_id = await _register(client)
-    source = await _x_source(pool, owner_id, x_user_id="999")
-
-    await x_indexer.index_x_saves(source)
-
-    kinds = await pool.fetch(
-        "SELECT DISTINCT kind FROM x_save_docs WHERE source_id = $1 ORDER BY kind",
-        UUID(source["id"]),
-    )
-    assert [k["kind"] for k in kinds] == ["Article", "Post", "Reply"]
-    status = await pool.fetchrow(
-        "SELECT sync_status, sync_warning FROM user_sources WHERE id = $1", UUID(source["id"])
-    )
-    assert status["sync_status"] != "failed"
-    assert "paid tier" in status["sync_warning"]
-
-
-@pytest.mark.asyncio
-async def test_dead_oauth_grant_is_best_effort(client, pool, fake_sync, monkeypatch) -> None:
-    # X kills grants whose refresh token sits idle (401 from the token
-    # endpoint). Bookmarks pause with an owner-facing reconnect warning —
-    # the user's own posts/replies/articles must keep syncing.
-    async def _dead_token(user_id, provider, account_key=None):
-        raise HTTPException(status_code=401, detail="x token expired; reconnect required")
-
-    monkeypatch.setattr(integration_storage, "get_valid_token", _dead_token)
-    headers, owner_id = await _register(client)
-    source = await _x_source(pool, owner_id, x_user_id="999")
-
-    await x_indexer.index_x_saves(source)
-
-    kinds = await pool.fetch(
-        "SELECT DISTINCT kind FROM x_save_docs WHERE source_id = $1 ORDER BY kind",
-        UUID(source["id"]),
-    )
-    assert [k["kind"] for k in kinds] == ["Article", "Post", "Reply"]
-    status = await pool.fetchrow(
-        "SELECT sync_status, sync_warning, settings FROM user_sources WHERE id = $1",
-        UUID(source["id"]),
-    )
-    assert status["sync_status"] != "failed"
-    assert "reconnect X" in status["sync_warning"]
-    # The daily interval rations billed X reads, and this run made none — so
-    # it must not spend the day. Otherwise a reconnect sits idle until the
-    # next window instead of taking effect on the next sync.
-    assert "x_bookmarks_checked_at" not in status["settings"]
-
-
-@pytest.mark.asyncio
-async def test_reconnect_resumes_bookmarks_on_the_next_sync(
-    client, pool, fake_sync, monkeypatch
-) -> None:
-    # The whole point of not spending the day on a dead grant: once the owner
-    # reconnects, the very next sync pulls bookmarks again.
-    dead = True
-
-    async def _token(user_id, provider, account_key=None):
-        if dead:
-            raise HTTPException(status_code=401, detail="x token expired; reconnect required")
-        return "oauth-token"
-
-    monkeypatch.setattr(integration_storage, "get_valid_token", _token)
-    headers, owner_id = await _register(client)
-    source = await _x_source(pool, owner_id, x_user_id="999")
-
-    await x_indexer.index_x_saves(source)
-    assert _FakeApi.bookmarks_calls == []
-
-    dead = False
-    source = await source_service.get_source_for_sync(UUID(source["id"]))
-    await x_indexer.index_x_saves(source)
-
-    assert _FakeApi.bookmarks_calls  # no day-long wait after the reconnect
-    warning = await pool.fetchval(
-        "SELECT sync_warning FROM user_sources WHERE id = $1", UUID(source["id"])
-    )
-    assert warning is None  # the endpoint answered, so the notice is stale
-
-
-@pytest.mark.asyncio
-async def test_bookmark_warning_outlives_later_syncs(client, pool, fake_sync) -> None:
-    # A warning is only checked once a day, so it has to survive the syncs in
-    # between — a notice that a sync start blanks is one the owner never sees.
-    _FakeApi.bookmarks_status = 403
-    headers, owner_id = await _register(client)
-    source = await _x_source(pool, owner_id, x_user_id="999")
-
-    await x_indexer.index_x_saves(source)
-    await source_service.mark_sync_started(UUID(source["id"]))
-    await source_service.mark_sync_done(UUID(source["id"]), None)
-
-    warning = await pool.fetchval(
-        "SELECT sync_warning FROM user_sources WHERE id = $1", UUID(source["id"])
-    )
-    assert "paid tier" in warning
 
 
 async def _insert_done(pool, owner_id, source_id, path, content):
@@ -887,7 +155,7 @@ async def test_bookmarks_list_newest_first_across_id_lengths(client, pool) -> No
     saved five minutes ago; the listing must order by numeric tweet id (which
     grows over time), not lexicographic path — a 2010-era short id is old."""
     _, owner_id = await _register(client)
-    source = await _x_source(pool, owner_id)
+    source = await _x_source(owner_id)
     await _insert_done(pool, owner_id, source["id"], "Bookmarks/999", "old tweet")
     await _insert_done(pool, owner_id, source["id"], "Bookmarks/1815550001", "newer tweet")
     await _insert_done(pool, owner_id, source["id"], "Bookmarks/1815550002", "newest tweet")
@@ -922,7 +190,7 @@ async def test_unarchived_saves_read_as_human_sentences(client, pool) -> None:
     and a pending one must say it's still archiving — while the listing marks
     both so they are distinguishable from healthy saves without opening them."""
     _, owner_id = await _register(client)
-    source = await _x_source(pool, owner_id)
+    source = await _x_source(owner_id)
     await _insert_pending(pool, owner_id, source["id"], "Bookmarks/2001", "Bookmark")
     await pool.execute(
         "UPDATE x_save_docs SET hydration_status = 'failed', "

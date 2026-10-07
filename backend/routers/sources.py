@@ -12,9 +12,7 @@ endpoints just manage the registry.
 from __future__ import annotations
 
 import json
-import re
-from datetime import UTC, datetime
-from typing import Literal
+from datetime import datetime
 from urllib.parse import quote
 from uuid import UUID
 
@@ -23,7 +21,6 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, Field
 
 from ..auth import get_current_user, get_scope
-from ..database import get_pool
 from ..integrations import storage as integration_storage
 from ..integrations.google import indexer as google_indexer
 from ..integrations.registry import get_provider
@@ -557,96 +554,3 @@ async def remove_source(
         source_type=source["source_type"],
     )
     return {"deleted": True, "source_id": str(source_id)}
-
-
-# ===== Saved-items push (browser extension) =====
-
-saved_items_router = APIRouter(prefix="/api/v1/me/saved-items", tags=["sources"])
-
-_IG_SHORTCODE_RE = re.compile(r"instagram\.com/(?:p|reel|reels|tv)/([A-Za-z0-9_-]+)")
-MAX_SAVED_ITEMS_PER_PUSH = 500
-
-
-class SavedItem(BaseModel):
-    url: str
-    saved_at: datetime | None = None
-
-
-class SavedItemsPush(BaseModel):
-    platform: Literal["instagram"]
-    items: list[SavedItem]
-
-
-@saved_items_router.post("")
-async def push_saved_items(
-    body: SavedItemsPush,
-    current_user: dict = Depends(get_current_user),
-):
-    """The extension pushes the user's saved-post URLs. Get-or-creates the
-    instagram_saves source (no setup ordering between connector card and
-    extension), inserts pending skeleton rows, and kicks a sync so
-    hydration starts immediately."""
-    from ..config import settings as app_settings
-
-    # Without the hydration key, accepting pushes would create a source whose
-    # every sync fails — refuse up front so Instagram saves stay invisible
-    # until the server is actually configured for them.
-    if not app_settings.SCRAPECREATORS_API_KEY:
-        raise HTTPException(
-            status_code=503,
-            detail="Instagram saves are not enabled on this server (SCRAPECREATORS_API_KEY is not set)",
-        )
-    owner_user_id = current_user["id"]
-    if not body.items:
-        raise HTTPException(status_code=400, detail="No items given")
-    if len(body.items) > MAX_SAVED_ITEMS_PER_PUSH:
-        raise HTTPException(
-            status_code=413,
-            detail=f"Too many items ({len(body.items)}, max {MAX_SAVED_ITEMS_PER_PUSH})",
-        )
-
-    parsed: list[tuple[str, SavedItem]] = []
-    for item in body.items:
-        match = _IG_SHORTCODE_RE.search(item.url)
-        if not match:
-            raise HTTPException(status_code=400, detail=f"Not an Instagram post URL: {item.url}")
-        parsed.append((match.group(1), item))
-
-    source = await source_service.create_source(
-        owner_user_id=owner_user_id,
-        source_type="instagram_saves",
-        external_ref="saves",
-        display_name="Instagram saves",
-        settings={},
-    )
-    source_id = UUID(source["id"])
-
-    pool = get_pool()
-    # The push itself is the liveness signal for an extension-fed source —
-    # there is no token to check. The UI warns when this stamp goes stale
-    # (extension uninstalled, Instagram logged out). A push also clears any
-    # standing sync warning: the pipeline is demonstrably alive again.
-    await pool.execute(
-        "UPDATE user_sources SET settings = coalesce(settings, '{}'::jsonb) || $2::jsonb, "
-        "sync_error = NULL, updated_at = now() WHERE id = $1",
-        source_id,
-        {"extension_last_push_at": datetime.now(UTC).isoformat()},
-    )
-    new = 0
-    for shortcode, item in parsed:
-        inserted = await pool.fetchval(
-            "INSERT INTO instagram_save_docs "
-            "(owner_user_id, source_id, path, name, kind, external_ref, saved_at) "
-            "VALUES ($1, $2, $3, $3, 'post', $3, $4) "
-            "ON CONFLICT (source_id, path) DO NOTHING RETURNING 1",
-            owner_user_id,
-            source_id,
-            shortcode,
-            item.saved_at,
-        )
-        if inserted:
-            new += 1
-
-    if new:
-        await source_sync_service.enqueue_sync(source_id)
-    return {"accepted": len(parsed), "new": new, "existing": len(parsed) - new}

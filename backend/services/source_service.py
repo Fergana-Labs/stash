@@ -105,10 +105,8 @@ DEFAULT_SYNC_INTERVAL_S = {
     # NB: heavi_learnings is intentionally absent — reads are live against the
     # customer endpoint and there is no local index yet (deferred until the
     # unified-search work, PR #860, settles what search wants from sources).
-    # Freshness comes from extension pushes (which kick a sync); the interval
-    # is the retry pass for failed hydrations.
-    "instagram_saves": 1800,
-    "x_saves": 1800,
+    # instagram_saves and x_saves are retired integrations: absent here so they
+    # never sync, but their archived documents stay readable (SOURCE_TABLE).
 }
 
 # Which capability each connected source type exposes.
@@ -145,8 +143,7 @@ PROVIDER_SOURCE_TYPES = {
     "posthog": ("posthog_project",),
     "gong": ("gong_calls",),
     "heavi": ("heavi_learnings",),
-    # Provider-less groupings: no OAuth integration — the extension pushes the
-    # saved-item links and ScrapeCreators hydrates them.
+    # Retired integrations, kept as groupings for their archived documents.
     "instagram": ("instagram_saves",),
     "x": ("x_saves",),
 }
@@ -409,18 +406,6 @@ async def get_owned_source(source_id: UUID, user_id: UUID) -> dict | None:
         "SELECT * FROM user_sources WHERE id = $1 AND owner_user_id = $2",
         source_id,
         user_id,
-    )
-    return _source_row(row) if row else None
-
-
-async def get_source_by_type(owner_user_id: UUID, source_type: str) -> dict | None:
-    """The owner's source of a given type, or None. Used for the single-per-user
-    source types (x_saves, instagram_saves) that the extension pushes to without
-    knowing the source id."""
-    row = await get_pool().fetchrow(
-        "SELECT * FROM user_sources WHERE owner_user_id = $1 AND source_type = $2",
-        owner_user_id,
-        source_type,
     )
     return _source_row(row) if row else None
 
@@ -719,8 +704,7 @@ CONTENT_TABLES = {
     # A picked Drive folder is bounded, so its bodies are extracted once at sync
     # (OCR included) and stored. A whole-Drive source is not, and stays index-only.
     "drive_documents",
-    # Extension-captured saves are an archive: content is hydrated once and
-    # stored, so it survives the post being deleted or the account going private.
+    # Archived saves from the retired Instagram and X integrations.
     "instagram_save_docs",
     "x_save_docs",
     # NB: heavi_learning_docs is intentionally absent — the table exists but

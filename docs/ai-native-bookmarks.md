@@ -10,13 +10,12 @@ inter-webs. Three steps.
 
 **[Add to Chrome — it's free](https://chromewebstore.google.com/detail/stash-sync/cggimcbkomkpielefiannhmenmoehbea)**
 
-A Chrome extension that saves websites, PDFs, YouTube videos, X posts, Instagram reels,
-and ChatGPT or Claude chats straight into Stash. Automatic. Searchable. Read by your
+A Chrome extension that saves websites, PDFs, YouTube videos, X posts, and ChatGPT or
+Claude chats straight into Stash. Automatic. Searchable. Read by your
 agents.
 
 - **Clip any page** — articles, PDFs, and every open tab. Saved clean and readable.
 - **Bring your bookmarks** — import the whole file. We fetch what's behind every link.
-- **Twitter bookmarks** — your X bookmarks, synced. Text, images, and threads kept.
 - **AI chats** — ChatGPT and Claude, streamed in. Searchable like everything else.
 
 Saving captures the **content**, not the URL, so a dead link still has the article behind it.

@@ -1,5 +1,5 @@
 // Popup: connect once, then save the current tab / all tabs, and see the
-// status of the background pollers (ChatGPT, Claude, Instagram, X) with a
+// status of the background pollers (ChatGPT, Claude) with a
 // "Sync now" for each. Saving is otherwise automatic.
 
 const app = document.getElementById('app')!;
@@ -31,7 +31,6 @@ async function send(message: any): Promise<any> {
 const PLATFORMS: { key: string; label: string }[] = [
   { key: 'chatgpt', label: 'ChatGPT' },
   { key: 'claude', label: 'Claude' },
-  { key: 'instagram', label: 'Instagram' },
 ];
 
 // Confirmation for the save that just happened, rendered above the buttons
@@ -150,7 +149,7 @@ async function render(): Promise<void> {
   if (!status.connected) {
     app.append(
       el('p', { className: 'muted' }, [
-        'Save webpages, PDFs, and your ChatGPT / Claude / Instagram / X activity to Stash. Connect once to start.',
+        'Save webpages, PDFs, and your ChatGPT / Claude chats to Stash. Connect once to start.',
       ]),
       el('div', { className: 'row' }, [
         el('button', {

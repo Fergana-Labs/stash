@@ -15,8 +15,7 @@ from urllib.parse import urlparse
 
 import httpx
 
-from ..integrations.x_saves import indexer as x_indexer
-from . import clip_service, page_render_service, youtube_transcript
+from . import clip_service, page_render_service, tweet_fetch, youtube_transcript
 from .article_extraction import ArticleExtractionError
 
 MAX_FETCH_BYTES = 20 * 1024 * 1024
@@ -78,7 +77,7 @@ class XThreadPage:
 
     async def clip(self, row: dict) -> dict:
         url = row["url"]
-        tweet = await x_indexer.fetch_tweet_markdown(self._tweet_id(url))
+        tweet = await tweet_fetch.fetch_tweet_markdown(self._tweet_id(url))
         page = await clip_service.create_clip_page(
             owner_user_id=row["owner_user_id"],
             user_id=row["created_by"],

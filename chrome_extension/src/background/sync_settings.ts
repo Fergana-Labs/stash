@@ -5,13 +5,13 @@
 // popup's "Sync now" — so turning a source off actually stops it rather
 // than just hiding the button.
 
-export type Platform = 'chatgpt' | 'claude' | 'instagram';
+export type Platform = 'chatgpt' | 'claude';
 
-export const PLATFORMS: Platform[] = ['chatgpt', 'claude', 'instagram'];
+export const PLATFORMS: Platform[] = ['chatgpt', 'claude'];
 
 const KEY = 'syncEnabled';
 
-const DEFAULTS: Record<Platform, boolean> = { chatgpt: true, claude: true, instagram: true };
+const DEFAULTS: Record<Platform, boolean> = { chatgpt: true, claude: true };
 
 /** The switch map, writing the defaults the first time anything asks for it.
  * Every reader goes through here, so no caller has to know what an absent

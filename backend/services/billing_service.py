@@ -87,28 +87,18 @@ async def is_pro(user_id: UUID) -> bool:
     return row["status"] in ACTIVE_STATUSES
 
 
-# Providers that don't count against the free limit. X is a social-saves
-# source (like Instagram, which has no OAuth row at all) — connecting it is
-# part of the commonplace-book feature, not a "data integration" seat.
-UNMETERED_PROVIDERS = ("x",)
-
-
 async def connection_count(user_id: UUID) -> int:
-    """How many metered integration accounts the user has connected. Each
-    account row counts on its own, so two Gmail mailboxes are two connections;
-    UNMETERED_PROVIDERS (X) are excluded."""
+    """How many integration accounts the user has connected. Each account row
+    counts on its own, so two Gmail mailboxes are two connections."""
     return await get_pool().fetchval(
-        "SELECT count(*) FROM user_integrations WHERE user_id = $1 AND provider != ALL($2)",
-        user_id,
-        list(UNMETERED_PROVIDERS),
+        "SELECT count(*) FROM user_integrations WHERE user_id = $1", user_id
     )
 
 
 async def ensure_can_connect(user_id: UUID) -> None:
     """Connect-time pay gate. The free plan includes a handful of connected
     accounts (FREE_CONNECTION_LIMIT); beyond that requires Pro. Sources added
-    under a connection are unlimited, and extension-fed sources (X, Instagram)
-    aren't accounts so they never count against this."""
+    under a connection are unlimited."""
     if not billing_enabled():
         return
     if await is_pro(user_id):

@@ -10,8 +10,7 @@
     "contextMenus",
     "alarms",
     "notifications",
-    "tabs",
-    "cookies"
+    "tabs"
   ],
   "host_permissions": [
     "<all_urls>"
@@ -36,15 +35,6 @@
       ],
       "js": [
         "dist/claude.js"
-      ],
-      "run_at": "document_idle"
-    },
-    {
-      "matches": [
-        "https://www.instagram.com/*"
-      ],
-      "js": [
-        "dist/instagram.js"
       ],
       "run_at": "document_idle"
     }

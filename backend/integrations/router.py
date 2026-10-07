@@ -167,7 +167,6 @@ def _provider_disabled_reason(provider: str) -> str | None:
             "GONG_OAUTH_REDIRECT_URI",
         ],
         "granola": ["GRANOLA_OAUTH_REDIRECT_URI"],
-        "x": ["TWITTER_OAUTH_CLIENT_ID", "TWITTER_OAUTH_REDIRECT_URI"],
         "jira": [
             "JIRA_OAUTH_CLIENT_ID",
             "JIRA_OAUTH_CLIENT_SECRET",
@@ -193,7 +192,6 @@ def _provider_disabled_reason(provider: str) -> str | None:
             "notion": "Notion",
             "slack": "Slack",
             "gong": "Gong",
-            "x": "X",
             "granola": "Granola",
             "jira": "Jira",
             "linear": "Linear",
@@ -402,35 +400,6 @@ async def integration_callback(
                         type(exc).__name__,
                     )
             # --- END Slack agent ---
-
-            # Connecting X auto-creates its x_saves source and records the
-            # account id, which the indexer needs to read bookmarks (X API) and
-            # the user's own posts/replies (twitterapi.io). Best-effort: a
-            # failure here must not break the connection.
-            if provider == "x":
-                from ..database import get_pool
-                from ..services import source_service
-                from .x_saves.provider import fetch_me
-
-                try:
-                    me = await fetch_me(token.access_token)
-                    source = await source_service.create_source(
-                        owner_user_id=user_id,
-                        source_type="x_saves",
-                        external_ref=me["id"],
-                        display_name=f"X (@{me.get('username')})" if me.get("username") else "X",
-                        settings={},
-                    )
-                    await get_pool().execute(
-                        "UPDATE user_sources SET settings = "
-                        "coalesce(settings, '{}'::jsonb) || $2::jsonb WHERE id = $1",
-                        UUID(source["id"]),
-                        {"x_user_id": me["id"]},
-                    )
-                except Exception as exc:
-                    logger.warning(
-                        "x: failed to auto-create source exception_type=%s", type(exc).__name__
-                    )
     except HTTPException:
         raise  # already a clean client error (e.g. invalid/expired state → 400)
     except Exception as e:

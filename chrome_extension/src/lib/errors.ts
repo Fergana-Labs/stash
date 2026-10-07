@@ -1,8 +1,8 @@
 // Per-surface error slots. The old single `lastError` string meant a clip
-// failure could silently hide a broken Instagram sync (and vice versa);
+// failure could silently hide a broken chat sync (and vice versa);
 // each subsystem now owns one slot, and the popup lists whichever are set.
 
-export type ErrorSurface = 'clip' | 'chat' | 'instagram' | 'import';
+export type ErrorSurface = 'clip' | 'chat' | 'import';
 
 export interface SurfaceError {
   surface: ErrorSurface;

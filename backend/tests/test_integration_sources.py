@@ -163,15 +163,19 @@ def test_render_task_completed_and_unassigned():
 # work (PR #860) settles.
 LIVE_READ_TYPES = {"heavi_learnings"}
 
+# Retired integrations: nothing syncs, but the documents they archived stay
+# readable and searchable, so the document table remains.
+RETIRED_TYPES = {"x_saves", "instagram_saves"}
+
 
 def test_connected_source_types_are_fully_wired():
     """Document sources must appear in every map that makes them syncable +
     readable: a document table and a registered indexer. Live-read sources are
     the exception: they have a table but no indexer — every read goes to the
-    customer endpoint."""
+    customer endpoint. Retired sources keep their table but no longer sync."""
     for source_type in source_service.SOURCE_CAPABILITY:
         assert source_type in source_service.SOURCE_TABLE, source_type
-        if source_type in LIVE_READ_TYPES:
+        if source_type in LIVE_READ_TYPES | RETIRED_TYPES:
             assert source_type not in source_tasks.INDEXERS, source_type
             assert source_type not in source_service.DEFAULT_SYNC_INTERVAL_S, source_type
             continue
@@ -189,8 +193,8 @@ def test_connected_source_types_are_fully_wired():
 
 def test_provider_disconnect_cleanup_mapping_covers_registered_providers():
     # Every registered provider must have a disconnect-cleanup mapping. The map
-    # may also carry provider-less groupings (instagram: the extension pushes
-    # the save list; there is no OAuth integration to disconnect).
+    # may also carry provider-less groupings (the retired instagram and x
+    # integrations, kept for their archived documents).
     provider_names = {provider.name for provider in list_providers()}
     assert provider_names <= set(source_service.PROVIDER_SOURCE_TYPES)
 
