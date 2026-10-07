@@ -10,11 +10,12 @@ import { cn } from "@/lib/utils";
 import type { User } from "@/lib/types";
 
 const PRIMARY = [
+  { label: "Optimization", href: "/reward-models/optimization", match: (path: string) => path.startsWith("/reward-models/optimization") },
   { label: "Traces", href: "/reward-models", match: (path: string) => path === "/reward-models" || path.startsWith("/reward-models/traces/") },
   { label: "Review", href: "/reward-models/review", match: (path: string) => path.startsWith("/reward-models/review") },
   { label: "Changes", href: "/reward-models/changes", match: (path: string) => path.startsWith("/reward-models/changes") },
   { label: "Skills", href: "/skills", match: (path: string) => path === "/skills" || path.startsWith("/skills/") },
-  { label: "Research", href: "/reward-models/models", match: (path: string) => path.startsWith("/reward-models/models") || path.startsWith("/reward-models/gepa/") },
+  { label: "Reward models", href: "/reward-models/models", match: (path: string) => path.startsWith("/reward-models/models") || path.startsWith("/reward-models/gepa/") },
 ];
 
 function LatestRewardRail({ user, onLogout }: { user: User; onLogout: () => void }) {

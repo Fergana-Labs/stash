@@ -11,7 +11,7 @@ export default function RewardModelsLayout({ children }: { children: ReactNode }
   const pathname = usePathname();
   const router = useRouter();
   const unavailable = checkpoint === "floodgate-2026-10-05"
-    && /^\/reward-models\/(review|changes|graders)(\/|$)/.test(pathname);
+    && /^\/reward-models\/(review|changes|graders|optimization)(\/|$)/.test(pathname);
   useEffect(() => {
     if (unavailable) router.replace("/reward-models");
   }, [unavailable, router]);

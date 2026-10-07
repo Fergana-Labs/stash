@@ -1,6 +1,8 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { useProductCheckpoint } from "@/components/ProductCheckpointContext";
 import { useCallback, useEffect, useState } from "react";
 import { Download, Loader2 } from "lucide-react";
 import { toast } from "sonner";
@@ -83,6 +85,7 @@ export default function RewardModelsPage() {
 
 function ModelCard({ model }: { model: RmRewardModel }) {
   const metrics = model.metrics;
+  const checkpoint = useProductCheckpoint();
   return (
     <div className="rounded-lg border border-border bg-background px-4 py-3">
       <div className="flex items-center gap-2.5">
@@ -98,6 +101,7 @@ function ModelCard({ model }: { model: RmRewardModel }) {
           </>
         )}
       </div>
+      {checkpoint !== "floodgate-2026-10-05" && model.status !== "failed" && <div className="mt-3"><Button size="sm" asChild><Link href={`/reward-models/optimization?model=${model.id}`}>Begin prompt optimization</Link></Button></div>}
       <div className="mt-1 flex flex-wrap items-baseline gap-x-3 font-mono text-[11.5px] text-muted-foreground">
         <TrainedOnLink model={model} />
         <span>{model.base_model}</span>
