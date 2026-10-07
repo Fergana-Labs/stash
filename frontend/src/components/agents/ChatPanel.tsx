@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { ArrowUp } from "lucide-react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -15,6 +15,7 @@ import {
   streamAgentChat,
 } from "@/lib/agentChat";
 import { apiFetch } from "@/lib/api";
+import ConversationScrollRail, { conversationMarkers } from "@/components/ConversationScrollRail";
 
 // A real multi-turn agent chat: a scrolling transcript + a composer. Enter
 // sends, Shift+Enter inserts a newline. Each turn is persisted server-side
@@ -41,6 +42,11 @@ export default function ChatPanel({
   const [loadedSession, setLoadedSession] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const followLatest = useRef(true);
+  const messagePrefix = useId();
+  const markers = useMemo(() => conversationMarkers(messages.map((message, index) => ({
+    ...message, targetId: `${messagePrefix}-${index}`,
+  }))), [messages, messagePrefix]);
 
   // Restore an existing chat's history once when the tab mounts/points at a
   // session we haven't loaded yet.
@@ -77,7 +83,7 @@ export default function ChatPanel({
   }, [sessionId, streaming]);
 
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
+    if (followLatest.current) scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [messages, streaming]);
 
   useEffect(() => () => abortRef.current?.abort(), []);
@@ -86,6 +92,7 @@ export default function ChatPanel({
     async (text: string) => {
       const message = text.trim();
       if (!message || streaming) return;
+      followLatest.current = true;
       setInput("");
       setError(null);
       setStreaming(true);
@@ -165,23 +172,36 @@ export default function ChatPanel({
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-base">
-      <div ref={scrollRef} className="scroll-thin flex-1 space-y-4 overflow-y-auto p-4">
-        {messages.length === 0 && !streaming ? (
-          <EmptyChatState />
-        ) : (
-          messages.map((m, i) => <MessageBubble key={i} message={m} />)
-        )}
-        {status && (
-          <div className="flex items-center gap-2 px-1 text-[12px] text-dim">
-            <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-brand" />
-            {status}
+      <div className="relative flex min-h-0 flex-1">
+        <ConversationScrollRail items={markers} scroller={scrollRef} onJump={(item) => {
+          followLatest.current = false;
+          const container = scrollRef.current;
+          const target = container?.querySelector<HTMLElement>(`#${CSS.escape(item.targetId)}`);
+          if (container && target) container.scrollTo({ top: container.scrollTop + target.getBoundingClientRect().top - container.getBoundingClientRect().top - 12, behavior: "instant" });
+        }} />
+        <div ref={scrollRef} className="scroll-thin min-w-0 flex-1 overflow-y-auto" onScroll={(event) => {
+          const container = event.currentTarget;
+          followLatest.current = container.scrollHeight - container.scrollTop - container.clientHeight < 48;
+        }}>
+          <div className={`mx-auto min-h-full max-w-3xl space-y-4 p-4 ${messages.length === 0 ? "flex items-center justify-center" : ""}`}>
+            {messages.length === 0 && !streaming ? (
+              <EmptyChatState />
+            ) : (
+              messages.map((m, i) => <div key={i} id={`${messagePrefix}-${i}`}><MessageBubble message={m} /></div>)
+            )}
+            {status && (
+              <div className="flex items-center gap-2 px-1 text-[12px] text-dim">
+                <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-brand" />
+                {status}
+              </div>
+            )}
+            {error && (
+              <div className="rounded-lg border border-error/30 bg-error/10 px-3 py-2 text-[12px] text-error">
+                {error}
+              </div>
+            )}
           </div>
-        )}
-        {error && (
-          <div className="rounded-lg border border-error/30 bg-error/10 px-3 py-2 text-[12px] text-error">
-            {error}
-          </div>
-        )}
+        </div>
       </div>
 
       <Composer
@@ -316,7 +336,7 @@ function Composer({
 }) {
   // ChatGPT-style: one rounded box with the send button living inside it.
   return (
-    <div className="px-4 pb-4 pt-2">
+    <div className="mx-auto w-full max-w-3xl px-4 pb-4 pt-2">
       <div className="flex items-end gap-2 rounded-2xl border border-border bg-base px-3 py-2 shadow-sm focus-within:border-brand">
         <textarea
           value={value}

@@ -29,6 +29,7 @@ import {
 import EditableTitle from "@/components/content/EditableTitle";
 import { getScope } from "@/lib/scope-store";
 import { useTabTitle } from "@/lib/workspace-store";
+import ConversationScrollRail, { conversationMarkers } from "@/components/ConversationScrollRail";
 
 // One transcript page. The viewer loads this many turns at a time and fetches
 // more on scroll, so long sessions don't load every event up front.
@@ -149,6 +150,10 @@ export default function SessionViewerPage({ sessionId }: { sessionId: string }) 
   }, []);
   useTabTitle("session", sessionId, sessionDetail && sessionHeading(sessionDetail, sessionId));
   const [turns, setTurns] = useState<MessageTurn[]>([]);
+  const scroller = useRef<HTMLDivElement>(null);
+  const markers = useMemo(() => conversationMarkers(turns.filter((turn) => !turn.toolName).map((turn) => ({
+    targetId: `message-${turn.id}`, role: turn.who, content: turn.content,
+  }))), [turns]);
   const [totalTurns, setTotalTurns] = useState(0);
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -296,90 +301,93 @@ export default function SessionViewerPage({ sessionId }: { sessionId: string }) 
   const sessionDate = turns.find((turn) => turn.dateLabel)?.dateLabel;
 
   return (
-    <div className="scroll-thin flex-1 overflow-y-auto">
-      <div className="mx-auto grid max-w-[1100px] gap-7 px-12 pb-20 pt-7 lg:grid-cols-[minmax(0,1fr)_260px]">
-        <main className="min-w-0">
-          {inDeveloperConsole && (
-            <Link
-              href="/developer/sessions"
-              className="mb-4 inline-flex items-center gap-1.5 text-[13px] text-muted-foreground transition-colors hover:text-foreground"
-            >
-              <ArrowLeft className="h-3.5 w-3.5" />
-              All sessions
-            </Link>
-          )}
-          <div className="mb-2 border-b border-border pb-3.5">
-            {(sessionDetail?.linear_tickets.length ?? 0) > 0 && (
-              <div className="mb-1.5 flex items-center gap-2">
-                {sessionDetail?.linear_tickets.map((ticket) => (
-                  <LinearTicketPill key={ticket.ticket_identifier} ticket={ticket} />
-                ))}
-              </div>
+    <div className="relative flex min-h-0 flex-1">
+      <ConversationScrollRail items={markers} scroller={scroller} />
+      <div ref={scroller} className="scroll-thin min-w-0 flex-1 overflow-y-auto">
+        <div className="mx-auto grid max-w-[1100px] gap-7 px-12 pb-20 pt-7 lg:grid-cols-[minmax(0,1fr)_260px]">
+          <main className="min-w-0">
+            {inDeveloperConsole && (
+              <Link
+                href="/developer/sessions"
+                className="mb-4 inline-flex items-center gap-1.5 text-[13px] text-muted-foreground transition-colors hover:text-foreground"
+              >
+                <ArrowLeft className="h-3.5 w-3.5" />
+                All sessions
+              </Link>
             )}
-            <h1 className="font-display text-[28px] font-bold leading-tight tracking-[-0.02em]">
-              <EditableTitle
-                value={sessionHeading(sessionDetail, sessionId)}
-                onSave={async (next) => {
-                  const { title } = await renameSession(sessionId, next);
-                  setSessionDetail((prev) => (prev ? { ...prev, title } : prev));
-                  return title;
-                }}
-              />
-            </h1>
-            {(sessionDate || totalTurns > 0 || agentName) && (
-              <div className="mt-1.5 flex flex-wrap items-center gap-2.5 text-[12px] text-muted-foreground">
-                {sessionDate && <span>{sessionDate}</span>}
-                {totalTurns > 0 && (
-                  <span>
-                    {totalTurns} message{totalTurns === 1 ? "" : "s"}
-                  </span>
-                )}
-                {agentName && <span>{agentName}</span>}
-              </div>
-            )}
-          </div>
-
-          {error && (
-            <div className="mb-4 rounded-lg border border-red-300/40 bg-red-500/10 px-4 py-2 text-[13px] text-red-500">
-              {error}
-            </div>
-          )}
-
-          <div className="flex flex-col">
-            {turns.map((turn, i) => {
-              const previousTurn = turns[i - 1];
-              const dateDividerLabel =
-                turn.dateLabel && turn.dateKey !== previousTurn?.dateKey
-                  ? turn.dateLabel
-                  : null;
-
-              return (
-                <div key={i}>
-                  {dateDividerLabel ? <DateDivider label={dateDividerLabel} /> : null}
-                  <MessageRow turn={turn} index={i} />
+            <div className="mb-2 border-b border-border pb-3.5">
+              {(sessionDetail?.linear_tickets.length ?? 0) > 0 && (
+                <div className="mb-1.5 flex items-center gap-2">
+                  {sessionDetail?.linear_tickets.map((ticket) => (
+                    <LinearTicketPill key={ticket.ticket_identifier} ticket={ticket} />
+                  ))}
                 </div>
-              );
-            })}
-            {hasMore && (
-              <div ref={sentinelRef} className="flex justify-center py-4">
-                <button
-                  type="button"
-                  onClick={loadMore}
-                  disabled={loadingMore}
-                  className="cursor-pointer rounded-md border border-border px-3 py-1.5 text-[12.5px] text-muted-foreground hover:text-foreground disabled:cursor-default disabled:opacity-60"
-                >
-                  {loadingMore ? "Loading…" : "Load more"}
-                </button>
+              )}
+              <h1 className="font-display text-[28px] font-bold leading-tight tracking-[-0.02em]">
+                <EditableTitle
+                  value={sessionHeading(sessionDetail, sessionId)}
+                  onSave={async (next) => {
+                    const { title } = await renameSession(sessionId, next);
+                    setSessionDetail((prev) => (prev ? { ...prev, title } : prev));
+                    return title;
+                  }}
+                />
+              </h1>
+              {(sessionDate || totalTurns > 0 || agentName) && (
+                <div className="mt-1.5 flex flex-wrap items-center gap-2.5 text-[12px] text-muted-foreground">
+                  {sessionDate && <span>{sessionDate}</span>}
+                  {totalTurns > 0 && (
+                    <span>
+                      {totalTurns} message{totalTurns === 1 ? "" : "s"}
+                    </span>
+                  )}
+                  {agentName && <span>{agentName}</span>}
+                </div>
+              )}
+            </div>
+
+            {error && (
+              <div className="mb-4 rounded-lg border border-red-300/40 bg-red-500/10 px-4 py-2 text-[13px] text-red-500">
+                {error}
               </div>
             )}
-            {!error && totalTurns === 0 && (
-              <div className="rounded-lg border border-dashed border-border bg-surface/30 px-4 py-6 text-center text-[12.5px] text-muted-foreground">
-                No transcript events yet.
-              </div>
-            )}
-          </div>
-        </main>
-        <SessionAside detail={sessionDetail} />
+
+            <div className="flex flex-col">
+              {turns.map((turn, i) => {
+                const previousTurn = turns[i - 1];
+                const dateDividerLabel =
+                  turn.dateLabel && turn.dateKey !== previousTurn?.dateKey
+                    ? turn.dateLabel
+                    : null;
+
+                return (
+                  <div key={turn.id} id={`message-${turn.id}`}>
+                    {dateDividerLabel ? <DateDivider label={dateDividerLabel} /> : null}
+                    <MessageRow turn={turn} index={i} />
+                  </div>
+                );
+              })}
+              {hasMore && (
+                <div ref={sentinelRef} className="flex justify-center py-4">
+                  <button
+                    type="button"
+                    onClick={loadMore}
+                    disabled={loadingMore}
+                    className="cursor-pointer rounded-md border border-border px-3 py-1.5 text-[12.5px] text-muted-foreground hover:text-foreground disabled:cursor-default disabled:opacity-60"
+                  >
+                    {loadingMore ? "Loading…" : "Load more"}
+                  </button>
+                </div>
+              )}
+              {!error && totalTurns === 0 && (
+                <div className="rounded-lg border border-dashed border-border bg-surface/30 px-4 py-6 text-center text-[12.5px] text-muted-foreground">
+                  No transcript events yet.
+                </div>
+              )}
+            </div>
+          </main>
+          <SessionAside detail={sessionDetail} />
+        </div>
       </div>
     </div>
   );
