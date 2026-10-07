@@ -1,8 +1,5 @@
 "use client";
 
-import { useProductCheckpoint } from "@/components/ProductCheckpointContext";
-import FloodgateComponent from "@/checkpoints/floodgate-2026-10-05/TraceClient";
-
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import { toast } from "sonner";
@@ -10,24 +7,19 @@ import { useBreadcrumbs } from "@/components/BreadcrumbContext";
 import { useConfirm } from "@/components/ConfirmDialog";
 import AnnotationComposer, { type ComposerTarget } from "@/components/reward-models/AnnotationComposer";
 import AnnotationSidebar from "@/components/reward-models/AnnotationSidebar";
-import ActionScoringPanel from "@/components/reward-models/ActionScoringPanel";
-import AssessmentInspector from "@/components/workbench/AssessmentInspector";
-import TraceEvaluationPanel from "@/components/workbench/TraceEvaluationPanel";
-import TraceReviewAccess from "@/components/workbench/TraceReviewAccess";
-import { actionModelId } from "@/components/reward-models/action-credit";
+import ActionScoringPanel from "./ActionScoringPanel";
 import { TraceSkeleton } from "@/components/reward-models/RmSkeletons";
 import TraceFlamegraph from "@/components/reward-models/TraceFlamegraph";
-import TraceMinimap from "@/components/reward-models/TraceMinimap";
+import TraceMinimap from "./TraceMinimap";
 import TraceTimeline, { type StepAnnotations } from "@/components/reward-models/TraceTimeline";
 import { errorMessage, locateQuote, quoteFromOffsets, relativeTime, sortAnnotations } from "@/components/reward-models/rm-text";
 import { domSourceOffset, type Highlight } from "@/components/reward-models/source-anchors";
-import { buildRows, rowSteps, toolLabel, toolSummary, type TraceRow } from "@/components/reward-models/trace-rows";
+import { buildRows, rowSteps, type TraceRow } from "@/components/reward-models/trace-rows";
 import { visibleStepElement } from "@/components/reward-models/trace-scroll";
 import { useAuth } from "@/hooks/useAuth";
 import { rmCreateAnnotation, rmDeleteAnnotation, rmGetTrace, rmUpdateAnnotation } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import type { RmAnnotation, RmStep, RmTraceDetail } from "@/lib/types";
-import ConversationScrollRail, { conversationExcerpt, conversationMarkers } from "@/components/ConversationScrollRail";
 
 const FLASH_MS = 1400;
 /** Highlight id for the not-yet-saved quote while the composer is open. */
@@ -62,7 +54,7 @@ function inView(row: TraceRow, view: View): boolean {
   return row.kind === "prompt" || row.kind === "assistant";
 }
 
-function LatestTraceClient({ traceId }: { traceId: string }) {
+export default function TraceClient({ traceId }: { traceId: string }) {
   const { user } = useAuth();
   const confirm = useConfirm();
   const [trace, setTrace] = useState<RmTraceDetail | null>(null);
@@ -79,10 +71,9 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
   const navigation = useRef<HTMLDivElement | null>(null);
   const canvas = useRef<HTMLDivElement | null>(null);
   const scroller = useRef<HTMLDivElement | null>(null);
-  const openedHash = useRef<string | null>(null);
 
   useBreadcrumbs(
-    [{ label: "Traces", href: "/reward-models" }, { label: trace?.title ?? "Trace" }],
+    [{ label: "Reward models", href: "/reward-models" }, { label: trace?.title ?? "Trace" }],
     `rm-trace-${traceId}-${trace?.title ?? ""}`,
   );
 
@@ -104,41 +95,13 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
     return () => clearTimeout(timer);
   }, [flashStepId]);
 
-  // Review records and load receipts link to captured events, including tool
-  // results nested inside initially collapsed rows.
-  useEffect(() => {
-    if (!trace) return;
-    let frame = 0;
-    const revealHash = () => {
-      const hash = window.location.hash;
-      if (!hash.startsWith("#step-") || openedHash.current === hash) return;
-      const stepId = hash.slice("#step-".length);
-      const row = buildRows(trace.steps).find((candidate) => rowSteps(candidate).some((step) => step.id === stepId));
-      if (!row) return;
-      openedHash.current = hash;
-      setView("all");
-      setRowChoice((current) => new Map(current).set(row.key, true));
-      setFlashStepId(stepId);
-      frame = requestAnimationFrame(() => {
-        const element = document.getElementById(`step-${stepId}`);
-        const container = scroller.current;
-        if (!element || !container || !navigation.current) return;
-        const top = container.scrollTop + element.getBoundingClientRect().top - container.getBoundingClientRect().top - navigation.current.offsetHeight - 12;
-        container.scrollTo({ top, behavior: "instant" });
-      });
-    };
-    revealHash();
-    window.addEventListener("hashchange", revealHash);
-    return () => { cancelAnimationFrame(frame); window.removeEventListener("hashchange", revealHash); };
-  }, [trace]);
-
   const closeComposer = useCallback(() => setComposer(null), []);
 
   if (!trace || !user) return <TraceSkeleton />;
   const viewerId = user.id;
   const ordered = sortAnnotations(trace.annotations.filter((a) => a.comment !== null), trace.steps);
   const rows = buildRows(trace.steps);
-  const effectiveModelId = actionModelId(trace, scoreModelId);
+  const effectiveModelId = scoreModelId === "default" ? trace.default_evaluator?.id : scoreModelId;
   const actionScores = new Map((trace.action_scores ?? []).filter((s) => s.reward_model_id === effectiveModelId).map((s) => [s.step_id, s]));
 
   function annotationsOn(step: RmStep): RmAnnotation[] {
@@ -264,8 +227,7 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
 
   /** Scrolls to a step, opening its row and clearing a filter that hides it. */
   function revealStep(stepId: string) {
-    const row = rows.find((r) => rowSteps(r).some((s) => s.id === stepId));
-    if (!row) return;
+    const row = rows.find((r) => rowSteps(r).some((s) => s.id === stepId))!;
     if (!inView(row, view)) setView("all");
     if (!isExpanded(row) && row.kind !== "assistant") toggleRow(row);
     setFlashStepId(stepId);
@@ -306,26 +268,9 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
   };
 
   const visibleRows = rows.filter((row) => inView(row, view));
-  const exchanges = conversationMarkers(visibleRows.filter((row) => row.kind === "prompt" || row.kind === "assistant").map((row) => {
-    const step = rowSteps(row)[0];
-    return { targetId: `step-${step.id}`, role: step.role, content: step.content };
-  }));
-  // A single-request trace can still contain hundreds of actions. In that case
-  // (and in Tools view), provide destinations for the individual visible rows.
-  const scrollMarkers = exchanges.length > 1 ? exchanges : visibleRows.map((row) => {
-    const step = rowSteps(row)[0];
-    return {
-      targetId: `step-${step.id}`,
-      title: row.kind === "tool" ? toolLabel(step.tool_name) : row.kind === "prompt" ? "User" : row.kind === "assistant" ? "Assistant" : "System",
-      preview: conversationExcerpt(toolSummary(step.tool_input) || step.content),
-      label: `Step ${step.index + 1}`,
-      emphasis: row.kind === "prompt",
-    };
-  });
 
   return (
     <div className="flex h-full min-h-0">
-      <ConversationScrollRail items={scrollMarkers} scroller={scroller} header={navigation} onJump={(item) => revealStep(item.targetId.slice("step-".length))} />
       <div ref={scroller} className="scroll-thin min-w-0 flex-1 overflow-y-auto">
         <div ref={canvas} className="relative mx-auto max-w-4xl px-8 pt-6 pb-24" onMouseUp={onCanvasMouseUp}>
           <Link href="/reward-models" aria-label="Back to traces" className="inline-flex h-7 items-center rounded-md border border-border px-2.5 text-[12px] text-muted-foreground hover:bg-surface hover:text-foreground">
@@ -340,7 +285,6 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
               </div>
             </div>
             <div className="flex shrink-0 items-center gap-1.5 pt-1">
-              <details><summary className="text-[12px] text-muted-foreground cursor-pointer">Research model scores</summary><ActionScoringPanel trace={trace} selectedModelId={scoreModelId} onModelChange={setScoreModelId} onReload={load} /></details>
               <button
                 type="button"
                 aria-expanded={commentsOpen}
@@ -358,9 +302,7 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
             </div>
           </header>
 
-          <TraceReviewAccess traceId={traceId} viewerId={viewerId} />
-          <TraceEvaluationPanel traceId={traceId} onJump={revealStep} viewerId={viewerId} />
-          <details className="mb-4"><summary className="cursor-pointer text-[12px] text-muted-foreground">Earlier rubric assessments</summary><AssessmentInspector traceId={traceId} steps={trace.steps} onJump={revealStep} viewerId={viewerId} /></details>
+          <ActionScoringPanel trace={trace} selectedModelId={scoreModelId} onModelChange={setScoreModelId} onReload={load} />
 
           <div ref={navigation} className="sticky top-0 z-20 bg-background pb-2">
             <TraceMinimap steps={trace.steps} annotations={trace.annotations} actionScores={actionScores} scroller={scroller} navigation={navigation} onJump={(index) => revealStep(trace.steps[index].id)} />
@@ -444,10 +386,4 @@ function composerLabel(target: ComposerTarget, trace: RmTraceDetail): string {
   if (target.stepId === null) return "Comment on the whole trace";
   const step = trace.steps.find((s) => s.id === target.stepId)!;
   return target.quote ? `Comment on selection in step ${step.index + 1}` : `Comment on step ${step.index + 1} (${step.role})`;
-}
-
-export default function TraceClient(props: React.ComponentProps<typeof LatestTraceClient>) {
-  return useProductCheckpoint() === "floodgate-2026-10-05"
-    ? <FloodgateComponent {...props} />
-    : <LatestTraceClient {...props} />;
 }

@@ -1,4 +1,7 @@
+export type ProductCheckpoint = "latest" | "floodgate-2026-10-05";
+
 export interface User {
+  product_checkpoint?: ProductCheckpoint;
   id: string;
   developer_platform_only: boolean;
   reward_models_enabled: boolean;

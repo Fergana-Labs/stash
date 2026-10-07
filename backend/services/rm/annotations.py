@@ -114,7 +114,8 @@ async def create(
             from . import workbench
 
             enabled = await pool.fetchval(
-                "SELECT reward_models_enabled FROM users WHERE id=$1", owner_user_id
+                "SELECT reward_models_enabled AND product_checkpoint='latest' FROM users WHERE id=$1",
+                owner_user_id,
             )
             if enabled:
                 await workbench.create_feedback(

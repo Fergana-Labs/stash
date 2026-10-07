@@ -1,8 +1,5 @@
 "use client";
 
-import { useProductCheckpoint } from "@/components/ProductCheckpointContext";
-import FloodgateComponent from "@/checkpoints/floodgate-2026-10-05/TrainPanel";
-
 import { useEffect, useState } from "react";
 import { ChevronDown, Loader2 } from "lucide-react";
 import { toast } from "sonner";
@@ -11,19 +8,20 @@ import { Input } from "@/components/ui/input";
 import { rmCreateRewardModel, rmListRewardModels } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import type { RmRewardModel } from "@/lib/types";
-import { Field } from "./rm-ui";
-import { errorMessage } from "./rm-text";
-import { type SelectionSummary } from "./trace-selection";
+import { Field } from "@/components/reward-models/rm-ui";
+import { errorMessage } from "@/components/reward-models/rm-text";
+import { type SelectionSummary } from "@/components/reward-models/trace-selection";
 
 const DEFAULT_BASE_MODEL = "Qwen/Qwen3-0.6B";
 const BASE_MODEL_SUGGESTIONS = ["Qwen/Qwen3-0.6B", "Qwen/Qwen3-1.7B", "Qwen/Qwen3-4B", "HuggingFaceTB/SmolLM2-360M-Instruct"];
 
 /**
  * Trains a reward model on exactly `traceIds`. One click uses the defaults;
- * "Options" exposes them. A selection needs at least two independent tasks;
- * the server validates the resulting training/evaluation split.
+ * "Options" exposes them. The button is disabled only while the request is in
+ * flight: a selection that can't train says why beside it, and the server's
+ * error is shown inline if the user trains anyway.
  */
-function LatestTrainPanel({
+export default function TrainPanel({
   traceIds,
   summary,
   onTrained,
@@ -41,7 +39,6 @@ function LatestTrainPanel({
   const [nameOverride, setNameOverride] = useState<string | null>(null);
   const [baseModel, setBaseModel] = useState(DEFAULT_BASE_MODEL);
   const [epochs, setEpochs] = useState(1);
-  const [rubric, setRubric] = useState("Task completion\nAdherence to the user's constraints\nEvidence grounding\nAppropriate uncertainty");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -62,7 +59,6 @@ function LatestTrainPanel({
         name: name.trim(),
         base_model: baseModel.trim(),
         epochs,
-        training_config: { input_version: 3, rubric: rubric.split("\n").map((line) => line.trim()).filter(Boolean) },
       });
       onTrained(model);
     } catch (e) {
@@ -93,7 +89,7 @@ function LatestTrainPanel({
         Options
         <ChevronDown className={cn("transition-transform", showOptions && "rotate-180")} />
       </Button>
-      <Button onClick={() => void train()} disabled={submitting || traceIds.length < 2}>
+      <Button onClick={() => void train()} disabled={submitting}>
         {submitting && <Loader2 className="animate-spin" />}
         {submitting ? "Queuing…" : "Create new reward model"}
       </Button>
@@ -107,9 +103,6 @@ function LatestTrainPanel({
         >
           <Field label="Name">
             <Input value={name} onChange={(e) => setNameOverride(e.target.value)} />
-          </Field>
-          <Field label="Reward criteria (one per line)">
-            <textarea aria-label="Reward criteria" value={rubric} onChange={(e) => setRubric(e.target.value)} rows={5} className="w-full rounded border border-border bg-background p-2 text-sm" />
           </Field>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Epochs">
@@ -125,16 +118,10 @@ function LatestTrainPanel({
 
 function TrainStatus({ summary, error }: { summary: SelectionSummary; error: string | null }) {
   if (error) return <p className="m-0 max-w-sm text-right text-[12px] leading-snug text-red-600">{error}</p>;
-  if (summary.count > 1) return null;
+  if (summary.count > 0) return null;
   return (
     <p className="m-0 max-w-xs text-right text-[12px] leading-snug text-amber-700 dark:text-amber-400">
-      Select at least two independent tasks for training and evaluation.
+      Select traces to train a model.
     </p>
   );
-}
-
-export default function TrainPanel(props: React.ComponentProps<typeof LatestTrainPanel>) {
-  return useProductCheckpoint() === "floodgate-2026-10-05"
-    ? <FloodgateComponent {...props} />
-    : <LatestTrainPanel {...props} />;
 }

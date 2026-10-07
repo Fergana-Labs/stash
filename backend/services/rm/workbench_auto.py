@@ -6,6 +6,7 @@ import logging
 
 from ...config import settings
 from ...database import get_pool
+from ...product_checkpoints import has_workbench
 from . import workbench as legacy
 from . import workbench_evaluation as policy
 from . import workbench_grader as jev
@@ -71,7 +72,7 @@ async def ensure_instruction_scope(trace):
 async def _read_trace(trace_id):
     async with get_pool().acquire() as conn, conn.transaction(isolation="repeatable_read"):
         row = await conn.fetchrow(
-            "SELECT t.*,u.reward_models_enabled FROM rm_traces t JOIN users u ON u.id=t.owner_user_id WHERE t.id=$1",
+            "SELECT t.*,u.reward_models_enabled,u.product_checkpoint FROM rm_traces t JOIN users u ON u.id=t.owner_user_id WHERE t.id=$1",
             trace_id,
         )
         if not row:
@@ -96,12 +97,12 @@ async def process_trace(trace_id):
     evaluation = None
     try:
         trace, steps = await _read_trace(trace_id)
+        if not has_workbench(trace):
+            await _finish_queue(trace_id, claim, "completed")
+            return
         await instructions.observe_trace(
             trace["owner_user_id"], trace["external_id"], trace_id, steps
         )
-        if not trace["reward_models_enabled"]:
-            await _finish_queue(trace_id, claim, "completed")
-            return
         if policy.boundary(steps) is None:
             await _finish_queue(trace_id, claim, "waiting")
             return
