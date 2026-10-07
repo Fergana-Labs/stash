@@ -59,7 +59,7 @@ it("selects picker rows without leaving the training sheet", () => {
 
 it("identifies the model behind a displayed score without requiring hover", () => {
   const trace = { ...traces[0], latest_score: { reward_model_id: "model-1", reward_model_name: "Refund quality", score: 6.011 } };
-  render(<TraceTable traces={[trace]} selected={new Set()} onSelectedChange={vi.fn()} mode="browse" />);
+  render(<TraceTable traces={[trace]} selected={new Set()} onSelectedChange={vi.fn()} mode="picker" />);
   expect(screen.getByRole("cell", { name: "6.011 Refund quality" })).toBeVisible();
 });
 
@@ -75,14 +75,21 @@ it("shows and sorts comment counts independently of stored ratings", () => {
   expect(screen.getByRole("cell", { name: "12" })).toBeVisible();
 });
 
-it("keeps criterion violations separate from execution failures and filters each", () => {
-  const rows = traces.map((trace, i) => ({ ...trace, workbench: { assessed_actions: i === 0 ? 2 : 0, total_actions: 5, violations: i === 0 ? 1 : 0, pending: 0, failed: i === 1 ? 1 : 0, queue_status: i === 1 ? "failed" : "completed" } }));
+it("distinguishes agent failure, evaluator error, and stale outcomes", () => {
+  const rows = traces.map((trace, i) => ({ ...trace,
+    evaluation: { id: `eval-${i}`, current: i !== 2, status: i === 1 ? "failed" : "completed", outcome: i === 1 ? null : "failure", total_actions: 5, credited_actions: i === 1 ? 0 : 5 },
+    workbench: { assessed_actions: 0, total_actions: 5, violations: 0, pending: 0, failed: 0, queue_status: i === 1 ? "failed" : "completed" },
+  }));
   render(<TraceTable traces={rows} selected={new Set()} onSelectedChange={vi.fn()} mode="browse" />);
-  expect(screen.getByText("2 / 5 actions assessed")).toBeVisible();
-  fireEvent.change(screen.getByRole("combobox", { name: "Filter assessment status" }), { target: { value: "violations" } });
+  expect(screen.getByText("Earlier evaluation in history")).toBeVisible();
+  expect(screen.getByText("5 / 5 actions credited")).toBeVisible();
+  expect(screen.queryByText("Mean action credit")).not.toBeInTheDocument();
+  fireEvent.change(screen.getByRole("combobox", { name: "Filter evaluation status" }), { target: { value: "unsuccessful" } });
   expect(screen.getByRole("link", { name: "Trace 20" })).toBeVisible();
+  expect(screen.queryByRole("link", { name: "Trace 10" })).not.toBeInTheDocument();
   expect(screen.queryByRole("link", { name: "Trace 3" })).not.toBeInTheDocument();
-  fireEvent.change(screen.getByRole("combobox", { name: "Filter assessment status" }), { target: { value: "failed" } });
+  fireEvent.change(screen.getByRole("combobox", { name: "Filter evaluation status" }), { target: { value: "failed" } });
   expect(screen.getByRole("link", { name: "Trace 3" })).toBeVisible();
-  expect(screen.queryByText(/criterion violation$/)).not.toBeInTheDocument();
+  expect(screen.getByText("Evaluation error")).toBeVisible();
+  expect(screen.queryByRole("link", { name: "Trace 20" })).not.toBeInTheDocument();
 });

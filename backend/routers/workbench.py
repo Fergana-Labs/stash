@@ -10,6 +10,7 @@ from ..auth import get_current_user
 from ..config import settings
 from ..database import get_pool
 from ..services.rm import workbench as service
+from ..services.rm import workbench_auto as automatic
 from ..services.rm import workbench_grader as engine
 from ..services.rm import workbench_instructions as instructions
 from .reward_models import require_reward_models
@@ -44,6 +45,7 @@ class CreateVersion(Body):
 class CreateFeedback(Body):
     trace_id: UUID
     assessment_id: UUID | None = None
+    evaluation_id: UUID | None = None
     target_step_id: UUID | None = None
     comment: str = Field(min_length=1, max_length=6000)
     proposed_verdict: Verdict | None = None
@@ -138,6 +140,16 @@ async def version(grader_id: UUID, req: CreateVersion, user=Depends(get_current_
 @router.post("/graders/{grader_id}/rollback")
 async def rollback(grader_id: UUID, req: Rollback, user=Depends(get_current_user)):
     return await checked(service.rollback_grader(user["id"], grader_id, req.version_id))
+
+
+@router.get("/traces/{trace_id}/evaluation")
+async def evaluation(trace_id: UUID, user=Depends(get_current_user)):
+    return await checked(automatic.detail(user["id"], trace_id))
+
+
+@router.get("/traces/{trace_id}/evaluation/{evaluation_id}")
+async def evaluation_history(trace_id: UUID, evaluation_id: UUID, user=Depends(get_current_user)):
+    return await checked(automatic.historical(user["id"], trace_id, evaluation_id))
 
 
 @router.get("/traces/{trace_id}/assessments")

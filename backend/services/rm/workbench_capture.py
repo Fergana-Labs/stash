@@ -283,7 +283,7 @@ async def _reserve(trace: dict, source: dict, snapshot: dict) -> tuple[dict | No
 
 
 async def scan_trace(trace: dict, steps: list[dict]) -> dict:
-    """Bounded scan called only for traces with an enabled, applicable grader.
+    """Bounded scan for traces with reward-model access. No grader setup is required.
 
     ``more`` means another pass is needed; ``budget_limited`` should defer the
     queue until the next UTC day. Failed extractions retry at most three times.

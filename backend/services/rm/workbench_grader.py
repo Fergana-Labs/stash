@@ -362,7 +362,7 @@ def _probability(value) -> bool:
     return type(value) in (int, float) and 0 <= value <= 1 and math.isfinite(value)
 
 
-def parse_response(raw: dict, criterion_ids: list[str]) -> dict:
+def parse_response(raw: dict, criterion_ids: list[str], *, choices: dict | None = None) -> dict:
     """Reject malformed/mismatched provider responses rather than inventing results."""
 
     def invalid():
@@ -384,16 +384,17 @@ def parse_response(raw: dict, criterion_ids: list[str]) -> dict:
     results = []
     for criterion_id in criterion_ids:
         answer = answers[criterion_id]
+        allowed = choices[criterion_id] if choices is not None else VERDICTS
         if not isinstance(answer, dict):
             raise invalid()
         probabilities = answer.get("probabilities")
         if (
             answer.get("type") != "choice"
             or not isinstance(answer.get("choice"), str)
-            or answer.get("choice") not in VERDICTS
+            or answer.get("choice") not in allowed
             or not _probability(answer.get("confidence"))
             or not isinstance(probabilities, dict)
-            or set(probabilities) != set(VERDICTS)
+            or set(probabilities) != set(allowed)
             or not all(_probability(p) for p in probabilities.values())
             or not math.isclose(sum(probabilities.values()), 1, abs_tol=0.01)
             or probabilities[answer["choice"]] < max(probabilities.values()) - 1e-6
@@ -439,6 +440,10 @@ async def grade(snapshot: dict) -> dict:
         raw = response.json()
     except ValueError as exc:
         raise GradingError("Jev returned a non-JSON grading response") from exc
-    result = parse_response(raw, list(request["questions"]))
+    result = parse_response(
+        raw,
+        list(request["questions"]),
+        choices={k: q["criteria"] for k, q in request["questions"].items()},
+    )
     result["duration_ms"] = round((time.monotonic() - started) * 1000)
     return result

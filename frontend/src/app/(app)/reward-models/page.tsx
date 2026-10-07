@@ -96,7 +96,7 @@ function Traces() {
     <TraceDropzone onImported={() => void load()}>
       <RmPage
         title="Traces"
-        description="Inspect captured agent work, automatic assessments, and corrections. Configure criteria in Graders to start automatic assessment."
+        description="Jev automatically evaluates trace success and each action’s contribution using recorded requests and results."
         actions={(
           <>
             <ConnectAgentDialog />
@@ -105,7 +105,7 @@ function Traces() {
         )}
       >
         <div className="mb-5 flex flex-wrap items-center gap-3 text-[12px] text-muted-foreground">
-          <Link href="/reward-models/graders" className="underline underline-offset-2">Configure grading</Link>
+          <span>Trace success and action credit appear automatically after an agent response.</span>
           <Link href="/reward-models/review" className="underline underline-offset-2">Review corrections</Link>
           <Link href="/reward-models/changes" className="underline underline-offset-2">Inspect proposed changes</Link>
         </div>

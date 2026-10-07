@@ -112,7 +112,7 @@ async def list_graders(owner):
     rows = await get_pool().fetch(
         """SELECT g.*,to_jsonb(v.*) AS active_version FROM rm_wb_graders g
         LEFT JOIN rm_wb_grader_versions v ON v.id=g.active_version_id
-        WHERE g.owner_user_id=$1 ORDER BY g.created_at DESC""",
+        WHERE g.owner_user_id=$1 AND NOT g.builtin ORDER BY g.created_at DESC""",
         owner,
     )
     return [dict(r) for r in rows]
@@ -165,6 +165,8 @@ async def grader_detail(owner, grader_id):
 
 async def update_grader(owner, grader_id, values):
     grader = await owned_grader(owner, grader_id)
+    if grader.get("builtin"):
+        raise ValueError("Built-in Jev evaluation has fixed questions; no grader setup is needed")
     async with get_pool().acquire() as conn, conn.transaction():
         await history(conn, owner, owner, "grader", grader_id, "settings_changed", grader)
         row = await conn.fetchrow(
@@ -182,6 +184,8 @@ async def update_grader(owner, grader_id, values):
 
 async def draft_version(owner, grader_id, config):
     grader = await owned_grader(owner, grader_id)
+    if grader.get("builtin"):
+        raise ValueError("Built-in Jev evaluation has fixed questions; no grader setup is needed")
     config = engine.validate_config(config)
     return dict(
         await get_pool().fetchrow(
@@ -197,10 +201,7 @@ async def draft_version(owner, grader_id, config):
 
 
 async def queue_trace(owner, trace_id):
-    trace = await trace_access(owner, trace_id, write=True)
-    graders = [g for g in await list_graders(owner) if g["enabled"] and in_scope(trace, g["scope"])]
-    if not graders:
-        raise ValueError("Create and enable a grader for this trace's scope first")
+    await trace_access(owner, trace_id, write=True)
     await get_pool().execute(
         """INSERT INTO rm_wb_queue(trace_id,due_at) VALUES($1,now())
         ON CONFLICT(trace_id) DO UPDATE SET due_at=now(),requested_at=now(),attempts=0,error=NULL,
@@ -299,6 +300,7 @@ async def _activation_sequence(conn, grader_id):
 
 
 async def process_trace(trace_id):
+    """Legacy rubric rescoring only; automatic dispatch uses workbench_auto."""
     pool = get_pool()
     claimed = await pool.fetchrow(
         "UPDATE rm_wb_queue SET status='running',started_at=now(),attempts=attempts+1 WHERE trace_id=$1 AND status='queued' RETURNING *",
@@ -477,7 +479,9 @@ async def assess_target(trace, grader, target, snapshot, fingerprint):
 async def reconcile():
     """Durable dispatch: a broker failure leaves rows queued for the next sweep."""
     from ...tasks import workbench as tasks
+    from . import workbench_auto
 
+    await workbench_auto.recover()
     pool = get_pool()
     await pool.execute("""UPDATE rm_wb_queue SET status='queued',due_at=now(),error='Worker lease expired; retrying'
         WHERE status='running' AND started_at<now()-interval '20 minutes'""")
@@ -626,6 +630,21 @@ async def create_feedback(user, data, *, source="human_comment", source_event_id
             user, data["assessment_id"], data["proposed_verdict"], data.get("comment")
         )
     trace = await trace_access(user, data["trace_id"])
+    if data.get("evaluation_id") and data.get("assessment_id"):
+        raise ValueError("Attach feedback to one evaluation or one historical assessment")
+    if data.get("evaluation_id"):
+        evaluation = await get_pool().fetchrow(
+            "SELECT trace_snapshot FROM rm_wb_evaluations WHERE id=$1 AND trace_id=$2",
+            data["evaluation_id"],
+            trace["id"],
+        )
+        if not evaluation or (
+            data.get("target_step_id")
+            and not any(
+                str(s["id"]) == str(data["target_step_id"]) for s in evaluation["trace_snapshot"]
+            )
+        ):
+            raise ValueError("Evaluation and target must belong to this recorded trace version")
     assessment = None
     if data.get("assessment_id"):
         assessment = await get_pool().fetchrow(
@@ -638,14 +657,17 @@ async def create_feedback(user, data, *, source="human_comment", source_event_id
         if data.get("target_step_id") and data["target_step_id"] != assessment["target_step_id"]:
             raise ValueError("Feedback target must match the selected assessment")
     step_id = data.get("target_step_id") or (assessment["target_step_id"] if assessment else None)
+    evaluation_target = step_id if data.get("evaluation_id") else None
     if step_id and not await get_pool().fetchval(
         "SELECT 1 FROM rm_trace_steps WHERE id=$1 AND trace_id=$2", step_id, trace["id"]
     ):
-        raise ValueError("Target event does not belong to this trace")
+        if not data.get("evaluation_id"):
+            raise ValueError("Target event does not belong to this trace")
+        step_id = None
     row = await get_pool().fetchrow(
         """INSERT INTO rm_wb_feedback
-        (owner_user_id,author_user_id,trace_id,assessment_id,target_step_id,comment,proposed_verdict,change_kind,source,source_event_id)
-        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT(trace_id,source_event_id) DO NOTHING RETURNING *""",
+        (owner_user_id,author_user_id,trace_id,assessment_id,target_step_id,comment,proposed_verdict,change_kind,source,source_event_id,evaluation_id,evaluation_target_step_id)
+        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) ON CONFLICT(trace_id,source_event_id) DO NOTHING RETURNING *""",
         trace["owner_user_id"],
         user,
         trace["id"],
@@ -656,6 +678,8 @@ async def create_feedback(user, data, *, source="human_comment", source_event_id
         data.get("change_kind") or "unclear",
         source,
         source_event_id,
+        data.get("evaluation_id"),
+        evaluation_target,
     )
     if row:
         from ...tasks.workbench import prepare_feedback
@@ -713,8 +737,12 @@ async def prepare_feedback(feedback_id):
             (g for g in graders if assessment and g["id"] == assessment["grader_id"]),
             graders[0] if graders else None,
         )
+        if not assessment:
+            from .workbench_auto import ensure_instruction_scope
+
+            grader = await ensure_instruction_scope(trace)
         if not grader:
-            raise ValueError("Configure a grader before preparing feedback changes")
+            raise ValueError("The original grader is no longer available")
         steps = [
             dict(s)
             for s in await pool.fetch(
@@ -722,16 +750,43 @@ async def prepare_feedback(feedback_id):
                 trace["id"],
             )
         ]
-        target = next((s for s in steps if s["id"] == row["target_step_id"]), None)
+        if row.get("evaluation_id"):
+            frozen = await pool.fetchval(
+                "SELECT trace_snapshot FROM rm_wb_evaluations WHERE id=$1 AND trace_id=$2",
+                row["evaluation_id"],
+                trace["id"],
+            )
+            if frozen:
+                steps = frozen
+        target_id = row.get("evaluation_target_step_id") or row["target_step_id"]
+        target = next((s for s in steps if str(s["id"]) == str(target_id)), None)
         if target is None:
             target = next((s for s in reversed(steps) if is_assistant_action(s)), None)
         if target is None:
             raise ValueError("No captured assistant event to attach this feedback to")
         config = grader["active_version"]["config"]
-        snapshot = (
-            assessment["input_snapshot"]
-            if assessment
-            else serial(engine.build_input(steps, target, config))
+        evaluation_result = None
+        if row.get("evaluation_id"):
+            from . import workbench_auto, workbench_evaluation
+
+            snapshot = workbench_evaluation.build_input(steps, [target])
+            saved_evaluation = await workbench_auto.historical(
+                row["owner_user_id"], trace["id"], row["evaluation_id"]
+            )
+            evaluation_result = {
+                k: saved_evaluation[k]
+                for k in ("id", "outcome", "outcome_confidence", "credits", "policy_version")
+            }
+        else:
+            snapshot = (
+                assessment["input_snapshot"]
+                if assessment
+                else serial(engine.build_input(steps, target, config))
+            )
+        current_target = await pool.fetchval(
+            "SELECT id FROM rm_trace_steps WHERE id=$1 AND trace_id=$2",
+            UUID(str(target["id"])),
+            trace["id"],
         )
         from . import workbench_instructions
 
@@ -750,6 +805,7 @@ async def prepare_feedback(feedback_id):
                         "explicit_kind": row["change_kind"],
                         "explicit_verdict": row["proposed_verdict"],
                         "assessment": dict(assessment) if assessment else None,
+                        "evaluation": evaluation_result,
                         "input": snapshot,
                         "grader_config": config,
                         "current_instruction": current_instruction,
@@ -792,9 +848,13 @@ async def prepare_feedback(feedback_id):
                 interpretation,
                 draft.proposed_verdict,
                 kind,
-                target["id"],
+                current_target,
             )
-            if kind in {"judge_error", "both", "requirement_change"} and draft.grader_prompt:
+            if (
+                not grader.get("builtin")
+                and kind in {"judge_error", "both", "requirement_change"}
+                and draft.grader_prompt
+            ):
                 next_config = engine.validate_config({**config, "prompt": draft.grader_prompt})
                 await conn.execute(
                     """INSERT INTO rm_wb_changes(owner_user_id,grader_id,feedback_id,kind,title,content,parent_version_id)

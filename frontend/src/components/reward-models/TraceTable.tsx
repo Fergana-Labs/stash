@@ -47,9 +47,9 @@ export default function TraceTable({
   const anchor = useRef<number | null>(null);
 
   const filtered = searchTraces(traces, query).filter((trace) => assessmentFilter === "all"
-    || (assessmentFilter === "violations" && (trace.workbench?.violations ?? 0) > 0)
-    || (assessmentFilter === "failed" && ((trace.workbench?.failed ?? 0) > 0 || trace.workbench?.queue_status === "failed"))
-    || (assessmentFilter === "pending" && ((trace.workbench?.pending ?? 0) > 0 || ["queued", "running"].includes(trace.workbench?.queue_status ?? ""))));
+    || (assessmentFilter === "unsuccessful" && trace.evaluation?.current && ["failure", "partial_success"].includes(trace.evaluation.outcome ?? ""))
+    || (assessmentFilter === "failed" && trace.workbench?.queue_status === "failed")
+    || (assessmentFilter === "pending" && ["queued", "running", "waiting"].includes(trace.workbench?.queue_status ?? "")));
   const visible = sortTraces(filtered, sort.key, sort.direction);
   const visibleIds = visible.map((t) => t.id);
   const selectedVisible = visibleIds.filter((id) => selected.has(id)).length;
@@ -80,7 +80,7 @@ export default function TraceTable({
             className="min-w-0 flex-1 bg-transparent text-[12.5px] text-foreground outline-none placeholder:text-muted-foreground"
           />
         </label>
-        {mode === "browse" && <select aria-label="Filter assessment status" value={assessmentFilter} onChange={(e) => { setAssessmentFilter(e.target.value); anchor.current = null; }} className="h-7 rounded-md border border-border bg-background px-2 text-[12px] text-muted-foreground"><option value="all">All assessment states</option><option value="violations">With criterion violations</option><option value="failed">Grading failures</option><option value="pending">Pending grading</option></select>}
+        {mode === "browse" && <select aria-label="Filter evaluation status" value={assessmentFilter} onChange={(e) => { setAssessmentFilter(e.target.value); anchor.current = null; }} className="h-7 rounded-md border border-border bg-background px-2 text-[12px] text-muted-foreground"><option value="all">All evaluations</option><option value="unsuccessful">Failed or partially successful traces</option><option value="failed">Evaluation errors</option><option value="pending">Pending evaluation</option></select>}
         <span className="ml-auto text-[12px] text-muted-foreground tabular-nums">
           {visible.length === traces.length ? `${traces.length} traces` : `${visible.length} of ${traces.length} traces`}
         </span>
@@ -98,7 +98,7 @@ export default function TraceTable({
                   label="Select all shown traces"
                 />
               </th>
-              {COLUMNS.map((column) => (
+              {COLUMNS.filter((column) => mode === "picker" || !["credit", "reward"].includes(column.key)).map((column) => (
                 <th key={column.key} scope="col" aria-sort={sort.key === column.key ? sort.direction : "none"} className={cn("px-3 py-2 font-medium", column.className)}>
                   <button
                     type="button"
@@ -113,7 +113,7 @@ export default function TraceTable({
                   </button>
                 </th>
               ))}
-              {mode === "browse" && <th scope="col" className="w-44 px-3 py-2 text-right font-medium">Assessments</th>}
+              {mode === "browse" && <th scope="col" className="w-44 px-3 py-2 text-right font-medium">Jev evaluation</th>}
               {mode === "browse" && <th className="w-10 px-2 py-2" />}
             </tr>
           </thead>
@@ -193,13 +193,13 @@ function TraceRow({
       </td>
       <td className="px-3 py-2.5 text-right font-mono text-[12px] text-dim tabular-nums">{trace.step_count}</td>
       <td className="px-3 py-2.5 text-right font-mono text-[12px] text-dim tabular-nums">{trace.comment_count}</td>
-      <td className="px-3 py-2.5 text-right" title="Mean of the shared evaluator’s action rewards, not a whole-trace outcome score">
+      {picker && <td className="px-3 py-2.5 text-right" title="Mean of the shared evaluator’s action rewards, not a whole-trace outcome score">
         {trace.action_credit ? <div className="leading-4">
           <span className="font-mono text-[12px] text-foreground tabular-nums">{formatScore(trace.action_credit.mean)}</span>
           <div className="text-[11px] text-muted-foreground">{trace.action_credit.count} actions · Stash v{trace.action_credit.revision}</div>
         </div> : <span className="text-muted-foreground">—</span>}
-      </td>
-      <td className="px-3 py-2.5 text-right">
+      </td>}
+      {picker && <td className="px-3 py-2.5 text-right">
         {trace.latest_score ? (
           <div className="leading-4">
             <span className="font-mono text-[12px] text-foreground tabular-nums">{formatScore(trace.latest_score.score)}</span>
@@ -208,15 +208,14 @@ function TraceRow({
         ) : (
           <span className="text-muted-foreground">—</span>
         )}
-      </td>
-      <td className="px-3 py-2.5 text-right text-[12px] whitespace-nowrap text-muted-foreground">{relativeTime(trace.created_at)}</td>
-      {mode === "browse" && <td className="px-3 py-2.5 text-right text-[11px]" title="Coverage counts actions with any completed assessment. Violations use the active grader’s latest assessment; grading failures are not agent violations.">
-        {trace.workbench ? <div className="space-y-0.5"><div className="text-dim tabular-nums">{trace.workbench.assessed_actions} / {trace.workbench.total_actions} actions assessed</div>
-          {trace.workbench.violations > 0 && <div className="text-red-700 dark:text-red-400">{trace.workbench.violations} criterion violation{trace.workbench.violations === 1 ? "" : "s"}</div>}
-          {(trace.workbench.failed > 0 || trace.workbench.queue_status === "failed") && <div className="text-amber-700 dark:text-amber-400">Grading failed{trace.workbench.failed > 0 ? ` (${trace.workbench.failed})` : ""}</div>}
-          {(trace.workbench.pending > 0 || ["queued", "running"].includes(trace.workbench.queue_status ?? "")) && <div className="text-muted-foreground">{trace.workbench.pending > 0 ? `${trace.workbench.pending} pending` : "Grading queued"}</div>}
-        </div> : <span className="text-muted-foreground">Not assessed</span>}
       </td>}
+      <td className="px-3 py-2.5 text-right text-[12px] whitespace-nowrap text-muted-foreground">{relativeTime(trace.created_at)}</td>
+      {mode === "browse" && <td className="px-3 py-2.5 text-right text-[11px]">
+        {trace.evaluation?.current ? <div><div>{trace.evaluation.outcome?.replaceAll("_", " ") ?? "Success judgment pending"}</div><div className="text-muted-foreground">{trace.evaluation.credited_actions} / {trace.evaluation.total_actions} actions credited</div></div> : <div className="text-muted-foreground">{trace.workbench?.queue_status === "waiting" ? "Waiting for agent response" : "Evaluation pending"}</div>}
+        {trace.workbench?.queue_status === "failed" && <div className="text-amber-700 dark:text-amber-400">Evaluation error</div>}
+        {trace.evaluation && !trace.evaluation.current && <div className="text-muted-foreground">Earlier evaluation in history</div>}
+      </td>}
+
       {mode === "browse" && (
         <td className="px-2 py-2.5 text-right">
           {onDelete && (

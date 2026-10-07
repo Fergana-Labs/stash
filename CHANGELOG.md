@@ -5,6 +5,11 @@ everything before it is captured in git history (`git log`), not here.
 
 ## Unreleased
 
+- Agent Workbench automatically uses Jev to judge trace success and estimate each
+  action’s credit from recorded results. No grader setup is required. Inspect
+  saved evidence, confidence, previous trace versions, and evaluation errors
+  separately; corrections can propose repository-scoped agent instructions.
+
 - New signups see only the Developer Platform, with internal navigation,
   onboarding, and settings hidden by a per-user flag. Existing accounts retain
   both interfaces.

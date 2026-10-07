@@ -56,7 +56,7 @@ export function wbAssessments(traceId: string): Promise<AssessmentResponse> { re
 export function wbAssess(traceId: string): Promise<unknown> { return apiFetch(`${WB}/traces/${traceId}/assess`, { method: "POST" }); }
 export function wbListFeedback(): Promise<WorkbenchFeedback[]> { return apiFetch(`${WB}/feedback`); }
 export function wbFeedbackDetail(id: string): Promise<WorkbenchFeedback> { return apiFetch(`${WB}/feedback/${id}`); }
-export function wbCreateFeedback(body: { trace_id: string; assessment_id?: string; target_step_id?: string; comment: string; proposed_verdict?: Verdict; change_kind: ChangeKind }): Promise<WorkbenchFeedback> { return apiFetch(`${WB}/feedback`, { method: "POST", body: JSON.stringify(body) }); }
+export function wbCreateFeedback(body: { trace_id: string; assessment_id?: string; evaluation_id?: string; target_step_id?: string; comment: string; proposed_verdict?: Verdict; change_kind: ChangeKind }): Promise<WorkbenchFeedback> { return apiFetch(`${WB}/feedback`, { method: "POST", body: JSON.stringify(body) }); }
 export function wbReviewFeedback(id: string, body: { decision: "accept" | "reject"; proposed_verdict?: Verdict; change_kind?: ChangeKind }): Promise<WorkbenchFeedback> { return apiFetch(`${WB}/feedback/${id}/review`, { method: "POST", body: JSON.stringify(body) }); }
 export function wbRetryFeedback(id: string): Promise<WorkbenchFeedback> { return apiFetch(`${WB}/feedback/${id}/retry`, { method: "POST" }); }
 export interface ReviewSample { assessment: Assessment; reason: "violation" | "uncertain" | "sample" }
@@ -76,3 +76,24 @@ export interface TraceReviewers { owner_user_id: string; reviewers: { user_id: s
 export function wbTraceReviewers(traceId: string): Promise<TraceReviewers> { return apiFetch(`${WB}/traces/${traceId}/reviewers`); }
 export function wbAddReviewer(traceId: string, email: string): Promise<TraceReviewers> { return apiFetch(`${WB}/traces/${traceId}/reviewers`, { method: "POST", body: JSON.stringify({ email }) }); }
 export function wbRemoveReviewer(traceId: string, userId: string): Promise<TraceReviewers> { return apiFetch(`${WB}/traces/${traceId}/reviewers/${userId}`, { method: "DELETE" }); }
+
+export interface EvaluationCall {
+  id: string; batch_index: number; attempt: number; status: string; error: string | null;
+  input_snapshot: { context_events?: { id: string; index: number; role: string; content: string }[]; omissions?: unknown[]; [key: string]: unknown };
+  raw_output: unknown; result: unknown;
+}
+export interface TraceEvaluation {
+  id: string; trace_id: string; revision_hash: string; policy_version: string; status: string;
+  outcome: string | null; outcome_confidence: number | null; total_actions: number; credited_actions: number;
+  error: string | null; created_at: string; boundary: { kind: string; step_index: number };
+  credits: { step_id: string; index: number; credit: number | null; label: string; confidence: number; call_id: string }[];
+  actions: { id: string; index: number; content: string; tool_name: string | null }[];
+  calls: EvaluationCall[];
+}
+export interface TraceEvaluationResponse {
+  provider: string; model: string; configured: boolean; policy_version: string; owner_user_id: string;
+  boundary: TraceEvaluation["boundary"] | null; queue: { status: string; error: string | null } | null;
+  current: TraceEvaluation | null; history: Pick<TraceEvaluation, "id" | "outcome" | "status" | "created_at" | "boundary">[];
+}
+export function wbEvaluation(traceId: string): Promise<TraceEvaluationResponse> { return apiFetch(`${WB}/traces/${traceId}/evaluation`); }
+export function wbHistoricalEvaluation(traceId: string, evaluationId: string): Promise<TraceEvaluation> { return apiFetch(`${WB}/traces/${traceId}/evaluation/${evaluationId}`); }

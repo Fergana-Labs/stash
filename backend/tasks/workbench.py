@@ -3,7 +3,7 @@
 from uuid import UUID
 
 from ..celery_app import celery
-from ..services.rm import workbench
+from ..services.rm import workbench, workbench_auto
 from ._celery_helpers import run_async
 
 
@@ -14,7 +14,7 @@ def reconcile():
 
 @celery.task(name="backend.tasks.workbench.assess_trace", soft_time_limit=900, time_limit=960)
 def assess_trace(trace_id: str):
-    return run_async(workbench.process_trace(UUID(trace_id)))
+    return run_async(workbench_auto.process_trace(UUID(trace_id)))
 
 
 @celery.task(name="backend.tasks.workbench.prepare_feedback", soft_time_limit=180, time_limit=210)
