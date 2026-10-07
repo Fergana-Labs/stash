@@ -1,19 +1,13 @@
 "use client";
 
-import { useProductCheckpoint } from "@/components/ProductCheckpointContext";
-import FloodgateComponent from "@/checkpoints/floodgate-2026-10-05/ActionScoringPanel";
-
 import Link from "next/link";
-import { ChevronDown } from "lucide-react";
-import { Popover } from "radix-ui";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { rmListRewardModels, rmScoreTrace, rmSetTrainingContribution } from "@/lib/api";
 import type { RmRewardModel, RmTraceDetail } from "@/lib/types";
-import { errorMessage } from "./rm-text";
-import { actionModelId } from "./action-credit";
+import { errorMessage } from "@/components/reward-models/rm-text";
 
-function LatestActionScoringPanel({ trace, selectedModelId, onModelChange, onReload }: {
+export default function ActionScoringPanel({ trace, selectedModelId, onModelChange, onReload }: {
   trace: RmTraceDetail;
   selectedModelId: string | null;
   onModelChange: (id: string | null) => void;
@@ -34,9 +28,7 @@ function LatestActionScoringPanel({ trace, selectedModelId, onModelChange, onRel
   }, []);
 
   const isDefault = selectedModelId === "default";
-  const effectiveModelId = actionModelId(trace, selectedModelId);
-  const usesShared = isDefault && !!trace.default_evaluator;
-  const savedModelName = trace.action_scores?.find((s) => s.reward_model_id === effectiveModelId)?.reward_model_name;
+  const effectiveModelId = isDefault ? trace.default_evaluator?.id : selectedModelId;
   const eligible = trace.steps.filter((s) => s.role === "assistant" && (s.tool_name || s.content.trim()));
   const run = trace.scoring_runs?.find((r) => r.reward_model_id === effectiveModelId);
   const active = run?.status === "queued" || run?.status === "running";
@@ -52,7 +44,7 @@ function LatestActionScoringPanel({ trace, selectedModelId, onModelChange, onRel
     if (!effectiveModelId) return;
     setRequesting(true);
     try {
-      await rmScoreTrace(trace.id, usesShared ? undefined : effectiveModelId);
+      await rmScoreTrace(trace.id, isDefault ? undefined : effectiveModelId);
       await onReload();
     } catch (e) {
       toast.error(errorMessage(e));
@@ -71,18 +63,10 @@ function LatestActionScoringPanel({ trace, selectedModelId, onModelChange, onRel
   }
 
   return (
-    <Popover.Root>
-      <Popover.Trigger asChild>
-        <button type="button" aria-label="Action credit" className="inline-flex h-7 cursor-pointer items-center gap-1 rounded-md border border-border bg-background px-2 text-[12px] text-muted-foreground transition-colors hover:border-foreground/20 hover:text-foreground">
-          Credit{active || pending ? " · scoring…" : scored ? ` · ${scored}/${eligible.length}` : selectedModelId === null ? " · hidden" : " · unscored"}
-          <ChevronDown className="size-3" />
-        </button>
-      </Popover.Trigger>
-      <Popover.Portal>
-      <Popover.Content aria-label="Action credit settings" align="end" sideOffset={6} className="z-50 w-80 max-w-[calc(100vw-2rem)] rounded-lg border border-border bg-popover p-3 text-[12px] text-popover-foreground shadow-md">
+    <section aria-label="Action credit" className="mb-4 rounded-md border border-border px-3 py-2.5 text-[12px]">
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-medium">Action credit</span>
-        <span className="text-muted-foreground">{usesShared ? `Stash evaluator · v${trace.default_evaluator!.revision}` : savedModelName ?? models?.find((m) => m.id === effectiveModelId)?.name ?? "Stash evaluator"}</span>
+        {isDefault && <span className="text-muted-foreground">{trace.default_evaluator ? `Stash evaluator · v${trace.default_evaluator.revision}` : "Stash evaluator"}</span>}
         {effectiveModelId && <>
           <span className="text-muted-foreground">{scored} / {eligible.length} actions scored</span>
           <button type="button" onClick={() => void score()} disabled={requesting || active || !eligible.length}
@@ -91,7 +75,7 @@ function LatestActionScoringPanel({ trace, selectedModelId, onModelChange, onRel
           </button>
         </>}
       </div>
-      {isDefault && !effectiveModelId && <p className="mt-2 text-muted-foreground">No evaluator is available yet. Credit will appear beside each assistant action and tool call once this trace is scored.</p>}
+      {isDefault && !trace.default_evaluator && <p className="mt-2 text-muted-foreground">Waiting for the first Stash evaluator release. This trace will be scored automatically when it is available.</p>}
       {pending && !active && <p className="mt-2 text-muted-foreground">Automatic scoring is queued.</p>}
       {effectiveModelId && <p className="mt-2 text-muted-foreground">Learned reward from −1 to +1. Higher means this model prefers the action in context; zero is the training reference midpoint. These scores are not correctness probabilities or contributions that add up to the trace score. Use Comment on an action to correct its assessment.</p>}
       {effectiveModelId && run?.status === "failed" && <p role="alert" className="mt-2 text-red-600">Scoring failed: {run.error ?? "Please try again."}{pending ? " Retrying automatically." : ""}</p>}
@@ -106,21 +90,13 @@ function LatestActionScoringPanel({ trace, selectedModelId, onModelChange, onRel
         <summary className="cursor-pointer">Advanced: personal reward models</summary>
         <select aria-label="Action credit model" value={selectedModelId ?? ""} onChange={(e) => onModelChange(e.target.value || null)}
           className="mt-2 min-w-0 max-w-64 rounded border border-border bg-background px-2 py-1">
-          <option value="default">Automatic</option>
+          <option value="default">Stash evaluator (automatic)</option>
           <option value="">Hide scores</option>
           {(models ?? []).map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
         </select>
         {loadError && <p role="alert" className="mt-1 text-red-600">Could not load personal models: {loadError}</p>}
         <p className="mt-1"><Link className="underline" href="/reward-models">Train a reward model</Link> for a custom rubric. Older models need new training to score actions.</p>
       </details>
-      </Popover.Content>
-      </Popover.Portal>
-    </Popover.Root>
+    </section>
   );
-}
-
-export default function ActionScoringPanel(props: React.ComponentProps<typeof LatestActionScoringPanel>) {
-  return useProductCheckpoint() === "floodgate-2026-10-05"
-    ? <FloodgateComponent {...props} />
-    : <LatestActionScoringPanel {...props} />;
 }

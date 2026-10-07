@@ -1,17 +1,14 @@
 "use client";
 
-import { useProductCheckpoint } from "@/components/ProductCheckpointContext";
-import FloodgateComponent from "@/checkpoints/floodgate-2026-10-05/FeedbackDialog";
-
 import Link from "next/link";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { rmGetRewardModel } from "@/lib/api";
 import type { RmRewardModelDetail } from "@/lib/types";
-import { errorMessage } from "./rm-text";
+import { errorMessage } from "@/components/reward-models/rm-text";
 
-function LatestFeedbackDialog({ modelId }: { modelId: string }) {
+export default function FeedbackDialog({ modelId }: { modelId: string }) {
   const [model, setModel] = useState<RmRewardModelDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -53,17 +50,8 @@ function LatestFeedbackDialog({ modelId }: { modelId: string }) {
                 </div>
                 <blockquote className="mx-0 my-3 border-l-2 border-border pl-3 text-sm">{item.evidence_quote}</blockquote>
                 <p className="m-0 text-sm">{item.reason}</p>
-                {item.original_action && item.alternative_action && (
-                  <details className="mt-3 text-sm">
-                    <summary className="cursor-pointer">Compare actions</summary>
-                    <p>Original{item.label === "positive" ? " (preferred)" : ""}</p>
-                    <pre className="whitespace-pre-wrap break-words rounded bg-muted p-3 text-xs">{item.original_action}</pre>
-                    <p>Alternative{item.label === "negative" ? " (preferred)" : ""}</p>
-                    <pre className="whitespace-pre-wrap break-words rounded bg-muted p-3 text-xs">{item.alternative_action}</pre>
-                  </details>
-                )}
                 <p className="mb-0 mt-2 text-xs text-muted-foreground">
-                  {item.included_in_training ? "Included in training data" : item.included_in_evaluation ? "Held-out evaluation data" : "Excluded from training"}
+                  {item.included_in_training ? "Included in training data" : "Excluded from training"}
                   {" · "}{item.confidence === "high" ? "High" : "Low"} assessment confidence
                   {" · "}{item.classifier_model}
                 </p>
@@ -74,10 +62,4 @@ function LatestFeedbackDialog({ modelId }: { modelId: string }) {
       </DialogContent>
     </Dialog>
   );
-}
-
-export default function FeedbackDialog(props: React.ComponentProps<typeof LatestFeedbackDialog>) {
-  return useProductCheckpoint() === "floodgate-2026-10-05"
-    ? <FloodgateComponent {...props} />
-    : <LatestFeedbackDialog {...props} />;
 }

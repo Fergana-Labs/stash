@@ -1,9 +1,5 @@
 "use client";
 
-import { useProductCheckpoint } from "@/components/ProductCheckpointContext";
-import FloodgateComponent from "@/checkpoints/floodgate-2026-10-05/TracesPage";
-
-import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -25,7 +21,7 @@ import type { RmTraceSummary } from "@/lib/types";
 // New runs stream in over OpenTelemetry, so the list refreshes itself.
 const POLL_MS = 5000;
 
-function LatestTracesPage() {
+export default function TracesPage() {
   return (
     <Suspense fallback={<RmPageSkeleton />}>
       <Traces />
@@ -99,7 +95,6 @@ function Traces() {
     <TraceDropzone onImported={() => void load()}>
       <RmPage
         title="Traces"
-        description="Jev automatically evaluates trace success and each action’s contribution using recorded requests and results."
         actions={(
           <>
             <ConnectAgentDialog />
@@ -107,11 +102,6 @@ function Traces() {
           </>
         )}
       >
-        <div className="mb-5 flex flex-wrap items-center gap-3 text-[12px] text-muted-foreground">
-          <span>Trace success and action credit appear automatically after an agent response.</span>
-          <Link href="/reward-models/review" className="underline underline-offset-2">Review corrections</Link>
-          <Link href="/reward-models/changes" className="underline underline-offset-2">Inspect proposed changes</Link>
-        </div>
         {traces === null ? (
           <RmListSkeleton />
         ) : traces.length === 0 ? (
@@ -151,10 +141,4 @@ function Traces() {
       </RmPage>
     </TraceDropzone>
   );
-}
-
-export default function TracesPage() {
-  return useProductCheckpoint() === "floodgate-2026-10-05"
-    ? <FloodgateComponent />
-    : <LatestTracesPage />;
 }
