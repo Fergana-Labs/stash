@@ -5,6 +5,9 @@ everything before it is captured in git history (`git log`), not here.
 
 ## Unreleased
 
+- Automatic Jev evaluations no longer stop at a daily call limit. Traces paused
+  by the previous cap resume automatically and reuse their saved results.
+
 - Agent Workbench automatically uses Jev to judge trace success and estimate each
   action’s credit from recorded results. No grader setup is required. Inspect
   saved evidence, confidence, previous trace versions, and evaluation errors
