@@ -27,6 +27,31 @@ it("keeps an unprocessed interpretation out of accepted human labels", () => {
   expect(screen.getByRole("button", { name: "Accept interpretation and prepare changes" })).toBeDisabled();
 });
 
+it("links an extracted correction separately from the earlier action it corrects", () => {
+  render(<FeedbackReview feedback={{ ...feedback, source: "trace_extraction", source_event_id: "user-correction" }} onReviewed={vi.fn()} />);
+  expect(screen.getByRole("link", { name: "Open source correction →" })).toHaveAttribute("href", "/reward-models/traces/trace#step-user-correction");
+  expect(screen.getByRole("link", { name: "Open target action →" })).toHaveAttribute("href", "/reward-models/traces/trace#step-claim");
+  expect(screen.queryByRole("link", { name: "Open source trace →" })).not.toBeInTheDocument();
+});
+
+it("links a new requirement to its source user message even without a target action", () => {
+  render(<FeedbackReview feedback={{ ...feedback, source: "trace_extraction", source_event_id: "new-requirement", target_step_id: null, assessment_id: null, proposed_verdict: null, change_kind: "requirement_change" }} onReviewed={vi.fn()} />);
+  expect(screen.getByRole("link", { name: "Open source correction →" })).toHaveAttribute("href", "/reward-models/traces/trace#step-new-requirement");
+  expect(screen.queryByRole("link", { name: "Open target action →" })).not.toBeInTheDocument();
+});
+
+it("preserves the trace link for manual feedback without an event anchor", () => {
+  render(<FeedbackReview feedback={{ ...feedback, source_event_id: null, target_step_id: null }} onReviewed={vi.fn()} />);
+  expect(screen.getByRole("link", { name: "Open source trace →" })).toHaveAttribute("href", "/reward-models/traces/trace");
+  expect(screen.queryByRole("link", { name: "Open target action →" })).not.toBeInTheDocument();
+});
+
+it("does not duplicate the source link when the stored target is the same event", () => {
+  render(<FeedbackReview feedback={{ ...feedback, source_event_id: "claim" }} onReviewed={vi.fn()} />);
+  expect(screen.getByRole("link", { name: "Open source correction →" })).toHaveAttribute("href", "/reward-models/traces/trace#step-claim");
+  expect(screen.queryByRole("link", { name: "Open target action →" })).not.toBeInTheDocument();
+});
+
 it("allows accepting an interpretation without promising a change when repository scope is absent", async () => {
   const blockReason = "This trace has no recorded repository directory. The interpretation is saved, but no instruction change can be created without a repository scope.";
   vi.mocked(wbReviewFeedback).mockResolvedValue({ ...feedback, review_status: "accepted" });

@@ -28,6 +28,17 @@ MAX_ATTEMPTS = 3
 CALL_TIMEOUT_SECONDS = 90
 LEASE_MINUTES = 5
 CONTEXT_CHARS = 18000
+CORRECTION_CONTEXT_POLICY_VERSION = "correction-dialogue-v2"
+MAX_RECENT_CONTEXT_EVENTS = 32
+HARNESS_PREFIXES = (
+    "# AGENTS.md instructions",
+    "<heartbeat>",
+    "<teammate-message",
+    "<external_codex_apps_",
+    "<environment_context>",
+    "<system-reminder>",
+    "<send_user_message_question_reply>",
+)
 
 # This prefilter only proposes what to inspect. The model must still establish
 # explicit correction/requirement-change language or abstain. Bare thanks,
@@ -47,10 +58,19 @@ Identify an actual evaluation of prior agent behavior, or an explicit changed ru
 New tasks, routine continuations, questions, thanks, new facts and expressions of uncertainty alone
 are not corrections. 'Check another vendor' is a new request, not criticism. 'I already told you
 the vendor' can be a correction. A new requirement does not make a previous action wrong.
-Return correction=false if unclear or no defensible target is among target_candidates.
-For a correction, select a target_step_id from target_candidates, provide an exact contiguous
-evidence_quote from source_event.content, and explain the attribution. An earlier mistake and its
+Return correction=false if unclear. For an agent_error, select a defensible target_step_id from
+target_candidates; if none is supported, abstain. An explicit new requirement may have
+change_kind=requirement_change and target_step_id=null when it applies going forward without
+criticizing a particular earlier action. Do not assign an arbitrary earlier action to that rule.
+For every correction, provide an exact contiguous evidence_quote from source_event.content,
+and explain the attribution or the new requirement. An earlier mistake and its
 later successful repair are different targets. Do not choose a target merely because it is recent.
+Read the intervening user questions, assistant responses and tool results in chronological order.
+Adjacency and a supplied target_step_id are attribution hints, not proof that a message was corrected.
+Assistant commentary can announce a plan; it is not proof of completion and is not a failure merely
+because the announced action occurs later. Check the subsequent captured tool calls and results.
+A user interruption marker records an interruption, not cancellation or withdrawal of the request.
+Preserve that distinction unless the user's actual words explicitly cancel or change the request.
 change_kind is agent_error, requirement_change, or unclear. No criterion verdict is being assigned.
 The result is only an extracted proposal; a person must review it before it is accepted.
 """
@@ -81,21 +101,28 @@ def _assistant(step: dict) -> bool:
     )
 
 
+def _harness(step: dict) -> bool:
+    metadata = step.get("metadata") or {}
+    return bool(metadata.get("isMeta") or metadata.get("harness")) or (
+        step.get("content") or ""
+    ).lstrip().startswith(HARNESS_PREFIXES)
+
+
+def _interruption(step: dict) -> bool:
+    text = (step.get("content") or "").strip()
+    metadata = step.get("metadata") or {}
+    return (
+        text.startswith(("<turn_aborted>", "[Request interrupted by user"))
+        or metadata.get("type") == "turn_aborted"
+        or metadata.get("event_type") == "turn_aborted"
+    )
+
+
 def eligible_source(step: dict, preceding: list[dict]) -> tuple[bool, str]:
     if step["role"] != "user":
         return False, "not_user_role"
     text = (step.get("content") or "").strip()
-    if not text or text.startswith(
-        (
-            "# AGENTS.md instructions",
-            "<heartbeat>",
-            "<teammate-message",
-            "<external_codex_apps_",
-            "<environment_context>",
-            "<system-reminder>",
-            "<send_user_message_question_reply>",
-        )
-    ):
+    if not text or _harness(step) or _interruption(step):
         return False, "harness_or_instruction_message"
     if not any(_assistant(s) for s in preceding):
         return False, "no_preceding_assistant_target"
@@ -108,76 +135,200 @@ def _clip(text: str, limit: int) -> str:
     marker = "\n[content omitted]\n"
     if len(text) <= limit:
         return text
-    keep = max(0, limit - len(marker))
+    if limit <= len(marker):
+        return marker[:limit]
+    keep = limit - len(marker)
     return text[: keep // 2] + marker + text[-(keep - keep // 2) :]
 
 
-def build_scan_input(steps: list[dict], source: dict) -> dict:
-    """Freeze attribution evidence as of the user's correction, never future events."""
+def _event_kind(step: dict) -> str:
+    metadata = step.get("metadata") or {}
+    if _interruption(step):
+        return "user_interruption_marker"
+    if _harness(step):
+        return "harness_message"
+    if metadata.get("thinking"):
+        return "assistant_thinking"
+    if step["role"] == "tool":
+        return "tool_result"
+    if step["role"] == "assistant":
+        if step.get("tool_name") or step.get("tool_input") is not None:
+            return "tool_call"
+        phase = metadata.get("phase") or metadata.get("channel") or step.get("channel")
+        if phase == "commentary":
+            return "assistant_commentary"
+        if phase == "final":
+            return "assistant_final_response"
+    return f"{step['role']}_message"
+
+
+def _event_content(step: dict) -> str:
+    content = step.get("content") or ""
+    if step.get("tool_input") is not None:
+        content += "\nTool arguments: " + json.dumps(
+            step["tool_input"], ensure_ascii=False, default=str
+        )
+    return content
+
+
+def _context_event(step: dict, previous_id: str | None, next_id: str | None) -> dict:
+    # Preserve evidence about event semantics, without copying arbitrary native
+    # metadata (which can contain another transcript or unbounded tool output).
+    metadata = step.get("metadata") or {}
+    provenance = {}
+    for key in ("phase", "channel", "type", "event_type", "thinking", "isMeta", "harness"):
+        value = metadata.get(key, step.get(key))
+        if isinstance(value, bool):
+            provenance[key] = value
+        elif isinstance(value, str):
+            provenance[key] = value[:80]
+    return {
+        "id": _id(step),
+        "index": _index(step),
+        "role": step["role"],
+        "content": "",
+        "tool_name": str(step["tool_name"])[:120] if step.get("tool_name") else None,
+        "metadata": provenance,
+        "event_kind": _event_kind(step),
+        "previous_event_id": previous_id,
+        "next_event_id": next_id,
+    }
+
+
+def _serialized_size(value) -> int:
+    return len(json.dumps(value, ensure_ascii=False, sort_keys=True))
+
+
+def build_correction_context(
+    steps: list[dict], source: dict, target_id: UUID | str | None = None
+) -> dict:
+    """Keep recent dialogue together and freeze all evidence at the source user.
+
+    Source plus context event records occupy at most CONTEXT_CHARS serialized
+    characters. Recent events get space before long individual messages expand.
+    The latest two actual user messages and an explicitly supplied target are
+    reserved even when an intervening tool sequence exceeds the recent window.
+    """
     ordered = sorted(steps, key=_index)
     actual = next((s for s in ordered if _id(s) == _id(source)), None)
     if actual is None or _index(actual) != _index(source):
         raise ValueError("Correction source must identify a captured event")
+    if actual["role"] != "user":
+        raise ValueError("Correction source must be a captured user event")
     preceding = [s for s in ordered if _index(s) < _index(actual)]
+    target = None
+    if target_id is not None:
+        target = next((s for s in preceding if _id(s) == str(target_id)), None)
+        if target is None or not _assistant(target):
+            raise ValueError("Correction target must be a preceding non-thinking assistant event")
+
+    prefix = [*preceding, actual]
+    records = {
+        _id(step): _context_event(
+            step,
+            _id(prefix[i - 1]) if i else None,
+            _id(prefix[i + 1]) if i + 1 < len(prefix) else None,
+        )
+        for i, step in enumerate(prefix)
+    }
+    source_content = actual.get("content") or ""
+    source_event = {**records[_id(actual)], "content": _clip(source_content, 6000)}
+    source_limit = 6000
+    while _serialized_size(source_event) > 7000:
+        source_limit -= max(1, (_serialized_size(source_event) - 7000 + 1) // 2)
+        source_event["content"] = _clip(source_content, max(0, source_limit))
+    remaining = CONTEXT_CHARS - _serialized_size(
+        {"source_event": source_event, "context_events": []}
+    )
+    # Keep room to expand the important messages after reserving a dialogue
+    # suffix. Otherwise many large assistant messages crowd out user/tool turns.
+    expansion_reserve = min(4000, remaining // 3)
+    selection_budget = remaining - expansion_reserve
+    users = [
+        s for s in preceding if s["role"] == "user" and not _harness(s) and not _interruption(s)
+    ]
+    anchors = [*([target] if target else []), *users[-2:]]
+    selected = {}
+    contents = {}
+
+    def include(step):
+        nonlocal selection_budget, remaining
+        sid = _id(step)
+        if sid in selected:
+            return True
+        content = _event_content(step)
+        event = {**records[sid], "content": _clip(content, 256)}
+        size = _serialized_size(event) + 2  # JSON array separator
+        if size > selection_budget:
+            return False
+        selected[sid] = event
+        contents[sid] = content
+        selection_budget -= size
+        remaining -= size
+        return True
+
+    for step in anchors:
+        include(step)
+    for step in reversed(preceding[-MAX_RECENT_CONTEXT_EVENTS:]):
+        if not include(step):
+            break  # A suffix, rather than a role-based sample with hidden holes.
+
+    # Spend the reserved space on user questions, the proposed target and recent
+    # replies/results. A single huge old reply never wins before dialogue exists.
+    for step in [*users[-2:][::-1], *([target] if target else []), *reversed(preceding)]:
+        sid = _id(step)
+        if sid not in selected or remaining <= 0:
+            continue
+        event = selected[sid]
+        before = _serialized_size(event)
+        limit = min(2000, len(event["content"]) + remaining)
+        updated = {**event, "content": _clip(contents[sid], limit)}
+        # JSON escaping can make a character cost more than one serialized char.
+        while _serialized_size(updated) - before > remaining:
+            limit -= max(1, (_serialized_size(updated) - before - remaining + 1) // 2)
+            updated["content"] = _clip(contents[sid], limit)
+        remaining -= _serialized_size(updated) - before
+        selected[sid] = updated
+
+    omissions = []
+    for step in preceding:
+        sid = _id(step)
+        if sid not in selected:
+            omissions.append({"step_id": sid, "reason": "context_budget"})
+        elif selected[sid]["content"] != contents[sid]:
+            omissions.append({"step_id": sid, "reason": "content_clipped"})
+    if source_event["content"] != source_content:
+        omissions.append({"step_id": _id(actual), "reason": "source_clipped"})
+
+    return {
+        "source_event": source_event,
+        "context_events": sorted(selected.values(), key=lambda s: s["index"]),
+        "target_candidates": [_id(s) for s in preceding if _id(s) in selected and _assistant(s)],
+        "target_step_id": _id(target) if target else None,
+        "evidence_cutoff": {"step_id": _id(actual), "step_index": _index(actual)},
+        "omissions": {"count": len(omissions)},
+        "omission_details": omissions,
+        "context_policy_version": CORRECTION_CONTEXT_POLICY_VERSION,
+        "max_context_chars": CONTEXT_CHARS,
+        "source_sha256": hashlib.sha256(source_content.encode()).hexdigest(),
+    }
+
+
+def build_scan_input(steps: list[dict], source: dict) -> dict:
+    """Freeze attribution evidence as of the user's correction, never future events."""
+    context = build_correction_context(steps, source)
+    actual = next(s for s in steps if _id(s) == _id(source))
+    preceding = [s for s in steps if _index(s) < _index(actual)]
     eligible, _ = eligible_source(actual, preceding)
     if not eligible:
         raise ValueError("This captured event is not eligible for correction extraction")
-    actions = [s for s in preceding if _assistant(s)]
-    candidates = {_id(s) for s in [*actions[:1], *actions[-12:]]}
-    first_request = next((s for s in preceding if s["role"] == "user"), None)
-    priority = [*actions[-12:][::-1], *actions[:1]]
-    if first_request:
-        priority.append(first_request)
-    priority.extend(reversed(preceding))
-    remaining = CONTEXT_CHARS
-    selected = {}
-    omissions = []
-    for step in priority:
-        if _id(step) in selected or remaining < 200:
-            continue
-        content = step.get("content") or ""
-        tool_input = step.get("tool_input")
-        if tool_input is not None:
-            content += "\nTool arguments: " + json.dumps(
-                tool_input, ensure_ascii=False, default=str
-            )
-        text = _clip(content, min(remaining, 2000))
-        selected[_id(step)] = {
-            "id": _id(step),
-            "index": _index(step),
-            "role": step["role"],
-            "content": text,
-            "tool_name": step.get("tool_name"),
-        }
-        remaining -= len(text) + 100
-        if text != content:
-            omissions.append({"step_id": _id(step), "reason": "content_clipped"})
-    omissions.extend(
-        {"step_id": _id(s), "reason": "context_budget"} for s in preceding if _id(s) not in selected
-    )
-    source_content = _clip(actual["content"], 6000)
-    if source_content != actual["content"]:
-        omissions.append({"step_id": _id(actual), "reason": "source_clipped"})
-    payload = {
-        "source_event": {
-            "id": _id(actual),
-            "index": _index(actual),
-            "role": "user",
-            "content": source_content,
-        },
-        "context_events": sorted(selected.values(), key=lambda s: s["index"]),
-        "target_candidates": sorted(candidates & selected.keys()),
-        "evidence_cutoff": {"step_id": _id(actual), "step_index": _index(actual)},
-        "omissions": {"count": len(omissions)},
-    }
+    payload = {k: v for k, v in context.items() if k != "omission_details"}
     prompt = json.dumps(payload, ensure_ascii=False, sort_keys=True)
     return {
-        **payload,
-        "omission_details": omissions,
+        **context,
         "system": SYSTEM,
         "prompt": prompt,
         "model": llm._model_for(llm.ModelTier.QUALITY),
-        "source_sha256": hashlib.sha256(actual["content"].encode()).hexdigest(),
     }
 
 
@@ -200,7 +351,10 @@ async def classify(snapshot: dict) -> CorrectionSignal:
 def feedback_data(trace_id: UUID, snapshot: dict, signal: CorrectionSignal) -> dict | None:
     if not signal.correction:
         return None
-    if signal.target_step_id not in snapshot["target_candidates"]:
+    if signal.target_step_id is None:
+        if signal.change_kind != "requirement_change":
+            raise ValueError("Only a new requirement may omit a preceding assistant target")
+    elif signal.target_step_id not in snapshot["target_candidates"]:
         raise ValueError("Extracted correction must target a supplied preceding assistant event")
     quote = signal.evidence_quote
     if not quote or not quote.strip() or quote not in snapshot["source_event"]["content"]:
@@ -209,7 +363,7 @@ def feedback_data(trace_id: UUID, snapshot: dict, signal: CorrectionSignal) -> d
         raise ValueError("An omission marker cannot serve as quoted human evidence")
     return {
         "trace_id": trace_id,
-        "target_step_id": UUID(signal.target_step_id),
+        "target_step_id": UUID(signal.target_step_id) if signal.target_step_id else None,
         "comment": quote,
         "change_kind": signal.change_kind,
         # No criterion has been selected or judged here. Interpretation and

@@ -22,10 +22,10 @@ export interface Assessment {
   created_at: string; usage?: unknown; mode?: string;
 }
 export interface WorkbenchFeedback {
-  id: string; trace_id: string; assessment_id: string | null; target_step_id: string | null;
+  id: string; trace_id: string; assessment_id: string | null; target_step_id: string | null; source_event_id?: string | null;
   comment: string; proposed_verdict: Verdict | null; change_kind: ChangeKind;
   interpretation: unknown; review_status: string; source?: string; status: string; error?: string | null;
-  author_user_id: string; created_at: string; changes?: WorkbenchChange[];
+  author_user_id: string; created_at: string; updated_at?: string; changes?: WorkbenchChange[];
   history?: unknown[];
 }
 export interface WorkbenchChange {
