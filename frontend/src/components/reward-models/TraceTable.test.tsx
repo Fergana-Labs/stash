@@ -74,3 +74,15 @@ it("shows and sorts comment counts independently of stored ratings", () => {
     .toEqual(["Trace 10", "Trace 3", "Trace 20"]);
   expect(screen.getByRole("cell", { name: "12" })).toBeVisible();
 });
+
+it("keeps criterion violations separate from execution failures and filters each", () => {
+  const rows = traces.map((trace, i) => ({ ...trace, workbench: { assessed_actions: i === 0 ? 2 : 0, total_actions: 5, violations: i === 0 ? 1 : 0, pending: 0, failed: i === 1 ? 1 : 0, queue_status: i === 1 ? "failed" : "completed" } }));
+  render(<TraceTable traces={rows} selected={new Set()} onSelectedChange={vi.fn()} mode="browse" />);
+  expect(screen.getByText("2 / 5 actions assessed")).toBeVisible();
+  fireEvent.change(screen.getByRole("combobox", { name: "Filter assessment status" }), { target: { value: "violations" } });
+  expect(screen.getByRole("link", { name: "Trace 20" })).toBeVisible();
+  expect(screen.queryByRole("link", { name: "Trace 3" })).not.toBeInTheDocument();
+  fireEvent.change(screen.getByRole("combobox", { name: "Filter assessment status" }), { target: { value: "failed" } });
+  expect(screen.getByRole("link", { name: "Trace 3" })).toBeVisible();
+  expect(screen.queryByText(/criterion violation$/)).not.toBeInTheDocument();
+});

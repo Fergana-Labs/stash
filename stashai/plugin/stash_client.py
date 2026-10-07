@@ -145,6 +145,19 @@ class StashClient:
     def whoami(self) -> dict:
         return self._get("/api/v1/users/me")
 
+    def workbench_instruction_delivery(
+        self, session_id: str, source_format: str, repository: str
+    ) -> dict:
+        """Offer the released instruction versions pinned to this session."""
+        return self._post(
+            "/api/v1/rm/workbench/instruction-deliveries",
+            json={
+                "session_id": session_id,
+                "source_format": source_format,
+                "repository": repository,
+            },
+        )
+
     # --- Events ---
 
     _EVENTS_PATH = "/api/v1/me/sessions/events"

@@ -8,6 +8,8 @@ import { useConfirm } from "@/components/ConfirmDialog";
 import AnnotationComposer, { type ComposerTarget } from "@/components/reward-models/AnnotationComposer";
 import AnnotationSidebar from "@/components/reward-models/AnnotationSidebar";
 import ActionScoringPanel from "@/components/reward-models/ActionScoringPanel";
+import AssessmentInspector from "@/components/workbench/AssessmentInspector";
+import TraceReviewAccess from "@/components/workbench/TraceReviewAccess";
 import { actionModelId } from "@/components/reward-models/action-credit";
 import { TraceSkeleton } from "@/components/reward-models/RmSkeletons";
 import TraceFlamegraph from "@/components/reward-models/TraceFlamegraph";
@@ -72,9 +74,10 @@ export default function TraceClient({ traceId }: { traceId: string }) {
   const navigation = useRef<HTMLDivElement | null>(null);
   const canvas = useRef<HTMLDivElement | null>(null);
   const scroller = useRef<HTMLDivElement | null>(null);
+  const openedHash = useRef<string | null>(null);
 
   useBreadcrumbs(
-    [{ label: "Reward models", href: "/reward-models" }, { label: trace?.title ?? "Trace" }],
+    [{ label: "Traces", href: "/reward-models" }, { label: trace?.title ?? "Trace" }],
     `rm-trace-${traceId}-${trace?.title ?? ""}`,
   );
 
@@ -95,6 +98,34 @@ export default function TraceClient({ traceId }: { traceId: string }) {
     const timer = setTimeout(() => setFlashStepId(null), FLASH_MS);
     return () => clearTimeout(timer);
   }, [flashStepId]);
+
+  // Review records and load receipts link to captured events, including tool
+  // results nested inside initially collapsed rows.
+  useEffect(() => {
+    if (!trace) return;
+    let frame = 0;
+    const revealHash = () => {
+      const hash = window.location.hash;
+      if (!hash.startsWith("#step-") || openedHash.current === hash) return;
+      const stepId = hash.slice("#step-".length);
+      const row = buildRows(trace.steps).find((candidate) => rowSteps(candidate).some((step) => step.id === stepId));
+      if (!row) return;
+      openedHash.current = hash;
+      setView("all");
+      setRowChoice((current) => new Map(current).set(row.key, true));
+      setFlashStepId(stepId);
+      frame = requestAnimationFrame(() => {
+        const element = document.getElementById(`step-${stepId}`);
+        const container = scroller.current;
+        if (!element || !container || !navigation.current) return;
+        const top = container.scrollTop + element.getBoundingClientRect().top - container.getBoundingClientRect().top - navigation.current.offsetHeight - 12;
+        container.scrollTo({ top, behavior: "instant" });
+      });
+    };
+    revealHash();
+    window.addEventListener("hashchange", revealHash);
+    return () => { cancelAnimationFrame(frame); window.removeEventListener("hashchange", revealHash); };
+  }, [trace]);
 
   const closeComposer = useCallback(() => setComposer(null), []);
 
@@ -228,7 +259,8 @@ export default function TraceClient({ traceId }: { traceId: string }) {
 
   /** Scrolls to a step, opening its row and clearing a filter that hides it. */
   function revealStep(stepId: string) {
-    const row = rows.find((r) => rowSteps(r).some((s) => s.id === stepId))!;
+    const row = rows.find((r) => rowSteps(r).some((s) => s.id === stepId));
+    if (!row) return;
     if (!inView(row, view)) setView("all");
     if (!isExpanded(row) && row.kind !== "assistant") toggleRow(row);
     setFlashStepId(stepId);
@@ -303,6 +335,9 @@ export default function TraceClient({ traceId }: { traceId: string }) {
               </button>
             </div>
           </header>
+
+          <TraceReviewAccess traceId={traceId} viewerId={viewerId} />
+          <AssessmentInspector traceId={traceId} steps={trace.steps} onJump={revealStep} viewerId={viewerId} />
 
           <div ref={navigation} className="sticky top-0 z-20 bg-background pb-2">
             <TraceMinimap steps={trace.steps} annotations={trace.annotations} actionScores={actionScores} scroller={scroller} navigation={navigation} onJump={(index) => revealStep(trace.steps[index].id)} />

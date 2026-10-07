@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -95,6 +96,7 @@ function Traces() {
     <TraceDropzone onImported={() => void load()}>
       <RmPage
         title="Traces"
+        description="Inspect captured agent work, automatic assessments, and corrections. Configure criteria in Graders to start automatic assessment."
         actions={(
           <>
             <ConnectAgentDialog />
@@ -102,6 +104,11 @@ function Traces() {
           </>
         )}
       >
+        <div className="mb-5 flex flex-wrap items-center gap-3 text-[12px] text-muted-foreground">
+          <Link href="/reward-models/graders" className="underline underline-offset-2">Configure grading</Link>
+          <Link href="/reward-models/review" className="underline underline-offset-2">Review corrections</Link>
+          <Link href="/reward-models/changes" className="underline underline-offset-2">Inspect proposed changes</Link>
+        </div>
         {traces === null ? (
           <RmListSkeleton />
         ) : traces.length === 0 ? (

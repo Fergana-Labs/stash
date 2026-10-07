@@ -159,21 +159,47 @@ async def list_traces(owner_user_id: UUID, limit: int, offset: int) -> dict:
     pool = get_pool()
     rows = await pool.fetch(
         SUMMARY_SELECT
-        + " WHERE t.owner_user_id = $1 ORDER BY t.created_at DESC, t.id LIMIT $2 OFFSET $3",
+        + " WHERE (t.owner_user_id = $1 OR EXISTS (SELECT 1 FROM rm_wb_trace_reviewers r WHERE r.trace_id=t.id AND r.user_id=$1)) ORDER BY t.created_at DESC, t.id LIMIT $2 OFFSET $3",
         owner_user_id,
         limit,
         offset,
     )
     total = await pool.fetchval(
-        "SELECT count(*) FROM rm_traces WHERE owner_user_id = $1", owner_user_id
+        "SELECT count(*) FROM rm_traces t WHERE owner_user_id = $1 OR EXISTS (SELECT 1 FROM rm_wb_trace_reviewers r WHERE r.trace_id=t.id AND r.user_id=$1)",
+        owner_user_id,
     )
-    return {"traces": [_summary(row) for row in rows], "total": total}
+    summaries = [_summary(row) for row in rows]
+    if rows:
+        coverage = await pool.fetch(
+            """WITH selected AS (SELECT unnest($1::uuid[]) AS id), latest AS (
+              SELECT DISTINCT ON (a.trace_id,a.grader_id,a.target_step_id,a.criterion_id) a.*
+              FROM rm_wb_assessments a JOIN rm_wb_graders g ON g.active_version_id=a.grader_version_id
+              WHERE a.trace_id=ANY($1::uuid[]) AND a.target_step_id IS NOT NULL
+              ORDER BY a.trace_id,a.grader_id,a.target_step_id,a.criterion_id,a.attempt DESC,a.created_at DESC
+            ) SELECT t.id,
+              (SELECT count(*) FROM rm_trace_steps s WHERE s.trace_id=t.id AND s.role='assistant'
+               AND (s.tool_name IS NOT NULL OR btrim(s.content)<>'') AND coalesce(s.metadata->>'thinking','false')<>'true') AS total_actions,
+              (SELECT count(DISTINCT target_step_id) FROM rm_wb_assessments a WHERE a.trace_id=t.id AND a.status='completed') AS assessed_actions,
+              (SELECT count(*) FROM latest a WHERE a.trace_id=t.id AND a.verdict='violates') AS violations,
+              (SELECT count(*) FROM latest a WHERE a.trace_id=t.id AND a.status IN ('queued','running')) AS pending,
+              (SELECT count(*) FROM latest a WHERE a.trace_id=t.id AND a.status='failed') AS failed,
+              q.status AS queue_status
+            FROM selected t LEFT JOIN rm_wb_queue q ON q.trace_id=t.id""",
+            [row["id"] for row in rows],
+        )
+        by_id = {r["id"]: {k: v for k, v in dict(r).items() if k != "id"} for r in coverage}
+        for summary in summaries:
+            summary["workbench"] = by_id[summary["id"]]
+    return {"traces": summaries, "total": total}
 
 
 async def get_trace(owner_user_id: UUID, trace_id: UUID) -> dict | None:
     pool = get_pool()
     row = await pool.fetchrow(
-        SUMMARY_SELECT + " WHERE t.owner_user_id = $1 AND t.id = $2", owner_user_id, trace_id
+        SUMMARY_SELECT
+        + " WHERE t.id = $2 AND (t.owner_user_id = $1 OR EXISTS (SELECT 1 FROM rm_wb_trace_reviewers r WHERE r.trace_id=t.id AND r.user_id=$1))",
+        owner_user_id,
+        trace_id,
     )
     if row is None:
         return None
