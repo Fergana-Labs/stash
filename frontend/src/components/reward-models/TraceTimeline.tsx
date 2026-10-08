@@ -6,6 +6,8 @@ import { cn } from "@/lib/utils";
 import type { RmActionScore, RmStep } from "@/lib/types";
 import { creditColor, formatCredit } from "./action-credit";
 import AnchoredText from "./AnchoredText";
+import { StepLabelChips } from "./StepLabels";
+import type { LabelChip } from "./step-labels";
 import { firstLine, isThinking, looksLikeError, toolLabel, toolSummary, type TraceRow } from "./trace-rows";
 import type { Highlight } from "./source-anchors";
 import styles from "./TraceMarkdown.module.css";
@@ -19,6 +21,15 @@ export interface StepAnnotations {
   flashing: (step: RmStep) => boolean;
   onComment: (step: RmStep) => void;
   onSelectAnnotation: (ids: string[]) => void;
+  /** Step labels (what each step is); absent when the trace has none or they are hidden. */
+  labelChips?: (step: RmStep) => LabelChip[];
+  taskHeading?: (step: RmStep) => string | null;
+  onJumpToStep?: (stepId: string) => void;
+}
+
+function Labels({ step, ann, className }: { step: RmStep; ann: StepAnnotations; className?: string }) {
+  if (!ann.labelChips || !ann.onJumpToStep) return null;
+  return <StepLabelChips chips={ann.labelChips(step)} onJump={ann.onJumpToStep} className={className} />;
 }
 
 /** The id is the scroll target for the minimap and comments. */
@@ -154,6 +165,7 @@ function PromptRow({ step, ann, repeated, expanded, onToggle }: {
             Repeated user message{expanded ? " — hide" : " — show"}
           </button>
         ) : <span className="text-[13px] font-semibold text-foreground">User</span>}
+        <Labels step={step} ann={ann} />
         <StepMetadata step={step} ann={ann} />
       </div>
       {(!repeated || expanded) && <StepContent step={step} ann={ann} markdown max={300} />}
@@ -171,6 +183,7 @@ function AssistantRow({ step, ann, first }: { step: RmStep; ann: StepAnnotations
         <span className={cn(first ? "text-[13px] font-semibold text-foreground" : "text-[11px] text-muted-foreground")}>
           {first ? "Assistant" : thinking ? "Thinking" : "Response"}
         </span>
+        <Labels step={step} ann={ann} />
         <StepMetadata step={step} ann={ann} />
       </div>
       <div className={cn(thinking && "text-dim italic")}>
@@ -216,7 +229,8 @@ function ToolRow({
           <span className="shrink-0 text-[10px] text-muted-foreground">{call ? "Tool call" : "Tool result"}</span>
           <span className="min-w-0 truncate text-[12px] text-muted-foreground" title={summary}>{expanded ? "" : summary}</span>
         </button>
-        {isError && <span className="text-[11px] text-red-600">Error</span>}
+        {isError && !ann.labelChips && <span className="text-[11px] text-red-600">Error</span>}
+        <Labels step={head} ann={ann} className="shrink-0 flex-nowrap" />
         <StepMetadata step={head} ann={ann}>
           <button type="button" onClick={onToggle} aria-expanded={expanded}
             className="shrink-0 cursor-pointer text-[11px] font-medium text-dim hover:text-foreground hover:underline underline-offset-4">
@@ -348,8 +362,18 @@ export default function TraceTimeline({
       const previous = groupRows[index - 1];
       const repeated = previous?.kind === "prompt" && previous.step.index + 1 === row.step.index
         && previous.step.content === row.step.content;
-      return <PromptRow key={row.key} step={row.step} ann={ann} repeated={repeated}
-        expanded={isExpanded(row)} onToggle={() => onToggle(row)} />;
+      const task = ann.taskHeading?.(row.step) ?? null;
+      return (
+        <div key={row.key}>
+          {task !== null && (
+            <div className="mb-2 flex items-center gap-2 text-[10.5px] font-medium tracking-wide text-muted-foreground uppercase">
+              <span>{task}</span>
+              <span aria-hidden="true" className="h-px flex-1 bg-border-subtle" />
+            </div>
+          )}
+          <PromptRow step={row.step} ann={ann} repeated={repeated} expanded={isExpanded(row)} onToggle={() => onToggle(row)} />
+        </div>
+      );
     }
     if (row.kind === "assistant") return <AssistantRow key={row.key} step={row.step} ann={ann} first={index === 0} />;
     return <ToolRow key={row.key} call={row.call} result={row.result} ann={ann} expanded={isExpanded(row)} onToggle={() => onToggle(row)} />;

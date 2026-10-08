@@ -6,7 +6,7 @@ import asyncpg
 
 from ...config import settings
 from ...database import get_pool
-from . import annotations, evaluator, trace_titles, workbench_evaluation
+from . import annotations, evaluator, step_labeling, trace_titles, workbench_evaluation
 from .adapters import CanonicalTrace, TraceFormatError, parse_traces
 
 SUMMARY_SELECT = """
@@ -324,7 +324,7 @@ async def get_trace(owner_user_id: UUID, trace_id: UUID) -> dict | None:
     )
     summary = _summary(row, owner_user_id)
     await _evaluation_summaries([summary])
-    return {
+    detail = {
         **summary,
         "metadata": row["metadata"],
         "spans": row["spans"],
@@ -337,6 +337,7 @@ async def get_trace(owner_user_id: UUID, trace_id: UUID) -> dict | None:
         "automatic_scoring": dict(automatic) if automatic else None,
         "training_collection": dict(collection) if collection else None,
     }
+    return await step_labeling.merge_into(trace_id, detail)
 
 
 async def delete_trace(owner_user_id: UUID, trace_id: UUID) -> bool:

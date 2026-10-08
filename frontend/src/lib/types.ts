@@ -474,6 +474,8 @@ export interface RmTraceSpan {
 }
 
 export interface RmTraceDetail extends RmTraceSummary {
+  /** Present when automatic step labeling has not produced labels for this trace. */
+  step_labeling?: { status: "pending" | "failed" | "skipped"; error: string | null };
   spans: RmTraceSpan[];
   metadata: Record<string, unknown> | null;
   steps: RmStep[];

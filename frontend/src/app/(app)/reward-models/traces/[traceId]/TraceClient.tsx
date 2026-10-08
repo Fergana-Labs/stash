@@ -21,6 +21,8 @@ import TraceMinimap from "@/components/reward-models/TraceMinimap";
 import TraceTimeline, { type StepAnnotations } from "@/components/reward-models/TraceTimeline";
 import { errorMessage, locateQuote, quoteFromOffsets, relativeTime, sortAnnotations } from "@/components/reward-models/rm-text";
 import { domSourceOffset, type Highlight } from "@/components/reward-models/source-anchors";
+import { TraceLabelSummary } from "@/components/reward-models/StepLabels";
+import { buildTraceLabels } from "@/components/reward-models/step-labels";
 import { buildRows, rowSteps, type TraceRow } from "@/components/reward-models/trace-rows";
 import { traceScrollMarkers, visibleStepElement } from "@/components/reward-models/trace-scroll";
 import { useAuth } from "@/hooks/useAuth";
@@ -75,6 +77,7 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
   const [pendingAnnotationId, setPendingAnnotationId] = useState<string | null>(null);
   const [view, setView] = useState<View>("all");
   const [expandAll, setExpandAll] = useState(false);
+  const [showLabels, setShowLabels] = useState(true);
   // Rows the user opened (true) or closed (false) by hand; the rest follow their default.
   const [rowChoice, setRowChoice] = useState<Map<string, boolean>>(new Map());
   const navigation = useRef<HTMLDivElement | null>(null);
@@ -141,6 +144,9 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
   const viewerId = user.id;
   const ordered = sortAnnotations(trace.annotations.filter((a) => a.comment !== null), trace.steps);
   const rows = buildRows(trace.steps);
+  // Step labels say what each step is; they sit next to the automatic credit, which says how it went.
+  const labels = buildTraceLabels(trace.steps);
+  const labelsOn = labels.present && showLabels;
   const current = evaluation?.current;
   const score = current?.outcome !== "insufficient_evidence" ? current?.outcome_probabilities?.success : null;
   const actionScores = automaticActionScores(evaluation, trace.steps);
@@ -309,6 +315,7 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
     flashing: (step) => flashStepId === step.id,
     onComment: (step) => openComposer(step.id),
     onSelectAnnotation: focusCard,
+    ...(labelsOn && { labelChips: labels.chips, taskHeading: labels.taskHeading, onJumpToStep: revealStep }),
   };
 
   const visibleRows = rows.filter((row) => inView(row, view));
@@ -351,6 +358,15 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
             </div>
           </header>
 
+          {labelsOn && <TraceLabelSummary items={labels.summary} onJump={revealStep} />}
+          {!labels.present && trace.step_labeling && (
+            <p className="m-0 mb-2 text-[12px] text-muted-foreground">
+              {trace.step_labeling.status === "pending" ? "Step labels for this trace are being generated."
+                : trace.step_labeling.status === "skipped" ? "Step labels were not generated for this trace. "
+                : "Generating step labels for this trace failed. "}
+              {trace.step_labeling.error}
+            </p>
+          )}
           {evaluation?.queue?.status === "failed" && evaluation.owner_user_id === viewerId && <Button size="xs" variant="ghost" onClick={() => void wbAssess(traceId).then(reloadEvaluation).catch((e) => toast.error(errorMessage(e)))}>Retry scoring</Button>}
             <TraceMinimap steps={trace.steps} annotations={trace.annotations} actionScores={actionScores} annotationStatus={annotationProgress.label} unscoredReasons={annotationProgress.unscoredReasons} scroller={scroller} navigation={navigation} onJump={(index) => revealStep(trace.steps[index].id)} />
             <TraceFlamegraph spans={trace.spans} onJump={(index) => revealStep(trace.steps[index].id)} />
@@ -362,6 +378,11 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
                 </ToolbarButton>
               ))}
               <span className="flex-1" />
+              {labels.present && (
+                <ToolbarButton active={showLabels} onClick={() => setShowLabels(!showLabels)}>
+                  Labels
+                </ToolbarButton>
+              )}
               <ToolbarButton
                 active={expandAll}
                 onClick={() => {

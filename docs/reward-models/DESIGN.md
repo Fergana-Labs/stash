@@ -115,6 +115,40 @@ shape every adapter produces.
 - Step `metadata.timestamp` holds a recorded ISO 8601 datetime with timezone. Claude Code, Codex, and timestamped OpenAI messages preserve their timestamps. Untimed messages stay untimed.
 - `spans` records timed operations independently of conversation steps. OpenTelemetry imports preserve span IDs, parent IDs, nanosecond start/end times, operation names/kinds, recorded inputs/outputs, and references to retained message indices. The viewer plots overlapping operations on a shared time axis and nests subagents by parent ID. Untimed traces have an empty span list; no durations are inferred from step order.
 
+### Step labels
+
+A step label says what a step *is*, without judging it: what the user is doing
+with a message, how they reacted to which answer, what a tool call did and
+returned, whether it repeats an earlier call, and what the agent handed the
+user. The automatic annotation estimates how well a step went; the label is
+the observable fact next to that number. The trace view shows labels as chips
+on each row, links a user's reaction to the answer it is about, counts them in
+a summary bar, and hides them with a Labels toggle.
+
+A label is `steps[].metadata.label`: `chunk_id`, `task_id`, `actor` (`user` or
+`agent`), then for a user step `intent`, `verdict`, `verdict_target`,
+`sentiment`; for an agent step `type`, `effect`, `result`, `duplicate_of`,
+`is_output`, `outcome`, `stance`, `coverage`; plus `evidence` and `note`.
+`verdict_target` and `duplicate_of` are `chunk_id`s in the same trace. Labels
+reach a trace in one of two ways:
+
+- **Import.** A trace labeled by an offline run carries its labels in step
+  metadata. It is shown as it is and never labeled again.
+- **Automatic labeling** (`services/rm/step_labeling.py`, off unless
+  `STEP_LABELING_ENABLED=true`). Once a trace owned by an account with
+  `reward_models_enabled` has been quiet for five minutes, a beat sweep claims
+  it and a heavy-queue task cuts it into chunks (a user message, an agent
+  message, or a tool call with its result) and asks `STEP_LABEL_MODEL`
+  (default `gpt-6-sol`) to label each chunk, one call per chunk with the whole
+  conversation as a cached prompt prefix (`step_labeler.py`). Labels are stored
+  in `rm_step_labels`, keyed by a fingerprint of the steps, and merged into
+  `GET /traces/{id}` on read; a trace is labeled again only when its steps
+  change. It needs `OPENAI_API_KEY` and sends trace content to OpenAI. Cost
+  grows with the square of trace length, so a trace above
+  `STEP_LABELING_MAX_CHUNKS` (80) or `STEP_LABELING_MAX_CHARS` (200000) is
+  recorded as skipped with the reason, as is a failure after three attempts;
+  the response then carries `step_labeling` (`status`, `error`).
+
 ### Supported input formats
 
 `format` on import is one of the names below or `auto`. `auto` detects the

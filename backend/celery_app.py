@@ -42,6 +42,7 @@ celery = Celery(
         "backend.tasks.agent_schedules",
         "backend.tasks.reward_models",
         "backend.tasks.workbench",
+        "backend.tasks.step_labeling",
         "backend.tasks.optimization",
         "backend.integrations.google.exporters.slides",
         "backend.exports.pdf",
@@ -61,6 +62,7 @@ celery.conf.update(
     ),
     task_routes={
         "backend.tasks.extraction.extract_file_text": {"queue": "heavy"},
+        "backend.tasks.step_labeling.label_trace": {"queue": "heavy"},
         "backend.tasks.drive_extraction.extract_drive_document": {"queue": "heavy"},
         "backend.tasks.clips.process_url_imports": {"queue": "heavy"},
         "backend.tasks.sources.sync_source": {"queue": "sync"},
@@ -101,6 +103,11 @@ celery.conf.update(
         "workbench-reconcile": {
             "task": "backend.tasks.workbench.reconcile",
             "schedule": 15.0,
+        },
+        "step-labeling-reconcile": {
+            "task": "backend.tasks.step_labeling.reconcile",
+            # A no-op unless STEP_LABELING_ENABLED; each pass hands a few quiet traces to the heavy queue.
+            "schedule": 60.0,
         },
         "shared-evaluator-reconcile": {
             "task": "backend.tasks.reward_models.reconcile",
