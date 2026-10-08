@@ -134,14 +134,23 @@ tried when nothing matches.
 
 ## Trace sections
 
-The trace explorer partitions displayed rows into a tree with at most four
-children at every level, including the overview. Existing task labels take
-precedence; otherwise request boundaries and recorded progress divide the
-trace. Adjacent tasks can share an overview parent while retaining separate
-children. System context and tool-output pairing do not change source step IDs.
-Cards resize to the visible canvas. Hovering a card for 450 ms opens its next
-level; leaf rows open expanded. Click, keyboard activation, and breadcrumbs
-remain available. A stationary pointer does not trigger further descent.
+The trace explorer groups displayed rows by requests, recorded progress
+subtasks, and recognizable changes in work such as inspecting, editing,
+verifying, publishing, or moving between sites. Existing task labels take
+precedence over request heuristics. No section-count or step-count limit creates
+artificial groups: a continuous run without a recognizable boundary stays
+together, and distinct tasks are never combined to fit a screen. System context
+and tool-output pairing do not change source step IDs. Cards use their natural
+height; longer lists scroll and keyboard selection stays in view. Up/down arrows select a section; right
+opens it with leaf rows expanded; left returns to the parent and restores the
+previous selection. Mouse movement highlights a card and clicking opens it.
+Keyboard navigation leaves text inputs, dialogs, the minimap, and other controls
+alone. Breadcrumbs and Escape also provide a way back.
+The left rail scrubs the visible level: section cards while browsing tasks or
+subtasks, and rendered steps inside a leaf. It never opens another level during
+a drag. Its first marker returns to the top of the current view, and scrubbing
+returns focus to the explorer so arrows remain usable. The top action minimap
+still provides direct navigation across the entire trace.
 
 `POST /api/v1/rm/traces/{trace_id}/section-summaries` accepts 1–4 ranges of
 `first_step_id` and `last_step_id`. It checks owner/reviewer access and range
@@ -167,7 +176,9 @@ expires after interrupted work. API failures leave step ranges navigable;
 `pending` and `unavailable` distinguish loading from failed generation. Changes
 to relevant evidence invalidate the cache; opening an unchanged section does
 not regenerate it. The frontend does not poll assessments on ordinary trace
-refreshes. Hovering or focusing a score shows its objective and rationale
+refreshes. The four-range API maximum is only a transport batch size; the
+frontend progressively assesses arbitrary-length lists in batches, with at most
+two requests in flight. Hovering or focusing a score shows its objective and rationale
 without opening the section.
 
 ## Annotations

@@ -21,17 +21,17 @@ it("keeps immutable sources while numbering calls and results as one step, exclu
   expect(isContext(step(0, "Please edit AGENTS.md", "user"))).toBe(false);
 });
 
-it("builds bounded drill-down groups with every row reachable, including paired outputs", () => {
+it("keeps a continuous run of work intact with every row reachable", () => {
   const source = [step(0, "Fix the parser", "user"), ...Array.from({ length: 100 }, (_, i) => ({ ...step(i + 1, ""), tool_name: "exec", tool_call_id: `c${i}` })), step(101, "Done"), step(102, "Create a landing page", "user"), step(103, "Created")];
   const view = presentTrace(source);
   const tree = buildTraceOutline(view.rows);
   expect(tree).toHaveLength(2);
   const leaves: string[] = [];
-  function visit(nodes: typeof tree) { for (const node of nodes) { expect(node.children.length).toBeLessThanOrEqual(4); if (node.children.length) visit(node.children); else leaves.push(...node.rows.flatMap((row) => rowSteps(row).map((s) => s.id))); } }
+  function visit(nodes: typeof tree) { for (const node of nodes) { if (node.children.length) visit(node.children); else leaves.push(...node.rows.flatMap((row) => rowSteps(row).map((s) => s.id))); } }
   visit(tree);
   expect(leaves).toEqual(source.map((s) => s.id));
   const path = groupPath(tree, "s60");
-  expect(path.length).toBeGreaterThan(1);
+  expect(path).toHaveLength(1);
   expect(resolveGroupPath(tree, path).at(-1)!.rows.some((row) => row.key === "s60")).toBe(true);
 });
 
@@ -42,18 +42,19 @@ it("respects recorded task identity and keeps acknowledgements with the precedin
 });
 
 
-it("caps root and nested levels at four without dropping or duplicating long multi-task traces", () => {
+it("keeps all tasks separate regardless of their number or length", () => {
   const source = Array.from({ length: 53 }, (_, task) => [step(task * 21, `Request ${task}`, "user"), ...Array.from({ length: 20 }, (_, i) => step(task * 21 + i + 1, `Action ${i}`))]).flat();
   const tree = buildTraceOutline(presentTrace(source).rows);
   const leaves: string[] = [];
   function visit(nodes: typeof tree) {
-    expect(nodes.length).toBeLessThanOrEqual(4);
     for (const node of nodes) {
       if (node.children.length) visit(node.children);
-      else { expect(node.rows.length).toBeLessThanOrEqual(8); leaves.push(...node.rows.map((row) => row.key)); }
+      else { leaves.push(...node.rows.map((row) => row.key)); }
     }
   }
   visit(tree);
+  expect(tree).toHaveLength(53);
+  expect(tree.every((node) => node.rows.length === 21 && node.children.length === 0)).toBe(true);
   expect(leaves).toEqual(source.map((s) => s.id));
   for (const id of ["s0", "s600", "s1112"]) expect(resolveGroupPath(tree, groupPath(tree, id)).at(-1)?.rows.some((row) => row.key === id)).toBe(true);
 });
@@ -64,4 +65,23 @@ it("keeps unrelated requests separate even when the next one starts with Also", 
   const tree = buildTraceOutline(presentTrace(source).rows);
   expect(tree).toHaveLength(2);
   expect(tree.map((node) => node.rows.map((row) => row.key))).toEqual([["s0", "s1"], ["s2", "s3"]]);
+});
+
+
+it("nests distinct activities under recorded progress subtasks without capping either level", () => {
+  let index = 0;
+  const source: RmStep[] = [step(index++, "Build the web app", "user")];
+  for (let phase = 0; phase < 6; phase++) {
+    source.push({ ...step(index++, `Implement feature ${phase}`), metadata: { phase: "commentary" } });
+    source.push({ ...step(index++, ""), tool_name: "read_file", tool_input: { path: `feature${phase}.ts` } });
+    source.push({ ...step(index++, ""), tool_name: "apply_patch", tool_input: { patch: "Fix feature" } });
+    source.push({ ...step(index++, ""), tool_name: "exec_command", tool_input: { cmd: "npm test" } });
+  }
+  const tree = buildTraceOutline(presentTrace(source).rows);
+  expect(tree).toHaveLength(1);
+  expect(tree[0].children).toHaveLength(6);
+  expect(tree[0].children.every((node) => node.children.length === 3)).toBe(true);
+  expect(groupPath(tree, "s10")).toHaveLength(3);
+  const leaves = tree.flatMap((task) => task.children.flatMap((subtask) => subtask.children.flatMap((node) => node.rows.flatMap(rowSteps))));
+  expect(leaves.map((s) => s.id)).toEqual(source.map((s) => s.id));
 });

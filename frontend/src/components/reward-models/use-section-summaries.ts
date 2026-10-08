@@ -30,19 +30,30 @@ export function useSectionSummaries(traceId: string, nodes: TraceGroup[]) {
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let attempts = 0;
+    const failed = new Set<string>();
     setStatus("loading");
     async function load() {
-      try {
-        const result = await rmSummarizeSections(traceId, missing.map(({ first_step_id, last_step_id }) => ({ first_step_id, last_step_id })));
-        if (cancelled) return;
-        for (const copy of result.sections) {
-          const request = missing.find((item) => item.first_step_id === copy.first_step_id && item.last_step_id === copy.last_step_id);
-          if (request) cache.current.set(request.identity, copy);
-        }
-        refresh((value) => value + 1);
-        if (result.pending && ++attempts < 35) timer = setTimeout(() => void load(), 3000);
-        else setStatus(result.unavailable || result.pending ? "unavailable" : "ready");
-      } catch { if (!cancelled) setStatus("unavailable"); }
+      const remaining = missing.filter((item) => !cache.current.has(item.identity) && !failed.has(item.identity));
+      const batches = Array.from({ length: Math.ceil(remaining.length / 4) }, (_, i) => remaining.slice(i * 4, (i + 1) * 4));
+      // Four is only an API batch size. Keep arbitrary-length task lists and
+      // publish each batch as it arrives, with at most two requests in flight.
+      for (let i = 0; i < batches.length && !cancelled; i += 2) {
+        await Promise.all(batches.slice(i, i + 2).map(async (batch) => {
+          try {
+            const result = await rmSummarizeSections(traceId, batch.map(({ first_step_id, last_step_id }) => ({ first_step_id, last_step_id })));
+            for (const copy of result.sections) {
+              const request = batch.find((item) => item.first_step_id === copy.first_step_id && item.last_step_id === copy.last_step_id);
+              if (request) cache.current.set(request.identity, copy);
+            }
+            if (result.unavailable) for (const item of batch) if (!cache.current.has(item.identity)) failed.add(item.identity);
+          } catch { for (const item of batch) failed.add(item.identity); }
+          if (!cancelled) refresh((value) => value + 1);
+        }));
+      }
+      if (cancelled) return;
+      const pending = missing.some((item) => !cache.current.has(item.identity) && !failed.has(item.identity));
+      if (pending && ++attempts < 35) timer = setTimeout(() => void load(), 3000);
+      else setStatus(failed.size || pending ? "unavailable" : "ready");
     }
     void load();
     return () => { cancelled = true; clearTimeout(timer); };
