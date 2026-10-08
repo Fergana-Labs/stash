@@ -99,7 +99,7 @@ function Traces() {
     <TraceDropzone onImported={() => void load()}>
       <RmPage
         title="Traces"
-        description="Jev automatically evaluates trace success and each action’s contribution using recorded requests and results."
+        description="Stash automatically evaluates trace success and each action’s contribution using recorded requests and results."
         actions={(
           <>
             <ConnectAgentDialog />

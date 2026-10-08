@@ -116,7 +116,7 @@ function LatestTraceTable({
                   </button>
                 </th>
               ))}
-              {mode === "browse" && <th scope="col" className="w-44 px-3 py-2 text-right font-medium">Jev evaluation</th>}
+              {mode === "browse" && <th scope="col" className="w-44 px-3 py-2 text-right font-medium">Evaluation</th>}
               {mode === "browse" && <th className="w-10 px-2 py-2" />}
             </tr>
           </thead>
