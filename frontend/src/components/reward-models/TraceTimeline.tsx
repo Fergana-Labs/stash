@@ -29,7 +29,7 @@ function RowFrame({ step, flashing, children, className, credit }: { step: RmSte
       style={credit === undefined ? undefined : { backgroundColor: creditColor(credit, 0.07), boxShadow: `inset 3px 0 ${creditColor(credit)}` }}
       className={cn(
         "relative scroll-mt-44 transition-colors duration-700",
-        credit !== undefined && "pl-3",
+        "px-2",
         flashing && "bg-amber-100/60 ring-1 ring-amber-400/50 dark:bg-amber-400/10",
         className,
       )}
@@ -130,7 +130,7 @@ function StepMetadata({ step, ann, children }: { step: RmStep; ann: StepAnnotati
     <div className="ml-auto flex shrink-0 items-center gap-3 text-[11px] text-muted-foreground tabular-nums">
       <StepTime step={step} />
       {score && <span className="rounded px-1.5 py-0.5 font-medium text-foreground" style={{ backgroundColor: creditColor(score.credit, 0.15) }}
-        title={`${score.reward_model_name}: relative learned reward ${formatCredit(score.credit)}; raw score ${score.score.toFixed(3)}`}>
+        title={score.reward_model_id === "automatic" ? `Automatic action annotation: ${formatCredit(score.credit)} (−1 to +1)` : `${score.reward_model_name}: ${formatCredit(score.credit)}`}>
         Credit {formatCredit(score.credit)}
       </span>}
       <span>Step {step.index + 1}</span>
@@ -202,7 +202,7 @@ function ToolRow({
     : /^\s*[\[{]/.test(result!.content) ? "" : firstLine(result!.content);
 
   return (
-    <RowFrame step={head} flashing={ann.flashing(head)} credit={ann.actionScore?.(head)?.credit} className="group/row ml-2 border-l border-border pl-3">
+    <RowFrame step={head} flashing={ann.flashing(head)} credit={ann.actionScore?.(head)?.credit} className="group/row">
       {call && call.content !== "" && (
         <div className="group/row relative mb-1 pt-[3px]">
           <StepContent step={call} ann={ann} markdown max={300} />
@@ -311,7 +311,7 @@ function SystemRow({ step, ann, expanded, onToggle }: { step: RmStep; ann: StepA
         </StepMetadata>
       </div>
       {expanded && (
-        <div className="mb-1 pl-3">
+        <div className="mb-1">
           <StepContent step={step} ann={ann} markdown={false} max={420} />
         </div>
       )}

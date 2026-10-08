@@ -2684,17 +2684,19 @@ export async function rmImportTraces(format: string, data: string): Promise<RmIm
 export async function rmListTraces(
   limit: number,
   offset: number,
+  query = "",
+  modelId?: string,
 ): Promise<{ traces: RmTraceSummary[]; total: number }> {
-  return apiFetch(`${RM}/traces?limit=${limit}&offset=${offset}`);
+  return apiFetch(`${RM}/traces?limit=${limit}&offset=${offset}&q=${encodeURIComponent(query)}${modelId ? `&reward_model_id=${encodeURIComponent(modelId)}` : ""}`);
 }
 
 const ALL_TRACES_PAGE = 200;
 
 /** Every trace the caller has, fetched page by page. Selection and filtering happen client-side over this list. */
-export async function rmListAllTraces(): Promise<RmTraceSummary[]> {
+export async function rmListAllTraces(query = "", modelId?: string): Promise<RmTraceSummary[]> {
   const traces: RmTraceSummary[] = [];
   for (let offset = 0; ; offset += ALL_TRACES_PAGE) {
-    const page = await rmListTraces(ALL_TRACES_PAGE, offset);
+    const page = await rmListTraces(ALL_TRACES_PAGE, offset, query, modelId);
     traces.push(...page.traces);
     if (offset + ALL_TRACES_PAGE >= page.total) return traces;
   }
@@ -2754,7 +2756,7 @@ export async function rmCreateRewardModel(body: {
   name: string;
   base_model: string;
   epochs: number;
-  training_config?: { input_version: 3; rubric?: string[]; max_actions_per_trace?: number; task_groups?: Record<string, string>; evaluation_groups?: string[] };
+  training_config?: { input_version: 3; annotation_source?: "feedback" | "automatic"; rubric?: string[]; max_actions_per_trace?: number; task_groups?: Record<string, string>; evaluation_groups?: string[] };
 }): Promise<RmRewardModel> {
   return apiFetch(`${RM}/reward-models`, { method: "POST", body: JSON.stringify(body) });
 }

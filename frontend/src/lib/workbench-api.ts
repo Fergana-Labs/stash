@@ -74,6 +74,7 @@ export function wbRollbackInstruction(graderId: string, changeId: string | null)
 export function wbRollbackGrader(graderId: string, versionId: string): Promise<GraderDetail> { return apiFetch(`${WB}/graders/${graderId}/rollback`, { method: "POST", body: JSON.stringify({ version_id: versionId }) }); }
 export interface TraceReviewers { owner_user_id: string; reviewers: { user_id: string; display_name: string; email: string }[] }
 export function wbTraceReviewers(traceId: string): Promise<TraceReviewers> { return apiFetch(`${WB}/traces/${traceId}/reviewers`); }
+export function wbReviewerSuggestions(traceId: string, query: string): Promise<TraceReviewers["reviewers"]> { return apiFetch(`${WB}/traces/${traceId}/reviewer-suggestions?q=${encodeURIComponent(query)}`); }
 export function wbAddReviewer(traceId: string, email: string): Promise<TraceReviewers> { return apiFetch(`${WB}/traces/${traceId}/reviewers`, { method: "POST", body: JSON.stringify({ email }) }); }
 export function wbRemoveReviewer(traceId: string, userId: string): Promise<TraceReviewers> { return apiFetch(`${WB}/traces/${traceId}/reviewers/${userId}`, { method: "DELETE" }); }
 
@@ -84,7 +85,7 @@ export interface EvaluationCall {
 }
 export interface TraceEvaluation {
   id: string; trace_id: string; revision_hash: string; policy_version: string; status: string;
-  outcome: string | null; outcome_confidence: number | null; total_actions: number; credited_actions: number;
+  outcome: string | null; outcome_probabilities?: Record<string, number> | null; outcome_confidence: number | null; total_actions: number; credited_actions: number;
   error: string | null; created_at: string; boundary: { kind: string; step_index: number };
   credits: { step_id: string; index: number; credit: number | null; label: string; confidence: number; call_id: string }[];
   actions: { id: string; index: number; content: string; tool_name: string | null }[];

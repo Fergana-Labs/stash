@@ -10,11 +10,10 @@ import { useBreadcrumbs } from "@/components/BreadcrumbContext";
 import { useConfirm } from "@/components/ConfirmDialog";
 import AnnotationComposer, { type ComposerTarget } from "@/components/reward-models/AnnotationComposer";
 import AnnotationSidebar from "@/components/reward-models/AnnotationSidebar";
-import ActionScoringPanel from "@/components/reward-models/ActionScoringPanel";
-import AssessmentInspector from "@/components/workbench/AssessmentInspector";
-import TraceEvaluationPanel from "@/components/workbench/TraceEvaluationPanel";
+import { wbEvaluation, wbAssess } from "@/lib/workbench-api";
+import { useWorkbenchLoad } from "@/components/workbench/workbench-ui";
+import { Button } from "@/components/ui/button";
 import TraceReviewAccess from "@/components/workbench/TraceReviewAccess";
-import { actionModelId } from "@/components/reward-models/action-credit";
 import { TraceSkeleton } from "@/components/reward-models/RmSkeletons";
 import TraceFlamegraph from "@/components/reward-models/TraceFlamegraph";
 import TraceMinimap from "@/components/reward-models/TraceMinimap";
@@ -26,7 +25,7 @@ import { traceScrollMarkers, visibleStepElement } from "@/components/reward-mode
 import { useAuth } from "@/hooks/useAuth";
 import { rmCreateAnnotation, rmDeleteAnnotation, rmGetTrace, rmUpdateAnnotation } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import type { RmAnnotation, RmStep, RmTraceDetail } from "@/lib/types";
+import type { RmActionScore, RmAnnotation, RmStep, RmTraceDetail } from "@/lib/types";
 import ConversationScrollRail from "@/components/ConversationScrollRail";
 
 const FLASH_MS = 1400;
@@ -66,7 +65,8 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
   const { user } = useAuth();
   const confirm = useConfirm();
   const [trace, setTrace] = useState<RmTraceDetail | null>(null);
-  const [scoreModelId, setScoreModelId] = useState<string | null>("default");
+  const evaluationLoader = useCallback(() => wbEvaluation(traceId), [traceId]);
+  const { data: evaluation, reload: reloadEvaluation } = useWorkbenchLoad(evaluationLoader, 5000);
   const [commentsOpen, setCommentsOpen] = useState(true);
   const [composer, setComposer] = useState<ComposerTarget | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -96,6 +96,8 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
 
   useEffect(() => {
     void load();
+    const timer = setInterval(() => { if (document.visibilityState === "visible") void load(); }, 5000);
+    return () => clearInterval(timer);
   }, [load]);
 
   useEffect(() => {
@@ -123,7 +125,7 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
         const element = document.getElementById(`step-${stepId}`);
         const container = scroller.current;
         if (!element || !container || !navigation.current) return;
-        const top = container.scrollTop + element.getBoundingClientRect().top - container.getBoundingClientRect().top - navigation.current.offsetHeight - 12;
+        const top = container.scrollTop + element.getBoundingClientRect().top - Math.max(container.getBoundingClientRect().top, navigation.current.getBoundingClientRect().bottom) - 12;
         container.scrollTo({ top, behavior: "instant" });
       });
     };
@@ -138,8 +140,12 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
   const viewerId = user.id;
   const ordered = sortAnnotations(trace.annotations.filter((a) => a.comment !== null), trace.steps);
   const rows = buildRows(trace.steps);
-  const effectiveModelId = actionModelId(trace, scoreModelId);
-  const actionScores = new Map((trace.action_scores ?? []).filter((s) => s.reward_model_id === effectiveModelId).map((s) => [s.step_id, s]));
+  const current = evaluation?.current;
+  const score = current?.outcome !== "insufficient_evidence" ? current?.outcome_probabilities?.success : null;
+  const actionScores = new Map<string, RmActionScore>((current?.credits ?? []).filter((c) => c.credit !== null).map((c) => [c.step_id, {
+    step_id: c.step_id, score: c.credit!, credit: c.credit! / 2,
+    reward_model_id: "automatic", reward_model_name: "Automatic annotation", created_at: current!.created_at,
+  }]));
 
   function annotationsOn(step: RmStep): RmAnnotation[] {
     return trace!.annotations.filter((a) => a.step_id === step.id);
@@ -192,7 +198,7 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
     }
     const offset = staysVisible
       ? current.getBoundingClientRect().top - container.getBoundingClientRect().top
-      : header.offsetHeight + 12;
+      : Math.max(0, header.getBoundingClientRect().bottom - container.getBoundingClientRect().top) + 12;
     requestAnimationFrame(() => {
       const element = document.getElementById(`step-${target.id}`)!;
       const top = container.scrollTop + element.getBoundingClientRect().top - container.getBoundingClientRect().top - offset;
@@ -273,7 +279,7 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
       const element = document.getElementById(`step-${stepId}`);
       const container = scroller.current;
       if (!element || !container || !navigation.current) return;
-      const top = container.scrollTop + element.getBoundingClientRect().top - container.getBoundingClientRect().top - navigation.current.offsetHeight - 12;
+      const top = container.scrollTop + element.getBoundingClientRect().top - Math.max(container.getBoundingClientRect().top, navigation.current.getBoundingClientRect().bottom) - 12;
       container.scrollTo({ top, behavior: "instant" });
     });
   }
@@ -311,13 +317,14 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
   return (
     <div className="flex h-full min-h-0">
       <ConversationScrollRail items={scrollMarkers} scroller={scroller} header={navigation} onJump={(item) => revealStep(item.targetId.slice("step-".length))} />
-      <div ref={scroller} className="scroll-thin min-w-0 flex-1 overflow-y-auto">
-        <div ref={canvas} className="relative mx-auto max-w-4xl px-8 pt-6 pb-24" onMouseUp={onCanvasMouseUp}>
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <div ref={navigation} className="z-20 shrink-0 border-b border-border bg-background px-6 pt-4">
+        <div className="mx-auto max-w-5xl">
           <Link href="/reward-models" aria-label="Back to traces" className="inline-flex h-7 items-center rounded-md border border-border px-2.5 text-[12px] text-muted-foreground hover:bg-surface hover:text-foreground">
             Back
           </Link>
 
-          <header className="mt-3 mb-5 flex items-start gap-4">
+          <header className="mt-2 mb-3 flex flex-wrap items-start gap-3">
             <div className="min-w-0 flex-1">
               <h1 className="m-0 font-display text-[21px] leading-snug font-semibold tracking-tight text-foreground">{trace.title}</h1>
               <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[12px] text-muted-foreground">
@@ -325,7 +332,8 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
               </div>
             </div>
             <div className="flex shrink-0 items-center gap-1.5 pt-1">
-              <details><summary className="text-[12px] text-muted-foreground cursor-pointer">Research model scores</summary><ActionScoringPanel trace={trace} selectedModelId={scoreModelId} onModelChange={setScoreModelId} onReload={load} /></details>
+              <div className="mr-2 text-right" title="Automatic trace annotation: estimated probability of success (0–1)"><div className="text-[10px] text-muted-foreground">Trace score</div><span className="font-mono text-xl font-medium tabular-nums">{score == null ? "—" : score.toFixed(2)}</span></div>
+              <TraceReviewAccess traceId={traceId} viewerId={viewerId} />
               <button
                 type="button"
                 aria-expanded={commentsOpen}
@@ -343,15 +351,11 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
             </div>
           </header>
 
-          <TraceReviewAccess traceId={traceId} viewerId={viewerId} />
-          <TraceEvaluationPanel traceId={traceId} onJump={revealStep} viewerId={viewerId} />
-          <details className="mb-4"><summary className="cursor-pointer text-[12px] text-muted-foreground">Earlier rubric assessments</summary><AssessmentInspector traceId={traceId} steps={trace.steps} onJump={revealStep} viewerId={viewerId} /></details>
-
-          <div ref={navigation} className="sticky top-0 z-20 bg-background pb-2">
+          {evaluation?.queue?.status === "failed" && evaluation.owner_user_id === viewerId && <Button size="xs" variant="ghost" onClick={() => void wbAssess(traceId).then(reloadEvaluation).catch((e) => toast.error(errorMessage(e)))}>Retry scoring</Button>}
             <TraceMinimap steps={trace.steps} annotations={trace.annotations} actionScores={actionScores} scroller={scroller} navigation={navigation} onJump={(index) => revealStep(trace.steps[index].id)} />
             <TraceFlamegraph spans={trace.spans} onJump={(index) => revealStep(trace.steps[index].id)} />
 
-            <div className="-mx-2 mt-1 flex items-center gap-2 border-b border-border-subtle bg-background px-2 py-1.5">
+            <div className="mt-1 flex items-center gap-2 bg-background py-1.5">
               {VIEWS.map(([key, label]) => (
                 <ToolbarButton key={key} active={view === key} onClick={() => changeView(key)}>
                   {label}
@@ -369,10 +373,13 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
               </ToolbarButton>
             </div>
 
-          </div>
-
+        </div>
+        </div>
+        <div ref={scroller} className="scroll-thin min-h-0 flex-1 overflow-y-auto">
+        <div ref={canvas} className="relative mx-auto max-w-5xl px-6 pt-2 pb-[60vh]" onMouseUp={onCanvasMouseUp}>
           <TraceTimeline rows={visibleRows} ann={ann} isExpanded={isExpanded} onToggle={toggleRow} />
           {visibleRows.length === 0 && <p className="py-12 text-center text-[13px] text-muted-foreground">No steps in this view.</p>}
+        </div>
         </div>
       </div>
 

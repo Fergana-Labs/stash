@@ -8,22 +8,25 @@ import { cn } from "@/lib/utils";
 import { isThinking, looksLikeError } from "./trace-rows";
 import { visibleStepElement } from "./trace-scroll";
 import type { RmActionScore, RmAnnotation, RmStep } from "@/lib/types";
-import { creditColor, formatCredit } from "./action-credit";
+import { formatCredit } from "./action-credit";
 
 // Design from Priyadarshan's trace viewer (projects/trace_viewer).
 const KINDS = {
-  user: { label: "User", height: "h-[38px]", color: "bg-amber-600/80" },
-  system: { label: "System", height: "h-[9px]", color: "bg-slate-400/70" },
-  assistant: { label: "Assistant", height: "h-[24px]", color: "bg-dim" },
-  tool: { label: "Tool", height: "h-[14px]", color: "bg-muted-foreground/60" },
-  error: { label: "Error", height: "h-[20px]", color: "bg-red-500" },
+  user: { label: "User", color: "bg-amber-500" },
+  system: { label: "System", color: "bg-slate-400" },
+  thinking: { label: "Thinking", color: "bg-slate-400" },
+  assistant: { label: "Response", color: "bg-blue-500" },
+  call: { label: "Tool call", color: "bg-violet-500" },
+  result: { label: "Tool result", color: "bg-teal-500" },
+  error: { label: "Error", color: "bg-red-500" },
 };
 
 function kindOf(step: RmStep): keyof typeof KINDS {
   if (step.role === "user") return "user";
-  if (step.role === "system" || isThinking(step)) return "system";
-  if (step.role === "tool") return looksLikeError(step.content) ? "error" : "tool";
-  return step.tool_name === null ? "assistant" : "tool";
+  if (step.role === "system") return "system";
+  if (isThinking(step)) return "thinking";
+  if (step.role === "tool") return looksLikeError(step.content) ? "error" : "result";
+  return step.tool_name == null ? "assistant" : "call";
 }
 
 function LatestTraceMinimap({ steps, annotations, actionScores, scroller, navigation, onJump }: {
@@ -38,12 +41,13 @@ function LatestTraceMinimap({ steps, annotations, actionScores, scroller, naviga
   const drag = useRef<{ pointerId: number; index: number } | null>(null);
 
   useEffect(() => {
-    const container = scroller.current!;
-    const header = navigation.current!;
+    const container = scroller.current;
+    const header = navigation.current;
+    if (!container || !header) return;
     const indices = new Map(steps.map((step, index) => [`step-${step.id}`, index]));
     let frame = 0;
     function update() {
-      const element = visibleStepElement(container, header);
+      const element = visibleStepElement(container!, header!);
       if (element === null) return;
       const index = indices.get(element.id);
       if (index !== undefined) setActiveIndex(index);
@@ -54,7 +58,8 @@ function LatestTraceMinimap({ steps, annotations, actionScores, scroller, naviga
     }
     container.addEventListener("scroll", schedule, { passive: true });
     const observer = new ResizeObserver(schedule);
-    observer.observe(container.firstElementChild!);
+    observer.observe(container);
+    if (container.firstElementChild) observer.observe(container.firstElementChild);
     schedule();
     return () => {
       container.removeEventListener("scroll", schedule);
@@ -73,9 +78,20 @@ function LatestTraceMinimap({ steps, annotations, actionScores, scroller, naviga
   }
 
   function indexAt(event: PointerEvent<HTMLDivElement>) {
+    const direct = (event.target as HTMLElement).closest<HTMLButtonElement>("button[data-step-index]");
+    if (direct && event.currentTarget.contains(direct) && event.type === "pointerdown") return Number(direct.dataset.stepIndex);
+    const buttons = [...event.currentTarget.querySelectorAll<HTMLButtonElement>("button[data-step-index]")];
+    let nearest = 0;
+    let distance = Infinity;
+    for (const [index, button] of buttons.entries()) {
+      const bounds = button.getBoundingClientRect();
+      if (!bounds.width) continue;
+      const delta = Math.abs(event.clientX - (bounds.left + bounds.width / 2));
+      if (delta < distance) { nearest = index; distance = delta; }
+    }
+    if (distance < Infinity) return nearest;
     const bounds = event.currentTarget.getBoundingClientRect();
-    const index = Math.floor((event.clientX - bounds.left) / bounds.width * steps.length);
-    return Math.max(0, Math.min(steps.length - 1, index));
+    return Math.max(0, Math.min(steps.length - 1, Math.floor((event.clientX - bounds.left) / bounds.width * steps.length)));
   }
 
   function endDrag(event: PointerEvent<HTMLDivElement>) {
@@ -84,19 +100,13 @@ function LatestTraceMinimap({ steps, annotations, actionScores, scroller, naviga
 
   return (
     <nav aria-label="Trace steps" className="select-none py-2">
-      <div className="mb-2 flex items-center gap-3 text-[11px] text-muted-foreground">
-        {showingCredit ? <>
-          <span className="inline-flex items-center gap-2">
-            Action credit: lower <span className="h-1.5 w-16" style={{ background: `linear-gradient(to right, ${creditColor(-1)}, ${creditColor(0)}, ${creditColor(1)})` }} /> higher
-          </span>
-          <span className="inline-flex items-center gap-1"><span className="h-2 w-2 bg-muted-foreground/30" />Unscored</span>
-        </> : Object.entries(KINDS).map(([kind, style]) => (
-          <span key={kind} className="inline-flex items-center gap-1">
-            <span className={cn("h-2 w-2", style.color)} />{style.label}
-          </span>
+      <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+        {Object.entries(KINDS).filter(([kind]) => steps.some((step) => kindOf(step) === kind)).map(([kind, style]) => (
+          <span key={kind} className="inline-flex items-center gap-1"><span className={cn("h-2 w-2", style.color)} />{style.label}</span>
         ))}
+        {showingCredit && <span>Height: credit −1 to +1</span>}
         <span className="inline-flex items-center gap-1"><span className="size-1.5 rounded-full bg-amber-400" />Comment</span>
-        <span className="ml-auto shrink-0 tabular-nums">Step {activeIndex + 1} of {steps.length}</span>
+        <span className="ml-auto shrink-0 tabular-nums">Step {steps[activeIndex]?.index + 1} of {steps.length}</span>
       </div>
       <div
         className="relative flex h-[52px] touch-none items-end"
@@ -126,11 +136,12 @@ function LatestTraceMinimap({ steps, annotations, actionScores, scroller, naviga
         {steps.map((step, index) => {
           const kind = KINDS[kindOf(step)];
           const score = actionScores?.get(step.id);
-          const actionType = step.tool_name !== null ? (step.role === "assistant" ? "Tool call" : "Tool result") : kind.label;
-          const label = `Step ${index + 1}: ${actionType}${step.tool_name === null ? "" : `, ${step.tool_name}`}${score ? `, credit ${formatCredit(score.credit)}` : showingCredit ? ", unscored" : ""}`;
+          const actionType = kind.label;
+          const label = `Step ${step.index + 1}: ${actionType}${step.tool_name === null ? "" : `, ${step.tool_name}`}${score ? `, credit ${formatCredit(score.credit)}` : showingCredit ? ", unscored" : ""}`;
           return (
             <button
               key={step.id}
+              data-step-index={index}
               type="button"
               title={label}
               aria-label={label}
@@ -153,7 +164,7 @@ function LatestTraceMinimap({ steps, annotations, actionScores, scroller, naviga
               className="group relative flex h-full min-w-0 flex-1 cursor-pointer items-end focus-visible:outline-2 focus-visible:outline-brand-500"
             >
               {commented.has(step.id) && <span className="absolute top-0 left-1/2 size-1.5 -translate-x-1/2 rounded-full bg-amber-400" />}
-              <span style={score ? { backgroundColor: creditColor(score.credit) } : undefined} className={cn("w-full transition-opacity group-hover:opacity-60", kind.height, showingCredit ? "bg-muted-foreground/30" : kind.color)} />
+              <span style={{ height: score ? `${6 + (Math.max(-1, Math.min(1, score.credit)) + 1) * 20}px` : "6px" }} className={cn("w-full transition-opacity group-hover:opacity-60", kind.color, !score && "opacity-35")} />
             </button>
           );
         })}

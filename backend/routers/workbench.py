@@ -3,13 +3,14 @@
 from typing import Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
 
 from ..auth import get_current_user
 from ..config import settings
 from ..database import get_pool
 from ..product_checkpoints import has_workbench
+from ..services.permission_service import workspace_member_condition
 from ..services.rm import workbench as service
 from ..services.rm import workbench_auto as automatic
 from ..services.rm import workbench_grader as engine
@@ -275,6 +276,30 @@ async def add_reviewer(trace_id: UUID, req: Reviewer, user=Depends(get_current_u
         target,
     )
     return await reviewers(trace_id, user)
+
+
+@router.get("/traces/{trace_id}/reviewer-suggestions")
+async def reviewer_suggestions(
+    trace_id: UUID, q: str = Query("", max_length=200), user=Depends(get_current_user)
+):
+    await checked(service.trace_access(user["id"], trace_id, write=True))
+    if not q.strip():
+        return []
+    rows = await get_pool().fetch(
+        f"""SELECT u.id AS user_id,u.display_name,u.email FROM users u
+        WHERE u.id<>$1 AND u.email IS NOT NULL AND EXISTS (
+          SELECT 1 FROM workspaces w WHERE {workspace_member_condition("w", 1)}
+          AND (EXISTS (SELECT 1 FROM workspace_members m WHERE m.workspace_id=w.id AND m.user_id=u.id)
+            OR (u.email_verified AND lower(split_part(u.email,'@',2))=w.domain)))
+        AND (strpos(lower(coalesce(u.display_name,'')),lower($2))>0
+          OR strpos(lower(u.email),lower($2))>0)
+        AND NOT EXISTS (SELECT 1 FROM rm_wb_trace_reviewers r WHERE r.trace_id=$3 AND r.user_id=u.id)
+        ORDER BY u.display_name,u.email LIMIT 8""",
+        user["id"],
+        q.strip(),
+        trace_id,
+    )
+    return [dict(row) for row in rows]
 
 
 @router.delete("/traces/{trace_id}/reviewers/{user_id}")

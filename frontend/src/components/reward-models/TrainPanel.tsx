@@ -62,7 +62,7 @@ function LatestTrainPanel({
         name: name.trim(),
         base_model: baseModel.trim(),
         epochs,
-        training_config: { input_version: 3, rubric: rubric.split("\n").map((line) => line.trim()).filter(Boolean) },
+        training_config: { input_version: 3, annotation_source: "automatic", rubric: rubric.split("\n").map((line) => line.trim()).filter(Boolean) },
       });
       onTrained(model);
     } catch (e) {

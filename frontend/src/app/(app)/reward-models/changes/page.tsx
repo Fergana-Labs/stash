@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import MonitoringNav from "@/components/reward-models/MonitoringNav";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useState } from "react";
 import { useBreadcrumbs } from "@/components/BreadcrumbContext";
@@ -22,6 +23,7 @@ function Changes() {
   const [filter, setFilter] = useState("all");
   const visible = data?.filter((change) => filter === "all" || change.kind === filter) ?? [];
   return <RmPage title="Changes" description="Inspect exact proposed instructions, check results, and release history. Grader changes and agent instructions are released independently.">
+    <MonitoringNav />
     <ErrorNotice error={error} onRetry={() => void reload()} />
     <div className="mb-4 flex gap-2">{[["all", "All changes"], ["grader", "Grader changes"], ["instruction", "Agent instructions"]].map(([value, label]) => <Button key={value} size="sm" variant={filter === value ? "secondary" : "ghost"} aria-pressed={filter === value} onClick={() => setFilter(value)}>{label}</Button>)}</div>
     {loading && <p className="text-[13px] text-muted-foreground">Loading changes…</p>}

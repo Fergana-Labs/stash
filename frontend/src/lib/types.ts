@@ -403,6 +403,8 @@ export interface RmScore {
 }
 
 export interface RmTraceSummary {
+  can_score?: boolean;
+  agent?: string;
   id: string;
   external_id: string | null;
   title: string;
@@ -414,8 +416,8 @@ export interface RmTraceSummary {
   label_error_count: number;
   latest_score: Omit<RmScore, "created_at"> | null;
   shared_training_allowed?: boolean;
-  evaluation?: { id: string; status: string; outcome: string | null; current: boolean; total_actions: number; credited_actions: number } | null;
-  action_credit?: { mean: number; count: number; revision: number } | null;
+  evaluation?: { id: string; status: string; outcome: string | null; current: boolean; score?: number | null; action_credit?: { mean: number; min: number; max: number; count: number } | null; total_actions: number; credited_actions: number } | null;
+  action_credit?: { mean: number; min?: number; max?: number; count: number; revision: number | null } | null;
   workbench?: {
     assessed_actions: number;
     total_actions: number;
@@ -508,6 +510,7 @@ export interface RmTrainMetrics {
   eval_accuracy: number | null;
   eval_split?: "trace" | "curated_task_groups";
   action_scoring_version?: number | null;
+  trace_scoring_version?: number | null;
   action_train_pairs?: number;
   action_eval_pairs?: number;
   action_eval_accuracy?: number | null;

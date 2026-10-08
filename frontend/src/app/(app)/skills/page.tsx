@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import MonitoringNav from "@/components/reward-models/MonitoringNav";
 import CopyableCommandBlock from "@/components/CopyableCommandBlock";
 import { useRouter, useSearchParams } from "next/navigation";
 import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -193,6 +194,7 @@ export default function SkillsPage() {
   return (
     <div className="scroll-thin flex-1 overflow-y-auto">
       <div className="mx-auto max-w-[1120px] px-12 pb-20 pt-8">
+        {user?.reward_models_enabled && user.product_checkpoint !== "floodgate-2026-10-05" && <MonitoringNav />}
         <div className="flex items-center justify-between gap-4">
           <h1 className="m-0 font-display text-[21px] font-bold tracking-tight text-foreground">
             Skills

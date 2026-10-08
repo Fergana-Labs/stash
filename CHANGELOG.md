@@ -5,6 +5,17 @@ everything before it is captured in git history (`git log`), not here.
 
 ## Unreleased
 
+- Simplify the latest reward-model workspace to Traces, Reward models, and
+  Monitoring, with current skills, changes, and feedback under Monitoring.
+  Search trace content, review numeric success and action-credit summaries,
+  and share traces with teammate name suggestions.
+- Keep the trace minimap visible, color bars by action type, size them by credit,
+  and jump to the exact selected step. Remove evaluation-history panels and
+  align conversation rows consistently.
+- Train personal reward models from saved automatic action and outcome
+  annotations. Keep training and evaluation tasks separate, exclude stale or
+  disputed labels, and monitor saved model scores on recorded runs.
+
 - Reward-model links on the marketing site open the app, and the trace-list
   alias `/reward-models/traces` redirects to `/reward-models` instead of a 404.
 

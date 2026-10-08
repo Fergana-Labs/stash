@@ -70,6 +70,7 @@ class UpdateAnnotationRequest(BaseModel):
 class PersonalTrainingConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
     input_version: Literal[3] = 3
+    annotation_source: Literal["feedback", "automatic"] = "feedback"
     rubric: list[Annotated[str, Field(min_length=1, max_length=600)]] = Field(
         default_factory=lambda: list(RUBRIC), min_length=1, max_length=8
     )
@@ -135,9 +136,14 @@ async def import_traces(req: ImportRequest, current_user: dict = Depends(get_cur
 async def list_traces(
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
+    q: str = Query("", max_length=500),
+    reward_model_id: UUID | None = None,
     current_user: dict = Depends(get_current_user),
 ) -> dict:
-    return await traces.list_traces(current_user["id"], limit, offset)
+    try:
+        return await traces.list_traces(current_user["id"], limit, offset, q, reward_model_id)
+    except LookupError as exc:
+        raise HTTPException(404, str(exc)) from exc
 
 
 @router.get("/traces/{trace_id}")
@@ -178,7 +184,10 @@ async def score_trace(
     if (
         model["status"] != "succeeded"
         or not model["artifact_key"]
-        or (model["metrics"] or {}).get("action_scoring_version") != 1
+        or not any(
+            (model["metrics"] or {}).get(key) == 1
+            for key in ("action_scoring_version", "trace_scoring_version")
+        )
     ):
         raise HTTPException(
             status_code=422,

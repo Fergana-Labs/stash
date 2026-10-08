@@ -30,15 +30,20 @@ export function traceScrollMarkers(rows: TraceRow[]): ConversationMarker[] {
 }
 
 export function visibleStepElement(container: HTMLElement, navigation: HTMLElement): HTMLElement | null {
-  const boundary = navigation.getBoundingClientRect().bottom + 12;
+  const boundary = Math.max(container.getBoundingClientRect().top, navigation.getBoundingClientRect().bottom) + 12;
   const elements = [...container.querySelectorAll<HTMLElement>('[id^="step-"]')];
   // The last row may be too short to reach the top beneath the sticky graph.
   const atBottom = container.scrollHeight > container.clientHeight
     && container.scrollHeight - container.scrollTop - container.clientHeight <= 1;
   if (atBottom) elements.reverse();
+  let current: HTMLElement | null = null;
   for (const element of elements) {
     if (element.getClientRects().length === 0) continue;
-    if (element.getBoundingClientRect().bottom > boundary) return element;
+    if (atBottom) return element;
+    // Use row starts, not the bottom of a parent tool row that also wraps its result.
+    // The selected step lands exactly at this boundary after a minimap jump.
+    if (element.getBoundingClientRect().top <= boundary + 1) current = element;
+    else return current ?? element;
   }
-  return null;
+  return current;
 }

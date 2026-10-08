@@ -10,12 +10,9 @@ import { cn } from "@/lib/utils";
 import type { User } from "@/lib/types";
 
 const PRIMARY = [
-  { label: "Optimization", href: "/reward-models/optimization", match: (path: string) => path.startsWith("/reward-models/optimization") },
   { label: "Traces", href: "/reward-models", match: (path: string) => path === "/reward-models" || path.startsWith("/reward-models/traces/") },
-  { label: "Review", href: "/reward-models/review", match: (path: string) => path.startsWith("/reward-models/review") },
-  { label: "Changes", href: "/reward-models/changes", match: (path: string) => path.startsWith("/reward-models/changes") },
-  { label: "Skills", href: "/skills", match: (path: string) => path === "/skills" || path.startsWith("/skills/") },
   { label: "Reward models", href: "/reward-models/models", match: (path: string) => path.startsWith("/reward-models/models") || path.startsWith("/reward-models/gepa/") },
+  { label: "Monitoring", href: "/reward-models/monitoring", match: (path: string) => /^\/reward-models\/(monitoring|changes|review|optimization)/.test(path) || path.startsWith("/skills") },
 ];
 
 function LatestRewardRail({ user, onLogout }: { user: User; onLogout: () => void }) {
@@ -27,7 +24,7 @@ function LatestRewardRail({ user, onLogout }: { user: User; onLogout: () => void
     <aside className="flex w-40 shrink-0 flex-col border-r border-sidebar-border bg-rail px-2 py-3">
       <nav aria-label="Main navigation" className="flex flex-col gap-1">
         {PRIMARY.map((item) => {
-          const active = item.match(pathname) || (item.href === "/skills" && inSkillFolder);
+          const active = item.match(pathname) || (item.href === "/reward-models/monitoring" && inSkillFolder);
           return (
             <Link
               key={item.href}

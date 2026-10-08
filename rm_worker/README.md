@@ -23,7 +23,7 @@ Postgres before training.
 | command | reads | returns to the job directory |
 |---|---|---|
 | `python -m rm_worker.train --job-dir DIR` | `job.json`, `pairs.jsonl`, `score_items.jsonl`, `action_score_items.jsonl` | `model/`, `scores.jsonl`, `action_scores.jsonl`, `result.json` |
-| `python -m rm_worker.score_run --job-dir DIR` | `job.json`, `action_score_items.jsonl` | `action_scores.jsonl`, `result.json` |
+| `python -m rm_worker.score_run --job-dir DIR` | `job.json`, `action_score_items.jsonl`, optional `score_items.jsonl` | `action_scores.jsonl`, `scores.jsonl`, `result.json` |
 | `python -m rm_worker.evaluate_run --job-dir DIR` | `job.json`, `evaluation_pairs.jsonl` | `evaluation.json` (example ID + whether chosen beats rejected) |
 | `python -m rm_worker.modal_runner --job-dir DIR` | training, scoring or GEPA inputs | the corresponding worker outputs above |
 | `python -m rm_worker.gepa_run --job-dir DIR` | `job.json`, `gepa_examples.jsonl` | `result.json` |
@@ -109,3 +109,7 @@ from `rm_worker/requirements.txt`; torch is not installed in the API image.
 
 See [Hosted rollout](../docs/reward-models/ROLLOUT.md) for account gating and
 verification. New accounts enter the experiment; existing accounts stay disabled.
+
+The latest personal-training UI sets `annotation_source: automatic`. Its dataset uses saved, current action-credit and trace-outcome annotations; training does not call another evaluator. Stale revisions and disputed labels are excluded. Task groups are frozen before pair construction, and whole-trace comparisons stay inside their assigned training/evaluation partition. Evaluation still measures held-out agreement with the annotation source, not demonstrated superiority to it.
+
+Models trained on whole-trace pairs advertise `trace_scoring_version: 1`. Their saved checkpoint scores new whole traces using the same version-3 input format. These unbounded learned rewards appear under Monitoring; action-only models instead show their own mean saved action credit per run. The Traces UI continues to show automatic success probabilities (0–1) and normalized action annotations (−1 to +1).

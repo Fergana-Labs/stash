@@ -248,3 +248,29 @@ def test_saved_checkpoint_inference_uses_the_saved_action_scale(tmp_path, monkey
     assert rows[0]["credit"] == 0
     assert rows[1]["credit"] == pytest.approx(0.462117)
     assert json.loads((tmp_path / "result.json").read_text()) == {"action_count": 2}
+
+
+def test_whole_trace_checkpoint_inference_without_action_calibration(tmp_path, monkeypatch):
+    checkpoint = tmp_path / "checkpoint"
+    checkpoint.mkdir()
+    texts_seen = []
+
+    class Model:
+        def __init__(self, path):
+            assert path == checkpoint
+
+        def score(self, texts):
+            texts_seen.extend(texts)
+            return [0.87]
+
+    monkeypatch.setitem(sys.modules, "rm_worker.scoring", SimpleNamespace(RewardModel=Model))
+    monkeypatch.setattr(score_run, "download_model", lambda key, path: checkpoint)
+    (tmp_path / "job.json").write_text('{"kind": "score", "reward_model_key": "saved"}')
+    (tmp_path / "action_score_items.jsonl").write_text("")
+    jobs._write_jsonl(
+        tmp_path / "score_items.jsonl", [{"trace_id": "trace", "text": "whole recorded trace"}]
+    )
+    score_run.run(tmp_path)
+    assert texts_seen == ["whole recorded trace"]
+    assert read_rows(tmp_path / "scores.jsonl") == [{"trace_id": "trace", "score": 0.87}]
+    assert read_rows(tmp_path / "action_scores.jsonl") == []

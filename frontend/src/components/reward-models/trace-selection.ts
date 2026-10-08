@@ -1,25 +1,24 @@
+import { traceScore, traceCredits } from "./trace-metrics";
 import type { RmTraceSummary } from "@/lib/types";
 
-export type TraceSortKey = "title" | "steps" | "comments" | "reward" | "credit" | "imported";
+export type TraceSortKey = "title" | "steps" | "comments" | "reward" | "credit" | "minCredit" | "maxCredit" | "imported";
 export type TraceSortDirection = "ascending" | "descending";
 
-export function sortTraces(traces: RmTraceSummary[], key: TraceSortKey, direction: TraceSortDirection): RmTraceSummary[] {
+export function sortTraces(traces: RmTraceSummary[], key: TraceSortKey, direction: TraceSortDirection, source: "automatic" | "learned" = "learned"): RmTraceSummary[] {
   const sign = direction === "ascending" ? 1 : -1;
   return [...traces].sort((a, b) => {
     // Unscored traces belong after scored traces in either direction.
-    if (key === "credit") {
-      if (!a.action_credit && !b.action_credit) return a.id.localeCompare(b.id);
-      if (!a.action_credit) return 1;
-      if (!b.action_credit) return -1;
-      return sign * (a.action_credit.mean - b.action_credit.mean) || a.id.localeCompare(b.id);
+    if (["credit", "minCredit", "maxCredit", "reward"].includes(key)) {
+      const value = (trace: RmTraceSummary) => key === "reward"
+        ? source === "automatic" ? traceScore(trace) : trace.latest_score?.score
+        : (source === "automatic" ? traceCredits(trace) : trace.action_credit)?.[key === "minCredit" ? "min" : key === "maxCredit" ? "max" : "mean"];
+      const av = value(a), bv = value(b);
+      if (av == null && bv == null) return a.id.localeCompare(b.id);
+      if (av == null) return 1;
+      if (bv == null) return -1;
+      return sign * (av - bv) || a.id.localeCompare(b.id);
     }
-    if (key === "reward") {
-      if (a.latest_score === null && b.latest_score === null) return a.id.localeCompare(b.id);
-      if (a.latest_score === null) return 1;
-      if (b.latest_score === null) return -1;
-      return sign * (a.latest_score.score - b.latest_score.score) || a.id.localeCompare(b.id);
-    }
-    let difference: number;
+    let difference = 0;
     switch (key) {
       case "title": difference = a.title.localeCompare(b.title); break;
       case "steps": difference = a.step_count - b.step_count; break;
