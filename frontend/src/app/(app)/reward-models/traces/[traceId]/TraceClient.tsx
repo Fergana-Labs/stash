@@ -5,7 +5,7 @@ import FloodgateComponent from "@/checkpoints/floodgate-2026-10-05/TraceClient";
 
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
-import { useCallback, useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type MouseEvent } from "react";
 import { toast } from "sonner";
 import { useBreadcrumbs } from "@/components/BreadcrumbContext";
 import { useConfirm } from "@/components/ConfirmDialog";
@@ -60,7 +60,6 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [flashStepId, setFlashStepId] = useState<string | null>(null);
   const [pendingAnnotationId, setPendingAnnotationId] = useState<string | null>(null);
-  const [expandAll, setExpandAll] = useState(false);
   // Rows the user opened (true) or closed (false) by hand; the rest follow their default.
   const [rowChoice, setRowChoice] = useState<Map<string, boolean>>(new Map());
   const navigation = useRef<HTMLDivElement | null>(null);
@@ -154,7 +153,7 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
   function isExpanded(row: TraceRow): boolean {
     const choice = rowChoice.get(row.key);
     if (choice !== undefined) return choice;
-    return expandAll || rowSteps(row).some((s) => annotationsOn(s).length > 0);
+    return rowSteps(row).some((s) => annotationsOn(s).length > 0);
   }
 
   function toggleRow(row: TraceRow) {
@@ -302,18 +301,7 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
             </div>
           </header>
 
-            <div className="flex items-center gap-3">
-              <TraceMinimap steps={trace.steps} annotations={trace.annotations} actionScores={actionScores} annotationStatus={annotationProgress.label} unscoredReasons={annotationProgress.unscoredReasons} scroller={scroller} navigation={navigation} onJump={(index) => revealStep(trace.steps[index].id)} />
-              <ToolbarButton
-                active={expandAll}
-                onClick={() => {
-                  setExpandAll(!expandAll);
-                  setRowChoice(new Map());
-                }}
-              >
-                {expandAll ? "Collapse" : "Expand all"}
-              </ToolbarButton>
-            </div>
+          <TraceMinimap steps={trace.steps} annotations={trace.annotations} actionScores={actionScores} annotationStatus={annotationProgress.label} unscoredReasons={annotationProgress.unscoredReasons} scroller={scroller} navigation={navigation} onJump={(index) => revealStep(trace.steps[index].id)} />
 
         </div>
         </div>
@@ -356,22 +344,6 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
         onDelete={(a) => void deleteAnnotation(a)}
       />
     </div>
-  );
-}
-
-function ToolbarButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className={cn(
-        "inline-flex h-7 shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap border-b-2 px-2 text-[12px] transition-colors",
-        active ? "border-foreground font-medium text-foreground" : "border-transparent text-muted-foreground hover:text-foreground",
-      )}
-    >
-      {children}
-    </button>
   );
 }
 

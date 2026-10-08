@@ -5,6 +5,8 @@ everything before it is captured in git history (`git log`), not here.
 
 ## Unreleased
 
+- Remove the trace's Expand all control; individual tool details still open on demand.
+
 - Scrub through traces and conversations by dragging along the left navigation
   rail, with immediate scrolling and a live preview of each destination.
 - Keep trace controls in two compact rows: back, title, score, and actions above
