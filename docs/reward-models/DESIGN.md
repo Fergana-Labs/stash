@@ -125,15 +125,6 @@ the observable fact next to that number. The trace view shows labels as chips
 on each row, links a user's reaction to the answer it is about, counts them in
 a summary bar, and hides them with a Labels toggle.
 
-A labeled trace is laid out as an outline that opens one level at a time
-(`trace-outline.ts`): tasks (a new task starts at each `new_request`), the
-turns inside a task (one user message and the agent's work until the next),
-the steps inside a turn, and a step's score breakdown. Each closed level is one
-line: a task shows its request, its last answer, the user's reaction and its
-score; a turn shows the message, a count of the work ("4 lookups · 1 error")
-and the answer. Jumping to a step opens the task and turn that hold it. "By
-task" switches back to the flat list.
-
 A label is `steps[].metadata.label`: `chunk_id`, `task_id`, `actor` (`user` or
 `agent`), then for a user step `intent`, `verdict`, `verdict_target`,
 `sentiment`; for an agent step `type`, `effect`, `result`, `duplicate_of`,
@@ -197,9 +188,9 @@ one recorded action.
 
 A step's score breakdown is `steps[].metadata.reward` and the task scores are
 `step_scores` on `GET /traces/{id}`; an imported trace may carry both
-(`metadata.rubric_summary` on the trace). The viewer shows the credit per
-step, a sum per turn, the score per task, and the breakdown line by line when
-a step is opened.
+(`metadata.rubric_summary` on the trace). The viewer shows the score on each
+step, each task's score where the task starts, and the breakdown line by line
+when a step is opened.
 
 ### Supported input formats
 

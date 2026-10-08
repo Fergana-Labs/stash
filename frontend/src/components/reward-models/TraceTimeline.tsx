@@ -7,9 +7,9 @@ import type { RmActionScore, RmStep } from "@/lib/types";
 import { creditColor, formatCredit } from "./action-credit";
 import AnchoredText from "./AnchoredText";
 import { StepLabelChips } from "./StepLabels";
-import { StepScoreChip, StepScoreLine } from "./StepRewards";
+import { StepScoreChip, StepScoreLine, TaskScoreChip } from "./StepRewards";
 import type { LabelChip } from "./step-labels";
-import type { StepReward } from "./step-rewards";
+import { signed, type StepReward, type TaskScore } from "./step-rewards";
 import { firstLine, isThinking, looksLikeError, toolLabel, toolSummary, type TraceRow } from "./trace-rows";
 import type { Highlight } from "./source-anchors";
 import styles from "./TraceMarkdown.module.css";
@@ -29,6 +29,8 @@ export interface StepAnnotations {
   onJumpToStep?: (stepId: string) => void;
   /** Each step's score and how it was built; absent unless the Scores view is on. */
   reward?: (step: RmStep) => StepReward | null;
+  /** The score of the task a step belongs to, shown where the task starts. */
+  taskScore?: (step: RmStep) => TaskScore | null;
   stepNumberOf?: (chunk: string) => number | null;
   onJumpToChunk?: (chunk: string) => void;
 }
@@ -385,11 +387,18 @@ export default function TraceTimeline({
       const repeated = previous?.kind === "prompt" && previous.step.index + 1 === row.step.index
         && previous.step.content === row.step.content;
       const task = ann.taskHeading?.(row.step) ?? null;
+      const taskScore = task === null ? null : ann.taskScore?.(row.step) ?? null;
       return (
         <div key={row.key}>
           {task !== null && (
             <div className="mb-2 flex items-center gap-2 text-[10.5px] font-medium tracking-wide text-muted-foreground uppercase">
               <span>{task}</span>
+              {taskScore && <TaskScoreChip score={taskScore} />}
+              {taskScore && (
+                <span className="font-normal tracking-normal normal-case">
+                  {taskScore.hasAnswer ? "final answer" : "no answer"} {signed(taskScore.answer ?? 0)} · work {signed(taskScore.costs)}
+                </span>
+              )}
               <span aria-hidden="true" className="h-px flex-1 bg-border-subtle" />
             </div>
           )}
