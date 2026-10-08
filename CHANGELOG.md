@@ -5,6 +5,12 @@ everything before it is captured in git history (`git log`), not here.
 
 ## Unreleased
 
+- Scrub through traces and conversations by dragging along the left navigation
+  rail, with immediate scrolling and a live preview of each destination.
+- Keep trace controls in two compact rows: back, title, score, and actions above
+  the step map. Remove the All / Conversation / Tools toggle and keep all steps
+  visible. Move execution timelines into the scrolling content.
+
 - Remove the action-credit legend and visible annotation-progress row to give
   the trace more vertical space, and place the imported timestamp beside the
   title. Scores and grading statuses remain available on hover and focus, with

@@ -61,7 +61,7 @@ it("shows credit through height and keeps action type colors and retains keyboar
   expect(screen.queryByLabelText("Action credit legend")).not.toBeInTheDocument();
   expect(screen.queryByText(/Only assistant responses and tool calls are graded/)).not.toBeInTheDocument();
   expect(screen.queryByText("User", { exact: true })).not.toBeInTheDocument();
-  expect(screen.getByText("Response", { exact: true })).toBeVisible();
+  expect(screen.getByText("Step 1 of 3", { exact: true })).toBeVisible();
   fireEvent.keyDown(scored, { key: "ArrowRight" });
   expect(onJump).toHaveBeenCalledWith(1);
 });
