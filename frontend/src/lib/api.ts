@@ -2702,8 +2702,8 @@ export async function rmListAllTraces(query = "", modelId?: string): Promise<RmT
   }
 }
 
-export async function rmGetTrace(traceId: string): Promise<RmTraceDetail> {
-  return apiFetch(`${RM}/traces/${traceId}`);
+export async function rmGetTrace(traceId: string, includeEvaluation = false): Promise<RmTraceDetail> {
+  return apiFetch(`${RM}/traces/${traceId}${includeEvaluation ? "?include_evaluation=true" : ""}`);
 }
 
 export async function rmScoreTrace(traceId: string, modelId?: string): Promise<RmScoringRun> {

@@ -2,6 +2,46 @@
 
 The workbench always asks Jev two questions: **was this recorded trace successful**, and **how much credit does each assistant action deserve**. There is no user-created grader, rubric, or manual task assignment in this flow. This supersedes the configurable-grader setup in the earlier HTML specification.
 
+Trace attachments render inline and open a larger preview on click. Native Codex
+and Anthropic/Claude content blocks can supply embedded PNG, JPEG, GIF, or WebP
+images (up to 10 MiB and 40 million pixels each). The API stores their bytes in
+private object storage, serves them only to the trace owner or its reviewers,
+and returns lightweight references in trace JSON. Images load near the viewport.
+They are display attachments; the existing text-only evaluator does not receive
+their bytes. Recorded text and comment offsets remain unchanged.
+
+Older traces gain attachments on their next full native transcript upload. The
+importer cannot recover bytes from a local-path placeholder alone, and never
+reads that path or fetches remote image URLs. A failed image upload leaves the
+recorded text available and can retry on the next transcript upload. Local
+development may opt into `STASH_TRACE_IMAGE_DIR`; deployed instances use the
+existing private S3 configuration. Apply migration 0225 for image references.
+
+Only scored actions have visible height in the minimap. Ungraded events retain
+their positions for hovering, clicking, and scrubbing, with no baseline bar.
+
+The trace opens as an overview of requests. Hover a group to preview it and click
+through sections to individual steps; breadcrumbs move back out. The grouping
+uses recorded task labels when present, otherwise request boundaries and the
+agent's recorded progress messages, with bounded subdivisions for long stretches
+of tool work. These are excerpts of recorded messages, not new model-generated
+summaries or independently verified outcomes. The grouping is a viewing aid and
+does not change the evaluator's task boundaries or training labels.
+
+System, skills, environment, and injected AGENTS.md instructions live under a
+collapsed context disclosure. Display numbering excludes those events and gives
+each tool call/output pair one number. Source IDs and indices remain unchanged;
+comments on output still anchor to the output's original text. The minimap,
+comment labels, and composer use the same display numbering. A direct source
+link or comment reveals its enclosing groups before scrolling.
+
+The latest UI requests `include_evaluation=true` on trace detail. This includes
+saved outcome and action scores in the initial response, without provider request
+snapshots or raw responses. Historical evaluator evidence remains available on
+the existing evaluation endpoint. Refreshes retain the displayed trace if a
+request fails. Negative values are classifier estimates, not a fixed penalty for
+assistant messages; only the small numeric credit is colored.
+
 ## Deployment and use
 
 1. Apply migrations through **0221**, then deploy the API, frontend, default Celery worker and Celery Beat together. Migration 0221 queues existing captured traces for owners with `reward_models_enabled`. New or changed traces are queued by the existing database trigger. Beat dispatches work every 15 seconds.

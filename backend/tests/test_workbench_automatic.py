@@ -5,6 +5,7 @@ Provider inference is mocked. Native ingestion, queueing, APIs and DB are real.
 
 import copy
 import json
+from datetime import datetime
 from uuid import UUID
 
 import pytest
@@ -466,3 +467,48 @@ async def test_previous_annotations_never_attach_to_rewritten_steps(client, pool
     result = await get_eval(client, user, tid)
     assert result["current"] is None
     assert result["previous_credits"] == []
+
+
+async def test_trace_load_can_include_compact_scores_without_provider_payloads(
+    client, pool, monkeypatch
+):
+    user, tid, calls = await evaluate(client, pool, monkeypatch)
+    full = await get_eval(client, user, tid)
+    response = await client.get(
+        f"/api/v1/rm/traces/{tid}?include_evaluation=true", headers=user["headers"]
+    )
+    assert response.status_code == 200, response.text
+    compact = response.json()["automatic_evaluation"]
+    assert compact["current"]["credits"] == full["current"]["credits"]
+    assert compact["current"]["outcome_probabilities"] == full["current"]["outcome_probabilities"]
+    assert compact["current"]["calls"] == []
+    assert compact["current"]["actions"] == []
+    assert "provider_request" not in json.dumps(compact)
+    # Appended work keeps earlier credits, without downloading its provider evidence.
+    await upload(
+        client,
+        user,
+        messages=[
+            ("user", "Fix the count parser. Zero must remain valid."),
+            ("assistant", "All tests pass."),
+            ("user", "Please also check negatives"),
+        ],
+    )
+    full = await get_eval(client, user, tid)
+    compact = (
+        await client.get(
+            f"/api/v1/rm/traces/{tid}?include_evaluation=true", headers=user["headers"]
+        )
+    ).json()["automatic_evaluation"]
+
+    def normalized(credits):
+        return [{**c, "created_at": datetime.fromisoformat(c["created_at"])} for c in credits]
+
+    assert normalized(compact["previous_credits"]) == normalized(full["previous_credits"])
+    assert compact["previous_credits"]
+    other = await account(client)
+    assert (
+        await client.get(
+            f"/api/v1/rm/traces/{tid}?include_evaluation=true", headers=other["headers"]
+        )
+    ).status_code == 404

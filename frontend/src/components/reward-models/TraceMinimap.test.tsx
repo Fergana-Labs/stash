@@ -56,8 +56,8 @@ it("shows credit through height and keeps action type colors and retains keyboar
   expect(scored.lastElementChild).toHaveStyle({ height: "18px" });
   expect(scored.lastElementChild).toHaveClass("bg-blue-500");
   const unscored = screen.getByRole("button", { name: "Step 2: Response, awaiting score" });
-  expect(unscored.lastElementChild).toHaveStyle({ height: "6px" });
-  expect(unscored.lastElementChild).toHaveClass("bg-blue-500", "opacity-35");
+  expect(unscored.lastElementChild).toHaveStyle({ height: "0px" });
+  expect(unscored.lastElementChild).toHaveClass("bg-blue-500");
   expect(screen.queryByLabelText("Action credit legend")).not.toBeInTheDocument();
   expect(screen.queryByText(/Only assistant responses and tool calls are graded/)).not.toBeInTheDocument();
   expect(screen.queryByText("User", { exact: true })).not.toBeInTheDocument();
@@ -115,7 +115,7 @@ it("explains why each unscored step lacks a grade", () => {
   const mixed = [steps[0], { ...steps[1], role: "user" }, steps[2]] as RmStep[];
   render(<TraceMinimap steps={mixed} annotations={[]} unscoredReasons={new Map([["0", "insufficient evidence"]])} scroller={{ current: null }} navigation={{ current: null }} onJump={vi.fn()} />);
   expect(screen.getByRole("button", { name: "Step 1: Response, insufficient evidence" })).toBeVisible();
-  expect(screen.getByRole("button", { name: "Step 2: User, not graded" })).toBeVisible();
+  expect(screen.getByRole("button", { name: "Step 2: User" })).toBeVisible();
   expect(screen.getByRole("button", { name: "Step 3: Response, awaiting score" })).toBeVisible();
 });
 

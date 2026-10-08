@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
+from .image_content import TraceImage, content_images
 from .spans import TraceSpan, validate_spans
 
 ROLES = {"system", "user", "assistant", "tool"}
@@ -28,6 +29,7 @@ class CanonicalStep:
     tool_input: dict | None = None
     tool_call_id: str | None = None
     metadata: dict = field(default_factory=dict)
+    images: list[TraceImage] = field(default_factory=list, compare=False, repr=False)
 
 
 @dataclass
@@ -170,6 +172,7 @@ def _block_steps(role: str, block: dict | str) -> list[CanonicalStep]:
             CanonicalStep(
                 role="tool",
                 content=_content_text(block.get("content")),
+                images=content_images(block.get("content"), _content_text(block.get("content"))),
                 tool_call_id=block["tool_use_id"],
                 metadata=metadata,
             )
@@ -180,7 +183,13 @@ def _block_steps(role: str, block: dict | str) -> list[CanonicalStep]:
         return _thinking_steps(block["text"])
     if kind == "redacted_thinking":
         return []
-    return [CanonicalStep(role=role, content=_block_text(block))]
+    return [
+        CanonicalStep(
+            role=role,
+            content=_block_text(block),
+            images=content_images([block], _block_text(block)),
+        )
+    ]
 
 
 def _fill_tool_names(steps: list[CanonicalStep]) -> list[CanonicalStep]:
@@ -1034,6 +1043,7 @@ def _codex_item_steps(item: dict) -> list[CanonicalStep]:
             CanonicalStep(
                 role=_CODEX_ROLES[item["role"]],
                 content=_content_text(item["content"]),
+                images=content_images(item["content"], _content_text(item["content"])),
                 metadata={"phase": item["phase"]} if item.get("phase") else {},
             )
         ]
@@ -1063,6 +1073,7 @@ def _codex_item_steps(item: dict) -> list[CanonicalStep]:
             CanonicalStep(
                 role="tool",
                 content=_content_text(item["output"]),
+                images=content_images(item["output"], _content_text(item["output"])),
                 tool_call_id=item["call_id"],
             )
         ]
