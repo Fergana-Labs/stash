@@ -831,10 +831,15 @@ def stash_traces(limit: int = 50, offset: int = 0) -> str:
 def stash_trace(trace_id: str) -> str:
     """Read a trace's actions, annotations and automatic credit evaluation."""
     from uuid import UUID
+
     trace_id = str(UUID(trace_id))
     with _client() as client:
-        return _json({"trace": client._get(f"/api/v1/rm/traces/{trace_id}"),
-                      "evaluation": client._get(f"/api/v1/rm/workbench/traces/{trace_id}/evaluation")})
+        return _json(
+            {
+                "trace": client._get(f"/api/v1/rm/traces/{trace_id}"),
+                "evaluation": client._get(f"/api/v1/rm/workbench/traces/{trace_id}/evaluation"),
+            }
+        )
 
 
 @mcp.tool()
@@ -843,16 +848,23 @@ def stash_import_traces(data: str, format: str = "auto") -> str:
     Preserve recorded prompts, tool calls/results and optimization instruction wrappers.
     """
     with _client() as client:
-        return _json(client._post("/api/v1/rm/traces/import", json={"data": data, "format": format}))
+        return _json(
+            client._post("/api/v1/rm/traces/import", json={"data": data, "format": format})
+        )
 
 
 @mcp.tool()
 def stash_annotate_trace(trace_id: str, comment: str, step_id: str = "") -> str:
     """Add the user's feedback to a trace or action for personal reward-model training."""
     from uuid import UUID
+
     with _client() as client:
-        return _json(client._post(f"/api/v1/rm/traces/{UUID(trace_id)}/annotations",
-            json={"comment": comment, "step_id": str(UUID(step_id)) if step_id else None}))
+        return _json(
+            client._post(
+                f"/api/v1/rm/traces/{UUID(trace_id)}/annotations",
+                json={"comment": comment, "step_id": str(UUID(step_id)) if step_id else None},
+            )
+        )
 
 
 @mcp.tool()
@@ -862,16 +874,34 @@ def stash_train_reward_model(name: str, trace_ids: list[str], criteria: list[str
     The returned model ID can immediately be used with stash_optimization_begin.
     """
     with _client() as client:
-        return _json(client._post("/api/v1/rm/reward-models", json={"name": name,
-            "trace_ids": trace_ids, "training_config": {"input_version": 3, "rubric": criteria}}))
+        return _json(
+            client._post(
+                "/api/v1/rm/reward-models",
+                json={
+                    "name": name,
+                    "trace_ids": trace_ids,
+                    "training_config": {"input_version": 3, "rubric": criteria},
+                },
+            )
+        )
 
 
 @mcp.tool()
-def stash_optimization_begin(name: str, reward_model_id: str, agent: str, scope: str,
-        metric_name: str, metric_direction: str = "higher", metric_unit: str = "",
-        metric_minimum: float = 0, metric_maximum: float = 1,
-        regression_tolerance: float = 0, initial_prompt: str = "",
-        runs_per_arm: int = 20, max_rounds: int = 10) -> str:
+def stash_optimization_begin(
+    name: str,
+    reward_model_id: str,
+    agent: str,
+    scope: str,
+    metric_name: str,
+    metric_direction: str = "higher",
+    metric_unit: str = "",
+    metric_minimum: float = 0,
+    metric_maximum: float = 1,
+    regression_tolerance: float = 0,
+    initial_prompt: str = "",
+    runs_per_arm: int = 20,
+    max_rounds: int = 10,
+) -> str:
     """Begin ongoing prompt optimization when the user asks to improve this agent.
     Authorizes up to max_rounds candidate generations and remote scoring of submitted
     runs. Future tasks receive randomized current/candidate instructions; winners
@@ -881,12 +911,28 @@ def stash_optimization_begin(name: str, reward_model_id: str, agent: str, scope:
     optimization waits for it. Existing agent permissions remain in force.
     """
     with _client() as client:
-        return _json(client._post("/api/v1/rm/optimizations", json={"name": name,
-            "reward_model_id": reward_model_id, "agent": agent, "scope": scope,
-            "initial_prompt": initial_prompt, "runs_per_arm": runs_per_arm, "max_rounds": max_rounds,
-            "metric": {"name": metric_name, "direction": metric_direction, "unit": metric_unit,
-                       "minimum": metric_minimum, "maximum": metric_maximum,
-                       "regression_tolerance": regression_tolerance}}))
+        return _json(
+            client._post(
+                "/api/v1/rm/optimizations",
+                json={
+                    "name": name,
+                    "reward_model_id": reward_model_id,
+                    "agent": agent,
+                    "scope": scope,
+                    "initial_prompt": initial_prompt,
+                    "runs_per_arm": runs_per_arm,
+                    "max_rounds": max_rounds,
+                    "metric": {
+                        "name": metric_name,
+                        "direction": metric_direction,
+                        "unit": metric_unit,
+                        "minimum": metric_minimum,
+                        "maximum": metric_maximum,
+                        "regression_tolerance": regression_tolerance,
+                    },
+                },
+            )
+        )
 
 
 @mcp.tool()
@@ -895,14 +941,21 @@ def stash_optimization_status(optimization_id: str = "") -> str:
     Omit the ID to list this account's optimizations.
     """
     from uuid import UUID
+
     suffix = f"/{UUID(optimization_id)}" if optimization_id else ""
     with _client() as client:
         return _json(client._get("/api/v1/rm/optimizations" + suffix))
 
 
 @mcp.tool()
-def stash_optimization_start_run(optimization_id: str, work_key: str, agent: str,
-        scope: str, agent_version: str, session_id: str = "") -> str:
+def stash_optimization_start_run(
+    optimization_id: str,
+    work_key: str,
+    agent: str,
+    scope: str,
+    agent_version: str,
+    session_id: str = "",
+) -> str:
     """Before a NEW task, get its prompt instructions. Use a stable unique work_key
     and retain the returned exact instruction wrapper in the recorded trace before
     acting. Retries return the same assignment. Apply it subject to existing rules.
@@ -911,10 +964,20 @@ def stash_optimization_start_run(optimization_id: str, work_key: str, agent: str
     Do not reroll tasks or invent traces. An enabled=false result means continue normally.
     """
     from uuid import UUID
+
     with _client() as client:
-        return _json(client._post(f"/api/v1/rm/optimizations/{UUID(optimization_id)}/runs",
-            json={"work_key": work_key, "agent": agent, "scope": scope, "agent_version": agent_version,
-                  "session_id": session_id or None}))
+        return _json(
+            client._post(
+                f"/api/v1/rm/optimizations/{UUID(optimization_id)}/runs",
+                json={
+                    "work_key": work_key,
+                    "agent": agent,
+                    "scope": scope,
+                    "agent_version": agent_version,
+                    "session_id": session_id or None,
+                },
+            )
+        )
 
 
 @mcp.tool()
@@ -924,9 +987,14 @@ def stash_optimization_finish_run(run_id: str, trace_id: str = "", session_id: s
     the host/runner may call this after task completion. Evidence is frozen on receipt.
     """
     from uuid import UUID
+
     with _client() as client:
-        return _json(client._post(f"/api/v1/rm/optimizations/runs/{UUID(run_id)}/trace",
-            json={"trace_id": str(UUID(trace_id))} if trace_id else {"session_id": session_id}))
+        return _json(
+            client._post(
+                f"/api/v1/rm/optimizations/runs/{UUID(run_id)}/trace",
+                json={"trace_id": str(UUID(trace_id))} if trace_id else {"session_id": session_id},
+            )
+        )
 
 
 @mcp.tool()
@@ -936,9 +1004,14 @@ def stash_optimization_record_outcome(run_id: str, value: float, source: str) ->
     Never substitute a model's guess for a measured business result. Outcomes are immutable.
     """
     from uuid import UUID
+
     with _client() as client:
-        return _json(client._post(f"/api/v1/rm/optimizations/runs/{UUID(run_id)}/outcome",
-            json={"value": value, "source": source}))
+        return _json(
+            client._post(
+                f"/api/v1/rm/optimizations/runs/{UUID(run_id)}/outcome",
+                json={"value": value, "source": source},
+            )
+        )
 
 
 @mcp.tool()
@@ -947,9 +1020,17 @@ def stash_optimization_control(optimization_id: str, action: str, revision_id: s
     Rollback also pauses experimentation; it affects future runs only.
     """
     from uuid import UUID
+
     with _client() as client:
-        return _json(client._post(f"/api/v1/rm/optimizations/{UUID(optimization_id)}/control",
-            json={"action": action, "revision_id": str(UUID(revision_id)) if revision_id else None}))
+        return _json(
+            client._post(
+                f"/api/v1/rm/optimizations/{UUID(optimization_id)}/control",
+                json={
+                    "action": action,
+                    "revision_id": str(UUID(revision_id)) if revision_id else None,
+                },
+            )
+        )
 
 
 @mcp.tool()
@@ -958,8 +1039,13 @@ def stash_optimization_abandon_run(run_id: str, reason: str) -> str:
     prevents promotion from a selectively completed cohort. Completed runs cannot be removed.
     """
     from uuid import UUID
+
     with _client() as client:
-        return _json(client._post(f"/api/v1/rm/optimizations/runs/{UUID(run_id)}/abandon", json={"reason": reason}))
+        return _json(
+            client._post(
+                f"/api/v1/rm/optimizations/runs/{UUID(run_id)}/abandon", json={"reason": reason}
+            )
+        )
 
 
 # ── Entry point ───────────────────────────────────────────────────

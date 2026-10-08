@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { useRef, useState } from "react";
 import TraceExplorer from "./TraceExplorer";
-import { buildTraceOutline, groupPath, resolveGroupPath } from "./trace-outline";
+import { buildTraceOutline, groupPath, traceExplorerLevel } from "./trace-outline";
 import { presentTrace } from "./trace-presentation";
 import type { RmStep } from "@/lib/types";
 import type { StepAnnotations } from "./TraceTimeline";
@@ -27,10 +27,8 @@ const groups = buildTraceOutline(rows);
 function Harness({ opened = vi.fn(), outline = groups }: { opened?: () => void; outline?: ReturnType<typeof buildTraceOutline> }) {
   const [path, setPath] = useState<string[]>([]);
   const scroller = useRef<HTMLDivElement>(null);
-  const current = resolveGroupPath(outline, path).at(-1);
-  const direct = !path.length && outline.length === 1 && !outline[0].children.length && outline[0].rows.length <= 8;
-  const sections = direct ? [] : current?.children ?? outline;
-  const assessments = useSectionSummaries("t1", [...new Map([...outline, ...sections].map((node) => [node.key, node])).values()]);
+  const { trail, children: sections } = traceExplorerLevel(outline, path);
+  const assessments = useSectionSummaries("t1", [...new Map([...sections, ...trail, ...outline].map((node) => [node.key, node])).values()]);
   return <div>
     <TraceScrollRail groups={outline} path={path} rows={outline.flatMap((group) => group.rows)} copy={assessments.copy} stepNumber={(step) => step.index + 1} scroller={scroller} onPath={setPath} onOpenRows={opened} onStep={(id) => setPath(groupPath(outline, id))} />
     <div ref={scroller}><TraceExplorer groups={outline} path={path} onPath={setPath} assessments={assessments} ann={ann} isExpanded={() => false} onToggle={vi.fn()} onOpenRows={opened} /></div>
@@ -104,7 +102,7 @@ it("remains navigable if generation is unavailable", async () => {
   render(<Harness />);
   await load();
   expect(screen.getByRole("status")).toHaveTextContent("Section assessments unavailable");
-  fireEvent.click(screen.getAllByRole("button", { name: /^Explore Steps / })[0]);
+  fireEvent.click(screen.getAllByRole("button", { name: /^Explore / })[0]);
   await load();
   expect(screen.getByRole("button", { name: "Zoom out" })).toBeInTheDocument();
 });
@@ -182,8 +180,7 @@ it("retains all step destinations for a single task while browsing its subsectio
   const rail = screen.getByRole("navigation", { name: "Conversation navigation" });
   const markers = Array.from(rail.querySelectorAll("button"));
   expect(markers).toHaveLength(12);
-  fireEvent.click(screen.getByRole("button", { name: /^Explore / }));
-  await load();
+  expect(screen.getAllByRole("button", { name: /^Explore / })).toHaveLength(2);
   fireEvent.click(screen.getAllByRole("button", { name: /^Explore / })[1]);
   await load();
   expect(Array.from(rail.querySelectorAll("button"))).toEqual(markers);
@@ -191,4 +188,35 @@ it("retains all step destinations for a single task while browsing its subsectio
   await load();
   expect(document.getElementById("step-s3")).toBeInTheDocument();
   expect(Array.from(rail.querySelectorAll("button"))).toEqual(markers);
+});
+
+
+it("opens a single task on its subtasks immediately, before assessment requests finish", async () => {
+  vi.mocked(rmSummarizeSections).mockImplementation(() => new Promise(() => {}));
+  render(<Harness outline={[groups[0]]} />);
+  const cards = screen.getAllByRole("button", { name: /^Explore / });
+  expect(cards).toHaveLength(2);
+  expect(cards[0]).toHaveAccessibleName("Explore Task 1");
+  expect(cards[1]).toHaveAccessibleName("Explore Task 7");
+  expect(screen.queryByRole("button", { name: "Zoom out" })).not.toBeInTheDocument();
+  expect(screen.getByRole("navigation", { name: "Trace hierarchy" })).toHaveTextContent("Task 1");
+  fireEvent.keyDown(document.body, { key: "ArrowDown" });
+  fireEvent.keyDown(document.activeElement!, { key: "ArrowRight" });
+  await act(async () => vi.advanceTimersByTime(16));
+  expect(document.getElementById("step-s7")).toBeInTheDocument();
+  fireEvent.keyDown(document.activeElement!, { key: "ArrowLeft" });
+  await act(async () => vi.advanceTimersByTime(16));
+  expect(screen.getAllByRole("button", { name: /^Explore / })).toHaveLength(2);
+  expect(screen.getByRole("button", { name: "Explore Task 7" })).toHaveFocus();
+  fireEvent.keyDown(document.activeElement!, { key: "ArrowLeft" });
+  expect(screen.getAllByRole("button", { name: /^Explore / })).toHaveLength(2);
+});
+
+it("opens a single continuous task directly on its steps", async () => {
+  const outline = buildTraceOutline(presentTrace(Array.from({ length: 20 }, (_, i): RmStep => ({ id: `continuous${i}`, index: i, role: i ? "assistant" : "user", content: `Message ${i}`, tool_name: null, tool_input: null, tool_call_id: null, metadata: null }))).rows);
+  render(<Harness outline={outline} />);
+  expect(screen.queryByRole("button", { name: /^Explore / })).not.toBeInTheDocument();
+  expect(document.getElementById("step-continuous19")).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Zoom out" })).not.toBeInTheDocument();
+  await load();
 });

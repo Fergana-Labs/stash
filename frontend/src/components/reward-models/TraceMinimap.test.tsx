@@ -16,7 +16,7 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllGlobals());
 
-function renderMap(visibleSteps = steps, onJump = vi.fn(), actionScores?: Map<string, RmActionScore>) {
+function renderMap(visibleSteps = steps, onJump = vi.fn(), actionScores = new Map([["0", { step_id: "0", credit: 0.25 } as RmActionScore]])) {
   const container = document.createElement("div");
   const content = document.createElement("div");
   container.append(content);
@@ -46,7 +46,7 @@ it("reaches the final step at the bottom even when earlier steps are still visib
   await waitFor(() => expect(screen.getByRole("button", { name: "Step 3: Response, awaiting score" })).toHaveAttribute("aria-current", "step"));
   container.scrollTop = 400;
   fireEvent.scroll(container);
-  await waitFor(() => expect(screen.getByRole("button", { name: "Step 1: Response, awaiting score" })).toHaveAttribute("aria-current", "step"));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Step 1: Response, credit +0.25" })).toHaveAttribute("aria-current", "step"));
 });
 
 it("shows credit through height and keeps action type colors and retains keyboard step navigation", () => {
@@ -113,10 +113,10 @@ it("jumps to the clicked bar even when its position falls outside an equal-width
 
 it("explains why each unscored step lacks a grade", () => {
   const mixed = [steps[0], { ...steps[1], role: "user" }, steps[2]] as RmStep[];
-  render(<TraceMinimap steps={mixed} annotations={[]} unscoredReasons={new Map([["0", "insufficient evidence"]])} scroller={{ current: null }} navigation={{ current: null }} onJump={vi.fn()} />);
+  render(<TraceMinimap steps={mixed} annotations={[]} actionScores={new Map([["2", { step_id: "2", credit: 0.1 } as RmActionScore]])} unscoredReasons={new Map([["0", "insufficient evidence"]])} scroller={{ current: null }} navigation={{ current: null }} onJump={vi.fn()} />);
   expect(screen.getByRole("button", { name: "Step 1: Response, insufficient evidence" })).toBeVisible();
   expect(screen.getByRole("button", { name: "Step 2: User" })).toBeVisible();
-  expect(screen.getByRole("button", { name: "Step 3: Response, awaiting score" })).toBeVisible();
+  expect(screen.getByRole("button", { name: "Step 3: Response, credit +0.10" })).toBeVisible();
 });
 
 it("immediately shows scores and statuses on hover without jumping or relying on native titles", () => {
@@ -136,12 +136,23 @@ it("immediately shows scores and statuses on hover without jumping or relying on
 
 it("shows the tooltip on keyboard focus and dismisses it on Escape or blur", () => {
   renderMap();
-  const bar = screen.getByRole("button", { name: "Step 1: Response, awaiting score" });
+  const bar = screen.getByRole("button", { name: "Step 1: Response, credit +0.25" });
   fireEvent.focus(bar);
-  expect(screen.getByRole("tooltip")).toHaveTextContent("Step 1: Response, awaiting score");
+  expect(screen.getByRole("tooltip")).toHaveTextContent("Step 1: Response, credit +0.25");
   fireEvent.keyDown(bar, { key: "Escape" });
   expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
   fireEvent.focus(bar);
   fireEvent.blur(bar);
   expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+});
+
+
+it("collapses an empty chart and retains saved previous grades during recalculation", () => {
+  const props = { steps, annotations: [], scroller: { current: null }, navigation: { current: null }, onJump: vi.fn() };
+  const { rerender } = render(<TraceMinimap {...props} actionScores={new Map()} />);
+  expect(screen.queryByRole("navigation", { name: "Trace steps" })).not.toBeInTheDocument();
+  const saved = new Map([["0", { step_id: "0", credit: 0.25, stale: true } as RmActionScore]]);
+  rerender(<TraceMinimap {...props} actionScores={saved} annotationStatus="Updating annotations" />);
+  expect(screen.getByRole("button", { name: "Step 1: Response, credit +0.25, previous annotation" }).lastElementChild).toHaveStyle({ height: "31px" });
+  expect(screen.getByRole("group", { name: "Step map" })).toBeVisible();
 });

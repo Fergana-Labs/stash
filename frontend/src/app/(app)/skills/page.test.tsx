@@ -33,6 +33,7 @@ const router = vi.hoisted(() => ({
 
 vi.mock("next/navigation", () => ({
   useRouter: () => router,
+  usePathname: () => "/skills",
   useSearchParams: () => new URLSearchParams(),
 }));
 

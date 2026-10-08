@@ -1,5 +1,5 @@
 import type { TraceRow } from "./trace-rows";
-import { rowSteps, toolFamily } from "./trace-rows";
+import { isThinking, rowSteps, toolFamily } from "./trace-rows";
 import { readableExcerpt, rowHead } from "./trace-presentation";
 
 export interface TraceGroup {
@@ -97,4 +97,30 @@ export function resolveGroupPath(groups: TraceGroup[], path: string[]): TraceGro
     groups = node.children;
   }
   return result;
+}
+
+/** One task is already the overview; keep it in the breadcrumb, not behind a card. */
+export function traceExplorerLevel(groups: TraceGroup[], path: string[]) {
+  let trail = resolveGroupPath(groups, path);
+  if (!trail.length && groups.length === 1) trail = [groups[0]];
+  const current = trail.at(-1);
+  return {
+    trail, current,
+    children: current ? current.children : groups,
+    canAscend: trail.length > (groups.length === 1 ? 1 : 0),
+  };
+}
+
+/** Immediate, source-grounded copy while optional generated titles are loading. */
+export function sectionFallbackTitle(node: TraceGroup): string {
+  const progress = node.rows.find((row) => row.kind === "assistant" && row.step.metadata?.phase === "commentary" && row.step.content.trim());
+  if (progress) return readableExcerpt(rowHead(progress).content, 70);
+  const work = node.rows.map(activity).find(Boolean);
+  if (work?.startsWith("site:")) return `Accessing ${work.slice(5)}`;
+  const labels: Record<string, string> = { inspect: "Inspecting files and results", edit: "Editing code", verify: "Running checks", publish: "Publishing changes" };
+  if (work && labels[work]) return labels[work];
+  const request = node.rows.find((row) => row.kind === "prompt");
+  if (request) return readableExcerpt(rowHead(request).content, 70) || "User request";
+  const response = node.rows.find((row) => row.kind === "assistant" && !isThinking(row.step) && row.step.content.trim());
+  return response ? readableExcerpt(rowHead(response).content, 70) : "Tool activity";
 }

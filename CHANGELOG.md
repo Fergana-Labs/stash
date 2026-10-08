@@ -5,6 +5,12 @@ everything before it is captured in git history (`git log`), not here.
 
 ## Unreleased
 
+- Open single-task traces directly on their subtasks or recorded steps. Show
+  readable section titles immediately while generated summaries load, and hide
+  the top credit graph when there are no grades to display.
+- Add local trace snapshot imports that retain saved grades and a lightweight
+  worker for remote API scoring of new local imports.
+
 - Organize traces by requests, progress subtasks, and distinct activities without
   capping section counts or splitting work into equal chunks. Generate concise
   activity titles and summaries. Let longer lists scroll, and use up/down
