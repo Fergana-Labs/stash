@@ -110,17 +110,10 @@ function LatestTraceMinimap({ steps, annotations, actionScores, annotationStatus
   }
 
   return (
-    <nav aria-label="Trace steps" className="select-none py-2">
-      <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
-        {Object.entries(KINDS).filter(([kind]) => steps.some((step) => kindOf(step) === kind)).map(([kind, style]) => (
-          <span key={kind} className="inline-flex items-center gap-1"><span className={cn("h-2 w-2", style.color)} />{style.label}</span>
-        ))}
-        <span className="inline-flex items-center gap-1"><span className="size-1.5 rounded-full bg-amber-400" />Comment</span>
-        <span className="ml-auto shrink-0 tabular-nums">Step {steps[activeIndex]?.index + 1} of {steps.length}</span>
-      </div>
+    <nav aria-label="Trace steps" className="flex min-w-0 flex-1 select-none items-center gap-3">
       {annotationStatus && <p role="status" className="sr-only">{annotationStatus}</p>}
       <div
-        className="relative flex h-[52px] touch-none items-end"
+        className="relative flex h-[52px] min-w-0 flex-1 touch-none items-end"
         style={{ columnGap: `min(1px, ${25 / steps.length}%)` }}
         role="group"
         aria-label="Step map"
@@ -192,9 +185,7 @@ function LatestTraceMinimap({ steps, annotations, actionScores, annotationStatus
           style={{ left: `clamp(0px, calc(${(hoveredIndex + 0.5) / steps.length * 100}% - 8rem), max(0px, calc(100% - 16rem)))` }}
         >{labelFor(steps[hoveredIndex])}</div>}
       </div>
-      <div className="mt-1 flex justify-between border-t border-border pt-1 text-[10px] text-muted-foreground tabular-nums">
-        <span>Step 1</span><span>Step {steps.length}</span>
-      </div>
+      <span className="shrink-0 whitespace-nowrap text-[10px] text-muted-foreground tabular-nums">Step {steps[activeIndex]?.index + 1} of {steps.length}</span>
     </nav>
   );
 }

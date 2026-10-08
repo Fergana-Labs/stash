@@ -4,6 +4,7 @@ import { useProductCheckpoint } from "@/components/ProductCheckpointContext";
 import FloodgateComponent from "@/checkpoints/floodgate-2026-10-05/TraceClient";
 
 import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import { toast } from "sonner";
 import { useBreadcrumbs } from "@/components/BreadcrumbContext";
@@ -22,7 +23,7 @@ import TraceTimeline, { type StepAnnotations } from "@/components/reward-models/
 import { errorMessage, locateQuote, quoteFromOffsets, relativeTime, sortAnnotations } from "@/components/reward-models/rm-text";
 import { domSourceOffset, type Highlight } from "@/components/reward-models/source-anchors";
 import { buildRows, rowSteps, type TraceRow } from "@/components/reward-models/trace-rows";
-import { traceScrollMarkers, visibleStepElement } from "@/components/reward-models/trace-scroll";
+import { traceScrollMarkers } from "@/components/reward-models/trace-scroll";
 import { useAuth } from "@/hooks/useAuth";
 import { rmCreateAnnotation, rmDeleteAnnotation, rmGetTrace, rmUpdateAnnotation } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -32,14 +33,6 @@ import ConversationScrollRail from "@/components/ConversationScrollRail";
 const FLASH_MS = 1400;
 /** Highlight id for the not-yet-saved quote while the composer is open. */
 const PENDING_ID = "pending";
-
-type View = "all" | "conversation" | "tools";
-
-const VIEWS: [View, string][] = [
-  ["all", "All"],
-  ["conversation", "Conversation"],
-  ["tools", "Tools"],
-];
 
 function stepContentElement(node: Node | null): HTMLElement | null {
   const element = node instanceof HTMLElement ? node : node?.parentElement;
@@ -56,12 +49,6 @@ function highlightClass(a: RmAnnotation, active: boolean): string {
   );
 }
 
-function inView(row: TraceRow, view: View): boolean {
-  if (view === "all") return true;
-  if (view === "tools") return row.kind === "tool";
-  return row.kind === "prompt" || row.kind === "assistant";
-}
-
 function LatestTraceClient({ traceId }: { traceId: string }) {
   const { user } = useAuth();
   const confirm = useConfirm();
@@ -73,7 +60,6 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [flashStepId, setFlashStepId] = useState<string | null>(null);
   const [pendingAnnotationId, setPendingAnnotationId] = useState<string | null>(null);
-  const [view, setView] = useState<View>("all");
   const [expandAll, setExpandAll] = useState(false);
   // Rows the user opened (true) or closed (false) by hand; the rest follow their default.
   const [rowChoice, setRowChoice] = useState<Map<string, boolean>>(new Map());
@@ -119,7 +105,6 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
       const row = buildRows(trace.steps).find((candidate) => rowSteps(candidate).some((step) => step.id === stepId));
       if (!row) return;
       openedHash.current = hash;
-      setView("all");
       setRowChoice((current) => new Map(current).set(row.key, true));
       setFlashStepId(stepId);
       frame = requestAnimationFrame(() => {
@@ -174,36 +159,6 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
 
   function toggleRow(row: TraceRow) {
     setRowChoice(new Map(rowChoice).set(row.key, !isExpanded(row)));
-  }
-
-  function changeView(nextView: View) {
-    if (nextView === view) return;
-    const container = scroller.current!;
-    const header = navigation.current!;
-    const current = visibleStepElement(container, header);
-    setView(nextView);
-    if (current === null) return;
-
-    const currentStep = trace!.steps.find((step) => `step-${step.id}` === current.id)!;
-    const candidates = rows.filter((row) => inView(row, nextView));
-    if (candidates.length === 0) return;
-    const staysVisible = candidates.some((row) => rowSteps(row).some((step) => step.id === currentStep.id));
-    let target = currentStep;
-    if (!staysVisible) {
-      target = rowSteps(candidates[0])[0];
-      for (const row of candidates) {
-        const step = rowSteps(row)[0];
-        if (Math.abs(step.index - currentStep.index) < Math.abs(target.index - currentStep.index)) target = step;
-      }
-    }
-    const offset = staysVisible
-      ? current.getBoundingClientRect().top - container.getBoundingClientRect().top
-      : Math.max(0, header.getBoundingClientRect().bottom - container.getBoundingClientRect().top) + 12;
-    requestAnimationFrame(() => {
-      const element = document.getElementById(`step-${target.id}`)!;
-      const top = container.scrollTop + element.getBoundingClientRect().top - container.getBoundingClientRect().top - offset;
-      container.scrollTo({ top, behavior: "instant" });
-    });
   }
 
   async function submitComment(target: ComposerTarget, comment: string) {
@@ -268,11 +223,10 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
     setComposer({ stepId: step.id, quote: quoteFromOffsets(step.content, start, end) });
   }
 
-  /** Scrolls to a step, opening its row and clearing a filter that hides it. */
+  /** Scrolls to a step, opening its row if needed. */
   function revealStep(stepId: string) {
     const row = rows.find((r) => rowSteps(r).some((s) => s.id === stepId));
     if (!row) return;
-    if (!inView(row, view)) setView("all");
     if (!isExpanded(row) && row.kind !== "assistant") toggleRow(row);
     setFlashStepId(stepId);
     requestAnimationFrame(() => {
@@ -311,26 +265,25 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
     onSelectAnnotation: focusCard,
   };
 
-  const visibleRows = rows.filter((row) => inView(row, view));
-  const scrollMarkers = traceScrollMarkers(visibleRows);
+  const scrollMarkers = traceScrollMarkers(rows);
 
   return (
     <div className="flex h-full min-h-0">
       <ConversationScrollRail items={scrollMarkers} scroller={scroller} header={navigation} onJump={(item) => revealStep(item.targetId.slice("step-".length))} />
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <div ref={navigation} className="z-20 shrink-0 border-b border-border bg-background px-6 pt-4">
-        <div className="mx-auto max-w-5xl">
-          <Link href="/reward-models" aria-label="Back to traces" className="inline-flex h-7 items-center rounded-md border border-border px-2.5 text-[12px] text-muted-foreground hover:bg-surface hover:text-foreground">
-            Back
-          </Link>
-
-          <header className="mt-2 mb-3 flex flex-wrap items-start gap-3">
+        <div ref={navigation} className="z-20 shrink-0 border-b border-border bg-background px-6 py-2">
+        <div className="mx-auto max-w-5xl space-y-2">
+          <header className="flex h-8 items-center gap-3">
+            <Link href="/reward-models" aria-label="Back to traces" title="Back to traces" className="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-surface hover:text-foreground">
+              <ArrowLeft className="size-4" aria-hidden="true" />
+            </Link>
             <div className="flex min-w-0 flex-1 items-baseline gap-2.5">
-              <h1 title={trace.title} className="m-0 min-w-0 truncate font-display text-[21px] leading-snug font-semibold tracking-tight text-foreground">{trace.title}</h1>
-              <span className="shrink-0 whitespace-nowrap text-[12px] text-muted-foreground">imported {relativeTime(trace.created_at)}</span>
+              <h1 title={trace.title} className="m-0 min-w-0 truncate font-display text-[18px] leading-snug font-semibold tracking-tight text-foreground">{trace.title}</h1>
+              <span className="shrink-0 whitespace-nowrap text-[11px] text-muted-foreground">imported {relativeTime(trace.created_at)}</span>
             </div>
-            <div className="flex shrink-0 items-center gap-1.5 pt-1">
-              <div className="mr-2 text-right" title="Automatic trace annotation: estimated probability of success (0–1)"><div className="text-[10px] text-muted-foreground">Trace score</div><span className="font-mono text-xl font-medium tabular-nums">{score == null ? "—" : score.toFixed(2)}</span></div>
+            <div className="flex shrink-0 items-center gap-1.5">
+              <div className="mr-2 flex items-baseline gap-1.5 whitespace-nowrap" title="Automatic trace annotation: estimated probability of success (0–1)"><span className="text-[10px] text-muted-foreground">Trace score</span><span className="font-mono text-[16px] font-medium text-foreground tabular-nums">{score == null ? "—" : score.toFixed(2)}</span></div>
+              {evaluation?.queue?.status === "failed" && evaluation.owner_user_id === viewerId && <Button size="xs" variant="ghost" onClick={() => void wbAssess(traceId).then(reloadEvaluation).catch((e) => toast.error(errorMessage(e)))}>Retry scoring</Button>}
               <TraceReviewAccess traceId={traceId} viewerId={viewerId} />
               <button
                 type="button"
@@ -349,17 +302,8 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
             </div>
           </header>
 
-          {evaluation?.queue?.status === "failed" && evaluation.owner_user_id === viewerId && <Button size="xs" variant="ghost" onClick={() => void wbAssess(traceId).then(reloadEvaluation).catch((e) => toast.error(errorMessage(e)))}>Retry scoring</Button>}
-            <TraceMinimap steps={trace.steps} annotations={trace.annotations} actionScores={actionScores} annotationStatus={annotationProgress.label} unscoredReasons={annotationProgress.unscoredReasons} scroller={scroller} navigation={navigation} onJump={(index) => revealStep(trace.steps[index].id)} />
-            <TraceFlamegraph spans={trace.spans} onJump={(index) => revealStep(trace.steps[index].id)} />
-
-            <div className="mt-1 flex items-center gap-2 bg-background py-1.5">
-              {VIEWS.map(([key, label]) => (
-                <ToolbarButton key={key} active={view === key} onClick={() => changeView(key)}>
-                  {label}
-                </ToolbarButton>
-              ))}
-              <span className="flex-1" />
+            <div className="flex items-center gap-3">
+              <TraceMinimap steps={trace.steps} annotations={trace.annotations} actionScores={actionScores} annotationStatus={annotationProgress.label} unscoredReasons={annotationProgress.unscoredReasons} scroller={scroller} navigation={navigation} onJump={(index) => revealStep(trace.steps[index].id)} />
               <ToolbarButton
                 active={expandAll}
                 onClick={() => {
@@ -375,8 +319,9 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
         </div>
         <div ref={scroller} className="scroll-thin min-h-0 flex-1 overflow-y-auto">
         <div ref={canvas} className="relative mx-auto max-w-5xl px-6 pt-2 pb-[60vh]" onMouseUp={onCanvasMouseUp}>
-          <TraceTimeline rows={visibleRows} ann={ann} isExpanded={isExpanded} onToggle={toggleRow} />
-          {visibleRows.length === 0 && <p className="py-12 text-center text-[13px] text-muted-foreground">No steps in this view.</p>}
+          <TraceFlamegraph spans={trace.spans} onJump={(index) => revealStep(trace.steps[index].id)} />
+          <TraceTimeline rows={rows} ann={ann} isExpanded={isExpanded} onToggle={toggleRow} />
+          {rows.length === 0 && <p className="py-12 text-center text-[13px] text-muted-foreground">No steps in this trace.</p>}
         </div>
         </div>
       </div>
@@ -421,7 +366,7 @@ function ToolbarButton({ active, onClick, children }: { active: boolean; onClick
       onClick={onClick}
       aria-pressed={active}
       className={cn(
-        "inline-flex h-7 cursor-pointer items-center gap-1.5 border-b-2 px-2 text-[12px] transition-colors",
+        "inline-flex h-7 shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap border-b-2 px-2 text-[12px] transition-colors",
         active ? "border-foreground font-medium text-foreground" : "border-transparent text-muted-foreground hover:text-foreground",
       )}
     >

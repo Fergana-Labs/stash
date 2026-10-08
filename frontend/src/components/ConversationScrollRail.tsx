@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, type KeyboardEvent, type RefObject } from "react";
+import { useEffect, useId, useRef, useState, type KeyboardEvent, type PointerEvent, type RefObject } from "react";
 import { cn } from "@/lib/utils";
 
 export interface ConversationMarker {
@@ -55,6 +55,7 @@ export default function ConversationScrollRail({ items, scroller, header, onJump
   const [activeIndex, setActiveIndex] = useState(0);
   const [previewIndex, setPreviewIndex] = useState<number | null>(null);
   const rail = useRef<HTMLElement>(null);
+  const drag = useRef<{ pointerId: number; index: number } | null>(null);
   const tooltipId = useId();
 
   useEffect(() => {
@@ -103,7 +104,7 @@ export default function ConversationScrollRail({ items, scroller, header, onJump
 
   if (items.length < 2) return null;
 
-  function jump(index: number) {
+  function jump(index: number, scrubbing = false) {
     const item = items[index];
     if (onJump) onJump(item);
     else {
@@ -112,11 +113,32 @@ export default function ConversationScrollRail({ items, scroller, header, onJump
       if (container && target) {
         container.scrollTo({
           top: container.scrollTop + target.getBoundingClientRect().top - container.getBoundingClientRect().top - (header?.current?.offsetHeight ?? 0) - 12,
-          behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth",
+          behavior: scrubbing || window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth",
         });
       }
     }
     setActiveIndex(index);
+  }
+
+  function indexAt(event: PointerEvent<HTMLDivElement>) {
+    const bounds = event.currentTarget.getBoundingClientRect();
+    return Math.max(0, Math.min(items.length - 1, Math.floor((event.clientY - bounds.top) / bounds.height * items.length)));
+  }
+
+  function scrub(index: number) {
+    setPreviewIndex(index);
+    rail.current?.querySelectorAll<HTMLButtonElement>("button")[index]?.focus({ preventScroll: true });
+    jump(index, true);
+  }
+
+  function endDrag(event: PointerEvent<HTMLDivElement>) {
+    if (drag.current?.pointerId !== event.pointerId) return;
+    drag.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    const bounds = event.currentTarget.getBoundingClientRect();
+    if (event.type !== "pointerup" || event.pointerType === "touch" || event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) {
+      setPreviewIndex(null);
+    }
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLButtonElement>, index: number) {
@@ -137,21 +159,38 @@ export default function ConversationScrollRail({ items, scroller, header, onJump
         if (!event.currentTarget.contains(event.relatedTarget)) setPreviewIndex(null);
       }}>
       <div className="flex h-full max-h-full flex-col justify-center">
-        <div className="relative flex min-h-0 flex-col" style={{ height: items.length * 14, maxHeight: "100%" }}>
+        <div className="relative flex min-h-0 touch-none select-none flex-col" style={{ height: items.length * 14, maxHeight: "100%" }}
+          role="group" aria-label="Conversation scrubber"
+          onPointerDown={(event) => {
+            if (event.button !== 0 || drag.current !== null) return;
+            event.preventDefault();
+            const index = indexAt(event);
+            drag.current = { pointerId: event.pointerId, index };
+            event.currentTarget.setPointerCapture(event.pointerId);
+            scrub(index);
+          }}
+          onPointerMove={(event) => {
+            if (drag.current?.pointerId !== event.pointerId) return;
+            const index = indexAt(event);
+            if (index === drag.current.index) return;
+            drag.current.index = index;
+            scrub(index);
+          }}
+          onPointerUp={endDrag} onPointerCancel={endDrag} onLostPointerCapture={endDrag}>
           {items.map((item, index) => (
             <button key={item.targetId} type="button" aria-label={`${item.label}: ${item.title}`}
               aria-current={index === activeIndex ? "location" : undefined}
               aria-describedby={previewIndex === index ? tooltipId : undefined}
               tabIndex={index === activeIndex ? 0 : -1}
               onMouseEnter={() => setPreviewIndex(index)} onFocus={() => setPreviewIndex(index)}
-              onClick={() => jump(index)} onKeyDown={(event) => onKeyDown(event, index)}
+              onClick={(event) => { if (event.detail === 0) jump(index); }} onKeyDown={(event) => onKeyDown(event, index)}
               className="group flex min-h-0 flex-1 cursor-pointer items-center px-2 outline-none focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-brand-400">
               <span aria-hidden="true" className={cn("block h-[2px] shrink-0 rounded-full transition-[width,background-color] duration-150 motion-reduce:transition-none",
                 index === activeIndex || previewIndex === index ? "w-5 bg-foreground" : item.emphasis ? "w-3 bg-muted-foreground/45 group-hover:w-5" : "w-2 bg-muted-foreground/30 group-hover:w-5")} />
             </button>
           ))}
           {preview && <div id={tooltipId} role="tooltip"
-            className="absolute left-full ml-2 w-72 max-w-[calc(100vw-5rem)] rounded-xl border border-border bg-base p-3 text-left shadow-lg"
+            className="pointer-events-none absolute left-full ml-2 w-72 max-w-[calc(100vw-5rem)] rounded-xl border border-border bg-base p-3 text-left shadow-lg"
             style={{ top: `${fraction * 100}%`, transform: `translateY(-${fraction * 100}%)` }}>
             <div className="mb-1 text-[10px] text-muted-foreground">{preview.label}</div>
             <div className="line-clamp-2 break-words text-[13px] font-medium leading-5 text-foreground">{preview.title}</div>
