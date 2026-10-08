@@ -59,7 +59,7 @@ it("shows credit through height and keeps action type colors and retains keyboar
   expect(unscored.lastElementChild).toHaveStyle({ height: "6px" });
   expect(unscored.lastElementChild).toHaveClass("bg-blue-500", "opacity-35");
   expect(screen.getByLabelText("Action credit legend")).toHaveTextContent("−1 Harmful0 Neutral+1 Helpful");
-  expect(screen.getByText(/Only assistant responses and tool calls are graded/)).toBeVisible();
+  expect(screen.queryByText(/Only assistant responses and tool calls are graded/)).not.toBeInTheDocument();
   expect(screen.queryByText("User", { exact: true })).not.toBeInTheDocument();
   expect(screen.getByText("Response", { exact: true })).toBeVisible();
   fireEvent.keyDown(scored, { key: "ArrowRight" });
@@ -117,4 +117,31 @@ it("explains why each unscored step lacks a grade", () => {
   expect(screen.getByRole("button", { name: "Step 1: Response, insufficient evidence" })).toBeVisible();
   expect(screen.getByRole("button", { name: "Step 2: User, not graded" })).toBeVisible();
   expect(screen.getByRole("button", { name: "Step 3: Response, awaiting score" })).toBeVisible();
+});
+
+it("immediately shows scores and statuses on hover without jumping or relying on native titles", () => {
+  const onJump = vi.fn();
+  renderMap(steps, onJump, new Map([["0", { step_id: "0", credit: 0.35 } as RmActionScore]]));
+  const map = screen.getByRole("group", { name: "Step map" });
+  map.getBoundingClientRect = () => ({ left: 100, width: 300 }) as DOMRect;
+  expect(screen.getByRole("button", { name: "Step 1: Response, credit +0.35" })).not.toHaveAttribute("title");
+  fireEvent.pointerEnter(map, { pointerType: "mouse", clientX: 110 });
+  expect(screen.getByRole("tooltip")).toHaveTextContent("Step 1: Response, credit +0.35");
+  fireEvent.pointerMove(map, { pointerType: "mouse", clientX: 250 });
+  expect(screen.getByRole("tooltip")).toHaveTextContent("Step 2: Response, awaiting score");
+  expect(onJump).not.toHaveBeenCalled();
+  fireEvent.pointerLeave(map);
+  expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+});
+
+it("shows the tooltip on keyboard focus and dismisses it on Escape or blur", () => {
+  renderMap();
+  const bar = screen.getByRole("button", { name: "Step 1: Response, awaiting score" });
+  fireEvent.focus(bar);
+  expect(screen.getByRole("tooltip")).toHaveTextContent("Step 1: Response, awaiting score");
+  fireEvent.keyDown(bar, { key: "Escape" });
+  expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+  fireEvent.focus(bar);
+  fireEvent.blur(bar);
+  expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
 });

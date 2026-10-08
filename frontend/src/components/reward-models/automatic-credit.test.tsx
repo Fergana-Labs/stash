@@ -52,3 +52,23 @@ it("reports a failed update even when there are no previous scores", () => {
   const data = { ...response(null), previous_credits: [], configured: true, queue: { status: "failed", error: "Invalid response" } };
   expect(automaticAnnotationProgress(data, steps, automaticActionScores(data, steps)).label).toBe("0 of 3 actions scored · 3 awaiting scores · Annotation update failed");
 });
+
+it("uses continuous expected credit for current and previous bar heights without rounding to labels", () => {
+  const data = response({ status: "running", created_at: "2026-10-07", credits: [{ ...credit("0", 1), expected_credit: 0.35 }] } as TraceEvaluation);
+  data.previous_credits = saved.map((c) => ({ ...c, expected_credit: 0.7 }));
+  const scores = automaticActionScores(data, steps);
+  expect(scores.get("0")?.credit).toBe(0.35);
+  expect(scores.get("1")?.credit).toBe(0.7);
+  render(<TraceMinimap steps={steps} annotations={[]} actionScores={scores} scroller={{ current: null }} navigation={{ current: null }} onJump={vi.fn()} />);
+  expect(screen.getByRole("button", { name: "Step 1: Response, credit +0.35" }).lastElementChild).toHaveStyle({ height: "33px" });
+  expect(screen.getByRole("button", { name: "Step 2: Response, credit +0.70, previous annotation" }).lastElementChild).toHaveStyle({ height: "40px" });
+  expect(screen.getByText("Continuous action credit (height)")).toBeVisible();
+});
+
+it("never replaces an explicit missing expected credit with a legacy categorical score", () => {
+  const data = { ...response({ status: "completed", credits: [{ ...credit("0", 1), expected_credit: null }, { ...credit("1", 1), expected_credit: 0 }] } as TraceEvaluation), configured: true };
+  const scores = automaticActionScores(data, steps);
+  expect(scores.has("0")).toBe(false);
+  expect(scores.get("1")?.credit).toBe(0);
+  expect(automaticAnnotationProgress(data, steps, scores).unscoredReasons.get("0")).toBe("insufficient evidence");
+});

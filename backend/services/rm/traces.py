@@ -247,9 +247,9 @@ async def _evaluation_summaries(summaries: list[dict]) -> None:
         credits: dict[UUID, list[float]] = {}
         for call in calls:
             for result in call["result"].get("results", []):
-                credit = workbench_evaluation.CREDIT_VALUES.get(result.get("verdict"))
+                credit = workbench_evaluation.expected_credit(result)
                 if credit is not None:
-                    credits.setdefault(call["evaluation_id"], []).append(credit / 2)
+                    credits.setdefault(call["evaluation_id"], []).append(credit)
         for evaluation in evaluations.values():
             probabilities = evaluation.pop("outcome_probabilities") or {}
             evaluation["score"] = (

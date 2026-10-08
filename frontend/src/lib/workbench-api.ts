@@ -87,7 +87,8 @@ export interface TraceEvaluation {
   id: string; trace_id: string; revision_hash: string; policy_version: string; status: string;
   outcome: string | null; outcome_probabilities?: Record<string, number> | null; outcome_confidence: number | null; total_actions: number; credited_actions: number;
   error: string | null; created_at: string; boundary: { kind: string; step_index: number };
-  credits: { step_id: string; index: number; credit: number | null; label: string; confidence: number; call_id: string }[];
+  // `credit` retains the legacy ordinal (-2..2); expected_credit is continuous (-1..1).
+  credits: { step_id: string; index: number; credit: number | null; expected_credit?: number | null; credit_method?: string; label: string; confidence: number; call_id: string }[];
   actions: { id: string; index: number; content: string; tool_name: string | null }[];
   calls: EvaluationCall[];
 }

@@ -5,6 +5,12 @@ everything before it is captured in git history (`git log`), not here.
 
 ## Unreleased
 
+- Use continuous expected action credit from −1 to +1, calculated from saved
+  classifier probabilities, across trace bars, credit summaries, and new training
+  comparisons. Preserve insufficient-evidence abstentions and original verdicts.
+- Remove the trace-map instruction line and show action scores or grading status
+  immediately on hover or keyboard focus, replacing delayed native tooltips.
+
 - Explain trace-bar heights with a harmful/neutral/helpful legend and show
   annotation counts, pending scores, insufficient evidence, and failed updates.
   Retry invalid automatic-classifier responses up to three times per batch,

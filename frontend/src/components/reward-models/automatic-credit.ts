@@ -1,6 +1,11 @@
 import type { RmActionScore, RmStep } from "@/lib/types";
 import type { TraceEvaluationResponse } from "@/lib/workbench-api";
 
+function normalizedCredit(credit: NonNullable<TraceEvaluationResponse["current"]>["credits"][number]) {
+  // Support older backend instances during deployment; an explicit null is authoritative.
+  return credit.expected_credit === undefined ? (credit.credit === null ? null : credit.credit / 2) : credit.expected_credit;
+}
+
 /** Match the automatic classifier's action eligibility, excluding context events. */
 export function isGradableAction(step: RmStep) {
   return step.role === "assistant" && !step.metadata?.thinking && Boolean(step.tool_name || step.content?.trim());
@@ -13,9 +18,10 @@ export function automaticActionScores(evaluation: TraceEvaluationResponse | null
   const current = evaluation?.current;
   const previous = current?.status === "completed" ? [] : evaluation?.previous_credits ?? [];
   for (const credit of previous) {
-    if (credit.credit === null || !visible.has(credit.step_id)) continue;
+    const value = normalizedCredit(credit);
+    if (value === null || !visible.has(credit.step_id)) continue;
     scores.set(credit.step_id, {
-      step_id: credit.step_id, score: credit.credit, credit: credit.credit / 2,
+      step_id: credit.step_id, score: value, credit: value,
       reward_model_id: "automatic", reward_model_name: "Automatic annotation",
       created_at: credit.created_at, stale: true,
     });
@@ -23,9 +29,10 @@ export function automaticActionScores(evaluation: TraceEvaluationResponse | null
   for (const credit of current?.credits ?? []) {
     // An explicit uncertain result supersedes an earlier numeric annotation too.
     scores.delete(credit.step_id);
-    if (credit.credit === null || !visible.has(credit.step_id)) continue;
+    const value = normalizedCredit(credit);
+    if (value === null || !visible.has(credit.step_id)) continue;
     scores.set(credit.step_id, {
-      step_id: credit.step_id, score: credit.credit, credit: credit.credit / 2,
+      step_id: credit.step_id, score: value, credit: value,
       reward_model_id: "automatic", reward_model_name: "Automatic annotation",
       created_at: current!.created_at,
     });
@@ -49,7 +56,7 @@ export function automaticAnnotationProgress(evaluation: TraceEvaluationResponse 
     if (score) {
       scored++;
       if (score.stale) previous++;
-    } else if (credits.get(action.id)?.credit === null) {
+    } else if (credits.has(action.id) && normalizedCredit(credits.get(action.id)!) === null) {
       uncertain++;
       unscoredReasons.set(action.id, "insufficient evidence");
     } else {
