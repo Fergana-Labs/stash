@@ -115,6 +115,83 @@ shape every adapter produces.
 - Step `metadata.timestamp` holds a recorded ISO 8601 datetime with timezone. Claude Code, Codex, and timestamped OpenAI messages preserve their timestamps. Untimed messages stay untimed.
 - `spans` records timed operations independently of conversation steps. OpenTelemetry imports preserve span IDs, parent IDs, nanosecond start/end times, operation names/kinds, recorded inputs/outputs, and references to retained message indices. The viewer plots overlapping operations on a shared time axis and nests subagents by parent ID. Untimed traces have an empty span list; no durations are inferred from step order.
 
+### Step labels
+
+A step label says what a step *is*, without judging it: what the user is doing
+with a message, how they reacted to which answer, what a tool call did and
+returned, whether it repeats an earlier call, and what the agent handed the
+user. The automatic annotation estimates how well a step went; the label is
+the observable fact next to that number. The trace view shows labels as chips
+on each row, links a user's reaction to the answer it is about, counts them in
+a summary bar, and hides them with a Labels toggle.
+
+A label is `steps[].metadata.label`: `chunk_id`, `task_id`, `actor` (`user` or
+`agent`), then for a user step `intent`, `verdict`, `verdict_target`,
+`sentiment`; for an agent step `type`, `effect`, `result`, `duplicate_of`,
+`is_output`, `outcome`, `stance`, `coverage`; plus `evidence` and `note`.
+`verdict_target` and `duplicate_of` are `chunk_id`s in the same trace. Labels
+reach a trace in one of two ways:
+
+- **Import.** A trace labeled by an offline run carries its labels in step
+  metadata. It is used as it is and never sent to a model.
+- **Automatic annotation** (`services/rm/step_labeling.py`). The workbench
+  queues every trace on ingestion; once the agent has responded, a worker cuts
+  the trace into chunks (a user message, an agent message, or a tool call with
+  its result) and asks `STEP_LABEL_MODEL` (default `gpt-6-sol`) to label each
+  chunk, one call per chunk with the whole conversation as a cached prompt
+  prefix (`step_labeler.py`). When a trace grows, chunks that have not changed
+  keep their labels and only the new ones are sent. Labels and scores are
+  stored in `rm_step_labels` and merged into `GET /traces/{id}` on read. It
+  needs `OPENAI_API_KEY` and sends trace content to OpenAI. A trace above
+  `STEP_LABELING_MAX_CHUNKS` (80) or `STEP_LABELING_MAX_CHARS` (200000) is
+  refused with the reason, which the trace view shows.
+
+### Step scores
+
+Step scores turn the labels into numbers by fixed rules
+(`services/rm/step_scoring.py`), so the same labels always give the same
+scores and every number can be traced to the label behind it. They are the
+automatic annotation: `workbench_auto.process_trace` labels and scores each
+recorded trace version and saves the result as that version's evaluation
+(`workbench_evaluation.py`), which is what the trace list, the trace view,
+training from automatic annotations and prompt optimization read.
+
+- An action's **credit** is its score (score plus credit passed back, capped
+  to −1..+1). The ordinal category is the band the score falls in.
+- The **trace score** is the mean of the task scores.
+- The **outcome** is read from the answers, not the score, because the score
+  also carries the cost of the work: `success` when the final answers average
+  0.5 or more (the user accepted them), `failure` below zero (rejected, error,
+  not found), `partial_success` in between (nobody reacted), and
+  `insufficient_evidence` when the trace has no answer.
+
+Evaluations made under the earlier policy, in which a grading model judged the
+outcome and each action directly, stay in the trace's history. That policy's
+two questions are still asked when a proposed correction is checked against
+one recorded action.
+
+- **Work costs points.** A lookup is −0.03, a call that changes something
+  −0.05, a question to the user −0.05; an error adds −0.10 and a repeat of an
+  earlier call adds −0.10.
+- **An answer earns points by how the user reacted**, from +1.0 (confirmed, no
+  caveats) down to −1.0 (rejected, stated with confidence).
+- **Quality checks** (optional, when `TYPESAFE_API_KEY` is set). Where the
+  labels leave the outcome open (a tool call, a question, an answer the user
+  never reacted to), the grading model is asked one multiple-choice question
+  about that step, and the options' points are blended by their probabilities.
+  The bounds keep the order fixed: an unconfirmed answer never beats an
+  accepted one, and work is never scored above zero.
+- **Credit flows back.** An answer the user reacted to passes
+  `0.3 × points × 0.8^k` to the step `k` places before it in the same task.
+- **A task's score** is its final answer's points plus the cost of the work,
+  capped to −1..+1.
+
+A step's score breakdown is `steps[].metadata.reward` and the task scores are
+`step_scores` on `GET /traces/{id}`; an imported trace may carry both
+(`metadata.rubric_summary` on the trace). The viewer shows the score on each
+step, each task's score where the task starts, and the breakdown line by line
+when a step is opened.
+
 ### Supported input formats
 
 `format` on import is one of the names below or `auto`. `auto` detects the

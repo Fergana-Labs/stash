@@ -6,7 +6,6 @@ from uuid import UUID
 
 from rm_worker.context import render_action_input, render_trace_input
 
-from ...config import settings
 from ...database import get_pool
 from . import datasets
 from . import workbench_evaluation as policy
@@ -24,7 +23,7 @@ async def build_pairs(
         owner,
         trace_ids,
         policy.POLICY_VERSION,
-        settings.JEV_MODEL,
+        policy.model(),
     )
     current = {
         r["id"]: r

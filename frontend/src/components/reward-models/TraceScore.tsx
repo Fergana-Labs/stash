@@ -3,11 +3,13 @@ import type { TraceEvaluationResponse } from "@/lib/workbench-api";
 
 function scoreState(evaluation: TraceEvaluationResponse | null, error: string | null) {
   const current = evaluation?.current;
-  const probability = current?.outcome_probabilities?.success;
-  const score = current?.outcome !== "insufficient_evidence" && typeof probability === "number" && Number.isFinite(probability)
-    ? probability : null;
+  // A rule score stands on its own; the earlier policy's estimate of success needs an established outcome.
+  const ruleScore = current?.outcome_probabilities?.score;
+  const probability = current?.outcome !== "insufficient_evidence" ? current?.outcome_probabilities?.success : null;
+  const value = ruleScore ?? probability;
+  const score = typeof value === "number" && Number.isFinite(value) ? value : null;
   if (error) return { score, label: score === null ? "Couldn't load" : "Update unavailable", description: "Couldn't refresh the trace score. It will retry automatically." };
-  if (score !== null) return { score, label: null, description: "Automatic trace annotation: estimated probability of success (0–1)." };
+  if (score !== null) return { score, label: null, description: "Automatic trace annotation: the mean of the task scores, from −1 (bad) to +1 (good)." };
   if (!evaluation) return { score, label: "Loading…", busy: true, description: "Loading the saved trace score." };
   if (current?.outcome === "insufficient_evidence") return { score, label: "Insufficient evidence", description: "The classifier could not determine whether this trace was successful." };
   if (!evaluation.configured) return { score, label: "Unavailable", description: "Automatic trace scoring is currently unavailable." };

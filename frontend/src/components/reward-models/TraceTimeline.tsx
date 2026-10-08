@@ -5,6 +5,10 @@ import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import type { RmActionScore, RmStep } from "@/lib/types";
 import { creditColor, formatCredit } from "./action-credit";
+import { StepLabelChips } from "./StepLabels";
+import { StepScoreChip, StepScoreLine, TaskScoreChip } from "./StepRewards";
+import type { LabelChip } from "./step-labels";
+import { signed, type StepReward, type TaskScore } from "./step-rewards";
 import AnchoredText from "./AnchoredText";
 import { firstLine, isThinking, looksLikeError, toolLabel, toolSummary, type TraceRow } from "./trace-rows";
 import type { Highlight } from "./source-anchors";
@@ -15,7 +19,18 @@ import ToolInput from "./ToolInput";
 /** Everything a row needs to show and change one step's annotations. Built once per render by the trace page. */
 export interface StepAnnotations {
   stepNumber?: (step: RmStep) => number | undefined;
+  /** A reward model's score for the step, for views that have no step scores. */
   actionScore?: (step: RmStep) => RmActionScore | undefined;
+  /** Step labels (what each step is); absent when the trace has none or they are hidden. */
+  labelChips?: (step: RmStep) => LabelChip[];
+  taskHeading?: (step: RmStep) => string | null;
+  onJumpToStep?: (stepId: string) => void;
+  /** Each step's score and how it was built; absent unless scores are shown. */
+  reward?: (step: RmStep) => StepReward | null;
+  /** The score of the task a step belongs to, shown where the task starts. */
+  taskScore?: (step: RmStep) => TaskScore | null;
+  stepNumberOf?: (chunk: string) => number | null;
+  onJumpToChunk?: (chunk: string) => void;
   highlights: (step: RmStep) => Highlight[];
   commentCount: (step: RmStep) => number;
   hasQuotes: (step: RmStep) => boolean;
@@ -24,12 +39,24 @@ export interface StepAnnotations {
   onSelectAnnotation: (ids: string[]) => void;
 }
 
+function Labels({ step, ann, className }: { step: RmStep; ann: StepAnnotations; className?: string }) {
+  const chips = ann.labelChips?.(step) ?? [];
+  if (chips.length === 0 || !ann.onJumpToStep) return null;
+  return <StepLabelChips chips={chips} onJump={ann.onJumpToStep} className={className} />;
+}
+
+/** The breakdown is the deepest level of detail, so it only appears once a row is opened. */
+function ScoreLine({ step, ann, className }: { step: RmStep; ann: StepAnnotations; className?: string }) {
+  const reward = ann.reward?.(step);
+  if (!reward || !ann.stepNumberOf || !ann.onJumpToChunk) return null;
+  return <StepScoreLine reward={reward} stepNumberOf={ann.stepNumberOf} onJumpToChunk={ann.onJumpToChunk} className={className} />;
+}
+
 /** The id is the scroll target for the minimap and comments. */
-function RowFrame({ step, flashing, children, className, credit }: { step: RmStep; flashing: boolean; children: ReactNode; className?: string; credit?: number }) {
+function RowFrame({ step, flashing, children, className }: { step: RmStep; flashing: boolean; children: ReactNode; className?: string }) {
   return (
     <div
       id={`step-${step.id}`}
-      data-credit={credit}
       className={cn(
         "relative scroll-mt-44 transition-colors duration-700",
         "px-2",
@@ -133,16 +160,19 @@ function StepContent({ step, ann, markdown, max }: { step: RmStep; ann: StepAnno
 /* ── user prompt (turn header) ──────────────────────────────────────── */
 
 function StepMetadata({ step, ann }: { step: RmStep; ann: StepAnnotations }) {
-  const score = ann.actionScore?.(step);
+  const reward = ann.reward?.(step);
+  const score = reward ? undefined : ann.actionScore?.(step);
   const number = ann.stepNumber ? ann.stepNumber(step) : step.index + 1;
   return (
     <div className="ml-auto grid shrink-0 grid-cols-[5.5rem_4.5rem_4rem_4rem] items-center gap-2 text-[11px] text-muted-foreground tabular-nums">
       <span className="text-right"><StepTime step={step} /></span>
-      <span className="text-right">{score && <span className="font-mono" style={{ color: creditColor(score.credit) }}
+      {reward ? <span className="flex justify-end"><StepScoreChip reward={reward} /></span> : (
+        <span className="text-right">{score && <span className="font-mono" style={{ color: creditColor(score.credit) }}
         aria-label={`Action credit ${formatCredit(score.credit)}${score.stale ? ", previous annotation" : ""}`}
         title={`${score.stale ? "Previous automatic annotation" : "Automatic action annotation"}: ${formatCredit(score.credit)} (−1 to +1). Estimated contribution to the task; not a judgment of the message type.`}>
         {formatCredit(score.credit)}{score.stale && <span className="ml-0.5 text-muted-foreground" aria-hidden="true">*</span>}
       </span>}</span>
+      )}
       <span className="text-right">{number !== undefined && number > 0 ? `Step ${number}` : ""}</span>
       <span className="flex justify-end"><StepActions step={step} ann={ann} /></span>
     </div>
@@ -167,6 +197,7 @@ function PromptRow({ step, ann, repeated, expanded, onToggle }: {
           <span className="shrink-0 text-[13px] font-semibold">{repeated ? "Repeated user message" : "User"}</span>
           {!expanded && !repeated && <span className="truncate text-xs text-muted-foreground">{readableExcerpt(step.content)}</span>}
         </button>
+        <Labels step={step} ann={ann} className="shrink-0 flex-nowrap" />
         <StepMetadata step={step} ann={ann} />
       </div>
       {expanded && <StepContent step={step} ann={ann} markdown max={300} />}
@@ -179,13 +210,15 @@ function PromptRow({ step, ann, repeated, expanded, onToggle }: {
 function AssistantRow({ step, ann, first }: { step: RmStep; ann: StepAnnotations; first: boolean }) {
   const thinking = isThinking(step);
   return (
-    <RowFrame step={step} flashing={ann.flashing(step)} credit={ann.actionScore?.(step)?.credit} className={cn("group/row", !first && "pt-3")}>
+    <RowFrame step={step} flashing={ann.flashing(step)} className={cn("group/row", !first && "pt-3")}>
       <div className="mb-1 flex min-h-5 items-center gap-3">
         <span className={cn(first ? "text-[13px] font-semibold text-foreground" : "text-[11px] text-muted-foreground")}>
           {first ? "Assistant" : thinking ? "Thinking" : "Response"}
         </span>
+        <Labels step={step} ann={ann} />
         <StepMetadata step={step} ann={ann} />
       </div>
+      <ScoreLine step={step} ann={ann} className="mb-1.5" />
       <div className={cn(thinking && "text-dim italic")}>
         <StepContent step={step} ann={ann} markdown max={440} />
       </div>
@@ -215,7 +248,7 @@ function ToolRow({
     : /^\s*[\[{]/.test(result!.content) ? "" : firstLine(result!.content);
 
   return (
-    <RowFrame step={head} flashing={ann.flashing(head)} credit={ann.actionScore?.(head)?.credit} className="group/row">
+    <RowFrame step={head} flashing={ann.flashing(head)} className="group/row">
       {call && call.content !== "" && (
         <div className="group/row relative mb-1 pt-[3px]">
           <StepContent step={call} ann={ann} markdown max={300} />
@@ -231,8 +264,10 @@ function ToolRow({
           <span className="min-w-0 truncate text-[12px] text-muted-foreground" title={summary}>{expanded ? "" : summary}</span>
         </button>
         {isError && <span className="text-[11px] text-red-600">Error</span>}
+        <Labels step={head} ann={ann} className="shrink-0 flex-nowrap" />
         <StepMetadata step={head} ann={ann} />
       </div>
+      {expanded && <ScoreLine step={head} ann={ann} className="mb-2 ml-5" />}
       {expanded && (
         <div className={cn("mb-3 ml-5 grid gap-4 text-[13px]")}>
           {call && call.tool_input !== null && (
@@ -354,8 +389,25 @@ export default function TraceTimeline({
       const previous = groupRows[index - 1];
       const repeated = previous?.kind === "prompt" && previous.step.index + 1 === row.step.index
         && previous.step.content === row.step.content;
-      return <PromptRow key={row.key} step={row.step} ann={ann} repeated={repeated}
-        expanded={isExpanded(row)} onToggle={() => onToggle(row)} />;
+      const task = ann.taskHeading?.(row.step) ?? null;
+      const taskScore = task === null ? null : ann.taskScore?.(row.step) ?? null;
+      return (
+        <div key={row.key}>
+          {task !== null && (
+            <div className="mb-2 flex items-center gap-2 text-[10.5px] font-medium tracking-wide text-muted-foreground uppercase">
+              <span>{task}</span>
+              {taskScore && <TaskScoreChip score={taskScore} />}
+              {taskScore && (
+                <span className="font-normal tracking-normal normal-case">
+                  {taskScore.hasAnswer ? "final answer" : "no answer"} {signed(taskScore.answer ?? 0)} · work {signed(taskScore.costs)}
+                </span>
+              )}
+              <span aria-hidden="true" className="h-px flex-1 bg-border-subtle" />
+            </div>
+          )}
+          <PromptRow step={row.step} ann={ann} repeated={repeated} expanded={isExpanded(row)} onToggle={() => onToggle(row)} />
+        </div>
+      );
     }
     if (row.kind === "assistant") return <AssistantRow key={row.key} step={row.step} ann={ann} first={index === 0} />;
     return <ToolRow key={row.key} call={row.call} result={row.result} ann={ann} expanded={isExpanded(row)} onToggle={() => onToggle(row)} />;

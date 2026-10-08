@@ -1,5 +1,8 @@
 """Loom regressions. Inference and training are stubbed; API/DB behavior is real."""
 
+# The labeler fixture is imported by name, so each use shadows the import.
+# ruff: noqa: F811
+
 import json
 from uuid import UUID
 
@@ -7,47 +10,42 @@ import pytest
 
 from backend.services.rm import automatic_dataset, feedback, jobs
 from backend.services.rm import workbench_auto as auto
-from backend.services.rm import workbench_grader as wire
 from backend.tasks import reward_models as tasks
 
 from .test_rm_workbench import BASE, account, model_and_queue_boundaries, upload  # noqa: F401
-from .test_workbench_automatic import answer, evaluate, get_eval
-from .test_workbench_credit import distribution
+from .test_workbench_automatic import _label, evaluate, get_eval, labeler, rejects  # noqa: F401
 
 
-async def annotated_traces(client, monkeypatch):
+def session(name, verdict="Thanks, that works."):
+    return [
+        ("user", f"Fix {name}"),
+        ("assistant", f"Which file holds {name}?"),
+        ("assistant", f"Verified {name}"),
+        ("user", verdict),
+        ("assistant", "Noted."),
+    ]
+
+
+async def annotated_traces(client, labeler):
+    """Two accepted and two rejected sessions, each with a question, an answer and a closing note."""
     user = await account(client)
     ids = []
-
-    async def grade(snapshot):
-        response = answer(snapshot)
-        for index, result in enumerate(response["results"]):
-            if result["criterion_id"] == "trace_success":
-                result["verdict"] = (
-                    "success"
-                    if "success" in snapshot["context_events"][0]["content"]
-                    else "failure"
-                )
-            else:
-                result["verdict"] = ["strongly_negative", "neutral", "strongly_positive"][index % 3]
-            result["probabilities"] = {
-                label: 1.0 if label == result["verdict"] else 0.0
-                for label in result["probabilities"]
-            }
-        return response
-
-    monkeypatch.setattr(wire, "grade", grade)
+    labeler["labels"].update(
+        a1=_label("agent", type="clarifying_question"),
+        a3=_label("agent", type="status_update"),
+    )
     for name in ("train success", "train failure", "eval success", "eval failure"):
+        accepted = "success" in name
+        labeler["labels"]["u2"] = (
+            _label("user", intent="feedback", verdict="confirmed", verdict_target="a2", sentiment="positive")
+            if accepted
+            else rejects("a2")
+        )  # fmt: skip
         tid = await upload(
             client,
             user,
             session_id=name,
-            messages=[
-                ("user", f"Fix {name}"),
-                ("assistant", f"Guessing {name}"),
-                ("assistant", f"Checking {name}"),
-                ("assistant", f"Verified {name}"),
-            ],
+            messages=session(name, "Thanks, that works." if accepted else "No, that is wrong."),
         )
         await auto.process_trace(tid)
         ids.append(tid)
@@ -62,45 +60,20 @@ async def annotated_traces(client, monkeypatch):
     return user, ids, config
 
 
-async def test_continuous_credit_matches_detail_summary_history_and_training(
-    client, pool, monkeypatch
-):
-    user = await account(client)
-
-    async def grade(snapshot):
-        raw = answer(snapshot)["raw_output"]
-        values = [
-            distribution(negative=0.1, neutral=0.2, positive=0.6, strongly_positive=0.1),
-            distribution(positive=0.6, strongly_positive=0.4),
-            distribution(insufficient_evidence=1),
-        ]
-        for i, target in enumerate(snapshot["targets"]):
-            raw["answers"][target["question_id"]].update(
-                choice="insufficient_evidence" if i == 2 else "positive",
-                probabilities=values[i],
-            )
-        questions = snapshot["provider_request"]["questions"]
-        return wire.parse_response(
-            raw, list(questions), choices={k: q["criteria"] for k, q in questions.items()}
-        )
-
-    monkeypatch.setattr(wire, "grade", grade)
-    messages = [
-        ("user", "Fix parser"),
-        ("assistant", "Somewhat helpful"),
-        ("assistant", "More helpful"),
-        ("assistant", "Uncertain"),
-    ]
-    tid = await upload(client, user, messages=messages)
-    await auto.process_trace(tid)
+async def test_step_scores_match_detail_summary_history_and_training(client, pool, labeler):
+    user, ids, _ = await annotated_traces(client, labeler)
+    tid = ids[0]  # question, accepted answer, closing note
     current = (await get_eval(client, user, tid))["current"]
     credits = current["credits"]
-    assert [c["credit"] for c in credits] == [1, 1, None]  # Legacy API compatibility.
-    assert [c["expected_credit"] for c in credits[:2]] == pytest.approx([0.35, 0.7])
-    assert credits[2]["expected_credit"] is None
-    listed = await client.get("/api/v1/rm/traces", headers=user["headers"])
+    # The question earns a share of the accepted answer; the note after it earns nothing.
+    assert [c["expected_credit"] for c in credits] == pytest.approx([0.19, 1.0, 0.0])
+    assert [c["credit"] for c in credits] == [1, 2, 0]  # the band each score falls in
+    assert {c["credit_method"] for c in credits} == {auto.policy.RULE_METHOD}
+    listed = await client.get(
+        "/api/v1/rm/traces", headers=user["headers"], params={"q": "train success"}
+    )
     assert listed.json()["traces"][0]["evaluation"]["action_credit"] == pytest.approx(
-        {"mean": 0.525, "min": 0.35, "max": 0.7, "count": 2}
+        {"mean": 1.19 / 3, "min": 0.0, "max": 1.0, "count": 3}
     )
     config = {
         "rubric": ["Complete the task"],
@@ -108,25 +81,33 @@ async def test_continuous_credit_matches_detail_summary_history_and_training(
         "evaluation_groups": [],
     }
     pairs = await automatic_dataset.build_pairs(user["uuid"], [tid], config, 100)
-    assert len(pairs) == 1  # Same winning label, but different expected credit.
-    assert pairs[0]["chosen_credit"] == pytest.approx(0.7)
-    assert pairs[0]["rejected_credit"] == pytest.approx(0.35)
-    assert pairs[0]["credit_method"] == auto.policy.CREDIT_METHOD
+    assert {(p["chosen_credit"], p["rejected_credit"]) for p in pairs} == {
+        (1.0, 0.19),
+        (1.0, 0.0),
+        (0.19, 0.0),
+    }
     historical = await client.get(
         f"{BASE}/traces/{tid}/evaluation/{current['id']}", headers=user["headers"]
     )
     assert historical.json()["credits"] == credits
-    await upload(client, user, messages=[*messages, ("user", "Another request")])
+    await upload(
+        client,
+        user,
+        session_id="train success",
+        messages=[*session("train success"), ("user", "Another request")],
+    )
     pending = await get_eval(client, user, tid)
-    assert [c["expected_credit"] for c in pending["previous_credits"][:2]] == pytest.approx(
-        [0.35, 0.7]
+    assert [c["expected_credit"] for c in pending["previous_credits"]] == pytest.approx(
+        [0.19, 1.0, 0.0]
     )
 
 
 async def test_numeric_summary_and_search_are_current_literal_and_permission_scoped(
-    client, pool, monkeypatch
+    client,
+    pool,
+    labeler,
 ):
-    owner, tid, _ = await evaluate(client, pool, monkeypatch)
+    owner, tid, _ = await evaluate(client, pool, labeler)
     await pool.execute("UPDATE rm_traces SET title='No matching title' WHERE id=$1", tid)
     other = await account(client)
     await upload(client, other)
@@ -137,8 +118,9 @@ async def test_numeric_summary_and_search_are_current_literal_and_permission_sco
     data = response.json()
     assert data["total"] == 1 and data["traces"][0]["id"] == str(tid)
     evaluation = data["traces"][0]["evaluation"]
-    assert evaluation["score"] == 0
-    assert evaluation["action_credit"] == {"mean": -1, "min": -1, "max": -1, "count": 1}
+    # An answer nobody reacted to: the trace's score and its one action's credit are both 0.3.
+    assert evaluation["score"] == 0.3
+    assert evaluation["action_credit"] == {"mean": 0.3, "min": 0.3, "max": 0.3, "count": 1}
     literal = await client.get("/api/v1/rm/traces", headers=owner["headers"], params={"q": "%"})
     assert literal.json()["total"] == 0
     await upload(
@@ -156,14 +138,18 @@ async def test_numeric_summary_and_search_are_current_literal_and_permission_sco
 
 
 async def test_training_uses_saved_annotations_and_preserves_both_signals_and_partitions(
-    client, pool, monkeypatch, tmp_path
+    client,
+    pool,
+    monkeypatch,
+    labeler,
+    tmp_path,
 ):
-    user, ids, config = await annotated_traces(client, monkeypatch)
+    user, ids, config = await annotated_traces(client, labeler)
 
     async def unexpected(*args, **kwargs):
         raise AssertionError("Training must reuse saved automatic annotations")
 
-    monkeypatch.setattr(wire, "grade", unexpected)
+    labeler["before"] = unexpected
     monkeypatch.setattr(feedback, "build_feedback_pairs", unexpected)
     monkeypatch.setattr(tasks.train_reward_model, "delay", lambda *args: None)
     monkeypatch.setenv("RM_ARTIFACT_DIR", str(tmp_path))
@@ -314,8 +300,8 @@ async def test_training_uses_saved_annotations_and_preserves_both_signals_and_pa
     assert next(t for t in listed.json()["traces"] if t["id"] == str(fresh))["latest_score"] is None
 
 
-async def test_stale_and_disputed_labels_cannot_train_the_model(client, pool, monkeypatch):
-    user, ids, config = await annotated_traces(client, monkeypatch)
+async def test_stale_and_disputed_labels_cannot_train_the_model(client, pool, labeler):
+    user, ids, config = await annotated_traces(client, labeler)
     await pool.execute(
         "INSERT INTO rm_annotations(owner_user_id,trace_id,label_error,comment) VALUES($1,$2,true,'Disputed annotation')",
         user["uuid"],
@@ -326,10 +312,7 @@ async def test_stale_and_disputed_labels_cannot_train_the_model(client, pool, mo
         user,
         session_id="train failure",
         messages=[
-            ("user", "Fix train failure"),
-            ("assistant", "Guessing train failure"),
-            ("assistant", "Checking train failure"),
-            ("assistant", "Verified train failure"),
+            *session("train failure", "No, that is wrong."),
             ("user", "Changed task"),
             ("assistant", "Changed result"),
         ],

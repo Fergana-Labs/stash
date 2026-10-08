@@ -4,6 +4,7 @@ from uuid import UUID
 
 import pytest
 
+from backend.services.rm import step_labeling
 from backend.services.rm import workbench_auto as auto
 
 from .test_rm_workbench import BASE, account, model_and_queue_boundaries, upload  # noqa: F401
@@ -15,14 +16,14 @@ from .test_rm_workbench import BASE, account, model_and_queue_boundaries, upload
     [
         ("completed", None),
         ("failed", auto.SCHEMA_CACHE_ERROR),
-        ("failed", "TYPESAFE_API_KEY is not configured"),
+        ("failed", step_labeling.NOT_CONFIGURED),
         ("queued", "Daily Jev evaluation budget reached; resumes tomorrow"),
     ],
 )
 async def test_queue_recovery_preserves_gated_accounts(
     client, pool, monkeypatch, checkpoint, status, error
 ):
-    monkeypatch.setattr(auto.settings, "TYPESAFE_API_KEY", "test-key")
+    monkeypatch.setattr(auto.settings, "OPENAI_API_KEY", "test-key")
     latest = await account(client)
     protected = await account(client)
     active_trace = await upload(client, latest, "active")

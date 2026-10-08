@@ -1,4 +1,7 @@
-"""Regression tests for the automatic Jev rollout's failed/skipped work."""
+"""Regression tests for automatic annotation's failed/skipped work."""
+
+# The labeler fixture is imported by name, so each use shadows the import.
+# ruff: noqa: F811
 
 import importlib
 import json
@@ -9,16 +12,17 @@ import pytest
 
 from backend.services.rm import workbench as legacy
 from backend.services.rm import workbench_auto as auto
-from backend.services.rm import workbench_grader as wire
 
 from .test_rm_workbench import BASE, account, model_and_queue_boundaries, upload  # noqa: F401
-from .test_workbench_automatic import answer, evaluate, get_eval
+from .test_workbench_automatic import evaluate, get_eval, labeler  # noqa: F401
 
 
 async def test_reconcile_combines_deployment_repair_and_removed_cap_recovery(
-    client, pool, monkeypatch
+    client,
+    pool,
+    labeler,
 ):
-    user, done, calls = await evaluate(client, pool, monkeypatch)
+    user, done, calls = await evaluate(client, pool, labeler)
     missing = await upload(client, user, "skipped-by-old-worker")
     stale = await upload(client, user, "stale-plan")
     exhausted = await upload(client, user, "three-failed-attempts")
@@ -79,7 +83,10 @@ async def test_reconcile_combines_deployment_repair_and_removed_cap_recovery(
 
 
 async def test_schema_failure_retries_without_an_operator_and_stops_after_three_attempts(
-    client, pool, monkeypatch
+    client,
+    pool,
+    monkeypatch,
+    labeler,
 ):
     user = await account(client)
     tid = await upload(client, user)
@@ -93,11 +100,7 @@ async def test_schema_failure_retries_without_an_operator_and_stops_after_three_
             raise asyncpg.InvalidCachedStatementError(auto.SCHEMA_CACHE_ERROR)
         return await read_trace(trace_id)
 
-    async def grade(snapshot):
-        return answer(snapshot)
-
     monkeypatch.setattr(auto, "_read_trace", flaky)
-    monkeypatch.setattr(wire, "grade", grade)
     await auto.process_trace(tid)
     assert await pool.fetchval("SELECT status FROM rm_wb_queue WHERE trace_id=$1", tid) == "queued"
     await auto.process_trace(tid)
@@ -116,43 +119,15 @@ async def test_schema_failure_retries_without_an_operator_and_stops_after_three_
     assert row["status"] == "failed" and row["attempts"] == 3
 
 
-async def test_invalid_response_recovery_resumes_saved_batch_and_respects_attempt_limit(
-    client, pool, monkeypatch
-):
-    user = await account(client)
-    tid = await upload(client, user)
-    seen = []
-
-    async def invalid_credit(snapshot):
-        seen.append(list(snapshot["provider_request"]["questions"]))
-        if snapshot["targets"]:
-            raw = answer(snapshot)["raw_output"]
-            raw["answers"]["credit_0"]["choice"] = "positive"
-            wire.parse_response(raw, ["credit_0"], choices={"credit_0": auto.policy.CREDITS})
-        return answer(snapshot)
-
-    monkeypatch.setattr(wire, "grade", invalid_credit)
-    await auto.process_trace(tid)
-    # Simulate a failure stranded by the previous deployment after one attempt.
-    await pool.execute("UPDATE rm_wb_queue SET status='failed' WHERE trace_id=$1", tid)
-    await auto.recover()
-    assert (await get_eval(client, user, tid))["queue"]["status"] == "queued"
-    await auto.process_trace(tid)
-    await auto.process_trace(tid)
-    await auto.recover()
-    await auto.process_trace(tid)
-    result = await get_eval(client, user, tid)
-    assert result["queue"]["status"] == "failed"
-    assert result["current"]["credited_actions"] == 0
-    assert [c["attempt"] for c in result["current"]["calls"]] == [1, 1, 2, 3]
-    assert seen == [["trace_success"], ["credit_0"], ["credit_0"], ["credit_0"]]
-
-
 @pytest.mark.parametrize("evaluation_attached", [True, False])
 async def test_missing_repository_keeps_feedback_interpretation_but_cannot_create_a_release(
-    client, pool, monkeypatch, evaluation_attached
+    client,
+    pool,
+    monkeypatch,
+    labeler,
+    evaluation_attached,
 ):
-    user, tid, _ = await evaluate(client, pool, monkeypatch)
+    user, tid, _ = await evaluate(client, pool, labeler)
     e = (await get_eval(client, user, tid))["current"]
     await pool.execute("UPDATE rm_traces SET metadata=metadata-'cwd' WHERE id=$1", tid)
     response = await client.post(
@@ -258,24 +233,24 @@ async def test_legacy_worker_cannot_finish_or_fail_a_replacement_lease(
     )
 
 
-async def test_successful_batches_reset_worker_failure_budget(client, pool, monkeypatch):
+async def test_a_completed_annotation_resets_the_worker_failure_budget(
+    client,
+    pool,
+    monkeypatch,
+    labeler,
+):
     user = await account(client)
     tid = await upload(client, user)
-    monkeypatch.setattr(auto, "MAX_CALLS_PER_PASS", 1)
-
-    async def grade(snapshot):
-        return answer(snapshot)
-
-    monkeypatch.setattr(wire, "grade", grade)
     await pool.execute("UPDATE rm_wb_queue SET attempts=12 WHERE trace_id=$1", tid)
     await auto.process_trace(tid)
     row = await pool.fetchrow("SELECT status,attempts FROM rm_wb_queue WHERE trace_id=$1", tid)
-    assert row["status"] == "queued" and row["attempts"] == 0
+    assert row["status"] == "completed" and row["attempts"] == 0
 
     async def stale(trace_id):
         raise asyncpg.InvalidCachedStatementError(auto.SCHEMA_CACHE_ERROR)
 
     monkeypatch.setattr(auto, "_read_trace", stale)
+    await pool.execute("UPDATE rm_wb_queue SET status='queued' WHERE trace_id=$1", tid)
     await auto.process_trace(tid)
     row = await pool.fetchrow("SELECT status,attempts FROM rm_wb_queue WHERE trace_id=$1", tid)
     assert row["status"] == "queued" and row["attempts"] == 1

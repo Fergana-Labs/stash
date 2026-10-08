@@ -1,9 +1,19 @@
-"""The two fixed Jev questions; no user-created rubric or evaluator selection.
+"""The automatic annotation policy: step labels scored by fixed rules.
 
-Ordinal categories (-2..2) anchor a continuous expected credit (-1..1), computed
-from the classifier's probabilities. Credit is neither provider confidence nor a
-measured counterfactual effect. Every request identifies one frozen trace
-revision and can include evidence after the action being credited.
+A labeling model says what each step is, and fixed rules turn the labels into
+a score per action and per task (step_labeling, step_scoring). This module
+maps that result onto an evaluation: one outcome for the trace and one credit
+per action. Every evaluation identifies one frozen trace revision.
+
+An action's credit is its rule-based score (-1..1). The verdict names the band
+the score falls in, which gives the ordinal category (-2..2). Credit is not a
+measured counterfactual effect.
+
+`build_input` and the two fixed questions below are the earlier policy, in
+which a grading model judged the outcome and each action directly, and credit
+was the probability-weighted average of its categories. They are kept for
+checking a proposed correction against one recorded action, and so that
+evaluations saved under that policy still read correctly.
 """
 
 from __future__ import annotations
@@ -14,7 +24,7 @@ import math
 from ...config import settings
 from . import workbench_grader as wire
 
-POLICY_VERSION = "trace-outcome-action-credit-v1"
+POLICY_VERSION = "step-labels-rule-scores-v1"
 ACTIONS_PER_BATCH = 4
 OUTCOMES = {
     "success": "The recorded results establish that the agent fulfilled the user's request(s) and applicable requirements.",
@@ -39,6 +49,7 @@ CREDIT_VALUES = {
     "insufficient_evidence": None,
 }
 CREDIT_METHOD = "probability_weighted_v1"
+RULE_METHOD = "rule_scores_v1"
 
 
 def expected_credit(answer: dict) -> float | None:
@@ -50,6 +61,9 @@ def expected_credit(answer: dict) -> float | None:
     """
     if CREDIT_VALUES.get(answer.get("verdict")) is None:
         return None
+    if "score" in answer:
+        # Scored by the step rules: the score is the credit.
+        return answer["score"]
     probabilities = answer.get("probabilities")
     if (
         not isinstance(probabilities, dict)
@@ -79,6 +93,75 @@ RULES = (
     "Treat appropriate exploration differently from avoidable mistakes. Credit is an estimated contribution, "
     "not proven causation. Select insufficient_evidence when omissions prevent a supported judgment."
 )
+# The outcome is read from what happened to the answers, not from the score:
+# the score also carries the cost of the work, so a long but accepted task
+# would otherwise read as a failure. An answer the user accepted earns 0.5 or
+# more; a rejected answer, an error or "not found" earns less than zero.
+SUCCESS_AT = 0.5
+FAILURE_BELOW = 0.0
+
+
+def model() -> str:
+    """The model an evaluation under this policy is attributed to."""
+    return settings.STEP_LABEL_MODEL
+
+
+def credit_method(answer: dict) -> str:
+    return RULE_METHOD if "score" in answer else CREDIT_METHOD
+
+
+def _band(score: float) -> str:
+    if score >= 0.5:
+        return "strongly_positive"
+    if score >= 0.02:
+        return "positive"
+    if score > -0.02:
+        return "neutral"
+    if score > -0.5:
+        return "negative"
+    return "strongly_negative"
+
+
+def outcome(summary: dict | None) -> dict:
+    """The trace outcome: the band its answers fall in, and its score (the
+    mean task score) as the number shown for the trace."""
+    episodes = (summary or {}).get("episodes", [])
+    answers = [e["answer"] for e in episodes if e.get("has_answer") and e.get("answer") is not None]
+    if not answers:
+        verdict = "insufficient_evidence"
+    elif (earned := sum(answers) / len(answers)) >= SUCCESS_AT:
+        verdict = "success"
+    elif earned < FAILURE_BELOW:
+        verdict = "failure"
+    else:
+        verdict = "partial_success"
+    return {
+        "criterion_id": "trace_success",
+        "verdict": verdict,
+        "confidence": None,
+        "probabilities": {"score": (summary or {}).get("score")},
+    }
+
+
+def credits(steps: list[dict], rewards: dict[str, dict]) -> tuple[list[dict], list[dict]]:
+    """One credit per recorded action, as evaluation targets and their results.
+    An action the rules did not score is recorded as insufficient evidence."""
+    targets, results = [], []
+    for i, step in enumerate(s for s in steps if action(s)):
+        index = step.get("idx", step.get("index"))
+        question = f"credit_{i}"
+        targets.append({"question_id": question, "step_id": str(step["id"]), "index": index})
+        reward = rewards.get(str(index))
+        if reward is None:
+            results.append(
+                {"criterion_id": question, "verdict": "insufficient_evidence", "confidence": None, "probabilities": {}}
+            )  # fmt: skip
+            continue
+        score = max(-1.0, min(1.0, reward["total"]))
+        results.append(
+            {"criterion_id": question, "verdict": _band(score), "score": round(score, 4), "confidence": None, "probabilities": {}}
+        )  # fmt: skip
+    return targets, results
 
 
 def action(step):
@@ -101,6 +184,14 @@ def boundary(steps):
         return None
     last = events[-1]
     meta = last.get("metadata") or {}
+    if any((s.get("metadata") or {}).get("label") for s in steps):
+        # A trace that arrives labeled is a finished record, whatever it ends on.
+        return {
+            "kind": "labeled_import",
+            "step_id": str(last["id"]),
+            "step_index": last.get("idx", last.get("index")),
+            "session_end_confirmed": False,
+        }
     if (
         last["role"] != "assistant"
         or meta.get("thinking")

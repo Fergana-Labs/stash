@@ -4,11 +4,11 @@ from uuid import UUID
 
 import asyncpg
 
-from ...config import settings
 from ...database import get_pool
 from . import (
     annotations,
     evaluator,
+    step_labeling,
     trace_images,
     trace_titles,
     workbench_auto,
@@ -245,7 +245,7 @@ async def _evaluation_summaries(summaries: list[dict]) -> None:
             ORDER BY e.trace_id,e.created_at DESC""",
             [r["id"] for r in summaries],
             workbench_evaluation.POLICY_VERSION,
-            settings.JEV_MODEL,
+            workbench_evaluation.model(),
         )
         evaluations = {r["trace_id"]: dict(r) for r in evaluations}
         calls = await pool.fetch(
@@ -260,10 +260,13 @@ async def _evaluation_summaries(summaries: list[dict]) -> None:
                     credits.setdefault(call["evaluation_id"], []).append(credit)
         for evaluation in evaluations.values():
             probabilities = evaluation.pop("outcome_probabilities") or {}
-            evaluation["score"] = (
+            # A rule score stands on its own; the earlier policy's estimate
+            # of success means nothing without an established outcome.
+            evaluation["score"] = probabilities.get(
+                "score",
                 probabilities.get("success")
                 if evaluation["outcome"] != "insufficient_evidence"
-                else None
+                else None,
             )
             values = credits.get(evaluation["id"], [])
             evaluation["action_credit"] = (
@@ -335,7 +338,7 @@ async def get_trace(
     summary = _summary(row, owner_user_id)
     await _evaluation_summaries([summary])
     images = await trace_images.for_trace(trace_id)
-    return {
+    detail = {
         **summary,
         **(
             {
@@ -357,6 +360,7 @@ async def get_trace(
         "automatic_scoring": dict(automatic) if automatic else None,
         "training_collection": dict(collection) if collection else None,
     }
+    return await step_labeling.merge_into(trace_id, detail)
 
 
 async def delete_trace(owner_user_id: UUID, trace_id: UUID) -> bool:
