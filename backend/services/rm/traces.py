@@ -5,7 +5,15 @@ from uuid import UUID
 import asyncpg
 
 from ...database import get_pool
-from . import annotations, evaluator, step_labeling, trace_titles, workbench_evaluation
+from . import (
+    annotations,
+    evaluator,
+    step_labeling,
+    trace_images,
+    trace_titles,
+    workbench_auto,
+    workbench_evaluation,
+)
 from .adapters import CanonicalTrace, TraceFormatError, parse_traces
 
 SUMMARY_SELECT = """
@@ -156,6 +164,7 @@ async def store_traces(
                 for idx, step in enumerate(trace.steps)
             ],
         )
+        await trace_images.store_images(conn, owner_user_id, trace_id, trace.steps)
         trace_ids.append(trace_id)
     return trace_ids
 
@@ -246,9 +255,9 @@ async def _evaluation_summaries(summaries: list[dict]) -> None:
         credits: dict[UUID, list[float]] = {}
         for call in calls:
             for result in call["result"].get("results", []):
-                credit = workbench_evaluation.credit_of(result)
+                credit = workbench_evaluation.expected_credit(result)
                 if credit is not None:
-                    credits.setdefault(call["evaluation_id"], []).append(credit / 2)
+                    credits.setdefault(call["evaluation_id"], []).append(credit)
         for evaluation in evaluations.values():
             probabilities = evaluation.pop("outcome_probabilities") or {}
             # A rule score stands on its own; the earlier policy's estimate
@@ -274,7 +283,9 @@ async def _evaluation_summaries(summaries: list[dict]) -> None:
             summary["evaluation"] = evaluations.get(summary["id"])
 
 
-async def get_trace(owner_user_id: UUID, trace_id: UUID) -> dict | None:
+async def get_trace(
+    owner_user_id: UUID, trace_id: UUID, *, include_evaluation: bool = False
+) -> dict | None:
     pool = get_pool()
     row = await pool.fetchrow(
         SUMMARY_SELECT
@@ -326,11 +337,21 @@ async def get_trace(owner_user_id: UUID, trace_id: UUID) -> dict | None:
     )
     summary = _summary(row, owner_user_id)
     await _evaluation_summaries([summary])
+    images = await trace_images.for_trace(trace_id)
     detail = {
         **summary,
+        **(
+            {
+                "automatic_evaluation": await workbench_auto.detail(
+                    owner_user_id, trace_id, compact=True, trace_data=(row, steps)
+                )
+            }
+            if include_evaluation
+            else {}
+        ),
         "metadata": row["metadata"],
         "spans": row["spans"],
-        "steps": [_step(step) for step in steps],
+        "steps": [{**_step(step), "images": images.get(step["id"], [])} for step in steps],
         "annotations": await annotations.list_for_trace(trace_id),
         "scores": [dict(score) for score in scores],
         "action_scores": [dict(score) for score in action_scores],

@@ -5,6 +5,50 @@ everything before it is captured in git history (`git log`), not here.
 
 ## Unreleased
 
+- Browse long traces from request summaries into smaller sections and individual
+  steps, with hover previews and direct minimap/comment navigation.
+- Group instructions separately from numbered steps and count a tool call plus
+  its output as one step. Render instructions, question replies, and tool values
+  readably while preserving source links and comment selections.
+- Align plain action-credit numbers, remove full-row score colors and duplicate
+  Details buttons, make user messages collapsible, and start comments closed.
+- Load compact saved action and outcome scores together with the trace, avoiding
+  a second download of evaluator prompts and responses before bars appear.
+
+- Display embedded screenshots inline in traces, with click-to-enlarge previews.
+  Re-uploading a native transcript restores its images without changing existing
+  steps, comments, or scores.
+- Give ungraded trace events no bar height, removing the alternating stripes
+  while preserving their hover, click, and scrub positions.
+
+- Replace blank trace scores with visible loading, queued, recalculating,
+  waiting, insufficient-evidence, or failure statuses.
+
+- Start the comments panel closed on traces with no comments, while preserving
+  manual open/close choices during updates.
+- Make the first trace navigation tick jump to the very top, including system messages.
+
+- Move trace sharing into the three-dot actions menu.
+
+- Remove the trace's Expand all control; individual tool details still open on demand.
+
+- Scrub through traces and conversations by dragging along the left navigation
+  rail, with immediate scrolling and a live preview of each destination.
+- Keep trace controls in two compact rows: back, title, score, and actions above
+  the step map. Remove the All / Conversation / Tools toggle and keep all steps
+  visible. Move execution timelines into the scrolling content.
+
+- Remove the action-credit legend and visible annotation-progress row to give
+  the trace more vertical space, and place the imported timestamp beside the
+  title. Scores and grading statuses remain available on hover and focus, with
+  a progress summary for screen readers.
+
+- Use continuous expected action credit from −1 to +1, calculated from saved
+  classifier probabilities, across trace bars, credit summaries, and new training
+  comparisons. Preserve insufficient-evidence abstentions and original verdicts.
+- Remove the trace-map instruction line and show action scores or grading status
+  immediately on hover or keyboard focus, replacing delayed native tooltips.
+
 - Explain trace-bar heights with a harmful/neutral/helpful legend and show
   annotation counts, pending scores, insufficient evidence, and failed updates.
   Retry invalid automatic-classifier responses up to three times per batch,

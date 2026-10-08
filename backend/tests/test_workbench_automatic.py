@@ -4,6 +4,7 @@ The labeling model is mocked. Native ingestion, queueing, APIs and DB are real.
 """
 
 import json
+from datetime import datetime
 from uuid import UUID
 
 import pytest
@@ -96,8 +97,11 @@ async def test_ingested_trace_is_labeled_and_scored_without_any_setup(client, po
     assert result["status"] == "completed" and result["outcome"] == "partial_success"
     assert result["outcome_probabilities"] == {"score": 0.3}
     assert result["credited_actions"] == result["total_actions"] == 1
-    # Credit is twice the step's score, so the -1..+1 display shows the score.
-    assert result["credits"][0]["credit"] == 0.6 and result["credits"][0]["label"] == "positive"
+    # An action's credit is its score.
+    credit = result["credits"][0]
+    assert credit["expected_credit"] == 0.3 and credit["credit_method"] == policy.RULE_METHOD
+    # The ordinal category is the band the score falls in.
+    assert credit["credit"] == 1 and credit["label"] == "positive"
     assert result["actions"][0]["id"] == result["credits"][0]["step_id"]
     assert result["boundary"]["session_end_confirmed"] is False
     listed = await client.get("/api/v1/rm/traces", headers=user["headers"])
@@ -146,8 +150,8 @@ async def test_later_work_is_new_version_and_only_new_steps_are_labeled(client, 
     # The early success claim is scored with the later rejection in view.
     first, second = after["credits"]
     assert first["step_id"] == before["actions"][0]["id"]
-    assert first["credit"] == -2 and first["label"] == "strongly_negative"
-    assert second["credit"] == 0.6
+    assert first["expected_credit"] == -1 and first["label"] == "strongly_negative"
+    assert second["expected_credit"] == 0.3
 
 
 async def test_a_provider_failure_is_retried_and_then_completes(client, pool, labeler):
@@ -445,3 +449,48 @@ async def test_previous_annotations_never_attach_to_rewritten_steps(client, pool
     result = await get_eval(client, user, tid)
     assert result["current"] is None
     assert result["previous_credits"] == []
+
+
+async def test_trace_load_can_include_compact_scores_without_provider_payloads(
+    client, pool, labeler
+):
+    user, tid, calls = await evaluate(client, pool, labeler)
+    full = await get_eval(client, user, tid)
+    response = await client.get(
+        f"/api/v1/rm/traces/{tid}?include_evaluation=true", headers=user["headers"]
+    )
+    assert response.status_code == 200, response.text
+    compact = response.json()["automatic_evaluation"]
+    assert compact["current"]["credits"] == full["current"]["credits"]
+    assert compact["current"]["outcome_probabilities"] == full["current"]["outcome_probabilities"]
+    assert compact["current"]["calls"] == []
+    assert compact["current"]["actions"] == []
+    assert "provider_request" not in json.dumps(compact)
+    # Appended work keeps earlier credits, without downloading its provider evidence.
+    await upload(
+        client,
+        user,
+        messages=[
+            ("user", "Fix the count parser. Zero must remain valid."),
+            ("assistant", "All tests pass."),
+            ("user", "Please also check negatives"),
+        ],
+    )
+    full = await get_eval(client, user, tid)
+    compact = (
+        await client.get(
+            f"/api/v1/rm/traces/{tid}?include_evaluation=true", headers=user["headers"]
+        )
+    ).json()["automatic_evaluation"]
+
+    def normalized(credits):
+        return [{**c, "created_at": datetime.fromisoformat(c["created_at"])} for c in credits]
+
+    assert normalized(compact["previous_credits"]) == normalized(full["previous_credits"])
+    assert compact["previous_credits"]
+    other = await account(client)
+    assert (
+        await client.get(
+            f"/api/v1/rm/traces/{tid}?include_evaluation=true", headers=other["headers"]
+        )
+    ).status_code == 404

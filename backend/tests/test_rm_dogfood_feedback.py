@@ -13,7 +13,7 @@ from backend.services.rm import workbench_auto as auto
 from backend.tasks import reward_models as tasks
 
 from .test_rm_workbench import BASE, account, model_and_queue_boundaries, upload  # noqa: F401
-from .test_workbench_automatic import _label, evaluate, labeler, rejects  # noqa: F401
+from .test_workbench_automatic import _label, evaluate, get_eval, labeler, rejects  # noqa: F401
 
 
 def session(name, verdict="Thanks, that works."):
@@ -58,6 +58,48 @@ async def annotated_traces(client, labeler):
         "max_actions_per_trace": 24,
     }
     return user, ids, config
+
+
+async def test_step_scores_match_detail_summary_history_and_training(client, pool, labeler):
+    user, ids, _ = await annotated_traces(client, labeler)
+    tid = ids[0]  # question, accepted answer, closing note
+    current = (await get_eval(client, user, tid))["current"]
+    credits = current["credits"]
+    # The question earns a share of the accepted answer; the note after it earns nothing.
+    assert [c["expected_credit"] for c in credits] == pytest.approx([0.19, 1.0, 0.0])
+    assert [c["credit"] for c in credits] == [1, 2, 0]  # the band each score falls in
+    assert {c["credit_method"] for c in credits} == {auto.policy.RULE_METHOD}
+    listed = await client.get(
+        "/api/v1/rm/traces", headers=user["headers"], params={"q": "train success"}
+    )
+    assert listed.json()["traces"][0]["evaluation"]["action_credit"] == pytest.approx(
+        {"mean": 1.19 / 3, "min": 0.0, "max": 1.0, "count": 3}
+    )
+    config = {
+        "rubric": ["Complete the task"],
+        "task_groups": {str(tid): "task"},
+        "evaluation_groups": [],
+    }
+    pairs = await automatic_dataset.build_pairs(user["uuid"], [tid], config, 100)
+    assert {(p["chosen_credit"], p["rejected_credit"]) for p in pairs} == {
+        (1.0, 0.19),
+        (1.0, 0.0),
+        (0.19, 0.0),
+    }
+    historical = await client.get(
+        f"{BASE}/traces/{tid}/evaluation/{current['id']}", headers=user["headers"]
+    )
+    assert historical.json()["credits"] == credits
+    await upload(
+        client,
+        user,
+        session_id="train success",
+        messages=[*session("train success"), ("user", "Another request")],
+    )
+    pending = await get_eval(client, user, tid)
+    assert [c["expected_credit"] for c in pending["previous_credits"]] == pytest.approx(
+        [0.19, 1.0, 0.0]
+    )
 
 
 async def test_numeric_summary_and_search_are_current_literal_and_permission_scoped(

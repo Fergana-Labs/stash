@@ -134,7 +134,7 @@ function plural(count: number, one: string, many = `${one}s`): string {
   return `${count} ${count === 1 ? one : many}`;
 }
 
-export function buildTraceLabels(steps: RmStep[]): TraceLabels {
+export function buildTraceLabels(steps: RmStep[], numberOf: (step: RmStep) => number = (step) => step.index + 1): TraceLabels {
   const labels = new Map<string, StepLabel>();
   const stepByChunk = new Map<string, RmStep>();
   for (const step of steps) {
@@ -175,10 +175,10 @@ export function buildTraceLabels(steps: RmStep[]): TraceLabels {
         const [onUser, , tone, meaning] = VERDICT[label.verdict] ?? [words(label.verdict), "", "neutral", "The user's reaction to the agent's answer."];
         const target = label.verdict_target ? stepByChunk.get(label.verdict_target) : undefined;
         out.push({
-          text: target ? `${onUser} in step ${target.index + 1}` : onUser,
+          text: target ? `${onUser} in step ${numberOf(target)}` : onUser,
           tone,
           title: target
-            ? `With this message the user reacts to the answer the agent gave in step ${target.index + 1}. ${meaning}\n\nClick to jump to that answer.`
+            ? `With this message the user reacts to the answer the agent gave in step ${numberOf(target)}. ${meaning}\n\nClick to jump to that answer.`
             : `With this message the user reacts to the agent's previous answer. ${meaning}`,
           targetStepId: target?.id,
         });
@@ -201,9 +201,9 @@ export function buildTraceLabels(steps: RmStep[]): TraceLabels {
       if (label.duplicate_of) {
         const first = stepByChunk.get(label.duplicate_of);
         out.push({
-          text: first ? `Same call as step ${first.index + 1}` : "Repeats an earlier call",
+          text: first ? `Same call as step ${numberOf(first)}` : "Repeats an earlier call",
           tone: "warn",
-          title: `The agent called the same tool with exactly the same arguments earlier${first ? ` (step ${first.index + 1}). Click to jump to it.` : "."}`,
+          title: `The agent called the same tool with exactly the same arguments earlier${first ? ` (step ${numberOf(first)}). Click to jump to it.` : "."}`,
           targetStepId: first?.id,
         });
       }
@@ -221,9 +221,9 @@ export function buildTraceLabels(steps: RmStep[]): TraceLabels {
       if (received) {
         const [, onAnswer, verdictTone, verdictMeaning] = VERDICT[received.verdict] ?? ["", words(received.verdict), "neutral", "The user's reaction to this answer."];
         out.push({
-          text: `${onAnswer} in step ${received.from.index + 1}`,
+          text: `${onAnswer} in step ${numberOf(received.from)}`,
           tone: verdictTone,
-          title: `The user reacted to this answer in step ${received.from.index + 1}. ${verdictMeaning}\n\nClick to jump to the user's message.`,
+          title: `The user reacted to this answer in step ${numberOf(received.from)}. ${verdictMeaning}\n\nClick to jump to the user's message.`,
           targetStepId: received.from.id,
         });
       }

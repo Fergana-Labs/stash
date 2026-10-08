@@ -429,6 +429,14 @@ export interface RmTraceSummary {
   created_at: string;
 }
 
+export interface RmTraceImage {
+  id: string;
+  start: number;
+  end: number;
+  width: number;
+  height: number;
+}
+
 export interface RmStep {
   id: string;
   index: number;
@@ -438,6 +446,7 @@ export interface RmStep {
   tool_input: Record<string, unknown> | null;
   tool_call_id: string | null;
   metadata: Record<string, unknown> | null;
+  images?: RmTraceImage[];
 }
 
 /** The highlighted span inside a step's content, anchored by surrounding text. */
@@ -476,6 +485,7 @@ export interface RmTraceSpan {
 export interface RmTraceDetail extends RmTraceSummary {
   /** Task scores from the step-scoring rules; the per-step scores are on each step's `metadata.reward`. */
   step_scores?: unknown;
+  automatic_evaluation?: import("./workbench-api").TraceEvaluationResponse;
   spans: RmTraceSpan[];
   metadata: Record<string, unknown> | null;
   steps: RmStep[];

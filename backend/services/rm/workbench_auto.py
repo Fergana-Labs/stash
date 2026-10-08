@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from uuid import UUID
 
 import asyncpg
 
@@ -224,12 +225,12 @@ async def _record(evaluation, steps, result, claim):
         )
 
 
-async def detail(user, trace_id):
+async def detail(user, trace_id, *, compact=False, trace_data=None):
     await legacy.trace_access(user, trace_id)
-    trace, steps = await _read_trace(trace_id)
+    trace, steps = trace_data if trace_data is not None else await _read_trace(trace_id)
     fingerprint = policy.revision_hash(steps)
     rows = await get_pool().fetch(
-        "SELECT id,revision_hash,policy_version,model,status,outcome,created_at,boundary,credited_actions FROM rm_wb_evaluations WHERE trace_id=$1 ORDER BY created_at DESC",
+        "SELECT id,revision_hash,policy_version,model,status,outcome,created_at,boundary,credited_actions,jsonb_array_length(trace_snapshot) AS snapshot_length FROM rm_wb_evaluations WHERE trace_id=$1 ORDER BY created_at DESC",
         trace_id,
     )
     current = next(
@@ -265,12 +266,21 @@ async def detail(user, trace_id):
         ],
     }
     if current:
-        result["current"] = await historical(user, trace_id, current["id"])
-    result["previous_credits"] = await _previous_credits(rows, steps, result["current"])
+        if compact:
+            saved = await get_pool().fetchval(
+                "SELECT to_jsonb(e)-'trace_snapshot' FROM rm_wb_evaluations e WHERE id=$1",
+                current["id"],
+            )
+            result["current"] = await _evaluation_detail(saved, compact=True)
+        else:
+            result["current"] = await historical(user, trace_id, current["id"])
+    result["previous_credits"] = await _previous_credits(
+        rows, steps, result["current"], compact=compact
+    )
     return result
 
 
-async def _previous_credits(rows, steps, current):
+async def _previous_credits(rows, steps, current, *, compact=False):
     """Display-only annotations while an appended trace is being evaluated.
 
     Current results (including insufficient evidence) always take precedence.
@@ -289,23 +299,23 @@ async def _previous_credits(rows, steps, current):
         if not missing:
             break
         if (
-            (current and row["id"] == current["id"])
+            (current and str(row["id"]) == str(current["id"]))
             or row["policy_version"] != policy.POLICY_VERSION
             or row["model"] != policy.model()
             # Calls are completed in action order. Skip prefixes already covered.
             or row["credited_actions"] <= min(missing.values())
         ):
             continue
-        previous = await get_pool().fetchrow(
-            "SELECT * FROM rm_wb_evaluations WHERE id=$1", row["id"]
-        )
-        snapshot = previous["trace_snapshot"]
-        if (
-            len(snapshot) > len(steps)
-            or policy.revision_hash(steps[: len(snapshot)]) != row["revision_hash"]
-        ):
+        length = row["snapshot_length"]
+        if length > len(steps) or policy.revision_hash(steps[:length]) != row["revision_hash"]:
             continue
-        for credit in (await _evaluation_detail(previous))["credits"]:
+        if compact:
+            previous = {"id": row["id"]}
+        else:
+            previous = await get_pool().fetchrow(
+                "SELECT * FROM rm_wb_evaluations WHERE id=$1", row["id"]
+            )
+        for credit in (await _evaluation_detail(previous, compact=compact))["credits"]:
             if credit["step_id"] in missing:
                 missing.pop(credit["step_id"])
                 credits.append(
@@ -324,12 +334,17 @@ async def historical(user, trace_id, evaluation_id):
     return await _evaluation_detail(row)
 
 
-async def _evaluation_detail(row):
+async def _evaluation_detail(row, *, compact=False):
+    columns = (
+        "id,status,result,jsonb_build_object('targets',input_snapshot->'targets') AS input_snapshot"
+        if compact
+        else "*"
+    )
     calls = [
         dict(c)
         for c in await get_pool().fetch(
-            "SELECT * FROM rm_wb_evaluation_calls WHERE evaluation_id=$1 ORDER BY batch_index,attempt",
-            row["id"],
+            f"SELECT {columns} FROM rm_wb_evaluation_calls WHERE evaluation_id=$1 ORDER BY batch_index,attempt",
+            UUID(str(row["id"])),
         )
     ]
     credits = []
@@ -342,7 +357,9 @@ async def _evaluation_detail(row):
             credits.append(
                 {
                     **target,
-                    "credit": policy.credit_of(answer),
+                    "credit": policy.CREDIT_VALUES[answer["verdict"]],
+                    "expected_credit": policy.expected_credit(answer),
+                    "credit_method": policy.credit_method(answer),
                     "label": answer["verdict"],
                     "confidence": answer["confidence"],
                     "probabilities": answer["probabilities"],
@@ -351,7 +368,9 @@ async def _evaluation_detail(row):
             )
     return {
         **{k: v for k, v in dict(row).items() if k != "trace_snapshot"},
-        "actions": [
+        "actions": []
+        if compact
+        else [
             {
                 "id": str(s["id"]),
                 "index": s.get("idx", s.get("index")),
@@ -362,7 +381,7 @@ async def _evaluation_detail(row):
             if policy.action(s)
         ],
         "credits": sorted(credits, key=lambda c: c["index"]),
-        "calls": calls,
+        "calls": [] if compact else calls,
     }
 
 

@@ -228,12 +228,12 @@ async def test_annotating_a_trace_labels_and_scores_each_step(client, labeler, c
         }
     ]
 
-    # The same numbers are the trace's automatic annotation: credit is twice the step's total.
+    # The same numbers are the trace's automatic annotation: an action's credit is its total.
     current = (await _evaluation(client, auth, trace_id))["current"]
     assert current["status"] == "completed" and current["outcome"] == "failure"
-    credits = {c["index"]: c["credit"] for c in current["credits"]}
-    assert credits[6] == -2.0
-    assert credits[4] == pytest.approx(2 * (repeated["score"] + repeated["shared_total"]))
+    credits = {c["index"]: c["expected_credit"] for c in current["credits"]}
+    assert credits[6] == -1.0
+    assert credits[4] == pytest.approx(repeated["score"] + repeated["shared_total"])
 
 
 async def test_without_the_grading_model_the_fixed_points_stand(client, labeler):
@@ -269,7 +269,7 @@ async def test_a_trace_that_arrives_labeled_is_never_sent_to_a_model(client, lab
     current = evaluation["current"]
     # Scored from the labels it came with: the rejected answer makes it a failure.
     assert current["status"] == "completed" and current["outcome"] == "failure"
-    assert {c["index"]: c["credit"] for c in current["credits"]}[6] == -2.0
+    assert {c["index"]: c["expected_credit"] for c in current["credits"]}[6] == -1.0
     detail = await _detail(client, auth, trace_id)
     assert detail["steps"][6]["metadata"]["label"]["outcome"] == "answer"
 
@@ -299,5 +299,5 @@ async def test_scores_a_trace_arrived_with_are_shown_as_they_are(client, labeler
     await workbench_auto.process_trace(trace_id)
     current = (await _evaluation(client, auth, trace_id))["current"]
     assert current["outcome"] == "success" and current["outcome_probabilities"] == {"score": 0.9}
-    assert current["credits"][0]["credit"] == 2.0
+    assert current["credits"][0]["expected_credit"] == 1.0
     assert (await _detail(client, auth, trace_id))["step_scores"] == summary

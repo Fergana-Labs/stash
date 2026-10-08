@@ -4,28 +4,33 @@ import { useProductCheckpoint } from "@/components/ProductCheckpointContext";
 import FloodgateComponent from "@/checkpoints/floodgate-2026-10-05/TraceClient";
 
 import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import { toast } from "sonner";
 import { useBreadcrumbs } from "@/components/BreadcrumbContext";
 import { useConfirm } from "@/components/ConfirmDialog";
 import AnnotationComposer, { type ComposerTarget } from "@/components/reward-models/AnnotationComposer";
 import AnnotationSidebar from "@/components/reward-models/AnnotationSidebar";
-import { wbEvaluation, wbAssess } from "@/lib/workbench-api";
-import { useWorkbenchLoad } from "@/components/workbench/workbench-ui";
+import { wbAssess } from "@/lib/workbench-api";
 import { Button } from "@/components/ui/button";
 import TraceReviewAccess from "@/components/workbench/TraceReviewAccess";
 import { TraceSkeleton } from "@/components/reward-models/RmSkeletons";
 import TraceFlamegraph from "@/components/reward-models/TraceFlamegraph";
+import { automaticActionScores, automaticAnnotationProgress } from "@/components/reward-models/automatic-credit";
 import TraceMinimap from "@/components/reward-models/TraceMinimap";
-import TraceTimeline, { type StepAnnotations } from "@/components/reward-models/TraceTimeline";
-import { errorMessage, locateQuote, quoteFromOffsets, relativeTime, sortAnnotations } from "@/components/reward-models/rm-text";
-import { domSourceOffset, type Highlight } from "@/components/reward-models/source-anchors";
+import TraceScore from "@/components/reward-models/TraceScore";
+import { TraceContext, type StepAnnotations } from "@/components/reward-models/TraceTimeline";
 import { TraceLabelSummary } from "@/components/reward-models/StepLabels";
 import { ScoringExplainer } from "@/components/reward-models/StepRewards";
 import { buildTraceLabels } from "@/components/reward-models/step-labels";
 import { rubricSummary, stepReward } from "@/components/reward-models/step-rewards";
+import { errorMessage, locateQuote, quoteFromOffsets, relativeTime, sortAnnotations } from "@/components/reward-models/rm-text";
+import { domSourceOffset, type Highlight } from "@/components/reward-models/source-anchors";
 import { buildRows, rowSteps, type TraceRow } from "@/components/reward-models/trace-rows";
-import { traceScrollMarkers, visibleStepElement } from "@/components/reward-models/trace-scroll";
+import TraceExplorer from "@/components/reward-models/TraceExplorer";
+import { buildTraceOutline, groupPath } from "@/components/reward-models/trace-outline";
+import { presentTrace } from "@/components/reward-models/trace-presentation";
+import { traceScrollMarkers } from "@/components/reward-models/trace-scroll";
 import { useAuth } from "@/hooks/useAuth";
 import { rmCreateAnnotation, rmDeleteAnnotation, rmGetTrace, rmUpdateAnnotation } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -35,14 +40,6 @@ import ConversationScrollRail from "@/components/ConversationScrollRail";
 const FLASH_MS = 1400;
 /** Highlight id for the not-yet-saved quote while the composer is open. */
 const PENDING_ID = "pending";
-
-type View = "all" | "conversation" | "tools";
-
-const VIEWS: [View, string][] = [
-  ["all", "All"],
-  ["conversation", "Conversation"],
-  ["tools", "Tools"],
-];
 
 function stepContentElement(node: Node | null): HTMLElement | null {
   const element = node instanceof HTMLElement ? node : node?.parentElement;
@@ -59,27 +56,20 @@ function highlightClass(a: RmAnnotation, active: boolean): string {
   );
 }
 
-function inView(row: TraceRow, view: View): boolean {
-  if (view === "all") return true;
-  if (view === "tools") return row.kind === "tool";
-  return row.kind === "prompt" || row.kind === "assistant";
-}
-
 function LatestTraceClient({ traceId }: { traceId: string }) {
   const { user } = useAuth();
   const confirm = useConfirm();
   const [trace, setTrace] = useState<RmTraceDetail | null>(null);
-  const evaluationLoader = useCallback(() => wbEvaluation(traceId), [traceId]);
-  const { data: evaluation, reload: reloadEvaluation } = useWorkbenchLoad(evaluationLoader, 5000);
-  const [commentsOpen, setCommentsOpen] = useState(true);
+  const evaluation = trace?.automatic_evaluation ?? null;
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [outlinePath, setOutlinePath] = useState<string[]>([]);
+  const [commentsOpen, setCommentsOpen] = useState(false);
+  const [showLabels, setShowLabels] = useState(true);
+  const [showScores, setShowScores] = useState(true);
   const [composer, setComposer] = useState<ComposerTarget | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [flashStepId, setFlashStepId] = useState<string | null>(null);
   const [pendingAnnotationId, setPendingAnnotationId] = useState<string | null>(null);
-  const [view, setView] = useState<View>("all");
-  const [expandAll, setExpandAll] = useState(false);
-  const [showLabels, setShowLabels] = useState(true);
-  const [showScores, setShowScores] = useState(true);
   // Rows the user opened (true) or closed (false) by hand; the rest follow their default.
   const [rowChoice, setRowChoice] = useState<Map<string, boolean>>(new Map());
   const navigation = useRef<HTMLDivElement | null>(null);
@@ -94,9 +84,10 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
 
   const load = useCallback(async () => {
     try {
-      setTrace(await rmGetTrace(traceId));
+      setTrace(await rmGetTrace(traceId, true));
+      setLoadError(null);
     } catch (e) {
-      toast.error(errorMessage(e));
+      setLoadError(errorMessage(e));
     }
   }, [traceId]);
 
@@ -124,7 +115,7 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
       const row = buildRows(trace.steps).find((candidate) => rowSteps(candidate).some((step) => step.id === stepId));
       if (!row) return;
       openedHash.current = hash;
-      setView("all");
+      setOutlinePath(groupPath(buildTraceOutline(presentTrace(trace.steps).rows), stepId));
       setRowChoice((current) => new Map(current).set(row.key, true));
       setFlashStepId(stepId);
       frame = requestAnimationFrame(() => {
@@ -142,24 +133,22 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
 
   const closeComposer = useCallback(() => setComposer(null), []);
 
+  if (!trace && loadError) return <div role="alert" className="p-8 text-sm">Couldn’t load this trace. <button onClick={() => void load()} className="underline">Retry</button></div>;
   if (!trace || !user) return <TraceSkeleton />;
   const viewerId = user.id;
   const ordered = sortAnnotations(trace.annotations.filter((a) => a.comment !== null), trace.steps);
-  const rows = buildRows(trace.steps);
-  // Step labels say what each step is; they sit next to the automatic credit, which says how it went.
-  const labels = buildTraceLabels(trace.steps);
+  const presentation = presentTrace(trace.steps);
+  const { rows } = presentation;
+  const groups = buildTraceOutline(rows);
+  const actionScores = automaticActionScores(evaluation, trace.steps);
+  const annotationProgress = automaticAnnotationProgress(evaluation, trace.steps, actionScores);
+  // Step labels say what each step is; the scores are built from them. Steps are numbered as the page shows them.
+  const numberOf = (step: RmStep) => presentation.numberById.get(step.id) ?? step.index + 1;
+  const labels = buildTraceLabels(trace.steps, numberOf);
   const labelsOn = labels.present && showLabels;
   const stepScores = rubricSummary(trace.step_scores);
   const scoresOn = stepScores !== null && showScores;
   const taskScores = new Map((stepScores?.episodes ?? []).map((task) => [task.task, task]));
-  const current = evaluation?.current;
-  const score = current?.outcome_probabilities?.score ?? (current?.outcome !== "insufficient_evidence" ? current?.outcome_probabilities?.success : null);
-  // Shown only while the trace is still waiting for its labels and scores.
-  const queueStatus = evaluation?.queue?.status;
-  const annotationStatus = !evaluation || current?.status === "completed" || queueStatus === "failed" ? undefined
-    : !evaluation.configured ? "Automatic annotation is not available."
-    : queueStatus === "waiting" ? "Waiting for the agent to respond before annotating."
-    : "Labeling and scoring this trace…";
 
 
   function annotationsOn(step: RmStep): RmAnnotation[] {
@@ -180,45 +169,18 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
     return [{ id: PENDING_ID, ...pending, className: "rounded-[2px] bg-brand-300/45 text-inherit" }, ...saved];
   }
 
-  /** Rows with annotations start open so their highlights and labels are visible. */
+  /** Messages start readable; context and tool details open on demand. */
   function isExpanded(row: TraceRow): boolean {
     const choice = rowChoice.get(row.key);
     if (choice !== undefined) return choice;
-    return expandAll || rowSteps(row).some((s) => annotationsOn(s).length > 0);
+    if (row.kind !== "prompt") return false;
+    const index = rows.findIndex((item) => item.key === row.key);
+    const previous = rows[index - 1];
+    return !(previous?.kind === "prompt" && previous.step.content === row.step.content && previous.step.index + 1 === row.step.index);
   }
 
   function toggleRow(row: TraceRow) {
-    setRowChoice(new Map(rowChoice).set(row.key, !isExpanded(row)));
-  }
-
-  function changeView(nextView: View) {
-    if (nextView === view) return;
-    const container = scroller.current!;
-    const header = navigation.current!;
-    const current = visibleStepElement(container, header);
-    setView(nextView);
-    if (current === null) return;
-
-    const currentStep = trace!.steps.find((step) => `step-${step.id}` === current.id)!;
-    const candidates = rows.filter((row) => inView(row, nextView));
-    if (candidates.length === 0) return;
-    const staysVisible = candidates.some((row) => rowSteps(row).some((step) => step.id === currentStep.id));
-    let target = currentStep;
-    if (!staysVisible) {
-      target = rowSteps(candidates[0])[0];
-      for (const row of candidates) {
-        const step = rowSteps(row)[0];
-        if (Math.abs(step.index - currentStep.index) < Math.abs(target.index - currentStep.index)) target = step;
-      }
-    }
-    const offset = staysVisible
-      ? current.getBoundingClientRect().top - container.getBoundingClientRect().top
-      : Math.max(0, header.getBoundingClientRect().bottom - container.getBoundingClientRect().top) + 12;
-    requestAnimationFrame(() => {
-      const element = document.getElementById(`step-${target.id}`)!;
-      const top = container.scrollTop + element.getBoundingClientRect().top - container.getBoundingClientRect().top - offset;
-      container.scrollTo({ top, behavior: "instant" });
-    });
+    setRowChoice((current) => new Map(current).set(row.key, !isExpanded(row)));
   }
 
   async function submitComment(target: ComposerTarget, comment: string) {
@@ -283,11 +245,11 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
     setComposer({ stepId: step.id, quote: quoteFromOffsets(step.content, start, end) });
   }
 
-  /** Scrolls to a step, opening its row and clearing a filter that hides it. */
+  /** Scrolls to a step, opening its row if needed. */
   function revealStep(stepId: string) {
-    const row = rows.find((r) => rowSteps(r).some((s) => s.id === stepId));
+    const row = [...rows, ...presentation.context.map((step): TraceRow => ({ kind: "system", key: step.id, step }))].find((r) => rowSteps(r).some((s) => s.id === stepId));
+    setOutlinePath(groupPath(groups, stepId));
     if (!row) return;
-    if (!inView(row, view)) setView("all");
     if (!isExpanded(row) && row.kind !== "assistant") toggleRow(row);
     setFlashStepId(stepId);
     requestAnimationFrame(() => {
@@ -317,8 +279,12 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
   }
 
   const ann: StepAnnotations = {
+    stepNumber: (step) => presentation.numberById.get(step.id),
     highlights: highlightsFor,
-    commentCount: (step) => annotationsOn(step).filter((a) => a.comment !== null).length,
+    commentCount: (step) => {
+      const row = rows.find((r) => r.key === step.id);
+      return (row ? rowSteps(row) : [step]).reduce((count, source) => count + annotationsOn(source).filter((a) => a.comment !== null).length, 0);
+    },
     hasQuotes: (step) => annotationsOn(step).some((a) => a.quote !== null) || composer?.stepId === step.id,
     flashing: (step) => flashStepId === step.id,
     onComment: (step) => openComposer(step.id),
@@ -327,34 +293,36 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
     ...(scoresOn && {
       reward: stepReward,
       taskScore: (step: RmStep) => taskScores.get(labels.label(step)?.task_id ?? "") ?? null,
-      stepNumberOf: (chunk: string) => { const step = labels.stepForChunk(chunk); return step ? step.index + 1 : null; },
+      stepNumberOf: (chunk: string) => { const step = labels.stepForChunk(chunk); return step ? numberOf(step) : null; },
       onJumpToChunk: (chunk: string) => { const step = labels.stepForChunk(chunk); if (step) revealStep(step.id); },
     }),
   };
 
-  const visibleRows = rows.filter((row) => inView(row, view));
-  const scrollMarkers = traceScrollMarkers(visibleRows);
+  const scrollMarkers = traceScrollMarkers(rows).map((marker) => ({ ...marker, label: `Step ${presentation.numberById.get(marker.targetId.slice(5)) ?? 1}` }));
 
   return (
     <div className="flex h-full min-h-0">
-      <ConversationScrollRail items={scrollMarkers} scroller={scroller} header={navigation} onJump={(item) => revealStep(item.targetId.slice("step-".length))} />
+      <ConversationScrollRail items={scrollMarkers} scroller={scroller} header={navigation} onJump={(item) => {
+        if (item.targetId === scrollMarkers[0]?.targetId) {
+          scroller.current?.scrollTo({ top: 0, behavior: "instant" });
+        } else {
+          revealStep(item.targetId.slice("step-".length));
+        }
+      }} />
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <div ref={navigation} className="z-20 shrink-0 border-b border-border bg-background px-6 pt-4">
-        <div className="mx-auto max-w-5xl">
-          <Link href="/reward-models" aria-label="Back to traces" className="inline-flex h-7 items-center rounded-md border border-border px-2.5 text-[12px] text-muted-foreground hover:bg-surface hover:text-foreground">
-            Back
-          </Link>
-
-          <header className="mt-2 mb-3 flex flex-wrap items-start gap-3">
-            <div className="min-w-0 flex-1">
-              <h1 className="m-0 font-display text-[21px] leading-snug font-semibold tracking-tight text-foreground">{trace.title}</h1>
-              <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[12px] text-muted-foreground">
-                <span>imported {relativeTime(trace.created_at)}</span>
-              </div>
+        <div ref={navigation} className="z-20 shrink-0 border-b border-border bg-background px-6 py-2">
+        <div className="mx-auto max-w-5xl space-y-2">
+          <header className="flex h-8 items-center gap-3">
+            <Link href="/reward-models" aria-label="Back to traces" title="Back to traces" className="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-surface hover:text-foreground">
+              <ArrowLeft className="size-4" aria-hidden="true" />
+            </Link>
+            <div className="flex min-w-0 flex-1 items-baseline gap-2.5">
+              <h1 title={trace.title} className="m-0 min-w-0 truncate font-display text-[18px] leading-snug font-semibold tracking-tight text-foreground">{trace.title}</h1>
+              <span className="shrink-0 whitespace-nowrap text-[11px] text-muted-foreground">imported {relativeTime(trace.created_at)}</span>
             </div>
-            <div className="flex shrink-0 items-center gap-1.5 pt-1">
-              <div className="mr-2 text-right" title="Automatic trace annotation: the mean of the task scores, from −1 (bad) to +1 (good)"><div className="text-[10px] text-muted-foreground">Trace score</div><span className="font-mono text-xl font-medium tabular-nums">{score == null ? "—" : score.toFixed(2)}</span></div>
-              <TraceReviewAccess traceId={traceId} viewerId={viewerId} />
+            <div className="flex shrink-0 items-center gap-1.5">
+              <TraceScore evaluation={evaluation} error={loadError} />
+              {evaluation?.queue?.status === "failed" && evaluation.owner_user_id === viewerId && <Button size="xs" variant="ghost" onClick={() => void wbAssess(traceId).then(load).catch((e) => toast.error(errorMessage(e)))}>Retry scoring</Button>}
               <button
                 type="button"
                 aria-expanded={commentsOpen}
@@ -369,52 +337,32 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
               >
                 Comments{ordered.length > 0 && ` (${ordered.length})`}
               </button>
+              <TraceReviewAccess traceId={traceId} viewerId={viewerId} />
             </div>
           </header>
 
-          {labelsOn && <TraceLabelSummary items={labels.summary} onJump={revealStep} />}
-          {scoresOn && <ScoringExplainer />}
-          {evaluation?.queue?.status === "failed" && evaluation.queue.error && (
-            <p className="m-0 mb-2 text-[12px] text-muted-foreground">This trace was not annotated. {evaluation.queue.error}</p>
-          )}
-          {evaluation?.queue?.status === "failed" && evaluation.owner_user_id === viewerId && <Button size="xs" variant="ghost" onClick={() => void wbAssess(traceId).then(reloadEvaluation).catch((e) => toast.error(errorMessage(e)))}>Retry scoring</Button>}
-            <TraceMinimap steps={trace.steps} annotations={trace.annotations} annotationStatus={annotationStatus} scroller={scroller} navigation={navigation} onJump={(index) => revealStep(trace.steps[index].id)} />
-            <TraceFlamegraph spans={trace.spans} onJump={(index) => revealStep(trace.steps[index].id)} />
-
-            <div className="mt-1 flex items-center gap-2 bg-background py-1.5">
-              {VIEWS.map(([key, label]) => (
-                <ToolbarButton key={key} active={view === key} onClick={() => changeView(key)}>
-                  {label}
-                </ToolbarButton>
-              ))}
+          <TraceMinimap steps={presentation.mapSteps} annotations={trace.annotations.map((annotation) => ({ ...annotation, step_id: annotation.step_id ? presentation.mapSteps[(presentation.numberById.get(annotation.step_id) ?? 0) - 1]?.id ?? annotation.step_id : null }))} actionScores={actionScores} annotationStatus={annotationProgress.label} unscoredReasons={annotationProgress.unscoredReasons} scroller={scroller} navigation={navigation} onJump={(index) => revealStep(presentation.mapSteps[index].id)} />
+          {(labels.present || stepScores !== null) && (
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              {labelsOn && <TraceLabelSummary items={labels.summary} onJump={revealStep} />}
               <span className="flex-1" />
-              {labels.present && (
-                <ToolbarButton active={showLabels} onClick={() => setShowLabels(!showLabels)}>
-                  Labels
-                </ToolbarButton>
-              )}
-              {stepScores !== null && (
-                <ToolbarButton active={showScores} onClick={() => setShowScores(!showScores)}>
-                  Scores
-                </ToolbarButton>
-              )}
-              <ToolbarButton
-                active={expandAll}
-                onClick={() => {
-                  setExpandAll(!expandAll);
-                  setRowChoice(new Map());
-                }}
-              >
-                {expandAll ? "Collapse" : "Expand all"}
-              </ToolbarButton>
+              {scoresOn && <ScoringExplainer />}
+              {labels.present && <ViewToggle active={showLabels} onClick={() => setShowLabels(!showLabels)}>Labels</ViewToggle>}
+              {stepScores !== null && <ViewToggle active={showScores} onClick={() => setShowScores(!showScores)}>Scores</ViewToggle>}
             </div>
+          )}
+          {evaluation?.queue?.status === "failed" && evaluation.queue.error && (
+            <p className="m-0 text-[12px] text-muted-foreground">This trace was not annotated. {evaluation.queue.error}</p>
+          )}
 
         </div>
         </div>
         <div ref={scroller} className="scroll-thin min-h-0 flex-1 overflow-y-auto">
         <div ref={canvas} className="relative mx-auto max-w-5xl px-6 pt-2 pb-[60vh]" onMouseUp={onCanvasMouseUp}>
-          <TraceTimeline rows={visibleRows} ann={ann} isExpanded={isExpanded} onToggle={toggleRow} />
-          {visibleRows.length === 0 && <p className="py-12 text-center text-[13px] text-muted-foreground">No steps in this view.</p>}
+          <TraceFlamegraph spans={trace.spans} onJump={(index) => revealStep(trace.steps[index].id)} />
+          <TraceContext steps={presentation.context} ann={ann} isExpanded={isExpanded} onToggle={toggleRow} />
+          <TraceExplorer groups={groups} path={outlinePath} onPath={(path) => { setOutlinePath(path); scroller.current?.scrollTo({ top: 0, behavior: "instant" }); }} ann={ann} isExpanded={isExpanded} onToggle={toggleRow} />
+          {rows.length === 0 && <p className="py-12 text-center text-[13px] text-muted-foreground">No steps in this trace.</p>}
         </div>
         </div>
       </div>
@@ -428,14 +376,14 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
             <AnnotationComposer
               key={JSON.stringify(composer)}
               target={composer}
-              label={composerLabel(composer, trace)}
+              label={composerLabel(composer, trace, presentation.numberById)}
               onCancel={closeComposer}
               onSubmit={(comment) => submitComment(composer, comment)}
             />
           )
         }
         annotations={ordered}
-        steps={trace.steps}
+        steps={presentation.commentSteps}
         viewerId={viewerId}
         activeId={activeId}
         pendingId={pendingAnnotationId}
@@ -452,30 +400,26 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
   );
 }
 
-function ToolbarButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) {
+function ViewToggle({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className={cn(
-        "inline-flex h-7 cursor-pointer items-center gap-1.5 border-b-2 px-2 text-[12px] transition-colors",
-        active ? "border-foreground font-medium text-foreground" : "border-transparent text-muted-foreground hover:text-foreground",
-      )}
-    >
+    <button type="button" onClick={onClick} aria-pressed={active}
+      className={cn("inline-flex h-6 cursor-pointer items-center border-b-2 px-1.5 text-[12px] transition-colors",
+        active ? "border-foreground font-medium text-foreground" : "border-transparent text-muted-foreground hover:text-foreground")}>
       {children}
     </button>
   );
 }
 
-function composerLabel(target: ComposerTarget, trace: RmTraceDetail): string {
+function composerLabel(target: ComposerTarget, trace: RmTraceDetail, numbers: Map<string, number>): string {
   if (target.stepId === null) return "Comment on the whole trace";
   const step = trace.steps.find((s) => s.id === target.stepId)!;
-  return target.quote ? `Comment on selection in step ${step.index + 1}` : `Comment on step ${step.index + 1} (${step.role})`;
+  const number = numbers.get(step.id);
+  const label = number ? `step ${number}${step.role === "tool" ? " output" : ""}` : "instructions";
+  return target.quote ? `Comment on selection in ${label}` : `Comment on ${label}`;
 }
 
 export default function TraceClient(props: React.ComponentProps<typeof LatestTraceClient>) {
   return useProductCheckpoint() === "floodgate-2026-10-05"
     ? <FloodgateComponent {...props} />
-    : <LatestTraceClient {...props} />;
+    : <LatestTraceClient key={props.traceId} {...props} />;
 }
