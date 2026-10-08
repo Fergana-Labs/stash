@@ -19,6 +19,7 @@ import { TraceSkeleton } from "@/components/reward-models/RmSkeletons";
 import TraceFlamegraph from "@/components/reward-models/TraceFlamegraph";
 import { automaticActionScores, automaticAnnotationProgress } from "@/components/reward-models/automatic-credit";
 import TraceMinimap from "@/components/reward-models/TraceMinimap";
+import TraceScore from "@/components/reward-models/TraceScore";
 import TraceTimeline, { type StepAnnotations } from "@/components/reward-models/TraceTimeline";
 import { errorMessage, locateQuote, quoteFromOffsets, relativeTime, sortAnnotations } from "@/components/reward-models/rm-text";
 import { domSourceOffset, type Highlight } from "@/components/reward-models/source-anchors";
@@ -54,7 +55,7 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
   const confirm = useConfirm();
   const [trace, setTrace] = useState<RmTraceDetail | null>(null);
   const evaluationLoader = useCallback(() => wbEvaluation(traceId), [traceId]);
-  const { data: evaluation, reload: reloadEvaluation } = useWorkbenchLoad(evaluationLoader, 5000);
+  const { data: evaluation, error: evaluationError, reload: reloadEvaluation } = useWorkbenchLoad(evaluationLoader, 5000);
   // Follow the comment count until the viewer explicitly opens or closes the panel.
   const [commentsOpenOverride, setCommentsOpen] = useState<boolean | null>(null);
   const [composer, setComposer] = useState<ComposerTarget | null>(null);
@@ -127,8 +128,6 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
   const ordered = sortAnnotations(trace.annotations.filter((a) => a.comment !== null), trace.steps);
   const commentsOpen = commentsOpenOverride ?? ordered.length > 0;
   const rows = buildRows(trace.steps);
-  const current = evaluation?.current;
-  const score = current?.outcome !== "insufficient_evidence" ? current?.outcome_probabilities?.success : null;
   const actionScores = automaticActionScores(evaluation, trace.steps);
   const annotationProgress = automaticAnnotationProgress(evaluation, trace.steps, actionScores);
 
@@ -289,7 +288,7 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
               <span className="shrink-0 whitespace-nowrap text-[11px] text-muted-foreground">imported {relativeTime(trace.created_at)}</span>
             </div>
             <div className="flex shrink-0 items-center gap-1.5">
-              <div className="mr-2 flex items-baseline gap-1.5 whitespace-nowrap" title="Automatic trace annotation: estimated probability of success (0–1)"><span className="text-[10px] text-muted-foreground">Trace score</span><span className="font-mono text-[16px] font-medium text-foreground tabular-nums">{score == null ? "—" : score.toFixed(2)}</span></div>
+              <TraceScore evaluation={evaluation} error={evaluationError} />
               {evaluation?.queue?.status === "failed" && evaluation.owner_user_id === viewerId && <Button size="xs" variant="ghost" onClick={() => void wbAssess(traceId).then(reloadEvaluation).catch((e) => toast.error(errorMessage(e)))}>Retry scoring</Button>}
               <TraceReviewAccess traceId={traceId} viewerId={viewerId} />
               <button
