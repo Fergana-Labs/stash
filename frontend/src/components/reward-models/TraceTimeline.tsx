@@ -130,8 +130,8 @@ function StepMetadata({ step, ann, children }: { step: RmStep; ann: StepAnnotati
     <div className="ml-auto flex shrink-0 items-center gap-3 text-[11px] text-muted-foreground tabular-nums">
       <StepTime step={step} />
       {score && <span className="rounded px-1.5 py-0.5 font-medium text-foreground" style={{ backgroundColor: creditColor(score.credit, 0.15) }}
-        title={score.reward_model_id === "automatic" ? `Automatic action annotation: ${formatCredit(score.credit)} (−1 to +1)` : `${score.reward_model_name}: ${formatCredit(score.credit)}`}>
-        Credit {formatCredit(score.credit)}
+        title={score.reward_model_id === "automatic" ? `${score.stale ? "Previous automatic annotation" : "Automatic action annotation"}: ${formatCredit(score.credit)} (−1 to +1)` : `${score.reward_model_name}: ${formatCredit(score.credit)}`}>
+        {score.stale ? "Previous credit" : "Credit"} {formatCredit(score.credit)}
       </span>}
       <span>Step {step.index + 1}</span>
       <div className="flex w-28 items-center justify-end gap-3">

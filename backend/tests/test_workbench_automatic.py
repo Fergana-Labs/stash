@@ -95,10 +95,16 @@ async def test_later_work_is_new_version_and_history_retains_exact_evidence(
     await auto.process_trace(tid)
     pending = await get_eval(client, user, tid)
     assert pending["current"] is None and pending["queue"]["status"] == "waiting"
+    assert pending["previous_credits"] == [
+        {**before["credits"][0], "evaluation_id": before["id"], "created_at": before["created_at"]}
+    ]
+    assert (await get_eval(client, user, tid))["previous_credits"] == pending["previous_credits"]
     assert len(calls) == 2
     await upload(client, user, messages=messages + [("assistant", "I haven't fixed it yet.")])
     await auto.process_trace(tid)
-    after = (await get_eval(client, user, tid))["current"]
+    updated = await get_eval(client, user, tid)
+    assert updated["previous_credits"] == []
+    after = updated["current"]
     assert after["id"] != before["id"] and after["total_actions"] == 2
     old = await client.get(
         f"{BASE}/traces/{tid}/evaluation/{before['id']}", headers=user["headers"]
@@ -403,3 +409,52 @@ def test_native_claude_completion_metadata_survives_adapter():
     )
     _, traces = parse_traces(text, "claude_code")
     assert traces[0].steps[-1].metadata["stop_reason"] == "end_turn"
+
+
+async def test_previous_annotations_fill_gaps_as_new_batches_arrive(client, pool, monkeypatch):
+    monkeypatch.setattr(policy, "ACTIONS_PER_BATCH", 1)
+    user = await account(client)
+    messages = [
+        ("user", "Fix the parser"),
+        ("assistant", "First attempt"),
+        ("assistant", "Second attempt"),
+        ("assistant", "Final answer"),
+    ]
+    tid = await upload(client, user, messages=messages)
+
+    async def grade(snapshot):
+        return answer(snapshot)
+
+    monkeypatch.setattr(wire, "grade", grade)
+    await auto.process_trace(tid)
+    before = (await get_eval(client, user, tid))["current"]
+    assert len(before["credits"]) == 3
+    await upload(
+        client, user, messages=messages + [("user", "Check again"), ("assistant", "Checked again")]
+    )
+    monkeypatch.setattr(auto, "MAX_CALLS_PER_PASS", 2)
+    await auto.process_trace(tid)
+    partial = await get_eval(client, user, tid)
+    assert len(partial["current"]["credits"]) == 1
+    assert {c["step_id"] for c in partial["previous_credits"]} == {
+        c["step_id"] for c in before["credits"][1:]
+    }
+    assert all(c["evaluation_id"] == before["id"] for c in partial["previous_credits"])
+    await auto.process_trace(tid)
+    partial = await get_eval(client, user, tid)
+    assert len(partial["current"]["credits"]) == 3
+    assert partial["previous_credits"] == []
+    await auto.process_trace(tid)
+    assert (await get_eval(client, user, tid))["current"]["status"] == "completed"
+
+
+async def test_previous_annotations_never_attach_to_rewritten_steps(client, pool, monkeypatch):
+    user, tid, _ = await evaluate(client, pool, monkeypatch)
+    # Stable ids alone are not sufficient if recorded content has changed.
+    await pool.execute(
+        "UPDATE rm_trace_steps SET content='Rewritten response' WHERE trace_id=$1 AND role='assistant'",
+        tid,
+    )
+    result = await get_eval(client, user, tid)
+    assert result["current"] is None
+    assert result["previous_credits"] == []

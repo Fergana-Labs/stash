@@ -95,6 +95,7 @@ export interface TraceEvaluationResponse {
   provider: string; model: string; configured: boolean; policy_version: string; owner_user_id: string;
   boundary: TraceEvaluation["boundary"] | null; queue: { status: string; error: string | null } | null;
   current: TraceEvaluation | null; history: Pick<TraceEvaluation, "id" | "outcome" | "status" | "created_at" | "boundary">[];
+  previous_credits?: (TraceEvaluation["credits"][number] & { evaluation_id: string; created_at: string })[];
 }
 export function wbEvaluation(traceId: string): Promise<TraceEvaluationResponse> { return apiFetch(`${WB}/traces/${traceId}/evaluation`); }
 export function wbHistoricalEvaluation(traceId: string, evaluationId: string): Promise<TraceEvaluation> { return apiFetch(`${WB}/traces/${traceId}/evaluation/${evaluationId}`); }

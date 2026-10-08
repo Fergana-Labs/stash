@@ -487,6 +487,8 @@ export interface RmTraceDetail extends RmTraceSummary {
 }
 
 export interface RmActionScore {
+  /** Display-only automatic annotation from an earlier trace revision. */
+  stale?: boolean;
   reward_model_id: string;
   reward_model_name: string;
   step_id: string;

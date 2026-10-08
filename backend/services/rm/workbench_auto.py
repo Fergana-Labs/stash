@@ -275,7 +275,7 @@ async def detail(user, trace_id):
     trace, steps = await _read_trace(trace_id)
     fingerprint = policy.revision_hash(steps)
     rows = await get_pool().fetch(
-        "SELECT id,revision_hash,policy_version,model,status,outcome,created_at,boundary FROM rm_wb_evaluations WHERE trace_id=$1 ORDER BY created_at DESC",
+        "SELECT id,revision_hash,policy_version,model,status,outcome,created_at,boundary,credited_actions FROM rm_wb_evaluations WHERE trace_id=$1 ORDER BY created_at DESC",
         trace_id,
     )
     current = next(
@@ -310,7 +310,52 @@ async def detail(user, trace_id):
     }
     if current:
         result["current"] = await historical(user, trace_id, current["id"])
+    result["previous_credits"] = await _previous_credits(rows, steps, result["current"])
     return result
+
+
+async def _previous_credits(rows, steps, current):
+    """Display-only annotations while an appended trace is being evaluated.
+
+    Current results (including insufficient evidence) always take precedence.
+    Earlier annotations never become current labels or training data.
+    """
+    if current and current["status"] == "completed":
+        return []
+    judged = {c["step_id"] for c in current["credits"]} if current else set()
+    missing = {
+        str(s["id"]): i
+        for i, s in enumerate(s for s in steps if policy.action(s))
+        if str(s["id"]) not in judged
+    }
+    credits = []
+    for row in rows:
+        if not missing:
+            break
+        if (
+            (current and row["id"] == current["id"])
+            or row["policy_version"] != policy.POLICY_VERSION
+            or row["model"] != settings.JEV_MODEL
+            # Calls are completed in action order. Skip prefixes already covered.
+            or row["credited_actions"] <= min(missing.values())
+        ):
+            continue
+        previous = await get_pool().fetchrow(
+            "SELECT * FROM rm_wb_evaluations WHERE id=$1", row["id"]
+        )
+        snapshot = previous["trace_snapshot"]
+        if (
+            len(snapshot) > len(steps)
+            or policy.revision_hash(steps[: len(snapshot)]) != row["revision_hash"]
+        ):
+            continue
+        for credit in (await _evaluation_detail(previous))["credits"]:
+            if credit["step_id"] in missing:
+                missing.pop(credit["step_id"])
+                credits.append(
+                    {**credit, "evaluation_id": row["id"], "created_at": row["created_at"]}
+                )
+    return credits
 
 
 async def historical(user, trace_id, evaluation_id):

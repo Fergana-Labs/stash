@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import TraceReviewAccess from "@/components/workbench/TraceReviewAccess";
 import { TraceSkeleton } from "@/components/reward-models/RmSkeletons";
 import TraceFlamegraph from "@/components/reward-models/TraceFlamegraph";
+import { automaticActionScores } from "@/components/reward-models/automatic-credit";
 import TraceMinimap from "@/components/reward-models/TraceMinimap";
 import TraceTimeline, { type StepAnnotations } from "@/components/reward-models/TraceTimeline";
 import { errorMessage, locateQuote, quoteFromOffsets, relativeTime, sortAnnotations } from "@/components/reward-models/rm-text";
@@ -25,7 +26,7 @@ import { traceScrollMarkers, visibleStepElement } from "@/components/reward-mode
 import { useAuth } from "@/hooks/useAuth";
 import { rmCreateAnnotation, rmDeleteAnnotation, rmGetTrace, rmUpdateAnnotation } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import type { RmActionScore, RmAnnotation, RmStep, RmTraceDetail } from "@/lib/types";
+import type { RmAnnotation, RmStep, RmTraceDetail } from "@/lib/types";
 import ConversationScrollRail from "@/components/ConversationScrollRail";
 
 const FLASH_MS = 1400;
@@ -142,10 +143,16 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
   const rows = buildRows(trace.steps);
   const current = evaluation?.current;
   const score = current?.outcome !== "insufficient_evidence" ? current?.outcome_probabilities?.success : null;
-  const actionScores = new Map<string, RmActionScore>((current?.credits ?? []).filter((c) => c.credit !== null).map((c) => [c.step_id, {
-    step_id: c.step_id, score: c.credit!, credit: c.credit! / 2,
-    reward_model_id: "automatic", reward_model_name: "Automatic annotation", created_at: current!.created_at,
-  }]));
+  const actionScores = automaticActionScores(evaluation, trace.steps);
+  const previousShown = [...actionScores.values()].some((score) => score.stale);
+  const annotationStatus = previousShown
+    ? evaluation?.queue?.status === "failed" ? "Annotation update failed · previous values retained"
+      : evaluation?.queue?.status === "waiting" ? "Waiting for response completion · previous values retained"
+        : "Updating annotations · previous values retained"
+    : evaluation && current?.status !== "completed" && evaluation.queue?.status !== "failed"
+      ? evaluation.queue?.status === "waiting" ? "Waiting for response completion" : "Annotating actions…"
+      : undefined;
+
 
   function annotationsOn(step: RmStep): RmAnnotation[] {
     return trace!.annotations.filter((a) => a.step_id === step.id);
@@ -352,7 +359,7 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
           </header>
 
           {evaluation?.queue?.status === "failed" && evaluation.owner_user_id === viewerId && <Button size="xs" variant="ghost" onClick={() => void wbAssess(traceId).then(reloadEvaluation).catch((e) => toast.error(errorMessage(e)))}>Retry scoring</Button>}
-            <TraceMinimap steps={trace.steps} annotations={trace.annotations} actionScores={actionScores} scroller={scroller} navigation={navigation} onJump={(index) => revealStep(trace.steps[index].id)} />
+            <TraceMinimap steps={trace.steps} annotations={trace.annotations} actionScores={actionScores} annotationStatus={annotationStatus} scroller={scroller} navigation={navigation} onJump={(index) => revealStep(trace.steps[index].id)} />
             <TraceFlamegraph spans={trace.spans} onJump={(index) => revealStep(trace.steps[index].id)} />
 
             <div className="mt-1 flex items-center gap-2 bg-background py-1.5">

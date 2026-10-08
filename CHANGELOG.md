@@ -5,6 +5,10 @@ everything before it is captured in git history (`git log`), not here.
 
 ## Unreleased
 
+- Keep previous action-credit bars visible while a growing trace is evaluated
+  again. Earlier annotations are clearly labeled and replaced as current scores
+  arrive; unscored new steps no longer make the entire chart appear to collapse.
+
 - Simplify the latest reward-model workspace to Traces, Reward models, and
   Monitoring, with current skills, changes, and feedback under Monitoring.
   Search trace content, review numeric success and action-credit summaries,
