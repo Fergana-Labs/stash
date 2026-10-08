@@ -125,6 +125,15 @@ the observable fact next to that number. The trace view shows labels as chips
 on each row, links a user's reaction to the answer it is about, counts them in
 a summary bar, and hides them with a Labels toggle.
 
+A labeled trace is laid out as an outline that opens one level at a time
+(`trace-outline.ts`): tasks (a new task starts at each `new_request`), the
+turns inside a task (one user message and the agent's work until the next),
+the steps inside a turn, and a step's score breakdown. Each closed level is one
+line: a task shows its request, its last answer, the user's reaction and its
+score; a turn shows the message, a count of the work ("4 lookups · 1 error")
+and the answer. Jumping to a step opens the task and turn that hold it. "By
+task" switches back to the flat list.
+
 A label is `steps[].metadata.label`: `chunk_id`, `task_id`, `actor` (`user` or
 `agent`), then for a user step `intent`, `verdict`, `verdict_target`,
 `sentiment`; for an agent step `type`, `effect`, `result`, `duplicate_of`,
@@ -140,7 +149,8 @@ reach a trace in one of two ways:
   it and a heavy-queue task cuts it into chunks (a user message, an agent
   message, or a tool call with its result) and asks `STEP_LABEL_MODEL`
   (default `gpt-6-sol`) to label each chunk, one call per chunk with the whole
-  conversation as a cached prompt prefix (`step_labeler.py`). Labels are stored
+  conversation as a cached prompt prefix (`step_labeler.py`), then scores the
+  steps (below). Labels and scores are stored
   in `rm_step_labels`, keyed by a fingerprint of the steps, and merged into
   `GET /traces/{id}` on read; a trace is labeled again only when its steps
   change. It needs `OPENAI_API_KEY` and sends trace content to OpenAI. Cost
@@ -148,6 +158,35 @@ reach a trace in one of two ways:
   `STEP_LABELING_MAX_CHUNKS` (80) or `STEP_LABELING_MAX_CHARS` (200000) is
   recorded as skipped with the reason, as is a failure after three attempts;
   the response then carries `step_labeling` (`status`, `error`).
+
+### Step scores
+
+Step scores turn the labels into numbers by fixed rules
+(`services/rm/step_scoring.py`), so the same labels always give the same
+scores and every number can be traced to the label behind it. They are separate
+from the automatic annotation's credit and are shown next to it.
+
+- **Work costs points.** A lookup is −0.03, a call that changes something
+  −0.05, a question to the user −0.05; an error adds −0.10 and a repeat of an
+  earlier call adds −0.10.
+- **An answer earns points by how the user reacted**, from +1.0 (confirmed, no
+  caveats) down to −1.0 (rejected, stated with confidence).
+- **Quality checks** (optional, when `TYPESAFE_API_KEY` is set). Where the
+  labels leave the outcome open (a tool call, a question, an answer the user
+  never reacted to), the grading model is asked one multiple-choice question
+  about that step, and the options' points are blended by their probabilities.
+  The bounds keep the order fixed: an unconfirmed answer never beats an
+  accepted one, and work is never scored above zero.
+- **Credit flows back.** An answer the user reacted to passes
+  `0.3 × points × 0.8^k` to the step `k` places before it in the same task.
+- **A task's score** is its final answer's points plus the cost of the work,
+  capped to −1..+1.
+
+A step's score is `steps[].metadata.reward` and the task scores are
+`step_scores` on `GET /traces/{id}`. Automatic labeling computes both; an
+imported trace may carry them (`metadata.rubric_summary` on the trace). The
+viewer shows a score chip per step, a sum per turn, the score per task, and
+the breakdown line by line when a step is opened.
 
 ### Supported input formats
 

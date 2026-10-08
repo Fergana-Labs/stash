@@ -7,7 +7,9 @@ import type { RmActionScore, RmStep } from "@/lib/types";
 import { creditColor, formatCredit } from "./action-credit";
 import AnchoredText from "./AnchoredText";
 import { StepLabelChips } from "./StepLabels";
+import { StepScoreChip, StepScoreLine } from "./StepRewards";
 import type { LabelChip } from "./step-labels";
+import type { StepReward } from "./step-rewards";
 import { firstLine, isThinking, looksLikeError, toolLabel, toolSummary, type TraceRow } from "./trace-rows";
 import type { Highlight } from "./source-anchors";
 import styles from "./TraceMarkdown.module.css";
@@ -25,6 +27,22 @@ export interface StepAnnotations {
   labelChips?: (step: RmStep) => LabelChip[];
   taskHeading?: (step: RmStep) => string | null;
   onJumpToStep?: (stepId: string) => void;
+  /** Rule-based step scores with their breakdown; absent unless the Scores view is on. */
+  reward?: (step: RmStep) => StepReward | null;
+  stepNumberOf?: (chunk: string) => number | null;
+  onJumpToChunk?: (chunk: string) => void;
+}
+
+function Score({ step, ann }: { step: RmStep; ann: StepAnnotations }) {
+  const reward = ann.reward?.(step);
+  return reward ? <StepScoreChip reward={reward} /> : null;
+}
+
+/** The breakdown is the deepest level of detail, so it only appears once a row is opened. */
+function ScoreLine({ step, ann, className }: { step: RmStep; ann: StepAnnotations; className?: string }) {
+  const reward = ann.reward?.(step);
+  if (!reward || !ann.stepNumberOf || !ann.onJumpToChunk) return null;
+  return <StepScoreLine reward={reward} stepNumberOf={ann.stepNumberOf} onJumpToChunk={ann.onJumpToChunk} className={className} />;
 }
 
 function Labels({ step, ann, className }: { step: RmStep; ann: StepAnnotations; className?: string }) {
@@ -183,9 +201,11 @@ function AssistantRow({ step, ann, first }: { step: RmStep; ann: StepAnnotations
         <span className={cn(first ? "text-[13px] font-semibold text-foreground" : "text-[11px] text-muted-foreground")}>
           {first ? "Assistant" : thinking ? "Thinking" : "Response"}
         </span>
+        <Score step={step} ann={ann} />
         <Labels step={step} ann={ann} />
         <StepMetadata step={step} ann={ann} />
       </div>
+      <ScoreLine step={step} ann={ann} className="mb-1.5" />
       <div className={cn(thinking && "text-dim italic")}>
         <StepContent step={step} ann={ann} markdown max={440} />
       </div>
@@ -230,6 +250,7 @@ function ToolRow({
           <span className="min-w-0 truncate text-[12px] text-muted-foreground" title={summary}>{expanded ? "" : summary}</span>
         </button>
         {isError && !ann.labelChips && <span className="text-[11px] text-red-600">Error</span>}
+        <Score step={head} ann={ann} />
         <Labels step={head} ann={ann} className="shrink-0 flex-nowrap" />
         <StepMetadata step={head} ann={ann}>
           <button type="button" onClick={onToggle} aria-expanded={expanded}
@@ -238,6 +259,7 @@ function ToolRow({
           </button>
         </StepMetadata>
       </div>
+      {expanded && <ScoreLine step={head} ann={ann} className="mb-2" />}
       {expanded && (
         <div className={cn("mb-1 grid gap-3 text-[13px]", call?.tool_input != null && result !== null && "grid-cols-2")}>
           {call && call.tool_input !== null && (

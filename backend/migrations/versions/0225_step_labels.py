@@ -1,4 +1,4 @@
-"""Store automatic step labels per trace."""
+"""Store automatic step labels and rule-based step scores per trace."""
 
 from alembic import op
 
@@ -21,6 +21,8 @@ def upgrade():
             error          text,
             attempts       integer NOT NULL DEFAULT 1,
             labels         jsonb NOT NULL DEFAULT '{}'::jsonb,
+            rewards        jsonb NOT NULL DEFAULT '{}'::jsonb,
+            summary        jsonb,
             label_model    text NOT NULL,
             labeled_at     timestamptz NOT NULL DEFAULT now(),
             checked_at     timestamptz NOT NULL DEFAULT now()

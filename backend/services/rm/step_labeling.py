@@ -6,12 +6,17 @@ call did and returned, and what the agent handed the user (step_labeler). The
 automatic annotation in the workbench estimates how well a step went; these
 labels are the observable facts next to that number.
 
-Labels live in rm_step_labels and are merged into each step's
-`metadata.label` when the trace is read, the same place an import can put
-them, so the trace view shows both the same way.
+Each labeled step then gets a rule-based score with credit assignment
+(step_scoring): fixed points for its label, one quality check, and a share of
+any later answer the user reacted to.
+
+Labels and scores live in rm_step_labels and are merged into each step's
+`metadata.label` and `metadata.reward` when the trace is read, the same place
+an import can put them, so the trace view shows both the same way.
 
 Off unless STEP_LABELING_ENABLED is set. Trace content is sent to the labeling
-provider; traces above the size limits are skipped, never truncated silently.
+provider, and to the grading model for quality checks when TYPESAFE_API_KEY is
+set; traces above the size limits are skipped, never truncated silently.
 """
 
 from __future__ import annotations
@@ -26,10 +31,14 @@ import httpx
 
 from ...config import settings
 from ...database import get_pool
-from . import step_labeler
+from . import step_labeler, step_scoring
 
 logger = logging.getLogger(__name__)
 
+JEV_ENDPOINT = "https://api.typesafe.ai/v1/systemone"
+# The grading model reads about 32k tokens of state; long tool results are clipped to fit.
+JEV_STATE_CHARS = 84_000
+JEV_RESULT_CAPS = (8_000, 3_000, 1_200, 400)
 CONCURRENCY = 8
 MAX_ATTEMPTS = 3
 TRACES_PER_PASS = 5
@@ -57,9 +66,99 @@ def fingerprint(steps: list[dict]) -> str:
     return digest.hexdigest()
 
 
-async def label_steps(trace_id: UUID, steps: list[dict]) -> dict[str, dict]:
-    """Labels for one trace's steps, keyed by step index. Raises
-    LabelingSkipped or LabelingError; makes no database writes."""
+def check_state(chunks: list[dict], target: dict, label: dict) -> dict:
+    for cap in JEV_RESULT_CAPS:
+        conversation = step_labeler.render(chunks, cap)
+        step = step_labeler.render_chunk(target, max(cap, 6_000))
+        if len(conversation) + len(step) <= JEV_STATE_CHARS:
+            break
+    described = (label["type"] or "other").replace("_", " ")
+    if label["is_output"]:
+        described = f"response to the user; outcome: {label['outcome']}; stance: {label['stance']}; coverage: {label['coverage']}"
+    elif label["type"] == "tool_call":
+        described = f"tool call to {label.get('tool')}; effect: {label['effect']}; result: {label['result'] or 'none recorded'}"
+    return {"CONVERSATION": conversation, "STEP_TO_JUDGE": step, "STEP_LABEL": described}
+
+
+async def quality_check(
+    client: httpx.AsyncClient, chunks: list[dict], chunk: dict, label: dict, rubric: str
+) -> dict:
+    """The grading model's answer to one step's quality check, as level probabilities."""
+    question, levels = step_scoring.CHECKS[rubric]
+    body = {
+        "model": settings.JEV_MODEL,
+        "state": check_state(chunks, chunk, label),
+        "questions": {
+            "grade": {
+                "type": "score",
+                "instructions": question,
+                "criteria": [text for text, _, _ in levels],
+            }
+        },
+    }
+    try:
+        response = await client.post(
+            JEV_ENDPOINT,
+            json=body,
+            headers={"Authorization": f"Bearer {settings.TYPESAFE_API_KEY}"},
+        )
+    except httpx.RequestError as exc:
+        raise step_labeler.LabelingError(
+            f"quality check request failed: {type(exc).__name__}"
+        ) from exc
+    if response.status_code != 200:
+        raise step_labeler.LabelingError(
+            f"quality check returned {response.status_code}: {response.text[:200]}"
+        )
+    try:
+        raw = response.json()["answers"]["grade"]["probabilities"]
+        probabilities = {int(level): float(p) for level, p in raw.items()}
+    except (KeyError, ValueError, TypeError, AttributeError) as exc:
+        raise step_labeler.LabelingError(
+            "quality check response was not the expected JSON"
+        ) from exc
+    return {"rubric": rubric, "grader": "the grading model", "probabilities": probabilities}
+
+
+async def score_steps(chunks: list[dict], labels: dict[str, dict]) -> tuple[dict[str, dict], dict]:
+    """Scores for the labeled agent chunks, keyed by step index, and the task
+    scores. Quality checks are asked only when the grading model is
+    configured; without it the labels' fixed points stand."""
+    verdicts = {
+        label["verdict_target"]: label["verdict"]
+        for label in labels.values()
+        if label["actor"] == "user"
+        and label["verdict"] not in (None, "none")
+        and label["verdict_target"]
+    }
+    agent_steps = [
+        {"chunk_id": c["chunk_id"], "task_id": labels[c["chunk_id"]]["task_id"], "label": labels[c["chunk_id"]],
+         "verdict": verdicts.get(c["chunk_id"]), "check": None, "chunk": c}
+        for c in chunks if c["actor"] == "agent"
+    ]  # fmt: skip
+    if settings.TYPESAFE_API_KEY:
+        gate = asyncio.Semaphore(CONCURRENCY)
+        async with httpx.AsyncClient(timeout=settings.JEV_TIMEOUT_SECONDS) as client:
+
+            async def check(step: dict) -> None:
+                rubric = step_scoring.check_for(step["label"], step["verdict"])
+                if rubric is not None:
+                    async with gate:
+                        step["check"] = await quality_check(
+                            client, chunks, step["chunk"], step["label"], rubric
+                        )
+
+            await asyncio.gather(*(check(step) for step in agent_steps))
+    rewards, episodes = step_scoring.score_trace(agent_steps)
+    by_idx = {c["chunk_id"]: str(c["idx"]) for c in chunks}
+    return {
+        by_idx[chunk_id]: reward for chunk_id, reward in rewards.items()
+    }, step_scoring.summarize(list(labels.values()), episodes)
+
+
+async def label_steps(trace_id: UUID, steps: list[dict]) -> dict:
+    """Labels and scores for one trace's steps, keyed by step index, plus the
+    task scores. Raises LabelingSkipped or LabelingError; makes no database writes."""
     chunks = step_labeler.build_chunks(steps)
     if not any(chunk["actor"] == "agent" for chunk in chunks):
         raise LabelingSkipped("The trace has no agent steps to label.")
@@ -87,7 +186,12 @@ async def label_steps(trace_id: UUID, steps: list[dict]) -> dict[str, dict]:
         await label(chunks[0])
         await asyncio.gather(*(label(chunk) for chunk in chunks[1:]))
     step_labeler.assign_tasks(chunks, labels)
-    return {str(chunk["idx"]): labels[chunk["chunk_id"]] for chunk in chunks}
+    rewards, summary = await score_steps(chunks, labels)
+    return {
+        "labels": {str(chunk["idx"]): labels[chunk["chunk_id"]] for chunk in chunks},
+        "rewards": rewards,
+        "summary": summary,
+    }
 
 
 def configured() -> bool:
@@ -95,7 +199,7 @@ def configured() -> bool:
 
 
 async def label_trace(trace_id: UUID) -> str:
-    """Label one trace if its steps changed since the last time. Returns the outcome."""
+    """Label and score one trace if its steps changed since the last time. Returns the outcome."""
     pool = get_pool()
     owner = await pool.fetchval("SELECT owner_user_id FROM rm_traces WHERE id = $1", trace_id)
     if owner is None:
@@ -120,9 +224,9 @@ async def label_trace(trace_id: UUID) -> str:
         return "unchanged"
     attempts = previous["attempts"] + 1 if same else 1
 
-    status, error, labels = "succeeded", None, {}
+    status, error, result = "succeeded", None, {"labels": {}, "rewards": {}, "summary": None}
     try:
-        labels = await label_steps(trace_id, steps)
+        result = await label_steps(trace_id, steps)
     except LabelingSkipped as skipped:
         status, error = "skipped", str(skipped)
     except step_labeler.LabelingError as failed:
@@ -132,14 +236,17 @@ async def label_trace(trace_id: UUID) -> str:
         status, error = "failed", str(failed)[:500]
     await pool.execute(
         """
-        INSERT INTO rm_step_labels (trace_id, owner_user_id, fingerprint, status, error, attempts, labels, label_model)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        INSERT INTO rm_step_labels
+          (trace_id, owner_user_id, fingerprint, status, error, attempts, labels, rewards, summary, label_model)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
         ON CONFLICT (trace_id) DO UPDATE SET
           fingerprint = EXCLUDED.fingerprint, status = EXCLUDED.status, error = EXCLUDED.error,
-          attempts = EXCLUDED.attempts, labels = EXCLUDED.labels, label_model = EXCLUDED.label_model,
+          attempts = EXCLUDED.attempts, labels = EXCLUDED.labels, rewards = EXCLUDED.rewards,
+          summary = EXCLUDED.summary, label_model = EXCLUDED.label_model,
           labeled_at = now(), checked_at = now()
         """,
-        trace_id, owner, current, status, error, attempts, labels, settings.STEP_LABEL_MODEL,
+        trace_id, owner, current, status, error, attempts,
+        result["labels"], result["rewards"], result["summary"], settings.STEP_LABEL_MODEL,
     )  # fmt: skip
     return status
 
@@ -173,11 +280,16 @@ async def claim_due() -> list[UUID]:
 
 
 async def merge_into(trace_id: UUID, detail: dict) -> dict:
-    """Attach stored labels to a trace detail's steps as `metadata.label`, the
-    shape an imported trace already carries (imported labels win), and report
-    a labeling run that has not produced labels."""
+    """Attach stored labels and scores to a trace detail's steps as
+    `metadata.label` and `metadata.reward`, and the task scores as
+    `step_scores`: the shape an imported trace already carries (imported
+    values win). Reports a labeling run that has not produced labels."""
+    imported = (detail.get("metadata") or {}).get("rubric_summary")
+    if imported is not None:
+        detail["step_scores"] = imported
     row = await get_pool().fetchrow(
-        "SELECT status, error, labels FROM rm_step_labels WHERE trace_id = $1", trace_id
+        "SELECT status, error, labels, rewards, summary FROM rm_step_labels WHERE trace_id = $1",
+        trace_id,
     )
     if row is None:
         return detail
@@ -185,7 +297,13 @@ async def merge_into(trace_id: UUID, detail: dict) -> dict:
         detail["step_labeling"] = {"status": row["status"], "error": row["error"]}
         return detail
     for step in detail["steps"]:
-        label = row["labels"].get(str(step["index"]))
-        if label is not None:
-            step["metadata"] = {"label": label, **(step["metadata"] or {})}
+        key = str(step["index"])
+        extra = {
+            name: row[field][key]
+            for name, field in (("label", "labels"), ("reward", "rewards"))
+            if key in row[field]
+        }
+        if extra:
+            step["metadata"] = {**extra, **(step["metadata"] or {})}
+    detail.setdefault("step_scores", row["summary"])
     return detail

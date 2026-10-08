@@ -22,7 +22,11 @@ import TraceTimeline, { type StepAnnotations } from "@/components/reward-models/
 import { errorMessage, locateQuote, quoteFromOffsets, relativeTime, sortAnnotations } from "@/components/reward-models/rm-text";
 import { domSourceOffset, type Highlight } from "@/components/reward-models/source-anchors";
 import { TraceLabelSummary } from "@/components/reward-models/StepLabels";
+import { ScoringExplainer } from "@/components/reward-models/StepRewards";
+import TraceOutline from "@/components/reward-models/TraceOutline";
 import { buildTraceLabels } from "@/components/reward-models/step-labels";
+import { rubricSummary, stepReward } from "@/components/reward-models/step-rewards";
+import { buildOutline, defaultOpen, outlinePath } from "@/components/reward-models/trace-outline";
 import { buildRows, rowSteps, type TraceRow } from "@/components/reward-models/trace-rows";
 import { traceScrollMarkers, visibleStepElement } from "@/components/reward-models/trace-scroll";
 import { useAuth } from "@/hooks/useAuth";
@@ -78,6 +82,11 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
   const [view, setView] = useState<View>("all");
   const [expandAll, setExpandAll] = useState(false);
   const [showLabels, setShowLabels] = useState(true);
+  const [showScores, setShowScores] = useState(true);
+  // Labeled traces read as tasks, then turns, then steps; "Flat" shows every step in one list.
+  const [flat, setFlat] = useState(false);
+  // Tasks and turns the user opened (true) or closed (false) by hand; the rest follow their default.
+  const [groupChoice, setGroupChoice] = useState<Map<string, boolean>>(new Map());
   // Rows the user opened (true) or closed (false) by hand; the rest follow their default.
   const [rowChoice, setRowChoice] = useState<Map<string, boolean>>(new Map());
   const navigation = useRef<HTMLDivElement | null>(null);
@@ -124,6 +133,13 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
       openedHash.current = hash;
       setView("all");
       setRowChoice((current) => new Map(current).set(row.key, true));
+      const allRows = buildRows(trace.steps);
+      const path = outlinePath(buildOutline(allRows, buildTraceLabels(trace.steps), []), stepId);
+      setGroupChoice((current) => {
+        const next = new Map(current);
+        for (const key of path) next.set(key, true);
+        return next;
+      });
       setFlashStepId(stepId);
       frame = requestAnimationFrame(() => {
         const element = document.getElementById(`step-${stepId}`);
@@ -147,6 +163,10 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
   // Step labels say what each step is; they sit next to the automatic credit, which says how it went.
   const labels = buildTraceLabels(trace.steps);
   const labelsOn = labels.present && showLabels;
+  const stepScores = rubricSummary(trace.step_scores);
+  const scoresOn = stepScores !== null && showScores;
+  const outline = labels.present && !flat ? buildOutline(rows, labels, stepScores?.episodes ?? []) : null;
+  const openByDefault = outline ? defaultOpen(outline) : new Set<string>();
   const current = evaluation?.current;
   const score = current?.outcome !== "insufficient_evidence" ? current?.outcome_probabilities?.success : null;
   const actionScores = automaticActionScores(evaluation, trace.steps);
@@ -176,6 +196,14 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
     const choice = rowChoice.get(row.key);
     if (choice !== undefined) return choice;
     return expandAll || rowSteps(row).some((s) => annotationsOn(s).length > 0);
+  }
+
+  function isGroupOpen(key: string): boolean {
+    return groupChoice.get(key) ?? (expandAll || openByDefault.has(key));
+  }
+
+  function toggleGroup(key: string) {
+    setGroupChoice(new Map(groupChoice).set(key, !isGroupOpen(key)));
   }
 
   function toggleRow(row: TraceRow) {
@@ -280,6 +308,11 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
     if (!row) return;
     if (!inView(row, view)) setView("all");
     if (!isExpanded(row) && row.kind !== "assistant") toggleRow(row);
+    if (outline) {
+      const next = new Map(groupChoice);
+      for (const key of outlinePath(outline, stepId)) next.set(key, true);
+      setGroupChoice(next);
+    }
     setFlashStepId(stepId);
     requestAnimationFrame(() => {
       const element = document.getElementById(`step-${stepId}`);
@@ -315,11 +348,21 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
     flashing: (step) => flashStepId === step.id,
     onComment: (step) => openComposer(step.id),
     onSelectAnnotation: focusCard,
-    ...(labelsOn && { labelChips: labels.chips, taskHeading: labels.taskHeading, onJumpToStep: revealStep }),
+    // The outline already draws task boundaries, so the inline dividers are for the flat list only.
+    ...(labelsOn && { labelChips: labels.chips, onJumpToStep: revealStep, ...(outline === null && { taskHeading: labels.taskHeading }) }),
+    ...(scoresOn && {
+      reward: stepReward,
+      stepNumberOf: (chunk: string) => { const step = labels.stepForChunk(chunk); return step ? step.index + 1 : null; },
+      onJumpToChunk: (chunk: string) => { const step = labels.stepForChunk(chunk); if (step) revealStep(step.id); },
+    }),
   };
 
   const visibleRows = rows.filter((row) => inView(row, view));
-  const scrollMarkers = traceScrollMarkers(visibleRows);
+  // The scroll rail can only point at rows that are on the page, so closed tasks and turns are left out.
+  const renderedRows = outline === null
+    ? visibleRows
+    : outline.flatMap((task) => (isGroupOpen(task.key) ? task.turns.flatMap((turn) => (isGroupOpen(turn.key) ? turn.rows.filter((row) => inView(row, view)) : [])) : []));
+  const scrollMarkers = traceScrollMarkers(renderedRows);
 
   return (
     <div className="flex h-full min-h-0">
@@ -359,6 +402,7 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
           </header>
 
           {labelsOn && <TraceLabelSummary items={labels.summary} onJump={revealStep} />}
+          {scoresOn && <ScoringExplainer />}
           {!labels.present && trace.step_labeling && (
             <p className="m-0 mb-2 text-[12px] text-muted-foreground">
               {trace.step_labeling.status === "pending" ? "Step labels for this trace are being generated."
@@ -379,8 +423,18 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
               ))}
               <span className="flex-1" />
               {labels.present && (
+                <ToolbarButton active={!flat} onClick={() => setFlat(!flat)}>
+                  By task
+                </ToolbarButton>
+              )}
+              {labels.present && (
                 <ToolbarButton active={showLabels} onClick={() => setShowLabels(!showLabels)}>
                   Labels
+                </ToolbarButton>
+              )}
+              {stepScores !== null && (
+                <ToolbarButton active={showScores} onClick={() => setShowScores(!showScores)}>
+                  Scores
                 </ToolbarButton>
               )}
               <ToolbarButton
@@ -388,6 +442,7 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
                 onClick={() => {
                   setExpandAll(!expandAll);
                   setRowChoice(new Map());
+                  setGroupChoice(new Map());
                 }}
               >
                 {expandAll ? "Collapse" : "Expand all"}
@@ -398,7 +453,11 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
         </div>
         <div ref={scroller} className="scroll-thin min-h-0 flex-1 overflow-y-auto">
         <div ref={canvas} className="relative mx-auto max-w-5xl px-6 pt-2 pb-[60vh]" onMouseUp={onCanvasMouseUp}>
-          <TraceTimeline rows={visibleRows} ann={ann} isExpanded={isExpanded} onToggle={toggleRow} />
+          {outline === null ? (
+            <TraceTimeline rows={visibleRows} ann={ann} isExpanded={isExpanded} onToggle={toggleRow} />
+          ) : (
+            <TraceOutline tasks={outline} isOpen={isGroupOpen} onToggleGroup={toggleGroup} showLabels={labelsOn} showScores={scoresOn} inView={(row) => inView(row, view)} ann={ann} isExpanded={isExpanded} onToggle={toggleRow} onJump={revealStep} />
+          )}
           {visibleRows.length === 0 && <p className="py-12 text-center text-[13px] text-muted-foreground">No steps in this view.</p>}
         </div>
         </div>

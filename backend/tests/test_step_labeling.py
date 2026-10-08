@@ -11,7 +11,7 @@ import pytest
 from httpx import AsyncClient
 
 from backend.config import settings
-from backend.services.rm import step_labeler, step_labeling
+from backend.services.rm import step_labeler, step_labeling, step_scoring
 
 from .conftest import unique_name
 
@@ -79,7 +79,23 @@ def labeler(monkeypatch):
     monkeypatch.setattr(step_labeler, "label_chunk", label_chunk)
     monkeypatch.setattr(settings, "STEP_LABELING_ENABLED", True)
     monkeypatch.setattr(settings, "OPENAI_API_KEY", "sk-test")
+    monkeypatch.setattr(settings, "TYPESAFE_API_KEY", None)
     return calls
+
+
+@pytest.fixture
+def checks(monkeypatch):
+    """Stand in for the grading model: every quality check picks the top level."""
+    asked = []
+
+    async def quality_check(client, chunks, chunk, label, rubric):
+        asked.append((chunk["chunk_id"], rubric))
+        top = len(step_scoring.CHECKS[rubric][1]) - 1
+        return {"rubric": rubric, "grader": "the grading model", "probabilities": {top: 1.0}}
+
+    monkeypatch.setattr(step_labeling, "quality_check", quality_check)
+    monkeypatch.setattr(settings, "TYPESAFE_API_KEY", "ts-test")
+    return asked
 
 
 async def _account(client: AsyncClient) -> dict:
@@ -151,6 +167,89 @@ async def test_labeling_a_trace_puts_a_label_on_each_step(client, labeler):
         steps[7]["metadata"]["label"]["verdict"] == "rejected"
         and steps[7]["metadata"]["label"]["verdict_target"] == "a3"
     )
+
+
+def test_score_numbers_keep_their_order():
+    answer = _label(
+        "agent", type="output", is_output=True, outcome="answer", stance="asserted", coverage="1/1"
+    )
+    not_found = dict(answer, outcome="not_found")
+    best_unconfirmed = step_scoring.score_step(
+        answer, None, {"rubric": "answer_unconfirmed", "probabilities": {3: 1.0}}
+    )["outcome"]
+    worst_not_found = step_scoring.score_step(
+        not_found, None, {"rubric": "not_found_unconfirmed", "probabilities": {0: 1.0}}
+    )["outcome"]
+    # An answer nobody confirmed never beats one the user accepted; an honest "not found" always beats a rejected answer.
+    assert (
+        best_unconfirmed == pytest.approx(0.40)
+        and best_unconfirmed < step_scoring.ANSWER["implicit_positive"][1]
+    )
+    assert (
+        worst_not_found == pytest.approx(-0.35)
+        and worst_not_found > step_scoring.ANSWER["rejected"][1]
+    )
+    # Work is never rewarded: a lookup that was relied on becomes free, not positive.
+    lookup = _label("agent", type="tool_call", effect="read", result="data")
+    assert (
+        step_scoring.score_step(lookup, None, {"rubric": "tool", "probabilities": {4: 1.0}})["cost"]
+        == 0.0
+    )
+    # A verdict is ground truth; no quality check is asked.
+    assert step_scoring.check_for(answer, "rejected") is None
+    assert step_scoring.check_for(answer, None) == "answer_unconfirmed"
+
+
+async def test_a_labeled_trace_is_scored_and_credit_flows_back_from_the_answer(
+    client, labeler, checks
+):
+    auth = await _account(client)
+    trace_id = await _import(client, auth, TRACE)
+
+    assert await step_labeling.label_trace(trace_id) == "succeeded"
+    # Quality checks only where the labels give no ground truth.
+    assert sorted(checks) == [("a1", "tool"), ("a2", "tool")]
+
+    detail = (await client.get(f"/api/v1/rm/traces/{trace_id}", headers=auth)).json()
+    steps = detail["steps"]
+    assert "reward" not in steps[0]["metadata"]  # user steps are labeled, not scored
+    answer = steps[6]["metadata"]["reward"]
+    assert answer["is_answer"] and answer["score"] == -1.0  # asserted answer the user rejected
+    # Blame from the rejected answer: 0.3 x -1.0 x 0.8^k for the step k places back.
+    repeated = steps[4]["metadata"]["reward"]
+    assert repeated["shared"] == [{"from": "a3", "verdict": "rejected", "value": -0.24}]
+    assert steps[2]["metadata"]["reward"]["shared"][0]["value"] == pytest.approx(-0.192)
+    # Lookup -0.03, error -0.10, repeat -0.10, quality check +0.03.
+    assert repeated["base"] == pytest.approx(-0.23) and repeated["score"] == pytest.approx(-0.20)
+    assert repeated["jev"]["short"] == "its result was used later"
+
+    assert detail["step_scores"]["signals"] == {
+        "rejections": 1,
+        "confirmations": 0,
+        "tool_errors": 1,
+        "answers": 1,
+    }
+    assert detail["step_scores"]["episodes"] == [
+        {
+            "task": "t1",
+            "score": -1.0,
+            "rubric_b_only": -1.0,
+            "answer": -1.0,
+            "costs": -0.2,
+            "has_answer": True,
+        }
+    ]
+
+
+async def test_without_the_grading_model_the_fixed_points_stand(client, labeler):
+    auth = await _account(client)
+    trace_id = await _import(client, auth, TRACE)
+
+    assert await step_labeling.label_trace(trace_id) == "succeeded"
+    detail = (await client.get(f"/api/v1/rm/traces/{trace_id}", headers=auth)).json()
+    repeated = detail["steps"][4]["metadata"]["reward"]
+    assert repeated["jev"] is None and repeated["score"] == pytest.approx(-0.23)
+    assert detail["step_scores"]["episodes"][0]["answer"] == -1.0
 
 
 async def test_imported_labels_win_and_are_never_replaced(client, pool, labeler):
