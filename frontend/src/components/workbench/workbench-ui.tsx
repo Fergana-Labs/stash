@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { errorMessage } from "@/components/reward-models/rm-text";
 import { cn } from "@/lib/utils";
+import { workbenchDetails, workbenchError } from "./workbench-display";
 
 export const inputClass = "w-full rounded-md border border-border bg-background px-3 py-2 text-[13px] text-foreground outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-400/20 disabled:opacity-50";
 
@@ -32,7 +33,7 @@ export function useWorkbenchLoad<T>(loader: () => Promise<T>, pollMs = 0) {
 
 export function ErrorNotice({ error, onRetry }: { error: string | null; onRetry?: () => void }) {
   if (!error) return null;
-  return <div role="alert" className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-red-500/20 bg-red-500/5 p-3 text-[13px] text-red-700 dark:text-red-400"><span>{error}</span>{onRetry && <Button size="sm" variant="outline" onClick={onRetry}>Retry</Button>}</div>;
+  return <div role="alert" className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-red-500/20 bg-red-500/5 p-3 text-[13px] text-red-700 dark:text-red-400"><span>{workbenchError(error)}</span>{onRetry && <Button size="sm" variant="outline" onClick={onRetry}>Retry</Button>}</div>;
 }
 
 export function RecordBadge({ value }: { value: string }) {
@@ -44,5 +45,6 @@ export function RecordPanel({ title, children, actions }: { title: ReactNode; ch
 }
 
 export function JsonDetails({ title, value, open = false }: { title: string; value: unknown; open?: boolean }) {
-  return <details className="rounded-md border border-border-subtle p-3" open={open}><summary className="cursor-pointer text-[12px] font-medium text-dim">{title}</summary><pre className="m-0 mt-2 max-h-96 overflow-auto whitespace-pre-wrap break-words text-[11.5px] leading-relaxed text-muted-foreground">{typeof value === "string" ? value : JSON.stringify(value, null, 2) ?? "Not captured"}</pre></details>;
+  const display = workbenchDetails(value);
+  return <details className="rounded-md border border-border-subtle p-3" open={open}><summary className="cursor-pointer text-[12px] font-medium text-dim">{title}</summary>{display.omittedMetadata && <p className="my-2 text-[11px] text-muted-foreground">Evaluator identifiers are omitted from this view. Recorded evidence is unchanged.</p>}<pre className="m-0 mt-2 max-h-96 overflow-auto whitespace-pre-wrap break-words text-[11.5px] leading-relaxed text-muted-foreground">{typeof display.value === "string" ? display.value : JSON.stringify(display.value, null, 2) ?? "Not captured"}</pre></details>;
 }
