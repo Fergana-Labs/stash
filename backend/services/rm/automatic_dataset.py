@@ -46,14 +46,14 @@ async def build_pairs(
         trace_ids,
     )
     blocked = {(r["trace_id"], str(r["step_id"]) if r["step_id"] else None) for r in excluded}
-    actions: dict[UUID, dict[str, int]] = {}
+    actions: dict[UUID, dict[str, float]] = {}
     for call in calls:
         trace_id = current[call["evaluation_id"]]["trace_id"]
         if (trace_id, None) in blocked:
             continue
         answers = {r["criterion_id"]: r for r in call["result"].get("results", [])}
         for target in call["input_snapshot"].get("targets", []):
-            credit = policy.CREDIT_VALUES.get(answers.get(target["question_id"], {}).get("verdict"))
+            credit = policy.expected_credit(answers.get(target["question_id"], {}))
             if credit is not None and (trace_id, target["step_id"]) not in blocked:
                 actions.setdefault(trace_id, {})[target["step_id"]] = credit
 
@@ -78,7 +78,7 @@ async def build_pairs(
         candidates = candidates[: config.get("max_actions_per_trace", 24)]
         comparisons = [(good, bad) for good in candidates for bad in candidates if good[1] > bad[1]]
         random.Random(0).shuffle(comparisons)
-        for (good, _), (bad, _) in comparisons[:per_trace]:
+        for (good, chosen_credit), (bad, rejected_credit) in comparisons[:per_trace]:
             buckets[partition(tid), "action"].append(
                 {
                     "chosen": render_action_input(steps[: good + 1], config["rubric"]),
@@ -90,6 +90,9 @@ async def build_pairs(
                     if steps[good]["tool_name"] and steps[bad]["tool_name"]
                     else "response",
                     "source": "automatic_annotation",
+                    "credit_method": policy.CREDIT_METHOD,
+                    "chosen_credit": chosen_credit,
+                    "rejected_credit": rejected_credit,
                     "evaluation_id": str(evaluation["id"]),
                 }
             )

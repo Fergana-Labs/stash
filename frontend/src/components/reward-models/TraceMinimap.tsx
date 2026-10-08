@@ -3,7 +3,7 @@
 import { useProductCheckpoint } from "@/components/ProductCheckpointContext";
 import FloodgateComponent from "@/checkpoints/floodgate-2026-10-05/TraceMinimap";
 
-import { useEffect, useRef, useState, type PointerEvent, type RefObject } from "react";
+import { useEffect, useId, useRef, useState, type PointerEvent, type RefObject } from "react";
 import { cn } from "@/lib/utils";
 import { isThinking, looksLikeError } from "./trace-rows";
 import { visibleStepElement } from "./trace-scroll";
@@ -41,6 +41,8 @@ function LatestTraceMinimap({ steps, annotations, actionScores, annotationStatus
   onJump: (index: number) => void;
 }) {
   const [activeIndex, setActiveIndex] = useState(0);
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+  const tooltipId = useId();
   const drag = useRef<{ pointerId: number; index: number } | null>(null);
 
   useEffect(() => {
@@ -81,7 +83,7 @@ function LatestTraceMinimap({ steps, annotations, actionScores, annotationStatus
 
   function indexAt(event: PointerEvent<HTMLDivElement>) {
     const direct = (event.target as HTMLElement).closest<HTMLButtonElement>("button[data-step-index]");
-    if (direct && event.currentTarget.contains(direct) && event.type === "pointerdown") return Number(direct.dataset.stepIndex);
+    if (direct && event.currentTarget.contains(direct) && (event.type === "pointerdown" || !drag.current)) return Number(direct.dataset.stepIndex);
     const buttons = [...event.currentTarget.querySelectorAll<HTMLButtonElement>("button[data-step-index]")];
     let nearest = 0;
     let distance = Infinity;
@@ -100,6 +102,13 @@ function LatestTraceMinimap({ steps, annotations, actionScores, annotationStatus
     if (drag.current?.pointerId === event.pointerId) drag.current = null;
   }
 
+  function labelFor(step: RmStep) {
+    const kind = KINDS[kindOf(step)];
+    const score = actionScores?.get(step.id);
+    const missingReason = isGradableAction(step) ? unscoredReasons?.get(step.id) ?? "awaiting score" : "not graded";
+    return `Step ${step.index + 1}: ${kind.label}${step.tool_name === null ? "" : `, ${step.tool_name}`}${score ? `, credit ${formatCredit(score.credit)}${score.stale ? ", previous annotation" : ""}` : `, ${missingReason}`}`;
+  }
+
   return (
     <nav aria-label="Trace steps" className="select-none py-2">
       <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
@@ -110,7 +119,7 @@ function LatestTraceMinimap({ steps, annotations, actionScores, annotationStatus
         <span className="ml-auto shrink-0 tabular-nums">Step {steps[activeIndex]?.index + 1} of {steps.length}</span>
       </div>
       <div aria-label="Action credit legend" className="mb-1 flex flex-wrap items-end gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
-        <span className="self-center">Action credit (height)</span>
+        <span className="self-center" title="Bar height represents a continuous score: any value from −1 to +1.">Continuous action credit (height)</span>
         {[
           { height: 3, label: "−1 Harmful" },
           { height: 13, label: "0 Neutral" },
@@ -120,13 +129,14 @@ function LatestTraceMinimap({ steps, annotations, actionScores, annotationStatus
         ))}
         <span className="inline-flex items-end gap-1.5"><span aria-hidden="true" className="h-[3px] w-1.5 bg-muted-foreground opacity-35" />Faint: no score</span>
       </div>
-      <p className="m-0 mb-1 text-[11px] text-muted-foreground">Only assistant responses and tool calls are graded. Hover a bar for its score or status.</p>
       {annotationStatus && <p role="status" className="m-0 mb-1 text-[11px] text-muted-foreground">{annotationStatus}</p>}
       <div
         className="relative flex h-[52px] touch-none items-end"
         style={{ columnGap: `min(1px, ${25 / steps.length}%)` }}
         role="group"
         aria-label="Step map"
+        onPointerEnter={(event) => { if (event.pointerType !== "touch") setHoveredIndex(indexAt(event)); }}
+        onPointerLeave={() => setHoveredIndex(null)}
         onPointerDown={(event) => {
           if (event.button !== 0 || drag.current !== null) return;
           event.preventDefault();
@@ -137,8 +147,9 @@ function LatestTraceMinimap({ steps, annotations, actionScores, annotationStatus
           jump(index);
         }}
         onPointerMove={(event) => {
-          if (drag.current?.pointerId !== event.pointerId) return;
           const index = indexAt(event);
+          if (event.pointerType !== "touch") setHoveredIndex(index);
+          if (drag.current?.pointerId !== event.pointerId) return;
           if (index === drag.current.index) return;
           drag.current.index = index;
           jump(index);
@@ -150,22 +161,23 @@ function LatestTraceMinimap({ steps, annotations, actionScores, annotationStatus
         {steps.map((step, index) => {
           const kind = KINDS[kindOf(step)];
           const score = actionScores?.get(step.id);
-          const actionType = kind.label;
-          const missingReason = isGradableAction(step) ? unscoredReasons?.get(step.id) ?? "awaiting score" : "not graded";
-          const label = `Step ${step.index + 1}: ${actionType}${step.tool_name === null ? "" : `, ${step.tool_name}`}${score ? `, credit ${formatCredit(score.credit)}${score.stale ? ", previous annotation" : ""}` : `, ${missingReason}`}`;
+          const label = labelFor(step);
           return (
             <button
               key={step.id}
               data-step-index={index}
               type="button"
-              title={label}
               aria-label={label}
+              aria-describedby={hoveredIndex === index ? tooltipId : undefined}
               aria-current={index === activeIndex ? "step" : undefined}
               tabIndex={index === activeIndex ? 0 : -1}
+              onFocus={() => setHoveredIndex(index)}
+              onBlur={() => setHoveredIndex(null)}
               onClick={(event) => {
                 if (event.detail === 0) jump(index);
               }}
               onKeyDown={(event) => {
+                if (event.key === "Escape") { setHoveredIndex(null); return; }
                 let next: number;
                 if (event.key === "ArrowRight") next = Math.min(steps.length - 1, index + 1);
                 else if (event.key === "ArrowLeft") next = Math.max(0, index - 1);
@@ -184,6 +196,12 @@ function LatestTraceMinimap({ steps, annotations, actionScores, annotationStatus
           );
         })}
         <span aria-hidden="true" className="pointer-events-none absolute inset-y-0 w-[1.5px] bg-brand-500" style={{ left: `${(activeIndex + 0.5) / steps.length * 100}%` }} />
+        {hoveredIndex !== null && steps[hoveredIndex] && <div
+          id={tooltipId}
+          role="tooltip"
+          className="pointer-events-none absolute bottom-full z-20 mb-2 w-64 max-w-full rounded-md bg-foreground px-3 py-2 text-xs text-background shadow-md"
+          style={{ left: `clamp(0px, calc(${(hoveredIndex + 0.5) / steps.length * 100}% - 8rem), max(0px, calc(100% - 16rem)))` }}
+        >{labelFor(steps[hoveredIndex])}</div>}
       </div>
       <div className="mt-1 flex justify-between border-t border-border pt-1 text-[10px] text-muted-foreground tabular-nums">
         <span>Step 1</span><span>Step {steps.length}</span>

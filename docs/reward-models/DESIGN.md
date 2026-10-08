@@ -156,6 +156,27 @@ Annotation export (`GET /api/v1/rm/export/annotations`), one per line:
  "label_error": false, "author": "henry", "created_at": "2026-09-29T03:12:00Z"}
 ```
 
+## Automatic action credit
+
+The latest workbench uses continuous expected credit for action bars, list
+summaries, and new training comparisons built from automatic annotations. The
+classifier's five substantive labels anchor −1, −0.5, 0, +0.5, and +1. Credit is
+their probability-weighted average, divided by the total probability assigned to
+those five labels. For example, probabilities of 0.1 negative, 0.2 neutral,
+0.6 positive, and 0.1 strongly positive give +0.35.
+
+An `insufficient_evidence` verdict remains unscored. Its probability mass is
+excluded from the average rather than treated as neutral credit. Confidence is
+separate from credit. Missing or malformed saved distributions also remain
+unscored. This is an expected estimate, not measured causal contribution.
+
+The API preserves legacy ordinal `credit` (−2..2) and adds `expected_credit`
+(−1..1), derived from the saved probabilities without rerunning inference or
+changing the original response. New training comparisons use the same expected
+values and record `chosen_credit`, `rejected_credit`, and
+`credit_method: probability_weighted_v1` for provenance. Existing trained models
+and saved datasets retain their original supervision.
+
 ## Personal reward model training
 
 No manual annotations or user reactions are required. Each assistant response or tool call is

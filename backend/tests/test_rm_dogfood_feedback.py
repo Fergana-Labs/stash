@@ -11,7 +11,8 @@ from backend.services.rm import workbench_grader as wire
 from backend.tasks import reward_models as tasks
 
 from .test_rm_workbench import BASE, account, model_and_queue_boundaries, upload  # noqa: F401
-from .test_workbench_automatic import answer, evaluate
+from .test_workbench_automatic import answer, evaluate, get_eval
+from .test_workbench_credit import distribution
 
 
 async def annotated_traces(client, monkeypatch):
@@ -29,6 +30,10 @@ async def annotated_traces(client, monkeypatch):
                 )
             else:
                 result["verdict"] = ["strongly_negative", "neutral", "strongly_positive"][index % 3]
+            result["probabilities"] = {
+                label: 1.0 if label == result["verdict"] else 0.0
+                for label in result["probabilities"]
+            }
         return response
 
     monkeypatch.setattr(wire, "grade", grade)
@@ -55,6 +60,67 @@ async def annotated_traces(client, monkeypatch):
         "max_actions_per_trace": 24,
     }
     return user, ids, config
+
+
+async def test_continuous_credit_matches_detail_summary_history_and_training(
+    client, pool, monkeypatch
+):
+    user = await account(client)
+
+    async def grade(snapshot):
+        raw = answer(snapshot)["raw_output"]
+        values = [
+            distribution(negative=0.1, neutral=0.2, positive=0.6, strongly_positive=0.1),
+            distribution(positive=0.6, strongly_positive=0.4),
+            distribution(insufficient_evidence=1),
+        ]
+        for i, target in enumerate(snapshot["targets"]):
+            raw["answers"][target["question_id"]].update(
+                choice="insufficient_evidence" if i == 2 else "positive",
+                probabilities=values[i],
+            )
+        questions = snapshot["provider_request"]["questions"]
+        return wire.parse_response(
+            raw, list(questions), choices={k: q["criteria"] for k, q in questions.items()}
+        )
+
+    monkeypatch.setattr(wire, "grade", grade)
+    messages = [
+        ("user", "Fix parser"),
+        ("assistant", "Somewhat helpful"),
+        ("assistant", "More helpful"),
+        ("assistant", "Uncertain"),
+    ]
+    tid = await upload(client, user, messages=messages)
+    await auto.process_trace(tid)
+    current = (await get_eval(client, user, tid))["current"]
+    credits = current["credits"]
+    assert [c["credit"] for c in credits] == [1, 1, None]  # Legacy API compatibility.
+    assert [c["expected_credit"] for c in credits[:2]] == pytest.approx([0.35, 0.7])
+    assert credits[2]["expected_credit"] is None
+    listed = await client.get("/api/v1/rm/traces", headers=user["headers"])
+    assert listed.json()["traces"][0]["evaluation"]["action_credit"] == pytest.approx(
+        {"mean": 0.525, "min": 0.35, "max": 0.7, "count": 2}
+    )
+    config = {
+        "rubric": ["Complete the task"],
+        "task_groups": {str(tid): "task"},
+        "evaluation_groups": [],
+    }
+    pairs = await automatic_dataset.build_pairs(user["uuid"], [tid], config, 100)
+    assert len(pairs) == 1  # Same winning label, but different expected credit.
+    assert pairs[0]["chosen_credit"] == pytest.approx(0.7)
+    assert pairs[0]["rejected_credit"] == pytest.approx(0.35)
+    assert pairs[0]["credit_method"] == auto.policy.CREDIT_METHOD
+    historical = await client.get(
+        f"{BASE}/traces/{tid}/evaluation/{current['id']}", headers=user["headers"]
+    )
+    assert historical.json()["credits"] == credits
+    await upload(client, user, messages=[*messages, ("user", "Another request")])
+    pending = await get_eval(client, user, tid)
+    assert [c["expected_credit"] for c in pending["previous_credits"][:2]] == pytest.approx(
+        [0.35, 0.7]
+    )
 
 
 async def test_numeric_summary_and_search_are_current_literal_and_permission_scoped(

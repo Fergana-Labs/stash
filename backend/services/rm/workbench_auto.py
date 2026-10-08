@@ -387,6 +387,8 @@ async def _evaluation_detail(row):
                 {
                     **target,
                     "credit": policy.CREDIT_VALUES[answer["verdict"]],
+                    "expected_credit": policy.expected_credit(answer),
+                    "credit_method": policy.CREDIT_METHOD,
                     "label": answer["verdict"],
                     "confidence": answer["confidence"],
                     "probabilities": answer["probabilities"],
