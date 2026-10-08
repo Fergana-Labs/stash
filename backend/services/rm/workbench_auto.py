@@ -1,4 +1,4 @@
-"""Automatic Jev evaluations over immutable recorded trace versions."""
+"""Automatic annotation of immutable recorded trace versions: step labels scored by fixed rules."""
 
 from __future__ import annotations
 
@@ -9,13 +9,13 @@ import asyncpg
 from ...config import settings
 from ...database import get_pool
 from ...product_checkpoints import has_workbench
+from . import step_labeler, step_labeling
 from . import workbench as legacy
 from . import workbench_evaluation as policy
 from . import workbench_grader as jev
 from . import workbench_instructions as instructions
 
 log = logging.getLogger(__name__)
-MAX_CALLS_PER_PASS = 12
 SCHEMA_CACHE_ERROR = (
     "cached statement plan is invalid due to a database schema or configuration change"
 )
@@ -126,33 +126,18 @@ async def process_trace(trace_id):
             trace_id,
             fingerprint,
             policy.POLICY_VERSION,
-            settings.JEV_MODEL,
+            policy.model(),
             policy.boundary(steps),
             legacy.serial(steps),
             sum(policy.action(s) for s in steps),
             trace["updated_at"],
         )
-        # Reuse saved evidence on retries, including evidence after each target.
-        frozen = evaluation["trace_snapshot"]
-        work = policy.batches(frozen)
-        completed = {
-            r["batch_index"]
-            for r in await pool.fetch(
-                "SELECT batch_index FROM rm_wb_evaluation_calls WHERE evaluation_id=$1 AND status='completed'",
-                evaluation["id"],
-            )
-        }
-        pending = [i for i in range(len(work)) if i not in completed]
-        for i in pending[:MAX_CALLS_PER_PASS]:
-            snapshot = policy.build_input(frozen, work[i], model=evaluation["model"])
-            await _call(evaluation, i, snapshot, claim)
-        more = len(pending) > MAX_CALLS_PER_PASS
-        if not more:
-            await pool.execute(
-                "UPDATE rm_wb_evaluations SET status='completed',error=NULL,finished_at=coalesce(finished_at,now()) WHERE id=$1 AND EXISTS(SELECT 1 FROM rm_wb_queue q WHERE q.trace_id=rm_wb_evaluations.trace_id AND q.status='running' AND q.started_at=$2)",
-                evaluation["id"],
-                claim["started_at"],
-            )
+        if evaluation["status"] != "completed":
+            # Label and score the frozen version, so a retry sees the same steps.
+            frozen = evaluation["trace_snapshot"]
+            result = await step_labeling.annotate(trace, frozen)
+            await _record(evaluation, frozen, result, claim)
+        more = False
         from . import workbench_capture
 
         capture = await workbench_capture.scan_trace(trace, steps)
@@ -172,10 +157,12 @@ async def process_trace(trace_id):
                 str(exc)[:1500],
                 claim["started_at"],
             )
-        log.warning("Automatic Jev evaluation failed: %s", type(exc).__name__)
+        log.warning("Automatic annotation failed: %s", type(exc).__name__)
+        # A provider failure is retried; a trace outside the limits is not.
         retry = (
-            isinstance(exc, jev.GradingError) and exc.retryable and getattr(exc, "attempt", 1) < 3
-        ) or (isinstance(exc, asyncpg.InvalidCachedStatementError) and claim["attempts"] < 3)
+            isinstance(exc, (step_labeler.LabelingError, asyncpg.InvalidCachedStatementError))
+            or (isinstance(exc, jev.GradingError) and exc.retryable)
+        ) and claim["attempts"] < 3
         await _finish_queue(trace_id, claim, "queued" if retry else "failed", str(exc)[:1500])
 
 
@@ -194,80 +181,47 @@ async def _finish_queue(trace_id, claim, status, error=None, *, tomorrow=False):
     )
 
 
-async def _call(evaluation, index, snapshot, claim):
-    pool = get_pool()
-    async with pool.acquire() as conn, conn.transaction():
+async def _record(evaluation, steps, result, claim):
+    """Save the outcome and the per-action credits as the evaluation's two
+    calls, and complete it, unless another worker has taken over the trace."""
+    targets, credits = policy.credits(steps, result["rewards"])
+    outcome = policy.outcome(result["summary"])
+    base = {
+        "provider": "step_labels",
+        "policy_version": policy.POLICY_VERSION,
+        "revision_hash": evaluation["revision_hash"],
+        "boundary": evaluation["boundary"],
+    }
+    calls = [
+        ({**base, "targets": []}, {"results": [outcome], "task_scores": result["summary"]}),
+        ({**base, "targets": targets}, {"results": credits}),
+    ]
+    async with get_pool().acquire() as conn, conn.transaction():
         if not await conn.fetchval(
             "SELECT 1 FROM rm_wb_queue WHERE trace_id=$1 AND status='running' AND started_at=$2 FOR UPDATE",
             evaluation["trace_id"],
             claim["started_at"],
         ):
             raise LeaseLost()
-        if await conn.fetchval(
-            "SELECT 1 FROM rm_wb_evaluation_calls WHERE evaluation_id=$1 AND batch_index=$2 AND status='completed'",
-            evaluation["id"],
-            index,
-        ):
-            return
-        attempt = await conn.fetchval(
-            "SELECT coalesce(max(attempt),0)+1 FROM rm_wb_evaluation_calls WHERE evaluation_id=$1 AND batch_index=$2",
-            evaluation["id"],
-            index,
-        )
-        call_id = await conn.fetchval(
-            "INSERT INTO rm_wb_evaluation_calls(evaluation_id,owner_user_id,batch_index,attempt,input_snapshot,status) VALUES($1,$2,$3,$4,$5,'running') RETURNING id",
-            evaluation["id"],
-            evaluation["owner_user_id"],
-            index,
-            attempt,
-            snapshot,
-        )
         await conn.execute(
-            "UPDATE rm_wb_evaluations SET status='running',error=NULL WHERE id=$1", evaluation["id"]
+            "DELETE FROM rm_wb_evaluation_calls WHERE evaluation_id=$1", evaluation["id"]
         )
-    # Nothing can reach the provider before the exact request is durably saved.
-    try:
-        result = await jev.grade(snapshot)
-        async with pool.acquire() as conn, conn.transaction():
-            if not await conn.fetchval(
-                "SELECT 1 FROM rm_wb_queue WHERE trace_id=$1 AND status='running' AND started_at=$2 FOR UPDATE",
-                evaluation["trace_id"],
-                claim["started_at"],
-            ):
-                raise LeaseLost()
-            written = await conn.fetchval(
-                "UPDATE rm_wb_evaluation_calls SET status='completed',raw_output=$2,result=$3,finished_at=now() WHERE id=$1 AND status='running' RETURNING id",
-                call_id,
-                result["raw_output"],
-                result,
+        for index, (snapshot, saved) in enumerate(calls):
+            await conn.execute(
+                "INSERT INTO rm_wb_evaluation_calls(evaluation_id,owner_user_id,batch_index,attempt,input_snapshot,result,status,finished_at) VALUES($1,$2,$3,1,$4,$5,'completed',now())",
+                evaluation["id"],
+                evaluation["owner_user_id"],
+                index,
+                snapshot,
+                saved,
             )
-            if not written:
-                raise LeaseLost()
-            if index == 0:
-                answer = result["results"][0]
-                await conn.execute(
-                    "UPDATE rm_wb_evaluations SET outcome=$2,outcome_confidence=$3,outcome_probabilities=$4 WHERE id=$1",
-                    evaluation["id"],
-                    answer["verdict"],
-                    answer["confidence"],
-                    answer["probabilities"],
-                )
-            else:
-                await conn.execute(
-                    "UPDATE rm_wb_evaluations SET credited_actions=credited_actions+$2 WHERE id=$1",
-                    evaluation["id"],
-                    len(snapshot["targets"]),
-                )
-    except Exception as exc:
-        if isinstance(exc, jev.GradingError):
-            exc.attempt = attempt
-        await pool.execute(
-            "UPDATE rm_wb_evaluation_calls SET status='failed',error=$2,raw_output=$3,finished_at=now() WHERE id=$1 AND status='running'",
-            call_id,
-            str(exc)[:1500],
-            legacy.serial(getattr(exc, "raw_output", None)),
+        await conn.execute(
+            "UPDATE rm_wb_evaluations SET status='completed',error=NULL,outcome=$2,outcome_probabilities=$3,credited_actions=$4,finished_at=now() WHERE id=$1",
+            evaluation["id"],
+            outcome["verdict"],
+            outcome["probabilities"],
+            len(targets),
         )
-        raise
 
 
 async def detail(user, trace_id):
@@ -284,7 +238,7 @@ async def detail(user, trace_id):
             for r in rows
             if r["revision_hash"] == fingerprint
             and r["policy_version"] == policy.POLICY_VERSION
-            and r["model"] == settings.JEV_MODEL
+            and r["model"] == policy.model()
         ),
         None,
     )
@@ -292,9 +246,11 @@ async def detail(user, trace_id):
         "SELECT status,error FROM rm_wb_queue WHERE trace_id=$1", trace_id
     )
     result = {
-        "provider": "jev",
-        "model": settings.JEV_MODEL,
-        "configured": bool(settings.TYPESAFE_API_KEY),
+        "provider": "step_labels",
+        "model": policy.model(),
+        # A trace that arrives labeled needs no provider.
+        "configured": bool(settings.OPENAI_API_KEY)
+        or any((s.get("metadata") or {}).get("label") for s in steps),
         "policy_version": policy.POLICY_VERSION,
         "boundary": policy.boundary(steps),
         "owner_user_id": trace["owner_user_id"],
@@ -335,7 +291,7 @@ async def _previous_credits(rows, steps, current):
         if (
             (current and row["id"] == current["id"])
             or row["policy_version"] != policy.POLICY_VERSION
-            or row["model"] != settings.JEV_MODEL
+            or row["model"] != policy.model()
             # Calls are completed in action order. Skip prefixes already covered.
             or row["credited_actions"] <= min(missing.values())
         ):
@@ -386,7 +342,7 @@ async def _evaluation_detail(row):
             credits.append(
                 {
                     **target,
-                    "credit": policy.CREDIT_VALUES[answer["verdict"]],
+                    "credit": policy.credit_of(answer),
                     "label": answer["verdict"],
                     "confidence": answer["confidence"],
                     "probabilities": answer["probabilities"],
@@ -424,12 +380,13 @@ async def recover():
     )
     # Configuration can arrive after the application deployment. Repair these
     # queued traces automatically once the worker actually has a provider key.
-    if settings.TYPESAFE_API_KEY:
+    if settings.OPENAI_API_KEY:
         await pool.execute(
             """UPDATE rm_wb_queue q SET status='queued',due_at=now(),attempts=0
             FROM rm_traces t JOIN users u ON u.id=t.owner_user_id
             WHERE q.trace_id=t.id AND u.reward_models_enabled AND u.product_checkpoint='latest'
-            AND q.status='failed' AND q.error LIKE 'TYPESAFE_API_KEY is not configured%'"""
+            AND q.status='failed' AND q.error=$1""",
+            step_labeling.NOT_CONFIGURED,
         )
 
     # A pre-upgrade worker could consume migration backfill without creating a
@@ -461,7 +418,7 @@ async def recover():
         ) UPDATE rm_wb_queue q SET status='queued',due_at=now(),requested_at=now(),error=NULL
         FROM repairable r WHERE q.trace_id=r.trace_id""",
         policy.POLICY_VERSION,
-        settings.JEV_MODEL,
+        policy.model(),
         SCHEMA_CACHE_ERROR,
         [jev.INVALID_RESPONSE, jev.NON_JSON_RESPONSE],
     )

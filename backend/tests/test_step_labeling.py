@@ -1,4 +1,4 @@
-"""Automatic step labels: say what each step of a trace is, and show it.
+"""Step labels and rule scores: what each step of a trace is, and what it earned.
 
 The labeling model is mocked. These tests pin how a trace is cut into
 chunks, what is stored, how it reaches the API, and when a trace is labeled.
@@ -11,7 +11,7 @@ import pytest
 from httpx import AsyncClient
 
 from backend.config import settings
-from backend.services.rm import step_labeler, step_labeling, step_scoring
+from backend.services.rm import step_labeler, step_labeling, step_scoring, workbench_auto
 
 from .conftest import unique_name
 
@@ -41,6 +41,8 @@ TRACE = {
         {"role": "tool", "content": "error: timeout", "tool_name": "search", "tool_call_id": "c2"},
         {"role": "assistant", "content": "Use LF3000."},
         {"role": "user", "content": "No, that is the wrong one"},
+        # A trace is annotated once the agent has responded.
+        {"role": "assistant", "content": "Let me look again."},
     ],
 }
 
@@ -61,6 +63,7 @@ LABELS = {
     "u2": _label(
         "user", intent="correction", verdict="rejected", verdict_target="a3", sentiment="negative"
     ),
+    "a4": _label("agent", type="status_update"),
 }
 
 
@@ -77,7 +80,6 @@ def labeler(monkeypatch):
         return label
 
     monkeypatch.setattr(step_labeler, "label_chunk", label_chunk)
-    monkeypatch.setattr(settings, "STEP_LABELING_ENABLED", True)
     monkeypatch.setattr(settings, "OPENAI_API_KEY", "sk-test")
     monkeypatch.setattr(settings, "TYPESAFE_API_KEY", None)
     return calls
@@ -117,6 +119,16 @@ async def _import(client: AsyncClient, auth: dict, trace: dict) -> UUID:
     return UUID(response.json()["trace_ids"][0])
 
 
+async def _detail(client: AsyncClient, auth: dict, trace_id: UUID) -> dict:
+    return (await client.get(f"/api/v1/rm/traces/{trace_id}", headers=auth)).json()
+
+
+async def _evaluation(client: AsyncClient, auth: dict, trace_id: UUID) -> dict:
+    response = await client.get(f"/api/v1/rm/workbench/traces/{trace_id}/evaluation", headers=auth)
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
 def test_chunks_pair_tool_results_merge_double_logged_messages_and_spot_repeats():
     steps = [
         {
@@ -136,37 +148,10 @@ def test_chunks_pair_tool_results_merge_double_logged_messages_and_spot_repeats(
         ("a2", "tool_call", 4),
         ("a3", "agent_message", 6),
         ("u2", "user_message", 7),
+        ("a4", "agent_message", 8),
     ]
     assert chunks[1]["result"] == "LF3000" and chunks[1]["duplicate_of"] is None
     assert chunks[2]["result"] == "error: timeout" and chunks[2]["duplicate_of"] == "a1"
-
-
-async def test_labeling_a_trace_puts_a_label_on_each_step(client, labeler):
-    auth = await _account(client)
-    trace_id = await _import(client, auth, TRACE)
-
-    assert await step_labeling.label_trace(trace_id) == "succeeded"
-    assert labeler["label"] == 5  # one call per chunk
-
-    detail = (await client.get(f"/api/v1/rm/traces/{trace_id}", headers=auth)).json()
-    steps = detail["steps"]
-    assert "step_labeling" not in detail
-    assert (
-        steps[0]["metadata"]["label"]["intent"] == "new_request"
-        and steps[0]["metadata"]["label"]["task_id"] == "t1"
-    )
-    assert steps[1]["metadata"] is None  # the double-logged copy is not a chunk
-    assert steps[3]["metadata"] is None  # a tool result is labeled with its call
-    assert (
-        steps[4]["metadata"]["label"]["duplicate_of"] == "a1"
-        and steps[4]["metadata"]["label"]["result"] == "error"
-    )
-    assert steps[6]["metadata"]["label"]["is_output"] is True
-    # The user's reaction names the answer it is about.
-    assert (
-        steps[7]["metadata"]["label"]["verdict"] == "rejected"
-        and steps[7]["metadata"]["label"]["verdict_target"] == "a3"
-    )
 
 
 def test_score_numbers_keep_their_order():
@@ -200,19 +185,29 @@ def test_score_numbers_keep_their_order():
     assert step_scoring.check_for(answer, None) == "answer_unconfirmed"
 
 
-async def test_a_labeled_trace_is_scored_and_credit_flows_back_from_the_answer(
-    client, labeler, checks
-):
+async def test_annotating_a_trace_labels_and_scores_each_step(client, labeler, checks):
     auth = await _account(client)
     trace_id = await _import(client, auth, TRACE)
 
-    assert await step_labeling.label_trace(trace_id) == "succeeded"
+    await workbench_auto.process_trace(trace_id)
+    assert labeler["label"] == 6  # one call per chunk
     # Quality checks only where the labels give no ground truth.
     assert sorted(checks) == [("a1", "tool"), ("a2", "tool")]
 
-    detail = (await client.get(f"/api/v1/rm/traces/{trace_id}", headers=auth)).json()
+    detail = await _detail(client, auth, trace_id)
     steps = detail["steps"]
+    assert (
+        steps[0]["metadata"]["label"]["intent"] == "new_request"
+        and steps[0]["metadata"]["label"]["task_id"] == "t1"
+    )
     assert "reward" not in steps[0]["metadata"]  # user steps are labeled, not scored
+    assert steps[1]["metadata"] is None  # the double-logged copy is not a chunk
+    assert steps[3]["metadata"] is None  # a tool result is labeled with its call
+    # The user's reaction names the answer it is about.
+    assert (
+        steps[7]["metadata"]["label"]["verdict"] == "rejected"
+        and steps[7]["metadata"]["label"]["verdict_target"] == "a3"
+    )
     answer = steps[6]["metadata"]["reward"]
     assert answer["is_answer"] and answer["score"] == -1.0  # asserted answer the user rejected
     # Blame from the rejected answer: 0.3 x -1.0 x 0.8^k for the step k places back.
@@ -222,13 +217,6 @@ async def test_a_labeled_trace_is_scored_and_credit_flows_back_from_the_answer(
     # Lookup -0.03, error -0.10, repeat -0.10, quality check +0.03.
     assert repeated["base"] == pytest.approx(-0.23) and repeated["score"] == pytest.approx(-0.20)
     assert repeated["jev"]["short"] == "its result was used later"
-
-    assert detail["step_scores"]["signals"] == {
-        "rejections": 1,
-        "confirmations": 0,
-        "tool_errors": 1,
-        "answers": 1,
-    }
     assert detail["step_scores"]["episodes"] == [
         {
             "task": "t1",
@@ -240,129 +228,76 @@ async def test_a_labeled_trace_is_scored_and_credit_flows_back_from_the_answer(
         }
     ]
 
+    # The same numbers are the trace's automatic annotation: credit is twice the step's total.
+    current = (await _evaluation(client, auth, trace_id))["current"]
+    assert current["status"] == "completed" and current["outcome"] == "failure"
+    credits = {c["index"]: c["credit"] for c in current["credits"]}
+    assert credits[6] == -2.0
+    assert credits[4] == pytest.approx(2 * (repeated["score"] + repeated["shared_total"]))
+
 
 async def test_without_the_grading_model_the_fixed_points_stand(client, labeler):
     auth = await _account(client)
     trace_id = await _import(client, auth, TRACE)
 
-    assert await step_labeling.label_trace(trace_id) == "succeeded"
-    detail = (await client.get(f"/api/v1/rm/traces/{trace_id}", headers=auth)).json()
+    await workbench_auto.process_trace(trace_id)
+    detail = await _detail(client, auth, trace_id)
     repeated = detail["steps"][4]["metadata"]["reward"]
     assert repeated["jev"] is None and repeated["score"] == pytest.approx(-0.23)
     assert detail["step_scores"]["episodes"][0]["answer"] == -1.0
 
 
-async def test_imported_labels_win_and_are_never_replaced(client, pool, labeler):
+async def test_a_trace_that_arrives_labeled_is_never_sent_to_a_model(client, labeler, monkeypatch):
+    monkeypatch.setattr(settings, "OPENAI_API_KEY", None)
     auth = await _account(client)
-    imported = {
+    ids = {0: "u1", 2: "a1", 4: "a2", 6: "a3", 7: "u2", 8: "a4"}
+    labeled = {
         **TRACE,
         "steps": [
-            {
-                **TRACE["steps"][0],
-                "metadata": {"label": {"chunk_id": "u1", "actor": "user", "intent": "follow_up"}},
-            },
-            *TRACE["steps"][1:],
+            {**step, "metadata": {"label": dict(LABELS[ids[i]], chunk_id=ids[i], task_id="t1")}}
+            if i in ids
+            else step
+            for i, step in enumerate(TRACE["steps"])
         ],
     }
-    trace_id = await _import(client, auth, imported)
-    await pool.execute(
-        "UPDATE rm_traces SET updated_at = now() - interval '1 hour' WHERE id = $1", trace_id
-    )
+    trace_id = await _import(client, auth, labeled)
 
-    assert await step_labeling.claim_due() == []
+    await workbench_auto.process_trace(trace_id)
     assert labeler["label"] == 0
+    evaluation = await _evaluation(client, auth, trace_id)
+    assert evaluation["configured"] is True
+    current = evaluation["current"]
+    # Scored from the labels it came with: the rejected answer makes it a failure.
+    assert current["status"] == "completed" and current["outcome"] == "failure"
+    assert {c["index"]: c["credit"] for c in current["credits"]}[6] == -2.0
+    detail = await _detail(client, auth, trace_id)
+    assert detail["steps"][6]["metadata"]["label"]["outcome"] == "answer"
 
 
-async def test_a_trace_is_relabeled_only_when_its_steps_change(client, labeler):
+async def test_scores_a_trace_arrived_with_are_shown_as_they_are(client, labeler, monkeypatch):
+    monkeypatch.setattr(settings, "OPENAI_API_KEY", None)
     auth = await _account(client)
-    trace_id = await _import(client, auth, TRACE)
-    await step_labeling.label_trace(trace_id)
+    summary = {
+        "score": 0.9,
+        "episodes": [{"task": "t1", "score": 0.9, "rubric_b_only": 0.9, "answer": 1.0, "costs": -0.1, "has_answer": True}],
+        "signals": {"rejections": 0, "confirmations": 1, "tool_errors": 0, "answers": 1},
+    }  # fmt: skip
+    scored = {
+        "id": "scored-1",
+        "title": "Scored elsewhere",
+        "metadata": {"rubric_summary": summary},
+        "steps": [
+            {"role": "user", "content": "Find it", "metadata": {"label": dict(LABELS["u1"], chunk_id="u1", task_id="t1")}},
+            {"role": "assistant", "content": "Here it is.", "metadata": {
+                "label": dict(LABELS["a3"], chunk_id="a1", task_id="t1"),
+                "reward": {"base": 1.0, "score": 1.0, "total": 1.0, "is_answer": True},
+            }},
+        ],
+    }  # fmt: skip
+    trace_id = await _import(client, auth, scored)
 
-    assert await step_labeling.label_trace(trace_id) == "unchanged"
-    assert labeler["label"] == 5
-
-    # The user's last message is removed, so the trace's steps differ.
-    assert await _import(client, auth, {**TRACE, "steps": TRACE["steps"][:-1]}) == trace_id
-    labeler["label"] = 0
-    assert await step_labeling.label_trace(trace_id) == "succeeded"
-    assert labeler["label"] == 4
-
-
-async def test_a_trace_over_the_limit_is_skipped_with_a_reason(client, labeler, monkeypatch):
-    auth = await _account(client)
-    trace_id = await _import(client, auth, TRACE)
-    monkeypatch.setattr(settings, "STEP_LABELING_MAX_CHUNKS", 2)
-
-    assert await step_labeling.label_trace(trace_id) == "skipped"
-    assert labeler["label"] == 0
-    detail = (await client.get(f"/api/v1/rm/traces/{trace_id}", headers=auth)).json()
-    assert detail["step_labeling"] == {
-        "status": "skipped",
-        "error": "The trace has 5 steps; automatic labeling handles up to 2.",
-    }
-    assert all(step["metadata"] is None for step in detail["steps"])
-
-
-async def test_a_provider_failure_is_retried_a_bounded_number_of_times(
-    client, labeler, monkeypatch
-):
-    auth = await _account(client)
-    trace_id = await _import(client, auth, TRACE)
-
-    async def down(client, cache_key, transcript, chunk):
-        labeler["label"] += 1
-        raise step_labeler.LabelingError("label request returned 503")
-
-    monkeypatch.setattr(step_labeler, "label_chunk", down)
-    outcomes = [await step_labeling.label_trace(trace_id) for _ in range(5)]
-    assert outcomes == ["failed", "failed", "failed", "unchanged", "unchanged"]
-    assert labeler["label"] == step_labeling.MAX_ATTEMPTS
-
-
-async def test_the_sweep_claims_quiet_traces_for_enabled_accounts_only(
-    client, pool, labeler, monkeypatch
-):
-    auth = await _account(client)
-    trace_id = await _import(client, auth, TRACE)
-
-    # Still being written to: left alone.
-    assert await step_labeling.claim_due() == []
-    await pool.execute(
-        "UPDATE rm_traces SET updated_at = now() - interval '1 hour' WHERE id = $1", trace_id
-    )
-
-    monkeypatch.setattr(settings, "STEP_LABELING_ENABLED", False)
-    assert await step_labeling.claim_due() == []
-    monkeypatch.setattr(settings, "STEP_LABELING_ENABLED", True)
-
-    # A claim holds, so the next sweep does not repeat it.
-    assert await step_labeling.claim_due() == [trace_id]
-    assert await step_labeling.claim_due() == []
-    detail = (await client.get(f"/api/v1/rm/traces/{trace_id}", headers=auth)).json()
-    assert detail["step_labeling"] == {"status": "pending", "error": None}
-
-    assert await step_labeling.label_trace(trace_id) == "succeeded"
-    assert await step_labeling.claim_due() == []
-    # A claim nobody finished is released.
-    await pool.execute(
-        "UPDATE rm_step_labels SET status = 'pending', fingerprint = '', checked_at = now() - interval '1 hour'"
-    )
-    assert await step_labeling.claim_due() == [trace_id]
-
-
-def test_the_beat_task_only_dispatches(monkeypatch):
-    import asyncio
-
-    from backend.tasks import step_labeling as tasks
-
-    ids = [UUID(int=1), UUID(int=2)]
-
-    async def claim_due():
-        return ids
-
-    sent = []
-    monkeypatch.setattr(step_labeling, "claim_due", claim_due)
-    monkeypatch.setattr(tasks, "run_async", asyncio.run)
-    monkeypatch.setattr(tasks.label_trace, "delay", sent.append)
-    assert tasks.reconcile() == 2
-    assert sent == [str(i) for i in ids]
+    await workbench_auto.process_trace(trace_id)
+    current = (await _evaluation(client, auth, trace_id))["current"]
+    assert current["outcome"] == "success" and current["outcome_probabilities"] == {"score": 0.9}
+    assert current["credits"][0]["credit"] == 2.0
+    assert (await _detail(client, auth, trace_id))["step_scores"] == summary

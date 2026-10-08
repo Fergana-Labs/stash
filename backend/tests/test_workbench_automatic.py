@@ -1,14 +1,15 @@
-"""Fixed evaluation: durable requests, retrospective evidence, retries and privacy.
+"""Automatic annotation: labels and rule scores per trace version, retries and privacy.
 
-Provider inference is mocked. Native ingestion, queueing, APIs and DB are real.
+The labeling model is mocked. Native ingestion, queueing, APIs and DB are real.
 """
 
-import copy
 import json
 from uuid import UUID
 
 import pytest
 
+from backend.config import settings
+from backend.services.rm import step_labeler
 from backend.services.rm import workbench as legacy
 from backend.services.rm import workbench_auto as auto
 from backend.services.rm import workbench_evaluation as policy
@@ -20,6 +21,7 @@ from .test_workbench_grader import events
 
 
 def answer(snapshot):
+    """A grading-model reply to one of the fixed questions (corrections still ask them)."""
     questions = snapshot["provider_request"]["questions"]
     raw = {"model": "jev-test", "usage": {"input_tokens": 3, "output_tokens": 1}, "answers": {}}
     for key, question in questions.items():
@@ -35,23 +37,48 @@ def answer(snapshot):
     )
 
 
-async def evaluate(client, pool, monkeypatch):
+def _label(actor, **fields):
+    base = dict.fromkeys(
+        ("intent", "verdict", "verdict_target", "sentiment", "type", "effect", "result", "outcome", "stance", "coverage", "note"))  # fmt: skip
+    return {**base, "actor": actor, "is_output": False, "evidence": "", **fields}
+
+
+REQUEST = _label("user", intent="new_request", verdict="none", sentiment="neutral")
+ANSWER = _label(
+    "agent", type="output", is_output=True, outcome="answer", stance="asserted", coverage="1/1"
+)
+
+
+def rejects(target):
+    return _label(
+        "user", intent="correction", verdict="rejected", verdict_target=target, sentiment="negative"
+    )
+
+
+@pytest.fixture
+def labeler(monkeypatch):
+    """Stand in for the labeling model. `labels` maps a chunk to its label; a
+    chunk not listed is a request (user) or an unconfirmed answer (agent)."""
+    state = {"calls": [], "labels": {}, "before": None}
+
+    async def label_chunk(client, cache_key, transcript, chunk):
+        if state["before"]:
+            await state["before"](chunk)
+        state["calls"].append(chunk["chunk_id"])
+        default = REQUEST if chunk["actor"] == "user" else ANSWER
+        return dict(state["labels"].get(chunk["chunk_id"], default), chunk_id=chunk["chunk_id"])
+
+    monkeypatch.setattr(step_labeler, "label_chunk", label_chunk)
+    monkeypatch.setattr(settings, "OPENAI_API_KEY", "sk-test")
+    monkeypatch.setattr(settings, "TYPESAFE_API_KEY", None)
+    return state
+
+
+async def evaluate(client, pool, labeler):
     user = await account(client)
     tid = await upload(client, user)
-    calls = []
-
-    async def grade(snapshot):
-        # Exact input is saved before inference, even if inference fails.
-        row = await pool.fetchrow(
-            "SELECT * FROM rm_wb_evaluation_calls WHERE status='running' ORDER BY created_at DESC LIMIT 1"
-        )
-        assert row and row["input_snapshot"] == snapshot
-        calls.append(copy.deepcopy(snapshot))
-        return answer(snapshot)
-
-    monkeypatch.setattr(wire, "grade", grade)
     await auto.process_trace(tid)
-    return user, tid, calls
+    return user, tid, labeler["calls"]
 
 
 async def get_eval(client, user, tid):
@@ -60,31 +87,36 @@ async def get_eval(client, user, tid):
     return response.json()
 
 
-async def test_ingested_trace_needs_no_grader_and_credit_is_not_confidence(
-    client, pool, monkeypatch
-):
-    user, tid, calls = await evaluate(client, pool, monkeypatch)
+async def test_ingested_trace_is_labeled_and_scored_without_any_setup(client, pool, labeler):
+    user, tid, calls = await evaluate(client, pool, labeler)
     assert await pool.fetchval("SELECT count(*) FROM rm_wb_graders") == 0
-    assert len(calls) == 2
+    assert calls == ["u1", "a1"]  # one labeling call per chunk
     result = (await get_eval(client, user, tid))["current"]
-    assert result["status"] == "completed" and result["outcome"] == "failure"
+    # An answer nobody reacted to scores 0.3: neither a success nor a failure.
+    assert result["status"] == "completed" and result["outcome"] == "partial_success"
+    assert result["outcome_probabilities"] == {"score": 0.3}
     assert result["credited_actions"] == result["total_actions"] == 1
-    assert result["credits"][0]["credit"] == -2
-    assert result["credits"][0]["confidence"] == 0.91
+    # Credit is twice the step's score, so the -1..+1 display shows the score.
+    assert result["credits"][0]["credit"] == 0.6 and result["credits"][0]["label"] == "positive"
     assert result["actions"][0]["id"] == result["credits"][0]["step_id"]
     assert result["boundary"]["session_end_confirmed"] is False
     listed = await client.get("/api/v1/rm/traces", headers=user["headers"])
     assert listed.status_code == 200, listed.text
-    assert listed.json()["traces"][0]["evaluation"]["current"] is True
+    summary = listed.json()["traces"][0]["evaluation"]
+    assert summary["current"] is True and summary["score"] == 0.3
+    assert summary["action_credit"]["mean"] == 0.3
+    # The labels and the score breakdown are on the trace's steps.
+    detail = (await client.get(f"/api/v1/rm/traces/{tid}", headers=user["headers"])).json()
+    answer_step = next(s for s in detail["steps"] if s["role"] == "assistant")
+    assert answer_step["metadata"]["label"]["outcome"] == "answer"
+    assert answer_step["metadata"]["reward"]["total"] == 0.3
     await client.post(f"{BASE}/traces/{tid}/assess", headers=user["headers"])
     await auto.process_trace(tid)
-    assert len(calls) == 2  # Redelivery cannot charge or increment coverage twice.
+    assert calls == ["u1", "a1"]  # Redelivery labels nothing again.
 
 
-async def test_later_work_is_new_version_and_history_retains_exact_evidence(
-    client, pool, monkeypatch
-):
-    user, tid, calls = await evaluate(client, pool, monkeypatch)
+async def test_later_work_is_new_version_and_only_new_steps_are_labeled(client, pool, labeler):
+    user, tid, calls = await evaluate(client, pool, labeler)
     before = (await get_eval(client, user, tid))["current"]
     messages = [
         ("user", "Fix the count parser. Zero must remain valid."),
@@ -98,10 +130,11 @@ async def test_later_work_is_new_version_and_history_retains_exact_evidence(
     assert pending["previous_credits"] == [
         {**before["credits"][0], "evaluation_id": before["id"], "created_at": before["created_at"]}
     ]
-    assert (await get_eval(client, user, tid))["previous_credits"] == pending["previous_credits"]
     assert len(calls) == 2
+    labeler["labels"]["u2"] = rejects("a1")
     await upload(client, user, messages=messages + [("assistant", "I haven't fixed it yet.")])
     await auto.process_trace(tid)
+    assert calls == ["u1", "a1", "u2", "a2"]  # the unchanged steps keep their labels
     updated = await get_eval(client, user, tid)
     assert updated["previous_credits"] == []
     after = updated["current"]
@@ -110,73 +143,58 @@ async def test_later_work_is_new_version_and_history_retains_exact_evidence(
         f"{BASE}/traces/{tid}/evaluation/{before['id']}", headers=user["headers"]
     )
     assert old.json() == before
-    # Credit for the early success claim sees the later contradiction.
-    assert any(e["content"] == "No, the zero test failed." for e in calls[-1]["context_events"])
-    assert calls[-1]["targets"][0]["step_id"] == before["actions"][0]["id"]
+    # The early success claim is scored with the later rejection in view.
+    first, second = after["credits"]
+    assert first["step_id"] == before["actions"][0]["id"]
+    assert first["credit"] == -2 and first["label"] == "strongly_negative"
+    assert second["credit"] == 0.6
 
 
-@pytest.mark.parametrize("invalid_response", [False, True])
-async def test_failed_credit_call_retries_without_repeating_success_call(
-    client, pool, monkeypatch, invalid_response
-):
+async def test_a_provider_failure_is_retried_and_then_completes(client, pool, labeler):
     user = await account(client)
     tid = await upload(client, user)
-    seen = []
+    failures = iter([True])
 
-    async def grade(snapshot):
-        seen.append(list(snapshot["provider_request"]["questions"]))
-        if len(seen) == 2:
-            if invalid_response:
-                raw = answer(snapshot)["raw_output"]
-                # Real production failure: chosen label disagrees with probabilities.
-                raw["answers"]["credit_0"]["choice"] = "positive"
-                wire.parse_response(raw, ["credit_0"], choices={"credit_0": policy.CREDITS})
-            raise wire.GradingError("Transient failure", retryable=True)
-        return answer(snapshot)
+    async def fail_once(chunk):
+        if next(failures, False):
+            raise step_labeler.LabelingError("labeling model returned 503")
 
-    monkeypatch.setattr(wire, "grade", grade)
+    labeler["before"] = fail_once
     await auto.process_trace(tid)
     failed = await get_eval(client, user, tid)
     assert failed["queue"]["status"] == "queued"
-    assert failed["current"]["credited_actions"] == 0
+    assert failed["current"]["status"] == "failed" and failed["current"]["credits"] == []
     await auto.process_trace(tid)
     done = (await get_eval(client, user, tid))["current"]
-    assert seen == [["trace_success"], ["credit_0"], ["credit_0"]]
     assert done["status"] == "completed" and done["credited_actions"] == 1
-    assert [c["status"] for c in done["calls"]] == ["completed", "failed", "completed"]
 
 
-async def test_evaluation_continues_past_500_daily_calls(client, pool, monkeypatch):
-    user, tid, calls = await evaluate(client, pool, monkeypatch)
-    previous = (await get_eval(client, user, tid))["current"]
-    # Failed attempts also counted toward the old daily cap. Seed prior calls
-    # without invoking the provider hundreds of times.
-    await pool.execute(
-        """INSERT INTO rm_wb_evaluation_calls
-        (evaluation_id,owner_user_id,batch_index,attempt,input_snapshot,status)
-        SELECT $1,$2,0,n,'{}'::jsonb,'failed' FROM generate_series(2,499) n""",
-        UUID(previous["id"]),
-        user["uuid"],
-    )
-    assert await pool.fetchval("SELECT count(*) FROM rm_wb_evaluation_calls") == 500
-    later = await upload(client, user, "later-run")
-    await auto.process_trace(later)
-    result = await get_eval(client, user, later)
-    assert result["current"]["status"] == "completed"
-    assert result["queue"]["error"] is None
-    assert len(calls) == 4
-    assert await pool.fetchval("SELECT count(*) FROM rm_wb_evaluation_calls") == 502
-
-
-async def test_recover_resumes_old_budget_pause_without_repeating_saved_calls(
-    client, pool, monkeypatch
+async def test_a_trace_over_the_limit_fails_with_a_reason_and_is_not_retried(
+    client, pool, labeler, monkeypatch
 ):
-    monkeypatch.setattr(auto, "MAX_CALLS_PER_PASS", 1)
-    user, tid, calls = await evaluate(client, pool, monkeypatch)
-    queued = await get_eval(client, user, tid)
-    assert queued["queue"]["status"] == "queued"
-    assert queued["queue"]["error"] is None
-    assert queued["current"]["outcome"] == "failure" and len(calls) == 1
+    monkeypatch.setattr(settings, "STEP_LABELING_MAX_CHUNKS", 1)
+    user, tid, calls = await evaluate(client, pool, labeler)
+    result = await get_eval(client, user, tid)
+    assert result["queue"]["status"] == "failed"
+    assert "handles up to 1" in result["queue"]["error"] and calls == []
+
+
+async def test_a_missing_provider_key_is_repaired_once_the_key_arrives(
+    client, pool, labeler, monkeypatch
+):
+    monkeypatch.setattr(settings, "OPENAI_API_KEY", None)
+    user, tid, _ = await evaluate(client, pool, labeler)
+    result = await get_eval(client, user, tid)
+    assert result["configured"] is False and result["queue"]["status"] == "failed"
+    monkeypatch.setattr(settings, "OPENAI_API_KEY", "sk-test")
+    await auto.recover()
+    await auto.process_trace(tid)
+    assert (await get_eval(client, user, tid))["current"]["status"] == "completed"
+
+
+async def test_recover_resumes_old_budget_pause(client, pool, labeler):
+    user = await account(client)
+    tid = await upload(client, user)
     await pool.execute(
         """UPDATE rm_wb_queue SET due_at=now()+interval '1 day',
         error='Daily Jev evaluation budget reached; resumes tomorrow' WHERE trace_id=$1""",
@@ -189,7 +207,6 @@ async def test_recover_resumes_old_budget_pause_without_repeating_saved_calls(
     assert dict(row) == {"status": "queued", "error": None, "ready": True}
     await auto.process_trace(tid)
     assert (await get_eval(client, user, tid))["current"]["status"] == "completed"
-    assert len(calls) == 2
 
 
 @pytest.mark.parametrize(
@@ -214,25 +231,24 @@ async def test_budget_recovery_leaves_other_queue_entries_unchanged(client, pool
     assert await pool.fetchrow("SELECT * FROM rm_wb_queue WHERE trace_id=$1", tid) == before
 
 
-async def test_lost_worker_lease_cannot_complete_an_evaluation(client, pool, monkeypatch):
+async def test_lost_worker_lease_cannot_complete_an_evaluation(client, pool, labeler):
     user = await account(client)
     tid = await upload(client, user)
 
-    async def grade(snapshot):
+    async def lose_lease(chunk):
         await pool.execute("UPDATE rm_wb_queue SET status='queued' WHERE trace_id=$1", tid)
-        return answer(snapshot)
 
-    monkeypatch.setattr(wire, "grade", grade)
+    labeler["before"] = lose_lease
     await auto.process_trace(tid)
     current = (await get_eval(client, user, tid))["current"]
     assert current["status"] != "completed" and current["outcome"] is None
-    assert current["calls"][0]["status"] == "failed"
+    assert current["calls"] == []
 
 
 async def test_evaluation_access_matches_trace_sharing_and_rejects_cross_trace_feedback(
-    client, pool, monkeypatch
+    client, pool, labeler
 ):
-    owner, tid, _ = await evaluate(client, pool, monkeypatch)
+    owner, tid, _ = await evaluate(client, pool, labeler)
     outsider = await account(client)
     eid = (await get_eval(client, owner, tid))["current"]["id"]
     for path in (f"{BASE}/traces/{tid}/evaluation", f"{BASE}/traces/{tid}/evaluation/{eid}"):
@@ -252,9 +268,9 @@ async def test_evaluation_access_matches_trace_sharing_and_rejects_cross_trace_f
 
 
 async def test_correction_uses_frozen_evidence_and_never_mutates_fixed_questions(
-    client, pool, monkeypatch
+    client, pool, labeler, monkeypatch
 ):
-    user, tid, _ = await evaluate(client, pool, monkeypatch)
+    user, tid, _ = await evaluate(client, pool, labeler)
     evaluation = (await get_eval(client, user, tid))["current"]
     target = evaluation["credits"][0]["step_id"]
     # A replaced/deleted live event must not destroy the saved action identity.
@@ -419,45 +435,8 @@ def test_native_claude_completion_metadata_survives_adapter():
     assert traces[0].steps[-1].metadata["stop_reason"] == "end_turn"
 
 
-async def test_previous_annotations_fill_gaps_as_new_batches_arrive(client, pool, monkeypatch):
-    monkeypatch.setattr(policy, "ACTIONS_PER_BATCH", 1)
-    user = await account(client)
-    messages = [
-        ("user", "Fix the parser"),
-        ("assistant", "First attempt"),
-        ("assistant", "Second attempt"),
-        ("assistant", "Final answer"),
-    ]
-    tid = await upload(client, user, messages=messages)
-
-    async def grade(snapshot):
-        return answer(snapshot)
-
-    monkeypatch.setattr(wire, "grade", grade)
-    await auto.process_trace(tid)
-    before = (await get_eval(client, user, tid))["current"]
-    assert len(before["credits"]) == 3
-    await upload(
-        client, user, messages=messages + [("user", "Check again"), ("assistant", "Checked again")]
-    )
-    monkeypatch.setattr(auto, "MAX_CALLS_PER_PASS", 2)
-    await auto.process_trace(tid)
-    partial = await get_eval(client, user, tid)
-    assert len(partial["current"]["credits"]) == 1
-    assert {c["step_id"] for c in partial["previous_credits"]} == {
-        c["step_id"] for c in before["credits"][1:]
-    }
-    assert all(c["evaluation_id"] == before["id"] for c in partial["previous_credits"])
-    await auto.process_trace(tid)
-    partial = await get_eval(client, user, tid)
-    assert len(partial["current"]["credits"]) == 3
-    assert partial["previous_credits"] == []
-    await auto.process_trace(tid)
-    assert (await get_eval(client, user, tid))["current"]["status"] == "completed"
-
-
-async def test_previous_annotations_never_attach_to_rewritten_steps(client, pool, monkeypatch):
-    user, tid, _ = await evaluate(client, pool, monkeypatch)
+async def test_previous_annotations_never_attach_to_rewritten_steps(client, pool, labeler):
+    user, tid, _ = await evaluate(client, pool, labeler)
     # Stable ids alone are not sufficient if recorded content has changed.
     await pool.execute(
         "UPDATE rm_trace_steps SET content='Rewritten response' WHERE trace_id=$1 AND role='assistant'",

@@ -1,22 +1,21 @@
-"""Automatic step labels for traces.
+"""Step labels and rule-based step scores: the automatic annotation of a trace.
 
-Once a trace has been quiet for a few minutes, a labeling model says what each
-step is: what the user is doing, how they reacted to which answer, what a tool
-call did and returned, and what the agent handed the user (step_labeler). The
-automatic annotation in the workbench estimates how well a step went; these
-labels are the observable facts next to that number.
+A labeling model says what each step is: what the user is doing, how they
+reacted to which answer, what a tool call did and returned, and what the agent
+handed the user (step_labeler). Fixed rules then turn the labels into a score
+per step, with credit passed back from answers the user reacted to, and a
+score per task (step_scoring).
 
-Each labeled step then gets a rule-based score with credit assignment
-(step_scoring): fixed points for its label, one quality check, and a share of
-any later answer the user reacted to.
-
-Labels and scores live in rm_step_labels and are merged into each step's
+The workbench runs this for every recorded trace version (workbench_auto) and
+stores the outcome as that version's evaluation. The labels and the score
+breakdown live in rm_step_labels and are merged into each step's
 `metadata.label` and `metadata.reward` when the trace is read, the same place
-an import can put them, so the trace view shows both the same way.
+an import can put them. A trace that arrives already labeled is never sent to
+a model.
 
-Off unless STEP_LABELING_ENABLED is set. Trace content is sent to the labeling
-provider, and to the grading model for quality checks when TYPESAFE_API_KEY is
-set; traces above the size limits are skipped, never truncated silently.
+Trace content is sent to the labeling provider, and to the grading model for
+quality checks when TYPESAFE_API_KEY is set; traces above the size limits are
+refused with a reason, never truncated silently.
 """
 
 from __future__ import annotations
@@ -40,13 +39,13 @@ JEV_ENDPOINT = "https://api.typesafe.ai/v1/systemone"
 JEV_STATE_CHARS = 84_000
 JEV_RESULT_CAPS = (8_000, 3_000, 1_200, 400)
 CONCURRENCY = 8
-MAX_ATTEMPTS = 3
-TRACES_PER_PASS = 5
-QUIET_MINUTES = 5
+
+
+NOT_CONFIGURED = "OPENAI_API_KEY is not configured; automatic annotation cannot label this trace."
 
 
 class LabelingSkipped(Exception):
-    """The trace is outside what automatic labeling handles; the reason is user-facing."""
+    """The trace is outside what automatic annotation handles; the reason is user-facing."""
 
 
 def fingerprint(steps: list[dict]) -> str:
@@ -156,24 +155,29 @@ async def score_steps(chunks: list[dict], labels: dict[str, dict]) -> tuple[dict
     }, step_scoring.summarize(list(labels.values()), episodes)
 
 
-async def label_steps(trace_id: UUID, steps: list[dict]) -> dict:
-    """Labels and scores for one trace's steps, keyed by step index, plus the
-    task scores. Raises LabelingSkipped or LabelingError; makes no database writes."""
-    chunks = step_labeler.build_chunks(steps)
-    if not any(chunk["actor"] == "agent" for chunk in chunks):
-        raise LabelingSkipped("The trace has no agent steps to label.")
+def chunk_hash(chunk: dict) -> str:
+    return hashlib.sha256(json.dumps(chunk, sort_keys=True, default=str).encode()).hexdigest()
+
+
+async def label_steps(
+    trace_id: UUID, chunks: list[dict], reuse: dict[str, dict]
+) -> dict[str, dict]:
+    """A label per chunk. `reuse` holds labels from the trace's previous version
+    for chunks that have not changed, so appended work costs only its own calls."""
     if len(chunks) > settings.STEP_LABELING_MAX_CHUNKS:
         raise LabelingSkipped(
-            f"The trace has {len(chunks)} steps; automatic labeling handles up to {settings.STEP_LABELING_MAX_CHUNKS}."
+            f"The trace has {len(chunks)} steps; automatic annotation handles up to {settings.STEP_LABELING_MAX_CHUNKS}."
         )
     transcript = step_labeler.render(chunks)
     if len(transcript) > settings.STEP_LABELING_MAX_CHARS:
         raise LabelingSkipped(
-            f"The trace is {len(transcript):,} characters; automatic labeling handles up to {settings.STEP_LABELING_MAX_CHARS:,}."
+            f"The trace is {len(transcript):,} characters; automatic annotation handles up to {settings.STEP_LABELING_MAX_CHARS:,}."
         )
-
+    labels = {c["chunk_id"]: reuse[c["chunk_id"]] for c in chunks if c["chunk_id"] in reuse}
+    todo = [c for c in chunks if c["chunk_id"] not in labels]
+    if todo and not settings.OPENAI_API_KEY:
+        raise LabelingSkipped(NOT_CONFIGURED)
     gate = asyncio.Semaphore(CONCURRENCY)
-    labels: dict[str, dict] = {}
     async with httpx.AsyncClient(timeout=180) as client:
 
         async def label(chunk: dict) -> None:
@@ -183,118 +187,99 @@ async def label_steps(trace_id: UUID, steps: list[dict]) -> dict:
                 )
 
         # The first call writes the shared prompt prefix to the provider's cache; the rest read it.
-        await label(chunks[0])
-        await asyncio.gather(*(label(chunk) for chunk in chunks[1:]))
+        for chunk in todo[:1]:
+            await label(chunk)
+        await asyncio.gather(*(label(chunk) for chunk in todo[1:]))
     step_labeler.assign_tasks(chunks, labels)
-    rewards, summary = await score_steps(chunks, labels)
+    return labels
+
+
+def imported(trace: dict, steps: list[dict], chunks: list[dict]) -> dict | None:
+    """The labels and scores a trace arrived with, or None when it has none."""
+    labels = {
+        str(step["idx"]): step["metadata"]["label"]
+        for step in steps
+        if isinstance((step.get("metadata") or {}).get("label"), dict)
+    }
+    if not labels:
+        return None
+    rewards = {
+        str(step["idx"]): step["metadata"]["reward"]
+        for step in steps
+        if isinstance((step.get("metadata") or {}).get("reward"), dict)
+    }
     return {
-        "labels": {str(chunk["idx"]): labels[chunk["chunk_id"]] for chunk in chunks},
+        "labels": labels,
         "rewards": rewards,
-        "summary": summary,
+        "summary": (trace.get("metadata") or {}).get("rubric_summary"),
+        "by_chunk": {
+            c["chunk_id"]: labels[str(c["idx"])] for c in chunks if str(c["idx"]) in labels
+        },
     }
 
 
-def configured() -> bool:
-    return bool(settings.STEP_LABELING_ENABLED and settings.OPENAI_API_KEY)
-
-
-async def label_trace(trace_id: UUID) -> str:
-    """Label and score one trace if its steps changed since the last time. Returns the outcome."""
+async def annotate(trace: dict, steps: list[dict]) -> dict:
+    """Labels, step scores and task scores for one trace version, each keyed by
+    step index. Labels the trace arrived with are used as they are; otherwise
+    the stored result is reused when the steps have not changed, and only new
+    or changed steps are sent to the labeling model. Raises LabelingSkipped or
+    LabelingError."""
     pool = get_pool()
-    owner = await pool.fetchval("SELECT owner_user_id FROM rm_traces WHERE id = $1", trace_id)
-    if owner is None:
-        return "gone"
-    steps = [
-        dict(row)
-        for row in await pool.fetch(
-            "SELECT * FROM rm_trace_steps WHERE trace_id = $1 ORDER BY idx", trace_id
-        )
-    ]
+    chunks = step_labeler.build_chunks(steps)
+    if not any(chunk["actor"] == "agent" for chunk in chunks):
+        raise LabelingSkipped("The trace has no agent steps to annotate.")
+    given = imported(trace, steps, chunks)
+    if given is not None:
+        if not given["rewards"] and len(given["by_chunk"]) == len(chunks):
+            given["rewards"], given["summary"] = await score_steps(chunks, given["by_chunk"])
+        return given
     current = fingerprint(steps)
     previous = await pool.fetchrow(
-        "SELECT fingerprint, status, attempts FROM rm_step_labels WHERE trace_id = $1", trace_id
+        "SELECT fingerprint, labels, rewards, summary, chunks FROM rm_step_labels WHERE trace_id = $1",
+        trace["id"],
     )
-    same = previous is not None and previous["fingerprint"] == current
-    if same and (
-        previous["status"] not in ("failed", "pending") or previous["attempts"] >= MAX_ATTEMPTS
-    ):
-        await pool.execute(
-            "UPDATE rm_step_labels SET checked_at = now() WHERE trace_id = $1", trace_id
-        )
-        return "unchanged"
-    attempts = previous["attempts"] + 1 if same else 1
-
-    status, error, result = "succeeded", None, {"labels": {}, "rewards": {}, "summary": None}
-    try:
-        result = await label_steps(trace_id, steps)
-    except LabelingSkipped as skipped:
-        status, error = "skipped", str(skipped)
-    except step_labeler.LabelingError as failed:
-        logger.warning(
-            "step labeling failed trace=%s attempt=%s error=%s", trace_id, attempts, failed
-        )
-        status, error = "failed", str(failed)[:500]
+    if previous is not None and previous["fingerprint"] == current:
+        return {key: previous[key] for key in ("labels", "rewards", "summary")}
+    hashes = {c["chunk_id"]: chunk_hash(c) for c in chunks}
+    reuse = {}
+    if previous is not None:
+        by_idx = {c["chunk_id"]: str(c["idx"]) for c in chunks}
+        reuse = {
+            chunk_id: previous["labels"][by_idx[chunk_id]]
+            for chunk_id, digest in hashes.items()
+            if previous["chunks"].get(chunk_id) == digest and by_idx[chunk_id] in previous["labels"]
+        }
+    by_chunk = await label_steps(trace["id"], chunks, reuse)
+    rewards, summary = await score_steps(chunks, by_chunk)
+    labels = {str(chunk["idx"]): by_chunk[chunk["chunk_id"]] for chunk in chunks}
     await pool.execute(
         """
         INSERT INTO rm_step_labels
-          (trace_id, owner_user_id, fingerprint, status, error, attempts, labels, rewards, summary, label_model)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+          (trace_id, owner_user_id, fingerprint, labels, rewards, summary, chunks, label_model)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         ON CONFLICT (trace_id) DO UPDATE SET
-          fingerprint = EXCLUDED.fingerprint, status = EXCLUDED.status, error = EXCLUDED.error,
-          attempts = EXCLUDED.attempts, labels = EXCLUDED.labels, rewards = EXCLUDED.rewards,
-          summary = EXCLUDED.summary, label_model = EXCLUDED.label_model,
-          labeled_at = now(), checked_at = now()
+          fingerprint = EXCLUDED.fingerprint, labels = EXCLUDED.labels, rewards = EXCLUDED.rewards,
+          summary = EXCLUDED.summary, chunks = EXCLUDED.chunks, label_model = EXCLUDED.label_model,
+          labeled_at = now()
         """,
-        trace_id, owner, current, status, error, attempts,
-        result["labels"], result["rewards"], result["summary"], settings.STEP_LABEL_MODEL,
-    )  # fmt: skip
-    return status
-
-
-async def claim_due() -> list[UUID]:
-    """Claim a few traces to label: new or changed, quiet for QUIET_MINUTES,
-    owned by an account with reward models, and not already carrying imported
-    labels. A claim is a `pending` row, so the next sweep does not pick the
-    same trace again; a claim nobody finished is released after half an hour."""
-    if not configured():
-        return []
-    rows = await get_pool().fetch(
-        f"""
-        INSERT INTO rm_step_labels (trace_id, owner_user_id, fingerprint, status, label_model)
-        SELECT t.id, t.owner_user_id, '', 'pending', $1 FROM rm_traces t
-        JOIN users u ON u.id = t.owner_user_id AND u.reward_models_enabled
-        LEFT JOIN rm_step_labels g ON g.trace_id = t.id
-        WHERE t.updated_at < now() - interval '{QUIET_MINUTES} minutes'
-          AND NOT EXISTS (SELECT 1 FROM rm_trace_steps s WHERE s.trace_id = t.id AND s.metadata ? 'label')
-          AND (g.trace_id IS NULL OR g.checked_at < t.updated_at
-               OR (g.status = 'pending' AND g.checked_at < now() - interval '30 minutes')
-               OR (g.status = 'failed' AND g.attempts < {MAX_ATTEMPTS} AND g.checked_at < now() - interval '10 minutes'))
-        ORDER BY t.updated_at DESC
-        LIMIT {TRACES_PER_PASS}
-        ON CONFLICT (trace_id) DO UPDATE SET checked_at = now()
-        RETURNING trace_id
-        """,
+        trace["id"], trace["owner_user_id"], current, labels, rewards, summary, hashes,
         settings.STEP_LABEL_MODEL,
-    )
-    return [row["trace_id"] for row in rows]
+    )  # fmt: skip
+    return {"labels": labels, "rewards": rewards, "summary": summary}
 
 
 async def merge_into(trace_id: UUID, detail: dict) -> dict:
     """Attach stored labels and scores to a trace detail's steps as
     `metadata.label` and `metadata.reward`, and the task scores as
     `step_scores`: the shape an imported trace already carries (imported
-    values win). Reports a labeling run that has not produced labels."""
-    imported = (detail.get("metadata") or {}).get("rubric_summary")
-    if imported is not None:
-        detail["step_scores"] = imported
+    values win)."""
+    given = (detail.get("metadata") or {}).get("rubric_summary")
+    if given is not None:
+        detail["step_scores"] = given
     row = await get_pool().fetchrow(
-        "SELECT status, error, labels, rewards, summary FROM rm_step_labels WHERE trace_id = $1",
-        trace_id,
+        "SELECT labels, rewards, summary FROM rm_step_labels WHERE trace_id = $1", trace_id
     )
     if row is None:
-        return detail
-    if row["status"] != "succeeded":
-        detail["step_labeling"] = {"status": row["status"], "error": row["error"]}
         return detail
     for step in detail["steps"]:
         key = str(step["index"])

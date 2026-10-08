@@ -23,7 +23,6 @@ from backend.tasks.reward_models import (
     train_reward_model,
 )
 from backend.tasks.sources import sync_source
-from backend.tasks.step_labeling import label_trace
 from backend.tasks.viz import precompute
 
 HEAVY_TASKS = {
@@ -36,7 +35,6 @@ HEAVY_TASKS = {
     run_scheduled_agent.name,
     run_curator_now.name,
     precompute.name,
-    label_trace.name,
 }
 
 

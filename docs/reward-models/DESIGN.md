@@ -142,29 +142,42 @@ A label is `steps[].metadata.label`: `chunk_id`, `task_id`, `actor` (`user` or
 reach a trace in one of two ways:
 
 - **Import.** A trace labeled by an offline run carries its labels in step
-  metadata. It is shown as it is and never labeled again.
-- **Automatic labeling** (`services/rm/step_labeling.py`, off unless
-  `STEP_LABELING_ENABLED=true`). Once a trace owned by an account with
-  `reward_models_enabled` has been quiet for five minutes, a beat sweep claims
-  it and a heavy-queue task cuts it into chunks (a user message, an agent
-  message, or a tool call with its result) and asks `STEP_LABEL_MODEL`
-  (default `gpt-6-sol`) to label each chunk, one call per chunk with the whole
-  conversation as a cached prompt prefix (`step_labeler.py`), then scores the
-  steps (below). Labels and scores are stored
-  in `rm_step_labels`, keyed by a fingerprint of the steps, and merged into
-  `GET /traces/{id}` on read; a trace is labeled again only when its steps
-  change. It needs `OPENAI_API_KEY` and sends trace content to OpenAI. Cost
-  grows with the square of trace length, so a trace above
+  metadata. It is used as it is and never sent to a model.
+- **Automatic annotation** (`services/rm/step_labeling.py`). The workbench
+  queues every trace on ingestion; once the agent has responded, a worker cuts
+  the trace into chunks (a user message, an agent message, or a tool call with
+  its result) and asks `STEP_LABEL_MODEL` (default `gpt-6-sol`) to label each
+  chunk, one call per chunk with the whole conversation as a cached prompt
+  prefix (`step_labeler.py`). When a trace grows, chunks that have not changed
+  keep their labels and only the new ones are sent. Labels and scores are
+  stored in `rm_step_labels` and merged into `GET /traces/{id}` on read. It
+  needs `OPENAI_API_KEY` and sends trace content to OpenAI. A trace above
   `STEP_LABELING_MAX_CHUNKS` (80) or `STEP_LABELING_MAX_CHARS` (200000) is
-  recorded as skipped with the reason, as is a failure after three attempts;
-  the response then carries `step_labeling` (`status`, `error`).
+  refused with the reason, which the trace view shows.
 
 ### Step scores
 
 Step scores turn the labels into numbers by fixed rules
 (`services/rm/step_scoring.py`), so the same labels always give the same
-scores and every number can be traced to the label behind it. They are separate
-from the automatic annotation's credit and are shown next to it.
+scores and every number can be traced to the label behind it. They are the
+automatic annotation: `workbench_auto.process_trace` labels and scores each
+recorded trace version and saves the result as that version's evaluation
+(`workbench_evaluation.py`), which is what the trace list, the trace view,
+training from automatic annotations and prompt optimization read.
+
+- An action's **credit** is twice its score (score plus credit passed back,
+  capped to −1..+1), so the −1..+1 shown in the product is the score itself.
+- The **trace score** is the mean of the task scores.
+- The **outcome** is read from the answers, not the score, because the score
+  also carries the cost of the work: `success` when the final answers average
+  0.5 or more (the user accepted them), `failure` below zero (rejected, error,
+  not found), `partial_success` in between (nobody reacted), and
+  `insufficient_evidence` when the trace has no answer.
+
+Evaluations made under the earlier policy, in which a grading model judged the
+outcome and each action directly, stay in the trace's history. That policy's
+two questions are still asked when a proposed correction is checked against
+one recorded action.
 
 - **Work costs points.** A lookup is −0.03, a call that changes something
   −0.05, a question to the user −0.05; an error adds −0.10 and a repeat of an
@@ -182,11 +195,11 @@ from the automatic annotation's credit and are shown next to it.
 - **A task's score** is its final answer's points plus the cost of the work,
   capped to −1..+1.
 
-A step's score is `steps[].metadata.reward` and the task scores are
-`step_scores` on `GET /traces/{id}`. Automatic labeling computes both; an
-imported trace may carry them (`metadata.rubric_summary` on the trace). The
-viewer shows a score chip per step, a sum per turn, the score per task, and
-the breakdown line by line when a step is opened.
+A step's score breakdown is `steps[].metadata.reward` and the task scores are
+`step_scores` on `GET /traces/{id}`; an imported trace may carry both
+(`metadata.rubric_summary` on the trace). The viewer shows the credit per
+step, a sum per turn, the score per task, and the breakdown line by line when
+a step is opened.
 
 ### Supported input formats
 

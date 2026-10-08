@@ -5,7 +5,7 @@ export function traceScore(trace: RmTraceSummary): number | null {
 }
 
 export function traceScoreLabel(): string {
-  return "Automatic trace annotation: estimated probability of success (0–1)";
+  return "Automatic trace annotation: the mean of the task scores, from −1 (bad) to +1 (good)";
 }
 
 export function traceCredits(trace: RmTraceSummary) {

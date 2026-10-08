@@ -168,7 +168,7 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
   const outline = labels.present && !flat ? buildOutline(rows, labels, stepScores?.episodes ?? []) : null;
   const openByDefault = outline ? defaultOpen(outline) : new Set<string>();
   const current = evaluation?.current;
-  const score = current?.outcome !== "insufficient_evidence" ? current?.outcome_probabilities?.success : null;
+  const score = current?.outcome_probabilities?.score ?? (current?.outcome !== "insufficient_evidence" ? current?.outcome_probabilities?.success : null);
   const actionScores = automaticActionScores(evaluation, trace.steps);
   const annotationProgress = automaticAnnotationProgress(evaluation, trace.steps, actionScores);
 
@@ -382,7 +382,7 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
               </div>
             </div>
             <div className="flex shrink-0 items-center gap-1.5 pt-1">
-              <div className="mr-2 text-right" title="Automatic trace annotation: estimated probability of success (0–1)"><div className="text-[10px] text-muted-foreground">Trace score</div><span className="font-mono text-xl font-medium tabular-nums">{score == null ? "—" : score.toFixed(2)}</span></div>
+              <div className="mr-2 text-right" title="Automatic trace annotation: the mean of the task scores, from −1 (bad) to +1 (good)"><div className="text-[10px] text-muted-foreground">Trace score</div><span className="font-mono text-xl font-medium tabular-nums">{score == null ? "—" : score.toFixed(2)}</span></div>
               <TraceReviewAccess traceId={traceId} viewerId={viewerId} />
               <button
                 type="button"
@@ -403,13 +403,8 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
 
           {labelsOn && <TraceLabelSummary items={labels.summary} onJump={revealStep} />}
           {scoresOn && <ScoringExplainer />}
-          {!labels.present && trace.step_labeling && (
-            <p className="m-0 mb-2 text-[12px] text-muted-foreground">
-              {trace.step_labeling.status === "pending" ? "Step labels for this trace are being generated."
-                : trace.step_labeling.status === "skipped" ? "Step labels were not generated for this trace. "
-                : "Generating step labels for this trace failed. "}
-              {trace.step_labeling.error}
-            </p>
+          {evaluation?.queue?.status === "failed" && evaluation.queue.error && (
+            <p className="m-0 mb-2 text-[12px] text-muted-foreground">This trace was not annotated. {evaluation.queue.error}</p>
           )}
           {evaluation?.queue?.status === "failed" && evaluation.owner_user_id === viewerId && <Button size="xs" variant="ghost" onClick={() => void wbAssess(traceId).then(reloadEvaluation).catch((e) => toast.error(errorMessage(e)))}>Retry scoring</Button>}
             <TraceMinimap steps={trace.steps} annotations={trace.annotations} actionScores={actionScores} annotationStatus={annotationProgress.label} unscoredReasons={annotationProgress.unscoredReasons} scroller={scroller} navigation={navigation} onJump={(index) => revealStep(trace.steps[index].id)} />

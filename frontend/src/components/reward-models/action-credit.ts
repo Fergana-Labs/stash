@@ -7,7 +7,9 @@ export function creditColor(credit: number, alpha = 1): string {
 }
 
 export function formatCredit(credit: number): string {
-  return `${credit >= 0 ? "+" : ""}${credit.toFixed(2)}`;
+  // A credit that rounds to zero has no sign.
+  const rounded = Math.round(credit * 100) / 100 || 0;
+  return `${rounded > 0 ? "+" : ""}${rounded.toFixed(2)}`;
 }
 /** The API orders saved scores by model completion time, newest first. */
 export function actionModelId(trace: Pick<RmTraceDetail, "default_evaluator" | "action_scores">, selected: string | null): string | null {

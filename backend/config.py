@@ -337,12 +337,10 @@ class Settings:
     JEV_MODEL: str = os.getenv("JEV_MODEL", "jev-1.13.0")
     JEV_TIMEOUT_SECONDS: float = float(os.getenv("JEV_TIMEOUT_SECONDS", "45"))
 
-    # Automatic step labels for traces (services/rm/step_labeling.py). Off by
-    # default: when on, trace content is sent to OpenAI, so it also needs
-    # OPENAI_API_KEY. Each step is labeled with the whole conversation as
-    # context, so cost grows with the square of trace length; traces above
-    # either limit are skipped.
-    STEP_LABELING_ENABLED: bool = os.getenv("STEP_LABELING_ENABLED", "false").lower() == "true"
+    # Automatic annotation labels each step of a trace (services/rm/step_labeling.py).
+    # Trace content is sent to OpenAI, so it needs OPENAI_API_KEY. Each step is
+    # labeled with the whole conversation as context, so cost grows with the
+    # square of trace length; traces above either limit are refused.
     STEP_LABEL_MODEL: str = os.getenv("STEP_LABEL_MODEL", "gpt-6-sol")
     STEP_LABELING_MAX_CHUNKS: int = int(os.getenv("STEP_LABELING_MAX_CHUNKS", "80"))
     STEP_LABELING_MAX_CHARS: int = int(os.getenv("STEP_LABELING_MAX_CHARS", "200000"))

@@ -217,7 +217,7 @@ function TraceRow({
       </td>
       <td className="px-3 py-2.5 text-right font-mono text-[12px] text-dim tabular-nums">{trace.step_count}</td>
       <td className="px-3 py-2.5 text-right font-mono text-[12px] text-dim tabular-nums">{trace.comment_count}</td>
-      {[traceCredits(trace)?.mean, traceCredits(trace)?.min, traceCredits(trace)?.max].map((credit, i) => <td key={i} className="px-3 py-2.5 text-right font-mono text-[12px] tabular-nums" title="Automatic action annotation from −1 to +1">{credit == null ? "—" : credit.toFixed(2)}</td>)}
+      {[traceCredits(trace)?.mean, traceCredits(trace)?.min, traceCredits(trace)?.max].map((credit, i) => <td key={i} className="px-3 py-2.5 text-right font-mono text-[12px] tabular-nums" title="Automatic action annotation from −1 to +1">{credit == null ? "—" : (Math.round(credit * 100) / 100 || 0).toFixed(2)}</td>)}
       <td className="px-3 py-2.5 text-right" title={traceScoreLabel()}>
         {traceScore(trace) !== null ? <div className="leading-4"><span className="font-mono text-[12px] text-foreground tabular-nums">{traceScore(trace)!.toFixed(2)}</span></div> : <span className="text-muted-foreground">—</span>}
       </td>

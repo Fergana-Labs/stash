@@ -21,18 +21,6 @@ const TEXT_TONE: Record<LabelTone, string> = {
   bad: "text-red-600 dark:text-red-400",
 };
 
-/** The step's final score, as a chip for the row header. */
-export function StepScoreChip({ reward }: { reward: StepReward }) {
-  return (
-    <span
-      title="Score for this step. The lines below show how it adds up."
-      className={cn("inline-flex h-[18px] shrink-0 items-center rounded px-1.5 font-mono text-[10.5px] leading-none font-semibold tabular-nums", TONE[scoreTone(reward.total)])}
-    >
-      {signed(reward.total)}
-    </span>
-  );
-}
-
 /** A plain signed number, for sums shown on a turn. */
 export function PointsChip({ points, title }: { points: number; title: string }) {
   return (

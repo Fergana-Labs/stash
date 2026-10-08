@@ -6,7 +6,6 @@ from uuid import UUID
 
 from rm_worker.context import render_action_input, render_trace_input
 
-from ...config import settings
 from ...database import get_pool
 from . import datasets
 from . import workbench_evaluation as policy
@@ -24,7 +23,7 @@ async def build_pairs(
         owner,
         trace_ids,
         policy.POLICY_VERSION,
-        settings.JEV_MODEL,
+        policy.model(),
     )
     current = {
         r["id"]: r
@@ -46,14 +45,14 @@ async def build_pairs(
         trace_ids,
     )
     blocked = {(r["trace_id"], str(r["step_id"]) if r["step_id"] else None) for r in excluded}
-    actions: dict[UUID, dict[str, int]] = {}
+    actions: dict[UUID, dict[str, float]] = {}
     for call in calls:
         trace_id = current[call["evaluation_id"]]["trace_id"]
         if (trace_id, None) in blocked:
             continue
         answers = {r["criterion_id"]: r for r in call["result"].get("results", [])}
         for target in call["input_snapshot"].get("targets", []):
-            credit = policy.CREDIT_VALUES.get(answers.get(target["question_id"], {}).get("verdict"))
+            credit = policy.credit_of(answers.get(target["question_id"], {}))
             if credit is not None and (trace_id, target["step_id"]) not in blocked:
                 actions.setdefault(trace_id, {})[target["step_id"]] = credit
 

@@ -4,7 +4,6 @@ from uuid import UUID
 
 import asyncpg
 
-from ...config import settings
 from ...database import get_pool
 from . import annotations, evaluator, step_labeling, trace_titles, workbench_evaluation
 from .adapters import CanonicalTrace, TraceFormatError, parse_traces
@@ -237,7 +236,7 @@ async def _evaluation_summaries(summaries: list[dict]) -> None:
             ORDER BY e.trace_id,e.created_at DESC""",
             [r["id"] for r in summaries],
             workbench_evaluation.POLICY_VERSION,
-            settings.JEV_MODEL,
+            workbench_evaluation.model(),
         )
         evaluations = {r["trace_id"]: dict(r) for r in evaluations}
         calls = await pool.fetch(
@@ -247,15 +246,18 @@ async def _evaluation_summaries(summaries: list[dict]) -> None:
         credits: dict[UUID, list[float]] = {}
         for call in calls:
             for result in call["result"].get("results", []):
-                credit = workbench_evaluation.CREDIT_VALUES.get(result.get("verdict"))
+                credit = workbench_evaluation.credit_of(result)
                 if credit is not None:
                     credits.setdefault(call["evaluation_id"], []).append(credit / 2)
         for evaluation in evaluations.values():
             probabilities = evaluation.pop("outcome_probabilities") or {}
-            evaluation["score"] = (
+            # A rule score stands on its own; the earlier policy's estimate
+            # of success means nothing without an established outcome.
+            evaluation["score"] = probabilities.get(
+                "score",
                 probabilities.get("success")
                 if evaluation["outcome"] != "insufficient_evidence"
-                else None
+                else None,
             )
             values = credits.get(evaluation["id"], [])
             evaluation["action_credit"] = (
