@@ -290,7 +290,6 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
             <div className="flex shrink-0 items-center gap-1.5">
               <TraceScore evaluation={evaluation} error={evaluationError} />
               {evaluation?.queue?.status === "failed" && evaluation.owner_user_id === viewerId && <Button size="xs" variant="ghost" onClick={() => void wbAssess(traceId).then(reloadEvaluation).catch((e) => toast.error(errorMessage(e)))}>Retry scoring</Button>}
-              <TraceReviewAccess traceId={traceId} viewerId={viewerId} />
               <button
                 type="button"
                 aria-expanded={commentsOpen}
@@ -305,6 +304,7 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
               >
                 Comments{ordered.length > 0 && ` (${ordered.length})`}
               </button>
+              <TraceReviewAccess traceId={traceId} viewerId={viewerId} />
             </div>
           </header>
 
