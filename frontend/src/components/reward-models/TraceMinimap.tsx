@@ -29,10 +29,11 @@ function kindOf(step: RmStep): keyof typeof KINDS {
   return step.tool_name == null ? "assistant" : "call";
 }
 
-function LatestTraceMinimap({ steps, annotations, actionScores, scroller, navigation, onJump }: {
+function LatestTraceMinimap({ steps, annotations, actionScores, annotationStatus, scroller, navigation, onJump }: {
   steps: RmStep[];
   annotations: RmAnnotation[];
   actionScores?: Map<string, RmActionScore>;
+  annotationStatus?: string;
   scroller: RefObject<HTMLDivElement | null>;
   navigation: RefObject<HTMLDivElement | null>;
   onJump: (index: number) => void;
@@ -104,10 +105,12 @@ function LatestTraceMinimap({ steps, annotations, actionScores, scroller, naviga
         {Object.entries(KINDS).filter(([kind]) => steps.some((step) => kindOf(step) === kind)).map(([kind, style]) => (
           <span key={kind} className="inline-flex items-center gap-1"><span className={cn("h-2 w-2", style.color)} />{style.label}</span>
         ))}
-        {showingCredit && <span>Height: credit −1 to +1</span>}
+        <span>Height: credit −1 to +1</span>
+        <span>Faint bars: unscored</span>
         <span className="inline-flex items-center gap-1"><span className="size-1.5 rounded-full bg-amber-400" />Comment</span>
         <span className="ml-auto shrink-0 tabular-nums">Step {steps[activeIndex]?.index + 1} of {steps.length}</span>
       </div>
+      {annotationStatus && <p role="status" className="m-0 mb-1 text-[11px] text-muted-foreground">{annotationStatus}</p>}
       <div
         className="relative flex h-[52px] touch-none items-end"
         style={{ columnGap: `min(1px, ${25 / steps.length}%)` }}
@@ -137,7 +140,7 @@ function LatestTraceMinimap({ steps, annotations, actionScores, scroller, naviga
           const kind = KINDS[kindOf(step)];
           const score = actionScores?.get(step.id);
           const actionType = kind.label;
-          const label = `Step ${step.index + 1}: ${actionType}${step.tool_name === null ? "" : `, ${step.tool_name}`}${score ? `, credit ${formatCredit(score.credit)}` : showingCredit ? ", unscored" : ""}`;
+          const label = `Step ${step.index + 1}: ${actionType}${step.tool_name === null ? "" : `, ${step.tool_name}`}${score ? `, credit ${formatCredit(score.credit)}${score.stale ? ", previous annotation" : ""}` : showingCredit ? ", unscored" : ""}`;
           return (
             <button
               key={step.id}
