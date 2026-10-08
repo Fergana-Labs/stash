@@ -139,7 +139,9 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
   const focusedGroup = resolveGroupPath(groups, outlinePath).at(-1);
   const browsingSections = focusedGroup ? focusedGroup.children.length > 0 : !(groups.length === 1 && !groups[0].children.length && groups[0].rows.length <= 8);
   const sectionGroups = browsingSections ? focusedGroup?.children ?? groups : [];
-  const assessments = useSectionSummaries(traceId, sectionGroups);
+  // Retain global map titles if we enter a subsection before its root batch finishes.
+  const assessmentGroups = [...new Map([...(groups.length > 1 ? groups : []), ...sectionGroups].map((group) => [group.key, group])).values()];
+  const assessments = useSectionSummaries(traceId, assessmentGroups);
 
   if (!trace && loadError) return <div role="alert" className="p-8 text-sm">Couldn’t load this trace. <button onClick={() => void load()} className="underline">Retry</button></div>;
   if (!trace || !user) return <TraceSkeleton />;
@@ -313,7 +315,7 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
 
   return (
     <div className="flex h-full min-h-0">
-      <TraceScrollRail key={outlinePath.join("/")} sections={sectionGroups} rows={focusedGroup?.rows ?? rows}
+      <TraceScrollRail groups={groups} path={outlinePath} rows={rows} onPath={setOutlinePath} onOpenRows={openRows} onStep={revealStep}
         copy={assessments.copy} stepNumber={(step) => presentation.numberById.get(step.id) ?? step.index + 1} scroller={scroller} />
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <div ref={navigation} className="z-20 shrink-0 border-b border-border bg-background px-6 py-2">

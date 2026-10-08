@@ -6,7 +6,7 @@ export function traceSectionTarget(node: TraceGroup): string {
   return `trace-section-${node.key}`;
 }
 
-export function traceScrollMarkers(rows: TraceRow[]): ConversationMarker[] {
+export function traceScrollMarkers(rows: TraceRow[], includeAllRows = false): ConversationMarker[] {
   // Thinking steps remain readable in the trace, but do not stand in for the
   // assistant's response when previewing an exchange.
   const exchanges = conversationMarkers(rows
@@ -15,7 +15,7 @@ export function traceScrollMarkers(rows: TraceRow[]): ConversationMarker[] {
       const step = rowSteps(row)[0];
       return { targetId: `step-${step.id}`, role: step.role, content: step.content };
     }));
-  if (exchanges.length > 1) return exchanges;
+  if (exchanges.length > 1 && !includeAllRows) return exchanges;
 
   // A single-request trace can still contain hundreds of actions. In that case
   // (and in Tools view), provide destinations for the individual visible rows.

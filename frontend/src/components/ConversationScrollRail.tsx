@@ -46,13 +46,16 @@ export function conversationMarkers(messages: { targetId: string; role: string; 
 }
 
 /** Lives beside (not inside) the scroller so the rail stays put in long chats. */
-export default function ConversationScrollRail({ items, scroller, header, onJump }: {
+export default function ConversationScrollRail({ items, scroller, header, onJump, activeTargetId }: {
   items: ConversationMarker[];
   scroller: RefObject<HTMLDivElement | null>;
   header?: RefObject<HTMLDivElement | null>;
   onJump?: (item: ConversationMarker) => void;
+  /** Keep global orientation when the active destination's DOM is collapsed. */
+  activeTargetId?: string;
 }) {
-  const [activeIndex, setActiveIndex] = useState(0);
+  const [scrollIndex, setActiveIndex] = useState(0);
+  const activeIndex = activeTargetId === undefined ? scrollIndex : Math.max(0, items.findIndex((item) => item.targetId === activeTargetId));
   const [previewIndex, setPreviewIndex] = useState<number | null>(null);
   const rail = useRef<HTMLElement>(null);
   const drag = useRef<{ pointerId: number; index: number } | null>(null);
@@ -60,7 +63,7 @@ export default function ConversationScrollRail({ items, scroller, header, onJump
 
   useEffect(() => {
     const container = scroller.current;
-    if (!container || items.length < 2) return;
+    if (!container || items.length < 2 || activeTargetId !== undefined) return;
     let frame = 0;
     let positions: { index: number; top: number }[] = [];
     const targets = items.map((item, index) => ({
@@ -100,7 +103,7 @@ export default function ConversationScrollRail({ items, scroller, header, onJump
       observer.disconnect();
       container.removeEventListener("scroll", schedule);
     };
-  }, [items, scroller, header]);
+  }, [items, scroller, header, activeTargetId]);
 
   if (items.length < 2) return null;
 

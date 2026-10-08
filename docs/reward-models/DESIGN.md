@@ -223,11 +223,14 @@ opens it with leaf rows expanded; left returns to the parent and restores the
 previous selection. Mouse movement highlights a card and clicking opens it.
 Keyboard navigation leaves text inputs, dialogs, the minimap, and other controls
 alone. Breadcrumbs and Escape also provide a way back.
-The left rail scrubs the visible level: section cards while browsing tasks or
-subtasks, and rendered steps inside a leaf. It never opens another level during
-a drag. Its first marker returns to the top of the current view, and scrubbing
-returns focus to the explorer so arrows remain usable. The top action minimap
-still provides direct navigation across the entire trace.
+The left rail keeps the same global task markers at every depth and highlights
+the containing task inside a subsection, even when its overview card is not
+mounted. From the overview it scrolls between task cards; from a subsection it
+opens the chosen global task without drilling into its leaves. Single-task
+traces keep their full-trace step destinations. The first marker returns to the
+whole-trace overview and scrolls to the top. The rail stays mounted during a
+drag, and scrubbing returns focus to the explorer so arrows remain usable. The
+top action minimap also provides direct navigation across the entire trace.
 
 `POST /api/v1/rm/traces/{trace_id}/section-summaries` accepts 1–4 ranges of
 `first_step_id` and `last_step_id`. It checks owner/reviewer access and range
