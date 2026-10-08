@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
 import type { RmTraceSummary } from "@/lib/types";
 import TraceTable from "./TraceTable";
 
-const { push } = vi.hoisted(() => ({ push: vi.fn() }));
+const { push, search } = vi.hoisted(() => ({ push: vi.fn(), search: vi.fn() }));
+vi.mock("@/lib/api", () => ({ rmListAllTraces: search }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push }) }));
 beforeEach(() => vi.clearAllMocks());
 
@@ -57,10 +58,13 @@ it("selects picker rows without leaving the training sheet", () => {
   expect(push).not.toHaveBeenCalled();
 });
 
-it("identifies the model behind a displayed score without requiring hover", () => {
-  const trace = { ...traces[0], latest_score: { reward_model_id: "model-1", reward_model_name: "Refund quality", score: 6.011 } };
+it("shows automatic annotations separately from learned model scores", () => {
+  const trace = { ...traces[0], latest_score: { reward_model_id: "model-1", reward_model_name: "Refund quality", score: 6.011 }, evaluation: { id: "eval", current: true, status: "completed", outcome: "success", total_actions: 5, credited_actions: 5, score: 0.87, action_credit: { mean: 0.25, min: -1, max: 1, count: 5 } } };
   render(<TraceTable traces={[trace]} selected={new Set()} onSelectedChange={vi.fn()} mode="picker" />);
-  expect(screen.getByRole("cell", { name: "6.011 Refund quality" })).toBeVisible();
+  expect(screen.getByRole("cell", { name: "0.87" })).toBeVisible();
+  for (const value of ["0.25", "-1.00", "1.00"]) expect(screen.getByRole("cell", { name: value })).toBeVisible();
+  expect(screen.queryByText("Refund quality")).not.toBeInTheDocument();
+  expect(screen.queryByText("6.011")).not.toBeInTheDocument();
 });
 
 it("shows and sorts comment counts independently of stored ratings", () => {
@@ -75,21 +79,31 @@ it("shows and sorts comment counts independently of stored ratings", () => {
   expect(screen.getByRole("cell", { name: "12" })).toBeVisible();
 });
 
-it("distinguishes agent failure, evaluator error, and stale outcomes", () => {
+it("filters scored traces with the Stash dropdown and hides stale annotations", async () => {
   const rows = traces.map((trace, i) => ({ ...trace,
-    evaluation: { id: `eval-${i}`, current: i !== 2, status: i === 1 ? "failed" : "completed", outcome: i === 1 ? null : "failure", total_actions: 5, credited_actions: i === 1 ? 0 : 5 },
-    workbench: { assessed_actions: 0, total_actions: 5, violations: 0, pending: 0, failed: 0, queue_status: i === 1 ? "failed" : "completed" },
+    evaluation: { id: `eval-${i}`, current: i !== 2, status: i === 1 ? "failed" : "completed", outcome: i === 1 ? null : "failure", total_actions: 5, credited_actions: i === 1 ? 0 : 5, score: i === 1 ? null : 0.12 },
   }));
   render(<TraceTable traces={rows} selected={new Set()} onSelectedChange={vi.fn()} mode="browse" />);
-  expect(screen.getByText("Earlier evaluation in history")).toBeVisible();
-  expect(screen.getByText("5 / 5 actions credited")).toBeVisible();
-  expect(screen.queryByText("Mean action credit")).not.toBeInTheDocument();
-  fireEvent.change(screen.getByRole("combobox", { name: "Filter evaluation status" }), { target: { value: "unsuccessful" } });
+  expect(screen.getAllByRole("cell", { name: "0.12" })).toHaveLength(1);
+  fireEvent.click(screen.getByRole("combobox", { name: "Filter traces" }));
+  fireEvent.click(await screen.findByRole("option", { name: "Scored" }));
   expect(screen.getByRole("link", { name: "Trace 20" })).toBeVisible();
   expect(screen.queryByRole("link", { name: "Trace 10" })).not.toBeInTheDocument();
   expect(screen.queryByRole("link", { name: "Trace 3" })).not.toBeInTheDocument();
-  fireEvent.change(screen.getByRole("combobox", { name: "Filter evaluation status" }), { target: { value: "failed" } });
-  expect(screen.getByRole("link", { name: "Trace 3" })).toBeVisible();
-  expect(screen.getByText("Evaluation error")).toBeVisible();
+});
+
+it("finds matches inside content and ignores a late result from an older search", async () => {
+  let finishOld!: (value: RmTraceSummary[]) => void;
+  search.mockImplementationOnce(() => new Promise((resolve) => { finishOld = resolve; }));
+  search.mockResolvedValueOnce([traces[1]]);
+  render(<Table />);
+  const input = screen.getByRole("textbox", { name: "Search titles and trace content" });
+  fireEvent.change(input, { target: { value: "old" } });
+  await waitFor(() => expect(search).toHaveBeenCalledWith("old"));
+  fireEvent.change(input, { target: { value: "needle in tool output" } });
+  await waitFor(() => expect(screen.getByRole("link", { name: "Trace 3" })).toBeVisible());
+  await act(async () => finishOld([traces[0]]));
   expect(screen.queryByRole("link", { name: "Trace 20" })).not.toBeInTheDocument();
+  fireEvent.change(input, { target: { value: "" } });
+  expect(screen.getByRole("link", { name: "Trace 20" })).toBeVisible();
 });

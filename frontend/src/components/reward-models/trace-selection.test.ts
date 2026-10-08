@@ -33,12 +33,12 @@ describe("sortTraces", () => {
     expect(sortTraces(traces, "comments", "descending").map((t) => t.id)).toEqual(["d", "a", "b", "c"]);
   });
 
-  it("keeps unscored traces last while respecting zero and negative rewards", () => {
-    const rows = [traces[0], ...[0, -2].map((score, i) => ({
-      ...traces[i + 1], latest_score: { reward_model_id: "model", reward_model_name: "Model", score },
+  it("keeps unscored traces last while respecting zero annotations", () => {
+    const rows = [traces[0], ...[0.2, 0].map((score, i) => ({
+      ...traces[i + 1], evaluation: { id: "evaluation", current: true, status: "completed", outcome: "failure", total_actions: 1, credited_actions: 1, score },
     }))];
-    expect(sortTraces(rows, "reward", "ascending").map((t) => t.id)).toEqual(["c", "b", "a"]);
-    expect(sortTraces(rows, "reward", "descending").map((t) => t.id)).toEqual(["b", "c", "a"]);
+    expect(sortTraces(rows, "reward", "ascending", "automatic").map((t) => t.id)).toEqual(["c", "b", "a"]);
+    expect(sortTraces(rows, "reward", "descending", "automatic").map((t) => t.id)).toEqual(["b", "c", "a"]);
   });
 
   it("sorts imported dates by the actual instant, including timezone offsets", () => {

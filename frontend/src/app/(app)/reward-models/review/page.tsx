@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import MonitoringNav from "@/components/reward-models/MonitoringNav";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useState } from "react";
 import { useBreadcrumbs } from "@/components/BreadcrumbContext";
@@ -22,6 +23,7 @@ function Review() {
   const [filter, setFilter] = useState(feedbackId ? "all" : "pending");
   const visible = data?.filter((item) => filter === "all" || item.review_status === filter) ?? [];
   return <RmPage title="Review" description="Review corrections and their proposed interpretation. Accepted feedback can prepare separate grader and agent-instruction changes; it does not release them.">
+    <MonitoringNav />
     <ErrorNotice error={error} onRetry={() => void reload()} />
     {feedbackId && <p className="text-[12px] text-muted-foreground">Viewing the source correction. <Link href="/reward-models/review" className="underline">Open all feedback</Link>.</p>}
     {!feedbackId && <ReviewSamples onLabeled={reload} />}

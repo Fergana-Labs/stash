@@ -50,7 +50,7 @@ def run_job(inputs: dict[str, bytes]) -> dict[str, bytes]:
             from rm_worker.score_run import run
 
             run(directory)
-            outputs = ["result.json", "action_scores.jsonl"]
+            outputs = ["result.json", "action_scores.jsonl", "scores.jsonl"]
         elif kind == "evaluate":
             from rm_worker.evaluate_run import run
 
@@ -73,7 +73,7 @@ def main() -> None:
     job = json.loads((directory / "job.json").read_text())
     names = {
         "train": ["job.json", "pairs.jsonl", "score_items.jsonl", "action_score_items.jsonl"],
-        "score": ["job.json", "action_score_items.jsonl"],
+        "score": ["job.json", "action_score_items.jsonl", "score_items.jsonl"],
         "evaluate": ["job.json", "evaluation_pairs.jsonl"],
         "gepa": ["job.json", "gepa_examples.jsonl"],
     }[job["kind"]]

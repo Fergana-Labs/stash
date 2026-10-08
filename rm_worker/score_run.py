@@ -13,14 +13,29 @@ def run(directory: Path) -> None:
 
     job = json.loads((directory / "job.json").read_text())
     model_dir = download_model(job["reward_model_key"], directory / "checkpoint")
-    stats = json.loads((model_dir / "action_reward_stats.json").read_text())
     model = RewardModel(model_dir)
     items = [
         json.loads(line)
         for line in (directory / "action_score_items.jsonl").read_text().splitlines()
     ]
-    rows = action_score_rows(items, model.score([item["text"] for item in items]), stats)
+    rows = []
+    if items:
+        stats = json.loads((model_dir / "action_reward_stats.json").read_text())
+        rows = action_score_rows(items, model.score([item["text"] for item in items]), stats)
     (directory / "action_scores.jsonl").write_text("".join(json.dumps(row) + "\n" for row in rows))
+    trace_path = directory / "score_items.jsonl"
+    trace_items = (
+        [json.loads(line) for line in trace_path.read_text().splitlines()]
+        if trace_path.exists()
+        else []
+    )
+    trace_scores = model.score([item["text"] for item in trace_items]) if trace_items else []
+    (directory / "scores.jsonl").write_text(
+        "".join(
+            json.dumps({"trace_id": item["trace_id"], "score": score}) + "\n"
+            for item, score in zip(trace_items, trace_scores, strict=True)
+        )
+    )
     (directory / "result.json").write_text(json.dumps({"action_count": len(rows)}))
 
 

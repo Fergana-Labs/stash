@@ -17,7 +17,7 @@ from uuid import UUID
 from rm_worker.release_gate import check_partition
 
 from ...database import get_pool
-from . import datasets, feedback
+from . import automatic_dataset, datasets, feedback
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 LOG_TAIL_CHARS = 2000
@@ -71,16 +71,23 @@ async def run_training(model_id: UUID) -> None:
     owner_user_id = model["owner_user_id"]
     config = model.get("training_config")
 
-    pairs = (
-        []
-        if config
-        else await datasets.build_pairs(owner_user_id, model["trace_ids"], model["max_pairs"])
-    )
-    kwargs = {"training_config": config} if config else {}
-    inferred_pairs, findings = await feedback.build_feedback_pairs(
-        owner_user_id, model["trace_ids"], model["max_pairs"], **kwargs
-    )
-    pairs.extend(inferred_pairs)
+    automatic = bool(config and config.get("annotation_source") == "automatic")
+    if automatic:
+        pairs = await automatic_dataset.build_pairs(
+            owner_user_id, model["trace_ids"], config, model["max_pairs"]
+        )
+        findings = []
+    else:
+        pairs = (
+            []
+            if config
+            else await datasets.build_pairs(owner_user_id, model["trace_ids"], model["max_pairs"])
+        )
+        kwargs = {"training_config": config} if config else {}
+        inferred_pairs, findings = await feedback.build_feedback_pairs(
+            owner_user_id, model["trace_ids"], model["max_pairs"], **kwargs
+        )
+        pairs.extend(inferred_pairs)
     pairs = pairs[: model["max_pairs"]]
     if config:
         for pair in pairs:
@@ -132,11 +139,17 @@ async def run_training(model_id: UUID) -> None:
         job.update(input_version=3, fixed_split=True, rubric=config["rubric"])
     (directory / "job.json").write_text(json.dumps(job))
     _write_jsonl(directory / "pairs.jsonl", pairs)
-    _write_jsonl(
-        directory / "score_items.jsonl", [] if config else await datasets.score_items(owner_user_id)
+    trace_items = (
+        await automatic_dataset.score_items(owner_user_id, model["trace_ids"], config["rubric"])
+        if automatic
+        and any(p.get("granularity") == "trace" and p["partition"] == "train" for p in pairs)
+        else []
+        if config
+        else await datasets.score_items(owner_user_id)
     )
+    _write_jsonl(directory / "score_items.jsonl", trace_items)
     ids = None
-    if config:
+    if config and not automatic:
         # Initial training scores the sampled actions from these tasks. Further
         # traces are scored explicitly via the existing score endpoint.
         targets = {(f["trace_id"], f["step_index"]) for f in findings}
@@ -163,9 +176,16 @@ async def run_training(model_id: UUID) -> None:
     validate_action_scores(
         action_items if result["metrics"].get("action_scoring_version") else [], action_scores
     )
+    if automatic:
+        validate_trace_scores(trace_items, scores)
     # Scores, metrics and the succeeded status land together: a model is either
     # fully succeeded or not at all.
     async with pool.acquire() as conn, conn.transaction():
+        if automatic:
+            await conn.fetch(
+                "SELECT id FROM rm_traces WHERE id=ANY($1::uuid[]) FOR NO KEY UPDATE",
+                model["trace_ids"],
+            )
         await store_action_scores(conn, owner_user_id, model_id, action_scores)
         await conn.execute(
             """
@@ -178,6 +198,21 @@ async def run_training(model_id: UUID) -> None:
             job["artifact_key"],
         )
         await conn.execute("DELETE FROM rm_trace_scores WHERE reward_model_id = $1", model_id)
+        # Do not attach whole-trace scores to a revision that changed during training.
+        if automatic:
+            current = await conn.fetch(
+                "SELECT trace_id,id FROM rm_trace_steps WHERE trace_id=ANY($1::uuid[])",
+                model["trace_ids"],
+            )
+            revisions = {}
+            for row in current:
+                revisions.setdefault(str(row["trace_id"]), set()).add(str(row["id"]))
+            valid = {
+                item["trace_id"]
+                for item in trace_items
+                if set(item["step_ids"]) == revisions.get(item["trace_id"])
+            }
+            scores = [row for row in scores if row["trace_id"] in valid]
         # A trace deleted while the job ran has nothing left to attach a score to.
         await conn.executemany(
             """
@@ -189,6 +224,14 @@ async def run_training(model_id: UUID) -> None:
                 for row in scores
             ],
         )
+
+
+def validate_trace_scores(items: list[dict], scores: list[dict]) -> None:
+    expected = {item["trace_id"] for item in items}
+    if len(scores) != len(expected) or {row["trace_id"] for row in scores} != expected:
+        raise ValueError("Worker did not return exactly the requested trace scores")
+    if any(not math.isfinite(row["score"]) for row in scores):
+        raise ValueError("Worker returned an invalid trace score")
 
 
 def validate_action_scores(items: list[dict], scores: list[dict]) -> None:
@@ -253,18 +296,30 @@ async def run_scoring(run_id: UUID) -> None:
         input_version=(run["metrics"] or {}).get("input_version", 1),
         rubric=(run.get("training_config") or {}).get("rubric", ()),
     )
-    if not items:
-        raise ValueError("Trace has no assistant actions to score")
+    if not (run["metrics"] or {}).get("action_scoring_version"):
+        items = []
     directory = job_dir(run_id)
     directory.mkdir(parents=True, exist_ok=True)
     (directory / "job.json").write_text(
         json.dumps({"kind": "score", "reward_model_key": run["artifact_key"]})
     )
     _write_jsonl(directory / "action_score_items.jsonl", items)
+    trace_items = (
+        await automatic_dataset.score_items(
+            run["owner_user_id"], [run["trace_id"]], run["training_config"]["rubric"]
+        )
+        if (run["metrics"] or {}).get("trace_scoring_version") == 1
+        else []
+    )
+    if not items and not trace_items:
+        raise ValueError("Trace has no supported actions or outcome to score")
+    _write_jsonl(directory / "score_items.jsonl", trace_items)
     module = "rm_worker.modal_runner" if run["compute"] == "modal" else "rm_worker.score_run"
     await run_worker(module, directory)
     scores = _read_jsonl(directory / "action_scores.jsonl")
     validate_action_scores(items, scores)
+    trace_scores = _read_jsonl(directory / "scores.jsonl") if trace_items else []
+    validate_trace_scores(trace_items, trace_scores)
     async with pool.acquire() as conn, conn.transaction():
         # Ingestion locks the trace row while replacing its steps. Lock it through publication.
         await conn.fetchrow(
@@ -273,9 +328,19 @@ async def run_scoring(run_id: UUID) -> None:
         current = await conn.fetch(
             "SELECT id FROM rm_trace_steps WHERE trace_id = $1", run["trace_id"]
         )
-        if not {UUID(item["step_id"]) for item in items} <= {s["id"] for s in current}:
+        if (
+            trace_items and set(trace_items[0]["step_ids"]) != {str(s["id"]) for s in current}
+        ) or not {UUID(item["step_id"]) for item in items} <= {s["id"] for s in current}:
             raise ValueError("Trace changed while scoring; score it again")
         await store_action_scores(conn, run["owner_user_id"], run["reward_model_id"], scores)
+        if trace_scores:
+            await conn.execute(
+                """INSERT INTO rm_trace_scores(reward_model_id,trace_id,score) VALUES($1,$2,$3)
+                ON CONFLICT (reward_model_id,trace_id) DO UPDATE SET score=EXCLUDED.score,created_at=now()""",
+                run["reward_model_id"],
+                run["trace_id"],
+                trace_scores[0]["score"],
+            )
         await conn.execute(
             "UPDATE rm_scoring_runs SET status = 'succeeded', finished_at = now() WHERE id = $1",
             run_id,

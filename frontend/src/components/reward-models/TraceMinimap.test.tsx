@@ -30,7 +30,7 @@ function renderMap(visibleSteps = steps, onJump = vi.fn(), actionScores?: Map<st
     const element = document.createElement("div");
     element.id = `step-${step.id}`;
     // Several short rows fit below the graph even at the bottom.
-    const rect = { bottom: 200 + step.index * 50 } as DOMRect;
+    const rect = { top: 150 + step.index * 50, bottom: 200 + step.index * 50 } as DOMRect;
     element.getBoundingClientRect = () => rect;
     element.getClientRects = () => [rect] as unknown as DOMRectList;
     content.append(element);
@@ -43,23 +43,24 @@ it("reaches the final step at the bottom even when earlier steps are still visib
   const container = renderMap();
   container.scrollTop = 500;
   fireEvent.scroll(container);
-  await waitFor(() => expect(screen.getByRole("button", { name: "Step 3: Assistant" })).toHaveAttribute("aria-current", "step"));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Step 3: Response" })).toHaveAttribute("aria-current", "step"));
   container.scrollTop = 400;
   fireEvent.scroll(container);
-  await waitFor(() => expect(screen.getByRole("button", { name: "Step 1: Assistant" })).toHaveAttribute("aria-current", "step"));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Step 1: Response" })).toHaveAttribute("aria-current", "step"));
 });
 
-it("shows the selected model's action credit and retains keyboard step navigation", () => {
+it("shows credit through height and keeps action type colors and retains keyboard step navigation", () => {
   const onJump = vi.fn();
   renderMap(steps, onJump, new Map([["0", { step_id: "0", credit: -0.4 } as RmActionScore]]));
-  const scored = screen.getByRole("button", { name: "Step 1: Assistant, credit -0.40" });
-  expect(scored.lastElementChild?.getAttribute("style")).toContain("background-color");
-  const unscored = screen.getByRole("button", { name: "Step 2: Assistant, unscored" });
-  expect(unscored.lastElementChild?.getAttribute("style")).toBeNull();
-  expect(unscored.lastElementChild).toHaveClass("bg-muted-foreground/30");
-  expect(screen.getByText("Unscored")).toBeVisible();
+  const scored = screen.getByRole("button", { name: "Step 1: Response, credit -0.40" });
+  expect(scored.lastElementChild).toHaveStyle({ height: "18px" });
+  expect(scored.lastElementChild).toHaveClass("bg-blue-500");
+  const unscored = screen.getByRole("button", { name: "Step 2: Response, unscored" });
+  expect(unscored.lastElementChild).toHaveStyle({ height: "6px" });
+  expect(unscored.lastElementChild).toHaveClass("bg-blue-500", "opacity-35");
+  expect(screen.getByText("Height: credit −1 to +1")).toBeVisible();
   expect(screen.queryByText("User", { exact: true })).not.toBeInTheDocument();
-  expect(screen.queryByText("Assistant", { exact: true })).not.toBeInTheDocument();
+  expect(screen.getByText("Response", { exact: true })).toBeVisible();
   fireEvent.keyDown(scored, { key: "ArrowRight" });
   expect(onJump).toHaveBeenCalledWith(1);
 });
@@ -68,7 +69,7 @@ it("uses the final displayed step when filters hide the end of the trace", async
   const container = renderMap(steps.slice(0, 2));
   container.scrollTop = 500;
   fireEvent.scroll(container);
-  await waitFor(() => expect(screen.getByRole("button", { name: "Step 2: Assistant" })).toHaveAttribute("aria-current", "step"));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Step 2: Response" })).toHaveAttribute("aria-current", "step"));
 });
 
 it("scrubs across steps, clamps at the ends, and stops on release", () => {
@@ -96,6 +97,15 @@ it("ends scrubbing when the pointer is cancelled and retains keyboard activation
   fireEvent.pointerDown(map, { pointerId: 1, button: 0, clientX: 10 });
   fireEvent.pointerCancel(map, { pointerId: 1 });
   fireEvent.pointerMove(map, { pointerId: 1, clientX: 250 });
-  fireEvent.click(screen.getByRole("button", { name: "Step 3: Assistant" }), { detail: 0 });
+  fireEvent.click(screen.getByRole("button", { name: "Step 3: Response" }), { detail: 0 });
   expect(onJump.mock.calls).toEqual([[0], [2]]);
+});
+
+it("jumps to the clicked bar even when its position falls outside an equal-width bucket", () => {
+  const onJump = vi.fn();
+  renderMap(steps, onJump);
+  const map = screen.getByRole("group", { name: "Step map" });
+  map.getBoundingClientRect = () => ({ left: 100, width: 300 }) as DOMRect;
+  fireEvent.pointerDown(screen.getByRole("button", { name: "Step 3: Response" }).lastElementChild!, { pointerId: 1, button: 0, clientX: 290 });
+  expect(onJump).toHaveBeenCalledWith(2);
 });

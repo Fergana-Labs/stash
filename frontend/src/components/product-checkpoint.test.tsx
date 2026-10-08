@@ -35,13 +35,12 @@ beforeEach(() => {
 it.each<ProductCheckpoint>(["latest", "floodgate-2026-10-05"])("selects the account's navigation: %s", (checkpoint) => {
   render(<RewardRail user={{ ...user, product_checkpoint: checkpoint }} onLogout={vi.fn()} />);
   expect(screen.getByRole("link", { name: "Traces" })).toBeVisible();
-  expect(screen.getByRole("link", { name: "Skills" })).toBeVisible();
   expect(screen.getByRole("link", { name: "Reward models" })).toBeVisible();
   if (checkpoint === "latest") {
-    expect(screen.getByRole("link", { name: "Review" })).toBeVisible();
-    expect(screen.getByRole("link", { name: "Changes" })).toBeVisible();
-    expect(screen.getByRole("link", { name: "Optimization" })).toBeVisible();
+    expect(screen.getByRole("link", { name: "Monitoring" })).toBeVisible();
+    for (const name of ["Skills", "Review", "Changes", "Optimization"]) expect(screen.queryByRole("link", { name })).not.toBeInTheDocument();
   } else {
+    expect(screen.getByRole("link", { name: "Skills" })).toBeVisible();
     expect(screen.queryByRole("link", { name: "Review" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Changes" })).not.toBeInTheDocument();
   }
@@ -52,8 +51,8 @@ it.each<ProductCheckpoint>(["latest", "floodgate-2026-10-05"])("shows the checkp
     <TraceTable traces={[trace]} selected={new Set()} onSelectedChange={vi.fn()} mode="browse" />
   </ProductCheckpointProvider>);
   expect(screen.getByRole("link", { name: "Heavi production trace" })).toBeVisible();
-  expect(screen.queryByRole("columnheader", { name: "Evaluation" }) !== null).toBe(checkpoint === "latest");
-  expect(screen.queryByRole("combobox", { name: "Filter evaluation status" }) !== null).toBe(checkpoint === "latest");
+  expect(screen.queryByRole("columnheader", { name: "Trace score" }) !== null).toBe(checkpoint === "latest");
+  expect(screen.queryByRole("combobox", { name: "Filter traces" }) !== null).toBe(checkpoint === "latest");
   expect(screen.queryByRole("button", { name: "Mean action credit" }) !== null).toBe(checkpoint !== "latest");
 });
 

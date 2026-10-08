@@ -92,6 +92,13 @@ def render_action_input(steps: list[dict], rubric: list[str] | tuple[str, ...] =
     return PREFIX + json.dumps(action_context(steps, rubric), ensure_ascii=True)
 
 
+def render_trace_input(steps: list[dict], rubric: list[str] | tuple[str, ...] = ()) -> str:
+    """Distinguish a whole-trace judgment from a judgment of its final action."""
+    context = action_context(steps, rubric)
+    context["action"] = "Assess the outcome of the entire recorded trace.\n" + context["action"]
+    return PREFIX + json.dumps(context, ensure_ascii=True)
+
+
 def encode_action_input(tokenizer, text: str) -> list[int]:
     """Fixed section budgets keep the task and instructions alongside recent tools.
 

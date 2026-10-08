@@ -7,18 +7,23 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { Search, Trash2 } from "lucide-react";
+import { Select } from "@/components/ui/select";
+import { rmListAllTraces } from "@/lib/api";
+import { traceScore, traceScoreLabel, traceCredits } from "./trace-metrics";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { RmTraceSummary } from "@/lib/types";
-import { formatScore, relativeTime } from "./rm-text";
-import { searchTraces, selectRange, sortTraces, toggleAllVisible, type TraceSortKey, type TraceSortDirection } from "./trace-selection";
+import { relativeTime } from "./rm-text";
+import { selectRange, sortTraces, toggleAllVisible, type TraceSortKey, type TraceSortDirection } from "./trace-selection";
 
 const COLUMNS: { key: TraceSortKey; label: string; className: string }[] = [
   { key: "title", label: "Trace", className: "" },
   { key: "steps", label: "Steps", className: "w-20 text-right" },
   { key: "comments", label: "Comments", className: "w-28 text-right" },
-  { key: "credit", label: "Mean action credit", className: "w-40 text-right" },
-  { key: "reward", label: "Latest score", className: "w-36 text-right" },
+  { key: "credit", label: "Avg. credit", className: "w-28 text-right" },
+  { key: "minCredit", label: "Min. credit", className: "w-24 text-right" },
+  { key: "maxCredit", label: "Max. credit", className: "w-24 text-right" },
+  { key: "reward", label: "Trace score", className: "w-36 text-right" },
   { key: "imported", label: "Imported", className: "w-28 text-right" },
 ];
 
@@ -49,11 +54,23 @@ function LatestTraceTable({
   // Index (in the visible list) of the last row clicked without shift: the anchor for shift-click ranges.
   const anchor = useRef<number | null>(null);
 
-  const filtered = searchTraces(traces, query).filter((trace) => assessmentFilter === "all"
-    || (assessmentFilter === "unsuccessful" && trace.evaluation?.current && ["failure", "partial_success"].includes(trace.evaluation.outcome ?? ""))
-    || (assessmentFilter === "failed" && trace.workbench?.queue_status === "failed")
-    || (assessmentFilter === "pending" && ["queued", "running", "waiting"].includes(trace.workbench?.queue_status ?? "")));
-  const visible = sortTraces(filtered, sort.key, sort.direction);
+  const [searchResults, setSearchResults] = useState<RmTraceSummary[] | null>(null);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!query.trim()) return;
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      void rmListAllTraces(query).then((results) => {
+        if (!cancelled) { setSearchResults(results); setSearchError(null); }
+      }).catch(() => { if (!cancelled) setSearchError("Couldn’t search traces. Edit your search to try again."); });
+    }, 250);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [query, traces]);
+  const searching = !!query.trim() && searchResults === null && !searchError;
+  const filtered = (query.trim() ? searchResults ?? [] : traces).filter((trace) => assessmentFilter === "all"
+    || (assessmentFilter === "scored" && traceScore(trace) !== null)
+    || (assessmentFilter === "unscored" && traceScore(trace) === null));
+  const visible = sortTraces(filtered, sort.key, sort.direction, "automatic");
   const visibleIds = visible.map((t) => t.id);
   const selectedVisible = visibleIds.filter((id) => selected.has(id)).length;
 
@@ -77,18 +94,23 @@ function LatestTraceTable({
             value={query}
             onChange={(e) => {
               setQuery(e.target.value);
+              setSearchResults(null);
+              setSearchError(null);
               anchor.current = null;
             }}
-            placeholder="Search titles"
+            placeholder="Search traces"
+            aria-label="Search titles and trace content"
             className="min-w-0 flex-1 bg-transparent text-[12.5px] text-foreground outline-none placeholder:text-muted-foreground"
           />
         </label>
-        {mode === "browse" && <select aria-label="Filter evaluation status" value={assessmentFilter} onChange={(e) => { setAssessmentFilter(e.target.value); anchor.current = null; }} className="h-7 rounded-md border border-border bg-background px-2 text-[12px] text-muted-foreground"><option value="all">All evaluations</option><option value="unsuccessful">Failed or partially successful traces</option><option value="failed">Evaluation errors</option><option value="pending">Pending evaluation</option></select>}
+        {mode === "browse" && <Select aria-label="Filter traces" value={assessmentFilter} onChange={(value) => { setAssessmentFilter(value); anchor.current = null; }} className="h-7 min-w-32 px-2 text-[12px]" options={[{ value: "all", label: "All traces" }, { value: "scored", label: "Scored" }, { value: "unscored", label: "Unscored" }]} />}
+
         <span className="ml-auto text-[12px] text-muted-foreground tabular-nums">
-          {visible.length === traces.length ? `${traces.length} traces` : `${visible.length} of ${traces.length} traces`}
+          {searching ? "Searching…" : `${visible.length} traces`}
         </span>
       </div>
 
+      {searchError && <p role="alert" className="mb-3 text-sm text-red-600">{searchError}</p>}
       <div className="overflow-x-auto rounded-lg border border-border">
         <table className={cn("w-full table-fixed border-collapse text-[13px]", mode === "browse" && "min-w-[980px]")}>
           <thead>
@@ -101,7 +123,7 @@ function LatestTraceTable({
                   label="Select all shown traces"
                 />
               </th>
-              {COLUMNS.filter((column) => mode === "picker" || !["credit", "reward"].includes(column.key)).map((column) => (
+              {COLUMNS.map((column) => (
                 <th key={column.key} scope="col" aria-sort={sort.key === column.key ? sort.direction : "none"} className={cn("px-3 py-2 font-medium", column.className)}>
                   <button
                     type="button"
@@ -116,7 +138,6 @@ function LatestTraceTable({
                   </button>
                 </th>
               ))}
-              {mode === "browse" && <th scope="col" className="w-44 px-3 py-2 text-right font-medium">Evaluation</th>}
               {mode === "browse" && <th className="w-10 px-2 py-2" />}
             </tr>
           </thead>
@@ -134,7 +155,7 @@ function LatestTraceTable({
             ))}
           </tbody>
         </table>
-        {visible.length === 0 && (
+        {visible.length === 0 && !searching && !searchError && (
           <p className="m-0 px-3 py-6 text-center text-[12.5px] text-muted-foreground">No traces match.</p>
         )}
       </div>
@@ -196,28 +217,11 @@ function TraceRow({
       </td>
       <td className="px-3 py-2.5 text-right font-mono text-[12px] text-dim tabular-nums">{trace.step_count}</td>
       <td className="px-3 py-2.5 text-right font-mono text-[12px] text-dim tabular-nums">{trace.comment_count}</td>
-      {picker && <td className="px-3 py-2.5 text-right" title="Mean of the shared evaluator’s action rewards, not a whole-trace outcome score">
-        {trace.action_credit ? <div className="leading-4">
-          <span className="font-mono text-[12px] text-foreground tabular-nums">{formatScore(trace.action_credit.mean)}</span>
-          <div className="text-[11px] text-muted-foreground">{trace.action_credit.count} actions · Stash v{trace.action_credit.revision}</div>
-        </div> : <span className="text-muted-foreground">—</span>}
-      </td>}
-      {picker && <td className="px-3 py-2.5 text-right">
-        {trace.latest_score ? (
-          <div className="leading-4">
-            <span className="font-mono text-[12px] text-foreground tabular-nums">{formatScore(trace.latest_score.score)}</span>
-            <div className="truncate text-[11px] text-muted-foreground" title={trace.latest_score.reward_model_name}>{trace.latest_score.reward_model_name}</div>
-          </div>
-        ) : (
-          <span className="text-muted-foreground">—</span>
-        )}
-      </td>}
+      {[traceCredits(trace)?.mean, traceCredits(trace)?.min, traceCredits(trace)?.max].map((credit, i) => <td key={i} className="px-3 py-2.5 text-right font-mono text-[12px] tabular-nums" title="Automatic action annotation from −1 to +1">{credit == null ? "—" : credit.toFixed(2)}</td>)}
+      <td className="px-3 py-2.5 text-right" title={traceScoreLabel()}>
+        {traceScore(trace) !== null ? <div className="leading-4"><span className="font-mono text-[12px] text-foreground tabular-nums">{traceScore(trace)!.toFixed(2)}</span></div> : <span className="text-muted-foreground">—</span>}
+      </td>
       <td className="px-3 py-2.5 text-right text-[12px] whitespace-nowrap text-muted-foreground">{relativeTime(trace.created_at)}</td>
-      {mode === "browse" && <td className="px-3 py-2.5 text-right text-[11px]">
-        {trace.evaluation?.current ? <div><div>{trace.evaluation.outcome?.replaceAll("_", " ") ?? "Success judgment pending"}</div><div className="text-muted-foreground">{trace.evaluation.credited_actions} / {trace.evaluation.total_actions} actions credited</div></div> : <div className="text-muted-foreground">{trace.workbench?.queue_status === "waiting" ? "Waiting for agent response" : "Evaluation pending"}</div>}
-        {trace.workbench?.queue_status === "failed" && <div className="text-amber-700 dark:text-amber-400">Evaluation error</div>}
-        {trace.evaluation && !trace.evaluation.current && <div className="text-muted-foreground">Earlier evaluation in history</div>}
-      </td>}
 
       {mode === "browse" && (
         <td className="px-2 py-2.5 text-right">

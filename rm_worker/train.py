@@ -176,6 +176,9 @@ def train(job_dir: Path) -> dict:
             "initial_scored_actions": len(action_scores),
             "excluded_cross_trace_pairs": len(pairs) - len(train_pairs) - len(eval_pairs),
             "action_scoring_version": 1 if action_train else None,
+            "trace_scoring_version": 1
+            if input_version == 3 and any(p.get("granularity") == "trace" for p in train_pairs)
+            else None,
             "action_train_pairs": len(action_train),
             "action_eval_pairs": len(action_eval),
             "action_eval_accuracy": pairwise_accuracy(model, tokenizer, action_eval, device),
