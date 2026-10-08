@@ -173,14 +173,14 @@ async def test_a_provider_failure_is_retried_and_then_completes(client, pool, la
     assert done["status"] == "completed" and done["credited_actions"] == 1
 
 
-async def test_a_trace_over_the_limit_fails_with_a_reason_and_is_not_retried(
+async def test_a_trace_over_the_context_limit_is_split_and_scored(
     client, pool, labeler, monkeypatch
 ):
     monkeypatch.setattr(settings, "STEP_LABELING_MAX_CHUNKS", 1)
     user, tid, calls = await evaluate(client, pool, labeler)
     result = await get_eval(client, user, tid)
-    assert result["queue"]["status"] == "failed"
-    assert "handles up to 1" in result["queue"]["error"] and calls == []
+    assert result["queue"]["status"] == "completed"
+    assert result["current"]["status"] == "completed" and len(calls) == 2
 
 
 async def test_a_missing_provider_key_is_repaired_once_the_key_arrives(

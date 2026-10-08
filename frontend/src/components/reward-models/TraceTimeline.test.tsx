@@ -16,16 +16,31 @@ const ann: StepAnnotations = {
   onComment: vi.fn(), onSelectAnnotation: vi.fn(),
 };
 
-it("gives system messages chronological step numbers and the same reader as user messages", () => {
+it("gives every recorded role a number in the left gutter without a separate reader", () => {
   const source = [step(0, "Initial message", "system"), step(1, "A request"), step(2, "<turn_aborted>Interrupted</turn_aborted>", "system")];
-  const onReadMessage = vi.fn();
-  render(<TraceTimeline rows={buildRows(source)} ann={{ ...ann, onReadMessage }} isExpanded={() => false} onToggle={vi.fn()} />);
-  expect(screen.getByText("Step 3")).toBeVisible();
-  fireEvent.click(screen.getAllByRole("button", { name: "Read system message" })[1]);
-  expect(onReadMessage).toHaveBeenCalledWith(source[2]);
-  fireEvent.click(screen.getByRole("button", { name: "Read user message" }));
-  expect(onReadMessage).toHaveBeenLastCalledWith(source[1]);
+  render(<TraceTimeline rows={buildRows(source)} ann={ann} isExpanded={() => true} onToggle={vi.fn()} />);
+  expect(screen.getByLabelText("Step 3")).toHaveTextContent(/^3$/);
+  expect(screen.getByLabelText("Step 1")).toHaveClass("left-0");
+  expect(screen.getByText("<turn_aborted>Interrupted</turn_aborted>")).toBeVisible();
+  expect(screen.queryByRole("button", { name: /^Read (system|user) message$/ })).not.toBeInTheDocument();
   expect(screen.queryByText("System instructions")).not.toBeInTheDocument();
+});
+
+it("expands a long message inline and collapses it on a second click or Escape", () => {
+  const height = vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(1000);
+  try {
+    const { container } = render(<TraceTimeline rows={buildRows([step(0, "Long text", "assistant")])} ann={ann} isExpanded={() => true} onToggle={vi.fn()} />);
+    const read = screen.getByRole("button", { name: "Read full message" });
+    const body = container.querySelector('[style="max-height: 160px;"]')!;
+    fireEvent.click(read);
+    expect((body as HTMLElement).style.maxHeight).toBe("");
+    fireEvent.click(screen.getByRole("button", { name: "Show less" }));
+    expect(body).toHaveStyle({ maxHeight: "160px" });
+    fireEvent.click(read);
+    fireEvent.keyDown(screen.getByRole("button", { name: "Show less" }), { key: "Escape" });
+    expect(body).toHaveStyle({ maxHeight: "160px" });
+    expect(screen.queryByRole("complementary")).not.toBeInTheDocument();
+  } finally { height.mockRestore(); }
 });
 
 it("collapses repeated text while preserving both source steps and a disclosure", () => {

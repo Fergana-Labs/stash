@@ -17,6 +17,7 @@ from .test_rm_workbench import BASE, account, model_and_queue_boundaries, upload
         ("completed", None),
         ("failed", auto.SCHEMA_CACHE_ERROR),
         ("failed", step_labeling.NOT_CONFIGURED),
+        ("failed", "The trace is 240,479 characters; automatic annotation handles up to 200,000."),
         ("queued", "Daily Jev evaluation budget reached; resumes tomorrow"),
     ],
 )

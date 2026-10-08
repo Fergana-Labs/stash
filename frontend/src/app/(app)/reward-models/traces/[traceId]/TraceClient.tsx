@@ -12,13 +12,13 @@ import { useConfirm } from "@/components/ConfirmDialog";
 import AnnotationComposer, { type ComposerTarget } from "@/components/reward-models/AnnotationComposer";
 import AnnotationSidebar from "@/components/reward-models/AnnotationSidebar";
 import { wbAssess } from "@/lib/workbench-api";
-import { Button } from "@/components/ui/button";
 import TraceReviewAccess from "@/components/workbench/TraceReviewAccess";
 import { TraceSkeleton } from "@/components/reward-models/RmSkeletons";
 import TraceFlamegraph from "@/components/reward-models/TraceFlamegraph";
 import { automaticActionScores, automaticAnnotationProgress } from "@/components/reward-models/automatic-credit";
 import TraceMinimap from "@/components/reward-models/TraceMinimap";
-import TraceMessageReader from "@/components/reward-models/TraceMessageReader";
+import TraceThemeToggle from "@/components/reward-models/TraceThemeToggle";
+import TraceTrainingStatus from "@/components/reward-models/TraceTrainingStatus";
 import TraceScore from "@/components/reward-models/TraceScore";
 import { type StepAnnotations } from "@/components/reward-models/TraceTimeline";
 import { TraceLabelSummary } from "@/components/reward-models/StepLabels";
@@ -65,8 +65,6 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [outlinePath, setOutlinePath] = useState<string[]>([]);
   const [commentsOpen, setCommentsOpen] = useState(false);
-  const [readerStepId, setReaderStepId] = useState<string | null>(null);
-  const [readerVersion, setReaderVersion] = useState(0);
   const [showLabels, setShowLabels] = useState(true);
   const [showScores, setShowScores] = useState(true);
   const [composer, setComposer] = useState<ComposerTarget | null>(null);
@@ -125,7 +123,7 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
         const element = document.getElementById(`step-${stepId}`);
         const container = scroller.current;
         if (!element || !container || !navigation.current) return;
-        const top = container.scrollTop + element.getBoundingClientRect().top - Math.max(container.getBoundingClientRect().top, navigation.current.getBoundingClientRect().bottom) - 12;
+        const top = container.scrollTop + element.getBoundingClientRect().top - Math.max(container.getBoundingClientRect().top, navigation.current.getBoundingClientRect().bottom) - 40;
         container.scrollTo({ top, behavior: "instant" });
       });
     };
@@ -178,7 +176,7 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
     return [{ id: PENDING_ID, ...pending, className: "rounded-[2px] bg-brand-300/45 text-inherit" }, ...saved];
   }
 
-  /** Every role starts readable, with long content clipped by the shared reader control. */
+  /** Every role starts readable, with long content clipped by the inline expansion control. */
   function isExpanded(row: TraceRow): boolean {
     const choice = rowChoice.get(row.key);
     if (choice !== undefined) return choice;
@@ -235,7 +233,6 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
   }
 
   function openComposer(stepId: string | null) {
-    setReaderStepId(null);
     setCommentsOpen(true);
     setComposer({ stepId, quote: null });
   }
@@ -260,7 +257,6 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
     }
     if (end <= start || step.content.slice(start, end).trim() === "") return;
 
-    setReaderStepId(null);
     setCommentsOpen(true);
     setComposer({ stepId: step.id, quote: quoteFromOffsets(step.content, start, end) });
   }
@@ -276,7 +272,7 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
       const element = document.getElementById(`step-${stepId}`);
       const container = scroller.current;
       if (!element || !container || !navigation.current) return;
-      const top = container.scrollTop + element.getBoundingClientRect().top - Math.max(container.getBoundingClientRect().top, navigation.current.getBoundingClientRect().bottom) - 12;
+      const top = container.scrollTop + element.getBoundingClientRect().top - Math.max(container.getBoundingClientRect().top, navigation.current.getBoundingClientRect().bottom) - 40;
       container.scrollTo({ top, behavior: "instant" });
     });
   }
@@ -291,7 +287,6 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
   }
 
   function focusCard(ids: string[]) {
-    setReaderStepId(null);
     setCommentsOpen(true);
     const id = ids.find((i) => i !== PENDING_ID);
     if (id === undefined) return;
@@ -302,6 +297,7 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
   const ann: StepAnnotations = {
     stepNumber: (step) => presentation.numberById.get(step.id),
     highlights: highlightsFor,
+    actionScore: (step) => showScores ? actionScores.get(step.id) : undefined,
     commentCount: (step) => {
       const row = rows.find((r) => r.key === step.id);
       return (row ? rowSteps(row) : [step]).reduce((count, source) => count + annotationsOn(source).filter((a) => a.comment !== null).length, 0);
@@ -309,7 +305,6 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
     hasQuotes: (step) => annotationsOn(step).some((a) => a.quote !== null) || composer?.stepId === step.id,
     flashing: (step) => flashStepId === step.id,
     onComment: (step) => openComposer(step.id),
-    onReadMessage: (step) => { setCommentsOpen(false); setReaderVersion((value) => value + 1); setReaderStepId(step.id); },
     onSelectAnnotation: focusCard,
     ...(labelsOn && { labelChips: labels.chips, taskHeading: labels.taskHeading, onJumpToStep: revealStep }),
     ...(scoresOn && {
@@ -336,15 +331,14 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
               <span className="shrink-0 whitespace-nowrap text-[11px] text-muted-foreground">imported {relativeTime(trace.created_at)}</span>
             </div>
             <div className="flex shrink-0 items-center gap-1.5">
-              <TraceScore evaluation={evaluation} error={loadError} />
-              {evaluation?.queue?.status === "failed" && evaluation.owner_user_id === viewerId && <Button size="xs" variant="ghost" onClick={() => void wbAssess(traceId).then(load).catch((e) => toast.error(errorMessage(e)))}>Retry scoring</Button>}
-              {trace.steps.length > 0 && <button type="button" aria-expanded={readerStepId !== null} onClick={() => { setCommentsOpen(false); setReaderStepId(readerStepId ? null : trace.steps[0].id); }} className="inline-flex h-7 cursor-pointer items-center rounded-md border border-border bg-background px-2 text-[12px] text-muted-foreground hover:text-foreground">Messages</button>}
+              <TraceTrainingStatus models={trace.training_models ?? []} />
+              <TraceThemeToggle />
+              <TraceScore evaluation={evaluation} error={loadError} onRescore={evaluation?.owner_user_id === viewerId ? () => wbAssess(traceId).then(load) : undefined} />
               <button
                 type="button"
                 aria-expanded={commentsOpen}
                 aria-controls="trace-comments"
                 onClick={() => {
-                  setReaderStepId(null);
                   setCommentsOpen(!commentsOpen);
                   if (!commentsOpen) {
                     requestAnimationFrame(() => document.getElementById("trace-comments")?.scrollIntoView({ block: "nearest" }));
@@ -368,18 +362,24 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
               {stepScores !== null && <ViewToggle active={showScores} onClick={() => setShowScores(!showScores)}>Scores</ViewToggle>}
             </div>
           )}
-          {evaluation?.queue?.status === "failed" && evaluation.queue.error && (
-            <p className="m-0 text-[12px] text-muted-foreground">This trace was not annotated. {evaluation.queue.error}</p>
-          )}
 
         </div>
         </div>
         <div ref={scroller} className="scroll-thin min-h-0 flex-1 overflow-y-auto">
-        <div ref={canvas} className={cn("relative mx-auto max-w-5xl px-6 pt-2", browsingSections ? "pb-3" : "pb-[60vh]")} onMouseUp={onCanvasMouseUp}>
+        <div ref={canvas} className={cn("relative mx-auto max-w-5xl px-6 pt-2", browsingSections ? "pb-3" : "pb-12")} onMouseUp={onCanvasMouseUp}>
           <TraceFlamegraph spans={trace.spans} onJump={(index) => revealStep(trace.steps[index].id)} />
           <TraceExplorer
             groups={groups} path={outlinePath} assessments={assessments}
-            onPath={(path) => { setOutlinePath(path); scroller.current?.scrollTo({ top: 0, behavior: "instant" }); }}
+            onPath={(path) => {
+              setOutlinePath(path);
+              const level = traceExplorerLevel(groups, path);
+              const first = level.current && !level.children.length ? rowSteps(level.current.rows[0])[0] : null;
+              requestAnimationFrame(() => {
+                const container = scroller.current;
+                const target = first ? document.getElementById(`step-${first.id}`) : null;
+                container?.scrollTo({ top: target && container ? container.scrollTop + target.getBoundingClientRect().top - container.getBoundingClientRect().top - 40 : 0, behavior: "instant" });
+              });
+            }}
             ann={ann} isExpanded={isExpanded} onToggle={toggleRow} onOpenRows={openRows}
           />
           {rows.length === 0 && <p className="py-12 text-center text-[13px] text-muted-foreground">No steps in this trace.</p>}
@@ -387,7 +387,6 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
         </div>
       </div>
 
-      {readerStepId !== null && <TraceMessageReader key={readerVersion} steps={trace.steps} stepId={readerStepId} numberOf={numberOf} onClose={() => setReaderStepId(null)} onReveal={(id) => { setReaderStepId(null); revealStep(id); }} />}
 
       <AnnotationSidebar
         visible={commentsOpen}

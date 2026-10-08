@@ -237,8 +237,13 @@ def build_chunks(steps: list[dict]) -> list[dict]:
 def clip(text: str, cap: int) -> str:
     if len(text) <= cap:
         return text
-    head = int(cap * 0.7)
-    return f"{text[:head]}\n…[{len(text) - cap} characters omitted]…\n{text[-(cap - head) :]}"
+    marker = "\n…[content omitted]…\n"
+    if cap <= len(marker):
+        return marker[:max(0, cap)]
+    available = cap - len(marker)
+    head = int(available * 0.7)
+    tail = available - head
+    return f"{text[:head]}{marker}{text[-tail:] if tail else ''}"
 
 
 def render_chunk(chunk: dict, cap: int | None = None) -> str:
@@ -246,11 +251,11 @@ def render_chunk(chunk: dict, cap: int | None = None) -> str:
         return text if cap is None else clip(text, cap)
 
     if chunk["kind"] == "user_message":
-        return f"[{chunk['chunk_id']}] USER message\n{chunk['text']}"
+        return f"[{chunk['chunk_id']}] USER message\n{body(chunk['text'])}"
     if chunk["kind"] == "agent_message":
-        return f"[{chunk['chunk_id']}] AGENT message\n{chunk['text']}"
+        return f"[{chunk['chunk_id']}] AGENT message\n{body(chunk['text'])}"
     result = chunk["result"] if chunk["result"] is not None else "(no result recorded)"
-    return f"[{chunk['chunk_id']}] AGENT tool call: {chunk['tool']}\nARGS: {body(chunk['args'])}\nRESULT: {body(result)}"
+    return f"[{chunk['chunk_id']}] AGENT tool call: {body(chunk['tool'])}\nARGS: {body(chunk['args'])}\nRESULT: {body(result)}"
 
 
 def render(chunks: list[dict], cap: int | None = None) -> str:
@@ -261,7 +266,7 @@ async def label_chunk(
     client: httpx.AsyncClient, cache_key: str, transcript: str, chunk: dict
 ) -> dict:
     """One chunk's Rubric A label. The rubric and transcript are a cached prefix
-    shared by every chunk of the trace; only the last line differs."""
+    shared by every target in a context window; only the last line differs."""
     body = {
         "model": settings.STEP_LABEL_MODEL,
         "reasoning": {"effort": "low"},

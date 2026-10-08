@@ -138,13 +138,13 @@ reach a trace in one of two ways:
   queues every trace on ingestion; once the agent has responded, a worker cuts
   the trace into chunks (a user message, an agent message, or a tool call with
   its result) and asks `STEP_LABEL_MODEL` (default `gpt-6-sol`) to label each
-  chunk, one call per chunk with the whole conversation as a cached prompt
+  chunk, one call per chunk with bounded, overlapping context as a cached prompt
   prefix (`step_labeler.py`). When a trace grows, chunks that have not changed
   keep their labels and only the new ones are sent. Labels and scores are
   stored in `rm_step_labels` and merged into `GET /traces/{id}` on read. It
   needs `OPENAI_API_KEY` and sends trace content to OpenAI. A trace above
-  `STEP_LABELING_MAX_CHUNKS` (80) or `STEP_LABELING_MAX_CHARS` (200000) is
-  refused with the reason, which the trace view shows.
+  `STEP_LABELING_MAX_CHUNKS` (80) or `STEP_LABELING_MAX_CHARS` (200000) uses
+  multiple context windows or explicitly marked excerpts, retaining every target.
 
 ### Step scores
 
@@ -219,12 +219,31 @@ Only adjacent tool calls and results share a displayed step, so pairing cannot
 move an output ahead of intervening messages. Source IDs, roles, content, and
 annotation offsets are unchanged.
 
-Long messages have compact previews and a shared Read control. The Messages
-button opens a side reader from any explorer level. It offers recorded-role
-filtering, literal search across messages, previous/next navigation, rendered
-and raw views, copy, and Show in trace. Search includes raw envelopes and tool
-inputs. The reader scrolls independently, Escape closes it and restores focus,
-and opening comments closes the reader. The left rail remains global.
+Long messages have compact previews. Read full message expands in place; Show
+less or Escape collapses it. There is no separate message reader. Each input
+variable and tool output has one disclosure row and an explicitly named copy
+action. Recognized code and fenced Markdown blocks use syntax highlighting while
+preserving annotation offsets. Displayed step numbers live in the left gutter.
+The theme control applies Stash's existing light/dark tokens and remembers the
+choice. Model creation/training status links to the current user's model that
+was trained on this trace; another reviewer's private models are not exposed.
+
+Entering a leaf section scrolls to its first step in the complete chronological
+trace. Scrolling continues across section boundaries, and the sticky Sections
+control returns to the logical task/subtask cards. The left rail remains global.
+The top minimap remains navigable before grades arrive; ungraded actions have
+only a baseline tick, not a credit height. A small rescore icon shows activity
+and exposes failure details on demand without a persistent error banner.
+
+Automatic step labeling uses overlapping windows bounded by
+`STEP_LABELING_MAX_CHUNKS` and `STEP_LABELING_MAX_CHARS`. These are provider
+context budgets, not limits on recording size: every target is processed,
+original chunk IDs and the preceding user request are retained, and oversized
+messages are explicitly excerpted. Quality-check context is bounded as well.
+This limits context size but does not make long-trace scoring instantaneous;
+distant evidence outside a window may be unavailable to that classification.
+Previously rejected size-limit failures are requeued for enabled latest-version
+accounts when the labeling provider is configured.
 
 ## Trace sections
 

@@ -1,4 +1,8 @@
-import { LoaderCircle } from "lucide-react";
+"use client";
+
+import { useState } from "react";
+import { toast } from "sonner";
+import { LoaderCircle, RotateCw } from "lucide-react";
 import type { TraceEvaluationResponse } from "@/lib/workbench-api";
 
 function scoreState(evaluation: TraceEvaluationResponse | null, error: string | null) {
@@ -23,16 +27,22 @@ function scoreState(evaluation: TraceEvaluationResponse | null, error: string | 
   return { score, label: "Awaiting score", description: "No success score is available for the current version of this trace yet." };
 }
 
-export default function TraceScore({ evaluation, error }: { evaluation: TraceEvaluationResponse | null; error: string | null }) {
+export default function TraceScore({ evaluation, error, onRescore }: { evaluation: TraceEvaluationResponse | null; error: string | null; onRescore?: () => Promise<unknown> }) {
   const state = scoreState(evaluation, error);
-  return (
-    <div role="status" aria-label="Trace score" title={state.description} className="mr-2 flex items-baseline gap-1.5 whitespace-nowrap">
-      <span className="text-[10px] text-muted-foreground">Trace score</span>
-      {state.score !== null && <span className="font-mono text-[16px] font-medium text-foreground tabular-nums">{state.score.toFixed(2)}</span>}
-      {state.label && <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
-        {state.busy && <LoaderCircle aria-hidden="true" className="size-3 animate-spin motion-reduce:animate-none" />}
-        {state.label}
-      </span>}
+  const [requesting, setRequesting] = useState(false);
+  const busy = requesting || evaluation?.queue?.status === "running" || evaluation?.queue?.status === "queued";
+  const description = evaluation?.queue?.error || state.description;
+  return <div className="mr-1 flex items-center gap-1">
+    <div role="status" aria-label="Trace score" title={description} className="flex items-baseline gap-1.5 whitespace-nowrap">
+      {state.score !== null && <><span className="text-[10px] text-muted-foreground">Trace score</span><span className="font-mono text-[16px] font-medium text-foreground tabular-nums">{state.score.toFixed(2)}</span></>}
+      {state.label && <span className="sr-only">{state.label}</span>}
+      {!onRescore && state.busy && <LoaderCircle aria-hidden="true" className="size-3 animate-spin motion-reduce:animate-none text-muted-foreground" />}
     </div>
-  );
+    {onRescore && <button type="button" aria-label={busy ? "Scoring trace" : "Rescore trace"} title={busy ? "Scoring automatically…" : `${description} Rescore trace.`} disabled={busy} onClick={() => {
+      setRequesting(true);
+      void onRescore().catch(() => toast.error("Couldn’t start scoring. Try again.")).finally(() => setRequesting(false));
+    }} className="inline-flex size-7 cursor-pointer items-center justify-center rounded-md text-muted-foreground hover:bg-surface hover:text-foreground disabled:cursor-default">
+      <RotateCw className={`size-3.5 ${busy ? "animate-spin motion-reduce:animate-none" : ""}`} />
+    </button>}
+  </div>;
 }

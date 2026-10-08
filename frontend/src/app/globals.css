@@ -938,3 +938,15 @@ details > summary::-webkit-details-marker {
 .proseish code { font-family: var(--font-mono), monospace; color: #C2410C; background: var(--bg-raised); padding: 1px 5px; border-radius: 4px; font-size: 0.88em; }
 .proseish a { color: #F97316; text-decoration: underline; text-underline-offset: 2px; }
 .proseish blockquote { border-left: 3px solid var(--border-color); padding-left: 12px; color: var(--text-muted); margin: 10px 0; }
+
+/* Code tokens share the product palette in both themes. */
+.trace-code .hljs-keyword, .trace-code .hljs-selector-tag, .trace-code .hljs-literal { color: #7c3aed; }
+.trace-code .hljs-string, .trace-code .hljs-regexp, .trace-code .hljs-addition { color: #15803d; }
+.trace-code .hljs-number, .trace-code .hljs-attr, .trace-code .hljs-attribute { color: #b45309; }
+.trace-code .hljs-title, .trace-code .hljs-built_in, .trace-code .hljs-type { color: #0369a1; }
+.trace-code .hljs-comment, .trace-code .hljs-meta { color: var(--text-muted); }
+.trace-code .hljs-deletion { color: #dc2626; }
+[data-theme="dark"] .trace-code .hljs-keyword, [data-theme="dark"] .trace-code .hljs-literal { color: #c4b5fd; }
+[data-theme="dark"] .trace-code .hljs-string, [data-theme="dark"] .trace-code .hljs-regexp { color: #86efac; }
+[data-theme="dark"] .trace-code .hljs-number, [data-theme="dark"] .trace-code .hljs-attr { color: #fcd34d; }
+[data-theme="dark"] .trace-code .hljs-title, [data-theme="dark"] .trace-code .hljs-built_in, [data-theme="dark"] .trace-code .hljs-type { color: #7dd3fc; }

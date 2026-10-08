@@ -82,9 +82,12 @@ export default function RewardModelsPage() {
 }
 
 function ModelCard({ model }: { model: RmRewardModel }) {
+  useEffect(() => {
+    if (window.location.hash === `#model-${model.id}`) document.getElementById(`model-${model.id}`)?.scrollIntoView({ block: "nearest" });
+  }, [model.id]);
   const metrics = model.metrics;
   return (
-    <div className="rounded-lg border border-border bg-background px-4 py-3">
+    <div id={`model-${model.id}`} className="scroll-mt-4 rounded-lg border border-border bg-background px-4 py-3 target:border-brand-500">
       <div className="flex items-center gap-2.5">
         <span className="truncate text-[14px] font-medium text-foreground">{model.name}</span>
         <StatusBadge status={model.status} />

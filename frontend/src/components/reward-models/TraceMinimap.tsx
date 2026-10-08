@@ -73,9 +73,8 @@ function LatestTraceMinimap({ steps, annotations, actionScores, annotationStatus
     };
   }, [steps, scroller, navigation]);
 
-  // Ungraded events have no height. Do not reserve a chart-shaped blank space;
-  // saved previous credits still qualify while a new evaluation is running.
-  if (!steps.some((step) => Number.isFinite(actionScores?.get(step.id)?.credit))) return null;
+  if (!steps.length) return null;
+  const graded = steps.some((step) => Number.isFinite(actionScores?.get(step.id)?.credit));
   const commented = new Set(annotations.filter((a) => a.comment !== null).map((a) => a.step_id));
 
   function jump(index: number) {
@@ -115,7 +114,7 @@ function LatestTraceMinimap({ steps, annotations, actionScores, annotationStatus
     <nav aria-label="Trace steps" className="flex min-w-0 flex-1 select-none items-center gap-3">
       {annotationStatus && <p role="status" className="sr-only">{annotationStatus}</p>}
       <div
-        className="relative flex h-[52px] min-w-0 flex-1 touch-none items-end"
+        className={cn("relative flex min-w-0 flex-1 touch-none items-end border-b border-border-subtle", graded ? "h-[48px]" : "h-6")}
         style={{ columnGap: `min(1px, ${25 / steps.length}%)` }}
         role="group"
         aria-label="Step map"
@@ -175,6 +174,7 @@ function LatestTraceMinimap({ steps, annotations, actionScores, annotationStatus
               className="group relative flex h-full min-w-0 flex-1 cursor-pointer items-end focus-visible:outline-2 focus-visible:outline-brand-500"
             >
               {commented.has(step.id) && <span className="absolute top-0 left-1/2 size-1.5 -translate-x-1/2 rounded-full bg-amber-400" />}
+              {!score && isGradableAction(step) && <span aria-hidden="true" className={cn("absolute bottom-0 h-px w-full opacity-40", kind.color)} />}
               <span style={{ height: score ? `${6 + (Math.max(-1, Math.min(1, score.credit)) + 1) * 20}px` : "0px" }} className={cn("w-full transition-opacity group-hover:opacity-60", kind.color)} />
             </button>
           );

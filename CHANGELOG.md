@@ -5,14 +5,18 @@ everything before it is captured in git history (`git log`), not here.
 
 ## Unreleased
 
-- Keep all trace messages in chronological order with their recorded roles.
-  Replace the separate instructions bucket with a message reader: search,
-  role filters, rendered/raw views, copy, and direct navigation back to the trace.
-  Long messages share a compact preview and a Read control.
-
+- Keep all recorded messages chronological, with compact inline expansion,
+  left-gutter step numbers, syntax-highlighted code, and collapsible input and
+  output rows. Remove the separate message reader and add a persistent theme toggle.
+- Keep section cards one click away while the step view can scroll through the
+  entire trace. Preserve the global minimaps, including navigation before scores
+  arrive, and show action credit inline.
+- Replace noisy scoring errors with a compact rescore control. Process long
+  recordings in bounded, overlapping context windows instead of rejecting them;
+  automatically resume traces rejected by the previous size limits.
+- Show creation and training status for reward models trained on the current trace.
 - Open single-task traces directly on their subtasks or recorded steps. Show
-  readable section titles immediately while generated summaries load, and hide
-  the top credit graph when there are no grades to display.
+  readable section titles immediately while generated summaries load.
 - Add local trace snapshot imports that retain saved grades and a lightweight
   worker for remote API scoring of new local imports.
 

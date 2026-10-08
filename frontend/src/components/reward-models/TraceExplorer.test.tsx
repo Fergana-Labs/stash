@@ -9,6 +9,7 @@ import type { StepAnnotations } from "./TraceTimeline";
 import { rmSummarizeSections } from "@/lib/api";
 import { useSectionSummaries } from "./use-section-summaries";
 import TraceScrollRail from "./TraceScrollRail";
+import { traceSectionTarget } from "./trace-scroll";
 
 vi.mock("@/lib/api", () => ({ rmSummarizeSections: vi.fn() }));
 beforeEach(() => {
@@ -48,7 +49,7 @@ it("replaces request excerpts with generated titles and reuses them on return", 
   expect(screen.queryByText("Task 0")).not.toBeInTheDocument();
   fireEvent.click(screen.getAllByRole("button", { name: /^Explore / })[0]);
   await load();
-  fireEvent.click(screen.getByRole("button", { name: "Overview" }));
+  fireEvent.click(screen.getByRole("button", { name: "Sections" }));
   await load();
   expect(rmSummarizeSections).toHaveBeenCalledTimes(2);
   expect(screen.getAllByRole("button", { name: /^Explore Checking site/ })).toHaveLength(4);
@@ -72,6 +73,9 @@ it("navigates with arrows, expands leaf steps, and restores selection when going
   expect(opened).not.toHaveBeenCalled();
   fireEvent.keyDown(children[0], { key: "ArrowRight" });
   expect(opened).toHaveBeenCalledOnce();
+  // Entering a subsection must not cut off the rest of the trace.
+  expect(screen.getByLabelText("Step 48")).toBeInTheDocument();
+  expect(screen.getByLabelText("Step 1")).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: /^Explore / })).not.toBeInTheDocument();
   fireEvent.keyDown(document.body, { key: "ArrowLeft" });
   await load();
@@ -119,11 +123,26 @@ it("keeps more than four sections visible in the list and batches their assessme
 });
 
 it("keeps global markers through nested navigation and scrubs between tasks without losing keyboard focus", async () => {
+  const measurements = new Set<() => void>();
+  vi.stubGlobal("ResizeObserver", class {
+    constructor(private callback: () => void) { measurements.add(callback); }
+    observe() {}
+    disconnect() { measurements.delete(this.callback); }
+  });
   render(<Harness />);
   await load();
   let cards = screen.getAllByRole("button", { name: /^Explore / });
   const container = screen.getByRole("region", { name: "Trace explorer" }).parentElement!;
   container.scrollTo = vi.fn();
+  function scrollToTask(index: number) {
+    container.scrollTop = index * 500;
+    groups.forEach((group, i) => {
+      const target = document.getElementById(traceSectionTarget(group))!;
+      target.getBoundingClientRect = () => ({ top: 150 + i * 500 - container.scrollTop }) as DOMRect;
+      target.getClientRects = () => [target.getBoundingClientRect()] as unknown as DOMRectList;
+    });
+    act(() => measurements.forEach((measure) => measure()));
+  }
   container.getBoundingClientRect = () => ({ top: 150 }) as DOMRect;
   cards[1].parentElement!.getBoundingClientRect = () => ({ top: 600 }) as DOMRect;
   const rail = screen.getByRole("navigation", { name: "Conversation navigation" });
@@ -135,7 +154,7 @@ it("keeps global markers through nested navigation and scrubs between tasks with
   fireEvent.pointerUp(scrubber, { button: 0, clientY: 150 });
   await act(async () => vi.advanceTimersByTime(16));
   expect(cards[1]).toHaveFocus();
-  expect(container.scrollTo).toHaveBeenLastCalledWith({ top: 438, behavior: "instant" });
+  expect(container.scrollTo).toHaveBeenLastCalledWith({ top: 410, behavior: "instant" });
   fireEvent.keyDown(cards[1], { key: "ArrowRight" });
   await load();
   cards = screen.getAllByRole("button", { name: /^Explore / });
@@ -145,9 +164,11 @@ it("keeps global markers through nested navigation and scrubs between tasks with
   fireEvent.keyDown(cards[1], { key: "ArrowRight" });
   await load();
   expect(screen.queryByRole("button", { name: /^Explore / })).not.toBeInTheDocument();
-  fireEvent.scroll(container);
-  await act(async () => vi.advanceTimersByTime(16));
+  scrollToTask(1);
   expect(markers[1]).toHaveAttribute("aria-current", "location");
+  // Scrolling across the old leaf boundary updates global orientation.
+  scrollToTask(2);
+  expect(markers[2]).toHaveAttribute("aria-current", "location");
   expect(Array.from(rail.querySelectorAll("button"))).toEqual(markers);
   expect(markers.map((marker) => marker.getAttribute("aria-label"))).toEqual(labels);
 
@@ -165,12 +186,14 @@ it("keeps global markers through nested navigation and scrubs between tasks with
   fireEvent.keyDown(document.activeElement!, { key: "ArrowRight" });
   await load();
   expect(screen.queryByRole("button", { name: /^Explore / })).not.toBeInTheDocument();
+  scrollToTask(3);
   expect(markers[3]).toHaveAttribute("aria-current", "location");
   fireEvent.click(markers[0]);
   await load();
   await act(async () => vi.advanceTimersByTime(16));
   expect(screen.getAllByRole("button", { name: /^Explore / })).toHaveLength(4);
   expect(container.scrollTo).toHaveBeenLastCalledWith({ top: 0, behavior: "instant" });
+  scrollToTask(0);
   expect(markers[0]).toHaveAttribute("aria-current", "location");
 });
 

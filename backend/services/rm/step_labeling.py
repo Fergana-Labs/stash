@@ -14,8 +14,8 @@ an import can put them. A trace that arrives already labeled is never sent to
 a model.
 
 Trace content is sent to the labeling provider, and to the grading model for
-quality checks when TYPESAFE_API_KEY is set; traces above the size limits are
-refused with a reason, never truncated silently.
+quality checks when TYPESAFE_API_KEY is set. Long traces use overlapping context
+windows; oversized messages are explicitly excerpted without skipping steps.
 """
 
 from __future__ import annotations
@@ -30,14 +30,13 @@ import httpx
 
 from ...config import settings
 from ...database import get_pool
-from . import step_labeler, step_scoring
+from . import step_context, step_labeler, step_scoring
 
 logger = logging.getLogger(__name__)
 
 JEV_ENDPOINT = "https://api.typesafe.ai/v1/systemone"
 # The grading model reads about 32k tokens of state; long tool results are clipped to fit.
 JEV_STATE_CHARS = 84_000
-JEV_RESULT_CAPS = (8_000, 3_000, 1_200, 400)
 CONCURRENCY = 8
 
 
@@ -45,7 +44,7 @@ NOT_CONFIGURED = "OPENAI_API_KEY is not configured; automatic annotation cannot 
 
 
 class LabelingSkipped(Exception):
-    """The trace is outside what automatic annotation handles; the reason is user-facing."""
+    """Annotation cannot run, for example without a provider key or agent steps."""
 
 
 def fingerprint(steps: list[dict]) -> str:
@@ -66,11 +65,12 @@ def fingerprint(steps: list[dict]) -> str:
 
 
 def check_state(chunks: list[dict], target: dict, label: dict) -> dict:
-    for cap in JEV_RESULT_CAPS:
-        conversation = step_labeler.render(chunks, cap)
-        step = step_labeler.render_chunk(target, max(cap, 6_000))
-        if len(conversation) + len(step) <= JEV_STATE_CHARS:
-            break
+    index = next(i for i, chunk in enumerate(chunks) if chunk["chunk_id"] == target["chunk_id"])
+    context = step_context.window(chunks, index, index + 1, 80)
+    step = step_labeler.clip(step_labeler.render_chunk(target, 8_000), 16_000)
+    conversation = step_context.render(
+        context, JEV_STATE_CHARS - len(step) - 2_000, partial=len(context) < len(chunks)
+    )
     described = (label["type"] or "other").replace("_", " ")
     if label["is_output"]:
         described = f"response to the user; outcome: {label['outcome']}; stance: {label['stance']}; coverage: {label['coverage']}"
@@ -164,15 +164,6 @@ async def label_steps(
 ) -> dict[str, dict]:
     """A label per chunk. `reuse` holds labels from the trace's previous version
     for chunks that have not changed, so appended work costs only its own calls."""
-    if len(chunks) > settings.STEP_LABELING_MAX_CHUNKS:
-        raise LabelingSkipped(
-            f"The trace has {len(chunks)} steps; automatic annotation handles up to {settings.STEP_LABELING_MAX_CHUNKS}."
-        )
-    transcript = step_labeler.render(chunks)
-    if len(transcript) > settings.STEP_LABELING_MAX_CHARS:
-        raise LabelingSkipped(
-            f"The trace is {len(transcript):,} characters; automatic annotation handles up to {settings.STEP_LABELING_MAX_CHARS:,}."
-        )
     labels = {c["chunk_id"]: reuse[c["chunk_id"]] for c in chunks if c["chunk_id"] in reuse}
     todo = [c for c in chunks if c["chunk_id"] not in labels]
     if todo and not settings.OPENAI_API_KEY:
@@ -180,16 +171,23 @@ async def label_steps(
     gate = asyncio.Semaphore(CONCURRENCY)
     async with httpx.AsyncClient(timeout=180) as client:
 
-        async def label(chunk: dict) -> None:
-            async with gate:
-                labels[chunk["chunk_id"]] = await step_labeler.label_chunk(
-                    client, str(trace_id), transcript, chunk
-                )
+        for targets, transcript in step_context.batches(
+            chunks, settings.STEP_LABELING_MAX_CHUNKS, settings.STEP_LABELING_MAX_CHARS
+        ):
+            pending = [chunk for chunk in targets if chunk["chunk_id"] not in labels]
+            if not pending:
+                continue
+            cache_key = f"{trace_id}:{hashlib.sha256(transcript.encode()).hexdigest()[:16]}"
 
-        # The first call writes the shared prompt prefix to the provider's cache; the rest read it.
-        for chunk in todo[:1]:
-            await label(chunk)
-        await asyncio.gather(*(label(chunk) for chunk in todo[1:]))
+            async def label(chunk: dict) -> None:
+                async with gate:
+                    labels[chunk["chunk_id"]] = await step_labeler.label_chunk(
+                        client, cache_key, transcript, chunk
+                    )
+
+            # Warm this window's cached prefix, then label its remaining targets.
+            await label(pending[0])
+            await asyncio.gather(*(label(chunk) for chunk in pending[1:]))
     step_labeler.assign_tasks(chunks, labels)
     return labels
 

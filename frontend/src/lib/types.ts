@@ -483,6 +483,7 @@ export interface RmTraceSpan {
 }
 
 export interface RmTraceDetail extends RmTraceSummary {
+  training_models?: Pick<RmRewardModel, "id" | "name" | "status" | "error" | "created_at" | "finished_at">[];
   /** Task scores from the step-scoring rules; the per-step scores are on each step's `metadata.reward`. */
   step_scores?: unknown;
   automatic_evaluation?: import("./workbench-api").TraceEvaluationResponse;

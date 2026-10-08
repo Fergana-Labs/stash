@@ -2,6 +2,7 @@
 
 import json
 import time
+from uuid import UUID
 
 import pytest
 from httpx import AsyncClient
@@ -593,7 +594,7 @@ async def test_patch_cannot_rate_a_system_step(client):
     assert (await _detail(client, auth, trace_id))["annotations"][0]["rating"] is None
 
 
-async def test_reward_model_trains_on_the_selected_traces_only(client, monkeypatch):
+async def test_reward_model_trains_on_the_selected_traces_only(client, monkeypatch, pool):
     """Labels outside the selection must not count toward, or into, the training set."""
     monkeypatch.setattr(rm_tasks.train_reward_model, "delay", lambda *a: None)
     auth = await _register(client)
@@ -615,6 +616,19 @@ async def test_reward_model_trains_on_the_selected_traces_only(client, monkeypat
     [listed] = (await client.get("/api/v1/rm/reward-models", headers=auth)).json()
     assert listed["trace_count"] == 3
     assert "trace_ids" not in listed
+    selected_detail = await _detail(client, auth, selected[0])
+    assert [(m["id"], m["status"]) for m in selected_detail["training_models"]] == [
+        (model["id"], "queued")
+    ]
+    assert (await _detail(client, auth, others[0]))["training_models"] == []
+    reviewer = await _register(client)
+    reviewer_id = (await client.get("/api/v1/users/me", headers=reviewer)).json()["id"]
+    await pool.execute(
+        "INSERT INTO rm_wb_trace_reviewers(trace_id,user_id) VALUES($1,$2)",
+        UUID(selected[0]),
+        UUID(reviewer_id),
+    )
+    assert (await _detail(client, reviewer, selected[0]))["training_models"] == []
 
 
 async def test_reward_model_rejects_traces_the_caller_does_not_own(client, monkeypatch):

@@ -335,6 +335,12 @@ async def get_trace(
     collection = await pool.fetchrow(
         "SELECT status, error FROM rm_example_collection WHERE trace_id = $1", trace_id
     )
+    training_models = await pool.fetch(
+        """SELECT id, name, status, error, created_at, finished_at FROM rm_reward_models
+        WHERE owner_user_id=$1 AND $2=ANY(trace_ids) ORDER BY created_at DESC LIMIT 5""",
+        owner_user_id,
+        trace_id,
+    )
     summary = _summary(row, owner_user_id)
     await _evaluation_summaries([summary])
     images = await trace_images.for_trace(trace_id)
@@ -359,6 +365,7 @@ async def get_trace(
         "default_evaluator": await evaluator.default_evaluator(),
         "automatic_scoring": dict(automatic) if automatic else None,
         "training_collection": dict(collection) if collection else None,
+        "training_models": [dict(model) for model in training_models],
     }
     return await step_labeling.merge_into(trace_id, detail)
 

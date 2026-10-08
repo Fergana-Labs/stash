@@ -147,10 +147,11 @@ it("shows the tooltip on keyboard focus and dismisses it on Escape or blur", () 
 });
 
 
-it("collapses an empty chart and retains saved previous grades during recalculation", () => {
+it("keeps ungraded traces navigable without score heights and retains previous grades", () => {
   const props = { steps, annotations: [], scroller: { current: null }, navigation: { current: null }, onJump: vi.fn() };
   const { rerender } = render(<TraceMinimap {...props} actionScores={new Map()} />);
-  expect(screen.queryByRole("navigation", { name: "Trace steps" })).not.toBeInTheDocument();
+  expect(screen.getByRole("navigation", { name: "Trace steps" })).toBeVisible();
+  expect(screen.getByRole("button", { name: "Step 2: Response, awaiting score" }).lastElementChild).toHaveStyle({ height: "0px" });
   const saved = new Map([["0", { step_id: "0", credit: 0.25, stale: true } as RmActionScore]]);
   rerender(<TraceMinimap {...props} actionScores={saved} annotationStatus="Updating annotations" />);
   expect(screen.getByRole("button", { name: "Step 1: Response, credit +0.25, previous annotation" }).lastElementChild).toHaveStyle({ height: "31px" });

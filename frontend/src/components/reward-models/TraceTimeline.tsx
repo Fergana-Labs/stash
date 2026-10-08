@@ -2,6 +2,7 @@
 "use client";
 
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import type { RmActionScore, RmStep } from "@/lib/types";
 import { creditColor, formatCredit } from "./action-credit";
@@ -12,7 +13,7 @@ import { signed, type StepReward, type TaskScore } from "./step-rewards";
 import AnchoredText from "./AnchoredText";
 import { firstLine, isThinking, looksLikeError, toolLabel, toolSummary, type TraceRow } from "./trace-rows";
 import type { Highlight } from "./source-anchors";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { Check, Copy, ChevronDown, ChevronRight } from "lucide-react";
 import { readableExcerpt } from "./trace-presentation";
 import ToolInput from "./ToolInput";
 
@@ -36,7 +37,6 @@ export interface StepAnnotations {
   hasQuotes: (step: RmStep) => boolean;
   flashing: (step: RmStep) => boolean;
   onComment: (step: RmStep) => void;
-  onReadMessage?: (step: RmStep) => void;
   onSelectAnnotation: (ids: string[]) => void;
 }
 
@@ -54,24 +54,25 @@ function ScoreLine({ step, ann, className }: { step: RmStep; ann: StepAnnotation
 }
 
 /** The id is the scroll target for the minimap and comments. */
-function RowFrame({ step, flashing, children, className }: { step: RmStep; flashing: boolean; children: ReactNode; className?: string }) {
+function RowFrame({ step, ann, children, className }: { step: RmStep; ann: StepAnnotations; children: ReactNode; className?: string }) {
   return (
     <div
       id={`step-${step.id}`}
       className={cn(
         "relative scroll-mt-44 transition-colors duration-700",
-        "px-2",
-        flashing && "bg-amber-100/60 ring-1 ring-amber-400/50 dark:bg-amber-400/10",
+        "pr-2 pl-8",
+        ann.flashing(step) && "bg-amber-100/60 ring-1 ring-amber-400/50 dark:bg-amber-400/10",
         className,
       )}
     >
+      <span aria-label={`Step ${ann.stepNumber?.(step) ?? step.index + 1}`} className="absolute top-1 left-0 w-6 text-right font-mono text-[10px] tabular-nums text-muted-foreground">{ann.stepNumber?.(step) ?? step.index + 1}</span>
       {children}
     </div>
   );
 }
 
 /** Long content starts clipped. `open` forces it open (a quoted step must show its highlights). */
-function Clamp({ children, max, open: forcedOpen, onRead }: { children: ReactNode; max: number; open: boolean; onRead?: () => void }) {
+function Clamp({ children, max, open: forcedOpen }: { children: ReactNode; max: number; open: boolean }) {
   const [open, setOpen] = useState(false);
   const [tall, setTall] = useState(false);
   const inner = useRef<HTMLDivElement | null>(null);
@@ -86,7 +87,7 @@ function Clamp({ children, max, open: forcedOpen, onRead }: { children: ReactNod
   }, [children, max]);
 
   return (
-    <div>
+    <div onKeyDown={(event) => { if (event.key === "Escape" && open) { event.stopPropagation(); event.preventDefault(); setOpen(false); } }}>
       <div
         ref={inner}
         style={expanded ? undefined : { maxHeight: max }}
@@ -97,10 +98,11 @@ function Clamp({ children, max, open: forcedOpen, onRead }: { children: ReactNod
       {tall && !forcedOpen && (
         <button
           type="button"
-          onClick={onRead ?? (() => setOpen(!open))}
+          aria-expanded={expanded}
+          onClick={() => setOpen(!open)}
           className="mt-1.5 cursor-pointer text-[12px] font-medium text-muted-foreground underline decoration-border underline-offset-4 hover:text-foreground"
         >
-          {onRead ? "Read full message" : open ? "Show less" : "Show more"}
+          {open ? "Show less" : "Read full message"}
         </button>
       )}
     </div>
@@ -110,7 +112,7 @@ function Clamp({ children, max, open: forcedOpen, onRead }: { children: ReactNod
 /** Keep empty comment controls quiet until the row is focused or hovered. */
 function StepActions({ step, ann }: { step: RmStep; ann: StepAnnotations }) {
   const comments = ann.commentCount(step);
-  const quiet = comments === 0 && !ann.onReadMessage;
+  const quiet = comments === 0;
   return (
     <span
       onClick={(e) => e.stopPropagation()}
@@ -119,7 +121,6 @@ function StepActions({ step, ann }: { step: RmStep; ann: StepAnnotations }) {
         quiet && "opacity-0 group-hover/row:opacity-100 focus-within:opacity-100",
       )}
     >
-      {ann.onReadMessage && <button type="button" onClick={() => ann.onReadMessage!(step)} aria-label={`Read ${step.role} message`} className="cursor-pointer text-[11px] font-medium text-dim hover:text-foreground hover:underline underline-offset-4">Read</button>}
       <button
         type="button"
         onClick={() => ann.onComment(step)}
@@ -146,7 +147,7 @@ function StepTime({ step }: { step: RmStep }) {
 
 function StepContent({ step, ann, markdown, max }: { step: RmStep; ann: StepAnnotations; markdown: boolean; max: number }) {
   return (
-    <Clamp max={ann.onReadMessage ? Math.min(max, 160) : max} open={ann.hasQuotes(step)} onRead={ann.onReadMessage ? () => ann.onReadMessage!(step) : undefined}>
+    <Clamp max={Math.min(max, 160)} open={ann.hasQuotes(step)}>
       <AnchoredText
         stepId={step.id}
         content={step.content}
@@ -164,9 +165,8 @@ function StepContent({ step, ann, markdown, max }: { step: RmStep; ann: StepAnno
 function StepMetadata({ step, ann }: { step: RmStep; ann: StepAnnotations }) {
   const reward = ann.reward?.(step);
   const score = reward ? undefined : ann.actionScore?.(step);
-  const number = ann.stepNumber ? ann.stepNumber(step) : step.index + 1;
   return (
-    <div className={cn("ml-auto grid shrink-0 items-center gap-2 text-[11px] text-muted-foreground tabular-nums", ann.onReadMessage ? "grid-cols-[5.5rem_4.5rem_4rem_6.5rem]" : "grid-cols-[5.5rem_4.5rem_4rem_4rem]")}>
+    <div className="ml-auto flex shrink-0 items-center gap-3 text-[11px] text-muted-foreground tabular-nums">
       <span className="text-right"><StepTime step={step} /></span>
       {reward ? <span className="flex justify-end"><StepScoreChip reward={reward} /></span> : (
         <span className="text-right">{score && <span className="font-mono" style={{ color: creditColor(score.credit) }}
@@ -175,7 +175,6 @@ function StepMetadata({ step, ann }: { step: RmStep; ann: StepAnnotations }) {
         {formatCredit(score.credit)}{score.stale && <span className="ml-0.5 text-muted-foreground" aria-hidden="true">*</span>}
       </span>}</span>
       )}
-      <span className="text-right">{number !== undefined && number > 0 ? `Step ${number}` : ""}</span>
       <span className="flex justify-end"><StepActions step={step} ann={ann} /></span>
     </div>
   );
@@ -190,13 +189,13 @@ function PromptRow({ step, ann, repeated, expanded, onToggle }: {
   step: RmStep; ann: StepAnnotations; repeated: boolean; expanded: boolean; onToggle: () => void;
 }) {
   return (
-    <RowFrame step={step} flashing={ann.flashing(step)} className="group/row">
+    <RowFrame step={step} ann={ann} className="group/row">
       <div className="mb-2 flex min-h-8 items-center gap-3">
         <button type="button" onClick={onToggle} aria-expanded={expanded}
           aria-label={`${expanded ? "Collapse" : "Expand"} ${repeated ? "repeated user message" : "user message"}`}
           className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-left">
           <DisclosureIcon expanded={expanded} />
-          <span className="shrink-0 text-[13px] font-semibold">{repeated ? "Repeated user message" : "User"}</span>
+          <span className="shrink-0 text-[13px] font-semibold text-amber-700 dark:text-amber-300">{repeated ? "Repeated user message" : "User"}</span>
           {!expanded && !repeated && <span className="truncate text-xs text-muted-foreground">{readableExcerpt(step.content)}</span>}
         </button>
         <Labels step={step} ann={ann} className="shrink-0 flex-nowrap" />
@@ -212,9 +211,9 @@ function PromptRow({ step, ann, repeated, expanded, onToggle }: {
 function AssistantRow({ step, ann, first }: { step: RmStep; ann: StepAnnotations; first: boolean }) {
   const thinking = isThinking(step);
   return (
-    <RowFrame step={step} flashing={ann.flashing(step)} className={cn("group/row", !first && "pt-3")}>
+    <RowFrame step={step} ann={ann} className={cn("group/row", !first && "pt-3")}>
       <div className="mb-1 flex min-h-5 items-center gap-3">
-        <span className={cn(first ? "text-[13px] font-semibold text-foreground" : "text-[11px] text-muted-foreground")}>
+        <span className={cn(first ? "text-[13px] font-semibold text-blue-600 dark:text-blue-300" : "text-[11px] text-blue-600 dark:text-blue-300")}>
           {first ? "Assistant" : thinking ? "Thinking" : "Response"}
         </span>
         <Labels step={step} ann={ann} />
@@ -250,7 +249,7 @@ function ToolRow({
     : /^\s*[\[{]/.test(result!.content) ? "" : firstLine(result!.content);
 
   return (
-    <RowFrame step={head} flashing={ann.flashing(head)} className="group/row">
+    <RowFrame step={head} ann={ann} className="group/row">
       {call && call.content !== "" && (
         <div className="group/row relative mb-1 pt-[3px]">
           <StepContent step={call} ann={ann} markdown max={300} />
@@ -261,7 +260,7 @@ function ToolRow({
           aria-label={`${expanded ? "Collapse" : "Expand"} ${toolLabel(name)} ${call ? "tool call" : "tool result"}`}
           className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-left hover:text-foreground">
           <DisclosureIcon expanded={expanded} />
-          <span className="max-w-44 shrink-0 truncate text-[13px] font-medium text-foreground" title={name ?? undefined}>{toolLabel(name)}</span>
+          <span className="max-w-44 shrink-0 truncate text-[13px] font-medium text-violet-700 dark:text-violet-300" title={name ?? undefined}>{toolLabel(name)}</span>
 
           <span className="min-w-0 truncate text-[12px] text-muted-foreground" title={summary}>{expanded ? "" : summary}</span>
         </button>
@@ -270,74 +269,35 @@ function ToolRow({
         <StepMetadata step={head} ann={ann} />
       </div>
       {expanded && <ScoreLine step={head} ann={ann} className="mb-2 ml-5" />}
-      {expanded && (
-        <div className={cn("mb-3 ml-5 grid gap-4 text-[13px]")}>
-          {call && call.tool_input !== null && (
-            <Section title="Input" right={<CopyButton text={JSON.stringify(call.tool_input, null, 2)} />}>
-              <ToolInput input={call.tool_input} />
-            </Section>
-          )}
-          {result && (
-            <div id={call ? `step-${result.id}` : undefined} className={cn("group/row", call && ann.flashing(result) && "bg-amber-100/60 dark:bg-amber-400/10")}>
-              <Section
-                title="Output"
-                right={
-                  <span className="flex items-center gap-3">
-                    {ann.onReadMessage && <button type="button" onClick={() => ann.onReadMessage!(result)} aria-label="Read tool message" className="cursor-pointer text-[11px] text-dim hover:text-foreground">Read</button>}
-                    <CopyButton text={result.content} />
-                  </span>
-                }
-              >
-                <div className="bg-surface/60 px-3 py-2">
-                  <StepContent step={result} ann={ann} markdown={false} max={320} />
-                </div>
-              </Section>
-            </div>
-          )}
-        </div>
-      )}
+      {expanded && <div className="mb-2 ml-5 text-[13px]">
+        {call?.tool_input && <ToolInput input={call.tool_input} tool={name ?? ""} />}
+        {result && <ToolOutput step={result} ann={ann} nested={call !== null} />}
+      </div>}
     </RowFrame>
   );
 }
 
-function Section({ title, right, children }: { title: string; right?: ReactNode; children: ReactNode }) {
-  return (
-    <div>
-      <div className="mb-1 flex h-6 items-center justify-between gap-2">
-        <span className="text-[11px] font-medium text-muted-foreground">{title}</span>
-        {right}
-      </div>
-      {children}
-    </div>
-  );
-}
-
-function CopyButton({ text }: { text: string }) {
+function ToolOutput({ step, ann, nested }: { step: RmStep; ann: StepAnnotations; nested: boolean }) {
+  const [open, setOpen] = useState(false);
+  const expanded = open || ann.hasQuotes(step);
   const [copied, setCopied] = useState(false);
-  return (
-    <button
-      type="button"
-      onClick={(e) => {
-        e.stopPropagation();
-        void navigator.clipboard.writeText(text).then(() => {
-          setCopied(true);
-          setTimeout(() => setCopied(false), 1200);
-        });
-      }}
-      className="cursor-pointer text-[11px] font-medium text-dim hover:text-foreground hover:underline underline-offset-4"
-      aria-label="Copy"
-      title="Copy"
-    >
-      {copied ? "Copied" : "Copy"}
-    </button>
-  );
+  return <div id={nested ? `step-${step.id}` : undefined} className="group/output border-t border-border-subtle">
+    <div className="flex min-h-7 items-center gap-2">
+      <button type="button" onClick={() => setOpen(!open)} aria-expanded={expanded} aria-label={`${expanded ? "Collapse" : "Expand"} tool output`} className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-left text-xs">
+        <DisclosureIcon expanded={expanded} /><span className="font-medium text-teal-700 dark:text-teal-300">Output</span>
+        {!expanded && <span className="truncate font-mono text-muted-foreground">{firstLine(step.content)}</span>}
+      </button>
+      <button type="button" aria-label="Copy tool output" title="Copy tool output" onClick={() => void navigator.clipboard.writeText(step.content).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1200); }).catch(() => toast.error("Couldn’t copy this output."))} className="cursor-pointer p-1 text-muted-foreground opacity-0 group-hover/output:opacity-100 focus:opacity-100">{copied ? <Check className="size-3" /> : <Copy className="size-3" />}</button>
+    </div>
+    {expanded && <div className="mb-2 rounded-md bg-surface/60 px-3 py-2"><AnchoredText stepId={step.id} content={step.content} images={step.images} markdown={false} highlights={ann.highlights(step)} onSelectAnnotation={ann.onSelectAnnotation} /></div>}
+  </div>;
 }
 
 /* ── recorded system message ──────────────────────────────────────────────────── */
 
 function SystemRow({ step, ann, expanded, onToggle }: { step: RmStep; ann: StepAnnotations; expanded: boolean; onToggle: () => void }) {
   return (
-    <RowFrame step={step} flashing={ann.flashing(step)}>
+    <RowFrame step={step} ann={ann}>
       <div className="group/row flex min-h-8 items-center gap-3">
         <button type="button" onClick={onToggle} aria-expanded={expanded} aria-label={`${expanded ? "Collapse" : "Expand"} system message`}
           className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-left text-[12px] text-muted-foreground hover:text-foreground">
