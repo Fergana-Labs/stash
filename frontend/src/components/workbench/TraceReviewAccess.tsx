@@ -1,7 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useId, useState } from "react";
-import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogTrigger } from "@/components/ui/dialog";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { MoreHorizontal } from "lucide-react";
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/reward-models/rm-ui";
 import { errorMessage } from "@/components/reward-models/rm-text";
@@ -10,7 +12,26 @@ import { ErrorNotice, inputClass, useWorkbenchLoad } from "./workbench-ui";
 
 export default function TraceReviewAccess({ traceId, viewerId }: { traceId: string; viewerId: string }) {
   const [open, setOpen] = useState(false);
-  return <Dialog open={open} onOpenChange={setOpen}><DialogTrigger asChild><Button variant="outline" size="sm">Share</Button></DialogTrigger><DialogContent><DialogTitle>Share trace</DialogTitle><DialogDescription>Invite teammates to read this trace and leave comments.</DialogDescription>{open && <ReviewAccessEditor traceId={traceId} viewerId={viewerId} />}</DialogContent></Dialog>;
+  const actions = useRef<HTMLButtonElement>(null);
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button ref={actions} variant="ghost" size="icon-sm" aria-label="Trace actions" title="Trace actions">
+            <MoreHorizontal className="size-4" aria-hidden="true" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" onCloseAutoFocus={(event) => { if (open) event.preventDefault(); }}>
+          <DropdownMenuItem onSelect={() => setOpen(true)}>Share</DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <DialogContent onCloseAutoFocus={(event) => { event.preventDefault(); actions.current?.focus(); }}>
+        <DialogTitle>Share trace</DialogTitle>
+        <DialogDescription>Invite teammates to read this trace and leave comments.</DialogDescription>
+        {open && <ReviewAccessEditor traceId={traceId} viewerId={viewerId} />}
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 function ReviewAccessEditor({ traceId, viewerId }: { traceId: string; viewerId: string }) {
