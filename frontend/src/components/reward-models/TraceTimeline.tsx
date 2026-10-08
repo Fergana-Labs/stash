@@ -47,7 +47,11 @@ function Clamp({ children, max, open: forcedOpen }: { children: ReactNode; max: 
   const expanded = open || forcedOpen;
 
   useLayoutEffect(() => {
-    setTall(inner.current!.scrollHeight > max + 40);
+    const measure = () => setTall(inner.current!.scrollHeight > max + 40);
+    measure();
+    const observer = new ResizeObserver(measure);
+    if (inner.current?.firstElementChild) observer.observe(inner.current.firstElementChild);
+    return () => observer.disconnect();
   }, [children, max]);
 
   return (
@@ -114,6 +118,7 @@ function StepContent({ step, ann, markdown, max }: { step: RmStep; ann: StepAnno
       <AnchoredText
         stepId={step.id}
         content={step.content}
+        images={step.images}
         markdown={markdown}
         highlights={ann.highlights(step)}
         onSelectAnnotation={ann.onSelectAnnotation}

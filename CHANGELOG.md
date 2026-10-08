@@ -5,6 +5,12 @@ everything before it is captured in git history (`git log`), not here.
 
 ## Unreleased
 
+- Display embedded screenshots inline in traces, with click-to-enlarge previews.
+  Re-uploading a native transcript restores its images without changing existing
+  steps, comments, or scores.
+- Give ungraded trace events no bar height, removing the alternating stripes
+  while preserving their hover, click, and scrub positions.
+
 - Replace blank trace scores with visible loading, queued, recalculating,
   waiting, insufficient-evidence, or failure statuses.
 

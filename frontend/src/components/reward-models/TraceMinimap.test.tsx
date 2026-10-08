@@ -56,8 +56,8 @@ it("shows credit through height and keeps action type colors and retains keyboar
   expect(scored.lastElementChild).toHaveStyle({ height: "18px" });
   expect(scored.lastElementChild).toHaveClass("bg-blue-500");
   const unscored = screen.getByRole("button", { name: "Step 2: Response, awaiting score" });
-  expect(unscored.lastElementChild).toHaveStyle({ height: "6px" });
-  expect(unscored.lastElementChild).toHaveClass("bg-blue-500", "opacity-35");
+  expect(unscored.lastElementChild).toHaveStyle({ height: "0px" });
+  expect(unscored.lastElementChild).toHaveClass("bg-blue-500");
   expect(screen.queryByLabelText("Action credit legend")).not.toBeInTheDocument();
   expect(screen.queryByText(/Only assistant responses and tool calls are graded/)).not.toBeInTheDocument();
   expect(screen.queryByText("User", { exact: true })).not.toBeInTheDocument();

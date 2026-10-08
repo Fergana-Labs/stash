@@ -22,7 +22,7 @@ it("retains bar heights while the trace grows and current scores arrive in batch
   view.rerender(<TraceMinimap {...props} actionScores={automaticActionScores(response(null), steps)} annotationStatus="Updating annotations · previous values retained" />);
   expect(screen.getByRole("button", { name: "Step 2: Response, credit +1.00, previous annotation" }).lastElementChild).toHaveStyle({ height: "46px" });
   expect(screen.getByRole("status")).toHaveTextContent("previous values retained");
-  expect(screen.getByRole("button", { name: "Step 3: Response, awaiting score" }).lastElementChild).toHaveStyle({ height: "6px" });
+  expect(screen.getByRole("button", { name: "Step 3: Response, awaiting score" }).lastElementChild).toHaveStyle({ height: "0px" });
   const partial = { ...old, status: "running", credits: [credit("0", -1)] };
   view.rerender(<TraceMinimap {...props} actionScores={automaticActionScores(response(partial), steps)} />);
   expect(screen.getByRole("button", { name: "Step 1: Response, credit -0.50" }).lastElementChild).toHaveStyle({ height: "16px" });
