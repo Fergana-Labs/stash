@@ -81,6 +81,7 @@ export function domSourceOffset(container: Node, offset: number): number | null 
   if (container.nodeType === Node.TEXT_NODE) {
     const holder = container.parentElement?.closest<HTMLElement>("[data-o]");
     if (!holder) return null;
+    if (holder.dataset.sourceEnd !== undefined) return offset === 0 ? Number(holder.dataset.o) : Number(holder.dataset.sourceEnd);
     return Number(holder.dataset.o) + offset;
   }
   const next = container.childNodes[offset];

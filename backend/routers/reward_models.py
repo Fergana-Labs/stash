@@ -156,8 +156,12 @@ async def list_traces(
 
 
 @router.get("/traces/{trace_id}")
-async def get_trace(trace_id: UUID, current_user: dict = Depends(get_current_user)) -> dict:
-    trace = await traces.get_trace(current_user["id"], trace_id)
+async def get_trace(
+    trace_id: UUID, include_evaluation: bool = False, current_user: dict = Depends(get_current_user)
+) -> dict:
+    trace = await traces.get_trace(
+        current_user["id"], trace_id, include_evaluation=include_evaluation
+    )
     if trace is None:
         raise HTTPException(status_code=404, detail="Trace not found")
     return trace

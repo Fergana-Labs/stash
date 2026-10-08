@@ -62,3 +62,20 @@ it("replaces attachment wrappers while preserving source offsets and quote highl
   expect(mark.textContent).toBe("this");
   expect(domSourceOffset(mark.firstChild!, 0)).toBe(highlighted);
 });
+
+it("explains an older missing image without displaying its raw local path", () => {
+  const { container } = render(<AnchoredText stepId="old" content={'<image path="/private/shot.png">[input_image]</image>\nPlease fix this.'} markdown highlights={[]} onSelectAnnotation={() => {}} />);
+  expect(container.textContent).toContain("Image wasn’t included in this recording");
+  expect(container.textContent).not.toContain("/private/shot.png");
+  expect(container.textContent).toContain("Please fix this.");
+});
+
+it("renders a recorded question reply as readable text with its original quote positions", () => {
+  const content = '<send_user_message_question_reply>\n[{"answer":"No, use the classifier.","question":"Should we use a saved score?","questionItemId":"internal"}]\n</send_user_message_question_reply>';
+  const { container } = render(<AnchoredText stepId="reply" content={content} markdown highlights={[]} onSelectAnnotation={() => {}} />);
+  expect(container.textContent).toContain("No, use the classifier.");
+  expect(container.textContent).not.toContain("questionItemId");
+  for (const run of container.querySelectorAll<HTMLElement>("[data-o]")) {
+    expect(content.slice(Number(run.dataset.o), Number(run.dataset.o) + run.textContent!.length)).toBe(run.textContent);
+  }
+});

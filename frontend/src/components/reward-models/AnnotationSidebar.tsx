@@ -160,7 +160,7 @@ function AnnotationCard({
           )}
         </div>
         <span className="shrink-0 font-mono text-[10.5px] tracking-wide text-muted-foreground uppercase">
-          {target === null ? "Trace" : `Step ${target.index + 1} (${target.role})`}
+          {target === null ? "Trace" : target.index < 0 ? "Instructions" : `Step ${target.index + 1}${target.role === "tool" ? " · output" : ""}`}
         </span>
       </div>
 

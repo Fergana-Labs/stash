@@ -115,7 +115,7 @@ it("explains why each unscored step lacks a grade", () => {
   const mixed = [steps[0], { ...steps[1], role: "user" }, steps[2]] as RmStep[];
   render(<TraceMinimap steps={mixed} annotations={[]} unscoredReasons={new Map([["0", "insufficient evidence"]])} scroller={{ current: null }} navigation={{ current: null }} onJump={vi.fn()} />);
   expect(screen.getByRole("button", { name: "Step 1: Response, insufficient evidence" })).toBeVisible();
-  expect(screen.getByRole("button", { name: "Step 2: User, not graded" })).toBeVisible();
+  expect(screen.getByRole("button", { name: "Step 2: User" })).toBeVisible();
   expect(screen.getByRole("button", { name: "Step 3: Response, awaiting score" })).toBeVisible();
 });
 

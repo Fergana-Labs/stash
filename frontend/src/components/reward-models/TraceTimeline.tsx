@@ -8,10 +8,13 @@ import { creditColor, formatCredit } from "./action-credit";
 import AnchoredText from "./AnchoredText";
 import { firstLine, isThinking, looksLikeError, toolLabel, toolSummary, type TraceRow } from "./trace-rows";
 import type { Highlight } from "./source-anchors";
-import styles from "./TraceMarkdown.module.css";
+import { ChevronDown, ChevronRight } from "lucide-react";
+import { contextTitle, readableExcerpt } from "./trace-presentation";
+import ToolInput from "./ToolInput";
 
 /** Everything a row needs to show and change one step's annotations. Built once per render by the trace page. */
 export interface StepAnnotations {
+  stepNumber?: (step: RmStep) => number | undefined;
   actionScore?: (step: RmStep) => RmActionScore | undefined;
   highlights: (step: RmStep) => Highlight[];
   commentCount: (step: RmStep) => number;
@@ -26,7 +29,7 @@ function RowFrame({ step, flashing, children, className, credit }: { step: RmSte
   return (
     <div
       id={`step-${step.id}`}
-      style={credit === undefined ? undefined : { backgroundColor: creditColor(credit, 0.07), boxShadow: `inset 3px 0 ${creditColor(credit)}` }}
+      data-credit={credit}
       className={cn(
         "relative scroll-mt-44 transition-colors duration-700",
         "px-2",
@@ -129,22 +132,26 @@ function StepContent({ step, ann, markdown, max }: { step: RmStep; ann: StepAnno
 
 /* ── user prompt (turn header) ──────────────────────────────────────── */
 
-function StepMetadata({ step, ann, children }: { step: RmStep; ann: StepAnnotations; children?: ReactNode }) {
+function StepMetadata({ step, ann }: { step: RmStep; ann: StepAnnotations }) {
   const score = ann.actionScore?.(step);
+  const number = ann.stepNumber ? ann.stepNumber(step) : step.index + 1;
   return (
-    <div className="ml-auto flex shrink-0 items-center gap-3 text-[11px] text-muted-foreground tabular-nums">
-      <StepTime step={step} />
-      {score && <span className="rounded px-1.5 py-0.5 font-medium text-foreground" style={{ backgroundColor: creditColor(score.credit, 0.15) }}
-        title={score.reward_model_id === "automatic" ? `${score.stale ? "Previous automatic annotation" : "Automatic action annotation"}: ${formatCredit(score.credit)} (−1 to +1)` : `${score.reward_model_name}: ${formatCredit(score.credit)}`}>
-        {score.stale ? "Previous credit" : "Credit"} {formatCredit(score.credit)}
-      </span>}
-      <span>Step {step.index + 1}</span>
-      <div className="flex w-28 items-center justify-end gap-3">
-        <StepActions step={step} ann={ann} />
-        {children}
-      </div>
+    <div className="ml-auto grid shrink-0 grid-cols-[5.5rem_4.5rem_4rem_4rem] items-center gap-2 text-[11px] text-muted-foreground tabular-nums">
+      <span className="text-right"><StepTime step={step} /></span>
+      <span className="text-right">{score && <span className="font-mono" style={{ color: creditColor(score.credit) }}
+        aria-label={`Action credit ${formatCredit(score.credit)}${score.stale ? ", previous annotation" : ""}`}
+        title={`${score.stale ? "Previous automatic annotation" : "Automatic action annotation"}: ${formatCredit(score.credit)} (−1 to +1). Estimated contribution to the task; not a judgment of the message type.`}>
+        {formatCredit(score.credit)}{score.stale && <span className="ml-0.5 text-muted-foreground" aria-hidden="true">*</span>}
+      </span>}</span>
+      <span className="text-right">{number !== undefined && number > 0 ? `Step ${number}` : ""}</span>
+      <span className="flex justify-end"><StepActions step={step} ann={ann} /></span>
     </div>
   );
+}
+
+function DisclosureIcon({ expanded }: { expanded: boolean }) {
+  const Icon = expanded ? ChevronDown : ChevronRight;
+  return <Icon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />;
 }
 
 function PromptRow({ step, ann, repeated, expanded, onToggle }: {
@@ -152,16 +159,17 @@ function PromptRow({ step, ann, repeated, expanded, onToggle }: {
 }) {
   return (
     <RowFrame step={step} flashing={ann.flashing(step)} className="group/row">
-      <div className="mb-1 flex min-h-5 items-center gap-3">
-        {repeated ? (
-          <button type="button" onClick={onToggle} aria-expanded={expanded}
-            className="cursor-pointer text-[11px] text-muted-foreground hover:text-foreground hover:underline underline-offset-4">
-            Repeated user message{expanded ? " — hide" : " — show"}
-          </button>
-        ) : <span className="text-[13px] font-semibold text-foreground">User</span>}
+      <div className="mb-2 flex min-h-8 items-center gap-3">
+        <button type="button" onClick={onToggle} aria-expanded={expanded}
+          aria-label={`${expanded ? "Collapse" : "Expand"} ${repeated ? "repeated user message" : "user message"}`}
+          className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-left">
+          <DisclosureIcon expanded={expanded} />
+          <span className="shrink-0 text-[13px] font-semibold">{repeated ? "Repeated user message" : "User"}</span>
+          {!expanded && !repeated && <span className="truncate text-xs text-muted-foreground">{readableExcerpt(step.content)}</span>}
+        </button>
         <StepMetadata step={step} ann={ann} />
       </div>
-      {(!repeated || expanded) && <StepContent step={step} ann={ann} markdown max={300} />}
+      {expanded && <StepContent step={step} ann={ann} markdown max={300} />}
     </RowFrame>
   );
 }
@@ -217,36 +225,27 @@ function ToolRow({
         <button type="button" onClick={onToggle} aria-expanded={expanded}
           aria-label={`${expanded ? "Collapse" : "Expand"} ${toolLabel(name)} ${call ? "tool call" : "tool result"}`}
           className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-left hover:text-foreground">
-          <span className="max-w-44 shrink-0 truncate text-[12px] font-medium text-foreground" title={name ?? undefined}>{toolLabel(name)}</span>
-          <span className="shrink-0 text-[10px] text-muted-foreground">{call ? "Tool call" : "Tool result"}</span>
+          <DisclosureIcon expanded={expanded} />
+          <span className="max-w-44 shrink-0 truncate text-[13px] font-medium text-foreground" title={name ?? undefined}>{toolLabel(name)}</span>
+
           <span className="min-w-0 truncate text-[12px] text-muted-foreground" title={summary}>{expanded ? "" : summary}</span>
         </button>
         {isError && <span className="text-[11px] text-red-600">Error</span>}
-        <StepMetadata step={head} ann={ann}>
-          <button type="button" onClick={onToggle} aria-expanded={expanded}
-            className="shrink-0 cursor-pointer text-[11px] font-medium text-dim hover:text-foreground hover:underline underline-offset-4">
-            {expanded ? "Hide" : "Details"}
-          </button>
-        </StepMetadata>
+        <StepMetadata step={head} ann={ann} />
       </div>
       {expanded && (
-        <div className={cn("mb-1 grid gap-3 text-[13px]", call?.tool_input != null && result !== null && "grid-cols-2")}>
+        <div className={cn("mb-3 ml-5 grid gap-4 text-[13px]")}>
           {call && call.tool_input !== null && (
             <Section title="Input" right={<CopyButton text={JSON.stringify(call.tool_input, null, 2)} />}>
-              <pre className={cn(styles.out, "m-0 bg-surface/60 px-3 py-2")}>
-                {JSON.stringify(call.tool_input, null, 2)}
-              </pre>
+              <ToolInput input={call.tool_input} />
             </Section>
           )}
           {result && (
             <div id={call ? `step-${result.id}` : undefined} className={cn("group/row", call && ann.flashing(result) && "bg-amber-100/60 dark:bg-amber-400/10")}>
               <Section
-                title="Result"
+                title="Output"
                 right={
                   <span className="flex items-center gap-3">
-                    {call && <StepTime step={result} />}
-                    {call && <span className="text-[11px] text-muted-foreground">Step {result.index + 1}</span>}
-                    {call && <StepActions step={result} ann={ann} />}
                     <CopyButton text={result.content} />
                   </span>
                 }
@@ -302,26 +301,28 @@ function CopyButton({ text }: { text: string }) {
 function SystemRow({ step, ann, expanded, onToggle }: { step: RmStep; ann: StepAnnotations; expanded: boolean; onToggle: () => void }) {
   return (
     <RowFrame step={step} flashing={ann.flashing(step)}>
-      <div className="group/row flex min-h-7 items-center gap-3">
-        <button type="button" onClick={onToggle} aria-expanded={expanded} aria-label={`${expanded ? "Collapse" : "Expand"} system prompt`}
+      <div className="group/row flex min-h-8 items-center gap-3">
+        <button type="button" onClick={onToggle} aria-expanded={expanded} aria-label={`${expanded ? "Collapse" : "Expand"} ${contextTitle(step)}`}
           className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-left text-[12px] text-muted-foreground hover:text-foreground">
-          <span className="shrink-0 font-medium">System</span>
-          <span className="truncate">{expanded ? "" : firstLine(step.content)}</span>
+          <DisclosureIcon expanded={expanded} /><span className="font-medium">{contextTitle(step)}</span>
         </button>
-        <StepMetadata step={step} ann={ann}>
-          <button type="button" onClick={onToggle} aria-expanded={expanded}
-            className="cursor-pointer text-[11px] font-medium text-dim hover:text-foreground hover:underline underline-offset-4">
-            {expanded ? "Hide" : "Details"}
-          </button>
-        </StepMetadata>
+        <StepActions step={step} ann={ann} />
       </div>
-      {expanded && (
-        <div className="mb-1">
-          <StepContent step={step} ann={ann} markdown={false} max={420} />
-        </div>
-      )}
+      {expanded && <div className="mb-4 mt-2 pl-5"><StepContent step={step} ann={ann} markdown max={420} /></div>}
     </RowFrame>
   );
+}
+
+export function TraceContext({ steps, ann, isExpanded, onToggle }: { steps: RmStep[]; ann: StepAnnotations; isExpanded: (row: TraceRow) => boolean; onToggle: (row: TraceRow) => void }) {
+  const [open, setOpen] = useState(false);
+  if (!steps.length) return null;
+  const expanded = open || steps.some((step) => isExpanded({ kind: "system", key: step.id, step }));
+  return <section aria-label="Instructions and environment" className="mb-3 border-b border-border-subtle pb-2">
+    <button type="button" aria-expanded={expanded} onClick={() => { if (expanded) steps.forEach((step) => { const row: TraceRow = { kind: "system", key: step.id, step }; if (isExpanded(row)) onToggle(row); }); setOpen(!expanded); }} className="flex min-h-8 cursor-pointer items-center gap-2 text-xs text-muted-foreground hover:text-foreground"><DisclosureIcon expanded={expanded} />Instructions and environment <span>({steps.length})</span></button>
+    {expanded && steps.map((step) => {
+    const row: TraceRow = { kind: "system", key: step.id, step };
+    return <SystemRow key={step.id} step={step} ann={ann} expanded={isExpanded(row)} onToggle={() => onToggle(row)} />;
+  })}</section>;
 }
 
 /* ── timeline ───────────────────────────────────────────────────────── */

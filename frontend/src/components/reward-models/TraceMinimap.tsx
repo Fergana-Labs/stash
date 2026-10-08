@@ -105,8 +105,8 @@ function LatestTraceMinimap({ steps, annotations, actionScores, annotationStatus
   function labelFor(step: RmStep) {
     const kind = KINDS[kindOf(step)];
     const score = actionScores?.get(step.id);
-    const missingReason = isGradableAction(step) ? unscoredReasons?.get(step.id) ?? "awaiting score" : "not graded";
-    return `Step ${step.index + 1}: ${kind.label}${step.tool_name === null ? "" : `, ${step.tool_name}`}${score ? `, credit ${formatCredit(score.credit)}${score.stale ? ", previous annotation" : ""}` : `, ${missingReason}`}`;
+    const missingReason = isGradableAction(step) ? unscoredReasons?.get(step.id) ?? "awaiting score" : "";
+    return `Step ${step.index + 1}: ${kind.label}${step.tool_name === null ? "" : `, ${step.tool_name}`}${score ? `, credit ${formatCredit(score.credit)}${score.stale ? ", previous annotation" : ""}` : missingReason ? `, ${missingReason}` : ""}`;
   }
 
   return (

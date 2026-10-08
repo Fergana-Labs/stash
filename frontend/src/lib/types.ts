@@ -483,6 +483,7 @@ export interface RmTraceSpan {
 }
 
 export interface RmTraceDetail extends RmTraceSummary {
+  automatic_evaluation?: import("./workbench-api").TraceEvaluationResponse;
   spans: RmTraceSpan[];
   metadata: Record<string, unknown> | null;
   steps: RmStep[];

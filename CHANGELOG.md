@@ -5,6 +5,16 @@ everything before it is captured in git history (`git log`), not here.
 
 ## Unreleased
 
+- Browse long traces from request summaries into smaller sections and individual
+  steps, with hover previews and direct minimap/comment navigation.
+- Group instructions separately from numbered steps and count a tool call plus
+  its output as one step. Render instructions, question replies, and tool values
+  readably while preserving source links and comment selections.
+- Align plain action-credit numbers, remove full-row score colors and duplicate
+  Details buttons, make user messages collapsible, and start comments closed.
+- Load compact saved action and outcome scores together with the trace, avoiding
+  a second download of evaluator prompts and responses before bars appear.
+
 - Display embedded screenshots inline in traces, with click-to-enlarge previews.
   Re-uploading a native transcript restores its images without changing existing
   steps, comments, or scores.

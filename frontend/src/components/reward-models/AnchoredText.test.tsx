@@ -59,7 +59,8 @@ describe("AnchoredText (plain)", () => {
         onSelectAnnotation={() => {}}
       />,
     );
-    expect(JSON.parse(container.textContent!)).toEqual(JSON.parse(content));
+    expect(container.textContent).toContain("status: delivered");
+    expect(container.textContent).toContain("days: 41");
     for (const run of container.querySelectorAll<HTMLElement>("[data-o]")) {
       const offset = Number(run.dataset.o);
       expect(content.slice(offset, offset + run.textContent!.length)).toBe(run.textContent);
