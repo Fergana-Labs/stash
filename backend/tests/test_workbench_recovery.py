@@ -116,6 +116,38 @@ async def test_schema_failure_retries_without_an_operator_and_stops_after_three_
     assert row["status"] == "failed" and row["attempts"] == 3
 
 
+async def test_invalid_response_recovery_resumes_saved_batch_and_respects_attempt_limit(
+    client, pool, monkeypatch
+):
+    user = await account(client)
+    tid = await upload(client, user)
+    seen = []
+
+    async def invalid_credit(snapshot):
+        seen.append(list(snapshot["provider_request"]["questions"]))
+        if snapshot["targets"]:
+            raw = answer(snapshot)["raw_output"]
+            raw["answers"]["credit_0"]["choice"] = "positive"
+            wire.parse_response(raw, ["credit_0"], choices={"credit_0": auto.policy.CREDITS})
+        return answer(snapshot)
+
+    monkeypatch.setattr(wire, "grade", invalid_credit)
+    await auto.process_trace(tid)
+    # Simulate a failure stranded by the previous deployment after one attempt.
+    await pool.execute("UPDATE rm_wb_queue SET status='failed' WHERE trace_id=$1", tid)
+    await auto.recover()
+    assert (await get_eval(client, user, tid))["queue"]["status"] == "queued"
+    await auto.process_trace(tid)
+    await auto.process_trace(tid)
+    await auto.recover()
+    await auto.process_trace(tid)
+    result = await get_eval(client, user, tid)
+    assert result["queue"]["status"] == "failed"
+    assert result["current"]["credited_actions"] == 0
+    assert [c["attempt"] for c in result["current"]["calls"]] == [1, 1, 2, 3]
+    assert seen == [["trace_success"], ["credit_0"], ["credit_0"], ["credit_0"]]
+
+
 @pytest.mark.parametrize("evaluation_attached", [True, False])
 async def test_missing_repository_keeps_feedback_interpretation_but_cannot_create_a_release(
     client, pool, monkeypatch, evaluation_attached

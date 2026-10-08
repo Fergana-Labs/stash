@@ -43,10 +43,10 @@ it("reaches the final step at the bottom even when earlier steps are still visib
   const container = renderMap();
   container.scrollTop = 500;
   fireEvent.scroll(container);
-  await waitFor(() => expect(screen.getByRole("button", { name: "Step 3: Response" })).toHaveAttribute("aria-current", "step"));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Step 3: Response, awaiting score" })).toHaveAttribute("aria-current", "step"));
   container.scrollTop = 400;
   fireEvent.scroll(container);
-  await waitFor(() => expect(screen.getByRole("button", { name: "Step 1: Response" })).toHaveAttribute("aria-current", "step"));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Step 1: Response, awaiting score" })).toHaveAttribute("aria-current", "step"));
 });
 
 it("shows credit through height and keeps action type colors and retains keyboard step navigation", () => {
@@ -55,10 +55,11 @@ it("shows credit through height and keeps action type colors and retains keyboar
   const scored = screen.getByRole("button", { name: "Step 1: Response, credit -0.40" });
   expect(scored.lastElementChild).toHaveStyle({ height: "18px" });
   expect(scored.lastElementChild).toHaveClass("bg-blue-500");
-  const unscored = screen.getByRole("button", { name: "Step 2: Response, unscored" });
+  const unscored = screen.getByRole("button", { name: "Step 2: Response, awaiting score" });
   expect(unscored.lastElementChild).toHaveStyle({ height: "6px" });
   expect(unscored.lastElementChild).toHaveClass("bg-blue-500", "opacity-35");
-  expect(screen.getByText("Height: credit −1 to +1")).toBeVisible();
+  expect(screen.getByLabelText("Action credit legend")).toHaveTextContent("−1 Harmful0 Neutral+1 Helpful");
+  expect(screen.getByText(/Only assistant responses and tool calls are graded/)).toBeVisible();
   expect(screen.queryByText("User", { exact: true })).not.toBeInTheDocument();
   expect(screen.getByText("Response", { exact: true })).toBeVisible();
   fireEvent.keyDown(scored, { key: "ArrowRight" });
@@ -69,7 +70,7 @@ it("uses the final displayed step when filters hide the end of the trace", async
   const container = renderMap(steps.slice(0, 2));
   container.scrollTop = 500;
   fireEvent.scroll(container);
-  await waitFor(() => expect(screen.getByRole("button", { name: "Step 2: Response" })).toHaveAttribute("aria-current", "step"));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Step 2: Response, awaiting score" })).toHaveAttribute("aria-current", "step"));
 });
 
 it("scrubs across steps, clamps at the ends, and stops on release", () => {
@@ -97,7 +98,7 @@ it("ends scrubbing when the pointer is cancelled and retains keyboard activation
   fireEvent.pointerDown(map, { pointerId: 1, button: 0, clientX: 10 });
   fireEvent.pointerCancel(map, { pointerId: 1 });
   fireEvent.pointerMove(map, { pointerId: 1, clientX: 250 });
-  fireEvent.click(screen.getByRole("button", { name: "Step 3: Response" }), { detail: 0 });
+  fireEvent.click(screen.getByRole("button", { name: "Step 3: Response, awaiting score" }), { detail: 0 });
   expect(onJump.mock.calls).toEqual([[0], [2]]);
 });
 
@@ -106,6 +107,14 @@ it("jumps to the clicked bar even when its position falls outside an equal-width
   renderMap(steps, onJump);
   const map = screen.getByRole("group", { name: "Step map" });
   map.getBoundingClientRect = () => ({ left: 100, width: 300 }) as DOMRect;
-  fireEvent.pointerDown(screen.getByRole("button", { name: "Step 3: Response" }).lastElementChild!, { pointerId: 1, button: 0, clientX: 290 });
+  fireEvent.pointerDown(screen.getByRole("button", { name: "Step 3: Response, awaiting score" }).lastElementChild!, { pointerId: 1, button: 0, clientX: 290 });
   expect(onJump).toHaveBeenCalledWith(2);
+});
+
+it("explains why each unscored step lacks a grade", () => {
+  const mixed = [steps[0], { ...steps[1], role: "user" }, steps[2]] as RmStep[];
+  render(<TraceMinimap steps={mixed} annotations={[]} unscoredReasons={new Map([["0", "insufficient evidence"]])} scroller={{ current: null }} navigation={{ current: null }} onJump={vi.fn()} />);
+  expect(screen.getByRole("button", { name: "Step 1: Response, insufficient evidence" })).toBeVisible();
+  expect(screen.getByRole("button", { name: "Step 2: User, not graded" })).toBeVisible();
+  expect(screen.getByRole("button", { name: "Step 3: Response, awaiting score" })).toBeVisible();
 });

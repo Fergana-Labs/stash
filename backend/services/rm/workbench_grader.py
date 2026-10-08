@@ -362,11 +362,15 @@ def _probability(value) -> bool:
     return type(value) in (int, float) and 0 <= value <= 1 and math.isfinite(value)
 
 
+INVALID_RESPONSE = "Jev returned an invalid grading response"
+NON_JSON_RESPONSE = "Jev returned a non-JSON grading response"
+
+
 def parse_response(raw: dict, criterion_ids: list[str], *, choices: dict | None = None) -> dict:
     """Reject malformed/mismatched provider responses rather than inventing results."""
 
     def invalid():
-        return GradingError("Jev returned an invalid grading response", raw_output=raw)
+        return GradingError(INVALID_RESPONSE, retryable=True, raw_output=raw)
 
     if (
         not isinstance(raw, dict)
@@ -439,7 +443,7 @@ async def grade(snapshot: dict) -> dict:
     try:
         raw = response.json()
     except ValueError as exc:
-        raise GradingError("Jev returned a non-JSON grading response") from exc
+        raise GradingError(NON_JSON_RESPONSE, retryable=True) from exc
     result = parse_response(
         raw,
         list(request["questions"]),

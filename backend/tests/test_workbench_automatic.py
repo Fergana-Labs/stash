@@ -115,7 +115,10 @@ async def test_later_work_is_new_version_and_history_retains_exact_evidence(
     assert calls[-1]["targets"][0]["step_id"] == before["actions"][0]["id"]
 
 
-async def test_failed_credit_call_retries_without_repeating_success_call(client, pool, monkeypatch):
+@pytest.mark.parametrize("invalid_response", [False, True])
+async def test_failed_credit_call_retries_without_repeating_success_call(
+    client, pool, monkeypatch, invalid_response
+):
     user = await account(client)
     tid = await upload(client, user)
     seen = []
@@ -123,6 +126,11 @@ async def test_failed_credit_call_retries_without_repeating_success_call(client,
     async def grade(snapshot):
         seen.append(list(snapshot["provider_request"]["questions"]))
         if len(seen) == 2:
+            if invalid_response:
+                raw = answer(snapshot)["raw_output"]
+                # Real production failure: chosen label disagrees with probabilities.
+                raw["answers"]["credit_0"]["choice"] = "positive"
+                wire.parse_response(raw, ["credit_0"], choices={"credit_0": policy.CREDITS})
             raise wire.GradingError("Transient failure", retryable=True)
         return answer(snapshot)
 

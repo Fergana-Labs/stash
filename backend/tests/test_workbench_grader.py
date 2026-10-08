@@ -263,6 +263,7 @@ def test_malformed_provider_response_is_execution_failure(malformation):
     with pytest.raises(grader.GradingError) as error:
         grader.parse_response(raw, [c["id"] for c in grader.DEFAULT_CRITERIA])
     assert error.value.raw_output == raw
+    assert error.value.retryable
 
 
 def mock_http(monkeypatch, handler):
@@ -328,5 +329,6 @@ async def test_transport_timeout_is_retryable(monkeypatch):
 
 async def test_non_json_success_response_fails(monkeypatch):
     mock_http(monkeypatch, lambda r: httpx.Response(200, text="not JSON"))
-    with pytest.raises(grader.GradingError, match="non-JSON"):
+    with pytest.raises(grader.GradingError, match="non-JSON") as error:
         await grader.grade(snapshot())
+    assert error.value.retryable
