@@ -30,12 +30,12 @@ import { buildRows, rowSteps, type TraceRow } from "@/components/reward-models/t
 import TraceExplorer from "@/components/reward-models/TraceExplorer";
 import { buildTraceOutline, groupPath, resolveGroupPath } from "@/components/reward-models/trace-outline";
 import { presentTrace } from "@/components/reward-models/trace-presentation";
-import { traceScrollMarkers } from "@/components/reward-models/trace-scroll";
+import TraceScrollRail from "@/components/reward-models/TraceScrollRail";
+import { useSectionSummaries } from "@/components/reward-models/use-section-summaries";
 import { useAuth } from "@/hooks/useAuth";
 import { rmCreateAnnotation, rmDeleteAnnotation, rmGetTrace, rmUpdateAnnotation } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import type { RmAnnotation, RmStep, RmTraceDetail } from "@/lib/types";
-import ConversationScrollRail from "@/components/ConversationScrollRail";
 
 const FLASH_MS = 1400;
 /** Highlight id for the not-yet-saved quote while the composer is open. */
@@ -133,15 +133,18 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
 
   const closeComposer = useCallback(() => setComposer(null), []);
 
+  const presentation = presentTrace(trace?.steps ?? []);
+  const { rows } = presentation;
+  const groups = buildTraceOutline(rows);
+  const focusedGroup = resolveGroupPath(groups, outlinePath).at(-1);
+  const browsingSections = focusedGroup ? focusedGroup.children.length > 0 : !(groups.length === 1 && !groups[0].children.length && groups[0].rows.length <= 8);
+  const sectionGroups = browsingSections ? focusedGroup?.children ?? groups : [];
+  const assessments = useSectionSummaries(traceId, sectionGroups);
+
   if (!trace && loadError) return <div role="alert" className="p-8 text-sm">Couldn’t load this trace. <button onClick={() => void load()} className="underline">Retry</button></div>;
   if (!trace || !user) return <TraceSkeleton />;
   const viewerId = user.id;
   const ordered = sortAnnotations(trace.annotations.filter((a) => a.comment !== null), trace.steps);
-  const presentation = presentTrace(trace.steps);
-  const { rows } = presentation;
-  const groups = buildTraceOutline(rows);
-  const focusedGroup = resolveGroupPath(groups, outlinePath).at(-1);
-  const browsingSections = focusedGroup ? focusedGroup.children.length > 0 : !(groups.length === 1 && groups[0].rows.length <= 8);
   const actionScores = automaticActionScores(evaluation, trace.steps);
   const annotationProgress = automaticAnnotationProgress(evaluation, trace.steps, actionScores);
   // Step labels say what each step is; the scores are built from them. Steps are numbered as the page shows them.
@@ -308,17 +311,10 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
     }),
   };
 
-  const scrollMarkers = traceScrollMarkers(rows).map((marker) => ({ ...marker, label: `Step ${presentation.numberById.get(marker.targetId.slice(5)) ?? 1}` }));
-
   return (
     <div className="flex h-full min-h-0">
-      <ConversationScrollRail items={scrollMarkers} scroller={scroller} header={navigation} onJump={(item) => {
-        if (item.targetId === scrollMarkers[0]?.targetId) {
-          scroller.current?.scrollTo({ top: 0, behavior: "instant" });
-        } else {
-          revealStep(item.targetId.slice("step-".length));
-        }
-      }} />
+      <TraceScrollRail key={outlinePath.join("/")} sections={sectionGroups} rows={focusedGroup?.rows ?? rows}
+        copy={assessments.copy} stepNumber={(step) => presentation.numberById.get(step.id) ?? step.index + 1} scroller={scroller} />
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <div ref={navigation} className="z-20 shrink-0 border-b border-border bg-background px-6 py-2">
         <div className="mx-auto max-w-5xl space-y-2">
@@ -372,7 +368,7 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
           <TraceFlamegraph spans={trace.spans} onJump={(index) => revealStep(trace.steps[index].id)} />
           <TraceContext steps={presentation.context} ann={ann} isExpanded={isExpanded} onToggle={toggleRow} />
           <TraceExplorer
-            traceId={traceId} scroller={scroller} groups={groups} path={outlinePath}
+            groups={groups} path={outlinePath} assessments={assessments}
             onPath={(path) => { setOutlinePath(path); scroller.current?.scrollTo({ top: 0, behavior: "instant" }); }}
             ann={ann} isExpanded={isExpanded} onToggle={toggleRow} onOpenRows={openRows}
           />
