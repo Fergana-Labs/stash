@@ -1,51 +1,82 @@
 "use client";
 
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ChevronRight, ArrowUpLeft } from "lucide-react";
 import type { RmStep } from "@/lib/types";
+import { cn } from "@/lib/utils";
 import type { TraceGroup } from "./trace-outline";
 import { resolveGroupPath } from "./trace-outline";
 import { rowHead } from "./trace-presentation";
 import type { TraceRow } from "./trace-rows";
 import TraceTimeline, { type StepAnnotations } from "./TraceTimeline";
-import { useSectionSummaries } from "./use-section-summaries";
+import type { useSectionSummaries } from "./use-section-summaries";
 import TraceSectionScore from "./TraceSectionScore";
+import { traceSectionTarget } from "./trace-scroll";
 
-export default function TraceExplorer({ traceId, groups, path, onPath, ann, isExpanded, onToggle, onOpenRows, scroller }: {
-  traceId: string; groups: TraceGroup[]; path: string[]; onPath: (path: string[]) => void; ann: StepAnnotations;
+export default function TraceExplorer({ groups, path, onPath, assessments, ann, isExpanded, onToggle, onOpenRows }: {
+  groups: TraceGroup[]; path: string[]; onPath: (path: string[]) => void; ann: StepAnnotations;
+  assessments: ReturnType<typeof useSectionSummaries>;
   isExpanded: (row: TraceRow) => boolean; onToggle: (row: TraceRow) => void;
-  onOpenRows: (rows: TraceRow[]) => void; scroller: RefObject<HTMLDivElement | null>;
+  onOpenRows: (rows: TraceRow[]) => void;
 }) {
   const trail = resolveGroupPath(groups, path);
   const current = trail.at(-1);
-  const direct = groups.length === 1 && groups[0].rows.length <= 8 && path.length === 0;
+  const direct = groups.length === 1 && !groups[0].children.length && groups[0].rows.length <= 8 && path.length === 0;
   const children = direct ? [] : current ? current.children : groups;
-  const { copy, status } = useSectionSummaries(traceId, children);
+  const { copy, status } = assessments;
+  const explorer = useRef<HTMLElement>(null);
   const cards = useRef<HTMLDivElement>(null);
-  const [height, setHeight] = useState(480);
-  const hover = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const hoverKey = useRef<string | null>(null);
-  const pathKey = path.join("/");
-  const levelKey = children.map((node) => node.key).join("/");
-  function cancelHover() {
-    if (hover.current) clearTimeout(hover.current);
-    hover.current = null;
-    hoverKey.current = null;
+  const [selections, setSelections] = useState<Record<string, string>>({});
+  const pathKey = trail.map((node) => node.key).join("/");
+  const selected = children.find((node) => node.key === selections[pathKey]) ?? children[0];
+  function select(node: TraceGroup, focus = false) {
+    setSelections((previous) => previous[pathKey] === node.key ? previous : { ...previous, [pathKey]: node.key });
+    if (focus) {
+      const target = cards.current?.querySelector<HTMLButtonElement>(`[data-section-key="${node.key}"]`);
+      target?.focus({ preventScroll: true });
+      target?.scrollIntoView?.({ block: "nearest", behavior: "instant" });
+    }
   }
-  useEffect(() => { cancelHover(); return cancelHover; }, [pathKey, levelKey]);
+  function focusLevel() {
+    requestAnimationFrame(() => {
+      const target = cards.current?.querySelector<HTMLButtonElement>('[data-selected="true"]') ?? explorer.current;
+      target?.focus({ preventScroll: true });
+      target?.scrollIntoView?.({ block: "nearest", behavior: "instant" });
+    });
+  }
+  function ascend() {
+    if (!current) return;
+    const parent = trail.slice(0, -1).map((node) => node.key);
+    setSelections((previous) => ({ ...previous, [parent.join("/")]: current.key }));
+    onPath(parent);
+    focusLevel();
+  }
+  function descend(node: TraceGroup) {
+    select(node);
+    if (!node.children.length) onOpenRows(node.rows);
+    onPath([...trail.map((item) => item.key), node.key]);
+  }
   useEffect(() => {
-    const element = cards.current;
-    const viewport = scroller.current;
-    if (!element || !viewport) return;
-    const measure = () => setHeight(Math.max(120, Math.floor(Math.min(window.innerHeight, viewport.getBoundingClientRect().bottom) - element.getBoundingClientRect().top - 12)));
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(viewport);
-    // Context disclosure and breadcrumb wrapping also change the space available.
-    if (element.parentElement?.parentElement) observer.observe(element.parentElement.parentElement);
-    window.addEventListener("resize", measure);
-    return () => { observer.disconnect(); window.removeEventListener("resize", measure); };
-  }, [scroller, pathKey, children.length]);
+    function navigate(event: KeyboardEvent) {
+      if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || event.isComposing) return;
+      const target = event.target;
+      if (!(target instanceof HTMLElement) || target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"]), [role="textbox"], [role="dialog"], [role="menu"], [role="listbox"]')) return;
+      if (target !== document.body && !explorer.current?.contains(target)) return;
+      if ((event.key === "ArrowLeft" || event.key === "Escape") && current) {
+        event.preventDefault();
+        if (!event.repeat) ascend();
+      } else if (event.key === "ArrowRight" && selected) {
+        event.preventDefault();
+        if (!event.repeat) { descend(selected); focusLevel(); }
+      } else if ((event.key === "ArrowDown" || event.key === "ArrowUp") && children.length) {
+        event.preventDefault();
+        const next = Math.max(0, Math.min(children.length - 1, children.indexOf(selected) + (event.key === "ArrowDown" ? 1 : -1)));
+        select(children[next], true);
+      }
+    }
+    document.addEventListener("keydown", navigate);
+    return () => document.removeEventListener("keydown", navigate);
+  });
   const number = (step: RmStep) => ann.stepNumber?.(step) ?? step.index + 1;
   const range = (node: TraceGroup) => {
     const first = number(rowHead(node.rows[0]));
@@ -53,16 +84,8 @@ export default function TraceExplorer({ traceId, groups, path, onPath, ann, isEx
     return first === last ? `Step ${first}` : `Steps ${first}–${last}`;
   };
   const title = (node: TraceGroup) => copy(node)?.title ?? range(node);
-  function descend(node: TraceGroup, expand = false) {
-    cancelHover();
-    if (expand && !node.children.length) onOpenRows(node.rows);
-    onPath([...trail.map((item) => item.key), node.key]);
-  }
-  if (direct) return <section aria-label="Trace explorer"><TraceTimeline rows={groups[0].rows} ann={ann} isExpanded={isExpanded} onToggle={onToggle} /></section>;
-  const cardHeight = height / Math.max(children.length, 1);
-  return <section aria-label="Trace explorer" onKeyDown={(event) => {
-    if (event.key === "Escape" && current) { cancelHover(); onPath(trail.slice(0, -1).map((node) => node.key)); }
-  }}>
+  if (direct) return <section ref={explorer} tabIndex={-1} aria-label="Trace explorer"><TraceTimeline rows={groups[0].rows} ann={ann} isExpanded={isExpanded} onToggle={onToggle} /></section>;
+  return <section ref={explorer} tabIndex={-1} aria-label="Trace explorer" className="outline-none">
     <nav aria-label="Trace hierarchy" className="mb-2 flex h-8 items-center gap-1 overflow-hidden text-xs text-muted-foreground">
       <button type="button" onClick={() => onPath([])} className="shrink-0 cursor-pointer hover:text-foreground">Overview</button>
       {trail.map((node, index) => <span key={node.key} className="flex min-w-0 items-center gap-1">
@@ -70,26 +93,21 @@ export default function TraceExplorer({ traceId, groups, path, onPath, ann, isEx
         <button type="button" title={title(node)} onClick={() => onPath(trail.slice(0, index + 1).map((node) => node.key))} className="max-w-48 cursor-pointer truncate hover:text-foreground">{title(node)}</button>
       </span>)}
       {children.length > 0 && status !== "ready" && <span role="status" className="ml-auto shrink-0 text-[11px]">{status === "loading" ? "Summarizing and scoring…" : "Section assessments unavailable"}</span>}
-      {current && <button type="button" aria-label="Zoom out" onClick={() => onPath(trail.slice(0, -1).map((node) => node.key))} className="ml-auto flex shrink-0 cursor-pointer items-center gap-1 pl-2 hover:text-foreground"><ArrowUpLeft className="size-3" />Back</button>}
+      <span className="ml-auto hidden shrink-0 text-[11px] sm:inline">↑↓ select · → open · ← back</span>
+      {current && <button type="button" aria-label="Zoom out" onClick={ascend} className="ml-auto flex shrink-0 cursor-pointer items-center gap-1 pl-2 hover:text-foreground"><ArrowUpLeft className="size-3" />Back</button>}
     </nav>
     {current && !children.length ? <TraceTimeline rows={current.rows} ann={ann} isExpanded={isExpanded} onToggle={onToggle} /> :
-      <div ref={cards} data-trace-sections className="flex flex-col gap-2" style={{ height }}>{children.map((node) => {
+      <div ref={cards} data-trace-sections className="flex flex-col gap-2">{children.map((node) => {
         const generated = copy(node);
-        return <div key={node.key} data-trace-section className="relative min-h-0 flex-1">
+        return <div key={node.key} id={traceSectionTarget(node)} data-trace-section className="relative">
           <button type="button" onClick={() => descend(node)}
-          onPointerMove={(event) => {
-            // Movement, rather than pointer-enter, prevents a stationary pointer
-            // from cascading into newly mounted children after a hover opens a level.
-            if (event.pointerType !== "mouse" || hoverKey.current === node.key) return;
-            cancelHover();
-            hoverKey.current = node.key;
-            hover.current = setTimeout(() => descend(node, true), 450);
-          }}
-          onPointerLeave={cancelHover} onPointerDown={cancelHover} onBlur={cancelHover}
-          aria-label={`Explore ${title(node)}`} className="flex h-full w-full cursor-pointer flex-col justify-center overflow-hidden rounded-xl border border-border-subtle bg-surface/25 py-2 pr-32 pl-4 text-left transition-colors hover:border-foreground/20 hover:bg-surface/60 focus-visible:outline-2 focus-visible:outline-brand-500">
+          onPointerMove={(event) => { if (event.pointerType === "mouse") select(node); }}
+          onFocus={() => select(node)} data-section-key={node.key} data-selected={node.key === selected?.key}
+          tabIndex={node.key === selected?.key ? 0 : -1} aria-current={node.key === selected?.key ? "true" : undefined}
+          aria-label={`Explore ${title(node)}`} className={cn("flex min-h-28 w-full cursor-pointer flex-col justify-center overflow-hidden rounded-xl border bg-surface/25 py-4 pr-32 pl-4 text-left transition-colors hover:border-foreground/20 hover:bg-surface/60 focus-visible:outline-2 focus-visible:outline-brand-500", node.key === selected?.key ? "border-brand-500/50 bg-brand-500/5" : "border-border-subtle")}>
           <div className="flex w-full items-center gap-3"><h3 className="m-0 line-clamp-2 min-w-0 flex-1 text-[15px] font-medium leading-snug">{title(node)}</h3><span className="shrink-0 text-[11px] text-muted-foreground tabular-nums">{range(node)}</span><ChevronRight className="size-4 shrink-0 text-muted-foreground" /></div>
-          {cardHeight >= 90 && generated && <p className={`m-0 mt-1.5 text-[13px] leading-relaxed text-muted-foreground ${cardHeight < 130 ? "line-clamp-1" : "line-clamp-2"}`}>{generated.summary}</p>}
-          {cardHeight >= 115 && <div className="mt-2 flex items-center gap-3 text-[11px] text-muted-foreground"><span>{node.rows.length} steps</span><span>{node.children.length ? `${node.children.length} sections` : "Open steps"}</span></div>}
+          {generated && <p className="m-0 mt-1.5 line-clamp-2 text-[13px] leading-relaxed text-muted-foreground">{generated.summary}</p>}
+          <div className="mt-2 flex items-center gap-3 text-[11px] text-muted-foreground"><span>{node.rows.length} steps</span><span>{node.children.length ? `${node.children.length} subtasks` : "Open steps"}</span></div>
         </button><TraceSectionScore section={generated} range={range(node)} loading={status === "loading"} /></div>;
       })}</div>}
   </section>;

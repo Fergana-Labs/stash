@@ -5,9 +5,12 @@ everything before it is captured in git history (`git log`), not here.
 
 ## Unreleased
 
-- Keep each trace overview level to at most four sections sized to the available
-  screen height. Generate concise activity titles and summaries, and open a
-  section after a short hover to reveal its subsections or expanded steps.
+- Organize traces by requests, progress subtasks, and distinct activities without
+  capping section counts or splitting work into equal chunks. Generate concise
+  activity titles and summaries. Let longer lists scroll, and use up/down
+  arrows to select, right to open, and left to return to the parent section.
+- Keep the left trace scrubber within the visible sections or steps so dragging
+  no longer jumps between hierarchy levels; arrow navigation resumes after scrubbing.
 - Show cached section success scores with local objectives and an explanation.
   Judge each partition against the requests active within it, including unrelated
   tasks in the same conversation; insufficient evidence stays unscored.

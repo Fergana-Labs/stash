@@ -1,5 +1,5 @@
 import type { TraceRow } from "./trace-rows";
-import { rowSteps } from "./trace-rows";
+import { rowSteps, toolFamily } from "./trace-rows";
 import { readableExcerpt, rowHead } from "./trace-presentation";
 
 export interface TraceGroup {
@@ -12,34 +12,54 @@ function group(rows: TraceRow[], keyPrefix = "group"): TraceGroup {
   return { key: `${keyPrefix}-${rows[0].key}`, rows, children: [] };
 }
 
-/** Bounded branching keeps long stretches of tool work navigable down to a row. */
-function subdivide(node: TraceGroup): TraceGroup {
-  if (node.rows.length <= 8) return node;
-  const phases: TraceRow[][] = [];
+/** Recognizable changes in work can form subtasks without inventing size-based cuts. */
+function activity(row: TraceRow): string | null {
+  if (row.kind !== "tool") return null;
+  const step = rowHead(row);
+  const family = toolFamily(step.tool_name);
+  if (family === "read" || family === "search") return "inspect";
+  if (family === "edit" || family === "write") return "edit";
+  const input = step.tool_input ?? {};
+  if (typeof input.url === "string" && (family === "browser" || family === "web")) {
+    try { return `site:${new URL(input.url).host}`; } catch { return null; }
+  }
+  // Native Codex wraps shell and patch calls in an exec envelope.
+  const wrapped = typeof input.input === "string" ? input.input : typeof input.code === "string" ? input.code : "";
+  if (/\btools\.apply_patch\s*\(/.test(wrapped)) return "edit";
+  const command = typeof input.cmd === "string" ? input.cmd : typeof input.command === "string" ? input.command : wrapped.match(/\b(?:cmd|command)["']?\s*:\s*["']([^"'\n]*)/)?.[1] ?? "";
+  if (/(?:^|[;&|]\s*)(?:\S*\/)?(?:vitest|pytest|jest|eslint|tsc|ruff|playwright)\b|\b(?:npm|pnpm|yarn) (?:run )?(?:test|lint|typecheck)\b|\bpython[\d.]* -m pytest\b/.test(command)) return "verify";
+  if (/\bgit (?:commit|push)\b|\bgh pr (?:create|merge)\b/.test(command)) return "publish";
+  if (/^(?:rg|cat|sed|ls|find)\b|^git (?:status|diff|log|show)\b/.test(command.trim())) return "inspect";
+  return null;
+}
+
+function splitActivities(node: TraceGroup): TraceGroup {
+  const runs: TraceRow[][] = [[]];
+  let previous: string | null = null;
   for (const row of node.rows) {
-    if (!phases.length || (row.kind === "assistant" && row.step.metadata?.phase === "commentary" && phases.at(-1)!.length > 1)) phases.push([]);
-    phases.at(-1)!.push(row);
+    const next = activity(row);
+    if (next && previous && next !== previous) runs.push([]);
+    runs.at(-1)!.push(row);
+    if (next) previous = next;
   }
-  if (phases.length <= 1) {
-    phases.length = 0;
-    const size = Math.ceil(node.rows.length / Math.min(4, Math.ceil(node.rows.length / 8)));
-    for (let i = 0; i < node.rows.length; i += size) phases.push(node.rows.slice(i, i + size));
-  }
-  if (phases.length > 4) {
-    const size = Math.ceil(phases.length / 4);
-    node.children = Array.from({ length: Math.ceil(phases.length / size) }, (_, i) => subdivide(group(phases.slice(i * size, (i + 1) * size).flat(), node.key)));
-  } else node.children = phases.map((rows) => subdivide(group(rows, node.key)));
+  if (runs.length > 1) node.children = runs.map((rows) => group(rows, node.key));
   return node;
 }
 
-/** Group adjacent tasks without losing their boundaries; every zoom level has at most four choices. */
-function boundLevel(nodes: TraceGroup[]): TraceGroup[] {
-  if (nodes.length <= 4) return nodes;
-  const size = Math.ceil(nodes.length / 4);
-  return Array.from({ length: Math.ceil(nodes.length / size) }, (_, i) => {
-    const children = boundLevel(nodes.slice(i * size, (i + 1) * size));
-    return { ...group(children.flatMap((child) => child.rows), `overview-${nodes.length}`), children };
-  });
+/** Requests contain recorded progress phases, which can contain distinct activities.
+ * A continuous stretch of work stays together regardless of its length. */
+function subdivide(node: TraceGroup): TraceGroup {
+  const phases: TraceRow[][] = [[]];
+  let hasWork = false;
+  for (const row of node.rows) {
+    const progress = row.kind === "assistant" && row.step.metadata?.phase === "commentary";
+    if (progress && hasWork) { phases.push([]); hasWork = false; }
+    phases.at(-1)!.push(row);
+    if (row.kind === "tool" || (row.kind === "assistant" && !progress && !row.step.metadata?.thinking)) hasWork = true;
+  }
+  if (phases.length === 1) return splitActivities(node);
+  node.children = phases.map((rows) => splitActivities(group(rows, node.key)));
+  return node;
 }
 
 /** Recorded task labels and request boundaries determine the hierarchy; generated copy decorates it. */
@@ -57,7 +77,7 @@ export function buildTraceOutline(rows: TraceRow[]): TraceGroup[] {
     } else tasks.at(-1)!.rows.push(row);
     if (label?.task_id) taskId = label.task_id;
   }
-  return boundLevel(tasks.map(subdivide));
+  return tasks.map(subdivide);
 }
 
 export function groupPath(groups: TraceGroup[], stepId: string): string[] {

@@ -1,5 +1,10 @@
 import { conversationExcerpt, conversationMarkers, type ConversationMarker } from "@/components/ConversationScrollRail";
 import { isThinking, rowSteps, toolLabel, toolSummary, type TraceRow } from "./trace-rows";
+import type { TraceGroup } from "./trace-outline";
+
+export function traceSectionTarget(node: TraceGroup): string {
+  return `trace-section-${node.key}`;
+}
 
 export function traceScrollMarkers(rows: TraceRow[]): ConversationMarker[] {
   // Thinking steps remain readable in the trace, but do not stand in for the
