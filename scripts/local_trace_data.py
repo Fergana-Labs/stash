@@ -112,8 +112,8 @@ async def run(args):
             finally:
                 await source.close()
             return
-        if not settings.TYPESAFE_API_KEY:
-            raise ValueError("Configure TYPESAFE_API_KEY in the local backend/.env")
+        # The production pipeline decides which providers this trace needs;
+        # imported labels can be scored without calling a labeling provider.
         while True:
             pending = await pool.fetch(
                 """SELECT q.trace_id FROM rm_wb_queue q JOIN rm_traces t ON t.id=q.trace_id

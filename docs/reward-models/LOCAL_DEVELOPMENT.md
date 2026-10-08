@@ -26,9 +26,11 @@ local copy instead. Never fabricate scores or rewrite frozen grading evidence.
 
 ## Score new local imports
 
-Configure the existing remote classifier's `TYPESAFE_API_KEY` and matching
-`JEV_MODEL` in local `backend/.env`, then restart the local backend. Section
-summaries use the separate `ANTHROPIC_API_KEY` configuration.
+For unlabeled traces, configure `OPENAI_API_KEY` in local `backend/.env`.
+Optional quality checks use `TYPESAFE_API_KEY` and `JEV_MODEL`; section summaries
+use `ANTHROPIC_API_KEY`. Restart the local backend and scoring worker after
+changing configuration. The production pipeline decides which providers a
+trace needs; imported labels do not require a labeling provider.
 
 ```sh
 python scripts/local_trace_data.py --user YOUR_LOCAL_USER score --watch
