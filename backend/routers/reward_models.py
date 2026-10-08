@@ -18,7 +18,16 @@ from rm_worker.artifacts import download_url
 
 from ..auth import get_current_user
 from ..database import get_pool
-from ..services.rm import annotations, datasets, evaluator, jobs, otel_ingest, query, traces
+from ..services.rm import (
+    annotations,
+    datasets,
+    evaluator,
+    jobs,
+    otel_ingest,
+    query,
+    trace_images,
+    traces,
+)
 from ..services.rm.adapters import TraceFormatError, list_formats
 from ..services.rm.feedback import RUBRIC
 from ..tasks import reward_models as rm_tasks
@@ -152,6 +161,22 @@ async def get_trace(trace_id: UUID, current_user: dict = Depends(get_current_use
     if trace is None:
         raise HTTPException(status_code=404, detail="Trace not found")
     return trace
+
+
+@router.get("/trace-images/{image_id}")
+async def get_trace_image(image_id: UUID, current_user: dict = Depends(get_current_user)):
+    try:
+        data, content_type = await trace_images.read_image(current_user["id"], image_id)
+    except LookupError as exc:
+        raise HTTPException(404, "Image not found") from exc
+    return Response(
+        data,
+        media_type=content_type,
+        headers={
+            "Cache-Control": "private, no-cache",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
 
 
 @router.delete("/traces/{trace_id}", status_code=204)

@@ -1,13 +1,15 @@
 // Design from Priyadarshan's trace viewer (projects/trace_viewer)
 "use client";
 
-import type { MouseEvent } from "react";
+import { Fragment, type MouseEvent, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { cn } from "@/lib/utils";
+import type { RmTraceImage } from "@/lib/types";
 import { buildSegments, type Segment } from "./rm-text";
 import { rehypeSourceAnchors, type Highlight } from "./source-anchors";
 import { toolOutputRuns } from "./tool-output";
+import TraceInlineImage from "./TraceInlineImage";
 import styles from "./TraceMarkdown.module.css";
 
 /**
@@ -18,6 +20,7 @@ import styles from "./TraceMarkdown.module.css";
 export default function AnchoredText({
   stepId,
   content,
+  images = [],
   markdown,
   highlights,
   onSelectAnnotation,
@@ -25,6 +28,7 @@ export default function AnchoredText({
 }: {
   stepId: string;
   content: string;
+  images?: RmTraceImage[];
   markdown: boolean;
   highlights: Highlight[];
   onSelectAnnotation: (ids: string[]) => void;
@@ -35,10 +39,13 @@ export default function AnchoredText({
     if (mark) onSelectAnnotation(mark.dataset.ids!.split(" "));
   }
 
-  if (!markdown) {
-    const segments = toolOutputRuns(content).flatMap<Segment & { offset: number | null }>((run) => {
+  function renderContent(text: string, sourceOffset: number) {
+    if (markdown) return <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[[rehypeSourceAnchors, { source: text, highlights, sourceOffset }]]}>
+      {text}
+    </ReactMarkdown>;
+    const segments = toolOutputRuns(text).flatMap<Segment & { offset: number | null }>((run) => {
       if (run.offset === null) return [{ text: run.text, ids: [], offset: null }];
-      const start = run.offset;
+      const start = run.offset + sourceOffset;
       const local = highlights
         .filter((h) => h.end > start && h.start < start + run.text.length)
         .map((h) => ({ ...h, start: Math.max(0, h.start - start), end: Math.min(run.text.length, h.end - start) }));
@@ -50,9 +57,7 @@ export default function AnchoredText({
       });
     });
     const classById = new Map(highlights.map((h) => [h.id, h.className]));
-    return (
-      <div data-step-content={stepId} onClick={onClick} className={cn(styles.out, className)}>
-        {segments.map((segment, i) =>
+    return segments.map((segment, i) =>
           segment.ids.length === 0 ? (
             <span key={i} data-o={segment.offset === null ? undefined : segment.offset}>
               {segment.text}
@@ -62,16 +67,21 @@ export default function AnchoredText({
               {segment.text}
             </mark>
           ),
-        )}
-      </div>
-    );
+        );
   }
 
+  const parts: ReactNode[] = [];
+  let cursor = 0;
+  for (const image of [...images].sort((a, b) => a.start - b.start)) {
+    if (image.start < cursor || image.end <= image.start || image.end > content.length) continue;
+    parts.push(<Fragment key={`text-${cursor}`}>{renderContent(content.slice(cursor, image.start), cursor)}</Fragment>);
+    parts.push(<TraceInlineImage key={image.id} image={image} />);
+    cursor = image.end;
+  }
+  parts.push(<Fragment key={`text-${cursor}`}>{renderContent(content.slice(cursor), cursor)}</Fragment>);
   return (
-    <div data-step-content={stepId} onClick={onClick} className={cn(styles.prose, className)}>
-      <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[[rehypeSourceAnchors, { source: content, highlights }]]}>
-        {content}
-      </ReactMarkdown>
+    <div data-step-content={stepId} onClick={onClick} className={cn(markdown ? styles.prose : styles.out, className)}>
+      {parts}
     </div>
   );
 }

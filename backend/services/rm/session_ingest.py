@@ -9,7 +9,7 @@ from uuid import UUID
 from ...database import get_pool
 from ..session_title_service import title_from_text
 from ..transcript_import import _decompress
-from . import traces
+from . import trace_images, traces
 from .adapters import TraceFormatError, parse_traces
 
 
@@ -68,6 +68,9 @@ async def sync_transcript(owner: UUID, session_id: str, body: bytes) -> dict:
                 raise TraceFormatError(
                     "Transcript differs from previously uploaded steps; existing review preserved"
                 )
+        # Backfill attachments on immutable existing steps, without changing
+        # their IDs, text, annotation anchors, or scoring revision.
+        await trace_images.store_images(conn, owner, trace_id, trace.steps[: len(stored)])
         if len(trace.steps) <= len(stored):
             return {"id": trace_id, "appended": 0}
         await conn.executemany(
@@ -79,6 +82,7 @@ async def sync_transcript(owner: UUID, session_id: str, body: bytes) -> dict:
                 for idx, step in enumerate(trace.steps[len(stored) :], start=len(stored))
             ],
         )
+        await trace_images.store_images(conn, owner, trace_id, trace.steps)
         # Updating recency queues automatic scoring and invalidates stale training
         # contributions through the existing trace-change trigger.
         await conn.execute("UPDATE rm_traces SET updated_at = now() WHERE id = $1", trace_id)

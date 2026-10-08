@@ -55,24 +55,24 @@ function anchoredRuns(value: string, offset: number, highlights: Highlight[]): E
   });
 }
 
-function transform(children: RootContent[], source: string, highlights: Highlight[], window: Position | null): RootContent[] {
+function transform(children: RootContent[], source: string, highlights: Highlight[], window: Position | null, sourceOffset: number): RootContent[] {
   return children.flatMap((child): RootContent[] => {
     if (child.type === "text") {
       const offset = sourceOffsetOfText(source, child.value, positionOf(child) ?? window);
-      return offset === null ? [child] : anchoredRuns(child.value, offset, highlights);
+      return offset === null ? [child] : anchoredRuns(child.value, offset + sourceOffset, highlights);
     }
     if (child.type === "element") {
       const element: Element = child;
-      const next = transform(element.children, source, highlights, positionOf(element) ?? window) as ElementContent[];
+      const next = transform(element.children, source, highlights, positionOf(element) ?? window, sourceOffset) as ElementContent[];
       return [{ ...element, children: next }];
     }
     return [child];
   });
 }
 
-export function rehypeSourceAnchors(options: { source: string; highlights: Highlight[] }) {
+export function rehypeSourceAnchors(options: { source: string; highlights: Highlight[]; sourceOffset?: number }) {
   return (tree: Root) => {
-    tree.children = transform(tree.children, options.source, options.highlights, null);
+    tree.children = transform(tree.children, options.source, options.highlights, null, options.sourceOffset ?? 0);
   };
 }
 

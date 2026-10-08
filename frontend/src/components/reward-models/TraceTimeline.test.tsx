@@ -1,8 +1,11 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { RmStep } from "@/lib/types";
 import TraceTimeline, { type StepAnnotations } from "./TraceTimeline";
 import { buildRows } from "./trace-rows";
+
+beforeEach(() => vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} }));
+afterEach(() => vi.unstubAllGlobals());
 
 function step(index: number, content: string, role: RmStep["role"] = "user"): RmStep {
   return { id: `s${index}`, index, content, role, tool_name: null, tool_input: null, tool_call_id: null, metadata: null };
