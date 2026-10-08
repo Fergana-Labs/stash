@@ -5,6 +5,8 @@ everything before it is captured in git history (`git log`), not here.
 
 ## Unreleased
 
+- Move trace sharing into the three-dot actions menu.
+
 - Remove the trace's Expand all control; individual tool details still open on demand.
 
 - Scrub through traces and conversations by dragging along the left navigation
