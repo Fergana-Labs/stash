@@ -33,6 +33,15 @@ export function StepScoreChip({ reward }: { reward: StepReward }) {
   );
 }
 
+/** A plain signed number, for sums shown on a turn. */
+export function PointsChip({ points, title }: { points: number; title: string }) {
+  return (
+    <span title={title} className={cn("inline-flex h-[18px] shrink-0 items-center rounded px-1.5 font-mono text-[10.5px] leading-none tabular-nums", TONE[scoreTone(points)])}>
+      {signed(points)}
+    </span>
+  );
+}
+
 /** A task's score: the final answer's points plus the cost of the work. */
 export function TaskScoreChip({ score }: { score: TaskScore }) {
   return (
