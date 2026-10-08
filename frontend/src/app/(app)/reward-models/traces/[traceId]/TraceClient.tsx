@@ -24,7 +24,7 @@ import { errorMessage, locateQuote, quoteFromOffsets, relativeTime, sortAnnotati
 import { domSourceOffset, type Highlight } from "@/components/reward-models/source-anchors";
 import { buildRows, rowSteps, type TraceRow } from "@/components/reward-models/trace-rows";
 import TraceExplorer from "@/components/reward-models/TraceExplorer";
-import { buildTraceOutline, groupPath } from "@/components/reward-models/trace-outline";
+import { buildTraceOutline, groupPath, resolveGroupPath } from "@/components/reward-models/trace-outline";
 import { presentTrace } from "@/components/reward-models/trace-presentation";
 import { traceScrollMarkers } from "@/components/reward-models/trace-scroll";
 import { useAuth } from "@/hooks/useAuth";
@@ -134,6 +134,8 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
   const presentation = presentTrace(trace.steps);
   const { rows } = presentation;
   const groups = buildTraceOutline(rows);
+  const focusedGroup = resolveGroupPath(groups, outlinePath).at(-1);
+  const browsingSections = focusedGroup ? focusedGroup.children.length > 0 : !(groups.length === 1 && groups[0].rows.length <= 8);
   const actionScores = automaticActionScores(evaluation, trace.steps);
   const annotationProgress = automaticAnnotationProgress(evaluation, trace.steps, actionScores);
 
@@ -164,6 +166,14 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
     const index = rows.findIndex((item) => item.key === row.key);
     const previous = rows[index - 1];
     return !(previous?.kind === "prompt" && previous.step.content === row.step.content && previous.step.index + 1 === row.step.index);
+  }
+
+  function openRows(rows: TraceRow[]) {
+    setRowChoice((current) => {
+      const next = new Map(current);
+      for (const row of rows) next.set(row.key, true);
+      return next;
+    });
   }
 
   function toggleRow(row: TraceRow) {
@@ -327,10 +337,14 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
         </div>
         </div>
         <div ref={scroller} className="scroll-thin min-h-0 flex-1 overflow-y-auto">
-        <div ref={canvas} className="relative mx-auto max-w-5xl px-6 pt-2 pb-[60vh]" onMouseUp={onCanvasMouseUp}>
+        <div ref={canvas} className={cn("relative mx-auto max-w-5xl px-6 pt-2", browsingSections ? "pb-3" : "pb-[60vh]")} onMouseUp={onCanvasMouseUp}>
           <TraceFlamegraph spans={trace.spans} onJump={(index) => revealStep(trace.steps[index].id)} />
           <TraceContext steps={presentation.context} ann={ann} isExpanded={isExpanded} onToggle={toggleRow} />
-          <TraceExplorer groups={groups} path={outlinePath} onPath={(path) => { setOutlinePath(path); scroller.current?.scrollTo({ top: 0, behavior: "instant" }); }} ann={ann} isExpanded={isExpanded} onToggle={toggleRow} />
+          <TraceExplorer
+            traceId={traceId} scroller={scroller} groups={groups} path={outlinePath}
+            onPath={(path) => { setOutlinePath(path); scroller.current?.scrollTo({ top: 0, behavior: "instant" }); }}
+            ann={ann} isExpanded={isExpanded} onToggle={toggleRow} onOpenRows={openRows}
+          />
           {rows.length === 0 && <p className="py-12 text-center text-[13px] text-muted-foreground">No steps in this trace.</p>}
         </div>
         </div>
