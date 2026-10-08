@@ -9,8 +9,9 @@ everything before it is captured in git history (`git log`), not here.
   capping section counts or splitting work into equal chunks. Generate concise
   activity titles and summaries. Let longer lists scroll, and use up/down
   arrows to select, right to open, and left to return to the parent section.
-- Keep the left trace scrubber within the visible sections or steps so dragging
-  no longer jumps between hierarchy levels; arrow navigation resumes after scrubbing.
+- Keep the left trace minimap at the whole-trace scale inside subsections,
+  highlighting the containing task. Scrub between global tasks without changing
+  the map’s scale; arrow navigation resumes afterward.
 - Show cached section success scores with local objectives and an explanation.
   Judge each partition against the requests active within it, including unrelated
   tasks in the same conversation; insufficient evidence stays unscored.

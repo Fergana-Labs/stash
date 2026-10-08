@@ -34,6 +34,12 @@ describe("traceScrollMarkers", () => {
     expect(markers[2].preview).toBe("pytest -q");
   });
 
+  it("can retain every step when follow-up exchanges belong to one global task", () => {
+    expect(traceScrollMarkers(buildRows(steps), true).map((marker) => marker.targetId)).toEqual([
+      "step-s0", "step-s1", "step-s2", "step-s4", "step-s5", "step-s6",
+    ]);
+  });
+
   it("preserves tool-only navigation without borrowing an answer from another turn", () => {
     expect(traceScrollMarkers(buildRows(steps).filter((row) => row.kind === "tool"))).toEqual([
       { targetId: "step-s2", title: "Exec command", preview: "pytest -q", label: "Step 3", emphasis: false },

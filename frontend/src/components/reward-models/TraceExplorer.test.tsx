@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { useRef, useState } from "react";
 import TraceExplorer from "./TraceExplorer";
-import { buildTraceOutline, resolveGroupPath } from "./trace-outline";
+import { buildTraceOutline, groupPath, resolveGroupPath } from "./trace-outline";
 import { presentTrace } from "./trace-presentation";
 import type { RmStep } from "@/lib/types";
 import type { StepAnnotations } from "./TraceTimeline";
@@ -30,9 +30,9 @@ function Harness({ opened = vi.fn(), outline = groups }: { opened?: () => void; 
   const current = resolveGroupPath(outline, path).at(-1);
   const direct = !path.length && outline.length === 1 && !outline[0].children.length && outline[0].rows.length <= 8;
   const sections = direct ? [] : current?.children ?? outline;
-  const assessments = useSectionSummaries("t1", sections);
+  const assessments = useSectionSummaries("t1", [...new Map([...outline, ...sections].map((node) => [node.key, node])).values()]);
   return <div>
-    <TraceScrollRail key={path.join("/")} sections={sections} rows={current?.rows ?? outline.flatMap((group) => group.rows)} copy={assessments.copy} stepNumber={(step) => step.index + 1} scroller={scroller} />
+    <TraceScrollRail groups={outline} path={path} rows={outline.flatMap((group) => group.rows)} copy={assessments.copy} stepNumber={(step) => step.index + 1} scroller={scroller} onPath={setPath} onOpenRows={opened} onStep={(id) => setPath(groupPath(outline, id))} />
     <div ref={scroller}><TraceExplorer groups={outline} path={path} onPath={setPath} assessments={assessments} ann={ann} isExpanded={() => false} onToggle={vi.fn()} onOpenRows={opened} /></div>
   </div>;
 }
@@ -120,38 +120,75 @@ it("keeps more than four sections visible in the list and batches their assessme
   expect(new Set(batches.flat().map((range) => range.first_step_id)).size).toBe(9);
 });
 
-it("scrubs only the visible level and lets arrow navigation continue from the scrubbed section", async () => {
-  const opened = vi.fn();
-  render(<Harness opened={opened} />);
+it("keeps global markers through nested navigation and scrubs between tasks without losing keyboard focus", async () => {
+  render(<Harness />);
   await load();
   let cards = screen.getAllByRole("button", { name: /^Explore / });
   const container = screen.getByRole("region", { name: "Trace explorer" }).parentElement!;
   container.scrollTo = vi.fn();
   container.getBoundingClientRect = () => ({ top: 150 }) as DOMRect;
   cards[1].parentElement!.getBoundingClientRect = () => ({ top: 600 }) as DOMRect;
+  const rail = screen.getByRole("navigation", { name: "Conversation navigation" });
+  const markers = Array.from(rail.querySelectorAll("button"));
+  const labels = markers.map((marker) => marker.getAttribute("aria-label"));
   const scrubber = screen.getByRole("group", { name: "Conversation scrubber" });
   scrubber.getBoundingClientRect = () => ({ top: 0, height: 400 }) as DOMRect;
   fireEvent.pointerDown(scrubber, { button: 0, clientY: 150 });
   fireEvent.pointerUp(scrubber, { button: 0, clientY: 150 });
+  await act(async () => vi.advanceTimersByTime(16));
   expect(cards[1]).toHaveFocus();
-  expect(cards[1]).toHaveAttribute("aria-current", "true");
   expect(container.scrollTo).toHaveBeenLastCalledWith({ top: 438, behavior: "instant" });
-  expect(screen.queryByRole("button", { name: "Zoom out" })).not.toBeInTheDocument();
-  expect(opened).not.toHaveBeenCalled();
   fireEvent.keyDown(cards[1], { key: "ArrowRight" });
   await load();
   cards = screen.getAllByRole("button", { name: /^Explore / });
-  const rail = screen.getByRole("navigation", { name: "Conversation navigation" });
-  expect(rail.querySelectorAll("button")).toHaveLength(cards.length);
-  fireEvent.click(rail.querySelectorAll("button")[0]);
-  expect(container.scrollTo).toHaveBeenLastCalledWith({ top: 0, behavior: "instant" });
-  expect(cards[0]).toHaveFocus();
-  fireEvent.keyDown(cards[0], { key: "ArrowRight" });
+  expect(cards).toHaveLength(2);
+  expect(rail.querySelectorAll("button")).toHaveLength(4);
+  expect(markers[1]).toHaveAttribute("aria-current", "location");
+  fireEvent.keyDown(cards[1], { key: "ArrowRight" });
   await load();
-  const leafRail = screen.getByRole("navigation", { name: "Conversation navigation" });
-  fireEvent.click(leafRail.querySelectorAll("button")[1]);
+  expect(screen.queryByRole("button", { name: /^Explore / })).not.toBeInTheDocument();
+  fireEvent.scroll(container);
+  await act(async () => vi.advanceTimersByTime(16));
+  expect(markers[1]).toHaveAttribute("aria-current", "location");
+  expect(Array.from(rail.querySelectorAll("button"))).toEqual(markers);
+  expect(markers.map((marker) => marker.getAttribute("aria-label"))).toEqual(labels);
+
+  // Drag across tasks while deep in a subsection. The rail must not remount or
+  // change scale partway through the drag, and each destination stays global.
+  fireEvent.pointerDown(scrubber, { button: 0, clientY: 250 });
+  await load();
+  fireEvent.pointerMove(scrubber, { clientY: 350 });
+  fireEvent.pointerUp(scrubber, { clientY: 350 });
+  await load();
+  await act(async () => vi.advanceTimersByTime(16));
+  expect(screen.getAllByRole("button", { name: /^Explore / })).toHaveLength(2);
+  expect(markers[3]).toHaveAttribute("aria-current", "location");
   expect(screen.getByRole("region", { name: "Trace explorer" })).toHaveFocus();
-  fireEvent.keyDown(document.activeElement!, { key: "ArrowLeft" });
+  fireEvent.keyDown(document.activeElement!, { key: "ArrowRight" });
   await load();
-  expect(screen.getAllByRole("button", { name: /^Explore / })).toHaveLength(cards.length);
+  expect(screen.queryByRole("button", { name: /^Explore / })).not.toBeInTheDocument();
+  expect(markers[3]).toHaveAttribute("aria-current", "location");
+  fireEvent.click(markers[0]);
+  await load();
+  await act(async () => vi.advanceTimersByTime(16));
+  expect(screen.getAllByRole("button", { name: /^Explore / })).toHaveLength(4);
+  expect(container.scrollTo).toHaveBeenLastCalledWith({ top: 0, behavior: "instant" });
+  expect(markers[0]).toHaveAttribute("aria-current", "location");
+});
+
+it("retains all step destinations for a single task while browsing its subsections", async () => {
+  render(<Harness outline={[groups[0]]} />);
+  await load();
+  const rail = screen.getByRole("navigation", { name: "Conversation navigation" });
+  const markers = Array.from(rail.querySelectorAll("button"));
+  expect(markers).toHaveLength(12);
+  fireEvent.click(screen.getByRole("button", { name: /^Explore / }));
+  await load();
+  fireEvent.click(screen.getAllByRole("button", { name: /^Explore / })[1]);
+  await load();
+  expect(Array.from(rail.querySelectorAll("button"))).toEqual(markers);
+  fireEvent.click(markers[3]);
+  await load();
+  expect(document.getElementById("step-s3")).toBeInTheDocument();
+  expect(Array.from(rail.querySelectorAll("button"))).toEqual(markers);
 });
