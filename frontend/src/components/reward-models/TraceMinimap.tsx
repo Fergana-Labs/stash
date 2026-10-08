@@ -7,9 +7,7 @@ import { useEffect, useRef, useState, type PointerEvent, type RefObject } from "
 import { cn } from "@/lib/utils";
 import { isThinking, looksLikeError } from "./trace-rows";
 import { visibleStepElement } from "./trace-scroll";
-import type { RmActionScore, RmAnnotation, RmStep } from "@/lib/types";
-import { formatCredit } from "./action-credit";
-import { isGradableAction } from "./automatic-credit";
+import type { RmAnnotation, RmStep } from "@/lib/types";
 
 // Design from Priyadarshan's trace viewer (projects/trace_viewer).
 const KINDS = {
@@ -30,12 +28,10 @@ function kindOf(step: RmStep): keyof typeof KINDS {
   return step.tool_name == null ? "assistant" : "call";
 }
 
-function LatestTraceMinimap({ steps, annotations, actionScores, annotationStatus, unscoredReasons, scroller, navigation, onJump }: {
+function LatestTraceMinimap({ steps, annotations, annotationStatus, scroller, navigation, onJump }: {
   steps: RmStep[];
   annotations: RmAnnotation[];
-  actionScores?: Map<string, RmActionScore>;
   annotationStatus?: string;
-  unscoredReasons?: Map<string, string>;
   scroller: RefObject<HTMLDivElement | null>;
   navigation: RefObject<HTMLDivElement | null>;
   onJump: (index: number) => void;
@@ -109,21 +105,9 @@ function LatestTraceMinimap({ steps, annotations, actionScores, annotationStatus
         <span className="inline-flex items-center gap-1"><span className="size-1.5 rounded-full bg-amber-400" />Comment</span>
         <span className="ml-auto shrink-0 tabular-nums">Step {steps[activeIndex]?.index + 1} of {steps.length}</span>
       </div>
-      <div aria-label="Action credit legend" className="mb-1 flex flex-wrap items-end gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
-        <span className="self-center">Action credit (height)</span>
-        {[
-          { height: 3, label: "−1 Harmful" },
-          { height: 13, label: "0 Neutral" },
-          { height: 23, label: "+1 Helpful" },
-        ].map(({ height, label }) => (
-          <span key={label} className="inline-flex items-end gap-1.5"><span aria-hidden="true" className="w-1.5 bg-muted-foreground" style={{ height }} />{label}</span>
-        ))}
-        <span className="inline-flex items-end gap-1.5"><span aria-hidden="true" className="h-[3px] w-1.5 bg-muted-foreground opacity-35" />Faint: no score</span>
-      </div>
-      <p className="m-0 mb-1 text-[11px] text-muted-foreground">Only assistant responses and tool calls are graded. Hover a bar for its score or status.</p>
       {annotationStatus && <p role="status" className="m-0 mb-1 text-[11px] text-muted-foreground">{annotationStatus}</p>}
       <div
-        className="relative flex h-[52px] touch-none items-end"
+        className="relative flex h-5 touch-none items-end"
         style={{ columnGap: `min(1px, ${25 / steps.length}%)` }}
         role="group"
         aria-label="Step map"
@@ -149,10 +133,7 @@ function LatestTraceMinimap({ steps, annotations, actionScores, annotationStatus
       >
         {steps.map((step, index) => {
           const kind = KINDS[kindOf(step)];
-          const score = actionScores?.get(step.id);
-          const actionType = kind.label;
-          const missingReason = isGradableAction(step) ? unscoredReasons?.get(step.id) ?? "awaiting score" : "not graded";
-          const label = `Step ${step.index + 1}: ${actionType}${step.tool_name === null ? "" : `, ${step.tool_name}`}${score ? `, credit ${formatCredit(score.credit)}${score.stale ? ", previous annotation" : ""}` : `, ${missingReason}`}`;
+          const label = `Step ${step.index + 1}: ${kind.label}${step.tool_name === null ? "" : `, ${step.tool_name}`}`;
           return (
             <button
               key={step.id}
@@ -179,7 +160,7 @@ function LatestTraceMinimap({ steps, annotations, actionScores, annotationStatus
               className="group relative flex h-full min-w-0 flex-1 cursor-pointer items-end focus-visible:outline-2 focus-visible:outline-brand-500"
             >
               {commented.has(step.id) && <span className="absolute top-0 left-1/2 size-1.5 -translate-x-1/2 rounded-full bg-amber-400" />}
-              <span style={{ height: score ? `${6 + (Math.max(-1, Math.min(1, score.credit)) + 1) * 20}px` : "6px" }} className={cn("w-full transition-opacity group-hover:opacity-60", kind.color, !score && "opacity-35")} />
+              <span className={cn("h-2.5 w-full transition-opacity group-hover:opacity-60", kind.color)} />
             </button>
           );
         })}

@@ -7,7 +7,7 @@ import type { RmActionScore, RmStep } from "@/lib/types";
 import { creditColor, formatCredit } from "./action-credit";
 import AnchoredText from "./AnchoredText";
 import { StepLabelChips } from "./StepLabels";
-import { StepScoreLine } from "./StepRewards";
+import { StepScoreChip, StepScoreLine } from "./StepRewards";
 import type { LabelChip } from "./step-labels";
 import type { StepReward } from "./step-rewards";
 import { firstLine, isThinking, looksLikeError, toolLabel, toolSummary, type TraceRow } from "./trace-rows";
@@ -27,10 +27,15 @@ export interface StepAnnotations {
   labelChips?: (step: RmStep) => LabelChip[];
   taskHeading?: (step: RmStep) => string | null;
   onJumpToStep?: (stepId: string) => void;
-  /** How each step's credit was built; absent unless the Scores view is on. */
+  /** Each step's score and how it was built; absent unless the Scores view is on. */
   reward?: (step: RmStep) => StepReward | null;
   stepNumberOf?: (chunk: string) => number | null;
   onJumpToChunk?: (chunk: string) => void;
+}
+
+function Score({ step, ann }: { step: RmStep; ann: StepAnnotations }) {
+  const reward = ann.reward?.(step);
+  return reward ? <StepScoreChip reward={reward} /> : null;
 }
 
 /** The breakdown is the deepest level of detail, so it only appears once a row is opened. */
@@ -154,7 +159,7 @@ function StepMetadata({ step, ann, children }: { step: RmStep; ann: StepAnnotati
     <div className="ml-auto flex shrink-0 items-center gap-3 text-[11px] text-muted-foreground tabular-nums">
       <StepTime step={step} />
       {score && <span className="rounded px-1.5 py-0.5 font-medium text-foreground" style={{ backgroundColor: creditColor(score.credit, 0.15) }}
-        title={score.reward_model_id === "automatic" ? `${score.stale ? "Previous automatic annotation" : "Automatic action annotation"}: ${formatCredit(score.credit)} (−1 to +1). The step's score by the scoring rules; open the step to see how it adds up.` : `${score.reward_model_name}: ${formatCredit(score.credit)}`}>
+        title={score.reward_model_id === "automatic" ? `${score.stale ? "Previous automatic annotation" : "Automatic action annotation"}: ${formatCredit(score.credit)} (−1 to +1).` : `${score.reward_model_name}: ${formatCredit(score.credit)}`}>
         {score.stale ? "Previous credit" : "Credit"} {formatCredit(score.credit)}
       </span>}
       <span>Step {step.index + 1}</span>
@@ -196,6 +201,7 @@ function AssistantRow({ step, ann, first }: { step: RmStep; ann: StepAnnotations
         <span className={cn(first ? "text-[13px] font-semibold text-foreground" : "text-[11px] text-muted-foreground")}>
           {first ? "Assistant" : thinking ? "Thinking" : "Response"}
         </span>
+        <Score step={step} ann={ann} />
         <Labels step={step} ann={ann} />
         <StepMetadata step={step} ann={ann} />
       </div>
@@ -244,6 +250,7 @@ function ToolRow({
           <span className="min-w-0 truncate text-[12px] text-muted-foreground" title={summary}>{expanded ? "" : summary}</span>
         </button>
         {isError && !ann.labelChips && <span className="text-[11px] text-red-600">Error</span>}
+        <Score step={head} ann={ann} />
         <Labels step={head} ann={ann} className="shrink-0 flex-nowrap" />
         <StepMetadata step={head} ann={ann}>
           <button type="button" onClick={onToggle} aria-expanded={expanded}

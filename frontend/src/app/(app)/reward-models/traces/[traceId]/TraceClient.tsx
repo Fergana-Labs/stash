@@ -16,7 +16,6 @@ import { Button } from "@/components/ui/button";
 import TraceReviewAccess from "@/components/workbench/TraceReviewAccess";
 import { TraceSkeleton } from "@/components/reward-models/RmSkeletons";
 import TraceFlamegraph from "@/components/reward-models/TraceFlamegraph";
-import { automaticActionScores, automaticAnnotationProgress } from "@/components/reward-models/automatic-credit";
 import TraceMinimap from "@/components/reward-models/TraceMinimap";
 import TraceTimeline, { type StepAnnotations } from "@/components/reward-models/TraceTimeline";
 import { errorMessage, locateQuote, quoteFromOffsets, relativeTime, sortAnnotations } from "@/components/reward-models/rm-text";
@@ -169,8 +168,12 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
   const openByDefault = outline ? defaultOpen(outline) : new Set<string>();
   const current = evaluation?.current;
   const score = current?.outcome_probabilities?.score ?? (current?.outcome !== "insufficient_evidence" ? current?.outcome_probabilities?.success : null);
-  const actionScores = automaticActionScores(evaluation, trace.steps);
-  const annotationProgress = automaticAnnotationProgress(evaluation, trace.steps, actionScores);
+  // Shown only while the trace is still waiting for its labels and scores.
+  const queueStatus = evaluation?.queue?.status;
+  const annotationStatus = !evaluation || current?.status === "completed" || queueStatus === "failed" ? undefined
+    : !evaluation.configured ? "Automatic annotation is not available."
+    : queueStatus === "waiting" ? "Waiting for the agent to respond before annotating."
+    : "Labeling and scoring this trace…";
 
 
   function annotationsOn(step: RmStep): RmAnnotation[] {
@@ -341,7 +344,6 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
   }
 
   const ann: StepAnnotations = {
-    actionScore: (step) => actionScores.get(step.id),
     highlights: highlightsFor,
     commentCount: (step) => annotationsOn(step).filter((a) => a.comment !== null).length,
     hasQuotes: (step) => annotationsOn(step).some((a) => a.quote !== null) || composer?.stepId === step.id,
@@ -407,7 +409,7 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
             <p className="m-0 mb-2 text-[12px] text-muted-foreground">This trace was not annotated. {evaluation.queue.error}</p>
           )}
           {evaluation?.queue?.status === "failed" && evaluation.owner_user_id === viewerId && <Button size="xs" variant="ghost" onClick={() => void wbAssess(traceId).then(reloadEvaluation).catch((e) => toast.error(errorMessage(e)))}>Retry scoring</Button>}
-            <TraceMinimap steps={trace.steps} annotations={trace.annotations} actionScores={actionScores} annotationStatus={annotationProgress.label} unscoredReasons={annotationProgress.unscoredReasons} scroller={scroller} navigation={navigation} onJump={(index) => revealStep(trace.steps[index].id)} />
+            <TraceMinimap steps={trace.steps} annotations={trace.annotations} annotationStatus={annotationStatus} scroller={scroller} navigation={navigation} onJump={(index) => revealStep(trace.steps[index].id)} />
             <TraceFlamegraph spans={trace.spans} onJump={(index) => revealStep(trace.steps[index].id)} />
 
             <div className="mt-1 flex items-center gap-2 bg-background py-1.5">
