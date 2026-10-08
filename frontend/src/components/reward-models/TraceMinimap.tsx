@@ -73,7 +73,9 @@ function LatestTraceMinimap({ steps, annotations, actionScores, annotationStatus
     };
   }, [steps, scroller, navigation]);
 
-  if (steps.length === 0) return null;
+  // Ungraded events have no height. Do not reserve a chart-shaped blank space;
+  // saved previous credits still qualify while a new evaluation is running.
+  if (!steps.some((step) => Number.isFinite(actionScores?.get(step.id)?.credit))) return null;
   const commented = new Set(annotations.filter((a) => a.comment !== null).map((a) => a.step_id));
 
   function jump(index: number) {

@@ -28,7 +28,7 @@ import { errorMessage, locateQuote, quoteFromOffsets, relativeTime, sortAnnotati
 import { domSourceOffset, type Highlight } from "@/components/reward-models/source-anchors";
 import { buildRows, rowSteps, type TraceRow } from "@/components/reward-models/trace-rows";
 import TraceExplorer from "@/components/reward-models/TraceExplorer";
-import { buildTraceOutline, groupPath, resolveGroupPath } from "@/components/reward-models/trace-outline";
+import { buildTraceOutline, groupPath, traceExplorerLevel } from "@/components/reward-models/trace-outline";
 import { presentTrace } from "@/components/reward-models/trace-presentation";
 import TraceScrollRail from "@/components/reward-models/TraceScrollRail";
 import { useSectionSummaries } from "@/components/reward-models/use-section-summaries";
@@ -136,11 +136,10 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
   const presentation = presentTrace(trace?.steps ?? []);
   const { rows } = presentation;
   const groups = buildTraceOutline(rows);
-  const focusedGroup = resolveGroupPath(groups, outlinePath).at(-1);
-  const browsingSections = focusedGroup ? focusedGroup.children.length > 0 : !(groups.length === 1 && !groups[0].children.length && groups[0].rows.length <= 8);
-  const sectionGroups = browsingSections ? focusedGroup?.children ?? groups : [];
+  const { trail, children: sectionGroups } = traceExplorerLevel(groups, outlinePath);
+  const browsingSections = sectionGroups.length > 0;
   // Retain global map titles if we enter a subsection before its root batch finishes.
-  const assessmentGroups = [...new Map([...(groups.length > 1 ? groups : []), ...sectionGroups].map((group) => [group.key, group])).values()];
+  const assessmentGroups = [...new Map([...sectionGroups, ...trail, ...(groups.length > 1 ? groups : [])].map((group) => [group.key, group])).values()];
   const assessments = useSectionSummaries(traceId, assessmentGroups);
 
   if (!trace && loadError) return <div role="alert" className="p-8 text-sm">Couldn’t load this trace. <button onClick={() => void load()} className="underline">Retry</button></div>;

@@ -5,7 +5,7 @@ import { ChevronRight, ArrowUpLeft } from "lucide-react";
 import type { RmStep } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import type { TraceGroup } from "./trace-outline";
-import { resolveGroupPath } from "./trace-outline";
+import { sectionFallbackTitle, traceExplorerLevel } from "./trace-outline";
 import { rowHead } from "./trace-presentation";
 import type { TraceRow } from "./trace-rows";
 import TraceTimeline, { type StepAnnotations } from "./TraceTimeline";
@@ -19,10 +19,7 @@ export default function TraceExplorer({ groups, path, onPath, assessments, ann, 
   isExpanded: (row: TraceRow) => boolean; onToggle: (row: TraceRow) => void;
   onOpenRows: (rows: TraceRow[]) => void;
 }) {
-  const trail = resolveGroupPath(groups, path);
-  const current = trail.at(-1);
-  const direct = groups.length === 1 && !groups[0].children.length && groups[0].rows.length <= 8 && path.length === 0;
-  const children = direct ? [] : current ? current.children : groups;
+  const { trail, current, children, canAscend } = traceExplorerLevel(groups, path);
   const { copy, status } = assessments;
   const explorer = useRef<HTMLElement>(null);
   const cards = useRef<HTMLDivElement>(null);
@@ -45,7 +42,7 @@ export default function TraceExplorer({ groups, path, onPath, assessments, ann, 
     });
   }
   function ascend() {
-    if (!current) return;
+    if (!current || !canAscend) return;
     const parent = trail.slice(0, -1).map((node) => node.key);
     setSelections((previous) => ({ ...previous, [parent.join("/")]: current.key }));
     onPath(parent);
@@ -62,7 +59,7 @@ export default function TraceExplorer({ groups, path, onPath, assessments, ann, 
       const target = event.target;
       if (!(target instanceof HTMLElement) || target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"]), [role="textbox"], [role="dialog"], [role="menu"], [role="listbox"]')) return;
       if (target !== document.body && !explorer.current?.contains(target)) return;
-      if ((event.key === "ArrowLeft" || event.key === "Escape") && current) {
+      if ((event.key === "ArrowLeft" || event.key === "Escape") && canAscend) {
         event.preventDefault();
         if (!event.repeat) ascend();
       } else if (event.key === "ArrowRight" && selected) {
@@ -83,8 +80,7 @@ export default function TraceExplorer({ groups, path, onPath, assessments, ann, 
     const last = number(rowHead(node.rows.at(-1)!));
     return first === last ? `Step ${first}` : `Steps ${first}–${last}`;
   };
-  const title = (node: TraceGroup) => copy(node)?.title ?? range(node);
-  if (direct) return <section ref={explorer} tabIndex={-1} aria-label="Trace explorer"><TraceTimeline rows={groups[0].rows} ann={ann} isExpanded={isExpanded} onToggle={onToggle} /></section>;
+  const title = (node: TraceGroup) => copy(node)?.title ?? sectionFallbackTitle(node);
   return <section ref={explorer} tabIndex={-1} aria-label="Trace explorer" className="outline-none">
     <nav aria-label="Trace hierarchy" className="mb-2 flex h-8 items-center gap-1 overflow-hidden text-xs text-muted-foreground">
       <button type="button" onClick={() => onPath([])} className="shrink-0 cursor-pointer hover:text-foreground">Overview</button>
@@ -94,7 +90,7 @@ export default function TraceExplorer({ groups, path, onPath, assessments, ann, 
       </span>)}
       {children.length > 0 && status !== "ready" && <span role="status" className="ml-auto shrink-0 text-[11px]">{status === "loading" ? "Summarizing and scoring…" : "Section assessments unavailable"}</span>}
       <span className="ml-auto hidden shrink-0 text-[11px] sm:inline">↑↓ select · → open · ← back</span>
-      {current && <button type="button" aria-label="Zoom out" onClick={ascend} className="ml-auto flex shrink-0 cursor-pointer items-center gap-1 pl-2 hover:text-foreground"><ArrowUpLeft className="size-3" />Back</button>}
+      {canAscend && <button type="button" aria-label="Zoom out" onClick={ascend} className="ml-auto flex shrink-0 cursor-pointer items-center gap-1 pl-2 hover:text-foreground"><ArrowUpLeft className="size-3" />Back</button>}
     </nav>
     {current && !children.length ? <TraceTimeline rows={current.rows} ann={ann} isExpanded={isExpanded} onToggle={onToggle} /> :
       <div ref={cards} data-trace-sections className="flex flex-col gap-2">{children.map((node) => {

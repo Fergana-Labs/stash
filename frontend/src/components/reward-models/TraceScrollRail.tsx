@@ -4,7 +4,7 @@ import type { RefObject } from "react";
 import ConversationScrollRail from "@/components/ConversationScrollRail";
 import type { RmSectionCopy } from "@/lib/api";
 import type { RmStep } from "@/lib/types";
-import { resolveGroupPath, type TraceGroup } from "./trace-outline";
+import { sectionFallbackTitle, traceExplorerLevel, type TraceGroup } from "./trace-outline";
 import { rowHead } from "./trace-presentation";
 import type { TraceRow } from "./trace-rows";
 import { traceScrollMarkers, traceSectionTarget } from "./trace-scroll";
@@ -27,14 +27,13 @@ export default function TraceScrollRail({ groups, path, rows, copy, stepNumber, 
   const items = sections.length ? sections.map((node) => {
     const label = `Steps ${stepNumber(rowHead(node.rows[0]))}–${stepNumber(rowHead(node.rows.at(-1)!))}`;
     const summary = copy(node);
-    return { targetId: traceSectionTarget(node), title: summary?.title ?? label, preview: summary?.summary ?? "", label, emphasis: true };
+    return { targetId: traceSectionTarget(node), title: summary?.title ?? sectionFallbackTitle(node), preview: summary?.summary ?? "", label, emphasis: true };
   }) : traceScrollMarkers(rows, true).map((marker) => {
     const row = rows[positions.get(marker.targetId)!];
     return { ...marker, label: `Step ${stepNumber(rowHead(row))}` };
   });
 
-  const trail = resolveGroupPath(groups, path);
-  const current = trail.at(-1);
+  const { trail, current } = traceExplorerLevel(groups, path);
   const activeTargetId = sections.length && trail.length ? traceSectionTarget(trail[0])
     : current?.children.length ? items.findLast((item) => {
       return positions.get(item.targetId)! <= positions.get(`step-${rowHead(current.rows[0]).id}`)!;

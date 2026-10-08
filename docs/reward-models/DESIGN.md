@@ -211,6 +211,14 @@ tried when nothing matches.
 
 ## Trace sections
 
+Single-task traces land directly on that task's subtasks, or on its steps when
+there are no subtasks. The task stays in the breadcrumb; back navigation stops
+at this useful overview instead of returning to a redundant single card.
+Recorded progress messages, recognizable tool activity, and requests provide
+immediate fallback titles. Generated titles and scores enhance navigation without
+blocking it. The top credit graph is absent when no displayed action has a grade;
+saved previous grades keep it visible while recalculation runs.
+
 The trace explorer groups displayed rows by requests, recorded progress
 subtasks, and recognizable changes in work such as inspecting, editing,
 verifying, publishing, or moving between sites. Existing task labels take
