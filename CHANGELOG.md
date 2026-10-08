@@ -5,6 +5,10 @@ everything before it is captured in git history (`git log`), not here.
 
 ## Unreleased
 
+- Start the comments panel closed on traces with no comments, while preserving
+  manual open/close choices during updates.
+- Make the first trace navigation tick jump to the very top, including system messages.
+
 - Move trace sharing into the three-dot actions menu.
 
 - Remove the trace's Expand all control; individual tool details still open on demand.

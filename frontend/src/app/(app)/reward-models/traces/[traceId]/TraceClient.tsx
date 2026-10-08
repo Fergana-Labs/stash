@@ -55,7 +55,8 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
   const [trace, setTrace] = useState<RmTraceDetail | null>(null);
   const evaluationLoader = useCallback(() => wbEvaluation(traceId), [traceId]);
   const { data: evaluation, reload: reloadEvaluation } = useWorkbenchLoad(evaluationLoader, 5000);
-  const [commentsOpen, setCommentsOpen] = useState(true);
+  // Follow the comment count until the viewer explicitly opens or closes the panel.
+  const [commentsOpenOverride, setCommentsOpen] = useState<boolean | null>(null);
   const [composer, setComposer] = useState<ComposerTarget | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [flashStepId, setFlashStepId] = useState<string | null>(null);
@@ -124,6 +125,7 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
   if (!trace || !user) return <TraceSkeleton />;
   const viewerId = user.id;
   const ordered = sortAnnotations(trace.annotations.filter((a) => a.comment !== null), trace.steps);
+  const commentsOpen = commentsOpenOverride ?? ordered.length > 0;
   const rows = buildRows(trace.steps);
   const current = evaluation?.current;
   const score = current?.outcome !== "insufficient_evidence" ? current?.outcome_probabilities?.success : null;
@@ -268,7 +270,13 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
 
   return (
     <div className="flex h-full min-h-0">
-      <ConversationScrollRail items={scrollMarkers} scroller={scroller} header={navigation} onJump={(item) => revealStep(item.targetId.slice("step-".length))} />
+      <ConversationScrollRail items={scrollMarkers} scroller={scroller} header={navigation} onJump={(item) => {
+        if (item.targetId === scrollMarkers[0]?.targetId) {
+          scroller.current?.scrollTo({ top: 0, behavior: "instant" });
+        } else {
+          revealStep(item.targetId.slice("step-".length));
+        }
+      }} />
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <div ref={navigation} className="z-20 shrink-0 border-b border-border bg-background px-6 py-2">
         <div className="mx-auto max-w-5xl space-y-2">
@@ -356,5 +364,5 @@ function composerLabel(target: ComposerTarget, trace: RmTraceDetail): string {
 export default function TraceClient(props: React.ComponentProps<typeof LatestTraceClient>) {
   return useProductCheckpoint() === "floodgate-2026-10-05"
     ? <FloodgateComponent {...props} />
-    : <LatestTraceClient {...props} />;
+    : <LatestTraceClient key={props.traceId} {...props} />;
 }
