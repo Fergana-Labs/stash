@@ -436,6 +436,7 @@ async def recover():
     # fixed-policy evaluation. A completed queue row is not evidence of grading.
     # This sweep preserves running leases, waiting responses and queued work.
     # The removed Jev-cap deferrals are handled separately above.
+    # Old malformed-response failures resume only below the per-batch attempt cap.
     await pool.execute(
         """WITH repairable AS (
             SELECT q.trace_id FROM rm_wb_queue q
@@ -446,12 +447,23 @@ async def recover():
                     AND e.policy_version=$1 AND e.model=$2
                     AND e.trace_updated_at>=t.updated_at AND e.status='completed'
                 )) OR (q.status='failed' AND q.error=$3 AND q.attempts<3)
+                OR (q.status='failed' AND q.error=ANY($4::text[]) AND EXISTS (
+                    SELECT 1 FROM (
+                        SELECT e.status AS evaluation_status,c.status,c.error,c.attempt
+                        FROM rm_wb_evaluations e JOIN rm_wb_evaluation_calls c ON c.evaluation_id=e.id
+                        WHERE e.trace_id=t.id AND e.policy_version=$1 AND e.model=$2
+                        AND e.trace_updated_at>=t.updated_at
+                        ORDER BY e.created_at DESC,c.created_at DESC LIMIT 1
+                    ) last_call WHERE evaluation_status='failed' AND status='failed'
+                    AND error=ANY($4::text[]) AND attempt<3
+                ))
             ) ORDER BY q.due_at,q.trace_id LIMIT 30 FOR UPDATE OF q SKIP LOCKED
         ) UPDATE rm_wb_queue q SET status='queued',due_at=now(),requested_at=now(),error=NULL
         FROM repairable r WHERE q.trace_id=r.trace_id""",
         policy.POLICY_VERSION,
         settings.JEV_MODEL,
         SCHEMA_CACHE_ERROR,
+        [jev.INVALID_RESPONSE, jev.NON_JSON_RESPONSE],
     )
     # Earlier code incorrectly failed the whole interpretation when only the
     # instruction-release scope was unavailable. Preserve review decisions.

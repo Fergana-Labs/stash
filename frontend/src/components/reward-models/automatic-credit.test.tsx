@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { RmStep } from "@/lib/types";
 import type { TraceEvaluation, TraceEvaluationResponse } from "@/lib/workbench-api";
-import { automaticActionScores } from "./automatic-credit";
+import { automaticActionScores, automaticAnnotationProgress } from "./automatic-credit";
 import TraceMinimap from "./TraceMinimap";
 
 const steps: RmStep[] = [0, 1, 2].map((index) => ({ id: String(index), index, role: "assistant", content: "Response", tool_name: null, tool_input: null, tool_call_id: null, metadata: null }));
@@ -22,7 +22,7 @@ it("retains bar heights while the trace grows and current scores arrive in batch
   view.rerender(<TraceMinimap {...props} actionScores={automaticActionScores(response(null), steps)} annotationStatus="Updating annotations · previous values retained" />);
   expect(screen.getByRole("button", { name: "Step 2: Response, credit +1.00, previous annotation" }).lastElementChild).toHaveStyle({ height: "46px" });
   expect(screen.getByRole("status")).toHaveTextContent("previous values retained");
-  expect(screen.getByRole("button", { name: "Step 3: Response, unscored" }).lastElementChild).toHaveStyle({ height: "6px" });
+  expect(screen.getByRole("button", { name: "Step 3: Response, awaiting score" }).lastElementChild).toHaveStyle({ height: "6px" });
   const partial = { ...old, status: "running", credits: [credit("0", -1)] };
   view.rerender(<TraceMinimap {...props} actionScores={automaticActionScores(response(partial), steps)} />);
   expect(screen.getByRole("button", { name: "Step 1: Response, credit -0.50" }).lastElementChild).toHaveStyle({ height: "16px" });
@@ -34,4 +34,21 @@ it("lets uncertain current results supersede old scores and never applies scores
   expect([...automaticActionScores(response(current), steps).keys()]).toEqual(["1"]);
   expect(automaticActionScores(response(null), [{ ...steps[0], id: "replacement" }]).size).toBe(0);
   expect(automaticActionScores(response({ ...current, status: "completed" }), steps).size).toBe(0);
+});
+
+it("counts only gradable actions and distinguishes previous, pending, and uncertain annotations", () => {
+  const mixed = [...steps, { ...steps[0], id: "new-action" },
+    { ...steps[0], id: "user", role: "user" },
+    { ...steps[0], id: "tool", role: "tool" },
+    { ...steps[0], id: "thinking", metadata: { thinking: true } },
+    { ...steps[0], id: "empty", content: " " }] as RmStep[];
+  const data = { ...response({ status: "running", credits: [credit("0", null)] } as TraceEvaluation), configured: true, boundary: { kind: "completed_response", step_index: 3 }, queue: { status: "queued", error: "Invalid response" } };
+  const progress = automaticAnnotationProgress(data, mixed, automaticActionScores(data, mixed));
+  expect(progress.label).toBe("1 of 4 actions scored · 1 previous · 2 awaiting scores · 1 with insufficient evidence · Retrying annotation update…");
+  expect([...progress.unscoredReasons]).toEqual([["0", "insufficient evidence"], ["2", "awaiting score"], ["new-action", "awaiting score"]]);
+});
+
+it("reports a failed update even when there are no previous scores", () => {
+  const data = { ...response(null), previous_credits: [], configured: true, queue: { status: "failed", error: "Invalid response" } };
+  expect(automaticAnnotationProgress(data, steps, automaticActionScores(data, steps)).label).toBe("0 of 3 actions scored · 3 awaiting scores · Annotation update failed");
 });

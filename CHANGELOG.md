@@ -5,6 +5,11 @@ everything before it is captured in git history (`git log`), not here.
 
 ## Unreleased
 
+- Explain trace-bar heights with a harmful/neutral/helpful legend and show
+  annotation counts, pending scores, insufficient evidence, and failed updates.
+  Retry invalid automatic-classifier responses up to three times per batch,
+  retaining completed batches and recovering previously stranded annotations.
+
 - Keep previous action-credit bars visible while a growing trace is evaluated
   again. Earlier annotations are clearly labeled and replaced as current scores
   arrive; unscored new steps no longer make the entire chart appear to collapse.

@@ -16,7 +16,7 @@ import { Button } from "@/components/ui/button";
 import TraceReviewAccess from "@/components/workbench/TraceReviewAccess";
 import { TraceSkeleton } from "@/components/reward-models/RmSkeletons";
 import TraceFlamegraph from "@/components/reward-models/TraceFlamegraph";
-import { automaticActionScores } from "@/components/reward-models/automatic-credit";
+import { automaticActionScores, automaticAnnotationProgress } from "@/components/reward-models/automatic-credit";
 import TraceMinimap from "@/components/reward-models/TraceMinimap";
 import TraceTimeline, { type StepAnnotations } from "@/components/reward-models/TraceTimeline";
 import { errorMessage, locateQuote, quoteFromOffsets, relativeTime, sortAnnotations } from "@/components/reward-models/rm-text";
@@ -144,14 +144,7 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
   const current = evaluation?.current;
   const score = current?.outcome !== "insufficient_evidence" ? current?.outcome_probabilities?.success : null;
   const actionScores = automaticActionScores(evaluation, trace.steps);
-  const previousShown = [...actionScores.values()].some((score) => score.stale);
-  const annotationStatus = previousShown
-    ? evaluation?.queue?.status === "failed" ? "Annotation update failed · previous values retained"
-      : evaluation?.queue?.status === "waiting" ? "Waiting for response completion · previous values retained"
-        : "Updating annotations · previous values retained"
-    : evaluation && current?.status !== "completed" && evaluation.queue?.status !== "failed"
-      ? evaluation.queue?.status === "waiting" ? "Waiting for response completion" : "Annotating actions…"
-      : undefined;
+  const annotationProgress = automaticAnnotationProgress(evaluation, trace.steps, actionScores);
 
 
   function annotationsOn(step: RmStep): RmAnnotation[] {
@@ -359,7 +352,7 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
           </header>
 
           {evaluation?.queue?.status === "failed" && evaluation.owner_user_id === viewerId && <Button size="xs" variant="ghost" onClick={() => void wbAssess(traceId).then(reloadEvaluation).catch((e) => toast.error(errorMessage(e)))}>Retry scoring</Button>}
-            <TraceMinimap steps={trace.steps} annotations={trace.annotations} actionScores={actionScores} annotationStatus={annotationStatus} scroller={scroller} navigation={navigation} onJump={(index) => revealStep(trace.steps[index].id)} />
+            <TraceMinimap steps={trace.steps} annotations={trace.annotations} actionScores={actionScores} annotationStatus={annotationProgress.label} unscoredReasons={annotationProgress.unscoredReasons} scroller={scroller} navigation={navigation} onJump={(index) => revealStep(trace.steps[index].id)} />
             <TraceFlamegraph spans={trace.spans} onJump={(index) => revealStep(trace.steps[index].id)} />
 
             <div className="mt-1 flex items-center gap-2 bg-background py-1.5">

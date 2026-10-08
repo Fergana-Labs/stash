@@ -9,6 +9,7 @@ import { isThinking, looksLikeError } from "./trace-rows";
 import { visibleStepElement } from "./trace-scroll";
 import type { RmActionScore, RmAnnotation, RmStep } from "@/lib/types";
 import { formatCredit } from "./action-credit";
+import { isGradableAction } from "./automatic-credit";
 
 // Design from Priyadarshan's trace viewer (projects/trace_viewer).
 const KINDS = {
@@ -29,11 +30,12 @@ function kindOf(step: RmStep): keyof typeof KINDS {
   return step.tool_name == null ? "assistant" : "call";
 }
 
-function LatestTraceMinimap({ steps, annotations, actionScores, annotationStatus, scroller, navigation, onJump }: {
+function LatestTraceMinimap({ steps, annotations, actionScores, annotationStatus, unscoredReasons, scroller, navigation, onJump }: {
   steps: RmStep[];
   annotations: RmAnnotation[];
   actionScores?: Map<string, RmActionScore>;
   annotationStatus?: string;
+  unscoredReasons?: Map<string, string>;
   scroller: RefObject<HTMLDivElement | null>;
   navigation: RefObject<HTMLDivElement | null>;
   onJump: (index: number) => void;
@@ -70,7 +72,6 @@ function LatestTraceMinimap({ steps, annotations, actionScores, annotationStatus
   }, [steps, scroller, navigation]);
 
   if (steps.length === 0) return null;
-  const showingCredit = !!actionScores?.size;
   const commented = new Set(annotations.filter((a) => a.comment !== null).map((a) => a.step_id));
 
   function jump(index: number) {
@@ -105,11 +106,21 @@ function LatestTraceMinimap({ steps, annotations, actionScores, annotationStatus
         {Object.entries(KINDS).filter(([kind]) => steps.some((step) => kindOf(step) === kind)).map(([kind, style]) => (
           <span key={kind} className="inline-flex items-center gap-1"><span className={cn("h-2 w-2", style.color)} />{style.label}</span>
         ))}
-        <span>Height: credit −1 to +1</span>
-        <span>Faint bars: unscored</span>
         <span className="inline-flex items-center gap-1"><span className="size-1.5 rounded-full bg-amber-400" />Comment</span>
         <span className="ml-auto shrink-0 tabular-nums">Step {steps[activeIndex]?.index + 1} of {steps.length}</span>
       </div>
+      <div aria-label="Action credit legend" className="mb-1 flex flex-wrap items-end gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
+        <span className="self-center">Action credit (height)</span>
+        {[
+          { height: 3, label: "−1 Harmful" },
+          { height: 13, label: "0 Neutral" },
+          { height: 23, label: "+1 Helpful" },
+        ].map(({ height, label }) => (
+          <span key={label} className="inline-flex items-end gap-1.5"><span aria-hidden="true" className="w-1.5 bg-muted-foreground" style={{ height }} />{label}</span>
+        ))}
+        <span className="inline-flex items-end gap-1.5"><span aria-hidden="true" className="h-[3px] w-1.5 bg-muted-foreground opacity-35" />Faint: no score</span>
+      </div>
+      <p className="m-0 mb-1 text-[11px] text-muted-foreground">Only assistant responses and tool calls are graded. Hover a bar for its score or status.</p>
       {annotationStatus && <p role="status" className="m-0 mb-1 text-[11px] text-muted-foreground">{annotationStatus}</p>}
       <div
         className="relative flex h-[52px] touch-none items-end"
@@ -140,7 +151,8 @@ function LatestTraceMinimap({ steps, annotations, actionScores, annotationStatus
           const kind = KINDS[kindOf(step)];
           const score = actionScores?.get(step.id);
           const actionType = kind.label;
-          const label = `Step ${step.index + 1}: ${actionType}${step.tool_name === null ? "" : `, ${step.tool_name}`}${score ? `, credit ${formatCredit(score.credit)}${score.stale ? ", previous annotation" : ""}` : showingCredit ? ", unscored" : ""}`;
+          const missingReason = isGradableAction(step) ? unscoredReasons?.get(step.id) ?? "awaiting score" : "not graded";
+          const label = `Step ${step.index + 1}: ${actionType}${step.tool_name === null ? "" : `, ${step.tool_name}`}${score ? `, credit ${formatCredit(score.credit)}${score.stale ? ", previous annotation" : ""}` : `, ${missingReason}`}`;
           return (
             <button
               key={step.id}
