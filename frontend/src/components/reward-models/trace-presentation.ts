@@ -1,26 +1,14 @@
 import type { RmStep } from "@/lib/types";
 import { buildRows, rowSteps, type TraceRow } from "./trace-rows";
 
-/** Presentation only: the source IDs, roles and offsets remain immutable. */
-export function isContext(step: RmStep): boolean {
-  return step.role === "system" || (step.role === "user" && /^\s*(?:# AGENTS\.md instructions\b|<(?:environment_context|skills_instructions|INSTRUCTIONS)>)/.test(step.content));
-}
-
-export function contextTitle(step: RmStep): string {
-  if (/AGENTS\.md/.test(step.content.slice(0, 100))) return "Repository instructions";
-  if (/skills_instructions/.test(step.content.slice(0, 100))) return "Skills and instructions";
-  if (/environment_context/.test(step.content.slice(0, 100))) return "Environment";
-  return "System instructions";
-}
-
 export function presentTrace(steps: RmStep[]) {
-  const context = steps.filter(isContext);
-  const rows = buildRows(steps.filter((step) => !isContext(step)));
+  // Every source message stays in chronological order, regardless of role or content.
+  const rows = buildRows(steps);
   const numberById = new Map<string, number>();
   rows.forEach((row, index) => rowSteps(row).forEach((step) => numberById.set(step.id, index + 1)));
   const mapSteps = rows.map((row, index) => ({ ...rowSteps(row)[0], index }));
   const commentSteps = steps.map((step) => ({ ...step, index: (numberById.get(step.id) ?? 0) - 1 }));
-  return { context, rows, numberById, mapSteps, commentSteps };
+  return { rows, numberById, mapSteps, commentSteps };
 }
 
 /** Hide known transport envelopes, never arbitrary XML/code the user is discussing. */

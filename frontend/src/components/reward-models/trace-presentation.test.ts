@@ -1,6 +1,6 @@
 import { expect, it } from "vitest";
 import type { RmStep } from "@/lib/types";
-import { presentTrace, isContext, readableExcerpt } from "./trace-presentation";
+import { presentTrace, readableExcerpt } from "./trace-presentation";
 import { buildTraceOutline, groupPath, resolveGroupPath } from "./trace-outline";
 import { rowSteps } from "./trace-rows";
 
@@ -8,17 +8,16 @@ function step(index: number, content: string, role: RmStep["role"] = "assistant"
   return { id: `s${index}`, index, content, role, tool_input: null, tool_name: null, tool_call_id: null, metadata: null };
 }
 
-it("keeps immutable sources while numbering calls and results as one step, excluding instructions", () => {
+it("keeps immutable sources while numbering calls and results as one step without extracting any roles", () => {
   const original = [step(0, "<skills_instructions>Skills</skills_instructions>", "system"), step(1, "# AGENTS.md instructions\n<INSTRUCTIONS>Rules</INSTRUCTIONS>", "user"), step(2, "Fix it", "user"), { ...step(3, ""), tool_name: "exec", tool_call_id: "c" }, { ...step(4, "Done", "tool"), tool_call_id: "c" }, step(5, "Fixed")];
   const snapshot = structuredClone(original);
   const view = presentTrace(original);
-  expect(view.context).toHaveLength(2);
-  expect(view.mapSteps.map((s) => s.index)).toEqual([0, 1, 2]);
-  expect(view.numberById.get("s3")).toBe(2);
-  expect(view.numberById.get("s4")).toBe(2);
-  expect(view.numberById.has("s1")).toBe(false);
+  expect(view.rows.flatMap(rowSteps).map((step) => step.id)).toEqual(original.map((step) => step.id));
+  expect(view.mapSteps.map((s) => s.index)).toEqual([0, 1, 2, 3, 4]);
+  expect(view.numberById.get("s3")).toBe(4);
+  expect(view.numberById.get("s4")).toBe(4);
+  expect(view.numberById.get("s1")).toBe(2);
   expect(original).toEqual(snapshot);
-  expect(isContext(step(0, "Please edit AGENTS.md", "user"))).toBe(false);
 });
 
 it("keeps a continuous run of work intact with every row reachable", () => {
@@ -84,4 +83,13 @@ it("nests distinct activities under recorded progress subtasks without capping e
   expect(groupPath(tree, "s10")).toHaveLength(3);
   const leaves = tree.flatMap((task) => task.children.flatMap((subtask) => subtask.children.flatMap((node) => node.rows.flatMap(rowSteps))));
   expect(leaves.map((s) => s.id)).toEqual(source.map((s) => s.id));
+});
+
+
+it("keeps startup messages and runtime events in order without manufacturing setup tasks", () => {
+  const source = [step(0, "Initial system message", "system"), step(1, "# AGENTS.md instructions", "user"), step(2, "Buy a burrito", "user"), step(3, "Ordering"), step(4, "<turn_aborted>Interrupted</turn_aborted>", "system"), step(5, "Try again", "user"), step(6, "Ordered"), step(7, "Build an app", "user"), step(8, "Done")];
+  const tree = buildTraceOutline(presentTrace(source).rows);
+  expect(tree.map((node) => node.rows.map((row) => row.key))).toEqual([["s0", "s1", "s2", "s3", "s4"], ["s5", "s6"], ["s7", "s8"]]);
+  expect(tree.flatMap((node) => node.rows.flatMap(rowSteps))).toEqual(source);
+  expect(groupPath(tree, "s4")).toEqual([tree[0].key]);
 });

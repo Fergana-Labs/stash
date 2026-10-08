@@ -13,7 +13,7 @@ import AnchoredText from "./AnchoredText";
 import { firstLine, isThinking, looksLikeError, toolLabel, toolSummary, type TraceRow } from "./trace-rows";
 import type { Highlight } from "./source-anchors";
 import { ChevronDown, ChevronRight } from "lucide-react";
-import { contextTitle, readableExcerpt } from "./trace-presentation";
+import { readableExcerpt } from "./trace-presentation";
 import ToolInput from "./ToolInput";
 
 /** Everything a row needs to show and change one step's annotations. Built once per render by the trace page. */
@@ -36,6 +36,7 @@ export interface StepAnnotations {
   hasQuotes: (step: RmStep) => boolean;
   flashing: (step: RmStep) => boolean;
   onComment: (step: RmStep) => void;
+  onReadMessage?: (step: RmStep) => void;
   onSelectAnnotation: (ids: string[]) => void;
 }
 
@@ -70,7 +71,7 @@ function RowFrame({ step, flashing, children, className }: { step: RmStep; flash
 }
 
 /** Long content starts clipped. `open` forces it open (a quoted step must show its highlights). */
-function Clamp({ children, max, open: forcedOpen }: { children: ReactNode; max: number; open: boolean }) {
+function Clamp({ children, max, open: forcedOpen, onRead }: { children: ReactNode; max: number; open: boolean; onRead?: () => void }) {
   const [open, setOpen] = useState(false);
   const [tall, setTall] = useState(false);
   const inner = useRef<HTMLDivElement | null>(null);
@@ -96,10 +97,10 @@ function Clamp({ children, max, open: forcedOpen }: { children: ReactNode; max: 
       {tall && !forcedOpen && (
         <button
           type="button"
-          onClick={() => setOpen(!open)}
+          onClick={onRead ?? (() => setOpen(!open))}
           className="mt-1.5 cursor-pointer text-[12px] font-medium text-muted-foreground underline decoration-border underline-offset-4 hover:text-foreground"
         >
-          {open ? "Show less" : "Show more"}
+          {onRead ? "Read full message" : open ? "Show less" : "Show more"}
         </button>
       )}
     </div>
@@ -109,21 +110,22 @@ function Clamp({ children, max, open: forcedOpen }: { children: ReactNode; max: 
 /** Keep empty comment controls quiet until the row is focused or hovered. */
 function StepActions({ step, ann }: { step: RmStep; ann: StepAnnotations }) {
   const comments = ann.commentCount(step);
-  const quiet = comments === 0;
+  const quiet = comments === 0 && !ann.onReadMessage;
   return (
     <span
       onClick={(e) => e.stopPropagation()}
       className={cn(
-        "flex shrink-0 items-center gap-1",
+        "flex shrink-0 items-center gap-2",
         quiet && "opacity-0 group-hover/row:opacity-100 focus-within:opacity-100",
       )}
     >
+      {ann.onReadMessage && <button type="button" onClick={() => ann.onReadMessage!(step)} aria-label={`Read ${step.role} message`} className="cursor-pointer text-[11px] font-medium text-dim hover:text-foreground hover:underline underline-offset-4">Read</button>}
       <button
         type="button"
         onClick={() => ann.onComment(step)}
         title="Comment on this step"
         aria-label="Comment on this step"
-        className="inline-flex h-5 cursor-pointer items-center gap-1 text-[11px] font-medium text-dim hover:text-foreground hover:underline underline-offset-4"
+        className={cn("inline-flex h-5 cursor-pointer items-center gap-1 text-[11px] font-medium text-dim hover:text-foreground hover:underline underline-offset-4", comments === 0 && "opacity-0 group-hover/row:opacity-100 focus:opacity-100")}
       >
         Comment{comments > 0 && ` (${comments})`}
       </button>
@@ -144,7 +146,7 @@ function StepTime({ step }: { step: RmStep }) {
 
 function StepContent({ step, ann, markdown, max }: { step: RmStep; ann: StepAnnotations; markdown: boolean; max: number }) {
   return (
-    <Clamp max={max} open={ann.hasQuotes(step)}>
+    <Clamp max={ann.onReadMessage ? Math.min(max, 160) : max} open={ann.hasQuotes(step)} onRead={ann.onReadMessage ? () => ann.onReadMessage!(step) : undefined}>
       <AnchoredText
         stepId={step.id}
         content={step.content}
@@ -164,7 +166,7 @@ function StepMetadata({ step, ann }: { step: RmStep; ann: StepAnnotations }) {
   const score = reward ? undefined : ann.actionScore?.(step);
   const number = ann.stepNumber ? ann.stepNumber(step) : step.index + 1;
   return (
-    <div className="ml-auto grid shrink-0 grid-cols-[5.5rem_4.5rem_4rem_4rem] items-center gap-2 text-[11px] text-muted-foreground tabular-nums">
+    <div className={cn("ml-auto grid shrink-0 items-center gap-2 text-[11px] text-muted-foreground tabular-nums", ann.onReadMessage ? "grid-cols-[5.5rem_4.5rem_4rem_6.5rem]" : "grid-cols-[5.5rem_4.5rem_4rem_4rem]")}>
       <span className="text-right"><StepTime step={step} /></span>
       {reward ? <span className="flex justify-end"><StepScoreChip reward={reward} /></span> : (
         <span className="text-right">{score && <span className="font-mono" style={{ color: creditColor(score.credit) }}
@@ -281,6 +283,7 @@ function ToolRow({
                 title="Output"
                 right={
                   <span className="flex items-center gap-3">
+                    {ann.onReadMessage && <button type="button" onClick={() => ann.onReadMessage!(result)} aria-label="Read tool message" className="cursor-pointer text-[11px] text-dim hover:text-foreground">Read</button>}
                     <CopyButton text={result.content} />
                   </span>
                 }
@@ -291,7 +294,6 @@ function ToolRow({
               </Section>
             </div>
           )}
-          {result === null && <p className="m-0 text-[12px] text-muted-foreground">No result recorded for this call.</p>}
         </div>
       )}
     </RowFrame>
@@ -331,33 +333,22 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
-/* ── system prompt ──────────────────────────────────────────────────── */
+/* ── recorded system message ──────────────────────────────────────────────────── */
 
 function SystemRow({ step, ann, expanded, onToggle }: { step: RmStep; ann: StepAnnotations; expanded: boolean; onToggle: () => void }) {
   return (
     <RowFrame step={step} flashing={ann.flashing(step)}>
       <div className="group/row flex min-h-8 items-center gap-3">
-        <button type="button" onClick={onToggle} aria-expanded={expanded} aria-label={`${expanded ? "Collapse" : "Expand"} ${contextTitle(step)}`}
+        <button type="button" onClick={onToggle} aria-expanded={expanded} aria-label={`${expanded ? "Collapse" : "Expand"} system message`}
           className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-left text-[12px] text-muted-foreground hover:text-foreground">
-          <DisclosureIcon expanded={expanded} /><span className="font-medium">{contextTitle(step)}</span>
+          <DisclosureIcon expanded={expanded} /><span className="shrink-0 font-medium">System</span>
+          {!expanded && <span className="truncate text-xs">{readableExcerpt(step.content)}</span>}
         </button>
-        <StepActions step={step} ann={ann} />
+        <StepMetadata step={step} ann={ann} />
       </div>
       {expanded && <div className="mb-4 mt-2 pl-5"><StepContent step={step} ann={ann} markdown max={420} /></div>}
     </RowFrame>
   );
-}
-
-export function TraceContext({ steps, ann, isExpanded, onToggle }: { steps: RmStep[]; ann: StepAnnotations; isExpanded: (row: TraceRow) => boolean; onToggle: (row: TraceRow) => void }) {
-  const [open, setOpen] = useState(false);
-  if (!steps.length) return null;
-  const expanded = open || steps.some((step) => isExpanded({ kind: "system", key: step.id, step }));
-  return <section aria-label="Instructions and environment" className="mb-3 border-b border-border-subtle pb-2">
-    <button type="button" aria-expanded={expanded} onClick={() => { if (expanded) steps.forEach((step) => { const row: TraceRow = { kind: "system", key: step.id, step }; if (isExpanded(row)) onToggle(row); }); setOpen(!expanded); }} className="flex min-h-8 cursor-pointer items-center gap-2 text-xs text-muted-foreground hover:text-foreground"><DisclosureIcon expanded={expanded} />Instructions and environment <span>({steps.length})</span></button>
-    {expanded && steps.map((step) => {
-    const row: TraceRow = { kind: "system", key: step.id, step };
-    return <SystemRow key={step.id} step={step} ann={ann} expanded={isExpanded(row)} onToggle={() => onToggle(row)} />;
-  })}</section>;
 }
 
 /* ── timeline ───────────────────────────────────────────────────────── */

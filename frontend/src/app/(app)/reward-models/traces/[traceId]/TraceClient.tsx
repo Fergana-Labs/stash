@@ -18,8 +18,9 @@ import { TraceSkeleton } from "@/components/reward-models/RmSkeletons";
 import TraceFlamegraph from "@/components/reward-models/TraceFlamegraph";
 import { automaticActionScores, automaticAnnotationProgress } from "@/components/reward-models/automatic-credit";
 import TraceMinimap from "@/components/reward-models/TraceMinimap";
+import TraceMessageReader from "@/components/reward-models/TraceMessageReader";
 import TraceScore from "@/components/reward-models/TraceScore";
-import { TraceContext, type StepAnnotations } from "@/components/reward-models/TraceTimeline";
+import { type StepAnnotations } from "@/components/reward-models/TraceTimeline";
 import { TraceLabelSummary } from "@/components/reward-models/StepLabels";
 import { ScoringExplainer } from "@/components/reward-models/StepRewards";
 import { buildTraceLabels } from "@/components/reward-models/step-labels";
@@ -64,6 +65,8 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [outlinePath, setOutlinePath] = useState<string[]>([]);
   const [commentsOpen, setCommentsOpen] = useState(false);
+  const [readerStepId, setReaderStepId] = useState<string | null>(null);
+  const [readerVersion, setReaderVersion] = useState(0);
   const [showLabels, setShowLabels] = useState(true);
   const [showScores, setShowScores] = useState(true);
   const [composer, setComposer] = useState<ComposerTarget | null>(null);
@@ -175,10 +178,11 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
     return [{ id: PENDING_ID, ...pending, className: "rounded-[2px] bg-brand-300/45 text-inherit" }, ...saved];
   }
 
-  /** Messages start readable; context and tool details open on demand. */
+  /** Every role starts readable, with long content clipped by the shared reader control. */
   function isExpanded(row: TraceRow): boolean {
     const choice = rowChoice.get(row.key);
     if (choice !== undefined) return choice;
+    if (row.kind === "system") return true;
     if (row.kind !== "prompt") return false;
     const index = rows.findIndex((item) => item.key === row.key);
     const previous = rows[index - 1];
@@ -231,6 +235,7 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
   }
 
   function openComposer(stepId: string | null) {
+    setReaderStepId(null);
     setCommentsOpen(true);
     setComposer({ stepId, quote: null });
   }
@@ -255,13 +260,14 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
     }
     if (end <= start || step.content.slice(start, end).trim() === "") return;
 
+    setReaderStepId(null);
     setCommentsOpen(true);
     setComposer({ stepId: step.id, quote: quoteFromOffsets(step.content, start, end) });
   }
 
   /** Scrolls to a step, opening its row if needed. */
   function revealStep(stepId: string) {
-    const row = [...rows, ...presentation.context.map((step): TraceRow => ({ kind: "system", key: step.id, step }))].find((r) => rowSteps(r).some((s) => s.id === stepId));
+    const row = rows.find((r) => rowSteps(r).some((s) => s.id === stepId));
     setOutlinePath(groupPath(groups, stepId));
     if (!row) return;
     if (!isExpanded(row) && row.kind !== "assistant") toggleRow(row);
@@ -285,6 +291,7 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
   }
 
   function focusCard(ids: string[]) {
+    setReaderStepId(null);
     setCommentsOpen(true);
     const id = ids.find((i) => i !== PENDING_ID);
     if (id === undefined) return;
@@ -302,6 +309,7 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
     hasQuotes: (step) => annotationsOn(step).some((a) => a.quote !== null) || composer?.stepId === step.id,
     flashing: (step) => flashStepId === step.id,
     onComment: (step) => openComposer(step.id),
+    onReadMessage: (step) => { setCommentsOpen(false); setReaderVersion((value) => value + 1); setReaderStepId(step.id); },
     onSelectAnnotation: focusCard,
     ...(labelsOn && { labelChips: labels.chips, taskHeading: labels.taskHeading, onJumpToStep: revealStep }),
     ...(scoresOn && {
@@ -313,7 +321,7 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
   };
 
   return (
-    <div className="flex h-full min-h-0">
+    <div className="relative flex h-full min-h-0">
       <TraceScrollRail groups={groups} path={outlinePath} rows={rows} onPath={setOutlinePath} onOpenRows={openRows} onStep={revealStep}
         copy={assessments.copy} stepNumber={(step) => presentation.numberById.get(step.id) ?? step.index + 1} scroller={scroller} />
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
@@ -330,11 +338,13 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
             <div className="flex shrink-0 items-center gap-1.5">
               <TraceScore evaluation={evaluation} error={loadError} />
               {evaluation?.queue?.status === "failed" && evaluation.owner_user_id === viewerId && <Button size="xs" variant="ghost" onClick={() => void wbAssess(traceId).then(load).catch((e) => toast.error(errorMessage(e)))}>Retry scoring</Button>}
+              {trace.steps.length > 0 && <button type="button" aria-expanded={readerStepId !== null} onClick={() => { setCommentsOpen(false); setReaderStepId(readerStepId ? null : trace.steps[0].id); }} className="inline-flex h-7 cursor-pointer items-center rounded-md border border-border bg-background px-2 text-[12px] text-muted-foreground hover:text-foreground">Messages</button>}
               <button
                 type="button"
                 aria-expanded={commentsOpen}
                 aria-controls="trace-comments"
                 onClick={() => {
+                  setReaderStepId(null);
                   setCommentsOpen(!commentsOpen);
                   if (!commentsOpen) {
                     requestAnimationFrame(() => document.getElementById("trace-comments")?.scrollIntoView({ block: "nearest" }));
@@ -367,7 +377,6 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
         <div ref={scroller} className="scroll-thin min-h-0 flex-1 overflow-y-auto">
         <div ref={canvas} className={cn("relative mx-auto max-w-5xl px-6 pt-2", browsingSections ? "pb-3" : "pb-[60vh]")} onMouseUp={onCanvasMouseUp}>
           <TraceFlamegraph spans={trace.spans} onJump={(index) => revealStep(trace.steps[index].id)} />
-          <TraceContext steps={presentation.context} ann={ann} isExpanded={isExpanded} onToggle={toggleRow} />
           <TraceExplorer
             groups={groups} path={outlinePath} assessments={assessments}
             onPath={(path) => { setOutlinePath(path); scroller.current?.scrollTo({ top: 0, behavior: "instant" }); }}
@@ -377,6 +386,8 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
         </div>
         </div>
       </div>
+
+      {readerStepId !== null && <TraceMessageReader key={readerVersion} steps={trace.steps} stepId={readerStepId} numberOf={numberOf} onClose={() => setReaderStepId(null)} onReveal={(id) => { setReaderStepId(null); revealStep(id); }} />}
 
       <AnnotationSidebar
         visible={commentsOpen}
@@ -425,7 +436,7 @@ function composerLabel(target: ComposerTarget, trace: RmTraceDetail, numbers: Ma
   if (target.stepId === null) return "Comment on the whole trace";
   const step = trace.steps.find((s) => s.id === target.stepId)!;
   const number = numbers.get(step.id);
-  const label = number ? `step ${number}${step.role === "tool" ? " output" : ""}` : "instructions";
+  const label = number ? `step ${number}${step.role === "tool" ? " output" : ""}` : "message";
   return target.quote ? `Comment on selection in ${label}` : `Comment on ${label}`;
 }
 

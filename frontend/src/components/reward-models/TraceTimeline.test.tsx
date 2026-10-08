@@ -16,6 +16,18 @@ const ann: StepAnnotations = {
   onComment: vi.fn(), onSelectAnnotation: vi.fn(),
 };
 
+it("gives system messages chronological step numbers and the same reader as user messages", () => {
+  const source = [step(0, "Initial message", "system"), step(1, "A request"), step(2, "<turn_aborted>Interrupted</turn_aborted>", "system")];
+  const onReadMessage = vi.fn();
+  render(<TraceTimeline rows={buildRows(source)} ann={{ ...ann, onReadMessage }} isExpanded={() => false} onToggle={vi.fn()} />);
+  expect(screen.getByText("Step 3")).toBeVisible();
+  fireEvent.click(screen.getAllByRole("button", { name: "Read system message" })[1]);
+  expect(onReadMessage).toHaveBeenCalledWith(source[2]);
+  fireEvent.click(screen.getByRole("button", { name: "Read user message" }));
+  expect(onReadMessage).toHaveBeenLastCalledWith(source[1]);
+  expect(screen.queryByText("System instructions")).not.toBeInTheDocument();
+});
+
 it("collapses repeated text while preserving both source steps and a disclosure", () => {
   const rows = buildRows([step(0, "Find a piston kit"), step(1, "Find a piston kit")]);
   const onToggle = vi.fn();

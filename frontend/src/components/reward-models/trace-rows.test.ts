@@ -35,12 +35,19 @@ describe("buildRows", () => {
     expect(rows.flatMap(rowSteps).map((s) => s.id).sort()).toEqual(steps.map((s) => s.id).sort());
   });
 
-  it("pairs each call with its result by tool_call_id, even when results arrive out of order", () => {
+  it("pairs only adjacent calls and results, preserving out-of-order arrival", () => {
     const tools = rows.filter((r) => r.kind === "tool");
     expect(tools.map((r) => [r.call?.id, r.result?.id])).toEqual([
-      ["s2", "s5"],
+      ["s2", undefined],
       ["s3", "s4"],
+      [undefined, "s5"],
     ]);
+  });
+
+  it("never moves a result ahead of intervening events", () => {
+    expect(rows.flatMap(rowSteps)).toEqual(steps);
+    const interrupted = [steps[2], step(3, "system", { content: "Interrupted" }), steps[5]];
+    expect(buildRows(interrupted).flatMap(rowSteps)).toEqual(interrupted);
   });
 
   it("numbers turns by user prompts", () => {

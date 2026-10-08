@@ -209,6 +209,23 @@ tried when nothing matches.
 | `claude_code` | Claude Code session transcript JSONL (`~/.claude/projects/**/*.jsonl`) | one trace per file |
 | `codex` | Codex CLI rollout JSONL (`~/.codex/sessions/**/rollout-*.jsonl`) | one trace per file |
 
+## Trace messages
+
+All messages stay in recorded chronological order, including system events that
+arrive mid-conversation. The viewer does not extract an instructions/setup bucket
+or infer an instruction type from a message's role or text. Leading messages
+remain with the first request; explicit task labels still take precedence.
+Only adjacent tool calls and results share a displayed step, so pairing cannot
+move an output ahead of intervening messages. Source IDs, roles, content, and
+annotation offsets are unchanged.
+
+Long messages have compact previews and a shared Read control. The Messages
+button opens a side reader from any explorer level. It offers recorded-role
+filtering, literal search across messages, previous/next navigation, rendered
+and raw views, copy, and Show in trace. Search includes raw envelopes and tool
+inputs. The reader scrolls independently, Escape closes it and restores focus,
+and opening comments closes the reader. The left rail remains global.
+
 ## Trace sections
 
 Single-task traces land directly on that task's subtasks, or on its steps when
@@ -224,8 +241,8 @@ subtasks, and recognizable changes in work such as inspecting, editing,
 verifying, publishing, or moving between sites. Existing task labels take
 precedence over request heuristics. No section-count or step-count limit creates
 artificial groups: a continuous run without a recognizable boundary stays
-together, and distinct tasks are never combined to fit a screen. System context
-and tool-output pairing do not change source step IDs. Cards use their natural
+together, and distinct tasks are never combined to fit a screen. Message rendering
+and adjacent tool-output pairing do not change source step IDs. Cards use their natural
 height; longer lists scroll and keyboard selection stays in view. Up/down arrows select a section; right
 opens it with leaf rows expanded; left returns to the parent and restores the
 previous selection. Mouse movement highlights a card and clicking opens it.

@@ -5,6 +5,11 @@ everything before it is captured in git history (`git log`), not here.
 
 ## Unreleased
 
+- Keep all trace messages in chronological order with their recorded roles.
+  Replace the separate instructions bucket with a message reader: search,
+  role filters, rendered/raw views, copy, and direct navigation back to the trace.
+  Long messages share a compact preview and a Read control.
+
 - Open single-task traces directly on their subtasks or recorded steps. Show
   readable section titles immediately while generated summaries load, and hide
   the top credit graph when there are no grades to display.
@@ -24,9 +29,8 @@ everything before it is captured in git history (`git log`), not here.
 
 - Browse long traces from request summaries into smaller sections and individual
   steps, with hover previews and direct minimap/comment navigation.
-- Group instructions separately from numbered steps and count a tool call plus
-  its output as one step. Render instructions, question replies, and tool values
-  readably while preserving source links and comment selections.
+- Count adjacent tool calls and outputs as one displayed step. Render question
+  replies and tool values readably while preserving source links and comment selections.
 - Align plain action-credit numbers, remove full-row score colors and duplicate
   Details buttons, make user messages collapsible, and start comments closed.
 - Load compact saved action and outcome scores together with the trace, avoiding
