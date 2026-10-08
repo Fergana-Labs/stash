@@ -325,11 +325,9 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
           </Link>
 
           <header className="mt-2 mb-3 flex flex-wrap items-start gap-3">
-            <div className="min-w-0 flex-1">
-              <h1 className="m-0 font-display text-[21px] leading-snug font-semibold tracking-tight text-foreground">{trace.title}</h1>
-              <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[12px] text-muted-foreground">
-                <span>imported {relativeTime(trace.created_at)}</span>
-              </div>
+            <div className="flex min-w-0 flex-1 items-baseline gap-2.5">
+              <h1 title={trace.title} className="m-0 min-w-0 truncate font-display text-[21px] leading-snug font-semibold tracking-tight text-foreground">{trace.title}</h1>
+              <span className="shrink-0 whitespace-nowrap text-[12px] text-muted-foreground">imported {relativeTime(trace.created_at)}</span>
             </div>
             <div className="flex shrink-0 items-center gap-1.5 pt-1">
               <div className="mr-2 text-right" title="Automatic trace annotation: estimated probability of success (0–1)"><div className="text-[10px] text-muted-foreground">Trace score</div><span className="font-mono text-xl font-medium tabular-nums">{score == null ? "—" : score.toFixed(2)}</span></div>

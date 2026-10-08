@@ -62,7 +62,6 @@ it("uses continuous expected credit for current and previous bar heights without
   render(<TraceMinimap steps={steps} annotations={[]} actionScores={scores} scroller={{ current: null }} navigation={{ current: null }} onJump={vi.fn()} />);
   expect(screen.getByRole("button", { name: "Step 1: Response, credit +0.35" }).lastElementChild).toHaveStyle({ height: "33px" });
   expect(screen.getByRole("button", { name: "Step 2: Response, credit +0.70, previous annotation" }).lastElementChild).toHaveStyle({ height: "40px" });
-  expect(screen.getByText("Continuous action credit (height)")).toBeVisible();
 });
 
 it("never replaces an explicit missing expected credit with a legacy categorical score", () => {

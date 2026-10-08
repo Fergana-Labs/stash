@@ -5,6 +5,11 @@ everything before it is captured in git history (`git log`), not here.
 
 ## Unreleased
 
+- Remove the action-credit legend and visible annotation-progress row to give
+  the trace more vertical space, and place the imported timestamp beside the
+  title. Scores and grading statuses remain available on hover and focus, with
+  a progress summary for screen readers.
+
 - Use continuous expected action credit from −1 to +1, calculated from saved
   classifier probabilities, across trace bars, credit summaries, and new training
   comparisons. Preserve insufficient-evidence abstentions and original verdicts.

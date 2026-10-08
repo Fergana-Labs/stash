@@ -118,18 +118,7 @@ function LatestTraceMinimap({ steps, annotations, actionScores, annotationStatus
         <span className="inline-flex items-center gap-1"><span className="size-1.5 rounded-full bg-amber-400" />Comment</span>
         <span className="ml-auto shrink-0 tabular-nums">Step {steps[activeIndex]?.index + 1} of {steps.length}</span>
       </div>
-      <div aria-label="Action credit legend" className="mb-1 flex flex-wrap items-end gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
-        <span className="self-center" title="Bar height represents a continuous score: any value from −1 to +1.">Continuous action credit (height)</span>
-        {[
-          { height: 3, label: "−1 Harmful" },
-          { height: 13, label: "0 Neutral" },
-          { height: 23, label: "+1 Helpful" },
-        ].map(({ height, label }) => (
-          <span key={label} className="inline-flex items-end gap-1.5"><span aria-hidden="true" className="w-1.5 bg-muted-foreground" style={{ height }} />{label}</span>
-        ))}
-        <span className="inline-flex items-end gap-1.5"><span aria-hidden="true" className="h-[3px] w-1.5 bg-muted-foreground opacity-35" />Faint: no score</span>
-      </div>
-      {annotationStatus && <p role="status" className="m-0 mb-1 text-[11px] text-muted-foreground">{annotationStatus}</p>}
+      {annotationStatus && <p role="status" className="sr-only">{annotationStatus}</p>}
       <div
         className="relative flex h-[52px] touch-none items-end"
         style={{ columnGap: `min(1px, ${25 / steps.length}%)` }}
