@@ -209,6 +209,44 @@ tried when nothing matches.
 | `claude_code` | Claude Code session transcript JSONL (`~/.claude/projects/**/*.jsonl`) | one trace per file |
 | `codex` | Codex CLI rollout JSONL (`~/.codex/sessions/**/rollout-*.jsonl`) | one trace per file |
 
+## Trace sections
+
+The trace explorer partitions displayed rows into a tree with at most four
+children at every level, including the overview. Existing task labels take
+precedence; otherwise request boundaries and recorded progress divide the
+trace. Adjacent tasks can share an overview parent while retaining separate
+children. System context and tool-output pairing do not change source step IDs.
+Cards resize to the visible canvas. Hovering a card for 450 ms opens its next
+level; leaf rows open expanded. Click, keyboard activation, and breadcrumbs
+remain available. A stationary pointer does not trigger further descent.
+
+`POST /api/v1/rm/traces/{trace_id}/section-summaries` accepts 1–4 ranges of
+`first_step_id` and `last_step_id`. It checks owner/reviewer access and range
+membership before reading cached assessments or invoking the server's fast
+Anthropic model. Named schema fields bind each generated title, summary,
+objective, score, and reason to its exact requested partition. Requests, progress,
+and evenly sampled events provide bounded evidence, with up to eight preceding
+events for local context. It never assumes that a trace has one overall goal or
+uses its title as the scoring objective.
+
+Section scores are continuous 0–1 model estimates of success at that section's
+local objectives. Intermediate sections can accomplish their own subtask.
+Sections spanning independent requests are assessed against those requests
+separately, with a mean estimate explained in the rationale. Scores are not
+averages of action credits or propagated from a whole-trace success verdict.
+Missing evidence produces a null score; the UI shows `Unscored` with the reason.
+These sampled assessments are an exploratory view, separate from existing
+training annotations and action-credit calculations.
+
+Migration `0226` caches assessments by trace, source and preceding-context hash,
+and assessment version. A short lease deduplicates concurrent generation and
+expires after interrupted work. API failures leave step ranges navigable;
+`pending` and `unavailable` distinguish loading from failed generation. Changes
+to relevant evidence invalidate the cache; opening an unchanged section does
+not regenerate it. The frontend does not poll assessments on ordinary trace
+refreshes. Hovering or focusing a score shows its objective and rationale
+without opening the section.
+
 ## Annotations
 
 An annotation belongs to a trace and optionally to one step. It carries a

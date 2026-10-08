@@ -26,6 +26,7 @@ from ..services.rm import (
     otel_ingest,
     query,
     trace_images,
+    trace_sections,
     traces,
 )
 from ..services.rm.adapters import TraceFormatError, list_formats
@@ -165,6 +166,20 @@ async def get_trace(
     if trace is None:
         raise HTTPException(status_code=404, detail="Trace not found")
     return trace
+
+
+@router.post("/traces/{trace_id}/section-summaries")
+async def summarize_trace_sections(
+    trace_id: UUID,
+    req: trace_sections.SectionRequest,
+    current_user: dict = Depends(get_current_user),
+) -> dict:
+    try:
+        return await trace_sections.summarize(current_user["id"], trace_id, req)
+    except LookupError as exc:
+        raise HTTPException(404, "Trace not found") from exc
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
 
 
 @router.get("/trace-images/{image_id}")
