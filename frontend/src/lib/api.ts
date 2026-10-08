@@ -2706,6 +2706,18 @@ export async function rmGetTrace(traceId: string, includeEvaluation = false): Pr
   return apiFetch(`${RM}/traces/${traceId}${includeEvaluation ? "?include_evaluation=true" : ""}`);
 }
 
+export interface RmSectionRange { first_step_id: string; last_step_id: string }
+export interface RmSectionCopy extends RmSectionRange {
+  title: string; summary: string; objective: string; score: number | null; score_reason: string;
+}
+export async function rmSummarizeSections(traceId: string, sections: RmSectionRange[]): Promise<{
+  sections: RmSectionCopy[]; pending: boolean; unavailable: boolean;
+}> {
+  return apiFetch(`${RM}/traces/${traceId}/section-summaries`, {
+    method: "POST", body: JSON.stringify({ sections }),
+  });
+}
+
 export async function rmScoreTrace(traceId: string, modelId?: string): Promise<RmScoringRun> {
   return apiFetch(`${RM}/traces/${traceId}/score`, {
     method: "POST",
