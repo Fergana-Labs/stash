@@ -5,6 +5,10 @@ everything before it is captured in git history (`git log`), not here.
 
 ## Unreleased
 
+- Select traces with checkboxes or Shift-click ranges in the current sort/filter
+  order, then delete the selection together. Failed deletions remain selected
+  for retry.
+
 - Remove the compute provider and epoch count from expanded reward-model rows.
 
 - Simplify reward-model creation to a name and selected traces. Use managed

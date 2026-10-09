@@ -69,22 +69,32 @@ function Traces() {
     return () => clearInterval(timer);
   }, [polling, load]);
 
-  async function remove(trace: RmTraceSummary) {
+  async function remove(targets: RmTraceSummary[]) {
+    if (!targets.length || deleting) return;
     const ok = await confirm({
-      title: `Delete "${trace.title}"?`,
-      body: "Its steps, annotations, and scores are deleted. This cannot be undone.",
-      confirmLabel: "Delete",
+      title: targets.length === 1 ? `Delete "${targets[0].title}"?` : `Delete ${targets.length} traces?`,
+      body: "Their steps, annotations, and scores will be deleted. This cannot be undone.",
+      confirmLabel: targets.length === 1 ? "Delete" : `Delete ${targets.length} traces`,
     });
     if (!ok) return;
-    setDeleting(trace.id);
+    setDeleting(targets.length === 1 ? targets[0].id : "bulk");
+    const removed = new Set<string>();
+    const failed = new Set<string>();
     try {
-      await rmDeleteTrace(trace.id);
-      const next = new Set(selected);
-      next.delete(trace.id);
-      setSelected(next);
+      // Bound concurrent requests and keep failed selections available for retry.
+      for (let i = 0; i < targets.length; i += 5) {
+        const batch = targets.slice(i, i + 5);
+        const results = await Promise.allSettled(batch.map((trace) => rmDeleteTrace(trace.id)));
+        results.forEach((result, index) => {
+          if (result.status === "fulfilled") removed.add(batch[index].id);
+          else failed.add(batch[index].id);
+        });
+      }
+      setSelected((previous) => new Set([...previous, ...failed].filter((id) => !removed.has(id))));
+      setTraces((previous) => previous?.filter((trace) => !removed.has(trace.id)) ?? null);
+      if (removed.size) toast.success(`Deleted ${removed.size} trace${removed.size === 1 ? "" : "s"}`);
+      if (failed.size) toast.error(`Couldn’t delete ${failed.size} trace${failed.size === 1 ? "" : "s"}. They remain selected so you can try again.`);
       await load();
-    } catch (e) {
-      toast.error(errorMessage(e));
     } finally {
       setDeleting(null);
     }
@@ -92,6 +102,7 @@ function Traces() {
 
   // Only ids that still exist count: a deleted trace from ?selected= must not be sent to training.
   const selectedIds = (traces ?? []).filter((t) => selected.has(t.id)).map((t) => t.id);
+  const deletable = (traces ?? []).filter((t) => selected.has(t.id) && t.can_score !== false);
   const summary = summarizeSelection(traces ?? [], selected);
 
   return (
@@ -120,16 +131,21 @@ function Traces() {
                 <span className="text-[13px] font-medium text-foreground tabular-nums">
                   {summary.count} trace{summary.count === 1 ? "" : "s"} selected
                 </span>
-                <Button variant="ghost" size="sm" onClick={() => setSelected(new Set())}>
+                <Button variant="ghost" size="sm" disabled={!!deleting} onClick={() => setSelected(new Set())}>
                   Clear
                 </Button>
+                <Button variant="destructive" size="sm" disabled={!!deleting || deletable.length === 0} onClick={() => void remove(deletable)}>
+                  {deleting ? "Deleting…" : "Delete selected"}
+                </Button>
                 <span className="flex-1" />
-                <TrainPanel
-                  traceIds={selectedIds}
-                  summary={summary}
-                  optionsPlacement="below"
-                  onTrained={() => router.push("/reward-models/models")}
-                />
+                <div inert={!!deleting}>
+                  <TrainPanel
+                    traceIds={selectedIds}
+                    summary={summary}
+                    optionsPlacement="below"
+                    onTrained={() => router.push("/reward-models/models")}
+                  />
+                </div>
               </div>
             )}
             <TraceTable
@@ -137,7 +153,8 @@ function Traces() {
               selected={selected}
               onSelectedChange={setSelected}
               mode="browse"
-              onDelete={(t) => void remove(t)}
+              onDelete={(t) => void remove([t])}
+              selectionDisabled={!!deleting}
               deletingId={deleting}
             />
           </>
