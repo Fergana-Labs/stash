@@ -1,0 +1,82 @@
+{
+ "rationale": "The labeled examples reveal several key patterns that distinguish successes from failures: (1) Whether the agent reached a final page showing the task was actually completed (e.g., a directions page with distance/time, a post page, a forum page, a product listing). (2) Whether the agent sent a final message claiming inability vs. completing the action. (3) Whether the agent correctly identified the target (right place, right item, right subreddit). (4) Whether the final URL/page state matches the goal. (5) Whether the agent used the right approach (e.g., using the directions feature vs. just searching). (6) Whether errors occurred that blocked completion. (7) Whether the task required multi-step navigation and whether those steps were completed. (8) Whether the agent stopped short (e.g., landed on search results instead of the actual item page).",
+ "rubric": [
+  {
+   "id": "final_page_matches_goal",
+   "type": "noul",
+   "prompt": "Does the final page state show content that directly corresponds to the user's goal being accomplished (e.g., a directions result with distance/time, a published post, a created forum, a found item page, a data answer)?",
+   "criteria": {
+    "true": "The final page clearly shows the goal outcome: route computed, post published, forum created, item found, answer displayed, etc.",
+    "false": "The final page does not show the goal outcome: still on search results, error page, submission form, or unrelated page."
+   }
+  },
+  {
+   "id": "agent_claims_failure",
+   "type": "noul",
+   "prompt": "Does the agent explicitly tell the user it could not complete the task, report infeasibility, or send a message indicating failure or inability to find/do something?",
+   "criteria": {
+    "true": "The agent sends a message saying it failed, could not find results, reports infeasible, or asks the user for help to continue.",
+    "false": "The agent does not send such a message; it either completes silently or sends a success confirmation."
+   }
+  },
+  {
+   "id": "task_type",
+   "type": "choice",
+   "prompt": "What category of task is the agent attempting?",
+   "criteria": {
+    "navigation_directions": "The task involves finding directions or routes between two locations on a map.",
+    "information_lookup": "The task involves finding and reporting specific information (prices, distances, names, counts, etc.).",
+    "content_creation": "The task involves creating or posting content (forum post, submission, forum creation, etc.).",
+    "item_search": "The task involves finding a specific item or entity on a website (product, repository, map location, etc.)."
+   }
+  },
+  {
+   "id": "correct_target_identified",
+   "type": "noul",
+   "prompt": "Did the agent correctly identify the specific target entity required by the goal (e.g., correct stadium, correct university, correct subreddit, correct item/product)?",
+   "criteria": {
+    "true": "The agent clearly used or navigated to the correct target entity that the goal specified.",
+    "false": "The agent went to a wrong target, guessed incorrectly, or could not identify the target entity at all."
+   }
+  },
+  {
+   "id": "errors_blocked_completion",
+   "type": "noul",
+   "prompt": "Did any technical errors, 'not found' pages, network errors, or action timeouts materially prevent the agent from completing the task?",
+   "criteria": {
+    "true": "Errors such as 'Not Found', network failures, timeout errors, or rate limits blocked the agent from completing the task.",
+    "false": "No blocking errors occurred, or any errors were minor and the agent recovered successfully."
+   }
+  },
+  {
+   "id": "agent_steps_count",
+   "type": "score",
+   "prompt": "How many steps did the agent take before stopping?",
+   "criteria": [
+    "1-2 steps (very few actions taken).",
+    "3-5 steps (moderate number of actions).",
+    "6-10 steps (many actions taken).",
+    "More than 10 steps (extensive exploration or repeated attempts)."
+   ]
+  },
+  {
+   "id": "final_url_indicates_success",
+   "type": "noul",
+   "prompt": "Does the final URL indicate that the agent reached a result or completion page (e.g., a directions URL with route coordinates, a post URL, a forum URL, a specific item URL) rather than a generic search or error page?",
+   "criteria": {
+    "true": "The final URL contains route parameters, a post/forum/item path, or other indicators of task completion.",
+    "false": "The final URL is a search results page, error page, homepage, or other non-completion URL."
+   }
+  },
+  {
+   "id": "answer_provided_in_message",
+   "type": "noul",
+   "prompt": "Did the agent send a final message to the user that contains a concrete answer, result, or confirmation (not just an error or inability statement)?",
+   "criteria": {
+    "true": "The agent sent a message with a specific answer, list of names, confirmation of action taken, or concrete result.",
+    "false": "The agent sent no final message, sent an error/failure message, or the last action was a UI interaction without any message."
+   }
+  }
+ ],
+ "examples_considered": 35
+}

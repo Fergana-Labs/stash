@@ -1,0 +1,89 @@
+{
+ "rationale": "Analyzing the labeled examples reveals several consistent patterns in what this labeler prefers: (1) Factual accuracy \u2014 summaries that misrepresent the post (e.g., saying 'dad sexted me' or 'related to my mother') are strongly rejected. (2) Conciseness and clean phrasing \u2014 the labeler dislikes run-on, repetitive, or grammatically poor summaries. (3) The summary should capture the key situation and the request for advice without hallucinating details. (4) Informal/casual tone matching Reddit style is tolerated but outright incoherence or typos ('doubtfeling') is penalized. (5) Completeness \u2014 missing the core problem or the advice-seeking component hurts. (6) The labeler seems to prefer summaries that are a single fluid sentence or two short ones rather than choppy bullet-style fragments. (7) Overly literal restating of every detail is penalized versus a clean distilled version. (8) Creative metaphors (e.g., 'wolfpack') are preferred over vague generalities.",
+ "rubric": [
+  {
+   "id": "factual_accuracy",
+   "type": "score",
+   "prompt": "How factually accurate is the summary relative to the post \u2014 does it avoid hallucinating, misattributing, or contradicting events described?",
+   "criteria": [
+    "Summary contains clear factual errors or hallucinations that contradict the post (e.g., wrong actors, inverted situation, made-up details)",
+    "Summary has minor inaccuracies or misleading framing that could confuse a reader unfamiliar with the post",
+    "Summary is mostly accurate with at most one small imprecision that does not meaningfully distort the situation",
+    "Summary is fully accurate \u2014 all stated facts match the post with no distortion or fabrication"
+   ]
+  },
+  {
+   "id": "core_situation",
+   "type": "score",
+   "prompt": "How well does the summary capture the central situation or problem described in the post?",
+   "criteria": [
+    "The summary misses or badly distorts the main situation",
+    "The summary captures only a fragment of the central situation, omitting important context",
+    "The summary captures the core situation adequately but leaves out one meaningful element",
+    "The summary fully and precisely captures the central situation of the post"
+   ]
+  },
+  {
+   "id": "advice_request",
+   "type": "noul",
+   "prompt": "Does the summary include or clearly imply the poster's request for advice or desired outcome?",
+   "criteria": {
+    "true": "The summary explicitly mentions or clearly implies what the poster is asking for help with",
+    "false": "The summary omits or obscures the poster's request or question entirely"
+   }
+  },
+  {
+   "id": "writing_quality",
+   "type": "score",
+   "prompt": "How clean and readable is the summary's writing \u2014 grammar, coherence, absence of awkward repetition or typos?",
+   "criteria": [
+    "The summary has serious grammatical errors, typos, or incoherent phrasing that makes it hard to read",
+    "The summary has noticeable awkwardness, repetition, or minor errors that reduce readability",
+    "The summary is readable and mostly clean with at most minor stylistic roughness",
+    "The summary is well-written, clear, and fluent with no distracting errors"
+   ]
+  },
+  {
+   "id": "conciseness",
+   "type": "score",
+   "prompt": "How concise is the summary \u2014 does it communicate the situation efficiently without unnecessary padding or over-repetition of detail?",
+   "criteria": [
+    "The summary is bloated, redundant, or padded \u2014 it repeats points or includes many unnecessary details",
+    "The summary is somewhat wordy or includes one or two unnecessary elements",
+    "The summary is appropriately concise with only minor inefficiency",
+    "The summary is tightly written \u2014 every element earns its place"
+   ]
+  },
+  {
+   "id": "tone_match",
+   "type": "choice",
+   "prompt": "How does the summary's tone relate to the post's informal Reddit style?",
+   "criteria": {
+    "too_formal": "The summary feels oddly clinical or detached relative to the post's casual emotional register",
+    "appropriate": "The summary matches the informal, conversational tone of the post without being sloppy",
+    "too_sloppy": "The summary is excessively informal or uses internet slang/abbreviations that undermine clarity (e.g., 'wat do', 'wtf')"
+   }
+  },
+  {
+   "id": "creative_framing",
+   "type": "noul",
+   "prompt": "Does the summary use a distinctive or creative framing that captures the post's essence more memorably than a plain restatement (e.g., a metaphor or a particularly apt phrase)?",
+   "criteria": {
+    "true": "The summary uses a creative or insightful framing that makes it more engaging and precise than a literal restatement",
+    "false": "The summary is a straightforward restatement without any distinctive framing"
+   }
+  },
+  {
+   "id": "completeness_key_details",
+   "type": "score",
+   "prompt": "How completely does the summary cover the key supporting details beyond the core situation (e.g., important context like long-distance, abuse history, criminal record)?",
+   "criteria": [
+    "The summary omits nearly all meaningful supporting context",
+    "The summary mentions one supporting detail but misses several important ones",
+    "The summary covers most key supporting details with only minor omissions",
+    "The summary includes all the important supporting details that are necessary to understand the situation"
+   ]
+  }
+ ],
+ "examples_considered": 66
+}

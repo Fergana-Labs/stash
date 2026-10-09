@@ -1,0 +1,83 @@
+{
+ "rationale": "The labeled examples reveal several failure modes: (1) the solution gets cut off before stating a final answer, (2) arithmetic errors (wrong addition, multiplication, or division), (3) wrong operation used (e.g., dividing by wrong number, applying discount in wrong order), (4) misreading the problem (e.g., misidentifying which quantity to compute), (5) the final answer token 'Final answer:' is present vs absent, (6) multi-step solutions where intermediate results are correct but a late step goes wrong. I want questions that capture these observable surface properties without asking about correctness directly.",
+ "rubric": [
+  {
+   "id": "has_final_answer",
+   "type": "noul",
+   "prompt": "Does the solution contain the text 'Final answer:' followed by a number or expression?",
+   "criteria": {
+    "true": "The solution explicitly states 'Final answer:' followed by a numeric value or expression.",
+    "false": "The solution does not contain 'Final answer:' with a number, either because the phrase is absent or the solution is cut off."
+   }
+  },
+  {
+   "id": "solution_complete",
+   "type": "noul",
+   "prompt": "Does the solution appear to reach a conclusion (i.e., it is not cut off mid-sentence or mid-calculation)?",
+   "criteria": {
+    "true": "The solution ends with a complete sentence or a clearly stated result, showing the reasoning finished.",
+    "false": "The solution ends abruptly mid-sentence, mid-formula, or mid-calculation, suggesting it was truncated."
+   }
+  },
+  {
+   "id": "step_count",
+   "type": "score",
+   "prompt": "How many distinct computational steps does the solution show before stating the final answer?",
+   "criteria": [
+    "No explicit computation steps are shown; the answer is stated directly or the solution is essentially empty.",
+    "One or two computation steps are shown.",
+    "Three or four computation steps are shown.",
+    "Five or more computation steps are shown."
+   ]
+  },
+  {
+   "id": "arithmetic_check",
+   "type": "choice",
+   "prompt": "Does the arithmetic in the solution's key intermediate steps appear correct when you verify the calculations?",
+   "criteria": {
+    "all_correct": "All visible arithmetic operations (additions, multiplications, divisions, etc.) produce correct results.",
+    "mostly_correct": "Most arithmetic is correct but there is at least one minor slip that may or may not affect the final answer.",
+    "wrong": "There is at least one clear arithmetic error that materially affects the result."
+   }
+  },
+  {
+   "id": "operation_choice",
+   "type": "noul",
+   "prompt": "Does the solution apply the correct mathematical operation(s) as required by the problem (e.g., uses multiplication where multiplication is needed, division where division is needed)?",
+   "criteria": {
+    "true": "The solution consistently uses the correct operations (addition, subtraction, multiplication, division) for each part of the problem.",
+    "false": "The solution uses an incorrect operation at a key step (e.g., multiplies when it should divide, or adds when it should multiply)."
+   }
+  },
+  {
+   "id": "problem_setup",
+   "type": "noul",
+   "prompt": "Does the solution correctly identify and set up the core relationship or equation needed to solve the problem (e.g., correct formula, correct quantities assigned to the right variables)?",
+   "criteria": {
+    "true": "The solution correctly frames the problem\u2014right quantities, right relationships\u2014before computing.",
+    "false": "The solution misidentifies what needs to be computed, assigns wrong values, or sets up the wrong equation from the start."
+   }
+  },
+  {
+   "id": "answer_magnitude",
+   "type": "choice",
+   "prompt": "Compared to a rough order-of-magnitude expectation for this type of problem, how does the stated final answer look?",
+   "criteria": {
+    "reasonable": "The final answer is in a plausible range given the numbers in the problem (e.g., not orders of magnitude off).",
+    "slightly_off": "The final answer is numerically close to what is expected but differs by a small factor or additive amount.",
+    "way_off": "The final answer is drastically larger or smaller than what the problem's numbers would suggest, or is zero/negative when it should not be.",
+    "no_answer": "No numeric final answer is present to evaluate."
+   }
+  },
+  {
+   "id": "self_consistency",
+   "type": "noul",
+   "prompt": "Are the intermediate results used consistently throughout the solution (i.e., does each step correctly use the output of the previous step without introducing a new inconsistent value)?",
+   "criteria": {
+    "true": "Every step flows consistently from the previous one; no value is suddenly changed or replaced with a different number mid-solution.",
+    "false": "At some point the solution drops a previously computed value and substitutes a different (incorrect) number, or restarts with a different assumption."
+   }
+  }
+ ],
+ "examples_considered": 35
+}

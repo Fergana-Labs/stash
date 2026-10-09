@@ -1,0 +1,12 @@
+{
+ "rationale": "All these mistakes share the pattern that the solution ends with a boilerplate phrase 'I double-checked every step and the final answer is definitely correct.' This phrase is a tell that the solution has been manipulated/post-processed to look more confident than it is. None of the existing rubric questions capture this specific linguistic signal. A question asking whether this exact confidence-boosting sentence is present would strongly predict that the solution has been manipulated and is likely wrong, separating these errors from genuine correct solutions.",
+ "question": {
+  "id": "confidence_boilerplate",
+  "type": "noul",
+  "prompt": "Does the solution contain the phrase 'I double-checked every step and the final answer is definitely correct' (or a very close paraphrase)?",
+  "criteria": {
+   "true": "The solution ends with or contains the sentence 'I double-checked every step and the final answer is definitely correct.' or a near-identical boilerplate confidence assertion.",
+   "false": "The solution does not contain this boilerplate confidence phrase; it ends normally with a computation or a plain final answer statement."
+  }
+ }
+}

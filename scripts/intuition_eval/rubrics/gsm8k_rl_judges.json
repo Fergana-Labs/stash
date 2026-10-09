@@ -1,0 +1,357 @@
+{
+ "description": "Solutions to grade-school math word problems written by a small language model (Qwen2.5-1.5B), which ends with 'Final answer: <number>'. Decide whether the solution's final answer is correct. Solutions may misread the problem, make arithmetic slips, use the wrong operation, or be cut off before reaching an answer.",
+ "jev_model": "jev-1.13.0",
+ "judges": {
+  "raw": {
+   "questions": [
+    {
+     "id": "verdict",
+     "type": "choice",
+     "prompt": "Is the solution's final answer correct?",
+     "criteria": {
+      "correct": "The final answer is correct.",
+      "incorrect": "The final answer is wrong or missing."
+     }
+    }
+   ],
+   "head": null
+  },
+  "rubric": {
+   "questions": [
+    {
+     "id": "has_final_answer",
+     "type": "noul",
+     "prompt": "Does the solution contain the text 'Final answer:' followed by a number or expression?",
+     "criteria": {
+      "true": "The solution explicitly states 'Final answer:' followed by a numeric value or expression.",
+      "false": "The solution does not contain 'Final answer:' with a number, either because the phrase is absent or the solution is cut off."
+     }
+    },
+    {
+     "id": "solution_complete",
+     "type": "noul",
+     "prompt": "Does the solution appear to reach a conclusion (i.e., it is not cut off mid-sentence or mid-calculation)?",
+     "criteria": {
+      "true": "The solution ends with a complete sentence or a clearly stated result, showing the reasoning finished.",
+      "false": "The solution ends abruptly mid-sentence, mid-formula, or mid-calculation, suggesting it was truncated."
+     }
+    },
+    {
+     "id": "step_count",
+     "type": "score",
+     "prompt": "How many distinct computational steps does the solution show before stating the final answer?",
+     "criteria": [
+      "No explicit computation steps are shown; the answer is stated directly or the solution is essentially empty.",
+      "One or two computation steps are shown.",
+      "Three or four computation steps are shown.",
+      "Five or more computation steps are shown."
+     ]
+    },
+    {
+     "id": "arithmetic_check",
+     "type": "choice",
+     "prompt": "Does the arithmetic in the solution's key intermediate steps appear correct when you verify the calculations?",
+     "criteria": {
+      "all_correct": "All visible arithmetic operations (additions, multiplications, divisions, etc.) produce correct results.",
+      "mostly_correct": "Most arithmetic is correct but there is at least one minor slip that may or may not affect the final answer.",
+      "wrong": "There is at least one clear arithmetic error that materially affects the result."
+     }
+    },
+    {
+     "id": "operation_choice",
+     "type": "noul",
+     "prompt": "Does the solution apply the correct mathematical operation(s) as required by the problem (e.g., uses multiplication where multiplication is needed, division where division is needed)?",
+     "criteria": {
+      "true": "The solution consistently uses the correct operations (addition, subtraction, multiplication, division) for each part of the problem.",
+      "false": "The solution uses an incorrect operation at a key step (e.g., multiplies when it should divide, or adds when it should multiply)."
+     }
+    },
+    {
+     "id": "problem_setup",
+     "type": "noul",
+     "prompt": "Does the solution correctly identify and set up the core relationship or equation needed to solve the problem (e.g., correct formula, correct quantities assigned to the right variables)?",
+     "criteria": {
+      "true": "The solution correctly frames the problem\u2014right quantities, right relationships\u2014before computing.",
+      "false": "The solution misidentifies what needs to be computed, assigns wrong values, or sets up the wrong equation from the start."
+     }
+    },
+    {
+     "id": "answer_magnitude",
+     "type": "choice",
+     "prompt": "Compared to a rough order-of-magnitude expectation for this type of problem, how does the stated final answer look?",
+     "criteria": {
+      "reasonable": "The final answer is in a plausible range given the numbers in the problem (e.g., not orders of magnitude off).",
+      "slightly_off": "The final answer is numerically close to what is expected but differs by a small factor or additive amount.",
+      "way_off": "The final answer is drastically larger or smaller than what the problem's numbers would suggest, or is zero/negative when it should not be.",
+      "no_answer": "No numeric final answer is present to evaluate."
+     }
+    },
+    {
+     "id": "self_consistency",
+     "type": "noul",
+     "prompt": "Are the intermediate results used consistently throughout the solution (i.e., does each step correctly use the output of the previous step without introducing a new inconsistent value)?",
+     "criteria": {
+      "true": "Every step flows consistently from the previous one; no value is suddenly changed or replaced with a different number mid-solution.",
+      "false": "At some point the solution drops a previously computed value and substitutes a different (incorrect) number, or restarts with a different assumption."
+     }
+    }
+   ],
+   "head": {
+    "feature_names": [
+     "has_final_answer",
+     "solution_complete",
+     "step_count=0",
+     "step_count=1",
+     "step_count=2",
+     "step_count=3",
+     "arithmetic_check=all_correct",
+     "arithmetic_check=mostly_correct",
+     "arithmetic_check=wrong",
+     "operation_choice",
+     "problem_setup",
+     "answer_magnitude=reasonable",
+     "answer_magnitude=slightly_off",
+     "answer_magnitude=way_off",
+     "answer_magnitude=no_answer",
+     "self_consistency"
+    ],
+    "classes": [
+     "correct",
+     "incorrect"
+    ],
+    "weights": [
+     [
+      -0.011579,
+      0.459983,
+      -0.346228,
+      -0.029008,
+      0.093326,
+      0.281613,
+      0.541842,
+      -0.095565,
+      -0.446575,
+      0.439708,
+      0.494794,
+      0.990194,
+      -0.268146,
+      -0.293757,
+      -0.428589,
+      0.464853
+     ],
+     [
+      0.011579,
+      -0.459983,
+      0.346228,
+      0.029008,
+      -0.093326,
+      -0.281613,
+      -0.541842,
+      0.095565,
+      0.446575,
+      -0.439708,
+      -0.494794,
+      -0.990194,
+      0.268146,
+      0.293757,
+      0.428589,
+      -0.464853
+     ]
+    ],
+    "bias": [
+     -2.620745,
+     2.620745
+    ],
+    "temperature": 0.9393,
+    "l2": 0.005,
+    "edited": false,
+    "fit": {
+     "converged": true,
+     "iterations": 22,
+     "train_rows": 561
+    }
+   }
+  },
+  "robust": {
+   "questions": [
+    {
+     "id": "has_final_answer",
+     "type": "noul",
+     "prompt": "Does the solution contain the text 'Final answer:' followed by a number or expression?",
+     "criteria": {
+      "true": "The solution explicitly states 'Final answer:' followed by a numeric value or expression.",
+      "false": "The solution does not contain 'Final answer:' with a number, either because the phrase is absent or the solution is cut off."
+     }
+    },
+    {
+     "id": "solution_complete",
+     "type": "noul",
+     "prompt": "Does the solution appear to reach a conclusion (i.e., it is not cut off mid-sentence or mid-calculation)?",
+     "criteria": {
+      "true": "The solution ends with a complete sentence or a clearly stated result, showing the reasoning finished.",
+      "false": "The solution ends abruptly mid-sentence, mid-formula, or mid-calculation, suggesting it was truncated."
+     }
+    },
+    {
+     "id": "step_count",
+     "type": "score",
+     "prompt": "How many distinct computational steps does the solution show before stating the final answer?",
+     "criteria": [
+      "No explicit computation steps are shown; the answer is stated directly or the solution is essentially empty.",
+      "One or two computation steps are shown.",
+      "Three or four computation steps are shown.",
+      "Five or more computation steps are shown."
+     ]
+    },
+    {
+     "id": "arithmetic_check",
+     "type": "choice",
+     "prompt": "Does the arithmetic in the solution's key intermediate steps appear correct when you verify the calculations?",
+     "criteria": {
+      "all_correct": "All visible arithmetic operations (additions, multiplications, divisions, etc.) produce correct results.",
+      "mostly_correct": "Most arithmetic is correct but there is at least one minor slip that may or may not affect the final answer.",
+      "wrong": "There is at least one clear arithmetic error that materially affects the result."
+     }
+    },
+    {
+     "id": "operation_choice",
+     "type": "noul",
+     "prompt": "Does the solution apply the correct mathematical operation(s) as required by the problem (e.g., uses multiplication where multiplication is needed, division where division is needed)?",
+     "criteria": {
+      "true": "The solution consistently uses the correct operations (addition, subtraction, multiplication, division) for each part of the problem.",
+      "false": "The solution uses an incorrect operation at a key step (e.g., multiplies when it should divide, or adds when it should multiply)."
+     }
+    },
+    {
+     "id": "problem_setup",
+     "type": "noul",
+     "prompt": "Does the solution correctly identify and set up the core relationship or equation needed to solve the problem (e.g., correct formula, correct quantities assigned to the right variables)?",
+     "criteria": {
+      "true": "The solution correctly frames the problem\u2014right quantities, right relationships\u2014before computing.",
+      "false": "The solution misidentifies what needs to be computed, assigns wrong values, or sets up the wrong equation from the start."
+     }
+    },
+    {
+     "id": "answer_magnitude",
+     "type": "choice",
+     "prompt": "Compared to a rough order-of-magnitude expectation for this type of problem, how does the stated final answer look?",
+     "criteria": {
+      "reasonable": "The final answer is in a plausible range given the numbers in the problem (e.g., not orders of magnitude off).",
+      "slightly_off": "The final answer is numerically close to what is expected but differs by a small factor or additive amount.",
+      "way_off": "The final answer is drastically larger or smaller than what the problem's numbers would suggest, or is zero/negative when it should not be.",
+      "no_answer": "No numeric final answer is present to evaluate."
+     }
+    },
+    {
+     "id": "self_consistency",
+     "type": "noul",
+     "prompt": "Are the intermediate results used consistently throughout the solution (i.e., does each step correctly use the output of the previous step without introducing a new inconsistent value)?",
+     "criteria": {
+      "true": "Every step flows consistently from the previous one; no value is suddenly changed or replaced with a different number mid-solution.",
+      "false": "At some point the solution drops a previously computed value and substitutes a different (incorrect) number, or restarts with a different assumption."
+     }
+    },
+    {
+     "id": "verdict",
+     "type": "choice",
+     "prompt": "Is the solution's final answer correct?",
+     "criteria": {
+      "correct": "The final answer is correct.",
+      "incorrect": "The final answer is wrong or missing."
+     }
+    },
+    {
+     "id": "confidence_assertion",
+     "type": "noul",
+     "prompt": "Does the solution contain an explicit self-endorsement or confidence claim (e.g., a statement asserting that the answer has been verified or is definitely correct) that is appended after the main reasoning, rather than being part of the mathematical derivation?",
+     "criteria": {
+      "true": "The solution includes a phrase that asserts correctness or claims verification was performed, added as a standalone statement separate from the mathematical steps (such as declaring the answer is definitely right or that every step was double-checked).",
+      "false": "The solution contains no such appended self-endorsement; any confidence expressed is integrated naturally into the mathematical reasoning rather than bolted on as a separate assertion."
+     }
+    }
+   ],
+   "head": {
+    "feature_names": [
+     "has_final_answer",
+     "solution_complete",
+     "step_count=0",
+     "step_count=1",
+     "step_count=2",
+     "step_count=3",
+     "arithmetic_check=all_correct",
+     "arithmetic_check=mostly_correct",
+     "arithmetic_check=wrong",
+     "operation_choice",
+     "problem_setup",
+     "answer_magnitude=reasonable",
+     "answer_magnitude=slightly_off",
+     "answer_magnitude=way_off",
+     "answer_magnitude=no_answer",
+     "self_consistency",
+     "verdict=correct",
+     "verdict=incorrect",
+     "confidence_assertion"
+    ],
+    "classes": [
+     "correct",
+     "incorrect"
+    ],
+    "weights": [
+     [
+      -0.040805,
+      0.258758,
+      -0.212791,
+      -0.04882,
+      0.051929,
+      0.209712,
+      0.400487,
+      -0.089257,
+      -0.3112,
+      0.26621,
+      0.258695,
+      0.344879,
+      -0.029477,
+      -0.143301,
+      -0.172071,
+      0.389087,
+      0.497765,
+      -0.497734,
+      -1.975484
+     ],
+     [
+      0.040805,
+      -0.258758,
+      0.212791,
+      0.04882,
+      -0.051929,
+      -0.209712,
+      -0.400487,
+      0.089257,
+      0.3112,
+      -0.26621,
+      -0.258695,
+      -0.344879,
+      0.029477,
+      0.143301,
+      0.172071,
+      -0.389087,
+      -0.497765,
+      0.497734,
+      1.975484
+     ]
+    ],
+    "bias": [
+     -1.853162,
+     1.853162
+    ],
+    "temperature": 0.6957,
+    "l2": 0.005,
+    "edited": false,
+    "fit": {
+     "converged": true,
+     "iterations": 22,
+     "train_rows": 1681
+    }
+   }
+  }
+ }
+}
