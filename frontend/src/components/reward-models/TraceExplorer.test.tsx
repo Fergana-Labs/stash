@@ -25,8 +25,8 @@ afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); vi.clearAllMocks();
 const ann: StepAnnotations = { highlights: () => [], commentCount: () => 0, hasQuotes: () => false, flashing: () => false, onComment: vi.fn(), onSelectAnnotation: vi.fn() };
 const rows = presentTrace(Array.from({ length: 48 }, (_, i): RmStep => ({ id: `s${i}`, index: i, role: i % 12 ? "assistant" : "user", content: `Task ${i}`, tool_name: null, tool_input: null, tool_call_id: null, metadata: i % 12 === 1 || i % 12 === 7 ? { phase: "commentary" } : null }))).rows;
 const groups = buildTraceOutline(rows);
-function Harness({ outline = groups }: { outline?: ReturnType<typeof buildTraceOutline> }) {
-  const [path, setPath] = useState<string[]>([]);
+function Harness({ outline = groups, initialPath = [] }: { outline?: ReturnType<typeof buildTraceOutline>; initialPath?: string[] }) {
+  const [path, setPath] = useState<string[]>(initialPath);
   const scroller = useRef<HTMLDivElement>(null);
   const { trail, current, children: sections } = traceExplorerLevel(outline, path);
   const assessments = useSectionSummaries("t1", [...new Map([...sections, ...trail, ...outline, ...(current && !sections.length ? tracePhases(outline).map(({ node }) => node) : [])].map((node) => [node.key, node])).values()]);
@@ -263,4 +263,60 @@ it("opens the complete trace from a nested overview while assessments are still 
   expect(screen.queryByRole("button", { name: /^Explore / })).not.toBeInTheDocument();
   await act(async () => vi.advanceTimersByTime(16));
   expect(screen.getByRole("region", { name: "Trace explorer" })).toHaveFocus();
+});
+
+const section = (key: string, first: number, end: number, children: ReturnType<typeof buildTraceOutline> = []) => ({ key, rows: rows.slice(first, end), children });
+const nestedGroups = [
+  section("task-a", 0, 24, [
+    section("phase-a", 0, 12, [section("a1", 0, 6), section("a2", 6, 12)]),
+    section("phase-b", 12, 24, [section("b1", 12, 18), section("b2", 18, 24)]),
+  ]),
+  section("task-b", 24, 48, [
+    section("phase-c", 24, 36, [section("c1", 24, 30), section("c2", 30, 36)]),
+    section("phase-d", 36, 48, [section("d1", 36, 42), section("d2", 42, 48)]),
+  ]),
+];
+
+it.each([
+  { path: ["task-a", "phase-a"], last: "a2", next: "b1", range: "Viewing 13–24 of 48" },
+  { path: ["task-a", "phase-b"], last: "b2", next: "c1", range: "Viewing 25–36 of 48" },
+])("continues Down from $last into $next and Up back to the previous subsection", async ({ path, last, next, range }) => {
+  // Navigation must not depend on the summary requests finishing.
+  vi.mocked(rmSummarizeSections).mockImplementation(() => new Promise(() => {}));
+  render(<Harness outline={nestedGroups} initialPath={path} />);
+  fireEvent.keyDown(document.body, { key: "ArrowDown" });
+  expect(document.activeElement).toHaveAttribute("data-section-key", last);
+  fireEvent.keyDown(document.activeElement!, { key: "ArrowDown" });
+  await act(async () => vi.advanceTimersByTime(16));
+  expect(screen.getByText(range)).toBeVisible();
+  expect(document.activeElement).toHaveAttribute("data-section-key", next);
+  expect(document.activeElement).toHaveAttribute("aria-current", "true");
+  fireEvent.keyDown(document.activeElement!, { key: "ArrowUp" });
+  await act(async () => vi.advanceTimersByTime(16));
+  expect(document.activeElement).toHaveAttribute("data-section-key", last);
+  expect(document.activeElement).toHaveAttribute("aria-current", "true");
+});
+
+it.each([
+  { path: ["task-a", "phase-a"], key: "ArrowUp", selected: "a1" },
+  { path: ["task-b", "phase-d"], key: "ArrowDown", selected: "d2" },
+])("stops at the trace boundary when pressing $key on $selected", async ({ path, key, selected }) => {
+  render(<Harness outline={nestedGroups} initialPath={path} />);
+  await load();
+  if (key === "ArrowDown") fireEvent.keyDown(document.body, { key });
+  fireEvent.keyDown(document.body, { key });
+  await act(async () => vi.advanceTimersByTime(16));
+  expect(document.querySelector('[data-selected="true"]')).toHaveAttribute("data-section-key", selected);
+  expect(screen.getAllByRole("button", { name: /^Explore / })).toHaveLength(2);
+});
+
+it("keeps a shallower next section visible instead of skipping it or opening its steps", async () => {
+  render(<Harness outline={[nestedGroups[0], section("short-task", 24, 48)]} initialPath={["task-a", "phase-b"]} />);
+  await load();
+  fireEvent.keyDown(document.body, { key: "ArrowDown" });
+  fireEvent.keyDown(document.activeElement!, { key: "ArrowDown" });
+  await act(async () => vi.advanceTimersByTime(16));
+  expect(document.activeElement).toHaveAttribute("data-section-key", "short-task");
+  expect(screen.getAllByRole("button", { name: /^Explore / })).toHaveLength(2);
+  expect(document.querySelector("[data-trace-phases]")).not.toBeInTheDocument();
 });

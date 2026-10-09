@@ -5,6 +5,9 @@ everything before it is captured in git history (`git log`), not here.
 
 ## Unreleased
 
+- Continue into the next trace subsection with Down at the last row, or the
+  previous subsection with Up at the first row.
+
 - Preserve trace-table sorting when opening a trace and returning to the list.
 - Show the current section's range and offer “View all steps” so nested trace
   overviews do not look like the end of the trace.

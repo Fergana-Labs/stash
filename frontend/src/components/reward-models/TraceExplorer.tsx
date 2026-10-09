@@ -62,6 +62,27 @@ export default function TraceExplorer({ groups, path, onPath, onSectionFocus, as
     select(node);
     onPath([...trail.map((item) => item.key), node.key]);
   }
+  function moveSelection(direction: -1 | 1) {
+    const next = children[children.indexOf(selected) + direction];
+    if (next) { select(next, true); return; }
+    // Walk past the current subsection, climbing through finished parents as
+    // needed. Keep the same overview depth where the next branch supports it.
+    for (let depth = trail.length - 1; depth >= 0; depth--) {
+      const siblings = depth === 0 ? groups : trail[depth - 1].children;
+      let node = siblings[siblings.indexOf(trail[depth]) + direction];
+      if (!node) continue;
+      const nextTrail = trail.slice(0, depth);
+      while (node.children.length && nextTrail.length < trail.length) {
+        nextTrail.push(node);
+        node = direction === 1 ? node.children[0] : node.children.at(-1)!;
+      }
+      const nextPath = nextTrail.map((item) => item.key);
+      setSelections((previous) => ({ ...previous, [nextPath.join("/")]: node.key }));
+      onPath(nextPath);
+      focusLevel();
+      return;
+    }
+  }
   useEffect(() => {
     if (!reading) return;
     const container = explorer.current?.closest<HTMLElement>("[data-trace-scroll]");
@@ -100,8 +121,7 @@ export default function TraceExplorer({ groups, path, onPath, onSectionFocus, as
         if (!event.repeat) { descend(selected); focusLevel(); }
       } else if ((event.key === "ArrowDown" || event.key === "ArrowUp") && children.length) {
         event.preventDefault();
-        const next = Math.max(0, Math.min(children.length - 1, children.indexOf(selected) + (event.key === "ArrowDown" ? 1 : -1)));
-        select(children[next], true);
+        moveSelection(event.key === "ArrowDown" ? 1 : -1);
       }
     }
     document.addEventListener("keydown", navigate);
