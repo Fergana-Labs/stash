@@ -103,6 +103,14 @@ export function groupPath(groups: TraceGroup[], stepId: string): string[] {
   return [];
 }
 
+/** Ordered phases partition the trace without duplicating their parent rows. */
+export function tracePhases(groups: TraceGroup[], ancestors: string[] = []): { node: TraceGroup; path: string[] }[] {
+  return groups.flatMap((node) => {
+    const path = [...ancestors, node.key];
+    return node.children.length ? tracePhases(node.children, path) : [{ node, path }];
+  });
+}
+
 export function resolveGroupPath(groups: TraceGroup[], path: string[]): TraceGroup[] {
   const result: TraceGroup[] = [];
   for (const key of path) {

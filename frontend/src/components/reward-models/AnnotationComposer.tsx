@@ -53,7 +53,6 @@ export default function AnnotationComposer({
 
   return (
     <div ref={root}>
-      <div className="mb-1.5 text-[11px] font-medium text-muted-foreground">{label}</div>
       {target.quote && (
         <div className="mb-2 line-clamp-2 border-l-2 border-amber-400 pl-2 text-[12px] leading-snug text-dim italic">
           {target.quote.text}

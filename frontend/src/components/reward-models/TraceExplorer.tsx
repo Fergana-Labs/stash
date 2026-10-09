@@ -5,23 +5,25 @@ import { ChevronRight, ListTree } from "lucide-react";
 import type { RmStep } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import type { TraceGroup } from "./trace-outline";
-import { isContextGroup, sectionFallbackTitle, traceExplorerLevel } from "./trace-outline";
+import { isContextGroup, sectionFallbackTitle, traceExplorerLevel, tracePhases } from "./trace-outline";
 import { rowHead } from "./trace-presentation";
 import { rowSteps, type TraceRow } from "./trace-rows";
 import { isGradableAction } from "./automatic-credit";
 import TraceTimeline, { type StepAnnotations } from "./TraceTimeline";
 import type { useSectionSummaries } from "./use-section-summaries";
 import TraceSectionScore from "./TraceSectionScore";
-import { traceSectionTarget } from "./trace-scroll";
+import { TRACE_STEP_INSET, traceSectionTarget } from "./trace-scroll";
 
 export default function TraceExplorer({ groups, path, onPath, assessments, ann, isExpanded, onToggle }: {
-  groups: TraceGroup[]; path: string[]; onPath: (path: string[]) => void; ann: StepAnnotations;
+  groups: TraceGroup[]; path: string[]; onPath: (path: string[], options?: { scroll: false }) => void; ann: StepAnnotations;
   assessments: ReturnType<typeof useSectionSummaries>;
   isExpanded: (row: TraceRow) => boolean; onToggle: (row: TraceRow) => void;
 }) {
   const { trail, current, children, canAscend } = traceExplorerLevel(groups, path);
   const { copy, status } = assessments;
   const taskRows = groups.flatMap((group) => group.rows);
+  const phases = tracePhases(groups);
+  const reading = !!current && !children.length;
   const explorer = useRef<HTMLElement>(null);
   const cards = useRef<HTMLDivElement>(null);
   const [selections, setSelections] = useState<Record<string, string>>({});
@@ -54,6 +56,29 @@ export default function TraceExplorer({ groups, path, onPath, assessments, ann, 
     select(node);
     onPath([...trail.map((item) => item.key), node.key]);
   }
+  useEffect(() => {
+    if (!reading) return;
+    const container = explorer.current?.closest<HTMLElement>("[data-trace-scroll]");
+    if (!container) return;
+    let frame = 0;
+    function followPhase() {
+      const boundary = container!.getBoundingClientRect().top + TRACE_STEP_INSET;
+      let active = phases[0];
+      for (const phase of phases) {
+        const element = document.getElementById(traceSectionTarget(phase.node));
+        if (!element || !element.getClientRects().length) continue;
+        if (element.getBoundingClientRect().top <= boundary + 1) active = phase;
+        else break;
+      }
+      if (active && active.node.key !== current?.key) onPath(active.path, { scroll: false });
+    }
+    function schedule() {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(followPhase);
+    }
+    container.addEventListener("scroll", schedule, { passive: true });
+    return () => { container.removeEventListener("scroll", schedule); cancelAnimationFrame(frame); };
+  });
   useEffect(() => {
     function navigate(event: KeyboardEvent) {
       if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || event.isComposing) return;
@@ -95,7 +120,13 @@ export default function TraceExplorer({ groups, path, onPath, assessments, ann, 
       </span>)}
       {assessmentStatus}
     </nav> : assessmentStatus && <div className="mb-2 flex">{assessmentStatus}</div>}
-    {current && !children.length ? <div key={current.key} id={traceSectionTarget(current)}><TraceTimeline rows={current.rows} taskRows={taskRows} ann={ann} isExpanded={isExpanded} onToggle={onToggle} /></div> :
+    {reading ? <div data-trace-phases>{phases.map(({ node }) => <section key={node.key} id={traceSectionTarget(node)} data-trace-phase aria-label={`Phase: ${title(node)}`}>
+      {phases.length > 1 && <div className="flex h-8 items-center gap-3 border-b border-border-subtle text-muted-foreground">
+        <h3 className="m-0 min-w-0 flex-1 truncate text-xs font-medium leading-5">{title(node)}</h3>
+        <span className="shrink-0 text-[11px] tabular-nums">{range(node)}</span>
+      </div>}
+      <TraceTimeline rows={node.rows} taskRows={taskRows} showTaskHeadings={false} ann={ann} isExpanded={isExpanded} onToggle={onToggle} />
+    </section>)}</div> :
       <div ref={cards} data-trace-sections className="flex flex-col">{children.map((node) => {
         const generated = copy(node);
         if (isContextGroup(node)) return <div key={node.key} id={traceSectionTarget(node)} data-trace-section>

@@ -26,7 +26,7 @@ function InputField({ name, value, tool }: { name: string; value: unknown; tool:
 export default function ToolInput({ input, tool = "" }: { input: Record<string, unknown>; tool?: string }) {
   if (!Object.keys(input).length) return null;
   return <div aria-label="Tool inputs" className="flex items-start gap-3">
-    <span className="pt-1.5 text-[11px] text-muted-foreground">Inputs</span>
+    <span className="w-8 shrink-0 pt-1.5 text-[11px] text-muted-foreground">Inputs</span>
     <div className="min-w-0 flex-1">{Object.entries(input).map(([name, value]) => <InputField key={name} name={name} value={value} tool={tool} />)}</div>
   </div>;
 }

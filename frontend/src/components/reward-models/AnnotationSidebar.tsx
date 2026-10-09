@@ -54,11 +54,7 @@ export default function AnnotationSidebar({
         </div>
         {!composer && onAddComment && <Button variant="ghost" size="sm" className="mb-2 ml-1" onClick={onAddComment}>Add comment</Button>}
         {composer && <div className="mx-3 mb-1 border-b border-border pb-4">{composer}</div>}
-        {annotations.length === 0 ? (
-          <p className="m-0 px-3 pb-4 text-[12.5px] leading-relaxed text-muted-foreground">
-            {onAddComment ? "Select text or use Comment on any step. Your comments appear here." : "Right-click selected text or a message to add a comment."}
-          </p>
-        ) : (
+        {annotations.length > 0 && (
           <div className="flex flex-col divide-y divide-border">
             {annotations.map((annotation) => (
               <AnnotationCard

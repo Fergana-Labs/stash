@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { useRef, useState } from "react";
 import TraceExplorer from "./TraceExplorer";
-import { buildTraceOutline, groupPath, traceExplorerLevel } from "./trace-outline";
+import { buildTraceOutline, groupPath, traceExplorerLevel, tracePhases } from "./trace-outline";
 import { presentTrace } from "./trace-presentation";
 import type { RmStep } from "@/lib/types";
 import type { StepAnnotations } from "./TraceTimeline";
@@ -29,11 +29,11 @@ const groups = buildTraceOutline(rows);
 function Harness({ outline = groups }: { outline?: ReturnType<typeof buildTraceOutline> }) {
   const [path, setPath] = useState<string[]>([]);
   const scroller = useRef<HTMLDivElement>(null);
-  const { trail, children: sections } = traceExplorerLevel(outline, path);
-  const assessments = useSectionSummaries("t1", [...new Map([...sections, ...trail, ...outline].map((node) => [node.key, node])).values()]);
+  const { trail, current, children: sections } = traceExplorerLevel(outline, path);
+  const assessments = useSectionSummaries("t1", [...new Map([...sections, ...trail, ...outline, ...(current && !sections.length ? tracePhases(outline).map(({ node }) => node) : [])].map((node) => [node.key, node])).values()]);
   return <div>
     <TraceScrollRail groups={outline} path={path} rows={outline.flatMap((group) => group.rows)} copy={assessments.copy} stepNumber={(step) => step.index + 1} scroller={scroller} onPath={setPath} onStep={(id) => setPath(groupPath(outline, id))} />
-    <div ref={scroller}><TraceExplorer groups={outline} path={path} onPath={setPath} assessments={assessments} ann={ann} isExpanded={() => false} onToggle={vi.fn()} /></div>
+    <div ref={scroller} data-trace-scroll><TraceExplorer groups={outline} path={path} onPath={setPath} assessments={assessments} ann={ann} isExpanded={() => false} onToggle={vi.fn()} /></div>
   </div>;
 }
 async function load() { await act(async () => { await Promise.resolve(); }); }
@@ -109,10 +109,9 @@ it.each([["Enter", "Escape"], ["ArrowRight", "ArrowLeft"]])("uses Up/Down to sel
   expect(screen.getAllByRole("button", { name: /^Explore / })).toHaveLength(children.length);
   fireEvent.keyDown(children[0], { key: openKey });
   expect(screen.queryByRole("button", { name: /^Collapse .* message$/ })).not.toBeInTheDocument();
-  // A subsection contains only its own steps.
-  for (const row of groups[1].children[0].rows) expect(screen.getByLabelText(`Step ${rowSteps(row)[0].index + 1}`)).toBeInTheDocument();
-  expect(screen.queryByLabelText("Step 48")).not.toBeInTheDocument();
-  expect(screen.queryByLabelText("Step 1")).not.toBeInTheDocument();
+  // Entering a subsection opens a continuous reader with each step present once.
+  for (const row of rows) expect(screen.getAllByLabelText(`Step ${rowSteps(row)[0].index + 1}`)).toHaveLength(1);
+  expect(document.querySelectorAll("[data-trace-phase]")).toHaveLength(tracePhases(groups).length);
   expect(screen.queryByRole("button", { name: /^Explore / })).not.toBeInTheDocument();
   fireEvent.keyDown(document.body, { key: backKey, repeat: true });
   expect(screen.queryByRole("button", { name: /^Explore / })).not.toBeInTheDocument();
@@ -173,7 +172,7 @@ it("keeps global markers through nested navigation and scrubs between tasks with
   let cards = screen.getAllByRole("button", { name: /^Explore / });
   const container = screen.getByRole("region", { name: "Trace explorer" }).parentElement!;
   container.scrollTo = vi.fn();
-  function scrollToTask(index: number) {
+  async function scrollToTask(index: number) {
     container.scrollTop = index * 500;
     groups.forEach((group, i) => {
       const target = document.getElementById(traceSectionTarget(group));
@@ -181,7 +180,17 @@ it("keeps global markers through nested navigation and scrubs between tasks with
       target.getBoundingClientRect = () => ({ top: 150 + i * 500 - container.scrollTop }) as DOMRect;
       target.getClientRects = () => [target.getBoundingClientRect()] as unknown as DOMRectList;
     });
+    tracePhases(groups).forEach(({ node, path }) => {
+      const taskIndex = groups.findIndex((group) => group.key === path[0]);
+      const phaseIndex = groups[taskIndex].children.indexOf(node);
+      const target = document.getElementById(traceSectionTarget(node));
+      if (!target) return;
+      target.getBoundingClientRect = () => ({ top: 150 + taskIndex * 500 + Math.max(0, phaseIndex) * 200 - container.scrollTop }) as DOMRect;
+      target.getClientRects = () => [target.getBoundingClientRect()] as unknown as DOMRectList;
+    });
     act(() => measurements.forEach((measure) => measure()));
+    fireEvent.scroll(container);
+    await act(async () => vi.advanceTimersByTime(16));
   }
   container.getBoundingClientRect = () => ({ top: 150 }) as DOMRect;
   cards[1].parentElement!.getBoundingClientRect = () => ({ top: 600 }) as DOMRect;
@@ -204,11 +213,14 @@ it("keeps global markers through nested navigation and scrubs between tasks with
   fireEvent.keyDown(cards[1], { key: "Enter" });
   await load();
   expect(screen.queryByRole("button", { name: /^Explore / })).not.toBeInTheDocument();
-  scrollToTask(1);
+  await scrollToTask(1);
   expect(markers[1]).toHaveAttribute("aria-current", "location");
-  // Scrolling cannot leave the selected section.
-  scrollToTask(2);
-  expect(markers[1]).toHaveAttribute("aria-current", "location");
+  // Scrolling into another task updates the active marker without replacing the reader.
+  const firstMessage = document.getElementById("step-s0");
+  await scrollToTask(2);
+  expect(document.getElementById("step-s0")).toBe(firstMessage);
+  expect(container.scrollTop).toBe(1000);
+  expect(markers[2]).toHaveAttribute("aria-current", "location");
   expect(Array.from(rail.querySelectorAll("button"))).toEqual(markers);
   expect(markers.map((marker) => marker.getAttribute("aria-label"))).toEqual(labels);
 
@@ -226,14 +238,14 @@ it("keeps global markers through nested navigation and scrubs between tasks with
   fireEvent.keyDown(document.activeElement!, { key: "Enter" });
   await load();
   expect(screen.queryByRole("button", { name: /^Explore / })).not.toBeInTheDocument();
-  scrollToTask(3);
+  await scrollToTask(3);
   expect(markers[3]).toHaveAttribute("aria-current", "location");
   fireEvent.click(markers[0]);
   await load();
   await act(async () => vi.advanceTimersByTime(16));
   expect(screen.getAllByRole("button", { name: /^Explore / })).toHaveLength(4);
   expect(container.scrollTo).toHaveBeenLastCalledWith({ top: 0, behavior: "instant" });
-  scrollToTask(0);
+  await scrollToTask(0);
   expect(markers[0]).toHaveAttribute("aria-current", "location");
 });
 

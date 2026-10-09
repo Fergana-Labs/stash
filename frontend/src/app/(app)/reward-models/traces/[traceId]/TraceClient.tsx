@@ -27,7 +27,7 @@ import { annotationStepIds, errorMessage, locateQuote, quoteForStep, relativeTim
 import { type Highlight } from "@/components/reward-models/source-anchors";
 import { buildRows, rowSteps, type TraceRow } from "@/components/reward-models/trace-rows";
 import TraceExplorer from "@/components/reward-models/TraceExplorer";
-import { buildTraceOutline, groupPath, traceExplorerLevel } from "@/components/reward-models/trace-outline";
+import { buildTraceOutline, groupPath, traceExplorerLevel, tracePhases } from "@/components/reward-models/trace-outline";
 import { presentTrace } from "@/components/reward-models/trace-presentation";
 import TraceScrollRail from "@/components/reward-models/TraceScrollRail";
 import { TRACE_STEP_INSET } from "@/components/reward-models/trace-scroll";
@@ -132,7 +132,7 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
   const { trail, children: sectionGroups } = traceExplorerLevel(groups, outlinePath);
   const browsingSections = sectionGroups.length > 0;
   // Retain global map titles if we enter a subsection before its root batch finishes.
-  const assessmentGroups = [...new Map([...sectionGroups, ...trail, ...(groups.length > 1 ? groups : [])].map((group) => [group.key, group])).values()];
+  const assessmentGroups = [...new Map([...sectionGroups, ...trail, ...(groups.length > 1 ? groups : []), ...(!browsingSections ? tracePhases(groups).map(({ node }) => node) : [])].map((group) => [group.key, group])).values()];
   const assessments = useSectionSummaries(traceId, assessmentGroups);
 
   if (!trace && loadError) return <div role="alert" className="p-8 text-sm">Couldn’t load this trace. <button onClick={() => void load()} className="underline">Retry</button></div>;
@@ -265,7 +265,7 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
       focusCard((row ? rowSteps(row) : [step]).flatMap((source) => annotationsOn(source).filter((a) => a.comment !== null).map((a) => a.id)));
     },
     onSelectAnnotation: focusCard,
-    ...(labels.present && { labelChips: labels.chips, taskHeading: labels.taskHeading, taskName: labels.taskName, onJumpToStep: revealStep }),
+    ...(labels.present && { taskHeading: labels.taskHeading, taskName: labels.taskName }),
     ...(stepScores !== null && {
       reward: stepReward,
       taskScore: (step: RmStep) => taskScores.get(labels.label(step)?.task_id ?? "") ?? null,
@@ -326,8 +326,9 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
           <TraceFlamegraph spans={trace.spans} onJump={(index) => revealStep(trace.steps[index].id)} />
           <TraceExplorer
             groups={groups} path={outlinePath} assessments={assessments}
-            onPath={(path) => {
+            onPath={(path, options) => {
               setOutlinePath(path);
+              if (options?.scroll === false) return;
               const level = traceExplorerLevel(groups, path);
               const first = level.current && !level.children.length ? rowSteps(level.current.rows[0])[0] : null;
               requestAnimationFrame(() => {

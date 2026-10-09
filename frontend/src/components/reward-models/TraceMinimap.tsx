@@ -157,10 +157,10 @@ function LatestTraceMinimap({ steps, annotations, actionScores, annotationStatus
 
   function endDrag(event: PointerEvent<HTMLDivElement>) {
     if (drag.current?.pointerId !== event.pointerId) return;
+    const index = drag.current.index;
     drag.current = null;
-    if (event.type === "pointerup") requestAnimationFrame(() => {
-      scroller.current?.querySelector<HTMLElement>('[aria-label="Trace explorer"]')?.focus({ preventScroll: true });
-    });
+    // Continue keyboard scrubbing from the final pointer selection.
+    map.current?.querySelector<HTMLButtonElement>(`[data-step-index="${index}"]`)?.focus({ preventScroll: true });
   }
 
   function labelFor(step: RmStep) {
@@ -227,6 +227,7 @@ function LatestTraceMinimap({ steps, annotations, actionScores, annotationStatus
                 if (event.detail === 0) jump(index);
               }}
               onKeyDown={(event) => {
+                if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || event.nativeEvent.isComposing) return;
                 if (event.key === "Escape") { setHoveredIndex(null); return; }
                 let next: number;
                 if (event.key === "ArrowRight") next = Math.min(steps.length - 1, index + 1);
@@ -235,7 +236,7 @@ function LatestTraceMinimap({ steps, annotations, actionScores, annotationStatus
                 else if (event.key === "End") next = steps.length - 1;
                 else return;
                 event.preventDefault();
-                (event.currentTarget.parentElement!.children[next] as HTMLButtonElement).focus();
+                (event.currentTarget.parentElement!.children[next] as HTMLButtonElement).focus({ preventScroll: true });
                 jump(next);
               }}
               className="group relative flex h-full min-w-0 flex-1 cursor-pointer items-end focus-visible:outline-none"

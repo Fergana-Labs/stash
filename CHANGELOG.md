@@ -5,6 +5,13 @@ everything before it is captured in git history (`git log`), not here.
 
 ## Unreleased
 
+- Keep focus on the selected minimap step after clicking or dragging, so Left and
+  Right continue scrubbing chronologically from that step.
+- Let trace messages scroll continuously between phases, with compact dividers
+  and a breadcrumb that follows the current phase. Remove redundant comment prompts.
+- Show the called tool above its inputs when expanded. Hide descriptive step
+  badges while retaining the underlying annotations and scores.
+
 - Show readable action descriptions in tool rows, with raw inputs on hover and
   tool-name explanations. Label expanded tool arguments as Inputs and use neutral
   field labels. Keep section-title descenders visible within compact rows.
