@@ -159,9 +159,14 @@ function LatestTraceMinimap({ steps, annotations, actionScores, annotationStatus
   return (
     <nav aria-label="Trace steps" className="flex min-w-0 flex-1 select-none items-center gap-3">
       {annotationStatus && <p role="status" className="sr-only">{annotationStatus}</p>}
+      {graded && <div aria-label="Step credit scale: −1 to +1, with zero in the middle" className="relative h-12 w-3 shrink-0 text-right text-[9px] leading-none text-muted-foreground tabular-nums">
+        <span className="absolute top-0 right-0">+1</span>
+        <span className="absolute top-1/2 right-0 -translate-y-1/2">0</span>
+        <span className="absolute right-0 bottom-0">−1</span>
+      </div>}
       <div
         ref={map}
-        className={cn("relative flex min-w-0 flex-1 touch-none items-end border-b border-border-subtle", graded ? "h-[48px]" : "h-6")}
+        className={cn("relative flex min-w-0 flex-1 touch-none", graded ? "h-12" : "h-6")}
         style={{ columnGap: `min(1px, ${25 / steps.length}%)` }}
         role="group"
         aria-label="Step map"
@@ -191,6 +196,7 @@ function LatestTraceMinimap({ steps, annotations, actionScores, annotationStatus
         {steps.map((step, index) => {
           const kind = KINDS[kindOf(step)];
           const score = actionScores?.get(step.id);
+          const credit = score && Number.isFinite(score.credit) ? Math.max(-1, Math.min(1, score.credit)) : null;
           const label = labelFor(step);
           return (
             <button
@@ -221,12 +227,14 @@ function LatestTraceMinimap({ steps, annotations, actionScores, annotationStatus
               className="group relative flex h-full min-w-0 flex-1 cursor-pointer items-end focus-visible:outline-2 focus-visible:outline-brand-500"
             >
               {commented.has(step.id) && <span className="absolute top-0 left-1/2 size-1.5 -translate-x-1/2 rounded-full bg-amber-400" />}
-              {!score && <span aria-hidden="true" data-unscored-marker className={cn("absolute bottom-0.5 left-1/2 size-1 max-w-full -translate-x-1/2 rounded-full opacity-70", kind.color)} />}
-              <span style={{ height: score ? `${6 + (Math.max(-1, Math.min(1, score.credit)) + 1) * 20}px` : "0px" }} className={cn("w-full transition-opacity group-hover:opacity-60", kind.color)} />
+              {credit === null && <span aria-hidden="true" data-unscored-marker className={cn("absolute top-1/2 left-1/2 z-10 size-1 max-w-full -translate-x-1/2 -translate-y-1/2 rounded-full opacity-70", kind.color)} />}
+              {credit === 0 && <span aria-hidden="true" data-zero-marker className={cn("absolute top-1/2 z-10 h-px w-full -translate-y-1/2", kind.color)} />}
+              <span aria-hidden="true" data-credit-bar style={{ height: `${Math.abs(credit ?? 0) * 50}%`, ...(credit !== null && credit < 0 ? { top: "50%" } : { bottom: "50%" }) }} className={cn("absolute w-full transition-opacity group-hover:opacity-60", kind.color)} />
             </button>
           );
         })}
-        <span aria-hidden="true" className="pointer-events-none absolute inset-y-0 w-[1.5px] bg-brand-500" style={{ left: `${(activeIndex + 0.5) / steps.length * 100}%` }} />
+        {graded && <span aria-hidden="true" data-zero-baseline className="pointer-events-none absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-border-subtle" />}
+        <span aria-hidden="true" data-active-step-marker className="pointer-events-none absolute inset-y-0 w-[1.5px] bg-brand-500" style={{ left: `${(activeIndex + 0.5) / steps.length * 100}%` }} />
         {hoveredIndex !== null && steps[hoveredIndex] && <div
           id={tooltipId}
           role="tooltip"
