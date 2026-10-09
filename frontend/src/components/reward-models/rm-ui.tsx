@@ -11,16 +11,18 @@ export function RmPage({
   description,
   actions,
   children,
+  wide = false,
 }: {
   title: string;
   description?: string;
   actions?: ReactNode;
   children: ReactNode;
+  wide?: boolean;
 }) {
   // h-full makes this the page's scroll container, so sticky bars inside it (the trace selection bar) stick.
   return (
     <div className="scroll-thin h-full overflow-y-auto">
-      <div className="mx-auto max-w-6xl px-10 pt-7 pb-16">
+      <div className={cn("mx-auto px-10 pt-7 pb-16", wide ? "max-w-7xl" : "max-w-6xl")}>
         <div className="mb-6 flex flex-wrap items-start justify-between gap-6">
           <div className="min-w-0">
             <h1 className="m-0 font-display text-[22px] font-semibold tracking-tight text-foreground">{title}</h1>

@@ -405,6 +405,9 @@ export interface RmScore {
 export interface RmTraceSummary {
   can_score?: boolean;
   agent?: string;
+  source_id?: string;
+  source_name?: string;
+  source_owner_id?: string;
   id: string;
   external_id: string | null;
   title: string;

@@ -1,7 +1,8 @@
 import { traceScore, traceCredits } from "./trace-metrics";
 import type { RmTraceSummary } from "@/lib/types";
+import { traceSourceName } from "./trace-sources";
 
-export type TraceSortKey = "title" | "steps" | "comments" | "reward" | "credit" | "minCredit" | "maxCredit" | "imported";
+export type TraceSortKey = "title" | "source" | "steps" | "comments" | "reward" | "credit" | "minCredit" | "maxCredit" | "imported";
 export type TraceSortDirection = "ascending" | "descending";
 
 export function sortTraces(traces: RmTraceSummary[], key: TraceSortKey, direction: TraceSortDirection, source: "automatic" | "learned" = "learned"): RmTraceSummary[] {
@@ -21,6 +22,7 @@ export function sortTraces(traces: RmTraceSummary[], key: TraceSortKey, directio
     let difference = 0;
     switch (key) {
       case "title": difference = a.title.localeCompare(b.title); break;
+      case "source": difference = traceSourceName(a).localeCompare(traceSourceName(b)); break;
       case "steps": difference = a.step_count - b.step_count; break;
       case "comments": difference = a.comment_count - b.comment_count; break;
       case "imported": difference = Date.parse(a.created_at) - Date.parse(b.created_at); break;

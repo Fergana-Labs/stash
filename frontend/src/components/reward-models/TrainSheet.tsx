@@ -32,7 +32,7 @@ export default function TrainSheet({
         <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/15 data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0" />
         <DialogPrimitive.Content
           onInteractOutside={(event) => event.preventDefault()}
-          className="fixed inset-y-0 right-0 z-50 flex w-[min(960px,92vw)] flex-col border-l border-border bg-background shadow-2xl outline-none data-open:animate-in data-open:slide-in-from-right data-closed:animate-out data-closed:slide-out-to-right"
+          className="fixed inset-y-0 right-0 z-50 flex w-[min(1280px,96vw)] flex-col border-l border-border bg-background shadow-2xl outline-none data-open:animate-in data-open:slide-in-from-right data-closed:animate-out data-closed:slide-out-to-right"
         >
           {/* Mounted only while open, so each opening starts from fresh traces and a fresh preselection. */}
           {open && <SheetBody onTrained={onTrained} />}
@@ -51,8 +51,9 @@ function SheetBody({ onTrained }: { onTrained: (model: RmRewardModel) => void })
   useEffect(() => {
     rmListAllTraces()
       .then((all) => {
-        setTraces(all);
-        setSelected(new Set(all.map((t) => t.id)));
+        const owned = all.filter((trace) => trace.can_score !== false);
+        setTraces(owned);
+        setSelected(new Set(owned.map((t) => t.id)));
       })
       .catch((e) => toast.error(errorMessage(e)));
   }, []);

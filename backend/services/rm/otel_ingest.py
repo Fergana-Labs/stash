@@ -91,7 +91,7 @@ def _spans(payload: dict) -> list[dict]:
     ]
 
 
-async def ingest(owner_user_id: UUID, payload: dict) -> list[UUID]:
+async def ingest(owner_user_id: UUID, payload: dict, *, source_id: str | None = None) -> list[UUID]:
     """Store the payload's spans and rebuild every trace they touch that has LLM messages.
 
     Returns the ids of the rm_traces rebuilt. One transaction: a batch that
@@ -133,5 +133,8 @@ async def ingest(owner_user_id: UUID, payload: dict) -> list[UUID]:
                 continue
             data = json.dumps({"resourceSpans": [{"scopeSpans": [{"spans": trace_spans}]}]})
             source_format, parsed = parse_traces(data, "otel")
+            if source_id is not None:
+                for trace in parsed:
+                    trace.metadata["source_id"] = source_id
             rebuilt += await traces.store_traces(conn, owner_user_id, source_format, parsed)
     return rebuilt

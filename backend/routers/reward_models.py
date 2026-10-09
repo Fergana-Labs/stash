@@ -11,9 +11,9 @@ import re
 from typing import Annotated, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from fastapi.responses import Response
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 from starlette.concurrency import run_in_threadpool
 
 from rm_worker.artifacts import download_url
@@ -29,6 +29,7 @@ from ..services.rm import (
     trace_completion,
     trace_images,
     trace_sections,
+    trace_sources,
     traces,
     training_timing,
 )
@@ -55,9 +56,18 @@ DEFAULT_TASK_MODEL = "anthropic/claude-haiku-4-5"
 DEFAULT_REFLECTION_MODEL = "anthropic/claude-sonnet-5"
 
 
+SourceId = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
+
+
 class ImportRequest(BaseModel):
     format: str
     data: str
+    source_id: SourceId | None = None
+
+
+class TraceSourceRequest(BaseModel):
+    source_id: SourceId
+    name: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=120)]
 
 
 class QuoteSegment(BaseModel):
@@ -148,9 +158,16 @@ async def get_formats(current_user: dict = Depends(get_current_user)) -> list[di
 @router.post("/traces/import")
 async def import_traces(req: ImportRequest, current_user: dict = Depends(get_current_user)) -> dict:
     try:
-        return await traces.import_traces(current_user["id"], req.format, req.data)
+        return await traces.import_traces(current_user["id"], req.format, req.data, req.source_id)
     except TraceFormatError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.put("/trace-sources")
+async def rename_trace_source(
+    req: TraceSourceRequest, current_user: dict = Depends(get_current_user)
+) -> dict:
+    return await trace_sources.rename(current_user["id"], req.source_id, req.name)
 
 
 @router.get("/traces")
@@ -290,7 +307,9 @@ async def set_training_contribution(
 
 @router.post("/otel/v1/traces")
 async def receive_otlp_traces(
-    request: Request, current_user: dict = Depends(get_current_user)
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+    source_id: Annotated[SourceId | None, Header(alias="X-Stash-Trace-Source")] = None,
 ) -> Response:
     """OTLP/HTTP trace receiver: OTEL_EXPORTER_OTLP_ENDPOINT=<base>/api/v1/rm/otel."""
     content_type = request.headers.get("content-type", "")
@@ -298,7 +317,7 @@ async def receive_otlp_traces(
         payload = otel_ingest.decode_request(
             await request.body(), content_type, request.headers.get("content-encoding")
         )
-        await otel_ingest.ingest(current_user["id"], payload)
+        await otel_ingest.ingest(current_user["id"], payload, source_id=source_id)
     except otel_ingest.UnsupportedContentType as exc:
         raise HTTPException(status_code=415, detail=str(exc)) from exc
     except TraceFormatError as exc:

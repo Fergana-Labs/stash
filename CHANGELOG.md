@@ -5,6 +5,10 @@ everything before it is captured in git history (`git log`), not here.
 
 ## Unreleased
 
+- Label traces by source, with stable source IDs and editable names. Filter the
+  trace list and training picker by source and import dates, and select only the
+  shown traces when creating a reward model.
+
 - Show reward-model training stages and time estimates from comparable completed
   runs or live batch timing, with explicit queue waits and unknown estimates.
 

@@ -2674,11 +2674,15 @@ export async function rmListFormats(): Promise<RmFormat[]> {
   return apiFetch(`${RM}/formats`);
 }
 
-export async function rmImportTraces(format: string, data: string): Promise<RmImportResult> {
+export async function rmImportTraces(format: string, data: string, sourceId?: string): Promise<RmImportResult> {
   return apiFetch(`${RM}/traces/import`, {
     method: "POST",
-    body: JSON.stringify({ format, data }),
+    body: JSON.stringify({ format, data, ...(sourceId?.trim() ? { source_id: sourceId.trim() } : {}) }),
   });
+}
+
+export async function rmRenameTraceSource(sourceId: string, name: string): Promise<{ source_id: string; source_name: string }> {
+  return apiFetch(`${RM}/trace-sources`, { method: "PUT", body: JSON.stringify({ source_id: sourceId, name }) });
 }
 
 export async function rmListTraces(

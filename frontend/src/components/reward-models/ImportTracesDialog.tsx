@@ -14,6 +14,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Select } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { rmImportTraces, rmListFormats } from "@/lib/api";
 import type { RmFormat } from "@/lib/types";
@@ -26,6 +27,7 @@ export default function ImportTracesDialog({ onImported }: { onImported: () => v
   const [formats, setFormats] = useState<RmFormat[] | null>(null);
   const [format, setFormat] = useState("auto");
   const [data, setData] = useState("");
+  const [sourceId, setSourceId] = useState("");
   const [files, setFiles] = useState<TraceFile[]>([]);
   const [progress, setProgress] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
@@ -61,8 +63,8 @@ export default function ImportTracesDialog({ onImported }: { onImported: () => v
     setResult(null);
     try {
       const imported = files.length > 0
-        ? await importTraceFiles(files, format, setProgress)
-        : { imported: (await rmImportTraces(format, data)).imported, failed: [], skipped: [] };
+        ? await importTraceFiles(files, format, setProgress, sourceId)
+        : { imported: (await (sourceId.trim() ? rmImportTraces(format, data, sourceId.trim()) : rmImportTraces(format, data))).imported, failed: [], skipped: [] };
       setResult(imported);
       // Keep only failures selected, so retrying cannot re-import successful files.
       setFiles(imported.failed.map((failure) => failure.entry));
@@ -92,7 +94,7 @@ export default function ImportTracesDialog({ onImported }: { onImported: () => v
       onOpenChange={(next) => {
         if (importing) return;
         setOpen(next);
-        if (!next) reset();
+        if (!next) { reset(); setSourceId(""); }
       }}
     >
       <DialogTrigger asChild>
@@ -127,6 +129,10 @@ export default function ImportTracesDialog({ onImported }: { onImported: () => v
               : selected?.description}
           </p>
         </div>
+
+        <Field label="Source ID" hint="Optional. Use a stable ID such as henry-codex or heavi to group these traces. Leave blank to use the recorded agent or format.">
+          <Input value={sourceId} onChange={(event) => setSourceId(event.target.value)} placeholder="e.g. heavi" maxLength={200} disabled={importing} autoComplete="off" />
+        </Field>
 
         <div>
           <div className="mb-1 flex items-center justify-between">
@@ -208,7 +214,7 @@ export default function ImportTracesDialog({ onImported }: { onImported: () => v
         )}
 
         <DialogFooter>
-          <Button variant="outline" disabled={importing} onClick={() => { setOpen(false); reset(); }}>
+          <Button variant="outline" disabled={importing} onClick={() => { setOpen(false); reset(); setSourceId(""); }}>
             {result ? "Done" : "Cancel"}
           </Button>
           <Button onClick={() => void submit()} disabled={importing || (files.length === 0 && data.trim() === "")}>
