@@ -68,12 +68,12 @@ it("starts a long message expanded and supports collapsing and reopening it", ()
     const body = container.querySelector('[data-step-content]')!.parentElement!;
     expect((body as HTMLElement).style.maxHeight).toBe("");
     expect(screen.queryByRole("button", { name: "Read full message" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Show less" })).not.toHaveFocus();
-    fireEvent.click(screen.getByRole("button", { name: "Show less" }));
+    expect(screen.getByRole("button", { name: "Collapse to preview" })).not.toHaveFocus();
+    fireEvent.click(screen.getByRole("button", { name: "Collapse to preview" }));
     expect(body).toHaveStyle({ maxHeight: "160px" });
     fireEvent.click(screen.getByRole("button", { name: "Read full message" }));
     expect((body as HTMLElement).style.maxHeight).toBe("");
-    fireEvent.keyDown(screen.getByRole("button", { name: "Show less" }), { key: "Escape" });
+    fireEvent.keyDown(screen.getByRole("button", { name: "Collapse to preview" }), { key: "Escape" });
     expect(body).toHaveStyle({ maxHeight: "160px" });
     expect(screen.queryByRole("complementary")).not.toBeInTheDocument();
   } finally { height.mockRestore(); }
@@ -89,7 +89,7 @@ it("keeps the collapse control above long content and restores the message in vi
     scroller.scrollTop = 2000;
     scroller.getBoundingClientRect = () => ({ top: 100 }) as DOMRect;
     scroller.scrollTo = vi.fn();
-    const close = screen.getByRole("button", { name: "Show less" });
+    const close = screen.getByRole("button", { name: "Collapse to preview" });
     expect(close.parentElement).toHaveClass("sticky", "top-8");
     const frame = close.parentElement!.parentElement!;
     frame.getBoundingClientRect = () => ({ top: -1500 }) as DOMRect;

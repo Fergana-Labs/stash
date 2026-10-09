@@ -5,6 +5,9 @@ everything before it is captured in git history (`git log`), not here.
 
 ## Unreleased
 
+- Replace the separate Show less row with a subtle collapse icon in the message's
+  left gutter, with a tooltip explaining that it collapses the text to a preview.
+
 - Keep same-named files in connected Google Drive folders separately indexed,
   preserving each file's contents through renames and repeat syncs. Report
   duplicate skill names with the documents to choose from instead of silently
