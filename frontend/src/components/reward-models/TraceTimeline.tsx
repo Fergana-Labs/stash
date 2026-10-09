@@ -45,7 +45,7 @@ function RowFrame({ step, ann, children, className }: { step: RmStep; ann: StepA
       data-step-id={step.id}
       className={cn(
         "relative scroll-mt-44 transition-colors duration-700",
-        "group/row py-1 pr-2 pl-8",
+        "group/row py-0.5 pr-2 pl-8",
         ann.flashing(step) && "bg-amber-100/60 ring-1 ring-amber-400/50 dark:bg-amber-400/10",
         className,
       )}
@@ -194,7 +194,7 @@ function PromptRow({ step, ann, repeated, expanded, onToggle }: {
 }) {
   return (
     <RowFrame step={step} ann={ann} className="group/row">
-      <RowHeader step={step} ann={ann} className={cn("min-h-8", expanded && "mb-2")}>
+      <RowHeader step={step} ann={ann} className={cn("min-h-6", expanded && "mb-2")}>
         <button type="button" onClick={onToggle} aria-expanded={expanded}
           aria-label={`${expanded ? "Collapse" : "Expand"} ${repeated ? "repeated user message" : "user message"}`}
           className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-left">
@@ -215,7 +215,7 @@ function AssistantRow({ step, ann, expanded, onToggle }: { step: RmStep; ann: St
   const thinking = isThinking(step);
   return (
     <RowFrame step={step} ann={ann}>
-      <RowHeader step={step} ann={ann} className={cn("min-h-8", expanded && "mb-1")}>
+      <RowHeader step={step} ann={ann} className={cn("min-h-6", expanded && "mb-1")}>
         <button type="button" onClick={onToggle} aria-expanded={expanded}
           aria-label={`${expanded ? "Collapse" : "Expand"} ${thinking ? "thinking" : "assistant"} message`}
           className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-left">
@@ -266,7 +266,7 @@ function ToolRow({
           <StepContent step={call} ann={ann} markdown max={300} />
         </div>
       )}
-      <TooltipProvider delayDuration={400}><RowHeader step={head} ann={ann} className="min-h-8">
+      <TooltipProvider delayDuration={400}><RowHeader step={head} ann={ann} className="min-h-6">
         <Tooltip><TooltipTrigger asChild>
         <button type="button" onClick={onToggle} aria-expanded={expanded}
           aria-label={`${expanded ? "Collapse" : "Expand"} ${toolLabel(name)} ${call ? "tool call" : "tool result"}`}
@@ -318,7 +318,7 @@ function ToolOutput({ step, ann, nested }: { step: RmStep; ann: StepAnnotations;
 function SystemRow({ step, ann, expanded, onToggle }: { step: RmStep; ann: StepAnnotations; expanded: boolean; onToggle: () => void }) {
   return (
     <RowFrame step={step} ann={ann}>
-      <RowHeader step={step} ann={ann} className="min-h-8">
+      <RowHeader step={step} ann={ann} className="min-h-6">
         <button type="button" onClick={onToggle} aria-expanded={expanded} aria-label={`${expanded ? "Collapse" : "Expand"} system message`}
           className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-left">
           <DisclosureIcon expanded={expanded} /><span className="shrink-0 text-[13px] font-medium text-foreground">System</span>

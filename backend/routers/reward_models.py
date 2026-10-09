@@ -25,6 +25,7 @@ from ..services.rm import (
     jobs,
     otel_ingest,
     query,
+    trace_completion,
     trace_images,
     trace_sections,
     traces,
@@ -188,6 +189,16 @@ async def summarize_trace_sections(
         raise HTTPException(404, "Trace not found") from exc
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
+
+
+@router.post("/traces/{trace_id}/completion")
+async def estimate_trace_completion(
+    trace_id: UUID, current_user: dict = Depends(get_current_user)
+) -> dict:
+    try:
+        return await trace_completion.assess(current_user["id"], trace_id)
+    except LookupError as exc:
+        raise HTTPException(404, "Trace not found") from exc
 
 
 @router.get("/trace-images/{image_id}")

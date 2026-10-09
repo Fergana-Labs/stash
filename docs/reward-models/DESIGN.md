@@ -231,7 +231,8 @@ cream text, and Stash's orange accents. Model creation/training status links to 
 was trained on this trace; another reviewer's private models are not exposed.
 
 Entering a leaf section scrolls to its first step in the complete chronological
-trace. Scrolling continues across section boundaries, and Back to sections
+trace. Compact dividers mark phase changes, the breadcrumb follows scrolling,
+and Back to sections
 returns to the logical task/subtask cards. Only ancestor breadcrumbs are clickable;
 the current section is plain text. The top-level overview omits the inert
 “Sections” label and empty breadcrumb row. The left rail remains global.
@@ -248,8 +249,9 @@ the bottom of the trace prevents it from reaching the sticky breadcrumb;
 manual scrolling resumes viewport tracking. Hover previews stay on one line
 below the chart, showing the step number, recorded time, a content excerpt, and available
 credit or pending status. Long previews truncate. The label summary, Labels/Scores
-toggles, scoring explainer, and keyboard hints are omitted; inline labels and
-scores remain available. A small rescore icon shows activity
+toggles, scoring explainer, keyboard hints, and descriptive step badges are omitted;
+numeric scores remain available and the underlying labels still feed grading.
+A small rescore icon shows activity
 and exposes failure details on demand without a persistent error banner. Its
 hover and focus tooltip explains that it reruns automatic labels and scores.
 
@@ -289,20 +291,21 @@ verifying, publishing, or moving between sites. Existing task labels take
 precedence over request heuristics. No section-count or step-count limit creates
 artificial groups: a continuous run without a recognizable boundary stays
 together, and distinct tasks are never combined to fit a screen. Message rendering
-and adjacent tool-output pairing do not change source step IDs. Cards use their natural
-height; longer lists scroll and keyboard selection stays in view. Up/down arrows select a section; right
-opens it with leaf rows expanded; left returns to the parent and restores the
+and adjacent tool-output pairing do not change source step IDs. Section rows and
+collapsed message rows are 28px high; longer lists scroll and keyboard selection
+stays in view. Up/down arrows select a section and outline its span on the top
+minimap; right opens it with leaf rows collapsed; left returns to the parent and restores the
 previous selection. Mouse movement highlights a card and clicking opens it.
 Keyboard navigation leaves text inputs, dialogs, the minimap, and other controls
 alone. Breadcrumbs and Escape also provide a way back.
-The left rail keeps the same global task markers at every depth and highlights
-the containing task inside a subsection, even when its overview card is not
-mounted. From the overview it scrolls between task cards; from a subsection it
-opens the chosen global task without drilling into its leaves. Single-task
-traces keep their full-trace step destinations. The first marker returns to the
+The left rail keeps every step as a global destination at every depth, with
+stronger ticks at phase boundaries. Selecting a tick opens that recorded step.
+The first marker returns to the
 whole-trace overview and scrolls to the top. The rail stays mounted during a
 drag, and scrubbing returns focus to the explorer so arrows remain usable. The
 top action minimap also provides direct navigation across the entire trace.
+It keeps focus after pointer scrubbing, so Left/Right continue chronologically
+while the minimap is focused; the explorer uses Left/Right for hierarchy.
 
 `POST /api/v1/rm/traces/{trace_id}/section-summaries` accepts 1–4 ranges of
 `first_step_id` and `last_step_id`. It checks owner/reviewer access and range
@@ -332,6 +335,24 @@ refreshes. The four-range API maximum is only a transport batch size; the
 frontend progressively assesses arbitrary-length lists in batches, with at most
 two requests in flight. Hovering or focusing a score shows its objective and rationale
 without opening the section.
+
+`POST /api/v1/rm/traces/{trace_id}/completion` estimates progress toward each
+independent user request. It is separate from local section success and action
+credit. The minimap overlays a teal step line using a fixed 0–100% right axis,
+while credit keeps its own left axis and Fit/±1 control. Checkpoints hold their
+last supported value until new evidence; null estimates and independent tasks
+break the line. Tool-result checkpoints map to their paired displayed row.
+
+The server's fast Anthropic model receives at most 104 sampled events, preserving
+requests, assistant messages, and evenly spaced tool evidence. Its prompt asks
+for evidence available at each checkpoint, permits regressions, and does not
+force the final point to 100%. Sampling and model judgment make this an estimate,
+not a measured completion ratio. Ordered references and 0–1 bounds are validated;
+receiving a request cannot earn progress. Owner/reviewer authorization precedes
+cache access. Migration `0230` stores these estimates independently of reward
+annotations, keyed by source evidence and version, with a 90-second generation
+lease. Failed generation leaves browsing usable, and unchanged trace polling
+does not trigger inference again.
 
 ## Annotations
 
@@ -652,6 +673,7 @@ OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf   # or http/json
 | POST | `/otel/v1/traces` | OTLP `ExportTraceServiceRequest` (protobuf or JSON, optional gzip) | empty `ExportTraceServiceResponse` in the same content type; 400 bad spans, 415 other content types |
 | GET | `/traces` | `?limit=50&offset=0` | `{traces: [TraceSummary], total}` |
 | GET | `/traces/{trace_id}` | | `TraceDetail` (steps + annotations + scores) |
+| POST | `/traces/{trace_id}/completion` | | `{tasks: [{first_step_id, last_step_id, objective, checkpoints: [{step_id, completion, reason}]}], pending, unavailable}`; 404 unowned trace |
 | POST | `/traces/{trace_id}/score` | `{reward_model_id}` | 202 `ScoringRun`; 404 unowned trace/model; 422 no actions or incompatible model |
 | DELETE | `/traces/{trace_id}` | | 204 |
 | POST | `/traces/{trace_id}/annotations` | `{step_id?, rating?, comment?, quote?}` | `Annotation` |

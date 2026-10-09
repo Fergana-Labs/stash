@@ -10,7 +10,6 @@ import { rmSummarizeSections } from "@/lib/api";
 import { useSectionSummaries } from "./use-section-summaries";
 import TraceScrollRail from "./TraceScrollRail";
 import { rowSteps } from "./trace-rows";
-import { traceSectionTarget } from "./trace-scroll";
 
 vi.mock("@/lib/api", () => ({ rmSummarizeSections: vi.fn() }));
 beforeEach(() => {
@@ -160,93 +159,49 @@ it("keeps more than four sections visible in the list and batches their assessme
   expect(new Set(batches.flat().map((range) => range.first_step_id)).size).toBe(9);
 });
 
-it("keeps global markers through nested navigation and scrubs between tasks without losing keyboard focus", async () => {
-  const measurements = new Set<() => void>();
-  vi.stubGlobal("ResizeObserver", class {
-    constructor(private callback: () => void) { measurements.add(callback); }
-    observe() {}
-    disconnect() { measurements.delete(this.callback); }
-  });
+it("keeps every step in the global rail while scrubbing across tasks", async () => {
   render(<Harness />);
   await load();
-  let cards = screen.getAllByRole("button", { name: /^Explore / });
-  const container = screen.getByRole("region", { name: "Trace explorer" }).parentElement!;
-  container.scrollTo = vi.fn();
-  async function scrollToTask(index: number) {
-    container.scrollTop = index * 500;
-    groups.forEach((group, i) => {
-      const target = document.getElementById(traceSectionTarget(group));
-      if (!target) return;
-      target.getBoundingClientRect = () => ({ top: 150 + i * 500 - container.scrollTop }) as DOMRect;
-      target.getClientRects = () => [target.getBoundingClientRect()] as unknown as DOMRectList;
-    });
-    tracePhases(groups).forEach(({ node, path }) => {
-      const taskIndex = groups.findIndex((group) => group.key === path[0]);
-      const phaseIndex = groups[taskIndex].children.indexOf(node);
-      const target = document.getElementById(traceSectionTarget(node));
-      if (!target) return;
-      target.getBoundingClientRect = () => ({ top: 150 + taskIndex * 500 + Math.max(0, phaseIndex) * 200 - container.scrollTop }) as DOMRect;
-      target.getClientRects = () => [target.getBoundingClientRect()] as unknown as DOMRectList;
-    });
-    act(() => measurements.forEach((measure) => measure()));
-    fireEvent.scroll(container);
-    await act(async () => vi.advanceTimersByTime(16));
-  }
-  container.getBoundingClientRect = () => ({ top: 150 }) as DOMRect;
-  cards[1].parentElement!.getBoundingClientRect = () => ({ top: 600 }) as DOMRect;
   const rail = screen.getByRole("navigation", { name: "Conversation navigation" });
   const markers = Array.from(rail.querySelectorAll("button"));
-  const labels = markers.map((marker) => marker.getAttribute("aria-label"));
+  expect(markers).toHaveLength(48);
+  const labels = markers.map((marker) => marker.getAttribute("aria-label")?.split(":")[0]);
   const scrubber = screen.getByRole("group", { name: "Conversation scrubber" });
-  scrubber.getBoundingClientRect = () => ({ top: 0, height: 400 }) as DOMRect;
-  fireEvent.pointerDown(scrubber, { button: 0, clientY: 150 });
-  fireEvent.pointerUp(scrubber, { button: 0, clientY: 150 });
+  scrubber.getBoundingClientRect = () => ({ top: 0, height: 480 }) as DOMRect;
+  scrubber.setPointerCapture = vi.fn();
+  scrubber.hasPointerCapture = () => false;
+  const container = document.querySelector<HTMLElement>("[data-trace-scroll]")!;
+  container.scrollTo = vi.fn();
+  fireEvent.pointerDown(scrubber, { button: 0, clientY: 155 });
+  await load();
+  fireEvent.pointerMove(scrubber, { clientY: 355 });
+  fireEvent.pointerUp(scrubber, { clientY: 355 });
+  await load();
   await act(async () => vi.advanceTimersByTime(16));
-  expect(cards[1]).toHaveFocus();
-  expect(container.scrollTo).toHaveBeenLastCalledWith({ top: 410, behavior: "instant" });
-  fireEvent.keyDown(cards[1], { key: "Enter" });
-  await load();
-  cards = screen.getAllByRole("button", { name: /^Explore / });
-  expect(cards).toHaveLength(2);
-  expect(rail.querySelectorAll("button")).toHaveLength(4);
-  expect(markers[1]).toHaveAttribute("aria-current", "location");
-  fireEvent.keyDown(cards[1], { key: "Enter" });
-  await load();
   expect(screen.queryByRole("button", { name: /^Explore / })).not.toBeInTheDocument();
-  await scrollToTask(1);
-  expect(markers[1]).toHaveAttribute("aria-current", "location");
-  // Scrolling into another task updates the active marker without replacing the reader.
-  const firstMessage = document.getElementById("step-s0");
-  await scrollToTask(2);
-  expect(document.getElementById("step-s0")).toBe(firstMessage);
-  expect(container.scrollTop).toBe(1000);
-  expect(markers[2]).toHaveAttribute("aria-current", "location");
-  expect(Array.from(rail.querySelectorAll("button"))).toEqual(markers);
-  expect(markers.map((marker) => marker.getAttribute("aria-label"))).toEqual(labels);
-
-  // Drag across tasks while deep in a subsection. The rail must not remount or
-  // change scale partway through the drag, and each destination stays global.
-  fireEvent.pointerDown(scrubber, { button: 0, clientY: 250 });
-  await load();
-  fireEvent.pointerMove(scrubber, { clientY: 350 });
-  fireEvent.pointerUp(scrubber, { clientY: 350 });
-  await load();
-  await act(async () => vi.advanceTimersByTime(16));
-  expect(screen.getAllByRole("button", { name: /^Explore / })).toHaveLength(2);
-  expect(markers[3]).toHaveAttribute("aria-current", "location");
+  expect(document.querySelectorAll("[data-step-id]")).toHaveLength(48);
   expect(screen.getByRole("region", { name: "Trace explorer" })).toHaveFocus();
-  fireEvent.keyDown(document.activeElement!, { key: "Enter" });
-  await load();
-  expect(screen.queryByRole("button", { name: /^Explore / })).not.toBeInTheDocument();
-  await scrollToTask(3);
-  expect(markers[3]).toHaveAttribute("aria-current", "location");
+  expect(Array.from(rail.querySelectorAll("button"))).toEqual(markers);
+  expect(markers.map((marker) => marker.getAttribute("aria-label")?.split(":")[0])).toEqual(labels);
   fireEvent.click(markers[0]);
   await load();
   await act(async () => vi.advanceTimersByTime(16));
   expect(screen.getAllByRole("button", { name: /^Explore / })).toHaveLength(4);
   expect(container.scrollTo).toHaveBeenLastCalledWith({ top: 0, behavior: "instant" });
-  await scrollToTask(0);
-  expect(markers[0]).toHaveAttribute("aria-current", "location");
+});
+
+it("reports the selected section range and removes it on entering steps", async () => {
+  const onSectionFocus = vi.fn();
+  const view = render(<TraceExplorer groups={groups} path={[]} onPath={vi.fn()} onSectionFocus={onSectionFocus}
+    assessments={{ copy: () => undefined, status: "ready" }} ann={ann} isExpanded={() => false} onToggle={vi.fn()} />);
+  expect(onSectionFocus).toHaveBeenLastCalledWith({ firstStepId: "s0", lastStepId: "s11" });
+  fireEvent.keyDown(document.body, { key: "ArrowDown" });
+  expect(onSectionFocus).toHaveBeenLastCalledWith({ firstStepId: "s12", lastStepId: "s23" });
+  expect(screen.getByText("13–24", { exact: true })).toBeVisible();
+  expect(screen.queryByText("Steps 13–24", { exact: true })).not.toBeInTheDocument();
+  view.rerender(<TraceExplorer groups={groups} path={groupPath(groups, "s14")} onPath={vi.fn()} onSectionFocus={onSectionFocus}
+    assessments={{ copy: () => undefined, status: "ready" }} ann={ann} isExpanded={() => false} onToggle={vi.fn()} />);
+  expect(onSectionFocus).toHaveBeenLastCalledWith(null);
 });
 
 it("retains all step destinations for a single task while browsing its subsections", async () => {
