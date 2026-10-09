@@ -4,7 +4,9 @@ import { useEffect, useState } from "react";
 import { Dialog as DialogPrimitive } from "radix-ui";
 import { XIcon } from "lucide-react";
 import { toast } from "sonner";
+import { useProductCheckpoint } from "@/components/ProductCheckpointContext";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { rmListAllTraces } from "@/lib/api";
 import type { RmRewardModel, RmTraceSummary } from "@/lib/types";
 import TraceTable from "./TraceTable";
@@ -12,6 +14,7 @@ import TrainPanel from "./TrainPanel";
 import { RmListSkeleton } from "./RmSkeletons";
 import { errorMessage } from "./rm-text";
 import { summarizeSelection } from "./trace-selection";
+import { Field } from "./rm-ui";
 
 /** Right-side sheet: pick traces (every trace preselected), then train on them. */
 export default function TrainSheet({
@@ -40,8 +43,10 @@ export default function TrainSheet({
 }
 
 function SheetBody({ onTrained }: { onTrained: (model: RmRewardModel) => void }) {
+  const latest = useProductCheckpoint() !== "floodgate-2026-10-05";
   const [traces, setTraces] = useState<RmTraceSummary[] | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [modelName, setModelName] = useState("");
 
   useEffect(() => {
     rmListAllTraces()
@@ -73,6 +78,20 @@ function SheetBody({ onTrained }: { onTrained: (model: RmRewardModel) => void })
         </DialogPrimitive.Close>
       </div>
 
+      {latest && <div className="border-b border-border px-6 py-4">
+        <div className="max-w-md">
+          <Field label="Model name">
+            <Input
+              value={modelName}
+              onChange={(event) => setModelName(event.target.value)}
+              placeholder="e.g. Parts accuracy v1"
+              autoComplete="off"
+              required
+            />
+          </Field>
+        </div>
+      </div>}
+
       <div className="scroll-thin min-h-0 flex-1 overflow-y-auto px-6 py-4">
         {traces === null ? (
           <RmListSkeleton />
@@ -86,7 +105,7 @@ function SheetBody({ onTrained }: { onTrained: (model: RmRewardModel) => void })
           Train on <span className="font-medium tabular-nums">{summary.count}</span> trace{summary.count === 1 ? "" : "s"}
         </span>
         <span className="flex-1" />
-        <TrainPanel traceIds={selectedIds} summary={summary} optionsPlacement="above" onTrained={onTrained} />
+        <TrainPanel traceIds={selectedIds} summary={summary} modelName={latest ? modelName : undefined} optionsPlacement="above" onTrained={onTrained} />
       </div>
     </>
   );
