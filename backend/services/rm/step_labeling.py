@@ -170,7 +170,6 @@ async def label_steps(
         raise LabelingSkipped(NOT_CONFIGURED)
     gate = asyncio.Semaphore(CONCURRENCY)
     async with httpx.AsyncClient(timeout=180) as client:
-
         for targets, transcript in step_context.batches(
             chunks, settings.STEP_LABELING_MAX_CHUNKS, settings.STEP_LABELING_MAX_CHARS
         ):
