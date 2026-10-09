@@ -5,6 +5,9 @@ everything before it is captured in git history (`git log`), not here.
 
 ## Unreleased
 
+- Plot step credit around a centered zero line: positive bars rise, negative bars
+  fall, and zero has no filled height. Add an explanatory rescore tooltip.
+
 - Keep the trace minimap marker on the selected step after a jump by matching
   scroll tracking to the space reserved for the sticky breadcrumb. Preserve
   clicked selections when a jump reaches the bottom, until the viewer scrolls

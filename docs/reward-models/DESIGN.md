@@ -237,14 +237,19 @@ the current section is plain text. The left rail remains global.
 Sections without assistant responses or tool calls are context, not agent work.
 They remain ungraded, including when an older cached assessment contains a score.
 The top minimap remains navigable before grades arrive; ungraded messages have
-small dots instead of credit heights. A clicked step stays selected even when
+small dots instead of credit heights. Graded bars use a fixed −1 to +1 scale
+around a centered, labeled zero line: positive credit extends upward, negative
+credit downward, and exact zero has only a baseline tick. Ungraded dots also sit
+on the baseline, keeping missing scores distinct from measured zero.
+A clicked step stays selected even when
 the bottom of the trace prevents it from reaching the sticky breadcrumb;
 manual scrolling resumes viewport tracking. Hover previews stay on one line
 below the chart, showing the step number, recorded time, a content excerpt, and available
 credit or pending status. Long previews truncate. The label summary, Labels/Scores
 toggles, scoring explainer, and keyboard hints are omitted; inline labels and
 scores remain available. A small rescore icon shows activity
-and exposes failure details on demand without a persistent error banner.
+and exposes failure details on demand without a persistent error banner. Its
+hover and focus tooltip explains that it reruns automatic labels and scores.
 
 Automatic step labeling uses overlapping windows bounded by
 `STEP_LABELING_MAX_CHUNKS` and `STEP_LABELING_MAX_CHARS`. These are provider

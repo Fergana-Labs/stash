@@ -18,15 +18,15 @@ it("retains bar heights while the trace grows and current scores arrive in batch
   const old = { status: "completed", created_at: "2026-10-07", credits: saved } as unknown as TraceEvaluation;
   const props = { steps, annotations: [], scroller, navigation, onJump: vi.fn() };
   const view = render(<TraceMinimap {...props} actionScores={automaticActionScores(response(old), steps)} />);
-  expect(screen.getByRole("button", { name: "Step 2: Response, credit +1.00" }).lastElementChild).toHaveStyle({ height: "46px" });
+  expect(screen.getByRole("button", { name: "Step 2: Response, credit +1.00" }).lastElementChild).toHaveStyle({ height: "50%", bottom: "50%" });
   view.rerender(<TraceMinimap {...props} actionScores={automaticActionScores(response(null), steps)} annotationStatus="Updating annotations · previous values retained" />);
-  expect(screen.getByRole("button", { name: "Step 2: Response, credit +1.00, previous annotation" }).lastElementChild).toHaveStyle({ height: "46px" });
+  expect(screen.getByRole("button", { name: "Step 2: Response, credit +1.00, previous annotation" }).lastElementChild).toHaveStyle({ height: "50%", bottom: "50%" });
   expect(screen.getByRole("status")).toHaveTextContent("previous values retained");
-  expect(screen.getByRole("button", { name: "Step 3: Response, awaiting score" }).lastElementChild).toHaveStyle({ height: "0px" });
+  expect(screen.getByRole("button", { name: "Step 3: Response, awaiting score" }).lastElementChild).toHaveStyle({ height: "0%" });
   const partial = { ...old, status: "running", credits: [credit("0", -1)] };
   view.rerender(<TraceMinimap {...props} actionScores={automaticActionScores(response(partial), steps)} />);
-  expect(screen.getByRole("button", { name: "Step 1: Response, credit -0.50" }).lastElementChild).toHaveStyle({ height: "16px" });
-  expect(screen.getByRole("button", { name: "Step 2: Response, credit +1.00, previous annotation" }).lastElementChild).toHaveStyle({ height: "46px" });
+  expect(screen.getByRole("button", { name: "Step 1: Response, credit -0.50" }).lastElementChild).toHaveStyle({ height: "25%", top: "50%" });
+  expect(screen.getByRole("button", { name: "Step 2: Response, credit +1.00, previous annotation" }).lastElementChild).toHaveStyle({ height: "50%", bottom: "50%" });
 });
 
 it("lets uncertain current results supersede old scores and never applies scores to other steps", () => {
@@ -64,8 +64,8 @@ it("uses continuous expected credit for current and previous bar heights without
   expect(scores.get("0")?.credit).toBe(0.35);
   expect(scores.get("1")?.credit).toBe(0.7);
   render(<TraceMinimap steps={steps} annotations={[]} actionScores={scores} scroller={{ current: null }} navigation={{ current: null }} onJump={vi.fn()} />);
-  expect(screen.getByRole("button", { name: "Step 1: Response, credit +0.35" }).lastElementChild).toHaveStyle({ height: "33px" });
-  expect(screen.getByRole("button", { name: "Step 2: Response, credit +0.70, previous annotation" }).lastElementChild).toHaveStyle({ height: "40px" });
+  expect(screen.getByRole("button", { name: "Step 1: Response, credit +0.35" }).lastElementChild).toHaveStyle({ height: "17.5%", bottom: "50%" });
+  expect(screen.getByRole("button", { name: "Step 2: Response, credit +0.70, previous annotation" }).lastElementChild).toHaveStyle({ height: "35%", bottom: "50%" });
 });
 
 it("never replaces an explicit missing expected credit with a legacy categorical score", () => {

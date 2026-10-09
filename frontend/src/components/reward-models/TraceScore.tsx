@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import { LoaderCircle, RotateCw } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import type { TraceEvaluationResponse } from "@/lib/workbench-api";
 
 function scoreState(evaluation: TraceEvaluationResponse | null, error: string | null) {
@@ -38,11 +39,14 @@ export default function TraceScore({ evaluation, error, onRescore }: { evaluatio
       {state.label && <span className="sr-only">{state.label}</span>}
       {!onRescore && state.busy && <LoaderCircle aria-hidden="true" className="size-3 animate-spin motion-reduce:animate-none text-muted-foreground" />}
     </div>
-    {onRescore && <button type="button" aria-label={busy ? "Scoring trace" : "Rescore trace"} title={busy ? "Scoring automatically…" : `${description} Rescore trace.`} disabled={busy} onClick={() => {
+    {onRescore && <TooltipProvider><Tooltip><TooltipTrigger asChild><button type="button" aria-label={busy ? "Scoring trace" : "Rescore trace"} disabled={busy} onClick={() => {
       setRequesting(true);
       void onRescore().catch(() => toast.error("Couldn’t start scoring. Try again.")).finally(() => setRequesting(false));
     }} className="inline-flex size-7 cursor-pointer items-center justify-center rounded-md text-muted-foreground hover:bg-surface hover:text-foreground disabled:cursor-default">
       <RotateCw className={`size-3.5 ${busy ? "animate-spin motion-reduce:animate-none" : ""}`} />
-    </button>}
+    </button></TooltipTrigger><TooltipContent side="bottom" sideOffset={6} className="block max-w-64 leading-relaxed">
+      <span className="font-medium">{busy ? "Scoring trace…" : "Rescore trace"}</span>
+      <p>{busy ? "Updating automatic labels and scores." : "Rerun automatic labels and recalculate step and trace scores."}</p>
+    </TooltipContent></Tooltip></TooltipProvider>}
   </div>;
 }
