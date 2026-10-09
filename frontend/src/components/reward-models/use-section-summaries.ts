@@ -12,10 +12,10 @@ function identity(node: TraceGroup): string {
   // must never trigger another generation request.
   let hash = 2166136261;
   for (const row of node.rows) for (const step of rowSteps(row)) {
-    const text = JSON.stringify([step.id, step.role, step.content, step.tool_name, step.tool_input]);
+    const text = JSON.stringify([step.id, step.role, step.content, step.tool_name, step.tool_input, step.metadata?.thinking]);
     for (let i = 0; i < text.length; i++) hash = Math.imul(hash ^ text.charCodeAt(i), 16777619);
   }
-  return `section-assessment-v3:${range(node).first_step_id}:${range(node).last_step_id}:${hash >>> 0}`;
+  return `section-assessment-v4:${range(node).first_step_id}:${range(node).last_step_id}:${hash >>> 0}`;
 }
 
 export function useSectionSummaries(traceId: string, nodes: TraceGroup[]) {

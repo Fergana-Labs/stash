@@ -17,7 +17,6 @@ import { TraceSkeleton } from "@/components/reward-models/RmSkeletons";
 import TraceFlamegraph from "@/components/reward-models/TraceFlamegraph";
 import { automaticActionScores, automaticAnnotationProgress } from "@/components/reward-models/automatic-credit";
 import TraceMinimap from "@/components/reward-models/TraceMinimap";
-import TraceThemeToggle from "@/components/reward-models/TraceThemeToggle";
 import TraceTrainingStatus from "@/components/reward-models/TraceTrainingStatus";
 import TraceScore from "@/components/reward-models/TraceScore";
 import { type StepAnnotations } from "@/components/reward-models/TraceTimeline";
@@ -30,6 +29,7 @@ import TraceExplorer from "@/components/reward-models/TraceExplorer";
 import { buildTraceOutline, groupPath, traceExplorerLevel } from "@/components/reward-models/trace-outline";
 import { presentTrace } from "@/components/reward-models/trace-presentation";
 import TraceScrollRail from "@/components/reward-models/TraceScrollRail";
+import { TRACE_STEP_INSET } from "@/components/reward-models/trace-scroll";
 import { useSectionSummaries } from "@/components/reward-models/use-section-summaries";
 import { useAuth } from "@/hooks/useAuth";
 import { rmCreateAnnotation, rmDeleteAnnotation, rmGetTrace, rmUpdateAnnotation } from "@/lib/api";
@@ -119,7 +119,7 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
         const element = document.getElementById(`step-${stepId}`);
         const container = scroller.current;
         if (!element || !container || !navigation.current) return;
-        const top = container.scrollTop + element.getBoundingClientRect().top - Math.max(container.getBoundingClientRect().top, navigation.current.getBoundingClientRect().bottom) - 40;
+        const top = container.scrollTop + element.getBoundingClientRect().top - Math.max(container.getBoundingClientRect().top, navigation.current.getBoundingClientRect().bottom) - TRACE_STEP_INSET;
         container.scrollTo({ top, behavior: "instant" });
       });
     };
@@ -266,7 +266,7 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
       const element = document.getElementById(`step-${stepId}`);
       const container = scroller.current;
       if (!element || !container || !navigation.current) return;
-      const top = container.scrollTop + element.getBoundingClientRect().top - Math.max(container.getBoundingClientRect().top, navigation.current.getBoundingClientRect().bottom) - 40;
+      const top = container.scrollTop + element.getBoundingClientRect().top - Math.max(container.getBoundingClientRect().top, navigation.current.getBoundingClientRect().bottom) - TRACE_STEP_INSET;
       container.scrollTo({ top, behavior: "instant" });
     });
   }
@@ -326,7 +326,6 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
             </div>
             <div className="flex shrink-0 items-center gap-1.5">
               <TraceTrainingStatus models={trace.training_models ?? []} />
-              <TraceThemeToggle />
               <TraceScore evaluation={evaluation} error={loadError} onRescore={evaluation?.owner_user_id === viewerId ? () => wbAssess(traceId).then(load) : undefined} />
               <button
                 type="button"
@@ -363,7 +362,7 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
               requestAnimationFrame(() => {
                 const container = scroller.current;
                 const target = first ? document.getElementById(`step-${first.id}`) : null;
-                container?.scrollTo({ top: target && container ? container.scrollTop + target.getBoundingClientRect().top - container.getBoundingClientRect().top - 40 : 0, behavior: "instant" });
+                container?.scrollTo({ top: target && container ? container.scrollTop + target.getBoundingClientRect().top - container.getBoundingClientRect().top - TRACE_STEP_INSET : 0, behavior: "instant" });
               });
             }}
             ann={ann} isExpanded={isExpanded} onToggle={toggleRow} onOpenRows={openRows}

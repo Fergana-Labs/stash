@@ -224,8 +224,9 @@ Show less control or Escape collapses it and keeps the message in view. There is
 no separate message reader. Each input
 variable and tool output has one disclosure row and an explicitly named copy
 action. Recognized code and fenced Markdown blocks use syntax highlighting while
-preserving annotation offsets. Displayed step numbers live in the left gutter.
-The theme control remembers the choice; dark mode uses warm charcoal surfaces,
+preserving annotation offsets. Displayed step numbers live in the left gutter,
+centered on each message heading. The theme control lives at the bottom of the
+left sidebar and remembers the choice; dark mode uses warm charcoal surfaces,
 cream text, and Stash's orange accents. Model creation/training status links to the current user's model that
 was trained on this trace; another reviewer's private models are not exposed.
 
@@ -233,9 +234,13 @@ Entering a leaf section scrolls to its first step in the complete chronological
 trace. Scrolling continues across section boundaries, and Back to sections
 returns to the logical task/subtask cards. Only ancestor breadcrumbs are clickable;
 the current section is plain text. The left rail remains global.
+Sections without assistant responses or tool calls are context, not agent work.
+They remain ungraded, including when an older cached assessment contains a score.
 The top minimap remains navigable before grades arrive; ungraded messages have
-small dots instead of credit heights. Hover previews stay on one line below the
-chart, showing the step number, recorded time, a content excerpt, and available
+small dots instead of credit heights. A clicked step stays selected even when
+the bottom of the trace prevents it from reaching the sticky breadcrumb;
+manual scrolling resumes viewport tracking. Hover previews stay on one line
+below the chart, showing the step number, recorded time, a content excerpt, and available
 credit or pending status. Long previews truncate. The label summary, Labels/Scores
 toggles, scoring explainer, and keyboard hints are omitted; inline labels and
 scores remain available. A small rescore icon shows activity

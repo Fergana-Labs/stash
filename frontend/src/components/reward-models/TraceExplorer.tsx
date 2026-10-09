@@ -7,7 +7,8 @@ import { cn } from "@/lib/utils";
 import type { TraceGroup } from "./trace-outline";
 import { sectionFallbackTitle, traceExplorerLevel } from "./trace-outline";
 import { rowHead } from "./trace-presentation";
-import type { TraceRow } from "./trace-rows";
+import { rowSteps, type TraceRow } from "./trace-rows";
+import { isGradableAction } from "./automatic-credit";
 import TraceTimeline, { type StepAnnotations } from "./TraceTimeline";
 import type { useSectionSummaries } from "./use-section-summaries";
 import TraceSectionScore from "./TraceSectionScore";
@@ -104,7 +105,7 @@ export default function TraceExplorer({ groups, path, onPath, assessments, ann, 
           <div className="flex w-full items-center gap-3"><h3 className="m-0 line-clamp-2 min-w-0 flex-1 text-[15px] font-medium leading-snug">{title(node)}</h3><span className="shrink-0 text-[11px] text-muted-foreground tabular-nums">{range(node)}</span><ChevronRight className="size-4 shrink-0 text-muted-foreground" /></div>
           {generated && <p className="m-0 mt-1.5 line-clamp-2 text-[13px] leading-relaxed text-muted-foreground">{generated.summary}</p>}
           <div className="mt-2 flex items-center gap-3 text-[11px] text-muted-foreground"><span>{node.rows.length} steps</span>{node.children.length > 0 && <span>{node.children.length} subtasks</span>}</div>
-        </button><TraceSectionScore section={generated} range={range(node)} loading={status === "loading"} /></div>;
+        </button><TraceSectionScore section={generated} range={range(node)} loading={status === "loading"} hasActions={node.rows.some((row) => rowSteps(row).some(isGradableAction))} /></div>;
       })}</div>}
   </section>;
 }

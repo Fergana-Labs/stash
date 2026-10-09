@@ -5,6 +5,16 @@ everything before it is captured in git history (`git log`), not here.
 
 ## Unreleased
 
+- Keep the trace minimap marker on the selected step after a jump by matching
+  scroll tracking to the space reserved for the sticky breadcrumb. Preserve
+  clicked selections when a jump reaches the bottom, until the viewer scrolls
+  or navigates elsewhere.
+
+- Align trace step numbers with their message headings and move the theme toggle
+  to the bottom-left sidebar.
+- Leave sections containing only supplied context ungraded instead of assigning
+  success scores to system instructions, requests, or tool observations.
+
 - Simplify trace navigation and remove the label summary, Labels/Scores toggles,
   scoring explainer, and redundant navigation hints. Keep long-message collapse
   controls visible while scrolling, use warm Stash colors in dark mode, and show

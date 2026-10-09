@@ -65,7 +65,17 @@ function RowFrame({ step, ann, children, className }: { step: RmStep; ann: StepA
         className,
       )}
     >
-      <span aria-label={`Step ${ann.stepNumber?.(step) ?? step.index + 1}`} className="absolute top-1 left-0 w-6 text-right font-mono text-[10px] tabular-nums text-muted-foreground">{ann.stepNumber?.(step) ?? step.index + 1}</span>
+      {children}
+    </div>
+  );
+}
+
+/** Keep the gutter number centered on its heading, regardless of row padding or content. */
+function RowHeader({ step, ann, children, className }: { step: RmStep; ann: StepAnnotations; children: ReactNode; className?: string }) {
+  const number = ann.stepNumber?.(step) ?? step.index + 1;
+  return (
+    <div className={cn("relative -ml-8 flex items-center gap-3 pl-8", className)}>
+      <span aria-label={`Step ${number}`} className="absolute inset-y-0 left-0 flex w-6 items-center justify-end font-mono text-[10px] tabular-nums text-muted-foreground">{number}</span>
       {children}
     </div>
   );
@@ -211,7 +221,7 @@ function PromptRow({ step, ann, repeated, expanded, onToggle }: {
 }) {
   return (
     <RowFrame step={step} ann={ann} className="group/row">
-      <div className="mb-2 flex min-h-8 items-center gap-3">
+      <RowHeader step={step} ann={ann} className="mb-2 min-h-8">
         <button type="button" onClick={onToggle} aria-expanded={expanded}
           aria-label={`${expanded ? "Collapse" : "Expand"} ${repeated ? "repeated user message" : "user message"}`}
           className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-left">
@@ -221,7 +231,7 @@ function PromptRow({ step, ann, repeated, expanded, onToggle }: {
         </button>
         <Labels step={step} ann={ann} className="shrink-0 flex-nowrap" />
         <StepMetadata step={step} ann={ann} />
-      </div>
+      </RowHeader>
       {expanded && <StepContent step={step} ann={ann} markdown max={300} />}
     </RowFrame>
   );
@@ -233,13 +243,13 @@ function AssistantRow({ step, ann, first }: { step: RmStep; ann: StepAnnotations
   const thinking = isThinking(step);
   return (
     <RowFrame step={step} ann={ann} className={cn("group/row", !first && "pt-3")}>
-      <div className="mb-1 flex min-h-5 items-center gap-3">
+      <RowHeader step={step} ann={ann} className="mb-1 min-h-5">
         <span className={cn(first ? "text-[13px] font-semibold text-blue-600 dark:text-blue-300" : "text-[11px] text-blue-600 dark:text-blue-300")}>
           {first ? "Assistant" : thinking ? "Thinking" : "Response"}
         </span>
         <Labels step={step} ann={ann} />
         <StepMetadata step={step} ann={ann} />
-      </div>
+      </RowHeader>
       <ScoreLine step={step} ann={ann} className="mb-1.5" />
       <div className={cn(thinking && "text-dim italic")}>
         <StepContent step={step} ann={ann} markdown max={440} />
@@ -276,7 +286,7 @@ function ToolRow({
           <StepContent step={call} ann={ann} markdown max={300} />
         </div>
       )}
-      <div className="flex min-h-8 items-center gap-3">
+      <RowHeader step={head} ann={ann} className="min-h-8">
         <button type="button" onClick={onToggle} aria-expanded={expanded}
           aria-label={`${expanded ? "Collapse" : "Expand"} ${toolLabel(name)} ${call ? "tool call" : "tool result"}`}
           className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-left hover:text-foreground">
@@ -288,7 +298,7 @@ function ToolRow({
         {isError && <span className="text-[11px] text-red-600">Error</span>}
         <Labels step={head} ann={ann} className="shrink-0 flex-nowrap" />
         <StepMetadata step={head} ann={ann} />
-      </div>
+      </RowHeader>
       {expanded && <ScoreLine step={head} ann={ann} className="mb-2 ml-5" />}
       {expanded && <div className="mb-2 ml-5 text-[13px]">
         {call?.tool_input && <ToolInput input={call.tool_input} tool={name ?? ""} />}
@@ -319,14 +329,14 @@ function ToolOutput({ step, ann, nested }: { step: RmStep; ann: StepAnnotations;
 function SystemRow({ step, ann, expanded, onToggle }: { step: RmStep; ann: StepAnnotations; expanded: boolean; onToggle: () => void }) {
   return (
     <RowFrame step={step} ann={ann}>
-      <div className="group/row flex min-h-8 items-center gap-3">
+      <RowHeader step={step} ann={ann} className="group/row min-h-8">
         <button type="button" onClick={onToggle} aria-expanded={expanded} aria-label={`${expanded ? "Collapse" : "Expand"} system message`}
           className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-left text-[12px] text-muted-foreground hover:text-foreground">
           <DisclosureIcon expanded={expanded} /><span className="shrink-0 font-medium">System</span>
           {!expanded && <span className="truncate text-xs">{readableExcerpt(step.content)}</span>}
         </button>
         <StepMetadata step={step} ann={ann} />
-      </div>
+      </RowHeader>
       {expanded && <div className="mb-4 mt-2 pl-5"><StepContent step={step} ann={ann} markdown max={420} /></div>}
     </RowFrame>
   );
