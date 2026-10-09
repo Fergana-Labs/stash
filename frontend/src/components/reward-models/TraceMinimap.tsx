@@ -41,12 +41,12 @@ function StepPreview({ step, score, status }: { step: RmStep; score?: RmActionSc
     ? `${toolLabel(step.tool_name)}${detail ? `: ${detail.replace(/\s+/g, " ").trim()}` : ""}`
     : step.images?.length ? "Attached an image" : `${KINDS[kindOf(step)].label} message`);
   return <>
-    <div className="flex items-center gap-2 text-[11px] tabular-nums opacity-70">
+    <span className="flex shrink-0 items-center gap-2 text-[11px] tabular-nums opacity-70">
       <span>({step.index + 1})</span>
       {time && Number.isFinite(time.getTime()) && <time dateTime={timestamp as string}>{time.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</time>}
-    </div>
-    <p className="m-0 mt-1 line-clamp-3 break-words leading-relaxed">{summary.length > 180 ? `${summary.slice(0, 180).trimEnd()}…` : summary}</p>
-    {(score || status) && <div className="mt-1 text-[11px] opacity-70">{score ? `Credit ${formatCredit(score.credit)}${score.stale ? " · previous annotation" : ""}` : status}</div>}
+    </span>
+    <span className="min-w-0 flex-1 truncate">{summary.length > 180 ? `${summary.slice(0, 180).trimEnd()}…` : summary}</span>
+    {(score || status) && <span className="max-w-40 shrink-0 truncate text-[11px] opacity-70">{score ? `Credit ${formatCredit(score.credit)}${score.stale ? " · previous annotation" : ""}` : status}</span>}
   </>;
 }
 
@@ -203,8 +203,8 @@ function LatestTraceMinimap({ steps, annotations, actionScores, annotationStatus
         {hoveredIndex !== null && steps[hoveredIndex] && <div
           id={tooltipId}
           role="tooltip"
-          className="pointer-events-none absolute bottom-full z-20 mb-2 w-64 max-w-full rounded-md bg-foreground px-3 py-2 text-xs text-background shadow-md"
-          style={{ left: `clamp(0px, calc(${(hoveredIndex + 0.5) / steps.length * 100}% - 8rem), max(0px, calc(100% - 16rem)))` }}
+          className="pointer-events-none absolute top-full z-20 mt-2 flex h-8 w-[40rem] max-w-full items-center gap-2 overflow-hidden whitespace-nowrap rounded-md bg-foreground px-3 text-xs text-background shadow-md"
+          style={{ left: `clamp(0px, calc(${(hoveredIndex + 0.5) / steps.length * 100}% - 20rem), max(0px, calc(100% - 40rem)))` }}
         ><StepPreview step={steps[hoveredIndex]} score={actionScores?.get(steps[hoveredIndex].id)} status={isGradableAction(steps[hoveredIndex]) ? unscoredReasons?.get(steps[hoveredIndex].id) ?? "awaiting score" : undefined} /></div>}
       </div>
       <span className="shrink-0 whitespace-nowrap text-[10px] text-muted-foreground tabular-nums">Step {steps[activeIndex]?.index + 1} of {steps.length}</span>
