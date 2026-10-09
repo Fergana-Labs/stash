@@ -90,6 +90,24 @@ async def _insert_representative_source_document(
         return
 
     source_id = UUID(source["id"])
+    if table == "drive_documents":
+        from backend.database import get_pool
+
+        row_id = await source_service.upsert_drive_document(
+            source_id=source_id,
+            owner_user_id=owner_user_id,
+            path="record-1",
+            name="Record 1",
+            external_ref="provider-record-1",
+            external_updated_at=None,
+        )
+        await get_pool().execute(
+            "UPDATE drive_documents SET content = $2, extraction_status = 'done' WHERE id = $1",
+            row_id,
+            "confidential customer content",
+        )
+        return
+
     if table not in source_service.CONTENT_TABLES:
         await source_service.upsert_index_row(
             table=table,
