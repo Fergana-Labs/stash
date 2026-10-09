@@ -23,7 +23,9 @@ import asyncio
 import json
 import logging
 import re
+from collections import Counter
 from datetime import datetime
+from pathlib import PurePosixPath
 from uuid import UUID
 
 import httpx
@@ -389,6 +391,37 @@ async def index_google_drive(source: dict) -> str | None:
     return None
 
 
+def _folder_entry_paths(entries: list[dict]) -> list[tuple[dict, str]]:
+    """Give every sibling a unique path component, independent of list order.
+
+    Drive permits duplicate file/folder names. Reserve literal names before
+    adding ID suffixes so a real file named 'Catalog [id].pdf' cannot collide
+    with a generated path. Escape slashes so a title cannot impersonate a
+    nested path. Display names remain the original Google titles.
+    """
+
+    def component(name: str) -> str:
+        name = name.replace("%", "%25").replace("/", "%2F")
+        return name.replace(".", "%2E") if name in (".", "..") else name
+
+    counts = Counter(component(entry["name"]) for entry in entries)
+    reserved = set(counts)
+    result = []
+    for entry in sorted(entries, key=lambda entry: (entry["name"], entry["id"])):
+        name = component(entry["name"])
+        path = name
+        if counts[name] > 1:
+            suffix = PurePosixPath(name).suffix
+            stem = name.removesuffix(suffix) if suffix else name
+            path = f"{stem} [{entry['id']}]{suffix}"
+            while path in reserved:
+                stem += f" [{entry['id']}]"
+                path = f"{stem} [{entry['id']}]{suffix}"
+        reserved.add(path)
+        result.append((entry, path))
+    return result
+
+
 async def index_google_drive_folder(source: dict) -> str | None:
     """Crawl one picked folder and extract every file's text.
 
@@ -406,8 +439,7 @@ async def index_google_drive_folder(source: dict) -> str | None:
 
     token = await get_valid_token(owner_user_id, "google")
     headers = {"Authorization": f"Bearer {token}"}
-    present: list[str] = []
-    stale: list[UUID] = []
+    documents: list[dict] = []
     seen: set[str] = set()
 
     async with httpx.AsyncClient(timeout=120.0, headers=headers) as client:
@@ -415,7 +447,14 @@ async def index_google_drive_folder(source: dict) -> str | None:
         async def _walk(parent_id: str, prefix: str, depth: int) -> None:
             if depth > MAX_FOLDER_DEPTH:
                 return
-            for entry in await _list(client, f"'{parent_id}' in parents and trashed = false"):
+            children = await _list(client, f"'{parent_id}' in parents and trashed = false")
+            entries = []
+            # Prefer an actual file/folder over an alias to it. Resolve and
+            # deduplicate identities before deciding which titles collide.
+            for entry in sorted(
+                children,
+                key=lambda e: (e["mimeType"] == MIME_SHORTCUT, e["name"], e["id"]),
+            ):
                 if entry["id"] in seen:
                     continue
                 seen.add(entry["id"])
@@ -424,33 +463,31 @@ async def index_google_drive_folder(source: dict) -> str | None:
                     if entry["id"] in seen:
                         continue
                     seen.add(entry["id"])
+                entries.append(entry)
+            for entry, component in _folder_entry_paths(entries):
                 name = entry["name"]
                 if entry["mimeType"] == MIME_FOLDER:
-                    await _walk(entry["id"], f"{prefix}{name}/", depth + 1)
+                    await _walk(entry["id"], f"{prefix}{component}/", depth + 1)
                     continue
-                path = f"{prefix}{name}"
-                present.append(path)
-                row_id = await source_service.upsert_drive_document(
-                    source_id=source_id,
-                    owner_user_id=owner_user_id,
-                    path=path,
-                    name=name,
-                    external_ref=entry["id"],
-                    external_updated_at=_parse_time(entry.get("modifiedTime")),
+                documents.append(
+                    {
+                        "path": f"{prefix}{component}",
+                        "name": name,
+                        "external_ref": entry["id"],
+                        "external_updated_at": _parse_time(entry.get("modifiedTime")),
+                    }
                 )
-                if row_id is not None:
-                    stale.append(row_id)
 
         await _require_readable_folder(client, folder_id)
         await _walk(folder_id, "", 0)
 
-    await source_service.remove_missing_documents("drive_documents", source_id, present)
+    stale = await source_service.sync_drive_documents(source_id, owner_user_id, documents)
     for row_id in stale:
         await enqueue_extraction(row_id)
     logger.info(
         "google drive folder %s: indexed %d file(s), %d to extract",
         source_id,
-        len(present),
+        len(documents),
         len(stale),
     )
     return None

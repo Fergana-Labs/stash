@@ -11,12 +11,13 @@ upstream stays the single source of truth, and membership stays explicit the
 way 0181 requires.
 """
 
+import json
 from uuid import UUID
 
 import pytest
 from httpx import AsyncClient
 
-from backend.services import skill_service, source_service
+from backend.services import agent_runtime, skill_service, source_service
 
 from .conftest import unique_name
 
@@ -128,6 +129,48 @@ async def test_a_document_declares_itself_a_skill_through_its_frontmatter(
     assert skills[0]["description"] == "Use when a customer reports boost loss."
     assert skills[0]["backing"] == "source"
     assert skills[0]["has_instructions"] is True
+
+
+@pytest.mark.asyncio
+async def test_duplicate_skill_names_require_an_explicit_document(client: AsyncClient, pool):
+    key, owner_id = await _register(client)
+    source_id = await _skill_shelf(pool, owner_id)
+    for ref, body in (("old-doc", "Old instructions"), ("new-doc", "New instructions")):
+        await _doc(
+            pool,
+            owner_id,
+            source_id,
+            path=f"Calipers [{ref}]",
+            external_ref=ref,
+            content=_declared("air-disc-brake-calipers", "Caliper lookup", body),
+        )
+    headers = {"Authorization": f"Bearer {key}"}
+    for name in ("air-disc-brake-calipers", "AIR-DISC-BRAKE-CALIPERS"):
+        response = await client.get(f"/api/v1/me/skills/{name}", headers=headers)
+        assert response.status_code == 409
+        detail = response.json()["detail"]
+        assert detail["error"] == "ambiguous"
+        assert {item["source_ref"] for item in detail["candidates"]} == {"old-doc", "new-doc"}
+    for ref, body in (("old-doc", "Old instructions"), ("new-doc", "New instructions")):
+        for route in ("skills", "source-skills"):
+            response = await client.get(f"/api/v1/me/{route}/{ref}", headers=headers)
+            assert response.status_code == 200
+            assert response.json()["body"].strip() == body
+    scope_token = agent_runtime._scope_ctx.set(owner_id)
+    user_token = agent_runtime._user_ctx.set(owner_id)
+    try:
+        result = await agent_runtime._read_skill.handler({"name": "AIR-DISC-BRAKE-CALIPERS"})
+        payload = json.loads(result["content"][0]["text"])
+        assert payload["error"] == "ambiguous"
+        assert {item["url"].rsplit("/", 1)[-1] for item in payload["candidates"]} == {
+            "old-doc",
+            "new-doc",
+        }
+        result = await agent_runtime._read_skill.handler({"name": "new-doc"})
+        assert "New instructions" in json.loads(result["content"][0]["text"])["combined"]
+    finally:
+        agent_runtime._user_ctx.reset(user_token)
+        agent_runtime._scope_ctx.reset(scope_token)
 
 
 @pytest.mark.asyncio
@@ -389,13 +432,10 @@ async def test_an_owned_shelf_with_nothing_in_it_still_reports_itself(client: As
 
 @pytest.mark.asyncio
 async def test_a_rename_in_drive_does_not_change_a_skill_s_address(client: AsyncClient, pool):
-    """Our row is keyed on the document's path, so renaming it upstream deletes
-    one row and inserts another. A skill addressed by that row would lose its
-    url, its pin, and any link an agent had been handed — for a rename. The
-    upstream file id survives, so that is what a skill is addressed by."""
+    """A rename preserves the cached body, row, URL, and pin."""
     _key, owner_id = await _register(client)
     source_id = await _skill_shelf(pool, owner_id)
-    await _doc(
+    document_id = await _doc(
         pool,
         owner_id,
         source_id,
@@ -405,16 +445,25 @@ async def test_a_rename_in_drive_does_not_change_a_skill_s_address(client: Async
     )
     before = (await skill_service.list_skills(owner_id, owner_id))[0]["source_ref"]
 
-    # The walk after the author renames the file: same Drive id, new path, and
-    # the row at the old path swept away.
-    await pool.execute("DELETE FROM drive_documents WHERE source_id = $1", source_id)
-    await _doc(
-        pool,
-        owner_id,
+    stale = await source_service.sync_drive_documents(
         source_id,
-        path="Turbochargers.md",
-        content=_declared("Turbochargers", "Boost loss."),
-        external_ref="drive-file-stable",
+        owner_id,
+        [
+            {
+                "path": "Turbochargers.md",
+                "name": "Turbochargers.md",
+                "external_ref": "drive-file-stable",
+                "external_updated_at": None,
+            }
+        ],
+    )
+    assert stale == []
+    assert (
+        await pool.fetchval(
+            "SELECT id FROM drive_documents WHERE source_id = $1 AND path = 'Turbochargers.md'",
+            source_id,
+        )
+        == document_id
     )
 
     after = (await skill_service.list_skills(owner_id, owner_id))[0]["source_ref"]

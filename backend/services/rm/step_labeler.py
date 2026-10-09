@@ -239,7 +239,7 @@ def clip(text: str, cap: int) -> str:
         return text
     marker = "\n…[content omitted]…\n"
     if cap <= len(marker):
-        return marker[:max(0, cap)]
+        return marker[: max(0, cap)]
     available = cap - len(marker)
     head = int(available * 0.7)
     tail = available - head

@@ -5,6 +5,11 @@ everything before it is captured in git history (`git log`), not here.
 
 ## Unreleased
 
+- Keep same-named files in connected Google Drive folders separately indexed,
+  preserving each file's contents through renames and repeat syncs. Report
+  duplicate skill names with the documents to choose from instead of silently
+  loading one of them.
+
 - Align the sticky Show less control with the left edge of message content.
 
 - Default trace credit charts to ±1 and omit the inactive Sections heading at

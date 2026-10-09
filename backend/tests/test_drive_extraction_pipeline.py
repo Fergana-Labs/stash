@@ -168,6 +168,171 @@ async def test_an_unchanged_file_is_not_re_extracted(client: AsyncClient, monkey
     assert enqueued == []
 
 
+async def test_same_named_skills_keep_separate_bodies_across_syncs_and_removal(
+    client: AsyncClient, monkeypatch
+):
+    """A second Drive doc must never replace the first doc's identity/body.
+
+    Reproduce the production sequence: old skill already extracted, newer
+    same-titled skill added, listing reordered, then old file removed.
+    """
+    owner_id = await _owner(client)
+    src = await _folder_source(owner_id)
+    source_id = UUID(src["id"])
+    pool = get_pool()
+    await pool.execute("UPDATE user_sources SET binds_skills = TRUE WHERE id = $1", source_id)
+    old = {**_entry("Air Disc Brake Calipers"), "id": "older-doc"}
+    new = {**old, "id": "newer-doc"}
+    bodies = {
+        "older-doc": "---\nname: air-disc-brake-calipers\ndescription: Original\n---\nOld instructions",
+        "newer-doc": "---\nname: air-disc-brake-calipers\ndescription: Expanded\n---\nNew instructions",
+    }
+
+    async def extract(_owner, file_id, **_kwargs):
+        return bodies[file_id]
+
+    monkeypatch.setattr(indexer, "extract_drive_text", extract)
+    monkeypatch.setattr("backend.database.close_db", _noop)
+    _stub_drive(monkeypatch, [old])
+    await indexer.index_google_drive_folder(src)
+    old_id = await pool.fetchval("SELECT id FROM drive_documents WHERE source_id = $1", source_id)
+    assert await extract_drive_one._run(old_id, await _task_id(old_id)) == 0
+
+    enqueued = _stub_drive(monkeypatch, [new, old])
+    await indexer.index_google_drive_folder(src)
+    rows = await pool.fetch(
+        "SELECT * FROM drive_documents WHERE source_id = $1 ORDER BY external_ref", source_id
+    )
+    assert len(rows) == 2
+    by_ref = {row["external_ref"]: row for row in rows}
+    assert by_ref["older-doc"]["id"] == old_id
+    assert by_ref["older-doc"]["content"] == bodies["older-doc"]
+    assert by_ref["newer-doc"]["content"] is None  # Never borrow the old file's text.
+    new_id = by_ref["newer-doc"]["id"]
+    assert enqueued == [str(new_id)]
+    assert len({row["path"] for row in rows}) == 2
+    assert await extract_drive_one._run(new_id, await _task_id(new_id)) == 0
+
+    enqueued = _stub_drive(monkeypatch, [old, new])
+    await indexer.index_google_drive_folder(src)
+    assert enqueued == []
+    for row in rows:
+        doc = await source_service._read_drive_document(source_id, row["path"])
+        assert doc["content"] == bodies[row["external_ref"]]
+        skill = await skill_service.read_source_skill(owner_id, row["external_ref"], owner_id)
+        assert skill["body"].strip() == (
+            "Old instructions" if row["external_ref"] == "older-doc" else "New instructions"
+        )
+    with pytest.raises(skill_service.AmbiguousSkillError):
+        await skill_service.read_skill(owner_id, "air-disc-brake-calipers", owner_id)
+
+    enqueued = _stub_drive(monkeypatch, [new])
+    await indexer.index_google_drive_folder(src)
+    assert enqueued == []
+    remaining = await pool.fetch("SELECT * FROM drive_documents WHERE source_id = $1", source_id)
+    assert len(remaining) == 1
+    assert remaining[0]["id"] == new_id
+    assert remaining[0]["path"] == "Air Disc Brake Calipers"
+    assert remaining[0]["content"] == bodies["newer-doc"]
+    skill = await skill_service.read_skill(owner_id, "air-disc-brake-calipers", owner_id)
+    assert skill["body"].strip() == "New instructions"
+
+
+async def test_duplicate_folders_and_literal_suffixes_cannot_overwrite_files(
+    client: AsyncClient, monkeypatch
+):
+    owner_id = await _owner(client)
+    src = await _folder_source(owner_id)
+    folders = [
+        {"id": identity, "name": "Manuals", "mimeType": indexer.MIME_FOLDER}
+        for identity in ("folder-a", "folder-b")
+    ]
+    files = [
+        {**_entry("Catalog.pdf"), "id": "a"},
+        {**_entry("Catalog.pdf"), "id": "b"},
+        {**_entry("Catalog [a].pdf"), "id": "literal"},
+        {**_entry("Manuals/a.pdf"), "id": "slash"},
+    ]
+    listings = {
+        src["external_ref"]: folders + files,
+        "folder-a": [{**_entry("Part.pdf"), "id": "part-a"}],
+        "folder-b": [{**_entry("Part.pdf"), "id": "part-b"}],
+    }
+    _stub_drive_listings(monkeypatch, listings)
+    await indexer.index_google_drive_folder(src)
+    rows = await get_pool().fetch(
+        "SELECT external_ref, path FROM drive_documents WHERE source_id = $1",
+        UUID(src["id"]),
+    )
+    paths = {row["external_ref"]: row["path"] for row in rows}
+    assert len(paths) == len(set(paths.values())) == 6
+    assert paths["literal"] == "Catalog [a].pdf"
+    assert paths["a"] == "Catalog [a] [a].pdf"
+    assert paths["part-a"] == "Manuals [folder-a]/Part.pdf"
+    assert paths["part-b"] == "Manuals [folder-b]/Part.pdf"
+    assert paths["slash"] == "Manuals%2Fa.pdf"
+
+
+async def test_swapping_names_keeps_each_files_content_and_pending_extraction(
+    client: AsyncClient, monkeypatch
+):
+    owner_id = await _owner(client)
+    src = await _folder_source(owner_id)
+    files = [_entry("A.pdf"), _entry("B.pdf")]
+    _stub_drive(monkeypatch, files)
+    await indexer.index_google_drive_folder(src)
+    pool = get_pool()
+    before = await pool.fetch(
+        "SELECT id, external_ref, extraction_task_id FROM drive_documents WHERE source_id = $1",
+        UUID(src["id"]),
+    )
+    await pool.execute(
+        "UPDATE drive_documents SET content = external_ref WHERE source_id = $1", UUID(src["id"])
+    )
+    files[0]["name"], files[1]["name"] = files[1]["name"], files[0]["name"]
+    enqueued = _stub_drive(monkeypatch, files)
+    await indexer.index_google_drive_folder(src)
+    assert enqueued == []  # Existing extraction claims survive the rename.
+    for original in before:
+        row = await pool.fetchrow("SELECT * FROM drive_documents WHERE id = $1", original["id"])
+        assert row["external_ref"] == row["content"] == original["external_ref"]
+        assert row["extraction_task_id"] == original["extraction_task_id"]
+        assert row["path"] == ("B.pdf" if original["external_ref"] == "drive-A.pdf" else "A.pdf")
+
+
+async def test_failed_nested_crawl_does_not_apply_partial_identity_changes(
+    client: AsyncClient, monkeypatch
+):
+    owner_id = await _owner(client)
+    src = await _folder_source(owner_id)
+    original = _entry("Original.pdf")
+    _stub_drive(monkeypatch, [original])
+    await indexer.index_google_drive_folder(src)
+    before = dict(
+        await get_pool().fetchrow(
+            "SELECT * FROM drive_documents WHERE source_id = $1", UUID(src["id"])
+        )
+    )
+
+    async def broken_list(_client, q):
+        if src["external_ref"] in q:
+            return [
+                {**original, "name": "A renamed file.pdf"},
+                {"id": "nested", "name": "Z folder", "mimeType": indexer.MIME_FOLDER},
+            ]
+        raise RuntimeError("Google listing failed")
+
+    monkeypatch.setattr(indexer, "_list", broken_list)
+    with pytest.raises(RuntimeError, match="Google listing failed"):
+        await indexer.index_google_drive_folder(src)
+    after = dict(
+        await get_pool().fetchrow(
+            "SELECT * FROM drive_documents WHERE source_id = $1", UUID(src["id"])
+        )
+    )
+    assert after == before
+
+
 async def test_a_file_edited_in_drive_is_re_extracted(client: AsyncClient, monkeypatch):
     owner_id = await _owner(client)
     src = await _folder_source(owner_id)
