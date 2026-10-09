@@ -29,7 +29,38 @@ export function taskCompletion(tasks: RmTaskCompletion[], numberById: Map<string
 export function completionAt(tasks: TaskCompletion[], index: number) {
   const task = tasks.find((task) => index >= task.first && index <= task.last);
   const point = task?.checkpoints.findLast((point) => point.index <= index);
-  return point && task ? { ...point, objective: task.objective } : null;
+  if (!point || !task) return null;
+  const next = task.checkpoints.find((point) => point.index > index);
+  if (point.completion === null || !next || next.completion === null || index === point.index) return { ...point, objective: task.objective };
+  const t = (index - point.index) / (next.index - point.index);
+  const slopes = checkpointSlopes(task);
+  const i = task.checkpoints.indexOf(point);
+  const width = next.index - point.index;
+  const a = point.completion + slopes[i] * width / 3;
+  const b = next.completion - slopes[i + 1] * width / 3;
+  return { ...point, objective: task.objective,
+    completion: (1 - t) ** 3 * point.completion + 3 * (1 - t) ** 2 * t * a + 3 * (1 - t) * t ** 2 * b + t ** 3 * next.completion,
+    reason: `Between progress estimates at steps ${point.index + 1} and ${next.index + 1}.`,
+  };
+}
+
+/** Shape-preserving Hermite slopes: follow the data, flatten only at a turn or plateau. */
+function checkpointSlopes(task: TaskCompletion): number[] {
+  return task.checkpoints.map((point, index, points) => {
+    if (point.completion === null) return 0;
+    const previous = points[index - 1];
+    const next = points[index + 1];
+    const left = previous?.completion != null ? (point.completion - previous.completion) / (point.index - previous.index) : null;
+    const right = next?.completion != null ? (next.completion - point.completion) / (next.index - point.index) : null;
+    if (left === null) return right ?? 0;
+    if (right === null) return point.index === task.last ? left : 0;
+    if (left * right <= 0) return 0;
+    const before = point.index - previous.index;
+    const after = next.index - point.index;
+    const w1 = 2 * after + before;
+    const w2 = after + 2 * before;
+    return (w1 + w2) / (w1 / left + w2 / right);
+  });
 }
 
 export function completionPath(tasks: TaskCompletion[], count: number): string {
@@ -37,14 +68,20 @@ export function completionPath(tasks: TaskCompletion[], count: number): string {
   const y = (value: number) => 100 - value * 100;
   const paths: string[] = [];
   for (const task of tasks) {
-    let path = "";
+    const slopes = checkpointSlopes(task);
+    let connected = false;
     for (const [i, point] of task.checkpoints.entries()) {
-      if (point.completion === null) { path = ""; continue; }
-      // A plateau means the last supported estimate, not inferred progress
-      // between checkpoints. Unknown evidence and new requests break the line.
+      if (point.completion === null) { connected = false; continue; }
+      if (!connected) paths.push(`M${x(point.index)},${y(point.completion)}`);
       const next = task.checkpoints[i + 1];
-      path = `${path ? `V${y(point.completion)}` : `M${x(point.index)},${y(point.completion)}`}H${x(next?.index ?? task.last)}`;
-      paths.push(path);
+      if (next?.completion != null) {
+        // Shared slopes make the curve C1 continuous without an artificial
+        // ease-in/ease-out at each checkpoint. No overshoot or invented wiggles.
+        const third = (x(next.index) - x(point.index)) / 3;
+        const width = next.index - point.index;
+        paths.push(`C${x(point.index) + third},${y(point.completion + slopes[i] * width / 3)} ${x(next.index) - third},${y(next.completion - slopes[i + 1] * width / 3)} ${x(next.index)},${y(next.completion)}`);
+      } else paths.push(`H${x(next?.index ?? task.last)}`);
+      connected = true;
     }
   }
   return paths.join(" ");

@@ -338,10 +338,12 @@ without opening the section.
 
 `POST /api/v1/rm/traces/{trace_id}/completion` estimates progress toward each
 independent user request. It is separate from local section success and action
-credit. The minimap overlays a teal step line using a fixed 0–100% right axis,
-while credit keeps its own left axis and Fit/±1 control. Checkpoints hold their
-last supported value until new evidence; null estimates and independent tasks
-break the line. Tool-result checkpoints map to their paired displayed row.
+credit. The minimap overlays a faint teal curve using a fixed 0–100% right axis,
+while credit keeps its own left axis and Fit/±1 control. A smooth interpolation
+connects checkpoints without overshooting them; null estimates and independent
+tasks break the line. Hover values follow the same curve and identify values
+between checkpoints as interpolated. Tool-result checkpoints map to their paired
+displayed row.
 
 The server's fast Anthropic model receives at most 104 sampled events, preserving
 requests, assistant messages, and evenly spaced tool evidence. Its prompt asks

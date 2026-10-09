@@ -5,7 +5,7 @@ everything before it is captured in git history (`git log`), not here.
 
 ## Unreleased
 
-- Add an estimated task-completion line to the trace minimap with its own 0–100%
+- Add a faint, smooth estimated task-completion curve to the trace minimap with its own 0–100%
   scale, evidence-based checkpoints, and separate segments for independent requests.
 - Outline the selected section on the minimap, shorten visible step ranges, and
   show every step in the side rail with stronger phase markers.
