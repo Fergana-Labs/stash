@@ -153,6 +153,7 @@ it("shows the recorded action and exposes tool help and exact inputs on focus", 
   expect(screen.queryByText(input.code)).not.toBeInTheDocument();
   fireEvent.focus(screen.getByLabelText("About Js"));
   expect(await screen.findByRole("tooltip")).toHaveTextContent("JavaScript execution tool");
+  expect(screen.getByRole("tooltip")).toHaveTextContent(JSON.stringify(input, null, 2).replace(/\s+/g, " "));
   fireEvent.blur(screen.getByLabelText("About Js"));
   fireEvent.focus(disclosure);
   expect(await screen.findByRole("tooltip")).toHaveTextContent(JSON.stringify(input, null, 2).replace(/\s+/g, " "));
@@ -161,6 +162,8 @@ it("shows the recorded action and exposes tool help and exact inputs on focus", 
   expect(within(screen.getByLabelText("Tool inputs")).getByText("Inputs")).toBeVisible();
   const tool = screen.getByRole("group", { name: "Tool" });
   expect(within(tool).getByLabelText("About Js")).toBeVisible();
+  fireEvent.focus(within(tool).getByLabelText("About Js"));
+  expect(await screen.findByRole("tooltip")).toHaveTextContent(input.code);
   expect(tool.compareDocumentPosition(screen.getByLabelText("Tool inputs")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   expect(screen.getByRole("button", { name: "Expand input code" })).toBeVisible();
 });

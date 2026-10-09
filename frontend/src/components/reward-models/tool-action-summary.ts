@@ -84,7 +84,7 @@ export function toolActionSummary(step: Pick<RmStep, "tool_name" | "tool_input">
   return short(action(name, input))!;
 }
 
-export function toolExplanation(name: string | null): string {
+export function toolExplanation(name: string | null): string | null {
   const bare = name?.toLowerCase().split(/__|\./).at(-1);
   if (bare === "js") return "JavaScript execution tool. Runs the code input; title describes the action.";
   if (bare === "exec") return "Script execution tool. Runs the input script, which can call other tools.";
@@ -93,5 +93,5 @@ export function toolExplanation(name: string | null): string {
   if (toolFamily(name) === "edit" || toolFamily(name) === "write") return "File editing tool. Applies the changes specified in its inputs.";
   if (toolFamily(name) === "search") return "Search tool. Finds content matching the supplied query or pattern.";
   if (toolFamily(name) === "browser") return "Browser tool. Performs the requested action in a browser.";
-  return `Recorded tool: ${name ?? "unknown"}. Expand the step to inspect its inputs and output.`;
+  return null;
 }

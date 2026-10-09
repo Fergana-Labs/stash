@@ -14,6 +14,7 @@ import type { Highlight } from "./source-anchors";
 import { Check, Copy, ChevronDown, ChevronRight, MessageSquarePlus } from "lucide-react";
 import { readableExcerpt } from "./trace-presentation";
 import ToolInput from "./ToolInput";
+import SyntaxCode from "./SyntaxCode";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { toolActionSummary, toolExplanation } from "./tool-action-summary";
 
@@ -234,10 +235,31 @@ function AssistantRow({ step, ann, expanded, onToggle }: { step: RmStep; ann: St
 
 /* ── tool call + result ─────────────────────────────────────────────── */
 
-function ToolIdentity({ name, prominent = false }: { name: string | null; prominent?: boolean }) {
+function ToolHoverContent({ call }: { call: RmStep }) {
+  const description = toolExplanation(call.tool_name);
+  const input = call.tool_input === null ? null : JSON.stringify(call.tool_input, null, 2);
+  return <TooltipContent side="top" align="start" sideOffset={6} collisionPadding={12} showArrow={false}
+    className="block w-[36rem] max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-sm border border-border bg-popover p-0 text-popover-foreground shadow-lg">
+    <div className="max-h-[min(26rem,var(--radix-tooltip-content-available-height))] overflow-auto overscroll-contain">
+      <div className="border-b border-border-subtle bg-surface/60 px-3 py-2 font-mono text-xs leading-relaxed">
+        <span className="mr-2 text-muted-foreground">(tool)</span>
+        <code className="break-all font-medium">{call.tool_name ?? "unknown"}</code>
+      </div>
+      {description && <p className="px-3 pt-2.5 text-xs leading-relaxed">{description}</p>}
+      <div className="px-3 py-2.5">
+        <div className="mb-1.5 text-[11px] font-medium text-muted-foreground">Inputs</div>
+        {input === null ? <p className="text-xs text-muted-foreground">No inputs recorded.</p>
+          : <SyntaxCode text={input} language={input.length <= 20_000 ? "json" : undefined} />}
+      </div>
+    </div>
+  </TooltipContent>;
+}
+
+function ToolIdentity({ call, prominent = false }: { call: RmStep; prominent?: boolean }) {
+  const name = call.tool_name;
   return <Tooltip><TooltipTrigger asChild>
     <span tabIndex={0} aria-label={`About ${toolLabel(name)}`} className={cn("min-w-0 cursor-help truncate rounded focus-visible:outline-2 focus-visible:outline-brand-500", prominent ? "text-[13px] font-medium text-foreground" : "max-w-36 shrink-0 text-[11px] text-muted-foreground")}>{toolLabel(name)}</span>
-  </TooltipTrigger><TooltipContent side="top" sideOffset={6} className="max-w-72 leading-relaxed">{toolExplanation(name)}</TooltipContent></Tooltip>;
+  </TooltipTrigger><ToolHoverContent call={call} /></Tooltip>;
 }
 
 function ToolRow({
@@ -275,19 +297,15 @@ function ToolRow({
           <span className="min-w-0 truncate text-[13px] font-medium text-foreground">{call ? summary : `Output · ${toolLabel(name)}`}</span>
           {!call && !expanded && <span className="min-w-0 truncate text-xs text-muted-foreground">{summary}</span>}
         </button>
-        </TooltipTrigger>{call && <TooltipContent side="bottom" align="start" sideOffset={6} collisionPadding={12}
-          className="block w-max max-w-[min(40rem,calc(100vw-2rem))] p-3 shadow-md">
-          <div className="mb-1.5 text-[11px] font-medium opacity-70">Inputs</div>
-          <pre className="m-0 max-h-64 overflow-auto whitespace-pre-wrap break-all font-mono text-[11px] leading-relaxed">{JSON.stringify(call.tool_input ?? {}, null, 2)}</pre>
-        </TooltipContent>}</Tooltip>
-        {call && !expanded && <ToolIdentity name={name} />}
+        </TooltipTrigger>{call && <ToolHoverContent call={call} />}</Tooltip>
+        {call && !expanded && <ToolIdentity call={call} />}
         {isError && <span className="text-[11px] text-red-600">Error</span>}
         <StepMetadata step={head} ann={ann} />
       </RowHeader>
       {expanded && <div className="mb-2 ml-5 text-[13px]">
         {call && <div role="group" aria-label="Tool" className="flex min-h-7 items-center gap-3">
           <span className="w-8 shrink-0 text-[11px] text-muted-foreground">Tool</span>
-          <ToolIdentity name={name} prominent />
+          <ToolIdentity call={call} prominent />
         </div>}
         {call?.tool_input && <ToolInput input={call.tool_input} tool={name ?? ""} />}
         {result && <ToolOutput step={result} ann={ann} nested={call !== null} />}
