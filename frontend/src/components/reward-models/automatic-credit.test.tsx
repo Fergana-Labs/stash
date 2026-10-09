@@ -45,12 +45,16 @@ it("counts only gradable actions and distinguishes previous, pending, and uncert
   const data = { ...response({ status: "running", credits: [credit("0", null)] } as TraceEvaluation), configured: true, boundary: { kind: "completed_response", step_index: 3 }, queue: { status: "queued", error: "Invalid response" } };
   const progress = automaticAnnotationProgress(data, mixed, automaticActionScores(data, mixed));
   expect(progress.label).toBe("1 of 4 actions scored · 1 previous · 2 awaiting scores · 1 with insufficient evidence · Retrying annotation update…");
-  expect([...progress.unscoredReasons]).toEqual([["0", "insufficient evidence"], ["2", "awaiting score"], ["new-action", "awaiting score"]]);
+  expect([...progress.unscoredReasons]).toEqual([["0", "insufficient evidence"], ["2", "queued for scoring"], ["new-action", "queued for scoring"]]);
 });
 
 it("reports a failed update even when there are no previous scores", () => {
   const data = { ...response(null), previous_credits: [], configured: true, queue: { status: "failed", error: "Invalid response" } };
-  expect(automaticAnnotationProgress(data, steps, automaticActionScores(data, steps)).label).toBe("0 of 3 actions scored · 3 awaiting scores · Annotation update failed");
+  const progress = automaticAnnotationProgress(data, steps, automaticActionScores(data, steps));
+  expect(progress.label).toBe("0 of 3 actions scored · 3 awaiting scores · Annotation update failed");
+  expect([...progress.unscoredReasons.values()]).toEqual(["scoring failed", "scoring failed", "scoring failed"]);
+  const running = { ...data, queue: { status: "running", error: null } } as TraceEvaluationResponse;
+  expect(automaticAnnotationProgress(running, steps, new Map()).unscoredReasons.get("0")).toBe("scoring in progress");
 });
 
 it("uses continuous expected credit for current and previous bar heights without rounding to labels", () => {

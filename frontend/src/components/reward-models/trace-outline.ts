@@ -66,15 +66,18 @@ function subdivide(node: TraceGroup): TraceGroup {
 export function buildTraceOutline(rows: TraceRow[]): TraceGroup[] {
   const tasks: TraceGroup[] = [];
   let taskId: string | null = null;
+  let hasWork = false;
   for (const row of rows) {
     const step = rowHead(row);
     const label = step.metadata?.label as { task_id?: string; intent?: string } | undefined;
     const explicitNew = label?.task_id && label.task_id !== taskId;
     const continuation = /^(?:thanks?\b|thank you\b|ok(?:ay)?\b|yes\b|no\b|but\b|wait\b|why\b)/i.test(readableExcerpt(step.content));
     const newRequest = row.kind === "prompt" && (label?.intent ? label.intent === "new_request" : label?.task_id ? !!explicitNew : !continuation);
-    if (!tasks.length || explicitNew || newRequest) {
+    if (!tasks.length || explicitNew || (newRequest && hasWork)) {
       tasks.push(group([row], "task"));
+      hasWork = false;
     } else tasks.at(-1)!.rows.push(row);
+    if (row.kind === "assistant" || row.kind === "tool") hasWork = true;
     if (label?.task_id) taskId = label.task_id;
   }
   return tasks.map(subdivide);
@@ -119,8 +122,9 @@ export function sectionFallbackTitle(node: TraceGroup): string {
   if (work?.startsWith("site:")) return `Accessing ${work.slice(5)}`;
   const labels: Record<string, string> = { inspect: "Inspecting files and results", edit: "Editing code", verify: "Running checks", publish: "Publishing changes" };
   if (work && labels[work]) return labels[work];
-  const request = node.rows.find((row) => row.kind === "prompt");
+  const firstWork = node.rows.findIndex((row) => row.kind === "assistant" || row.kind === "tool");
+  const request = node.rows.slice(0, firstWork < 0 ? undefined : firstWork).findLast((row) => row.kind === "prompt");
   if (request) return readableExcerpt(rowHead(request).content, 70) || "User request";
   const response = node.rows.find((row) => row.kind === "assistant" && !isThinking(row.step) && row.step.content.trim());
-  return response ? readableExcerpt(rowHead(response).content, 70) : "Tool activity";
+  return response ? readableExcerpt(rowHead(response).content, 70) : node.rows.some((row) => row.kind === "tool") ? "Tool activity" : "Messages";
 }

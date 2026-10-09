@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { RmStep } from "@/lib/types";
 import TraceTimeline, { type StepAnnotations } from "./TraceTimeline";
@@ -15,6 +15,56 @@ const ann: StepAnnotations = {
   highlights: () => [], commentCount: () => 0, hasQuotes: () => false, flashing: () => false,
   onComment: vi.fn(), onSelectAnnotation: vi.fn(),
 };
+
+it("gives every recorded role a number in the left gutter without a separate reader", () => {
+  const source = [step(0, "Initial message", "system"), step(1, "A request"), step(2, "<turn_aborted>Interrupted</turn_aborted>", "system")];
+  render(<TraceTimeline rows={buildRows(source)} ann={ann} isExpanded={() => true} onToggle={vi.fn()} />);
+  expect(screen.getByLabelText("Step 3")).toHaveTextContent(/^3$/);
+  expect(screen.getByLabelText("Step 1")).toHaveClass("left-0");
+  expect(screen.getByText("<turn_aborted>Interrupted</turn_aborted>")).toBeVisible();
+  expect(screen.queryByRole("button", { name: /^Read (system|user) message$/ })).not.toBeInTheDocument();
+  expect(screen.queryByText("System instructions")).not.toBeInTheDocument();
+});
+
+it("expands a long message inline and collapses it on a second click or Escape", () => {
+  const height = vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(1000);
+  try {
+    const { container } = render(<TraceTimeline rows={buildRows([step(0, "Long text", "assistant")])} ann={ann} isExpanded={() => true} onToggle={vi.fn()} />);
+    const read = screen.getByRole("button", { name: "Read full message" });
+    const body = container.querySelector('[style="max-height: 160px;"]')!;
+    fireEvent.click(read);
+    expect((body as HTMLElement).style.maxHeight).toBe("");
+    expect(screen.getByRole("button", { name: "Show less" })).toHaveFocus();
+    fireEvent.click(screen.getByRole("button", { name: "Show less" }));
+    expect(body).toHaveStyle({ maxHeight: "160px" });
+    fireEvent.click(screen.getByRole("button", { name: "Read full message" }));
+    fireEvent.keyDown(screen.getByRole("button", { name: "Show less" }), { key: "Escape" });
+    expect(body).toHaveStyle({ maxHeight: "160px" });
+    expect(screen.queryByRole("complementary")).not.toBeInTheDocument();
+  } finally { height.mockRestore(); }
+});
+
+it("keeps the collapse control above long content and restores the message in view", () => {
+  const height = vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(4000);
+  let nextFrame: FrameRequestCallback | undefined;
+  vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => { nextFrame = callback; return 1; });
+  try {
+    const { container } = render(<div data-trace-scroll><TraceTimeline rows={buildRows([step(0, "Long text", "system")])} ann={ann} isExpanded={() => true} onToggle={vi.fn()} /></div>);
+    const scroller = container.firstElementChild as HTMLElement;
+    scroller.scrollTop = 2000;
+    scroller.getBoundingClientRect = () => ({ top: 100 }) as DOMRect;
+    scroller.scrollTo = vi.fn();
+    fireEvent.click(screen.getByRole("button", { name: "Read full message" }));
+    const close = screen.getByRole("button", { name: "Show less" });
+    expect(close.parentElement).toHaveClass("sticky", "top-8");
+    const frame = close.parentElement!.parentElement!;
+    frame.getBoundingClientRect = () => ({ top: -1500 }) as DOMRect;
+    fireEvent.click(close);
+    act(() => nextFrame?.(0));
+    expect(scroller.scrollTo).toHaveBeenCalledWith({ top: 360, behavior: "instant" });
+    expect(screen.getByRole("button", { name: "Read full message" })).toHaveFocus();
+  } finally { height.mockRestore(); }
+});
 
 it("collapses repeated text while preserving both source steps and a disclosure", () => {
   const rows = buildRows([step(0, "Find a piston kit"), step(1, "Find a piston kit")]);

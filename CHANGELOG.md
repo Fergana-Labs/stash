@@ -5,9 +5,26 @@ everything before it is captured in git history (`git log`), not here.
 
 ## Unreleased
 
+- Simplify trace navigation and remove the label summary, Labels/Scores toggles,
+  scoring explainer, and redundant navigation hints. Keep long-message collapse
+  controls visible while scrolling, use warm Stash colors in dark mode, and show
+  ungraded messages as minimap dots with single-line previews below the chart.
+
+- Recover locally rejected long-trace scoring jobs after upgrading the worker.
+  Hover statuses distinguish failed, queued, and running scoring jobs.
+
+- Keep all recorded messages chronological, with compact inline expansion,
+  left-gutter step numbers, syntax-highlighted code, and collapsible input and
+  output rows. Remove the separate message reader and add a persistent theme toggle.
+- Keep section cards one click away while the step view can scroll through the
+  entire trace. Preserve the global minimaps, including navigation before scores
+  arrive, and show action credit inline.
+- Replace noisy scoring errors with a compact rescore control. Process long
+  recordings in bounded, overlapping context windows instead of rejecting them;
+  automatically resume traces rejected by the previous size limits.
+- Show creation and training status for reward models trained on the current trace.
 - Open single-task traces directly on their subtasks or recorded steps. Show
-  readable section titles immediately while generated summaries load, and hide
-  the top credit graph when there are no grades to display.
+  readable section titles immediately while generated summaries load.
 - Add local trace snapshot imports that retain saved grades and a lightweight
   worker for remote API scoring of new local imports.
 
@@ -24,9 +41,8 @@ everything before it is captured in git history (`git log`), not here.
 
 - Browse long traces from request summaries into smaller sections and individual
   steps, with hover previews and direct minimap/comment navigation.
-- Group instructions separately from numbered steps and count a tool call plus
-  its output as one step. Render instructions, question replies, and tool values
-  readably while preserving source links and comment selections.
+- Count adjacent tool calls and outputs as one displayed step. Render question
+  replies and tool values readably while preserving source links and comment selections.
 - Align plain action-credit numbers, remove full-row score colors and duplicate
   Details buttons, make user messages collapsible, and start comments closed.
 - Load compact saved action and outcome scores together with the trace, avoiding

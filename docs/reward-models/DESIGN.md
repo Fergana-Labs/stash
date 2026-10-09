@@ -138,13 +138,13 @@ reach a trace in one of two ways:
   queues every trace on ingestion; once the agent has responded, a worker cuts
   the trace into chunks (a user message, an agent message, or a tool call with
   its result) and asks `STEP_LABEL_MODEL` (default `gpt-6-sol`) to label each
-  chunk, one call per chunk with the whole conversation as a cached prompt
+  chunk, one call per chunk with bounded, overlapping context as a cached prompt
   prefix (`step_labeler.py`). When a trace grows, chunks that have not changed
   keep their labels and only the new ones are sent. Labels and scores are
   stored in `rm_step_labels` and merged into `GET /traces/{id}` on read. It
   needs `OPENAI_API_KEY` and sends trace content to OpenAI. A trace above
-  `STEP_LABELING_MAX_CHUNKS` (80) or `STEP_LABELING_MAX_CHARS` (200000) is
-  refused with the reason, which the trace view shows.
+  `STEP_LABELING_MAX_CHUNKS` (80) or `STEP_LABELING_MAX_CHARS` (200000) uses
+  multiple context windows or explicitly marked excerpts, retaining every target.
 
 ### Step scores
 
@@ -209,6 +209,48 @@ tried when nothing matches.
 | `claude_code` | Claude Code session transcript JSONL (`~/.claude/projects/**/*.jsonl`) | one trace per file |
 | `codex` | Codex CLI rollout JSONL (`~/.codex/sessions/**/rollout-*.jsonl`) | one trace per file |
 
+## Trace messages
+
+All messages stay in recorded chronological order, including system events that
+arrive mid-conversation. The viewer does not extract an instructions/setup bucket
+or infer an instruction type from a message's role or text. Leading messages
+remain with the first request; explicit task labels still take precedence.
+Only adjacent tool calls and results share a displayed step, so pairing cannot
+move an output ahead of intervening messages. Source IDs, roles, content, and
+annotation offsets are unchanged.
+
+Long messages have compact previews. Read full message expands in place; a sticky
+Show less control or Escape collapses it and keeps the message in view. There is
+no separate message reader. Each input
+variable and tool output has one disclosure row and an explicitly named copy
+action. Recognized code and fenced Markdown blocks use syntax highlighting while
+preserving annotation offsets. Displayed step numbers live in the left gutter.
+The theme control remembers the choice; dark mode uses warm charcoal surfaces,
+cream text, and Stash's orange accents. Model creation/training status links to the current user's model that
+was trained on this trace; another reviewer's private models are not exposed.
+
+Entering a leaf section scrolls to its first step in the complete chronological
+trace. Scrolling continues across section boundaries, and Back to sections
+returns to the logical task/subtask cards. Only ancestor breadcrumbs are clickable;
+the current section is plain text. The left rail remains global.
+The top minimap remains navigable before grades arrive; ungraded messages have
+small dots instead of credit heights. Hover previews stay on one line below the
+chart, showing the step number, recorded time, a content excerpt, and available
+credit or pending status. Long previews truncate. The label summary, Labels/Scores
+toggles, scoring explainer, and keyboard hints are omitted; inline labels and
+scores remain available. A small rescore icon shows activity
+and exposes failure details on demand without a persistent error banner.
+
+Automatic step labeling uses overlapping windows bounded by
+`STEP_LABELING_MAX_CHUNKS` and `STEP_LABELING_MAX_CHARS`. These are provider
+context budgets, not limits on recording size: every target is processed,
+original chunk IDs and the preceding user request are retained, and oversized
+messages are explicitly excerpted. Quality-check context is bounded as well.
+This limits context size but does not make long-trace scoring instantaneous;
+distant evidence outside a window may be unavailable to that classification.
+Previously rejected size-limit failures are requeued for enabled latest-version
+accounts when the labeling provider is configured.
+
 ## Trace sections
 
 Single-task traces land directly on that task's subtasks, or on its steps when
@@ -224,8 +266,8 @@ subtasks, and recognizable changes in work such as inspecting, editing,
 verifying, publishing, or moving between sites. Existing task labels take
 precedence over request heuristics. No section-count or step-count limit creates
 artificial groups: a continuous run without a recognizable boundary stays
-together, and distinct tasks are never combined to fit a screen. System context
-and tool-output pairing do not change source step IDs. Cards use their natural
+together, and distinct tasks are never combined to fit a screen. Message rendering
+and adjacent tool-output pairing do not change source step IDs. Cards use their natural
 height; longer lists scroll and keyboard selection stays in view. Up/down arrows select a section; right
 opens it with leaf rows expanded; left returns to the parent and restores the
 previous selection. Mouse movement highlights a card and clicking opens it.

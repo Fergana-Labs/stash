@@ -10,6 +10,7 @@ import { buildSegments, type Segment } from "./rm-text";
 import { rehypeSourceAnchors, type Highlight } from "./source-anchors";
 import { toolOutputRuns } from "./tool-output";
 import TraceInlineImage from "./TraceInlineImage";
+import { rehypeTraceSyntax } from "./trace-syntax";
 import { envelopeRanges } from "./trace-presentation";
 import styles from "./TraceMarkdown.module.css";
 
@@ -41,7 +42,7 @@ export default function AnchoredText({
   }
 
   function renderContent(text: string, sourceOffset: number, asMarkdown = markdown) {
-    if (asMarkdown) return <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[[rehypeSourceAnchors, { source: text, highlights, sourceOffset }]]}>
+    if (asMarkdown) return <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[[rehypeTraceSyntax, { source: text }], [rehypeSourceAnchors, { source: text, highlights, sourceOffset }]]}>
       {text}
     </ReactMarkdown>;
     const segments = toolOutputRuns(text).flatMap<Segment & { offset: number | null; sourceEnd?: number }>((run) => {

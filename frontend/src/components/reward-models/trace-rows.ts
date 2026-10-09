@@ -43,7 +43,9 @@ export function buildRows(steps: RmStep[]): TraceRow[] {
       rows.push({ kind: "assistant", key: step.id, step });
       return;
     }
-    const result = steps.slice(i + 1).find((s) => s.role === "tool" && s.tool_call_id !== null && s.tool_call_id === step.tool_call_id);
+    // Pair adjacent events only: a later result must not leapfrog other messages.
+    const next = steps[i + 1];
+    const result = next?.role === "tool" && next.tool_call_id !== null && next.tool_call_id === step.tool_call_id ? next : undefined;
     if (result) pairedResults.add(result.id);
     rows.push({ kind: "tool", key: step.id, call: step, result: result ?? null });
   });

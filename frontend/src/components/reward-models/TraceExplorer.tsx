@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ChevronRight, ArrowUpLeft } from "lucide-react";
+import { ChevronRight, ArrowUpLeft, LayoutGrid } from "lucide-react";
 import type { RmStep } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import type { TraceGroup } from "./trace-outline";
@@ -38,7 +38,8 @@ export default function TraceExplorer({ groups, path, onPath, assessments, ann, 
     requestAnimationFrame(() => {
       const target = cards.current?.querySelector<HTMLButtonElement>('[data-selected="true"]') ?? explorer.current;
       target?.focus({ preventScroll: true });
-      target?.scrollIntoView?.({ block: "nearest", behavior: "instant" });
+      // Entering steps already scrolls to the selected section's first row.
+      if (target !== explorer.current) target?.scrollIntoView?.({ block: "nearest", behavior: "instant" });
     });
   }
   function ascend() {
@@ -82,17 +83,16 @@ export default function TraceExplorer({ groups, path, onPath, assessments, ann, 
   };
   const title = (node: TraceGroup) => copy(node)?.title ?? sectionFallbackTitle(node);
   return <section ref={explorer} tabIndex={-1} aria-label="Trace explorer" className="outline-none">
-    <nav aria-label="Trace hierarchy" className="mb-2 flex h-8 items-center gap-1 overflow-hidden text-xs text-muted-foreground">
-      <button type="button" onClick={() => onPath([])} className="shrink-0 cursor-pointer hover:text-foreground">Overview</button>
+    <nav aria-label="Trace hierarchy" className="sticky top-0 z-10 mb-2 flex h-8 bg-background items-center gap-1 overflow-hidden text-xs text-muted-foreground">
+      {canAscend ? <button type="button" onClick={() => onPath([])} className="flex shrink-0 cursor-pointer items-center gap-1.5 font-medium text-foreground hover:text-brand-600"><LayoutGrid className="size-3.5" />Back to sections</button> : <span className="flex shrink-0 items-center gap-1.5 font-medium text-foreground"><LayoutGrid className="size-3.5" />Sections</span>}
       {trail.map((node, index) => <span key={node.key} className="flex min-w-0 items-center gap-1">
         <ChevronRight className="size-3 shrink-0" aria-hidden="true" />
-        <button type="button" title={title(node)} onClick={() => onPath(trail.slice(0, index + 1).map((node) => node.key))} className="max-w-48 cursor-pointer truncate hover:text-foreground">{title(node)}</button>
+        {index === trail.length - 1 ? <span aria-current="location" title={title(node)} className="max-w-64 truncate">{title(node)}</span> : <button type="button" title={title(node)} onClick={() => onPath(trail.slice(0, index + 1).map((node) => node.key))} className="max-w-48 cursor-pointer truncate hover:text-foreground">{title(node)}</button>}
       </span>)}
       {children.length > 0 && status !== "ready" && <span role="status" className="ml-auto shrink-0 text-[11px]">{status === "loading" ? "Summarizing and scoring…" : "Section assessments unavailable"}</span>}
-      <span className="ml-auto hidden shrink-0 text-[11px] sm:inline">↑↓ select · → open · ← back</span>
       {canAscend && <button type="button" aria-label="Zoom out" onClick={ascend} className="ml-auto flex shrink-0 cursor-pointer items-center gap-1 pl-2 hover:text-foreground"><ArrowUpLeft className="size-3" />Back</button>}
     </nav>
-    {current && !children.length ? <TraceTimeline rows={current.rows} ann={ann} isExpanded={isExpanded} onToggle={onToggle} /> :
+    {current && !children.length ? <div>{groups.map((group) => <div key={group.key} id={traceSectionTarget(group)}><TraceTimeline rows={group.rows} ann={ann} isExpanded={isExpanded} onToggle={onToggle} /></div>)}</div> :
       <div ref={cards} data-trace-sections className="flex flex-col gap-2">{children.map((node) => {
         const generated = copy(node);
         return <div key={node.key} id={traceSectionTarget(node)} data-trace-section className="relative">
@@ -103,7 +103,7 @@ export default function TraceExplorer({ groups, path, onPath, assessments, ann, 
           aria-label={`Explore ${title(node)}`} className={cn("flex min-h-28 w-full cursor-pointer flex-col justify-center overflow-hidden rounded-xl border bg-surface/25 py-4 pr-32 pl-4 text-left transition-colors hover:border-foreground/20 hover:bg-surface/60 focus-visible:outline-2 focus-visible:outline-brand-500", node.key === selected?.key ? "border-brand-500/50 bg-brand-500/5" : "border-border-subtle")}>
           <div className="flex w-full items-center gap-3"><h3 className="m-0 line-clamp-2 min-w-0 flex-1 text-[15px] font-medium leading-snug">{title(node)}</h3><span className="shrink-0 text-[11px] text-muted-foreground tabular-nums">{range(node)}</span><ChevronRight className="size-4 shrink-0 text-muted-foreground" /></div>
           {generated && <p className="m-0 mt-1.5 line-clamp-2 text-[13px] leading-relaxed text-muted-foreground">{generated.summary}</p>}
-          <div className="mt-2 flex items-center gap-3 text-[11px] text-muted-foreground"><span>{node.rows.length} steps</span><span>{node.children.length ? `${node.children.length} subtasks` : "Open steps"}</span></div>
+          <div className="mt-2 flex items-center gap-3 text-[11px] text-muted-foreground"><span>{node.rows.length} steps</span>{node.children.length > 0 && <span>{node.children.length} subtasks</span>}</div>
         </button><TraceSectionScore section={generated} range={range(node)} loading={status === "loading"} /></div>;
       })}</div>}
   </section>;

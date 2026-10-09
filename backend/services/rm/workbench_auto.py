@@ -159,7 +159,7 @@ async def process_trace(trace_id):
                 claim["started_at"],
             )
         log.warning("Automatic annotation failed: %s", type(exc).__name__)
-        # A provider failure is retried; a trace outside the limits is not.
+        # Retry provider failures; missing configuration or no agent steps wait for repair.
         retry = (
             isinstance(exc, (step_labeler.LabelingError, asyncpg.InvalidCachedStatementError))
             or (isinstance(exc, jev.GradingError) and exc.retryable)
@@ -406,6 +406,16 @@ async def recover():
             WHERE q.trace_id=t.id AND u.reward_models_enabled AND u.product_checkpoint='latest'
             AND q.status='failed' AND q.error=$1""",
             step_labeling.NOT_CONFIGURED,
+        )
+
+    if settings.OPENAI_API_KEY:
+        # Size budgets now apply to context windows, so previously rejected
+        # long traces can resume. New failures do not match this legacy reason.
+        await pool.execute(
+            """UPDATE rm_wb_queue q SET status='queued',due_at=now(),attempts=0,error=NULL
+            FROM rm_traces t JOIN users u ON u.id=t.owner_user_id
+            WHERE q.trace_id=t.id AND u.reward_models_enabled AND u.product_checkpoint='latest'
+            AND q.status='failed' AND q.error LIKE 'The trace %automatic annotation handles up to %'"""
         )
 
     # A pre-upgrade worker could consume migration backfill without creating a

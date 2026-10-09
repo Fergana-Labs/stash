@@ -39,6 +39,7 @@
     "d3-force": "^3.0.0",
     "d3-selection": "^3.0.0",
     "d3-zoom": "^3.0.0",
+    "lowlight": "^3.3.0",
     "lucide-react": "^1.23.0",
     "markdown-it": "^15.0.2",
     "nanoid": "^5.1.16",

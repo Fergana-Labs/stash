@@ -5,23 +5,22 @@ import FloodgateComponent from "@/checkpoints/floodgate-2026-10-05/TraceClient";
 
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
-import { useCallback, useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type MouseEvent } from "react";
 import { toast } from "sonner";
 import { useBreadcrumbs } from "@/components/BreadcrumbContext";
 import { useConfirm } from "@/components/ConfirmDialog";
 import AnnotationComposer, { type ComposerTarget } from "@/components/reward-models/AnnotationComposer";
 import AnnotationSidebar from "@/components/reward-models/AnnotationSidebar";
 import { wbAssess } from "@/lib/workbench-api";
-import { Button } from "@/components/ui/button";
 import TraceReviewAccess from "@/components/workbench/TraceReviewAccess";
 import { TraceSkeleton } from "@/components/reward-models/RmSkeletons";
 import TraceFlamegraph from "@/components/reward-models/TraceFlamegraph";
 import { automaticActionScores, automaticAnnotationProgress } from "@/components/reward-models/automatic-credit";
 import TraceMinimap from "@/components/reward-models/TraceMinimap";
+import TraceThemeToggle from "@/components/reward-models/TraceThemeToggle";
+import TraceTrainingStatus from "@/components/reward-models/TraceTrainingStatus";
 import TraceScore from "@/components/reward-models/TraceScore";
-import { TraceContext, type StepAnnotations } from "@/components/reward-models/TraceTimeline";
-import { TraceLabelSummary } from "@/components/reward-models/StepLabels";
-import { ScoringExplainer } from "@/components/reward-models/StepRewards";
+import { type StepAnnotations } from "@/components/reward-models/TraceTimeline";
 import { buildTraceLabels } from "@/components/reward-models/step-labels";
 import { rubricSummary, stepReward } from "@/components/reward-models/step-rewards";
 import { errorMessage, locateQuote, quoteFromOffsets, relativeTime, sortAnnotations } from "@/components/reward-models/rm-text";
@@ -64,8 +63,6 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [outlinePath, setOutlinePath] = useState<string[]>([]);
   const [commentsOpen, setCommentsOpen] = useState(false);
-  const [showLabels, setShowLabels] = useState(true);
-  const [showScores, setShowScores] = useState(true);
   const [composer, setComposer] = useState<ComposerTarget | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [flashStepId, setFlashStepId] = useState<string | null>(null);
@@ -122,7 +119,7 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
         const element = document.getElementById(`step-${stepId}`);
         const container = scroller.current;
         if (!element || !container || !navigation.current) return;
-        const top = container.scrollTop + element.getBoundingClientRect().top - Math.max(container.getBoundingClientRect().top, navigation.current.getBoundingClientRect().bottom) - 12;
+        const top = container.scrollTop + element.getBoundingClientRect().top - Math.max(container.getBoundingClientRect().top, navigation.current.getBoundingClientRect().bottom) - 40;
         container.scrollTo({ top, behavior: "instant" });
       });
     };
@@ -151,9 +148,7 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
   // Step labels say what each step is; the scores are built from them. Steps are numbered as the page shows them.
   const numberOf = (step: RmStep) => presentation.numberById.get(step.id) ?? step.index + 1;
   const labels = buildTraceLabels(trace.steps, numberOf);
-  const labelsOn = labels.present && showLabels;
   const stepScores = rubricSummary(trace.step_scores);
-  const scoresOn = stepScores !== null && showScores;
   const taskScores = new Map((stepScores?.episodes ?? []).map((task) => [task.task, task]));
 
 
@@ -175,10 +170,11 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
     return [{ id: PENDING_ID, ...pending, className: "rounded-[2px] bg-brand-300/45 text-inherit" }, ...saved];
   }
 
-  /** Messages start readable; context and tool details open on demand. */
+  /** Every role starts readable, with long content clipped by the inline expansion control. */
   function isExpanded(row: TraceRow): boolean {
     const choice = rowChoice.get(row.key);
     if (choice !== undefined) return choice;
+    if (row.kind === "system") return true;
     if (row.kind !== "prompt") return false;
     const index = rows.findIndex((item) => item.key === row.key);
     const previous = rows[index - 1];
@@ -261,7 +257,7 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
 
   /** Scrolls to a step, opening its row if needed. */
   function revealStep(stepId: string) {
-    const row = [...rows, ...presentation.context.map((step): TraceRow => ({ kind: "system", key: step.id, step }))].find((r) => rowSteps(r).some((s) => s.id === stepId));
+    const row = rows.find((r) => rowSteps(r).some((s) => s.id === stepId));
     setOutlinePath(groupPath(groups, stepId));
     if (!row) return;
     if (!isExpanded(row) && row.kind !== "assistant") toggleRow(row);
@@ -270,7 +266,7 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
       const element = document.getElementById(`step-${stepId}`);
       const container = scroller.current;
       if (!element || !container || !navigation.current) return;
-      const top = container.scrollTop + element.getBoundingClientRect().top - Math.max(container.getBoundingClientRect().top, navigation.current.getBoundingClientRect().bottom) - 12;
+      const top = container.scrollTop + element.getBoundingClientRect().top - Math.max(container.getBoundingClientRect().top, navigation.current.getBoundingClientRect().bottom) - 40;
       container.scrollTo({ top, behavior: "instant" });
     });
   }
@@ -295,6 +291,7 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
   const ann: StepAnnotations = {
     stepNumber: (step) => presentation.numberById.get(step.id),
     highlights: highlightsFor,
+    actionScore: (step) => actionScores.get(step.id),
     commentCount: (step) => {
       const row = rows.find((r) => r.key === step.id);
       return (row ? rowSteps(row) : [step]).reduce((count, source) => count + annotationsOn(source).filter((a) => a.comment !== null).length, 0);
@@ -303,8 +300,8 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
     flashing: (step) => flashStepId === step.id,
     onComment: (step) => openComposer(step.id),
     onSelectAnnotation: focusCard,
-    ...(labelsOn && { labelChips: labels.chips, taskHeading: labels.taskHeading, onJumpToStep: revealStep }),
-    ...(scoresOn && {
+    ...(labels.present && { labelChips: labels.chips, taskHeading: labels.taskHeading, onJumpToStep: revealStep }),
+    ...(stepScores !== null && {
       reward: stepReward,
       taskScore: (step: RmStep) => taskScores.get(labels.label(step)?.task_id ?? "") ?? null,
       stepNumberOf: (chunk: string) => { const step = labels.stepForChunk(chunk); return step ? numberOf(step) : null; },
@@ -313,7 +310,7 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
   };
 
   return (
-    <div className="flex h-full min-h-0">
+    <div className="relative flex h-full min-h-0">
       <TraceScrollRail groups={groups} path={outlinePath} rows={rows} onPath={setOutlinePath} onOpenRows={openRows} onStep={revealStep}
         copy={assessments.copy} stepNumber={(step) => presentation.numberById.get(step.id) ?? step.index + 1} scroller={scroller} />
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
@@ -328,8 +325,9 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
               <span className="shrink-0 whitespace-nowrap text-[11px] text-muted-foreground">imported {relativeTime(trace.created_at)}</span>
             </div>
             <div className="flex shrink-0 items-center gap-1.5">
-              <TraceScore evaluation={evaluation} error={loadError} />
-              {evaluation?.queue?.status === "failed" && evaluation.owner_user_id === viewerId && <Button size="xs" variant="ghost" onClick={() => void wbAssess(traceId).then(load).catch((e) => toast.error(errorMessage(e)))}>Retry scoring</Button>}
+              <TraceTrainingStatus models={trace.training_models ?? []} />
+              <TraceThemeToggle />
+              <TraceScore evaluation={evaluation} error={loadError} onRescore={evaluation?.owner_user_id === viewerId ? () => wbAssess(traceId).then(load) : undefined} />
               <button
                 type="button"
                 aria-expanded={commentsOpen}
@@ -349,34 +347,32 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
           </header>
 
           <TraceMinimap steps={presentation.mapSteps} annotations={trace.annotations.map((annotation) => ({ ...annotation, step_id: annotation.step_id ? presentation.mapSteps[(presentation.numberById.get(annotation.step_id) ?? 0) - 1]?.id ?? annotation.step_id : null }))} actionScores={actionScores} annotationStatus={annotationProgress.label} unscoredReasons={annotationProgress.unscoredReasons} scroller={scroller} navigation={navigation} onJump={(index) => revealStep(presentation.mapSteps[index].id)} />
-          {(labels.present || stepScores !== null) && (
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-              {labelsOn && <TraceLabelSummary items={labels.summary} onJump={revealStep} />}
-              <span className="flex-1" />
-              {scoresOn && <ScoringExplainer />}
-              {labels.present && <ViewToggle active={showLabels} onClick={() => setShowLabels(!showLabels)}>Labels</ViewToggle>}
-              {stepScores !== null && <ViewToggle active={showScores} onClick={() => setShowScores(!showScores)}>Scores</ViewToggle>}
-            </div>
-          )}
-          {evaluation?.queue?.status === "failed" && evaluation.queue.error && (
-            <p className="m-0 text-[12px] text-muted-foreground">This trace was not annotated. {evaluation.queue.error}</p>
-          )}
+
 
         </div>
         </div>
-        <div ref={scroller} className="scroll-thin min-h-0 flex-1 overflow-y-auto">
-        <div ref={canvas} className={cn("relative mx-auto max-w-5xl px-6 pt-2", browsingSections ? "pb-3" : "pb-[60vh]")} onMouseUp={onCanvasMouseUp}>
+        <div ref={scroller} data-trace-scroll className="scroll-thin min-h-0 flex-1 overflow-y-auto">
+        <div ref={canvas} className={cn("relative mx-auto max-w-5xl px-6 pt-2", browsingSections ? "pb-3" : "pb-12")} onMouseUp={onCanvasMouseUp}>
           <TraceFlamegraph spans={trace.spans} onJump={(index) => revealStep(trace.steps[index].id)} />
-          <TraceContext steps={presentation.context} ann={ann} isExpanded={isExpanded} onToggle={toggleRow} />
           <TraceExplorer
             groups={groups} path={outlinePath} assessments={assessments}
-            onPath={(path) => { setOutlinePath(path); scroller.current?.scrollTo({ top: 0, behavior: "instant" }); }}
+            onPath={(path) => {
+              setOutlinePath(path);
+              const level = traceExplorerLevel(groups, path);
+              const first = level.current && !level.children.length ? rowSteps(level.current.rows[0])[0] : null;
+              requestAnimationFrame(() => {
+                const container = scroller.current;
+                const target = first ? document.getElementById(`step-${first.id}`) : null;
+                container?.scrollTo({ top: target && container ? container.scrollTop + target.getBoundingClientRect().top - container.getBoundingClientRect().top - 40 : 0, behavior: "instant" });
+              });
+            }}
             ann={ann} isExpanded={isExpanded} onToggle={toggleRow} onOpenRows={openRows}
           />
           {rows.length === 0 && <p className="py-12 text-center text-[13px] text-muted-foreground">No steps in this trace.</p>}
         </div>
         </div>
       </div>
+
 
       <AnnotationSidebar
         visible={commentsOpen}
@@ -411,21 +407,11 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
   );
 }
 
-function ViewToggle({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) {
-  return (
-    <button type="button" onClick={onClick} aria-pressed={active}
-      className={cn("inline-flex h-6 cursor-pointer items-center border-b-2 px-1.5 text-[12px] transition-colors",
-        active ? "border-foreground font-medium text-foreground" : "border-transparent text-muted-foreground hover:text-foreground")}>
-      {children}
-    </button>
-  );
-}
-
 function composerLabel(target: ComposerTarget, trace: RmTraceDetail, numbers: Map<string, number>): string {
   if (target.stepId === null) return "Comment on the whole trace";
   const step = trace.steps.find((s) => s.id === target.stepId)!;
   const number = numbers.get(step.id);
-  const label = number ? `step ${number}${step.role === "tool" ? " output" : ""}` : "instructions";
+  const label = number ? `step ${number}${step.role === "tool" ? " output" : ""}` : "message";
   return target.quote ? `Comment on selection in ${label}` : `Comment on ${label}`;
 }
 

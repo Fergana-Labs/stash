@@ -5,7 +5,8 @@ import FloodgateComponent from "@/checkpoints/floodgate-2026-10-05/TraceMinimap"
 
 import { useEffect, useId, useRef, useState, type PointerEvent, type RefObject } from "react";
 import { cn } from "@/lib/utils";
-import { isThinking, looksLikeError } from "./trace-rows";
+import { isThinking, looksLikeError, toolLabel, toolSummary } from "./trace-rows";
+import { readableExcerpt } from "./trace-presentation";
 import { visibleStepElement } from "./trace-scroll";
 import type { RmActionScore, RmAnnotation, RmStep } from "@/lib/types";
 import { formatCredit } from "./action-credit";
@@ -28,6 +29,25 @@ function kindOf(step: RmStep): keyof typeof KINDS {
   if (isThinking(step)) return "thinking";
   if (step.role === "tool") return looksLikeError(step.content) ? "error" : "result";
   return step.tool_name == null ? "assistant" : "call";
+}
+
+function StepPreview({ step, score, status }: { step: RmStep; score?: RmActionScore; status?: string }) {
+  const timestamp = step.metadata?.timestamp;
+  const time = typeof timestamp === "string" ? new Date(timestamp) : null;
+  const recordedTitle = step.tool_input?.title ?? step.tool_input?.description;
+  const detail = typeof recordedTitle === "string" && recordedTitle.trim()
+    ? recordedTitle : toolSummary(step.tool_input);
+  const summary = readableExcerpt(step.content, 180) || (step.tool_name
+    ? `${toolLabel(step.tool_name)}${detail ? `: ${detail.replace(/\s+/g, " ").trim()}` : ""}`
+    : step.images?.length ? "Attached an image" : `${KINDS[kindOf(step)].label} message`);
+  return <>
+    <span className="flex shrink-0 items-center gap-2 text-[11px] tabular-nums opacity-70">
+      <span>({step.index + 1})</span>
+      {time && Number.isFinite(time.getTime()) && <time dateTime={timestamp as string}>{time.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</time>}
+    </span>
+    <span className="min-w-0 flex-1 truncate">{summary.length > 180 ? `${summary.slice(0, 180).trimEnd()}…` : summary}</span>
+    {(score || status) && <span className="max-w-40 shrink-0 truncate text-[11px] opacity-70">{score ? `Credit ${formatCredit(score.credit)}${score.stale ? " · previous annotation" : ""}` : status}</span>}
+  </>;
 }
 
 function LatestTraceMinimap({ steps, annotations, actionScores, annotationStatus, unscoredReasons, scroller, navigation, onJump }: {
@@ -73,9 +93,8 @@ function LatestTraceMinimap({ steps, annotations, actionScores, annotationStatus
     };
   }, [steps, scroller, navigation]);
 
-  // Ungraded events have no height. Do not reserve a chart-shaped blank space;
-  // saved previous credits still qualify while a new evaluation is running.
-  if (!steps.some((step) => Number.isFinite(actionScores?.get(step.id)?.credit))) return null;
+  if (!steps.length) return null;
+  const graded = steps.some((step) => Number.isFinite(actionScores?.get(step.id)?.credit));
   const commented = new Set(annotations.filter((a) => a.comment !== null).map((a) => a.step_id));
 
   function jump(index: number) {
@@ -115,7 +134,7 @@ function LatestTraceMinimap({ steps, annotations, actionScores, annotationStatus
     <nav aria-label="Trace steps" className="flex min-w-0 flex-1 select-none items-center gap-3">
       {annotationStatus && <p role="status" className="sr-only">{annotationStatus}</p>}
       <div
-        className="relative flex h-[52px] min-w-0 flex-1 touch-none items-end"
+        className={cn("relative flex min-w-0 flex-1 touch-none items-end border-b border-border-subtle", graded ? "h-[48px]" : "h-6")}
         style={{ columnGap: `min(1px, ${25 / steps.length}%)` }}
         role="group"
         aria-label="Step map"
@@ -175,6 +194,7 @@ function LatestTraceMinimap({ steps, annotations, actionScores, annotationStatus
               className="group relative flex h-full min-w-0 flex-1 cursor-pointer items-end focus-visible:outline-2 focus-visible:outline-brand-500"
             >
               {commented.has(step.id) && <span className="absolute top-0 left-1/2 size-1.5 -translate-x-1/2 rounded-full bg-amber-400" />}
+              {!score && <span aria-hidden="true" data-unscored-marker className={cn("absolute bottom-0.5 left-1/2 size-1 max-w-full -translate-x-1/2 rounded-full opacity-70", kind.color)} />}
               <span style={{ height: score ? `${6 + (Math.max(-1, Math.min(1, score.credit)) + 1) * 20}px` : "0px" }} className={cn("w-full transition-opacity group-hover:opacity-60", kind.color)} />
             </button>
           );
@@ -183,9 +203,9 @@ function LatestTraceMinimap({ steps, annotations, actionScores, annotationStatus
         {hoveredIndex !== null && steps[hoveredIndex] && <div
           id={tooltipId}
           role="tooltip"
-          className="pointer-events-none absolute bottom-full z-20 mb-2 w-64 max-w-full rounded-md bg-foreground px-3 py-2 text-xs text-background shadow-md"
-          style={{ left: `clamp(0px, calc(${(hoveredIndex + 0.5) / steps.length * 100}% - 8rem), max(0px, calc(100% - 16rem)))` }}
-        >{labelFor(steps[hoveredIndex])}</div>}
+          className="pointer-events-none absolute top-full z-20 mt-2 flex h-8 w-[40rem] max-w-full items-center gap-2 overflow-hidden whitespace-nowrap rounded-md bg-foreground px-3 text-xs text-background shadow-md"
+          style={{ left: `clamp(0px, calc(${(hoveredIndex + 0.5) / steps.length * 100}% - 20rem), max(0px, calc(100% - 40rem)))` }}
+        ><StepPreview step={steps[hoveredIndex]} score={actionScores?.get(steps[hoveredIndex].id)} status={isGradableAction(steps[hoveredIndex]) ? unscoredReasons?.get(steps[hoveredIndex].id) ?? "awaiting score" : undefined} /></div>}
       </div>
       <span className="shrink-0 whitespace-nowrap text-[10px] text-muted-foreground tabular-nums">Step {steps[activeIndex]?.index + 1} of {steps.length}</span>
     </nav>

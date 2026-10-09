@@ -34,7 +34,7 @@ export default function TraceScrollRail({ groups, path, rows, copy, stepNumber, 
   });
 
   const { trail, current } = traceExplorerLevel(groups, path);
-  const activeTargetId = sections.length && trail.length ? traceSectionTarget(trail[0])
+  const activeTargetId = sections.length && trail.length && current?.children.length ? traceSectionTarget(trail[0])
     : current?.children.length ? items.findLast((item) => {
       return positions.get(item.targetId)! <= positions.get(`step-${rowHead(current.rows[0]).id}`)!;
     })?.targetId : undefined;
@@ -56,9 +56,9 @@ export default function TraceScrollRail({ groups, path, rows, copy, stepNumber, 
       const focus = target?.querySelector<HTMLButtonElement>("[data-section-key]")
         ?? container.querySelector<HTMLElement>('[aria-label="Trace explorer"]');
       focus?.focus({ preventScroll: true });
-      if (first || node && trail.length) container.scrollTo({ top: 0, behavior: "instant" });
+      if (first || node && trail.length && node.children.length) container.scrollTo({ top: 0, behavior: "instant" });
       else if (target) container.scrollTo({
-        top: container.scrollTop + target.getBoundingClientRect().top - container.getBoundingClientRect().top - 12,
+        top: container.scrollTop + target.getBoundingClientRect().top - container.getBoundingClientRect().top - 40,
         behavior: "instant",
       });
     });

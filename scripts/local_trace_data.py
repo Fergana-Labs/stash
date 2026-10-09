@@ -84,6 +84,27 @@ async def copy_snapshot(local, source, source_owner: UUID, trace_id: UUID, local
     return {"steps": len(steps), "evaluations": len(evaluations), "calls": len(calls)}
 
 
+async def reserve_next_trace(pool, owner):
+    """Reserve one due job or legacy size rejection for this local worker.
+
+    The brief delay keeps older local workers from picking up the repaired job
+    before process_trace claims it. If this process exits, it becomes due again.
+    Running jobs and other users' traces are never changed.
+    """
+    return await pool.fetchval(
+        """WITH candidate AS (
+            SELECT q.trace_id FROM rm_wb_queue q JOIN rm_traces t ON t.id=q.trace_id
+            WHERE t.owner_user_id=$1 AND (
+                (q.status='queued' AND q.due_at<=now()) OR
+                (q.status='failed' AND q.error LIKE 'The trace %automatic annotation handles up to %')
+            ) ORDER BY q.due_at LIMIT 1 FOR UPDATE OF q SKIP LOCKED
+        ) UPDATE rm_wb_queue q SET status='queued',due_at=now()+interval '1 minute',
+            attempts=CASE WHEN q.status='failed' THEN 0 ELSE q.attempts END,error=NULL
+          FROM candidate c WHERE q.trace_id=c.trace_id RETURNING q.trace_id""",
+        owner,
+    )
+
+
 async def run(args):
     require_local_database(settings.DATABASE_URL)
     # A small pool also bounds the memory footprint of the local API worker.
@@ -115,18 +136,14 @@ async def run(args):
         # The production pipeline decides which providers this trace needs;
         # imported labels can be scored without calling a labeling provider.
         while True:
-            pending = await pool.fetch(
-                """SELECT q.trace_id FROM rm_wb_queue q JOIN rm_traces t ON t.id=q.trace_id
-                WHERE t.owner_user_id=$1 AND q.status='queued' AND q.due_at<=now()
-                ORDER BY q.due_at LIMIT 1""",
-                owner,
-            )
-            for row in pending:
-                await workbench_auto.process_trace(row["trace_id"])
+            trace_id = await reserve_next_trace(pool, owner)
+            if trace_id:
+                print(json.dumps({"trace_id": str(trace_id), "status": "running"}), flush=True)
+                await workbench_auto.process_trace(trace_id)
                 status = await pool.fetchval(
-                    "SELECT status FROM rm_wb_queue WHERE trace_id=$1", row["trace_id"]
+                    "SELECT status FROM rm_wb_queue WHERE trace_id = $1", trace_id
                 )
-                print(json.dumps({"trace_id": str(row["trace_id"]), "status": status}), flush=True)
+                print(json.dumps({"trace_id": str(trace_id), "status": status}), flush=True)
             if not args.watch:
                 return
             await asyncio.sleep(5)

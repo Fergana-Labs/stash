@@ -1,5 +1,5 @@
-import { render, screen } from "@testing-library/react";
-import { expect, it } from "vitest";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { expect, it, vi } from "vitest";
 import type { TraceEvaluation, TraceEvaluationResponse } from "@/lib/workbench-api";
 import TraceScore from "./TraceScore";
 
@@ -56,4 +56,14 @@ it("explains fetch failures and keeps an already loaded numeric score visible", 
   view.rerender(<TraceScore evaluation={evaluation({ current: current({ outcome: "success", outcome_probabilities: { success: 0.8 } }) })} error="Network error" />);
   expect(screen.getByRole("status")).toHaveTextContent("0.80");
   expect(screen.getByRole("status")).toHaveTextContent("Update unavailable");
+});
+
+it("uses a compact rescore icon and prevents duplicate requests while scoring", async () => {
+  const rescore = vi.fn().mockResolvedValue(undefined);
+  const { rerender } = render(<TraceScore evaluation={evaluation({ queue: { status: "failed", error: "Provider unavailable" } })} error={null} onRescore={rescore} />);
+  expect(screen.getByText("Scoring failed")).toHaveClass("sr-only");
+  fireEvent.click(screen.getByRole("button", { name: "Rescore trace" }));
+  await waitFor(() => expect(rescore).toHaveBeenCalledOnce());
+  rerender(<TraceScore evaluation={evaluation({ queue: { status: "running", error: null }, current: current() })} error={null} onRescore={rescore} />);
+  expect(screen.getByRole("button", { name: "Scoring trace" })).toBeDisabled();
 });

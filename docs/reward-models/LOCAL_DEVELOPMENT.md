@@ -38,10 +38,22 @@ python scripts/local_trace_data.py --user YOUR_LOCAL_USER score --watch
 
 This processes one queued trace at a time for that local account using the same
 automatic evaluation pipeline as production. It polls for new queued imports
-every five seconds, so no Redis or general Celery worker is needed for this UI
-loop. Omit `--watch` to process at most one due trace. Ctrl-C stops the worker.
+every five seconds and recovers jobs rejected by the old trace-size limit, so
+no Redis or general Celery worker is needed for this UI loop. Restart this command
+along with the backend when scoring code changes; restarting only Next.js does
+not update an already-running Python worker. Omit `--watch` to process at most one due trace. Ctrl-C stops the worker.
 Inference runs through the remote API; this command never trains or loads a
 model on the laptop. Production data and configuration are not modified.
 
 Use a separate isolated database for tests; the backend test fixtures truncate
 their database. Do not point tests at the database serving your local UI.
+
+If an imported trace stores attachments locally, start the backend with
+`STASH_TRACE_IMAGE_DIR` pointing to the same folder used during import. Keep that
+setting across restarts; the database holds image references, not their bytes.
+
+`STEP_LABELING_MAX_CHUNKS` (80) and `STEP_LABELING_MAX_CHARS` (200000) bound
+individual context windows. Long recordings are split with overlap; large
+message bodies are excerpted with omission markers. No steps are dropped from
+the labeling targets. Previously size-rejected traces can be retried with the
+rescore icon; the production recovery sweep also resumes them automatically.
