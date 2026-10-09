@@ -75,10 +75,11 @@ it("leaves context-only sections ungraded even when the API returns a numeric sc
 it("only makes ancestor breadcrumbs clickable", async () => {
   render(<Harness />);
   await load();
-  const hierarchy = screen.getByRole("navigation", { name: "Trace hierarchy" });
-  expect(within(hierarchy).queryByRole("button")).not.toBeInTheDocument();
+  expect(screen.queryByRole("navigation", { name: "Trace hierarchy" })).not.toBeInTheDocument();
+  expect(screen.queryByText("Sections", { exact: true })).not.toBeInTheDocument();
   fireEvent.click(screen.getAllByRole("button", { name: /^Explore / })[0]);
   await load();
+  const hierarchy = screen.getByRole("navigation", { name: "Trace hierarchy" });
   const current = hierarchy.querySelector('[aria-current="location"]')!;
   expect(current.tagName).toBe("SPAN");
   expect(current.closest("button")).toBeNull();

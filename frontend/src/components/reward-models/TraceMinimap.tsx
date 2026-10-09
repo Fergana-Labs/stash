@@ -62,7 +62,7 @@ function LatestTraceMinimap({ steps, annotations, actionScores, annotationStatus
 }) {
   const [activeIndex, setActiveIndex] = useState(0);
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
-  const [scale, setScale] = useState<"fit" | "fixed">("fit");
+  const [scale, setScale] = useState<"fit" | "fixed">("fixed");
   const tooltipId = useId();
   const root = useRef<HTMLElement>(null);
   const map = useRef<HTMLDivElement>(null);

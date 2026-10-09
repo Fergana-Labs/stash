@@ -233,13 +233,14 @@ was trained on this trace; another reviewer's private models are not exposed.
 Entering a leaf section scrolls to its first step in the complete chronological
 trace. Scrolling continues across section boundaries, and Back to sections
 returns to the logical task/subtask cards. Only ancestor breadcrumbs are clickable;
-the current section is plain text. The left rail remains global.
+the current section is plain text. The top-level overview omits the inert
+“Sections” label and empty breadcrumb row. The left rail remains global.
 Sections without assistant responses or tool calls are context, not agent work.
 They remain ungraded, including when an older cached assessment contains a score.
 The top minimap remains navigable before grades arrive; ungraded messages have
-baseline ticks instead of credit heights. The Fit / ±1 toggle defaults to Fit,
-which uses the largest absolute step credit for symmetric limits; ±1 uses fixed
-limits. An all-zero trace uses ±1 in either mode. Positive credit extends upward,
+baseline ticks instead of credit heights. The Fit / ±1 toggle defaults to fixed
+±1 limits. Fit uses the largest absolute step credit for symmetric limits.
+An all-zero trace uses ±1 in either mode. Positive credit extends upward,
 negative credit downward, and exact zero and unscored steps have only baseline
 ticks. Hover previews still distinguish missing scores from measured zero.
 A clicked step stays selected even when
