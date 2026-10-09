@@ -1,7 +1,7 @@
 import { expect, it } from "vitest";
 import type { RmStep } from "@/lib/types";
 import { presentTrace, readableExcerpt } from "./trace-presentation";
-import { buildTraceOutline, groupPath, isContextGroup, resolveGroupPath } from "./trace-outline";
+import { buildTraceOutline, groupPath, isContextGroup, resolveGroupPath, tracePhases } from "./trace-outline";
 import { rowSteps } from "./trace-rows";
 
 function step(index: number, content: string, role: RmStep["role"] = "assistant"): RmStep {
@@ -38,6 +38,29 @@ it("respects recorded task identity and keeps acknowledgements with the precedin
   const source = [step(0, "Fix it", "user"), step(1, "Done"), step(2, "thanks", "user"), { ...step(3, "Also a different task", "user"), metadata: { label: { task_id: "second", intent: "new_request" } } }];
   expect(buildTraceOutline(presentTrace(source).rows)).toHaveLength(2);
   expect(readableExcerpt('<image path="/a.png">[input_image]</image>\nFix **this**')).toBe("Fix this");
+});
+
+it.each([true, false])("starts the next phase at the user's approval (commentary: %s)", (commentary) => {
+  const source = [
+    { ...step(0, "Fix the notifications", "user"), metadata: { label: { task_id: "t1", intent: "new_request" } } },
+    { ...step(1, ""), tool_name: "read_file" },
+    step(2, "I found the fix. May I apply it?"),
+    { ...step(3, "yes go for it, do it", "user"), metadata: { label: { task_id: "t1", intent: "clarification_answer" } } },
+    { ...step(4, "Keep PR notifications", "user"), metadata: { label: { task_id: "t1", intent: "added_context" } } },
+    ...(commentary ? [{ ...step(5, "I'll apply the change"), metadata: { phase: "commentary" } }] : []),
+    { ...step(6, ""), tool_name: "apply_patch" },
+    step(7, "Verified"),
+  ];
+  const snapshot = structuredClone(source);
+  const tree = buildTraceOutline(presentTrace(source).rows);
+  expect(tree).toHaveLength(1);
+  const phases = tracePhases(tree).map(({ node }) => node.rows.flatMap(rowSteps));
+  expect(phases).toHaveLength(2);
+  expect(phases[0].at(-1)?.id).toBe("s2");
+  expect(phases[1][0].id).toBe("s3");
+  expect(phases[1][1].id).toBe("s4");
+  expect(phases.flat().map((row) => row.id)).toEqual(source.map((row) => row.id));
+  expect(source).toEqual(snapshot);
 });
 
 

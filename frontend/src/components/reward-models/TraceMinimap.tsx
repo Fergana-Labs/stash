@@ -255,7 +255,7 @@ function LatestTraceMinimap({ steps, annotations, actionScores, annotationStatus
           );
         })}
         <span aria-hidden="true" data-zero-baseline className="pointer-events-none absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-border-subtle" />
-        {completionLine && <svg aria-label="Estimated task completion over time" role="img" viewBox="0 0 1000 100" preserveAspectRatio="none" className="pointer-events-none absolute inset-x-0 top-0.5 h-[calc(100%-4px)] w-full overflow-visible text-teal-600/55 dark:text-teal-400/55">
+        {completionLine && <svg aria-label="Estimated task completion over time" role="img" viewBox="0 0 1000 100" preserveAspectRatio="none" className="pointer-events-none absolute inset-x-0 top-0.5 h-[calc(100%-4px)] w-full overflow-visible text-teal-600/30 dark:text-teal-400/30">
           <path data-completion-line d={completionLine} fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
         </svg>}
         {focusedRange && <span data-section-range aria-label={`Selected section: steps ${focusedRange.first + 1}–${focusedRange.last + 1}`} className="pointer-events-none absolute inset-y-0 rounded-[2px] border border-brand-500 bg-brand-500/5" style={{ left: `${focusedRange.first / steps.length * 100}%`, width: `${(focusedRange.last - focusedRange.first + 1) / steps.length * 100}%` }} />}

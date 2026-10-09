@@ -57,10 +57,16 @@ function splitActivities(node: TraceGroup): TraceGroup {
 function subdivide(node: TraceGroup): TraceGroup {
   const phases: TraceRow[][] = [[]];
   let hasWork = false;
+  let hasResponse = false;
   for (const row of node.rows) {
     const progress = row.kind === "assistant" && row.step.metadata?.phase === "commentary";
-    if (progress && hasWork) { phases.push([]); hasWork = false; }
+    // A reply or approval introduces the work that follows it. Keep consecutive
+    // user messages together, and do not split again at the responding commentary.
+    if ((progress && hasWork) || (row.kind === "prompt" && hasResponse)) {
+      phases.push([]); hasWork = false; hasResponse = false;
+    }
     phases.at(-1)!.push(row);
+    if (row.kind === "tool" || (row.kind === "assistant" && !row.step.metadata?.thinking)) hasResponse = true;
     if (row.kind === "tool" || (row.kind === "assistant" && !progress && !row.step.metadata?.thinking)) hasWork = true;
   }
   if (phases.length === 1) return splitActivities(node);
