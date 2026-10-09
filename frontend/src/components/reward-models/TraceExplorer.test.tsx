@@ -55,6 +55,23 @@ it("replaces request excerpts with generated titles and reuses them on return", 
   expect(screen.getAllByRole("button", { name: /^Explore Checking site/ })).toHaveLength(4);
 });
 
+it("leaves context-only sections ungraded even when the API returns a numeric score", async () => {
+  const contextSteps: RmStep[] = ["system", "user", "tool", "assistant"].map((role, index) => ({
+    id: `context-${index}`, index, role: role as RmStep["role"], content: "Supplied context",
+    tool_name: null, tool_input: null, tool_call_id: null, metadata: role === "assistant" ? { thinking: true } : null,
+  }));
+  const work = { ...contextSteps[3], id: "action", index: 4, metadata: null, content: "I verified the order." };
+  render(<Harness outline={[
+    { key: "context", rows: presentTrace(contextSteps).rows, children: [] },
+    { key: "work", rows: presentTrace([work]).rows, children: [] },
+  ]} />);
+  expect(screen.getByLabelText("Ungraded context for Steps 1–4")).toHaveTextContent("Ungraded");
+  await load();
+  expect(screen.queryByRole("button", { name: /Section score .* for Steps 1–4/ })).not.toBeInTheDocument();
+  expect(screen.getByLabelText("Ungraded context for Steps 1–4")).toHaveTextContent("Ungraded");
+  expect(screen.getByRole("button", { name: "Section score 0.82 for Step 5" })).toBeVisible();
+});
+
 it("only makes ancestor breadcrumbs clickable", async () => {
   render(<Harness />);
   await load();

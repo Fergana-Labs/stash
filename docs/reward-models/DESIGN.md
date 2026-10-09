@@ -234,6 +234,8 @@ Entering a leaf section scrolls to its first step in the complete chronological
 trace. Scrolling continues across section boundaries, and Back to sections
 returns to the logical task/subtask cards. Only ancestor breadcrumbs are clickable;
 the current section is plain text. The left rail remains global.
+Sections without assistant responses or tool calls are context, not agent work.
+They remain ungraded, including when an older cached assessment contains a score.
 The top minimap remains navigable before grades arrive; ungraded messages have
 small dots instead of credit heights. Hover previews stay on one line below the
 chart, showing the step number, recorded time, a content excerpt, and available

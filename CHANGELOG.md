@@ -7,6 +7,8 @@ everything before it is captured in git history (`git log`), not here.
 
 - Align trace step numbers with their message headings and move the theme toggle
   to the bottom-left sidebar.
+- Leave sections containing only supplied context ungraded instead of assigning
+  success scores to system instructions, requests, or tool observations.
 
 - Simplify trace navigation and remove the label summary, Labels/Scores toggles,
   scoring explainer, and redundant navigation hints. Keep long-message collapse
