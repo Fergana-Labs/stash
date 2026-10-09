@@ -99,7 +99,7 @@ function LatestTraceMinimap({ steps, annotations, actionScores, annotationStatus
       const target = event.target;
       if (!(target instanceof HTMLElement)) return;
       if (root.current?.contains(target) || target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])')) return;
-      if (["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "].includes(event.key)) followScroll();
+      if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Enter", "Escape", "PageUp", "PageDown", "Home", "End", " "].includes(event.key)) followScroll();
     }
     container.addEventListener("wheel", followScroll, { passive: true });
     container.addEventListener("touchmove", followScroll, { passive: true });
@@ -121,27 +121,6 @@ function LatestTraceMinimap({ steps, annotations, actionScores, annotationStatus
     };
   }, [steps, scroller, navigation]);
 
-  useEffect(() => {
-    function navigate(event: KeyboardEvent) {
-      if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || event.isComposing) return;
-      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight" || !steps.length) return;
-      const target = event.target;
-      if (!(target instanceof HTMLElement) || root.current?.contains(target)) return; // Bars handle their own focus.
-      if (target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"]), [role="textbox"], [role="dialog"], [role="menu"], [role="listbox"]')) return;
-      if (target !== document.body && !scroller.current?.contains(target)) return;
-      if (window.getSelection()?.isCollapsed === false) return;
-      event.preventDefault();
-      const selected = steps.findIndex((step) => `step-${step.id}` === selectedStep.current);
-      const current = selected >= 0 ? selected : activeIndex;
-      const next = Math.max(0, Math.min(steps.length - 1, current + (event.key === "ArrowRight" ? 1 : -1)));
-      if (next === current) return;
-      selectedStep.current = `step-${steps[next].id}`;
-      setActiveIndex(next);
-      onJump(next);
-    }
-    document.addEventListener("keydown", navigate);
-    return () => document.removeEventListener("keydown", navigate);
-  }, [activeIndex, onJump, scroller, steps]);
 
   if (!steps.length) return null;
   const graded = steps.some((step) => Number.isFinite(actionScores?.get(step.id)?.credit));
@@ -177,7 +156,11 @@ function LatestTraceMinimap({ steps, annotations, actionScores, annotationStatus
   }
 
   function endDrag(event: PointerEvent<HTMLDivElement>) {
-    if (drag.current?.pointerId === event.pointerId) drag.current = null;
+    if (drag.current?.pointerId !== event.pointerId) return;
+    drag.current = null;
+    if (event.type === "pointerup") requestAnimationFrame(() => {
+      scroller.current?.querySelector<HTMLElement>('[aria-label="Trace explorer"]')?.focus({ preventScroll: true });
+    });
   }
 
   function labelFor(step: RmStep) {
@@ -275,7 +258,7 @@ function LatestTraceMinimap({ steps, annotations, actionScores, annotationStatus
       <div className="flex shrink-0 flex-col items-end gap-1">
         <span className="whitespace-nowrap text-[10px] text-muted-foreground tabular-nums">Step {steps[activeIndex]?.index + 1} of {steps.length}</span>
         {graded && <div role="group" aria-label="Credit scale" className="flex rounded-md border border-border-subtle p-0.5 text-[10px]">
-          {([['fit', 'Fit', 'Scale to the largest absolute step credit'], ['fixed', '±1', 'Use a fixed −1 to +1 scale']] as const).map(([value, label, title]) => <button
+          {([['fixed', '±1', 'Use a fixed −1 to +1 scale'], ['fit', 'Fit', 'Scale to the largest absolute step credit']] as const).map(([value, label, title]) => <button
             key={value} type="button" aria-pressed={scale === value} title={title} onClick={() => setScale(value)}
             className={cn("cursor-pointer rounded px-1.5 py-0.5 leading-none focus-visible:outline-2 focus-visible:outline-brand-500", scale === value ? "bg-surface text-foreground" : "text-muted-foreground hover:text-foreground")}
           >{label}</button>)}

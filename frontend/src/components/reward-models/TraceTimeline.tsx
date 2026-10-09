@@ -7,13 +7,13 @@ import { cn } from "@/lib/utils";
 import type { RmActionScore, RmStep } from "@/lib/types";
 import { creditColor, formatCredit } from "./action-credit";
 import { StepLabelChips } from "./StepLabels";
-import { StepScoreChip, StepScoreLine, TaskScoreSummary } from "./StepRewards";
+import { StepScoreChip, TaskScoreSummary } from "./StepRewards";
 import type { LabelChip } from "./step-labels";
 import type { StepReward, TaskScore } from "./step-rewards";
 import AnchoredText from "./AnchoredText";
 import { firstLine, isThinking, looksLikeError, rowSteps, toolLabel, toolSummary, type TraceRow } from "./trace-rows";
 import type { Highlight } from "./source-anchors";
-import { Check, Copy, ChevronDown, ChevronRight } from "lucide-react";
+import { Check, Copy, ChevronDown, ChevronRight, MessageSquarePlus } from "lucide-react";
 import { readableExcerpt } from "./trace-presentation";
 import ToolInput from "./ToolInput";
 
@@ -25,19 +25,17 @@ export interface StepAnnotations {
   /** Step labels (what each step is); absent when the trace has none or they are hidden. */
   labelChips?: (step: RmStep) => LabelChip[];
   taskHeading?: (step: RmStep) => string | null;
+  taskName?: (step: RmStep) => string | null;
   onJumpToStep?: (stepId: string) => void;
   /** Each step's score and how it was built; absent unless scores are shown. */
   reward?: (step: RmStep) => StepReward | null;
   /** The score of the task a step belongs to, shown where the task starts. */
   taskScore?: (step: RmStep) => TaskScore | null;
-  stepNumberOf?: (chunk: string) => number | null;
-  onJumpToChunk?: (chunk: string) => void;
   highlights: (step: RmStep) => Highlight[];
   commentCount: (step: RmStep) => number;
   hasQuotes: (step: RmStep) => boolean;
   flashing: (step: RmStep) => boolean;
-  /** In the latest viewer, row controls only open existing comments. */
-  commentsViaContextMenu?: boolean;
+  onViewComments?: (step: RmStep) => void;
   onComment: (step: RmStep) => void;
   onSelectAnnotation: (ids: string[]) => void;
 }
@@ -48,13 +46,6 @@ function Labels({ step, ann, className }: { step: RmStep; ann: StepAnnotations; 
   return <StepLabelChips chips={chips} onJump={ann.onJumpToStep} className={className} />;
 }
 
-/** The breakdown is the deepest level of detail, so it only appears once a row is opened. */
-function ScoreLine({ step, ann, className }: { step: RmStep; ann: StepAnnotations; className?: string }) {
-  const reward = ann.reward?.(step);
-  if (!reward || !ann.stepNumberOf || !ann.onJumpToChunk) return null;
-  return <StepScoreLine reward={reward} stepNumberOf={ann.stepNumberOf} onJumpToChunk={ann.onJumpToChunk} className={className} />;
-}
-
 /** The id is the scroll target for the minimap and comments. */
 function RowFrame({ step, ann, children, className }: { step: RmStep; ann: StepAnnotations; children: ReactNode; className?: string }) {
   return (
@@ -63,7 +54,7 @@ function RowFrame({ step, ann, children, className }: { step: RmStep; ann: StepA
       data-step-id={step.id}
       className={cn(
         "relative scroll-mt-44 transition-colors duration-700",
-        "pr-2 pl-8",
+        "group/row py-1 pr-2 pl-8",
         ann.flashing(step) && "bg-amber-100/60 ring-1 ring-amber-400/50 dark:bg-amber-400/10",
         className,
       )}
@@ -142,30 +133,18 @@ function Clamp({ children, max, open: forcedOpen }: { children: ReactNode; max: 
   );
 }
 
-/** Keep empty comment controls quiet until the row is focused or hovered. */
+/** A consistent right-edge action, revealed by hovering or focusing any part of the row. */
 function StepActions({ step, ann }: { step: RmStep; ann: StepAnnotations }) {
   const comments = ann.commentCount(step);
-  if (ann.commentsViaContextMenu && comments === 0) return null;
-  const quiet = comments === 0;
-  return (
-    <span
-      onClick={(e) => e.stopPropagation()}
-      className={cn(
-        "flex shrink-0 items-center gap-2",
-        quiet && "opacity-0 group-hover/row:opacity-100 focus-within:opacity-100",
-      )}
-    >
-      <button
-        type="button"
-        onClick={() => ann.onComment(step)}
-        title={ann.commentsViaContextMenu ? "View comments on this step" : "Comment on this step"}
-        aria-label={ann.commentsViaContextMenu ? "View comments on this step" : "Comment on this step"}
-        className={cn("inline-flex h-5 cursor-pointer items-center gap-1 text-[11px] font-medium text-dim hover:text-foreground hover:underline underline-offset-4", comments === 0 && "opacity-0 group-hover/row:opacity-100 focus:opacity-100")}
-      >
-        {ann.commentsViaContextMenu ? "Comments" : "Comment"}{comments > 0 && ` (${comments})`}
-      </button>
-    </span>
-  );
+  return <span onClick={(event) => event.stopPropagation()} className="flex shrink-0 items-center gap-1">
+    {comments > 0 && <button type="button" onClick={() => (ann.onViewComments ?? ann.onComment)(step)}
+      aria-label={`View ${comments} ${comments === 1 ? "comment" : "comments"} on this message`} title="View comments"
+      className="cursor-pointer text-[11px] text-muted-foreground hover:text-foreground">{comments}</button>}
+    <button type="button" onClick={() => ann.onComment(step)} title="Comment on message" aria-label="Comment on message"
+      className="flex size-6 cursor-pointer items-center justify-center rounded text-muted-foreground opacity-0 hover:bg-surface hover:text-foreground group-hover/row:opacity-100 group-focus-within/row:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100">
+      <MessageSquarePlus className="size-3.5" aria-hidden="true" />
+    </button>
+  </span>;
 }
 
 function StepTime({ step }: { step: RmStep }) {
@@ -224,7 +203,7 @@ function PromptRow({ step, ann, repeated, expanded, onToggle }: {
 }) {
   return (
     <RowFrame step={step} ann={ann} className="group/row">
-      <RowHeader step={step} ann={ann} className="mb-2 min-h-8">
+      <RowHeader step={step} ann={ann} className={cn("min-h-8", expanded && "mb-2")}>
         <button type="button" onClick={onToggle} aria-expanded={expanded}
           aria-label={`${expanded ? "Collapse" : "Expand"} ${repeated ? "repeated user message" : "user message"}`}
           className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-left">
@@ -242,11 +221,11 @@ function PromptRow({ step, ann, repeated, expanded, onToggle }: {
 
 /* ── assistant message (or reasoning) ───────────────────────────────── */
 
-function AssistantRow({ step, ann, first, expanded, onToggle }: { step: RmStep; ann: StepAnnotations; first: boolean; expanded: boolean; onToggle: () => void }) {
+function AssistantRow({ step, ann, expanded, onToggle }: { step: RmStep; ann: StepAnnotations; expanded: boolean; onToggle: () => void }) {
   const thinking = isThinking(step);
   return (
-    <RowFrame step={step} ann={ann} className={cn("group/row", !first && "pt-3")}>
-      <RowHeader step={step} ann={ann} className="mb-1 min-h-8">
+    <RowFrame step={step} ann={ann}>
+      <RowHeader step={step} ann={ann} className={cn("min-h-8", expanded && "mb-1")}>
         <button type="button" onClick={onToggle} aria-expanded={expanded}
           aria-label={`${expanded ? "Collapse" : "Expand"} ${thinking ? "thinking" : "assistant"} message`}
           className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-left">
@@ -257,7 +236,6 @@ function AssistantRow({ step, ann, first, expanded, onToggle }: { step: RmStep; 
         <Labels step={step} ann={ann} />
         <StepMetadata step={step} ann={ann} />
       </RowHeader>
-      {expanded && <ScoreLine step={step} ann={ann} className="mb-1.5" />}
       {expanded && <div className={cn(thinking && "text-dim italic")}>
         <StepContent step={step} ann={ann} markdown max={440} />
       </div>}
@@ -306,7 +284,6 @@ function ToolRow({
         <Labels step={head} ann={ann} className="shrink-0 flex-nowrap" />
         <StepMetadata step={head} ann={ann} />
       </RowHeader>
-      {expanded && <ScoreLine step={head} ann={ann} className="mb-2 ml-5" />}
       {expanded && <div className="mb-2 ml-5 text-[13px]">
         {call?.tool_input && <ToolInput input={call.tool_input} tool={name ?? ""} />}
         {result && <ToolOutput step={result} ann={ann} nested={call !== null} />}
@@ -336,7 +313,7 @@ function ToolOutput({ step, ann, nested }: { step: RmStep; ann: StepAnnotations;
 function SystemRow({ step, ann, expanded, onToggle }: { step: RmStep; ann: StepAnnotations; expanded: boolean; onToggle: () => void }) {
   return (
     <RowFrame step={step} ann={ann}>
-      <RowHeader step={step} ann={ann} className="group/row min-h-8">
+      <RowHeader step={step} ann={ann} className="min-h-8">
         <button type="button" onClick={onToggle} aria-expanded={expanded} aria-label={`${expanded ? "Collapse" : "Expand"} system message`}
           className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-left">
           <DisclosureIcon expanded={expanded} /><span className="shrink-0 text-[13px] font-medium text-foreground">System</span>
@@ -374,7 +351,7 @@ export default function TraceTimeline({
       const number = ann.stepNumber?.(step) ?? step.index + 1;
       const task = tasks.get(score.task);
       if (task) task.lastStep = number;
-      else tasks.set(score.task, { rowKey: row.key, heading: ann.taskHeading?.(step) ?? `Task ${score.task.replace(/^t/, "")}`, score, firstStep: number, lastStep: number });
+      else tasks.set(score.task, { rowKey: row.key, heading: ann.taskName?.(step) ?? ann.taskHeading?.(step) ?? `Task ${score.task.replace(/^t/, "")}`, score, firstStep: number, lastStep: number });
     }
   }
   const taskSummaries = new Map([...tasks.values()].map((task) => [task.rowKey, task]));
@@ -406,19 +383,18 @@ export default function TraceTimeline({
         </div>
       );
     }
-    if (row.kind === "assistant") return <AssistantRow key={row.key} step={row.step} ann={ann} first={index === 0} expanded={isExpanded(row)} onToggle={() => onToggle(row)} />;
+    if (row.kind === "assistant") return <AssistantRow key={row.key} step={row.step} ann={ann} expanded={isExpanded(row)} onToggle={() => onToggle(row)} />;
     return <ToolRow key={row.key} call={row.call} result={row.result} ann={ann} expanded={isExpanded(row)} onToggle={() => onToggle(row)} />;
   }
 
   return (
-    <div className="divide-y divide-border-subtle">
+    <div>
       {groups.map((group) => {
         const task = taskSummaries.get(group.rows[0].key);
         return <div key={group.rows[0].key}>
           {task && <div className="pt-3"><TaskScoreSummary {...task} /></div>}
-          <section aria-label={group.assistant ? "Assistant turn" : "Conversation messages"} className="py-3">
-            {group.assistant && group.rows[0].kind === "tool" && <h3 className="m-0 mb-1 text-[13px] font-medium text-foreground">Assistant</h3>}
-            <div className={cn(!group.assistant && "space-y-2")}>{group.rows.map((row, index) => renderRow(row, index, group.rows))}</div>
+          <section aria-label={group.assistant ? "Assistant turn" : "Conversation messages"}>
+            <div>{group.rows.map((row, index) => renderRow(row, index, group.rows))}</div>
           </section>
         </div>;
       })}

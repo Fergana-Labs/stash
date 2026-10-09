@@ -66,22 +66,27 @@ it("shows credit through height and keeps action type colors and retains keyboar
   expect(onJump).toHaveBeenCalledWith(1);
 });
 
-it("moves the minimap from section-card focus and the document without requiring bar focus", () => {
+it("reserves Left/Right for section navigation unless a minimap bar has focus", () => {
   const onJump = vi.fn();
-  const container = renderMap([], onJump); // Section overview has no rendered step rows.
+  const container = renderMap([], onJump);
   const card = document.createElement("button");
   container.append(card);
   document.body.append(container);
   try {
     card.focus();
-    fireEvent.keyDown(card, { key: "ArrowRight" });
-    expect(screen.getByText("Step 2 of 3")).toBeVisible();
-    fireEvent.keyDown(document.body, { key: "ArrowRight", repeat: true });
-    expect(screen.getByText("Step 3 of 3")).toBeVisible();
-    fireEvent.keyDown(document.body, { key: "ArrowRight" });
-    fireEvent.keyDown(document.body, { key: "ArrowLeft" });
-    expect(screen.getByText("Step 2 of 3")).toBeVisible();
-    expect(onJump.mock.calls).toEqual([[1], [2], [1]]);
+    for (const key of ["ArrowRight", "ArrowLeft"]) {
+      expect(fireEvent.keyDown(card, { key })).toBe(true);
+      expect(fireEvent.keyDown(document.body, { key })).toBe(true);
+    }
+    expect(onJump).not.toHaveBeenCalled();
+    const first = screen.getByRole("button", { name: /^Step 1:/ });
+    first.focus();
+    fireEvent.keyDown(first, { key: "ArrowRight" });
+    const second = screen.getByRole("button", { name: /^Step 2:/ });
+    expect(second).toHaveFocus();
+    fireEvent.keyDown(second, { key: "ArrowLeft" });
+    expect(first).toHaveFocus();
+    expect(onJump.mock.calls).toEqual([[1], [0]]);
   } finally { container.remove(); }
 });
 
@@ -176,6 +181,23 @@ it("scrubs across steps, clamps at the ends, and stops on release", () => {
   fireEvent.pointerUp(map, { pointerId: 1 });
   fireEvent.pointerMove(map, { pointerId: 1, clientX: 350 });
   expect(onJump.mock.calls).toEqual([[0], [1], [2], [0]]);
+});
+
+it("returns focus to the explorer after a pointer jump so Left can go up", async () => {
+  const container = renderMap();
+  const explorer = document.createElement("section");
+  explorer.setAttribute("aria-label", "Trace explorer");
+  explorer.tabIndex = -1;
+  container.append(explorer);
+  document.body.append(container);
+  try {
+    const map = screen.getByRole("group", { name: "Step map" });
+    map.getBoundingClientRect = () => ({ left: 0, width: 300 }) as DOMRect;
+    fireEvent.pointerDown(map, { pointerId: 1, button: 0, clientX: 110 });
+    expect(screen.getByRole("button", { name: /^Step 2:/ })).toHaveFocus();
+    fireEvent.pointerUp(map, { pointerId: 1 });
+    await waitFor(() => expect(explorer).toHaveFocus());
+  } finally { container.remove(); }
 });
 
 it("ends scrubbing when the pointer is cancelled and retains keyboard activation", () => {

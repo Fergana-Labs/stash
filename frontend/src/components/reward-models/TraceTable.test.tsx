@@ -15,12 +15,12 @@ const traces: RmTraceSummary[] = [20, 3, 10].map((steps) => ({
   comment_count: 0, label_error_count: 0, latest_score: null, created_at: "2026-09-29T00:00:00Z",
 }));
 
-function Table() {
+function Table({ mode = "browse" }: { mode?: "browse" | "picker" }) {
   const [selected, setSelected] = useState(new Set(["20"]));
-  return <TraceTable traces={traces} selected={selected} onSelectedChange={setSelected} mode="browse" />;
+  return <TraceTable traces={traces} selected={selected} onSelectedChange={setSelected} mode={mode} />;
 }
 
-it("clicking a column toggles its sort direction without changing selected traces", () => {
+it("sorts browse rows without showing selection checkboxes", () => {
   render(<Table />);
   const order = () => screen.getAllByRole("row").slice(1).map((row) => within(row).getByRole("link").textContent);
   fireEvent.click(screen.getByRole("button", { name: "Steps" }));
@@ -29,8 +29,8 @@ it("clicking a column toggles its sort direction without changing selected trace
   fireEvent.click(screen.getByRole("button", { name: "Steps" }));
   expect(order()).toEqual(["Trace 20", "Trace 10", "Trace 3"]);
   expect(screen.getByRole("columnheader", { name: "Steps" })).toHaveAttribute("aria-sort", "descending");
-  expect(screen.getByRole("checkbox", { name: "Select Trace 20" })).toBeChecked();
-  expect(screen.getByRole("checkbox", { name: "Select Trace 3" })).not.toBeChecked();
+  expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+  expect(screen.queryByRole("textbox", { name: "Search titles and trace content" })).not.toBeInTheDocument();
 });
 
 it("opens a trace from its non-title cells", () => {
@@ -39,12 +39,11 @@ it("opens a trace from its non-title cells", () => {
   expect(push).toHaveBeenCalledWith("/reward-models/traces/20");
 });
 
-it("keeps selection and deletion separate from opening the trace", () => {
+it("keeps deletion separate from opening the trace", () => {
   const onDelete = vi.fn();
   const onSelectedChange = vi.fn();
   render(<TraceTable traces={[traces[0]]} selected={new Set()} onSelectedChange={onSelectedChange} mode="browse" onDelete={onDelete} />);
-  fireEvent.click(screen.getByRole("checkbox", { name: "Select Trace 20" }));
-  expect(onSelectedChange).toHaveBeenCalledWith(new Set(["20"]));
+  expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Delete trace" }).querySelector("svg")!);
   expect(onDelete).toHaveBeenCalledWith(traces[0]);
   expect(push).not.toHaveBeenCalled();
@@ -96,14 +95,14 @@ it("finds matches inside content and ignores a late result from an older search"
   let finishOld!: (value: RmTraceSummary[]) => void;
   search.mockImplementationOnce(() => new Promise((resolve) => { finishOld = resolve; }));
   search.mockResolvedValueOnce([traces[1]]);
-  render(<Table />);
+  render(<Table mode="picker" />);
   const input = screen.getByRole("textbox", { name: "Search titles and trace content" });
   fireEvent.change(input, { target: { value: "old" } });
   await waitFor(() => expect(search).toHaveBeenCalledWith("old"));
   fireEvent.change(input, { target: { value: "needle in tool output" } });
-  await waitFor(() => expect(screen.getByRole("link", { name: "Trace 3" })).toBeVisible());
+  await waitFor(() => expect(screen.getByRole("cell", { name: "Trace 3" })).toBeVisible());
   await act(async () => finishOld([traces[0]]));
-  expect(screen.queryByRole("link", { name: "Trace 20" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("cell", { name: "Trace 20" })).not.toBeInTheDocument();
   fireEvent.change(input, { target: { value: "" } });
-  expect(screen.getByRole("link", { name: "Trace 20" })).toBeVisible();
+  expect(screen.getByRole("cell", { name: "Trace 20" })).toBeVisible();
 });

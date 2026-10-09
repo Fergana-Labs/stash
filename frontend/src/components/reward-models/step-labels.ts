@@ -50,7 +50,9 @@ export interface TraceLabels {
   present: boolean;
   label: (step: RmStep) => StepLabel | null;
   chips: (step: RmStep) => LabelChip[];
-  /** "Task 2" on the step that opens a task, when the trace has more than one. */
+  /** Display name independent of the persisted task ID; context is not numbered. */
+  taskName: (step: RmStep) => string | null;
+  /** Heading on the step that opens a task or a context-only group. */
   taskHeading: (step: RmStep) => string | null;
   /** The step a chunk id (`a3`, `u2`) refers to. */
   stepForChunk: (chunk: string) => RmStep | null;
@@ -161,6 +163,15 @@ export function buildTraceLabels(steps: RmStep[], numberOf: (step: RmStep) => nu
     }
   }
 
+  // Imported context can have its own task ID, despite containing no request or agent work.
+  const taskNames = new Map<string, string>();
+  let taskNumber = 0;
+  for (const task of seenTasks) {
+    const members = [...labels.values()].filter((label) => label.task_id === task);
+    const contextOnly = members.every((label) => label.actor === "user" && label.intent === "added_context");
+    taskNames.set(task, contextOnly ? "Context" : `Task ${++taskNumber}`);
+  }
+
   function chips(step: RmStep): LabelChip[] {
     const label = labels.get(step.id);
     if (!label) return [];
@@ -242,7 +253,7 @@ export function buildTraceLabels(steps: RmStep[], numberOf: (step: RmStep) => nu
   function add(key: string, stepIds: string[], one: string, tone: LabelTone, many?: string) {
     if (stepIds.length > 0) summary.push({ key, text: plural(stepIds.length, one, many), tone, stepIds });
   }
-  if (seenTasks.size > 1) add("tasks", [...taskOpeners.keys()], "task", "neutral");
+  if (taskNumber > 1) add("tasks", [...taskOpeners].filter(([, task]) => taskNames.get(task) !== "Context").map(([id]) => id), "task", "neutral");
   add("outputs", ids((l) => l.is_output), "answer", "info");
   add("confirmed", ids((l) => l.verdict === "confirmed" || l.verdict === "implicit_positive"), "answer accepted", "good", "answers accepted");
   add("rejected", ids((l) => l.verdict === "rejected"), "answer rejected", "bad", "answers rejected");
@@ -257,10 +268,11 @@ export function buildTraceLabels(steps: RmStep[], numberOf: (step: RmStep) => nu
     present: labels.size > 0,
     label: (step) => labels.get(step.id) ?? null,
     chips,
+    taskName: (step) => taskNames.get(labels.get(step.id)?.task_id ?? "") ?? null,
     taskHeading: (step) => {
       const task = taskOpeners.get(step.id);
       if (task === undefined || seenTasks.size < 2) return null;
-      return `Task ${task.replace(/^t/, "")}`;
+      return taskNames.get(task) ?? null;
     },
     stepForChunk: (chunk) => stepByChunk.get(chunk) ?? null,
     summary,

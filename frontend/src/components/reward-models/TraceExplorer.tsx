@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ChevronRight, ArrowUpLeft, ListTree } from "lucide-react";
+import { ChevronRight, ListTree } from "lucide-react";
 import type { RmStep } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import type { TraceGroup } from "./trace-outline";
-import { sectionFallbackTitle, traceExplorerLevel } from "./trace-outline";
+import { isContextGroup, sectionFallbackTitle, traceExplorerLevel } from "./trace-outline";
 import { rowHead } from "./trace-presentation";
 import { rowSteps, type TraceRow } from "./trace-rows";
 import { isGradableAction } from "./automatic-credit";
@@ -60,10 +60,11 @@ export default function TraceExplorer({ groups, path, onPath, assessments, ann, 
       const target = event.target;
       if (!(target instanceof HTMLElement) || target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"]), [role="textbox"], [role="dialog"], [role="menu"], [role="listbox"]')) return;
       if (target !== document.body && !explorer.current?.contains(target)) return;
-      if (event.key === "Escape" && canAscend) {
+      if ((event.key === "Escape" || event.key === "ArrowLeft") && canAscend) {
+        if (event.key === "ArrowLeft" && window.getSelection()?.isCollapsed === false) return;
         event.preventDefault();
         if (!event.repeat) ascend();
-      } else if (event.key === "Enter" && selected && (target === document.body || target === explorer.current || target.closest("[data-section-key]"))) {
+      } else if ((event.key === "Enter" || event.key === "ArrowRight") && selected && (target === document.body || target === explorer.current || target.closest("[data-section-key]"))) {
         event.preventDefault();
         if (!event.repeat) { descend(selected); focusLevel(); }
       } else if ((event.key === "ArrowDown" || event.key === "ArrowUp") && children.length) {
@@ -81,7 +82,7 @@ export default function TraceExplorer({ groups, path, onPath, assessments, ann, 
     const last = number(rowHead(node.rows.at(-1)!));
     return first === last ? `Step ${first}` : `Steps ${first}–${last}`;
   };
-  const title = (node: TraceGroup) => copy(node)?.title ?? sectionFallbackTitle(node);
+  const title = (node: TraceGroup) => isContextGroup(node) ? "Context" : copy(node)?.title ?? sectionFallbackTitle(node);
   const assessmentStatus = children.length > 0 && status !== "ready"
     ? <span role="status" className="ml-auto shrink-0 text-[11px] text-muted-foreground">{status === "loading" ? "Summarizing and scoring…" : "Section assessments unavailable"}</span>
     : null;
@@ -93,20 +94,31 @@ export default function TraceExplorer({ groups, path, onPath, assessments, ann, 
         {index === trail.length - 1 ? <span aria-current="location" title={title(node)} className="max-w-64 truncate">{title(node)}</span> : <button type="button" title={title(node)} onClick={() => onPath(trail.slice(0, index + 1).map((node) => node.key))} className="max-w-48 cursor-pointer truncate hover:text-foreground">{title(node)}</button>}
       </span>)}
       {assessmentStatus}
-      {canAscend && <button type="button" aria-label="Zoom out" onClick={ascend} className="ml-auto flex shrink-0 cursor-pointer items-center gap-1 pl-2 hover:text-foreground"><ArrowUpLeft className="size-3" />Back</button>}
     </nav> : assessmentStatus && <div className="mb-2 flex">{assessmentStatus}</div>}
-    {current && !children.length ? <div>{groups.map((group) => <div key={group.key} id={traceSectionTarget(group)}><TraceTimeline rows={group.rows} taskRows={taskRows} ann={ann} isExpanded={isExpanded} onToggle={onToggle} /></div>)}</div> :
-      <div ref={cards} data-trace-sections className="flex flex-col gap-2">{children.map((node) => {
+    {current && !children.length ? <div key={current.key} id={traceSectionTarget(current)}><TraceTimeline rows={current.rows} taskRows={taskRows} ann={ann} isExpanded={isExpanded} onToggle={onToggle} /></div> :
+      <div ref={cards} data-trace-sections className="flex flex-col">{children.map((node) => {
         const generated = copy(node);
+        if (isContextGroup(node)) return <div key={node.key} id={traceSectionTarget(node)} data-trace-section>
+          <button type="button" onClick={() => descend(node)}
+            onPointerMove={(event) => { if (event.pointerType === "mouse") select(node); }}
+            onFocus={() => select(node)} data-section-key={node.key} data-selected={node.key === selected?.key}
+            tabIndex={node.key === selected?.key ? 0 : -1} aria-current={node.key === selected?.key ? "true" : undefined}
+            aria-label="Explore Context" className={cn("flex h-7 w-full cursor-pointer items-center gap-2 rounded-sm px-3 text-left text-xs text-muted-foreground hover:bg-surface/60 hover:text-foreground focus-visible:outline-2 focus-visible:outline-brand-500", node.key === selected?.key && "bg-surface/60")}>
+            <ChevronRight className="size-3.5" aria-hidden="true" /><span>Context</span><span className="ml-auto text-[11px]">{range(node)}</span>
+          </button>
+        </div>;
         return <div key={node.key} id={traceSectionTarget(node)} data-trace-section className="relative">
           <button type="button" onClick={() => descend(node)}
           onPointerMove={(event) => { if (event.pointerType === "mouse") select(node); }}
           onFocus={() => select(node)} data-section-key={node.key} data-selected={node.key === selected?.key}
           tabIndex={node.key === selected?.key ? 0 : -1} aria-current={node.key === selected?.key ? "true" : undefined}
-          aria-label={`Explore ${title(node)}`} className={cn("flex min-h-28 w-full cursor-pointer flex-col justify-center overflow-hidden rounded-xl border bg-surface/25 py-4 pr-32 pl-4 text-left transition-colors hover:border-foreground/20 hover:bg-surface/60 focus-visible:outline-2 focus-visible:outline-brand-500", node.key === selected?.key ? "border-brand-500/50 bg-brand-500/5" : "border-border-subtle")}>
-          <div className="flex w-full items-center gap-3"><h3 className="m-0 line-clamp-2 min-w-0 flex-1 text-[15px] font-medium leading-snug">{title(node)}</h3><span className="shrink-0 text-[11px] text-muted-foreground tabular-nums">{range(node)}</span><ChevronRight className="size-4 shrink-0 text-muted-foreground" /></div>
-          {generated && <p className="m-0 mt-1.5 line-clamp-2 text-[13px] leading-relaxed text-muted-foreground">{generated.summary}</p>}
-          <div className="mt-2 flex items-center gap-3 text-[11px] text-muted-foreground"><span>{node.rows.length} steps</span>{node.children.length > 0 && <span>{node.children.length} subtasks</span>}</div>
+          aria-label={`Explore ${title(node)}`} title={generated?.summary}
+          className={cn("flex h-7 w-full cursor-pointer items-center gap-3 overflow-hidden rounded-sm pr-24 pl-3 text-left hover:bg-surface/60 focus-visible:outline-2 focus-visible:outline-brand-500", node.key === selected?.key && "bg-surface")}>
+          <ChevronRight className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+          <h3 className="m-0 max-w-[45%] shrink-0 truncate text-[13px] font-medium leading-none">{title(node)}</h3>
+          <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{generated?.summary}</span>
+          {node.children.length > 0 && <span className="shrink-0 text-[11px] text-muted-foreground">{node.children.length} subtasks</span>}
+          <span className="shrink-0 text-[11px] text-muted-foreground tabular-nums">{range(node)}</span>
         </button><TraceSectionScore section={generated} range={range(node)} loading={status === "loading"} hasActions={node.rows.some((row) => rowSteps(row).some(isGradableAction))} /></div>;
       })}</div>}
   </section>;

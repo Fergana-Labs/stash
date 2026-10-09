@@ -28,10 +28,8 @@ const COLUMNS: { key: TraceSortKey; label: string; className: string }[] = [
 ];
 
 /**
- * The trace list with search, sorting, and multi-select (header checkbox,
- * shift-click ranges). "browse" is the Traces tab: rows open the
- * annotation view and rows can be deleted. "picker" is the train sheet:
- * clicking anywhere on a row toggles it.
+ * Browse rows open the trace. Selection and shift-click ranges belong to
+ * the training picker, where clicking anywhere on a row toggles it.
  */
 function LatestTraceTable({
   traces,
@@ -88,7 +86,7 @@ function LatestTraceTable({
   return (
     <div>
       <div className="mb-3 flex flex-wrap items-center gap-3">
-        <label className="flex h-7 w-64 items-center gap-1.5 rounded-md border border-border bg-background px-2 focus-within:border-brand-400 focus-within:ring-2 focus-within:ring-brand-400/20">
+        {mode === "picker" && <label className="flex h-7 w-64 items-center gap-1.5 rounded-md border border-border bg-background px-2 focus-within:border-brand-400 focus-within:ring-2 focus-within:ring-brand-400/20">
           <Search className="h-3.5 w-3.5 text-muted-foreground" />
           <input
             value={query}
@@ -102,7 +100,7 @@ function LatestTraceTable({
             aria-label="Search titles and trace content"
             className="min-w-0 flex-1 bg-transparent text-[12.5px] text-foreground outline-none placeholder:text-muted-foreground"
           />
-        </label>
+        </label>}
         {mode === "browse" && <Select aria-label="Filter traces" value={assessmentFilter} onChange={(value) => { setAssessmentFilter(value); anchor.current = null; }} className="h-7 min-w-32 px-2 text-[12px]" options={[{ value: "all", label: "All traces" }, { value: "scored", label: "Scored" }, { value: "unscored", label: "Unscored" }]} />}
 
         <span className="ml-auto text-[12px] text-muted-foreground tabular-nums">
@@ -115,14 +113,14 @@ function LatestTraceTable({
         <table className={cn("w-full table-fixed border-collapse text-[13px]", mode === "browse" && "min-w-[980px]")}>
           <thead>
             <tr className="border-b border-border bg-surface text-left text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
-              <th className="w-10 py-2 pl-3">
+              {mode === "picker" && <th className="w-10 py-2 pl-3">
                 <Checkbox
                   checked={visible.length > 0 && selectedVisible === visible.length}
                   indeterminate={selectedVisible > 0 && selectedVisible < visible.length}
                   onClick={() => onSelectedChange(toggleAllVisible(visibleIds, selected))}
                   label="Select all shown traces"
                 />
-              </th>
+              </th>}
               {COLUMNS.map((column) => (
                 <th key={column.key} scope="col" aria-sort={sort.key === column.key ? sort.direction : "none"} className={cn("px-3 py-2 font-medium", column.className)}>
                   <button
@@ -199,14 +197,14 @@ function TraceRow({
     <tr
       onClick={openRow}
       className={cn(
-        "group h-14 cursor-pointer border-b border-border-subtle select-none last:border-b-0",
-        checked ? "bg-brand-500/[0.06] hover:bg-brand-500/10" : "hover:bg-surface/60",
+        "group h-10 cursor-pointer border-b border-border-subtle select-none last:border-b-0",
+        picker && checked ? "bg-brand-500/[0.06] hover:bg-brand-500/10" : "hover:bg-surface/60",
       )}
     >
-      <td className="py-2.5 pl-3" onClick={(e) => e.stopPropagation()}>
+      {picker && <td className="py-1.5 pl-3" onClick={(e) => e.stopPropagation()}>
         <Checkbox checked={checked} onClick={onToggle} label={`Select ${trace.title}`} />
-      </td>
-      <td className="px-3 py-2.5">
+      </td>}
+      <td className="px-3 py-1.5">
         {picker ? (
           <div className="truncate font-medium text-foreground">{trace.title}</div>
         ) : (
@@ -215,16 +213,16 @@ function TraceRow({
           </Link>
         )}
       </td>
-      <td className="px-3 py-2.5 text-right font-mono text-[12px] text-dim tabular-nums">{trace.step_count}</td>
-      <td className="px-3 py-2.5 text-right font-mono text-[12px] text-dim tabular-nums">{trace.comment_count}</td>
-      {[traceCredits(trace)?.mean, traceCredits(trace)?.min, traceCredits(trace)?.max].map((credit, i) => <td key={i} className="px-3 py-2.5 text-right font-mono text-[12px] tabular-nums" title="Automatic action annotation from −1 to +1">{credit == null ? "—" : (Math.round(credit * 100) / 100 || 0).toFixed(2)}</td>)}
-      <td className="px-3 py-2.5 text-right" title={traceScoreLabel()}>
+      <td className="px-3 py-1.5 text-right font-mono text-[12px] text-dim tabular-nums">{trace.step_count}</td>
+      <td className="px-3 py-1.5 text-right font-mono text-[12px] text-dim tabular-nums">{trace.comment_count}</td>
+      {[traceCredits(trace)?.mean, traceCredits(trace)?.min, traceCredits(trace)?.max].map((credit, i) => <td key={i} className="px-3 py-1.5 text-right font-mono text-[12px] tabular-nums" title="Automatic action annotation from −1 to +1">{credit == null ? "—" : (Math.round(credit * 100) / 100 || 0).toFixed(2)}</td>)}
+      <td className="px-3 py-1.5 text-right" title={traceScoreLabel()}>
         {traceScore(trace) !== null ? <div className="leading-4"><span className="font-mono text-[12px] text-foreground tabular-nums">{traceScore(trace)!.toFixed(2)}</span></div> : <span className="text-muted-foreground">—</span>}
       </td>
-      <td className="px-3 py-2.5 text-right text-[12px] whitespace-nowrap text-muted-foreground">{relativeTime(trace.created_at)}</td>
+      <td className="px-3 py-1.5 text-right text-[12px] whitespace-nowrap text-muted-foreground">{relativeTime(trace.created_at)}</td>
 
       {mode === "browse" && (
-        <td className="px-2 py-2.5 text-right">
+        <td className="px-2 py-1.5 text-right">
           {onDelete && (
             <Button
               variant="ghost"

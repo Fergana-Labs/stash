@@ -1,7 +1,7 @@
 import { expect, it } from "vitest";
 import type { RmStep } from "@/lib/types";
 import { presentTrace, readableExcerpt } from "./trace-presentation";
-import { buildTraceOutline, groupPath, resolveGroupPath } from "./trace-outline";
+import { buildTraceOutline, groupPath, isContextGroup, resolveGroupPath } from "./trace-outline";
 import { rowSteps } from "./trace-rows";
 
 function step(index: number, content: string, role: RmStep["role"] = "assistant"): RmStep {
@@ -92,4 +92,20 @@ it("keeps startup messages and runtime events in order without manufacturing set
   expect(tree.map((node) => node.rows.map((row) => row.key))).toEqual([["s0", "s1", "s2", "s3", "s4"], ["s5", "s6"], ["s7", "s8"]]);
   expect(tree.flatMap((node) => node.rows.flatMap(rowSteps))).toEqual(source);
   expect(groupPath(tree, "s4")).toEqual([tree[0].key]);
+});
+
+
+it("consolidates instruction-only groups without absorbing actual requests", () => {
+  const source = [
+    step(0, "System instructions", "system"),
+    { ...step(1, "Operating rules", "user"), metadata: { label: { task_id: "t1", intent: "added_context" } } },
+    { ...step(2, "Do the work", "user"), metadata: { label: { task_id: "t2", intent: "new_request" } } },
+    step(3, "Done"),
+    { ...step(4, "Next request", "user"), metadata: { label: { task_id: "t3", intent: "new_request" } } },
+  ];
+  const snapshot = structuredClone(source);
+  const tree = buildTraceOutline(presentTrace(source).rows);
+  expect(tree.map((node) => node.rows.map((row) => row.key))).toEqual([["s0", "s1"], ["s2", "s3"], ["s4"]]);
+  expect(tree.map(isContextGroup)).toEqual([true, false, false]);
+  expect(source).toEqual(snapshot);
 });

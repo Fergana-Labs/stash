@@ -25,7 +25,7 @@ const TEXT_TONE: Record<LabelTone, string> = {
 export function StepScoreChip({ reward }: { reward: StepReward }) {
   return (
     <span
-      title="Score for this step, including the credit or blame passed back from later answers. Open the step to see how it adds up."
+      title="Step score"
       className={cn("inline-flex h-[18px] shrink-0 items-center rounded px-1.5 font-mono text-[10.5px] leading-none font-semibold tabular-nums", TONE[scoreTone(reward.total)])}
     >
       {signed(reward.total)}

@@ -259,18 +259,16 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
     },
     hasQuotes: (step) => annotationsOn(step).some((a) => a.quote !== null) || !!(composer && quoteForStep(step.id, composer.quote, composer.stepId)),
     flashing: (step) => flashStepId === step.id,
-    commentsViaContextMenu: true,
-    onComment: (step) => {
+    onComment: (step) => openComposer({ stepId: step.id, quote: null }),
+    onViewComments: (step) => {
       const row = rows.find((r) => r.key === step.id);
       focusCard((row ? rowSteps(row) : [step]).flatMap((source) => annotationsOn(source).filter((a) => a.comment !== null).map((a) => a.id)));
     },
     onSelectAnnotation: focusCard,
-    ...(labels.present && { labelChips: labels.chips, taskHeading: labels.taskHeading, onJumpToStep: revealStep }),
+    ...(labels.present && { labelChips: labels.chips, taskHeading: labels.taskHeading, taskName: labels.taskName, onJumpToStep: revealStep }),
     ...(stepScores !== null && {
       reward: stepReward,
       taskScore: (step: RmStep) => taskScores.get(labels.label(step)?.task_id ?? "") ?? null,
-      stepNumberOf: (chunk: string) => { const step = labels.stepForChunk(chunk); return step ? numberOf(step) : null; },
-      onJumpToChunk: (chunk: string) => { const step = labels.stepForChunk(chunk); if (step) revealStep(step.id); },
     }),
   };
 

@@ -8,6 +8,12 @@ export interface TraceGroup {
   children: TraceGroup[];
 }
 
+/** Supplied instructions are context, not a task or agent activity. */
+export function isContextGroup(node: TraceGroup): boolean {
+  return node.rows.every((row) => row.kind === "system" || (row.kind === "prompt"
+    && (row.step.metadata?.label as { intent?: string } | undefined)?.intent === "added_context"));
+}
+
 function group(rows: TraceRow[], keyPrefix = "group"): TraceGroup {
   return { key: `${keyPrefix}-${rows[0].key}`, rows, children: [] };
 }
@@ -80,7 +86,13 @@ export function buildTraceOutline(rows: TraceRow[]): TraceGroup[] {
     if (row.kind === "assistant" || row.kind === "tool") hasWork = true;
     if (label?.task_id) taskId = label.task_id;
   }
-  return tasks.map(subdivide);
+  const consolidated: TraceGroup[] = [];
+  for (const task of tasks) {
+    const previous = consolidated.at(-1);
+    if (previous && isContextGroup(previous) && isContextGroup(task)) previous.rows.push(...task.rows);
+    else consolidated.push(task);
+  }
+  return consolidated.map(subdivide);
 }
 
 export function groupPath(groups: TraceGroup[], stepId: string): string[] {

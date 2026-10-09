@@ -91,6 +91,25 @@ describe("buildTraceLabels", () => {
     expect(labels.taskHeading(two[2])).toBe("Task 2");
   });
 
+  it("excludes context-only task IDs from visible task numbers and counts", () => {
+    const steps = [
+      step(0, "user", user("u1", { intent: "added_context" })),
+      step(1, "user", user("u2", { task_id: "t2" })),
+      step(2, "assistant", agent("a1", { task_id: "t2" })),
+      step(3, "user", user("u3", { task_id: "t3" })),
+    ];
+    const labels = buildTraceLabels(steps);
+    expect(labels.taskHeading(steps[0])).toBe("Context");
+    expect(labels.taskHeading(steps[1])).toBe("Task 1");
+    expect(labels.taskName(steps[2])).toBe("Task 1");
+    expect(labels.taskHeading(steps[3])).toBe("Task 2");
+    expect(labels.label(steps[2])?.task_id).toBe("t2");
+    expect(labels.summary.find((item) => item.key === "tasks")).toEqual(expect.objectContaining({ text: "2 tasks", stepIds: ["s1", "s3"] }));
+    // Context inside an actual task remains part of that task.
+    const mixed = buildTraceLabels([steps[0], step(1, "assistant", agent("a1"))]);
+    expect(mixed.taskName(steps[0])).toBe("Task 1");
+  });
+
   it("summarises counts with the steps to jump to, in trace order", () => {
     const steps = [
       step(0, "user", user("u1")),
