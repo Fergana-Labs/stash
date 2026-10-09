@@ -31,7 +31,7 @@ async def test_byo_anthropic_key_runs_claude(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_byo_openai_key_runs_codex(monkeypatch):
+async def test_byo_openai_key_uses_codex_exec_auth_variable(monkeypatch):
     monkeypatch.setattr(settings, "AGENT_EXEC_MODE", "sprites")
 
     async def cred(_uid):
@@ -39,7 +39,7 @@ async def test_byo_openai_key_runs_codex(monkeypatch):
 
     monkeypatch.setattr(agent_auth, "_get_credential", cred)
     auth = await agent_auth.resolve(uuid.uuid4())
-    assert auth.harness is h.CODEX and auth.env == {"OPENAI_API_KEY": "sk-openai"}
+    assert auth.harness is h.CODEX and auth.env == {"CODEX_API_KEY": "sk-openai"}
 
 
 @pytest.mark.asyncio
