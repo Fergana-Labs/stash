@@ -24,7 +24,7 @@ export default function AnnotationSidebar({
 }: {
   visible: boolean;
   onClose: () => void;
-  onAddComment: () => void;
+  onAddComment?: () => void;
   /** Already in document order. */
   annotations: RmAnnotation[];
   steps: RmStep[];
@@ -52,11 +52,11 @@ export default function AnnotationSidebar({
             {flagged > 0 && `, ${flagged} flagged`}
           </span>
         </div>
-        {!composer && <Button variant="ghost" size="sm" className="mb-2 ml-1" onClick={onAddComment}>Add comment</Button>}
+        {!composer && onAddComment && <Button variant="ghost" size="sm" className="mb-2 ml-1" onClick={onAddComment}>Add comment</Button>}
         {composer && <div className="mx-3 mb-1 border-b border-border pb-4">{composer}</div>}
         {annotations.length === 0 ? (
           <p className="m-0 px-3 pb-4 text-[12.5px] leading-relaxed text-muted-foreground">
-            Select text or use Comment on any step. Your comments appear here.
+            {onAddComment ? "Select text or use Comment on any step. Your comments appear here." : "Right-click selected text or a message to add a comment."}
           </p>
         ) : (
           <div className="flex flex-col divide-y divide-border">
@@ -65,6 +65,7 @@ export default function AnnotationSidebar({
                 key={annotation.id}
                 annotation={annotation}
                 target={annotation.step_id === null ? null : stepById.get(annotation.step_id)!}
+                selectedSteps={annotation.quote?.segments?.map((segment) => stepById.get(segment.step_id)?.index).filter((index) => index !== undefined)}
                 mine={annotation.author_id === viewerId}
                 active={annotation.id === activeId}
                 pending={annotation.id === pendingId}
@@ -84,6 +85,7 @@ export default function AnnotationSidebar({
 function AnnotationCard({
   annotation,
   target,
+  selectedSteps,
   mine,
   active,
   pending,
@@ -95,6 +97,7 @@ function AnnotationCard({
   annotation: RmAnnotation;
   /** The step this annotation is on; null = the whole trace. */
   target: RmStep | null;
+  selectedSteps?: number[];
   mine: boolean;
   active: boolean;
   pending: boolean;
@@ -160,7 +163,7 @@ function AnnotationCard({
           )}
         </div>
         <span className="shrink-0 font-mono text-[10.5px] tracking-wide text-muted-foreground uppercase">
-          {target === null ? "Trace" : target.index < 0 ? "Instructions" : `Step ${target.index + 1}${target.role === "tool" ? " · output" : ""}`}
+          {selectedSteps?.length ? selectedSteps[0] === selectedSteps.at(-1) ? `Step ${selectedSteps[0] + 1}` : `Steps ${selectedSteps[0] + 1}–${selectedSteps.at(-1)! + 1}` : target === null ? "Trace" : target.index < 0 ? "Instructions" : `Step ${target.index + 1}${target.role === "tool" ? " · output" : ""}`}
         </span>
       </div>
 

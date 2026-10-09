@@ -66,6 +66,42 @@ it("shows credit through height and keeps action type colors and retains keyboar
   expect(onJump).toHaveBeenCalledWith(1);
 });
 
+it("moves the minimap from section-card focus and the document without requiring bar focus", () => {
+  const onJump = vi.fn();
+  const container = renderMap([], onJump); // Section overview has no rendered step rows.
+  const card = document.createElement("button");
+  container.append(card);
+  document.body.append(container);
+  try {
+    card.focus();
+    fireEvent.keyDown(card, { key: "ArrowRight" });
+    expect(screen.getByText("Step 2 of 3")).toBeVisible();
+    fireEvent.keyDown(document.body, { key: "ArrowRight", repeat: true });
+    expect(screen.getByText("Step 3 of 3")).toBeVisible();
+    fireEvent.keyDown(document.body, { key: "ArrowRight" });
+    fireEvent.keyDown(document.body, { key: "ArrowLeft" });
+    expect(screen.getByText("Step 2 of 3")).toBeVisible();
+    expect(onJump.mock.calls).toEqual([[1], [2], [1]]);
+  } finally { container.remove(); }
+});
+
+it("leaves editing, menus, modified keys, and unrelated controls alone", () => {
+  const onJump = vi.fn();
+  const container = renderMap([], onJump);
+  container.innerHTML = '<textarea></textarea><div role="menu"><button>Comment</button></div>';
+  document.body.append(container);
+  const outside = document.createElement("button");
+  document.body.append(outside);
+  try {
+    fireEvent.keyDown(container.querySelector("textarea")!, { key: "ArrowRight" });
+    fireEvent.keyDown(container.querySelector("button")!, { key: "ArrowRight" });
+    fireEvent.keyDown(outside, { key: "ArrowRight" });
+    fireEvent.keyDown(document.body, { key: "ArrowRight", shiftKey: true });
+    fireEvent.keyDown(document.body, { key: "ArrowRight", metaKey: true });
+    expect(onJump).not.toHaveBeenCalled();
+  } finally { container.remove(); outside.remove(); }
+});
+
 it("uses the final displayed step when filters hide the end of the trace", async () => {
   const container = renderMap(steps.slice(0, 2));
   container.scrollTop = 500;

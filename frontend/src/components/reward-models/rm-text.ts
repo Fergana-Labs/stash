@@ -17,6 +17,14 @@ export interface TextRange {
   end: number;
 }
 
+export function annotationStepIds(annotation: Pick<RmAnnotation, "step_id" | "quote">): string[] {
+  return annotation.quote?.segments?.map((segment) => segment.step_id) ?? (annotation.step_id ? [annotation.step_id] : []);
+}
+
+export function quoteForStep(stepId: string, quote: RmQuote | null, targetStepId: string | null): RmQuote | null {
+  return quote?.segments?.find((segment) => segment.step_id === stepId) ?? (targetStepId === stepId ? quote : null);
+}
+
 /** Where a quote sits in a step's content, or null when the anchored text is not there. */
 export function locateQuote(content: string, quote: RmQuote): TextRange | null {
   const anchored = quote.prefix + quote.text + quote.suffix;
@@ -57,11 +65,13 @@ export function sortAnnotations(annotations: RmAnnotation[], steps: RmStep[]): R
   const stepById = new Map(steps.map((s) => [s.id, s]));
 
   function position(a: RmAnnotation): [number, number] {
-    if (a.step_id === null) return [-1, 0];
-    const step = stepById.get(a.step_id);
-    if (!step) throw new Error(`Annotation ${a.id} points at unknown step ${a.step_id}`);
-    if (!a.quote) return [step.index, -1];
-    const range = locateQuote(step.content, a.quote);
+    const stepId = annotationStepIds(a)[0];
+    if (!stepId) return [-1, 0];
+    const step = stepById.get(stepId);
+    if (!step) return [Infinity, 0]; // A re-import may have replaced the quoted steps.
+    const quote = quoteForStep(stepId, a.quote, a.step_id);
+    if (!quote) return [step.index, -1];
+    const range = locateQuote(step.content, quote);
     return [step.index, range ? range.start : -1];
   }
 

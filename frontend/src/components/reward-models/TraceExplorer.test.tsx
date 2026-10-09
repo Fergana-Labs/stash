@@ -91,7 +91,7 @@ it("only makes ancestor breadcrumbs clickable", async () => {
   expect(screen.getAllByRole("button", { name: /^Explore / })).toHaveLength(2);
 });
 
-it("navigates with arrows, expands leaf steps, and restores selection when going back", async () => {
+it("uses Up/Down to select, Enter to open, and Escape to return", async () => {
   const opened = vi.fn();
   render(<Harness opened={opened} />);
   await load();
@@ -100,22 +100,22 @@ it("navigates with arrows, expands leaf steps, and restores selection when going
   fireEvent.keyDown(document.body, { key: "ArrowDown" });
   expect(original[1]).toHaveFocus();
   expect(original[1]).toHaveAttribute("aria-current", "true");
-  fireEvent.keyDown(original[1], { key: "ArrowRight" });
+  fireEvent.keyDown(original[1], { key: "Enter" });
   await load();
   await act(async () => vi.advanceTimersByTime(16));
   let children = screen.getAllByRole("button", { name: /^Explore / });
   expect(children[0]).toHaveFocus();
-  fireEvent.keyDown(children[0], { key: "ArrowRight", repeat: true });
+  fireEvent.keyDown(children[0], { key: "Enter", repeat: true });
   expect(opened).not.toHaveBeenCalled();
-  fireEvent.keyDown(children[0], { key: "ArrowRight" });
+  fireEvent.keyDown(children[0], { key: "Enter" });
   expect(opened).toHaveBeenCalledOnce();
   // Entering a subsection must not cut off the rest of the trace.
   expect(screen.getByLabelText("Step 48")).toBeInTheDocument();
   expect(screen.getByLabelText("Step 1")).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: /^Explore / })).not.toBeInTheDocument();
-  fireEvent.keyDown(document.body, { key: "ArrowLeft" });
+  fireEvent.keyDown(document.body, { key: "Escape" });
   await load();
-  fireEvent.keyDown(document.body, { key: "ArrowLeft" });
+  fireEvent.keyDown(document.body, { key: "Escape" });
   await load();
   await act(async () => vi.advanceTimersByTime(16));
   children = screen.getAllByRole("button", { name: /^Explore / });
@@ -132,8 +132,8 @@ it("uses mouse hover only to select and leaves editing and other controls alone"
   mouseMove(buttons[2]);
   expect(buttons[2]).toHaveAttribute("aria-current", "true");
   expect(screen.queryByRole("button", { name: "Zoom out" })).not.toBeInTheDocument();
-  fireEvent.keyDown(screen.getByRole("textbox", { name: "Comment" }), { key: "ArrowRight" });
-  fireEvent.keyDown(screen.getByRole("button", { name: "Outside control" }), { key: "ArrowRight" });
+  fireEvent.keyDown(screen.getByRole("textbox", { name: "Comment" }), { key: "Enter" });
+  fireEvent.keyDown(screen.getByRole("button", { name: "Outside control" }), { key: "Enter" });
   expect(screen.queryByRole("button", { name: "Zoom out" })).not.toBeInTheDocument();
 });
 
@@ -191,13 +191,13 @@ it("keeps global markers through nested navigation and scrubs between tasks with
   await act(async () => vi.advanceTimersByTime(16));
   expect(cards[1]).toHaveFocus();
   expect(container.scrollTo).toHaveBeenLastCalledWith({ top: 410, behavior: "instant" });
-  fireEvent.keyDown(cards[1], { key: "ArrowRight" });
+  fireEvent.keyDown(cards[1], { key: "Enter" });
   await load();
   cards = screen.getAllByRole("button", { name: /^Explore / });
   expect(cards).toHaveLength(2);
   expect(rail.querySelectorAll("button")).toHaveLength(4);
   expect(markers[1]).toHaveAttribute("aria-current", "location");
-  fireEvent.keyDown(cards[1], { key: "ArrowRight" });
+  fireEvent.keyDown(cards[1], { key: "Enter" });
   await load();
   expect(screen.queryByRole("button", { name: /^Explore / })).not.toBeInTheDocument();
   scrollToTask(1);
@@ -219,7 +219,7 @@ it("keeps global markers through nested navigation and scrubs between tasks with
   expect(screen.getAllByRole("button", { name: /^Explore / })).toHaveLength(2);
   expect(markers[3]).toHaveAttribute("aria-current", "location");
   expect(screen.getByRole("region", { name: "Trace explorer" })).toHaveFocus();
-  fireEvent.keyDown(document.activeElement!, { key: "ArrowRight" });
+  fireEvent.keyDown(document.activeElement!, { key: "Enter" });
   await load();
   expect(screen.queryByRole("button", { name: /^Explore / })).not.toBeInTheDocument();
   scrollToTask(3);
@@ -260,14 +260,14 @@ it("opens a single task on its subtasks immediately, before assessment requests 
   expect(screen.queryByRole("button", { name: "Zoom out" })).not.toBeInTheDocument();
   expect(screen.getByRole("navigation", { name: "Trace hierarchy" })).toHaveTextContent("Task 1");
   fireEvent.keyDown(document.body, { key: "ArrowDown" });
-  fireEvent.keyDown(document.activeElement!, { key: "ArrowRight" });
+  fireEvent.keyDown(document.activeElement!, { key: "Enter" });
   await act(async () => vi.advanceTimersByTime(16));
   expect(document.getElementById("step-s7")).toBeInTheDocument();
-  fireEvent.keyDown(document.activeElement!, { key: "ArrowLeft" });
+  fireEvent.keyDown(document.activeElement!, { key: "Escape" });
   await act(async () => vi.advanceTimersByTime(16));
   expect(screen.getAllByRole("button", { name: /^Explore / })).toHaveLength(2);
   expect(screen.getByRole("button", { name: "Explore Task 7" })).toHaveFocus();
-  fireEvent.keyDown(document.activeElement!, { key: "ArrowLeft" });
+  fireEvent.keyDown(document.activeElement!, { key: "Escape" });
   expect(screen.getAllByRole("button", { name: /^Explore / })).toHaveLength(2);
 });
 

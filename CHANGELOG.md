@@ -12,6 +12,11 @@ everything before it is captured in git history (`git log`), not here.
 
 - Align the sticky Show less control with the left edge of message content.
 
+- Add trace comments through a context menu, including selections spanning multiple
+  messages. Left/Right now move between steps from the trace view; Enter opens
+  sections and Esc goes back. Messages and tool calls start fully expanded.
+  Show only the thin position line on the minimap, without a focus rectangle.
+
 - Default trace credit charts to ±1 and omit the inactive Sections heading at
   the overview level. Fit scaling and navigation within sections remain available.
 

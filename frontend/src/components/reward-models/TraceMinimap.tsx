@@ -9,6 +9,7 @@ import { isThinking, looksLikeError, toolLabel, toolSummary } from "./trace-rows
 import { readableExcerpt } from "./trace-presentation";
 import { TRACE_STEP_INSET, visibleStepElement } from "./trace-scroll";
 import type { RmActionScore, RmAnnotation, RmStep } from "@/lib/types";
+import { annotationStepIds } from "./rm-text";
 import { formatCredit } from "./action-credit";
 import { isGradableAction } from "./automatic-credit";
 
@@ -120,6 +121,28 @@ function LatestTraceMinimap({ steps, annotations, actionScores, annotationStatus
     };
   }, [steps, scroller, navigation]);
 
+  useEffect(() => {
+    function navigate(event: KeyboardEvent) {
+      if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || event.isComposing) return;
+      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight" || !steps.length) return;
+      const target = event.target;
+      if (!(target instanceof HTMLElement) || root.current?.contains(target)) return; // Bars handle their own focus.
+      if (target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"]), [role="textbox"], [role="dialog"], [role="menu"], [role="listbox"]')) return;
+      if (target !== document.body && !scroller.current?.contains(target)) return;
+      if (window.getSelection()?.isCollapsed === false) return;
+      event.preventDefault();
+      const selected = steps.findIndex((step) => `step-${step.id}` === selectedStep.current);
+      const current = selected >= 0 ? selected : activeIndex;
+      const next = Math.max(0, Math.min(steps.length - 1, current + (event.key === "ArrowRight" ? 1 : -1)));
+      if (next === current) return;
+      selectedStep.current = `step-${steps[next].id}`;
+      setActiveIndex(next);
+      onJump(next);
+    }
+    document.addEventListener("keydown", navigate);
+    return () => document.removeEventListener("keydown", navigate);
+  }, [activeIndex, onJump, scroller, steps]);
+
   if (!steps.length) return null;
   const graded = steps.some((step) => Number.isFinite(actionScores?.get(step.id)?.credit));
   const maxCredit = steps.reduce((max, step) => {
@@ -128,7 +151,7 @@ function LatestTraceMinimap({ steps, annotations, actionScores, annotationStatus
   }, 0);
   const limit = scale === "fit" && maxCredit > 0 ? maxCredit : 1;
   const limitLabel = String(Number(limit.toPrecision(4)));
-  const commented = new Set(annotations.filter((a) => a.comment !== null).map((a) => a.step_id));
+  const commented = new Set(annotations.filter((a) => a.comment !== null).flatMap(annotationStepIds));
 
   function jump(index: number) {
     selectedStep.current = `step-${steps[index].id}`;
@@ -165,7 +188,7 @@ function LatestTraceMinimap({ steps, annotations, actionScores, annotationStatus
   }
 
   return (
-    <nav ref={root} aria-label="Trace steps" className="flex min-w-0 flex-1 select-none items-center gap-3">
+    <nav ref={root} aria-label="Trace steps" aria-keyshortcuts="ArrowLeft ArrowRight" className="flex min-w-0 flex-1 select-none items-center gap-3">
       {annotationStatus && <p role="status" className="sr-only">{annotationStatus}</p>}
       {graded && <div aria-label={`Step credit scale: −${limitLabel} to +${limitLabel}, with zero in the middle`} style={{ width: `${limitLabel.length + 1}ch` }} className="relative h-12 shrink-0 text-right text-[9px] leading-none text-muted-foreground tabular-nums">
         <span className="absolute top-0 right-0">+{limitLabel}</span>
@@ -232,7 +255,7 @@ function LatestTraceMinimap({ steps, annotations, actionScores, annotationStatus
                 (event.currentTarget.parentElement!.children[next] as HTMLButtonElement).focus();
                 jump(next);
               }}
-              className="group relative flex h-full min-w-0 flex-1 cursor-pointer items-end focus-visible:outline-2 focus-visible:outline-brand-500"
+              className="group relative flex h-full min-w-0 flex-1 cursor-pointer items-end focus-visible:outline-none"
             >
               {commented.has(step.id) && <span className="absolute top-0 left-1/2 size-1.5 -translate-x-1/2 rounded-full bg-amber-400" />}
               {(credit === null || credit === 0) && <span aria-hidden="true" data-zero-marker className={cn("absolute top-1/2 z-10 h-px w-full -translate-y-1/2", kind.color)} />}

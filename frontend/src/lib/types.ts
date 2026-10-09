@@ -454,6 +454,8 @@ export interface RmQuote {
   text: string;
   prefix: string;
   suffix: string;
+  /** One anchor per message for a selection spanning multiple messages. */
+  segments?: (Omit<RmQuote, "segments"> & { step_id: string })[];
 }
 
 export interface RmAnnotation {
