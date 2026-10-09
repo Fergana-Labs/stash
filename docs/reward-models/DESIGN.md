@@ -237,10 +237,11 @@ the current section is plain text. The left rail remains global.
 Sections without assistant responses or tool calls are context, not agent work.
 They remain ungraded, including when an older cached assessment contains a score.
 The top minimap remains navigable before grades arrive; ungraded messages have
-small dots instead of credit heights. Graded bars use a fixed −1 to +1 scale
-around a centered, labeled zero line: positive credit extends upward, negative
-credit downward, and exact zero has only a baseline tick. Ungraded dots also sit
-on the baseline, keeping missing scores distinct from measured zero.
+baseline ticks instead of credit heights. The Fit / ±1 toggle defaults to Fit,
+which uses the largest absolute step credit for symmetric limits; ±1 uses fixed
+limits. An all-zero trace uses ±1 in either mode. Positive credit extends upward,
+negative credit downward, and exact zero and unscored steps have only baseline
+ticks. Hover previews still distinguish missing scores from measured zero.
 A clicked step stays selected even when
 the bottom of the trace prevents it from reaching the sticky breadcrumb;
 manual scrolling resumes viewport tracking. Hover previews stay on one line
@@ -250,6 +251,16 @@ toggles, scoring explainer, and keyboard hints are omitted; inline labels and
 scores remain available. A small rescore icon shows activity
 and exposes failure details on demand without a persistent error banner. Its
 hover and focus tooltip explains that it reruns automatic labels and scores.
+
+Task scores appear in separate summary cards before each scored task's first
+message, including single-task traces. Each card identifies the displayed step
+range and separates the final answer's score, total work across the task, and
+the combined task score. When the combined value exceeds the −1..+1 range,
+the card notes the limit. These summaries remain outside numbered step rows.
+
+The training picker shows all suggested base models and accepts a custom Hugging
+Face model ID. Training requires at least two source traces so evaluation can
+hold out whole traces; the UI does not claim to verify semantic independence.
 
 Automatic step labeling uses overlapping windows bounded by
 `STEP_LABELING_MAX_CHUNKS` and `STEP_LABELING_MAX_CHARS`. These are provider

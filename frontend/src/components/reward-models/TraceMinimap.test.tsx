@@ -53,7 +53,7 @@ it("shows credit through height and keeps action type colors and retains keyboar
   const onJump = vi.fn();
   renderMap(steps, onJump, new Map([["0", { step_id: "0", credit: -0.4 } as RmActionScore]]));
   const scored = screen.getByRole("button", { name: "Step 1: Response, credit -0.40" });
-  expect(scored.lastElementChild).toHaveStyle({ height: "20%", top: "50%" });
+  expect(scored.lastElementChild).toHaveStyle({ height: "50%", top: "50%" });
   expect(scored.lastElementChild).toHaveClass("bg-blue-500");
   const unscored = screen.getByRole("button", { name: "Step 2: Response, awaiting score" });
   expect(unscored.lastElementChild).toHaveStyle({ height: "0%" });
@@ -82,12 +82,43 @@ it("plots equal positive and negative credits equally around zero, keeping zero 
   const positive = screen.getByRole("button", { name: "Step 1: Response, credit +0.40" });
   const negative = screen.getByRole("button", { name: "Step 2: Response, credit -0.40" });
   const zero = screen.getByRole("button", { name: "Step 3: Response, credit 0.00" });
-  expect(positive.querySelector("[data-credit-bar]")).toHaveStyle({ height: "20%", bottom: "50%" });
-  expect(negative.querySelector("[data-credit-bar]")).toHaveStyle({ height: "20%", top: "50%" });
+  expect(positive.querySelector("[data-credit-bar]")).toHaveStyle({ height: "50%", bottom: "50%" });
+  expect(negative.querySelector("[data-credit-bar]")).toHaveStyle({ height: "50%", top: "50%" });
   expect(zero.querySelector("[data-credit-bar]")).toHaveStyle({ height: "0%" });
   expect(zero.querySelector("[data-zero-marker]")).toBeInTheDocument();
-  expect(zero.querySelector("[data-unscored-marker]")).not.toBeInTheDocument();
+  expect(zero).not.toHaveAccessibleName(/awaiting score/);
+  expect(screen.getByLabelText("Step credit scale: −0.4 to +0.4, with zero in the middle")).toBeVisible();
+});
+
+it("toggles between the largest absolute credit and fixed limits without changing the selected step", () => {
+  const onJump = vi.fn();
+  renderMap(steps, onJump, new Map([
+    ["0", { step_id: "0", credit: 0.1 } as RmActionScore],
+    ["1", { step_id: "1", credit: -0.4 } as RmActionScore],
+  ]));
+  const positive = screen.getByRole("button", { name: "Step 1: Response, credit +0.10" });
+  const negative = screen.getByRole("button", { name: "Step 2: Response, credit -0.40" });
+  expect(positive.lastElementChild).toHaveStyle({ height: "12.5%" });
+  expect(negative.lastElementChild).toHaveStyle({ height: "50%" });
+  fireEvent.click(negative);
+  fireEvent.click(screen.getByRole("button", { name: "±1" }));
+  expect(screen.getByRole("button", { name: "±1" })).toHaveAttribute("aria-pressed", "true");
+  expect(positive.lastElementChild).toHaveStyle({ height: "5%" });
+  expect(negative.lastElementChild).toHaveStyle({ height: "20%" });
+  expect(negative).toHaveAttribute("aria-current", "step");
+  expect(onJump).toHaveBeenCalledTimes(1);
+  fireEvent.click(screen.getByRole("button", { name: "Fit" }));
+  expect(negative.lastElementChild).toHaveStyle({ height: "50%" });
+});
+
+it("keeps zero and unscored steps flat when there is no nonzero credit to fit", () => {
+  renderMap(steps, vi.fn(), new Map([["0", { step_id: "0", credit: 0 } as RmActionScore]]));
   expect(screen.getByLabelText("Step credit scale: −1 to +1, with zero in the middle")).toBeVisible();
+  for (const button of screen.getByRole("group", { name: "Step map" }).querySelectorAll("button")) {
+    expect(button.querySelector("[data-credit-bar]")).toHaveStyle({ height: "0%" });
+    expect(button.querySelector("[data-zero-marker]")).toHaveClass("h-px");
+  }
+  expect(screen.getByRole("button", { name: "Step 2: Response, awaiting score" })).toBeVisible();
 });
 
 it("scrubs across steps, clamps at the ends, and stops on release", () => {
@@ -147,7 +178,7 @@ it("keeps a clicked user dot active after scrolling below the sticky breadcrumb"
   });
   render(<TraceMinimap steps={mixed} annotations={[]} actionScores={new Map([["0", { credit: 0 } as RmActionScore]])} scroller={{ current: container }} navigation={{ current: header }} onJump={onJump} />);
   const user = screen.getByRole("button", { name: "Step 2: User" });
-  fireEvent.pointerDown(user.querySelector("[data-unscored-marker]")!, { pointerId: 1, button: 0 });
+  fireEvent.pointerDown(user.querySelector("[data-zero-marker]")!, { pointerId: 1, button: 0 });
   fireEvent.pointerUp(user, { pointerId: 1 });
   expect(onJump).toHaveBeenCalledWith(1);
   // Wait for the scroll observer, which previously overwrote the clicked index.
@@ -178,7 +209,7 @@ it.each([480, 500])("preserves a clicked dot when the jump is clamped near the b
   } };
   const { rerender } = render(<TraceMinimap steps={mixed} {...props} />);
   const user = screen.getByRole("button", { name: "Step 2: User" });
-  fireEvent.pointerDown(user.querySelector("[data-unscored-marker]")!, { pointerId: 1, button: 0 });
+  fireEvent.pointerDown(user.querySelector("[data-zero-marker]")!, { pointerId: 1, button: 0 });
   fireEvent.pointerUp(user, { pointerId: 1 });
   await act(async () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
   expect(user).toHaveAttribute("aria-current", "step");
@@ -204,9 +235,10 @@ it("explains why each unscored step lacks a grade", () => {
   expect(tooltip.querySelector("time")).toHaveAttribute("dateTime", "2026-10-08T00:46:47Z");
   expect(tooltip).toHaveTextContent("Please fix the duplicate notifications.");
   expect(tooltip).not.toHaveTextContent(/not graded|awaiting score/);
-  expect(user.querySelector("[data-unscored-marker]")).toHaveClass("rounded-full");
+  expect(user.querySelector("[data-zero-marker]")).toHaveClass("h-px");
+  expect(user.querySelector("[data-zero-marker]")).not.toHaveClass("rounded-full");
   expect(user.lastElementChild).toHaveStyle({ height: "0%" });
-  expect(screen.getByRole("button", { name: "Step 1: Response, insufficient evidence" }).querySelector("[data-unscored-marker]")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Step 1: Response, insufficient evidence" }).querySelector("[data-zero-marker]")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Step 3: Response, credit +0.10" })).toBeVisible();
 });
 
@@ -245,6 +277,6 @@ it("keeps ungraded traces navigable without score heights and retains previous g
   expect(screen.getByRole("button", { name: "Step 2: Response, awaiting score" }).lastElementChild).toHaveStyle({ height: "0%" });
   const saved = new Map([["0", { step_id: "0", credit: 0.25, stale: true } as RmActionScore]]);
   rerender(<TraceMinimap {...props} actionScores={saved} annotationStatus="Updating annotations" />);
-  expect(screen.getByRole("button", { name: "Step 1: Response, credit +0.25, previous annotation" }).lastElementChild).toHaveStyle({ height: "12.5%", bottom: "50%" });
+  expect(screen.getByRole("button", { name: "Step 1: Response, credit +0.25, previous annotation" }).lastElementChild).toHaveStyle({ height: "50%", bottom: "50%" });
   expect(screen.getByRole("group", { name: "Step map" })).toBeVisible();
 });

@@ -22,6 +22,7 @@ export default function TraceExplorer({ groups, path, onPath, assessments, ann, 
 }) {
   const { trail, current, children, canAscend } = traceExplorerLevel(groups, path);
   const { copy, status } = assessments;
+  const taskRows = groups.flatMap((group) => group.rows);
   const explorer = useRef<HTMLElement>(null);
   const cards = useRef<HTMLDivElement>(null);
   const [selections, setSelections] = useState<Record<string, string>>({});
@@ -93,7 +94,7 @@ export default function TraceExplorer({ groups, path, onPath, assessments, ann, 
       {children.length > 0 && status !== "ready" && <span role="status" className="ml-auto shrink-0 text-[11px]">{status === "loading" ? "Summarizing and scoring…" : "Section assessments unavailable"}</span>}
       {canAscend && <button type="button" aria-label="Zoom out" onClick={ascend} className="ml-auto flex shrink-0 cursor-pointer items-center gap-1 pl-2 hover:text-foreground"><ArrowUpLeft className="size-3" />Back</button>}
     </nav>
-    {current && !children.length ? <div>{groups.map((group) => <div key={group.key} id={traceSectionTarget(group)}><TraceTimeline rows={group.rows} ann={ann} isExpanded={isExpanded} onToggle={onToggle} /></div>)}</div> :
+    {current && !children.length ? <div>{groups.map((group) => <div key={group.key} id={traceSectionTarget(group)}><TraceTimeline rows={group.rows} taskRows={taskRows} ann={ann} isExpanded={isExpanded} onToggle={onToggle} /></div>)}</div> :
       <div ref={cards} data-trace-sections className="flex flex-col gap-2">{children.map((node) => {
         const generated = copy(node);
         return <div key={node.key} id={traceSectionTarget(node)} data-trace-section className="relative">
