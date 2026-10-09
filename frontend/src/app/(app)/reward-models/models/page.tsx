@@ -174,7 +174,6 @@ function ModelRow({ model }: { model: RmRewardModel }) {
         <div id={detailsId} role="region" aria-label={`${model.name} details`}>
           <div className="flex flex-wrap items-center gap-2">
             <TrainedOnLink model={model} />
-            <span className="ml-1 text-[12px] text-muted-foreground">{model.compute} · {model.epochs} epoch{model.epochs === 1 ? "" : "s"}</span>
             <span className="flex-1" />
             {!isActiveJob(model.status) && <FeedbackDialog modelId={model.id} />}
             {model.status === "succeeded" && (
