@@ -5,6 +5,8 @@ everything before it is captured in git history (`git log`), not here.
 
 ## Unreleased
 
+- Remove the compute provider and epoch count from expanded reward-model rows.
+
 - Simplify reward-model creation to a name and selected traces. Use managed
   training defaults, remove the reward-criteria, epoch, and base-model controls,
   and remove the explanatory sentence beneath the dialog title.
