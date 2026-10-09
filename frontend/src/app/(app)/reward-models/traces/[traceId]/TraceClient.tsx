@@ -18,7 +18,6 @@ import { TraceSkeleton } from "@/components/reward-models/RmSkeletons";
 import TraceFlamegraph from "@/components/reward-models/TraceFlamegraph";
 import { automaticActionScores, automaticAnnotationProgress } from "@/components/reward-models/automatic-credit";
 import TraceMinimap from "@/components/reward-models/TraceMinimap";
-import TraceTrainingStatus from "@/components/reward-models/TraceTrainingStatus";
 import TraceScore from "@/components/reward-models/TraceScore";
 import { type StepAnnotations } from "@/components/reward-models/TraceTimeline";
 import { buildTraceLabels } from "@/components/reward-models/step-labels";
@@ -299,7 +298,6 @@ function LatestTraceClient({ traceId }: { traceId: string }) {
               <span className="shrink-0 whitespace-nowrap text-[11px] text-muted-foreground">imported {relativeTime(trace.created_at)}</span>
             </div>
             <div className="flex shrink-0 items-center gap-1.5">
-              <TraceTrainingStatus models={trace.training_models ?? []} />
               <TraceScore evaluation={evaluation} error={loadError} onRescore={evaluation?.owner_user_id === viewerId ? () => wbAssess(traceId).then(load) : undefined} />
               <button
                 type="button"

@@ -29,12 +29,15 @@ function LatestTrainPanel({
   summary,
   onTrained,
   optionsPlacement,
+  modelName,
 }: {
   traceIds: string[];
   summary: SelectionSummary;
   onTrained: (model: RmRewardModel) => void;
   /** Where the Options popover opens: below for a bar at the top, above for a footer. */
   optionsPlacement: "above" | "below";
+  /** Name supplied by the creation dialog; standalone panels generate their own default. */
+  modelName?: string;
 }) {
   const [modelCount, setModelCount] = useState<number | null>(null);
   const [showOptions, setShowOptions] = useState(false);
@@ -48,12 +51,13 @@ function LatestTrainPanel({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (modelName !== undefined) return;
     rmListRewardModels()
       .then((models) => setModelCount(models.length))
       .catch((e) => toast.error(errorMessage(e)));
-  }, []);
+  }, [modelName]);
 
-  const name = nameOverride ?? (modelCount === null ? "" : `reward-model-${modelCount + 1}`);
+  const name = modelName ?? nameOverride ?? (modelCount === null ? "" : `reward-model-${modelCount + 1}`);
 
   async function train() {
     setSubmitting(true);
@@ -91,7 +95,7 @@ function LatestTrainPanel({
           Options
           <ChevronDown className={cn("transition-transform", showOptions && "rotate-180")} />
         </Button>
-        <Button onClick={() => void train()} disabled={submitting || traceIds.length < 2 || !baseModel.trim()}>
+        <Button onClick={() => void train()} disabled={submitting || traceIds.length < 2 || !name.trim() || !baseModel.trim()}>
           {submitting && <Loader2 className="animate-spin" />}
           {submitting ? "Queuing…" : "Create new reward model"}
         </Button>
@@ -104,9 +108,11 @@ function LatestTrainPanel({
             optionsPlacement === "below" ? "top-full mt-2" : "bottom-full mb-2",
           )}
         >
-          <Field label="Name">
-            <Input value={name} onChange={(e) => setNameOverride(e.target.value)} />
-          </Field>
+          {modelName === undefined && (
+            <Field label="Model name">
+              <Input value={name} onChange={(e) => setNameOverride(e.target.value)} />
+            </Field>
+          )}
           <Field label="Reward criteria (one per line)">
             <textarea aria-label="Reward criteria" value={rubric} onChange={(e) => setRubric(e.target.value)} rows={5} className="w-full rounded border border-border bg-background p-2 text-sm" />
           </Field>
