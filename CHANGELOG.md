@@ -5,6 +5,11 @@ everything before it is captured in git history (`git log`), not here.
 
 ## Unreleased
 
+- Add Fit / ±1 trace-credit scaling and use baseline ticks for unscored steps.
+  Separate task score summaries from message rows, with the task's step range,
+  final answer, total work, and capped score. Show every suggested training base
+  model in the picker and clarify that evaluation uses separate source traces.
+
 - Plot step credit around a centered zero line: positive bars rise, negative bars
   fall, and zero has no filled height. Add an explanatory rescore tooltip.
 

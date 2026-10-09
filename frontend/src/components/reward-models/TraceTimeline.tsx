@@ -7,11 +7,11 @@ import { cn } from "@/lib/utils";
 import type { RmActionScore, RmStep } from "@/lib/types";
 import { creditColor, formatCredit } from "./action-credit";
 import { StepLabelChips } from "./StepLabels";
-import { StepScoreChip, StepScoreLine, TaskScoreChip } from "./StepRewards";
+import { StepScoreChip, StepScoreLine, TaskScoreSummary } from "./StepRewards";
 import type { LabelChip } from "./step-labels";
-import { signed, type StepReward, type TaskScore } from "./step-rewards";
+import type { StepReward, TaskScore } from "./step-rewards";
 import AnchoredText from "./AnchoredText";
-import { firstLine, isThinking, looksLikeError, toolLabel, toolSummary, type TraceRow } from "./trace-rows";
+import { firstLine, isThinking, looksLikeError, rowSteps, toolLabel, toolSummary, type TraceRow } from "./trace-rows";
 import type { Highlight } from "./source-anchors";
 import { Check, Copy, ChevronDown, ChevronRight } from "lucide-react";
 import { readableExcerpt } from "./trace-presentation";
@@ -346,20 +346,35 @@ function SystemRow({ step, ann, expanded, onToggle }: { step: RmStep; ann: StepA
 
 export default function TraceTimeline({
   rows,
+  taskRows = rows,
   ann,
   isExpanded,
   onToggle,
 }: {
   rows: TraceRow[];
+  /** All trace rows keep task summaries complete when sections render separate timelines. */
+  taskRows?: TraceRow[];
   ann: StepAnnotations;
   isExpanded: (row: TraceRow) => boolean;
   onToggle: (row: TraceRow) => void;
 }) {
   const groups: { assistant: boolean; rows: TraceRow[] }[] = [];
+  const tasks = new Map<string, { rowKey: string; heading: string; score: TaskScore; firstStep: number; lastStep: number }>();
+  for (const row of taskRows) {
+    const step = rowSteps(row)[0];
+    const score = ann.taskScore?.(step);
+    if (score) {
+      const number = ann.stepNumber?.(step) ?? step.index + 1;
+      const task = tasks.get(score.task);
+      if (task) task.lastStep = number;
+      else tasks.set(score.task, { rowKey: row.key, heading: ann.taskHeading?.(step) ?? `Task ${score.task.replace(/^t/, "")}`, score, firstStep: number, lastStep: number });
+    }
+  }
+  const taskSummaries = new Map([...tasks.values()].map((task) => [task.rowKey, task]));
   for (const row of rows) {
     const assistant = row.kind === "tool" || row.kind === "assistant";
     const last = groups.at(-1);
-    if (last && last.assistant === assistant) last.rows.push(row);
+    if (last && last.assistant === assistant && !taskSummaries.has(row.key)) last.rows.push(row);
     else groups.push({ assistant, rows: [row] });
   }
 
@@ -371,19 +386,12 @@ export default function TraceTimeline({
       const previous = groupRows[index - 1];
       const repeated = previous?.kind === "prompt" && previous.step.index + 1 === row.step.index
         && previous.step.content === row.step.content;
-      const task = ann.taskHeading?.(row.step) ?? null;
-      const taskScore = task === null ? null : ann.taskScore?.(row.step) ?? null;
+      const task = taskSummaries.has(row.key) ? null : ann.taskHeading?.(row.step) ?? null;
       return (
         <div key={row.key}>
           {task !== null && (
             <div className="mb-2 flex items-center gap-2 text-[10.5px] font-medium tracking-wide text-muted-foreground uppercase">
               <span>{task}</span>
-              {taskScore && <TaskScoreChip score={taskScore} />}
-              {taskScore && (
-                <span className="font-normal tracking-normal normal-case">
-                  {taskScore.hasAnswer ? "final answer" : "no answer"} {signed(taskScore.answer ?? 0)} · work {signed(taskScore.costs)}
-                </span>
-              )}
               <span aria-hidden="true" className="h-px flex-1 bg-border-subtle" />
             </div>
           )}
@@ -397,12 +405,16 @@ export default function TraceTimeline({
 
   return (
     <div className="divide-y divide-border-subtle">
-      {groups.map((group) => (
-        <section key={group.rows[0].key} aria-label={group.assistant ? "Assistant turn" : "Conversation messages"} className="py-3">
-          {group.assistant && group.rows[0].kind === "tool" && <h3 className="m-0 mb-1 text-[13px] font-semibold text-foreground">Assistant</h3>}
-          <div className={cn(!group.assistant && "space-y-2")}>{group.rows.map((row, index) => renderRow(row, index, group.rows))}</div>
-        </section>
-      ))}
+      {groups.map((group) => {
+        const task = taskSummaries.get(group.rows[0].key);
+        return <div key={group.rows[0].key}>
+          {task && <div className="pt-3"><TaskScoreSummary {...task} /></div>}
+          <section aria-label={group.assistant ? "Assistant turn" : "Conversation messages"} className="py-3">
+            {group.assistant && group.rows[0].kind === "tool" && <h3 className="m-0 mb-1 text-[13px] font-semibold text-foreground">Assistant</h3>}
+            <div className={cn(!group.assistant && "space-y-2")}>{group.rows.map((row, index) => renderRow(row, index, group.rows))}</div>
+          </section>
+        </div>;
+      })}
     </div>
   );
 }
