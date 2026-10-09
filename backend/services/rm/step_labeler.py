@@ -8,14 +8,20 @@ below is the instruction the model receives.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
+import math
+import random
+from datetime import UTC, datetime
+from email.utils import parsedate_to_datetime
 
 import httpx
 
 from ...config import settings
 
 API_URL = "https://api.openai.com/v1/responses"
+RATE_LIMIT_RETRIES = 4
 
 RUBRIC = """You label one chunk of an agent conversation trace. You are given the full session transcript for context, then the id of the single chunk to label. Label only that chunk.
 
@@ -262,6 +268,39 @@ def render(chunks: list[dict], cap: int | None = None) -> str:
     return "\n\n".join(render_chunk(chunk, cap) for chunk in chunks)
 
 
+def rate_limit_delay(response: httpx.Response, attempt: int) -> float | None:
+    """Back off a single labeling call without losing the trace's other labels."""
+    if response.status_code != 429 or attempt >= RATE_LIMIT_RETRIES:
+        return None
+    try:
+        error = response.json().get("error", {})
+        if any(
+            error.get(field) in {"insufficient_quota", "billing_hard_limit_reached"}
+            for field in ("code", "type")
+        ):
+            return None  # Credit exhaustion needs account repair, not a timed retry.
+    except (ValueError, AttributeError, TypeError):
+        pass
+    delay = 5 * 2**attempt
+    for header, scale in (("retry-after-ms", 0.001), ("retry-after", 1)):
+        value = response.headers.get(header)
+        if value is None:
+            continue
+        try:
+            seconds = float(value) * scale
+        except ValueError:
+            try:
+                seconds = (parsedate_to_datetime(value) - datetime.now(UTC)).total_seconds()
+            except (ValueError, TypeError, OverflowError):
+                continue
+        if math.isfinite(seconds) and seconds > 0:
+            if seconds > 120:
+                return None  # Surface longer limits instead of holding a request indefinitely.
+            delay = max(delay, seconds)
+            break
+    return delay + random.uniform(0, 1)
+
+
 async def label_chunk(
     client: httpx.AsyncClient, cache_key: str, transcript: str, chunk: dict
 ) -> dict:
@@ -299,12 +338,17 @@ async def label_chunk(
             }
         },
     }
-    try:
-        response = await client.post(
-            API_URL, json=body, headers={"Authorization": f"Bearer {settings.OPENAI_API_KEY}"}
-        )
-    except httpx.RequestError as exc:
-        raise LabelingError(f"label request failed: {type(exc).__name__}") from exc
+    for attempt in range(RATE_LIMIT_RETRIES + 1):
+        try:
+            response = await client.post(
+                API_URL, json=body, headers={"Authorization": f"Bearer {settings.OPENAI_API_KEY}"}
+            )
+        except httpx.RequestError as exc:
+            raise LabelingError(f"label request failed: {type(exc).__name__}") from exc
+        delay = rate_limit_delay(response, attempt)
+        if delay is None:
+            break
+        await asyncio.sleep(delay)
     if response.status_code != 200:
         raise LabelingError(f"label request returned {response.status_code}: {response.text[:200]}")
     try:
