@@ -5,6 +5,10 @@ everything before it is captured in git history (`git log`), not here.
 
 ## Unreleased
 
+- Simplify reward-model creation to a name and selected traces. Use managed
+  training defaults, remove the reward-criteria, epoch, and base-model controls,
+  and remove the explanatory sentence beneath the dialog title.
+
 - Label traces by source, with stable source IDs and editable names. Filter the
   trace list and training picker by source and import dates, and select only the
   shown traces when creating a reward model.

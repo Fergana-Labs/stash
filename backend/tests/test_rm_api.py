@@ -558,6 +558,36 @@ async def test_training_pair_limit_must_allow_training_and_evaluation(client, mo
     assert queued == [resp.json()["id"]]
 
 
+async def test_automatic_training_uses_server_defaults_without_manual_settings(client, monkeypatch):
+    from backend.routers.reward_models import DEFAULT_BASE_MODEL, DEFAULT_EPOCHS
+    from backend.services.rm.feedback import RUBRIC
+
+    queued = []
+    monkeypatch.setattr(rm_tasks.train_reward_model, "delay", queued.append)
+    auth = await _register(client)
+    trace_ids = await _import(
+        client, auth, _short_trace("first", "Done"), _short_trace("second", "Confirmed")
+    )
+    response = await client.post(
+        "/api/v1/rm/reward-models",
+        headers=auth,
+        json={
+            "name": "Parts quality",
+            "trace_ids": trace_ids,
+            "training_config": {"input_version": 3, "annotation_source": "automatic"},
+        },
+    )
+    assert response.status_code == 200, response.text
+    model = response.json()
+    assert model["base_model"] == DEFAULT_BASE_MODEL
+    assert model["epochs"] == DEFAULT_EPOCHS
+    assert model["training_config"]["annotation_source"] == "automatic"
+    assert model["training_config"]["rubric"] == list(RUBRIC)
+    assert set(model["training_config"]["task_groups"]) == set(trace_ids)
+    assert len(model["training_config"]["evaluation_groups"]) == 1
+    assert queued == [model["id"]]
+
+
 @pytest.mark.parametrize("compute", [None, "", "invalid"])
 async def test_training_without_a_configured_runtime_returns_service_unavailable(
     client, monkeypatch, compute

@@ -21,12 +21,11 @@ function Harness() {
   return <TrainSheet open={open} onOpenChange={setOpen} onTrained={vi.fn()} />;
 }
 
-it("preserves trace selections and options after blank-space and outside clicks", async () => {
+it("preserves trace selections and the model name after blank-space and outside clicks", async () => {
   const user = userEvent.setup({ pointerEventsCheck: PointerEventsCheckLevel.Never });
   render(<Harness />);
   const first = await screen.findByRole("checkbox", { name: "Select First trace" });
   await user.click(first);
-  await user.click(screen.getByRole("button", { name: "Options" }));
   const name = screen.getByRole("textbox", { name: "Model name" });
   await user.clear(name);
   await user.type(name, "My selected traces");
@@ -52,9 +51,10 @@ it("queues the visible custom name and preserves it when queuing fails", async (
   expect(create).toBeDisabled();
   await user.type(name, "Heavi parts accuracy ");
   await user.click(create);
-  expect(rmCreateRewardModel).toHaveBeenCalledWith(expect.objectContaining({
+  expect(rmCreateRewardModel).toHaveBeenCalledWith({
     name: "Heavi parts accuracy", trace_ids: ["0", "1"],
-  }));
+    training_config: { input_version: 3, annotation_source: "automatic" },
+  });
   expect(await screen.findByRole("alert")).toHaveTextContent("Worker unavailable");
   expect(name).toHaveValue("   Heavi parts accuracy ");
   expect(create).toBeEnabled();

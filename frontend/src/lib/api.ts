@@ -2780,8 +2780,8 @@ export async function rmListRewardModels(): Promise<RmRewardModel[]> {
 export async function rmCreateRewardModel(body: {
   trace_ids: string[];
   name: string;
-  base_model: string;
-  epochs: number;
+  base_model?: string;
+  epochs?: number;
   training_config?: { input_version: 3; annotation_source?: "feedback" | "automatic"; rubric?: string[]; max_actions_per_trace?: number; task_groups?: Record<string, string>; evaluation_groups?: string[] };
 }): Promise<RmRewardModel> {
   return apiFetch(`${RM}/reward-models`, { method: "POST", body: JSON.stringify(body) });
